@@ -1,0 +1,41 @@
+name: Monorepo Split
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package:
+          - { local: 'packages/core', remote: 'core' }
+          - { local: 'packages/routing', remote: 'routing' }
+          - { local: 'packages/view', remote: 'view' }
+          - { local: 'packages/components', remote: 'components' }
+          - { local: 'packages/data', remote: 'data' }
+          - { local: 'packages/htmx', remote: 'htmx' }
+          - { local: 'packages/i18n', remote: 'i18n' }
+          - { local: 'packages/testing', remote: 'testing' }
+          - { local: 'packages/devtools', remote: 'devtools' }
+          - { local: 'packages/skeleton', remote: 'skeleton' }
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Split and push
+        uses: symplify/monorepo-split-github-action@v2.3.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.SPLIT_TOKEN }}
+        with:
+          package_directory: ${{ matrix.package.local }}
+          repository_organization: getpreflow
+          repository_name: ${{ matrix.package.remote }}
+          branch: main
+          tag: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
