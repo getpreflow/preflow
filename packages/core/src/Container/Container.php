@@ -151,6 +151,19 @@ final class Container implements ContainerInterface
 
     private function resolveParameter(\ReflectionParameter $param, string $context): mixed
     {
+        // Check for #[Config] attribute
+        $configAttrs = $param->getAttributes(Attributes\Config::class);
+        if ($configAttrs !== []) {
+            return $this->resolveConfigAttribute($configAttrs[0]->newInstance());
+        }
+
+        // Check for #[Env] attribute
+        $envAttrs = $param->getAttributes(Attributes\Env::class);
+        if ($envAttrs !== []) {
+            return $this->resolveEnvAttribute($envAttrs[0]->newInstance());
+        }
+
+        // Fall back to type-based autowiring
         $type = $param->getType();
 
         if ($type instanceof \ReflectionNamedType && !$type->isBuiltin()) {
@@ -165,5 +178,35 @@ final class Container implements ContainerInterface
             "Unable to resolve parameter [\${$param->getName()}] "
             . "in class [{$context}]."
         );
+    }
+
+    private function resolveConfigAttribute(Attributes\Config $attr): mixed
+    {
+        if (!$this->has(\Preflow\Core\Config\Config::class)) {
+            throw new ContainerException(
+                "Cannot resolve #[Config] attribute: Config instance not registered."
+            );
+        }
+
+        $config = $this->get(\Preflow\Core\Config\Config::class);
+
+        return $config->get($attr->key, $attr->default);
+    }
+
+    private function resolveEnvAttribute(Attributes\Env $attr): mixed
+    {
+        $value = getenv($attr->name);
+
+        if ($value === false) {
+            if ($attr->default !== null) {
+                return $attr->default;
+            }
+
+            throw new ContainerException(
+                "Environment variable [{$attr->name}] is not set and no default provided."
+            );
+        }
+
+        return $value;
     }
 }
