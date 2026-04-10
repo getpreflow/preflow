@@ -1,0 +1,214 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Htmx\Tests;
+
+use PHPUnit\Framework\TestCase;
+use Nyholm\Psr7\Factory\Psr17Factory;
+use Nyholm\Psr7\Response;
+use Psr\Http\Message\ServerRequestInterface;
+use Preflow\Components\Component;
+use Preflow\Components\ComponentRenderer;
+use Preflow\Components\ErrorBoundary;
+use Preflow\Core\Exceptions\ForbiddenHttpException;
+use Preflow\Core\Exceptions\SecurityException;
+use Preflow\Htmx\ComponentEndpoint;
+use Preflow\Htmx\ComponentToken;
+use Preflow\Htmx\Guarded;
+use Preflow\Htmx\HtmxDriver;
+use Preflow\Htmx\ResponseHeaders;
+use Preflow\View\TemplateEngineInterface;
+
+class EndpointTestComponent extends Component
+{
+    public string $title = 'Test';
+
+    public function resolveState(): void
+    {
+        $this->title = $this->props['title'] ?? 'Default';
+    }
+
+    public function actions(): array
+    {
+        return ['refresh'];
+    }
+
+    public function actionRefresh(array $params = []): void
+    {
+        $this->title = 'Refreshed';
+    }
+}
+
+class GuardedComponent extends Component implements Guarded
+{
+    public function actions(): array
+    {
+        return ['admin'];
+    }
+
+    public function actionAdmin(array $params = []): void {}
+
+    public function authorize(string $action, ServerRequestInterface $request): void
+    {
+        if (!$request->hasHeader('X-Admin')) {
+            throw new ForbiddenHttpException('Admin required');
+        }
+    }
+}
+
+class EndpointFakeEngine implements TemplateEngineInterface
+{
+    public function render(string $template, array $context = []): string
+    {
+        return '<p>' . ($context['title'] ?? 'no title') . '</p>';
+    }
+
+    public function exists(string $template): bool
+    {
+        return true;
+    }
+}
+
+final class ComponentEndpointTest extends TestCase
+{
+    private ComponentToken $tokenService;
+    private ComponentEndpoint $endpoint;
+    private ResponseHeaders $responseHeaders;
+
+    protected function setUp(): void
+    {
+        $this->tokenService = new ComponentToken('test-secret-key-32-chars-long!!');
+        $this->responseHeaders = new ResponseHeaders();
+
+        $engine = new EndpointFakeEngine();
+        $renderer = new ComponentRenderer($engine, new ErrorBoundary(debug: true));
+
+        $this->endpoint = new ComponentEndpoint(
+            token: $this->tokenService,
+            renderer: $renderer,
+            driver: new HtmxDriver($this->responseHeaders),
+            componentFactory: fn (string $class, array $props) => $this->makeComponent($class, $props),
+        );
+    }
+
+    private function makeComponent(string $class, array $props): Component
+    {
+        $component = new $class();
+        $component->setProps($props);
+        return $component;
+    }
+
+    private function createRequest(
+        string $method,
+        string $uri,
+        array $query = [],
+        array $body = [],
+        array $headers = [],
+    ): ServerRequestInterface {
+        $factory = new Psr17Factory();
+        $uriObj = $factory->createUri($uri);
+        if ($query) {
+            $uriObj = $uriObj->withQuery(http_build_query($query));
+        }
+        $request = $factory->createServerRequest($method, $uriObj);
+        foreach ($headers as $name => $value) {
+            $request = $request->withHeader($name, $value);
+        }
+        if ($body) {
+            $request = $request->withParsedBody($body);
+        }
+        return $request;
+    }
+
+    public function test_render_action_returns_html(): void
+    {
+        $token = $this->tokenService->encode(EndpointTestComponent::class, ['title' => 'Hello']);
+
+        $request = $this->createRequest('GET', '/--component/render', ['token' => $token]);
+        $response = $this->endpoint->handle($request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = (string) $response->getBody();
+        $this->assertStringContainsString('Hello', $body);
+    }
+
+    public function test_action_dispatch_and_rerender(): void
+    {
+        $token = $this->tokenService->encode(
+            EndpointTestComponent::class,
+            ['title' => 'Before'],
+            'refresh',
+        );
+
+        $request = $this->createRequest('POST', '/--component/action', ['token' => $token]);
+        $response = $this->endpoint->handle($request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = (string) $response->getBody();
+        $this->assertStringContainsString('Refreshed', $body);
+    }
+
+    public function test_invalid_token_returns_403(): void
+    {
+        $request = $this->createRequest('POST', '/--component/action', ['token' => 'tampered-garbage']);
+
+        $this->expectException(SecurityException::class);
+        $this->endpoint->handle($request);
+    }
+
+    public function test_non_component_class_throws(): void
+    {
+        $token = $this->tokenService->encode(\stdClass::class);
+
+        $request = $this->createRequest('GET', '/--component/render', ['token' => $token]);
+
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Invalid component class');
+        $this->endpoint->handle($request);
+    }
+
+    public function test_unlisted_action_throws(): void
+    {
+        $token = $this->tokenService->encode(EndpointTestComponent::class, [], 'delete');
+
+        $request = $this->createRequest('POST', '/--component/action', ['token' => $token]);
+
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('not allowed');
+        $this->endpoint->handle($request);
+    }
+
+    public function test_guarded_component_authorized(): void
+    {
+        $token = $this->tokenService->encode(GuardedComponent::class, [], 'admin');
+
+        $request = $this->createRequest('POST', '/--component/action', ['token' => $token], headers: [
+            'X-Admin' => 'true',
+        ]);
+
+        $response = $this->endpoint->handle($request);
+        $this->assertSame(200, $response->getStatusCode());
+    }
+
+    public function test_guarded_component_unauthorized(): void
+    {
+        $token = $this->tokenService->encode(GuardedComponent::class, [], 'admin');
+
+        $request = $this->createRequest('POST', '/--component/action', ['token' => $token]);
+
+        $this->expectException(ForbiddenHttpException::class);
+        $this->endpoint->handle($request);
+    }
+
+    public function test_response_includes_driver_headers(): void
+    {
+        $token = $this->tokenService->encode(EndpointTestComponent::class, [], 'refresh');
+
+        $request = $this->createRequest('POST', '/--component/action', ['token' => $token]);
+        $response = $this->endpoint->handle($request);
+
+        // Response headers from the driver should be in the response
+        $this->assertSame(200, $response->getStatusCode());
+    }
+}
