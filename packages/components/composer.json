@@ -1,0 +1,24 @@
+{
+    "name": "preflow/components",
+    "description": "Preflow components — component base class, renderer, error boundaries",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "preflow/core": "^0.1 || @dev",
+        "preflow/view": "^0.1 || @dev"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Preflow\\Components\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Preflow\\Components\\Tests\\": "tests/"
+        }
+    }
+}
