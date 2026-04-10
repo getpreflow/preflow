@@ -14,6 +14,7 @@
         "preflow/core": "@dev",
         "preflow/data": "@dev",
         "preflow/htmx": "@dev",
+        "preflow/i18n": "@dev",
         "preflow/routing": "@dev",
         "preflow/view": "@dev"
     },
@@ -46,6 +47,11 @@
         {
             "type": "path",
             "url": "packages/view",
+            "options": { "symlink": true }
+        },
+        {
+            "type": "path",
+            "url": "packages/i18n",
             "options": { "symlink": true }
         }
     ],

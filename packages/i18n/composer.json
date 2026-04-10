@@ -1,0 +1,25 @@
+{
+    "name": "preflow/i18n",
+    "description": "Preflow i18n — translations, locale detection, pluralization",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "preflow/core": "^0.1 || @dev"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0",
+        "nyholm/psr7": "^1.8",
+        "twig/twig": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Preflow\\I18n\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Preflow\\I18n\\Tests\\": "tests/"
+        }
+    }
+}
