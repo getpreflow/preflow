@@ -7,6 +7,9 @@
          failOnWarning="true"
 >
     <testsuites>
+        <testsuite name="Components">
+            <directory>packages/components/tests</directory>
+        </testsuite>
         <testsuite name="Core">
             <directory>packages/core/tests</directory>
         </testsuite>
@@ -19,6 +22,7 @@
     </testsuites>
     <source>
         <include>
+            <directory>packages/components/src</directory>
             <directory>packages/core/src</directory>
             <directory>packages/routing/src</directory>
             <directory>packages/view/src</directory>
