@@ -16,6 +16,7 @@
         "preflow/htmx": "@dev",
         "preflow/i18n": "@dev",
         "preflow/routing": "@dev",
+        "preflow/testing": "@dev",
         "preflow/view": "@dev"
     },
     "repositories": [
@@ -52,6 +53,11 @@
         {
             "type": "path",
             "url": "packages/i18n",
+            "options": { "symlink": true }
+        },
+        {
+            "type": "path",
+            "url": "packages/testing",
             "options": { "symlink": true }
         }
     ],

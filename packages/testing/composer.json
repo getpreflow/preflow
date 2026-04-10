@@ -1,0 +1,28 @@
+{
+    "name": "preflow/testing",
+    "description": "Preflow testing — test utilities for components, routes, data",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "phpunit/phpunit": "^11.0",
+        "preflow/core": "^0.1 || @dev",
+        "preflow/routing": "^0.1 || @dev",
+        "preflow/view": "^0.1 || @dev",
+        "preflow/components": "^0.1 || @dev",
+        "preflow/data": "^0.1 || @dev",
+        "preflow/htmx": "^0.1 || @dev",
+        "preflow/i18n": "^0.1 || @dev",
+        "nyholm/psr7": "^1.8"
+    },
+    "autoload": {
+        "psr-4": {
+            "Preflow\\Testing\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Preflow\\Testing\\Tests\\": "tests/"
+        }
+    }
+}
