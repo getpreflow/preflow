@@ -25,6 +25,9 @@ final class Container implements ContainerInterface
     /** @var array<string, true> */
     private array $resolving = [];
 
+    /** @var ServiceProvider[] */
+    private array $providers = [];
+
     public function get(string $id): mixed
     {
         if (isset($this->instances[$id])) {
@@ -208,5 +211,18 @@ final class Container implements ContainerInterface
         }
 
         return $value;
+    }
+
+    public function registerProvider(ServiceProvider $provider): void
+    {
+        $provider->register($this);
+        $this->providers[] = $provider;
+    }
+
+    public function bootProviders(): void
+    {
+        foreach ($this->providers as $provider) {
+            $provider->boot($this);
+        }
     }
 }
