@@ -41,6 +41,21 @@ final class ComponentRenderer
         }
     }
 
+    /**
+     * Render a component whose state has already been resolved/mutated
+     * (e.g. after an action dispatch). Skips resolveState() so that
+     * action side-effects are preserved in the rendered output.
+     */
+    public function renderResolved(Component $component): string
+    {
+        try {
+            $innerHtml = $this->renderTemplate($component);
+            return $this->wrapHtml($component, $innerHtml);
+        } catch (\Throwable $e) {
+            return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
+        }
+    }
+
     private function renderTemplate(Component $component): string
     {
         $templatePath = $component->getTemplatePath();
