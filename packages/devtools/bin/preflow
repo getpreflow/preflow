@@ -1,0 +1,23 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// Find autoloader
+$autoloadPaths = [
+    __DIR__ . '/../../../vendor/autoload.php',  // monorepo
+    __DIR__ . '/../vendor/autoload.php',         // standalone
+    getcwd() . '/vendor/autoload.php',           // project
+];
+
+foreach ($autoloadPaths as $path) {
+    if (file_exists($path)) {
+        require $path;
+        break;
+    }
+}
+
+use Preflow\DevTools\Console;
+
+$console = new Console();
+$console->run($argv);

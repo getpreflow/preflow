@@ -31,6 +31,9 @@
         <testsuite name="Testing">
             <directory>packages/testing/tests</directory>
         </testsuite>
+        <testsuite name="DevTools">
+            <directory>packages/devtools/tests</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
@@ -42,6 +45,7 @@
             <directory>packages/routing/src</directory>
             <directory>packages/view/src</directory>
             <directory>packages/testing/src</directory>
+            <directory>packages/devtools/src</directory>
         </include>
     </source>
 </phpunit>
