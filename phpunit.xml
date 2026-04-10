@@ -28,6 +28,9 @@
         <testsuite name="I18n">
             <directory>packages/i18n/tests</directory>
         </testsuite>
+        <testsuite name="Testing">
+            <directory>packages/testing/tests</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
@@ -38,6 +41,7 @@
             <directory>packages/i18n/src</directory>
             <directory>packages/routing/src</directory>
             <directory>packages/view/src</directory>
+            <directory>packages/testing/src</directory>
         </include>
     </source>
 </phpunit>
