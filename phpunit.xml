@@ -13,11 +13,15 @@
         <testsuite name="Routing">
             <directory>packages/routing/tests</directory>
         </testsuite>
+        <testsuite name="View">
+            <directory>packages/view/tests</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
             <directory>packages/core/src</directory>
             <directory>packages/routing/src</directory>
+            <directory>packages/view/src</directory>
         </include>
     </source>
 </phpunit>

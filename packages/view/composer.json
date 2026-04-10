@@ -1,0 +1,24 @@
+{
+    "name": "preflow/view",
+    "description": "Preflow view — template engine interface, Twig adapter, asset pipeline",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "preflow/core": "^0.1 || @dev",
+        "twig/twig": "^3.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Preflow\\View\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Preflow\\View\\Tests\\": "tests/"
+        }
+    }
+}

@@ -6,7 +6,7 @@
 |-------|---------|------|--------|
 | 1 | `preflow/core` | [2026-04-10-phase-1-preflow-core.md](2026-04-10-phase-1-preflow-core.md) | Ready |
 | 2 | `preflow/routing` | [2026-04-10-phase-2-preflow-routing.md](2026-04-10-phase-2-preflow-routing.md) | Ready |
-| 3 | `preflow/view` | TBD | Blocked on Phase 1 |
+| 3 | `preflow/view` | [2026-04-10-phase-3-preflow-view.md](2026-04-10-phase-3-preflow-view.md) | Ready |
 | 4 | `preflow/components` | TBD | Blocked on Phase 3 |
 | 5 | `preflow/data` | TBD | Blocked on Phase 1 |
 | 6 | `preflow/htmx` | TBD | Blocked on Phase 4 |
