@@ -7,10 +7,17 @@ on:
     tags:
       - 'v*'
 
+env:
+  GIT_AUTHOR_NAME: "Preflow Bot"
+  GIT_AUTHOR_EMAIL: "bot@getpreflow.dev"
+  GIT_COMMITTER_NAME: "Preflow Bot"
+  GIT_COMMITTER_EMAIL: "bot@getpreflow.dev"
+
 jobs:
   split:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         package:
           - { local: 'packages/core', remote: 'core' }
@@ -29,13 +36,32 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Split and push
-        uses: symplify/monorepo-split-github-action@v2.3.0
+      - name: Configure git
+        run: |
+          git config --global user.name "Preflow Bot"
+          git config --global user.email "bot@getpreflow.dev"
+
+      - name: Install splitsh-lite
+        run: |
+          curl -L https://github.com/splitsh/lite/releases/download/v1.0.1/lite_linux_amd64.tar.gz | tar xz
+          chmod +x splitsh-lite
+          sudo mv splitsh-lite /usr/local/bin/
+
+      - name: Split and push branch
         env:
           GITHUB_TOKEN: ${{ secrets.SPLIT_TOKEN }}
-        with:
-          package_directory: ${{ matrix.package.local }}
-          repository_organization: getpreflow
-          repository_name: ${{ matrix.package.remote }}
-          branch: main
-          tag: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          # Generate the split SHA for this package
+          SHA=$(splitsh-lite --prefix=${{ matrix.package.local }} --target=refs/heads/split-branch)
+
+          # Push to the split repo
+          git remote add split "https://x-access-token:${GITHUB_TOKEN}@github.com/getpreflow/${{ matrix.package.remote }}.git"
+          git push split ${SHA}:refs/heads/main -f
+
+      - name: Split and push tag
+        if: github.ref_type == 'tag'
+        env:
+          GITHUB_TOKEN: ${{ secrets.SPLIT_TOKEN }}
+        run: |
+          SHA=$(splitsh-lite --prefix=${{ matrix.package.local }} --target=refs/tags/${{ github.ref_name }})
+          git push split ${SHA}:refs/tags/${{ github.ref_name }} -f
