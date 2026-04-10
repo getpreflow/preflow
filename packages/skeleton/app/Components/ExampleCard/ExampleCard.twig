@@ -1,0 +1,36 @@
+<div class="example-card">
+    <h2>{{ title }}</h2>
+    <p>{{ message }}</p>
+    <p>Count: {{ count }}</p>
+    <button {{ hd.post('increment', 'App\\Components\\ExampleCard', componentId, props) | raw }}>+1</button>
+</div>
+
+{% apply css %}
+.example-card {
+    padding: 2rem;
+    border-radius: 0.5rem;
+    background: #f8f9fa;
+    max-width: 24rem;
+    font-family: system-ui, sans-serif;
+}
+
+.example-card h2 {
+    margin: 0 0 0.5rem;
+    color: #333;
+}
+
+.example-card button {
+    margin-top: 1rem;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 0.25rem;
+    background: #0066ff;
+    color: white;
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+.example-card button:hover {
+    background: #0052cc;
+}
+{% endapply %}
