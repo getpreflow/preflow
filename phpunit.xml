@@ -25,6 +25,9 @@
         <testsuite name="View">
             <directory>packages/view/tests</directory>
         </testsuite>
+        <testsuite name="I18n">
+            <directory>packages/i18n/tests</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
@@ -32,6 +35,7 @@
             <directory>packages/core/src</directory>
             <directory>packages/data/src</directory>
             <directory>packages/htmx/src</directory>
+            <directory>packages/i18n/src</directory>
             <directory>packages/routing/src</directory>
             <directory>packages/view/src</directory>
         </include>
