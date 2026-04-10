@@ -10,10 +10,14 @@
         <testsuite name="Core">
             <directory>packages/core/tests</directory>
         </testsuite>
+        <testsuite name="Routing">
+            <directory>packages/routing/tests</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
             <directory>packages/core/src</directory>
+            <directory>packages/routing/src</directory>
         </include>
     </source>
 </phpunit>
