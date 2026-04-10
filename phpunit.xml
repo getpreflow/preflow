@@ -13,6 +13,9 @@
         <testsuite name="Core">
             <directory>packages/core/tests</directory>
         </testsuite>
+        <testsuite name="Data">
+            <directory>packages/data/tests</directory>
+        </testsuite>
         <testsuite name="Routing">
             <directory>packages/routing/tests</directory>
         </testsuite>
@@ -24,6 +27,7 @@
         <include>
             <directory>packages/components/src</directory>
             <directory>packages/core/src</directory>
+            <directory>packages/data/src</directory>
             <directory>packages/routing/src</directory>
             <directory>packages/view/src</directory>
         </include>
