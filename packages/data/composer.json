@@ -1,0 +1,25 @@
+{
+    "name": "preflow/data",
+    "description": "Preflow data — storage drivers, models, migrations",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "ext-pdo": "*",
+        "ext-pdo_sqlite": "*",
+        "preflow/core": "^0.1 || @dev"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Preflow\\Data\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Preflow\\Data\\Tests\\": "tests/"
+        }
+    }
+}

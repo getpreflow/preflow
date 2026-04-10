@@ -12,6 +12,7 @@
         "phpunit/phpunit": "^11.0",
         "preflow/components": "@dev",
         "preflow/core": "@dev",
+        "preflow/data": "@dev",
         "preflow/routing": "@dev",
         "preflow/view": "@dev"
     },
@@ -24,6 +25,11 @@
         {
             "type": "path",
             "url": "packages/core",
+            "options": { "symlink": true }
+        },
+        {
+            "type": "path",
+            "url": "packages/data",
             "options": { "symlink": true }
         },
         {
