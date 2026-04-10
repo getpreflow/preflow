@@ -16,6 +16,9 @@
         <testsuite name="Data">
             <directory>packages/data/tests</directory>
         </testsuite>
+        <testsuite name="Htmx">
+            <directory>packages/htmx/tests</directory>
+        </testsuite>
         <testsuite name="Routing">
             <directory>packages/routing/tests</directory>
         </testsuite>
@@ -28,6 +31,7 @@
             <directory>packages/components/src</directory>
             <directory>packages/core/src</directory>
             <directory>packages/data/src</directory>
+            <directory>packages/htmx/src</directory>
             <directory>packages/routing/src</directory>
             <directory>packages/view/src</directory>
         </include>
