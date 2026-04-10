@@ -1,0 +1,30 @@
+{
+    "name": "preflow/skeleton",
+    "description": "Preflow project skeleton",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "preflow/core": "dev-main",
+        "preflow/routing": "dev-main",
+        "preflow/view": "dev-main",
+        "preflow/components": "dev-main",
+        "preflow/data": "dev-main",
+        "preflow/htmx": "dev-main",
+        "preflow/i18n": "dev-main"
+    },
+    "require-dev": {
+        "preflow/testing": "dev-main",
+        "preflow/devtools": "dev-main"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    }
+}

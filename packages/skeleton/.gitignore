@@ -1,0 +1,11 @@
+/vendor/
+.phpunit.result.cache
+.phpunit.cache/
+.env
+storage/cache/*
+storage/logs/*
+storage/data/*.sqlite
+!storage/cache/.gitkeep
+!storage/logs/.gitkeep
+!storage/data/.gitkeep
+.DS_Store

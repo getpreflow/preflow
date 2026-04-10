@@ -1,0 +1,17 @@
+{% extends "_layout.twig" %}
+
+{% block title %}Home — Preflow App{% endblock %}
+
+{% block content %}
+<div style="text-align: center; padding: 2rem 0;">
+    <h1 style="font-family: system-ui; font-size: 2.5rem; margin-bottom: 0.5rem;">Preflow</h1>
+    <p style="font-family: system-ui; color: #666; font-size: 1.125rem;">
+        HTML over the wire. No build step. No JS framework.
+    </p>
+</div>
+
+{{ component('ExampleCard', {
+    title: 'Hello, Preflow',
+    message: 'This component has co-located CSS, JS, and a working HTMX counter.'
+}) }}
+{% endblock %}
