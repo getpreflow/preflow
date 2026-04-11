@@ -8,6 +8,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Components\Component;
 use Preflow\Components\ComponentRenderer;
 use Preflow\Components\ErrorBoundary;
+use Preflow\Core\DebugLevel;
 use Preflow\View\TemplateEngineInterface;
 
 class RenderableComponent extends Component
@@ -75,7 +76,7 @@ final class ComponentRendererTest extends TestCase
         $this->engine = new FakeTemplateEngine();
         $this->renderer = new ComponentRenderer(
             templateEngine: $this->engine,
-            errorBoundary: new ErrorBoundary(debug: true),
+            errorBoundary: new ErrorBoundary(debug: DebugLevel::On),
         );
     }
 
@@ -155,7 +156,7 @@ final class ComponentRendererTest extends TestCase
     {
         $renderer = new ComponentRenderer(
             templateEngine: $this->engine,
-            errorBoundary: new ErrorBoundary(debug: false),
+            errorBoundary: new ErrorBoundary(debug: DebugLevel::Off),
         );
 
         $component = new BrokenWithFallback();

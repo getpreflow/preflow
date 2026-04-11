@@ -6,6 +6,7 @@ namespace Preflow\Testing;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Components\Component;
+use Preflow\Core\DebugLevel;
 
 abstract class ComponentTestCase extends TestCase
 {
@@ -14,7 +15,7 @@ abstract class ComponentTestCase extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->app = new TestApplication(debug: false);
+        $this->app = new TestApplication(debug: DebugLevel::Off);
     }
 
     /**
