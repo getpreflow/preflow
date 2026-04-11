@@ -1,0 +1,57 @@
+<div class="nav-inner">
+    {% if brand %}
+        <a href="/" class="nav-brand">{{ brand }}</a>
+    {% endif %}
+    <div class="nav-links">
+        {% for item in items %}
+            <a href="{{ item.path }}" class="nav-link{{ item.active ? ' nav-link--active' : '' }}">
+                {{ t(item.label) }}
+            </a>
+        {% endfor %}
+    </div>
+</div>
+
+{% apply css %}
+.nav-inner {
+    padding: 1rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.nav-brand {
+    font-weight: 700;
+    font-size: 1.125rem;
+    color: #333;
+    text-decoration: none;
+}
+
+.nav-brand:hover {
+    color: #0066ff;
+}
+
+.nav-links {
+    display: flex;
+    gap: 1.25rem;
+}
+
+.nav-link {
+    color: #555;
+    text-decoration: none;
+    padding: 0.25rem 0;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.nav-link:hover {
+    color: #0066ff;
+}
+
+.nav-link--active {
+    color: #0066ff;
+    border-bottom-color: #0066ff;
+    font-weight: 600;
+}
+{% endapply %}
