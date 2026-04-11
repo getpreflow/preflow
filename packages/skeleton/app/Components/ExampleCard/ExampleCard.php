@@ -16,6 +16,7 @@ final class ExampleCard extends Component
     {
         $this->title = $this->props['title'] ?? 'Welcome to Preflow';
         $this->message = $this->props['message'] ?? 'Your first component.';
+        $this->count = (int) ($this->props['count'] ?? 0);
     }
 
     public function actions(): array
@@ -26,5 +27,6 @@ final class ExampleCard extends Component
     public function actionIncrement(array $params = []): void
     {
         $this->count++;
+        $this->props['count'] = $this->count;
     }
 }
