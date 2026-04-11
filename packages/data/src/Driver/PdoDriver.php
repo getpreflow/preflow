@@ -45,6 +45,9 @@ abstract class PdoDriver implements StorageDriver
     {
         $data['uuid'] = $id;
 
+        // Remove null values — let the DB use defaults
+        $data = array_filter($data, fn ($v) => $v !== null);
+
         if ($this->exists($type, $id)) {
             $this->update($type, $id, $data);
         } else {

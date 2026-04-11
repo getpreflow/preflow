@@ -1,0 +1,7 @@
+{% extends "_layout.twig" %}
+
+{% block title %}Blog — Preflow App{% endblock %}
+
+{% block content %}
+{{ component('BlogDetail', { slug: route.slug }) }}
+{% endblock %}

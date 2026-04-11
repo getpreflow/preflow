@@ -11,14 +11,21 @@ use Preflow\Components\ComponentRenderer;
 
 final class ComponentExtension extends AbstractExtension
 {
+    /** @var callable(string, array): Component|null */
+    private $componentFactory;
+
     /**
      * @param ComponentRenderer $renderer
      * @param array<string, class-string<Component>> $componentMap Short name → FQCN
+     * @param callable(string $class, array $props): Component|null $componentFactory
      */
     public function __construct(
         private readonly ComponentRenderer $renderer,
         private readonly array $componentMap = [],
-    ) {}
+        ?callable $componentFactory = null,
+    ) {
+        $this->componentFactory = $componentFactory;
+    }
 
     public function getFunctions(): array
     {
@@ -33,8 +40,13 @@ final class ComponentExtension extends AbstractExtension
     public function renderComponent(string $name, array $props = []): string
     {
         $className = $this->resolveClass($name);
-        $component = new $className();
-        $component->setProps($props);
+
+        if ($this->componentFactory !== null) {
+            $component = ($this->componentFactory)($className, $props);
+        } else {
+            $component = new $className();
+            $component->setProps($props);
+        }
 
         return $this->renderer->render($component);
     }
@@ -44,12 +56,10 @@ final class ComponentExtension extends AbstractExtension
      */
     private function resolveClass(string $name): string
     {
-        // Check the component map first
         if (isset($this->componentMap[$name])) {
             return $this->componentMap[$name];
         }
 
-        // Check if it's already a FQCN
         if (class_exists($name) && is_subclass_of($name, Component::class)) {
             return $name;
         }

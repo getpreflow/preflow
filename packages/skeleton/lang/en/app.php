@@ -2,6 +2,10 @@
 
 return [
     'name' => 'Preflow App',
-    'welcome' => 'Welcome to :name!',
-    'description' => 'A modern PHP framework for component-based web development.',
+    'nav' => [
+        'home' => 'Home',
+        'blog' => 'Blog',
+        'about' => 'About',
+    ],
+    'footer' => 'Built with Preflow',
 ];

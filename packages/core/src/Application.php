@@ -120,6 +120,7 @@ final class Application
         $secretKey = $this->config->get('app.key', 'preflow-default-key-change-me!!');
 
         // Auto-discover installed packages and wire them up
+        $this->bootDataLayer();
         $this->bootViewLayer($debug);
         $this->bootComponentLayer($debug, $secretKey);
         $this->bootRouting();
@@ -184,6 +185,47 @@ final class Application
     // Auto-discovery
     // -----------------------------------------------------------------------
 
+    private function bootDataLayer(): void
+    {
+        if (!class_exists(\Preflow\Data\DataManager::class)) {
+            return;
+        }
+
+        $dataConfigPath = $this->basePath('config/data.php');
+        if (!file_exists($dataConfigPath)) {
+            return;
+        }
+
+        $dataConfig = require $dataConfigPath;
+        $drivers = [];
+
+        foreach ($dataConfig['drivers'] ?? [] as $name => $driverConfig) {
+            if ($name === 'sqlite') {
+                $path = $driverConfig['path'] ?? $this->basePath('storage/data/app.sqlite');
+                $dbDir = dirname($path);
+                if (!is_dir($dbDir)) {
+                    mkdir($dbDir, 0755, true);
+                }
+                $dsn = str_starts_with($path, 'sqlite:') ? $path : 'sqlite:' . $path;
+                $pdo = new \PDO($dsn);
+                $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+                $drivers[$name] = new \Preflow\Data\Driver\SqliteDriver($pdo);
+                $this->container->instance(\PDO::class, $pdo);
+            } elseif ($name === 'json') {
+                $path = $driverConfig['path'] ?? $this->basePath('storage/data');
+                $drivers[$name] = new \Preflow\Data\Driver\JsonFileDriver($path);
+            }
+        }
+
+        $default = $dataConfig['default'] ?? 'sqlite';
+        if (isset($drivers[$default])) {
+            $drivers['default'] = $drivers[$default];
+        }
+
+        $dataManager = new \Preflow\Data\DataManager($drivers);
+        $this->container->instance(\Preflow\Data\DataManager::class, $dataManager);
+    }
+
     private function bootViewLayer(bool $debug): void
     {
         if (!class_exists(\Preflow\View\Twig\TwigEngine::class)) {
@@ -230,9 +272,17 @@ final class Application
         // Auto-discover components
         $componentMap = $this->discoverComponents();
 
+        // Component factory — uses DI container for constructor injection
+        $container = $this->container;
+        $componentFactory = function (string $class, array $props) use ($container) {
+            $component = $container->has($class) ? $container->get($class) : $container->make($class);
+            $component->setProps($props);
+            return $component;
+        };
+
         // Register {{ component() }} Twig function
         $engine->getTwig()->addExtension(
-            new \Preflow\Components\Twig\ComponentExtension($renderer, $componentMap)
+            new \Preflow\Components\Twig\ComponentExtension($renderer, $componentMap, $componentFactory)
         );
 
         // HTMX driver
