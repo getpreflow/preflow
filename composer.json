@@ -12,6 +12,7 @@
         "illuminate/filesystem": "^12.56",
         "illuminate/view": "^12.56",
         "phpunit/phpunit": "^11.0",
+        "preflow/auth": "@dev",
         "preflow/blade": "@dev",
         "preflow/components": "@dev",
         "preflow/core": "@dev",
@@ -25,6 +26,11 @@
         "preflow/view": "@dev"
     },
     "repositories": [
+        {
+            "type": "path",
+            "url": "packages/auth",
+            "options": { "symlink": true }
+        },
         {
             "type": "path",
             "url": "packages/components",

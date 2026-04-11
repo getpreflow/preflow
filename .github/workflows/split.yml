@@ -24,6 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         package:
+          - { local: 'packages/auth', remote: 'auth' }
           - { local: 'packages/core', remote: 'core' }
           - { local: 'packages/routing', remote: 'routing' }
           - { local: 'packages/view', remote: 'view' }
