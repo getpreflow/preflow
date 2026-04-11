@@ -44,6 +44,21 @@
     font-size: 0.875rem;
 }
 
+.demo-intro {
+    margin-top: 3rem;
+    margin-bottom: 0.5rem;
+}
+
+.demo-intro h2 {
+    font-size: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.demo-intro p {
+    color: #666;
+    font-size: 0.9375rem;
+}
+
 .error-demo-fallback {
     display: flex;
     gap: 1rem;
@@ -86,18 +101,38 @@
 
 {{ component('ErrorDemoRaw') }}
 
+<div class="demo-intro">
+    <h2>What this demo shows</h2>
+    <p>
+        This skeleton ships with opinionated defaults — Twig for templating, HTMX for hypermedia —
+        but every layer sits behind an interface. Swap in Blade, Datastar, or your own implementation.
+    </p>
+</div>
+
 <div class="features">
     <div class="feature">
         <h3>Components</h3>
-        <p>Co-located PHP + Twig + CSS + JS. Drop a directory, it works.</p>
+        <p>Co-located PHP + template + CSS + JS. Drop a directory, it auto-discovers.</p>
     </div>
     <div class="feature">
-        <h3>Zero Requests</h3>
-        <p>All CSS and JS inline in the HTML. Hash-deduplicated. CSP nonces.</p>
+        <h3>Inline Assets</h3>
+        <p>Your CSS and JS are inlined in the HTML document. Hash-deduplicated. CSP nonces. No bundler needed.</p>
     </div>
     <div class="feature">
         <h3>Hypermedia</h3>
-        <p>HTMX-driven interactivity with signed component tokens.</p>
+        <p>Server renders HTML fragments, the browser swaps them in. HTMX by default, abstracted behind a driver interface.</p>
+    </div>
+    <div class="feature">
+        <h3>Error Boundaries</h3>
+        <p>Components crash gracefully. Custom fallbacks or dev panels — the rest of the page keeps rendering.</p>
+    </div>
+    <div class="feature">
+        <h3>Multi-Storage</h3>
+        <p>SQLite, JSON files, or both in the same app. Each model picks its backend via attributes.</p>
+    </div>
+    <div class="feature">
+        <h3>i18n</h3>
+        <p>Translations, pluralization, and locale detection built in from day one. Not an afterthought.</p>
     </div>
 </div>
 {% endblock %}
