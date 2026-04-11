@@ -9,17 +9,20 @@
         "php": ">=8.4"
     },
     "require-dev": {
+        "illuminate/filesystem": "^12.56",
+        "illuminate/view": "^12.56",
         "phpunit/phpunit": "^11.0",
+        "preflow/blade": "@dev",
         "preflow/components": "@dev",
         "preflow/core": "@dev",
         "preflow/data": "@dev",
+        "preflow/devtools": "@dev",
         "preflow/htmx": "@dev",
         "preflow/i18n": "@dev",
         "preflow/routing": "@dev",
-        "preflow/devtools": "@dev",
         "preflow/testing": "@dev",
-        "preflow/view": "@dev",
-        "preflow/twig": "@dev"
+        "preflow/twig": "@dev",
+        "preflow/view": "@dev"
     },
     "repositories": [
         {
@@ -50,6 +53,11 @@
         {
             "type": "path",
             "url": "packages/view",
+            "options": { "symlink": true }
+        },
+        {
+            "type": "path",
+            "url": "packages/blade",
             "options": { "symlink": true }
         },
         {
