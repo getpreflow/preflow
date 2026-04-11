@@ -93,15 +93,15 @@ final class PreflowExtensionTest extends TestCase
         $this->assertStringContainsString('headScript()', $result);
     }
 
-    public function test_assets_function_renders_css_and_body_js(): void
+    public function test_assets_function_renders_body_js(): void
     {
         $this->assets->addCss('.page { margin: 0; }');
         $this->assets->addJs('init();');
 
         $result = $this->render('{{ assets() }}');
 
-        $this->assertStringContainsString('.page { margin: 0; }', $result);
         $this->assertStringContainsString('init()', $result);
+        $this->assertStringNotContainsString('.page', $result); // CSS is in head(), not assets()
     }
 
     public function test_css_dedup_across_multiple_renders(): void
@@ -124,10 +124,11 @@ final class PreflowExtensionTest extends TestCase
             '<head>{{ head() }}</head><body>content{{ assets() }}</body>'
         );
 
-        // Head JS in <head>
+        // CSS + head JS in <head>
+        $this->assertMatchesRegularExpression('/<head>.*body \{ margin: 0; \}.*<\/head>/s', $result);
         $this->assertMatchesRegularExpression('/<head>.*configSetup\(\).*<\/head>/s', $result);
-        // CSS and body JS in <body>
-        $this->assertMatchesRegularExpression('/<body>.*body \{ margin: 0; \}.*<\/body>/s', $result);
+        // Body JS in <body>, CSS NOT in <body>
         $this->assertMatchesRegularExpression('/<body>.*appInit\(\).*<\/body>/s', $result);
+        $this->assertDoesNotMatchRegularExpression('/<body>.*body \{ margin: 0; \}.*<\/body>/s', $result);
     }
 }

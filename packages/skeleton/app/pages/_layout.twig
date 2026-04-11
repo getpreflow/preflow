@@ -4,7 +4,6 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Preflow App{% endblock %}</title>
-    {{ head() }}
 </head>
 <body>
     <nav style="padding: 1rem 2rem; background: #f8f9fa; border-bottom: 1px solid #dee2e6; font-family: system-ui, sans-serif;">
@@ -16,7 +15,5 @@
     <main style="padding: 2rem; max-width: 800px; margin: 0 auto;">
         {% block content %}{% endblock %}
     </main>
-
-    {{ assets() }}
 </body>
 </html>

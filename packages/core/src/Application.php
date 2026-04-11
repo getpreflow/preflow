@@ -246,6 +246,10 @@ final class Application
             $this->container->instance(\Preflow\Htmx\HtmxDriver::class, $htmxDriver);
             $this->container->instance(\Preflow\Htmx\ComponentToken::class, $componentToken);
 
+            // Register HTMX library script tag in <head>
+            $assets = $this->container->get(\Preflow\View\AssetCollector::class);
+            $assets->addHeadTag($htmxDriver->assetTag());
+
             // Register {{ hd.post(...) }} Twig helper
             $engine->getTwig()->addExtension(
                 new \Preflow\Htmx\Twig\HdExtension($htmxDriver, $componentToken)
@@ -471,10 +475,37 @@ final class Application
                     'route' => (object) $route->parameters,
                 ]);
 
+                // Post-process: inject collected assets into the HTML
+                if ($container->has(\Preflow\View\AssetCollector::class)) {
+                    $assets = $container->get(\Preflow\View\AssetCollector::class);
+                    $html = $this->injectAssets($html, $assets);
+                }
+
                 return new \Nyholm\Psr7\Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
             }
 
             return new \Nyholm\Psr7\Response(500, [], 'No template engine configured. Install preflow/view.');
         };
+    }
+
+    /**
+     * Inject collected CSS/JS assets into the HTML document.
+     * CSS + head JS + library tags → before </head>
+     * Body JS → before </body>
+     */
+    private function injectAssets(string $html, \Preflow\View\AssetCollector $assets): string
+    {
+        $headContent = $assets->renderHead();
+        $bodyContent = $assets->renderAssets();
+
+        if ($headContent !== '') {
+            $html = str_replace('</head>', $headContent . '</head>', $html);
+        }
+
+        if ($bodyContent !== '') {
+            $html = str_replace('</body>', $bodyContent . '</body>', $html);
+        }
+
+        return $html;
     }
 }

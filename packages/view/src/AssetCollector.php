@@ -18,10 +18,21 @@ final class AssetCollector
     /** @var array<string, string> hash => js */
     private array $jsInline = [];
 
+    /** @var string[] Extra tags to include in <head> (e.g., HTMX script tag) */
+    private array $headTags = [];
+
     public function __construct(
         private readonly NonceGenerator $nonceGenerator,
         private readonly bool $isProd = false,
     ) {}
+
+    /**
+     * Register an extra tag to include in <head> (e.g., library script tags).
+     */
+    public function addHeadTag(string $tag): void
+    {
+        $this->headTags[] = $tag;
+    }
 
     public function addCss(string $css, ?string $key = null): void
     {
@@ -43,19 +54,22 @@ final class AssetCollector
     }
 
     /**
-     * Render for <head>: head JS only.
+     * Render for <head>: CSS + head JS + library tags (e.g., HTMX).
      */
     public function renderHead(): string
     {
-        return $this->renderJsHead();
+        $out = $this->renderCss();
+        $out .= $this->renderJsHead();
+        $out .= implode("\n", $this->headTags);
+        return $out;
     }
 
     /**
-     * Render for end of <body>: CSS + body JS.
+     * Render for end of <body>: body JS only.
      */
     public function renderAssets(): string
     {
-        return $this->renderCss() . $this->renderJsBody();
+        return $this->renderJsBody();
     }
 
     public function renderCss(): string

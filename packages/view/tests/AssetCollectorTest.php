@@ -134,19 +134,21 @@ final class AssetCollectorTest extends TestCase
         $this->assertSame('', $c->renderJsInline());
     }
 
-    public function test_render_head_includes_head_js_only(): void
+    public function test_render_head_includes_css_and_head_js(): void
     {
         $c = $this->collector();
+        $c->addCss('.page { margin: 0; }');
         $c->addJs('headScript();', JsPosition::Head);
         $c->addJs('bodyScript();', JsPosition::Body);
 
         $head = $c->renderHead();
 
+        $this->assertStringContainsString('.page { margin: 0; }', $head);
         $this->assertStringContainsString('headScript()', $head);
         $this->assertStringNotContainsString('bodyScript()', $head);
     }
 
-    public function test_render_assets_includes_css_and_body_js(): void
+    public function test_render_assets_includes_body_js_only(): void
     {
         $c = $this->collector();
         $c->addCss('.page { margin: 0; }');
@@ -155,8 +157,18 @@ final class AssetCollectorTest extends TestCase
 
         $assets = $c->renderAssets();
 
-        $this->assertStringContainsString('.page { margin: 0; }', $assets);
         $this->assertStringContainsString('init()', $assets);
+        $this->assertStringNotContainsString('.page { margin: 0; }', $assets);
         $this->assertStringNotContainsString('headStuff()', $assets);
+    }
+
+    public function test_head_tags_included_in_render_head(): void
+    {
+        $c = $this->collector();
+        $c->addHeadTag('<script src="https://cdn.example.com/lib.js" defer></script>');
+
+        $head = $c->renderHead();
+
+        $this->assertStringContainsString('https://cdn.example.com/lib.js', $head);
     }
 }
