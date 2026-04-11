@@ -3,10 +3,55 @@
 {% block title %}About — Preflow App{% endblock %}
 
 {% block content %}
-<h1 style="font-family: system-ui;">About</h1>
-<p style="font-family: system-ui; line-height: 1.6; color: #444;">
-    Preflow is a modern PHP 8.5+ framework built around component-based workflows
-    and HTML-over-the-wire interactivity. It ships with zero external CSS/JS requests,
-    co-located component templates, and a hypermedia-driven architecture.
-</p>
+{% apply css %}
+.about h1 {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+.about h2 {
+    font-size: 1.25rem;
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+}
+
+.about p {
+    color: #444;
+    margin-bottom: 1rem;
+}
+
+.principles {
+    list-style: none;
+    padding: 0;
+}
+
+.principles li {
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 0.375rem;
+    border-left: 3px solid #0066ff;
+}
+{% endapply %}
+
+<div class="about">
+    <h1>About Preflow</h1>
+    <p>
+        Preflow is a modern PHP 8.5+ framework built around component-based workflows
+        and HTML-over-the-wire interactivity.
+    </p>
+    <p>
+        Instead of shipping JSON to the client and hydrating with JavaScript frameworks,
+        Preflow renders HTML on the server and uses hypermedia for interactivity.
+    </p>
+
+    <h2>Core Principles</h2>
+    <ul class="principles">
+        <li>Browsers handle HTML best</li>
+        <li>Components are the primitive</li>
+        <li>Zero external asset requests</li>
+        <li>Security first</li>
+        <li>PHP 8.5+ — no legacy</li>
+    </ul>
+</div>
 {% endblock %}

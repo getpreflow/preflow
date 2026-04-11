@@ -6,14 +6,73 @@
     <title>{% block title %}Preflow App{% endblock %}</title>
 </head>
 <body>
-    <nav style="padding: 1rem 2rem; background: #f8f9fa; border-bottom: 1px solid #dee2e6; font-family: system-ui, sans-serif;">
+    <nav class="main-nav">
         <strong>Preflow</strong>
-        <a href="/" style="margin-left: 1rem; color: #0066ff;">Home</a>
-        <a href="/about" style="margin-left: 1rem; color: #0066ff;">About</a>
+        <a href="/">Home</a>
+        <a href="/about">About</a>
     </nav>
 
-    <main style="padding: 2rem; max-width: 800px; margin: 0 auto;">
+    <main class="main-content">
         {% block content %}{% endblock %}
     </main>
+
+    <footer class="main-footer">
+        Built with Preflow
+    </footer>
 </body>
 </html>
+
+{% apply css %}
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    color: #333;
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.main-nav {
+    padding: 1rem 2rem;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.main-nav strong {
+    font-size: 1.125rem;
+}
+
+.main-nav a {
+    color: #0066ff;
+    text-decoration: none;
+}
+
+.main-nav a:hover {
+    text-decoration: underline;
+}
+
+.main-content {
+    flex: 1;
+    padding: 2rem;
+    max-width: 800px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+.main-footer {
+    padding: 1.5rem 2rem;
+    text-align: center;
+    color: #999;
+    font-size: 0.875rem;
+    border-top: 1px solid #eee;
+}
+{% endapply %}
