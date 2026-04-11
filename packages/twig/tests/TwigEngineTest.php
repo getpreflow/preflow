@@ -2,21 +2,24 @@
 
 declare(strict_types=1);
 
-namespace Preflow\View\Tests\Twig;
+namespace Preflow\Twig\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\View\AssetCollector;
 use Preflow\View\NonceGenerator;
-use Preflow\View\Twig\TwigEngine;
+use Preflow\View\TemplateFunctionDefinition;
+use Preflow\Twig\TwigEngine;
 
 final class TwigEngineTest extends TestCase
 {
     private string $templateDir;
+    private TwigEngine $engine;
 
     protected function setUp(): void
     {
         $this->templateDir = sys_get_temp_dir() . '/preflow_twig_test_' . uniqid();
         mkdir($this->templateDir, 0755, true);
+        $this->engine = $this->makeEngine();
     }
 
     protected function tearDown(): void
@@ -43,7 +46,7 @@ final class TwigEngineTest extends TestCase
         file_put_contents($path, $content);
     }
 
-    private function engine(): TwigEngine
+    private function makeEngine(): TwigEngine
     {
         $assets = new AssetCollector(new NonceGenerator());
         return new TwigEngine([$this->templateDir], $assets);
@@ -53,8 +56,7 @@ final class TwigEngineTest extends TestCase
     {
         $this->createTemplate('hello.twig', '<h1>Hello {{ name }}</h1>');
 
-        $engine = $this->engine();
-        $result = $engine->render('hello.twig', ['name' => 'World']);
+        $result = $this->engine->render('hello.twig', ['name' => 'World']);
 
         $this->assertSame('<h1>Hello World</h1>', $result);
     }
@@ -63,23 +65,17 @@ final class TwigEngineTest extends TestCase
     {
         $this->createTemplate('page.twig', 'content');
 
-        $engine = $this->engine();
-
-        $this->assertTrue($engine->exists('page.twig'));
+        $this->assertTrue($this->engine->exists('page.twig'));
     }
 
     public function test_exists_returns_false_for_missing(): void
     {
-        $engine = $this->engine();
-
-        $this->assertFalse($engine->exists('nonexistent.twig'));
+        $this->assertFalse($this->engine->exists('nonexistent.twig'));
     }
 
     public function test_implements_template_engine_interface(): void
     {
-        $engine = $this->engine();
-
-        $this->assertInstanceOf(\Preflow\View\TemplateEngineInterface::class, $engine);
+        $this->assertInstanceOf(\Preflow\View\TemplateEngineInterface::class, $this->engine);
     }
 
     public function test_template_with_css_block(): void
@@ -88,8 +84,7 @@ final class TwigEngineTest extends TestCase
             '<div>content</div>{% apply css %}.box { color: red; }{% endapply %}'
         );
 
-        $engine = $this->engine();
-        $result = $engine->render('styled.twig');
+        $result = $this->engine->render('styled.twig');
 
         // CSS block returns empty, content is rendered
         $this->assertStringContainsString('<div>content</div>', $result);
@@ -105,8 +100,7 @@ final class TwigEngineTest extends TestCase
             '{% extends "_layout.twig" %}{% block content %}<p>Hello</p>{% endblock %}'
         );
 
-        $engine = $this->engine();
-        $result = $engine->render('page.twig');
+        $result = $this->engine->render('page.twig');
 
         $this->assertStringContainsString('<html><body><p>Hello</p></body></html>', $result);
     }
@@ -126,5 +120,55 @@ final class TwigEngineTest extends TestCase
         // Cleanup
         unlink($secondDir . '/other.twig');
         rmdir($secondDir);
+    }
+
+    public function test_add_function_makes_function_callable(): void
+    {
+        $this->engine->addFunction(new TemplateFunctionDefinition(
+            name: 'greet',
+            callable: fn (string $name) => "Hello, {$name}!",
+            isSafe: true,
+        ));
+
+        $this->createTemplate('test_func.twig', "{{ greet('World') }}");
+
+        $tpl = $this->engine->render('test_func.twig');
+
+        $this->assertStringContainsString('Hello, World!', $tpl);
+    }
+
+    public function test_add_function_escapes_by_default(): void
+    {
+        $this->engine->addFunction(new TemplateFunctionDefinition(
+            name: 'raw',
+            callable: fn () => '<strong>bold</strong>',
+        ));
+
+        $this->createTemplate('test_raw.twig', '{{ raw() }}');
+
+        $tpl = $this->engine->render('test_raw.twig');
+
+        $this->assertStringContainsString('&lt;strong&gt;', $tpl);
+    }
+
+    public function test_add_global_makes_variable_available(): void
+    {
+        $this->engine->addGlobal('siteName', 'Preflow');
+
+        $this->createTemplate('test_global.twig', '{{ siteName }}');
+
+        $tpl = $this->engine->render('test_global.twig');
+
+        $this->assertStringContainsString('Preflow', $tpl);
+    }
+
+    public function test_get_template_extension_returns_twig(): void
+    {
+        $this->assertSame('twig', $this->engine->getTemplateExtension());
+    }
+
+    public function test_get_twig_does_not_exist(): void
+    {
+        $this->assertFalse(method_exists($this->engine, 'getTwig'));
     }
 }
