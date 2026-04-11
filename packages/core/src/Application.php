@@ -18,7 +18,6 @@ use Preflow\Core\Http\RequestContext;
 use Preflow\Core\DebugLevel;
 use Preflow\Core\EnvLoader;
 use Preflow\Core\Routing\Route;
-use Preflow\Core\Routing\RouteMode;
 use Preflow\Core\Routing\RouterInterface;
 
 final class Application
@@ -239,10 +238,6 @@ final class Application
 
     private function bootViewLayer(DebugLevel $debug): void
     {
-        if (!class_exists(\Preflow\View\Twig\TwigEngine::class)) {
-            return;
-        }
-
         $nonce = new \Preflow\View\NonceGenerator();
         $assets = new \Preflow\View\AssetCollector($nonce, isProd: !$debug->isDebug());
         $this->container->instance(\Preflow\View\AssetCollector::class, $assets);
@@ -251,14 +246,39 @@ final class Application
         $pagesDir = $this->basePath('app/pages');
         $templateDirs = is_dir($pagesDir) ? [$pagesDir] : [];
 
-        $engine = new \Preflow\View\Twig\TwigEngine(
-            templateDirs: $templateDirs,
-            assetCollector: $assets,
-            debug: $debug->isDebug(),
-        );
+        $engineName = $this->config->get('app.engine', 'twig');
+        $engine = $this->createTemplateEngine($engineName, $templateDirs, $assets, $debug);
+
+        if ($engine === null) {
+            return;
+        }
 
         $this->container->instance(\Preflow\View\TemplateEngineInterface::class, $engine);
-        $this->container->instance(\Preflow\View\Twig\TwigEngine::class, $engine);
+    }
+
+    private function createTemplateEngine(
+        string $name,
+        array $templateDirs,
+        \Preflow\View\AssetCollector $assets,
+        DebugLevel $debug,
+    ): ?\Preflow\View\TemplateEngineInterface {
+        return match ($name) {
+            'twig' => class_exists(\Preflow\Twig\TwigEngine::class)
+                ? new \Preflow\Twig\TwigEngine(
+                    templateDirs: $templateDirs,
+                    assetCollector: $assets,
+                    debug: $debug->isDebug(),
+                )
+                : null,
+            'blade' => class_exists(\Preflow\Blade\BladeEngine::class)
+                ? new \Preflow\Blade\BladeEngine(
+                    templateDirs: $templateDirs,
+                    assetCollector: $assets,
+                    debug: $debug->isDebug(),
+                )
+                : null,
+            default => throw new \RuntimeException("Unknown template engine: {$name}. Supported: twig, blade"),
+        };
     }
 
     private function bootComponentLayer(DebugLevel $debug, string $secretKey): void
@@ -271,13 +291,10 @@ final class Application
             return;
         }
 
-        $engine = $this->container->get(\Preflow\View\Twig\TwigEngine::class);
+        $engine = $this->container->get(\Preflow\View\TemplateEngineInterface::class);
 
         $errorBoundary = new \Preflow\Components\ErrorBoundary(debug: $debug);
-        $renderer = new \Preflow\Components\ComponentRenderer(
-            $this->container->get(\Preflow\View\TemplateEngineInterface::class),
-            $errorBoundary,
-        );
+        $renderer = new \Preflow\Components\ComponentRenderer($engine, $errorBoundary);
         $this->container->instance(\Preflow\Components\ComponentRenderer::class, $renderer);
 
         // Auto-discover components
@@ -291,10 +308,11 @@ final class Application
             return $component;
         };
 
-        // Register {{ component() }} Twig function
-        $engine->getTwig()->addExtension(
-            new \Preflow\Components\Twig\ComponentExtension($renderer, $componentMap, $componentFactory)
+        // Register component template functions
+        $componentProvider = new \Preflow\Components\ComponentsExtensionProvider(
+            $renderer, $componentMap, $componentFactory
         );
+        $this->registerExtensionProvider($engine, $componentProvider);
 
         // HTMX driver
         if (class_exists(\Preflow\Htmx\HtmxDriver::class)) {
@@ -311,10 +329,9 @@ final class Application
             $assets = $this->container->get(\Preflow\View\AssetCollector::class);
             $assets->addHeadTag($htmxDriver->assetTag());
 
-            // Register {{ hd.post(...) }} Twig helper
-            $engine->getTwig()->addExtension(
-                new \Preflow\Htmx\Twig\HdExtension($htmxDriver, $componentToken)
-            );
+            // Register hd template functions
+            $htmxProvider = new \Preflow\Htmx\HtmxExtensionProvider($htmxDriver, $componentToken);
+            $this->registerExtensionProvider($engine, $htmxProvider);
 
             // Component endpoint
             $container = $this->container;
@@ -376,12 +393,11 @@ final class Application
         $translator = new \Preflow\I18n\Translator($langDir, $locale, $fallback);
         $this->container->instance(\Preflow\I18n\Translator::class, $translator);
 
-        // Register t()/tc() Twig functions
-        if ($this->container->has(\Preflow\View\Twig\TwigEngine::class)) {
-            $engine = $this->container->get(\Preflow\View\Twig\TwigEngine::class);
-            $engine->getTwig()->addExtension(
-                new \Preflow\I18n\Twig\TranslationExtension($translator)
-            );
+        // Register t()/tc() template functions
+        if ($this->container->has(\Preflow\View\TemplateEngineInterface::class)) {
+            $engine = $this->container->get(\Preflow\View\TemplateEngineInterface::class);
+            $translationProvider = new \Preflow\I18n\TranslationExtensionProvider($translator);
+            $this->registerExtensionProvider($engine, $translationProvider);
         }
 
         // Locale middleware
@@ -408,6 +424,18 @@ final class Application
         }
 
         $this->container->bootProviders();
+    }
+
+    private function registerExtensionProvider(
+        \Preflow\View\TemplateEngineInterface $engine,
+        \Preflow\View\TemplateExtensionProvider $provider,
+    ): void {
+        foreach ($provider->getTemplateFunctions() as $function) {
+            $engine->addFunction($function);
+        }
+        foreach ($provider->getTemplateGlobals() as $name => $value) {
+            $engine->addGlobal($name, $value);
+        }
     }
 
     /**
@@ -530,8 +558,8 @@ final class Application
 
         $container = $this->container;
         $this->componentRenderer = function (Route $route, ServerRequestInterface $request) use ($container): ResponseInterface {
-            if ($container->has(\Preflow\View\Twig\TwigEngine::class)) {
-                $engine = $container->get(\Preflow\View\Twig\TwigEngine::class);
+            if ($container->has(\Preflow\View\TemplateEngineInterface::class)) {
+                $engine = $container->get(\Preflow\View\TemplateEngineInterface::class);
                 $html = $engine->render($route->handler, [
                     'route' => (object) $route->parameters,
                 ]);

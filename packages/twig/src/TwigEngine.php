@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Preflow\View\Twig;
+namespace Preflow\Twig;
 
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
+use Twig\TwigFunction;
 use Preflow\View\AssetCollector;
 use Preflow\View\TemplateEngineInterface;
+use Preflow\View\TemplateFunctionDefinition;
 
 final class TwigEngine implements TemplateEngineInterface
 {
@@ -56,11 +58,23 @@ final class TwigEngine implements TemplateEngineInterface
         return $this->twig->getLoader()->exists($template);
     }
 
-    /**
-     * Get the underlying Twig environment for advanced use.
-     */
-    public function getTwig(): Environment
+    public function addFunction(TemplateFunctionDefinition $function): void
     {
-        return $this->twig;
+        $options = $function->isSafe ? ['is_safe' => ['html']] : [];
+        $this->twig->addFunction(new TwigFunction(
+            $function->name,
+            $function->callable,
+            $options,
+        ));
+    }
+
+    public function addGlobal(string $name, mixed $value): void
+    {
+        $this->twig->addGlobal($name, $value);
+    }
+
+    public function getTemplateExtension(): string
+    {
+        return 'twig';
     }
 }

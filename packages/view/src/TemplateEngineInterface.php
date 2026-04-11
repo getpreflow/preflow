@@ -19,4 +19,19 @@ interface TemplateEngineInterface
      * Check if a template exists.
      */
     public function exists(string $template): bool;
+
+    /**
+     * Register a template function that will be callable from templates.
+     */
+    public function addFunction(TemplateFunctionDefinition $function): void;
+
+    /**
+     * Make a variable available in all templates.
+     */
+    public function addGlobal(string $name, mixed $value): void;
+
+    /**
+     * Get the file extension for this engine's templates (e.g., 'twig', 'blade.php').
+     */
+    public function getTemplateExtension(): string;
 }

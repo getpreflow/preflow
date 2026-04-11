@@ -2,17 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Htmx\Twig;
+namespace Preflow\Htmx;
 
-use Twig\Extension\AbstractExtension;
-use Twig\Extension\GlobalsInterface;
-use Twig\TwigFunction;
-use Preflow\Htmx\ComponentToken;
-use Preflow\Htmx\HtmlAttributes;
-use Preflow\Htmx\HypermediaDriver;
-use Preflow\Htmx\SwapStrategy;
+use Preflow\View\TemplateFunctionDefinition;
+use Preflow\View\TemplateExtensionProvider;
 
-final class HdExtension extends AbstractExtension implements GlobalsInterface
+final class HtmxExtensionProvider implements TemplateExtensionProvider
 {
     public function __construct(
         private readonly HypermediaDriver $driver,
@@ -20,20 +15,24 @@ final class HdExtension extends AbstractExtension implements GlobalsInterface
         private readonly string $endpointPrefix = '/--component',
     ) {}
 
-    public function getGlobals(): array
+    public function getTemplateFunctions(): array
+    {
+        return [
+            new TemplateFunctionDefinition(
+                name: 'hd',
+                callable: fn () => $this,
+                isSafe: true,
+            ),
+        ];
+    }
+
+    public function getTemplateGlobals(): array
     {
         return ['hd' => $this];
     }
 
-    public function getFunctions(): array
-    {
-        return [
-            new TwigFunction('hd', fn () => $this, ['is_safe' => ['html']]),
-        ];
-    }
-
     /**
-     * Generate action attributes for POST (most common).
+     * Generate action attributes for POST.
      *
      * @param array<string, mixed> $props
      * @param array<string, string> $extra

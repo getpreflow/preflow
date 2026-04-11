@@ -11,7 +11,7 @@ use Preflow\Htmx\ComponentToken;
 use Preflow\Htmx\HtmxDriver;
 use Preflow\Htmx\ResponseHeaders;
 use Preflow\Htmx\SwapStrategy;
-use Preflow\Htmx\Twig\HdExtension;
+use Preflow\Twig\HdExtension;
 
 final class HdExtensionTest extends TestCase
 {

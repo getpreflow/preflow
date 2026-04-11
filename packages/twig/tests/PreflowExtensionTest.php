@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\View\Tests\Twig;
+namespace Preflow\Twig\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Twig\Environment;
@@ -10,7 +10,7 @@ use Twig\Loader\ArrayLoader;
 use Preflow\View\AssetCollector;
 use Preflow\View\JsPosition;
 use Preflow\View\NonceGenerator;
-use Preflow\View\Twig\PreflowExtension;
+use Preflow\Twig\PreflowExtension;
 
 final class PreflowExtensionTest extends TestCase
 {

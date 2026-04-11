@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\View\Twig;
+namespace Preflow\Twig;
 
 use Twig\Extension\AbstractExtension;
 use Twig\TwigFilter;

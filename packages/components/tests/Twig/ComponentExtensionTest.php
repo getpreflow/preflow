@@ -11,7 +11,7 @@ use Preflow\Components\Component;
 use Preflow\Components\ComponentRenderer;
 use Preflow\Components\ErrorBoundary;
 use Preflow\Core\DebugLevel;
-use Preflow\Components\Twig\ComponentExtension;
+use Preflow\Twig\ComponentExtension;
 use Preflow\View\TemplateEngineInterface;
 
 class TwigTestComponent extends Component
@@ -47,6 +47,15 @@ class StubTemplateEngine implements TemplateEngineInterface
     public function exists(string $template): bool
     {
         return true;
+    }
+
+    public function addFunction(\Preflow\View\TemplateFunctionDefinition $function): void {}
+
+    public function addGlobal(string $name, mixed $value): void {}
+
+    public function getTemplateExtension(): string
+    {
+        return 'twig';
     }
 }
 

@@ -58,7 +58,7 @@ final class ComponentRenderer
 
     private function renderTemplate(Component $component): string
     {
-        $templatePath = $component->getTemplatePath();
+        $templatePath = $component->getTemplatePath($this->templateEngine->getTemplateExtension());
         $context = $component->getTemplateContext();
 
         return $this->templateEngine->render($templatePath, $context);
