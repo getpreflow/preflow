@@ -3,9 +3,40 @@
 {% block title %}Error{% endblock %}
 
 {% block content %}
-<div style="text-align: center; padding: 4rem 0;">
-    <h1 style="font-size: 4rem; color: #dee2e6; font-family: system-ui;">404</h1>
-    <p style="font-family: system-ui; color: #666;">Page not found</p>
-    <a href="/" style="color: #0066ff; font-family: system-ui;">Go home</a>
+{% apply css %}
+.error-page {
+    text-align: center;
+    padding: 4rem 0;
+}
+
+.error-code {
+    font-size: 6rem;
+    font-weight: 700;
+    color: #dee2e6;
+    line-height: 1;
+}
+
+.error-message {
+    color: #666;
+    font-size: 1.125rem;
+    margin-top: 0.5rem;
+}
+
+.error-link {
+    display: inline-block;
+    margin-top: 1.5rem;
+    color: #0066ff;
+    text-decoration: none;
+}
+
+.error-link:hover {
+    text-decoration: underline;
+}
+{% endapply %}
+
+<div class="error-page">
+    <h1 class="error-code">404</h1>
+    <p class="error-message">Page not found</p>
+    <a href="/" class="error-link">Go home</a>
 </div>
 {% endblock %}
