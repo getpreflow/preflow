@@ -15,6 +15,13 @@ final class ErrorBoundary
         Component $component,
         string $phase = 'unknown',
     ): string {
+        // If the component provides a custom fallback, always use it —
+        // even in debug mode. A custom fallback is intentional.
+        $fallback = $component->fallback($exception);
+        if ($fallback !== null) {
+            return $fallback;
+        }
+
         if ($this->debug) {
             return $this->renderDev($exception, $component, $phase);
         }
@@ -56,12 +63,7 @@ final class ErrorBoundary
 
     private function renderProd(\Throwable $exception, Component $component): string
     {
-        $fallback = $component->fallback($exception);
-
-        if ($fallback !== null) {
-            return $fallback;
-        }
-
+        // fallback() was already checked in render() — this is the no-fallback case
         return '<div style="display:none;" data-component-error="true"></div>';
     }
 

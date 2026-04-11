@@ -59,9 +59,9 @@ final class Application
         }
 
         $configPath = rtrim($basePath, '/') . '/config/app.php';
-        $config = file_exists($configPath) ? require $configPath : [];
+        $appConfig = file_exists($configPath) ? require $configPath : [];
 
-        return new self(new Config($config), $basePath);
+        return new self(new Config(['app' => $appConfig]), $basePath);
     }
 
     public function container(): Container
