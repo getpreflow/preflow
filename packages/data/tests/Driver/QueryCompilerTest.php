@@ -113,4 +113,14 @@ final class QueryCompilerTest extends TestCase
             $sql
         );
     }
+
+    public function test_uses_dialect_for_quoting(): void
+    {
+        $compiler = new QueryCompiler(new \Preflow\Data\Driver\MysqlDialect());
+        $query = new Query();
+
+        [$sql] = $compiler->compile('users', $query);
+
+        $this->assertStringContainsString('`users`', $sql);
+    }
 }
