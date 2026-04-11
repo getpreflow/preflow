@@ -9,6 +9,7 @@ final class SqliteDriver extends PdoDriver
     public function __construct(\PDO $pdo)
     {
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-        parent::__construct($pdo, new QueryCompiler());
+        $dialect = new SqliteDialect();
+        parent::__construct($pdo, $dialect, new QueryCompiler($dialect));
     }
 }
