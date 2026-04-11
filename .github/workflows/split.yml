@@ -13,6 +13,10 @@ env:
   GIT_COMMITTER_NAME: "Preflow Bot"
   GIT_COMMITTER_EMAIL: "bot@getpreflow.dev"
 
+concurrency:
+  group: monorepo-split
+  cancel-in-progress: false
+
 jobs:
   split:
     runs-on: ubuntu-latest
@@ -30,6 +34,8 @@ jobs:
           - { local: 'packages/testing', remote: 'testing' }
           - { local: 'packages/devtools', remote: 'devtools' }
           - { local: 'packages/skeleton', remote: 'skeleton' }
+          - { local: 'packages/twig', remote: 'twig' }
+          - { local: 'packages/blade', remote: 'blade' }
 
     steps:
       - uses: actions/checkout@v4
