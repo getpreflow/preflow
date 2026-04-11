@@ -13,6 +13,7 @@ use Preflow\Core\Error\DevErrorRenderer;
 use Preflow\Core\Error\ErrorHandler;
 use Preflow\Core\Error\ProdErrorRenderer;
 use Preflow\Core\Http\Emitter;
+use Preflow\Core\Http\RequestContext;
 use Preflow\Core\Http\MiddlewarePipeline;
 use Preflow\Core\DebugLevel;
 use Preflow\Core\EnvLoader;
@@ -157,6 +158,12 @@ final class Application
         if ($this->kernel === null) {
             throw new \RuntimeException('Application not booted. Call boot() first.');
         }
+
+        // Make request context available to components via DI
+        $this->container->instance(RequestContext::class, new RequestContext(
+            path: $request->getUri()->getPath(),
+            method: $request->getMethod(),
+        ));
 
         // Component endpoint — intercept before routing
         $path = $request->getUri()->getPath();
