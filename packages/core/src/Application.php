@@ -18,7 +18,6 @@ use Preflow\Core\Http\RequestContext;
 use Preflow\Core\DebugLevel;
 use Preflow\Core\EnvLoader;
 use Preflow\Core\Routing\Route;
-use Preflow\Core\Routing\RouteMode;
 use Preflow\Core\Routing\RouterInterface;
 
 final class Application
