@@ -8,7 +8,6 @@ use Preflow\Data\Model;
 use Preflow\Data\Attributes\Entity;
 use Preflow\Data\Attributes\Id;
 use Preflow\Data\Attributes\Field;
-use Preflow\Data\Attributes\Timestamps;
 
 #[Entity(table: 'posts', storage: 'sqlite')]
 final class Post extends Model
@@ -28,7 +27,9 @@ final class Post extends Model
     #[Field]
     public string $status = 'draft';
 
-    #[Timestamps]
-    public ?\DateTimeImmutable $createdAt = null;
-    public ?\DateTimeImmutable $updatedAt = null;
+    #[Field]
+    public ?string $created_at = null;
+
+    #[Field]
+    public ?string $updated_at = null;
 }

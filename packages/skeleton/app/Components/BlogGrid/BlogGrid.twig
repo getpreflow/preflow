@@ -1,0 +1,71 @@
+{% apply css %}
+.blog-grid-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.blog-grid-count {
+    color: #999;
+    font-size: 0.875rem;
+}
+
+.blog-filters {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.blog-filters button {
+    padding: 0.375rem 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 2rem;
+    background: white;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    transition: all 0.15s;
+}
+
+.blog-filters button:hover {
+    border-color: #0066ff;
+    color: #0066ff;
+}
+
+.blog-filters button.active {
+    background: #0066ff;
+    color: white;
+    border-color: #0066ff;
+}
+
+.blog-empty {
+    text-align: center;
+    padding: 3rem;
+    color: #999;
+}
+{% endapply %}
+
+<div class="blog-grid-header">
+    <span class="blog-grid-count">{{ t('blog.post_count', { count: total }, total) }}</span>
+    <div class="blog-filters">
+        <button {{ hd.post('filter', componentClass, componentId, { filter: '' }) | raw }}
+                class="{{ filter == '' ? 'active' : '' }}">
+            {{ t('blog.all') }}
+        </button>
+        <button {{ hd.post('filter', componentClass, componentId, { filter: 'published' }) | raw }}
+                class="{{ filter == 'published' ? 'active' : '' }}">
+            {{ t('blog.published') }}
+        </button>
+        <button {{ hd.post('filter', componentClass, componentId, { filter: 'draft' }) | raw }}
+                class="{{ filter == 'draft' ? 'active' : '' }}">
+            {{ t('blog.draft') }}
+        </button>
+    </div>
+</div>
+
+{% if posts is empty %}
+    <p class="blog-empty">{{ t('blog.no_posts') }}</p>
+{% else %}
+    {% for post in posts %}
+        {{ component('BlogPost', post) }}
+    {% endfor %}
+{% endif %}

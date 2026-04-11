@@ -2,6 +2,10 @@
 
 return [
     'name' => 'Preflow App',
-    'welcome' => 'Willkommen bei :name!',
-    'description' => 'Ein modernes PHP-Framework fuer komponentenbasierte Webentwicklung.',
+    'nav' => [
+        'home' => 'Startseite',
+        'blog' => 'Blog',
+        'about' => 'Über uns',
+    ],
+    'footer' => 'Erstellt mit Preflow',
 ];
