@@ -13,8 +13,13 @@ abstract class Model
      */
     public function fill(array $data): void
     {
+        $meta = ModelMetadata::for(static::class);
+
         foreach ($data as $key => $value) {
             if (property_exists($this, $key)) {
+                if (isset($meta->transformers[$key])) {
+                    $value = $meta->transformers[$key]->fromStorage($value);
+                }
                 $this->{$key} = $value;
             }
         }
@@ -27,13 +32,19 @@ abstract class Model
      */
     public function toArray(): array
     {
+        $meta = ModelMetadata::for(static::class);
         $ref = new \ReflectionClass($this);
         $data = [];
 
         foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
-            if ($prop->isInitialized($this)) {
-                $data[$prop->getName()] = $prop->getValue($this);
+            $name = $prop->getName();
+            $value = $this->{$name};
+
+            if (isset($meta->transformers[$name])) {
+                $value = $meta->transformers[$name]->toStorage($value);
             }
+
+            $data[$name] = $value;
         }
 
         return $data;

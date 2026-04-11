@@ -12,7 +12,13 @@ final class DataManager
     public function __construct(
         private readonly array $drivers,
         private readonly string $defaultDriver = 'default',
+        private readonly ?TypeRegistry $typeRegistry = null,
     ) {}
+
+    public function getTypeRegistry(): ?TypeRegistry
+    {
+        return $this->typeRegistry;
+    }
 
     /**
      * Find a single model by ID.
@@ -77,6 +83,67 @@ final class DataManager
         $driver = $this->resolveDriver($meta->storage);
 
         $driver->delete($meta->table, $id);
+    }
+
+    /**
+     * Find a single dynamic record by type and ID.
+     */
+    public function findType(string $type, string $id): ?DynamicRecord
+    {
+        $typeDef = $this->requireTypeRegistry()->get($type);
+        $driver = $this->resolveDriver($typeDef->storage);
+        $data = $driver->findOne($typeDef->table, $id);
+
+        if ($data === null) {
+            return null;
+        }
+
+        return DynamicRecord::fromArray($typeDef, $data);
+    }
+
+    /**
+     * Start a query for a dynamic type.
+     */
+    public function queryType(string $type): QueryBuilder
+    {
+        $typeDef = $this->requireTypeRegistry()->get($type);
+        $driver = $this->resolveDriver($typeDef->storage);
+
+        return QueryBuilder::forType($driver, $typeDef);
+    }
+
+    /**
+     * Save a dynamic record.
+     */
+    public function saveType(DynamicRecord $record): void
+    {
+        $typeDef = $record->getType();
+        $driver = $this->resolveDriver($typeDef->storage);
+        $id = $record->getId();
+
+        if ($id === null) {
+            throw new \RuntimeException("DynamicRecord must have an ID ({$typeDef->idField}) before saving.");
+        }
+
+        $driver->save($typeDef->table, $id, $record->toArray());
+    }
+
+    /**
+     * Delete a dynamic record by type and ID.
+     */
+    public function deleteType(string $type, string $id): void
+    {
+        $typeDef = $this->requireTypeRegistry()->get($type);
+        $driver = $this->resolveDriver($typeDef->storage);
+        $driver->delete($typeDef->table, $id);
+    }
+
+    private function requireTypeRegistry(): TypeRegistry
+    {
+        if ($this->typeRegistry === null) {
+            throw new \RuntimeException('TypeRegistry is not configured. Set data.models_path in config.');
+        }
+        return $this->typeRegistry;
     }
 
     private function resolveDriver(string $name): StorageDriver

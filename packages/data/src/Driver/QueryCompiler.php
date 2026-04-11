@@ -8,13 +8,15 @@ use Preflow\Data\Query;
 
 class QueryCompiler
 {
+    public function __construct(private readonly Dialect $dialect = new SqliteDialect()) {}
+
     /**
      * @return array{0: string, 1: array<int, mixed>}
      */
     public function compile(string $table, Query $query): array
     {
         $bindings = [];
-        $sql = "SELECT * FROM \"{$table}\"";
+        $sql = 'SELECT * FROM ' . $this->dialect->quoteIdentifier($table);
 
         $whereSql = $this->compileWheres($query, $bindings);
         if ($whereSql !== '') {
@@ -48,7 +50,7 @@ class QueryCompiler
     public function compileCount(string $table, Query $query): array
     {
         $bindings = [];
-        $sql = "SELECT COUNT(*) as total FROM \"{$table}\"";
+        $sql = 'SELECT COUNT(*) as total FROM ' . $this->dialect->quoteIdentifier($table);
 
         $whereSql = $this->compileWheres($query, $bindings);
         if ($whereSql !== '') {
@@ -76,7 +78,7 @@ class QueryCompiler
 
         $parts = [];
         foreach ($wheres as $i => $where) {
-            $clause = "\"{$where['field']}\" {$where['operator']} ?";
+            $clause = $this->dialect->quoteIdentifier($where['field']) . " {$where['operator']} ?";
             $bindings[] = $where['value'];
 
             if ($i === 0) {
@@ -103,7 +105,7 @@ class QueryCompiler
 
         $parts = [];
         foreach ($fields as $field) {
-            $parts[] = "\"{$field}\" LIKE ?";
+            $parts[] = $this->dialect->quoteIdentifier($field) . ' LIKE ?';
             $bindings[] = '%' . $term . '%';
         }
 
@@ -120,7 +122,7 @@ class QueryCompiler
 
         $parts = [];
         foreach ($orders as $order) {
-            $parts[] = "\"{$order['field']}\" {$order['direction']->value}";
+            $parts[] = $this->dialect->quoteIdentifier($order['field']) . " {$order['direction']->value}";
         }
 
         return 'ORDER BY ' . implode(', ', $parts);

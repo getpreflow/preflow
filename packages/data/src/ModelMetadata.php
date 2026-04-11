@@ -17,6 +17,7 @@ final class ModelMetadata
     /**
      * @param array<string, Field> $fields
      * @param string[] $searchableFields
+     * @param array<string, \Preflow\Data\FieldTransformer> $transformers
      */
     private function __construct(
         public readonly string $modelClass,
@@ -26,6 +27,7 @@ final class ModelMetadata
         public readonly array $fields,
         public readonly array $searchableFields,
         public readonly bool $hasTimestamps,
+        public readonly array $transformers = [],
     ) {}
 
     /**
@@ -80,6 +82,17 @@ final class ModelMetadata
             }
         }
 
+        $transformers = [];
+        foreach ($fields as $name => $fieldAttr) {
+            if ($fieldAttr->transform !== null) {
+                $transformerClass = $fieldAttr->transform;
+                if (!class_exists($transformerClass)) {
+                    throw new \RuntimeException("Transformer class not found: {$transformerClass}");
+                }
+                $transformers[$name] = new $transformerClass();
+            }
+        }
+
         $meta = new self(
             modelClass: $modelClass,
             table: $entity->table,
@@ -88,6 +101,7 @@ final class ModelMetadata
             fields: $fields,
             searchableFields: $searchable,
             hasTimestamps: $hasTimestamps,
+            transformers: $transformers,
         );
 
         self::$cache[$modelClass] = $meta;
