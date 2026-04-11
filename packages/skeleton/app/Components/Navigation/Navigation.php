@@ -30,7 +30,8 @@ final class Navigation extends Component
             if ($path === '/') {
                 $active = $currentPath === '/';
             } else {
-                $active = str_starts_with($currentPath, $path);
+                $active = $currentPath === $path
+                    || str_starts_with($currentPath, rtrim($path, '/') . '/');
             }
             $this->items[] = [...$item, 'active' => $active];
         }
