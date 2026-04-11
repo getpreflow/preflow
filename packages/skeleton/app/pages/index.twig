@@ -43,6 +43,33 @@
     color: #666;
     font-size: 0.875rem;
 }
+
+.error-demo-fallback {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    padding: 1.5rem;
+    background: #fff8f0;
+    border: 1px solid #f0c040;
+    border-radius: 0.5rem;
+    margin-top: 2rem;
+}
+
+.error-demo-fallback .error-demo-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.error-demo-fallback strong {
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+.error-demo-fallback p {
+    color: #666;
+    font-size: 0.875rem;
+    margin: 0;
+}
 {% endapply %}
 
 <div class="hero">
@@ -54,6 +81,8 @@
     title: 'Hello, Preflow',
     message: 'This component has co-located CSS, JS, and a working HTMX counter.'
 }) }}
+
+{{ component('ErrorDemo') }}
 
 <div class="features">
     <div class="feature">
