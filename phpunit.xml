@@ -25,6 +25,9 @@
         <testsuite name="View">
             <directory>packages/view/tests</directory>
         </testsuite>
+        <testsuite name="Twig">
+            <directory>packages/twig/tests</directory>
+        </testsuite>
         <testsuite name="I18n">
             <directory>packages/i18n/tests</directory>
         </testsuite>
@@ -47,6 +50,7 @@
             <directory>packages/i18n/src</directory>
             <directory>packages/routing/src</directory>
             <directory>packages/view/src</directory>
+            <directory>packages/twig/src</directory>
             <directory>packages/testing/src</directory>
             <directory>packages/devtools/src</directory>
         </include>

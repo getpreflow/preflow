@@ -18,7 +18,8 @@
         "preflow/routing": "@dev",
         "preflow/devtools": "@dev",
         "preflow/testing": "@dev",
-        "preflow/view": "@dev"
+        "preflow/view": "@dev",
+        "preflow/twig": "@dev"
     },
     "repositories": [
         {
@@ -49,6 +50,11 @@
         {
             "type": "path",
             "url": "packages/view",
+            "options": { "symlink": true }
+        },
+        {
+            "type": "path",
+            "url": "packages/twig",
             "options": { "symlink": true }
         },
         {
