@@ -7,4 +7,6 @@ return [
     'timezone' => getenv('APP_TIMEZONE') ?: 'UTC',
     'locale' => getenv('APP_LOCALE') ?: 'en',
     'key' => getenv('APP_KEY') ?: '',
+    // Template engine: 'twig' or 'blade'
+    'engine' => getenv('APP_ENGINE') ?: 'twig',
 ];

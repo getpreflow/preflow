@@ -8,6 +8,7 @@
         "preflow/core": "dev-main",
         "preflow/routing": "dev-main",
         "preflow/view": "dev-main",
+        "preflow/twig": "dev-main",
         "preflow/components": "dev-main",
         "preflow/data": "dev-main",
         "preflow/htmx": "dev-main",
