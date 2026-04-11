@@ -15,8 +15,10 @@ final class MysqlDriverTest extends TestCase
         $constructor = $ref->getConstructor();
         $params = $constructor->getParameters();
 
-        $this->assertCount(1, $params);
+        $this->assertCount(2, $params);
         $this->assertSame('pdo', $params[0]->getName());
+        $this->assertSame('collector', $params[1]->getName());
+        $this->assertTrue($params[1]->isOptional());
     }
 
     public function test_mysql_driver_extends_pdo_driver(): void
