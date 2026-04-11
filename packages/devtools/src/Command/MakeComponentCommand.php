@@ -31,7 +31,7 @@ final class MakeComponentCommand implements CommandInterface
 
         declare(strict_types=1);
 
-        namespace App\\Components;
+        namespace App\\Components\\{$name};
 
         use Preflow\\Components\\Component;
 

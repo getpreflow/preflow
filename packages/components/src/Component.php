@@ -132,6 +132,8 @@ abstract class Component
         }
 
         $context['componentId'] = $this->getComponentId();
+        $context['componentClass'] = static::class;
+        $context['props'] = $this->props;
 
         return $context;
     }

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Components;
+namespace App\Components\ExampleCard;
 
 use Preflow\Components\Component;
 
