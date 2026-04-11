@@ -2,7 +2,7 @@
     <h2>{{ title }}</h2>
     <p>{{ message }}</p>
     <p>Count: {{ count }}</p>
-    <button {{ hd.post('increment', 'App\\Components\\ExampleCard', componentId, props) | raw }}>+1</button>
+    <button {{ hd.post('increment', componentClass, componentId, props) | raw }}>+1</button>
 </div>
 
 {% apply css %}

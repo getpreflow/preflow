@@ -11,7 +11,9 @@
         "preflow/components": "dev-main",
         "preflow/data": "dev-main",
         "preflow/htmx": "dev-main",
-        "preflow/i18n": "dev-main"
+        "preflow/i18n": "dev-main",
+        "nyholm/psr7": "^1.8",
+        "nyholm/psr7-server": "^1.1"
     },
     "require-dev": {
         "preflow/testing": "dev-main",

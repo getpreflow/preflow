@@ -37,11 +37,22 @@ final class TwigEngine implements TemplateEngineInterface
 
     public function render(string $template, array $context = []): string
     {
+        // Absolute path (e.g., component templates) — load directly from filesystem
+        if (str_starts_with($template, '/') && file_exists($template)) {
+            $source = file_get_contents($template);
+            $tpl = $this->twig->createTemplate($source, $template);
+            return $tpl->render($context);
+        }
+
         return $this->twig->render($template, $context);
     }
 
     public function exists(string $template): bool
     {
+        if (str_starts_with($template, '/')) {
+            return file_exists($template);
+        }
+
         return $this->twig->getLoader()->exists($template);
     }
 
