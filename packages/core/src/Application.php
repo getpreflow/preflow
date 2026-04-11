@@ -15,6 +15,7 @@ use Preflow\Core\Error\ProdErrorRenderer;
 use Preflow\Core\Http\Emitter;
 use Preflow\Core\Http\MiddlewarePipeline;
 use Preflow\Core\Routing\Route;
+use Preflow\Core\DebugLevel;
 use Preflow\Core\EnvLoader;
 use Preflow\Core\Routing\RouteMode;
 use Preflow\Core\Routing\RouterInterface;
@@ -119,7 +120,7 @@ final class Application
      */
     public function boot(): void
     {
-        $debug = (bool) $this->config->get('app.debug', false);
+        $debug = DebugLevel::from((int) $this->config->get('app.debug', 0));
         $secretKey = $this->config->get('app.key', 'preflow-default-key-change-me!!');
 
         // Auto-discover installed packages and wire them up
@@ -133,7 +134,7 @@ final class Application
         $this->bootProviders();
 
         // Error handler
-        $renderer = $debug ? new DevErrorRenderer() : new ProdErrorRenderer();
+        $renderer = $debug->isDebug() ? new DevErrorRenderer() : new ProdErrorRenderer();
         $errorHandler = new ErrorHandler($renderer);
         $this->container->instance(ErrorHandler::class, $errorHandler);
 
@@ -229,14 +230,14 @@ final class Application
         $this->container->instance(\Preflow\Data\DataManager::class, $dataManager);
     }
 
-    private function bootViewLayer(bool $debug): void
+    private function bootViewLayer(DebugLevel $debug): void
     {
         if (!class_exists(\Preflow\View\Twig\TwigEngine::class)) {
             return;
         }
 
         $nonce = new \Preflow\View\NonceGenerator();
-        $assets = new \Preflow\View\AssetCollector($nonce, isProd: !$debug);
+        $assets = new \Preflow\View\AssetCollector($nonce, isProd: !$debug->isDebug());
         $this->container->instance(\Preflow\View\AssetCollector::class, $assets);
         $this->container->instance(\Preflow\View\NonceGenerator::class, $nonce);
 
@@ -246,14 +247,14 @@ final class Application
         $engine = new \Preflow\View\Twig\TwigEngine(
             templateDirs: $templateDirs,
             assetCollector: $assets,
-            debug: $debug,
+            debug: $debug->isDebug(),
         );
 
         $this->container->instance(\Preflow\View\TemplateEngineInterface::class, $engine);
         $this->container->instance(\Preflow\View\Twig\TwigEngine::class, $engine);
     }
 
-    private function bootComponentLayer(bool $debug, string $secretKey): void
+    private function bootComponentLayer(DebugLevel $debug, string $secretKey): void
     {
         if (!class_exists(\Preflow\Components\ComponentRenderer::class)) {
             return;
@@ -265,9 +266,7 @@ final class Application
 
         $engine = $this->container->get(\Preflow\View\Twig\TwigEngine::class);
 
-        $errorBoundary = new \Preflow\Components\ErrorBoundary(
-            debug: $debug ? \Preflow\Core\DebugLevel::On : \Preflow\Core\DebugLevel::Off,
-        );
+        $errorBoundary = new \Preflow\Components\ErrorBoundary(debug: $debug);
         $renderer = new \Preflow\Components\ComponentRenderer(
             $this->container->get(\Preflow\View\TemplateEngineInterface::class),
             $errorBoundary,
