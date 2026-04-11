@@ -23,7 +23,7 @@ final class ErrorDemo extends Component
             . '<div>'
             . '<strong>Error Boundary — Custom Fallback</strong>'
             . '<p>This component crashed, but it defined a <code>fallback()</code> method. '
-            . 'The rest of the page kept rendering. Custom fallbacks are always shown, regardless of debug mode.</p>'
+            . 'The rest of the page kept rendering. Custom fallbacks are shown in normal debug mode (level 0 and 1). Use level 2 (verbose) to override them with the dev error panel.</p>'
             . '</div>'
             . '</div>';
     }
