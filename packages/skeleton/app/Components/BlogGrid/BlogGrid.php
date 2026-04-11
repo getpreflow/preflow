@@ -41,7 +41,7 @@ final class BlogGrid extends Component
 
     public function actionFilter(array $params = []): void
     {
-        $this->props['filter'] = $params['status'] ?? '';
+        // Filter value comes from props (encoded in the token by the button)
         $this->resolveState();
     }
 }
