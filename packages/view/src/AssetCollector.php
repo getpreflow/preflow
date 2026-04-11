@@ -121,4 +121,30 @@ final class AssetCollector
     {
         return $this->nonceGenerator->get();
     }
+
+    // -----------------------------------------------------------------------
+    // Stats — used by DebugCollector
+    // -----------------------------------------------------------------------
+
+    public function getCssCount(): int
+    {
+        return count($this->cssRegistry);
+    }
+
+    public function getJsCount(): int
+    {
+        return count($this->jsHead) + count($this->jsBody) + count($this->jsInline);
+    }
+
+    public function getCssBytes(): int
+    {
+        return array_sum(array_map('strlen', $this->cssRegistry));
+    }
+
+    public function getJsBytes(): int
+    {
+        return array_sum(array_map('strlen', $this->jsHead))
+            + array_sum(array_map('strlen', $this->jsBody))
+            + array_sum(array_map('strlen', $this->jsInline));
+    }
 }
