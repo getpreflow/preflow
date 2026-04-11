@@ -21,9 +21,9 @@ final class ErrorDemo extends Component
         return '<div class="error-demo-fallback">'
             . '<span class="error-demo-icon">&#9888;</span>'
             . '<div>'
-            . '<strong>Error Boundary Caught This</strong>'
-            . '<p>The component threw an exception, but the page kept rendering. '
-            . 'In production, users see this fallback. In dev mode, you\'d see the full stack trace.</p>'
+            . '<strong>Error Boundary — Custom Fallback</strong>'
+            . '<p>This component crashed, but it defined a <code>fallback()</code> method. '
+            . 'The rest of the page kept rendering. Custom fallbacks are always shown, regardless of debug mode.</p>'
             . '</div>'
             . '</div>';
     }
