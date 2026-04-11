@@ -11,6 +11,7 @@ use Preflow\Data\Attributes\Id;
 use Preflow\Data\Attributes\Timestamps;
 use Preflow\Data\Model;
 use Preflow\Data\ModelMetadata;
+use Preflow\Data\Transform\JsonTransformer;
 
 #[Entity(table: 'posts', storage: 'sqlite')]
 class TestPost extends Model
@@ -24,7 +25,7 @@ class TestPost extends Model
     #[Field]
     public string $body = '';
 
-    #[Field(transform: 'json')]
+    #[Field(transform: JsonTransformer::class)]
     public array $metadata = [];
 
     #[Timestamps]
