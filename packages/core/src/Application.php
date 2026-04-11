@@ -210,30 +210,64 @@ final class Application
         $drivers = [];
 
         foreach ($dataConfig['drivers'] ?? [] as $name => $driverConfig) {
-            if ($name === 'sqlite') {
-                $path = $driverConfig['path'] ?? $this->basePath('storage/data/app.sqlite');
-                $dbDir = dirname($path);
-                if (!is_dir($dbDir)) {
-                    mkdir($dbDir, 0755, true);
-                }
-                $dsn = str_starts_with($path, 'sqlite:') ? $path : 'sqlite:' . $path;
-                $pdo = new \PDO($dsn);
-                $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-                $drivers[$name] = new \Preflow\Data\Driver\SqliteDriver($pdo);
-                $this->container->instance(\PDO::class, $pdo);
-            } elseif ($name === 'json') {
-                $path = $driverConfig['path'] ?? $this->basePath('storage/data');
-                $drivers[$name] = new \Preflow\Data\Driver\JsonFileDriver($path);
-            }
+            $drivers[$name] = match ($name) {
+                'sqlite' => $this->createSqliteDriver($driverConfig),
+                'mysql' => $this->createMysqlDriver($driverConfig),
+                'json' => new \Preflow\Data\Driver\JsonFileDriver(
+                    $driverConfig['path'] ?? $this->basePath('storage/data'),
+                ),
+                default => null,
+            };
         }
+
+        $drivers = array_filter($drivers);
 
         $default = $dataConfig['default'] ?? 'sqlite';
         if (isset($drivers[$default])) {
             $drivers['default'] = $drivers[$default];
         }
 
-        $dataManager = new \Preflow\Data\DataManager($drivers);
+        // TypeRegistry for dynamic models
+        $typeRegistry = null;
+        $modelsPath = $dataConfig['models_path'] ?? $this->basePath('config/models');
+        if (is_dir($modelsPath)) {
+            $typeRegistry = new \Preflow\Data\TypeRegistry($modelsPath);
+            $this->container->instance(\Preflow\Data\TypeRegistry::class, $typeRegistry);
+        }
+
+        $dataManager = new \Preflow\Data\DataManager($drivers, 'default', $typeRegistry);
         $this->container->instance(\Preflow\Data\DataManager::class, $dataManager);
+    }
+
+    private function createSqliteDriver(array $config): \Preflow\Data\Driver\SqliteDriver
+    {
+        $path = $config['path'] ?? $this->basePath('storage/data/app.sqlite');
+        $dbDir = dirname($path);
+        if (!is_dir($dbDir)) {
+            mkdir($dbDir, 0755, true);
+        }
+        $dsn = str_starts_with($path, 'sqlite:') ? $path : 'sqlite:' . $path;
+        $pdo = new \PDO($dsn);
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $this->container->instance(\PDO::class, $pdo);
+        return new \Preflow\Data\Driver\SqliteDriver($pdo);
+    }
+
+    private function createMysqlDriver(array $config): \Preflow\Data\Driver\MysqlDriver
+    {
+        $dsn = sprintf(
+            'mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4',
+            $config['host'] ?? getenv('DB_HOST') ?: '127.0.0.1',
+            $config['port'] ?? getenv('DB_PORT') ?: '3306',
+            $config['database'] ?? getenv('DB_NAME') ?: '',
+        );
+        $pdo = new \PDO(
+            $dsn,
+            $config['username'] ?? getenv('DB_USER') ?: 'root',
+            $config['password'] ?? getenv('DB_PASS') ?: '',
+        );
+        $this->container->instance(\PDO::class, $pdo);
+        return new \Preflow\Data\Driver\MysqlDriver($pdo);
     }
 
     private function bootViewLayer(DebugLevel $debug): void
