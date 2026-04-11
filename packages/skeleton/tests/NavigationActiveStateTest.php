@@ -88,4 +88,13 @@ final class NavigationActiveStateTest extends TestCase
 
         $this->assertSame('', $nav->brand);
     }
+
+    public function test_prefix_does_not_match_sibling_paths(): void
+    {
+        $nav = $this->createNavigation('/blogroll', [
+            ['path' => '/blog', 'label' => 'Blog'],
+        ]);
+
+        $this->assertFalse($nav->items[0]['active']);
+    }
 }
