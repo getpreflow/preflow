@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Components\Twig;
+namespace Preflow\Twig;
 
 use Twig\Extension\AbstractExtension;
 use Twig\TwigFunction;

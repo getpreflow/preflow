@@ -293,7 +293,7 @@ final class Application
 
         // Register {{ component() }} Twig function
         $engine->getTwig()->addExtension(
-            new \Preflow\Components\Twig\ComponentExtension($renderer, $componentMap, $componentFactory)
+            new \Preflow\Twig\ComponentExtension($renderer, $componentMap, $componentFactory)
         );
 
         // HTMX driver
@@ -313,7 +313,7 @@ final class Application
 
             // Register {{ hd.post(...) }} Twig helper
             $engine->getTwig()->addExtension(
-                new \Preflow\Htmx\Twig\HdExtension($htmxDriver, $componentToken)
+                new \Preflow\Twig\HdExtension($htmxDriver, $componentToken)
             );
 
             // Component endpoint
@@ -380,7 +380,7 @@ final class Application
         if ($this->container->has(\Preflow\View\Twig\TwigEngine::class)) {
             $engine = $this->container->get(\Preflow\View\Twig\TwigEngine::class);
             $engine->getTwig()->addExtension(
-                new \Preflow\I18n\Twig\TranslationExtension($translator)
+                new \Preflow\Twig\TranslationExtension($translator)
             );
         }
 

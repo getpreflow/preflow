@@ -8,7 +8,7 @@ use PHPUnit\Framework\TestCase;
 use Twig\Environment;
 use Twig\Loader\ArrayLoader;
 use Preflow\I18n\Translator;
-use Preflow\I18n\Twig\TranslationExtension;
+use Preflow\Twig\TranslationExtension;
 
 final class TranslationExtensionTest extends TestCase
 {

@@ -11,7 +11,7 @@ use Preflow\Components\Component;
 use Preflow\Components\ComponentRenderer;
 use Preflow\Components\ErrorBoundary;
 use Preflow\Core\DebugLevel;
-use Preflow\Components\Twig\ComponentExtension;
+use Preflow\Twig\ComponentExtension;
 use Preflow\View\TemplateEngineInterface;
 
 class TwigTestComponent extends Component
