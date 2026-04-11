@@ -68,7 +68,12 @@
         }
     ],
     "autoload": {},
-    "autoload-dev": {},
+    "autoload-dev": {
+        "psr-4": {
+            "App\\": "packages/skeleton/app/",
+            "Tests\\": "packages/skeleton/tests/"
+        }
+    },
     "config": {
         "sort-packages": true,
         "allow-plugins": {

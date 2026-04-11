@@ -34,6 +34,9 @@
         <testsuite name="DevTools">
             <directory>packages/devtools/tests</directory>
         </testsuite>
+        <testsuite name="Skeleton">
+            <directory>packages/skeleton/tests</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
