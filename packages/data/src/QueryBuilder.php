@@ -10,16 +10,27 @@ namespace Preflow\Data;
 final class QueryBuilder
 {
     private Query $query;
+    private ?TypeDefinition $typeDef = null;
 
     /**
-     * @param class-string<T> $modelClass
+     * @param class-string<T>|null $modelClass
      */
     public function __construct(
         private readonly StorageDriver $driver,
-        private readonly ModelMetadata $meta,
-        private readonly string $modelClass,
+        private readonly ?ModelMetadata $meta,
+        private readonly ?string $modelClass,
     ) {
         $this->query = new Query();
+    }
+
+    /**
+     * Create a QueryBuilder for a dynamic type (no typed model class).
+     */
+    public static function forType(StorageDriver $driver, TypeDefinition $typeDef): self
+    {
+        $builder = new self($driver, null, null);
+        $builder->typeDef = $typeDef;
+        return $builder;
     }
 
     public function where(string $field, mixed $operator, mixed $value = null): self
@@ -54,8 +65,11 @@ final class QueryBuilder
 
     public function search(string $term, ?array $fields = null): self
     {
-        $fields ??= $this->meta->searchableFields;
-        $this->query->search($term, $fields);
+        $searchFields = $fields;
+        if ($searchFields === null) {
+            $searchFields = $this->meta?->searchableFields ?? $this->typeDef?->searchableFields ?? [];
+        }
+        $this->query->search($term, $searchFields);
         return $this;
     }
 
@@ -66,7 +80,16 @@ final class QueryBuilder
      */
     public function get(): ResultSet
     {
-        $result = $this->driver->findMany($this->meta->table, $this->query);
+        $table = $this->meta?->table ?? $this->typeDef?->table;
+        $result = $this->driver->findMany($table, $this->query);
+
+        if ($this->typeDef !== null) {
+            $items = array_map(
+                fn(array $row) => DynamicRecord::fromArray($this->typeDef, $row),
+                $result->items(),
+            );
+            return new ResultSet($items, $result->total());
+        }
 
         $models = array_map(function (array $data) {
             $model = new ($this->modelClass)();
@@ -82,7 +105,7 @@ final class QueryBuilder
      *
      * @return T|null
      */
-    public function first(): ?Model
+    public function first(): mixed
     {
         $this->query->limit(1);
         $result = $this->get();
@@ -92,8 +115,6 @@ final class QueryBuilder
 
     /**
      * Get a paginated result.
-     *
-     * @return PaginatedResult
      */
     public function paginate(int $perPage, int $currentPage = 1): PaginatedResult
     {
