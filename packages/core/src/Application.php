@@ -137,6 +137,9 @@ final class Application
         $this->bootComponentLayer($debug, $secretKey, $collector);
         $this->bootRouting();
         $this->bootI18n();
+        $this->bootSession();
+        $this->bootCsrf();
+        $this->bootAuth();
 
         // Register user service providers
         $this->bootProviders();
@@ -488,6 +491,126 @@ final class Application
         }
 
         $this->container->bootProviders();
+    }
+
+    private function bootSession(): void
+    {
+        if (!class_exists(\Preflow\Core\Http\Session\NativeSession::class)) {
+            return;
+        }
+
+        $authConfigPath = $this->basePath('config/auth.php');
+        if (!file_exists($authConfigPath)) {
+            return;
+        }
+
+        $authConfig = require $authConfigPath;
+        $sessionConfig = $authConfig['session'] ?? [];
+
+        if ($sessionConfig === []) {
+            return;
+        }
+
+        $session = new \Preflow\Core\Http\Session\NativeSession($sessionConfig);
+        $this->container->instance(\Preflow\Core\Http\Session\SessionInterface::class, $session);
+
+        $this->addMiddleware(new \Preflow\Core\Http\Session\SessionMiddleware($session));
+    }
+
+    private function bootCsrf(): void
+    {
+        if (!class_exists(\Preflow\Core\Http\Csrf\CsrfMiddleware::class)) {
+            return;
+        }
+
+        if (!$this->container->has(\Preflow\Core\Http\Session\SessionInterface::class)) {
+            return;
+        }
+
+        $this->addMiddleware(new \Preflow\Core\Http\Csrf\CsrfMiddleware());
+    }
+
+    private function bootAuth(): void
+    {
+        if (!class_exists(\Preflow\Auth\AuthManager::class)) {
+            return;
+        }
+
+        $authConfigPath = $this->basePath('config/auth.php');
+        if (!file_exists($authConfigPath)) {
+            return;
+        }
+
+        $authConfig = require $authConfigPath;
+
+        // Password hasher
+        $hasherClass = $authConfig['password_hasher'] ?? \Preflow\Auth\NativePasswordHasher::class;
+        $hasher = new $hasherClass();
+        $this->container->instance(\Preflow\Auth\PasswordHasherInterface::class, $hasher);
+
+        // User providers
+        $providers = [];
+        foreach ($authConfig['providers'] ?? [] as $name => $providerConfig) {
+            $providerClass = $providerConfig['class'];
+            $modelClass = $providerConfig['model'] ?? null;
+
+            if ($providerClass === \Preflow\Auth\DataManagerUserProvider::class
+                && $this->container->has(\Preflow\Data\DataManager::class)) {
+                $providers[$name] = new \Preflow\Auth\DataManagerUserProvider(
+                    $this->container->get(\Preflow\Data\DataManager::class),
+                    $modelClass,
+                );
+            }
+        }
+
+        // Guards
+        $guards = [];
+        foreach ($authConfig['guards'] ?? [] as $name => $guardConfig) {
+            $guardClass = $guardConfig['class'];
+            $provider = $providers[$guardConfig['provider'] ?? ''] ?? null;
+
+            if ($provider === null) {
+                continue;
+            }
+
+            $guards[$name] = match ($guardClass) {
+                \Preflow\Auth\SessionGuard::class => new \Preflow\Auth\SessionGuard($provider, $hasher),
+                \Preflow\Auth\TokenGuard::class => $this->container->has(\Preflow\Data\DataManager::class)
+                    ? new \Preflow\Auth\TokenGuard(
+                        $provider,
+                        $this->container->get(\Preflow\Data\DataManager::class),
+                    )
+                    : null,
+                default => null,
+            };
+        }
+
+        $guards = array_filter($guards);
+        $defaultGuard = $authConfig['default_guard'] ?? 'session';
+
+        $authManager = new \Preflow\Auth\AuthManager($guards, $defaultGuard);
+        $this->container->instance(\Preflow\Auth\AuthManager::class, $authManager);
+
+        // Register middleware instances in container for route-level use
+        $this->container->instance(
+            \Preflow\Auth\Http\AuthMiddleware::class,
+            new \Preflow\Auth\Http\AuthMiddleware($authManager),
+        );
+        $this->container->instance(
+            \Preflow\Auth\Http\GuestMiddleware::class,
+            new \Preflow\Auth\Http\GuestMiddleware($authManager),
+        );
+
+        // Template functions
+        $session = $this->container->has(\Preflow\Core\Http\Session\SessionInterface::class)
+            ? $this->container->get(\Preflow\Core\Http\Session\SessionInterface::class)
+            : null;
+
+        if ($this->container->has(\Preflow\View\TemplateEngineInterface::class)) {
+            $engine = $this->container->get(\Preflow\View\TemplateEngineInterface::class);
+            $authProvider = new \Preflow\Auth\AuthExtensionProvider($authManager, $session);
+            $this->registerExtensionProvider($engine, $authProvider);
+        }
     }
 
     private function registerExtensionProvider(

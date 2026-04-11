@@ -46,10 +46,24 @@ final class Kernel
                 $route = $this->router->match($req);
                 $this->collector?->setRoute($route->mode->value, $route->handler, $route->parameters);
 
-                return match ($route->mode) {
-                    RouteMode::Component => ($this->componentRenderer)($route, $req),
-                    RouteMode::Action => ($this->actionDispatcher)($route, $req),
+                $dispatch = fn(ServerRequestInterface $r): ResponseInterface => match ($route->mode) {
+                    RouteMode::Component => ($this->componentRenderer)($route, $r),
+                    RouteMode::Action => ($this->actionDispatcher)($route, $r),
                 };
+
+                // Execute route-level middleware if any
+                if ($route->middleware !== []) {
+                    $routePipeline = new MiddlewarePipeline();
+                    foreach ($route->middleware as $mwClass) {
+                        $mw = $this->container->has($mwClass)
+                            ? $this->container->get($mwClass)
+                            : $this->container->make($mwClass);
+                        $routePipeline->pipe($mw);
+                    }
+                    return $routePipeline->process($req, $dispatch);
+                }
+
+                return $dispatch($req);
             });
         } catch (\Throwable $e) {
             return $this->errorHandler->handleException($e, $request);
