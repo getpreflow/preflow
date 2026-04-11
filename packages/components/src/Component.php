@@ -106,13 +106,13 @@ abstract class Component
     /**
      * Get the path to the co-located template file.
      */
-    public function getTemplatePath(): string
+    public function getTemplatePath(string $extension = 'twig'): string
     {
         $ref = new \ReflectionClass($this);
         $dir = dirname($ref->getFileName());
         $name = $ref->getShortName();
 
-        return $dir . '/' . $name . '.twig';
+        return $dir . '/' . $name . '.' . $extension;
     }
 
     /**
