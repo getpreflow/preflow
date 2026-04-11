@@ -10,6 +10,7 @@ use Twig\Loader\ArrayLoader;
 use Preflow\Components\Component;
 use Preflow\Components\ComponentRenderer;
 use Preflow\Components\ErrorBoundary;
+use Preflow\Core\DebugLevel;
 use Preflow\Components\Twig\ComponentExtension;
 use Preflow\View\TemplateEngineInterface;
 
@@ -62,7 +63,7 @@ final class ComponentExtensionTest extends TestCase
         $engine = new StubTemplateEngine();
         $this->renderer = new ComponentRenderer(
             templateEngine: $engine,
-            errorBoundary: new ErrorBoundary(debug: false),
+            errorBoundary: new ErrorBoundary(debug: DebugLevel::Off),
         );
 
         $this->componentMap = [

@@ -10,6 +10,7 @@ use Preflow\View\NonceGenerator;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\Components\ComponentRenderer;
 use Preflow\Components\ErrorBoundary;
+use Preflow\Core\DebugLevel;
 use Preflow\Htmx\ComponentToken;
 use Preflow\Htmx\ResponseHeaders;
 
@@ -22,7 +23,7 @@ final class TestApplication
     public readonly ResponseHeaders $responseHeaders;
 
     public function __construct(
-        bool $debug = true,
+        DebugLevel $debug = DebugLevel::On,
         string $secretKey = 'test-secret-key-for-preflow-tests!',
     ) {
         $this->container = new Container();

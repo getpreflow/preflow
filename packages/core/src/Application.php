@@ -265,7 +265,9 @@ final class Application
 
         $engine = $this->container->get(\Preflow\View\Twig\TwigEngine::class);
 
-        $errorBoundary = new \Preflow\Components\ErrorBoundary(debug: $debug);
+        $errorBoundary = new \Preflow\Components\ErrorBoundary(
+            debug: $debug ? \Preflow\Core\DebugLevel::On : \Preflow\Core\DebugLevel::Off,
+        );
         $renderer = new \Preflow\Components\ComponentRenderer(
             $this->container->get(\Preflow\View\TemplateEngineInterface::class),
             $errorBoundary,

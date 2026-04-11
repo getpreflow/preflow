@@ -11,6 +11,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Preflow\Components\Component;
 use Preflow\Components\ComponentRenderer;
 use Preflow\Components\ErrorBoundary;
+use Preflow\Core\DebugLevel;
 use Preflow\Core\Exceptions\ForbiddenHttpException;
 use Preflow\Core\Exceptions\SecurityException;
 use Preflow\Htmx\ComponentEndpoint;
@@ -82,7 +83,7 @@ final class ComponentEndpointTest extends TestCase
         $this->responseHeaders = new ResponseHeaders();
 
         $engine = new EndpointFakeEngine();
-        $renderer = new ComponentRenderer($engine, new ErrorBoundary(debug: true));
+        $renderer = new ComponentRenderer($engine, new ErrorBoundary(debug: DebugLevel::On));
 
         $this->endpoint = new ComponentEndpoint(
             token: $this->tokenService,
