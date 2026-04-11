@@ -14,13 +14,25 @@ abstract class PdoDriver implements StorageDriver
         protected readonly \PDO $pdo,
         protected readonly Dialect $dialect,
         protected readonly QueryCompiler $compiler,
+        protected readonly ?\Preflow\Core\Debug\DebugCollector $collector = null,
     ) {}
+
+    protected function executeWithLogging(\PDOStatement $stmt, string $sql, array $bindings = []): void
+    {
+        $start = hrtime(true);
+        $stmt->execute($bindings);
+        if ($this->collector !== null) {
+            $durationMs = (hrtime(true) - $start) / 1_000_000;
+            $this->collector->logQuery($sql, $bindings, $durationMs);
+        }
+    }
 
     public function findOne(string $type, string $id): ?array
     {
         $table = $this->dialect->quoteIdentifier($type);
-        $stmt = $this->pdo->prepare("SELECT * FROM {$table} WHERE uuid = ? LIMIT 1");
-        $stmt->execute([$id]);
+        $sql = "SELECT * FROM {$table} WHERE uuid = ? LIMIT 1";
+        $stmt = $this->pdo->prepare($sql);
+        $this->executeWithLogging($stmt, $sql, [$id]);
         $result = $stmt->fetch(\PDO::FETCH_ASSOC);
 
         return $result !== false ? $result : null;
@@ -31,13 +43,13 @@ abstract class PdoDriver implements StorageDriver
         // Get total count (without limit/offset)
         [$countSql, $countBindings] = $this->compiler->compileCount($type, $query);
         $countStmt = $this->pdo->prepare($countSql);
-        $countStmt->execute($countBindings);
+        $this->executeWithLogging($countStmt, $countSql, $countBindings);
         $total = (int) $countStmt->fetchColumn();
 
         // Get items
         [$sql, $bindings] = $this->compiler->compile($type, $query);
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($bindings);
+        $this->executeWithLogging($stmt, $sql, $bindings);
         $items = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
         return new ResultSet($items, $total);
@@ -55,21 +67,23 @@ abstract class PdoDriver implements StorageDriver
         $columns = array_keys($data);
         $sql = $this->dialect->upsertSql($type, $columns, 'uuid');
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(array_values($data));
+        $this->executeWithLogging($stmt, $sql, array_values($data));
     }
 
     public function delete(string $type, string $id): void
     {
         $table = $this->dialect->quoteIdentifier($type);
-        $stmt = $this->pdo->prepare("DELETE FROM {$table} WHERE uuid = ?");
-        $stmt->execute([$id]);
+        $sql = "DELETE FROM {$table} WHERE uuid = ?";
+        $stmt = $this->pdo->prepare($sql);
+        $this->executeWithLogging($stmt, $sql, [$id]);
     }
 
     public function exists(string $type, string $id): bool
     {
         $table = $this->dialect->quoteIdentifier($type);
-        $stmt = $this->pdo->prepare("SELECT 1 FROM {$table} WHERE uuid = ? LIMIT 1");
-        $stmt->execute([$id]);
+        $sql = "SELECT 1 FROM {$table} WHERE uuid = ? LIMIT 1";
+        $stmt = $this->pdo->prepare($sql);
+        $this->executeWithLogging($stmt, $sql, [$id]);
 
         return $stmt->fetchColumn() !== false;
     }
