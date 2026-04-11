@@ -48,6 +48,15 @@ class StubTemplateEngine implements TemplateEngineInterface
     {
         return true;
     }
+
+    public function addFunction(\Preflow\View\TemplateFunctionDefinition $function): void {}
+
+    public function addGlobal(string $name, mixed $value): void {}
+
+    public function getTemplateExtension(): string
+    {
+        return 'twig';
+    }
 }
 
 final class ComponentExtensionTest extends TestCase

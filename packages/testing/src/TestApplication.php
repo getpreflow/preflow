@@ -42,6 +42,9 @@ final class TestApplication
                     return implode('', array_map(fn ($v) => is_string($v) ? $v : '', $context));
                 }
                 public function exists(string $template): bool { return true; }
+                public function addFunction(\Preflow\View\TemplateFunctionDefinition $function): void {}
+                public function addGlobal(string $name, mixed $value): void {}
+                public function getTemplateExtension(): string { return 'twig'; }
             },
             errorBoundary: $errorBoundary,
         );
