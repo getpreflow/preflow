@@ -15,6 +15,7 @@ use Preflow\Core\Error\ProdErrorRenderer;
 use Preflow\Core\Http\Emitter;
 use Preflow\Core\Http\MiddlewarePipeline;
 use Preflow\Core\Routing\Route;
+use Preflow\Core\EnvLoader;
 use Preflow\Core\Routing\RouteMode;
 use Preflow\Core\Routing\RouterInterface;
 
@@ -57,6 +58,8 @@ final class Application
             // Legacy/testing: pass config directly
             return new self(new Config($basePath), getcwd() ?: '.');
         }
+
+        EnvLoader::load(rtrim($basePath, '/') . '/.env');
 
         $configPath = rtrim($basePath, '/') . '/config/app.php';
         $appConfig = file_exists($configPath) ? require $configPath : [];
