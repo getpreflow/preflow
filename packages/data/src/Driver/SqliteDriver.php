@@ -6,10 +6,10 @@ namespace Preflow\Data\Driver;
 
 final class SqliteDriver extends PdoDriver
 {
-    public function __construct(\PDO $pdo)
+    public function __construct(\PDO $pdo, ?\Preflow\Core\Debug\DebugCollector $collector = null)
     {
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $dialect = new SqliteDialect();
-        parent::__construct($pdo, $dialect, new QueryCompiler($dialect));
+        parent::__construct($pdo, $dialect, new QueryCompiler($dialect), $collector);
     }
 }

@@ -7,6 +7,7 @@ namespace Preflow\Core;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Preflow\Core\Container\Container;
+use Preflow\Core\Debug\DebugCollector;
 use Preflow\Core\Error\ErrorHandler;
 use Preflow\Core\Http\MiddlewarePipeline;
 use Preflow\Core\Routing\Route;
@@ -32,6 +33,7 @@ final class Kernel
         private readonly ErrorHandler $errorHandler,
         callable $actionDispatcher,
         callable $componentRenderer,
+        private readonly ?DebugCollector $collector = null,
     ) {
         $this->actionDispatcher = $actionDispatcher;
         $this->componentRenderer = $componentRenderer;
@@ -42,6 +44,7 @@ final class Kernel
         try {
             return $this->pipeline->process($request, function (ServerRequestInterface $req): ResponseInterface {
                 $route = $this->router->match($req);
+                $this->collector?->setRoute($route->mode->value, $route->handler, $route->parameters);
 
                 return match ($route->mode) {
                     RouteMode::Component => ($this->componentRenderer)($route, $req),

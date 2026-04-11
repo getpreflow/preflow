@@ -11,6 +11,7 @@ final class ComponentRenderer
     public function __construct(
         private readonly TemplateEngineInterface $templateEngine,
         private readonly ErrorBoundary $errorBoundary,
+        private readonly ?\Preflow\Core\Debug\DebugCollector $collector = null,
     ) {}
 
     /**
@@ -20,7 +21,17 @@ final class ComponentRenderer
     {
         try {
             $component->resolveState();
+            $start = hrtime(true);
             $innerHtml = $this->renderTemplate($component);
+            if ($this->collector !== null) {
+                $durationMs = (hrtime(true) - $start) / 1_000_000;
+                $this->collector->logComponent(
+                    $component::class,
+                    $component->getComponentId(),
+                    $durationMs,
+                    $component->getProps(),
+                );
+            }
             return $this->wrapHtml($component, $innerHtml);
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
@@ -35,7 +46,18 @@ final class ComponentRenderer
     {
         try {
             $component->resolveState();
-            return $this->renderTemplate($component);
+            $start = hrtime(true);
+            $html = $this->renderTemplate($component);
+            if ($this->collector !== null) {
+                $durationMs = (hrtime(true) - $start) / 1_000_000;
+                $this->collector->logComponent(
+                    $component::class,
+                    $component->getComponentId(),
+                    $durationMs,
+                    $component->getProps(),
+                );
+            }
+            return $html;
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
         }
@@ -49,7 +71,17 @@ final class ComponentRenderer
     public function renderResolved(Component $component): string
     {
         try {
+            $start = hrtime(true);
             $innerHtml = $this->renderTemplate($component);
+            if ($this->collector !== null) {
+                $durationMs = (hrtime(true) - $start) / 1_000_000;
+                $this->collector->logComponent(
+                    $component::class,
+                    $component->getComponentId(),
+                    $durationMs,
+                    $component->getProps(),
+                );
+            }
             return $this->wrapHtml($component, $innerHtml);
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));

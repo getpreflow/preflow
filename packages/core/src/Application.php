@@ -15,6 +15,7 @@ use Preflow\Core\Error\ProdErrorRenderer;
 use Preflow\Core\Http\Emitter;
 use Preflow\Core\Http\MiddlewarePipeline;
 use Preflow\Core\Http\RequestContext;
+use Preflow\Core\Debug\DebugCollector;
 use Preflow\Core\DebugLevel;
 use Preflow\Core\EnvLoader;
 use Preflow\Core\Routing\Route;
@@ -123,10 +124,17 @@ final class Application
         $debug = DebugLevel::from((int) $this->config->get('app.debug', 0));
         $secretKey = $this->config->get('app.key', 'preflow-default-key-change-me!!');
 
+        // Debug collector — created early so subsystems can log into it
+        $collector = null;
+        if ($debug->isDebug()) {
+            $collector = new DebugCollector();
+            $this->container->instance(DebugCollector::class, $collector);
+        }
+
         // Auto-discover installed packages and wire them up
-        $this->bootDataLayer();
+        $this->bootDataLayer($collector);
         $this->bootViewLayer($debug);
-        $this->bootComponentLayer($debug, $secretKey);
+        $this->bootComponentLayer($debug, $secretKey, $collector);
         $this->bootRouting();
         $this->bootI18n();
 
@@ -134,13 +142,20 @@ final class Application
         $this->bootProviders();
 
         // Error handler
-        $renderer = $debug->isDebug() ? new DevErrorRenderer() : new ProdErrorRenderer();
+        $renderer = $debug->isDebug()
+            ? new DevErrorRenderer($collector)
+            : new ProdErrorRenderer();
         $errorHandler = new ErrorHandler($renderer);
         $this->container->instance(ErrorHandler::class, $errorHandler);
 
         // Default dispatchers if not set
         $this->ensureActionDispatcher();
         $this->ensureComponentRenderer();
+
+        // Debug toolbar middleware — must be last so it wraps the full response
+        if ($debug->isDebug() && $collector !== null && class_exists(\Preflow\DevTools\Http\DebugToolbarMiddleware::class)) {
+            $this->addMiddleware(new \Preflow\DevTools\Http\DebugToolbarMiddleware($collector));
+        }
 
         $this->kernel = new Kernel(
             container: $this->container,
@@ -149,6 +164,7 @@ final class Application
             errorHandler: $errorHandler,
             actionDispatcher: $this->actionDispatcher,
             componentRenderer: $this->componentRenderer,
+            collector: $collector,
         );
     }
 
@@ -170,7 +186,21 @@ final class Application
             return $this->container->get('preflow.component_endpoint')->handle($request);
         }
 
-        return $this->kernel->handle($request);
+        $response = $this->kernel->handle($request);
+
+        // Log asset stats to debug collector
+        if ($this->container->has(DebugCollector::class) && $this->container->has(\Preflow\View\AssetCollector::class)) {
+            $collector = $this->container->get(DebugCollector::class);
+            $assets = $this->container->get(\Preflow\View\AssetCollector::class);
+            $collector->setAssets(
+                $assets->getCssCount(),
+                $assets->getJsCount(),
+                $assets->getCssBytes(),
+                $assets->getJsBytes(),
+            );
+        }
+
+        return $response;
     }
 
     /**
@@ -195,7 +225,7 @@ final class Application
     // Auto-discovery
     // -----------------------------------------------------------------------
 
-    private function bootDataLayer(): void
+    private function bootDataLayer(?DebugCollector $collector = null): void
     {
         if (!class_exists(\Preflow\Data\DataManager::class)) {
             return;
@@ -211,8 +241,8 @@ final class Application
 
         foreach ($dataConfig['drivers'] ?? [] as $name => $driverConfig) {
             $drivers[$name] = match ($name) {
-                'sqlite' => $this->createSqliteDriver($driverConfig),
-                'mysql' => $this->createMysqlDriver($driverConfig),
+                'sqlite' => $this->createSqliteDriver($driverConfig, $collector),
+                'mysql' => $this->createMysqlDriver($driverConfig, $collector),
                 'json' => new \Preflow\Data\Driver\JsonFileDriver(
                     $driverConfig['path'] ?? $this->basePath('storage/data'),
                 ),
@@ -239,7 +269,7 @@ final class Application
         $this->container->instance(\Preflow\Data\DataManager::class, $dataManager);
     }
 
-    private function createSqliteDriver(array $config): \Preflow\Data\Driver\SqliteDriver
+    private function createSqliteDriver(array $config, ?DebugCollector $collector = null): \Preflow\Data\Driver\SqliteDriver
     {
         $path = $config['path'] ?? $this->basePath('storage/data/app.sqlite');
         $dbDir = dirname($path);
@@ -250,10 +280,10 @@ final class Application
         $pdo = new \PDO($dsn);
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $this->container->instance(\PDO::class, $pdo);
-        return new \Preflow\Data\Driver\SqliteDriver($pdo);
+        return new \Preflow\Data\Driver\SqliteDriver($pdo, $collector);
     }
 
-    private function createMysqlDriver(array $config): \Preflow\Data\Driver\MysqlDriver
+    private function createMysqlDriver(array $config, ?DebugCollector $collector = null): \Preflow\Data\Driver\MysqlDriver
     {
         $dsn = sprintf(
             'mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4',
@@ -267,7 +297,7 @@ final class Application
             $config['password'] ?? getenv('DB_PASS') ?: '',
         );
         $this->container->instance(\PDO::class, $pdo);
-        return new \Preflow\Data\Driver\MysqlDriver($pdo);
+        return new \Preflow\Data\Driver\MysqlDriver($pdo, $collector);
     }
 
     private function bootViewLayer(DebugLevel $debug): void
@@ -315,7 +345,7 @@ final class Application
         };
     }
 
-    private function bootComponentLayer(DebugLevel $debug, string $secretKey): void
+    private function bootComponentLayer(DebugLevel $debug, string $secretKey, ?DebugCollector $collector = null): void
     {
         if (!class_exists(\Preflow\Components\ComponentRenderer::class)) {
             return;
@@ -328,7 +358,7 @@ final class Application
         $engine = $this->container->get(\Preflow\View\TemplateEngineInterface::class);
 
         $errorBoundary = new \Preflow\Components\ErrorBoundary(debug: $debug);
-        $renderer = new \Preflow\Components\ComponentRenderer($engine, $errorBoundary);
+        $renderer = new \Preflow\Components\ComponentRenderer($engine, $errorBoundary, $collector);
         $this->container->instance(\Preflow\Components\ComponentRenderer::class, $renderer);
 
         // Auto-discover components
