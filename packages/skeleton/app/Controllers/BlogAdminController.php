@@ -35,7 +35,7 @@ final class BlogAdminController
             ->orderBy('uuid', SortDirection::Desc)
             ->get();
 
-        return $this->renderPage('admin/index.twig', [
+        return $this->renderPage('admin/_index.twig', [
             'posts' => $posts->items(),
         ]);
     }
@@ -43,7 +43,7 @@ final class BlogAdminController
     #[Get('/create')]
     public function create(ServerRequestInterface $request): Response
     {
-        return $this->renderPage('admin/form.twig', [
+        return $this->renderPage('admin/_form.twig', [
             'post' => null,
             'pageTitle' => 'New Post',
         ]);
@@ -59,7 +59,7 @@ final class BlogAdminController
             return new Response(302, ['Location' => '/admin']);
         }
 
-        return $this->renderPage('admin/form.twig', [
+        return $this->renderPage('admin/_form.twig', [
             'post' => $post,
             'pageTitle' => 'Edit Post',
         ]);
