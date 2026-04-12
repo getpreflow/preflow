@@ -82,4 +82,9 @@ final class ArraySession implements SessionInterface
         $this->flashPrevious = $this->flashCurrent;
         $this->flashCurrent = [];
     }
+
+    public function close(): void
+    {
+        // No-op for in-memory session
+    }
 }

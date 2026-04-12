@@ -47,6 +47,10 @@ final class NativeSession implements SessionInterface
             $options['cookie_samesite'] = $this->config['samesite'];
         }
 
+        if (isset($this->config['cookie'])) {
+            session_name($this->config['cookie']);
+        }
+
         session_start($options);
 
         if (!isset($_SESSION['_flash'])) {
@@ -63,7 +67,7 @@ final class NativeSession implements SessionInterface
 
     public function regenerate(): void
     {
-        session_regenerate_id(false);
+        session_regenerate_id(true);
     }
 
     public function invalidate(): void
@@ -114,5 +118,12 @@ final class NativeSession implements SessionInterface
     {
         $_SESSION['_flash']['previous'] = $_SESSION['_flash']['current'];
         $_SESSION['_flash']['current'] = [];
+    }
+
+    public function close(): void
+    {
+        if ($this->started && session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
     }
 }

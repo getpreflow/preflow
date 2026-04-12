@@ -29,4 +29,6 @@ interface SessionInterface
     public function isStarted(): bool;
 
     public function ageFlash(): void;
+
+    public function close(): void;
 }

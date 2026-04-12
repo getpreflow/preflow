@@ -20,6 +20,10 @@ final class SessionMiddleware implements MiddlewareInterface
 
         $request = $request->withAttribute(SessionInterface::class, $this->session);
 
-        return $handler->handle($request);
+        $response = $handler->handle($request);
+
+        $this->session->close();
+
+        return $response;
     }
 }
