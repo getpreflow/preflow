@@ -33,7 +33,7 @@ final class ServeCommand implements CommandInterface
         echo "Preflow dev server started on http://{$host}:{$port}\n";
         echo "Press Ctrl+C to stop.\n\n";
 
-        $router = $docRoot . '/index.php';
+        $router = __DIR__ . '/../router.php';
         passthru("php -S {$host}:{$port} -t {$docRoot} {$router}", $exitCode);
         return $exitCode;
     }
