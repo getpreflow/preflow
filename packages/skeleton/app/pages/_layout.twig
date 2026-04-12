@@ -15,7 +15,19 @@
                 { path: '/about', label: 'app.nav.about' },
             ]
         }) }}
-        {{ component('LocaleSwitcher', { locales: ['en', 'de'] }) }}
+        <div class="header-actions">
+            {{ component('LocaleSwitcher', { locales: ['en', 'de'] }) }}
+            {% if auth_check() %}
+                <a href="/admin" class="header-admin-link">Admin</a>
+                <span class="header-user">{{ auth_user().email }}</span>
+                <form method="post" action="/logout" class="header-logout-form">
+                    {{ csrf_token()|raw }}
+                    <button type="submit" class="header-logout-btn">Logout</button>
+                </form>
+            {% else %}
+                <a href="/login" class="header-login-link">Login</a>
+            {% endif %}
+        </div>
     </header>
 
     <main class="main-content">
@@ -55,6 +67,54 @@ body {
 
 .main-header nav {
     border-bottom: none;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.8125rem;
+}
+
+.header-admin-link {
+    color: #0066ff;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.header-admin-link:hover {
+    text-decoration: underline;
+}
+
+.header-user {
+    color: #999;
+}
+
+.header-logout-form {
+    display: inline;
+}
+
+.header-logout-btn {
+    background: none;
+    border: none;
+    color: #dc3545;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    padding: 0;
+}
+
+.header-logout-btn:hover {
+    text-decoration: underline;
+}
+
+.header-login-link {
+    color: #0066ff;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.header-login-link:hover {
+    text-decoration: underline;
 }
 
 .main-content {
