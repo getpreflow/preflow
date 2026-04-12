@@ -21,17 +21,4 @@ final class HealthController
         ]));
     }
 
-    #[Get('/debug-session')]
-    public function debugSession(\Psr\Http\Message\ServerRequestInterface $request): Response
-    {
-        $session = $request->getAttribute(\Preflow\Core\Http\Session\SessionInterface::class);
-        return new Response(200, ['Content-Type' => 'application/json'], json_encode([
-            'session_id' => $session?->getId(),
-            'session_started' => $session?->isStarted(),
-            'session_data' => $_SESSION ?? null,
-            'cookie' => $_COOKIE ?? [],
-            'session_status' => session_status(),
-            'session_name' => session_name(),
-        ], JSON_PRETTY_PRINT));
-    }
 }

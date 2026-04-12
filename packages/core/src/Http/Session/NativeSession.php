@@ -51,6 +51,17 @@ final class NativeSession implements SessionInterface
             session_name($this->config['cookie']);
         }
 
+        // Set cookie params at INI level so session_regenerate_id() uses them too
+        // (session_start options only apply to the initial cookie, not regenerated ones)
+        session_set_cookie_params([
+            'lifetime' => $this->config['lifetime'] ?? 0,
+            'path' => $this->config['path'] ?? '/',
+            'domain' => $this->config['domain'] ?? '',
+            'secure' => $this->config['secure'] ?? false,
+            'httponly' => $this->config['httponly'] ?? true,
+            'samesite' => $this->config['samesite'] ?? 'Lax',
+        ]);
+
         session_start($options);
 
         if (!isset($_SESSION['_flash'])) {

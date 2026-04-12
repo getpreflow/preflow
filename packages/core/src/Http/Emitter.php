@@ -25,10 +25,12 @@ final class Emitter
         );
 
         foreach ($response->getHeaders() as $name => $values) {
-            $first = true;
+            // Set-Cookie headers must never replace — multiple cookies are normal
+            // (session, locale, CSRF, etc.). Other headers replace the first value.
+            $replace = strtolower($name) !== 'set-cookie';
             foreach ($values as $value) {
-                header("{$name}: {$value}", $first);
-                $first = false;
+                header("{$name}: {$value}", $replace);
+                $replace = false;
             }
         }
 
