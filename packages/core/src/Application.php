@@ -592,6 +592,29 @@ final class Application
         $authManager = new \Preflow\Auth\AuthManager($guards, $defaultGuard);
         $this->container->instance(\Preflow\Auth\AuthManager::class, $authManager);
 
+        // Global middleware: resolve authenticated user on every request (no 401 — just populate)
+        $defaultGuardInstance = $guards[$defaultGuard] ?? null;
+        if ($defaultGuardInstance !== null) {
+            $this->addMiddleware(new class($authManager, $defaultGuardInstance) implements \Psr\Http\Server\MiddlewareInterface {
+                public function __construct(
+                    private readonly \Preflow\Auth\AuthManager $authManager,
+                    private readonly \Preflow\Auth\GuardInterface $guard,
+                ) {}
+
+                public function process(
+                    \Psr\Http\Message\ServerRequestInterface $request,
+                    \Psr\Http\Server\RequestHandlerInterface $handler,
+                ): \Psr\Http\Message\ResponseInterface {
+                    $user = $this->guard->user($request);
+                    if ($user !== null) {
+                        $this->authManager->setUser($user);
+                        $request = $request->withAttribute(\Preflow\Auth\Authenticatable::class, $user);
+                    }
+                    return $handler->handle($request);
+                }
+            });
+        }
+
         // Register middleware instances in container for route-level use
         $this->container->instance(
             \Preflow\Auth\Http\AuthMiddleware::class,
