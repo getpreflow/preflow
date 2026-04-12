@@ -20,6 +20,7 @@ final class Console
         $this->register(new Command\RoutesListCommand());
         $this->register(new Command\CacheClearCommand());
         $this->register(new Command\SeedCommand());
+        $this->register(new Command\KeyGenerateCommand());
     }
 
     public function register(Command\CommandInterface $command): void
