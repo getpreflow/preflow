@@ -1,0 +1,94 @@
+<form method="post" action="{{ action }}" class="post-form">
+    {{ csrf_token()|raw }}
+
+    {% if isEdit %}
+        <input type="hidden" name="uuid" value="{{ uuid }}">
+    {% endif %}
+
+    <div class="form-group">
+        <label for="title">Title</label>
+        <input type="text" id="title" name="title" value="{{ title }}" required
+               class="form-input" placeholder="Post title">
+    </div>
+
+    <div class="form-group">
+        <label for="slug">Slug</label>
+        <input type="text" id="slug" name="slug" value="{{ slug }}"
+               class="form-input" placeholder="auto-generated-from-title">
+    </div>
+
+    <div class="form-group">
+        <label for="body">Body</label>
+        <textarea id="body" name="body" rows="10" required
+                  class="form-input form-textarea" placeholder="Write your post...">{{ body }}</textarea>
+    </div>
+
+    <div class="form-group">
+        <label for="status">Status</label>
+        <select id="status" name="status" class="form-input">
+            <option value="draft"{{ status == 'draft' ? ' selected' : '' }}>Draft</option>
+            <option value="published"{{ status == 'published' ? ' selected' : '' }}>Published</option>
+        </select>
+    </div>
+
+    <button type="submit" class="form-submit">
+        {{ isEdit ? 'Update Post' : 'Create Post' }}
+    </button>
+</form>
+
+{% apply css %}
+.post-form {
+    max-width: 600px;
+}
+
+.form-group {
+    margin-bottom: 1.25rem;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    font-size: 0.875rem;
+    color: #333;
+}
+
+.form-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    font-size: 0.9375rem;
+    font-family: inherit;
+    color: #333;
+    background: #fff;
+    transition: border-color 0.15s;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #0066ff;
+    box-shadow: 0 0 0 2px rgba(0, 102, 255, 0.15);
+}
+
+.form-textarea {
+    resize: vertical;
+    min-height: 200px;
+}
+
+.form-submit {
+    padding: 0.625rem 1.25rem;
+    border: none;
+    border-radius: 0.25rem;
+    background: #0066ff;
+    color: white;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.form-submit:hover {
+    background: #0052cc;
+}
+{% endapply %}
