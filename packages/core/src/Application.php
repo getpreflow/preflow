@@ -512,6 +512,7 @@ final class Application
         }
 
         $session = new \Preflow\Core\Http\Session\NativeSession($sessionConfig);
+        $session->start();
         $this->container->instance(\Preflow\Core\Http\Session\SessionInterface::class, $session);
 
         $this->addMiddleware(new \Preflow\Core\Http\Session\SessionMiddleware($session));
