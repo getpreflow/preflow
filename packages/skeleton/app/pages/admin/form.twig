@@ -1,0 +1,47 @@
+{% extends "_layout.twig" %}
+
+{% block title %}{{ pageTitle }} — Admin{% endblock %}
+
+{% block content %}
+{% apply css %}
+.admin-form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.admin-form-header h1 {
+    font-size: 1.5rem;
+}
+
+.back-link {
+    color: #0066ff;
+    text-decoration: none;
+    font-size: 0.875rem;
+}
+
+.back-link:hover {
+    text-decoration: underline;
+}
+{% endapply %}
+
+{% set error = flash('error') %}
+{% if error %}
+    <div class="flash-error">{{ error }}</div>
+{% endif %}
+
+<div class="admin-form-header">
+    <h1>{{ pageTitle }}</h1>
+    <a href="/admin" class="back-link">Back to posts</a>
+</div>
+
+{{ component('PostForm', {
+    action: '/admin/save',
+    uuid: post ? post.uuid : '',
+    title: post ? post.title : '',
+    slug: post ? post.slug : '',
+    body: post ? post.body : '',
+    status: post ? post.status : 'draft',
+}) }}
+{% endblock %}

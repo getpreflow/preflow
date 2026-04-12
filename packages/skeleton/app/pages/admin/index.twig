@@ -1,0 +1,176 @@
+{% extends "_layout.twig" %}
+
+{% block title %}Admin — Posts{% endblock %}
+
+{% block content %}
+{% apply css %}
+.admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.admin-header h1 {
+    font-size: 1.5rem;
+}
+
+.btn {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn-primary {
+    background: #0066ff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #0052cc;
+}
+
+.btn-danger {
+    background: #dc3545;
+    color: white;
+    font-size: 0.8125rem;
+    padding: 0.25rem 0.75rem;
+}
+
+.btn-danger:hover {
+    background: #c82333;
+}
+
+.post-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.post-table th,
+.post-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.post-table th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: #999;
+    font-weight: 600;
+}
+
+.post-table td a {
+    color: #0066ff;
+    text-decoration: none;
+}
+
+.post-table td a:hover {
+    text-decoration: underline;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.status-published {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-draft {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.flash-success {
+    padding: 0.75rem 1rem;
+    background: #d4edda;
+    color: #155724;
+    border-radius: 0.25rem;
+    margin-bottom: 1rem;
+}
+
+.flash-error {
+    padding: 0.75rem 1rem;
+    background: #f8d7da;
+    color: #721c24;
+    border-radius: 0.25rem;
+    margin-bottom: 1rem;
+}
+
+.delete-form {
+    display: inline;
+}
+
+.actions-cell {
+    white-space: nowrap;
+}
+
+.actions-cell a {
+    margin-right: 0.5rem;
+}
+{% endapply %}
+
+{% set success = flash('success') %}
+{% set error = flash('error') %}
+
+{% if success %}
+    <div class="flash-success">{{ success }}</div>
+{% endif %}
+
+{% if error %}
+    <div class="flash-error">{{ error }}</div>
+{% endif %}
+
+<div class="admin-header">
+    <h1>Posts</h1>
+    <a href="/admin/create" class="btn btn-primary">New Post</a>
+</div>
+
+<table class="post-table">
+    <thead>
+        <tr>
+            <th>Title</th>
+            <th>Slug</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for post in posts %}
+            <tr>
+                <td><a href="/admin/edit/{{ post.uuid }}">{{ post.title }}</a></td>
+                <td>{{ post.slug }}</td>
+                <td>
+                    <span class="status-badge status-{{ post.status }}">{{ post.status }}</span>
+                </td>
+                <td class="actions-cell">
+                    <a href="/admin/edit/{{ post.uuid }}">Edit</a>
+                    <form method="post" action="/admin/delete/{{ post.uuid }}" class="delete-form"
+                          onsubmit="return confirm('Delete this post?')">
+                        {{ csrf_token()|raw }}
+                        <button type="submit" class="btn btn-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+        {% else %}
+            <tr>
+                <td colspan="4" style="text-align: center; color: #999; padding: 2rem;">
+                    No posts yet. <a href="/admin/create">Create one.</a>
+                </td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
