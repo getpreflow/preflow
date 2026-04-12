@@ -99,6 +99,17 @@ Templates can check auth status:
 {% endif %}
 ```
 
+### Blog Admin
+
+The skeleton includes a full blog admin at `/admin` (requires login). Create, edit, and delete posts through a form-based interface.
+
+Default admin credentials:
+
+- **Email:** admin@preflow.dev
+- **Password:** password
+
+The admin demonstrates the hybrid pattern: `PostForm` component handles form UI with co-located CSS, `BlogAdminController` handles CRUD logic with redirects and flash messages.
+
 ### Internationalization
 
 Translations live in `lang/{locale}/{group}.php`. Switch languages with the locale switcher in the header, or visit `/de/...` for German.
