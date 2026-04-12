@@ -10,6 +10,7 @@
         "preflow/view": "dev-main",
         "preflow/twig": "dev-main",
         "preflow/components": "dev-main",
+        "preflow/auth": "^0.1 || @dev",
         "preflow/data": "dev-main",
         "preflow/htmx": "dev-main",
         "preflow/i18n": "dev-main",
