@@ -1,92 +1,194 @@
 # Preflow Skeleton
 
-Starter template for new Preflow applications.
+Starter template for [Preflow](https://github.com/getpreflow/preflow) applications.
 
-## Create a project
+## Quick Start
 
 ```bash
 composer create-project preflow/skeleton myapp
 cd myapp
-cp .env.example .env
-php preflow migrate
 php preflow serve
 ```
 
-Open `http://localhost:8080`.
+Open [http://localhost:8080](http://localhost:8080). That's it — the installer handles `.env`, database, and demo content automatically.
 
-## What's included
-
-### Application code
-
-| Path | Description |
-|---|---|
-| `app/Components/ExampleCard/` | Working component with props, state, HTMX counter action, co-located CSS and JS |
-| `app/Controllers/Api/HealthController.php` | `GET /api/health` — returns JSON status |
-| `app/Models/Post.php` | Typed model with `#[Entity]`, `#[Id]`, `#[Field]`, `#[Timestamps]` attributes |
-| `app/pages/` | File-based routes: `_layout.twig`, `index.twig`, `about.twig`, `_error.twig` |
-
-### Translations
-
-Bilingual out of the box:
+## Project Structure
 
 ```
-lang/
-  en/app.php
-  de/app.php
+app/
+├── Components/    Reusable UI components (PHP + template + CSS/JS)
+├── Controllers/   API and form controllers (#[Route] attributes)
+├── Models/        Data models (#[Entity] attributes)
+├── Providers/     Service providers
+├── Seeds/         Demo data seeders
+└── pages/         File-based routes (Twig templates)
+config/            Framework configuration
+lang/              Translation files (en/, de/)
+migrations/        Database schema
+public/            Web root (index.php, .htaccess)
+storage/           SQLite database, cache, logs
+tests/             PHPUnit tests
 ```
 
-`lang/en/app.php`:
+## What's Included
+
+### Routing
+
+File-based routes in `app/pages/` map to URLs by directory structure. Dynamic segments use brackets: `blog/[slug].twig` matches `/blog/hello-world`.
+
+Controllers use PHP attributes:
 
 ```php
-return [
-    'name'        => 'Preflow App',
-    'welcome'     => 'Welcome to :name!',
-    'description' => 'A modern PHP framework for component-based web development.',
-];
+#[Route('/api')]
+final class HealthController
+{
+    #[Get('/health')]
+    public function health(ServerRequestInterface $request): ResponseInterface
+    {
+        return new Response(200, ['Content-Type' => 'application/json'],
+            json_encode(['status' => 'ok']));
+    }
+}
 ```
 
-### Migrations
+### Components
 
-`migrations/2026_04_11_create_posts.php` — creates the `posts` table with UUID primary key, `title`, `slug`, `body`, `status`, and timestamps.
+A component is a PHP class + Twig template + inline CSS/JS in one directory. Drop it in `app/Components/`, it auto-discovers.
 
-Run with:
+```php
+final class ExampleCard extends Component
+{
+    public string $title = '';
+    public int $count = 0;
+
+    public function __construct(private readonly SessionInterface $session) {}
+
+    public function resolveState(): void
+    {
+        $this->title = $this->props['title'] ?? 'Hello';
+        $this->count = (int) $this->session->get('example_counter', 0);
+    }
+
+    public function actions(): array { return ['increment']; }
+
+    public function actionIncrement(array $params = []): void
+    {
+        $this->count = (int) $this->session->get('example_counter', 0) + 1;
+        $this->session->set('example_counter', $this->count);
+    }
+}
+```
+
+Use in templates: `{{ component('ExampleCard', { title: 'Hello' }) }}`
+
+### Authentication
+
+Login, registration, and logout are included. Protect routes with middleware:
+
+```php
+#[Route('/dashboard')]
+#[Middleware(AuthMiddleware::class)]
+final class DashboardController { /* ... */ }
+```
+
+Templates can check auth status:
+
+```twig
+{% if auth_check() %}
+    Welcome, {{ auth_user().email }}
+{% endif %}
+```
+
+### Internationalization
+
+Translations live in `lang/{locale}/{group}.php`. Switch languages with the locale switcher in the header, or visit `/de/...` for German.
+
+```twig
+{{ t('blog.title') }}
+{{ t('blog.published', { date: '2026-01-01' }) }}
+{{ t('blog.post_count', {}, 5) }}
+```
+
+### Data Layer
+
+Models use PHP attributes for storage mapping:
+
+```php
+#[Entity(table: 'posts', storage: 'default')]
+final class Post extends Model
+{
+    #[Id] public string $uuid = '';
+    #[Field(searchable: true)] public string $title = '';
+    #[Field] public string $status = 'draft';
+}
+```
+
+Query with the DataManager:
+
+```php
+$posts = $dm->query(Post::class)
+    ->where('status', 'published')
+    ->orderBy('uuid', SortDirection::Desc)
+    ->get();
+```
+
+### HTMX
+
+Components can define actions that handle HTMX requests. The ExampleCard counter persists in the session across page reloads — no JavaScript needed.
+
+## Configuration
+
+| File | Purpose |
+|------|---------|
+| `config/app.php` | App name, debug level, timezone, locale, template engine |
+| `config/auth.php` | Guards, user providers, session settings |
+| `config/data.php` | Storage drivers (SQLite, JSON, MySQL) |
+| `config/i18n.php` | Available locales, fallback, URL strategy |
+| `config/providers.php` | Service provider registration |
+| `.env` | Environment-specific overrides |
+
+## CLI Commands
 
 ```bash
-php preflow migrate
+php preflow serve           # Start dev server (localhost:8080)
+php preflow migrate         # Run pending migrations
+php preflow db:seed         # Seed demo data
+php preflow key:generate    # Generate APP_KEY
+php preflow routes:list     # List all routes
+php preflow cache:clear     # Clear cache
 ```
 
-### Configuration
+## Web Server
 
-| File | Controls |
-|---|---|
-| `config/app.php` | App name, environment, debug flag |
-| `config/data.php` | SQLite path, JSON storage directory |
-| `config/i18n.php` | Default locale, available locales, URL strategy |
-| `config/middleware.php` | Middleware stack |
-| `config/providers.php` | Service provider registration |
+**Development:** `php preflow serve` — no configuration needed.
 
-### Dev tooling
+**Apache:** Point your document root to the `public/` directory. The included `.htaccess` handles URL rewriting. Ensure `mod_rewrite` is enabled.
 
-- `preflow` — CLI entry point (wraps `vendor/bin/preflow`)
-- `phpunit.xml` — PHPUnit configuration pointed at `tests/`
-- `.env.example` — environment variable template
+**Nginx:**
 
-## Project structure
+```nginx
+server {
+    listen 80;
+    server_name myapp.test;
+    root /path/to/myapp/public;
+    index index.php;
 
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass unix:/var/run/php/php-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+}
 ```
-myapp/
-├── app/
-│   ├── Components/ExampleCard/
-│   ├── Controllers/Api/HealthController.php
-│   ├── Models/Post.php
-│   ├── Providers/
-│   └── pages/
-├── config/
-├── lang/en/  lang/de/
-├── migrations/
-├── public/index.php
-├── storage/
-├── tests/
-├── .env
-└── preflow
+
+## Testing
+
+```bash
+./vendor/bin/phpunit
 ```
+
+Tests live in `tests/`. The skeleton includes example tests for components and routing.
