@@ -6,14 +6,17 @@
     <title>{% block title %}Preflow App{% endblock %}</title>
 </head>
 <body>
-    {{ component('Navigation', {
-        brand: 'Preflow',
-        items: [
-            { path: '/', label: 'app.nav.home' },
-            { path: '/blog', label: 'app.nav.blog' },
-            { path: '/about', label: 'app.nav.about' },
-        ]
-    }) }}
+    <header class="main-header">
+        {{ component('Navigation', {
+            brand: 'Preflow',
+            items: [
+                { path: '/', label: 'app.nav.home' },
+                { path: '/blog', label: 'app.nav.blog' },
+                { path: '/about', label: 'app.nav.about' },
+            ]
+        }) }}
+        {{ component('LocaleSwitcher', { locales: ['en', 'de'] }) }}
+    </header>
 
     <main class="main-content">
         {% block content %}{% endblock %}
@@ -39,6 +42,19 @@ body {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+}
+
+.main-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-right: 1rem;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.main-header nav {
+    border-bottom: none;
 }
 
 .main-content {
