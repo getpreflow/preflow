@@ -1,0 +1,37 @@
+<div class="locale-switcher">
+    {% for locale in locales %}
+        {% if locale.active %}
+            <span class="locale-btn locale-btn--active">{{ locale.label }}</span>
+        {% else %}
+            <a href="{{ locale.url }}" class="locale-btn">{{ locale.label }}</a>
+        {% endif %}
+    {% endfor %}
+</div>
+
+{% apply css %}
+.locale-switcher {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.locale-btn {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-decoration: none;
+    color: #555;
+    background: transparent;
+    transition: background 0.15s, color 0.15s;
+}
+
+.locale-btn:hover {
+    background: #e9ecef;
+    color: #333;
+}
+
+.locale-btn--active {
+    background: #0066ff;
+    color: white;
+}
+{% endapply %}
