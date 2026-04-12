@@ -30,5 +30,13 @@
         "psr-4": {
             "Tests\\": "tests/"
         }
+    },
+    "scripts": {
+        "post-create-project-cmd": [
+            "@php -r \"copy('.env.example', '.env');\"",
+            "@php preflow key:generate",
+            "@php preflow migrate",
+            "@php preflow db:seed"
+        ]
     }
 }
