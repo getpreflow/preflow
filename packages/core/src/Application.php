@@ -727,6 +727,11 @@ final class Application
         $this->actionDispatcher = function (Route $route, ServerRequestInterface $request) use ($container): ResponseInterface {
             [$class, $method] = explode('@', $route->handler);
 
+            // Attach route parameters as request attributes
+            foreach ($route->parameters as $name => $value) {
+                $request = $request->withAttribute($name, $value);
+            }
+
             $controller = $container->has($class) ? $container->get($class) : new $class();
             $response = $controller->{$method}($request);
 
