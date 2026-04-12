@@ -21,13 +21,23 @@ final class LocaleSwitcher extends Component
     public function resolveState(): void
     {
         $currentLocale = $this->translator->getLocale();
+        $availableLocales = $this->props['locales'] ?? [];
         $currentPath = $this->requestContext->path;
 
-        if ($currentPath === '' || $currentPath === '/') {
-            $currentPath = '/';
+        // Strip locale prefix from path — RequestContext has the original URL
+        // (before LocaleMiddleware strips it), so /de/blog needs to become /blog
+        foreach ($availableLocales as $code) {
+            if ($currentPath === '/' . $code) {
+                $currentPath = '/';
+                break;
+            }
+            if (str_starts_with($currentPath, '/' . $code . '/')) {
+                $currentPath = substr($currentPath, strlen($code) + 1);
+                break;
+            }
         }
 
-        foreach ($this->props['locales'] ?? [] as $code) {
+        foreach ($availableLocales as $code) {
             $url = '/' . $code . ($currentPath === '/' ? '' : $currentPath);
 
             $this->locales[] = [

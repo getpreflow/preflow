@@ -65,4 +65,19 @@ final class LocaleSwitcherTest extends TestCase
         $this->assertSame('/en', $component->locales[0]['url']);
         $this->assertSame('/de', $component->locales[1]['url']);
     }
+
+    public function test_strips_locale_prefix_from_path(): void
+    {
+        // RequestContext has original URL with locale prefix (before middleware strips it)
+        $component = $this->createComponent('de', '/de/blog');
+        $this->assertSame('/en/blog', $component->locales[0]['url']);
+        $this->assertSame('/de/blog', $component->locales[1]['url']);
+    }
+
+    public function test_strips_locale_prefix_from_root(): void
+    {
+        $component = $this->createComponent('de', '/de');
+        $this->assertSame('/en', $component->locales[0]['url']);
+        $this->assertSame('/de', $component->locales[1]['url']);
+    }
 }
