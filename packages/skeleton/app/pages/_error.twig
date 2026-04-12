@@ -1,6 +1,6 @@
 {% extends "_layout.twig" %}
 
-{% block title %}Error{% endblock %}
+{% block title %}Error {{ status|default(404) }}{% endblock %}
 
 {% block content %}
 {% apply css %}
@@ -35,8 +35,8 @@
 {% endapply %}
 
 <div class="error-page">
-    <h1 class="error-code">404</h1>
-    <p class="error-message">Page not found</p>
+    <h1 class="error-code">{{ status|default(404) }}</h1>
+    <p class="error-message">{{ message|default('Page not found') }}</p>
     <a href="/" class="error-link">Go home</a>
 </div>
 {% endblock %}
