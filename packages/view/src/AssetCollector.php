@@ -79,6 +79,11 @@ final class AssetCollector
         }
 
         $css = implode("\n", $this->cssRegistry);
+
+        if ($this->isProd) {
+            $css = $this->minifyCss($css);
+        }
+
         $nonce = $this->nonceAttr();
 
         return "<style{$nonce}>{$css}</style>\n";
@@ -106,9 +111,42 @@ final class AssetCollector
         }
 
         $js = implode("\n", $registry);
+
+        if ($this->isProd) {
+            $js = $this->minifyJs($js);
+        }
+
         $nonce = $this->nonceAttr();
 
         return "<script{$nonce}>{$js}</script>\n";
+    }
+
+    private function minifyCss(string $css): string
+    {
+        // Remove comments
+        $css = preg_replace('!/\*.*?\*/!s', '', $css);
+        // Remove whitespace around selectors and braces
+        $css = preg_replace('/\s*([{}:;,>~+])\s*/', '$1', $css);
+        // Collapse remaining whitespace
+        $css = preg_replace('/\s+/', ' ', $css);
+        // Remove trailing semicolons before closing braces
+        $css = str_replace(';}', '}', $css);
+
+        return trim($css);
+    }
+
+    private function minifyJs(string $js): string
+    {
+        // Remove single-line comments (but not URLs with //)
+        $js = preg_replace('#(?<!:)//[^\n]*#', '', $js);
+        // Remove multi-line comments
+        $js = preg_replace('!/\*.*?\*/!s', '', $js);
+        // Collapse whitespace around operators and braces
+        $js = preg_replace('/\s*([{}();,=:+\-<>!&|?])\s*/', '$1', $js);
+        // Collapse remaining whitespace runs
+        $js = preg_replace('/\s+/', ' ', $js);
+
+        return trim($js);
     }
 
     private function nonceAttr(): string
