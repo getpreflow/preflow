@@ -296,4 +296,65 @@ final class ComponentEndpointTest extends TestCase
         $this->assertStringContainsString('console.log("component")', $body);
         $this->assertStringContainsString('console.log("inline")', $body);
     }
+
+    public function test_hx_target_other_element_returns_fragment_on_render(): void
+    {
+        $token = $this->tokenService->encode(EndpointTestComponent::class, ['title' => 'Hello']);
+
+        $request = $this->createRequest(
+            'GET',
+            '/--component/render',
+            ['token' => $token],
+            headers: ['HX-Target' => 'some-other-id'],
+        );
+        $response = $this->endpoint->handle($request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = (string) $response->getBody();
+        $this->assertStringContainsString('Hello', $body);
+        // Fragment response must not include the component wrapper div
+        $this->assertStringNotContainsString('id="EndpointTestComponent-', $body);
+    }
+
+    public function test_hx_target_other_element_returns_fragment_on_action(): void
+    {
+        $token = $this->tokenService->encode(
+            EndpointTestComponent::class,
+            ['title' => 'Before'],
+            'refresh',
+        );
+
+        $request = $this->createRequest(
+            'POST',
+            '/--component/action',
+            ['token' => $token],
+            headers: ['HX-Target' => 'step-content'],
+        );
+        $response = $this->endpoint->handle($request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = (string) $response->getBody();
+        $this->assertStringContainsString('Refreshed', $body);
+        // Fragment response must not include the component wrapper div
+        $this->assertStringNotContainsString('id="EndpointTestComponent-', $body);
+    }
+
+    public function test_hx_target_matching_component_id_returns_full_component(): void
+    {
+        $component = $this->makeComponent(EndpointTestComponent::class, ['title' => 'Hello']);
+        $componentId = $component->getComponentId();
+        $token = $this->tokenService->encode(EndpointTestComponent::class, ['title' => 'Hello']);
+
+        $request = $this->createRequest(
+            'GET',
+            '/--component/render',
+            ['token' => $token],
+            headers: ['HX-Target' => $componentId],
+        );
+        $response = $this->endpoint->handle($request);
+
+        $body = (string) $response->getBody();
+        // When HX-Target matches the component's own ID, the full wrapper is returned
+        $this->assertStringContainsString('id="EndpointTestComponent-', $body);
+    }
 }

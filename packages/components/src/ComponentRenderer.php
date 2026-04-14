@@ -64,6 +64,31 @@ final class ComponentRenderer
     }
 
     /**
+     * Render a component fragment after state has already been resolved/mutated
+     * (e.g. after an action dispatch). Skips resolveState() and the wrapper div,
+     * returning inner HTML only.
+     */
+    public function renderResolvedFragment(Component $component): string
+    {
+        try {
+            $start = hrtime(true);
+            $html = $this->renderTemplate($component);
+            if ($this->collector !== null) {
+                $durationMs = (hrtime(true) - $start) / 1_000_000;
+                $this->collector->logComponent(
+                    $component::class,
+                    $component->getComponentId(),
+                    $durationMs,
+                    $component->getProps(),
+                );
+            }
+            return $html;
+        } catch (\Throwable $e) {
+            return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
+        }
+    }
+
+    /**
      * Render a component whose state has already been resolved/mutated
      * (e.g. after an action dispatch). Skips resolveState() so that
      * action side-effects are preserved in the rendered output.

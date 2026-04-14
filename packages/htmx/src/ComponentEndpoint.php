@@ -68,6 +68,11 @@ final class ComponentEndpoint
             $component->authorize($payload->action, $request);
         }
 
+        // Determine if HTMX is targeting a different element (partial swap)
+        $hxTarget = $request->getHeaderLine('HX-Target');
+        $isFragmentRequest = $hxTarget !== ''
+            && $hxTarget !== $component->getComponentId();
+
         // Dispatch action or resolve initial state
         if ($payload->action !== 'render') {
             // Resolve state first so the action operates on correct base state
@@ -75,10 +80,14 @@ final class ComponentEndpoint
             $params = is_array($bodyParams) ? $bodyParams : [];
             $component->handleAction($payload->action, $params);
             // Render without re-calling resolveState so action side-effects are preserved
-            $html = $this->renderer->renderResolved($component);
+            $html = $isFragmentRequest
+                ? $this->renderer->renderResolvedFragment($component)
+                : $this->renderer->renderResolved($component);
         } else {
             // Plain render — resolveState is called inside renderer
-            $html = $this->renderer->render($component);
+            $html = $isFragmentRequest
+                ? $this->renderer->renderFragment($component)
+                : $this->renderer->render($component);
         }
 
         // Append any CSS/JS collected during the component render
