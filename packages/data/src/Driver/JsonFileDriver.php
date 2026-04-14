@@ -15,7 +15,7 @@ final class JsonFileDriver implements StorageDriver
         private readonly string $basePath,
     ) {}
 
-    public function findOne(string $type, string $id): ?array
+    public function findOne(string $type, string|int $id, string $idField = 'uuid'): ?array
     {
         $path = $this->filePath($type, $id);
 
@@ -70,7 +70,7 @@ final class JsonFileDriver implements StorageDriver
         return new ResultSet(array_values($items), $total);
     }
 
-    public function save(string $type, string $id, array $data): void
+    public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void
     {
         $dir = $this->typeDir($type);
 
@@ -83,7 +83,7 @@ final class JsonFileDriver implements StorageDriver
         file_put_contents($path, $json);
     }
 
-    public function delete(string $type, string $id): void
+    public function delete(string $type, string|int $id, string $idField = 'uuid'): void
     {
         $path = $this->filePath($type, $id);
 
@@ -92,7 +92,7 @@ final class JsonFileDriver implements StorageDriver
         }
     }
 
-    public function exists(string $type, string $id): bool
+    public function exists(string $type, string|int $id, string $idField = 'uuid'): bool
     {
         return file_exists($this->filePath($type, $id));
     }
@@ -102,7 +102,7 @@ final class JsonFileDriver implements StorageDriver
         return $this->basePath . '/' . $type;
     }
 
-    private function filePath(string $type, string $id): string
+    private function filePath(string $type, string|int $id): string
     {
         return $this->typeDir($type) . '/' . $id . '.json';
     }

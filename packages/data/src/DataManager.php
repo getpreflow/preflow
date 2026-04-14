@@ -27,12 +27,12 @@ final class DataManager
      * @param class-string<T> $modelClass
      * @return T|null
      */
-    public function find(string $modelClass, string $id): ?Model
+    public function find(string $modelClass, string|int $id): ?Model
     {
         $meta = ModelMetadata::for($modelClass);
         $driver = $this->resolveDriver($meta->storage);
 
-        $data = $driver->findOne($meta->table, $id);
+        $data = $driver->findOne($meta->table, $id, $meta->idField);
 
         if ($data === null) {
             return null;
@@ -69,7 +69,7 @@ final class DataManager
         $data = $model->toArray();
         $id = $data[$meta->idField] ?? throw new \RuntimeException("Model missing ID field [{$meta->idField}].");
 
-        $driver->save($meta->table, $id, $data);
+        $driver->save($meta->table, $id, $data, $meta->idField);
     }
 
     /**
@@ -77,12 +77,12 @@ final class DataManager
      *
      * @param class-string<Model> $modelClass
      */
-    public function delete(string $modelClass, string $id): void
+    public function delete(string $modelClass, string|int $id): void
     {
         $meta = ModelMetadata::for($modelClass);
         $driver = $this->resolveDriver($meta->storage);
 
-        $driver->delete($meta->table, $id);
+        $driver->delete($meta->table, $id, $meta->idField);
     }
 
     /**
@@ -92,7 +92,7 @@ final class DataManager
     {
         $typeDef = $this->requireTypeRegistry()->get($type);
         $driver = $this->resolveDriver($typeDef->storage);
-        $data = $driver->findOne($typeDef->table, $id);
+        $data = $driver->findOne($typeDef->table, $id, $typeDef->idField);
 
         if ($data === null) {
             return null;
@@ -125,17 +125,17 @@ final class DataManager
             throw new \RuntimeException("DynamicRecord must have an ID ({$typeDef->idField}) before saving.");
         }
 
-        $driver->save($typeDef->table, $id, $record->toArray());
+        $driver->save($typeDef->table, $id, $record->toArray(), $typeDef->idField);
     }
 
     /**
      * Delete a dynamic record by type and ID.
      */
-    public function deleteType(string $type, string $id): void
+    public function deleteType(string $type, string|int $id): void
     {
         $typeDef = $this->requireTypeRegistry()->get($type);
         $driver = $this->resolveDriver($typeDef->storage);
-        $driver->delete($typeDef->table, $id);
+        $driver->delete($typeDef->table, $id, $typeDef->idField);
     }
 
     private function requireTypeRegistry(): TypeRegistry

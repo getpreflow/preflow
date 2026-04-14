@@ -27,10 +27,11 @@ abstract class PdoDriver implements StorageDriver
         }
     }
 
-    public function findOne(string $type, string $id): ?array
+    public function findOne(string $type, string|int $id, string $idField = 'uuid'): ?array
     {
         $table = $this->dialect->quoteIdentifier($type);
-        $sql = "SELECT * FROM {$table} WHERE uuid = ? LIMIT 1";
+        $col = $this->dialect->quoteIdentifier($idField);
+        $sql = "SELECT * FROM {$table} WHERE {$col} = ? LIMIT 1";
         $stmt = $this->pdo->prepare($sql);
         $this->executeWithLogging($stmt, $sql, [$id]);
         $result = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -55,33 +56,35 @@ abstract class PdoDriver implements StorageDriver
         return new ResultSet($items, $total);
     }
 
-    public function save(string $type, string $id, array $data): void
+    public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void
     {
-        if (!isset($data['uuid'])) {
-            $data['uuid'] = $id;
+        if (!isset($data[$idField])) {
+            $data[$idField] = $id;
         }
 
         // Filter out null values
         $data = array_filter($data, fn ($v) => $v !== null);
 
         $columns = array_keys($data);
-        $sql = $this->dialect->upsertSql($type, $columns, 'uuid');
+        $sql = $this->dialect->upsertSql($type, $columns, $idField);
         $stmt = $this->pdo->prepare($sql);
         $this->executeWithLogging($stmt, $sql, array_values($data));
     }
 
-    public function delete(string $type, string $id): void
+    public function delete(string $type, string|int $id, string $idField = 'uuid'): void
     {
         $table = $this->dialect->quoteIdentifier($type);
-        $sql = "DELETE FROM {$table} WHERE uuid = ?";
+        $col = $this->dialect->quoteIdentifier($idField);
+        $sql = "DELETE FROM {$table} WHERE {$col} = ?";
         $stmt = $this->pdo->prepare($sql);
         $this->executeWithLogging($stmt, $sql, [$id]);
     }
 
-    public function exists(string $type, string $id): bool
+    public function exists(string $type, string|int $id, string $idField = 'uuid'): bool
     {
         $table = $this->dialect->quoteIdentifier($type);
-        $sql = "SELECT 1 FROM {$table} WHERE uuid = ? LIMIT 1";
+        $col = $this->dialect->quoteIdentifier($idField);
+        $sql = "SELECT 1 FROM {$table} WHERE {$col} = ? LIMIT 1";
         $stmt = $this->pdo->prepare($sql);
         $this->executeWithLogging($stmt, $sql, [$id]);
 

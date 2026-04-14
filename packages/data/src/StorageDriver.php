@@ -9,16 +9,16 @@ interface StorageDriver
     /**
      * @return array<string, mixed>|null
      */
-    public function findOne(string $type, string $id): ?array;
+    public function findOne(string $type, string|int $id, string $idField = 'uuid'): ?array;
 
     public function findMany(string $type, Query $query): ResultSet;
 
     /**
      * @param array<string, mixed> $data
      */
-    public function save(string $type, string $id, array $data): void;
+    public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void;
 
-    public function delete(string $type, string $id): void;
+    public function delete(string $type, string|int $id, string $idField = 'uuid'): void;
 
-    public function exists(string $type, string $id): bool;
+    public function exists(string $type, string|int $id, string $idField = 'uuid'): bool;
 }
