@@ -16,7 +16,7 @@ Requires `preflow/core` and `preflow/data`.
 - Session management with CSRF protection (both in `preflow/core`)
 - Password hashing via `password_hash()` / `password_verify()` with transparent rehash support
 - PSR-15 middleware for route-level auth (`AuthMiddleware`) and guest-only pages (`GuestMiddleware`)
-- Template functions: `auth_user()`, `auth_check()`, `csrf_token()`, `flash()`
+- Template functions: `auth_user()`, `auth_check()`, `csrf_token()`, `csrf_field()`, `flash()`
 - Auto-discovered by `Application::boot()` when `config/auth.php` exists
 
 ## Configuration
@@ -161,7 +161,7 @@ final class DashboardController
 {% if auth_check() %}
     Welcome, {{ auth_user().email }}
     <form method="post" action="/logout">
-        {{ csrf_token()|raw }}
+        {{ csrf_field() }}
         <button type="submit">Logout</button>
     </form>
 {% endif %}
@@ -171,6 +171,25 @@ final class DashboardController
     <p>{{ error }}</p>
 {% endif %}
 ```
+
+### CSRF helpers
+
+> **Breaking change in v0.11:** `csrf_token()` now returns the raw token string. Use `csrf_field()` for forms.
+
+| Function | Returns |
+|---|---|
+| `csrf_token()` | Raw token string — useful for `fetch()` headers or meta tags |
+| `csrf_field()` | Complete `<input type="hidden" name="_token" value="...">` element |
+
+```twig
+{# In a form #}
+{{ csrf_field() }}
+
+{# In a fetch() call #}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+```
+
+Any template that previously used `{{ csrf_token()|raw }}` must be updated to `{{ csrf_field() }}`.
 
 ## Custom guards
 

@@ -179,3 +179,13 @@ $response = $endpoint->handle($request);
 ```twig
 {{ hd.assetTag() }}
 ```
+
+### Asset injection in fragment responses
+
+`ComponentEndpoint` automatically appends any CSS and JS collected during component rendering to HTMX fragment responses. Styles and scripts defined inside a component with `{% apply css %}` / `{% apply js %}` are included even when the response is a partial swap — no separate asset pipeline step needed.
+
+### Fragment rendering
+
+When the `HX-Target` header does not match the component's own ID, `ComponentEndpoint` returns a fragment response via `renderFragment()` / `renderResolvedFragment()` rather than the full wrapped component. This lets a single component handle both full-page renders and targeted partial swaps.
+
+`ComponentRenderer::renderResolvedFragment()` skips `resolveState()` and renders inner HTML only — used after an action has already mutated state.

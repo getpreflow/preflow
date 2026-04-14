@@ -86,6 +86,25 @@ Method paths are appended to the class prefix: `#[Get('/{id}')]` on `#[Route('/a
 
 `#[Middleware]` is repeatable on both class and method. Method middleware merges on top of class middleware.
 
+### Catch-all params in attribute routes
+
+Append `...` inside the braces to create a catch-all segment that matches slashes. Useful for nested path parameters in controllers.
+
+```php
+#[Route('/files')]
+final class FileController
+{
+    #[Get('/{path...}')]
+    public function show(ServerRequestInterface $request): ResponseInterface
+    {
+        $path = $request->getAttribute('path'); // e.g. 'images/2026/photo.jpg'
+        // ...
+    }
+}
+```
+
+`{path...}` compiles to a `.+` regex, matching one or more characters including `/`.
+
 ## Router setup
 
 ```php

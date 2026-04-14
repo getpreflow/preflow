@@ -156,6 +156,60 @@ $response = $app->handle($request);
 
 `boot()` selects the error renderer based on `app.debug`, boots all providers, and wires the kernel. `handle()` runs the middleware pipeline and dispatches to the matched route.
 
+### JsonBodyMiddleware
+
+Automatically decodes `application/json` request bodies into `getParsedBody()`. No manual `json_decode` needed in controllers.
+
+```php
+use Preflow\Core\Http\Middleware\JsonBodyMiddleware;
+
+$app->addMiddleware(new JsonBodyMiddleware());
+
+// In a controller:
+$data = $request->getParsedBody(); // already a decoded array
+```
+
+### Flash messages
+
+`FlashType` enum covers the four standard severity levels. Helper functions write and read flash messages via the session.
+
+```php
+use Preflow\Core\Flash\FlashType;
+
+flashSuccess('Post saved.');
+flashError('Validation failed.');
+flashInfo('Changes are pending review.');
+flashWarning('Disk space is low.');
+
+// In a controller or template resolver:
+$flashes = getFlashes(); // ['success' => ['Post saved.'], ...]
+```
+
+Template helpers `flash('success')` and `flash('error')` read a single message for a given type.
+
+### Request context in page templates
+
+Page templates rendered through the Component kernel receive a `request` variable with commonly needed values.
+
+```twig
+{{ request.path }}       {# /blog/hello-world #}
+{{ request.method }}     {# GET #}
+{{ request.isHtmx }}     {# true when HX-Request header is present #}
+{{ request.query.page }} {# query string parameter #}
+```
+
+### config/middleware.php
+
+Place a `config/middleware.php` file in your application root and return an array of middleware class names. The kernel loads it automatically — no manual `$app->addMiddleware()` calls needed for global middleware.
+
+```php
+// config/middleware.php
+return [
+    Preflow\Core\Http\Middleware\JsonBodyMiddleware::class,
+    App\Http\Middleware\LocaleMiddleware::class,
+];
+```
+
 ### HTTP exceptions
 
 Throw these anywhere in the request lifecycle — `ErrorHandler` converts them to the correct status code automatically.

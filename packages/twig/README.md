@@ -88,6 +88,25 @@ JS position argument: `'body'` (default), `'head'`, or `'inline'`.
 </html>
 ```
 
+## asset_url()
+
+The `asset_url()` template function generates a URL to a public asset. Register it via your `AppServiceProvider` to point at the correct public path.
+
+```twig
+<link rel="stylesheet" href="{{ asset_url('css/app.css') }}">
+<img src="{{ asset_url('images/logo.png') }}" alt="Logo">
+```
+
+Register in your service provider:
+
+```php
+$engine->addFunction(new TemplateFunctionDefinition(
+    name: 'asset_url',
+    callable: fn (string $path) => '/public/' . ltrim($path, '/'),
+    isSafe: false,
+));
+```
+
 ## Engine configuration
 
 Set `APP_ENGINE=twig` in your `.env` (this is the default). Preflow's `Application` will automatically create a `TwigEngine` and register all extension providers.

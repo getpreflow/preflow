@@ -36,10 +36,13 @@ Public properties are automatically exposed as Twig template variables alongside
 ### `ComponentRenderer`
 
 ```php
-$renderer->render(Component $component): string          // full lifecycle + wrapper
-$renderer->renderFragment(Component $component): string  // inner HTML only (for HTMX partials)
-$renderer->renderResolved(Component $component): string  // skip resolveState (after action dispatch)
+$renderer->render(Component $component): string                  // full lifecycle + wrapper
+$renderer->renderFragment(Component $component): string          // inner HTML only (for HTMX partials)
+$renderer->renderResolved(Component $component): string          // skip resolveState (after action dispatch)
+$renderer->renderResolvedFragment(Component $component): string  // skip resolveState, inner HTML only
 ```
+
+`renderResolvedFragment()` combines the two partial-render flags: it skips `resolveState()` (state was already mutated by an action) and returns inner HTML without the wrapper element. Used by `ComponentEndpoint` when the HTMX target does not match the component's own ID.
 
 ### `ComponentExtension` (Twig)
 

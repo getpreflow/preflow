@@ -21,7 +21,7 @@ Models are annotated with PHP attributes. `DataManager` is the single entry poin
 | Attribute | Target | Description |
 |---|---|---|
 | `#[Entity(table: 'posts', storage: 'sqlite')]` | Class | Maps model to a table/collection and a named driver. `storage` defaults to `'default'`. |
-| `#[Id]` | Property | Marks the primary key field. |
+| `#[Id]` | Property | Marks the primary key field. Works on any property — use `string $uuid` for UUIDs or `int $id` for auto-increment. |
 | `#[Field(searchable: true)]` | Property | Marks a field; `searchable: true` includes it in full-text search. |
 | `#[Timestamps]` | Class | Adds `created_at` / `updated_at` handling. |
 
@@ -37,9 +37,15 @@ $model->toArray(): array          // export public properties
 ```php
 $dm->find(Post::class, $id): ?Post
 $dm->query(Post::class): QueryBuilder<Post>
-$dm->save(Model $model): void
-$dm->delete(Post::class, $id): void
+$dm->save(Model $model): void           // INSERT when ID is empty, UPDATE otherwise
+$dm->insert(Model $model): void         // explicit INSERT; reads back lastInsertId()
+$dm->update(Model $model): void         // explicit UPDATE
+$dm->delete(Post::class, $id): void     // delete by class + ID
+$dm->delete($model): void               // delete by model instance
+$dm->raw(string $sql, array $bindings, string $storage): array  // raw SQL query
 ```
+
+`save()` detects an empty ID field and automatically issues an INSERT, then reads back `lastInsertId()` into the model — no need to pre-generate IDs for auto-increment tables.
 
 ### `QueryBuilder`
 
@@ -77,6 +83,39 @@ abstract class Migration
 `Schema` methods: `create(string $table, callable $callback)`, `drop(string $table)`.
 
 `Table` builder: `uuid`, `string`, `text`, `integer`, `boolean`, `json`, `timestamps`, `nullable()`, `primary()`, `index()`.
+
+### Auto-increment IDs
+
+Place `#[Id]` on an `int` property and leave it at `0` (or unset). `save()` / `insert()` will issue an INSERT and read the generated ID back via `lastInsertId()`.
+
+```php
+#[Entity(table: 'comments', storage: 'sqlite')]
+final class Comment extends Model
+{
+    #[Id]
+    public int $id = 0;
+
+    #[Field]
+    public string $body = '';
+}
+
+$comment = new Comment();
+$comment->body = 'Great post!';
+$dm->save($comment);
+echo $comment->id; // e.g. 42 — populated after insert
+```
+
+### Raw SQL
+
+Use `raw()` to run a query that the fluent builder cannot express. Results are returned as plain arrays.
+
+```php
+$rows = $dm->raw(
+    'SELECT p.*, COUNT(c.id) AS comment_count FROM posts p LEFT JOIN comments c ON c.post_id = p.id GROUP BY p.id',
+    [],
+    'sqlite',
+);
+```
 
 ## Usage
 

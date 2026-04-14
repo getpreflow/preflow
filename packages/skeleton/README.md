@@ -147,6 +147,17 @@ $posts = $dm->query(Post::class)
 
 Components can define actions that handle HTMX requests. The ExampleCard counter persists in the session across page reloads — no JavaScript needed.
 
+### Asset helpers
+
+`AppServiceProvider` registers `asset_url()` and `img_url()` template functions. Both resolve paths relative to the `public/` directory.
+
+```twig
+<link rel="stylesheet" href="{{ asset_url('css/app.css') }}">
+<img src="{{ img_url('logo.png') }}" alt="Logo">
+```
+
+`img_url()` is a convenience wrapper that prepends `images/` automatically. Both functions are commented-out examples in `AppServiceProvider` — uncomment and adjust the base path for your deployment.
+
 ## Configuration
 
 | File | Purpose |

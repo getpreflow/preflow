@@ -101,3 +101,21 @@ $assets->getNonce(); // base64 random, stable within one request
 Every `<style>` and `<script>` tag rendered by `AssetCollector` carries the same `nonce` attribute. Use `$assets->getNonce()` to add `'nonce-{value}'` to your `Content-Security-Policy` header.
 
 Identical blocks (same xxh3 hash) are deduplicated automatically — safe to include the same component multiple times.
+
+### Forked collectors and inspection
+
+`fork()` creates an isolated child `AssetCollector` that shares the same nonce but collects assets independently. Use it when rendering a sub-component that should not pollute the parent collector (e.g. fragment responses).
+
+```php
+$child = $assets->fork();
+$html  = $componentRenderer->renderFragment($component, $child);
+// $assets is untouched; $child holds only the fragment's CSS/JS
+```
+
+`hasCss()` and `hasJs()` let you check before rendering — useful to decide whether to append inline styles to a fragment response.
+
+```php
+if ($child->hasCss() || $child->hasJs()) {
+    $html .= $child->renderHead() . $child->renderAssets();
+}
+```
