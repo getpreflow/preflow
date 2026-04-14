@@ -23,4 +23,10 @@ interface StorageDriver
     public function exists(string $type, string|int $id, string $idField = 'uuid'): bool;
 
     public function lastInsertId(): string|int;
+
+    /**
+     * @param array<int|string, mixed> $bindings
+     * @return array<int, array<string, mixed>>
+     */
+    public function rawQuery(string $sql, array $bindings = []): array;
 }

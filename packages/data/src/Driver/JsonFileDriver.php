@@ -102,6 +102,11 @@ final class JsonFileDriver implements StorageDriver
         return '';
     }
 
+    public function rawQuery(string $sql, array $bindings = []): array
+    {
+        throw new \RuntimeException('Raw SQL queries are not supported by the JSON file driver.');
+    }
+
     private function typeDir(string $type): string
     {
         return $this->basePath . '/' . $type;

@@ -60,6 +60,22 @@ final class DataManager
     }
 
     /**
+     * Execute a raw SQL query and return results.
+     * Use for JOINs, subqueries, aggregates, and complex WHERE clauses
+     * that QueryBuilder can't express.
+     *
+     * @param string $sql Raw SQL query
+     * @param array<int|string, mixed> $bindings Parameter bindings
+     * @param string $storage Driver name (defaults to 'default')
+     * @return array<int, array<string, mixed>> Array of associative arrays
+     */
+    public function raw(string $sql, array $bindings = [], string $storage = 'default'): array
+    {
+        $driver = $this->resolveDriver($storage);
+        return $driver->rawQuery($sql, $bindings);
+    }
+
+    /**
      * Save a model.
      */
     public function save(Model $model): void

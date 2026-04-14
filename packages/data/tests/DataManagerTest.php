@@ -263,6 +263,37 @@ final class DataManagerTest extends TestCase
         $this->manager->update($counter);
     }
 
+    public function test_raw_query(): void
+    {
+        $this->saveItem('r-1', 'Raw Alpha', 'active');
+        $this->saveItem('r-2', 'Raw Beta', 'active');
+        $this->saveItem('r-3', 'Raw Gamma', 'draft');
+
+        // COUNT aggregate — raw SQL that QueryBuilder can't express
+        $rows = $this->manager->raw(
+            'SELECT status, COUNT(*) AS cnt FROM items GROUP BY status ORDER BY status',
+            [],
+            'sqlite',
+        );
+
+        $this->assertCount(2, $rows);
+        $byStatus = array_column($rows, 'cnt', 'status');
+        $this->assertSame('2', (string) $byStatus['active']);
+        $this->assertSame('1', (string) $byStatus['draft']);
+
+        // Parameterised WHERE — returns only matching rows
+        $active = $this->manager->raw(
+            'SELECT uuid, name FROM items WHERE status = ?',
+            ['active'],
+            'sqlite',
+        );
+
+        $this->assertCount(2, $active);
+        $names = array_column($active, 'name');
+        sort($names);
+        $this->assertSame(['Raw Alpha', 'Raw Beta'], $names);
+    }
+
     private function saveItem(string $id, string $name, string $status = 'draft'): void
     {
         $item = new TestItem();

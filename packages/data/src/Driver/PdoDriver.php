@@ -108,4 +108,11 @@ abstract class PdoDriver implements StorageDriver
 
         return $stmt->fetchColumn() !== false;
     }
+
+    public function rawQuery(string $sql, array $bindings = []): array
+    {
+        $stmt = $this->pdo->prepare($sql);
+        $this->executeWithLogging($stmt, $sql, $bindings);
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
 }
