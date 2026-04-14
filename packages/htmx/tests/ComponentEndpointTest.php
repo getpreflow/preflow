@@ -19,6 +19,9 @@ use Preflow\Htmx\ComponentToken;
 use Preflow\Htmx\Guarded;
 use Preflow\Htmx\HtmxDriver;
 use Preflow\Htmx\ResponseHeaders;
+use Preflow\View\AssetCollector;
+use Preflow\View\JsPosition;
+use Preflow\View\NonceGenerator;
 use Preflow\View\TemplateEngineInterface;
 
 class EndpointTestComponent extends Component
@@ -62,6 +65,33 @@ class EndpointFakeEngine implements TemplateEngineInterface
 {
     public function render(string $template, array $context = []): string
     {
+        return '<p>' . ($context['title'] ?? 'no title') . '</p>';
+    }
+
+    public function exists(string $template): bool
+    {
+        return true;
+    }
+
+    public function addFunction(\Preflow\View\TemplateFunctionDefinition $function): void {}
+
+    public function addGlobal(string $name, mixed $value): void {}
+
+    public function getTemplateExtension(): string
+    {
+        return 'twig';
+    }
+}
+
+class EndpointFakeEngineWithAssets implements TemplateEngineInterface
+{
+    public function __construct(private readonly AssetCollector $assetCollector) {}
+
+    public function render(string $template, array $context = []): string
+    {
+        $this->assetCollector->addCss('.component { color: red; }');
+        $this->assetCollector->addJs('console.log("component");', JsPosition::Body);
+        $this->assetCollector->addJs('console.log("inline");', JsPosition::Inline);
         return '<p>' . ($context['title'] ?? 'no title') . '</p>';
     }
 
@@ -220,5 +250,50 @@ final class ComponentEndpointTest extends TestCase
 
         // Response headers from the driver should be in the response
         $this->assertSame(200, $response->getStatusCode());
+    }
+
+    public function test_htmx_response_includes_collected_css(): void
+    {
+        $assetCollector = new AssetCollector(new NonceGenerator());
+        $engine = new EndpointFakeEngineWithAssets($assetCollector);
+        $renderer = new ComponentRenderer($engine, new ErrorBoundary(debug: DebugLevel::On));
+        $endpoint = new ComponentEndpoint(
+            token: $this->tokenService,
+            renderer: $renderer,
+            driver: new HtmxDriver(new ResponseHeaders()),
+            componentFactory: fn (string $class, array $props) => $this->makeComponent($class, $props),
+            assetCollector: $assetCollector,
+        );
+
+        $token = $this->tokenService->encode(EndpointTestComponent::class, ['title' => 'Hello']);
+        $request = $this->createRequest('GET', '/--component/render', ['token' => $token]);
+        $response = $endpoint->handle($request);
+
+        $body = (string) $response->getBody();
+        $this->assertStringContainsString('<style', $body);
+        $this->assertStringContainsString('.component { color: red; }', $body);
+    }
+
+    public function test_htmx_response_includes_collected_js(): void
+    {
+        $assetCollector = new AssetCollector(new NonceGenerator());
+        $engine = new EndpointFakeEngineWithAssets($assetCollector);
+        $renderer = new ComponentRenderer($engine, new ErrorBoundary(debug: DebugLevel::On));
+        $endpoint = new ComponentEndpoint(
+            token: $this->tokenService,
+            renderer: $renderer,
+            driver: new HtmxDriver(new ResponseHeaders()),
+            componentFactory: fn (string $class, array $props) => $this->makeComponent($class, $props),
+            assetCollector: $assetCollector,
+        );
+
+        $token = $this->tokenService->encode(EndpointTestComponent::class, ['title' => 'Hello']);
+        $request = $this->createRequest('GET', '/--component/render', ['token' => $token]);
+        $response = $endpoint->handle($request);
+
+        $body = (string) $response->getBody();
+        $this->assertStringContainsString('<script', $body);
+        $this->assertStringContainsString('console.log("component")', $body);
+        $this->assertStringContainsString('console.log("inline")', $body);
     }
 }

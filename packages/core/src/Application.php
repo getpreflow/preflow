@@ -421,6 +421,7 @@ final class Application
                     $component->setProps($props);
                     return $component;
                 },
+                assetCollector: $this->container->get(\Preflow\View\AssetCollector::class),
             );
             $this->container->instance('preflow.component_endpoint', $endpoint);
             $this->container->instance(\Preflow\Htmx\ComponentEndpoint::class, $endpoint);

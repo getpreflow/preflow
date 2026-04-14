@@ -10,6 +10,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Preflow\Components\Component;
 use Preflow\Components\ComponentRenderer;
 use Preflow\Core\Exceptions\SecurityException;
+use Preflow\View\AssetCollector;
 
 final class ComponentEndpoint
 {
@@ -24,6 +25,7 @@ final class ComponentEndpoint
         private readonly ComponentRenderer $renderer,
         private readonly HypermediaDriver $driver,
         callable $componentFactory,
+        private readonly ?AssetCollector $assetCollector = null,
     ) {
         $this->componentFactory = $componentFactory;
     }
@@ -77,6 +79,21 @@ final class ComponentEndpoint
         } else {
             // Plain render — resolveState is called inside renderer
             $html = $this->renderer->render($component);
+        }
+
+        // Append any CSS/JS collected during the component render
+        if ($this->assetCollector !== null) {
+            $fragmentAssets = '';
+            if ($this->assetCollector->hasCss()) {
+                $fragmentAssets .= $this->assetCollector->renderCss();
+            }
+            if ($this->assetCollector->hasJs()) {
+                $fragmentAssets .= $this->assetCollector->renderJsBody();
+                $fragmentAssets .= $this->assetCollector->renderJsInline();
+            }
+            if ($fragmentAssets !== '') {
+                $html .= $fragmentAssets;
+            }
         }
 
         // Build response with driver headers

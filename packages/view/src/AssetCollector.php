@@ -142,6 +142,16 @@ final class AssetCollector
         return $this->nonceGenerator->get();
     }
 
+    public function hasCss(): bool
+    {
+        return $this->cssRegistry !== [];
+    }
+
+    public function hasJs(): bool
+    {
+        return $this->jsHead !== [] || $this->jsBody !== [] || $this->jsInline !== [];
+    }
+
     // -----------------------------------------------------------------------
     // Stats — used by DebugCollector
     // -----------------------------------------------------------------------
