@@ -41,6 +41,16 @@ class TestSetting extends Model
     public string $value = '';
 }
 
+#[Entity(table: 'counters', storage: 'sqlite')]
+class TestCounter extends Model
+{
+    #[Id]
+    public int $id = 0;
+
+    #[Field]
+    public string $label = '';
+}
+
 final class DataManagerTest extends TestCase
 {
     private \PDO $pdo;
@@ -53,6 +63,7 @@ final class DataManagerTest extends TestCase
 
         $this->pdo = new \PDO('sqlite::memory:');
         $this->pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, name TEXT, status TEXT DEFAULT "draft")');
+        $this->pdo->exec('CREATE TABLE counters (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT)');
 
         $this->jsonDir = sys_get_temp_dir() . '/preflow_dm_test_' . uniqid();
         mkdir($this->jsonDir, 0755, true);
@@ -193,6 +204,63 @@ final class DataManagerTest extends TestCase
 
         $this->assertSame('SQLite Item', $foundItem->name);
         $this->assertSame('Preflow', $foundSetting->value);
+    }
+
+    public function test_insert_assigns_auto_increment_id(): void
+    {
+        $counter = new TestCounter();
+        $counter->label = 'First';
+
+        $this->assertSame(0, $counter->id);
+
+        $this->manager->insert($counter);
+
+        $this->assertGreaterThan(0, $counter->id);
+    }
+
+    public function test_insert_creates_separate_records(): void
+    {
+        $a = new TestCounter();
+        $a->label = 'A';
+
+        $b = new TestCounter();
+        $b->label = 'B';
+
+        $this->manager->insert($a);
+        $this->manager->insert($b);
+
+        $this->assertGreaterThan(0, $a->id);
+        $this->assertGreaterThan(0, $b->id);
+        $this->assertNotSame($a->id, $b->id);
+    }
+
+    public function test_update_existing_model(): void
+    {
+        $item = new TestItem();
+        $item->uuid = 'upd-1';
+        $item->name = 'Original';
+        $item->status = 'draft';
+        $this->manager->save($item);
+
+        $item->name = 'Updated';
+        $item->status = 'active';
+        $this->manager->update($item);
+
+        $found = $this->manager->find(TestItem::class, 'upd-1');
+
+        $this->assertNotNull($found);
+        $this->assertSame('Updated', $found->name);
+        $this->assertSame('active', $found->status);
+    }
+
+    public function test_update_throws_without_id(): void
+    {
+        $this->expectException(\RuntimeException::class);
+
+        $counter = new TestCounter();
+        $counter->label = 'No ID yet';
+
+        $this->manager->update($counter);
     }
 
     private function saveItem(string $id, string $name, string $status = 'draft'): void

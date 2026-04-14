@@ -81,6 +81,43 @@ final class DataManager
     }
 
     /**
+     * Insert a new model. Sets the auto-generated ID on the model.
+     * Use this when you explicitly want INSERT behavior (not upsert).
+     */
+    public function insert(Model $model): void
+    {
+        $meta = ModelMetadata::for($model::class);
+        $driver = $this->resolveDriver($meta->storage);
+        $data = $model->toArray();
+
+        // Force INSERT by passing empty ID (PdoDriver strips the ID field and does plain INSERT)
+        $driver->save($meta->table, 0, $data, $meta->idField);
+
+        $newId = $driver->lastInsertId();
+        if ($newId !== '' && $newId !== 0) {
+            $model->{$meta->idField} = is_int($newId) ? $newId : (is_numeric($newId) ? (int) $newId : $newId);
+        }
+    }
+
+    /**
+     * Update an existing model. Throws if ID is empty.
+     * Use this when you explicitly want UPDATE behavior (not upsert).
+     */
+    public function update(Model $model): void
+    {
+        $meta = ModelMetadata::for($model::class);
+        $driver = $this->resolveDriver($meta->storage);
+        $data = $model->toArray();
+        $id = $data[$meta->idField] ?? null;
+
+        if ($id === null || $id === '' || $id === 0 || $id === '0') {
+            throw new \RuntimeException("Cannot update model without an ID. Use insert() for new records.");
+        }
+
+        $driver->save($meta->table, $id, $data, $meta->idField);
+    }
+
+    /**
      * Delete a model by class+ID or by model instance.
      *
      * @param class-string<Model>|Model $modelClassOrInstance
