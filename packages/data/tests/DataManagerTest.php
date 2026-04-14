@@ -149,6 +149,29 @@ final class DataManagerTest extends TestCase
         $this->assertNull($this->manager->find(TestItem::class, '1'));
     }
 
+    public function test_delete_by_class_and_id(): void
+    {
+        $this->saveItem('99', 'ByClassAndId');
+
+        $this->manager->delete(TestItem::class, '99');
+
+        $this->assertNull($this->manager->find(TestItem::class, '99'));
+    }
+
+    public function test_delete_by_model_instance(): void
+    {
+        $item = new TestItem();
+        $item->uuid = 'inst-1';
+        $item->name = 'ByInstance';
+        $this->manager->save($item);
+
+        $this->assertNotNull($this->manager->find(TestItem::class, 'inst-1'));
+
+        $this->manager->delete($item);
+
+        $this->assertNull($this->manager->find(TestItem::class, 'inst-1'));
+    }
+
     public function test_multi_storage(): void
     {
         // Save to sqlite

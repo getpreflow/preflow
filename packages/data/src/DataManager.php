@@ -81,15 +81,27 @@ final class DataManager
     }
 
     /**
-     * Delete a model by class and ID.
+     * Delete a model by class+ID or by model instance.
      *
-     * @param class-string<Model> $modelClass
+     * @param class-string<Model>|Model $modelClassOrInstance
      */
-    public function delete(string $modelClass, string|int $id): void
+    public function delete(string|Model $modelClassOrInstance, string|int|null $id = null): void
     {
-        $meta = ModelMetadata::for($modelClass);
-        $driver = $this->resolveDriver($meta->storage);
+        if ($modelClassOrInstance instanceof Model) {
+            $meta = ModelMetadata::for($modelClassOrInstance::class);
+            $driver = $this->resolveDriver($meta->storage);
+            $data = $modelClassOrInstance->toArray();
+            $modelId = $data[$meta->idField] ?? throw new \RuntimeException("Model missing ID field [{$meta->idField}].");
+            $driver->delete($meta->table, $modelId, $meta->idField);
+            return;
+        }
 
+        // Original path: class + ID
+        if ($id === null) {
+            throw new \RuntimeException('ID is required when deleting by class name.');
+        }
+        $meta = ModelMetadata::for($modelClassOrInstance);
+        $driver = $this->resolveDriver($meta->storage);
         $driver->delete($meta->table, $id, $meta->idField);
     }
 
