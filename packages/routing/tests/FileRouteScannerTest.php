@@ -156,6 +156,18 @@ final class FileRouteScannerTest extends TestCase
         $this->assertCount(1, $entries);
     }
 
+    public function test_dynamic_directory_preserves_filesystem_brackets_in_handler(): void
+    {
+        $this->createFile('admin/games/[slug]/flow.twig');
+
+        $scanner = new FileRouteScanner($this->pagesDir);
+        $entries = $scanner->scan();
+
+        $this->assertCount(1, $entries);
+        $this->assertSame('/admin/games/{slug}/flow', $entries[0]->pattern);
+        $this->assertSame('admin/games/[slug]/flow.twig', $entries[0]->handler);
+    }
+
     public function test_multiple_routes_discovered(): void
     {
         $this->createFile('index.twig');

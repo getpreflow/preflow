@@ -23,7 +23,7 @@ final class FileRouteScanner
         }
 
         $entries = [];
-        $this->scanDirectory($this->pagesDir, '', $entries);
+        $this->scanDirectory($this->pagesDir, '', '', $entries);
 
         // Sort: static routes before dynamic, catch-all last
         usort($entries, function (RouteEntry $a, RouteEntry $b) {
@@ -44,7 +44,7 @@ final class FileRouteScanner
     /**
      * @param RouteEntry[] $entries
      */
-    private function scanDirectory(string $dir, string $prefix, array &$entries): void
+    private function scanDirectory(string $dir, string $urlPrefix, string $filePrefix, array &$entries): void
     {
         $items = scandir($dir);
         if ($items === false) {
@@ -59,8 +59,8 @@ final class FileRouteScanner
             $fullPath = $dir . '/' . $item;
 
             if (is_dir($fullPath)) {
-                $segment = $this->convertSegment($item);
-                $this->scanDirectory($fullPath, $prefix . '/' . $segment, $entries);
+                $urlSegment = $this->convertSegment($item);
+                $this->scanDirectory($fullPath, $urlPrefix . '/' . $urlSegment, $filePrefix . '/' . $item, $entries);
                 continue;
             }
 
@@ -75,16 +75,16 @@ final class FileRouteScanner
             }
 
             $name = substr($item, 0, -(strlen($this->extension) + 1));
-            $relativePath = ltrim($prefix . '/' . $item, '/');
+            $relativePath = ltrim($filePrefix . '/' . $item, '/');
 
             // Check for catch-all
             $isCatchAll = str_starts_with($name, '[...');
 
             if ($name === 'index') {
-                $pattern = $prefix === '' ? '/' : $prefix;
+                $pattern = $urlPrefix === '' ? '/' : $urlPrefix;
             } else {
                 $converted = $this->convertSegment($name);
-                $pattern = $prefix . '/' . $converted;
+                $pattern = $urlPrefix . '/' . $converted;
             }
 
             // Extract param names and build regex

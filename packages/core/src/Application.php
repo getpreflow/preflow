@@ -825,9 +825,7 @@ final class Application
         $this->componentRenderer = function (Route $route, ServerRequestInterface $request) use ($container): ResponseInterface {
             if ($container->has(\Preflow\View\TemplateEngineInterface::class)) {
                 $engine = $container->get(\Preflow\View\TemplateEngineInterface::class);
-                // Convert URL-style {param} back to filesystem [param] in template path
-                $templatePath = preg_replace('/\{(\w+)\}/', '[$1]', $route->handler);
-                $html = $engine->render($templatePath, [
+                $html = $engine->render($route->handler, [
                     'route' => (object) $route->parameters,
                     'request' => (object) [
                         'path' => $request->getUri()->getPath(),
