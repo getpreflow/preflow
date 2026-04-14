@@ -66,7 +66,8 @@ final class AttributeRouteScanner
 
             // Extract params and build regex
             $paramNames = [];
-            $regex = $this->buildRegex($pattern, $paramNames);
+            $isCatchAll = false;
+            $regex = $this->buildRegex($pattern, $paramNames, $isCatchAll);
 
             $entries[] = new RouteEntry(
                 pattern: $pattern,
@@ -76,6 +77,7 @@ final class AttributeRouteScanner
                 middleware: $methodMiddleware,
                 paramNames: $paramNames,
                 regex: $regex,
+                isCatchAll: $isCatchAll,
             );
         }
 
@@ -85,12 +87,15 @@ final class AttributeRouteScanner
     /**
      * @param string[] $paramNames
      */
-    private function buildRegex(string $pattern, array &$paramNames): string
+    private function buildRegex(string $pattern, array &$paramNames, bool &$isCatchAll): string
     {
-        $regex = preg_replace_callback('/\{(\w+)\}/', function (array $matches) use (&$paramNames) {
-            $name = $matches[1];
-            $paramNames[] = $name;
-            return '(?P<' . $name . '>[^/]+)';
+        $regex = preg_replace_callback('/\{(\w+)(\.{3})?\}/', function (array $m) use (&$paramNames, &$isCatchAll) {
+            $paramNames[] = $m[1];
+            if (isset($m[2]) && $m[2] === '...') {
+                $isCatchAll = true;
+                return '(?P<' . $m[1] . '>.+)';
+            }
+            return '(?P<' . $m[1] . '>[^/]+)';
         }, $pattern);
 
         return '#^' . $regex . '$#';

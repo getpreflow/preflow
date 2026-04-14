@@ -42,6 +42,13 @@ class NoRouteController
     public function index(): void {}
 }
 
+#[Route('/img')]
+class CatchAllController
+{
+    #[Get('/{preset}/{path...}')]
+    public function serve(): void {}
+}
+
 final class AttributeRouteScannerTest extends TestCase
 {
     public function test_scans_controller_with_route_attribute(): void
@@ -133,5 +140,24 @@ final class AttributeRouteScannerTest extends TestCase
         $entries = $scanner->scanClass(NoRouteController::class);
 
         $this->assertCount(0, $entries);
+    }
+
+    public function test_catch_all_param_with_ellipsis(): void
+    {
+        $scanner = new AttributeRouteScanner();
+        $entries = $scanner->scanClass(CatchAllController::class);
+
+        $this->assertCount(1, $entries);
+        $entry = $entries[0];
+
+        $this->assertContains('preset', $entry->paramNames);
+        $this->assertContains('path', $entry->paramNames);
+        $this->assertTrue($entry->isCatchAll);
+
+        // Should match nested paths
+        $this->assertMatchesRegularExpression($entry->regex, '/img/cover-thumb/games/cuvee/cover.jpg');
+        preg_match($entry->regex, '/img/cover-thumb/games/cuvee/cover.jpg', $matches);
+        $this->assertSame('cover-thumb', $matches['preset']);
+        $this->assertSame('games/cuvee/cover.jpg', $matches['path']);
     }
 }
