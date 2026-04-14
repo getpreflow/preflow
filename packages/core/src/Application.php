@@ -131,6 +131,9 @@ final class Application
             $this->container->instance(DebugCollector::class, $collector);
         }
 
+        // JSON body parsing — must run before session, CSRF, and auth middleware
+        $this->pipeline->pipe(new \Preflow\Core\Http\JsonBodyMiddleware());
+
         // Auto-discover installed packages and wire them up
         $this->bootDataLayer($collector);
         $this->bootViewLayer($debug);
