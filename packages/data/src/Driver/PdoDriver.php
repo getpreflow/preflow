@@ -58,17 +58,35 @@ abstract class PdoDriver implements StorageDriver
 
     public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void
     {
-        if (!isset($data[$idField])) {
-            $data[$idField] = $id;
+        $isEmpty = $id === null || $id === '' || $id === 0 || $id === '0';
+
+        if ($isEmpty) {
+            unset($data[$idField]);
+            $data = array_filter($data, fn ($v) => $v !== null);
+            $columns = array_keys($data);
+            $sql = $this->dialect->insertSql($type, $columns);
+            $stmt = $this->pdo->prepare($sql);
+            $this->executeWithLogging($stmt, $sql, array_values($data));
+        } else {
+            if (!isset($data[$idField])) {
+                $data[$idField] = $id;
+            }
+
+            // Filter out null values
+            $data = array_filter($data, fn ($v) => $v !== null);
+
+            $columns = array_keys($data);
+            $sql = $this->dialect->upsertSql($type, $columns, $idField);
+            $stmt = $this->pdo->prepare($sql);
+            $this->executeWithLogging($stmt, $sql, array_values($data));
         }
+    }
 
-        // Filter out null values
-        $data = array_filter($data, fn ($v) => $v !== null);
+    public function lastInsertId(): string|int
+    {
+        $id = $this->pdo->lastInsertId();
 
-        $columns = array_keys($data);
-        $sql = $this->dialect->upsertSql($type, $columns, $idField);
-        $stmt = $this->pdo->prepare($sql);
-        $this->executeWithLogging($stmt, $sql, array_values($data));
+        return is_numeric($id) ? (int) $id : $id;
     }
 
     public function delete(string $type, string|int $id, string $idField = 'uuid'): void

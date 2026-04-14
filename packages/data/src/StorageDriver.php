@@ -21,4 +21,6 @@ interface StorageDriver
     public function delete(string $type, string|int $id, string $idField = 'uuid'): void;
 
     public function exists(string $type, string|int $id, string $idField = 'uuid'): bool;
+
+    public function lastInsertId(): string|int;
 }

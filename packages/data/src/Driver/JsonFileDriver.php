@@ -97,6 +97,11 @@ final class JsonFileDriver implements StorageDriver
         return file_exists($this->filePath($type, $id));
     }
 
+    public function lastInsertId(): string|int
+    {
+        return '';
+    }
+
     private function typeDir(string $type): string
     {
         return $this->basePath . '/' . $type;

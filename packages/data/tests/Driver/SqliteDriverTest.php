@@ -131,4 +131,47 @@ final class SqliteDriverTest extends TestCase
         $result = $this->driver->findOne('posts', 'abc');
         $this->assertSame('New', $result['title']);
     }
+
+    public function test_save_with_empty_id_uses_auto_increment(): void
+    {
+        $this->pdo->exec('CREATE TABLE items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL
+        )');
+
+        $driver = new SqliteDriver($this->pdo);
+
+        $driver->save('items', 0, ['name' => 'First'], 'id');
+        $driver->save('items', 0, ['name' => 'Second'], 'id');
+
+        $result = $driver->findMany('items', new Query());
+        $this->assertSame(2, $result->total());
+
+        $names = array_column($result->items(), 'name');
+        $this->assertContains('First', $names);
+        $this->assertContains('Second', $names);
+
+        $ids = array_column($result->items(), 'id');
+        $this->assertNotEquals($ids[0], $ids[1]);
+    }
+
+    public function test_save_with_empty_id_returns_last_insert_id(): void
+    {
+        $this->pdo->exec('CREATE TABLE items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL
+        )');
+
+        $driver = new SqliteDriver($this->pdo);
+
+        $driver->save('items', 0, ['name' => 'Hello'], 'id');
+        $newId = $driver->lastInsertId();
+
+        $this->assertIsInt($newId);
+        $this->assertGreaterThan(0, $newId);
+
+        $result = $driver->findOne('items', $newId, 'id');
+        $this->assertNotNull($result);
+        $this->assertSame('Hello', $result['name']);
+    }
 }

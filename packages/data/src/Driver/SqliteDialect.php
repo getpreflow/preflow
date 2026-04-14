@@ -23,4 +23,17 @@ final class SqliteDialect implements Dialect
             implode(', ', $placeholders),
         );
     }
+
+    public function insertSql(string $table, array $columns): string
+    {
+        $quoted = array_map(fn (string $c) => $this->quoteIdentifier($c), $columns);
+        $placeholders = array_fill(0, count($columns), '?');
+
+        return sprintf(
+            'INSERT INTO %s (%s) VALUES (%s)',
+            $this->quoteIdentifier($table),
+            implode(', ', $quoted),
+            implode(', ', $placeholders),
+        );
+    }
 }

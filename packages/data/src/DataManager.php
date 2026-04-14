@@ -67,9 +67,17 @@ final class DataManager
         $meta = ModelMetadata::for($model::class);
         $driver = $this->resolveDriver($meta->storage);
         $data = $model->toArray();
-        $id = $data[$meta->idField] ?? throw new \RuntimeException("Model missing ID field [{$meta->idField}].");
+        $id = $data[$meta->idField] ?? null;
+        $isEmpty = $id === null || $id === '' || $id === 0 || $id === '0';
 
-        $driver->save($meta->table, $id, $data, $meta->idField);
+        $driver->save($meta->table, $id ?? '', $data, $meta->idField);
+
+        if ($isEmpty) {
+            $newId = $driver->lastInsertId();
+            if ($newId !== '' && $newId !== 0) {
+                $model->{$meta->idField} = is_int($newId) ? $newId : (is_numeric($newId) ? (int) $newId : $newId);
+            }
+        }
     }
 
     /**
