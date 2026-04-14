@@ -113,6 +113,18 @@ final class PreflowExtensionTest extends TestCase
         $this->assertSame(1, substr_count($output, '.shared { display: flex; }'));
     }
 
+    public function test_asset_url_prepends_leading_slash(): void
+    {
+        $result = $this->render("{{ asset_url('images/logo.png') }}");
+        $this->assertSame('/images/logo.png', $result);
+    }
+
+    public function test_asset_url_does_not_double_slash(): void
+    {
+        $result = $this->render("{{ asset_url('/images/logo.png') }}");
+        $this->assertSame('/images/logo.png', $result);
+    }
+
     public function test_full_page_layout(): void
     {
         // Simulate a component registering assets

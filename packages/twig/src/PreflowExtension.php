@@ -29,6 +29,7 @@ final class PreflowExtension extends AbstractExtension
         return [
             new TwigFunction('head', $this->renderHead(...), ['is_safe' => ['html']]),
             new TwigFunction('assets', $this->renderAssets(...), ['is_safe' => ['html']]),
+            new TwigFunction('asset_url', $this->assetUrl(...), ['is_safe' => ['html']]),
         ];
     }
 
@@ -75,5 +76,16 @@ final class PreflowExtension extends AbstractExtension
     public function renderAssets(): string
     {
         return $this->assetCollector->renderAssets();
+    }
+
+    /**
+     * Function: {{ asset_url('images/logo.png') }}
+     * Returns a root-relative URL for a static asset path.
+     * Projects needing a CDN prefix or cache-busting can register their own
+     * asset_url() via AppServiceProvider to override this default.
+     */
+    public function assetUrl(string $path): string
+    {
+        return '/' . ltrim($path, '/');
     }
 }
