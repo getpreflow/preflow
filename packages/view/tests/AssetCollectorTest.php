@@ -171,4 +171,25 @@ final class AssetCollectorTest extends TestCase
 
         $this->assertStringContainsString('https://cdn.example.com/lib.js', $head);
     }
+
+    public function test_fork_creates_isolated_collector(): void
+    {
+        $nonce = new NonceGenerator();
+        $original = new AssetCollector($nonce, isProd: false);
+        $original->addCss('.original { color: red; }');
+
+        $forked = $original->fork();
+        $forked->addCss('.forked { color: blue; }');
+
+        // Original should NOT have forked CSS
+        $this->assertStringContainsString('.original', $original->renderCss());
+        $this->assertStringNotContainsString('.forked', $original->renderCss());
+
+        // Forked should NOT have original CSS
+        $this->assertStringContainsString('.forked', $forked->renderCss());
+        $this->assertStringNotContainsString('.original', $forked->renderCss());
+
+        // Both share the same nonce
+        $this->assertSame($original->getNonce(), $forked->getNonce());
+    }
 }

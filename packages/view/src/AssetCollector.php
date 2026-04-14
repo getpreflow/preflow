@@ -142,6 +142,15 @@ final class AssetCollector
         return $this->nonceGenerator->get();
     }
 
+    /**
+     * Create an isolated copy with empty registries but the same nonce generator.
+     * Use for sub-renders (e.g., iframe preview pages) that need their own asset scope.
+     */
+    public function fork(): self
+    {
+        return new self($this->nonceGenerator, $this->isProd);
+    }
+
     public function hasCss(): bool
     {
         return $this->cssRegistry !== [];
