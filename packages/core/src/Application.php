@@ -144,6 +144,9 @@ final class Application
         // Register user service providers
         $this->bootProviders();
 
+        // Load user-defined middleware from config/middleware.php
+        $this->bootMiddleware();
+
         // Error handler
         $renderer = $debug->isDebug()
             ? new DevErrorRenderer($collector)
@@ -312,6 +315,13 @@ final class Application
 
         $pagesDir = $this->basePath('app/pages');
         $templateDirs = is_dir($pagesDir) ? [$pagesDir] : [];
+
+        // Also register the project root so that templates in app/pages can
+        // extend layout files via "templates/_base.twig" etc.
+        $projectRoot = $this->basePath();
+        if (!in_array($projectRoot, $templateDirs, true)) {
+            $templateDirs[] = $projectRoot;
+        }
 
         $engineName = $this->config->get('app.engine', 'twig');
         $engine = $this->createTemplateEngine($engineName, $templateDirs, $assets, $debug);
@@ -491,6 +501,25 @@ final class Application
         }
 
         $this->container->bootProviders();
+    }
+
+    private function bootMiddleware(): void
+    {
+        $middlewarePath = $this->basePath('config/middleware.php');
+        if (!file_exists($middlewarePath)) {
+            return;
+        }
+
+        $middlewareClasses = require $middlewarePath;
+        foreach ($middlewareClasses as $class) {
+            if (!class_exists($class)) {
+                continue;
+            }
+            $mw = $this->container->has($class)
+                ? $this->container->get($class)
+                : $this->container->make($class);
+            $this->addMiddleware($mw);
+        }
     }
 
     private function bootSession(): void
