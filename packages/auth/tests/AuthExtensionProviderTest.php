@@ -93,6 +93,106 @@ final class AuthExtensionProviderTest extends TestCase
         $this->assertTrue(($fn->callable)());
     }
 
+    public function test_csrf_token_returns_raw_string_without_html(): void
+    {
+        $manager = $this->makeManager();
+        $session = new ArraySession();
+        $session->set('_csrf_token', 'abc123testtoken');
+
+        $provider = new AuthExtensionProvider($manager, $session);
+
+        $functions = $provider->getTemplateFunctions();
+        $fn = $this->findFunction($functions, 'csrf_token');
+
+        $this->assertNotNull($fn);
+        $result = ($fn->callable)();
+        $this->assertSame('abc123testtoken', $result);
+        $this->assertStringNotContainsString('<input', $result);
+    }
+
+    public function test_csrf_token_returns_empty_string_without_session(): void
+    {
+        $manager = $this->makeManager();
+        $provider = new AuthExtensionProvider($manager);
+
+        $functions = $provider->getTemplateFunctions();
+        $fn = $this->findFunction($functions, 'csrf_token');
+
+        $this->assertNotNull($fn);
+        $this->assertSame('', ($fn->callable)());
+    }
+
+    public function test_csrf_token_is_not_safe(): void
+    {
+        $manager = $this->makeManager();
+        $provider = new AuthExtensionProvider($manager);
+
+        $functions = $provider->getTemplateFunctions();
+        $fn = $this->findFunction($functions, 'csrf_token');
+
+        $this->assertNotNull($fn);
+        $this->assertFalse($fn->isSafe);
+    }
+
+    public function test_csrf_field_returns_html_input_with_csrf_token_name(): void
+    {
+        $manager = $this->makeManager();
+        $session = new ArraySession();
+        $session->set('_csrf_token', 'abc123testtoken');
+
+        $provider = new AuthExtensionProvider($manager, $session);
+
+        $functions = $provider->getTemplateFunctions();
+        $fn = $this->findFunction($functions, 'csrf_field');
+
+        $this->assertNotNull($fn);
+        $result = ($fn->callable)();
+        $this->assertStringContainsString('<input', $result);
+        $this->assertStringContainsString('name="_csrf_token"', $result);
+        $this->assertStringContainsString('value="abc123testtoken"', $result);
+        $this->assertStringContainsString('type="hidden"', $result);
+    }
+
+    public function test_csrf_field_returns_empty_string_without_session(): void
+    {
+        $manager = $this->makeManager();
+        $provider = new AuthExtensionProvider($manager);
+
+        $functions = $provider->getTemplateFunctions();
+        $fn = $this->findFunction($functions, 'csrf_field');
+
+        $this->assertNotNull($fn);
+        $this->assertSame('', ($fn->callable)());
+    }
+
+    public function test_csrf_field_is_safe(): void
+    {
+        $manager = $this->makeManager();
+        $provider = new AuthExtensionProvider($manager);
+
+        $functions = $provider->getTemplateFunctions();
+        $fn = $this->findFunction($functions, 'csrf_field');
+
+        $this->assertNotNull($fn);
+        $this->assertTrue($fn->isSafe);
+    }
+
+    public function test_csrf_field_escapes_special_characters(): void
+    {
+        $manager = $this->makeManager();
+        $session = new ArraySession();
+        $session->set('_csrf_token', 'token<with>"special&chars');
+
+        $provider = new AuthExtensionProvider($manager, $session);
+
+        $functions = $provider->getTemplateFunctions();
+        $fn = $this->findFunction($functions, 'csrf_field');
+
+        $this->assertNotNull($fn);
+        $result = ($fn->callable)();
+        $this->assertStringContainsString('value="token&lt;with&gt;&quot;special&amp;chars"', $result);
+    }
+
     public function test_flash_reads_from_session(): void
     {
         $manager = $this->makeManager();
