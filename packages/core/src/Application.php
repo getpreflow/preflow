@@ -407,7 +407,7 @@ final class Application
                 renderer: $renderer,
                 driver: $htmxDriver,
                 componentFactory: function (string $class, array $props) use ($container) {
-                    $component = $container->has($class) ? $container->get($class) : new $class();
+                    $component = $container->has($class) ? $container->get($class) : $container->make($class);
                     $component->setProps($props);
                     return $component;
                 },
@@ -652,6 +652,11 @@ final class Application
     /**
      * Auto-discover component classes in app/Components/.
      *
+     * Scans recursively so components can be organized in group
+     * directories (e.g. Shared/ThemeToggle, Player/PlayerShell).
+     * A directory is a component when it contains a PHP file with
+     * the same name as the directory.
+     *
      * @return array<string, class-string> Short name → FQCN
      */
     private function discoverComponents(): array
@@ -662,6 +667,16 @@ final class Application
         }
 
         $map = [];
+        $this->scanComponentsRecursive($dir, 'App\\Components', $map);
+
+        return $map;
+    }
+
+    /**
+     * @param array<string, class-string> $map
+     */
+    private function scanComponentsRecursive(string $dir, string $namespace, array &$map): void
+    {
         foreach (new \DirectoryIterator($dir) as $item) {
             if (!$item->isDir() || $item->isDot()) {
                 continue;
@@ -669,22 +684,23 @@ final class Application
 
             $name = $item->getFilename();
             $phpFile = $item->getPathname() . '/' . $name . '.php';
+            $childNamespace = $namespace . '\\' . $name;
 
             if (file_exists($phpFile)) {
-                $class = 'App\\Components\\' . $name . '\\' . $name;
-
-                // Also check flat namespace: App\Components\Name
-                $classFlat = 'App\\Components\\' . $name;
+                // This directory is a component (contains Name/Name.php)
+                $class = $childNamespace . '\\' . $name;
 
                 if (class_exists($class)) {
                     $map[$name] = $class;
-                } elseif (class_exists($classFlat)) {
-                    $map[$name] = $classFlat;
+                } elseif (class_exists($childNamespace)) {
+                    // Flat namespace: App\Components\...\Name
+                    $map[$name] = $childNamespace;
                 }
+            } else {
+                // Not a component — recurse into group directory
+                $this->scanComponentsRecursive($item->getPathname(), $childNamespace, $map);
             }
         }
-
-        return $map;
     }
 
     /**
