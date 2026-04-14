@@ -125,6 +125,30 @@ final class NativeSession implements SessionInterface
         return $this->started;
     }
 
+    public function flashSuccess(string $message): void { $this->flash('success', $message); }
+
+    public function flashError(string $message): void { $this->flash('error', $message); }
+
+    public function flashInfo(string $message): void { $this->flash('info', $message); }
+
+    public function flashWarning(string $message): void { $this->flash('warning', $message); }
+
+    /**
+     * Get all flash messages as [type => message] pairs.
+     * Checks standard types: success, error, info, warning.
+     */
+    public function getFlashes(): array
+    {
+        $flashes = [];
+        foreach (FlashType::cases() as $type) {
+            $msg = $this->getFlash($type->value);
+            if ($msg !== null) {
+                $flashes[$type->value] = $msg;
+            }
+        }
+        return $flashes;
+    }
+
     public function ageFlash(): void
     {
         $_SESSION['_flash']['previous'] = $_SESSION['_flash']['current'];
