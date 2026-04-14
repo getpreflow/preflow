@@ -826,6 +826,12 @@ final class Application
                 $templatePath = preg_replace('/\{(\w+)\}/', '[$1]', $route->handler);
                 $html = $engine->render($templatePath, [
                     'route' => (object) $route->parameters,
+                    'request' => (object) [
+                        'path' => $request->getUri()->getPath(),
+                        'method' => $request->getMethod(),
+                        'isHtmx' => $request->getHeaderLine('HX-Request') === 'true',
+                        'query' => $request->getQueryParams(),
+                    ],
                 ]);
 
                 // Post-process: inject collected assets into the HTML
