@@ -47,6 +47,17 @@ class SectionComponent extends Component
     protected string $tag = 'section';
 }
 
+class StyledComponent extends Component
+{
+    protected string $cssClass = 'my-widget';
+}
+
+class ScopedComponent extends Component
+{
+    protected string $cssClass = 'scoped-widget';
+    protected bool $scopeCss = true;
+}
+
 class FakeTemplateEngine implements TemplateEngineInterface
 {
     public ?string $lastTemplate = null;
@@ -184,6 +195,71 @@ final class ComponentRendererTest extends TestCase
 
         $this->assertStringContainsString('<section id="', $html);
         $this->assertStringContainsString('</section>', $html);
+    }
+
+    public function test_wrapper_includes_css_class(): void
+    {
+        $component = new StyledComponent();
+        $html = $this->renderer->render($component);
+
+        $this->assertStringContainsString('class="my-widget"', $html);
+        $this->assertStringContainsString('<div id="', $html);
+    }
+
+    public function test_scoped_component_has_hashed_css_class(): void
+    {
+        $component = new ScopedComponent();
+        $cssClass = $component->getCssClass();
+
+        // Should be "scoped-widget-" + 6 char hex hash
+        $this->assertMatchesRegularExpression('/^scoped-widget-[a-f0-9]{6}$/', $cssClass);
+    }
+
+    public function test_scoped_css_class_is_stable(): void
+    {
+        $a = new ScopedComponent();
+        $b = new ScopedComponent();
+
+        // Same class = same hash, regardless of props
+        $this->assertSame($a->getCssClass(), $b->getCssClass());
+
+        $b->setProps(['different' => 'props']);
+        $this->assertSame($a->getCssClass(), $b->getCssClass());
+    }
+
+    public function test_css_scoping_wraps_collected_css(): void
+    {
+        $nonce = new \Preflow\View\NonceGenerator();
+        $assets = new \Preflow\View\AssetCollector($nonce);
+
+        $renderer = new ComponentRenderer(
+            templateEngine: $this->engine,
+            errorBoundary: new ErrorBoundary(debug: DebugLevel::On),
+            assetCollector: $assets,
+        );
+
+        // Simulate: template calls addCss during render
+        $this->engine->output = '<p>scoped content</p>';
+
+        $component = new ScopedComponent();
+        $cssClass = $component->getCssClass();
+
+        // Manually test the scope mechanism
+        $assets->setCssScope($cssClass);
+        $assets->addCss('.title { color: red; }');
+        $assets->setCssScope(null);
+
+        $css = $assets->renderCss();
+        $this->assertStringContainsString('.' . $cssClass, $css);
+        $this->assertStringContainsString('.title { color: red; }', $css);
+    }
+
+    public function test_component_without_css_class_has_no_class_attr(): void
+    {
+        $component = new RenderableComponent();
+        $html = $this->renderer->render($component);
+
+        $this->assertStringNotContainsString('class=', $html);
     }
 
     public function test_render_fragment_returns_inner_html_only(): void

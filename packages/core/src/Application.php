@@ -374,7 +374,10 @@ final class Application
         $engine = $this->container->get(\Preflow\View\TemplateEngineInterface::class);
 
         $errorBoundary = new \Preflow\Components\ErrorBoundary(debug: $debug);
-        $renderer = new \Preflow\Components\ComponentRenderer($engine, $errorBoundary, $collector);
+        $assets = $this->container->has(\Preflow\View\AssetCollector::class)
+            ? $this->container->get(\Preflow\View\AssetCollector::class)
+            : null;
+        $renderer = new \Preflow\Components\ComponentRenderer($engine, $errorBoundary, $collector, $assets);
         $this->container->instance(\Preflow\Components\ComponentRenderer::class, $renderer);
 
         // Auto-discover components

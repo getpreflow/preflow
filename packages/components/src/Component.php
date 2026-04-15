@@ -11,6 +11,12 @@ abstract class Component
 
     protected string $tag = 'div';
 
+    /** CSS class for the wrapper element. Also available in templates as componentCssClass. */
+    protected string $cssClass = '';
+
+    /** Enable CSS scoping: wraps {% apply css %} content in .cssClass-hash { ... } */
+    protected bool $scopeCss = false;
+
     private ?string $componentId = null;
 
     /**
@@ -104,6 +110,33 @@ abstract class Component
     }
 
     /**
+     * Get the CSS class for the wrapper element.
+     * Returns the developer-defined class, optionally with a stable hash suffix for scoping.
+     */
+    public function getCssClass(): string
+    {
+        if ($this->cssClass === '') {
+            return '';
+        }
+
+        if (!$this->scopeCss) {
+            return $this->cssClass;
+        }
+
+        // Stable hash based on the component's fully-qualified class name (not props)
+        $hash = substr(hash('xxh3', static::class), 0, 6);
+        return $this->cssClass . '-' . $hash;
+    }
+
+    /**
+     * Whether CSS scoping is enabled for this component.
+     */
+    public function hasCssScoping(): bool
+    {
+        return $this->scopeCss && $this->cssClass !== '';
+    }
+
+    /**
      * Get the path to the co-located template file.
      */
     public function getTemplatePath(string $extension = 'twig'): string
@@ -133,6 +166,7 @@ abstract class Component
 
         $context['componentId'] = $this->getComponentId();
         $context['componentClass'] = static::class;
+        $context['componentCssClass'] = $this->getCssClass();
         $context['props'] = $this->props;
 
         return $context;

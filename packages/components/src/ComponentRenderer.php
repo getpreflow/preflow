@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Components;
 
+use Preflow\View\AssetCollector;
 use Preflow\View\TemplateEngineInterface;
 
 final class ComponentRenderer
@@ -12,6 +13,7 @@ final class ComponentRenderer
         private readonly TemplateEngineInterface $templateEngine,
         private readonly ErrorBoundary $errorBoundary,
         private readonly ?\Preflow\Core\Debug\DebugCollector $collector = null,
+        private readonly ?AssetCollector $assetCollector = null,
     ) {}
 
     /**
@@ -118,6 +120,15 @@ final class ComponentRenderer
         $templatePath = $component->getTemplatePath($this->templateEngine->getTemplateExtension());
         $context = $component->getTemplateContext();
 
+        // Set CSS scope if component has scoping enabled
+        if ($this->assetCollector !== null && $component->hasCssScoping()) {
+            $previousScope = $this->assetCollector->getCssScope();
+            $this->assetCollector->setCssScope($component->getCssClass());
+            $html = $this->templateEngine->render($templatePath, $context);
+            $this->assetCollector->setCssScope($previousScope);
+            return $html;
+        }
+
         return $this->templateEngine->render($templatePath, $context);
     }
 
@@ -125,8 +136,14 @@ final class ComponentRenderer
     {
         $tag = $component->getTag();
         $id = htmlspecialchars($component->getComponentId(), ENT_QUOTES, 'UTF-8');
+        $cssClass = $component->getCssClass();
 
-        return "<{$tag} id=\"{$id}\">{$innerHtml}</{$tag}>";
+        $attrs = "id=\"{$id}\"";
+        if ($cssClass !== '') {
+            $attrs .= ' class="' . htmlspecialchars($cssClass, ENT_QUOTES, 'UTF-8') . '"';
+        }
+
+        return "<{$tag} {$attrs}>{$innerHtml}</{$tag}>";
     }
 
     /**

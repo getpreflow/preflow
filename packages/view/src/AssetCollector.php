@@ -21,10 +21,30 @@ final class AssetCollector
     /** @var string[] Extra tags to include in <head> (e.g., HTMX script tag) */
     private array $headTags = [];
 
+    /** @var string|null Active CSS scope class — when set, addCss() wraps content in this selector */
+    private ?string $cssScope = null;
+
     public function __construct(
         private readonly NonceGenerator $nonceGenerator,
         private readonly bool $isProd = false,
     ) {}
+
+    /**
+     * Set the CSS scope for subsequent addCss() calls.
+     * Pass null to clear scoping.
+     */
+    public function setCssScope(?string $scope): void
+    {
+        $this->cssScope = $scope;
+    }
+
+    /**
+     * Get the current CSS scope.
+     */
+    public function getCssScope(): ?string
+    {
+        return $this->cssScope;
+    }
 
     /**
      * Register an extra tag to include in <head> (e.g., library script tags).
@@ -36,6 +56,11 @@ final class AssetCollector
 
     public function addCss(string $css, ?string $key = null): void
     {
+        // Wrap in scope selector if CSS scoping is active (native CSS nesting)
+        if ($this->cssScope !== null) {
+            $css = '.' . $this->cssScope . " {\n" . $css . "\n}";
+        }
+
         $key ??= hash('xxh3', $css);
         $this->cssRegistry[$key] ??= $css;
     }
