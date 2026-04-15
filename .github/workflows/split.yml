@@ -37,6 +37,7 @@ jobs:
           - { local: 'packages/skeleton', remote: 'skeleton' }
           - { local: 'packages/twig', remote: 'twig' }
           - { local: 'packages/blade', remote: 'blade' }
+          - { local: 'packages/validation', remote: 'validation' }
 
     steps:
       - uses: actions/checkout@v4
