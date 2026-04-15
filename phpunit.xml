@@ -43,6 +43,9 @@
         <testsuite name="Skeleton">
             <directory>packages/skeleton/tests</directory>
         </testsuite>
+        <testsuite name="Validation">
+            <directory>packages/validation/tests</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
@@ -57,6 +60,7 @@
             <directory>packages/blade/src</directory>
             <directory>packages/testing/src</directory>
             <directory>packages/devtools/src</directory>
+            <directory>packages/validation/src</directory>
         </include>
     </source>
 </phpunit>

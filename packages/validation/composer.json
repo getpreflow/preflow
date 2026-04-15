@@ -1,0 +1,22 @@
+{
+    "name": "preflow/validation",
+    "description": "Preflow validation — rule engine, built-in rules, error bags",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Preflow\\Validation\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Preflow\\Validation\\Tests\\": "tests/"
+        }
+    }
+}
