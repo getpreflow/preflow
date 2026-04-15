@@ -55,7 +55,7 @@ final class ComponentTest extends TestCase
         $this->assertStringContainsString('SimpleComponent', $component->getComponentId());
     }
 
-    public function test_component_id_includes_props_hash(): void
+    public function test_component_id_is_stable_regardless_of_props(): void
     {
         $a = new SimpleComponent();
         $a->setProps(['id' => '1']);
@@ -63,10 +63,11 @@ final class ComponentTest extends TestCase
         $b = new SimpleComponent();
         $b->setProps(['id' => '2']);
 
-        $this->assertNotSame($a->getComponentId(), $b->getComponentId());
+        // Same component class = same ID, regardless of props
+        $this->assertSame($a->getComponentId(), $b->getComponentId());
     }
 
-    public function test_same_props_produce_same_id(): void
+    public function test_same_class_produces_same_id(): void
     {
         $a = new SimpleComponent();
         $a->setProps(['id' => '1']);

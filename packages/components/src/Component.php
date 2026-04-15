@@ -76,7 +76,6 @@ abstract class Component
     public function setProps(array $props): void
     {
         $this->props = $props;
-        $this->componentId = null; // reset on prop change
     }
 
     /**
@@ -88,14 +87,16 @@ abstract class Component
     }
 
     /**
-     * Get the unique component ID (class name + props hash).
+     * Get the component ID (short class name + stable hash from FQCN).
+     * The hash is based on the fully-qualified class name, not props —
+     * so it's stable across requests and prop changes.
      */
     public function getComponentId(): string
     {
         if ($this->componentId === null) {
             $shortName = (new \ReflectionClass($this))->getShortName();
-            $propsHash = substr(hash('xxh3', serialize($this->props)), 0, 8);
-            $this->componentId = $shortName . '-' . $propsHash;
+            $classHash = substr(hash('xxh3', static::class), 0, 8);
+            $this->componentId = $shortName . '-' . $classHash;
         }
 
         return $this->componentId;
