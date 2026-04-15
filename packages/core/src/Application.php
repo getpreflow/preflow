@@ -137,6 +137,7 @@ final class Application
         // Auto-discover installed packages and wire them up
         $this->bootDataLayer($collector);
         $this->bootViewLayer($debug);
+        $this->bootValidation();
         $this->bootComponentLayer($debug, $secretKey, $collector);
         $this->bootRouting();
         $this->bootI18n();
@@ -274,7 +275,32 @@ final class Application
             $this->container->instance(\Preflow\Data\TypeRegistry::class, $typeRegistry);
         }
 
-        $dataManager = new \Preflow\Data\DataManager($drivers, 'default', $typeRegistry);
+        // Validation — optional: wire if preflow/validation is installed
+        $validatorFactory = null;
+        if (class_exists(\Preflow\Validation\RuleFactory::class)) {
+            $ruleFactory = new \Preflow\Validation\RuleFactory();
+
+            // Auto-discover custom rules from app/Rules/
+            $rulesPath = $this->basePath('app/Rules');
+            if (is_dir($rulesPath)) {
+                $ruleClasses = [];
+                foreach (glob($rulesPath . '/*.php') as $file) {
+                    $class = 'App\\Rules\\' . pathinfo($file, PATHINFO_FILENAME);
+                    if (class_exists($class)) {
+                        $ruleClasses[] = $class;
+                    }
+                }
+                if ($ruleClasses !== []) {
+                    $ruleFactory->discover($ruleClasses);
+                }
+            }
+
+            $validatorFactory = new \Preflow\Validation\ValidatorFactory($ruleFactory);
+            $this->container->instance(\Preflow\Validation\RuleFactory::class, $ruleFactory);
+            $this->container->instance(\Preflow\Validation\ValidatorFactory::class, $validatorFactory);
+        }
+
+        $dataManager = new \Preflow\Data\DataManager($drivers, 'default', $typeRegistry, $validatorFactory);
         $this->container->instance(\Preflow\Data\DataManager::class, $dataManager);
     }
 
@@ -359,6 +385,22 @@ final class Application
                 : null,
             default => throw new \RuntimeException("Unknown template engine: {$name}. Supported: twig, blade"),
         };
+    }
+
+    private function bootValidation(): void
+    {
+        if (!class_exists(\Preflow\Validation\ValidationExtensionProvider::class)) {
+            return;
+        }
+
+        if (!$this->container->has(\Preflow\View\TemplateEngineInterface::class)) {
+            return;
+        }
+
+        $engine = $this->container->get(\Preflow\View\TemplateEngineInterface::class);
+        $validationProvider = new \Preflow\Validation\ValidationExtensionProvider();
+        $this->container->instance(\Preflow\Validation\ValidationExtensionProvider::class, $validationProvider);
+        $this->registerExtensionProvider($engine, $validationProvider);
     }
 
     private function bootComponentLayer(DebugLevel $debug, string $secretKey, ?DebugCollector $collector = null): void
