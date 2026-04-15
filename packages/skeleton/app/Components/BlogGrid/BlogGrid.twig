@@ -1,22 +1,24 @@
 {% apply css %}
-.blog-grid-header {
+{# Auto-scoped to .blog-grid-{hash} #}
+
+.header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1.5rem;
 }
 
-.blog-grid-count {
+.count {
     color: #999;
     font-size: 0.875rem;
 }
 
-.blog-filters {
+.filters {
     display: flex;
     gap: 0.5rem;
 }
 
-.blog-filters button {
+.filters button {
     padding: 0.375rem 0.75rem;
     border: 1px solid #ddd;
     border-radius: 2rem;
@@ -24,29 +26,30 @@
     cursor: pointer;
     font-size: 0.8125rem;
     transition: all 0.15s;
+    font-family: inherit;
 }
 
-.blog-filters button:hover {
+.filters button:hover {
     border-color: #0066ff;
     color: #0066ff;
 }
 
-.blog-filters button.active {
+.filters button.active {
     background: #0066ff;
     color: white;
     border-color: #0066ff;
 }
 
-.blog-empty {
+.empty {
     text-align: center;
     padding: 3rem;
     color: #999;
 }
 {% endapply %}
 
-<div class="blog-grid-header">
-    <span class="blog-grid-count">{{ t('blog.post_count', { count: total }, total) }}</span>
-    <div class="blog-filters">
+<div class="header">
+    <span class="count">{{ t('blog.post_count', { count: total }, total) }}</span>
+    <div class="filters">
         <button {{ hd.post('filter', componentClass, componentId, { filter: '' }) | raw }}
                 class="{{ filter == '' ? 'active' : '' }}">
             {{ t('blog.all') }}
@@ -63,7 +66,7 @@
 </div>
 
 {% if posts is empty %}
-    <p class="blog-empty">{{ t('blog.no_posts') }}</p>
+    <p class="empty">{{ t('blog.no_posts') }}</p>
 {% else %}
     {% for post in posts %}
         {{ component('BlogPost', post) }}
