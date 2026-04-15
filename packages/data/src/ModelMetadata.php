@@ -8,6 +8,7 @@ use Preflow\Data\Attributes\Entity;
 use Preflow\Data\Attributes\Field;
 use Preflow\Data\Attributes\Id;
 use Preflow\Data\Attributes\Timestamps;
+use Preflow\Validation\Attributes\Validate;
 
 final class ModelMetadata
 {
@@ -18,6 +19,7 @@ final class ModelMetadata
      * @param array<string, Field> $fields
      * @param string[] $searchableFields
      * @param array<string, \Preflow\Data\FieldTransformer> $transformers
+     * @param array<string, list<string>> $validationRules
      */
     private function __construct(
         public readonly string $modelClass,
@@ -28,6 +30,7 @@ final class ModelMetadata
         public readonly array $searchableFields,
         public readonly bool $hasTimestamps,
         public readonly array $transformers = [],
+        public readonly array $validationRules = [],
     ) {}
 
     /**
@@ -93,6 +96,18 @@ final class ModelMetadata
             }
         }
 
+        $validationRules = [];
+        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $validateAttrs = $prop->getAttributes(Validate::class);
+            if ($validateAttrs !== []) {
+                $rules = [];
+                foreach ($validateAttrs as $attr) {
+                    $rules = array_merge($rules, $attr->newInstance()->rules);
+                }
+                $validationRules[$prop->getName()] = $rules;
+            }
+        }
+
         $meta = new self(
             modelClass: $modelClass,
             table: $entity->table,
@@ -102,6 +117,7 @@ final class ModelMetadata
             searchableFields: $searchable,
             hasTimestamps: $hasTimestamps,
             transformers: $transformers,
+            validationRules: $validationRules,
         );
 
         self::$cache[$modelClass] = $meta;
