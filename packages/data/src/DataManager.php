@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Preflow\Data;
 
+use Preflow\Validation\ValidatorFactory;
+use Preflow\Validation\ValidationException;
+
 final class DataManager
 {
     /**
@@ -13,6 +16,7 @@ final class DataManager
         private readonly array $drivers,
         private readonly string $defaultDriver = 'default',
         private readonly ?TypeRegistry $typeRegistry = null,
+        private readonly ?ValidatorFactory $validatorFactory = null,
     ) {}
 
     public function getTypeRegistry(): ?TypeRegistry
@@ -78,8 +82,12 @@ final class DataManager
     /**
      * Save a model.
      */
-    public function save(Model $model): void
+    public function save(Model $model, bool $validate = true, array $rules = []): void
     {
+        if ($validate) {
+            $this->validateModel($model, $rules);
+        }
+
         $meta = ModelMetadata::for($model::class);
         $driver = $this->resolveDriver($meta->storage);
         $data = $model->toArray();
@@ -100,8 +108,12 @@ final class DataManager
      * Insert a new model. Sets the auto-generated ID on the model.
      * Use this when you explicitly want INSERT behavior (not upsert).
      */
-    public function insert(Model $model): void
+    public function insert(Model $model, bool $validate = true, array $rules = []): void
     {
+        if ($validate) {
+            $this->validateModel($model, $rules);
+        }
+
         $meta = ModelMetadata::for($model::class);
         $driver = $this->resolveDriver($meta->storage);
         $data = $model->toArray();
@@ -119,8 +131,12 @@ final class DataManager
      * Update an existing model. Throws if ID is empty.
      * Use this when you explicitly want UPDATE behavior (not upsert).
      */
-    public function update(Model $model): void
+    public function update(Model $model, bool $validate = true, array $rules = []): void
     {
+        if ($validate) {
+            $this->validateModel($model, $rules);
+        }
+
         $meta = ModelMetadata::for($model::class);
         $driver = $this->resolveDriver($meta->storage);
         $data = $model->toArray();
@@ -188,9 +204,14 @@ final class DataManager
     /**
      * Save a dynamic record.
      */
-    public function saveType(DynamicRecord $record): void
+    public function saveType(DynamicRecord $record, bool $validate = true, array $rules = []): void
     {
         $typeDef = $record->getType();
+
+        if ($validate) {
+            $this->validateDynamicRecord($record, $rules);
+        }
+
         $driver = $this->resolveDriver($typeDef->storage);
         $id = $record->getId();
 
@@ -209,6 +230,60 @@ final class DataManager
         $typeDef = $this->requireTypeRegistry()->get($type);
         $driver = $this->resolveDriver($typeDef->storage);
         $driver->delete($typeDef->table, $id, $typeDef->idField);
+    }
+
+    private function validateModel(Model $model, array $extraRules = []): void
+    {
+        if ($this->validatorFactory === null) {
+            return;
+        }
+
+        $meta = ModelMetadata::for($model::class);
+        $rules = $meta->validationRules;
+
+        if (method_exists($model, 'rules')) {
+            $rules = array_merge($rules, $model->rules());
+        }
+
+        if ($extraRules !== []) {
+            $rules = array_merge($rules, $extraRules);
+        }
+
+        if ($rules === []) {
+            return;
+        }
+
+        $validator = $this->validatorFactory->make($rules, $model->toArray(), subject: $model);
+        $result = $validator->validate();
+
+        if ($result->fails()) {
+            throw new ValidationException($result);
+        }
+    }
+
+    private function validateDynamicRecord(DynamicRecord $record, array $extraRules = []): void
+    {
+        if ($this->validatorFactory === null) {
+            return;
+        }
+
+        $typeDef = $record->getType();
+        $rules = $typeDef->validationRules();
+
+        if ($extraRules !== []) {
+            $rules = array_merge($rules, $extraRules);
+        }
+
+        if ($rules === []) {
+            return;
+        }
+
+        $validator = $this->validatorFactory->make($rules, $record->toArray(), subject: $record);
+        $result = $validator->validate();
+
+        if ($result->fails()) {
+            throw new ValidationException($result);
+        }
     }
 
     private function requireTypeRegistry(): TypeRegistry
