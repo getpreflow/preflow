@@ -10,6 +10,8 @@ use Preflow\Core\Http\RequestContext;
 final class Navigation extends Component
 {
     protected string $tag = 'nav';
+    protected string $cssClass = 'main-nav';
+    protected bool $scopeCss = true;
 
     /** @var array<int, array{path: string, label: string, active: bool}> */
     public array $items = [];

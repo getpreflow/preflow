@@ -8,6 +8,10 @@ use Preflow\Components\Component;
 
 final class BlogPost extends Component
 {
+    protected string $tag = 'article';
+    protected string $cssClass = 'blog-post';
+    protected bool $scopeCss = true;
+
     public string $title = '';
     public string $slug = '';
     public string $body = '';

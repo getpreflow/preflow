@@ -9,6 +9,9 @@ use Preflow\Data\DataManager;
 
 final class BlogGrid extends Component
 {
+    protected string $cssClass = 'blog-grid';
+    protected bool $scopeCss = true;
+
     /** @var array<int, array<string, mixed>> */
     public array $posts = [];
     public int $total = 0;

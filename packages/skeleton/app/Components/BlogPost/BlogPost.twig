@@ -1,45 +1,46 @@
 {% apply css %}
-.blog-post {
-    padding: 1.5rem;
-    background: #fff;
-    border: 1px solid #eee;
-    border-radius: 0.5rem;
-    margin-bottom: 1rem;
-    transition: box-shadow 0.2s;
-}
+{# CSS is auto-scoped to this component's wrapper via native CSS nesting.
+   No need to prefix selectors — the framework wraps this in .blog-post-{hash} { ... } #}
 
-.blog-post:hover {
+padding: 1.5rem;
+background: #fff;
+border: 1px solid #eee;
+border-radius: 0.5rem;
+margin-bottom: 1rem;
+transition: box-shadow 0.2s;
+
+&:hover {
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
-.blog-post h3 {
+h3 {
     margin-bottom: 0.5rem;
     font-size: 1.25rem;
 }
 
-.blog-post h3 a {
+h3 a {
     color: #333;
     text-decoration: none;
 }
 
-.blog-post h3 a:hover {
+h3 a:hover {
     color: #0066ff;
 }
 
-.blog-post .excerpt {
+.excerpt {
     color: #666;
     font-size: 0.9375rem;
     margin-bottom: 0.75rem;
 }
 
-.blog-post .meta {
+.meta {
     display: flex;
     justify-content: space-between;
     align-items: center;
     font-size: 0.8125rem;
 }
 
-.blog-post .status {
+.status {
     padding: 0.125rem 0.5rem;
     border-radius: 1rem;
     font-size: 0.75rem;
@@ -47,32 +48,32 @@
     letter-spacing: 0.05em;
 }
 
-.blog-post .status-published {
+.status-published {
     background: #d4edda;
     color: #155724;
 }
 
-.blog-post .status-draft {
+.status-draft {
     background: #fff3cd;
     color: #856404;
 }
 
-.blog-post .read-more {
+.read-more {
     color: #0066ff;
     text-decoration: none;
     font-size: 0.875rem;
 }
 
-.blog-post .read-more:hover {
+.read-more:hover {
     text-decoration: underline;
 }
 {% endapply %}
 
-<article class="blog-post">
-    <h3><a href="/blog/{{ slug }}">{{ title }}</a></h3>
-    <p class="excerpt">{{ body|slice(0, 140) }}{% if body|length > 140 %}...{% endif %}</p>
-    <div class="meta">
-        <span class="status status-{{ status }}">{{ status }}</span>
-        <a href="/blog/{{ slug }}" class="read-more">{{ t('blog.read_more') }} →</a>
-    </div>
-</article>
+{# No wrapper element needed — the framework renders
+   <article class="blog-post-{hash}" id="BlogPost-{id}"> automatically #}
+<h3><a href="/blog/{{ slug }}">{{ title }}</a></h3>
+<p class="excerpt">{{ body|slice(0, 140) }}{% if body|length > 140 %}...{% endif %}</p>
+<div class="meta">
+    <span class="status status-{{ status }}">{{ status }}</span>
+    <a href="/blog/{{ slug }}" class="read-more">{{ t('blog.read_more') }} →</a>
+</div>

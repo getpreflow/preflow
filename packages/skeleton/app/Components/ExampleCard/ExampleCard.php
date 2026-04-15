@@ -11,6 +11,9 @@ final class ExampleCard extends Component
 {
     private const SESSION_KEY = 'example_counter';
 
+    protected string $cssClass = 'example-card';
+    protected bool $scopeCss = true;
+
     public string $title = '';
     public string $message = '';
     public int $count = 0;
