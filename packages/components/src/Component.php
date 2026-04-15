@@ -87,9 +87,15 @@ abstract class Component
     }
 
     /**
-     * Get the component ID (short class name + stable hash from FQCN).
-     * The hash is based on the fully-qualified class name, not props —
-     * so it's stable across requests and prop changes.
+     * Get the component ID (short class name + stable FQCN hash + optional key).
+     *
+     * The hash is based on the fully-qualified class name — stable across
+     * requests and prop changes. For multiple instances of the same component
+     * on one page, pass a 'key' prop to disambiguate:
+     *
+     *     {{ component('GameCard', {game: game, key: game.slug}) }}
+     *
+     * Produces: GameCard-f7687e-cuvee, GameCard-f7687e-brink, etc.
      */
     public function getComponentId(): string
     {
@@ -97,6 +103,11 @@ abstract class Component
             $shortName = (new \ReflectionClass($this))->getShortName();
             $classHash = substr(hash('xxh3', static::class), 0, 8);
             $this->componentId = $shortName . '-' . $classHash;
+
+            $key = $this->props['key'] ?? null;
+            if ($key !== null && $key !== '') {
+                $this->componentId .= '-' . $key;
+            }
         }
 
         return $this->componentId;

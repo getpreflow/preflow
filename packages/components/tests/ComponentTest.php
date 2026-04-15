@@ -63,17 +63,41 @@ final class ComponentTest extends TestCase
         $b = new SimpleComponent();
         $b->setProps(['id' => '2']);
 
-        // Same component class = same ID, regardless of props
+        // Same component class, no key = same ID
         $this->assertSame($a->getComponentId(), $b->getComponentId());
     }
 
-    public function test_same_class_produces_same_id(): void
+    public function test_key_prop_disambiguates_instances(): void
     {
         $a = new SimpleComponent();
-        $a->setProps(['id' => '1']);
+        $a->setProps(['key' => 'cuvee']);
 
         $b = new SimpleComponent();
-        $b->setProps(['id' => '1']);
+        $b->setProps(['key' => 'brink']);
+
+        // Different keys = different IDs
+        $this->assertNotSame($a->getComponentId(), $b->getComponentId());
+        $this->assertStringEndsWith('-cuvee', $a->getComponentId());
+        $this->assertStringEndsWith('-brink', $b->getComponentId());
+    }
+
+    public function test_no_key_prop_produces_base_id(): void
+    {
+        $component = new SimpleComponent();
+        $component->setProps(['title' => 'Hello']);
+
+        // No key = just class hash, no suffix
+        $id = $component->getComponentId();
+        $this->assertMatchesRegularExpression('/^SimpleComponent-[a-f0-9]{8}$/', $id);
+    }
+
+    public function test_same_class_same_key_produces_same_id(): void
+    {
+        $a = new SimpleComponent();
+        $a->setProps(['key' => 'test']);
+
+        $b = new SimpleComponent();
+        $b->setProps(['key' => 'test']);
 
         $this->assertSame($a->getComponentId(), $b->getComponentId());
     }
