@@ -43,12 +43,14 @@ final class TypeRegistry
             $fieldType = $fieldDef['type'] ?? 'string';
             $searchable = $fieldDef['searchable'] ?? false;
             $transform = $fieldDef['transform'] ?? null;
+            $validate = $fieldDef['validate'] ?? [];
 
             $fields[$name] = new TypeFieldDefinition(
                 name: $name,
                 type: $fieldType,
                 searchable: $searchable,
                 transform: $transform,
+                validate: $validate,
             );
 
             if ($searchable) {

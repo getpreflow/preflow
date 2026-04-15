@@ -20,4 +20,22 @@ final readonly class TypeDefinition
         public array $searchableFields = [],
         public array $transformers = [],
     ) {}
+
+    /**
+     * Collect validation rules from all field definitions.
+     *
+     * @return array<string, list<string>>
+     */
+    public function validationRules(): array
+    {
+        $rules = [];
+
+        foreach ($this->fields as $name => $field) {
+            if ($field->validate !== []) {
+                $rules[$name] = $field->validate;
+            }
+        }
+
+        return $rules;
+    }
 }
