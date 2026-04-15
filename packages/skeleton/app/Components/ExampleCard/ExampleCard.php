@@ -38,6 +38,5 @@ final class ExampleCard extends Component
     {
         $this->count = (int) $this->session->get(self::SESSION_KEY, 0) + 1;
         $this->session->set(self::SESSION_KEY, $this->count);
-        $this->props['count'] = $this->count;
     }
 }

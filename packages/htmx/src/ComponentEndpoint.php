@@ -68,10 +68,13 @@ final class ComponentEndpoint
             $component->authorize($payload->action, $request);
         }
 
-        // Determine if HTMX is targeting a different element (partial swap)
+        // Determine if HTMX is targeting a different element (partial swap).
+        // Compare against the component's short name prefix to handle cases where
+        // the props hash changed between renders (stale target ID in the request).
         $hxTarget = $request->getHeaderLine('HX-Target');
+        $shortName = (new \ReflectionClass($component))->getShortName();
         $isFragmentRequest = $hxTarget !== ''
-            && $hxTarget !== $component->getComponentId();
+            && !str_starts_with($hxTarget, $shortName . '-');
 
         // Dispatch action or resolve initial state
         if ($payload->action !== 'render') {
