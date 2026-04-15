@@ -1,44 +1,39 @@
 # Preflow Roadmap
 
-> Last updated: 2026-04-14 (v0.11.0)
+> Last updated: 2026-04-16 (v0.12.0)
 
 ## Current State
 
-**v0.11.0** — 565 tests, 13 packages, production-validated via a full application migration (interactive board game teaching tool with 6 step types, admin CRUD, flow editor, image management, auth).
+**v0.12.0** — 668 tests, 14 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
-All critical framework issues have been resolved. The HTML-over-the-wire architecture is proven with HTMX component lifecycle, auto-increment IDs, catch-all routes, fragment rendering, JSON middleware, and CSRF token handling.
+The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
 ---
 
 ## Next Up
 
-### CSS Scoping for Components
+### Form Package
 
-Prevent class name collisions between components using data-attribute scoping with a hash derived from the component class path. Currently, two components using the same CSS class name (e.g., `.title`) will collide. Scoping would automatically namespace component styles.
+An `ActiveForm`-style template layer built on top of `preflow/validation`. Replaces repetitive field/error/old-input boilerplate with declarative helpers:
 
-### Form & Validation Package
-
-Declarative validation for models and form handling:
-
-```php
-#[Entity(table: 'posts')]
-class Post extends Model {
-    #[Id]
-    public int $id = 0;
-
-    #[Field, Validate('required', 'min:3', 'max:200')]
-    public string $title = '';
-
-    #[Field, Validate('required', 'email')]
-    public string $author_email = '';
-}
+```twig
+{{ form_field('username', {label: 'Username', required: true}) }}
+{{ form_field('email', {label: 'Email', type: 'email'}) }}
+{{ form_select('role', {label: 'Role', options: {editor: 'Editor', admin: 'Admin'}}) }}
 ```
 
-With error collection, field-level messages, and HTMX-friendly inline validation.
+Error display, `is-invalid` class toggle, `old()` re-population, and help text handled internally. The validation ErrorBag already provides the data layer.
 
 ### Guide-Level Tutorial
 
-A step-by-step guide building a complete small application covering file-based + attribute routing, components with HTMX actions, data models, authentication, and deployment.
+A step-by-step guide building a complete small application covering file-based + attribute routing, components with HTMX actions, data models with validation, authentication, and deployment.
+
+### Props vs Action Params Clarity
+
+The distinction between component props (encoded in token) and action params (POST body) caused bugs in admin components. Options:
+- Merge params into props automatically so actions always see the full picture
+- Provide `$this->param('key')` helper that checks both
+- Better documentation + skeleton examples showing the pattern
 
 ---
 
@@ -69,19 +64,43 @@ File-based routes can't carry middleware annotations. Options under consideratio
 
 Track which CSS/JS blocks have already been sent to the client to avoid re-sending on every HTMX swap. Options: client-side cookie tracking, CSS deduplication by component name, or preloading all component CSS on initial render.
 
+### Lifecycle Events
+
+`BeforeSave`, `AfterSave`, `BeforeDelete` events on DataManager. Would allow validation to move from direct integration to event listeners, and enable other cross-cutting concerns (audit logging, cache invalidation).
+
 ---
 
 ## Lower Priority
 
 - **Error page customization** — app-level 404/500 templates
 - **Remember me** — persistent login via rotated token cookies
-- **Dynamic model validation** — validation rules in JSON schemas
 - **Blade adapter testing** — stress test the Blade adapter like Twig was tested
 - **Testing utilities** — component render assertions, HTMX action dispatch helpers, snapshot testing
 
 ---
 
-## Completed (v0.11.0)
+## Completed
+
+### v0.12.0
+
+- **Validation package** (`preflow/validation`) — 14th package
+  - `ValidationRule` interface with `ValidationContext` for cross-field rules
+  - 12 built-in rules: required, nullable, email, url, numeric, integer, min, max, between, in, regex, confirmed
+  - `RuleFactory` with alias resolution, `#[RuleAlias]` discovery, app-level overrides
+  - `Validator` engine with nullable/required chain logic
+  - `ValidationResult` (thin) + `ErrorBag` (rich) layered error objects
+  - `#[Validate]` attribute on typed model properties
+  - `"validate"` key in dynamic model JSON schemas
+  - `DataManager` auto-validation on save/insert/update with `validate: false` bypass
+  - `ValidationException` with structured error access
+  - `ValidationExtensionProvider` with `validation_errors()`, `validation_has_errors()`, `old()` template functions
+  - Auto-discovery of custom rules from `app/Rules/`
+  - Container-resolved custom validators (DB uniqueness, rate limiting)
+- **CSS scoping** — `cssClass` + `scopeCss` on components, native CSS nesting, stable hash from FQCN
+- **Key prop** for disambiguating multiple component instances
+- **Stable component ID** based on FQCN
+
+### v0.11.0
 
 - HTMX-aware CSS/JS delivery in fragment responses
 - Auto-increment ID support
