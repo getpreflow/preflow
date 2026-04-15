@@ -3,7 +3,7 @@
 **Date:** 2026-04-15
 **Package:** `preflow/validation`
 **Namespace:** `Preflow\Validation`
-**Status:** Approved design, pending implementation
+**Status:** Implemented
 
 ## Overview
 
