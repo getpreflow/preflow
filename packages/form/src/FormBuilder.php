@@ -72,8 +72,8 @@ final class FormBuilder
             $attrs['action'] = $this->action;
         }
 
-        // Driver may supply hx-post, hx-target, etc.
-        if ($this->driver !== null && $this->action !== '') {
+        // Driver may supply hx-post, hx-target, etc. — only in component context
+        if ($this->driver !== null && $this->componentId !== null && $this->action !== '') {
             $driverAttrs = $this->driver->formAttributes($this->action, $this->method);
             $attrs = array_merge($attrs, $driverAttrs);
         }
