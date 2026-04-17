@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Preflow\Htmx;
 
+use Preflow\View\FormHypermediaDriver;
 use Psr\Http\Message\ServerRequestInterface;
 
-final class HtmxDriver implements HypermediaDriver
+final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver
 {
     public function __construct(
         private readonly ResponseHeaders $responseHeaders,
@@ -62,5 +63,33 @@ final class HtmxDriver implements HypermediaDriver
     public function assetTag(): string
     {
         return '<script src="https://unpkg.com/htmx.org@2" defer></script>';
+    }
+
+    public function formAttributes(string $action, string $method, array $options = []): array
+    {
+        return [
+            "hx-{$method}" => $action,
+            'hx-target' => $options['target'] ?? 'this',
+            'hx-swap' => $options['swap'] ?? 'outerHTML',
+        ];
+    }
+
+    public function inlineValidationAttributes(string $endpoint, string $field, string $trigger = 'blur'): array
+    {
+        return [
+            'hx-post' => $endpoint,
+            'hx-trigger' => $trigger,
+            'hx-target' => 'closest .form-group',
+            'hx-swap' => 'outerHTML',
+            'hx-include' => "[name=\"{$field}\"]",
+        ];
+    }
+
+    public function submitAttributes(string $target, array $options = []): array
+    {
+        return [
+            'hx-target' => $target,
+            'hx-swap' => $options['swap'] ?? 'outerHTML',
+        ];
     }
 }
