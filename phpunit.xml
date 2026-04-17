@@ -46,6 +46,9 @@
         <testsuite name="Validation">
             <directory>packages/validation/tests</directory>
         </testsuite>
+        <testsuite name="Form">
+            <directory>packages/form/tests</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
@@ -61,6 +64,7 @@
             <directory>packages/testing/src</directory>
             <directory>packages/devtools/src</directory>
             <directory>packages/validation/src</directory>
+            <directory>packages/form/src</directory>
         </include>
     </source>
 </phpunit>

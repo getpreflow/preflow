@@ -19,6 +19,7 @@
         "preflow/core": "@dev",
         "preflow/data": "@dev",
         "preflow/devtools": "@dev",
+        "preflow/form": "@dev",
         "preflow/htmx": "@dev",
         "preflow/i18n": "@dev",
         "preflow/routing": "@dev",
@@ -90,6 +91,11 @@
         },
         {
             "type": "path",
+            "url": "packages/form",
+            "options": { "symlink": true }
+        },
+        {
+            "type": "path",
             "url": "packages/validation",
             "options": { "symlink": true }
         }
@@ -100,6 +106,7 @@
             "App\\": "packages/skeleton/app/",
             "Tests\\": "packages/skeleton/tests/",
             "Preflow\\Auth\\Tests\\": "packages/auth/tests/",
+            "Preflow\\Form\\Tests\\": "packages/form/tests/",
             "Preflow\\Validation\\Tests\\": "packages/validation/tests/"
         }
     },

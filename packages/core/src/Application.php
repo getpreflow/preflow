@@ -138,7 +138,9 @@ final class Application
         $this->bootDataLayer($collector);
         $this->bootViewLayer($debug);
         $this->bootValidation();
+        $this->bootHelpers();
         $this->bootComponentLayer($debug, $secretKey, $collector);
+        $this->bootForm();
         $this->bootRouting();
         $this->bootI18n();
         $this->bootSession();
@@ -403,6 +405,60 @@ final class Application
         $this->registerExtensionProvider($engine, $validationProvider);
     }
 
+    private function bootHelpers(): void
+    {
+        if (!$this->container->has(\Preflow\View\TemplateEngineInterface::class)) {
+            return;
+        }
+
+        $engine = $this->container->get(\Preflow\View\TemplateEngineInterface::class);
+
+        // Responsive image helper
+        $responsiveImage = null;
+        if (class_exists(\Preflow\View\ResponsiveImage::class)) {
+            $transformer = $this->container->has(\Preflow\View\ImageUrlTransformer::class)
+                ? $this->container->get(\Preflow\View\ImageUrlTransformer::class)
+                : new \Preflow\View\PathBasedTransformer();
+
+            $presets = $this->config->get('image.presets', []);
+            $responsiveImage = new \Preflow\View\ResponsiveImage($transformer, $presets);
+            $this->container->instance(\Preflow\View\ResponsiveImage::class, $responsiveImage);
+        }
+
+        // Color + image template functions
+        if (class_exists(\Preflow\Core\Helpers\HelpersExtensionProvider::class)) {
+            $helpersProvider = new \Preflow\Core\Helpers\HelpersExtensionProvider($responsiveImage);
+            $this->registerExtensionProvider($engine, $helpersProvider);
+        }
+    }
+
+    private function bootForm(): void
+    {
+        if (!class_exists(\Preflow\Form\FormExtensionProvider::class)) {
+            return;
+        }
+
+        if (!$this->container->has(\Preflow\View\TemplateEngineInterface::class)) {
+            return;
+        }
+
+        $engine = $this->container->get(\Preflow\View\TemplateEngineInterface::class);
+
+        $formProvider = new \Preflow\Form\FormExtensionProvider(
+            new \Preflow\Form\FieldRenderer(),
+            new \Preflow\Form\GroupRenderer(),
+            new \Preflow\Form\ModelIntrospector(),
+        );
+
+        // Wire in hypermedia driver if available
+        if ($this->container->has(\Preflow\View\FormHypermediaDriver::class)) {
+            $formProvider->setDriver($this->container->get(\Preflow\View\FormHypermediaDriver::class));
+        }
+
+        $this->container->instance(\Preflow\Form\FormExtensionProvider::class, $formProvider);
+        $this->registerExtensionProvider($engine, $formProvider);
+    }
+
     private function bootComponentLayer(DebugLevel $debug, string $secretKey, ?DebugCollector $collector = null): void
     {
         if (!class_exists(\Preflow\Components\ComponentRenderer::class)) {
@@ -448,6 +504,7 @@ final class Application
             $this->container->instance(\Preflow\Htmx\ResponseHeaders::class, $responseHeaders);
             $this->container->instance(\Preflow\Htmx\HypermediaDriver::class, $htmxDriver);
             $this->container->instance(\Preflow\Htmx\HtmxDriver::class, $htmxDriver);
+            $this->container->instance(\Preflow\View\FormHypermediaDriver::class, $htmxDriver);
             $this->container->instance(\Preflow\Htmx\ComponentToken::class, $componentToken);
 
             // Register HTMX library script tag in <head>

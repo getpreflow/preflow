@@ -9,9 +9,20 @@ final class Validate
 {
     /** @var list<string> */
     public readonly array $rules;
+    public readonly ?string $on;
 
     public function __construct(string ...$rules)
     {
-        $this->rules = $rules;
+        $on = null;
+        $filtered = [];
+        foreach ($rules as $rule) {
+            if (str_starts_with($rule, 'on:')) {
+                $on = substr($rule, 3);
+            } else {
+                $filtered[] = $rule;
+            }
+        }
+        $this->rules = $filtered;
+        $this->on = $on;
     }
 }

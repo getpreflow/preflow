@@ -1,0 +1,12 @@
+<div class="form-group{{ errors ? ' has-error' : '' }}{{ width ? ' form-width-' ~ width : '' }}">
+  {% if type != 'hidden' %}
+    <label for="{{ id }}">{{ label }}{% if required %} <span class="form-required">*</span>{% endif %}</label>
+  {% endif %}
+  {{ input_html|raw }}
+  {% if help %}
+    <small class="form-help">{{ help }}</small>
+  {% endif %}
+  {% if errors %}
+    <div class="form-error">{{ errors|first }}</div>
+  {% endif %}
+</div>

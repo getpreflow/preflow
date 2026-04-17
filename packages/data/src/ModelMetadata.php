@@ -20,6 +20,7 @@ final class ModelMetadata
      * @param string[] $searchableFields
      * @param array<string, \Preflow\Data\FieldTransformer> $transformers
      * @param array<string, list<string>> $validationRules
+     * @param array<string, list<array{rule: string, on: string|null}>> $rawValidationRules
      */
     private function __construct(
         public readonly string $modelClass,
@@ -31,6 +32,7 @@ final class ModelMetadata
         public readonly bool $hasTimestamps,
         public readonly array $transformers = [],
         public readonly array $validationRules = [],
+        private readonly array $rawValidationRules = [],
     ) {}
 
     /**
@@ -97,14 +99,21 @@ final class ModelMetadata
         }
 
         $validationRules = [];
+        $rawValidationRules = [];
         foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
             $validateAttrs = $prop->getAttributes(Validate::class);
             if ($validateAttrs !== []) {
                 $rules = [];
+                $rawEntries = [];
                 foreach ($validateAttrs as $attr) {
-                    $rules = array_merge($rules, $attr->newInstance()->rules);
+                    $instance = $attr->newInstance();
+                    $rules = array_merge($rules, $instance->rules);
+                    foreach ($instance->rules as $rule) {
+                        $rawEntries[] = ['rule' => $rule, 'on' => $instance->on];
+                    }
                 }
                 $validationRules[$prop->getName()] = $rules;
+                $rawValidationRules[$prop->getName()] = $rawEntries;
             }
         }
 
@@ -118,11 +127,38 @@ final class ModelMetadata
             hasTimestamps: $hasTimestamps,
             transformers: $transformers,
             validationRules: $validationRules,
+            rawValidationRules: $rawValidationRules,
         );
 
         self::$cache[$modelClass] = $meta;
 
         return $meta;
+    }
+
+    /**
+     * Return validation rules filtered for a specific scenario.
+     *
+     * Rules without an `on` constraint apply to all scenarios (including null).
+     * Rules with `on:scenario` only apply when that scenario is active.
+     *
+     * @param string|null $scenario e.g. 'create', 'update', or null for global-only rules
+     * @return array<string, list<string>>
+     */
+    public function validationRulesForScenario(?string $scenario): array
+    {
+        $result = [];
+        foreach ($this->rawValidationRules as $field => $entries) {
+            $rules = [];
+            foreach ($entries as $entry) {
+                if ($entry['on'] === null || $entry['on'] === $scenario) {
+                    $rules[] = $entry['rule'];
+                }
+            }
+            if ($rules !== []) {
+                $result[$field] = $rules;
+            }
+        }
+        return $result;
     }
 
     /**

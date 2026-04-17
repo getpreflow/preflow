@@ -1,0 +1,24 @@
+{
+    "name": "preflow/form",
+    "description": "Preflow form builder — field rendering, model binding, hypermedia integration",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "preflow/validation": "^0.1 || @dev",
+        "preflow/view": "^0.1 || @dev"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Preflow\\Form\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Preflow\\Form\\Tests\\": "tests/"
+        }
+    }
+}
