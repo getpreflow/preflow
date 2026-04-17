@@ -82,10 +82,10 @@ final class DataManager
     /**
      * Save a model.
      */
-    public function save(Model $model, bool $validate = true, array $rules = []): void
+    public function save(Model $model, bool $validate = true, array $rules = [], ?string $scenario = null): void
     {
         if ($validate) {
-            $this->validateModel($model, $rules);
+            $this->validateModel($model, $rules, $scenario);
         }
 
         $meta = ModelMetadata::for($model::class);
@@ -108,10 +108,10 @@ final class DataManager
      * Insert a new model. Sets the auto-generated ID on the model.
      * Use this when you explicitly want INSERT behavior (not upsert).
      */
-    public function insert(Model $model, bool $validate = true, array $rules = []): void
+    public function insert(Model $model, bool $validate = true, array $rules = [], ?string $scenario = null): void
     {
         if ($validate) {
-            $this->validateModel($model, $rules);
+            $this->validateModel($model, $rules, $scenario);
         }
 
         $meta = ModelMetadata::for($model::class);
@@ -131,10 +131,10 @@ final class DataManager
      * Update an existing model. Throws if ID is empty.
      * Use this when you explicitly want UPDATE behavior (not upsert).
      */
-    public function update(Model $model, bool $validate = true, array $rules = []): void
+    public function update(Model $model, bool $validate = true, array $rules = [], ?string $scenario = null): void
     {
         if ($validate) {
-            $this->validateModel($model, $rules);
+            $this->validateModel($model, $rules, $scenario);
         }
 
         $meta = ModelMetadata::for($model::class);
@@ -232,14 +232,16 @@ final class DataManager
         $driver->delete($typeDef->table, $id, $typeDef->idField);
     }
 
-    private function validateModel(Model $model, array $extraRules = []): void
+    private function validateModel(Model $model, array $extraRules = [], ?string $scenario = null): void
     {
         if ($this->validatorFactory === null) {
             return;
         }
 
         $meta = ModelMetadata::for($model::class);
-        $rules = $meta->validationRules;
+        $rules = $scenario !== null
+            ? $meta->validationRulesForScenario($scenario)
+            : $meta->validationRules;
 
         if (method_exists($model, 'rules')) {
             $rules = array_merge($rules, $model->rules());
