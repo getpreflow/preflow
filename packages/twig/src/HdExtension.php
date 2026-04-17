@@ -94,6 +94,21 @@ final class HdExtension extends AbstractExtension implements GlobalsInterface
     }
 
     /**
+     * Get just the action URL (tokenized) without any HTML attributes.
+     * Useful for inline validation where target/swap/trigger need customization.
+     *
+     * @param array<string, mixed> $props
+     */
+    public function actionUrl(
+        string $action,
+        string $componentClass,
+        array $props = [],
+    ): string {
+        $tokenStr = $this->token->encode($componentClass, $props, $action);
+        return $this->endpointPrefix . '/action?token=' . urlencode($tokenStr);
+    }
+
+    /**
      * @param array<string, mixed> $props
      * @param array<string, string> $extra
      */
