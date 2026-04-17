@@ -84,7 +84,7 @@ final class FormBuilder
         $html = '<form' . $this->buildAttrString($attrs) . '>';
 
         if ($this->csrfToken !== null) {
-            $safeName  = htmlspecialchars('csrf_token', ENT_QUOTES, 'UTF-8');
+            $safeName  = htmlspecialchars('_csrf_token', ENT_QUOTES, 'UTF-8');
             $safeValue = htmlspecialchars($this->csrfToken, ENT_QUOTES, 'UTF-8');
             $html .= "\n" . '<input type="hidden" name="' . $safeName . '" value="' . $safeValue . '">';
         }

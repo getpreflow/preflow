@@ -49,7 +49,7 @@ final class FormBuilderTest extends TestCase
     {
         $builder = $this->createBuilder(['csrf_token' => 'test-token-123']);
         $html = $builder->begin();
-        $this->assertStringContainsString('name="csrf_token"', $html);
+        $this->assertStringContainsString('name="_csrf_token"', $html);
         $this->assertStringContainsString('value="test-token-123"', $html);
     }
 
