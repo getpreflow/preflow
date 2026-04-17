@@ -1,0 +1,8 @@
+<div class="form-group-wrapper{{ class ? ' ' ~ class : '' }}">
+  {% if label %}
+    <div class="form-group-label">{{ label }}</div>
+  {% endif %}
+  <div class="form-group-fields">
+    {{ content|raw }}
+  </div>
+</div>
