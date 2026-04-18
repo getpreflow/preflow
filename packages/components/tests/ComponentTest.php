@@ -45,6 +45,28 @@ class ComponentWithTag extends Component
     public string $tag = 'section';
 }
 
+class ComponentWithParam extends Component
+{
+    public ?string $result = null;
+
+    public function actions(): array
+    {
+        return ['delete', 'update'];
+    }
+
+    protected function actionDelete(array $params): void
+    {
+        // Uses param() to get 'id' from props (token-encoded identity)
+        $this->result = 'deleted:' . $this->param('id', 'none');
+    }
+
+    protected function actionUpdate(array $params): void
+    {
+        // Uses param() — 'name' comes from POST, 'id' from props
+        $this->result = $this->param('id') . ':' . $this->param('name');
+    }
+}
+
 final class ComponentTest extends TestCase
 {
     public function test_component_id_generated_from_class(): void
@@ -190,6 +212,35 @@ final class ComponentTest extends TestCase
 
         // Should look for SimpleComponent.twig in same dir as class file
         $this->assertStringEndsWith('SimpleComponent.twig', $path);
+    }
+
+    public function test_param_returns_action_param_first(): void
+    {
+        $component = new ComponentWithParam();
+        $component->setProps(['id' => '10', 'name' => 'from-props']);
+        $component->handleAction('update', ['name' => 'from-post']);
+
+        // 'id' comes from props, 'name' from POST (POST wins)
+        $this->assertSame('10:from-post', $component->result);
+    }
+
+    public function test_param_falls_back_to_props(): void
+    {
+        $component = new ComponentWithParam();
+        $component->setProps(['id' => '42']);
+        $component->handleAction('delete', []);
+
+        // 'id' not in POST params, falls back to props
+        $this->assertSame('deleted:42', $component->result);
+    }
+
+    public function test_param_returns_default_when_missing(): void
+    {
+        $component = new ComponentWithParam();
+        $component->setProps([]);
+        $component->handleAction('delete', []);
+
+        $this->assertSame('deleted:none', $component->result);
     }
 
     public function test_get_template_context_includes_public_properties(): void

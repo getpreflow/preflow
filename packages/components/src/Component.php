@@ -17,6 +17,9 @@ abstract class Component
     /** Enable CSS scoping: wraps {% apply css %} content in .cssClass-hash { ... } */
     protected bool $scopeCss = false;
 
+    /** @var array<string, mixed> POST/request parameters from the current action */
+    private array $actionParams = [];
+
     private ?string $componentId = null;
 
     /**
@@ -67,7 +70,20 @@ abstract class Component
             );
         }
 
+        $this->actionParams = $params;
         $this->{$method}($params);
+    }
+
+    /**
+     * Get a parameter by key, checking action params (POST body) first,
+     * then falling back to props (token-encoded component identity).
+     *
+     * Use this in action methods when you need a value that could come
+     * from either the form submission or the component's identity context.
+     */
+    protected function param(string $key, mixed $default = null): mixed
+    {
+        return $this->actionParams[$key] ?? $this->props[$key] ?? $default;
     }
 
     /**
