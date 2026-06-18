@@ -2075,17 +2075,17 @@
             "dist": {
                 "type": "path",
                 "url": "packages/folio",
-                "reference": "dddee92efa6705153709a4b7610272a70a74b154"
+                "reference": "e4b3a0139a265dc18c0e21571fcc97a33edb19a3"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
                 "php": ">=8.4",
-                "preflow/core": "@dev",
-                "preflow/data": "@dev",
-                "preflow/form": "@dev",
-                "preflow/routing": "@dev",
-                "preflow/validation": "@dev",
-                "preflow/view": "@dev"
+                "preflow/core": "^0.1 || @dev",
+                "preflow/data": "^0.1 || @dev",
+                "preflow/form": "^0.1 || @dev",
+                "preflow/routing": "^0.1 || @dev",
+                "preflow/validation": "^0.1 || @dev",
+                "preflow/view": "^0.1 || @dev"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0"
@@ -2098,8 +2098,7 @@
             },
             "autoload-dev": {
                 "psr-4": {
-                    "Preflow\\Folio\\Tests\\": "tests/",
-                    "App\\Folio\\Overrides\\": "tests/Fixtures/App/Folio/Overrides/"
+                    "Preflow\\Folio\\Tests\\": "tests/"
                 }
             },
             "license": [

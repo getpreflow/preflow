@@ -5,12 +5,12 @@
     "license": "MIT",
     "require": {
         "php": ">=8.4",
-        "preflow/core": "@dev",
-        "preflow/data": "@dev",
-        "preflow/view": "@dev",
-        "preflow/routing": "@dev",
-        "preflow/form": "@dev",
-        "preflow/validation": "@dev",
+        "preflow/core": "^0.1 || @dev",
+        "preflow/data": "^0.1 || @dev",
+        "preflow/view": "^0.1 || @dev",
+        "preflow/routing": "^0.1 || @dev",
+        "preflow/form": "^0.1 || @dev",
+        "preflow/validation": "^0.1 || @dev",
         "nyholm/psr7": "^1.8"
     },
     "require-dev": {
@@ -23,7 +23,5 @@
         "psr-4": {
             "Preflow\\Folio\\Tests\\": "tests/"
         }
-    },
-    "minimum-stability": "dev",
-    "prefer-stable": true
+    }
 }
