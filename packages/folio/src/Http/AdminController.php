@@ -120,6 +120,10 @@ final class AdminController
             return new Response(404, [], 'Unknown type');
         }
 
+        if ($this->dm->findType($type, $id) === null) {
+            return new Response(404, [], 'Not found');
+        }
+
         $typeDef = $this->registry->get($type);
         $data = (array) $request->getParsedBody();
         $data[$typeDef->idField] = $id;
@@ -136,6 +140,10 @@ final class AdminController
         $id = (string) $request->getAttribute('id', '');
         if (!$this->catalog->has($type)) {
             return new Response(404, [], 'Unknown type');
+        }
+
+        if ($this->dm->findType($type, $id) === null) {
+            return new Response(404, [], 'Not found');
         }
 
         $this->dm->deleteType($type, $id);

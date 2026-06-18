@@ -102,4 +102,27 @@ final class AdminControllerTest extends TestCase
         $res = $this->controller()->list($req);
         $this->assertSame(404, $res->getStatusCode());
     }
+
+    public function test_update_missing_record_returns_404(): void
+    {
+        $req = (new Psr17Factory())->createServerRequest('POST', '/folio/page/does-not-exist')
+            ->withAttribute('type', 'page')
+            ->withAttribute('id', 'does-not-exist')
+            ->withParsedBody(['title' => 'Ghost', 'slug' => 'ghost', 'body' => '', 'status' => 'draft']);
+
+        $res = $this->controller()->update($req);
+
+        $this->assertSame(404, $res->getStatusCode());
+    }
+
+    public function test_destroy_missing_record_returns_404(): void
+    {
+        $req = (new Psr17Factory())->createServerRequest('POST', '/folio/page/does-not-exist')
+            ->withAttribute('type', 'page')
+            ->withAttribute('id', 'does-not-exist');
+
+        $res = $this->controller()->destroy($req);
+
+        $this->assertSame(404, $res->getStatusCode());
+    }
 }
