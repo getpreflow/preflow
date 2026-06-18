@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Folio\Overrides\Content;
+namespace Preflow\Folio\Tests\Fixtures\Overrides\Content;
 
 use Nyholm\Psr7\Response;
 use Preflow\Folio\Override\OverridableAction;

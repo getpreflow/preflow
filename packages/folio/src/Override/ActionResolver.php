@@ -10,11 +10,12 @@ final class ActionResolver
 {
     public function __construct(
         private readonly Container $container,
+        private readonly string $namespacePrefix = 'App\\Folio\\Overrides\\',
     ) {}
 
     public function resolve(string $controller, string $action): ?OverridableAction
     {
-        $class = 'App\\Folio\\Overrides\\' . ucfirst($controller) . '\\' . ucfirst($action);
+        $class = $this->namespacePrefix . ucfirst($controller) . '\\' . ucfirst($action);
 
         if (!class_exists($class)) {
             return null;

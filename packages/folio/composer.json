@@ -21,8 +21,7 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "Preflow\\Folio\\Tests\\": "tests/",
-            "App\\Folio\\Overrides\\": "tests/Fixtures/App/Folio/Overrides/"
+            "Preflow\\Folio\\Tests\\": "tests/"
         }
     },
     "minimum-stability": "dev",
