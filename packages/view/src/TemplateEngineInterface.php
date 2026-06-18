@@ -34,4 +34,11 @@ interface TemplateEngineInterface
      * Get the file extension for this engine's templates (e.g., 'twig', 'blade.php').
      */
     public function getTemplateExtension(): string;
+
+    /**
+     * Register a template namespace path (e.g. "folio" => "/path"),
+     * referenced in templates as "@folio/...". Multiple paths for the
+     * same namespace are searched in registration order (first wins).
+     */
+    public function addNamespace(string $namespace, string $path): void;
 }

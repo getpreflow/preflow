@@ -110,6 +110,11 @@ final class BladeEngine implements TemplateEngineInterface
         return 'blade.php';
     }
 
+    public function addNamespace(string $namespace, string $path): void
+    {
+        // Blade does not support Twig-style template namespaces; intentionally a no-op.
+    }
+
     private function registerAssetDirectives(AssetCollector $assetCollector): void
     {
         $this->compiler->directive('css', function () {

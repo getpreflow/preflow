@@ -84,6 +84,8 @@ class FakeTemplateEngine implements TemplateEngineInterface
     {
         return 'twig';
     }
+
+    public function addNamespace(string $namespace, string $path): void {}
 }
 
 final class ComponentRendererTest extends TestCase

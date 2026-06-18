@@ -45,6 +45,7 @@ final class TestApplication
                 public function addFunction(\Preflow\View\TemplateFunctionDefinition $function): void {}
                 public function addGlobal(string $name, mixed $value): void {}
                 public function getTemplateExtension(): string { return 'twig'; }
+                public function addNamespace(string $namespace, string $path): void {}
             },
             errorBoundary: $errorBoundary,
         );

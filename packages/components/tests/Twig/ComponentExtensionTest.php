@@ -57,6 +57,8 @@ class StubTemplateEngine implements TemplateEngineInterface
     {
         return 'twig';
     }
+
+    public function addNamespace(string $namespace, string $path): void {}
 }
 
 final class ComponentExtensionTest extends TestCase

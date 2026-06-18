@@ -77,4 +77,11 @@ final class TwigEngine implements TemplateEngineInterface
     {
         return 'twig';
     }
+
+    public function addNamespace(string $namespace, string $path): void
+    {
+        /** @var \Twig\Loader\FilesystemLoader $loader */
+        $loader = $this->twig->getLoader();
+        $loader->addPath($path, $namespace);
+    }
 }

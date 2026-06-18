@@ -81,6 +81,8 @@ class EndpointFakeEngine implements TemplateEngineInterface
     {
         return 'twig';
     }
+
+    public function addNamespace(string $namespace, string $path): void {}
 }
 
 class EndpointFakeEngineWithAssets implements TemplateEngineInterface
@@ -108,6 +110,8 @@ class EndpointFakeEngineWithAssets implements TemplateEngineInterface
     {
         return 'twig';
     }
+
+    public function addNamespace(string $namespace, string $path): void {}
 }
 
 final class ComponentEndpointTest extends TestCase
