@@ -21,6 +21,9 @@ final class FolioWalkingSkeletonTest extends TestCase
 
     protected function tearDown(): void
     {
+        // Reset debug flag in case a test enabled strict Twig rendering.
+        putenv('APP_DEBUG');
+
         // Close any active PHP session so the next test's app boot can call
         // session_name() / session_set_cookie_params() without warnings.
         if (session_status() === PHP_SESSION_ACTIVE) {
@@ -69,6 +72,22 @@ final class FolioWalkingSkeletonTest extends TestCase
         $page = $app->handle((new Psr17Factory())->createServerRequest('GET', '/folio-about'));
         $this->assertSame(200, $page->getStatusCode());
         $this->assertStringContainsString('About Us', (string) $page->getBody());
+    }
+
+    public function test_create_form_renders_in_strict_mode(): void
+    {
+        // Debug on => Twig strict_variables on. The "new record" form passes an
+        // empty values map, so the template must guard missing-key access or it
+        // throws a RuntimeError under strict mode (only surfaces with debug on).
+        putenv('APP_DEBUG=1');
+
+        $app = $this->makeApp();
+        $res = $app->handle((new Psr17Factory())->createServerRequest('GET', '/folio/page/new'));
+
+        $this->assertSame(200, $res->getStatusCode());
+        $body = (string) $res->getBody();
+        $this->assertStringContainsString('name="title"', $body);
+        $this->assertStringContainsString('name="_csrf_token"', $body);
     }
 
     public function test_unknown_slug_is_404(): void
