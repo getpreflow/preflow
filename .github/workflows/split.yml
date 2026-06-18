@@ -71,6 +71,26 @@ jobs:
           git remote add split "https://x-access-token:${SPLIT_TOKEN}@github.com/getpreflow/${{ matrix.package.remote }}.git"
           git push split ${SHA}:refs/heads/main -f
 
+      - name: Notify Packagist
+        env:
+          PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}
+        run: |
+          # Best-effort: tell Packagist to re-crawl this package after the split push.
+          # Skips cleanly if the token isn't configured; never fails the split job.
+          if [ -z "${PACKAGIST_TOKEN}" ]; then
+            echo "PACKAGIST_TOKEN not set — skipping Packagist notification for ${{ matrix.package.remote }}."
+            exit 0
+          fi
+          status=$(curl -s -o /tmp/packagist.out -w '%{http_code}' \
+            -XPOST -H 'content-type:application/json' \
+            "https://packagist.org/api/update-package?username=smyr&apiToken=${PACKAGIST_TOKEN}" \
+            -d "{\"repository\":{\"url\":\"https://github.com/getpreflow/${{ matrix.package.remote }}\"}}")
+          if [ "${status}" = "200" ] || [ "${status}" = "202" ]; then
+            echo "Packagist notified for preflow/${{ matrix.package.remote }} (HTTP ${status})."
+          else
+            echo "::warning::Packagist notification for preflow/${{ matrix.package.remote }} returned HTTP ${status}: $(cat /tmp/packagist.out)"
+          fi
+
       - name: Split and push tag
         if: github.ref_type == 'tag'
         env:
