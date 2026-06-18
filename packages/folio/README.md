@@ -13,6 +13,11 @@ composer require preflow/folio
 Requires PHP 8.4+. Composes `preflow/data`, `preflow/view`, `preflow/routing`, and
 `preflow/form` (all already present in a standard Preflow app).
 
+> **Pre-1.0:** Preflow currently publishes `dev-main` only, so your project must allow dev
+> stability. The Preflow skeleton already sets `"minimum-stability": "dev"` and
+> `"prefer-stable": true`. If you're adding Folio to a different setup, add those to your
+> `composer.json` (or require it explicitly with `composer require preflow/folio:@dev`).
+
 ## Getting started
 
 Folio is opt-in: a fresh Preflow skeleton does not wire it for you. Three small steps.
