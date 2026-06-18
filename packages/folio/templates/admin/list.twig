@@ -1,0 +1,19 @@
+{% extends "@folio/admin/_layout.twig" %}
+{% block title %}Folio — {{ label }}{% endblock %}
+{% block content %}
+    <h1>{{ label }}</h1>
+    <a href="{{ prefix }}/{{ type }}/new">New</a>
+    <table>
+        <thead><tr><th>Title</th><th>Slug</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        {% for row in rows %}
+            <tr>
+                <td>{{ row.title }}</td>
+                <td>{{ row.slug }}</td>
+                <td>{{ row.status }}</td>
+                <td><a href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">Edit</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}

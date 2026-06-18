@@ -1,0 +1,10 @@
+{% extends "@folio/admin/_layout.twig" %}
+{% block title %}Folio — Dashboard{% endblock %}
+{% block content %}
+    <h1>Dashboard</h1>
+    <ul>
+        {% for type in types %}
+            <li><a href="{{ prefix }}/{{ type.key }}">{{ type.label }}</a></li>
+        {% endfor %}
+    </ul>
+{% endblock %}
