@@ -114,7 +114,8 @@
             "Preflow\\Auth\\Tests\\": "packages/auth/tests/",
             "Preflow\\Folio\\Tests\\": "packages/folio/tests/",
             "Preflow\\Form\\Tests\\": "packages/form/tests/",
-            "Preflow\\Validation\\Tests\\": "packages/validation/tests/"
+            "Preflow\\Validation\\Tests\\": "packages/validation/tests/",
+            "App\\Folio\\Overrides\\": "packages/folio/tests/Fixtures/App/Folio/Overrides/"
         }
     },
     "config": {
