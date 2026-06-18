@@ -1,0 +1,13 @@
+{
+    "key": "page",
+    "table": "page",
+    "storage": "json",
+    "id_field": "uuid",
+    "label": "Pages",
+    "fields": {
+        "title":  { "type": "string", "searchable": true, "validate": ["required"] },
+        "slug":   { "type": "string", "searchable": true, "validate": ["required"] },
+        "body":   { "type": "text" },
+        "status": { "type": "string", "validate": ["required", "in:draft,published"] }
+    }
+}

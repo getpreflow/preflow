@@ -67,7 +67,7 @@ final class AdminControllerTest extends TestCase
             $this->registry,
             $this->dm,
             $this->engine(),
-            new ActionResolver(new Container()),
+            new ActionResolver(new Container(), 'Preflow\\Folio\\Tests\\Overrides\\'),
             '/folio',
         );
     }

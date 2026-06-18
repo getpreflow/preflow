@@ -66,7 +66,9 @@ final class AdminController
             return new Response(404, [], 'Unknown type');
         }
 
-        return $this->form($type, [], $this->prefix . '/' . $type, 'New ' . $this->labelFor($type), []);
+        $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
+
+        return $this->form($type, [], $this->prefix . '/' . $type, 'New ' . $this->labelFor($type), [], $csrf);
     }
 
     public function store(ServerRequestInterface $request): ResponseInterface
@@ -98,12 +100,15 @@ final class AdminController
             return new Response(404, [], 'Not found');
         }
 
+        $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
+
         return $this->form(
             $type,
             $record->toArray(),
             $this->prefix . '/' . $type . '/' . $id,
             'Edit ' . $this->labelFor($type),
             [],
+            $csrf,
         );
     }
 
@@ -139,7 +144,7 @@ final class AdminController
     }
 
     /** @param array<string, mixed> $values @param array<string, list<string>> $errors */
-    private function form(string $type, array $values, string $action, string $heading, array $errors): ResponseInterface
+    private function form(string $type, array $values, string $action, string $heading, array $errors, string $csrf = ''): ResponseInterface
     {
         $typeDef = $this->registry->get($type);
         $fields = [];
@@ -157,7 +162,7 @@ final class AdminController
             'types' => $this->catalog->all(),
             'heading' => $heading,
             'action' => $action,
-            'csrf' => '', // populated by the app's csrf_token() function in real rendering
+            'csrf' => $csrf,
             'fields' => $fields,
             'values' => $values,
             'errors' => $errors,
