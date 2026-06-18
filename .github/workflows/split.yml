@@ -6,6 +6,7 @@ on:
       - main
     tags:
       - 'v*'
+  workflow_dispatch:
 
 env:
   GIT_AUTHOR_NAME: "Preflow Bot"
