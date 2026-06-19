@@ -72,6 +72,15 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('name="title"', (string) $res->getBody());
     }
 
+    public function test_create_form_renders_fields_via_registry(): void
+    {
+        $body = (string) $this->get('/folio/page/new')->getBody();
+        // string field -> text input; text field (body) -> textarea (registry mapping)
+        $this->assertStringContainsString('name="title"', $body);
+        $this->assertStringContainsString('type="text"', $body);
+        $this->assertStringContainsString('<textarea name="body"', $body);
+    }
+
     public function test_create_form_has_styled_actions_and_cancel(): void
     {
         $body = (string) $this->get('/folio/page/new')->getBody();
