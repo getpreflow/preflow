@@ -306,6 +306,32 @@ final class FolioAppTest extends TestCase
         $this->assertSame('', (string) $after->get('cover'));
     }
 
+    public function test_relation_picker_lists_targets_and_round_trips(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+
+        // create a target author
+        $app->handle($f->createServerRequest('POST', '/folio/author')
+            ->withParsedBody(['name' => 'Ada Lovelace']));
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $authorId = $dm->queryType('author')->first()->getId();
+
+        // the new-page form lists the author as an option
+        $newForm = (string) $app->handle($f->createServerRequest('GET', '/folio/page/new'))->getBody();
+        $this->assertStringContainsString('<select name="author"', $newForm);
+        $this->assertStringContainsString('Ada Lovelace', $newForm);
+
+        // create a page selecting that author, then the edit form shows it selected
+        $app->handle($f->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'Rel', 'slug' => 'rel', 'body' => 'b', 'status' => 'published', 'author' => $authorId]));
+        $pageId = $dm->queryType('page')->where('slug', 'rel')->first()->getId();
+
+        $editForm = (string) $app->handle($f->createServerRequest('GET', '/folio/page/' . $pageId . '/edit')
+            ->withAttribute('type', 'page')->withAttribute('id', $pageId))->getBody();
+        $this->assertStringContainsString('value="' . $authorId . '" selected', $editForm);
+    }
+
     private function app(): Application
     {
         $app = Application::create($this->dir);
@@ -353,6 +379,13 @@ final class FolioAppTest extends TestCase
         $w('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");
         $w('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
 
+        $w('config/models/author.json', json_encode([
+            'key' => 'author', 'table' => 'author', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Authors',
+            'fields' => [
+                'name' => ['type' => 'string', 'validate' => ['required']],
+            ],
+        ], JSON_PRETTY_PRINT));
+
         $w('config/models/page.json', json_encode([
             'key'      => 'page',
             'table'    => 'page',
@@ -365,6 +398,7 @@ final class FolioAppTest extends TestCase
                 'body'   => ['type' => 'richtext'],
                 'status' => ['type' => 'string', 'validate' => ['required', 'in:draft,published']],
                 'cover'  => ['type' => 'asset', 'asset' => ['multiple' => false, 'accept' => 'image/*']],
+                'author' => ['type' => 'relation', 'relation' => ['to' => 'author', 'multiple' => false]],
             ],
         ], JSON_PRETTY_PRINT));
 

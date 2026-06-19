@@ -21,6 +21,7 @@ use Preflow\Folio\Field\Types\AssetFieldType;
 use Preflow\Folio\Field\Types\NumberFieldType;
 use Preflow\Folio\Field\Types\RichTextFieldType;
 use Preflow\Folio\Field\Types\StringFieldType;
+use Preflow\Folio\Field\Types\RelationFieldType;
 use Preflow\Folio\Field\Types\TextFieldType;
 use Symfony\Component\HtmlSanitizer\HtmlSanitizer;
 use Symfony\Component\HtmlSanitizer\HtmlSanitizerConfig;
@@ -48,7 +49,7 @@ final class FolioServiceProvider extends ServiceProvider
 
         $uploadsDir = $this->uploadsDir($app);
         $uploadUrlPrefix = rtrim($this->prefix($app), '/') . '/_uploads';
-        $container->bind(FieldTypeRegistry::class, function () use ($uploadsDir, $uploadUrlPrefix): FieldTypeRegistry {
+        $container->bind(FieldTypeRegistry::class, function (Container $c) use ($uploadsDir, $uploadUrlPrefix): FieldTypeRegistry {
             $registry = new FieldTypeRegistry();
             $registry->register(new StringFieldType());
             $registry->register(new TextFieldType());
@@ -60,6 +61,10 @@ final class FolioServiceProvider extends ServiceProvider
                     ->allowRelativeMedias(),
             )));
             $registry->register(new AssetFieldType($uploadsDir, $uploadUrlPrefix));
+            $registry->register(new RelationFieldType(
+                $c->get(\Preflow\Data\DataManager::class),
+                $c->get(TypeRegistry::class),
+            ));
             $registry->alias('int', 'number');
             $registry->alias('integer', 'number');
             $registry->alias('float', 'number');
