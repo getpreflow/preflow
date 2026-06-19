@@ -8,6 +8,7 @@ final readonly class TypeFieldDefinition
 {
     /**
      * @param list<string> $validate
+     * @param array<string, mixed> $config
      */
     public function __construct(
         public string $name,
@@ -15,5 +16,8 @@ final readonly class TypeFieldDefinition
         public bool $searchable = false,
         public ?string $transform = null,
         public array $validate = [],
+        public ?string $label = null,
+        public ?string $help = null,
+        public array $config = [],
     ) {}
 }
