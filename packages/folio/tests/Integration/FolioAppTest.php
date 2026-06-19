@@ -49,6 +49,20 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('Pages', (string) $res->getBody()); // the type label
     }
 
+    public function test_dashboard_renders_type_card_with_count(): void
+    {
+        // Seed one record so the count is non-zero and deterministic.
+        $app = $this->app();
+        $app->handle((new Psr17Factory())->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'Seed', 'slug' => 'seed', 'body' => 'B', 'status' => 'published']));
+
+        $body = (string) $app->handle((new Psr17Factory())->createServerRequest('GET', '/folio'))->getBody();
+        $this->assertStringContainsString('folio-card-grid', $body);
+        $this->assertStringContainsString('folio-card-label', $body);
+        $this->assertStringContainsString('Pages', $body);
+        $this->assertStringContainsString('1 record', $body);
+    }
+
     public function test_create_form_renders_under_strict_twig(): void
     {
         // New-record form passes an empty values map; the template must guard
