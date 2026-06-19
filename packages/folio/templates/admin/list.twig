@@ -1,19 +1,35 @@
 {% extends "@folio/admin/_layout.twig" %}
 {% block title %}Folio — {{ label }}{% endblock %}
+{% block page_title %}{{ label }}{% endblock %}
+{% block actions %}
+    <a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new">New</a>
+{% endblock %}
 {% block content %}
-    <h1>{{ label }}</h1>
-    <a href="{{ prefix }}/{{ type }}/new">New</a>
-    <table>
-        <thead><tr><th>Title</th><th>Slug</th><th>Status</th><th></th></tr></thead>
-        <tbody>
-        {% for row in rows %}
-            <tr>
-                <td>{{ row.title }}</td>
-                <td>{{ row.slug }}</td>
-                <td>{{ row.status }}</td>
-                <td><a href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">Edit</a></td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
+    {% if rows is empty %}
+        <div class="folio-empty">
+            <p>No records yet.</p>
+            <a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new">Create one</a>
+        </div>
+    {% else %}
+        <table class="folio-table">
+            <thead><tr><th>Title</th><th>Slug</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+            {% for row in rows %}
+                <tr>
+                    <td>{{ row.title }}</td>
+                    <td>{{ row.slug }}</td>
+                    <td>{{ row.status }}</td>
+                    <td>
+                        <div class="folio-row-actions">
+                            <a class="btn btn-ghost" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">Edit</a>
+                            <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/delete" onsubmit="return confirm('Delete this record?');">
+                                <button type="submit" class="btn btn-danger">Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
 {% endblock %}

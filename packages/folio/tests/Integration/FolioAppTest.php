@@ -124,6 +124,26 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('HOME PAGE', (string) $res->getBody());
     }
 
+    public function test_list_shows_empty_state_when_no_records(): void
+    {
+        $body = (string) $this->get('/folio/page')->getBody();
+        $this->assertStringContainsString('folio-empty', $body);
+        $this->assertStringContainsString('No records yet', $body);
+    }
+
+    public function test_list_shows_row_with_edit_and_delete_actions(): void
+    {
+        $app = $this->app();
+        $app->handle((new Psr17Factory())->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'Listed', 'slug' => 'listed', 'body' => 'B', 'status' => 'published']));
+
+        $body = (string) $app->handle((new Psr17Factory())->createServerRequest('GET', '/folio/page'))->getBody();
+        $this->assertStringContainsString('folio-table', $body);
+        $this->assertStringContainsString('Listed', $body);
+        $this->assertStringContainsString('/edit', $body);
+        $this->assertStringContainsString('/delete', $body);
+    }
+
     private function app(): Application
     {
         $app = Application::create($this->dir);
