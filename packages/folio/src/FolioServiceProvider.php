@@ -67,7 +67,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TemplateEngineInterface::class),
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
-            dirname(__DIR__) . '/assets/admin.css',
+            dirname(__DIR__) . '/assets',
+            $this->assetMap(),
         ));
     }
 
@@ -84,15 +85,22 @@ final class FolioServiceProvider extends ServiceProvider
             }
             $engine->addNamespace('folio', dirname(__DIR__) . '/templates');
 
-            // Single URL seam for the admin stylesheet. Content-hash version so
-            // the immutable cache busts on edit. A future asset-publishing
-            // system can change this one resolver without touching templates.
-            $cssPath = dirname(__DIR__) . '/assets/admin.css';
-            $version = is_file($cssPath) ? substr(hash_file('xxh3', $cssPath), 0, 12) : 'dev';
-            $engine->addGlobal(
-                'folio_admin_css_url',
-                rtrim($this->prefix($app), '/') . '/_assets/admin.css?v=' . $version,
-            );
+            // Single asset URL seam: folio_asset('admin.css') -> versioned URL.
+            // Content-hash version so immutable caches bust on edit. A future
+            // asset-publishing system can swap this one resolver.
+            $assetsDir = dirname(__DIR__) . '/assets';
+            $assetMap = $this->assetMap();
+            $prefix = rtrim($this->prefix($app), '/');
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_asset',
+                callable: function (string $file) use ($prefix, $assetsDir, $assetMap): string {
+                    $rel = $assetMap[$file] ?? $file;
+                    $path = $assetsDir . '/' . $rel;
+                    $v = is_file($path) ? substr(hash_file('xxh3', $path), 0, 12) : 'dev';
+                    return $prefix . '/_assets/' . $file . '?v=' . $v;
+                },
+                isSafe: false,
+            ));
         }
 
         // 2. Routes: admin under the configured prefix, then the frontend catch-all LAST.
@@ -104,6 +112,18 @@ final class FolioServiceProvider extends ServiceProvider
                 $collection->add(FolioRoutes::frontend());
             }
         }
+    }
+
+    /**
+     * Flat URL filename => path relative to packages/folio/assets.
+     *
+     * @return array<string, string>
+     */
+    private function assetMap(): array
+    {
+        return [
+            'admin.css' => 'admin.css',
+        ];
     }
 
     private function prefix(Application $app): string
