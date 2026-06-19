@@ -102,22 +102,64 @@ Default theme follows `prefers-color-scheme`. `[data-theme="light"]` and
   danger.
 - **Flash/alert banners:** success and error variants for post-action feedback.
 
-### Delivery
+### Delivery — designed for no lock-in
 
-- **CSS route:** a package-owned controller action serves
-  `GET {prefix}/_assets/admin.css` with `Content-Type: text/css` and long-lived
-  cache headers. The `<link>` in `_layout.twig` carries a content hash in the
-  query string (`admin.css?v=<hash>`) so it caches hard but busts on change.
-- **Source:** a single `.css` file shipped inside the package. No build, no
-  publish step, no symlink into the host app's `public/`.
-- **Icons:** inline SVGs in the templates.
+The host app has **no asset-publishing system yet**, but one is anticipated
+(Yii2-style publishing from package source dirs to a public web root, plus
+private/public storage). The delivery design must not preclude that, and must
+not overload the existing seams (`asset_url()`, `AssetCollector`) in a way that
+boxes the future system in.
+
+- **Source of truth — a real file.** The stylesheet lives as a genuine `.css`
+  file inside the package (e.g. `packages/folio/assets/admin.css`), authored as
+  CSS, *not* embedded in a PHP heredoc. This file is publish-ready: a future
+  asset publisher can copy/symlink it to a public web root unchanged.
+- **Served now via a package-owned route.** A small `AssetController` serves
+  `GET {prefix}/_assets/admin.css` by **reading that file from disk** and
+  returning it with `Content-Type: text/css; charset=UTF-8` and long-lived
+  cache headers. No build, no publish step, no symlink required today.
+- **One URL seam, centralized.** The `<link>` href is produced in exactly one
+  place — a single Twig global registered by `FolioServiceProvider` (e.g.
+  `folio_admin_css_url`) resolving to `{prefix}/_assets/admin.css?v=<hash>`.
+  Templates never construct the URL themselves. When a publishing system later
+  lands, only this one resolver changes (to point at the published path); the
+  templates and the CSS file are untouched.
+  - Do **not** repurpose `asset_url()` for this. `asset_url()` is the seam the
+    future publisher will own; Folio uses its own resolver so the two don't
+    collide.
+- **Cache busting.** `<hash>` is a content hash of the CSS file (xxh3 of file
+  contents), computed once at boot and exposed via the global. The route can
+  send `Cache-Control: public, max-age=…, immutable` because the URL is
+  versioned.
+
+### CSP / nonce handling
+
+`AssetCollector` emits CSP nonces, which implies a nonce-based policy. Two
+consequences for this work:
+
+- **Stylesheet link:** an external same-origin `<link>` only loads if the
+  policy's `style-src` allows `'self'`. **Verify the actual CSP** the framework
+  emits for admin responses. If `style-src` is nonce-only without `'self'`,
+  either add `'self'` for the admin area or fall back to inlining the CSS via
+  `AssetCollector::addCss()` (nonced). Resolve this explicitly during
+  implementation — do not assume the link "just works".
+- **Theme scripts:** the no-flash head script and the toggle handler are
+  registered through the asset system (`addJs(Head)` / `{% apply js('head') %}`
+  and body JS) so they carry the request nonce. No raw inline `<script>` without
+  a nonce.
+
+### Other delivery notes
+
+- **Icons:** inline SVGs in the templates — no icon font, no external request.
 - **Overridability:** every template stays overridable via the `@folio`
   namespace (host apps can drop replacements in `resources/folio/`).
 
 ## Testing
 
-- Feature test: the asset route returns `200`, `Content-Type: text/css`, and
-  cache headers.
+- Feature test: the asset route returns `200`, `Content-Type: text/css`, the
+  cache headers, and the actual CSS file's contents (served from disk).
+- Test: the versioned URL global is registered and the version changes when the
+  CSS file's contents change.
 - Template render tests:
   - shell renders the sidebar, content-type nav, and theme toggle;
   - list renders a table and the empty state;
@@ -142,8 +184,12 @@ Default theme follows `prefers-color-scheme`. `[data-theme="light"]` and
 - `packages/folio/templates/admin/list.twig` — data table + empty state
 - `packages/folio/templates/admin/form.twig` — styled form layout
 - `packages/folio/templates/admin/login.twig` — **new**
-- `packages/folio/src/Http/AdminController.php` (or a new asset controller) —
-  asset route serving `admin.css`
-- `packages/folio/resources/assets/admin.css` (or similar) — **new** stylesheet
-- Route registration for `{prefix}/_assets/admin.css`
+- `packages/folio/src/Http/AssetController.php` — **new**, serves `admin.css`
+  from disk with cache headers
+- `packages/folio/assets/admin.css` — **new** stylesheet (real file, the source
+  of truth)
+- `packages/folio/src/Routing/FolioRoutes.php` — add `{prefix}/_assets/admin.css`
+  route entry
+- `packages/folio/src/FolioServiceProvider.php` — register the route + the
+  `folio_admin_css_url` Twig global (with content-hash version)
 - Tests under `packages/folio/tests/`
