@@ -44,6 +44,11 @@ final class TypeRegistry
             $searchable = $fieldDef['searchable'] ?? false;
             $transform = $fieldDef['transform'] ?? null;
             $validate = $fieldDef['validate'] ?? [];
+            $label = $fieldDef['label'] ?? null;
+            $help = $fieldDef['help'] ?? null;
+            $config = array_diff_key($fieldDef, array_flip(
+                ['type', 'searchable', 'transform', 'validate', 'label', 'help'],
+            ));
 
             $fields[$name] = new TypeFieldDefinition(
                 name: $name,
@@ -51,6 +56,9 @@ final class TypeRegistry
                 searchable: $searchable,
                 transform: $transform,
                 validate: $validate,
+                label: $label,
+                help: $help,
+                config: $config,
             );
 
             if ($searchable) {

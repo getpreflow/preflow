@@ -72,6 +72,15 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('name="title"', (string) $res->getBody());
     }
 
+    public function test_create_form_renders_fields_via_registry(): void
+    {
+        $body = (string) $this->get('/folio/page/new')->getBody();
+        // string field -> text input; text field (body) -> textarea (registry mapping)
+        $this->assertStringContainsString('name="title"', $body);
+        $this->assertStringContainsString('type="text"', $body);
+        $this->assertStringContainsString('<textarea name="body"', $body);
+    }
+
     public function test_create_form_has_styled_actions_and_cancel(): void
     {
         $body = (string) $this->get('/folio/page/new')->getBody();
@@ -166,6 +175,30 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('type="password"', $html);
         $this->assertStringContainsString('type="submit"', $html);
         $this->assertStringNotContainsString('folio-sidebar', $html); // not the app shell
+    }
+
+    public function test_invalid_create_rerenders_form_with_errors_422(): void
+    {
+        $app = $this->app();
+        // page model requires title, slug, status(in:draft,published). Omit title.
+        $res = $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
+            ->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => '', 'slug' => 'x', 'body' => 'b', 'status' => 'draft']));
+
+        $this->assertSame(422, $res->getStatusCode());
+        $body = (string) $res->getBody();
+        $this->assertStringContainsString('form-error', $body);   // error block shown
+        $this->assertStringContainsString('name="title"', $body);  // form re-rendered
+        $this->assertStringContainsString('value="x"', $body);     // slug input retained
+    }
+
+    public function test_valid_create_still_redirects(): void
+    {
+        $app = $this->app();
+        $res = $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
+            ->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'Valid', 'slug' => 'valid', 'body' => 'b', 'status' => 'published']));
+        $this->assertSame(302, $res->getStatusCode());
     }
 
     private function app(): Application

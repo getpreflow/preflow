@@ -2,22 +2,24 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Data;
+namespace Preflow\Folio\Field;
 
-final readonly class TypeFieldDefinition
+/**
+ * Everything an editor needs to render one field instance.
+ */
+final readonly class FieldContext
 {
     /**
-     * @param list<string> $validate
+     * @param list<string> $errors
      * @param array<string, mixed> $config
      */
     public function __construct(
         public string $name,
-        public string $type = 'string',
-        public bool $searchable = false,
-        public ?string $transform = null,
-        public array $validate = [],
         public ?string $label = null,
         public ?string $help = null,
+        public mixed $value = null,
+        public array $errors = [],
         public array $config = [],
+        public bool $required = false,
     ) {}
 }

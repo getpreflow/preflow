@@ -7,7 +7,7 @@
     "fields": {
         "title": { "type": "string", "validate": ["required"] },
         "slug": { "type": "string", "validate": ["required"] },
-        "body": { "type": "text" },
+        "body": { "type": "text", "label": "Body content", "help": "Supports plain text for now; rich text arrives in Phase 2." },
         "status": { "type": "string" }
     }
 }

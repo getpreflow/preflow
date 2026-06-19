@@ -8,8 +8,11 @@ use Nyholm\Psr7\Response;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
-use Preflow\Folio\Content\FieldMapper;
+use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Field\FieldContext;
+use Preflow\Folio\Field\FieldTypeRegistry;
+use Preflow\Validation\ValidationException;
 use Preflow\Folio\Override\ActionResolver;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -23,6 +26,7 @@ final class AdminController
         private readonly DataManager $dm,
         private readonly TemplateEngineInterface $engine,
         private readonly ActionResolver $overrides,
+        private readonly FieldTypeRegistry $fieldTypes,
         private readonly string $prefix,
     ) {}
 
@@ -92,11 +96,25 @@ final class AdminController
         }
 
         $typeDef = $this->registry->get($type);
-        $data = (array) $request->getParsedBody();
+        $submitted = (array) $request->getParsedBody();
+        $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
+
+        $data = $this->collectFieldData($typeDef, $submitted);
         $data[$typeDef->idField] = bin2hex(random_bytes(16));
 
-        $record = DynamicRecord::fromArray($typeDef, $data);
-        $this->dm->saveType($record);
+        try {
+            $this->dm->saveType(DynamicRecord::fromArray($typeDef, $data));
+        } catch (ValidationException $e) {
+            return $this->form(
+                $type,
+                $submitted,
+                $this->prefix . '/' . $type,
+                'New ' . $this->labelFor($type),
+                $e->errors(),
+                $csrf,
+                422,
+            );
+        }
 
         return new Response(302, ['Location' => $this->prefix . '/' . $type]);
     }
@@ -138,11 +156,25 @@ final class AdminController
         }
 
         $typeDef = $this->registry->get($type);
-        $data = (array) $request->getParsedBody();
+        $submitted = (array) $request->getParsedBody();
+        $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
+
+        $data = $this->collectFieldData($typeDef, $submitted);
         $data[$typeDef->idField] = $id;
 
-        $record = DynamicRecord::fromArray($typeDef, $data);
-        $this->dm->saveType($record);
+        try {
+            $this->dm->saveType(DynamicRecord::fromArray($typeDef, $data));
+        } catch (ValidationException $e) {
+            return $this->form(
+                $type,
+                $submitted,
+                $this->prefix . '/' . $type . '/' . $id,
+                'Edit ' . $this->labelFor($type),
+                $e->errors(),
+                $csrf,
+                422,
+            );
+        }
 
         return new Response(302, ['Location' => $this->prefix . '/' . $type]);
     }
@@ -165,7 +197,7 @@ final class AdminController
     }
 
     /** @param array<string, mixed> $values @param array<string, list<string>> $errors */
-    private function form(string $type, array $values, string $action, string $heading, array $errors, string $csrf = ''): ResponseInterface
+    private function form(string $type, array $values, string $action, string $heading, array $errors, string $csrf = '', int $status = 200): ResponseInterface
     {
         $typeDef = $this->registry->get($type);
         $fields = [];
@@ -173,10 +205,20 @@ final class AdminController
             if ($name === $typeDef->idField) {
                 continue;
             }
-            $fields[] = ['name' => $name, 'input' => FieldMapper::inputFor($fieldDef->type)];
+            $fieldType = $this->fieldTypes->get($fieldDef->type);
+            $ctx = new FieldContext(
+                name: $name,
+                label: $fieldDef->label,
+                help: $fieldDef->help,
+                value: $fieldType->fromStorage($values[$name] ?? null),
+                errors: $errors[$name] ?? [],
+                config: $fieldDef->config,
+                required: in_array('required', $fieldDef->validate, true),
+            );
+            $fields[] = ['name' => $name, 'html' => $fieldType->renderEditor($ctx)];
         }
 
-        return $this->html($this->engine->render('@folio/admin/form.twig', [
+        $html = $this->engine->render('@folio/admin/form.twig', [
             'prefix' => $this->prefix,
             'type' => $type,
             'label' => $this->labelFor($type),
@@ -185,9 +227,30 @@ final class AdminController
             'action' => $action,
             'csrf' => $csrf,
             'fields' => $fields,
-            'values' => $values,
-            'errors' => $errors,
-        ]));
+        ]);
+
+        return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
+    }
+
+    /**
+     * Build the storage payload by routing each submitted field through its
+     * field type (normalize + serialize). idField is handled by the caller.
+     *
+     * @param array<string, mixed> $submitted
+     * @return array<string, mixed>
+     */
+    private function collectFieldData(TypeDefinition $typeDef, array $submitted): array
+    {
+        $data = [];
+        foreach ($typeDef->fields as $name => $fieldDef) {
+            if ($name === $typeDef->idField) {
+                continue;
+            }
+            $fieldType = $this->fieldTypes->get($fieldDef->type);
+            $raw = $submitted[$name] ?? null;
+            $data[$name] = $fieldType->toStorage($fieldType->normalizeInput($raw, $fieldDef->config));
+        }
+        return $data;
     }
 
     private function labelFor(string $type): string

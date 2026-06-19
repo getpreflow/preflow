@@ -12,6 +12,10 @@ use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Http\AdminController;
+use Preflow\Folio\Field\FieldTypeRegistry;
+use Preflow\Folio\Field\Types\NumberFieldType;
+use Preflow\Folio\Field\Types\StringFieldType;
+use Preflow\Folio\Field\Types\TextFieldType;
 use Preflow\Folio\Override\ActionResolver;
 use Preflow\View\TemplateEngineInterface;
 
@@ -60,6 +64,15 @@ final class AdminControllerTest extends TestCase
         };
     }
 
+    private function fieldTypeRegistry(): FieldTypeRegistry
+    {
+        $registry = new FieldTypeRegistry();
+        $registry->register(new StringFieldType());
+        $registry->register(new TextFieldType());
+        $registry->register(new NumberFieldType());
+        return $registry;
+    }
+
     private function controller(): AdminController
     {
         return new AdminController(
@@ -68,6 +81,7 @@ final class AdminControllerTest extends TestCase
             $this->dm,
             $this->engine(),
             new ActionResolver(new Container(), 'Preflow\\Folio\\Tests\\Overrides\\'),
+            $this->fieldTypeRegistry(),
             '/folio',
         );
     }
