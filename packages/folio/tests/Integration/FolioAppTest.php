@@ -239,6 +239,73 @@ final class FolioAppTest extends TestCase
         $this->assertStringNotContainsString('<script', $article); // sanitized end-to-end
     }
 
+    public function test_new_form_is_multipart_with_file_input(): void
+    {
+        $body = (string) $this->get('/folio/page/new')->getBody();
+        $this->assertStringContainsString('enctype="multipart/form-data"', $body);
+        $this->assertStringContainsString('type="file"', $body);
+        $this->assertStringContainsString('name="cover"', $body);
+    }
+
+    public function test_upload_is_stored_and_served(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $file = $f->createUploadedFile($f->createStream('PNGDATA'), 7, UPLOAD_ERR_OK, 'pic.png', 'image/png');
+
+        $res = $app->handle($f->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'A', 'slug' => 'a', 'body' => 'b', 'status' => 'published'])
+            ->withUploadedFiles(['cover' => $file]));
+        $this->assertSame(302, $res->getStatusCode());
+
+        $record = $app->container()->get(\Preflow\Data\DataManager::class)
+            ->queryType('page')->where('slug', 'a')->first();
+        $cover = (string) $record->get('cover');
+        $this->assertStringEndsWith('.png', $cover);
+
+        $served = $app->handle($f->createServerRequest('GET', '/folio/_uploads/' . $cover));
+        $this->assertSame(200, $served->getStatusCode());
+        $this->assertSame('image/png', $served->getHeaderLine('Content-Type'));
+        $this->assertSame('PNGDATA', (string) $served->getBody());
+    }
+
+    public function test_frontend_renders_uploaded_image(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $file = $f->createUploadedFile($f->createStream('PNGDATA'), 7, UPLOAD_ERR_OK, 'pic.png', 'image/png');
+        $app->handle($f->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'Img', 'slug' => 'img', 'body' => 'b', 'status' => 'published'])
+            ->withUploadedFiles(['cover' => $file]));
+
+        $html = (string) $app->handle($f->createServerRequest('GET', '/img'))->getBody();
+        $this->assertStringContainsString('<img src="/folio/_uploads/', $html);
+    }
+
+    public function test_update_removes_existing_asset(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $file = $f->createUploadedFile($f->createStream('PNGDATA'), 7, UPLOAD_ERR_OK, 'pic.png', 'image/png');
+        $app->handle($f->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'R', 'slug' => 'r', 'body' => 'b', 'status' => 'published'])
+            ->withUploadedFiles(['cover' => $file]));
+
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $record = $dm->queryType('page')->where('slug', 'r')->first();
+        $id = $record->getId();
+        $cover = (string) $record->get('cover');
+        $this->assertStringEndsWith('.png', $cover);
+
+        // update with a remove marker for that path and no new upload
+        $app->handle($f->createServerRequest('POST', '/folio/page/' . $id)
+            ->withAttribute('type', 'page')->withAttribute('id', $id)
+            ->withParsedBody(['title' => 'R', 'slug' => 'r', 'body' => 'b', 'status' => 'published', 'cover_remove' => [$cover]]));
+
+        $after = $dm->findType('page', $id);
+        $this->assertSame('', (string) $after->get('cover'));
+    }
+
     private function app(): Application
     {
         $app = Application::create($this->dir);
@@ -297,6 +364,7 @@ final class FolioAppTest extends TestCase
                 'slug'   => ['type' => 'string', 'searchable' => true, 'validate' => ['required']],
                 'body'   => ['type' => 'richtext'],
                 'status' => ['type' => 'string', 'validate' => ['required', 'in:draft,published']],
+                'cover'  => ['type' => 'asset', 'asset' => ['multiple' => false, 'accept' => 'image/*']],
             ],
         ], JSON_PRETTY_PRINT));
 

@@ -15,7 +15,9 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Http\AdminController;
 use Preflow\Folio\Http\AssetController;
 use Preflow\Folio\Http\FrontendController;
+use Preflow\Folio\Http\UploadController;
 use Preflow\Folio\Field\FieldTypeRegistry;
+use Preflow\Folio\Field\Types\AssetFieldType;
 use Preflow\Folio\Field\Types\NumberFieldType;
 use Preflow\Folio\Field\Types\RichTextFieldType;
 use Preflow\Folio\Field\Types\StringFieldType;
@@ -44,7 +46,9 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(ActionResolver::class, fn (Container $c) => new ActionResolver($c));
         $container->bind(FrontendResolver::class, fn (Container $c) => new FrontendResolver($c->get(DataManager::class), 'page'));
 
-        $container->bind(FieldTypeRegistry::class, function (): FieldTypeRegistry {
+        $uploadsDir = $this->uploadsDir($app);
+        $uploadUrlPrefix = rtrim($this->prefix($app), '/') . '/_uploads';
+        $container->bind(FieldTypeRegistry::class, function () use ($uploadsDir, $uploadUrlPrefix): FieldTypeRegistry {
             $registry = new FieldTypeRegistry();
             $registry->register(new StringFieldType());
             $registry->register(new TextFieldType());
@@ -55,7 +59,7 @@ final class FolioServiceProvider extends ServiceProvider
                     ->allowRelativeLinks()
                     ->allowRelativeMedias(),
             )));
-            // Preserve the old FieldMapper numeric aliases.
+            $registry->register(new AssetFieldType($uploadsDir, $uploadUrlPrefix));
             $registry->alias('int', 'number');
             $registry->alias('integer', 'number');
             $registry->alias('float', 'number');
@@ -80,6 +84,7 @@ final class FolioServiceProvider extends ServiceProvider
             dirname(__DIR__) . '/assets',
             $this->assetMap(),
         ));
+        $container->bind(UploadController::class, fn (Container $c) => new UploadController($uploadsDir));
     }
 
     public function boot(Container $container): void
@@ -141,6 +146,13 @@ final class FolioServiceProvider extends ServiceProvider
     private function prefix(Application $app): string
     {
         return $this->folioConfig($app)['path'] ?? '/folio';
+    }
+
+    private function uploadsDir(Application $app): string
+    {
+        $cfg = $this->folioConfig($app);
+        $path = $cfg['uploads_path'] ?? null;
+        return is_string($path) ? $path : $app->basePath('storage/uploads');
     }
 
     private function modelsPath(Application $app): string

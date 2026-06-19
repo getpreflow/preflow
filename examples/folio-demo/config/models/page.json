@@ -7,6 +7,7 @@
     "fields": {
         "title": { "type": "string", "validate": ["required"] },
         "slug": { "type": "string", "validate": ["required"] },
+        "cover": { "type": "asset", "label": "Cover image", "help": "Upload an image; stored under the Folio uploads dir.", "asset": { "multiple": false, "accept": "image/*" } },
         "body": { "type": "richtext", "label": "Body content", "help": "Rich text — formatting is preserved and sanitized on save." },
         "status": { "type": "string" }
     }
