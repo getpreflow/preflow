@@ -17,8 +17,11 @@ use Preflow\Folio\Http\AssetController;
 use Preflow\Folio\Http\FrontendController;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\NumberFieldType;
+use Preflow\Folio\Field\Types\RichTextFieldType;
 use Preflow\Folio\Field\Types\StringFieldType;
 use Preflow\Folio\Field\Types\TextFieldType;
+use Symfony\Component\HtmlSanitizer\HtmlSanitizer;
+use Symfony\Component\HtmlSanitizer\HtmlSanitizerConfig;
 use Preflow\Folio\Override\ActionResolver;
 use Preflow\Folio\Routing\FolioRoutes;
 use Preflow\Routing\Router;
@@ -46,6 +49,12 @@ final class FolioServiceProvider extends ServiceProvider
             $registry->register(new StringFieldType());
             $registry->register(new TextFieldType());
             $registry->register(new NumberFieldType());
+            $registry->register(new RichTextFieldType(new HtmlSanitizer(
+                (new HtmlSanitizerConfig())
+                    ->allowSafeElements()
+                    ->allowRelativeLinks()
+                    ->allowRelativeMedias(),
+            )));
             // Preserve the old FieldMapper numeric aliases.
             $registry->alias('int', 'number');
             $registry->alias('integer', 'number');
