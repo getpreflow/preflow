@@ -1,0 +1,319 @@
+/* Folio admin — clean, warm-minimal, emerald accent, dark mode baked in.
+   Tokens only; components never branch on theme. Default follows the OS via
+   prefers-color-scheme; [data-theme] overrides explicitly. */
+
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --r: 8px;
+  --r-sm: 6px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .04), 0 1px 3px rgba(0, 0, 0, .06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, .08);
+
+  /* warm light theme */
+  --c-bg: #faf9f8;
+  --c-surface: #ffffff;
+  --c-surface-raised: #ffffff;
+  --c-sidebar-bg: #f4f2f0;
+  --c-border: #e7e5e3;
+  --c-row-hover: #f6f5f3;
+  --c-text: #1c1b1a;
+  --c-text-muted: #6f6b66;
+  --c-accent: #059669;
+  --c-accent-hover: #047857;
+  --c-accent-fg: #ffffff;
+  --c-danger: #dc2626;
+  --c-danger-fg: #ffffff;
+  --c-success: #059669;
+  --c-focus-ring: rgba(5, 150, 105, .35);
+}
+
+/* dark tokens applied as OS default unless the user forced light */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --c-bg: #1a1917;
+    --c-surface: #232220;
+    --c-surface-raised: #2a2825;
+    --c-sidebar-bg: #1f1e1c;
+    --c-border: #38352f;
+    --c-row-hover: #2a2825;
+    --c-text: #ece9e4;
+    --c-text-muted: #a39e96;
+    --c-accent: #10b981;
+    --c-accent-hover: #34d399;
+    --c-accent-fg: #07120d;
+    --c-danger: #f87171;
+    --c-danger-fg: #1a1917;
+    --c-success: #34d399;
+    --c-focus-ring: rgba(16, 185, 129, .4);
+  }
+}
+
+/* dark tokens when the user explicitly chose dark */
+[data-theme="dark"] {
+  --c-bg: #1a1917;
+  --c-surface: #232220;
+  --c-surface-raised: #2a2825;
+  --c-sidebar-bg: #1f1e1c;
+  --c-border: #38352f;
+  --c-row-hover: #2a2825;
+  --c-text: #ece9e4;
+  --c-text-muted: #a39e96;
+  --c-accent: #10b981;
+  --c-accent-hover: #34d399;
+  --c-accent-fg: #07120d;
+  --c-danger: #f87171;
+  --c-danger-fg: #1a1917;
+  --c-success: #34d399;
+  --c-focus-ring: rgba(16, 185, 129, .4);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--c-text);
+  background: var(--c-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--c-accent); text-decoration: none; }
+a:hover { color: var(--c-accent-hover); }
+
+h1 { font-size: 1.25rem; font-weight: 650; letter-spacing: -.01em; margin: 0; }
+
+/* ---- app shell ---- */
+.folio-shell {
+  display: grid;
+  grid-template-columns: 248px 1fr;
+  min-height: 100vh;
+}
+
+.folio-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px 14px;
+  background: var(--c-sidebar-bg);
+  border-right: 1px solid var(--c-border);
+}
+
+.folio-brand {
+  font-weight: 700;
+  letter-spacing: -.02em;
+  font-size: 1.05rem;
+  padding: 6px 10px 16px;
+  color: var(--c-text);
+}
+
+.folio-nav { display: flex; flex-direction: column; gap: 2px; }
+.folio-nav a {
+  display: block;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  color: var(--c-text-muted);
+  font-weight: 500;
+}
+.folio-nav a:hover { background: var(--c-row-hover); color: var(--c-text); }
+.folio-nav a.active { background: var(--c-accent); color: var(--c-accent-fg); }
+
+.folio-sidebar-foot { margin-top: auto; padding-top: 12px; }
+.folio-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.folio-theme-toggle:hover { color: var(--c-text); border-color: var(--c-text-muted); }
+.folio-theme-toggle svg { width: 16px; height: 16px; }
+
+/* ---- topbar + content ---- */
+.folio-main { display: flex; flex-direction: column; min-width: 0; }
+.folio-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-surface);
+}
+.folio-actions { display: flex; gap: 8px; }
+.folio-content { padding: 28px; max-width: 920px; width: 100%; }
+
+/* ---- buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  font: inherit;
+  font-weight: 550;
+  cursor: pointer;
+  line-height: 1.2;
+}
+.btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--c-focus-ring); }
+.btn-primary { background: var(--c-accent); color: var(--c-accent-fg); }
+.btn-primary:hover { background: var(--c-accent-hover); color: var(--c-accent-fg); }
+.btn-secondary { background: var(--c-surface); color: var(--c-text); border-color: var(--c-border); }
+.btn-secondary:hover { border-color: var(--c-text-muted); }
+.btn-ghost { background: transparent; color: var(--c-text-muted); }
+.btn-ghost:hover { background: var(--c-row-hover); color: var(--c-text); }
+.btn-danger { background: transparent; color: var(--c-danger); border-color: var(--c-border); }
+.btn-danger:hover { background: var(--c-danger); color: var(--c-danger-fg); border-color: var(--c-danger); }
+
+/* ---- dashboard cards ---- */
+.folio-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+.folio-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r);
+  background: var(--c-surface);
+  box-shadow: var(--shadow-sm);
+}
+.folio-card:hover { border-color: var(--c-accent); }
+.folio-card-label { font-weight: 600; color: var(--c-text); }
+.folio-card-count { color: var(--c-text-muted); font-size: .85rem; }
+
+/* ---- table ---- */
+.folio-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+.folio-table thead th {
+  text-align: left;
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--c-text-muted);
+  font-weight: 600;
+  padding: 0 14px 10px;
+  border-bottom: 1px solid var(--c-border);
+}
+.folio-table tbody td { padding: 12px 14px; border-bottom: 1px solid var(--c-border); }
+.folio-table tbody tr:hover { background: var(--c-row-hover); }
+.folio-table .folio-row-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.folio-table .folio-row-actions form { display: inline; margin: 0; }
+
+.folio-empty {
+  margin-top: 24px;
+  padding: 48px;
+  text-align: center;
+  color: var(--c-text-muted);
+  border: 1px dashed var(--c-border);
+  border-radius: var(--r);
+}
+.folio-empty p { margin: 0 0 14px; }
+
+/* ---- forms (reuses preflow/form hooks) ---- */
+.folio-form { margin-top: 20px; max-width: 560px; }
+.form-group { margin-bottom: 18px; }
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 550;
+  color: var(--c-text);
+}
+.form-required { color: var(--c-danger); margin-left: 2px; }
+.form-group input,
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: 8px 11px;
+  font: inherit;
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+}
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px var(--c-focus-ring);
+}
+.form-group textarea { min-height: 140px; resize: vertical; }
+.form-help { display: block; margin-top: 5px; color: var(--c-text-muted); font-size: .82rem; }
+.form-error { margin-top: 5px; color: var(--c-danger); font-size: .82rem; }
+.has-error input,
+.has-error textarea,
+.has-error select { border-color: var(--c-danger); }
+
+.folio-form-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--c-border);
+}
+
+/* ---- alerts ---- */
+.folio-alert {
+  padding: 11px 14px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--c-border);
+  margin-bottom: 18px;
+}
+.folio-alert-error { border-color: var(--c-danger); color: var(--c-danger); }
+.folio-alert-success { border-color: var(--c-success); color: var(--c-success); }
+
+/* ---- login ---- */
+.folio-auth {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--c-bg);
+}
+.folio-auth-card {
+  width: 100%;
+  max-width: 360px;
+  padding: 32px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-md);
+}
+.folio-auth-card .folio-brand { padding: 0 0 20px; text-align: center; }
+.folio-auth-card .btn-primary { width: 100%; justify-content: center; margin-top: 8px; }
+
+/* ---- responsive: collapse sidebar ---- */
+@media (max-width: 720px) {
+  .folio-shell { grid-template-columns: 1fr; }
+  .folio-sidebar {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    border-right: none;
+    border-bottom: 1px solid var(--c-border);
+    padding: 12px 16px;
+  }
+  .folio-brand { padding: 0 8px 0 0; }
+  .folio-nav { flex-direction: row; flex-wrap: wrap; }
+  .folio-sidebar-foot { margin-top: 0; padding-top: 0; margin-left: auto; }
+  .folio-theme-toggle { width: auto; }
+  .folio-content { padding: 18px; }
+  .folio-topbar { padding: 14px 18px; }
+}
