@@ -72,6 +72,16 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('name="title"', (string) $res->getBody());
     }
 
+    public function test_create_form_has_styled_actions_and_cancel(): void
+    {
+        $body = (string) $this->get('/folio/page/new')->getBody();
+        $this->assertStringContainsString('name="title"', $body);       // fields still render
+        $this->assertStringContainsString('folio-form-actions', $body);  // action bar
+        $this->assertStringContainsString('btn btn-primary', $body);     // emerald save button
+        $this->assertStringContainsString('>Cancel<', $body);            // cancel link
+        $this->assertStringContainsString('href="/folio/page"', $body);  // back to list
+    }
+
     public function test_create_then_render_on_frontend(): void
     {
         $app = $this->app();
