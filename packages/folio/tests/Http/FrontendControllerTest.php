@@ -12,6 +12,7 @@ use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\FrontendResolver;
+use Preflow\Folio\Content\RecordRenderer;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\StringFieldType;
 use Preflow\Folio\Field\Types\TextFieldType;
@@ -64,7 +65,9 @@ final class FrontendControllerTest extends TestCase
     {
         $base = sys_get_temp_dir() . '/folio_fc_' . bin2hex(random_bytes(4));
         $dm = $this->dm($base . '/m', $base . '/s');
-        $controller = new FrontendController(new FrontendResolver($dm, 'page'), $this->engine(), $this->registry());
+        $registry = $this->registry();
+        $engine = $this->engine();
+        $controller = new FrontendController(new FrontendResolver($dm, 'page'), $engine, new RecordRenderer($registry, $engine));
 
         $req = (new Psr17Factory())->createServerRequest('GET', '/home')->withAttribute('path', 'home');
         $res = $controller->show($req);
@@ -77,7 +80,9 @@ final class FrontendControllerTest extends TestCase
     {
         $base = sys_get_temp_dir() . '/folio_fc_' . bin2hex(random_bytes(4));
         $dm = $this->dm($base . '/m', $base . '/s');
-        $controller = new FrontendController(new FrontendResolver($dm, 'page'), $this->engine(), $this->registry());
+        $registry = $this->registry();
+        $engine = $this->engine();
+        $controller = new FrontendController(new FrontendResolver($dm, 'page'), $engine, new RecordRenderer($registry, $engine));
 
         $req = (new Psr17Factory())->createServerRequest('GET', '/missing')->withAttribute('path', 'missing');
 

@@ -25,6 +25,7 @@ use Preflow\Folio\Field\Types\RelationFieldType;
 use Preflow\Folio\Field\Types\TextFieldType;
 use Symfony\Component\HtmlSanitizer\HtmlSanitizer;
 use Symfony\Component\HtmlSanitizer\HtmlSanitizerConfig;
+use Preflow\Folio\Content\RecordRenderer;
 use Preflow\Folio\Override\ActionResolver;
 use Preflow\Folio\Routing\FolioRoutes;
 use Preflow\Routing\Router;
@@ -83,7 +84,7 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),
             $c->get(TemplateEngineInterface::class),
-            $c->get(FieldTypeRegistry::class),
+            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(TemplateEngineInterface::class)),
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
             dirname(__DIR__) . '/assets',
