@@ -115,4 +115,10 @@ final class RelationFieldTypeTest extends TestCase
         $this->assertStringContainsString('<select name="x"', $html);
         $this->assertStringNotContainsString('Ann', $html);
     }
+
+    public function test_render_frontend_unknown_target_is_empty_not_error(): void
+    {
+        $out = $this->type()->renderFrontend('someid', ['relation' => ['to' => 'ghost', 'multiple' => false]]);
+        $this->assertSame('', $out);
+    }
 }

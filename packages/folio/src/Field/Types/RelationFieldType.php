@@ -99,7 +99,7 @@ final class RelationFieldType implements FieldType
     {
         $cfg = $this->relationConfig($config);
         $ids = $this->toList($value);
-        if ($ids === [] || $cfg['to'] === '') {
+        if ($ids === [] || $cfg['to'] === '' || !$this->registry->has($cfg['to'])) {
             return '';
         }
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
