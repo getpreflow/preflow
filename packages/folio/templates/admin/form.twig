@@ -1,12 +1,17 @@
 {% extends "@folio/admin/_layout.twig" %}
-{% block title %}Folio — {{ label }}{% endblock %}
+{% block title %}Folio — {{ heading }}{% endblock %}
+{% block page_title %}{{ heading }}{% endblock %}
 {% block content %}
-    <h1>{{ heading }}</h1>
-    {% set form = form_begin({action: action, csrf_token: csrf}) %}
-    {{ form.begin()|raw }}
-    {% for field in fields %}
-        {{ form.field(field.name, {type: field.input, value: values[field.name]|default(''), errors: errors[field.name]|default([])})|raw }}
-    {% endfor %}
-    {{ form.submit('Save')|raw }}
-    {{ form_end()|raw }}
+    <div class="folio-form">
+        {% set form = form_begin({action: action, csrf_token: csrf}) %}
+        {{ form.begin()|raw }}
+        {% for field in fields %}
+            {{ form.field(field.name, {type: field.input, value: values[field.name]|default(''), errors: errors[field.name]|default([])})|raw }}
+        {% endfor %}
+        <div class="folio-form-actions">
+            {{ form.submit('Save', {attrs: {class: 'btn btn-primary'}})|raw }}
+            <a class="btn btn-secondary" href="{{ prefix }}/{{ type }}">Cancel</a>
+        </div>
+        {{ form_end()|raw }}
+    </div>
 {% endblock %}

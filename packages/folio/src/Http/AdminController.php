@@ -32,9 +32,19 @@ final class AdminController
             return $override->handle($request);
         }
 
+        $cards = [];
+        foreach ($this->catalog->all() as $listing) {
+            $cards[] = [
+                'key' => $listing->key,
+                'label' => $listing->label,
+                'count' => count($this->dm->queryType($listing->key)->get()->items()),
+            ];
+        }
+
         return $this->html($this->engine->render('@folio/admin/dashboard.twig', [
             'prefix' => $this->prefix,
             'types' => $this->catalog->all(),
+            'cards' => $cards,
         ]));
     }
 
@@ -50,12 +60,15 @@ final class AdminController
             $rows[] = $record->toArray() + ['id' => $record->getId()];
         }
 
+        $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
+
         return $this->html($this->engine->render('@folio/admin/list.twig', [
             'prefix' => $this->prefix,
             'type' => $type,
             'label' => $this->labelFor($type),
             'types' => $this->catalog->all(),
             'rows' => $rows,
+            'csrf' => $csrf,
         ]));
     }
 

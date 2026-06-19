@@ -25,7 +25,9 @@ final class FolioRoutesTest extends TestCase
 
         foreach ($entries as $e) {
             $this->assertSame(RouteMode::Action, $e->mode);
-            $this->assertStringStartsWith('Preflow\\Folio\\Http\\AdminController@', $e->handler);
+            if (str_contains($e->handler, 'AdminController')) {
+                $this->assertStringStartsWith('Preflow\\Folio\\Http\\AdminController@', $e->handler);
+            }
         }
     }
 
@@ -33,6 +35,25 @@ final class FolioRoutesTest extends TestCase
     {
         $entries = FolioRoutes::admin('/cms');
         $this->assertSame('/cms', $entries[0]->pattern);
+    }
+
+    public function test_admin_includes_stylesheet_asset_route(): void
+    {
+        $entries = FolioRoutes::admin('/folio');
+
+        $match = null;
+        foreach ($entries as $e) {
+            if ($e->pattern === '/folio/_assets/admin.css') {
+                $match = $e;
+                break;
+            }
+        }
+
+        $this->assertNotNull($match, 'asset route should be registered');
+        $this->assertSame('GET', $match->method);
+        $this->assertSame('Preflow\\Folio\\Http\\AssetController@adminCss', $match->handler);
+        // Prefix-configurability test relies on entries[0] staying the dashboard route.
+        $this->assertSame('/folio', $entries[0]->pattern);
     }
 
     public function test_frontend_is_lowest_priority_catch_all(): void

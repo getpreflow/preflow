@@ -107,6 +107,26 @@ final class Index implements OverridableAction
 }
 ```
 
+## Admin styling
+
+The admin ships a single stylesheet served by Folio itself at
+`{prefix}/_assets/admin.css` (no build step, no asset publishing required). The
+`<link>` URL is content-hash versioned via the `folio_admin_css_url` Twig
+global, so it caches immutably and busts on change.
+
+Dark mode is built in: the stylesheet defines warm-neutral tokens with an
+emerald accent and a `[data-theme="dark"]` override. The default follows the
+operating system (`prefers-color-scheme`); a sidebar toggle lets the user
+override it, persisted in `localStorage` with a no-flash inline script.
+
+Every template is overridable via the `@folio` namespace (drop replacements in
+`resources/folio/`). Because the admin renders through action-mode controllers,
+the stylesheet link and the small theme scripts are plain markup in
+`_layout.twig` rather than going through the asset collector. If you serve the
+admin under a strict `Content-Security-Policy`, allow `style-src 'self'` for the
+stylesheet and either nonce or allow the two inline theme scripts (or override
+`_layout.twig` to suit your policy).
+
 ## Status
 
 Walking skeleton. Shipped: type discovery, auto-form CRUD, slug rendering, per-action

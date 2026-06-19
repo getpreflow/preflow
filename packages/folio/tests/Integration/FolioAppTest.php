@@ -49,6 +49,20 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('Pages', (string) $res->getBody()); // the type label
     }
 
+    public function test_dashboard_renders_type_card_with_count(): void
+    {
+        // Seed one record so the count is non-zero and deterministic.
+        $app = $this->app();
+        $app->handle((new Psr17Factory())->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'Seed', 'slug' => 'seed', 'body' => 'B', 'status' => 'published']));
+
+        $body = (string) $app->handle((new Psr17Factory())->createServerRequest('GET', '/folio'))->getBody();
+        $this->assertStringContainsString('folio-card-grid', $body);
+        $this->assertStringContainsString('folio-card-label', $body);
+        $this->assertStringContainsString('Pages', $body);
+        $this->assertStringContainsString('1 record', $body);
+    }
+
     public function test_create_form_renders_under_strict_twig(): void
     {
         // New-record form passes an empty values map; the template must guard
@@ -56,6 +70,16 @@ final class FolioAppTest extends TestCase
         $res = $this->get('/folio/page/new');
         $this->assertSame(200, $res->getStatusCode());
         $this->assertStringContainsString('name="title"', (string) $res->getBody());
+    }
+
+    public function test_create_form_has_styled_actions_and_cancel(): void
+    {
+        $body = (string) $this->get('/folio/page/new')->getBody();
+        $this->assertStringContainsString('name="title"', $body);       // fields still render
+        $this->assertStringContainsString('folio-form-actions', $body);  // action bar
+        $this->assertStringContainsString('btn btn-primary', $body);     // emerald save button
+        $this->assertStringContainsString('>Cancel<', $body);            // cancel link
+        $this->assertStringContainsString('href="/folio/page"', $body);  // back to list
     }
 
     public function test_create_then_render_on_frontend(): void
@@ -78,6 +102,25 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('About Us', (string) $page->getBody());
     }
 
+    public function test_admin_shell_renders_sidebar_stylesheet_and_toggle(): void
+    {
+        $body = (string) $this->get('/folio')->getBody();
+        $this->assertStringContainsString('class="folio-shell"', $body);
+        $this->assertStringContainsString('class="folio-sidebar"', $body);
+        $this->assertStringContainsString('/folio/_assets/admin.css?v=', $body); // versioned link
+        $this->assertStringContainsString('id="folio-theme-toggle"', $body);
+        $this->assertStringContainsString("localStorage.getItem('folio-theme')", $body); // no-flash script
+    }
+
+    public function test_admin_stylesheet_is_served(): void
+    {
+        $res = $this->get('/folio/_assets/admin.css');
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('text/css', $res->getHeaderLine('Content-Type'));
+        $this->assertStringContainsString(':root', (string) $res->getBody());
+        $this->assertStringContainsString('--c-accent', (string) $res->getBody());
+    }
+
     public function test_unknown_slug_is_404(): void
     {
         $this->assertSame(404, $this->get('/no-such-page')->getStatusCode());
@@ -89,6 +132,40 @@ final class FolioAppTest extends TestCase
         $res = $this->get('/');
         $this->assertSame(200, $res->getStatusCode());
         $this->assertStringContainsString('HOME PAGE', (string) $res->getBody());
+    }
+
+    public function test_list_shows_empty_state_when_no_records(): void
+    {
+        $body = (string) $this->get('/folio/page')->getBody();
+        $this->assertStringContainsString('folio-empty', $body);
+        $this->assertStringContainsString('No records yet', $body);
+    }
+
+    public function test_list_shows_row_with_edit_and_delete_actions(): void
+    {
+        $app = $this->app();
+        $app->handle((new Psr17Factory())->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'Listed', 'slug' => 'listed', 'body' => 'B', 'status' => 'published']));
+
+        $body = (string) $app->handle((new Psr17Factory())->createServerRequest('GET', '/folio/page'))->getBody();
+        $this->assertStringContainsString('folio-table', $body);
+        $this->assertStringContainsString('Listed', $body);
+        $this->assertStringContainsString('/edit', $body);
+        $this->assertStringContainsString('/delete', $body);
+        $this->assertStringContainsString('name="_csrf_token"', $body);
+    }
+
+    public function test_login_template_renders_standalone_card(): void
+    {
+        $app = $this->app();
+        $engine = $app->container()->get(\Preflow\View\TemplateEngineInterface::class);
+        $html = $engine->render('@folio/admin/login.twig', []);
+
+        $this->assertStringContainsString('folio-auth-card', $html);
+        $this->assertStringContainsString('type="email"', $html);
+        $this->assertStringContainsString('type="password"', $html);
+        $this->assertStringContainsString('type="submit"', $html);
+        $this->assertStringNotContainsString('folio-sidebar', $html); // not the app shell
     }
 
     private function app(): Application

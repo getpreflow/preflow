@@ -13,6 +13,7 @@ use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Http\AdminController;
+use Preflow\Folio\Http\AssetController;
 use Preflow\Folio\Http\FrontendController;
 use Preflow\Folio\Override\ActionResolver;
 use Preflow\Folio\Routing\FolioRoutes;
@@ -48,6 +49,9 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(FrontendResolver::class),
             $c->get(TemplateEngineInterface::class),
         ));
+        $container->bind(AssetController::class, fn (Container $c) => new AssetController(
+            dirname(__DIR__) . '/assets/admin.css',
+        ));
     }
 
     public function boot(Container $container): void
@@ -62,6 +66,16 @@ final class FolioServiceProvider extends ServiceProvider
                 $engine->addNamespace('folio', $userDir);
             }
             $engine->addNamespace('folio', dirname(__DIR__) . '/templates');
+
+            // Single URL seam for the admin stylesheet. Content-hash version so
+            // the immutable cache busts on edit. A future asset-publishing
+            // system can change this one resolver without touching templates.
+            $cssPath = dirname(__DIR__) . '/assets/admin.css';
+            $version = is_file($cssPath) ? substr(hash_file('xxh3', $cssPath), 0, 12) : 'dev';
+            $engine->addGlobal(
+                'folio_admin_css_url',
+                rtrim($this->prefix($app), '/') . '/_assets/admin.css?v=' . $version,
+            );
         }
 
         // 2. Routes: admin under the configured prefix, then the frontend catch-all LAST.

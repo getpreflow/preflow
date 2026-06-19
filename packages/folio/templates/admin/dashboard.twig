@@ -1,10 +1,13 @@
 {% extends "@folio/admin/_layout.twig" %}
 {% block title %}Folio — Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
 {% block content %}
-    <h1>Dashboard</h1>
-    <ul>
-        {% for type in types %}
-            <li><a href="{{ prefix }}/{{ type.key }}">{{ type.label }}</a></li>
+    <div class="folio-card-grid">
+        {% for card in cards %}
+            <a class="folio-card" href="{{ prefix }}/{{ card.key }}">
+                <span class="folio-card-label">{{ card.label }}</span>
+                <span class="folio-card-count">{{ card.count }} record{{ card.count == 1 ? '' : 's' }}</span>
+            </a>
         {% endfor %}
-    </ul>
+    </div>
 {% endblock %}
