@@ -269,6 +269,43 @@ final class FolioAppTest extends TestCase
         $this->assertSame('PNGDATA', (string) $served->getBody());
     }
 
+    public function test_frontend_renders_uploaded_image(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $file = $f->createUploadedFile($f->createStream('PNGDATA'), 7, UPLOAD_ERR_OK, 'pic.png', 'image/png');
+        $app->handle($f->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'Img', 'slug' => 'img', 'body' => 'b', 'status' => 'published'])
+            ->withUploadedFiles(['cover' => $file]));
+
+        $html = (string) $app->handle($f->createServerRequest('GET', '/img'))->getBody();
+        $this->assertStringContainsString('<img src="/folio/_uploads/', $html);
+    }
+
+    public function test_update_removes_existing_asset(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $file = $f->createUploadedFile($f->createStream('PNGDATA'), 7, UPLOAD_ERR_OK, 'pic.png', 'image/png');
+        $app->handle($f->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'R', 'slug' => 'r', 'body' => 'b', 'status' => 'published'])
+            ->withUploadedFiles(['cover' => $file]));
+
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $record = $dm->queryType('page')->where('slug', 'r')->first();
+        $id = $record->getId();
+        $cover = (string) $record->get('cover');
+        $this->assertStringEndsWith('.png', $cover);
+
+        // update with a remove marker for that path and no new upload
+        $app->handle($f->createServerRequest('POST', '/folio/page/' . $id)
+            ->withAttribute('type', 'page')->withAttribute('id', $id)
+            ->withParsedBody(['title' => 'R', 'slug' => 'r', 'body' => 'b', 'status' => 'published', 'cover_remove' => [$cover]]));
+
+        $after = $dm->findType('page', $id);
+        $this->assertSame('', (string) $after->get('cover'));
+    }
+
     private function app(): Application
     {
         $app = Application::create($this->dir);
