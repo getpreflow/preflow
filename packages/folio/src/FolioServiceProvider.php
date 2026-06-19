@@ -74,6 +74,7 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),
             $c->get(TemplateEngineInterface::class),
+            $c->get(FieldTypeRegistry::class),
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
             dirname(__DIR__) . '/assets',

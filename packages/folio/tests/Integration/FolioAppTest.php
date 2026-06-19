@@ -222,6 +222,23 @@ final class FolioAppTest extends TestCase
         $this->assertSame(302, $res->getStatusCode());
     }
 
+    public function test_richtext_frontend_renders_sanitized_html(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $app->handle($f->createServerRequest('POST', '/folio/page')->withParsedBody([
+            'title' => 'Post', 'slug' => 'post',
+            'body' => '<p>safe</p><script>alert(1)</script>', 'status' => 'published',
+        ]));
+
+        $html = (string) $app->handle($f->createServerRequest('GET', '/post'))->getBody();
+        $this->assertStringContainsString('<p>safe</p>', $html);   // rich HTML rendered raw
+        // Extract the article body only — the debug toolbar may inject its own <script>.
+        preg_match('/<article>(.*?)<\/article>/s', $html, $m);
+        $article = $m[1] ?? $html;
+        $this->assertStringNotContainsString('<script', $article); // sanitized end-to-end
+    }
+
     private function app(): Application
     {
         $app = Application::create($this->dir);
