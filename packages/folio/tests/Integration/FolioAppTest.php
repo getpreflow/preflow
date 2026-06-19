@@ -78,7 +78,15 @@ final class FolioAppTest extends TestCase
         // string field -> text input; text field (body) -> textarea (registry mapping)
         $this->assertStringContainsString('name="title"', $body);
         $this->assertStringContainsString('type="text"', $body);
-        $this->assertStringContainsString('<textarea name="body"', $body);
+        $this->assertStringContainsString('<trix-editor input="folio-rt-body"', $body);
+    }
+
+    public function test_richtext_form_includes_trix_assets_and_editor(): void
+    {
+        $body = (string) $this->get('/folio/page/new')->getBody();
+        $this->assertStringContainsString('<trix-editor input="folio-rt-body"', $body);
+        $this->assertStringContainsString('/folio/_assets/trix.js?v=', $body);
+        $this->assertStringContainsString('/folio/_assets/trix.css?v=', $body);
     }
 
     public function test_create_form_has_styled_actions_and_cancel(): void
@@ -270,7 +278,7 @@ final class FolioAppTest extends TestCase
             'fields'   => [
                 'title'  => ['type' => 'string', 'searchable' => true, 'validate' => ['required']],
                 'slug'   => ['type' => 'string', 'searchable' => true, 'validate' => ['required']],
-                'body'   => ['type' => 'text'],
+                'body'   => ['type' => 'richtext'],
                 'status' => ['type' => 'string', 'validate' => ['required', 'in:draft,published']],
             ],
         ], JSON_PRETTY_PRINT));

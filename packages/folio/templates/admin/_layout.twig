@@ -17,6 +17,11 @@
     })();
     </script>
     <link rel="stylesheet" href="{{ folio_asset('admin.css') }}">
+    {% for a in editor_assets|default([]) %}
+        {%- if a ends with '.css' %}<link rel="stylesheet" href="{{ folio_asset(a) }}">
+        {%- elseif a ends with '.js' %}<script src="{{ folio_asset(a) }}" defer></script>
+        {%- endif %}
+    {% endfor %}
 </head>
 <body>
 <div class="folio-shell">

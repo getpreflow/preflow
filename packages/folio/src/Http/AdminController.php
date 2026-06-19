@@ -201,6 +201,7 @@ final class AdminController
     {
         $typeDef = $this->registry->get($type);
         $fields = [];
+        $editorAssets = [];
         foreach ($typeDef->fields as $name => $fieldDef) {
             if ($name === $typeDef->idField) {
                 continue;
@@ -216,6 +217,9 @@ final class AdminController
                 required: in_array('required', $fieldDef->validate, true),
             );
             $fields[] = ['name' => $name, 'html' => $fieldType->renderEditor($ctx)];
+            foreach ($fieldType->assets() as $asset) {
+                $editorAssets[$asset] = true;
+            }
         }
 
         $html = $this->engine->render('@folio/admin/form.twig', [
@@ -227,6 +231,7 @@ final class AdminController
             'action' => $action,
             'csrf' => $csrf,
             'fields' => $fields,
+            'editor_assets' => array_keys($editorAssets),
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
