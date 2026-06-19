@@ -16,6 +16,7 @@ final class TemplatesExistTest extends TestCase
             '/admin/dashboard.twig',
             '/admin/list.twig',
             '/admin/form.twig',
+            '/admin/login.twig',
             '/frontend/page.twig',
         ] as $rel) {
             $this->assertFileExists($base . $rel);

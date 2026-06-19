@@ -155,6 +155,19 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('name="_csrf_token"', $body);
     }
 
+    public function test_login_template_renders_standalone_card(): void
+    {
+        $app = $this->app();
+        $engine = $app->container()->get(\Preflow\View\TemplateEngineInterface::class);
+        $html = $engine->render('@folio/admin/login.twig', []);
+
+        $this->assertStringContainsString('folio-auth-card', $html);
+        $this->assertStringContainsString('type="email"', $html);
+        $this->assertStringContainsString('type="password"', $html);
+        $this->assertStringContainsString('type="submit"', $html);
+        $this->assertStringNotContainsString('folio-sidebar', $html); // not the app shell
+    }
+
     private function app(): Application
     {
         $app = Application::create($this->dir);
