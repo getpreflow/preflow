@@ -1,0 +1,3 @@
+# Runtime records seeded/created by the demo — keep the dir, ignore its contents.
+storage/data/*
+!storage/data/.gitkeep
