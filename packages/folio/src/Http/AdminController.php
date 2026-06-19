@@ -12,6 +12,8 @@ use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldTypeRegistry;
+use Preflow\Folio\Field\HandlesUpload;
+use Psr\Http\Message\UploadedFileInterface;
 use Preflow\Validation\ValidationException;
 use Preflow\Folio\Override\ActionResolver;
 use Preflow\View\TemplateEngineInterface;
@@ -96,10 +98,9 @@ final class AdminController
         }
 
         $typeDef = $this->registry->get($type);
-        $submitted = (array) $request->getParsedBody();
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
 
-        $data = $this->collectFieldData($typeDef, $submitted);
+        $data = $this->collectFieldData($typeDef, $request, []);
         $data[$typeDef->idField] = bin2hex(random_bytes(16));
 
         try {
@@ -107,7 +108,7 @@ final class AdminController
         } catch (ValidationException $e) {
             return $this->form(
                 $type,
-                $submitted,
+                (array) $request->getParsedBody(),
                 $this->prefix . '/' . $type,
                 'New ' . $this->labelFor($type),
                 $e->errors(),
@@ -151,15 +152,15 @@ final class AdminController
             return new Response(404, [], 'Unknown type');
         }
 
-        if ($this->dm->findType($type, $id) === null) {
+        $current = $this->dm->findType($type, $id);
+        if ($current === null) {
             return new Response(404, [], 'Not found');
         }
 
         $typeDef = $this->registry->get($type);
-        $submitted = (array) $request->getParsedBody();
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
 
-        $data = $this->collectFieldData($typeDef, $submitted);
+        $data = $this->collectFieldData($typeDef, $request, $current->toArray());
         $data[$typeDef->idField] = $id;
 
         try {
@@ -167,7 +168,7 @@ final class AdminController
         } catch (ValidationException $e) {
             return $this->form(
                 $type,
-                $submitted,
+                (array) $request->getParsedBody(),
                 $this->prefix . '/' . $type . '/' . $id,
                 'Edit ' . $this->labelFor($type),
                 $e->errors(),
@@ -202,11 +203,15 @@ final class AdminController
         $typeDef = $this->registry->get($type);
         $fields = [];
         $editorAssets = [];
+        $multipart = false;
         foreach ($typeDef->fields as $name => $fieldDef) {
             if ($name === $typeDef->idField) {
                 continue;
             }
             $fieldType = $this->fieldTypes->get($fieldDef->type);
+            if ($fieldType instanceof HandlesUpload) {
+                $multipart = true;
+            }
             $ctx = new FieldContext(
                 name: $name,
                 label: $fieldDef->label,
@@ -232,30 +237,74 @@ final class AdminController
             'csrf' => $csrf,
             'fields' => $fields,
             'editor_assets' => array_keys($editorAssets),
+            'multipart' => $multipart,
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
     }
 
     /**
-     * Build the storage payload by routing each submitted field through its
-     * field type (normalize + serialize). idField is handled by the caller.
+     * Build the storage payload, routing upload fields through their uploaded
+     * files + kept existing paths, and all others through normalize + toStorage.
      *
-     * @param array<string, mixed> $submitted
+     * @param array<string, mixed> $existing current stored values (for update)
      * @return array<string, mixed>
      */
-    private function collectFieldData(TypeDefinition $typeDef, array $submitted): array
+    private function collectFieldData(TypeDefinition $typeDef, ServerRequestInterface $request, array $existing): array
     {
+        $submitted = (array) $request->getParsedBody();
+        $uploads = $request->getUploadedFiles();
         $data = [];
+
         foreach ($typeDef->fields as $name => $fieldDef) {
             if ($name === $typeDef->idField) {
                 continue;
             }
             $fieldType = $this->fieldTypes->get($fieldDef->type);
-            $raw = $submitted[$name] ?? null;
-            $data[$name] = $fieldType->toStorage($fieldType->normalizeInput($raw, $fieldDef->config));
+
+            if ($fieldType instanceof HandlesUpload) {
+                $files = $this->uploadedFilesFor($uploads[$name] ?? null);
+                $removed = array_values(array_filter(
+                    (array) ($submitted[$name . '_remove'] ?? []),
+                    static fn ($v) => is_string($v),
+                ));
+                $existingList = $this->pathList($fieldType->fromStorage($existing[$name] ?? null));
+                $kept = array_values(array_diff($existingList, $removed));
+                $domain = $fieldType->storeUploads($files, $kept, $fieldDef->config);
+                $data[$name] = $fieldType->toStorage($domain);
+                continue;
+            }
+
+            $data[$name] = $fieldType->toStorage(
+                $fieldType->normalizeInput($submitted[$name] ?? null, $fieldDef->config),
+            );
         }
+
         return $data;
+    }
+
+    /** @return \Psr\Http\Message\UploadedFileInterface[] */
+    private function uploadedFilesFor(mixed $entry): array
+    {
+        if ($entry instanceof UploadedFileInterface) {
+            return [$entry];
+        }
+        if (is_array($entry)) {
+            return array_values(array_filter($entry, static fn ($f) => $f instanceof UploadedFileInterface));
+        }
+        return [];
+    }
+
+    /** @return string[] */
+    private function pathList(mixed $value): array
+    {
+        if (is_array($value)) {
+            return array_values(array_filter($value, static fn ($v) => is_string($v) && $v !== ''));
+        }
+        if (is_string($value) && $value !== '') {
+            return [$value];
+        }
+        return [];
     }
 
     private function labelFor(string $type): string

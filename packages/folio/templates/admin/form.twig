@@ -3,7 +3,7 @@
 {% block page_title %}{{ heading }}{% endblock %}
 {% block content %}
     <div class="folio-form">
-        {% set form = form_begin({action: action, csrf_token: csrf}) %}
+        {% set form = form_begin({action: action, csrf_token: csrf, attrs: multipart|default(false) ? {'enctype': 'multipart/form-data'} : {}}) %}
         {{ form.begin()|raw }}
         {% for field in fields %}
             {{ field.html|raw }}

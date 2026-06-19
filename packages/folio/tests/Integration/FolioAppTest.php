@@ -239,6 +239,36 @@ final class FolioAppTest extends TestCase
         $this->assertStringNotContainsString('<script', $article); // sanitized end-to-end
     }
 
+    public function test_new_form_is_multipart_with_file_input(): void
+    {
+        $body = (string) $this->get('/folio/page/new')->getBody();
+        $this->assertStringContainsString('enctype="multipart/form-data"', $body);
+        $this->assertStringContainsString('type="file"', $body);
+        $this->assertStringContainsString('name="cover"', $body);
+    }
+
+    public function test_upload_is_stored_and_served(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $file = $f->createUploadedFile($f->createStream('PNGDATA'), 7, UPLOAD_ERR_OK, 'pic.png', 'image/png');
+
+        $res = $app->handle($f->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'A', 'slug' => 'a', 'body' => 'b', 'status' => 'published'])
+            ->withUploadedFiles(['cover' => $file]));
+        $this->assertSame(302, $res->getStatusCode());
+
+        $record = $app->container()->get(\Preflow\Data\DataManager::class)
+            ->queryType('page')->where('slug', 'a')->first();
+        $cover = (string) $record->get('cover');
+        $this->assertStringEndsWith('.png', $cover);
+
+        $served = $app->handle($f->createServerRequest('GET', '/folio/_uploads/' . $cover));
+        $this->assertSame(200, $served->getStatusCode());
+        $this->assertSame('image/png', $served->getHeaderLine('Content-Type'));
+        $this->assertSame('PNGDATA', (string) $served->getBody());
+    }
+
     private function app(): Application
     {
         $app = Application::create($this->dir);
@@ -297,6 +327,7 @@ final class FolioAppTest extends TestCase
                 'slug'   => ['type' => 'string', 'searchable' => true, 'validate' => ['required']],
                 'body'   => ['type' => 'richtext'],
                 'status' => ['type' => 'string', 'validate' => ['required', 'in:draft,published']],
+                'cover'  => ['type' => 'asset', 'asset' => ['multiple' => false, 'accept' => 'image/*']],
             ],
         ], JSON_PRETTY_PRINT));
 
