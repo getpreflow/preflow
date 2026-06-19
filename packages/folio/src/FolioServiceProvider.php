@@ -123,6 +123,8 @@ final class FolioServiceProvider extends ServiceProvider
     {
         return [
             'admin.css' => 'admin.css',
+            'trix.css' => 'vendor/trix.css',
+            'trix.js' => 'vendor/trix.umd.min.js',
         ];
     }
 

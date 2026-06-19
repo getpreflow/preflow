@@ -130,6 +130,19 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('--c-accent', (string) $res->getBody());
     }
 
+    public function test_vendored_trix_assets_served(): void
+    {
+        $js = $this->get('/folio/_assets/trix.js');
+        $this->assertSame(200, $js->getStatusCode());
+        $this->assertStringContainsString('text/javascript', $js->getHeaderLine('Content-Type'));
+        $this->assertStringContainsString('Trix', (string) $js->getBody());
+
+        $css = $this->get('/folio/_assets/trix.css');
+        $this->assertSame(200, $css->getStatusCode());
+        $this->assertStringContainsString('text/css', $css->getHeaderLine('Content-Type'));
+        $this->assertStringContainsString('trix-editor', (string) $css->getBody());
+    }
+
     public function test_unknown_slug_is_404(): void
     {
         $this->assertSame(404, $this->get('/no-such-page')->getStatusCode());
