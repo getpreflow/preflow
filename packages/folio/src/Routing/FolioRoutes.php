@@ -57,6 +57,21 @@ final class FolioRoutes
             isCatchAll: $ac['isCatchAll'],
         );
 
+        // Package-owned upload serving. Catch-all (paths contain slashes), placed
+        // before the frontend catch-all so it wins for {prefix}/_uploads/*.
+        $uploadPattern = $prefix . '/_uploads/{...path}';
+        $uc = PatternCompiler::compile($uploadPattern);
+        $entries[] = new RouteEntry(
+            pattern: $uploadPattern,
+            handler: 'Preflow\\Folio\\Http\\UploadController@serve',
+            method: 'GET',
+            mode: RouteMode::Action,
+            middleware: [],
+            paramNames: $uc['paramNames'],
+            regex: $uc['regex'],
+            isCatchAll: $uc['isCatchAll'],
+        );
+
         return $entries;
     }
 

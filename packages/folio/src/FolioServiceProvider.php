@@ -15,6 +15,7 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Http\AdminController;
 use Preflow\Folio\Http\AssetController;
 use Preflow\Folio\Http\FrontendController;
+use Preflow\Folio\Http\UploadController;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\NumberFieldType;
 use Preflow\Folio\Field\Types\RichTextFieldType;
@@ -80,6 +81,8 @@ final class FolioServiceProvider extends ServiceProvider
             dirname(__DIR__) . '/assets',
             $this->assetMap(),
         ));
+        $uploadsDir = $this->uploadsDir($app);
+        $container->bind(UploadController::class, fn (Container $c) => new UploadController($uploadsDir));
     }
 
     public function boot(Container $container): void
@@ -141,6 +144,13 @@ final class FolioServiceProvider extends ServiceProvider
     private function prefix(Application $app): string
     {
         return $this->folioConfig($app)['path'] ?? '/folio';
+    }
+
+    private function uploadsDir(Application $app): string
+    {
+        $cfg = $this->folioConfig($app);
+        $path = $cfg['uploads_path'] ?? null;
+        return is_string($path) ? $path : $app->basePath('storage/uploads');
     }
 
     private function modelsPath(Application $app): string

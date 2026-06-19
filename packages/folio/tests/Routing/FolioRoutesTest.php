@@ -65,4 +65,19 @@ final class FolioRoutesTest extends TestCase
         $this->assertSame('Preflow\\Folio\\Http\\FrontendController@show', $entry->handler);
         $this->assertSame(['path'], $entry->paramNames);
     }
+
+    public function test_admin_includes_uploads_route(): void
+    {
+        $entries = FolioRoutes::admin('/folio');
+        $match = null;
+        foreach ($entries as $e) {
+            if ($e->pattern === '/folio/_uploads/{...path}') {
+                $match = $e;
+                break;
+            }
+        }
+        $this->assertNotNull($match, 'uploads route should be registered');
+        $this->assertSame('Preflow\\Folio\\Http\\UploadController@serve', $match->handler);
+        $this->assertTrue($match->isCatchAll);
+    }
 }
