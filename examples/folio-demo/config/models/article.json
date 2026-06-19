@@ -1,0 +1,13 @@
+{
+    "key": "article",
+    "table": "article",
+    "storage": "json",
+    "id_field": "uuid",
+    "label": "Articles",
+    "fields": {
+        "title": { "type": "string", "validate": ["required"] },
+        "slug": { "type": "string", "validate": ["required"] },
+        "body": { "type": "text" },
+        "status": { "type": "string" }
+    }
+}
