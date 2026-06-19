@@ -4,7 +4,7 @@
 <body>
     <article>
         <h1>{{ record.title }}</h1>
-        <div>{{ record.body|raw }}</div>
+        <div>{{ rendered.body|default('')|raw }}</div>
     </article>
 </body>
 </html>

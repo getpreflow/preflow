@@ -78,7 +78,15 @@ final class FolioAppTest extends TestCase
         // string field -> text input; text field (body) -> textarea (registry mapping)
         $this->assertStringContainsString('name="title"', $body);
         $this->assertStringContainsString('type="text"', $body);
-        $this->assertStringContainsString('<textarea name="body"', $body);
+        $this->assertStringContainsString('<trix-editor input="folio-rt-body"', $body);
+    }
+
+    public function test_richtext_form_includes_trix_assets_and_editor(): void
+    {
+        $body = (string) $this->get('/folio/page/new')->getBody();
+        $this->assertStringContainsString('<trix-editor input="folio-rt-body"', $body);
+        $this->assertStringContainsString('/folio/_assets/trix.js?v=', $body);
+        $this->assertStringContainsString('/folio/_assets/trix.css?v=', $body);
     }
 
     public function test_create_form_has_styled_actions_and_cancel(): void
@@ -128,6 +136,19 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('text/css', $res->getHeaderLine('Content-Type'));
         $this->assertStringContainsString(':root', (string) $res->getBody());
         $this->assertStringContainsString('--c-accent', (string) $res->getBody());
+    }
+
+    public function test_vendored_trix_assets_served(): void
+    {
+        $js = $this->get('/folio/_assets/trix.js');
+        $this->assertSame(200, $js->getStatusCode());
+        $this->assertStringContainsString('text/javascript', $js->getHeaderLine('Content-Type'));
+        $this->assertStringContainsString('Trix', (string) $js->getBody());
+
+        $css = $this->get('/folio/_assets/trix.css');
+        $this->assertSame(200, $css->getStatusCode());
+        $this->assertStringContainsString('text/css', $css->getHeaderLine('Content-Type'));
+        $this->assertStringContainsString('trix-editor', (string) $css->getBody());
     }
 
     public function test_unknown_slug_is_404(): void
@@ -201,6 +222,23 @@ final class FolioAppTest extends TestCase
         $this->assertSame(302, $res->getStatusCode());
     }
 
+    public function test_richtext_frontend_renders_sanitized_html(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $app->handle($f->createServerRequest('POST', '/folio/page')->withParsedBody([
+            'title' => 'Post', 'slug' => 'post',
+            'body' => '<p>safe</p><script>alert(1)</script>', 'status' => 'published',
+        ]));
+
+        $html = (string) $app->handle($f->createServerRequest('GET', '/post'))->getBody();
+        $this->assertStringContainsString('<p>safe</p>', $html);   // rich HTML rendered raw
+        // Extract the article body only — the debug toolbar may inject its own <script>.
+        preg_match('/<article>(.*?)<\/article>/s', $html, $m);
+        $article = $m[1] ?? $html;
+        $this->assertStringNotContainsString('<script', $article); // sanitized end-to-end
+    }
+
     private function app(): Application
     {
         $app = Application::create($this->dir);
@@ -257,7 +295,7 @@ final class FolioAppTest extends TestCase
             'fields'   => [
                 'title'  => ['type' => 'string', 'searchable' => true, 'validate' => ['required']],
                 'slug'   => ['type' => 'string', 'searchable' => true, 'validate' => ['required']],
-                'body'   => ['type' => 'text'],
+                'body'   => ['type' => 'richtext'],
                 'status' => ['type' => 'string', 'validate' => ['required', 'in:draft,published']],
             ],
         ], JSON_PRETTY_PRINT));

@@ -9,28 +9,47 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * Serves Folio's package-owned admin stylesheet from disk. The URL is
- * content-hash versioned (see FolioServiceProvider), so the response is safe to
- * cache immutably. Keeping the CSS a real file (not a PHP string) leaves it
- * publish-ready for a future asset-publishing system.
+ * Serves Folio's package-owned admin assets (CSS + JS, incl. vendored editor
+ * bundles) from disk via a strict allowlist. URLs are content-hash versioned
+ * (see FolioServiceProvider::folio_asset), so responses cache immutably.
  */
 final class AssetController
 {
-    public function __construct(private readonly string $cssPath) {}
+    /** @param array<string, string> $allowlist flat URL filename => path relative to $baseDir */
+    public function __construct(
+        private readonly string $baseDir,
+        private readonly array $allowlist,
+    ) {}
 
-    public function adminCss(ServerRequestInterface $request): ResponseInterface
+    public function serve(ServerRequestInterface $request): ResponseInterface
     {
-        if (!is_file($this->cssPath)) {
+        $file = (string) $request->getAttribute('file', '');
+        $rel = $this->allowlist[$file] ?? null;
+        if ($rel === null) {
+            return new Response(404, [], 'Not found');
+        }
+
+        $path = $this->baseDir . '/' . $rel;
+        if (!is_file($path)) {
             return new Response(404, [], 'Not found');
         }
 
         return new Response(
             200,
             [
-                'Content-Type' => 'text/css; charset=UTF-8',
+                'Content-Type' => $this->contentType($file) . '; charset=UTF-8',
                 'Cache-Control' => 'public, max-age=31536000, immutable',
             ],
-            (string) file_get_contents($this->cssPath),
+            (string) file_get_contents($path),
         );
+    }
+
+    private function contentType(string $file): string
+    {
+        return match (true) {
+            str_ends_with($file, '.css') => 'text/css',
+            str_ends_with($file, '.js') => 'text/javascript',
+            default => 'application/octet-stream',
+        };
     }
 }

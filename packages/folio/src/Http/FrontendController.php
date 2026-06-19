@@ -7,6 +7,7 @@ namespace Preflow\Folio\Http;
 use Nyholm\Psr7\Response;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Folio\Content\FrontendResolver;
+use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -16,6 +17,7 @@ final class FrontendController
     public function __construct(
         private readonly FrontendResolver $resolver,
         private readonly TemplateEngineInterface $engine,
+        private readonly FieldTypeRegistry $fieldTypes,
     ) {}
 
     public function show(ServerRequestInterface $request): ResponseInterface
@@ -27,8 +29,19 @@ final class FrontendController
             throw new NotFoundHttpException();
         }
 
+        $typeDef = $record->getType();
+        $rendered = [];
+        foreach ($typeDef->fields as $name => $fieldDef) {
+            $fieldType = $this->fieldTypes->get($fieldDef->type);
+            $rendered[$name] = $fieldType->renderFrontend(
+                $fieldType->fromStorage($record->get($name)),
+                $fieldDef->config,
+            );
+        }
+
         $html = $this->engine->render('@folio/frontend/page.twig', [
             'record' => $record->toArray(),
+            'rendered' => $rendered,
         ]);
 
         return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html);

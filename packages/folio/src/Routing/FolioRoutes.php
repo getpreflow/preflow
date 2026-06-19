@@ -41,14 +41,14 @@ final class FolioRoutes
             );
         }
 
-        // Package-owned admin stylesheet. Appended last: exact pattern, no
-        // overlap with the CRUD routes, and keeps entries[0] = dashboard so the
-        // prefix-configurability contract holds.
-        $assetPattern = $prefix . '/_assets/admin.css';
+        // Package-owned admin assets (CSS/JS, incl. vendored editor bundles).
+        // Appended last; single-segment {file} param, allowlist-guarded in the
+        // controller. entries[0] stays the dashboard (prefix-configurability).
+        $assetPattern = $prefix . '/_assets/{file}';
         $ac = PatternCompiler::compile($assetPattern);
         $entries[] = new RouteEntry(
             pattern: $assetPattern,
-            handler: 'Preflow\\Folio\\Http\\AssetController@adminCss',
+            handler: 'Preflow\\Folio\\Http\\AssetController@serve',
             method: 'GET',
             mode: RouteMode::Action,
             middleware: [],
