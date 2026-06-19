@@ -332,6 +332,40 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('value="' . $authorId . '" selected', $editForm);
     }
 
+    public function test_matrix_editor_renders_picker_and_loads_admin_js(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $app->handle($f->createServerRequest('POST', '/folio/note')->withParsedBody(['name' => 'Note A']));
+
+        $body = (string) $app->handle($f->createServerRequest('GET', '/folio/page/new'))->getBody();
+        $this->assertStringContainsString('data-folio-matrix', $body);
+        $this->assertStringContainsString('Note A', $body);               // record in options blob
+        $this->assertStringContainsString('/folio/_assets/admin.js?v=', $body); // matrix declares admin.js
+    }
+
+    public function test_matrix_reference_round_trips_and_renders_on_frontend(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $app->handle($f->createServerRequest('POST', '/folio/note')->withParsedBody(['name' => 'Block Note']));
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $noteId = $dm->queryType('note')->first()->getId();
+
+        $app->handle($f->createServerRequest('POST', '/folio/page')->withParsedBody([
+            'title' => 'Composed', 'slug' => 'composed', 'body' => 'b', 'status' => 'published',
+            'blocks' => [['_type' => 'note', 'id' => $noteId]],
+        ]));
+        $pageId = $dm->queryType('page')->where('slug', 'composed')->first()->getId();
+
+        $edit = (string) $app->handle($f->createServerRequest('GET', '/folio/page/' . $pageId . '/edit')
+            ->withAttribute('type', 'page')->withAttribute('id', $pageId))->getBody();
+        $this->assertStringContainsString('value="' . $noteId . '"', $edit); // row present in editor
+
+        $front = (string) $app->handle($f->createServerRequest('GET', '/composed'))->getBody();
+        $this->assertStringContainsString('Block Note', $front); // referenced note rendered via _default type template
+    }
+
     private function app(): Application
     {
         $app = Application::create($this->dir);
@@ -379,6 +413,13 @@ final class FolioAppTest extends TestCase
         $w('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");
         $w('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
 
+        $w('config/models/note.json', json_encode([
+            'key' => 'note', 'table' => 'note', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Notes', 'matrixable' => true,
+            'fields' => [
+                'name' => ['type' => 'string', 'validate' => ['required']],
+            ],
+        ], JSON_PRETTY_PRINT));
+
         $w('config/models/author.json', json_encode([
             'key' => 'author', 'table' => 'author', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Authors',
             'fields' => [
@@ -399,6 +440,7 @@ final class FolioAppTest extends TestCase
                 'status' => ['type' => 'string', 'validate' => ['required', 'in:draft,published']],
                 'cover'  => ['type' => 'asset', 'asset' => ['multiple' => false, 'accept' => 'image/*']],
                 'author' => ['type' => 'relation', 'relation' => ['to' => 'author', 'multiple' => false]],
+                'blocks' => ['type' => 'matrix', 'matrix' => ['allowed' => ['note']]],
             ],
         ], JSON_PRETTY_PRINT));
 

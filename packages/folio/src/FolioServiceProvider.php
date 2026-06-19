@@ -21,6 +21,7 @@ use Preflow\Folio\Field\Types\AssetFieldType;
 use Preflow\Folio\Field\Types\NumberFieldType;
 use Preflow\Folio\Field\Types\RichTextFieldType;
 use Preflow\Folio\Field\Types\StringFieldType;
+use Preflow\Folio\Field\Types\MatrixFieldType;
 use Preflow\Folio\Field\Types\RelationFieldType;
 use Preflow\Folio\Field\Types\TextFieldType;
 use Symfony\Component\HtmlSanitizer\HtmlSanitizer;
@@ -65,6 +66,12 @@ final class FolioServiceProvider extends ServiceProvider
             $registry->register(new RelationFieldType(
                 $c->get(\Preflow\Data\DataManager::class),
                 $c->get(TypeRegistry::class),
+            ));
+            $registry->register(new MatrixFieldType(
+                $c->get(TypeCatalog::class),
+                $c->get(TypeRegistry::class),
+                $c->get(\Preflow\Data\DataManager::class),
+                new RecordRenderer($registry, $c->get(TemplateEngineInterface::class)),
             ));
             $registry->alias('int', 'number');
             $registry->alias('integer', 'number');
@@ -144,6 +151,7 @@ final class FolioServiceProvider extends ServiceProvider
     {
         return [
             'admin.css' => 'admin.css',
+            'admin.js' => 'admin.js',
             'trix.css' => 'vendor/trix.css',
             'trix.js' => 'vendor/trix.umd.min.js',
         ];
