@@ -78,6 +78,15 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('About Us', (string) $page->getBody());
     }
 
+    public function test_admin_stylesheet_is_served(): void
+    {
+        $res = $this->get('/folio/_assets/admin.css');
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('text/css', $res->getHeaderLine('Content-Type'));
+        $this->assertStringContainsString(':root', (string) $res->getBody());
+        $this->assertStringContainsString('--c-accent', (string) $res->getBody());
+    }
+
     public function test_unknown_slug_is_404(): void
     {
         $this->assertSame(404, $this->get('/no-such-page')->getStatusCode());
