@@ -78,6 +78,16 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('About Us', (string) $page->getBody());
     }
 
+    public function test_admin_shell_renders_sidebar_stylesheet_and_toggle(): void
+    {
+        $body = (string) $this->get('/folio')->getBody();
+        $this->assertStringContainsString('class="folio-shell"', $body);
+        $this->assertStringContainsString('class="folio-sidebar"', $body);
+        $this->assertStringContainsString('/folio/_assets/admin.css?v=', $body); // versioned link
+        $this->assertStringContainsString('id="folio-theme-toggle"', $body);
+        $this->assertStringContainsString("localStorage.getItem('folio-theme')", $body); // no-flash script
+    }
+
     public function test_admin_stylesheet_is_served(): void
     {
         $res = $this->get('/folio/_assets/admin.css');

@@ -4,15 +4,59 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Folio{% endblock %}</title>
+    {# No-flash theme: apply the stored choice before first paint. Plain inline
+       script because action-mode responses bypass the asset collector. #}
+    <script>
+    (function () {
+        try {
+            var t = localStorage.getItem('folio-theme');
+            if (t === 'light' || t === 'dark') {
+                document.documentElement.setAttribute('data-theme', t);
+            }
+        } catch (e) {}
+    })();
+    </script>
+    <link rel="stylesheet" href="{{ folio_admin_css_url }}">
 </head>
 <body>
-    <header><strong>Folio</strong></header>
-    <nav>
-        <a href="{{ prefix }}">Dashboard</a>
-        {% for type in types %}
-            <a href="{{ prefix }}/{{ type.key }}">{{ type.label }}</a>
-        {% endfor %}
-    </nav>
-    <main>{% block content %}{% endblock %}</main>
+<div class="folio-shell">
+    <aside class="folio-sidebar">
+        <div class="folio-brand">Folio</div>
+        <nav class="folio-nav">
+            <a href="{{ prefix }}"{% if type is not defined %} class="active"{% endif %}>Dashboard</a>
+            {% for t in types %}
+                <a href="{{ prefix }}/{{ t.key }}"{% if type is defined and type == t.key %} class="active"{% endif %}>{{ t.label }}</a>
+            {% endfor %}
+        </nav>
+        <div class="folio-sidebar-foot">
+            <button type="button" id="folio-theme-toggle" class="folio-theme-toggle" aria-label="Toggle theme">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+                <span>Theme</span>
+            </button>
+        </div>
+    </aside>
+    <div class="folio-main">
+        <header class="folio-topbar">
+            <h1>{% block page_title %}{% endblock %}</h1>
+            <div class="folio-actions">{% block actions %}{% endblock %}</div>
+        </header>
+        <main class="folio-content">{% block content %}{% endblock %}</main>
+    </div>
+</div>
+<script>
+(function () {
+    var btn = document.getElementById('folio-theme-toggle');
+    if (!btn) { return; }
+    btn.addEventListener('click', function () {
+        var cur = document.documentElement.getAttribute('data-theme');
+        if (!cur) {
+            cur = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        var next = cur === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('folio-theme', next); } catch (e) {}
+    });
+})();
+</script>
 </body>
 </html>
