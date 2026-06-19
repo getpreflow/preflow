@@ -23,6 +23,7 @@
                         <div class="folio-row-actions">
                             <a class="btn btn-ghost" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">Edit</a>
                             <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/delete" onsubmit="return confirm('Delete this record?');">
+                                <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                                 <button type="submit" class="btn btn-danger">Delete</button>
                             </form>
                         </div>

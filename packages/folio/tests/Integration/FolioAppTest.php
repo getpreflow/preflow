@@ -142,6 +142,7 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('Listed', $body);
         $this->assertStringContainsString('/edit', $body);
         $this->assertStringContainsString('/delete', $body);
+        $this->assertStringContainsString('name="_csrf_token"', $body);
     }
 
     private function app(): Application

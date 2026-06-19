@@ -60,12 +60,15 @@ final class AdminController
             $rows[] = $record->toArray() + ['id' => $record->getId()];
         }
 
+        $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
+
         return $this->html($this->engine->render('@folio/admin/list.twig', [
             'prefix' => $this->prefix,
             'type' => $type,
             'label' => $this->labelFor($type),
             'types' => $this->catalog->all(),
             'rows' => $rows,
+            'csrf' => $csrf,
         ]));
     }
 
