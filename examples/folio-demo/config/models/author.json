@@ -1,0 +1,10 @@
+{
+    "key": "author",
+    "table": "author",
+    "storage": "json",
+    "id_field": "uuid",
+    "label": "Authors",
+    "fields": {
+        "name": { "type": "string", "validate": ["required"] }
+    }
+}
