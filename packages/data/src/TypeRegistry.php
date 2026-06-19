@@ -81,6 +81,7 @@ final class TypeRegistry
             idField: $schema['id_field'] ?? 'uuid',
             searchableFields: $searchableFields,
             transformers: $transformers,
+            matrixable: (bool) ($schema['matrixable'] ?? false),
         );
     }
 }
