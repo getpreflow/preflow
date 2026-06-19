@@ -1,0 +1,5 @@
+<article class="folio-type folio-type-{{ type }}">
+    {% for name, html in rendered %}
+        <div class="folio-field folio-field-{{ name }}">{{ html|raw }}</div>
+    {% endfor %}
+</article>

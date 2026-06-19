@@ -1,0 +1,12 @@
+{
+    "key": "note",
+    "table": "note",
+    "storage": "json",
+    "id_field": "uuid",
+    "label": "Notes",
+    "matrixable": true,
+    "fields": {
+        "name": { "type": "string", "validate": ["required"] },
+        "body": { "type": "richtext", "label": "Body" }
+    }
+}

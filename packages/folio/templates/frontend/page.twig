@@ -4,8 +4,9 @@
 <body>
     <article>
         <h1>{{ record.title }}</h1>
-        <div>{{ rendered.cover|default('')|raw }}</div>
-        <div>{{ rendered.body|default('')|raw }}</div>
+        {% for name, html in rendered %}
+            {% if name != 'title' %}<div class="folio-field folio-field-{{ name }}">{{ html|raw }}</div>{% endif %}
+        {% endfor %}
     </article>
 </body>
 </html>
