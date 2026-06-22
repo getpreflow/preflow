@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Folio\Field\Types;
 
 use Preflow\Data\DataManager;
-use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\RecordRenderer;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
@@ -25,6 +25,8 @@ final class MatrixFieldType implements FieldType
         private readonly TypeRegistry $registry,
         private readonly DataManager $dm,
         private readonly RecordRenderer $records,
+        private readonly RecordLabeler $labeler,
+        private readonly string $prefix,
     ) {}
 
     public function key(): string
@@ -41,7 +43,7 @@ final class MatrixFieldType implements FieldType
         $label = $ctx->label ?? ucfirst(str_replace('_', ' ', $name));
 
         // Options blob for the JS picker: types + their records (id,label).
-        $options = ['types' => [], 'records' => []];
+        $options = ['prefix' => $this->prefix, 'types' => [], 'records' => []];
         foreach ($allowed as $key) {
             $options['types'][] = ['key' => $key, 'label' => $this->typeLabel($key)];
             $recs = [];
@@ -50,7 +52,7 @@ final class MatrixFieldType implements FieldType
                 if ($id === null) {
                     continue;
                 }
-                $recs[] = ['id' => (string) $id, 'label' => $this->recordLabel($record, $key)];
+                $recs[] = ['id' => (string) $id, 'label' => $this->labeler->label($record)];
             }
             $options['records'][$key] = $recs;
         }
@@ -171,22 +173,6 @@ final class MatrixFieldType implements FieldType
         return ucfirst($key);
     }
 
-    private function recordLabel(DynamicRecord $record, string $type): string
-    {
-        if ($this->registry->has($type)) {
-            foreach ($this->registry->get($type)->fields as $fname => $def) {
-                if ($def->type === 'string') {
-                    $v = $record->get($fname);
-                    if (is_string($v) && $v !== '') {
-                        return $v;
-                    }
-                    break;
-                }
-            }
-        }
-        return (string) $record->getId();
-    }
-
     /** @param array{_type:string,id:string} $ref */
     private function refLabel(array $ref): string
     {
@@ -194,7 +180,7 @@ final class MatrixFieldType implements FieldType
             return $ref['id'];
         }
         $record = $this->dm->findType($ref['_type'], $ref['id']);
-        return $record === null ? $ref['id'] : $this->recordLabel($record, $ref['_type']);
+        return $record === null ? $ref['id'] : $this->labeler->label($record);
     }
 
     private function rowHtml(string $field, int $i, string $type, string $id, string $label): string

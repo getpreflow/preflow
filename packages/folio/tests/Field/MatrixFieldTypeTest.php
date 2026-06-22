@@ -9,6 +9,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\RecordRenderer;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
@@ -78,7 +79,14 @@ final class MatrixFieldTypeTest extends TestCase
 
     private function type(): MatrixFieldType
     {
-        return new MatrixFieldType($this->catalog, $this->registry, $this->dm, $this->recordRenderer());
+        return new MatrixFieldType(
+            $this->catalog,
+            $this->registry,
+            $this->dm,
+            $this->recordRenderer(),
+            new RecordLabeler(),
+            '/folio',
+        );
     }
 
     private function config(array $allowed = []): array
@@ -142,5 +150,11 @@ final class MatrixFieldTypeTest extends TestCase
     {
         $out = $this->type()->renderFrontend([['_type' => 'ghost', 'id' => 'x']], $this->config());
         $this->assertSame('', $out);
+    }
+
+    public function test_render_editor_embeds_prefix_for_admin_js(): void
+    {
+        $html = $this->type()->renderEditor(new FieldContext(name: 'blocks', config: $this->config()));
+        $this->assertStringContainsString('"prefix":"/folio"', $html);
     }
 }
