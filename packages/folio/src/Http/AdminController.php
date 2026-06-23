@@ -9,6 +9,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
 use Preflow\Data\TypeDefinition;
+use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldTypeRegistry;
@@ -30,6 +31,7 @@ final class AdminController
         private readonly ActionResolver $overrides,
         private readonly FieldTypeRegistry $fieldTypes,
         private readonly string $prefix,
+        private readonly RecordLabeler $labeler,
     ) {}
 
     public function index(ServerRequestInterface $request): ResponseInterface
@@ -76,6 +78,27 @@ final class AdminController
             'rows' => $rows,
             'csrf' => $csrf,
         ]));
+    }
+
+    public function recordLabel(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = (string) $request->getAttribute('type', '');
+        $id = (string) $request->getAttribute('id', '');
+        if (!$this->catalog->has($type)) {
+            return new Response(404, [], 'Unknown type');
+        }
+
+        $record = $this->dm->findType($type, $id);
+        if ($record === null) {
+            return new Response(404, [], 'Not found');
+        }
+
+        $payload = json_encode(
+            ['id' => $id, 'label' => $this->labeler->label($record)],
+            JSON_UNESCAPED_SLASHES,
+        );
+
+        return new Response(200, ['Content-Type' => 'application/json; charset=UTF-8'], (string) $payload);
     }
 
     public function createForm(ServerRequestInterface $request): ResponseInterface

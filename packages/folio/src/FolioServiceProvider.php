@@ -90,6 +90,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(ActionResolver::class),
             $c->get(FieldTypeRegistry::class),
             $prefix,
+            new RecordLabeler(),
         ));
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),

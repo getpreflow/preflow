@@ -11,6 +11,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Http\AdminController;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\NumberFieldType;
@@ -83,6 +84,7 @@ final class AdminControllerTest extends TestCase
             new ActionResolver(new Container(), 'Preflow\\Folio\\Tests\\Overrides\\'),
             $this->fieldTypeRegistry(),
             '/folio',
+            new RecordLabeler(),
         );
     }
 
@@ -138,5 +140,37 @@ final class AdminControllerTest extends TestCase
         $res = $this->controller()->destroy($req);
 
         $this->assertSame(404, $res->getStatusCode());
+    }
+
+    public function test_record_label_returns_json(): void
+    {
+        $this->controller()->store((new Psr17Factory())->createServerRequest('POST', '/folio/page')
+            ->withAttribute('type', 'page')
+            ->withParsedBody(['title' => 'Hello', 'slug' => 'hello', 'body' => 'B', 'status' => 'published']));
+        $id = $this->dm->queryType('page')->where('slug', 'hello')->first()->getId();
+
+        $req = (new Psr17Factory())->createServerRequest('GET', '/folio/page/' . $id . '/label')
+            ->withAttribute('type', 'page')->withAttribute('id', $id);
+        $res = $this->controller()->recordLabel($req);
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertSame('application/json; charset=UTF-8', $res->getHeaderLine('Content-Type'));
+        $data = json_decode((string) $res->getBody(), true);
+        $this->assertSame($id, $data['id']);
+        $this->assertSame('Hello', $data['label']);
+    }
+
+    public function test_record_label_unknown_type_404(): void
+    {
+        $req = (new Psr17Factory())->createServerRequest('GET', '/folio/ghost/x/label')
+            ->withAttribute('type', 'ghost')->withAttribute('id', 'x');
+        $this->assertSame(404, $this->controller()->recordLabel($req)->getStatusCode());
+    }
+
+    public function test_record_label_missing_record_404(): void
+    {
+        $req = (new Psr17Factory())->createServerRequest('GET', '/folio/page/nope/label')
+            ->withAttribute('type', 'page')->withAttribute('id', 'nope');
+        $this->assertSame(404, $this->controller()->recordLabel($req)->getStatusCode());
     }
 }
