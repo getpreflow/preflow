@@ -4,7 +4,9 @@
 <body>
 <script>
 (function () {
-    var msg = { source: 'folio-drawer', type: {{ type|json_encode|raw }}, id: {{ id|json_encode|raw }} };
+    {# json_encode with JSON_HEX_* so the values cannot break out of this <script> context, regardless of input. #}
+    {% set jsflags = constant('JSON_HEX_TAG') b-or constant('JSON_HEX_APOS') b-or constant('JSON_HEX_QUOT') b-or constant('JSON_HEX_AMP') %}
+    var msg = { source: 'folio-drawer', type: {{ type|json_encode(jsflags)|raw }}, id: {{ id|json_encode(jsflags)|raw }} };
     if (window.parent && window.parent !== window) {
         window.parent.postMessage(msg, window.location.origin);
     }

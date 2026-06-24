@@ -95,7 +95,7 @@ final class AdminController
 
         $payload = json_encode(
             ['id' => $id, 'label' => $this->labeler->label($record)],
-            JSON_UNESCAPED_SLASHES,
+            JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
         );
 
         return new Response(200, ['Content-Type' => 'application/json; charset=UTF-8'], (string) $payload);
