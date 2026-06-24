@@ -18,6 +18,8 @@ use Preflow\Folio\Field\Types\NumberFieldType;
 use Preflow\Folio\Field\Types\StringFieldType;
 use Preflow\Folio\Field\Types\TextFieldType;
 use Preflow\Folio\Override\ActionResolver;
+use Preflow\Validation\RuleFactory;
+use Preflow\Validation\ValidatorFactory;
 use Preflow\View\TemplateEngineInterface;
 
 final class AdminControllerTest extends TestCase
@@ -41,7 +43,12 @@ final class AdminControllerTest extends TestCase
             ],
         ]));
         $this->registry = new TypeRegistry($this->base . '/m');
-        $this->dm = new DataManager(['json' => new JsonFileDriver($this->base . '/s')], 'json', $this->registry);
+        $this->dm = new DataManager(
+            ['json' => new JsonFileDriver($this->base . '/s')],
+            'json',
+            $this->registry,
+            new ValidatorFactory(new RuleFactory()),
+        );
     }
 
     private function engine(): TemplateEngineInterface
@@ -63,6 +70,35 @@ final class AdminControllerTest extends TestCase
             }
             public function addNamespace(string $n, string $p): void {}
         };
+    }
+
+    private function capturingEngine(): TemplateEngineInterface
+    {
+        return new class implements TemplateEngineInterface {
+            public function render(string $template, array $context = []): string
+            {
+                return $template . '|' . json_encode($context, JSON_UNESCAPED_SLASHES);
+            }
+            public function exists(string $template): bool { return true; }
+            public function addFunction(\Preflow\View\TemplateFunctionDefinition $f): void {}
+            public function addGlobal(string $n, mixed $v): void {}
+            public function getTemplateExtension(): string { return 'twig'; }
+            public function addNamespace(string $n, string $p): void {}
+        };
+    }
+
+    private function controllerWith(TemplateEngineInterface $engine): AdminController
+    {
+        return new AdminController(
+            new TypeCatalog($this->base . '/m'),
+            $this->registry,
+            $this->dm,
+            $engine,
+            new ActionResolver(new Container(), 'Preflow\\Folio\\Tests\\Overrides\\'),
+            $this->fieldTypeRegistry(),
+            '/folio',
+            new RecordLabeler(),
+        );
     }
 
     private function fieldTypeRegistry(): FieldTypeRegistry
@@ -172,5 +208,56 @@ final class AdminControllerTest extends TestCase
         $req = (new Psr17Factory())->createServerRequest('GET', '/folio/page/nope/label')
             ->withAttribute('type', 'page')->withAttribute('id', 'nope');
         $this->assertSame(404, $this->controller()->recordLabel($req)->getStatusCode());
+    }
+
+    public function test_create_form_drawer_uses_bare_layout_and_keeps_flag(): void
+    {
+        $req = (new Psr17Factory())->createServerRequest('GET', '/folio/page/new?_drawer=1')
+            ->withAttribute('type', 'page');
+        $res = $this->controllerWith($this->capturingEngine())->createForm($req);
+        $body = (string) $res->getBody();
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('@folio/admin/form.twig', $body);
+        $this->assertStringContainsString('"layout":"@folio/admin/_drawer_layout.twig"', $body);
+        $this->assertStringContainsString('"action":"/folio/page?_drawer=1"', $body);
+    }
+
+    public function test_create_form_normal_uses_full_layout(): void
+    {
+        $req = (new Psr17Factory())->createServerRequest('GET', '/folio/page/new')
+            ->withAttribute('type', 'page');
+        $body = (string) $this->controllerWith($this->capturingEngine())->createForm($req)->getBody();
+
+        $this->assertStringContainsString('"layout":"@folio/admin/_layout.twig"', $body);
+        $this->assertStringContainsString('"action":"/folio/page"', $body);
+    }
+
+    public function test_store_drawer_returns_postmessage_page_not_redirect(): void
+    {
+        $req = (new Psr17Factory())->createServerRequest('POST', '/folio/page?_drawer=1')
+            ->withAttribute('type', 'page')
+            ->withParsedBody(['title' => 'Hi', 'slug' => 'hi', 'body' => 'B', 'status' => 'published']);
+        $res = $this->controllerWith($this->capturingEngine())->store($req);
+        $body = (string) $res->getBody();
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('@folio/admin/drawer_saved.twig', $body);
+        $this->assertStringContainsString('"type":"page"', $body);
+        $id = $this->dm->queryType('page')->where('slug', 'hi')->first()->getId();
+        $this->assertStringContainsString('"id":"' . $id . '"', $body);
+    }
+
+    public function test_store_drawer_validation_error_stays_bare_422(): void
+    {
+        $req = (new Psr17Factory())->createServerRequest('POST', '/folio/page?_drawer=1')
+            ->withAttribute('type', 'page')
+            ->withParsedBody(['title' => '', 'slug' => 'x', 'body' => 'b', 'status' => 'draft']);
+        $res = $this->controllerWith($this->capturingEngine())->store($req);
+        $body = (string) $res->getBody();
+
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('"layout":"@folio/admin/_drawer_layout.twig"', $body);
+        $this->assertStringContainsString('"action":"/folio/page?_drawer=1"', $body);
     }
 }

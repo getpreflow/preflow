@@ -109,8 +109,11 @@ final class AdminController
         }
 
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
+        $drawer = $this->isDrawer($request);
+        $action = $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : '');
+        $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
 
-        return $this->form($type, [], $this->prefix . '/' . $type, 'New ' . $this->labelFor($type), [], $csrf);
+        return $this->form($type, [], $action, 'New ' . $this->labelFor($type), [], $csrf, 200, $layout);
     }
 
     public function store(ServerRequestInterface $request): ResponseInterface
@@ -122,6 +125,7 @@ final class AdminController
 
         $typeDef = $this->registry->get($type);
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
+        $drawer = $this->isDrawer($request);
 
         $data = $this->collectFieldData($typeDef, $request, []);
         $data[$typeDef->idField] = bin2hex(random_bytes(16));
@@ -129,15 +133,26 @@ final class AdminController
         try {
             $this->dm->saveType(DynamicRecord::fromArray($typeDef, $data));
         } catch (ValidationException $e) {
+            $action = $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : '');
+            $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
+
             return $this->form(
                 $type,
                 (array) $request->getParsedBody(),
-                $this->prefix . '/' . $type,
+                $action,
                 'New ' . $this->labelFor($type),
                 $e->errors(),
                 $csrf,
                 422,
+                $layout,
             );
+        }
+
+        if ($drawer) {
+            return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->engine->render('@folio/admin/drawer_saved.twig', [
+                'type' => $type,
+                'id' => $data[$typeDef->idField],
+            ]));
         }
 
         return new Response(302, ['Location' => $this->prefix . '/' . $type]);
@@ -221,7 +236,7 @@ final class AdminController
     }
 
     /** @param array<string, mixed> $values @param array<string, list<string>> $errors */
-    private function form(string $type, array $values, string $action, string $heading, array $errors, string $csrf = '', int $status = 200): ResponseInterface
+    private function form(string $type, array $values, string $action, string $heading, array $errors, string $csrf = '', int $status = 200, string $layout = '@folio/admin/_layout.twig'): ResponseInterface
     {
         $typeDef = $this->registry->get($type);
         $fields = [];
@@ -261,6 +276,7 @@ final class AdminController
             'fields' => $fields,
             'editor_assets' => array_keys($editorAssets),
             'multipart' => $multipart,
+            'layout' => $layout,
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
@@ -328,6 +344,13 @@ final class AdminController
             return [$value];
         }
         return [];
+    }
+
+    private function isDrawer(ServerRequestInterface $request): bool
+    {
+        parse_str($request->getUri()->getQuery(), $q);
+
+        return ($q['_drawer'] ?? null) === '1';
     }
 
     private function labelFor(string $type): string

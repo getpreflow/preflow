@@ -366,6 +366,36 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('Block Note', $front); // referenced note rendered via _default type template
     }
 
+    public function test_drawer_create_returns_postmessage_with_id(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $res = $app->handle($f->createServerRequest('POST', '/folio/note?_drawer=1')
+            ->withParsedBody(['name' => 'Drawer Note']));
+
+        $this->assertSame(200, $res->getStatusCode());
+        $body = (string) $res->getBody();
+        $this->assertStringContainsString("'folio-drawer'", $body);          // postMessage source literal
+        $id = $app->container()->get(\Preflow\Data\DataManager::class)
+            ->queryType('note')->where('name', 'Drawer Note')->first()->getId();
+        $this->assertStringContainsString($id, $body);                        // new id in the payload
+    }
+
+    public function test_label_endpoint_returns_record_label(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $app->handle($f->createServerRequest('POST', '/folio/note')->withParsedBody(['name' => 'Labeled Note']));
+        $id = $app->container()->get(\Preflow\Data\DataManager::class)
+            ->queryType('note')->where('name', 'Labeled Note')->first()->getId();
+
+        $res = $app->handle($f->createServerRequest('GET', '/folio/note/' . $id . '/label'));
+        $this->assertSame(200, $res->getStatusCode());
+        $data = json_decode((string) $res->getBody(), true);
+        $this->assertSame('Labeled Note', $data['label']);
+        $this->assertSame($id, $data['id']);
+    }
+
     private function app(): Application
     {
         $app = Application::create($this->dir);

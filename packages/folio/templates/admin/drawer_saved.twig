@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Saved</title></head>
+<body>
+<script>
+(function () {
+    var msg = { source: 'folio-drawer', type: {{ type|json_encode|raw }}, id: {{ id|json_encode|raw }} };
+    if (window.parent && window.parent !== window) {
+        window.parent.postMessage(msg, window.location.origin);
+    }
+})();
+</script>
+</body>
+</html>
