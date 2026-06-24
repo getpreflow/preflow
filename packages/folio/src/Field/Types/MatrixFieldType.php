@@ -75,6 +75,7 @@ final class MatrixFieldType implements FieldType
         $html .= '</select>' . "\n";
         $html .= '      <select data-matrix-record></select>' . "\n";
         $html .= '      <button type="button" class="btn btn-secondary" data-matrix-add>Add</button>' . "\n";
+        $html .= '      <button type="button" class="btn btn-secondary" data-matrix-create>New</button>' . "\n";
         $html .= '    </div>' . "\n";
         $html .= '  </div>' . "\n";
         $html .= '</div>';

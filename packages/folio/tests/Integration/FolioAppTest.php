@@ -366,6 +366,15 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('Block Note', $front); // referenced note rendered via _default type template
     }
 
+    public function test_matrix_editor_renders_create_new_button(): void
+    {
+        $body = (string) $this->app()->handle(
+            (new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('GET', '/folio/page/new')
+        )->getBody();
+        $this->assertStringContainsString('data-matrix-create', $body);
+        $this->assertStringContainsString('"prefix":"/folio"', $body); // prefix embedded for admin.js
+    }
+
     public function test_drawer_create_returns_postmessage_with_id(): void
     {
         $app = $this->app();
