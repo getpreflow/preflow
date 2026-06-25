@@ -26,6 +26,7 @@ use Preflow\Folio\Field\Types\RelationFieldType;
 use Preflow\Folio\Field\Types\TextFieldType;
 use Symfony\Component\HtmlSanitizer\HtmlSanitizer;
 use Symfony\Component\HtmlSanitizer\HtmlSanitizerConfig;
+use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\RecordRenderer;
 use Preflow\Folio\Override\ActionResolver;
 use Preflow\Folio\Routing\FolioRoutes;
@@ -51,7 +52,7 @@ final class FolioServiceProvider extends ServiceProvider
 
         $uploadsDir = $this->uploadsDir($app);
         $uploadUrlPrefix = rtrim($this->prefix($app), '/') . '/_uploads';
-        $container->bind(FieldTypeRegistry::class, function (Container $c) use ($uploadsDir, $uploadUrlPrefix): FieldTypeRegistry {
+        $container->bind(FieldTypeRegistry::class, function (Container $c) use ($uploadsDir, $uploadUrlPrefix, $prefix): FieldTypeRegistry {
             $registry = new FieldTypeRegistry();
             $registry->register(new StringFieldType());
             $registry->register(new TextFieldType());
@@ -72,6 +73,8 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(TypeRegistry::class),
                 $c->get(\Preflow\Data\DataManager::class),
                 new RecordRenderer($registry, $c->get(TemplateEngineInterface::class)),
+                new RecordLabeler(),
+                $prefix,
             ));
             $registry->alias('int', 'number');
             $registry->alias('integer', 'number');
@@ -87,6 +90,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(ActionResolver::class),
             $c->get(FieldTypeRegistry::class),
             $prefix,
+            new RecordLabeler(),
         ));
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Folio{% endblock %}</title>
+    <link rel="stylesheet" href="{{ folio_asset('admin.css') }}">
+    {% for a in editor_assets|default([]) %}
+        {%- if a ends with '.css' %}<link rel="stylesheet" href="{{ folio_asset(a) }}">
+        {%- elseif a ends with '.js' %}<script src="{{ folio_asset(a) }}" defer></script>
+        {%- endif %}
+    {% endfor %}
+</head>
+<body class="folio-drawer-body">
+    <main class="folio-drawer-content">
+        <h1 class="folio-drawer-heading">{% block page_title %}{% endblock %}</h1>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

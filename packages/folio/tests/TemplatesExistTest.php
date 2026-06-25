@@ -16,6 +16,8 @@ final class TemplatesExistTest extends TestCase
             '/admin/dashboard.twig',
             '/admin/list.twig',
             '/admin/form.twig',
+            '/admin/_drawer_layout.twig',
+            '/admin/drawer_saved.twig',
             '/admin/login.twig',
             '/frontend/page.twig',
         ] as $rel) {

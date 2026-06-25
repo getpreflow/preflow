@@ -22,6 +22,7 @@ final class FolioRoutes
             ['GET',  $prefix . '/{type}/new',          'createForm'],
             ['POST', $prefix . '/{type}',              'store'],
             ['GET',  $prefix . '/{type}/{id}/edit',    'editForm'],
+            ['GET',  $prefix . '/{type}/{id}/label',   'recordLabel'],
             ['POST', $prefix . '/{type}/{id}',         'update'],
             ['POST', $prefix . '/{type}/{id}/delete',  'destroy'],
         ];

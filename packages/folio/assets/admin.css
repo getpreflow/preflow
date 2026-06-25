@@ -317,3 +317,36 @@ h1 { font-size: 1.25rem; font-weight: 650; letter-spacing: -.01em; margin: 0; }
   .folio-content { padding: 18px; }
   .folio-topbar { padding: 14px 18px; }
 }
+
+/* Matrix create-in-drawer (Phase 5b) */
+[data-matrix-create] {
+    margin-left: 0.25rem;
+}
+.folio-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    justify-content: flex-end;
+    background: rgba(0, 0, 0, 0.5);
+}
+.folio-drawer-panel {
+    display: flex;
+    flex-direction: column;
+    width: min(640px, 100%);
+    height: 100%;
+    background: var(--c-bg);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.25);
+}
+.folio-drawer-close {
+    align-self: flex-end;
+    margin: 0.75rem;
+}
+.folio-drawer-frame {
+    flex: 1 1 auto;
+    width: 100%;
+    border: 0;
+}
+.folio-drawer-content {
+    padding: 1.5rem;
+}

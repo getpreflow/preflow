@@ -1,4 +1,4 @@
-{% extends "@folio/admin/_layout.twig" %}
+{% extends layout|default('@folio/admin/_layout.twig') %}
 {% block title %}Folio — {{ heading }}{% endblock %}
 {% block page_title %}{{ heading }}{% endblock %}
 {% block content %}
