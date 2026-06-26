@@ -2,7 +2,8 @@
 
 **Date:** 2026-06-19
 **Package:** `preflow/folio`
-**Status:** Approved (5a core). 5b/5c noted as follow-on cycles.
+**Status:** Shipped — 5a, 5b, and 5c all merged to `main`. 5b/5c have their own
+addendum specs (see Decomposition below).
 **Supersedes:** the "matrix / repeatable blocks" section of
 `2026-06-19-folio-field-editor-system-design.md` — that section assumed
 inline-defined blocks; the real model (confirmed with the user) is
@@ -27,18 +28,25 @@ rendering already built in Phases 1–4.
 
 ## Decomposition (one feature, three cycles)
 
-- **5a — Matrix core (THIS spec):** ordered polymorphic references; per-type
-  `matrixable` opt-in + per-matrix `allowed` list; **add by picking existing**
-  records; reorder/remove via `admin.js`; per-type frontend templates.
-- **5b — Create-in-drawer (later):** an "add new" flow that opens the target
+- **5a — Matrix core (THIS spec) — SHIPPED:** ordered polymorphic references;
+  per-type `matrixable` opt-in + per-matrix `allowed` list; **add by picking
+  existing** records; reorder/remove via `admin.js`; per-type frontend templates.
+  Merged in `9777e73` (Merge branch `feat/folio-matrix-5a`).
+- **5b — Create-in-drawer — SHIPPED:** an "add new" flow that opens the target
   type's create view in a drawer/iframe and, on save, passes the new record's
   id back to the matrix via `postMessage` (the create view gains a
-  "return to opener" mode). Additive on top of 5a.
-- **5c — Per-placement view override (later):** store an optional `view` per
-  reference and resolve `_{type}_{view}.twig`, with a view selector in the
-  editor. Additive.
+  "return to opener" mode); the matrix resolves the new record's label via a
+  `GET {prefix}/{type}/{id}/label` API. Additive on top of 5a. Spec:
+  `2026-06-22-folio-matrix-5b-create-in-drawer-design.md`; merged in `b5c9374`.
+- **5c — Per-placement view override — SHIPPED:** store an optional `view` per
+  reference and resolve `@folio/frontend/types/{type}_{view}.twig` (falling back
+  to `{type}.twig` → `_default.twig`), with a view selector in the editor
+  populated from the type's model-declared `views`. Additive. Spec:
+  `2026-06-25-folio-matrix-5c-per-placement-view-design.md`; merged in `fd52e69`.
 
-Each cycle gets its own spec addendum → plan → subagent-driven build.
+Each cycle got its own spec addendum → plan → subagent-driven build. Deferred
+(no cycle planned): per-field view narrowing and filesystem view auto-discovery
+(see the 5c spec's "Out of scope").
 
 ## 5a architecture
 
