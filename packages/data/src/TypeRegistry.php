@@ -82,6 +82,10 @@ final class TypeRegistry
             searchableFields: $searchableFields,
             transformers: $transformers,
             matrixable: (bool) ($schema['matrixable'] ?? false),
+            views: array_values(array_filter(
+                (array) ($schema['views'] ?? []),
+                static fn ($v) => is_string($v),
+            )),
         );
     }
 }
