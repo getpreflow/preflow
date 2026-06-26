@@ -405,6 +405,50 @@ final class FolioAppTest extends TestCase
         $this->assertSame($id, $data['id']);
     }
 
+    public function test_matrix_view_override_selects_per_view_template(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $app->handle($f->createServerRequest('POST', '/folio/note')->withParsedBody(['name' => 'Viewed Note']));
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $noteId = $dm->queryType('note')->where('name', 'Viewed Note')->first()->getId();
+
+        $app->handle($f->createServerRequest('POST', '/folio/page')->withParsedBody([
+            'title' => 'Views', 'slug' => 'views', 'body' => 'b', 'status' => 'published',
+            'blocks' => [
+                ['_type' => 'note', 'id' => $noteId],                    // default view
+                ['_type' => 'note', 'id' => $noteId, 'view' => 'card'],  // card view
+            ],
+        ]));
+
+        $front = (string) $app->handle($f->createServerRequest('GET', '/views'))->getBody();
+        $this->assertStringContainsString('note-default', $front); // viewless -> note.twig
+        $this->assertStringContainsString('note-card', $front);    // view=card -> note_card.twig
+    }
+
+    public function test_matrix_view_round_trips_in_editor_and_drops_undeclared(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $app->handle($f->createServerRequest('POST', '/folio/note')->withParsedBody(['name' => 'RT Note']));
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $noteId = $dm->queryType('note')->where('name', 'RT Note')->first()->getId();
+
+        $app->handle($f->createServerRequest('POST', '/folio/page')->withParsedBody([
+            'title' => 'RT', 'slug' => 'rt', 'body' => 'b', 'status' => 'published',
+            'blocks' => [
+                ['_type' => 'note', 'id' => $noteId, 'view' => 'card'],  // declared -> kept
+                ['_type' => 'note', 'id' => $noteId, 'view' => 'bogus'], // undeclared -> stripped
+            ],
+        ]));
+        $pageId = $dm->queryType('page')->where('slug', 'rt')->first()->getId();
+
+        $edit = (string) $app->handle($f->createServerRequest('GET', '/folio/page/' . $pageId . '/edit')
+            ->withAttribute('type', 'page')->withAttribute('id', $pageId))->getBody();
+        $this->assertStringContainsString('<option value="card" selected>card</option>', $edit); // kept view shows selected
+        $this->assertStringNotContainsString('bogus', $edit);                                     // undeclared dropped
+    }
+
     private function app(): Application
     {
         $app = Application::create($this->dir);
@@ -454,6 +498,7 @@ final class FolioAppTest extends TestCase
 
         $w('config/models/note.json', json_encode([
             'key' => 'note', 'table' => 'note', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Notes', 'matrixable' => true,
+            'views' => ['card'],
             'fields' => [
                 'name' => ['type' => 'string', 'validate' => ['required']],
             ],
@@ -484,6 +529,8 @@ final class FolioAppTest extends TestCase
         ], JSON_PRETTY_PRINT));
 
         $w('app/pages/index.twig', 'HOME PAGE');
+        $w('resources/folio/frontend/types/note.twig', '<section class="note-default"><h3>{{ record.name }}</h3></section>');
+        $w('resources/folio/frontend/types/note_card.twig', '<aside class="note-card">{{ record.name }}</aside>');
         @mkdir($this->dir . '/storage/data', 0777, true);
     }
 

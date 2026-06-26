@@ -31,9 +31,15 @@ final class MatrixFieldTypeTest extends TestCase
         $this->base = sys_get_temp_dir() . '/folio_mx_' . bin2hex(random_bytes(4));
         mkdir($this->base . '/m', 0777, true);
         mkdir($this->base . '/s', 0777, true);
-        // matrixable type
+        // matrixable type WITH declared views
         file_put_contents($this->base . '/m/note.json', json_encode([
             'key' => 'note', 'table' => 'note', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Notes', 'matrixable' => true,
+            'views' => ['card', 'inline'],
+            'fields' => ['name' => ['type' => 'string']],
+        ]));
+        // matrixable type with NO declared views
+        file_put_contents($this->base . '/m/memo.json', json_encode([
+            'key' => 'memo', 'table' => 'memo', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Memos', 'matrixable' => true,
             'fields' => ['name' => ['type' => 'string']],
         ]));
         // non-matrixable type
@@ -156,5 +162,61 @@ final class MatrixFieldTypeTest extends TestCase
     {
         $html = $this->type()->renderEditor(new FieldContext(name: 'blocks', config: $this->config()));
         $this->assertStringContainsString('"prefix":"/folio"', $html);
+    }
+
+    public function test_render_editor_emits_view_select_for_type_with_views(): void
+    {
+        $html = $this->type()->renderEditor(new FieldContext(
+            name: 'blocks', value: [['_type' => 'note', 'id' => 'n1', 'view' => 'card']], config: $this->config(['note']),
+        ));
+        $this->assertStringContainsString('name="blocks[0][view]"', $html);
+        $this->assertStringContainsString('data-matrix-view', $html);
+        $this->assertStringContainsString('<option value="">Default</option>', $html);
+        $this->assertStringContainsString('<option value="card" selected>card</option>', $html);
+        $this->assertStringContainsString('<option value="inline">inline</option>', $html);
+    }
+
+    public function test_render_editor_no_view_select_for_type_without_views(): void
+    {
+        $this->dm->saveType(DynamicRecord::fromArray($this->registry->get('memo'), ['uuid' => 'm1', 'name' => 'Memo one']));
+        $html = $this->type()->renderEditor(new FieldContext(
+            name: 'blocks', value: [['_type' => 'memo', 'id' => 'm1']], config: $this->config(['memo']),
+        ));
+        $this->assertStringNotContainsString('name="blocks[0][view]"', $html);
+    }
+
+    public function test_options_blob_includes_declared_views(): void
+    {
+        $html = $this->type()->renderEditor(new FieldContext(name: 'blocks', config: $this->config(['note'])));
+        $this->assertStringContainsString('"views":{"note":["card","inline"]}', $html);
+    }
+
+    public function test_normalize_keeps_declared_view(): void
+    {
+        $raw = [['_type' => 'note', 'id' => 'n1', 'view' => 'card']];
+        $out = $this->type()->normalizeInput($raw, $this->config(['note']));
+        $this->assertSame([['_type' => 'note', 'id' => 'n1', 'view' => 'card']], $out);
+    }
+
+    public function test_normalize_drops_undeclared_view(): void
+    {
+        $raw = [['_type' => 'note', 'id' => 'n1', 'view' => 'bogus']];
+        $out = $this->type()->normalizeInput($raw, $this->config(['note']));
+        $this->assertSame([['_type' => 'note', 'id' => 'n1']], $out); // bogus view stripped
+    }
+
+    public function test_view_storage_roundtrip(): void
+    {
+        $t = $this->type();
+        $json = $t->toStorage([['_type' => 'note', 'id' => 'n1', 'view' => 'card']]);
+        $this->assertSame([['_type' => 'note', 'id' => 'n1', 'view' => 'card']], $t->fromStorage($json));
+    }
+
+    public function test_render_frontend_passes_view_to_renderer(): void
+    {
+        // the fake RecordRenderer engine in recordRenderer() echoes only type+name,
+        // so assert the ref with a view still renders (view threads through without error)
+        $out = $this->type()->renderFrontend([['_type' => 'note', 'id' => 'n1', 'view' => 'card']], $this->config(['note']));
+        $this->assertStringContainsString('[note:First note]', $out);
     }
 }

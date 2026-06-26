@@ -42,8 +42,8 @@ final class MatrixFieldType implements FieldType
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
         $label = $ctx->label ?? ucfirst(str_replace('_', ' ', $name));
 
-        // Options blob for the JS picker: types + their records (id,label).
-        $options = ['prefix' => $this->prefix, 'types' => [], 'records' => []];
+        // Options blob for the JS picker: types + their records (id,label) + declared views.
+        $options = ['prefix' => $this->prefix, 'types' => [], 'records' => [], 'views' => []];
         foreach ($allowed as $key) {
             $options['types'][] = ['key' => $key, 'label' => $this->typeLabel($key)];
             $recs = [];
@@ -55,6 +55,7 @@ final class MatrixFieldType implements FieldType
                 $recs[] = ['id' => (string) $id, 'label' => $this->labeler->label($record)];
             }
             $options['records'][$key] = $recs;
+            $options['views'][$key] = $this->viewsFor($key);
         }
         $optionsJson = json_encode($options, JSON_HEX_TAG | JSON_UNESCAPED_SLASHES);
 
@@ -64,7 +65,15 @@ final class MatrixFieldType implements FieldType
         $html .= '    <script type="application/json" data-matrix-options>' . $optionsJson . '</script>' . "\n";
         $html .= '    <div class="folio-matrix-rows" data-matrix-rows>' . "\n";
         foreach (array_values($refs) as $i => $ref) {
-            $html .= $this->rowHtml($name, $i, $ref['_type'], $ref['id'], $this->refLabel($ref));
+            $html .= $this->rowHtml(
+                $name,
+                $i,
+                $ref['_type'],
+                $ref['id'],
+                $this->refLabel($ref),
+                $this->viewsFor($ref['_type']),
+                $ref['view'] ?? '',
+            );
         }
         $html .= '    </div>' . "\n";
         $html .= '    <div class="folio-matrix-add">' . "\n";
@@ -99,7 +108,12 @@ final class MatrixFieldType implements FieldType
             if ($type === '' || $id === '' || !in_array($type, $allowed, true)) {
                 continue;
             }
-            $out[] = ['_type' => $type, 'id' => $id];
+            $ref = ['_type' => $type, 'id' => $id];
+            $view = (string) ($entry['view'] ?? '');
+            if ($view !== '' && in_array($view, $this->viewsFor($type), true)) {
+                $ref['view'] = $view;
+            }
+            $out[] = $ref;
         }
         return $out;
     }
@@ -125,7 +139,7 @@ final class MatrixFieldType implements FieldType
             if ($record === null) {
                 continue;
             }
-            $out .= $this->records->renderTypeTemplate($record);
+            $out .= $this->records->renderTypeTemplate($record, $ref['view'] ?? '');
         }
         return $out;
     }
@@ -164,6 +178,22 @@ final class MatrixFieldType implements FieldType
         return $out;
     }
 
+    /**
+     * Declared views for a type (model JSON `views`), filtered to non-empty strings.
+     *
+     * @return string[]
+     */
+    private function viewsFor(string $type): array
+    {
+        if (!$this->registry->has($type)) {
+            return [];
+        }
+        return array_values(array_filter(
+            $this->registry->get($type)->views,
+            static fn ($v) => is_string($v) && $v !== '',
+        ));
+    }
+
     private function typeLabel(string $key): string
     {
         foreach ($this->catalog->all() as $listing) {
@@ -174,7 +204,7 @@ final class MatrixFieldType implements FieldType
         return ucfirst($key);
     }
 
-    /** @param array{_type:string,id:string} $ref */
+    /** @param array{_type:string,id:string,view?:string} $ref */
     private function refLabel(array $ref): string
     {
         if (!$this->registry->has($ref['_type'])) {
@@ -184,13 +214,28 @@ final class MatrixFieldType implements FieldType
         return $record === null ? $ref['id'] : $this->labeler->label($record);
     }
 
-    private function rowHtml(string $field, int $i, string $type, string $id, string $label): string
+    /**
+     * @param string[] $views declared views for $type ([] => no selector)
+     */
+    private function rowHtml(string $field, int $i, string $type, string $id, string $label, array $views, string $view): string
     {
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+
+        $viewSelect = '';
+        if ($views !== []) {
+            $viewSelect = '<select name="' . $e($field) . '[' . $i . '][view]" data-matrix-view>'
+                . '<option value="">Default</option>';
+            foreach ($views as $v) {
+                $viewSelect .= '<option value="' . $e($v) . '"' . ($v === $view ? ' selected' : '') . '>' . $e($v) . '</option>';
+            }
+            $viewSelect .= '</select>';
+        }
+
         return '      <div class="folio-matrix-row" data-matrix-row>'
             . '<input type="hidden" name="' . $e($field) . '[' . $i . '][_type]" value="' . $e($type) . '">'
             . '<input type="hidden" name="' . $e($field) . '[' . $i . '][id]" value="' . $e($id) . '">'
             . '<span class="folio-matrix-label">' . $e($label) . ' <em>(' . $e($type) . ')</em></span>'
+            . $viewSelect
             . '<span class="folio-matrix-controls">'
             . '<button type="button" data-matrix-up>Up</button>'
             . '<button type="button" data-matrix-down>Down</button>'
@@ -199,9 +244,16 @@ final class MatrixFieldType implements FieldType
     }
 
     /**
-     * Normalize a stored/raw value to a list of {_type,id} arrays.
+     * Normalize a stored/raw value to a list of {_type,id} refs, preserving a
+     * non-empty view per entry.
      *
-     * @return list<array{_type:string,id:string}>
+     * NOTE: the view carried here is NOT whitelisted against the type's declared
+     * views — only normalizeInput does that, on the save path. renderFrontend
+     * resolves through this method, so RecordRenderer::renderTypeTemplate's
+     * ^[a-z0-9_-]+$ guard is the security backstop on the render path and must
+     * stay (do not drop it assuming the data layer already cleaned the view).
+     *
+     * @return list<array{_type:string,id:string,view?:string}>
      */
     private function toRefs(mixed $value): array
     {
@@ -219,9 +271,15 @@ final class MatrixFieldType implements FieldType
             }
             $type = (string) ($entry['_type'] ?? '');
             $id = (string) ($entry['id'] ?? '');
-            if ($type !== '' && $id !== '') {
-                $out[] = ['_type' => $type, 'id' => $id];
+            if ($type === '' || $id === '') {
+                continue;
             }
+            $ref = ['_type' => $type, 'id' => $id];
+            $view = (string) ($entry['view'] ?? '');
+            if ($view !== '') {
+                $ref['view'] = $view;
+            }
+            $out[] = $ref;
         }
         return $out;
     }

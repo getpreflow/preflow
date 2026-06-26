@@ -5,6 +5,7 @@
     "id_field": "uuid",
     "label": "Notes",
     "matrixable": true,
+    "views": ["card"],
     "fields": {
         "name": { "type": "string", "validate": ["required"] },
         "body": { "type": "richtext", "label": "Body" }

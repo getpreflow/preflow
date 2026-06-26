@@ -28,15 +28,20 @@ final class RecordRendererTest extends TestCase
 
     private function engine(): TemplateEngineInterface
     {
-        // Minimal fake: renders a known per-type template, falls back to _default.
+        // Minimal fake: note.twig and note_card.twig exist; everything else falls back to _default.
         return new class implements TemplateEngineInterface {
             public function render(string $template, array $context = []): string
             {
-                return $template . '|title=' . ($context['record']['title'] ?? '') . '|body=' . ($context['rendered']['body'] ?? '');
+                return $template . '|title=' . ($context['record']['title'] ?? '')
+                    . '|body=' . ($context['rendered']['body'] ?? '')
+                    . '|view=' . ($context['view'] ?? '');
             }
             public function exists(string $template): bool
             {
-                return $template === '@folio/frontend/types/note.twig';
+                return in_array($template, [
+                    '@folio/frontend/types/note.twig',
+                    '@folio/frontend/types/note_card.twig',
+                ], true);
             }
             public function addFunction(TemplateFunctionDefinition $f): void {}
             public function addGlobal(string $n, mixed $v): void {}
@@ -73,5 +78,31 @@ final class RecordRendererTest extends TestCase
         // engine fake "exists" only for note.twig, so it should be chosen
         $this->assertStringContainsString('@folio/frontend/types/note.twig', $out);
         $this->assertStringContainsString('title=Hi', $out);
+    }
+
+    public function test_render_type_template_uses_view_variant_when_present(): void
+    {
+        $rr = new RecordRenderer($this->fieldRegistry(), $this->engine());
+        $out = $rr->renderTypeTemplate($this->record(), 'card');
+        $this->assertStringContainsString('@folio/frontend/types/note_card.twig', $out);
+        $this->assertStringContainsString('view=card', $out);
+    }
+
+    public function test_render_type_template_view_falls_back_to_type_then_default(): void
+    {
+        $rr = new RecordRenderer($this->fieldRegistry(), $this->engine());
+        // 'inline' variant does not exist -> falls back to note.twig (which does)
+        $out = $rr->renderTypeTemplate($this->record(), 'inline');
+        $this->assertStringContainsString('@folio/frontend/types/note.twig', $out);
+        $this->assertStringContainsString('view=inline', $out); // valid view still threads into context on fallback
+    }
+
+    public function test_render_type_template_rejects_traversal_view(): void
+    {
+        $rr = new RecordRenderer($this->fieldRegistry(), $this->engine());
+        // a view with illegal chars is ignored -> normal chain (note.twig exists)
+        $out = $rr->renderTypeTemplate($this->record(), '../secret');
+        $this->assertStringContainsString('@folio/frontend/types/note.twig', $out);
+        $this->assertStringNotContainsString('secret', $out);
     }
 }

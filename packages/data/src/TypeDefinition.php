@@ -20,6 +20,7 @@ final readonly class TypeDefinition
         public array $searchableFields = [],
         public array $transformers = [],
         public bool $matrixable = false,
+        public array $views = [],
     ) {}
 
     /**

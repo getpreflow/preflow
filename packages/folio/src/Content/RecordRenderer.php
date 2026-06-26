@@ -38,22 +38,39 @@ final class RecordRenderer
     }
 
     /**
-     * Resolve and render the record's per-type frontend template. Userland may
-     * provide @folio/frontend/types/{type}.twig; otherwise the package default
-     * is used.
+     * Resolve and render the record's per-type frontend template. With a view,
+     * a per-view variant (@folio/frontend/types/{type}_{view}.twig) is tried
+     * first, then the per-type template, then the package default. Userland may
+     * override any of these via the @folio namespace.
      */
-    public function renderTypeTemplate(DynamicRecord $record): string
+    public function renderTypeTemplate(DynamicRecord $record, string $view = ''): string
     {
         $type = $record->getType()->key;
-        $template = '@folio/frontend/types/' . $type . '.twig';
-        if (!$this->engine->exists($template)) {
-            $template = '@folio/frontend/types/_default.twig';
+
+        // Validate view: must match ^[a-z0-9_-]+$, otherwise treat as empty
+        if ($view !== '' && preg_match('/^[a-z0-9_-]+$/', $view) !== 1) {
+            $view = '';
+        }
+
+        $candidates = [];
+        if ($view !== '') {
+            $candidates[] = '@folio/frontend/types/' . $type . '_' . $view . '.twig';
+        }
+        $candidates[] = '@folio/frontend/types/' . $type . '.twig';
+
+        $template = '@folio/frontend/types/_default.twig';
+        foreach ($candidates as $candidate) {
+            if ($this->engine->exists($candidate)) {
+                $template = $candidate;
+                break;
+            }
         }
 
         return $this->engine->render($template, [
             'record' => $record->toArray(),
             'rendered' => $this->renderedMap($record),
             'type' => $type,
+            'view' => $view,
         ]);
     }
 }
