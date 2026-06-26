@@ -204,7 +204,7 @@ final class MatrixFieldType implements FieldType
         return ucfirst($key);
     }
 
-    /** @param array{_type:string,id:string} $ref */
+    /** @param array{_type:string,id:string,view?:string} $ref */
     private function refLabel(array $ref): string
     {
         if (!$this->registry->has($ref['_type'])) {
@@ -246,6 +246,12 @@ final class MatrixFieldType implements FieldType
     /**
      * Normalize a stored/raw value to a list of {_type,id} refs, preserving a
      * non-empty view per entry.
+     *
+     * NOTE: the view carried here is NOT whitelisted against the type's declared
+     * views — only normalizeInput does that, on the save path. renderFrontend
+     * resolves through this method, so RecordRenderer::renderTypeTemplate's
+     * ^[a-z0-9_-]+$ guard is the security backstop on the render path and must
+     * stay (do not drop it assuming the data layer already cleaned the view).
      *
      * @return list<array{_type:string,id:string,view?:string}>
      */

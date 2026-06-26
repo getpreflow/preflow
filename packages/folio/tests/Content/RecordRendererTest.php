@@ -94,6 +94,7 @@ final class RecordRendererTest extends TestCase
         // 'inline' variant does not exist -> falls back to note.twig (which does)
         $out = $rr->renderTypeTemplate($this->record(), 'inline');
         $this->assertStringContainsString('@folio/frontend/types/note.twig', $out);
+        $this->assertStringContainsString('view=inline', $out); // valid view still threads into context on fallback
     }
 
     public function test_render_type_template_rejects_traversal_view(): void
