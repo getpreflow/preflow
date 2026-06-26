@@ -23,6 +23,15 @@ final class AdminJsTest extends TestCase
         }
     }
 
+    public function test_addrow_builds_view_select_from_options(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString('opts.views', $js);                 // reads declared views
+        $this->assertStringContainsString('[view]', $js);                     // emits the [view] input name
+        $this->assertStringContainsString('data-matrix-view', $js);           // matches server markup
+        $this->assertStringContainsString('<option value="">Default</option>', $js);
+    }
+
     public function test_defines_drawer_create_and_origin_checked_message_handler(): void
     {
         $js = $this->js();

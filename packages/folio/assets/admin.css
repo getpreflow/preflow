@@ -350,3 +350,8 @@ h1 { font-size: 1.25rem; font-weight: 650; letter-spacing: -.01em; margin: 0; }
 .folio-drawer-content {
     padding: 1.5rem;
 }
+
+/* Matrix per-placement view selector (Phase 5c) */
+[data-matrix-view] {
+    margin: 0 0.5rem;
+}

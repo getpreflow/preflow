@@ -70,15 +70,29 @@
             });
         }
 
-        function addRow(type, id, label) {
+        function addRow(type, id, label, view) {
+            view = view || '';
             var i = next++;
             var row = document.createElement('div');
             row.className = 'folio-matrix-row';
             row.setAttribute('data-matrix-row', '');
+
+            var views = (opts.views && opts.views[type]) || [];
+            var viewSelect = '';
+            if (views.length) {
+                viewSelect = '<select name="' + esc(field) + '[' + i + '][view]" data-matrix-view>' +
+                    '<option value="">Default</option>';
+                views.forEach(function (v) {
+                    viewSelect += '<option value="' + esc(v) + '"' + (v === view ? ' selected' : '') + '>' + esc(v) + '</option>';
+                });
+                viewSelect += '</select>';
+            }
+
             row.innerHTML =
                 '<input type="hidden" name="' + esc(field) + '[' + i + '][_type]" value="' + esc(type) + '">' +
                 '<input type="hidden" name="' + esc(field) + '[' + i + '][id]" value="' + esc(id) + '">' +
                 '<span class="folio-matrix-label">' + esc(label) + ' <em>(' + esc(type) + ')</em></span>' +
+                viewSelect +
                 '<span class="folio-matrix-controls">' +
                 '<button type="button" data-matrix-up>Up</button>' +
                 '<button type="button" data-matrix-down>Down</button>' +
