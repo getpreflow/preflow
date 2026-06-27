@@ -43,4 +43,15 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString("data.source !== 'folio-drawer'", $js);  // shape guard
         $this->assertStringContainsString("'/label'", $js);                        // label fetch path
     }
+
+    public function test_defines_live_preview_overlay(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString('data-folio-preview', $js);   // button hook
+        $this->assertStringContainsString('folio-preview', $js);        // overlay class
+        $this->assertStringContainsString('new FormData(', $js);        // serializes the form
+        $this->assertStringContainsString('srcdoc', $js);               // isolated render target
+        $this->assertStringContainsString("'768px'", $js);              // tablet preset
+        $this->assertStringContainsString("'375px'", $js);              // mobile preset
+    }
 }

@@ -165,10 +165,103 @@
         if (e.key === 'Escape' && drawerEl) { closeDrawer(); }
     }
 
+    function initPreview() {
+        var btn = document.querySelector('[data-folio-preview]');
+        if (!btn) { return; }
+        var form = document.querySelector('.folio-form form');
+        if (!form) { return; }
+        var url = btn.getAttribute('data-preview-url') || '';
+
+        var overlay = null, frame = null, anchor = null, parent = null, reqSeq = 0, timer = null;
+
+        function render() {
+            if (!frame) { return; }
+            var seq = ++reqSeq;
+            fetch(url, { method: 'POST', body: new FormData(form), headers: { 'Accept': 'text/html' } })
+                .then(function (r) { return r.ok ? r.text() : null; })
+                .then(function (html) {
+                    if (html != null && seq === reqSeq && frame) { frame.srcdoc = html; }
+                })
+                .catch(function () {});
+        }
+
+        function schedule() {
+            if (timer) { clearTimeout(timer); }
+            timer = setTimeout(render, 400);
+        }
+
+        function setWidth(w) {
+            if (frame) { frame.style.width = w; }
+        }
+
+        function closePreview() {
+            if (timer) { clearTimeout(timer); timer = null; }
+            form.removeEventListener('input', schedule);
+            form.removeEventListener('change', schedule);
+            if (anchor && parent) { parent.insertBefore(form, anchor); parent.removeChild(anchor); }
+            if (overlay && overlay.parentNode) { overlay.parentNode.removeChild(overlay); }
+            overlay = null; frame = null; anchor = null; parent = null;
+        }
+
+        function open() {
+            overlay = document.createElement('div');
+            overlay.className = 'folio-preview';
+            var formPane = document.createElement('div');
+            formPane.className = 'folio-preview-form';
+            var stage = document.createElement('div');
+            stage.className = 'folio-preview-stage';
+            var bar = document.createElement('div');
+            bar.className = 'folio-preview-bar';
+
+            [['Desktop', '100%'], ['Tablet', '768px'], ['Mobile', '375px']].forEach(function (vp) {
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.textContent = vp[0];
+                b.setAttribute('data-preview-viewport', vp[1]);
+                b.addEventListener('click', function () { setWidth(vp[1]); });
+                bar.appendChild(b);
+            });
+            var close = document.createElement('button');
+            close.type = 'button';
+            close.className = 'folio-preview-close';
+            close.textContent = 'Close';
+            close.addEventListener('click', closePreview);
+            bar.appendChild(close);
+
+            frame = document.createElement('iframe');
+            frame.className = 'folio-preview-frame';
+
+            stage.appendChild(bar);
+            stage.appendChild(frame);
+
+            // Remember the form's home, then move the real form into the overlay
+            // (appendChild preserves the node + its listeners, so trix/matrix survive).
+            parent = form.parentNode;
+            anchor = document.createElement('span');
+            anchor.style.display = 'none';
+            parent.insertBefore(anchor, form);
+            formPane.appendChild(form);
+
+            overlay.appendChild(formPane);
+            overlay.appendChild(stage);
+            document.body.appendChild(overlay);
+
+            form.addEventListener('input', schedule);
+            form.addEventListener('change', schedule);
+            render();
+        }
+
+        btn.addEventListener('click', open);
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && overlay) { closePreview(); }
+        });
+    }
+
     function boot() {
         document.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
         window.addEventListener('message', onMessage);
         document.addEventListener('keydown', onKeydown);
+        initPreview();
     }
 
     if (document.readyState === 'loading') {
