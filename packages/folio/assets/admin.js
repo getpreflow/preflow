@@ -172,7 +172,7 @@
         if (!form) { return; }
         var url = btn.getAttribute('data-preview-url') || '';
 
-        var overlay = null, frame = null, anchor = null, parent = null, reqSeq = 0, timer = null;
+        var overlay = null, frame = null, anchor = null, parent = null, reqSeq = 0, timer = null, keyHandler = null;
 
         function render() {
             if (!frame) { return; }
@@ -196,6 +196,7 @@
 
         function closePreview() {
             if (timer) { clearTimeout(timer); timer = null; }
+            if (keyHandler) { document.removeEventListener('keydown', keyHandler); keyHandler = null; }
             form.removeEventListener('input', schedule);
             form.removeEventListener('change', schedule);
             if (anchor && parent) { parent.insertBefore(form, anchor); parent.removeChild(anchor); }
@@ -204,6 +205,7 @@
         }
 
         function open() {
+            if (overlay) { return; }
             overlay = document.createElement('div');
             overlay.className = 'folio-preview';
             var formPane = document.createElement('div');
@@ -248,13 +250,18 @@
 
             form.addEventListener('input', schedule);
             form.addEventListener('change', schedule);
+
+            // Escape closes; scoped to the overlay's lifetime so no listener leaks
+            // if boot()/initPreview ever runs more than once.
+            keyHandler = function (e) {
+                if (e.key === 'Escape') { closePreview(); }
+            };
+            document.addEventListener('keydown', keyHandler);
+
             render();
         }
 
         btn.addEventListener('click', open);
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape' && overlay) { closePreview(); }
-        });
     }
 
     function boot() {
