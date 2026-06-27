@@ -32,6 +32,7 @@ final class AdminController
         private readonly FieldTypeRegistry $fieldTypes,
         private readonly string $prefix,
         private readonly RecordLabeler $labeler,
+        private readonly string $frontendType,
     ) {}
 
     public function index(ServerRequestInterface $request): ResponseInterface
@@ -277,6 +278,8 @@ final class AdminController
             'editor_assets' => array_keys($editorAssets),
             'multipart' => $multipart,
             'layout' => $layout,
+            'previewable' => $type === $this->frontendType,
+            'preview_url' => $action . '/preview',
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);

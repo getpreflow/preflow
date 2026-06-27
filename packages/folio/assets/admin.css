@@ -355,3 +355,43 @@ h1 { font-size: 1.25rem; font-weight: 650; letter-spacing: -.01em; margin: 0; }
 [data-matrix-view] {
     margin: 0 0.5rem;
 }
+
+/* Live preview overlay (3a) */
+.folio-preview {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    display: flex;
+    background: var(--c-bg);
+}
+.folio-preview-form {
+    width: 380px;
+    max-width: 40%;
+    overflow: auto;
+    padding: 1.5rem;
+    border-right: 1px solid var(--c-border);
+}
+.folio-preview-stage {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--c-surface);
+}
+.folio-preview-bar {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--c-border);
+}
+.folio-preview-close {
+    margin-left: auto;
+}
+.folio-preview-frame {
+    flex: 1 1 auto;
+    width: 100%;
+    height: 100%;
+    margin: 0 auto;
+    border: 0;
+    background: #fff;
+}

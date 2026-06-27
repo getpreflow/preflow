@@ -10,6 +10,7 @@ use Preflow\Routing\RouteEntry;
 final class FolioRoutes
 {
     private const ADMIN = 'Preflow\\Folio\\Http\\AdminController';
+    private const PREVIEW = 'Preflow\\Folio\\Http\\PreviewController';
 
     /** @return RouteEntry[] */
     public static function admin(string $prefix): array
@@ -20,19 +21,23 @@ final class FolioRoutes
             ['GET',  $prefix,                          'index'],
             ['GET',  $prefix . '/{type}',              'list'],
             ['GET',  $prefix . '/{type}/new',          'createForm'],
+            ['POST', $prefix . '/{type}/preview',      'preview', self::PREVIEW],
             ['POST', $prefix . '/{type}',              'store'],
             ['GET',  $prefix . '/{type}/{id}/edit',    'editForm'],
             ['GET',  $prefix . '/{type}/{id}/label',   'recordLabel'],
+            ['POST', $prefix . '/{type}/{id}/preview', 'preview', self::PREVIEW],
             ['POST', $prefix . '/{type}/{id}',         'update'],
             ['POST', $prefix . '/{type}/{id}/delete',  'destroy'],
         ];
 
         $entries = [];
-        foreach ($defs as [$method, $pattern, $action]) {
+        foreach ($defs as $def) {
+            [$method, $pattern, $action] = $def;
+            $handlerClass = $def[3] ?? self::ADMIN;
             $c = PatternCompiler::compile($pattern);
             $entries[] = new RouteEntry(
                 pattern: $pattern,
-                handler: self::ADMIN . '@' . $action,
+                handler: $handlerClass . '@' . $action,
                 method: $method,
                 mode: RouteMode::Action,
                 middleware: [],
