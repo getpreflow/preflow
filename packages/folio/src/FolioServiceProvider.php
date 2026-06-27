@@ -15,6 +15,7 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Http\AdminController;
 use Preflow\Folio\Http\AssetController;
 use Preflow\Folio\Http\FrontendController;
+use Preflow\Folio\Http\PreviewController;
 use Preflow\Folio\Http\UploadController;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\AssetFieldType;
@@ -40,6 +41,7 @@ final class FolioServiceProvider extends ServiceProvider
         $app = $container->get(Application::class);
         $modelsPath = $this->modelsPath($app);
         $prefix = $this->prefix($app);
+        $frontendType = 'page';
 
         $container->instance(TypeCatalog::class, new TypeCatalog($modelsPath));
 
@@ -48,7 +50,7 @@ final class FolioServiceProvider extends ServiceProvider
         $container->instance(TypeRegistry::class, new TypeRegistry($modelsPath));
 
         $container->bind(ActionResolver::class, fn (Container $c) => new ActionResolver($c));
-        $container->bind(FrontendResolver::class, fn (Container $c) => new FrontendResolver($c->get(DataManager::class), 'page'));
+        $container->bind(FrontendResolver::class, fn (Container $c) => new FrontendResolver($c->get(DataManager::class), $frontendType));
 
         $uploadsDir = $this->uploadsDir($app);
         $uploadUrlPrefix = rtrim($this->prefix($app), '/') . '/_uploads';
@@ -91,11 +93,21 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(FieldTypeRegistry::class),
             $prefix,
             new RecordLabeler(),
+            $frontendType,
         ));
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),
             $c->get(TemplateEngineInterface::class),
             new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(TemplateEngineInterface::class)),
+        ));
+        $container->bind(PreviewController::class, fn (Container $c) => new PreviewController(
+            $c->get(TypeCatalog::class),
+            $c->get(TypeRegistry::class),
+            $c->get(DataManager::class),
+            $c->get(FieldTypeRegistry::class),
+            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(TemplateEngineInterface::class)),
+            $c->get(TemplateEngineInterface::class),
+            $frontendType,
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
             dirname(__DIR__) . '/assets',

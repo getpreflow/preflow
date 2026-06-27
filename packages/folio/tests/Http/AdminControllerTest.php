@@ -98,6 +98,7 @@ final class AdminControllerTest extends TestCase
             $this->fieldTypeRegistry(),
             '/folio',
             new RecordLabeler(),
+            'page',
         );
     }
 
@@ -121,6 +122,7 @@ final class AdminControllerTest extends TestCase
             $this->fieldTypeRegistry(),
             '/folio',
             new RecordLabeler(),
+            'page',
         );
     }
 

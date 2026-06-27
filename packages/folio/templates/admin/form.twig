@@ -1,6 +1,7 @@
 {% extends layout|default('@folio/admin/_layout.twig') %}
 {% block title %}Folio — {{ heading }}{% endblock %}
 {% block page_title %}{{ heading }}{% endblock %}
+{% block actions %}{% if previewable|default(false) %}<button type="button" class="btn btn-secondary" data-folio-preview data-preview-url="{{ preview_url }}">Preview</button>{% endif %}{% endblock %}
 {% block content %}
     <div class="folio-form">
         {% set form = form_begin({action: action, csrf_token: csrf, attrs: multipart|default(false) ? {'enctype': 'multipart/form-data'} : {}}) %}

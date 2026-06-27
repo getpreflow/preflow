@@ -449,6 +449,54 @@ final class FolioAppTest extends TestCase
         $this->assertStringNotContainsString('bogus', $edit);                                     // undeclared dropped
     }
 
+    public function test_preview_renders_draft_without_saving(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $res = $app->handle($f->createServerRequest('POST', '/folio/page/preview')->withParsedBody([
+            'title' => 'Live Draft', 'slug' => 'live-draft', 'body' => 'b', 'status' => 'draft',
+        ]));
+
+        $this->assertSame(200, $res->getStatusCode());                 // not a 302 -> hit preview, not update/store
+        $this->assertStringContainsString('Live Draft', (string) $res->getBody());
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $this->assertNull($dm->queryType('page')->where('slug', 'live-draft')->first()); // nothing saved
+    }
+
+    public function test_preview_existing_record_leaves_storage_unchanged(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $app->handle($f->createServerRequest('POST', '/folio/page')->withParsedBody([
+            'title' => 'Orig', 'slug' => 'orig', 'body' => 'b', 'status' => 'published',
+        ]));
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $id = $dm->queryType('page')->where('slug', 'orig')->first()->getId();
+
+        $res = $app->handle($f->createServerRequest('POST', '/folio/page/' . $id . '/preview')
+            ->withParsedBody(['title' => 'Edited', 'slug' => 'orig', 'body' => 'b', 'status' => 'published']));
+
+        $this->assertStringContainsString('Edited', (string) $res->getBody());          // draft shown
+        $this->assertSame('Orig', $dm->findType('page', $id)->get('title'));             // storage unchanged
+    }
+
+    public function test_edit_form_has_preview_button_for_page(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $body = (string) $app->handle($f->createServerRequest('GET', '/folio/page/new'))->getBody();
+        $this->assertStringContainsString('data-folio-preview', $body);
+        $this->assertStringContainsString('data-preview-url="/folio/page/preview"', $body);
+    }
+
+    public function test_edit_form_no_preview_button_for_non_frontend_type(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $body = (string) $app->handle($f->createServerRequest('GET', '/folio/note/new'))->getBody();
+        $this->assertStringNotContainsString('data-folio-preview', $body);
+    }
+
     private function app(): Application
     {
         $app = Application::create($this->dir);
