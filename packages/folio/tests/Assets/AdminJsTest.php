@@ -54,4 +54,13 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString("'768px'", $js);              // tablet preset
         $this->assertStringContainsString("'375px'", $js);              // mobile preset
     }
+
+    public function test_defines_surgical_preview_patch(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString('data-folio-field', $js); // addressing marker the client queries
+        $this->assertStringContainsString('DOMParser', $js);        // parses the incoming HTML
+        $this->assertStringContainsString('.innerHTML =', $js);     // surgical per-region write
+        $this->assertStringContainsString('srcdoc', $js);           // full-reload fallback retained
+    }
 }

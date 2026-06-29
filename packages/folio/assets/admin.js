@@ -172,7 +172,45 @@
         if (!form) { return; }
         var url = btn.getAttribute('data-preview-url') || '';
 
-        var overlay = null, frame = null, anchor = null, parent = null, reqSeq = 0, timer = null, keyHandler = null;
+        var overlay = null, frame = null, anchor = null, parent = null, reqSeq = 0, timer = null, keyHandler = null, hasDoc = false;
+
+        function fullRender(html) {
+            frame.srcdoc = html;
+            hasDoc = true;
+        }
+
+        // Patch only the [data-folio-field] regions that changed, directly into the
+        // same-origin srcdoc document. Fall back to a full srcdoc reload on the first
+        // render, when the template has no markers, or when the field structure differs.
+        function applyHtml(html) {
+            try {
+                var doc = hasDoc ? frame.contentDocument : null;
+                if (!doc || !doc.body) { fullRender(html); return; }
+
+                var incoming = new DOMParser().parseFromString(html, 'text/html');
+                var incomingRegions = incoming.querySelectorAll('[data-folio-field]');
+                var curRegions = doc.querySelectorAll('[data-folio-field]');
+                if (incomingRegions.length === 0 || incomingRegions.length !== curRegions.length) {
+                    fullRender(html);
+                    return;
+                }
+
+                var patches = [];
+                for (var i = 0; i < incomingRegions.length; i++) {
+                    var name = incomingRegions[i].getAttribute('data-folio-field');
+                    var cur = doc.querySelector('[data-folio-field="' + name + '"]');
+                    if (!cur) { fullRender(html); return; } // a region went missing -> full reload
+                    if (cur.innerHTML !== incomingRegions[i].innerHTML) {
+                        patches.push([cur, incomingRegions[i].innerHTML]);
+                    }
+                }
+                for (var j = 0; j < patches.length; j++) {
+                    patches[j][0].innerHTML = patches[j][1];
+                }
+            } catch (e) {
+                fullRender(html);
+            }
+        }
 
         function render() {
             if (!frame) { return; }
@@ -180,7 +218,7 @@
             fetch(url, { method: 'POST', body: new FormData(form), headers: { 'Accept': 'text/html' } })
                 .then(function (r) { return r.ok ? r.text() : null; })
                 .then(function (html) {
-                    if (html != null && seq === reqSeq && frame) { frame.srcdoc = html; }
+                    if (html != null && seq === reqSeq && frame) { applyHtml(html); }
                 })
                 .catch(function () {});
         }
@@ -201,7 +239,7 @@
             form.removeEventListener('change', schedule);
             if (anchor && parent) { parent.insertBefore(form, anchor); parent.removeChild(anchor); }
             if (overlay && overlay.parentNode) { overlay.parentNode.removeChild(overlay); }
-            overlay = null; frame = null; anchor = null; parent = null;
+            overlay = null; frame = null; anchor = null; parent = null; hasDoc = false;
         }
 
         function open() {
