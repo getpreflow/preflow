@@ -497,6 +497,17 @@ final class FolioAppTest extends TestCase
         $this->assertStringNotContainsString('data-folio-preview', $body);
     }
 
+    public function test_preview_output_carries_field_markers(): void
+    {
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $body = (string) $app->handle($f->createServerRequest('POST', '/folio/page/preview')->withParsedBody([
+            'title' => 'Marked', 'slug' => 'marked', 'body' => 'hello', 'status' => 'draft',
+        ]))->getBody();
+        $this->assertStringContainsString('data-folio-field="title"', $body);
+        $this->assertStringContainsString('data-folio-field="body"', $body);
+    }
+
     private function app(): Application
     {
         $app = Application::create($this->dir);

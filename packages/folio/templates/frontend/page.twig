@@ -3,9 +3,9 @@
 <head><meta charset="utf-8"><title>{{ record.title }}</title></head>
 <body>
     <article>
-        <h1>{{ record.title }}</h1>
+        <h1 data-folio-field="title">{{ record.title }}</h1>
         {% for name, html in rendered %}
-            {% if name != 'title' %}<div class="folio-field folio-field-{{ name }}">{{ html|raw }}</div>{% endif %}
+            {% if name != 'title' %}<div class="folio-field folio-field-{{ name }}" data-folio-field="{{ name }}">{{ html|raw }}</div>{% endif %}
         {% endfor %}
     </article>
 </body>
