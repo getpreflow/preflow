@@ -196,8 +196,12 @@
                 }
 
                 var patches = [];
+                var seen = Object.create(null);
                 for (var i = 0; i < incomingRegions.length; i++) {
                     var name = incomingRegions[i].getAttribute('data-folio-field');
+                    // Duplicate field name -> querySelector(name) is ambiguous; full-reload rather than patch the wrong region.
+                    if (seen[name]) { fullRender(html); return; }
+                    seen[name] = true;
                     var cur = doc.querySelector('[data-folio-field="' + name + '"]');
                     if (!cur) { fullRender(html); return; } // a region went missing -> full reload
                     if (cur.innerHTML !== incomingRegions[i].innerHTML) {
