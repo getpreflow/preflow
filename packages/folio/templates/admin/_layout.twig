@@ -43,7 +43,15 @@
     <div class="folio-main">
         <header class="folio-topbar">
             <h1>{% block page_title %}{% endblock %}</h1>
-            <div class="folio-actions">{% block actions %}{% endblock %}</div>
+            <div class="folio-actions">
+                {% block actions %}{% endblock %}
+                {% if folio_auth_enabled|default(false) %}
+                    {% if auth_check() %}
+                        <span class="folio-user">{{ auth_user().email }}</span>
+                        <form method="post" action="{{ prefix }}/logout" class="folio-logout">{{ csrf_field()|raw }}<button type="submit" class="btn btn-secondary">Log out</button></form>
+                    {% endif %}
+                {% endif %}
+            </div>
         </header>
         <main class="folio-content">{% block content %}{% endblock %}</main>
     </div>

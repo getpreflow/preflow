@@ -12,8 +12,10 @@ use Preflow\Data\DataManager;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Http\AdminAuthMiddleware;
 use Preflow\Folio\Http\AdminController;
 use Preflow\Folio\Http\AssetController;
+use Preflow\Folio\Http\AuthController;
 use Preflow\Folio\Http\FrontendController;
 use Preflow\Folio\Http\PreviewController;
 use Preflow\Folio\Http\UploadController;
@@ -114,6 +116,17 @@ final class FolioServiceProvider extends ServiceProvider
             $this->assetMap(),
         ));
         $container->bind(UploadController::class, fn (Container $c) => new UploadController($uploadsDir));
+
+        $container->bind(AdminAuthMiddleware::class, fn (Container $c) => new AdminAuthMiddleware(
+            $c->get(\Preflow\Auth\AuthManager::class),
+            $prefix,
+        ));
+        $container->bind(AuthController::class, fn (Container $c) => new AuthController(
+            $c->get(\Preflow\Auth\AuthManager::class),
+            $c->get(\Preflow\Auth\UserProviderInterface::class),
+            $c->get(TemplateEngineInterface::class),
+            $prefix,
+        ));
     }
 
     public function boot(Container $container): void
@@ -145,6 +158,23 @@ final class FolioServiceProvider extends ServiceProvider
                 },
                 isSafe: false,
             ));
+
+            if (file_exists($app->basePath('config/auth.php'))) {
+                $engine->addGlobal('folio_auth_enabled', true);
+            } else {
+                // Auth is off: AuthExtensionProvider never ran, so its Twig
+                // functions are unregistered. _layout.twig guards their *calls*
+                // behind folio_auth_enabled, but Twig resolves function existence
+                // at compile time, so register inert stubs to keep the template
+                // compilable. They are never invoked (the guard is false).
+                foreach (['auth_check' => true, 'auth_user' => false, 'csrf_field' => true] as $name => $safe) {
+                    $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                        name: $name,
+                        callable: fn () => null,
+                        isSafe: $safe,
+                    ));
+                }
+            }
         }
 
         // 2. Routes: admin under the configured prefix, then the frontend catch-all LAST.
@@ -152,7 +182,8 @@ final class FolioServiceProvider extends ServiceProvider
             $router = $container->get(RouterInterface::class);
             if ($router instanceof Router) {
                 $collection = $router->getCollection(); // builds app routes first (lazy)
-                $collection->addMany(FolioRoutes::admin($this->prefix($app)));
+                $authEnabled = file_exists($app->basePath('config/auth.php'));
+                $collection->addMany(FolioRoutes::admin($this->prefix($app), $authEnabled));
                 $collection->add(FolioRoutes::frontend());
             }
         }

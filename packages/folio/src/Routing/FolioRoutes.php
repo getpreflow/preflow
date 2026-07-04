@@ -11,14 +11,23 @@ final class FolioRoutes
 {
     private const ADMIN = 'Preflow\\Folio\\Http\\AdminController';
     private const PREVIEW = 'Preflow\\Folio\\Http\\PreviewController';
+    private const AUTH = 'Preflow\\Folio\\Http\\AuthController';
+    private const AUTH_MW = 'Preflow\\Folio\\Http\\AdminAuthMiddleware';
 
     /** @return RouteEntry[] */
-    public static function admin(string $prefix): array
+    public static function admin(string $prefix, bool $authEnabled = false): array
     {
         $prefix = '/' . trim($prefix, '/');
 
         $defs = [
-            ['GET',  $prefix,                          'index'],
+            ['GET', $prefix, 'index'],
+        ];
+        if ($authEnabled) {
+            $defs[] = ['GET',  $prefix . '/login',  'loginForm', self::AUTH];
+            $defs[] = ['POST', $prefix . '/login',  'login',     self::AUTH];
+            $defs[] = ['POST', $prefix . '/logout', 'logout',    self::AUTH];
+        }
+        $defs = array_merge($defs, [
             ['GET',  $prefix . '/{type}',              'list'],
             ['GET',  $prefix . '/{type}/new',          'createForm'],
             ['POST', $prefix . '/{type}/preview',      'preview', self::PREVIEW],
@@ -28,19 +37,20 @@ final class FolioRoutes
             ['POST', $prefix . '/{type}/{id}/preview', 'preview', self::PREVIEW],
             ['POST', $prefix . '/{type}/{id}',         'update'],
             ['POST', $prefix . '/{type}/{id}/delete',  'destroy'],
-        ];
+        ]);
 
         $entries = [];
         foreach ($defs as $def) {
             [$method, $pattern, $action] = $def;
             $handlerClass = $def[3] ?? self::ADMIN;
+            $middleware = ($authEnabled && $handlerClass !== self::AUTH) ? [self::AUTH_MW] : [];
             $c = PatternCompiler::compile($pattern);
             $entries[] = new RouteEntry(
                 pattern: $pattern,
                 handler: $handlerClass . '@' . $action,
                 method: $method,
                 mode: RouteMode::Action,
-                middleware: [],
+                middleware: $middleware,
                 paramNames: $c['paramNames'],
                 regex: $c['regex'],
                 isCatchAll: $c['isCatchAll'],
