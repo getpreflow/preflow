@@ -55,3 +55,4 @@ foreach ($records as [$type, $data]) {
 }
 
 echo "Seeded " . count($records) . " records into {$dataDir}\n";
+echo "Admin login: admin@folio.test / " . (getenv('FOLIO_ADMIN_PASSWORD') ?: 'folio-admin') . " (set FOLIO_ADMIN_PASSWORD to override)\n";
