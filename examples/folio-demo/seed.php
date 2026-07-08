@@ -5,17 +5,20 @@ declare(strict_types=1);
 /**
  * Seed the Folio demo with a few Pages and Articles so the admin isn't empty.
  *
- * Idempotent: clears storage/data first, then recreates the records by POSTing
- * through the real kernel (same path the admin "New" form uses). No auth config
- * is present, so CsrfMiddleware is a no-op and no token is needed here.
+ * Idempotent: clears storage/data first, then writes the records directly via
+ * DataManager. Seeds must bypass the admin HTTP layer — it is now gated behind
+ * login and CSRF-protected (config/auth.php), so POSTing through the kernel
+ * without a session/token would be rejected.
  *
  * Run: php examples/folio-demo/seed.php
  */
 
 require dirname(__DIR__, 2) . '/vendor/autoload.php';
 
-use Nyholm\Psr7\Factory\Psr17Factory;
 use Preflow\Core\Application;
+use Preflow\Data\DataManager;
+use Preflow\Data\DynamicRecord;
+use Preflow\Data\TypeRegistry;
 
 $base = __DIR__;
 
@@ -36,7 +39,8 @@ if (is_dir($dataDir)) {
 
 $app = Application::create($base);
 $app->boot();
-$factory = new Psr17Factory();
+$dm = $app->container()->get(DataManager::class);
+$registry = $app->container()->get(TypeRegistry::class);
 
 $records = [
     ['page', ['title' => 'Home', 'slug' => 'home', 'body' => '<p>Welcome to the site.</p>', 'status' => 'published']],
@@ -47,11 +51,10 @@ $records = [
 ];
 
 foreach ($records as [$type, $data]) {
-    $request = $factory->createServerRequest('POST', '/folio/' . $type)
-        ->withAttribute('type', $type)
-        ->withParsedBody($data);
-    $status = $app->handle($request)->getStatusCode();
-    echo sprintf("  %-8s %-18s -> %d\n", $type, $data['slug'], $status);
+    $typeDef = $registry->get($type);
+    $data[$typeDef->idField] = bin2hex(random_bytes(16));
+    $dm->saveType(DynamicRecord::fromArray($typeDef, $data));
+    echo sprintf("  %-8s %-18s -> ok\n", $type, $data['slug']);
 }
 
 echo "Seeded " . count($records) . " records into {$dataDir}\n";
