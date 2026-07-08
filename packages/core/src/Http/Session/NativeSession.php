@@ -78,14 +78,21 @@ final class NativeSession implements SessionInterface
 
     public function regenerate(): void
     {
-        session_regenerate_id(true);
+        // Only regenerate when a session is actually active. In web SAPI it always
+        // is; under CLI (tests) session_start() may not activate, and calling
+        // session_regenerate_id() then only emits a "no active session" warning.
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+        }
     }
 
     public function invalidate(): void
     {
         $_SESSION = [];
         $_SESSION['_flash'] = ['current' => [], 'previous' => []];
-        session_regenerate_id(true);
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+        }
     }
 
     public function get(string $key, mixed $default = null): mixed

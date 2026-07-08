@@ -1,3 +1,7 @@
 # Runtime records seeded/created by the demo — keep the dir, ignore its contents.
 storage/data/*
 !storage/data/.gitkeep
+
+# Runtime uploads (asset field) created through the admin — keep the dir, ignore contents.
+storage/uploads/*
+!storage/uploads/.gitkeep

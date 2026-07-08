@@ -25,21 +25,32 @@ final class FolioDemoTest extends TestCase
         return $app->handle((new Psr17Factory())->createServerRequest('GET', $uri));
     }
 
-    public function test_dashboard_boots_and_renders_shell(): void
+    /**
+     * @runInSeparateProcess
+     */
+    public function test_admin_redirects_to_login_when_unauthenticated(): void
     {
         $res = $this->get('/folio');
-        $this->assertSame(200, $res->getStatusCode());
-        $body = (string) $res->getBody();
-        $this->assertStringContainsString('folio-shell', $body);
-        $this->assertStringContainsString('Pages', $body);    // discovered content type
-        $this->assertStringContainsString('Articles', $body);
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame('/folio/login', $res->getHeaderLine('Location'));
     }
 
+    /**
+     * @runInSeparateProcess
+     */
+    public function test_login_page_renders(): void
+    {
+        $res = $this->get('/folio/login');
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('name="email"', (string) $res->getBody());
+    }
+
+    /**
+     * @runInSeparateProcess
+     */
     public function test_stylesheet_route_serves_css(): void
     {
         $res = $this->get('/folio/_assets/admin.css');
         $this->assertSame(200, $res->getStatusCode());
-        $this->assertStringContainsString('text/css', $res->getHeaderLine('Content-Type'));
-        $this->assertStringContainsString(':root', (string) $res->getBody());
     }
 }

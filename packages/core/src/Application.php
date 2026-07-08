@@ -697,6 +697,10 @@ final class Application
                     $modelClass,
                 );
             }
+
+            if ($providerClass === \Preflow\Auth\ConfigUserProvider::class) {
+                $providers[$name] = new \Preflow\Auth\ConfigUserProvider($providerConfig['users'] ?? []);
+            }
         }
 
         // Guards
@@ -726,6 +730,12 @@ final class Application
 
         $authManager = new \Preflow\Auth\AuthManager($guards, $defaultGuard);
         $this->container->instance(\Preflow\Auth\AuthManager::class, $authManager);
+
+        // Bind the default guard's provider under UserProviderInterface so controllers can resolve it
+        $defaultProviderName = $authConfig['guards'][$defaultGuard]['provider'] ?? null;
+        if ($defaultProviderName !== null && isset($providers[$defaultProviderName])) {
+            $this->container->instance(\Preflow\Auth\UserProviderInterface::class, $providers[$defaultProviderName]);
+        }
 
         // Global middleware: resolve authenticated user on every request (no 401 — just populate)
         $defaultGuardInstance = $guards[$defaultGuard] ?? null;
