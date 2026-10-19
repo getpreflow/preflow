@@ -1,6 +1,7 @@
 <!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><title>{{ record.title }}</title></head>
+<html lang="{{ locale|default('en') }}">
+<head><meta charset="utf-8"><title>{{ record.title }}</title>
+{{ folio_alternate_links(alternates|default([])) }}</head>
 <body>
     {# data-folio-field markers address regions for the live preview; preview renders only. #}
     <article>

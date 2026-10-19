@@ -15,9 +15,10 @@ final class RecordLabeler
 {
     public function label(DynamicRecord $record): string
     {
+        $localized = $record->localized($record->getType()->locales->default);
         foreach ($record->getType()->fields as $name => $def) {
             if ($def->type === 'string') {
-                $value = $record->get($name);
+                $value = $localized->get($name);
                 if (is_string($value) && $value !== '') {
                     return $value;
                 }

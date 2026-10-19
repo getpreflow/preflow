@@ -6,6 +6,7 @@ namespace Preflow\Folio\Content;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\LocaleValue;
 
 /**
  * Maps a public path to a published record of any type that declares a
@@ -79,39 +80,101 @@ final class FrontendResolver
         return $routes;
     }
 
-    public function resolve(string $path): ?DynamicRecord
+    public function resolve(string $path, ?string $locale = null): ?DynamicRecord
     {
-        return $this->match($path)?->record;
+        return $this->match($path, $locale)?->record;
     }
 
-    public function match(string $path): ?ResolvedRecord
+    /**
+     * @param string|null $locale the request's locale (from LocaleMiddleware); translated
+     *                            route values are matched in it, and records not
+     *                            visible in it (_locales) are skipped
+     */
+    public function match(string $path, ?string $locale = null): ?ResolvedRecord
     {
         $path = trim($path, '/');
 
         foreach ($this->routes as $route) {
+            $localized = $locale !== null;
             if ($path === '') {
                 if ($route->home === null || $route->paramNames === []) {
                     continue;
                 }
+                // The home record is identified by its default-locale value in every locale.
                 $params = [$route->paramNames[0] => $route->home];
+                $localized = false;
             } elseif (preg_match($route->regex, '/' . $path, $m) === 1) {
                 $params = array_intersect_key($m, array_flip($route->paramNames));
             } else {
                 continue;
             }
 
-            $query = $this->dm->queryType($route->type)->where($route->publishedField, $route->publishedValue);
+            $query = $this->dm->queryType($route->type);
+            if ($localized) {
+                $query = $query->locale($locale);
+            }
+            $query = $query->where($route->publishedField, $route->publishedValue);
             foreach ($params as $field => $value) {
                 $query = $query->where($field, $value);
             }
 
-            $record = $query->first();
-            if ($record !== null) {
-                return new ResolvedRecord($record, $route);
+            foreach ($query->get()->items() as $record) {
+                if ($locale === null || $record->getType()->translatableFields() === [] || in_array($locale, $record->availableLocales(), true)) {
+                    return new ResolvedRecord($record, $route);
+                }
             }
         }
 
         return null;
+    }
+
+    /**
+     * The public URL of a record in a locale: route parameters filled with the
+     * locale's own values, "/de/…" for non-default locales. Null when the
+     * record isn't visible in that locale or a parameter has no value in it.
+     */
+    public function urlFor(DynamicRecord $record, string $locale): ?string
+    {
+        $route = $this->routeFor($record->getType()->key);
+        $locales = $record->getType()->locales;
+        if ($route === null || !$locales->has($locale)) {
+            return null;
+        }
+        $multilingual = $record->getType()->translatableFields() !== [];
+        if ($multilingual && !in_array($locale, $record->availableLocales(), true)) {
+            return null;
+        }
+
+        $translatable = array_flip($record->getType()->translatableFields());
+        $isHome = false;
+        if ($route->home !== null && $route->paramNames !== []) {
+            $first = $route->paramNames[0];
+            $homeValue = isset($translatable[$first])
+                ? LocaleValue::pick($record->get($first), $locales, $locales->default)
+                : LocaleValue::default($record->get($first), $locales);
+            $isHome = $homeValue === $route->home;
+        }
+
+        $path = '';
+        if (!$isHome) {
+            $path = $route->pattern;
+            foreach ($route->paramNames as $name) {
+                $raw = $record->get($name);
+                $value = isset($translatable[$name]) ? LocaleValue::pick($raw, $locales, $locale) : LocaleValue::default($raw, $locales);
+                if (!is_scalar($value) || (string) $value === '') {
+                    return null;
+                }
+                $encoded = implode('/', array_map('rawurlencode', explode('/', (string) $value)));
+                $path = (string) preg_replace('/\{(\.\.\.)?' . preg_quote($name, '/') . '\}/', $encoded, $path);
+            }
+            $path = trim($path, '/');
+        }
+
+        if ($locale === $locales->default) {
+            return '/' . $path;
+        }
+
+        return '/' . $locale . ($path !== '' ? '/' . $path : '');
     }
 
     public function routeFor(string $type): ?FrontendRoute

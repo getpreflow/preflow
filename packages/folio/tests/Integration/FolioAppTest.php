@@ -797,6 +797,139 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('de · 2 missing', $body); // title and slug are required, both empty in de
     }
 
+    public function test_translated_slug_resolves_under_prefix(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published', '_locales_submitted' => '1', '_locales' => ['de']]);
+        $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'de', 'title' => 'Über mich', 'slug' => 'ueber-mich', 'body' => 'b', 'status' => 'published']);
+
+        $res = $this->get('/de/ueber-mich');
+
+        $this->assertSame(200, $res->getStatusCode());
+        $body = (string) $res->getBody();
+        $this->assertStringContainsString('Über mich', $body);
+        $this->assertStringContainsString('<html lang="de">', $body);
+    }
+
+    public function test_unavailable_locale_is_404(): void
+    {
+        $this->enableGerman();
+        $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published']); // visible in en only
+
+        $this->assertSame(200, $this->get('/about')->getStatusCode());
+        $this->assertSame(404, $this->get('/de/about')->getStatusCode());
+    }
+
+    public function test_missing_translation_falls_back_per_field(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => '<p>English body</p>', 'status' => 'published', '_locales_submitted' => '1', '_locales' => ['de']]);
+        $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'de', 'title' => 'Über', 'slug' => 'ueber', 'body' => '', 'status' => 'published']);
+
+        $body = (string) $this->get('/de/ueber')->getBody();
+
+        $this->assertStringContainsString('Über', $body);
+        $this->assertStringContainsString('English body', $body);
+    }
+
+    public function test_fallback_richtext_is_sanitized(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => '<b>x</b><script>alert(1)</script>', 'status' => 'published', '_locales_submitted' => '1', '_locales' => ['de']]);
+        $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'de', 'title' => 'Über', 'slug' => 'ueber', 'body' => '', 'status' => 'published']);
+
+        $body = (string) $this->get('/de/ueber')->getBody();
+
+        $this->assertStringContainsString('<b>x</b>', $body);
+        $this->assertStringNotContainsString('<script>alert', $body);
+    }
+
+    public function test_alternate_links(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published', '_locales_submitted' => '1', '_locales' => ['de']]);
+        $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'de', 'title' => 'Über mich', 'slug' => 'ueber-mich', 'body' => 'b', 'status' => 'published']);
+
+        $body = (string) $this->get('/about')->getBody();
+
+        $this->assertStringContainsString('<link rel="alternate" hreflang="de" href="/de/ueber-mich">', $body);
+        $this->assertStringContainsString('<link rel="alternate" hreflang="en" href="/about">', $body);
+        $this->assertStringContainsString('<link rel="alternate" hreflang="x-default" href="/about">', $body);
+    }
+
+    public function test_legacy_scalar_slug_resolves_in_default_locale_only(): void
+    {
+        // Stored before the type became translatable: plain scalars.
+        $app = $this->app();
+        $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'Legacy', 'slug' => 'legacy', 'body' => 'b', 'status' => 'published']));
+        $this->enableGerman();
+
+        $this->assertSame(200, $this->get('/legacy')->getStatusCode());
+        $this->assertSame(404, $this->get('/de/legacy')->getStatusCode());
+    }
+
+    public function test_same_slug_in_two_locales(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About EN', 'slug' => 'about', 'body' => 'b', 'status' => 'published', '_locales_submitted' => '1', '_locales' => ['de']]);
+        $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'de', 'title' => 'About DE', 'slug' => 'about', 'body' => 'b', 'status' => 'published']);
+
+        $this->assertStringContainsString('About EN', (string) $this->get('/about')->getBody());
+        $this->assertStringContainsString('About DE', (string) $this->get('/de/about')->getBody());
+    }
+
+    public function test_matrix_reference_renders_in_page_locale(): void
+    {
+        $this->enableGerman();
+        $note = json_decode((string) file_get_contents($this->dir . '/config/models/note.json'), true);
+        $note['fields']['name']['translatable'] = true;
+        file_put_contents($this->dir . '/config/models/note.json', json_encode($note));
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $this->app()->handle($f->createServerRequest('POST', '/folio/note')->withParsedBody(['name' => 'English note']));
+        $noteId = (string) $this->dm()->queryType('note')->first()->getId();
+        $this->app()->handle($f->createServerRequest('POST', '/folio/note/' . $noteId)
+            ->withAttribute('type', 'note')->withAttribute('id', $noteId)->withParsedBody(['_locale' => 'de', 'name' => 'Deutsche Notiz']));
+        $id = $this->createPage(['title' => 'Composed', 'slug' => 'composed', 'body' => 'b', 'status' => 'published',
+            'blocks' => [['_type' => 'note', 'id' => $noteId]], '_locales_submitted' => '1', '_locales' => ['de']]);
+        $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'de', 'title' => 'Zusammengesetzt', 'slug' => 'zusammen', 'body' => 'b',
+            'status' => 'published', 'blocks' => [['_type' => 'note', 'id' => $noteId]]]);
+
+        $this->assertStringContainsString('Deutsche Notiz', (string) $this->get('/de/zusammen')->getBody());
+        $this->assertStringContainsString('English note', (string) $this->get('/composed')->getBody());
+    }
+
+    public function test_folio_url_links_a_record_in_a_locale(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published', '_locales_submitted' => '1', '_locales' => ['de']]);
+        $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'de', 'title' => 'Über', 'slug' => 'ueber', 'body' => 'b', 'status' => 'published']);
+        $this->writeArticleType(['route' => '/blog/{slug}', 'template' => 'folio/article.twig']);
+        // Once any type declares a route, page needs its own (the implicit legacy route is gone).
+        $page = json_decode((string) file_get_contents($this->dir . '/config/models/page.json'), true);
+        $page['frontend'] = ['route' => '/{slug}', 'home' => 'home'];
+        file_put_contents($this->dir . '/config/models/page.json', json_encode($page));
+        @mkdir($this->dir . '/folio', 0777, true);
+        file_put_contents($this->dir . '/folio/article.twig', '<html><head></head><body>de={{ folio_url("page", "' . $id . '", "de") }} en={{ folio_url("page", "' . $id . '", "en") }} none={{ folio_url("page", "missing") ?? "null" }}</body></html>');
+        $this->seedArticle('a1', 'hello', 'published');
+
+        $body = (string) $this->get('/blog/hello')->getBody();
+
+        $this->assertStringContainsString('de=/de/ueber en=/about none=null', $body);
+    }
+
+    public function test_preview_renders_editing_locale(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published']);
+
+        $res = $this->postPage('/folio/page/' . $id . '/preview', $id, ['_locale' => 'de', 'title' => 'Vorschau', 'slug' => 'vorschau', 'body' => 'b', 'status' => 'published']);
+
+        $body = (string) $res->getBody();
+        $this->assertStringContainsString('Vorschau', $body);
+        $this->assertStringContainsString('<html lang="de">', $body);
+    }
+
     public function test_single_locale_form_has_no_language_ui(): void
     {
         $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published']);

@@ -10,6 +10,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\RecordRenderer;
+use Preflow\Folio\Content\ContentLocale;
 use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
@@ -37,6 +38,7 @@ final class PreviewController
         private readonly TemplateEngineInterface $engine,
         private readonly FrontendResolver $frontend,
         ?DraftRecordFactory $drafts = null,
+        private readonly ?ContentLocale $contentLocale = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
     }
@@ -52,13 +54,18 @@ final class PreviewController
         $typeDef = $this->registry->get($type);
         $id = (string) $request->getAttribute('id', '');
         $existing = $id !== '' ? ($this->dm->findType($typeDef->key, $id)?->toArray() ?? []) : [];
-        $draft = $this->drafts->build($typeDef, $request, $existing + [$typeDef->idField => $id], $typeDef->locales->default, writeUploads: false);
+        $requested = ((array) $request->getParsedBody())['_locale'] ?? null;
+        $locale = is_string($requested) && $typeDef->locales->has($requested) ? $requested : $typeDef->locales->default;
+        $draft = $this->drafts->build($typeDef, $request, $existing + [$typeDef->idField => $id], $locale, writeUploads: false);
+        $this->contentLocale?->set($locale);
 
         $html = $this->engine->render(FrontendController::template($this->engine, $route), [
-            'record' => $draft->toArray(),
-            'rendered' => $this->records->renderedMap($draft),
+            'record' => $draft->localized($locale)->toArray(),
+            'rendered' => $this->records->renderedMap($draft, $locale),
             'type' => $type,
             'preview' => true,
+            'locale' => $locale,
+            'alternates' => [],
         ]);
 
         return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html);

@@ -20,6 +20,7 @@ final class RelationFieldType implements FieldType
     public function __construct(
         private readonly DataManager $dm,
         private readonly TypeRegistry $registry,
+        private readonly ?\Preflow\Folio\Content\ContentLocale $contentLocale = null,
     ) {}
 
     public function key(): string
@@ -161,15 +162,16 @@ final class RelationFieldType implements FieldType
     /** @param array{to: string, multiple: bool, labelField: ?string} $cfg */
     private function labelFor(DynamicRecord $record, array $cfg): string
     {
+        $localized = $record->localized($this->contentLocale?->get() ?? $record->getType()->locales->default);
         if ($cfg['labelField'] !== null) {
-            $v = $record->get($cfg['labelField']);
+            $v = $localized->get($cfg['labelField']);
             if (is_string($v) && $v !== '') {
                 return $v;
             }
         }
         $field = $this->firstStringField($cfg['to']);
         if ($field !== null) {
-            $v = $record->get($field);
+            $v = $localized->get($field);
             if (is_string($v) && $v !== '') {
                 return $v;
             }

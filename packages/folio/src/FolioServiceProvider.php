@@ -10,6 +10,7 @@ use Preflow\Core\Container\ServiceProvider;
 use Preflow\Core\Routing\RouterInterface;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Content\ContentLocale;
 use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
@@ -52,7 +53,10 @@ final class FolioServiceProvider extends ServiceProvider
 
         // Bind unconditionally: Container::has() falls back to class_exists(),
         // so the guard would always be false and the instance would never be bound.
-        $container->instance(TypeRegistry::class, new TypeRegistry($modelsPath, $this->locales($container)));
+        $locales = $this->locales($container);
+        $container->instance(TypeRegistry::class, new TypeRegistry($modelsPath, $locales));
+        // One request-scoped content locale shared by the frontend, preview and field types.
+        $container->instance(ContentLocale::class, new ContentLocale($locales ?? \Preflow\Data\Locales::single('en')));
 
         $container->bind(ActionResolver::class, fn (Container $c) => new ActionResolver($c));
         // Routes are computed (and validated) now, so conflicting "frontend"
@@ -81,12 +85,13 @@ final class FolioServiceProvider extends ServiceProvider
             $registry->register(new RelationFieldType(
                 $c->get(\Preflow\Data\DataManager::class),
                 $c->get(TypeRegistry::class),
+                $c->get(ContentLocale::class),
             ));
             $registry->register(new MatrixFieldType(
                 $c->get(TypeCatalog::class),
                 $c->get(TypeRegistry::class),
                 $c->get(\Preflow\Data\DataManager::class),
-                new RecordRenderer($registry, $c->get(TemplateEngineInterface::class)),
+                new RecordRenderer($registry, $c->get(TemplateEngineInterface::class), $c->get(ContentLocale::class)),
                 new RecordLabeler(),
                 $prefix,
             ));
@@ -119,17 +124,19 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),
             $c->get(TemplateEngineInterface::class),
-            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(TemplateEngineInterface::class)),
+            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(TemplateEngineInterface::class), $c->get(ContentLocale::class)),
+            $c->get(ContentLocale::class),
         ));
         $container->bind(PreviewController::class, fn (Container $c) => new PreviewController(
             $c->get(TypeCatalog::class),
             $c->get(TypeRegistry::class),
             $c->get(DataManager::class),
             $c->get(FieldTypeRegistry::class),
-            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(TemplateEngineInterface::class)),
+            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(TemplateEngineInterface::class), $c->get(ContentLocale::class)),
             $c->get(TemplateEngineInterface::class),
             $c->get(FrontendResolver::class),
             $c->get(DraftRecordFactory::class),
+            $c->get(ContentLocale::class),
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
             dirname(__DIR__) . '/assets',
@@ -177,6 +184,31 @@ final class FolioServiceProvider extends ServiceProvider
                     return $prefix . '/_assets/' . $file . '?v=' . $v;
                 },
                 isSafe: false,
+            ));
+
+            // Public URLs and hreflang alternates of a (raw, stored) record.
+            $resolver = static fn () => $container->get(FrontendResolver::class);
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_url',
+                callable: function (string $type, string $id, ?string $locale = null) use ($resolver, $container): ?string {
+                    $record = $container->get(DataManager::class)->findType($type, $id);
+                    return $record === null ? null : $resolver()->urlFor($record, $locale ?? $container->get(ContentLocale::class)->get());
+                },
+            ));
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_alternate_links',
+                callable: function (array $alternates): string {
+                    $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    if (count($alternates) < 2) {
+                        return '';
+                    }
+                    $out = '';
+                    foreach ($alternates as $alt) {
+                        $out .= '<link rel="alternate" hreflang="' . $e((string) $alt['locale']) . '" href="' . $e((string) $alt['url']) . '">' . "\n";
+                    }
+                    return $out . '<link rel="alternate" hreflang="x-default" href="' . $e((string) $alternates[0]['url']) . '">' . "\n";
+                },
+                isSafe: true,
             ));
 
             if (file_exists($app->basePath('config/auth.php'))) {

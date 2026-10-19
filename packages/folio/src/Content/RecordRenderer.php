@@ -18,23 +18,31 @@ final class RecordRenderer
     public function __construct(
         private readonly FieldTypeRegistry $fieldTypes,
         private readonly TemplateEngineInterface $engine,
+        private readonly ?ContentLocale $contentLocale = null,
     ) {}
 
     /**
      * @return array<string, string> field name => safe frontend HTML
      */
-    public function renderedMap(DynamicRecord $record): array
+    public function renderedMap(DynamicRecord $record, ?string $locale = null): array
     {
         $typeDef = $record->getType();
+        $localized = $record->localized($locale ?? $this->locale($record));
         $map = [];
         foreach ($typeDef->fields as $name => $fieldDef) {
             $fieldType = $this->fieldTypes->get($fieldDef->type);
             $map[$name] = $fieldType->renderFrontend(
-                $fieldType->fromStorage($record->get($name)),
+                $fieldType->fromStorage($localized->get($name)),
                 $fieldDef->config,
             );
         }
         return $map;
+    }
+
+    /** The request's content locale, or the record's default locale. */
+    private function locale(DynamicRecord $record): string
+    {
+        return $this->contentLocale?->get() ?? $record->getType()->locales->default;
     }
 
     /**
@@ -67,7 +75,7 @@ final class RecordRenderer
         }
 
         return $this->engine->render($template, [
-            'record' => $record->toArray(),
+            'record' => $record->localized($this->locale($record))->toArray(),
             'rendered' => $this->renderedMap($record),
             'type' => $type,
             'view' => $view,
