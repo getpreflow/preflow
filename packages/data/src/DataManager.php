@@ -280,12 +280,49 @@ final class DataManager
             return;
         }
 
-        $validator = $this->validatorFactory->make($rules, $record->toArray(), subject: $record);
+        [$rules, $data] = $this->localizedValidation($typeDef, $rules, $record->toArray());
+
+        $validator = $this->validatorFactory->make($rules, $data, subject: $record);
         $result = $validator->validate();
 
         if ($result->fails()) {
             throw new ValidationException($result);
         }
+    }
+
+    /**
+     * Translatable fields are validated per locale: field "f" gets the default
+     * locale's value with all rules; every other locale with a value is
+     * validated as "f.<locale>" with the same rules minus "required".
+     *
+     * @param array<string, list<mixed>> $rules
+     * @param array<string, mixed>       $data
+     * @return array{0: array<string, list<mixed>>, 1: array<string, mixed>}
+     */
+    private function localizedValidation(TypeDefinition $typeDef, array $rules, array $data): array
+    {
+        $locales = $typeDef->locales;
+
+        foreach ($typeDef->translatableFields() as $field) {
+            $map = LocaleValue::map($data[$field] ?? null, $locales);
+            $data[$field] = $map[$locales->default] ?? null;
+
+            $fieldRules = $rules[$field] ?? [];
+            $optional = array_values(array_filter($fieldRules, static fn ($rule) => $rule !== 'required'));
+            if ($optional === []) {
+                continue;
+            }
+
+            foreach ($map as $locale => $value) {
+                if ($locale === $locales->default || $value === null || $value === '' || !$locales->has((string) $locale)) {
+                    continue;
+                }
+                $data[$field . '.' . $locale] = $value;
+                $rules[$field . '.' . $locale] = $optional;
+            }
+        }
+
+        return [$rules, $data];
     }
 
     private function requireTypeRegistry(): TypeRegistry
