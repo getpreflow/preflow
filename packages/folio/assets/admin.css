@@ -407,3 +407,5 @@ h1 { font-size: 1.25rem; font-weight: 650; letter-spacing: -.01em; margin: 0; }
 .folio-reference { font-size: 0.85rem; margin: -0.25rem 0 1rem; opacity: 0.85; }
 .folio-badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; border: 1px solid var(--folio-border, #d0d0d0); }
 .folio-badge.is-incomplete { border-color: #d97706; color: #d97706; }
+.folio-locale-errors { border: 1px solid #d97706; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
+.folio-locale-errors ul { margin: 0.25rem 0 0; padding-left: 1.25rem; }

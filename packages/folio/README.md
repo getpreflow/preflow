@@ -222,6 +222,12 @@ every language that has a value; errors are keyed `field.de`.
 Older values stored before a field became translatable keep working as the default
 language's value. Upload fields are always shared.
 
+**SQL storage:** translatable values and the record's `_locales` list are stored as JSON
+text. A SQL-backed type needs a `_locales` (TEXT) column, and its translatable columns
+must be wide enough for the JSON map. JSON-file storage needs no setup.
+`folio_alternate_links()` emits absolute URLs when the request has a host, which
+search engines require.
+
 ## Status
 
 Shipped:

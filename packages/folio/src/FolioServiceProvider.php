@@ -203,10 +203,12 @@ final class FolioServiceProvider extends ServiceProvider
                         return '';
                     }
                     $out = '';
+                    $default = $alternates[0];
                     foreach ($alternates as $alt) {
-                        $out .= '<link rel="alternate" hreflang="' . $e((string) $alt['locale']) . '" href="' . $e((string) $alt['url']) . '">' . "\n";
+                        $out .= '<link rel="alternate" hreflang="' . $e((string) $alt['locale']) . '" href="' . $e((string) ($alt['href'] ?? $alt['url'])) . '">' . "\n";
+                        $default = ($alt['default'] ?? false) ? $alt : $default;
                     }
-                    return $out . '<link rel="alternate" hreflang="x-default" href="' . $e((string) $alternates[0]['url']) . '">' . "\n";
+                    return $out . '<link rel="alternate" hreflang="x-default" href="' . $e((string) ($default['href'] ?? $default['url'])) . '">' . "\n";
                 },
                 isSafe: true,
             ));

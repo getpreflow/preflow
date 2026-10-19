@@ -38,11 +38,16 @@ final class FrontendController
         $locale = is_string($requested) && $locales->has($requested) ? $requested : $locales->default;
         $this->contentLocale?->set($locale);
 
+        // hreflang needs absolute URLs; 'url' stays relative for language switchers.
+        $uri = $request->getUri();
+        $origin = $uri->getHost() !== ''
+            ? $uri->getScheme() . '://' . $uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '')
+            : '';
         $alternates = [];
         foreach ($locales->available as $code) {
             $url = $this->resolver->urlFor($record, $code);
             if ($url !== null) {
-                $alternates[] = ['locale' => $code, 'url' => $url];
+                $alternates[] = ['locale' => $code, 'url' => $url, 'href' => $origin . $url, 'default' => $code === $locales->default];
             }
         }
 

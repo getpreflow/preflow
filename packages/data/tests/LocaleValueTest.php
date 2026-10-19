@@ -79,4 +79,20 @@ final class LocaleValueTest extends TestCase
         $this->assertTrue($this->locales->has('de'));
         $this->assertFalse($this->locales->has('xx'));
     }
+
+    public function test_default_decodes_stored_json_map_on_sql(): void
+    {
+        // SQL drivers return locale maps as JSON text.
+        $this->assertSame('x', LocaleValue::default('{"en":"x","de":"y"}', $this->locales));
+        $this->assertSame('{"foo":1}', LocaleValue::default('{"foo":1}', $this->locales));
+    }
+
+    public function test_map_only_accepts_locale_shaped_objects(): void
+    {
+        // A legacy plain value that merely looks like JSON stays the default value.
+        $this->assertSame(['en' => '{"foo":1}'], LocaleValue::map('{"foo":1}', $this->locales));
+        $this->assertSame(['en' => ['foo' => 1]], LocaleValue::map(['foo' => 1], $this->locales));
+        // A locale that was later removed from config still reads as a map (no data loss).
+        $this->assertSame(['en' => 'E', 'it' => 'I'], LocaleValue::map(['en' => 'E', 'it' => 'I'], $this->locales));
+    }
 }

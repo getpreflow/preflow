@@ -22,14 +22,9 @@ final class LocaleValue
         if ($raw === null || $raw === []) {
             return [];
         }
-        if (is_string($raw) && str_starts_with(ltrim($raw), '{')) {
-            $decoded = json_decode($raw, true);
-            if (is_array($decoded) && !array_is_list($decoded)) {
-                return $decoded;
-            }
-        }
-        if (is_array($raw) && !array_is_list($raw)) {
-            return $raw;
+        $candidate = self::decodeObject($raw);
+        if (is_array($candidate) && self::looksLikeLocaleMap($candidate, $locales)) {
+            return $candidate;
         }
 
         return [$locales->default => $raw];
@@ -63,7 +58,47 @@ final class LocaleValue
     /** Read tolerance for a non-translatable field: a stored locale map yields its default value. */
     public static function default(mixed $raw, Locales $locales): mixed
     {
-        return is_array($raw) && self::isLocaleMap($raw, $locales) ? ($raw[$locales->default] ?? null) : $raw;
+        $candidate = self::decodeObject($raw);
+
+        return is_array($candidate) && self::looksLikeLocaleMap($candidate, $locales)
+            ? ($candidate[$locales->default] ?? null)
+            : $raw;
+    }
+
+    /** A stored JSON object string (SQL drivers return maps as JSON text) decoded; anything else unchanged. */
+    private static function decodeObject(mixed $raw): mixed
+    {
+        if (is_string($raw) && str_starts_with(ltrim($raw), '{')) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return $raw;
+    }
+
+    /**
+     * A stored translatable value: an object whose keys all look like locale
+     * codes, at least one of them configured. (A locale removed from config
+     * later still reads as part of the map, so no content is lost.)
+     *
+     * @param array<mixed> $value
+     */
+    private static function looksLikeLocaleMap(array $value, Locales $locales): bool
+    {
+        if ($value === [] || array_is_list($value)) {
+            return false;
+        }
+        $known = false;
+        foreach (array_keys($value) as $key) {
+            if (!is_string($key) || preg_match('/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/', $key) !== 1) {
+                return false;
+            }
+            $known = $known || $locales->has($key);
+        }
+
+        return $known;
     }
 
     /**

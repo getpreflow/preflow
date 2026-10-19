@@ -857,6 +857,36 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('<link rel="alternate" hreflang="x-default" href="/about">', $body);
     }
 
+    public function test_alternate_links_are_absolute_when_host_is_known(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published', '_locales_submitted' => '1', '_locales' => ['de']]);
+        $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'de', 'title' => 'Über mich', 'slug' => 'ueber-mich', 'body' => 'b', 'status' => 'published']);
+
+        $body = (string) $this->get('https://example.test/about')->getBody();
+
+        // Search engines require fully qualified hreflang URLs.
+        $this->assertStringContainsString('<link rel="alternate" hreflang="de" href="https://example.test/de/ueber-mich">', $body);
+        $this->assertStringContainsString('<link rel="alternate" hreflang="x-default" href="https://example.test/about">', $body);
+    }
+
+    public function test_default_locale_form_shows_errors_of_other_locales(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published']);
+        // A stored German slug that no longer passes the (tightened) rule.
+        $record = $this->dm()->findType('page', $id);
+        $record->set('slug', ['en' => 'about', 'de' => 'Nicht Gültig']);
+        $this->dm()->saveType($record, validate: false);
+
+        $res = $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'en', 'title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published']);
+
+        $this->assertSame(422, $res->getStatusCode());
+        $body = (string) $res->getBody();
+        $this->assertStringContainsString('folio-locale-errors', $body);
+        $this->assertMatchesRegularExpression('#German[^<]*</a>[^<]*Slug#', $body);
+    }
+
     public function test_legacy_scalar_slug_resolves_in_default_locale_only(): void
     {
         // Stored before the type became translatable: plain scalars.

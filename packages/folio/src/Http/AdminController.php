@@ -397,6 +397,25 @@ final class AdminController
             }
         }
 
+        // Errors of other languages (keys "field.<locale>"), so a save that fails
+        // because of another language's value says where to look.
+        $localeErrors = [];
+        foreach ($errors as $key => $messages) {
+            if (!is_string($key) || !str_contains($key, '.')) {
+                continue;
+            }
+            [$field, $code] = explode('.', $key, 2);
+            if ($code === $locale || !$locales->has($code) || !isset($typeDef->fields[$field])) {
+                continue;
+            }
+            $localeErrors[] = [
+                'language' => self::languageName($code),
+                'url' => ($editUrl ?? $action) . '?locale=' . rawurlencode($code),
+                'field' => $typeDef->fields[$field]->label ?? (new \Preflow\Form\FieldRenderer())->humanize($field),
+                'messages' => (array) $messages,
+            ];
+        }
+
         $languages = [];
         if ($multilingual) {
             foreach ($locales->available as $code) {
@@ -425,6 +444,7 @@ final class AdminController
             'preview_url' => $action . '/preview',
             'multilingual' => $multilingual,
             'languages' => $languages,
+            'locale_errors' => $localeErrors,
             'locale' => $locale,
             'default_locale' => $locales->default,
             'default_language' => self::languageName($locales->default),

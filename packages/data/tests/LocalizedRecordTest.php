@@ -86,4 +86,11 @@ final class LocalizedRecordTest extends TestCase
         $this->assertSame(['en'], $this->record($locales, ['uuid' => '1'])->availableLocales());
         $this->assertSame(['en', 'de'], $this->record($locales, ['uuid' => '1', '_locales' => ['de', 'xx']])->availableLocales());
     }
+
+    public function test_available_locales_reads_json_list_from_sql(): void
+    {
+        $locales = new Locales(['en', 'de'], 'en');
+
+        $this->assertSame(['en', 'de'], $this->record($locales, ['uuid' => '1', '_locales' => '["en","de"]'])->availableLocales());
+    }
 }

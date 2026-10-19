@@ -11,6 +11,16 @@
                 {% endfor %}
             </nav>
         {% endif %}
+        {% if locale_errors|default([]) is not empty %}
+            <div class="folio-locale-errors" role="alert">
+                <p>Other languages need attention:</p>
+                <ul>
+                    {% for err in locale_errors %}
+                        <li><a href="{{ err.url }}">{{ err.language }}</a>: {{ err.field }} — {{ err.messages|join(' ') }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
         {% set form = form_begin({action: action, csrf_token: csrf, attrs: multipart|default(false) ? {'enctype': 'multipart/form-data'} : {}}) %}
         {{ form.begin()|raw }}
         {% if multilingual|default(false) %}

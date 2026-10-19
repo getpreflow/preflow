@@ -141,7 +141,7 @@ final class LocalizedQueryTest extends TestCase
         if ($driver === 'sqlite') {
             $pdo = new \PDO('sqlite::memory:');
             $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-            $pdo->exec('CREATE TABLE page (uuid TEXT PRIMARY KEY, title TEXT, slug TEXT)');
+            $pdo->exec('CREATE TABLE page (uuid TEXT PRIMARY KEY, title TEXT, slug TEXT, _locales TEXT)');
             $storage = new SqliteDriver($pdo);
         } else {
             $storage = new JsonFileDriver($this->dir . '/store');
@@ -168,5 +168,14 @@ final class LocalizedQueryTest extends TestCase
             is_dir($path) ? $this->rrmdir($path) : @unlink($path);
         }
         @rmdir($dir);
+    }
+
+    public function test_sqlite_round_trips_visibility(): void
+    {
+        $dm = $this->seeded('sqlite');
+        $type = $dm->getTypeRegistry()->get('page');
+        $dm->saveType(DynamicRecord::fromArray($type, ['uuid' => 'D', 'title' => ['en' => 'T'], 'slug' => ['en' => 'd'], '_locales' => ['en', 'de']]), validate: false);
+
+        $this->assertSame(['en', 'de'], $dm->findType('page', 'D')->availableLocales());
     }
 }

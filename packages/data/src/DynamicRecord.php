@@ -49,8 +49,12 @@ final class DynamicRecord
     public function availableLocales(): array
     {
         $locales = $this->type->locales;
+        $stored = $this->data['_locales'] ?? [];
+        if (is_string($stored)) {
+            $stored = json_decode($stored, true) ?? []; // SQL drivers return lists as JSON text
+        }
         $listed = array_values(array_filter(
-            (array) ($this->data['_locales'] ?? []),
+            (array) $stored,
             static fn ($l) => is_string($l) && $locales->has($l),
         ));
 
