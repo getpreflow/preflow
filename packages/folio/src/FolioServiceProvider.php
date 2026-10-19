@@ -46,7 +46,6 @@ final class FolioServiceProvider extends ServiceProvider
         $app = $container->get(Application::class);
         $modelsPath = $this->modelsPath($app);
         $prefix = $this->prefix($app);
-        $frontendType = 'page';
 
         $container->instance(TypeCatalog::class, new TypeCatalog($modelsPath));
 
@@ -55,7 +54,10 @@ final class FolioServiceProvider extends ServiceProvider
         $container->instance(TypeRegistry::class, new TypeRegistry($modelsPath));
 
         $container->bind(ActionResolver::class, fn (Container $c) => new ActionResolver($c));
-        $container->bind(FrontendResolver::class, fn (Container $c) => new FrontendResolver($c->get(DataManager::class), $frontendType));
+        // Routes are computed (and validated) now, so conflicting "frontend"
+        // declarations fail at boot; the resolver itself is built lazily.
+        $frontendRoutes = FrontendResolver::routesFromCatalog($container->get(TypeCatalog::class));
+        $container->bind(FrontendResolver::class, fn (Container $c) => new FrontendResolver($c->get(DataManager::class), $frontendRoutes));
 
         $uploadsDir = $this->uploadsDir($app);
         $uploadUrlPrefix = rtrim($this->prefix($app), '/') . '/_uploads';
@@ -109,7 +111,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(FieldTypeRegistry::class),
             $prefix,
             new RecordLabeler(),
-            $frontendType,
+            $c->get(FrontendResolver::class),
         ));
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),
@@ -123,7 +125,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(FieldTypeRegistry::class),
             new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(TemplateEngineInterface::class)),
             $c->get(TemplateEngineInterface::class),
-            $frontendType,
+            $c->get(FrontendResolver::class),
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
             dirname(__DIR__) . '/assets',

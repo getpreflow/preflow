@@ -2,10 +2,11 @@
 <html lang="en">
 <head><meta charset="utf-8"><title>{{ record.title }}</title></head>
 <body>
+    {# data-folio-field markers address regions for the live preview; preview renders only. #}
     <article>
-        <h1 data-folio-field="title">{{ record.title }}</h1>
+        <h1{% if preview|default(false) %} data-folio-field="title"{% endif %}>{{ record.title }}</h1>
         {% for name, html in rendered %}
-            {% if name != 'title' %}<div class="folio-field folio-field-{{ name }}" data-folio-field="{{ name }}">{{ html|raw }}</div>{% endif %}
+            {% if name != 'title' %}<div class="folio-field folio-field-{{ name }}"{% if preview|default(false) %} data-folio-field="{{ name }}"{% endif %}>{{ html|raw }}</div>{% endif %}
         {% endfor %}
     </article>
 </body>

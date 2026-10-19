@@ -578,6 +578,52 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('data-preview-url="/folio/page/preview"', $body);
     }
 
+    public function test_userland_template_is_used(): void
+    {
+        $this->writeArticleType(['route' => '/blog/{slug}', 'template' => 'folio/article.twig']);
+        @mkdir($this->dir . '/folio', 0777, true);
+        file_put_contents($this->dir . '/folio/article.twig', '<html><head></head><body>ARTICLE-TEMPLATE {{ record.title }} {{ type }}</body></html>');
+        $this->seedArticle('a1', 'hello', 'published');
+
+        $res = $this->get('/blog/hello');
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('ARTICLE-TEMPLATE Hello article', (string) $res->getBody());
+    }
+
+    public function test_public_render_has_no_field_markers(): void
+    {
+        $app = $this->app();
+        $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'Pub', 'slug' => 'pub', 'body' => 'b', 'status' => 'published']));
+
+        $body = (string) $this->get('/pub')->getBody();
+
+        $this->assertStringContainsString('Pub', $body);
+        $this->assertStringNotContainsString('data-folio-field', $body);
+    }
+
+    public function test_article_type_is_previewable(): void
+    {
+        $this->writeArticleType(['route' => '/blog/{slug}']);
+
+        $body = (string) $this->get('/folio/article/new')->getBody();
+
+        $this->assertStringContainsString('data-folio-preview', $body);
+        $this->assertStringContainsString('/folio/article/preview', $body);
+    }
+
+    public function test_frontend_config_conflict_fails_at_boot(): void
+    {
+        $this->writeArticleType(['route' => '/{slug}', 'home' => 'home']);
+        $page = json_decode((string) file_get_contents($this->dir . '/config/models/page.json'), true);
+        $page['frontend'] = ['route' => '/{slug}'];
+        file_put_contents($this->dir . '/config/models/page.json', json_encode($page));
+
+        $this->expectException(\Preflow\Folio\Content\FrontendConfigException::class);
+        $this->app();
+    }
+
     public function test_edit_form_no_preview_button_for_non_frontend_type(): void
     {
         $app = $this->app();
@@ -680,6 +726,31 @@ final class FolioAppTest extends TestCase
         $w('resources/folio/frontend/types/note.twig', '<section class="note-default"><h3>{{ record.name }}</h3></section>');
         $w('resources/folio/frontend/types/note_card.twig', '<aside class="note-card">{{ record.name }}</aside>');
         @mkdir($this->dir . '/storage/data', 0777, true);
+    }
+
+    /** @param array<string, mixed> $frontend */
+    private function writeArticleType(array $frontend): void
+    {
+        $path = $this->dir . '/config/models/article.json';
+        $def = is_file($path) ? json_decode((string) file_get_contents($path), true) : [
+            'key' => 'article', 'table' => 'article', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Articles',
+            'fields' => [
+                'title' => ['type' => 'string', 'validate' => ['required']],
+                'slug' => ['type' => 'string', 'validate' => ['required']],
+                'status' => ['type' => 'string'],
+            ],
+        ];
+        $def['frontend'] = $frontend;
+        file_put_contents($path, json_encode($def));
+    }
+
+    private function seedArticle(string $id, string $slug, string $status): void
+    {
+        $app = $this->app();
+        $typeDef = $app->container()->get(\Preflow\Data\TypeRegistry::class)->get('article');
+        $app->container()->get(\Preflow\Data\DataManager::class)->saveType(\Preflow\Data\DynamicRecord::fromArray($typeDef, [
+            'uuid' => $id, 'title' => ucfirst($slug) . ' article', 'slug' => $slug, 'status' => $status,
+        ]), validate: false);
     }
 
     /** A type exercising boolean, date and select fields. */

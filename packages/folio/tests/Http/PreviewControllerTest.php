@@ -11,6 +11,7 @@ use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\RecordRenderer;
+use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\StringFieldType;
@@ -95,7 +96,7 @@ final class PreviewControllerTest extends TestCase
             $fieldTypes,
             new RecordRenderer($fieldTypes, $engine),
             $engine,
-            'page',
+            new FrontendResolver($this->dm, 'page'),
         );
     }
 

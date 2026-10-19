@@ -10,6 +10,7 @@ use Preflow\Core\Container\Container;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Http\AdminController;
@@ -98,7 +99,7 @@ final class AdminControllerTest extends TestCase
             $this->fieldTypeRegistry(),
             '/folio',
             new RecordLabeler(),
-            'page',
+            new FrontendResolver($this->dm, 'page'),
         );
     }
 
@@ -122,7 +123,7 @@ final class AdminControllerTest extends TestCase
             $this->fieldTypeRegistry(),
             '/folio',
             new RecordLabeler(),
-            'page',
+            new FrontendResolver($this->dm, 'page'),
         );
     }
 

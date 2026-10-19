@@ -27,7 +27,12 @@ final class TypeCatalog
             $label = (isset($data['label']) && is_string($data['label']))
                 ? $data['label']
                 : ucfirst($key);
-            $listings[] = new TypeListing($key, $label);
+            $listings[] = new TypeListing(
+                $key,
+                $label,
+                isset($data['frontend']) && is_array($data['frontend']) ? $data['frontend'] : null,
+                isset($data['list']) && is_array($data['list']) ? $data['list'] : [],
+            );
         }
 
         return $listings;
@@ -35,11 +40,16 @@ final class TypeCatalog
 
     public function has(string $key): bool
     {
+        return $this->get($key) !== null;
+    }
+
+    public function get(string $key): ?TypeListing
+    {
         foreach ($this->all() as $listing) {
             if ($listing->key === $key) {
-                return true;
+                return $listing;
             }
         }
-        return false;
+        return null;
     }
 }

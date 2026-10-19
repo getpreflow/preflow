@@ -10,6 +10,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\RecordRenderer;
+use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\HandlesUpload;
@@ -32,13 +33,14 @@ final class PreviewController
         private readonly FieldTypeRegistry $fieldTypes,
         private readonly RecordRenderer $records,
         private readonly TemplateEngineInterface $engine,
-        private readonly string $frontendType,
+        private readonly FrontendResolver $frontend,
     ) {}
 
     public function preview(ServerRequestInterface $request): ResponseInterface
     {
         $type = (string) $request->getAttribute('type', '');
-        if (!$this->catalog->has($type) || $type !== $this->frontendType) {
+        $route = $this->frontend->routeFor($type);
+        if (!$this->catalog->has($type) || $route === null) {
             return new Response(404, [], 'Not found');
         }
 
@@ -46,9 +48,11 @@ final class PreviewController
         $id = (string) $request->getAttribute('id', '');
         $draft = $this->draftRecord($typeDef, $request, $id);
 
-        $html = $this->engine->render('@folio/frontend/page.twig', [
+        $html = $this->engine->render(FrontendController::template($this->engine, $route), [
             'record' => $draft->toArray(),
             'rendered' => $this->records->renderedMap($draft),
+            'type' => $type,
+            'preview' => true,
         ]);
 
         return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html);

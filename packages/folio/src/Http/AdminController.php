@@ -10,6 +10,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\RecordLabeler;
+use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldTypeRegistry;
@@ -32,7 +33,7 @@ final class AdminController
         private readonly FieldTypeRegistry $fieldTypes,
         private readonly string $prefix,
         private readonly RecordLabeler $labeler,
-        private readonly string $frontendType,
+        private readonly FrontendResolver $frontend,
     ) {}
 
     public function index(ServerRequestInterface $request): ResponseInterface
@@ -278,7 +279,7 @@ final class AdminController
             'editor_assets' => array_keys($editorAssets),
             'multipart' => $multipart,
             'layout' => $layout,
-            'previewable' => $type === $this->frontendType,
+            'previewable' => $this->frontend->routeFor($type) !== null,
             'preview_url' => $action . '/preview',
         ]);
 
