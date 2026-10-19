@@ -396,3 +396,14 @@ h1 { font-size: 1.25rem; font-weight: 650; letter-spacing: -.01em; margin: 0; }
     border: 0;
     background: #fff;
 }
+
+/* Content languages */
+.folio-languages { display: flex; gap: 0.25rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.folio-language { padding: 0.35rem 0.8rem; border-radius: 999px; border: 1px solid var(--folio-border, #d0d0d0); text-decoration: none; color: inherit; }
+.folio-language.is-active { background: var(--folio-accent, #10b981); border-color: transparent; color: #fff; }
+.folio-visibility { display: flex; gap: 1rem; align-items: center; border: 0; padding: 0; margin: 0 0 1rem; flex-wrap: wrap; }
+.folio-visibility legend { font-weight: 600; margin-right: 0.5rem; float: left; }
+.folio-shared, .folio-fallback-hint { font-size: 0.8rem; opacity: 0.7; margin: -0.5rem 0 0.75rem; }
+.folio-reference { font-size: 0.85rem; margin: -0.25rem 0 1rem; opacity: 0.85; }
+.folio-badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; border: 1px solid var(--folio-border, #d0d0d0); }
+.folio-badge.is-incomplete { border-color: #d97706; color: #d97706; }

@@ -4,10 +4,49 @@
 {% block actions %}{% if previewable|default(false) %}<button type="button" class="btn btn-secondary" data-folio-preview data-preview-url="{{ preview_url }}">Preview</button>{% endif %}{% endblock %}
 {% block content %}
     <div class="folio-form">
+        {% if multilingual|default(false) %}
+            <nav class="folio-languages" aria-label="Editing language">
+                {% for lang in languages %}
+                    <a class="folio-language{% if lang.active %} is-active{% endif %}" href="{{ lang.url }}"{% if lang.active %} aria-current="true"{% endif %}>{{ lang.name }}</a>
+                {% endfor %}
+            </nav>
+        {% endif %}
         {% set form = form_begin({action: action, csrf_token: csrf, attrs: multipart|default(false) ? {'enctype': 'multipart/form-data'} : {}}) %}
         {{ form.begin()|raw }}
+        {% if multilingual|default(false) %}
+            <input type="hidden" name="_locale" value="{{ locale }}">
+            <fieldset class="folio-visibility">
+                <legend>Visible in</legend>
+                <input type="hidden" name="_locales_submitted" value="1">
+                {% for lang in languages %}
+                    <label class="folio-visibility-option">
+                        {% if lang.code == default_locale %}
+                            <input type="hidden" name="_locales[]" value="{{ lang.code }}">
+                            <input type="checkbox" checked disabled> {{ lang.name }}
+                        {% else %}
+                            <input type="checkbox" name="_locales[]" value="{{ lang.code }}"{% if lang.code in available_in %} checked{% endif %}> {{ lang.name }}
+                        {% endif %}
+                    </label>
+                {% endfor %}
+            </fieldset>
+        {% endif %}
         {% for field in fields %}
-            {{ field.html|raw }}
+            <div class="folio-field-wrap">
+                {{ field.html|raw }}
+                {% if multilingual|default(false) %}
+                    {% if not field.translatable %}
+                        <p class="folio-shared">Shared across languages</p>
+                    {% elseif field.falls_back %}
+                        <p class="folio-fallback-hint">Falls back to {{ default_language }}</p>
+                    {% endif %}
+                    {% if field.translatable and field.reference %}
+                        <details class="folio-reference">
+                            <summary>{{ default_language }} text</summary>
+                            <p>{{ field.reference }}</p>
+                        </details>
+                    {% endif %}
+                {% endif %}
+            </div>
         {% endfor %}
         <div class="folio-form-actions">
             {{ form.submit('Save', {attrs: {class: 'btn btn-primary'}})|raw }}

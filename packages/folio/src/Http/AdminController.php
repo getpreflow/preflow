@@ -7,6 +7,7 @@ namespace Preflow\Folio\Http;
 use Nyholm\Psr7\Response;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\LocaleValue;
 use Preflow\Data\SortDirection;
 use Preflow\Data\TypeRegistry;
 use Preflow\Data\TypeDefinition;
@@ -82,19 +83,25 @@ final class AdminController
         $orderable = ($listConfig['orderable'] ?? false) === true;
         $columns = $this->listColumns($typeDef, $listConfig);
 
+        $multilingual = $typeDef->translatableFields() !== [];
         $rows = [];
         foreach ($this->listQuery($type, $typeDef, $listConfig)->get()->items() as $record) {
+            $localized = $record->localized($typeDef->locales->default);
             $cells = [];
             foreach ($columns as $name => $label) {
                 $fieldDef = $typeDef->fields[$name];
                 $html = $this->fieldTypes->get($fieldDef->type)->renderFrontend(
-                    $this->fieldTypes->get($fieldDef->type)->fromStorage($record->get($name)),
+                    $this->fieldTypes->get($fieldDef->type)->fromStorage($localized->get($name)),
                     $fieldDef->config,
                 );
                 // Plain text: list cells never render field HTML (e.g. rich text) raw.
                 $cells[$name] = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
             }
-            $rows[] = ['id' => $record->getId(), 'cells' => $cells];
+            $rows[] = [
+                'id' => $record->getId(),
+                'cells' => $cells,
+                'languages' => $multilingual ? $this->languageBadges($typeDef, $record) : [],
+            ];
         }
 
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
@@ -107,6 +114,7 @@ final class AdminController
             'columns' => $columns,
             'rows' => $rows,
             'orderable' => $orderable,
+            'multilingual' => $multilingual,
             'csrf' => $csrf,
         ]));
     }
@@ -144,7 +152,9 @@ final class AdminController
         $action = $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : '');
         $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
 
-        return $this->form($type, [], $action, 'New ' . $this->labelFor($type), [], $csrf, 200, $layout);
+        $locale = $this->requestLocale($request, $this->registry->get($type));
+
+        return $this->form($type, [], $action, 'New ' . $this->labelFor($type), [], $csrf, 200, $layout, $locale, $this->prefix . '/' . $type . '/new');
     }
 
     public function store(ServerRequestInterface $request): ResponseInterface
@@ -158,7 +168,8 @@ final class AdminController
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
         $drawer = $this->isDrawer($request);
 
-        $record = $this->drafts->build($typeDef, $request, [], $typeDef->locales->default);
+        $locale = $this->requestLocale($request, $typeDef);
+        $record = $this->drafts->build($typeDef, $request, [], $locale);
         $record->set($typeDef->idField, bin2hex(random_bytes(16)));
         if (($this->catalog->get($type)?->list['orderable'] ?? false) === true) {
             $record->set(self::ORDER, $this->maxOrder($type) + 10);
@@ -173,13 +184,14 @@ final class AdminController
 
             return $this->form(
                 $type,
-                (array) $request->getParsedBody(),
+                $record->toArray(),
                 $action,
                 'New ' . $this->labelFor($type),
                 $e->errors(),
                 $csrf,
                 422,
                 $layout,
+                $locale,
             );
         }
 
@@ -190,7 +202,7 @@ final class AdminController
             ]));
         }
 
-        return new Response(302, ['Location' => $this->prefix . '/' . $type]);
+        return new Response(302, ['Location' => $this->prefix . '/' . $type . $this->localeQuery($typeDef, $locale)]);
     }
 
     public function editForm(ServerRequestInterface $request): ResponseInterface
@@ -214,6 +226,8 @@ final class AdminController
             'Edit ' . $this->labelFor($type),
             [],
             $csrf,
+            locale: $this->requestLocale($request, $this->registry->get($type)),
+            editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit',
         );
     }
 
@@ -233,23 +247,26 @@ final class AdminController
         $typeDef = $this->registry->get($type);
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
 
-        $record = $this->drafts->build($typeDef, $request, $current->toArray(), $typeDef->locales->default);
+        $locale = $this->requestLocale($request, $typeDef);
+        $record = $this->drafts->build($typeDef, $request, $current->toArray(), $locale);
 
         try {
             $this->dm->saveType($record, true, $this->rulesFor($typeDef));
         } catch (ValidationException $e) {
             return $this->form(
                 $type,
-                (array) $request->getParsedBody(),
+                $record->toArray(),
                 $this->prefix . '/' . $type . '/' . $id,
                 'Edit ' . $this->labelFor($type),
                 $e->errors(),
                 $csrf,
                 422,
+                locale: $locale,
+                editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit',
             );
         }
 
-        return new Response(302, ['Location' => $this->prefix . '/' . $type]);
+        return new Response(302, ['Location' => $this->prefix . '/' . $type . $this->localeQuery($typeDef, $locale)]);
     }
 
     /**
@@ -317,9 +334,13 @@ final class AdminController
     }
 
     /** @param array<string, mixed> $values @param array<string, list<string>> $errors */
-    private function form(string $type, array $values, string $action, string $heading, array $errors, string $csrf = '', int $status = 200, string $layout = '@folio/admin/_layout.twig'): ResponseInterface
+    private function form(string $type, array $values, string $action, string $heading, array $errors, string $csrf = '', int $status = 200, string $layout = '@folio/admin/_layout.twig', ?string $locale = null, ?string $editUrl = null): ResponseInterface
     {
         $typeDef = $this->registry->get($type);
+        $locales = $typeDef->locales;
+        $locale = $locale !== null && $locales->has($locale) ? $locale : $locales->default;
+        $translatable = array_flip($typeDef->translatableFields());
+        $multilingual = $translatable !== [];
         $fields = [];
         $editorAssets = [];
         $multipart = false;
@@ -331,18 +352,60 @@ final class AdminController
             if ($fieldType instanceof HandlesUpload) {
                 $multipart = true;
             }
+
+            $isTranslatable = isset($translatable[$name]) && !$fieldType instanceof HandlesUpload;
+            $raw = $values[$name] ?? null;
+            $placeholder = null;
+            $reference = null;
+            $fallsBack = false;
+            if ($isTranslatable) {
+                $value = LocaleValue::pick($raw, $locales, $locale);
+                if ($locale !== $locales->default) {
+                    [$resolved] = LocaleValue::resolve($raw, $locales, $locale);
+                    $reference = self::plain(LocaleValue::pick($raw, $locales, $locales->default));
+                    $fallsBack = ($value === null || $value === '') && $resolved !== null;
+                    $placeholder = $fallsBack ? mb_substr(self::plain($resolved), 0, 120) : null;
+                }
+            } else {
+                $value = LocaleValue::default($raw, $locales);
+            }
+
+            $fieldErrors = $errors[$name] ?? [];
+            if ($locale !== $locales->default) {
+                $fieldErrors = [...($errors[$name . '.' . $locale] ?? []), ...$fieldErrors];
+            }
+
             $ctx = new FieldContext(
                 name: $name,
                 label: $fieldDef->label,
                 help: $fieldDef->help,
-                value: $fieldType->fromStorage($values[$name] ?? null),
-                errors: $errors[$name] ?? [],
+                value: $fieldType->fromStorage($value),
+                errors: $fieldErrors,
                 config: $fieldDef->config,
-                required: in_array('required', $fieldDef->validate, true),
+                required: in_array('required', $fieldDef->validate, true) && (!$isTranslatable || $locale === $locales->default),
+                placeholder: $placeholder,
             );
-            $fields[] = ['name' => $name, 'html' => $fieldType->renderEditor($ctx)];
+            $fields[] = [
+                'name' => $name,
+                'html' => $fieldType->renderEditor($ctx),
+                'translatable' => $isTranslatable,
+                'falls_back' => $fallsBack,
+                'reference' => $reference,
+            ];
             foreach ($fieldType->assets() as $asset) {
                 $editorAssets[$asset] = true;
+            }
+        }
+
+        $languages = [];
+        if ($multilingual) {
+            foreach ($locales->available as $code) {
+                $languages[] = [
+                    'code' => $code,
+                    'name' => self::languageName($code),
+                    'url' => ($editUrl ?? $action) . '?locale=' . rawurlencode($code),
+                    'active' => $code === $locale,
+                ];
             }
         }
 
@@ -360,9 +423,72 @@ final class AdminController
             'layout' => $layout,
             'previewable' => $this->frontend->routeFor($type) !== null,
             'preview_url' => $action . '/preview',
+            'multilingual' => $multilingual,
+            'languages' => $languages,
+            'locale' => $locale,
+            'default_locale' => $locales->default,
+            'default_language' => self::languageName($locales->default),
+            'available_in' => DynamicRecord::fromArray($typeDef, $values)->availableLocales(),
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
+    }
+
+    /**
+     * One badge per locale the record is visible in; "de · 2 missing" when
+     * fields that are required in the default locale are empty in that locale.
+     *
+     * @return list<string>
+     */
+    private function languageBadges(TypeDefinition $typeDef, DynamicRecord $record): array
+    {
+        $locales = $typeDef->locales;
+        $required = array_values(array_filter(
+            $typeDef->translatableFields(),
+            static fn (string $f) => in_array('required', $typeDef->fields[$f]->validate, true),
+        ));
+
+        $badges = [];
+        foreach ($record->availableLocales() as $locale) {
+            $missing = 0;
+            if ($locale !== $locales->default) {
+                foreach ($required as $field) {
+                    $value = LocaleValue::pick($record->get($field), $locales, $locale);
+                    $missing += ($value === null || $value === '') ? 1 : 0;
+                }
+            }
+            $badges[] = $missing > 0 ? "{$locale} · {$missing} missing" : $locale;
+        }
+
+        return $badges;
+    }
+
+    /** The editing locale: ?locale= (GET) or _locale (POST), if configured; else the default. */
+    private function requestLocale(ServerRequestInterface $request, TypeDefinition $typeDef): string
+    {
+        $requested = $request->getQueryParams()['locale'] ?? ((array) $request->getParsedBody())['_locale'] ?? null;
+
+        return is_string($requested) && $typeDef->locales->has($requested) ? $requested : $typeDef->locales->default;
+    }
+
+    private function localeQuery(TypeDefinition $typeDef, string $locale): string
+    {
+        return $typeDef->translatableFields() !== [] ? '?locale=' . rawurlencode($locale) : '';
+    }
+
+    private static function languageName(string $code): string
+    {
+        return ['en' => 'English', 'de' => 'German', 'fr' => 'French', 'it' => 'Italian'][$code] ?? strtoupper($code);
+    }
+
+    /** Plain text for placeholders and references (field values may hold rich text). */
+    private static function plain(mixed $value): string
+    {
+        if (!is_scalar($value)) {
+            return '';
+        }
+
+        return trim(html_entity_decode(strip_tags((string) $value), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
     }
 
     /**

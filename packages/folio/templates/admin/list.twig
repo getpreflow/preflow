@@ -12,13 +12,14 @@
         </div>
     {% else %}
         <table class="folio-table">
-            <thead><tr>{% for name, heading in columns %}<th>{{ heading }}</th>{% endfor %}<th></th></tr></thead>
+            <thead><tr>{% for name, heading in columns %}<th>{{ heading }}</th>{% endfor %}{% if multilingual|default(false) %}<th>Languages</th>{% endif %}<th></th></tr></thead>
             <tbody>
             {% for row in rows %}
                 {% set first = loop.first %}
                 {% set last = loop.last %}
                 <tr>
                     {% for name, heading in columns %}<td>{{ row.cells[name] }}</td>{% endfor %}
+                    {% if multilingual|default(false) %}<td>{% for badge in row.languages %}<span class="folio-badge{% if 'missing' in badge %} is-incomplete{% endif %}">{{ badge }}</span> {% endfor %}</td>{% endif %}
                     <td>
                         <div class="folio-row-actions">
                             {% if orderable %}

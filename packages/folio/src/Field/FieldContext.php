@@ -21,5 +21,6 @@ final readonly class FieldContext
         public array $errors = [],
         public array $config = [],
         public bool $required = false,
+        public ?string $placeholder = null,
     ) {}
 }

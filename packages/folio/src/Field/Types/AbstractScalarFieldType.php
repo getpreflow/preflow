@@ -31,7 +31,7 @@ abstract class AbstractScalarFieldType implements FieldType
             'help' => $ctx->help ?? '',
             'required' => $ctx->required,
             'errors' => $ctx->errors,
-            'attrs' => $this->editorAttrs($ctx),
+            'attrs' => $this->editorAttrs($ctx) + ($ctx->placeholder !== null ? ['placeholder' => $ctx->placeholder] : []),
         ];
         // Only set label when provided; FieldRenderer humanizes the name otherwise.
         if ($ctx->label !== null) {

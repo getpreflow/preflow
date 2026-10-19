@@ -714,6 +714,99 @@ final class FolioAppTest extends TestCase
         $this->assertListOrder(['A item', 'B item']);
     }
 
+    public function test_edit_form_shows_language_tabs_and_visibility(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published']);
+
+        $body = (string) $this->get('/folio/page/' . $id . '/edit?locale=de')->getBody();
+
+        $this->assertStringContainsString('href="/folio/page/' . $id . '/edit?locale=en"', $body);
+        $this->assertMatchesRegularExpression('#<a[^>]*class="[^"]*is-active[^"]*"[^>]*href="/folio/page/' . $id . '/edit\?locale=de"|href="/folio/page/' . $id . '/edit\?locale=de"[^>]*class="[^"]*is-active#', $body);
+        $this->assertStringContainsString('name="_locales[]"', $body);
+        $this->assertStringContainsString('name="_locales_submitted" value="1"', $body);
+        $this->assertStringContainsString('name="_locale" value="de"', $body);
+    }
+
+    public function test_empty_translation_shows_fallback_placeholder(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published']);
+
+        $body = (string) $this->get('/folio/page/' . $id . '/edit?locale=de')->getBody();
+
+        $this->assertStringContainsString('placeholder="About"', $body);
+        $this->assertStringContainsString('Falls back to English', $body);
+        $this->assertStringContainsString('folio-reference', $body);
+    }
+
+    public function test_shared_field_is_marked(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published']);
+
+        $this->assertStringContainsString('Shared across languages', (string) $this->get('/folio/page/' . $id . '/edit?locale=de')->getBody());
+    }
+
+    public function test_save_in_de_redirects_back_to_de_and_keeps_en(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published']);
+
+        $res = $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'de', 'title' => 'Über', 'slug' => 'ueber', 'body' => 'b', 'status' => 'published']);
+
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertStringContainsString('locale=de', $res->getHeaderLine('Location'));
+        $stored = $this->dm()->findType('page', $id);
+        $this->assertSame(['en' => 'About', 'de' => 'Über'], $stored->get('title'));
+    }
+
+    public function test_validation_error_rerender_stays_in_locale(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published']);
+
+        $res = $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'de', 'title' => 'Über', 'slug' => 'Nicht Gültig', 'body' => 'b', 'status' => 'published']);
+
+        $this->assertSame(422, $res->getStatusCode());
+        $body = (string) $res->getBody();
+        $this->assertStringContainsString('name="_locale" value="de"', $body);
+        $this->assertStringContainsString('value="Nicht Gültig"', $body);
+        $this->assertSame(['en' => 'about'], (array) $this->dm()->findType('page', $id)->get('slug'));
+    }
+
+    public function test_unknown_locale_param_uses_default(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published']);
+
+        $this->assertStringContainsString('name="_locale" value="en"', (string) $this->get('/folio/page/' . $id . '/edit?locale=xx')->getBody());
+
+        $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'xx', 'title' => 'New', 'slug' => 'about', 'body' => 'b', 'status' => 'published']);
+        $this->assertSame(['en' => 'New'], $this->dm()->findType('page', $id)->get('title'));
+    }
+
+    public function test_list_shows_missing_translation_badge(): void
+    {
+        $this->enableGerman();
+        $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published', '_locales_submitted' => '1', '_locales' => ['de']]);
+
+        $body = (string) $this->get('/folio/page')->getBody();
+
+        $this->assertStringContainsString('<th>Languages</th>', $body);
+        $this->assertStringContainsString('de · 2 missing', $body); // title and slug are required, both empty in de
+    }
+
+    public function test_single_locale_form_has_no_language_ui(): void
+    {
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published']);
+
+        $body = (string) $this->get('/folio/page/' . $id . '/edit')->getBody();
+
+        $this->assertStringNotContainsString('_locales_submitted', $body);
+        $this->assertStringNotContainsString('Shared across languages', $body);
+    }
+
     public function test_edit_form_no_preview_button_for_non_frontend_type(): void
     {
         $app = $this->app();
@@ -841,6 +934,39 @@ final class FolioAppTest extends TestCase
         $app->container()->get(\Preflow\Data\DataManager::class)->saveType(\Preflow\Data\DynamicRecord::fromArray($typeDef, [
             'uuid' => $id, 'title' => ucfirst($slug) . ' article', 'slug' => $slug, 'status' => $status,
         ]), validate: false);
+    }
+
+    /** English + German content; page title/slug/body translatable, slug lower-case only. */
+    private function enableGerman(): void
+    {
+        file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'prefix'];\n");
+        $page = json_decode((string) file_get_contents($this->dir . '/config/models/page.json'), true);
+        $page['fields']['title']['translatable'] = true;
+        $page['fields']['slug']['translatable'] = true;
+        $page['fields']['slug']['validate'] = ['required', 'regex:/^[a-z0-9-]+$/'];
+        $page['fields']['body']['translatable'] = true;
+        file_put_contents($this->dir . '/config/models/page.json', json_encode($page));
+    }
+
+    /** @param array<string, mixed> $body */
+    private function createPage(array $body): string
+    {
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page')->withParsedBody($body));
+        $this->assertSame(302, $res->getStatusCode(), (string) $res->getBody());
+
+        return (string) $this->dm()->queryType('page')->where('title', $body['title'])->first()->getId();
+    }
+
+    /** @param array<string, mixed> $body */
+    private function postPage(string $uri, string $id, array $body): ResponseInterface
+    {
+        return $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', $uri)
+            ->withAttribute('type', 'page')->withAttribute('id', $id)->withParsedBody($body));
+    }
+
+    private function dm(): \Preflow\Data\DataManager
+    {
+        return $this->app()->container()->get(\Preflow\Data\DataManager::class);
     }
 
     /** @param array<string, mixed> $list */
