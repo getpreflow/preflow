@@ -98,7 +98,7 @@ $assets->renderJsInline();
 $assets->getNonce(); // base64 random, stable within one request
 ```
 
-Every `<style>` and `<script>` tag rendered by `AssetCollector` carries the same `nonce` attribute. Use `$assets->getNonce()` to add `'nonce-{value}'` to your `Content-Security-Policy` header.
+Every `<style>` and `<script>` tag rendered by `AssetCollector` carries the same `nonce` attribute. Preflow sends a matching `Content-Security-Policy` header itself (strict by default; override per directive in `config/security.php`, sent as report-only in debug mode). For a `<script>` or `<style>` you write by hand, add `nonce="{{ csp_nonce() }}"`; without it the browser blocks the tag.
 
 Identical blocks (same xxh3 hash) are deduplicated automatically — safe to include the same component multiple times.
 

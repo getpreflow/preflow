@@ -137,6 +137,7 @@ final class Application
         // Auto-discover installed packages and wire them up
         $this->bootDataLayer($collector);
         $this->bootViewLayer($debug);
+        $this->bootSecurityHeaders($debug);
         $this->bootValidation();
         $this->bootHelpers();
         $this->bootComponentLayer($debug, $secretKey, $collector);
@@ -363,6 +364,35 @@ final class Application
         }
 
         $this->container->instance(\Preflow\View\TemplateEngineInterface::class, $engine);
+
+        // Nonce for hand-written <script>/<style> tags: nonce="{{ csp_nonce() }}"
+        $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+            name: 'csp_nonce',
+            callable: fn () => $assets->getNonce(),
+            isSafe: true,
+        ));
+    }
+
+    /**
+     * Security headers + CSP. Piped right after the view layer (it needs the
+     * request nonce) and before session/CSRF/auth middleware, so it wraps them.
+     * Debug mode sends the policy as report-only so dev tooling keeps working.
+     */
+    private function bootSecurityHeaders(DebugLevel $debug): void
+    {
+        $config = [];
+        $path = $this->basePath('config/security.php');
+        if (file_exists($path)) {
+            $config = (array) require $path;
+        }
+
+        $container = $this->container;
+        $nonce = static fn (): ?string => $container->has(\Preflow\View\AssetCollector::class)
+            && class_exists(\Preflow\View\AssetCollector::class)
+                ? $container->get(\Preflow\View\AssetCollector::class)->getNonce()
+                : null;
+
+        $this->addMiddleware(new \Preflow\Core\Http\SecurityHeadersMiddleware($nonce, $config, $debug->isDebug()));
     }
 
     private function createTemplateEngine(
