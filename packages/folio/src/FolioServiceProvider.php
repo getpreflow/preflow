@@ -10,6 +10,7 @@ use Preflow\Core\Container\ServiceProvider;
 use Preflow\Core\Routing\RouterInterface;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Http\AdminAuthMiddleware;
@@ -102,6 +103,7 @@ final class FolioServiceProvider extends ServiceProvider
             return $registry;
         });
 
+        $container->bind(DraftRecordFactory::class, fn (Container $c) => new DraftRecordFactory($c->get(FieldTypeRegistry::class)));
         $container->bind(AdminController::class, fn (Container $c) => new AdminController(
             $c->get(TypeCatalog::class),
             $c->get(TypeRegistry::class),
@@ -112,6 +114,7 @@ final class FolioServiceProvider extends ServiceProvider
             $prefix,
             new RecordLabeler(),
             $c->get(FrontendResolver::class),
+            $c->get(DraftRecordFactory::class),
         ));
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),
@@ -126,6 +129,7 @@ final class FolioServiceProvider extends ServiceProvider
             new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(TemplateEngineInterface::class)),
             $c->get(TemplateEngineInterface::class),
             $c->get(FrontendResolver::class),
+            $c->get(DraftRecordFactory::class),
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
             dirname(__DIR__) . '/assets',

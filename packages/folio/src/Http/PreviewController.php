@@ -10,10 +10,10 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\RecordRenderer;
+use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
-use Preflow\Folio\Field\HandlesUpload;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -26,6 +26,8 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final class PreviewController
 {
+    private readonly DraftRecordFactory $drafts;
+
     public function __construct(
         private readonly TypeCatalog $catalog,
         private readonly TypeRegistry $registry,
@@ -34,7 +36,10 @@ final class PreviewController
         private readonly RecordRenderer $records,
         private readonly TemplateEngineInterface $engine,
         private readonly FrontendResolver $frontend,
-    ) {}
+        ?DraftRecordFactory $drafts = null,
+    ) {
+        $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
+    }
 
     public function preview(ServerRequestInterface $request): ResponseInterface
     {
@@ -46,7 +51,8 @@ final class PreviewController
 
         $typeDef = $this->registry->get($type);
         $id = (string) $request->getAttribute('id', '');
-        $draft = $this->draftRecord($typeDef, $request, $id);
+        $existing = $id !== '' ? ($this->dm->findType($typeDef->key, $id)?->toArray() ?? []) : [];
+        $draft = $this->drafts->build($typeDef, $request, $existing + [$typeDef->idField => $id], $typeDef->locales->default, writeUploads: false);
 
         $html = $this->engine->render(FrontendController::template($this->engine, $route), [
             'record' => $draft->toArray(),
@@ -58,54 +64,4 @@ final class PreviewController
         return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
     }
 
-    /**
-     * Build an in-memory record from the submitted form values WITHOUT saving.
-     * Upload fields reuse storeUploads with an EMPTY uploaded list: that writes
-     * no files (verified in AssetFieldType::storeUploads — the loop is skipped)
-     * yet returns the field's correct domain shape for kept-minus-removed paths.
-     */
-    private function draftRecord(TypeDefinition $typeDef, ServerRequestInterface $request, string $id): DynamicRecord
-    {
-        $submitted = (array) $request->getParsedBody();
-        $existing = $id !== '' ? ($this->dm->findType($typeDef->key, $id)?->toArray() ?? []) : [];
-        $data = [];
-
-        foreach ($typeDef->fields as $name => $fieldDef) {
-            if ($name === $typeDef->idField) {
-                continue;
-            }
-            $fieldType = $this->fieldTypes->get($fieldDef->type);
-
-            if ($fieldType instanceof HandlesUpload) {
-                $removed = array_values(array_filter(
-                    (array) ($submitted[$name . '_remove'] ?? []),
-                    static fn ($v) => is_string($v),
-                ));
-                $existingList = $this->pathList($fieldType->fromStorage($existing[$name] ?? null));
-                $kept = array_values(array_diff($existingList, $removed));
-                $data[$name] = $fieldType->toStorage($fieldType->storeUploads([], $kept, $fieldDef->config));
-                continue;
-            }
-
-            $data[$name] = $fieldType->toStorage(
-                $fieldType->normalizeInput($submitted[$name] ?? null, $fieldDef->config),
-            );
-        }
-
-        $data[$typeDef->idField] = $id;
-
-        return DynamicRecord::fromArray($typeDef, $data);
-    }
-
-    /** @return string[] */
-    private function pathList(mixed $value): array
-    {
-        if (is_array($value)) {
-            return array_values(array_filter($value, static fn ($v) => is_string($v) && $v !== ''));
-        }
-        if (is_string($value) && $value !== '') {
-            return [$value];
-        }
-        return [];
-    }
 }
