@@ -132,7 +132,7 @@ final class AdminController
         $data[$typeDef->idField] = bin2hex(random_bytes(16));
 
         try {
-            $this->dm->saveType(DynamicRecord::fromArray($typeDef, $data));
+            $this->dm->saveType(DynamicRecord::fromArray($typeDef, $data), true, $this->rulesFor($typeDef));
         } catch (ValidationException $e) {
             $action = $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : '');
             $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
@@ -203,7 +203,7 @@ final class AdminController
         $data[$typeDef->idField] = $id;
 
         try {
-            $this->dm->saveType(DynamicRecord::fromArray($typeDef, $data));
+            $this->dm->saveType(DynamicRecord::fromArray($typeDef, $data), true, $this->rulesFor($typeDef));
         } catch (ValidationException $e) {
             return $this->form(
                 $type,
@@ -323,6 +323,29 @@ final class AdminController
         }
 
         return $data;
+    }
+
+    /**
+     * Per-field rules: the JSON "validate" list plus the field type's own rules
+     * (e.g. select's in:…, date's format). Keyed by field, because saveType()
+     * merges extra rules per field.
+     *
+     * @return array<string, list<string>>
+     */
+    private function rulesFor(TypeDefinition $typeDef): array
+    {
+        $rules = [];
+        foreach ($typeDef->fields as $name => $fieldDef) {
+            $merged = array_values(array_unique([
+                ...$fieldDef->validate,
+                ...$this->fieldTypes->get($fieldDef->type)->rules($fieldDef->config),
+            ]));
+            if ($merged !== []) {
+                $rules[$name] = $merged;
+            }
+        }
+
+        return $rules;
     }
 
     /** @return \Psr\Http\Message\UploadedFileInterface[] */

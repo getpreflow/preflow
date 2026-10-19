@@ -21,7 +21,10 @@ use Preflow\Folio\Http\PreviewController;
 use Preflow\Folio\Http\UploadController;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\AssetFieldType;
+use Preflow\Folio\Field\Types\BooleanFieldType;
+use Preflow\Folio\Field\Types\DateFieldType;
 use Preflow\Folio\Field\Types\NumberFieldType;
+use Preflow\Folio\Field\Types\SelectFieldType;
 use Preflow\Folio\Field\Types\RichTextFieldType;
 use Preflow\Folio\Field\Types\StringFieldType;
 use Preflow\Folio\Field\Types\MatrixFieldType;
@@ -56,11 +59,15 @@ final class FolioServiceProvider extends ServiceProvider
 
         $uploadsDir = $this->uploadsDir($app);
         $uploadUrlPrefix = rtrim($this->prefix($app), '/') . '/_uploads';
-        $container->bind(FieldTypeRegistry::class, function (Container $c) use ($uploadsDir, $uploadUrlPrefix, $prefix): FieldTypeRegistry {
+        $folioConfig = $this->folioConfig($app);
+        $container->bind(FieldTypeRegistry::class, function (Container $c) use ($uploadsDir, $uploadUrlPrefix, $prefix, $folioConfig): FieldTypeRegistry {
             $registry = new FieldTypeRegistry();
             $registry->register(new StringFieldType());
             $registry->register(new TextFieldType());
             $registry->register(new NumberFieldType());
+            $registry->register(new BooleanFieldType());
+            $registry->register(new DateFieldType());
+            $registry->register(new SelectFieldType());
             $registry->register(new RichTextFieldType(new HtmlSanitizer(
                 (new HtmlSanitizerConfig())
                     ->allowSafeElements()
@@ -83,6 +90,13 @@ final class FolioServiceProvider extends ServiceProvider
             $registry->alias('int', 'number');
             $registry->alias('integer', 'number');
             $registry->alias('float', 'number');
+
+            // App-registered field types (config/folio.php 'field_types'); registered
+            // last, so one with a built-in's key replaces it.
+            foreach ((array) ($folioConfig['field_types'] ?? []) as $class) {
+                $registry->register($c->get($class));
+            }
+
             return $registry;
         });
 

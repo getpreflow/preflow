@@ -252,6 +252,7 @@ h1 { font-size: 1.25rem; font-weight: 650; letter-spacing: -.01em; margin: 0; }
   box-shadow: 0 0 0 3px var(--c-focus-ring);
 }
 .form-group textarea { min-height: 140px; resize: vertical; }
+.form-group textarea.folio-input-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.875rem; tab-size: 4; }
 .form-help { display: block; margin-top: 5px; color: var(--c-text-muted); font-size: .82rem; }
 .form-error { margin-top: 5px; color: var(--c-danger); font-size: .82rem; }
 .has-error input,

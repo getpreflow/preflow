@@ -11,6 +11,6 @@
         "author": { "type": "relation", "label": "Author", "help": "Pick an author record.", "relation": { "to": "author", "multiple": false } },
         "blocks": { "type": "matrix", "label": "Content blocks", "help": "Compose this page from Note records, in order.", "matrix": { "allowed": ["note"] } },
         "body": { "type": "richtext", "label": "Body content", "help": "Rich text — formatting is preserved and sanitized on save." },
-        "status": { "type": "string" }
+        "status": { "type": "select", "options": { "draft": "Draft", "published": "Published" }, "validate": ["required"] }
     }
 }

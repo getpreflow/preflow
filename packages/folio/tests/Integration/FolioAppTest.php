@@ -142,6 +142,72 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('<meta name="csp-nonce" content="' . $m[1] . '">', $body);
     }
 
+    public function test_unchecked_boolean_saves_false_on_update(): void
+    {
+        $this->writeEventType();
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $app->handle($f->createServerRequest('POST', '/folio/event')
+            ->withParsedBody(['title' => 'E', 'featured' => '1', 'state' => 'a']));
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $id = $dm->queryType('event')->where('title', 'E')->first()->getId();
+        $this->assertTrue((bool) $dm->findType('event', $id)->get('featured'));
+
+        // unchecked box: only the hidden "0" is submitted
+        $app->handle($f->createServerRequest('POST', '/folio/event/' . $id)
+            ->withAttribute('type', 'event')->withAttribute('id', $id)
+            ->withParsedBody(['title' => 'E', 'featured' => '0', 'state' => 'a']));
+        $this->assertFalse($dm->findType('event', $id)->get('featured'));
+
+        // field absent from the body altogether
+        $app->handle($f->createServerRequest('POST', '/folio/event/' . $id)
+            ->withAttribute('type', 'event')->withAttribute('id', $id)
+            ->withParsedBody(['title' => 'E', 'featured' => '1', 'state' => 'a']));
+        $app->handle($f->createServerRequest('POST', '/folio/event/' . $id)
+            ->withAttribute('type', 'event')->withAttribute('id', $id)
+            ->withParsedBody(['title' => 'E', 'state' => 'a']));
+        $this->assertFalse($dm->findType('event', $id)->get('featured'));
+    }
+
+    public function test_select_renders_stale_value_and_rejects_it_on_save(): void
+    {
+        $this->writeEventType();
+        $app = $this->app();
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $typeDef = $app->container()->get(\Preflow\Data\TypeRegistry::class)->get('event');
+        $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($typeDef, ['uuid' => 'ev1', 'title' => 'Old', 'state' => 'archived']), validate: false);
+
+        $form = (string) $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
+            ->createServerRequest('GET', '/folio/event/ev1/edit')
+            ->withAttribute('type', 'event')->withAttribute('id', 'ev1'))->getBody();
+        $this->assertStringContainsString('<option value="archived" selected>archived (no longer an option)</option>', $form);
+
+        $res = $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/event/ev1')
+            ->withAttribute('type', 'event')->withAttribute('id', 'ev1')
+            ->withParsedBody(['title' => 'Old', 'state' => 'archived']));
+        $this->assertSame(422, $res->getStatusCode());
+    }
+
+    public function test_type_rules_are_enforced_on_save(): void
+    {
+        $this->writeEventType(); // state has no "validate" in the JSON; select adds in:a,b itself
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/event')
+            ->withParsedBody(['title' => 'E', 'state' => 'zzz']));
+
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('Must be one of', (string) $res->getBody());
+    }
+
+    public function test_app_field_type_replaces_builtin(): void
+    {
+        file_put_contents(
+            $this->dir . '/config/folio.php',
+            "<?php\nreturn ['path' => '/folio', 'field_types' => [\\Preflow\\Folio\\Tests\\Fixtures\\Field\\TestStringType::class]];\n",
+        );
+
+        $this->assertStringContainsString('data-test-string', (string) $this->get('/folio/page/new')->getBody());
+    }
+
     public function test_admin_shell_renders_sidebar_stylesheet_and_toggle(): void
     {
         $body = (string) $this->get('/folio')->getBody();
@@ -614,6 +680,20 @@ final class FolioAppTest extends TestCase
         $w('resources/folio/frontend/types/note.twig', '<section class="note-default"><h3>{{ record.name }}</h3></section>');
         $w('resources/folio/frontend/types/note_card.twig', '<aside class="note-card">{{ record.name }}</aside>');
         @mkdir($this->dir . '/storage/data', 0777, true);
+    }
+
+    /** A type exercising boolean, date and select fields. */
+    private function writeEventType(): void
+    {
+        file_put_contents($this->dir . '/config/models/event.json', json_encode([
+            'key' => 'event', 'table' => 'event', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Events',
+            'fields' => [
+                'title' => ['type' => 'string', 'validate' => ['required']],
+                'featured' => ['type' => 'boolean'],
+                'happens' => ['type' => 'date'],
+                'state' => ['type' => 'select', 'options' => ['a' => 'A', 'b' => 'B']],
+            ],
+        ]));
     }
 
     private function rrmdir(string $dir): void

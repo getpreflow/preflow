@@ -15,7 +15,7 @@ use Preflow\Form\FieldRenderer;
 abstract class AbstractScalarFieldType implements FieldType
 {
     public function __construct(
-        private readonly FieldRenderer $renderer = new FieldRenderer(),
+        protected readonly FieldRenderer $renderer = new FieldRenderer(),
     ) {}
 
     abstract public function key(): string;
@@ -31,6 +31,7 @@ abstract class AbstractScalarFieldType implements FieldType
             'help' => $ctx->help ?? '',
             'required' => $ctx->required,
             'errors' => $ctx->errors,
+            'attrs' => $this->editorAttrs($ctx),
         ];
         // Only set label when provided; FieldRenderer humanizes the name otherwise.
         if ($ctx->label !== null) {
@@ -38,6 +39,16 @@ abstract class AbstractScalarFieldType implements FieldType
         }
 
         return $this->renderer->renderField($ctx->name, $options);
+    }
+
+    /**
+     * Extra attributes for the input element (e.g. a class). Override in subclasses.
+     *
+     * @return array<string, mixed>
+     */
+    protected function editorAttrs(FieldContext $ctx): array
+    {
+        return [];
     }
 
     public function normalizeInput(mixed $raw, array $config): mixed
