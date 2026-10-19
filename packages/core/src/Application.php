@@ -143,6 +143,7 @@ final class Application
         $this->bootForm();
         $this->bootRouting();
         $this->bootI18n();
+        $this->bootNotify();
         $this->bootSession();
         $this->bootCsrf();
         $this->bootAuth();
@@ -591,6 +592,30 @@ final class Application
                 $translator, $available, $locale, $strategy
             ));
         }
+    }
+
+    private function bootNotify(): void
+    {
+        if (!class_exists(\Preflow\Notify\Notifier::class)) {
+            return;
+        }
+
+        $notifyPath = $this->basePath('config/notify.php');
+        if (!file_exists($notifyPath)) {
+            return;
+        }
+
+        $notifyConfig = require $notifyPath;
+        $factory = new \Preflow\Notify\TransportFactory(
+            (array) ($notifyConfig['transports'] ?? []),
+            $this->basePath(),
+        );
+
+        $this->container->instance(\Preflow\Notify\TransportFactory::class, $factory);
+        $this->container->instance(
+            \Preflow\Notify\Notifier::class,
+            new \Preflow\Notify\Notifier($factory, (array) ($notifyConfig['channels'] ?? [])),
+        );
     }
 
     private function bootProviders(): void
