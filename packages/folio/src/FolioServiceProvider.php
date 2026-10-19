@@ -24,6 +24,7 @@ use Preflow\Folio\Http\PreviewController;
 use Preflow\Folio\Http\UploadController;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\AssetFieldType;
+use Preflow\Folio\Field\Types\BlocksFieldType;
 use Preflow\Folio\Field\Types\BooleanFieldType;
 use Preflow\Folio\Field\Types\DateFieldType;
 use Preflow\Folio\Field\Types\NumberFieldType;
@@ -69,7 +70,7 @@ final class FolioServiceProvider extends ServiceProvider
             return BlockRegistry::discover(
                 $components,
                 $app->basePath('app/Blocks'),
-                array_values((array) ($folioCfg['blocks'] ?? [])),
+                array_values((array) ($folioCfg['blocks']['classes'] ?? [])),
                 $app->basePath('storage/cache/folio-blocks.cache'),
                 useCache: !$app->config()->get('app.debug', false),
             );
@@ -95,6 +96,12 @@ final class FolioServiceProvider extends ServiceProvider
             $registry->register(new BooleanFieldType());
             $registry->register(new DateFieldType());
             $registry->register(new SelectFieldType());
+            $registry->register(new BlocksFieldType(
+                $c->get(BlockRegistry::class),
+                $registry,
+                (int) ($folioConfig['blocks']['max_depth'] ?? 4),
+                self::validatorFactory($c),
+            ));
             $registry->register(new RichTextFieldType(new HtmlSanitizer(
                 (new HtmlSanitizerConfig())
                     ->allowSafeElements()
@@ -287,6 +294,15 @@ final class FolioServiceProvider extends ServiceProvider
     {
         try {
             return $container->get(\Preflow\Data\Locales::class);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private static function validatorFactory(Container $c): ?\Preflow\Validation\ValidatorFactory
+    {
+        try {
+            return $c->get(\Preflow\Validation\ValidatorFactory::class);
         } catch (\Throwable) {
             return null;
         }

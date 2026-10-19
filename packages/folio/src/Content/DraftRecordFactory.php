@@ -7,7 +7,9 @@ namespace Preflow\Folio\Content;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\LocaleValue;
 use Preflow\Data\TypeDefinition;
+use Preflow\Folio\Field\BuildContext;
 use Preflow\Folio\Field\FieldTypeRegistry;
+use Preflow\Folio\Field\StructuredFieldType;
 use Preflow\Folio\Field\HandlesUpload;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\UploadedFileInterface;
@@ -49,6 +51,16 @@ final class DraftRecordFactory
                 continue;
             }
             $fieldType = $this->fieldTypes->get($fieldDef->type);
+
+            if ($fieldType instanceof StructuredFieldType) {
+                $data[$name] = $fieldType->buildValue(
+                    $submitted[$name] ?? [],
+                    $existing[$name] ?? null,
+                    is_array($uploads[$name] ?? null) ? $uploads[$name] : [],
+                    new BuildContext($locales, $locale, $writeUploads),
+                );
+                continue;
+            }
 
             if ($fieldType instanceof HandlesUpload) {
                 $files = $writeUploads ? self::uploadedFiles($uploads[$name] ?? null) : [];
