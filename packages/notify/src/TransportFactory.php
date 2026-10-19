@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Notify;
 
+use Preflow\Notify\Bridge\SymfonyMailer\SymfonyMailerTransport;
+use Preflow\Notify\Bridge\SymfonyNotifier\SymfonyNotifierSmsTransport;
 use Preflow\Notify\Transport\FailoverTransport;
 use Preflow\Notify\Transport\InMemoryTransport;
 use Preflow\Notify\Transport\LogTransport;
@@ -52,6 +54,19 @@ final class TransportFactory
 
             return new FailoverTransport($pairs, $name);
         });
+
+        if (class_exists(\Symfony\Component\Mailer\Transport::class)) {
+            $this->extend('symfony-mailer', fn (array $config, string $name) => new SymfonyMailerTransport(
+                (string) ($config['dsn'] ?? ''),
+                $name,
+            ));
+        }
+        if (class_exists(\Symfony\Component\Notifier\Transport::class)) {
+            $this->extend('symfony-notifier-sms', fn (array $config, string $name) => new SymfonyNotifierSmsTransport(
+                (string) ($config['dsn'] ?? ''),
+                $name,
+            ));
+        }
     }
 
     /**
