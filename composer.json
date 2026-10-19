@@ -24,11 +24,14 @@
         "preflow/form": "@dev",
         "preflow/htmx": "@dev",
         "preflow/i18n": "@dev",
+        "preflow/notify": "@dev",
         "preflow/routing": "@dev",
         "preflow/testing": "@dev",
         "preflow/twig": "@dev",
         "preflow/validation": "@dev",
-        "preflow/view": "@dev"
+        "preflow/view": "@dev",
+        "symfony/mailer": "^7.3 || ^8.0",
+        "symfony/notifier": "^7.3 || ^8.0"
     },
     "repositories": [
         {
@@ -105,6 +108,11 @@
             "type": "path",
             "url": "packages/validation",
             "options": { "symlink": true }
+        },
+        {
+            "type": "path",
+            "url": "packages/notify",
+            "options": { "symlink": true }
         }
     ],
     "autoload": {},
@@ -115,6 +123,7 @@
             "Preflow\\Auth\\Tests\\": "packages/auth/tests/",
             "Preflow\\Folio\\Tests\\": "packages/folio/tests/",
             "Preflow\\Form\\Tests\\": "packages/form/tests/",
+            "Preflow\\Notify\\Tests\\": "packages/notify/tests/",
             "Preflow\\Validation\\Tests\\": "packages/validation/tests/",
             "Preflow\\Examples\\FolioDemo\\Tests\\": "examples/folio-demo/tests/"
         }

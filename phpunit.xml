@@ -55,6 +55,9 @@
         <testsuite name="Folio">
             <directory>packages/folio/tests</directory>
         </testsuite>
+        <testsuite name="Notify">
+            <directory>packages/notify/tests</directory>
+        </testsuite>
         <testsuite name="Examples">
             <directory>examples/folio-demo/tests</directory>
         </testsuite>
@@ -68,6 +71,7 @@
             <directory>packages/i18n/src</directory>
             <directory>packages/routing/src</directory>
             <directory>packages/view/src</directory>
+            <directory>packages/notify/src</directory>
             <directory>packages/twig/src</directory>
             <directory>packages/blade/src</directory>
             <directory>packages/testing/src</directory>

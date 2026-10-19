@@ -1,0 +1,28 @@
+{
+    "name": "preflow/notify",
+    "description": "Preflow notify — send email, SMS and other messages through pluggable transports",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0",
+        "symfony/mailer": "^7.3 || ^8.0",
+        "symfony/notifier": "^7.3 || ^8.0"
+    },
+    "suggest": {
+        "symfony/mailer": "Enables the symfony-mailer transport (SMTP and all Symfony mailer bridges)",
+        "symfony/notifier": "Enables the symfony-notifier-sms transport (Twilio, Vonage and other Symfony SMS bridges)"
+    },
+    "autoload": {
+        "psr-4": {
+            "Preflow\\Notify\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Preflow\\Notify\\Tests\\": "tests/"
+        }
+    }
+}
