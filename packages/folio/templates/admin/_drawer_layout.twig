@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
+    <meta name="csp-nonce" content="{{ csp_nonce() }}">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Folio{% endblock %}</title>
     <link rel="stylesheet" href="{{ folio_asset('admin.css') }}">

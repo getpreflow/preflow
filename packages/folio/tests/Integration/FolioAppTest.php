@@ -119,6 +119,29 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('About Us', (string) $page->getBody());
     }
 
+    public function test_layout_inline_script_carries_request_nonce(): void
+    {
+        // Debug off: the policy is enforced (debug mode is report-only and adds the
+        // dev toolbar, which is not CSP-clean by design).
+        putenv('APP_DEBUG=0');
+        $response = $this->get('/folio');
+        putenv('APP_DEBUG=1');
+        $body = (string) $response->getBody();
+
+        preg_match("/'nonce-([^']+)'/", $response->getHeaderLine('Content-Security-Policy'), $m);
+        $this->assertNotEmpty($m[1] ?? '', 'enforced CSP carries a nonce');
+
+        preg_match_all('/<script\b[^>]*>/i', $body, $tags);
+        $inline = array_filter($tags[0], fn (string $t) => !preg_match('/\bsrc=|type="application\/json"/', $t));
+        $this->assertNotEmpty($inline);
+        foreach ($inline as $tag) {
+            $this->assertStringContainsString('nonce="' . $m[1] . '"', $tag);
+        }
+
+        // Trix inserts its own <style> elements; it takes the nonce from this meta.
+        $this->assertStringContainsString('<meta name="csp-nonce" content="' . $m[1] . '">', $body);
+    }
+
     public function test_admin_shell_renders_sidebar_stylesheet_and_toggle(): void
     {
         $body = (string) $this->get('/folio')->getBody();

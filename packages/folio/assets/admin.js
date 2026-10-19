@@ -174,24 +174,42 @@
 
         var overlay = null, frame = null, anchor = null, parent = null, reqSeq = 0, timer = null, keyHandler = null, hasDoc = false;
 
-        function fullRender(html) {
-            frame.srcdoc = html;
-            hasDoc = true;
+        // Full render: POST the form's current state into the iframe, so the preview
+        // is a real navigated document with its own CSP header and nonce (injected HTML
+        // document would inherit the admin page's policy and block the preview's
+        // nonced assets). File inputs are skipped; unsaved uploads are not previewed.
+        function fullRender() {
+            var poster = document.createElement('form');
+            poster.method = 'post';
+            poster.action = url;
+            poster.target = frame.name;
+            poster.hidden = true;
+            new FormData(form).forEach(function (value, key) {
+                if (typeof value !== 'string') { return; }
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = key;
+                input.value = value;
+                poster.appendChild(input);
+            });
+            document.body.appendChild(poster);
+            poster.submit();
+            document.body.removeChild(poster);
         }
 
         // Patch only the [data-folio-field] regions that changed, directly into the
-        // same-origin srcdoc document. Fall back to a full srcdoc reload on the first
+        // same-origin preview document. Fall back to a full render on the first
         // render, when the template has no markers, or when the field structure differs.
         function applyHtml(html) {
             try {
                 var doc = hasDoc ? frame.contentDocument : null;
-                if (!doc || !doc.body) { fullRender(html); return; }
+                if (!doc || !doc.body) { fullRender(); return; }
 
                 var incoming = new DOMParser().parseFromString(html, 'text/html');
                 var incomingRegions = incoming.querySelectorAll('[data-folio-field]');
                 var curRegions = doc.querySelectorAll('[data-folio-field]');
                 if (incomingRegions.length === 0 || incomingRegions.length !== curRegions.length) {
-                    fullRender(html);
+                    fullRender();
                     return;
                 }
 
@@ -200,10 +218,10 @@
                 for (var i = 0; i < incomingRegions.length; i++) {
                     var name = incomingRegions[i].getAttribute('data-folio-field');
                     // Duplicate field name -> querySelector(name) is ambiguous; full-reload rather than patch the wrong region.
-                    if (seen[name]) { fullRender(html); return; }
+                    if (seen[name]) { fullRender(); return; }
                     seen[name] = true;
                     var cur = doc.querySelector('[data-folio-field="' + name + '"]');
-                    if (!cur) { fullRender(html); return; } // a region went missing -> full reload
+                    if (!cur) { fullRender(); return; } // a region went missing -> full reload
                     if (cur.innerHTML !== incomingRegions[i].innerHTML) {
                         patches.push([cur, incomingRegions[i].innerHTML]);
                     }
@@ -212,12 +230,13 @@
                     patches[j][0].innerHTML = patches[j][1];
                 }
             } catch (e) {
-                fullRender(html);
+                fullRender();
             }
         }
 
         function render() {
             if (!frame) { return; }
+            if (!hasDoc) { fullRender(); return; } // first render: navigate, no fetch needed
             var seq = ++reqSeq;
             fetch(url, { method: 'POST', body: new FormData(form), headers: { 'Accept': 'text/html' } })
                 .then(function (r) { return r.ok ? r.text() : null; })
@@ -274,6 +293,8 @@
 
             frame = document.createElement('iframe');
             frame.className = 'folio-preview-frame';
+            frame.name = 'folio-preview-frame';
+            frame.addEventListener('load', function () { hasDoc = true; });
 
             stage.appendChild(bar);
             stage.appendChild(frame);
@@ -306,7 +327,17 @@
         btn.addEventListener('click', open);
     }
 
+    // Confirmation for destructive forms: <form data-confirm="…"> (replaces inline
+    // onsubmit handlers, which the strict CSP blocks).
+    function onSubmitConfirm(e) {
+        var f = e.target;
+        if (f && f.getAttribute && f.hasAttribute('data-confirm') && !window.confirm(f.getAttribute('data-confirm'))) {
+            e.preventDefault();
+        }
+    }
+
     function boot() {
+        document.addEventListener('submit', onSubmitConfirm);
         document.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
         window.addEventListener('message', onMessage);
         document.addEventListener('keydown', onKeydown);

@@ -50,7 +50,7 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('data-folio-preview', $js);   // button hook
         $this->assertStringContainsString('folio-preview', $js);        // overlay class
         $this->assertStringContainsString('new FormData(', $js);        // serializes the form
-        $this->assertStringContainsString('srcdoc', $js);               // isolated render target
+        $this->assertStringContainsString('folio-preview-frame', $js);  // iframe navigated by a form POST (own CSP + nonce)
         $this->assertStringContainsString("'768px'", $js);              // tablet preset
         $this->assertStringContainsString("'375px'", $js);              // mobile preset
     }
@@ -61,6 +61,17 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('data-folio-field', $js); // addressing marker the client queries
         $this->assertStringContainsString('DOMParser', $js);        // parses the incoming HTML
         $this->assertStringContainsString('.innerHTML =', $js);     // surgical per-region write
-        $this->assertStringContainsString('srcdoc', $js);           // full-reload fallback retained
+        $this->assertStringContainsString('.target =', $js);         // full-reload fallback: form POST into the iframe
+    }
+
+    public function test_confirm_is_handled_by_data_attribute(): void
+    {
+        $this->assertStringContainsString('data-confirm', $this->js());
+    }
+
+    public function test_preview_does_not_use_srcdoc(): void
+    {
+        // A srcdoc document inherits the admin page's CSP and would block the preview's nonced assets.
+        $this->assertStringNotContainsString('srcdoc', $this->js());
     }
 }
