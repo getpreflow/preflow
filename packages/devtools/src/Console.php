@@ -21,6 +21,7 @@ final class Console
         $this->register(new Command\CacheClearCommand());
         $this->register(new Command\SeedCommand());
         $this->register(new Command\KeyGenerateCommand());
+        $this->register(new Command\NotifyTestCommand());
     }
 
     public function register(Command\CommandInterface $command): void
