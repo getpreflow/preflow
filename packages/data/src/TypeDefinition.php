@@ -21,7 +21,23 @@ final readonly class TypeDefinition
         public array $transformers = [],
         public bool $matrixable = false,
         public array $views = [],
+        public Locales $locales = new Locales(['en'], 'en'),
     ) {}
+
+    /**
+     * Fields whose values differ per locale. Empty for single-locale apps:
+     * "translatable" has no effect there and values stay plain scalars.
+     *
+     * @return list<string>
+     */
+    public function translatableFields(): array
+    {
+        if (!$this->locales->isMultilingual()) {
+            return [];
+        }
+
+        return array_keys(array_filter($this->fields, static fn ($f) => $f->translatable));
+    }
 
     /**
      * Collect validation rules from all field definitions.

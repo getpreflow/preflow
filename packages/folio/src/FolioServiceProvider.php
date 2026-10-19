@@ -51,7 +51,7 @@ final class FolioServiceProvider extends ServiceProvider
 
         // Bind unconditionally: Container::has() falls back to class_exists(),
         // so the guard would always be false and the instance would never be bound.
-        $container->instance(TypeRegistry::class, new TypeRegistry($modelsPath));
+        $container->instance(TypeRegistry::class, new TypeRegistry($modelsPath, $this->locales($container)));
 
         $container->bind(ActionResolver::class, fn (Container $c) => new ActionResolver($c));
         // Routes are computed (and validated) now, so conflicting "frontend"
@@ -218,6 +218,20 @@ final class FolioServiceProvider extends ServiceProvider
             'trix.css' => 'vendor/trix.css',
             'trix.js' => 'vendor/trix.umd.min.js',
         ];
+    }
+
+    /**
+     * The app's content locales. Container::has() is true for any class, and a
+     * provider registered before boot sees no bound instance, so resolve
+     * defensively: no Locales means single-locale content.
+     */
+    private function locales(Container $container): ?\Preflow\Data\Locales
+    {
+        try {
+            return $container->get(\Preflow\Data\Locales::class);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function prefix(Application $app): string

@@ -19,5 +19,6 @@ final readonly class TypeFieldDefinition
         public ?string $label = null,
         public ?string $help = null,
         public array $config = [],
+        public bool $translatable = false,
     ) {}
 }

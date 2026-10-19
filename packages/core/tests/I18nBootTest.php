@@ -55,4 +55,28 @@ final class I18nBootTest extends TestCase
 
         return $app->handle((new Psr17Factory())->createServerRequest('GET', $uri));
     }
+
+    public function test_data_layer_gets_content_locales(): void
+    {
+        mkdir($this->dir . '/config/models', 0777, true);
+        file_put_contents($this->dir . '/config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => '" . $this->dir . "/storage']], 'default' => 'json', 'models_path' => '" . $this->dir . "/config/models'];\n");
+        file_put_contents($this->dir . '/config/models/page.json', json_encode([
+            'key' => 'page', 'table' => 'page', 'storage' => 'json', 'id_field' => 'uuid',
+            'fields' => ['title' => ['type' => 'string', 'translatable' => true]],
+        ]));
+
+        try {
+            $app = Application::create($this->dir);
+            $app->boot();
+            $type = $app->container()->get(\Preflow\Data\TypeRegistry::class)->get('page');
+
+            $this->assertSame(['en', 'de'], $type->locales->available);
+            $this->assertSame(['title'], $type->translatableFields());
+            $this->assertSame($type->locales, $app->container()->get(\Preflow\Data\Locales::class));
+        } finally {
+            @unlink($this->dir . '/config/models/page.json');
+            @rmdir($this->dir . '/config/models');
+            @unlink($this->dir . '/config/data.php');
+        }
+    }
 }

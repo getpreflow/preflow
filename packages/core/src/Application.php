@@ -247,6 +247,10 @@ final class Application
             return;
         }
 
+        // Content locales are bound whenever preflow/data is installed (even
+        // without config/data.php), so packages like Folio can always read them.
+        $this->container->instance(\Preflow\Data\Locales::class, $this->contentLocales());
+
         $dataConfigPath = $this->basePath('config/data.php');
         if (!file_exists($dataConfigPath)) {
             return;
@@ -276,8 +280,9 @@ final class Application
         // TypeRegistry for dynamic models
         $typeRegistry = null;
         $modelsPath = $dataConfig['models_path'] ?? $this->basePath('config/models');
+        $locales = $this->container->get(\Preflow\Data\Locales::class);
         if (is_dir($modelsPath)) {
-            $typeRegistry = new \Preflow\Data\TypeRegistry($modelsPath);
+            $typeRegistry = new \Preflow\Data\TypeRegistry($modelsPath, $locales);
             $this->container->instance(\Preflow\Data\TypeRegistry::class, $typeRegistry);
         }
 
@@ -599,6 +604,23 @@ final class Application
         );
 
         $this->setRouter($router);
+    }
+
+    /**
+     * Content locales for translatable fields, from config/i18n.php (the same
+     * file the i18n package reads); a single app.locale without it.
+     */
+    private function contentLocales(): \Preflow\Data\Locales
+    {
+        $path = $this->basePath('config/i18n.php');
+        $config = file_exists($path) ? (array) require $path : [];
+        $default = (string) ($config['default'] ?? $this->config->get('app.locale', 'en'));
+
+        return new \Preflow\Data\Locales(
+            array_values((array) ($config['available'] ?? [$default])),
+            $default,
+            isset($config['fallback']) ? (string) $config['fallback'] : null,
+        );
     }
 
     private function bootI18n(): void

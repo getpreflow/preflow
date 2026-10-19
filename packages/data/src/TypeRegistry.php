@@ -11,6 +11,7 @@ final class TypeRegistry
 
     public function __construct(
         private readonly string $modelsPath,
+        private readonly ?Locales $locales = null,
     ) {}
 
     public function get(string $type): TypeDefinition
@@ -47,7 +48,7 @@ final class TypeRegistry
             $label = $fieldDef['label'] ?? null;
             $help = $fieldDef['help'] ?? null;
             $config = array_diff_key($fieldDef, array_flip(
-                ['type', 'searchable', 'transform', 'validate', 'label', 'help'],
+                ['type', 'searchable', 'transform', 'validate', 'label', 'help', 'translatable'],
             ));
 
             $fields[$name] = new TypeFieldDefinition(
@@ -59,6 +60,7 @@ final class TypeRegistry
                 label: $label,
                 help: $help,
                 config: $config,
+                translatable: (bool) ($fieldDef['translatable'] ?? false),
             );
 
             if ($searchable) {
@@ -86,6 +88,7 @@ final class TypeRegistry
                 (array) ($schema['views'] ?? []),
                 static fn ($v) => is_string($v),
             )),
+            locales: $this->locales ?? Locales::single('en'),
         );
     }
 }
