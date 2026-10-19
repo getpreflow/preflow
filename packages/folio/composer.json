@@ -12,6 +12,8 @@
         "preflow/form": "^0.1 || @dev",
         "preflow/validation": "^0.1 || @dev",
         "preflow/auth": "^0.1 || @dev",
+        "preflow/components": "^0.1 || @dev",
+        "preflow/htmx": "^0.1 || @dev",
         "nyholm/psr7": "^1.8",
         "symfony/html-sanitizer": "^7.0"
     },

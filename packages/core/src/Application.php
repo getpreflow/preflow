@@ -524,6 +524,7 @@ final class Application
 
         // Auto-discover components
         $componentMap = $this->discoverComponents();
+        $this->container->instance(\Preflow\Components\ComponentMap::class, new \Preflow\Components\ComponentMap($componentMap));
 
         // Component factory — uses DI container for constructor injection
         $container = $this->container;

@@ -10,6 +10,7 @@ use Preflow\Core\Container\ServiceProvider;
 use Preflow\Core\Routing\RouterInterface;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Block\BlockRegistry;
 use Preflow\Folio\Content\ContentLocale;
 use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\FrontendResolver;
@@ -55,6 +56,25 @@ final class FolioServiceProvider extends ServiceProvider
         // so the guard would always be false and the instance would never be bound.
         $locales = $this->locales($container);
         $container->instance(TypeRegistry::class, new TypeRegistry($modelsPath, $locales));
+        // Blocks: component blocks from app/Components, data-only blocks from
+        // app/Blocks, plus classes listed in config/folio.php 'blocks'. Cached
+        // when debug is off (conflicting keys fail at boot either way).
+        $folioCfg = $this->folioConfig($app);
+        $container->bind(BlockRegistry::class, function (Container $c) use ($app, $folioCfg): BlockRegistry {
+            try {
+                $components = $c->get(\Preflow\Components\ComponentMap::class);
+            } catch (\Throwable) {
+                $components = [];
+            }
+            return BlockRegistry::discover(
+                $components,
+                $app->basePath('app/Blocks'),
+                array_values((array) ($folioCfg['blocks'] ?? [])),
+                $app->basePath('storage/cache/folio-blocks.cache'),
+                useCache: !$app->config()->get('app.debug', false),
+            );
+        });
+
         // One request-scoped content locale shared by the frontend, preview and field types.
         $container->instance(ContentLocale::class, new ContentLocale($locales ?? \Preflow\Data\Locales::single('en')));
 
