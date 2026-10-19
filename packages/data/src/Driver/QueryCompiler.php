@@ -78,7 +78,7 @@ class QueryCompiler
 
         $parts = [];
         foreach ($wheres as $i => $where) {
-            $clause = $this->dialect->quoteIdentifier($where['field']) . " {$where['operator']} ?";
+            $clause = $this->column($where['field'], $query) . " {$where['operator']} ?";
             $bindings[] = $where['value'];
 
             if ($i === 0) {
@@ -105,7 +105,7 @@ class QueryCompiler
 
         $parts = [];
         foreach ($fields as $field) {
-            $parts[] = $this->dialect->quoteIdentifier($field) . ' LIKE ?';
+            $parts[] = $this->column($field, $query) . ' LIKE ?';
             $bindings[] = '%' . $term . '%';
         }
 
@@ -122,9 +122,25 @@ class QueryCompiler
 
         $parts = [];
         foreach ($orders as $order) {
-            $parts[] = $this->dialect->quoteIdentifier($order['field']) . " {$order['direction']->value}";
+            $parts[] = $this->column($order['field'], $query) . " {$order['direction']->value}";
         }
 
         return 'ORDER BY ' . implode(', ', $parts);
+    }
+
+    /** A quoted column, or its localized expression for translatable fields. */
+    private function column(string $field, Query $query): string
+    {
+        $quoted = $this->dialect->quoteIdentifier($field);
+        $localization = $query->localizationFor($field);
+        if ($localization === null) {
+            return $quoted;
+        }
+
+        return $this->dialect->localizedColumn(
+            $quoted,
+            $localization['locale'],
+            $localization['locale'] === $localization['default'],
+        );
     }
 }

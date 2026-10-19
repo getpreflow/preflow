@@ -33,6 +33,8 @@ final class QueryBuilder
         return $builder;
     }
 
+    private ?string $locale = null;
+
     public function where(string $field, mixed $operator, mixed $value = null): self
     {
         $this->query->where($field, $operator, $value);
@@ -78,8 +80,30 @@ final class QueryBuilder
      *
      * @return ResultSet<T>
      */
+    /**
+     * Match translatable fields against their value in this locale (default:
+     * the type's default locale).
+     *
+     * @throws \InvalidArgumentException for anything that is not a locale code
+     */
+    public function locale(string $locale): self
+    {
+        if (preg_match('/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/', $locale) !== 1) {
+            throw new \InvalidArgumentException(sprintf('Invalid locale "%s".', $locale));
+        }
+        $this->locale = $locale;
+
+        return $this;
+    }
+
     public function get(): ResultSet
     {
+        $translatable = $this->typeDef?->translatableFields() ?? [];
+        if ($translatable !== []) {
+            $default = $this->typeDef->locales->default;
+            $this->query->localize($translatable, $this->locale ?? $default, $default);
+        }
+
         $table = $this->meta?->table ?? $this->typeDef?->table;
         $result = $this->driver->findMany($table, $this->query);
 

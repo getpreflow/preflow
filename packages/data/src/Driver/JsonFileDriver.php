@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Driver;
 
+use Preflow\Data\LocaleValue;
+use Preflow\Data\Locales;
 use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
 use Preflow\Data\SortDirection;
@@ -45,14 +47,14 @@ final class JsonFileDriver implements StorageDriver
 
         // Apply search
         if ($query->getSearchTerm() !== null) {
-            $items = $this->applySearch($items, $query->getSearchTerm(), $query->getSearchFields());
+            $items = $this->applySearch($items, $query->getSearchTerm(), $query->getSearchFields(), $query);
         }
 
         // Apply where conditions
-        $items = $this->applyWheres($items, $query->getWheres());
+        $items = $this->applyWheres($items, $query->getWheres(), $query);
 
         // Apply ordering
-        $items = $this->applyOrderBy($items, $query->getOrderBy());
+        $items = $this->applyOrderBy($items, $query->getOrderBy(), $query);
 
         $total = count($items);
 
@@ -122,17 +124,17 @@ final class JsonFileDriver implements StorageDriver
      * @param array<int, array{field: string, operator: string, value: mixed, boolean: string}> $wheres
      * @return array<int, array<string, mixed>>
      */
-    private function applyWheres(array $items, array $wheres): array
+    private function applyWheres(array $items, array $wheres, ?Query $query = null): array
     {
         if ($wheres === []) {
             return $items;
         }
 
-        return array_values(array_filter($items, function (array $item) use ($wheres) {
+        return array_values(array_filter($items, function (array $item) use ($wheres, $query) {
             $result = true;
 
             foreach ($wheres as $i => $where) {
-                $match = $this->evaluateCondition($item, $where);
+                $match = $this->evaluateCondition($item, $where, $query);
 
                 if ($i === 0) {
                     $result = $match;
@@ -151,9 +153,25 @@ final class JsonFileDriver implements StorageDriver
      * @param array<string, mixed> $item
      * @param array{field: string, operator: string, value: mixed, boolean: string} $where
      */
-    private function evaluateCondition(array $item, array $where): bool
+    /** A field's value, in the query's locale for localized (translatable) fields. */
+    private function value(array $item, string $field, ?Query $query): mixed
     {
-        $fieldValue = $item[$where['field']] ?? null;
+        $raw = $item[$field] ?? null;
+        $localization = $query?->localizationFor($field);
+        if ($localization === null) {
+            return $raw;
+        }
+
+        return LocaleValue::pick(
+            $raw,
+            Locales::fromPair($localization['locale'], $localization['default']),
+            $localization['locale'],
+        );
+    }
+
+    private function evaluateCondition(array $item, array $where, ?Query $query = null): bool
+    {
+        $fieldValue = $this->value($item, $where['field'], $query);
         $condValue = $where['value'];
 
         return match ($where['operator']) {
@@ -190,16 +208,17 @@ final class JsonFileDriver implements StorageDriver
      * @param array<int, array<string, mixed>> $items
      * @return array<int, array<string, mixed>>
      */
-    private function applySearch(array $items, string $term, array $fields): array
+    private function applySearch(array $items, string $term, array $fields, ?Query $query = null): array
     {
         $term = mb_strtolower($term);
 
-        return array_values(array_filter($items, function (array $item) use ($term, $fields) {
+        return array_values(array_filter($items, function (array $item) use ($term, $fields, $query) {
             $searchIn = $fields ?: array_keys($item);
 
             foreach ($searchIn as $field) {
-                if (isset($item[$field]) && is_string($item[$field])) {
-                    if (str_contains(mb_strtolower($item[$field]), $term)) {
+                $value = $this->value($item, $field, $query);
+                if (is_string($value)) {
+                    if (str_contains(mb_strtolower($value), $term)) {
                         return true;
                     }
                 }
@@ -214,17 +233,17 @@ final class JsonFileDriver implements StorageDriver
      * @param array<int, array{field: string, direction: SortDirection}> $orderBy
      * @return array<int, array<string, mixed>>
      */
-    private function applyOrderBy(array $items, array $orderBy): array
+    private function applyOrderBy(array $items, array $orderBy, ?Query $query = null): array
     {
         if ($orderBy === []) {
             return $items;
         }
 
-        usort($items, function (array $a, array $b) use ($orderBy) {
+        usort($items, function (array $a, array $b) use ($orderBy, $query) {
             foreach ($orderBy as $order) {
                 $field = $order['field'];
-                $aVal = $a[$field] ?? '';
-                $bVal = $b[$field] ?? '';
+                $aVal = $this->value($a, $field, $query) ?? '';
+                $bVal = $this->value($b, $field, $query) ?? '';
                 $cmp = is_numeric($aVal) && is_numeric($bVal)
                     ? $aVal <=> $bVal
                     : strcmp((string)$aVal, (string)$bVal);

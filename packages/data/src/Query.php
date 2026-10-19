@@ -82,6 +82,30 @@ final class Query
     }
 
     /** @return array<int, array{field: string, operator: string, value: mixed, boolean: string}> */
+    /** @var array{fields: array<string, true>, locale: string, default: string}|null */
+    private ?array $localization = null;
+
+    /**
+     * Compare these (translatable) fields by their value in one locale. A
+     * stored plain value counts as the default locale's value.
+     *
+     * @param list<string> $fields
+     */
+    public function localize(array $fields, string $locale, string $default): void
+    {
+        $this->localization = ['fields' => array_fill_keys($fields, true), 'locale' => $locale, 'default' => $default];
+    }
+
+    /** @return array{locale: string, default: string}|null */
+    public function localizationFor(string $field): ?array
+    {
+        if ($this->localization === null || !isset($this->localization['fields'][$field])) {
+            return null;
+        }
+
+        return ['locale' => $this->localization['locale'], 'default' => $this->localization['default']];
+    }
+
     public function getWheres(): array { return $this->wheres; }
 
     /** @return array<int, array{field: string, direction: SortDirection}> */

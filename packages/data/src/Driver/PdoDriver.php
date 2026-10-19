@@ -58,6 +58,12 @@ abstract class PdoDriver implements StorageDriver
 
     public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void
     {
+        // Structured values (e.g. translatable locale maps) are stored as JSON text.
+        $data = array_map(
+            static fn ($v) => is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) : $v,
+            $data,
+        );
+
         $isEmpty = $id === null || $id === '' || $id === 0 || $id === '0';
 
         if ($isEmpty) {

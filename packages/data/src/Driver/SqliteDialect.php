@@ -36,4 +36,15 @@ final class SqliteDialect implements Dialect
             implode(', ', $placeholders),
         );
     }
+
+    public function localizedColumn(string $quotedColumn, string $locale, bool $isDefault): string
+    {
+        if (preg_match('/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/', $locale) !== 1) {
+            throw new \InvalidArgumentException(sprintf('Invalid locale "%s".', $locale));
+        }
+        $plain = $isDefault ? $quotedColumn : 'NULL';
+
+        return "(CASE WHEN json_valid({$quotedColumn}) AND json_type({$quotedColumn}) = 'object'"
+            . " THEN json_extract({$quotedColumn}, '$.\"{$locale}\"') ELSE {$plain} END)";
+    }
 }
