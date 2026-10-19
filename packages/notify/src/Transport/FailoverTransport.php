@@ -34,6 +34,7 @@ final class FailoverTransport implements Transport
     public function send(Message $message): SentMessage
     {
         $tried = [];
+        $failures = [];
         $last = null;
 
         foreach ($this->transports as [$name, $transport]) {
@@ -43,10 +44,16 @@ final class FailoverTransport implements Transport
 
             $tried[] = $name;
             try {
-                return $transport->send($message);
+                $sent = $transport->send($message);
             } catch (TransportException $e) {
                 $last = $e;
+                $failures[$name] = TransportException::maskCredentials($e->getMessage());
+                continue;
             }
+
+            // Keep the reasons for earlier fallbacks, so callers (and notify:test)
+            // can see that the preferred transport is broken.
+            return new SentMessage($sent->message, $sent->transport, $sent->messageId, $failures + $sent->failures);
         }
 
         throw new TransportException(

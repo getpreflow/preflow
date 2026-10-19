@@ -13,9 +13,13 @@ use Preflow\Core\Application;
  */
 final class NotifyTestCommand implements CommandInterface
 {
-    /** @param (\Closure(): Application)|null $appFactory returns a booted application */
+    /**
+     * @param (\Closure(): Application)|null $appFactory returns a booted application
+     * @param resource|null                  $stderr     error stream (default STDERR)
+     */
     public function __construct(
         private readonly ?\Closure $appFactory = null,
+        private readonly mixed $stderr = null,
     ) {}
 
     public function getName(): string { return 'notify:test'; }
@@ -28,13 +32,13 @@ final class NotifyTestCommand implements CommandInterface
         $channel = $options['channel'] ?? 'email';
 
         if ($to === '' || !in_array($channel, ['email', 'sms'], true)) {
-            fwrite(STDERR, "Usage: preflow notify:test --to=<address> [--channel=email|sms]\n");
+            $this->error("Usage: preflow notify:test --to=<address> [--channel=email|sms]\n");
             return 1;
         }
 
         $app = $this->bootApplication();
         if (!class_exists(\Preflow\Notify\Notifier::class) || !file_exists($app->basePath('config/notify.php'))) {
-            fwrite(STDERR, "preflow/notify is not installed or config/notify.php is missing.\n");
+            $this->error("preflow/notify is not installed or config/notify.php is missing.\n");
             return 1;
         }
 
@@ -49,13 +53,24 @@ final class NotifyTestCommand implements CommandInterface
 
             $sent = $app->container()->get(\Preflow\Notify\Notifier::class)->send($message);
         } catch (\Preflow\Notify\TransportException | \InvalidArgumentException $e) {
-            fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
+            $this->error('Error: ' . $e->getMessage() . "\n");
             return 1;
         }
 
         echo 'Sent via ' . $sent->transport . ($sent->messageId !== null ? " (id {$sent->messageId})" : '') . "\n";
 
-        return 0;
+        // A failover delivered it, but a preferred transport failed: that is what
+        // this command exists to reveal, so report it and fail.
+        foreach ($sent->failures as $transport => $reason) {
+            $this->error("Warning: transport \"{$transport}\" failed before falling back: {$reason}\n");
+        }
+
+        return $sent->failures === [] ? 0 : 1;
+    }
+
+    private function error(string $text): void
+    {
+        fwrite($this->stderr ?? STDERR, $text);
     }
 
     private function bootApplication(): Application

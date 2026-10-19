@@ -20,4 +20,25 @@ final class TransportExceptionTest extends TestCase
         $this->assertStringNotContainsString('user:', $e->getMessage());
         $this->assertSame($previous, $e->getPrevious());
     }
+
+    public function test_masks_password_containing_at_sign(): void
+    {
+        $masked = TransportException::maskCredentials('Connection to smtp://user:p@ss@mail.test:587 failed');
+
+        $this->assertStringContainsString('smtp://***@mail.test:587', $masked);
+        $this->assertStringNotContainsString('p@ss', $masked);
+        $this->assertStringNotContainsString('ss@mail', $masked);
+    }
+
+    public function test_masks_secret_query_parameters(): void
+    {
+        $masked = TransportException::maskCredentials(
+            'HTTP 401 returned for "https://api.x.test/send?api_key=SECRET1&to=41" and smtp://host?password=SECRET2&token=SECRET3',
+        );
+
+        $this->assertStringContainsString('api_key=***&to=41', $masked);
+        $this->assertStringContainsString('password=***', $masked);
+        $this->assertStringContainsString('token=***', $masked);
+        $this->assertStringNotContainsString('SECRET', $masked);
+    }
 }

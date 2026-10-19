@@ -80,6 +80,18 @@ final class NotifyTestCommandTest extends TestCase
         $this->assertSame(1, $code);
     }
 
+    public function test_failover_fallback_reports_primary_failure_and_exits_1(): void
+    {
+        $this->writeNotifyConfig(['email' => ['transport' => 'mail', 'from' => 'site@x.test']]);
+
+        [$code, $output, $errors] = $this->runCommand(['--to=a@b.test']);
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('Sent via memory', $output);
+        $this->assertStringContainsString('smtp', $errors);
+        $this->assertStringContainsString('dsn is empty', $errors);
+    }
+
     public function test_missing_notify_config_returns_1(): void
     {
         [$code] = $this->runCommand(['--to=a@b.test']);
@@ -94,6 +106,7 @@ final class NotifyTestCommandTest extends TestCase
             'transports' => [
                 'memory' => ['driver' => 'memory'],
                 'smtp' => ['driver' => 'symfony-mailer', 'dsn' => ''],
+                'mail' => ['driver' => 'failover', 'transports' => ['smtp', 'memory']],
             ],
             'channels' => $channels,
         ];
@@ -102,22 +115,26 @@ final class NotifyTestCommandTest extends TestCase
 
     /**
      * @param list<string> $args
-     * @return array{0: int, 1: string}
+     * @return array{0: int, 1: string, 2: string} exit code, stdout, stderr
      */
     private function runCommand(array $args): array
     {
+        $stderr = fopen('php://memory', 'w+');
         $command = new NotifyTestCommand(function (): Application {
             $this->app = Application::create($this->dir);
             $this->app->boot();
 
             return $this->app;
-        });
+        }, $stderr);
 
         ob_start();
         $code = $command->execute($args);
         $output = (string) ob_get_clean();
+        rewind($stderr);
+        $errors = (string) stream_get_contents($stderr);
+        fclose($stderr);
 
-        return [$code, $output];
+        return [$code, $output, $errors];
     }
 
     private function memory(): \Preflow\Notify\Transport\InMemoryTransport

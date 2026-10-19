@@ -97,9 +97,17 @@ Then set `'texts' => ['driver' => 'acme-sms', 'key' => getenv('ACME_KEY') ?: '']
 
 ## Errors
 
-Every failure is a `Preflow\Notify\TransportException`. Provider errors are wrapped and
-masked, so a DSN password never appears in a message. The caller decides what a failure
-means; for a contact form, store the submission first, then send.
+Every failure is a `Preflow\Notify\TransportException`. Provider errors are wrapped, and
+their message is masked: URL user-info (`smtp://***@host`) and secret-looking query
+parameters (`api_key=***`, `password=***`, `token=***`). The original exception is chained
+unmasked as `getPrevious()`, so don't log the whole chain verbatim.
+
+When a `failover` delivers through a fallback, `SentMessage::$failures` lists each transport
+it fell back from (name → masked reason). Log these. Otherwise a broken SMTP setup goes
+unnoticed while mail quietly lands in the log transport.
+
+The caller decides what a failure means; for a contact form, store the submission first,
+then send.
 
 ## CLI
 
@@ -109,4 +117,5 @@ php preflow notify:test --channel=sms --to=+41790000000
 ```
 
 This sends a fixed test message through the configured transport and prints the result or
-the error. Use it to check credentials on a live server.
+the error. It exits non-zero when a failover had to fall back, and prints why the preferred
+transport failed. Use it to check credentials on a live server.

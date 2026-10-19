@@ -85,6 +85,20 @@ final class BuiltInTransportsTest extends TestCase
         $this->assertSame('memory', $sent->transport);
     }
 
+    public function test_failover_reports_failures_of_transports_it_fell_back_from(): void
+    {
+        $failover = new FailoverTransport([
+            ['broken', $this->throwing()],
+            ['memory', new InMemoryTransport()],
+        ]);
+
+        $sent = $failover->send(new Email('a@b.test', 'S', 'T'));
+
+        $this->assertSame('memory', $sent->transport);
+        $this->assertSame(['broken' => 'down'], $sent->failures);
+        $this->assertSame([], (new InMemoryTransport())->send(new Email('a@b.test', 'S', 'T'))->failures);
+    }
+
     public function test_failover_skips_transports_that_do_not_support_the_message(): void
     {
         $unsupporting = new class implements Transport {
