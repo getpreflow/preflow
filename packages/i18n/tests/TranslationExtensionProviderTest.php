@@ -28,7 +28,7 @@ final class TranslationExtensionProviderTest extends TestCase
     {
         $functions = $this->provider->getTemplateFunctions();
 
-        $this->assertCount(2, $functions);
+        $this->assertSame(['t', 'tc', 'current_locale', 'available_locales', 'locale_url'], array_map(fn ($f) => $f->name, $functions));
         $this->assertSame('t', $functions[0]->name);
         $this->assertSame('tc', $functions[1]->name);
         $this->assertTrue($functions[0]->isSafe);
@@ -46,5 +46,53 @@ final class TranslationExtensionProviderTest extends TestCase
     public function test_globals_are_empty(): void
     {
         $this->assertSame([], $this->provider->getTemplateGlobals());
+    }
+
+    public function test_t_escapes_params(): void
+    {
+        $t = $this->function('t');
+
+        $this->assertSame('Hi &lt;script&gt;x&lt;/script&gt;', $t('app.greet', ['name' => '<script>x</script>']));
+    }
+
+    public function test_locale_url(): void
+    {
+        $translator = new Translator(__DIR__ . '/fixtures/lang', 'en', 'en');
+        $provider = new TranslationExtensionProvider($translator, ['en', 'de'], 'en');
+        $url = null;
+        foreach ($provider->getTemplateFunctions() as $fn) {
+            if ($fn->name === 'locale_url') {
+                $url = $fn->callable;
+            }
+        }
+
+        $this->assertNotNull($url);
+        $this->assertSame('/about', $url('/about'));
+        $this->assertSame('/de/about', $url('/about', 'de'));
+        $this->assertSame('/de', $url('/', 'de'));
+        $this->assertSame('/', $url('/', 'en'));
+    }
+
+    public function test_current_and_available_locales(): void
+    {
+        $translator = new Translator(__DIR__ . '/fixtures/lang', 'de', 'en');
+        $provider = new TranslationExtensionProvider($translator, ['en', 'de'], 'en');
+        $fns = [];
+        foreach ($provider->getTemplateFunctions() as $fn) {
+            $fns[$fn->name] = $fn->callable;
+        }
+
+        $this->assertSame('de', $fns['current_locale']());
+        $this->assertSame(['en', 'de'], $fns['available_locales']());
+    }
+
+    private function function(string $name): callable
+    {
+        foreach ($this->provider->getTemplateFunctions() as $fn) {
+            if ($fn->name === $name) {
+                return $fn->callable;
+            }
+        }
+        $this->fail("No template function {$name}");
     }
 }

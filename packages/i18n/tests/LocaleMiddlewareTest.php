@@ -134,16 +134,28 @@ final class LocaleMiddlewareTest extends TestCase
         $this->assertSame('/fr/blog', $captured->getUri()->getPath());
     }
 
-    public function test_sets_locale_cookie_in_response(): void
+    public function test_prefix_strategy_sets_no_cookie(): void
     {
+        // The URL prefix is the source of truth; no cookie (sites can claim "no cookies").
         $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
 
         $captured = null;
-        $response = $mw->process($this->createRequest('/de/blog'), $this->createHandler($captured));
+        $response = $mw->process($this->createRequest('/de/x'), $this->createHandler($captured));
 
-        $this->assertTrue($response->hasHeader('Set-Cookie'));
-        $cookie = $response->getHeaderLine('Set-Cookie');
-        $this->assertStringContainsString('locale=de', $cookie);
+        $this->assertFalse($response->hasHeader('Set-Cookie'));
+        $this->assertSame('de', $captured->getAttribute('locale'));
+        $this->assertSame('/x', $captured->getUri()->getPath());
+    }
+
+    public function test_cookie_only_when_enabled_and_changed(): void
+    {
+        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix', cookie: true);
+
+        $same = $mw->process($this->createRequest('/de/x', cookies: ['locale' => 'de']), $this->createHandler());
+        $changed = $mw->process($this->createRequest('/x', cookies: ['locale' => 'de']), $this->createHandler());
+
+        $this->assertFalse($same->hasHeader('Set-Cookie'));
+        $this->assertStringContainsString('locale=en', $changed->getHeaderLine('Set-Cookie'));
     }
 
     public function test_root_url_with_prefix(): void

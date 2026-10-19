@@ -20,6 +20,7 @@ final class LocaleMiddleware implements MiddlewareInterface
         private readonly array $availableLocales,
         private readonly string $defaultLocale,
         private readonly string $urlStrategy = 'prefix',
+        private readonly bool $cookie = false,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -61,11 +62,14 @@ final class LocaleMiddleware implements MiddlewareInterface
         // Handle the request
         $response = $handler->handle($strippedRequest);
 
-        // Set locale cookie
-        $response = $response->withHeader(
-            'Set-Cookie',
-            "locale={$locale}; Path=/; SameSite=Lax; HttpOnly"
-        );
+        // Remember the locale in a cookie only when enabled (off by default with the
+        // prefix strategy, where the URL already carries it) and only when it changed.
+        if ($this->cookie && ($request->getCookieParams()['locale'] ?? null) !== $locale) {
+            $response = $response->withHeader(
+                'Set-Cookie',
+                "locale={$locale}; Path=/; SameSite=Lax; HttpOnly"
+            );
+        }
 
         return $response;
     }

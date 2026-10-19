@@ -1,1 +1,1 @@
-<?php return ['hello' => 'Hello'];
+<?php return ['hello' => 'Hello', 'greet' => 'Hi :name'];

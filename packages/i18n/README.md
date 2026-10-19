@@ -71,7 +71,9 @@ One post|:count posts                           // simple two-form (1 = first, e
 
 ### LocaleMiddleware
 
-PSR-15 middleware. Detects locale in priority order: URL prefix → cookie → `Accept-Language` header → configured default. Strips the locale prefix from the request path and sets a `locale` cookie on the response.
+PSR-15 middleware. Detects locale in priority order: URL prefix → cookie → `Accept-Language` header → configured default. Strips the locale prefix from the request path. A `locale` cookie is set only when enabled (`'cookie' => true` in `config/i18n.php`; the default is off for the `prefix` strategy, on for `none`) and only when the locale changed.
+
+Template helpers: `t()`/`tc()` (parameters are HTML-escaped), `current_locale()`, `available_locales()` and `locale_url(path, locale = current)`, which returns `/about` for the default locale and `/de/about` otherwise.
 
 ```php
 $middleware = new LocaleMiddleware(

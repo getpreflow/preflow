@@ -607,35 +607,39 @@ final class Application
             return;
         }
 
+        // Boot with interface strings (lang/) and/or a locale config: a
+        // content-only multilingual app may have config/i18n.php but no lang/ yet.
         $langDir = $this->basePath('lang');
-        if (!is_dir($langDir)) {
+        $i18nPath = $this->basePath('config/i18n.php');
+        if (!is_dir($langDir) && !file_exists($i18nPath)) {
             return;
         }
 
-        $locale = $this->config->get('app.locale', 'en');
-        $i18nConfig = [];
-        $i18nPath = $this->basePath('config/i18n.php');
-        if (file_exists($i18nPath)) {
-            $i18nConfig = require $i18nPath;
-        }
+        $i18nConfig = file_exists($i18nPath) ? (array) require $i18nPath : [];
+        $locale = (string) ($i18nConfig['default'] ?? $this->config->get('app.locale', 'en'));
+        $fallback = (string) ($i18nConfig['fallback'] ?? $locale);
+        $available = array_values((array) ($i18nConfig['available'] ?? [$locale]));
+        $strategy = (string) ($i18nConfig['url_strategy'] ?? 'prefix');
 
-        $fallback = $i18nConfig['fallback'] ?? $locale;
         $translator = new \Preflow\I18n\Translator($langDir, $locale, $fallback);
         $this->container->instance(\Preflow\I18n\Translator::class, $translator);
 
-        // Register t()/tc() template functions
+        // t()/tc() and locale helpers
         if ($this->container->has(\Preflow\View\TemplateEngineInterface::class)) {
             $engine = $this->container->get(\Preflow\View\TemplateEngineInterface::class);
-            $translationProvider = new \Preflow\I18n\TranslationExtensionProvider($translator);
+            $translationProvider = new \Preflow\I18n\TranslationExtensionProvider($translator, $available, $locale);
             $this->registerExtensionProvider($engine, $translationProvider);
         }
 
-        // Locale middleware
+        // Locale middleware. No cookie by default with the prefix strategy (the URL
+        // carries the locale), so sites can truthfully claim "no cookies".
         if (class_exists(\Preflow\I18n\LocaleMiddleware::class)) {
-            $available = $i18nConfig['available'] ?? [$locale];
-            $strategy = $i18nConfig['url_strategy'] ?? 'prefix';
             $this->addMiddleware(new \Preflow\I18n\LocaleMiddleware(
-                $translator, $available, $locale, $strategy
+                $translator,
+                $available,
+                $locale,
+                $strategy,
+                (bool) ($i18nConfig['cookie'] ?? $strategy !== 'prefix'),
             ));
         }
     }
