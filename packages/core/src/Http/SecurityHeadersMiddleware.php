@@ -68,14 +68,31 @@ final class SecurityHeadersMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        $response = $handler->handle($request);
+        return $this->decorate($request, $handler->handle($request));
+    }
+
+    /**
+     * Adds the headers to a response. Also used by the kernel for error
+     * responses, which are produced outside the middleware pipeline.
+     */
+    public function decorate(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    {
 
         $cspHeader = ($this->reportOnly || $this->config['report_only'])
             ? 'Content-Security-Policy-Report-Only'
             : 'Content-Security-Policy';
 
-        if (!$response->hasHeader('Content-Security-Policy') && !$response->hasHeader('Content-Security-Policy-Report-Only')) {
+        // Only a header with the same name suppresses ours: a Report-Only trial of a
+        // stricter policy must not switch off the enforced one.
+        if (!$response->hasHeader($cspHeader)) {
             $response = $response->withHeader($cspHeader, $this->policy());
+        }
+
+        // For htmx requests: the nonce this response's own scripts carry, so the
+        // page's htmx nonce guard can drop any script that lacks it.
+        $nonce = ($this->nonce)();
+        if ($request->hasHeader('HX-Request') && $nonce !== null && $nonce !== '' && !$response->hasHeader('HX-Nonce')) {
+            $response = $response->withHeader('HX-Nonce', $nonce);
         }
 
         foreach ($this->config['headers'] as $name => $value) {

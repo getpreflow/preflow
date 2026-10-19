@@ -120,6 +120,17 @@
 .actions-cell a {
     margin-right: 0.5rem;
 }
+.empty-row { text-align: center; color: #999; padding: 2rem; }
+{% endapply %}
+
+{% apply js %}
+// Confirm destructive forms: <form data-confirm="…"> (inline onsubmit handlers are blocked by the CSP).
+document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (form.hasAttribute && form.hasAttribute('data-confirm') && !window.confirm(form.getAttribute('data-confirm'))) {
+        e.preventDefault();
+    }
+});
 {% endapply %}
 
 {% set success = flash('success') %}
@@ -158,7 +169,7 @@
                 <td class="actions-cell">
                     <a href="/admin/edit/{{ post.uuid }}">Edit</a>
                     <form method="post" action="/admin/delete/{{ post.uuid }}" class="delete-form"
-                          onsubmit="return confirm('Delete this post?')">
+                          data-confirm="Delete this post?">
                         {{ csrf_token()|raw }}
                         <button type="submit" class="btn btn-danger">Delete</button>
                     </form>
@@ -166,7 +177,7 @@
             </tr>
         {% else %}
             <tr>
-                <td colspan="4" style="text-align: center; color: #999; padding: 2rem;">
+                <td colspan="4" class="empty-row">
                     No posts yet. <a href="/admin/create">Create one.</a>
                 </td>
             </tr>

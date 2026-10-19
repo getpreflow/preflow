@@ -63,6 +63,24 @@ final class SecurityHeadersMiddlewareTest extends TestCase
         $this->assertSame("default-src 'none'", $response->getHeaderLine('Content-Security-Policy'));
     }
 
+    public function test_report_only_trial_does_not_disable_enforced_policy(): void
+    {
+        // A route trialling a stricter policy in Report-Only keeps the enforced one.
+        $response = $this->process(preset: ['Content-Security-Policy-Report-Only' => "default-src 'none'"]);
+
+        $this->assertSame("default-src 'none'", $response->getHeaderLine('Content-Security-Policy-Report-Only'));
+        $this->assertStringContainsString("script-src 'self' 'nonce-abc123'", $response->getHeaderLine('Content-Security-Policy'));
+    }
+
+    public function test_htmx_requests_get_the_response_nonce_announced(): void
+    {
+        $htmx = $this->process(requestHeaders: ['HX-Request' => 'true']);
+        $plain = $this->process();
+
+        $this->assertSame(self::NONCE, $htmx->getHeaderLine('HX-Nonce'));
+        $this->assertFalse($plain->hasHeader('HX-Nonce'));
+    }
+
     public function test_hsts_only_on_https(): void
     {
         $this->assertFalse($this->process(uri: 'http://x.test/')->hasHeader('Strict-Transport-Security'));
@@ -85,6 +103,35 @@ final class SecurityHeadersMiddlewareTest extends TestCase
 
         $fromConfig = $this->process(config: ['report_only' => true]);
         $this->assertTrue($fromConfig->hasHeader('Content-Security-Policy-Report-Only'));
+    }
+
+    public function test_error_responses_carry_security_headers(): void
+    {
+        $dir = sys_get_temp_dir() . '/csp_err_' . bin2hex(random_bytes(4));
+        mkdir($dir . '/config', 0777, true);
+        mkdir($dir . '/app/pages', 0777, true);
+        file_put_contents($dir . '/config/app.php', "<?php\nreturn ['name'=>'t','debug'=>0,'engine'=>'twig','key'=>'k'];\n");
+        file_put_contents($dir . '/app/pages/index.twig', '<html><head></head><body>home</body></html>');
+
+        try {
+            $app = Application::create($dir);
+            $app->boot();
+            $response = $app->handle((new Psr17Factory())->createServerRequest('GET', '/does-not-exist'));
+
+            $this->assertSame(404, $response->getStatusCode());
+            $this->assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'));
+            preg_match("/'nonce-([^']+)'/", $response->getHeaderLine('Content-Security-Policy'), $m);
+            $this->assertNotEmpty($m[1] ?? '', 'error page has an enforced CSP with a nonce');
+            // The production error page's own <style> must carry that nonce, or it renders unstyled.
+            $this->assertStringContainsString('<style nonce="' . $m[1] . '">', (string) $response->getBody());
+        } finally {
+            @unlink($dir . '/app/pages/index.twig');
+            @unlink($dir . '/config/app.php');
+            @rmdir($dir . '/app/pages');
+            @rmdir($dir . '/app');
+            @rmdir($dir . '/config');
+            @rmdir($dir);
+        }
     }
 
     public function test_csp_nonce_function_matches_header(): void

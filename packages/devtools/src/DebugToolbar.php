@@ -11,12 +11,17 @@ final class DebugToolbar
     private const float SLOW_QUERY_MS = 100.0;
     private const float SLOW_COMPONENT_MS = 50.0;
 
-    public function render(DebugCollector $collector): string
+    /**
+     * @param string|null $nonce the request's CSP nonce (put on the toolbar's own tags)
+     * @param string      $page  the rendered page, inspected for markup the CSP will block
+     */
+    public function render(DebugCollector $collector, ?string $nonce = null, string $page = ''): string
     {
-        $styles = $this->renderStyles();
+        $nonceAttr = $nonce !== null && $nonce !== '' ? ' nonce="' . htmlspecialchars($nonce, ENT_QUOTES, 'UTF-8') . '"' : '';
+        $styles = str_replace('<style>', '<style' . $nonceAttr . '>', $this->renderStyles());
         $bar = $this->renderBar($collector);
-        $panel = $this->renderPanel($collector);
-        $script = $this->renderScript();
+        $panel = $this->renderPanel($collector, CspInspector::issues($page, $nonce));
+        $script = str_replace('<script>', '<script' . $nonceAttr . '>', $this->renderScript());
 
         return <<<HTML
         <div id="preflow-debug-toolbar">
@@ -140,12 +145,14 @@ final class DebugToolbar
         HTML;
     }
 
-    private function renderPanel(DebugCollector $collector): string
+    /** @param list<string> $cspIssues */
+    private function renderPanel(DebugCollector $collector, array $cspIssues = []): string
     {
         $components = $this->renderComponentsSection($collector);
         $queries = $this->renderQueriesSection($collector);
         $assets = $this->renderAssetsSection($collector);
         $route = $this->renderRouteSection($collector);
+        $csp = $this->renderCspSection($cspIssues);
 
         return <<<HTML
         <div class="pdt-panel">
@@ -153,6 +160,33 @@ final class DebugToolbar
         {$queries}
         {$assets}
         {$route}
+        {$csp}
+        </div>
+        HTML;
+    }
+
+    /**
+     * Markup the strict CSP will block once debug is off (it is report-only in
+     * debug mode, so it still works here).
+     *
+     * @param list<string> $issues
+     */
+    private function renderCspSection(array $issues): string
+    {
+        $count = count($issues);
+        $rows = '';
+        foreach (array_count_values($issues) as $issue => $times) {
+            $label = htmlspecialchars($issue, ENT_QUOTES, 'UTF-8') . ($times > 1 ? " &times;{$times}" : '');
+            $rows .= "<div class=\"pdt-row\">{$label}</div>";
+        }
+        if ($rows === '') {
+            $rows = '<div class="pdt-row pdt-dim">Nothing the production CSP would block</div>';
+        }
+
+        return <<<HTML
+        <div class="pdt-section">
+        <div class="pdt-section-title">CSP ({$count} issues) — blocked when debug is off; add nonce="{{ csp_nonce() }}" or move inline handlers/styles to JS/CSS</div>
+        {$rows}
         </div>
         HTML;
     }

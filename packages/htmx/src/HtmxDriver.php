@@ -9,6 +9,14 @@ use Psr\Http\Message\ServerRequestInterface;
 
 final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver
 {
+    private ?HtmxAssets $assets = null;
+
+    /** Lets attribute helpers mark htmx as needed on the page (include mode "on-demand"). */
+    public function useAssets(HtmxAssets $assets): void
+    {
+        $this->assets = $assets;
+    }
+
     public function __construct(
         private readonly ResponseHeaders $responseHeaders,
     ) {}
@@ -20,6 +28,7 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver
         SwapStrategy $swap,
         array $extra = [],
     ): HtmlAttributes {
+        $this->assets?->require();
         return new HtmlAttributes(array_merge([
             "hx-{$method}" => $url,
             'hx-target' => "#{$targetId}",
@@ -32,6 +41,7 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver
         string $url,
         string $targetId,
     ): HtmlAttributes {
+        $this->assets?->require();
         return new HtmlAttributes([
             'hx-trigger' => "{$event} from:body",
             'hx-get' => $url,
@@ -70,6 +80,7 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver
 
     public function formAttributes(string $action, string $method, array $options = []): array
     {
+        $this->assets?->require();
         return [
             "hx-{$method}" => $action,
             'hx-target' => $options['target'] ?? 'this',
@@ -79,6 +90,7 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver
 
     public function inlineValidationAttributes(string $endpoint, string $field, string $trigger = 'blur'): array
     {
+        $this->assets?->require();
         return [
             'hx-post' => $endpoint,
             'hx-trigger' => $trigger,
@@ -90,6 +102,7 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver
 
     public function submitAttributes(string $target, array $options = []): array
     {
+        $this->assets?->require();
         return [
             'hx-target' => $target,
             'hx-swap' => $options['swap'] ?? 'outerHTML',

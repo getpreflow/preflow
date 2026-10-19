@@ -187,4 +187,41 @@ final class FrontendResolverTest extends TestCase
             'uuid' => $id, 'title' => ucfirst($slug), 'slug' => $slug, 'body' => 'x', 'status' => $status,
         ]), validate: false);
     }
+
+    public function test_boolean_published_value_matches_stored_boolean(): void
+    {
+        $this->writeType('page', ['route' => '/{slug}', 'published' => ['field' => 'visible', 'value' => true]], ['visible' => ['type' => 'boolean']]);
+        $registry = new TypeRegistry($this->models);
+        $this->dm->saveType(DynamicRecord::fromArray($registry->get('page'), [
+            'uuid' => 'b1', 'title' => 'B', 'slug' => 'bool', 'body' => 'x', 'status' => 'draft', 'visible' => true,
+        ]), validate: false);
+
+        $resolver = FrontendResolver::fromCatalog(new TypeCatalog($this->models), $this->dm);
+
+        $this->assertSame('b1', $resolver->match('/bool')?->record->getId());
+    }
+
+    /** @return iterable<string, array{string, string}> */
+    public static function malformedRoutes(): iterable
+    {
+        yield 'unclosed brace' => ['/a{b', 'unclosed'];
+        yield 'invalid parameter name' => ['/{my-slug}', 'parameter name'];
+        yield 'catch-all not last' => ['/{...rest}/x', 'catch-all'];
+        yield 'two catch-alls' => ['/{...a}/{...b}', 'catch-all'];
+        yield 'root route' => ['/', 'parameter'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('malformedRoutes')]
+    public function test_malformed_route_is_a_clear_boot_error(string $route, string $fragment): void
+    {
+        $this->writeType('article', ['route' => $route]);
+
+        try {
+            FrontendResolver::routesFromCatalog(new TypeCatalog($this->models));
+            $this->fail('Expected a FrontendConfigException for ' . $route);
+        } catch (FrontendConfigException $e) {
+            $this->assertStringContainsString('"article"', $e->getMessage());
+            $this->assertStringContainsString($fragment, $e->getMessage());
+        }
+    }
 }

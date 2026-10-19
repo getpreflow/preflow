@@ -46,4 +46,13 @@ final class HtmxExtensionProviderTest extends TestCase
 
         $this->assertStringContainsString('hx-post=', $result);
     }
+
+    public function test_asset_tag_marks_htmx_as_needed(): void
+    {
+        $assets = new \Preflow\Htmx\HtmxAssets(new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator()), 'on-demand');
+        $provider = new HtmxExtensionProvider(new HtmxDriver(new ResponseHeaders()), new ComponentToken('k'), assets: $assets);
+
+        $this->assertSame('', $provider->assetTag());
+        $this->assertTrue($assets->isRequired());
+    }
 }

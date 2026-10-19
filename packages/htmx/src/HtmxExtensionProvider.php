@@ -99,8 +99,13 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
     /**
      * Get the hypermedia library asset tag.
      */
+    /**
+     * Marks htmx as needed on this page and returns '' (htmx is inlined by
+     * HtmxAssets, never loaded through a tag).
+     */
     public function assetTag(): string
     {
+        $this->assets?->require();
         return $this->driver->assetTag();
     }
 

@@ -103,4 +103,34 @@ final class DebugToolbarTest extends TestCase
         $this->assertStringContainsString('0 queries', $html);
         $this->assertStringContainsString('0 components', $html);
     }
+
+    public function test_toolbar_tags_carry_the_nonce(): void
+    {
+        $html = (new DebugToolbar())->render(new DebugCollector(), 'n0nce');
+
+        $this->assertStringContainsString('<style nonce="n0nce">', $html);
+        $this->assertStringContainsString('<script nonce="n0nce">', $html);
+    }
+
+    public function test_csp_section_lists_markup_the_policy_will_block(): void
+    {
+        $page = '<html><body><script>alert(1)</script><script nonce="n0nce">ok()</script>'
+            . '<button onclick="go()">x</button><p style="color:red">y</p><style>p{}</style></body></html>';
+
+        $html = (new DebugToolbar())->render(new DebugCollector(), 'n0nce', $page);
+
+        $this->assertStringContainsString('CSP', $html);
+        $this->assertStringContainsString('script without nonce', $html);
+        $this->assertStringContainsString('inline event handler (onclick)', $html);
+        $this->assertStringContainsString('style attribute', $html);
+        $this->assertStringContainsString('style without nonce', $html);
+        $this->assertStringContainsString('4 issues', $html);
+    }
+
+    public function test_csp_section_is_quiet_for_clean_pages(): void
+    {
+        $page = '<html><body><script nonce="n0nce">ok()</script></body></html>';
+
+        $this->assertStringContainsString('0 issues', (new DebugToolbar())->render(new DebugCollector(), 'n0nce', $page));
+    }
 }

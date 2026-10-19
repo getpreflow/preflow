@@ -11,10 +11,16 @@ final class DevErrorRenderer implements ErrorRendererInterface
 {
     public function __construct(
         private ?DebugCollector $collector = null,
+        /** @var (\Closure(): ?string)|null the request's CSP nonce, for the page's <style> */
+        private readonly ?\Closure $nonce = null,
     ) {}
 
     public function render(\Throwable $exception, ServerRequestInterface $request, int $statusCode): string
     {
+        $nonceValue = $this->nonce !== null ? ($this->nonce)() : null;
+        $nonceAttr = $nonceValue !== null && $nonceValue !== ''
+            ? ' nonce="' . htmlspecialchars($nonceValue, ENT_QUOTES, 'UTF-8') . '"'
+            : '';
         $class = $exception::class;
         $message = $this->escape($exception->getMessage());
         $file = $exception->getFile();
@@ -35,7 +41,7 @@ final class DevErrorRenderer implements ErrorRendererInterface
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>{$statusCode} — {$escapedClass}</title>
-            <style>
+            <style{$nonceAttr}>
                 * { box-sizing: border-box; margin: 0; padding: 0; }
                 body { font-family: system-ui, -apple-system, sans-serif; background: #1a1a2e; color: #eee; padding: 2rem; line-height: 1.6; }
                 .header { background: #e94560; padding: 1.5rem 2rem; border-radius: 0.5rem; margin-bottom: 1.5rem; }

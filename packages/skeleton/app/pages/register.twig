@@ -1,36 +1,40 @@
 {% extends "_layout.twig" %}
 
 {% block content %}
-<main style="max-width: 400px; margin: 4rem auto; padding: 2rem;">
+<main class="auth-page">
     <h1>Create account</h1>
 
     {% set error = flash('error') %}
     {% if error %}
-        <p style="color: #c00;">{{ error }}</p>
+        <p class="auth-error">{{ error }}</p>
     {% endif %}
 
     <form method="post" action="/register">
         {{ csrf_token()|raw }}
 
         <label for="email">Email</label>
-        <input type="email" id="email" name="email" required autofocus
-               style="width: 100%; padding: 0.5rem; margin: 0.25rem 0 1rem;">
+        <input type="email" id="email" name="email" required autofocus>
 
         <label for="password">Password</label>
-        <input type="password" id="password" name="password" required minlength="8"
-               style="width: 100%; padding: 0.5rem; margin: 0.25rem 0 1rem;">
+        <input type="password" id="password" name="password" required minlength="8">
 
         <label for="password_confirm">Confirm password</label>
-        <input type="password" id="password_confirm" name="password_confirm" required
-               style="width: 100%; padding: 0.5rem; margin: 0.25rem 0 1rem;">
+        <input type="password" id="password_confirm" name="password_confirm" required>
 
-        <button type="submit" style="width: 100%; padding: 0.75rem; cursor: pointer;">
+        <button type="submit">
             Create account
         </button>
     </form>
 
-    <p style="margin-top: 1rem; text-align: center;">
+    <p class="auth-alt">
         <a href="/login">Already have an account?</a>
     </p>
 </main>
+{% apply css %}
+.auth-page { max-width: 400px; margin: 4rem auto; padding: 2rem; }
+.auth-page .auth-error { color: #c00; }
+.auth-page input { width: 100%; padding: 0.5rem; margin: 0.25rem 0 1rem; }
+.auth-page button { width: 100%; padding: 0.75rem; cursor: pointer; }
+.auth-page .auth-alt { margin-top: 1rem; text-align: center; }
+{% endapply %}
 {% endblock %}

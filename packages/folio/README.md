@@ -122,10 +122,10 @@ override it, persisted in `localStorage` with a no-flash inline script.
 Every template is overridable via the `@folio` namespace (drop replacements in
 `resources/folio/`). Because the admin renders through action-mode controllers,
 the stylesheet link and the small theme scripts are plain markup in
-`_layout.twig` rather than going through the asset collector. If you serve the
-admin under a strict `Content-Security-Policy`, allow `style-src 'self'` for the
-stylesheet and either nonce or allow the two inline theme scripts (or override
-`_layout.twig` to suit your policy).
+`_layout.twig` rather than going through the asset collector. They already carry
+`nonce="{{ csp_nonce() }}"`, so the admin works under Preflow's default strict
+CSP. If you override `_layout.twig`, keep the nonces and the
+`<meta name="csp-nonce">` tag (the rich-text editor reads it).
 
 ## Type options
 

@@ -278,6 +278,26 @@ final class ComponentEndpointTest extends TestCase
         $this->assertStringContainsString('.component { color: red; }', $body);
     }
 
+    public function test_fragment_response_announces_its_nonce(): void
+    {
+        // The page only trusts scripts carrying this nonce when htmx re-stamps them.
+        $assetCollector = new AssetCollector(new NonceGenerator());
+        $engine = new EndpointFakeEngineWithAssets($assetCollector);
+        $renderer = new ComponentRenderer($engine, new ErrorBoundary(debug: DebugLevel::On));
+        $endpoint = new ComponentEndpoint(
+            token: $this->tokenService,
+            renderer: $renderer,
+            driver: new HtmxDriver(new ResponseHeaders()),
+            componentFactory: fn (string $class, array $props) => $this->makeComponent($class, $props),
+            assetCollector: $assetCollector,
+        );
+
+        $token = $this->tokenService->encode(EndpointTestComponent::class, ['title' => 'Hello']);
+        $response = $endpoint->handle($this->createRequest('GET', '/--component/render', ['token' => $token]));
+
+        $this->assertSame($assetCollector->getNonce(), $response->getHeaderLine('HX-Nonce'));
+    }
+
     public function test_htmx_response_includes_collected_js(): void
     {
         $assetCollector = new AssetCollector(new NonceGenerator());

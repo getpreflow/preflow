@@ -183,6 +183,35 @@ php preflow routes:list          # List routes
 php preflow cache:clear          # Clear caches
 ```
 
+## Upgrading: security headers and CSP
+
+Preflow sends security headers and a strict, nonce-based `Content-Security-Policy`
+on every response, error pages included. The defaults are listed in
+`packages/skeleton/config/security.php`. In debug mode the policy is sent as
+`Content-Security-Policy-Report-Only`, so things keep working while you develop.
+**In production it is enforced.** Check these before deploying an existing app:
+
+- **Inline `<script>`/`<style>` you wrote by hand** need `nonce="{{ csp_nonce() }}"`.
+  Component CSS/JS (`{% apply css %}`/`{% apply js %}`) is handled for you.
+- **`style="…"` attributes and `on*="…"` handlers** are blocked. Use classes and
+  `addEventListener` (e.g. `data-confirm` plus a small listener instead of
+  `onsubmit="return confirm(…)"`).
+- **Third-party hosts** (fonts, CDNs, analytics, embeds) are blocked. Add them per
+  directive in `config/security.php`, e.g. `'font-src' => ["'self'", 'https://fonts.example']`.
+  A directive you list replaces that directive's defaults. The nonce is still added
+  to `script-src` and `style-src`.
+- **htmx `hx-on:*` attributes** need `'unsafe-eval'`. Prefer listeners in component JS.
+- **Migrating step by step:** set `'report_only' => true` in `config/security.php`,
+  watch the browser console (and the debug toolbar's CSP section, which lists markup
+  the policy will block), fix, then remove it.
+
+htmx no longer loads from unpkg. The pinned copy in `packages/htmx/assets` is
+inlined: about 50 KB, 16 KB gzipped. `config/htmx.php` decides when:
+- `always` (the default without the file);
+- `on-demand` (only on pages that use `hd.*` or the form helpers; the skeleton's
+  choice);
+- `never`.
+
 ## Requirements
 
 - PHP 8.4+

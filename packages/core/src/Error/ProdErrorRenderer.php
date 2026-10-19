@@ -20,8 +20,17 @@ final class ProdErrorRenderer implements ErrorRendererInterface
         503 => 'Service Unavailable',
     ];
 
+    /** @param (\Closure(): ?string)|null $nonce the request's CSP nonce, for the page's <style> */
+    public function __construct(
+        private readonly ?\Closure $nonce = null,
+    ) {}
+
     public function render(\Throwable $exception, ServerRequestInterface $request, int $statusCode): string
     {
+        $nonceValue = $this->nonce !== null ? ($this->nonce)() : null;
+        $nonceAttr = $nonceValue !== null && $nonceValue !== ''
+            ? ' nonce="' . htmlspecialchars($nonceValue, ENT_QUOTES, 'UTF-8') . '"'
+            : '';
         if ($exception instanceof HttpException) {
             $title = self::STATUS_MESSAGES[$statusCode] ?? 'Error';
             $message = $exception->getMessage();
@@ -37,7 +46,7 @@ final class ProdErrorRenderer implements ErrorRendererInterface
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>{$statusCode} — {$title}</title>
-            <style>
+            <style{$nonceAttr}>
                 body { font-family: system-ui, sans-serif; display: grid; place-items: center; min-height: 100vh; margin: 0; background: #f8f9fa; color: #333; }
                 .error { text-align: center; }
                 .code { font-size: 4rem; font-weight: 700; color: #dee2e6; }

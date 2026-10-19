@@ -31,6 +31,17 @@ final class HtmxAssetsTest extends TestCase
         $this->assertStringNotContainsString('unpkg.com', $head);
     }
 
+    public function test_swapped_scripts_are_only_trusted_with_the_fragment_nonce(): void
+    {
+        $collector = new AssetCollector(new NonceGenerator());
+        (new HtmxAssets($collector, 'always'))->require();
+        $head = $collector->renderHead();
+
+        // Guard registered before htmx re-stamps swapped <script>/<style> with the page nonce.
+        $this->assertStringContainsString('htmx:beforeSwap', $head);
+        $this->assertStringContainsString('HX-Nonce', $head);
+    }
+
     public function test_never_mode_adds_nothing(): void
     {
         $collector = new AssetCollector(new NonceGenerator());

@@ -34,6 +34,7 @@ final class Kernel
         callable $actionDispatcher,
         callable $componentRenderer,
         private readonly ?DebugCollector $collector = null,
+        private readonly ?\Preflow\Core\Http\SecurityHeadersMiddleware $securityHeaders = null,
     ) {
         $this->actionDispatcher = $actionDispatcher;
         $this->componentRenderer = $componentRenderer;
@@ -66,7 +67,9 @@ final class Kernel
                 return $dispatch($req);
             });
         } catch (\Throwable $e) {
-            return $this->errorHandler->handleException($e, $request);
+            // Error responses bypass the pipeline, so add the security headers here.
+            $response = $this->errorHandler->handleException($e, $request);
+            return $this->securityHeaders?->decorate($request, $response) ?? $response;
         }
     }
 }

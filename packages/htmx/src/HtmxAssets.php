@@ -56,7 +56,32 @@ final class HtmxAssets
         // htmx reads this meta on DOM ready, so its position after the script is fine.
         $this->assets->addHeadTag('<meta name="htmx-config" content=\'' . $config . '\'>');
         $this->assets->addJs((string) file_get_contents($this->scriptPath), JsPosition::Head, 'preflow-htmx');
+        $this->assets->addJs(self::NONCE_GUARD, JsPosition::Head, 'preflow-htmx-nonce-guard');
     }
+
+    /**
+     * htmx re-stamps every <script>/<style> it swaps in with the page nonce
+     * (inlineScriptNonce), which would let an injected script run as trusted.
+     * Before a swap, drop every script/style whose nonce is not the one the
+     * server announced for that response in the HX-Nonce header.
+     */
+    private const NONCE_GUARD = <<<'JS'
+document.addEventListener('htmx:beforeSwap', function (e) {
+    var d = e.detail, html = d.serverResponse;
+    if (typeof html !== 'string' || !/<(script|style)\b/i.test(html)) { return; }
+    var nonce = d.xhr ? d.xhr.getResponseHeader('HX-Nonce') : null;
+    var isDocument = /<html[\s>]/i.test(html);
+    var root = isDocument ? new DOMParser().parseFromString(html, 'text/html') : document.createElement('template');
+    if (!isDocument) { root.innerHTML = html; }
+    var scope = isDocument ? root : root.content, removed = false;
+    scope.querySelectorAll('script, style').forEach(function (el) {
+        if (!nonce || el.getAttribute('nonce') !== nonce) { el.parentNode.removeChild(el); removed = true; }
+    });
+    if (removed) {
+        d.serverResponse = isDocument ? '<!DOCTYPE html>' + root.documentElement.outerHTML : root.innerHTML;
+    }
+});
+JS;
 
     public function isRequired(): bool
     {

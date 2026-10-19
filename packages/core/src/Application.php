@@ -28,6 +28,7 @@ final class Application
     private readonly MiddlewarePipeline $pipeline;
     private ?RouterInterface $router = null;
     private ?Kernel $kernel = null;
+    private ?\Preflow\Core\Http\SecurityHeadersMiddleware $securityHeaders = null;
     private string $basePath;
 
     /** @var callable(Route, ServerRequestInterface): ResponseInterface|null */
@@ -157,8 +158,8 @@ final class Application
 
         // Error handler
         $renderer = $debug->isDebug()
-            ? new DevErrorRenderer($collector)
-            : new ProdErrorRenderer();
+            ? new DevErrorRenderer($collector, $this->nonceProvider())
+            : new ProdErrorRenderer($this->nonceProvider());
         $errorHandler = new ErrorHandler($renderer);
         $this->container->instance(ErrorHandler::class, $errorHandler);
 
@@ -168,7 +169,7 @@ final class Application
 
         // Debug toolbar middleware — must be last so it wraps the full response
         if ($debug->isDebug() && $collector !== null && class_exists(\Preflow\DevTools\Http\DebugToolbarMiddleware::class)) {
-            $this->addMiddleware(new \Preflow\DevTools\Http\DebugToolbarMiddleware($collector));
+            $this->addMiddleware(new \Preflow\DevTools\Http\DebugToolbarMiddleware($collector, $this->nonceProvider()));
         }
 
         $this->kernel = new Kernel(
@@ -179,6 +180,7 @@ final class Application
             actionDispatcher: $this->actionDispatcher,
             componentRenderer: $this->componentRenderer,
             collector: $collector,
+            securityHeaders: $this->securityHeaders,
         );
     }
 
@@ -378,6 +380,17 @@ final class Application
      * request nonce) and before session/CSRF/auth middleware, so it wraps them.
      * Debug mode sends the policy as report-only so dev tooling keeps working.
      */
+    /** @return \Closure(): ?string the request's CSP nonce, or null without preflow/view */
+    private function nonceProvider(): \Closure
+    {
+        $container = $this->container;
+
+        return static fn (): ?string => class_exists(\Preflow\View\AssetCollector::class)
+            && $container->has(\Preflow\View\AssetCollector::class)
+                ? $container->get(\Preflow\View\AssetCollector::class)->getNonce()
+                : null;
+    }
+
     private function bootSecurityHeaders(DebugLevel $debug): void
     {
         $config = [];
@@ -386,13 +399,8 @@ final class Application
             $config = (array) require $path;
         }
 
-        $container = $this->container;
-        $nonce = static fn (): ?string => $container->has(\Preflow\View\AssetCollector::class)
-            && class_exists(\Preflow\View\AssetCollector::class)
-                ? $container->get(\Preflow\View\AssetCollector::class)->getNonce()
-                : null;
-
-        $this->addMiddleware(new \Preflow\Core\Http\SecurityHeadersMiddleware($nonce, $config, $debug->isDebug()));
+        $this->securityHeaders = new \Preflow\Core\Http\SecurityHeadersMiddleware($this->nonceProvider(), $config, $debug->isDebug());
+        $this->addMiddleware($this->securityHeaders);
     }
 
     private function createTemplateEngine(
@@ -545,6 +553,7 @@ final class Application
             $htmxConfig = file_exists($htmxConfigPath) ? (array) require $htmxConfigPath : [];
             $htmxAssets = new \Preflow\Htmx\HtmxAssets($assets, (string) ($htmxConfig['include'] ?? 'always'));
             $this->container->instance(\Preflow\Htmx\HtmxAssets::class, $htmxAssets);
+            $htmxDriver->useAssets($htmxAssets); // form helpers (form_begin, inline validation) need htmx too
             if ($htmxAssets->mode() === 'always') {
                 $htmxAssets->require();
             }

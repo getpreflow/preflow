@@ -54,4 +54,23 @@ final class HtmxFormDriverTest extends TestCase
         $attrs = $this->driver->submitAttributes('#form-wrapper');
         $this->assertSame('#form-wrapper', $attrs['hx-target']);
     }
+
+    public function test_attribute_helpers_mark_htmx_as_needed(): void
+    {
+        foreach ([
+            fn (HtmxDriver $d) => $d->formAttributes('/save', 'post'),
+            fn (HtmxDriver $d) => $d->inlineValidationAttributes('/validate', 'email'),
+            fn (HtmxDriver $d) => $d->submitAttributes('#form'),
+            fn (HtmxDriver $d) => $d->actionAttrs('post', '/x', '#t', \Preflow\Htmx\SwapStrategy::OuterHTML),
+            fn (HtmxDriver $d) => $d->listenAttrs('refresh', '/x', '#t'),
+        ] as $i => $call) {
+            $assets = new \Preflow\Htmx\HtmxAssets(new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator()), 'on-demand');
+            $driver = new HtmxDriver(new ResponseHeaders());
+            $driver->useAssets($assets);
+
+            $call($driver);
+
+            $this->assertTrue($assets->isRequired(), "helper #{$i} requires htmx");
+        }
+    }
 }

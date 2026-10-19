@@ -108,6 +108,12 @@ final class ComponentEndpoint
         // Build response with driver headers
         $response = new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
 
+        // The nonce this fragment's own <script>/<style> carry: the page's htmx
+        // nonce guard only lets those through (see HtmxAssets::NONCE_GUARD).
+        if ($this->assetCollector !== null) {
+            $response = $response->withHeader('HX-Nonce', $this->assetCollector->getNonce());
+        }
+
         if ($this->driver instanceof HtmxDriver) {
             $headers = $this->getDriverHeaders();
             foreach ($headers as $name => $value) {

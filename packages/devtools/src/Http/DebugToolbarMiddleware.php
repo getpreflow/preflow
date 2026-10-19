@@ -15,6 +15,8 @@ final class DebugToolbarMiddleware implements MiddlewareInterface
 {
     public function __construct(
         private readonly DebugCollector $collector,
+        /** @var (\Closure(): ?string)|null returns the request's CSP nonce */
+        private readonly ?\Closure $nonce = null,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -32,7 +34,7 @@ final class DebugToolbarMiddleware implements MiddlewareInterface
         }
 
         $toolbar = new DebugToolbar();
-        $toolbarHtml = $toolbar->render($this->collector);
+        $toolbarHtml = $toolbar->render($this->collector, $this->nonce !== null ? ($this->nonce)() : null, $body);
 
         $body = str_replace('</body>', $toolbarHtml . '</body>', $body);
 
