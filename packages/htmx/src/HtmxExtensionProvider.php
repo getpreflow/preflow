@@ -13,7 +13,18 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
         private readonly HypermediaDriver $driver,
         private readonly ComponentToken $token,
         private readonly string $endpointPrefix = '/--component',
+        private readonly ?HtmxAssets $assets = null,
     ) {}
+
+    /**
+     * Mark htmx as needed on this page (for templates that write hx-* attributes
+     * by hand). Returns an empty string so it can be used as {{ hd.require() }}.
+     */
+    public function require(): string
+    {
+        $this->assets?->require();
+        return '';
+    }
 
     public function getTemplateFunctions(): array
     {
@@ -76,6 +87,7 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
         string $componentId,
         array $props = [],
     ): string {
+        $this->assets?->require();
         $tokenStr = $this->token->encode($componentClass, $props, 'render');
         $url = $this->endpointPrefix . '/render?token=' . urlencode($tokenStr);
 
@@ -105,6 +117,7 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
         SwapStrategy $swap,
         array $extra,
     ): string {
+        $this->assets?->require();
         $tokenStr = $this->token->encode($componentClass, $props, $action);
         $url = $this->endpointPrefix . '/action?token=' . urlencode($tokenStr);
 

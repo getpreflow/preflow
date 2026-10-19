@@ -60,9 +60,12 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver
         return $request->hasHeader('HX-Request');
     }
 
+    /**
+     * @deprecated htmx is self-hosted and inlined by HtmxAssets; this returns an empty string.
+     */
     public function assetTag(): string
     {
-        return '<script src="https://unpkg.com/htmx.org@2" defer></script>';
+        return '';
     }
 
     public function formAttributes(string $action, string $method, array $options = []): array

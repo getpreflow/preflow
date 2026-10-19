@@ -106,11 +106,9 @@ final class HtmxDriverTest extends TestCase
         $this->assertFalse($this->driver->isFragmentRequest($request));
     }
 
-    public function test_asset_tag_returns_script(): void
+    public function test_asset_tag_is_empty_because_htmx_is_self_hosted(): void
     {
-        $tag = $this->driver->assetTag();
-
-        $this->assertStringContainsString('<script', $tag);
-        $this->assertStringContainsString('htmx.org', $tag);
+        // htmx is inlined by HtmxAssets; the driver no longer emits an external <script src>.
+        $this->assertSame('', $this->driver->assetTag());
     }
 }

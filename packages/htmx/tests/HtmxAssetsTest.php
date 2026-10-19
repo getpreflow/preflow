@@ -1,0 +1,51 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Htmx\Tests;
+
+use PHPUnit\Framework\TestCase;
+use Preflow\Htmx\HtmxAssets;
+use Preflow\View\AssetCollector;
+use Preflow\View\NonceGenerator;
+
+final class HtmxAssetsTest extends TestCase
+{
+    public function test_require_inlines_script_once_with_nonce(): void
+    {
+        $collector = new AssetCollector(new NonceGenerator());
+        $nonce = $collector->getNonce();
+        $assets = new HtmxAssets($collector, 'on-demand');
+
+        $assets->require();
+        $assets->require();
+        $head = $collector->renderHead();
+
+        $this->assertTrue($assets->isRequired());
+        $this->assertSame(1, substr_count($head, '<script nonce="' . $nonce . '">'));
+        // 'htmx-config' also occurs inside the htmx source, so count the meta tag itself.
+        $this->assertSame(1, substr_count($head, '<meta name="htmx-config"'));
+        $this->assertStringContainsString('"inlineScriptNonce":"' . $nonce . '"', $head);
+        $this->assertStringContainsString('"inlineStyleNonce":"' . $nonce . '"', $head);
+        $this->assertStringContainsString('htmx', $head);
+        $this->assertStringNotContainsString('unpkg.com', $head);
+    }
+
+    public function test_never_mode_adds_nothing(): void
+    {
+        $collector = new AssetCollector(new NonceGenerator());
+        $assets = new HtmxAssets($collector, 'never');
+
+        $assets->require();
+
+        $this->assertFalse($assets->isRequired());
+        $this->assertSame('', $collector->renderHead());
+    }
+
+    public function test_invalid_mode_throws(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('config/htmx.php');
+        new HtmxAssets(new AssetCollector(new NonceGenerator()), 'sometimes');
+    }
+}

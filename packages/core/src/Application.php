@@ -538,12 +538,19 @@ final class Application
             $this->container->instance(\Preflow\View\FormHypermediaDriver::class, $htmxDriver);
             $this->container->instance(\Preflow\Htmx\ComponentToken::class, $componentToken);
 
-            // Register HTMX library script tag in <head>
+            // htmx itself: vendored and inlined (no external request). Included
+            // always (default), on demand (when a template uses hd.*), or never.
             $assets = $this->container->get(\Preflow\View\AssetCollector::class);
-            $assets->addHeadTag($htmxDriver->assetTag());
+            $htmxConfigPath = $this->basePath('config/htmx.php');
+            $htmxConfig = file_exists($htmxConfigPath) ? (array) require $htmxConfigPath : [];
+            $htmxAssets = new \Preflow\Htmx\HtmxAssets($assets, (string) ($htmxConfig['include'] ?? 'always'));
+            $this->container->instance(\Preflow\Htmx\HtmxAssets::class, $htmxAssets);
+            if ($htmxAssets->mode() === 'always') {
+                $htmxAssets->require();
+            }
 
             // Register hd template functions
-            $htmxProvider = new \Preflow\Htmx\HtmxExtensionProvider($htmxDriver, $componentToken);
+            $htmxProvider = new \Preflow\Htmx\HtmxExtensionProvider($htmxDriver, $componentToken, assets: $htmxAssets);
             $this->registerExtensionProvider($engine, $htmxProvider);
 
             // Component endpoint

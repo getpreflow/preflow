@@ -81,11 +81,12 @@ final class HdExtensionTest extends TestCase
         $this->assertStringContainsString('hx-target="#cart-1"', $result);
     }
 
-    public function test_hd_asset_tag(): void
+    public function test_hd_asset_tag_emits_no_external_script(): void
     {
         $result = $this->render("{{ hd.assetTag() }}");
 
-        $this->assertStringContainsString('htmx.org', $result);
+        $this->assertStringNotContainsString('unpkg.com', $result);
+        $this->assertSame('', trim($result));
     }
 
     public function test_token_is_signed_in_url(): void
