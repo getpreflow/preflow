@@ -18,6 +18,7 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\HandlesUpload;
+use Preflow\Folio\Field\Types\BlocksFieldType;
 use Preflow\Validation\ValidationException;
 use Preflow\Folio\Override\ActionResolver;
 use Preflow\View\TemplateEngineInterface;
@@ -177,7 +178,7 @@ final class AdminController
         $data = [$typeDef->idField => $record->getId()];
 
         try {
-            $this->dm->saveType($record, true, $this->rulesFor($typeDef));
+            $this->saveWithBlocks($typeDef, $record);
         } catch (ValidationException $e) {
             $action = $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : '');
             $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
@@ -251,7 +252,7 @@ final class AdminController
         $record = $this->drafts->build($typeDef, $request, $current->toArray(), $locale);
 
         try {
-            $this->dm->saveType($record, true, $this->rulesFor($typeDef));
+            $this->saveWithBlocks($typeDef, $record);
         } catch (ValidationException $e) {
             return $this->form(
                 $type,
@@ -384,6 +385,9 @@ final class AdminController
                 config: $fieldDef->config,
                 required: in_array('required', $fieldDef->validate, true) && (!$isTranslatable || $locale === $locales->default),
                 placeholder: $placeholder,
+                nestedErrors: self::nestedErrors($errors, $name),
+                locale: $locale,
+                locales: $locales,
             );
             $fields[] = [
                 'name' => $name,
@@ -483,6 +487,31 @@ final class AdminController
         return $badges;
     }
 
+    /**
+     * Validates blocks fields per instance, then saves (with the type's rules).
+     * Block errors stop the save; they are keyed "<field>.<uid>.<leaf>".
+     *
+     * @throws ValidationException
+     */
+    private function saveWithBlocks(TypeDefinition $typeDef, DynamicRecord $record): void
+    {
+        $errors = [];
+        foreach ($typeDef->fields as $name => $fieldDef) {
+            $fieldType = $this->fieldTypes->get($fieldDef->type);
+            if (!$fieldType instanceof BlocksFieldType) {
+                continue;
+            }
+            foreach ($fieldType->validateBlocks($record->get($name), $fieldDef->config, $typeDef->locales) as $key => $messages) {
+                $errors[$key === '' ? $name : $name . '.' . $key] = $messages;
+            }
+        }
+        if ($errors !== []) {
+            throw new ValidationException(new \Preflow\Validation\ValidationResult($errors));
+        }
+
+        $this->dm->saveType($record, true, $this->rulesFor($typeDef));
+    }
+
     /** The editing locale: ?locale= (GET) or _locale (POST), if configured; else the default. */
     private function requestLocale(ServerRequestInterface $request, TypeDefinition $typeDef): string
     {
@@ -499,6 +528,28 @@ final class AdminController
     private static function languageName(string $code): string
     {
         return ['en' => 'English', 'de' => 'German', 'fr' => 'French', 'it' => 'Italian'][$code] ?? strtoupper($code);
+    }
+
+    /**
+     * Errors inside a field ("<field>.<rest>"), keyed by "<rest>". Locale
+     * suffixes of top-level translatable fields ("title.de") are excluded.
+     *
+     * @param array<string, list<string>> $errors
+     * @return array<string, list<string>>
+     */
+    private static function nestedErrors(array $errors, string $field): array
+    {
+        $nested = [];
+        foreach ($errors as $key => $messages) {
+            if (is_string($key) && str_starts_with($key, $field . '.')) {
+                $rest = substr($key, strlen($field) + 1);
+                if (preg_match('/^[a-f0-9]{16}\./', $rest) === 1) {
+                    $nested[$rest] = (array) $messages;
+                }
+            }
+        }
+
+        return $nested;
     }
 
     /** Plain text for placeholders and references (field values may hold rich text). */

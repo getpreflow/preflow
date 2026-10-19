@@ -970,6 +970,33 @@ final class FolioAppTest extends TestCase
         $this->assertStringNotContainsString('Shared across languages', $body);
     }
 
+    public function test_block_validation_error_is_422_and_not_saved(): void
+    {
+        $this->enableBlocks();
+        $uid = 'aaaaaaaaaaaaaaaa';
+
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
+                'sections' => ['_order' => [$uid], $uid => ['_block' => 'hero', 'headline' => '']]]));
+
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertNull($this->dm()->queryType('page')->where('slug', 'blocks')->first());
+    }
+
+    public function test_valid_blocks_save(): void
+    {
+        $this->enableBlocks();
+        $uid = 'aaaaaaaaaaaaaaaa';
+
+        $id = $this->createPage(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
+            'sections' => ['_order' => [$uid], $uid => ['_block' => 'hero', 'headline' => 'Hello']]]);
+
+        $sections = $this->dm()->findType('page', $id)->get('sections');
+        $this->assertCount(1, $sections);
+        $this->assertSame('hero', $sections[0]['_block']);
+        $this->assertSame('Hello', $sections[0]['headline']);
+    }
+
     public function test_edit_form_no_preview_button_for_non_frontend_type(): void
     {
         $app = $this->app();
@@ -1097,6 +1124,19 @@ final class FolioAppTest extends TestCase
         $app->container()->get(\Preflow\Data\DataManager::class)->saveType(\Preflow\Data\DynamicRecord::fromArray($typeDef, [
             'uuid' => $id, 'title' => ucfirst($slug) . ' article', 'slug' => $slug, 'status' => $status,
         ]), validate: false);
+    }
+
+    /** Page gets a "sections" blocks field; the fixture blocks are registered via config. */
+    private function enableBlocks(): void
+    {
+        $page = json_decode((string) file_get_contents($this->dir . '/config/models/page.json'), true);
+        $page['fields']['sections'] = ['type' => 'blocks', 'label' => 'Sections', 'allowed' => ['hero', 'link']];
+        file_put_contents($this->dir . '/config/models/page.json', json_encode($page));
+        file_put_contents($this->dir . '/config/folio.php', "<?php\nreturn ['path' => '/folio', 'blocks' => ['classes' => [\n"
+            . "    \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\HeroBlock\\HeroBlock::class,\n"
+            . "    \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\LinkBlock::class,\n"
+            . "    \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\TradeoffNoteBlock::class,\n"
+            . "]]];\n");
     }
 
     /** English + German content; page title/slug/body translatable, slug lower-case only. */

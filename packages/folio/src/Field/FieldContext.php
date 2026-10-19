@@ -22,5 +22,9 @@ final readonly class FieldContext
         public array $config = [],
         public bool $required = false,
         public ?string $placeholder = null,
+        /** @var array<string, list<string>> errors inside the field, keys relative to it (blocks: "<uid>.<field>") */
+        public array $nestedErrors = [],
+        public ?string $locale = null,
+        public ?\Preflow\Data\Locales $locales = null,
     ) {}
 }
