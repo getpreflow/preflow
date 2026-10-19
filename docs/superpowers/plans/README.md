@@ -16,6 +16,7 @@
 | 9 | `preflow/devtools` | [2026-04-11-phase-9-devtools.md](2026-04-11-phase-9-devtools.md) | Ready |
 | 10 | `preflow/skeleton` | TBD | Blocked on Phases 1-9 |
 | 11 | `preflow/notify` | [2026-10-19-preflow-notify.md](2026-10-19-preflow-notify.md) | Implemented |
+| 12 | groundwork (core CSP, htmx, folio basics) | [2026-10-19-groundwork-csp-htmx-folio-basics.md](2026-10-19-groundwork-csp-htmx-folio-basics.md) | Implemented |
 
 ## Design Spec
 

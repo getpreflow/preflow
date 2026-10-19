@@ -127,9 +127,75 @@ admin under a strict `Content-Security-Policy`, allow `style-src 'self'` for the
 stylesheet and either nonce or allow the two inline theme scripts (or override
 `_layout.twig` to suit your policy).
 
+## Type options
+
+Besides `fields`, a type JSON can carry two optional blocks.
+
+### `frontend`: public rendering
+
+```json
+"frontend": {
+    "route": "/blog/{slug}",
+    "home": "home",
+    "template": "folio/article.twig",
+    "published": { "field": "status", "value": "published" }
+}
+```
+
+- `route`: `{field}` matches one path segment, `{...field}` matches the rest of the
+  path. The parameter names are record fields used for the lookup.
+- `home` (optional): the value `/` resolves to. Only one type may declare it.
+- `template` (optional): a userland Twig path. When it is absent, Folio uses
+  `@folio/frontend/{type}.twig`, then `@folio/frontend/page.twig`. Templates receive
+  `record`, `rendered` (field → safe HTML), `type` and `preview`.
+- `published`: which field and value make a record public. The default is `status` /
+  `published`.
+
+Routes are tried most specific first. Two types claiming the same route, or two types
+declaring `home`, stop the app at boot with a message naming both. Without any `frontend`
+block, a `page` type is served at `/{slug}` exactly as before. The live preview is
+available for every type that has a route.
+
+### `list`: the admin list
+
+```json
+"list": { "columns": ["title", "status"], "sort": "-title", "orderable": false }
+```
+
+- `columns`: the fields shown. The default is the first three
+  string/number/select/boolean/date fields.
+- `sort`: the default order. A `-` prefix means descending.
+- `orderable: true`: up/down buttons that store a manual position in the record's
+  `_order` key. New records go to the end.
+
+## Field types
+
+`string`, `text` (`"monospace": true` gives a code-style editor), `number`, `boolean`,
+`date` (`"time": true` for date and time), `select` (`"options"` as a map or a list;
+`"display": "radio"`), `richtext`, `asset`, `relation` and `matrix`.
+
+A field type's own rules (e.g. `select`'s allowed values) are enforced in addition to
+`validate`. To add or replace a type, list the classes in `config/folio.php`:
+
+```php
+return ['field_types' => [App\Folio\ColorFieldType::class]];
+```
+
 ## Status
 
-Walking skeleton. Shipped: type discovery, auto-form CRUD, slug rendering, per-action
-overrides. Not yet: rich-text / relation / asset / matrix fields, live preview, the full
-extension layer, admin styling/assets, settings/users/media areas, i18n and versioning.
-Templates are intentionally unstyled at this stage.
+Shipped:
+- type discovery and auto-form CRUD;
+- the field types above;
+- the matrix field with create-in-drawer and per-placement views;
+- side-by-side live preview;
+- admin login;
+- per-action overrides;
+- multi-type frontend routing;
+- the configurable list.
+
+The admin runs under Preflow's strict, nonce-based CSP: no inline handlers or styles.
+Hand-written `<script>`/`<style>` tags in your own templates need
+`nonce="{{ csp_nonce() }}"`.
+
+Planned: content i18n, blocks and singletons, click-to-edit preview, draft/publish, the
+asset library, and `folio:pull`. See `docs/superpowers/specs/2026-10-19-*`.

@@ -7,6 +7,7 @@ namespace Preflow\Folio\Http;
 use Nyholm\Psr7\Response;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\SortDirection;
 use Preflow\Data\TypeRegistry;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\RecordLabeler;
@@ -24,6 +25,12 @@ use Psr\Http\Message\ServerRequestInterface;
 
 final class AdminController
 {
+    /** System key holding the manual position of a record in an orderable list. */
+    private const ORDER = '_order';
+
+    /** Field types shown as list columns by default. */
+    private const LIST_TYPES = ['string', 'number', 'int', 'integer', 'float', 'select', 'boolean', 'date'];
+
     public function __construct(
         private readonly TypeCatalog $catalog,
         private readonly TypeRegistry $registry,
@@ -65,9 +72,24 @@ final class AdminController
             return new Response(404, [], 'Unknown type');
         }
 
+        $typeDef = $this->registry->get($type);
+        $listConfig = $this->catalog->get($type)?->list ?? [];
+        $orderable = ($listConfig['orderable'] ?? false) === true;
+        $columns = $this->listColumns($typeDef, $listConfig);
+
         $rows = [];
-        foreach ($this->dm->queryType($type)->get()->items() as $record) {
-            $rows[] = $record->toArray() + ['id' => $record->getId()];
+        foreach ($this->listQuery($type, $typeDef, $listConfig)->get()->items() as $record) {
+            $cells = [];
+            foreach ($columns as $name => $label) {
+                $fieldDef = $typeDef->fields[$name];
+                $html = $this->fieldTypes->get($fieldDef->type)->renderFrontend(
+                    $this->fieldTypes->get($fieldDef->type)->fromStorage($record->get($name)),
+                    $fieldDef->config,
+                );
+                // Plain text: list cells never render field HTML (e.g. rich text) raw.
+                $cells[$name] = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            }
+            $rows[] = ['id' => $record->getId(), 'cells' => $cells];
         }
 
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
@@ -77,7 +99,9 @@ final class AdminController
             'type' => $type,
             'label' => $this->labelFor($type),
             'types' => $this->catalog->all(),
+            'columns' => $columns,
             'rows' => $rows,
+            'orderable' => $orderable,
             'csrf' => $csrf,
         ]));
     }
@@ -131,6 +155,9 @@ final class AdminController
 
         $data = $this->collectFieldData($typeDef, $request, []);
         $data[$typeDef->idField] = bin2hex(random_bytes(16));
+        if (($this->catalog->get($type)?->list['orderable'] ?? false) === true) {
+            $data[self::ORDER] = $this->maxOrder($type) + 10;
+        }
 
         try {
             $this->dm->saveType(DynamicRecord::fromArray($typeDef, $data), true, $this->rulesFor($typeDef));
@@ -200,7 +227,8 @@ final class AdminController
         $typeDef = $this->registry->get($type);
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
 
-        $data = $this->collectFieldData($typeDef, $request, $current->toArray());
+        $existing = $current->toArray();
+        $data = $this->collectFieldData($typeDef, $request, $existing) + self::systemKeys($existing);
         $data[$typeDef->idField] = $id;
 
         try {
@@ -215,6 +243,53 @@ final class AdminController
                 $csrf,
                 422,
             );
+        }
+
+        return new Response(302, ['Location' => $this->prefix . '/' . $type]);
+    }
+
+    /**
+     * Move a record one step up or down in an orderable list (POST direction=up|down).
+     * Records that have no _order yet are numbered in their current order first.
+     */
+    public function reorder(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = (string) $request->getAttribute('type', '');
+        $id = (string) $request->getAttribute('id', '');
+        if (!$this->catalog->has($type) || ($this->catalog->get($type)?->list['orderable'] ?? false) !== true) {
+            return new Response(404, [], 'Unknown type');
+        }
+
+        $typeDef = $this->registry->get($type);
+        $records = array_values($this->listQuery($type, $typeDef, ['orderable' => true])->get()->items());
+
+        $missing = false;
+        foreach ($records as $record) {
+            $missing = $missing || !is_int($record->get(self::ORDER));
+        }
+        if ($missing) {
+            foreach ($records as $i => $record) {
+                $record->set(self::ORDER, ($i + 1) * 10);
+                $this->dm->saveType($record, validate: false);
+            }
+        }
+
+        $ids = array_map(static fn ($r) => (string) $r->getId(), $records);
+        $index = array_search($id, $ids, true);
+        if ($index === false) {
+            return new Response(404, [], 'Not found');
+        }
+
+        $direction = (string) (((array) $request->getParsedBody())['direction'] ?? '');
+        $neighbour = $direction === 'up' ? $index - 1 : ($direction === 'down' ? $index + 1 : null);
+        if ($neighbour !== null && isset($records[$neighbour])) {
+            $a = $records[$index];
+            $b = $records[$neighbour];
+            $orderA = $a->get(self::ORDER);
+            $a->set(self::ORDER, $b->get(self::ORDER));
+            $b->set(self::ORDER, $orderA);
+            $this->dm->saveType($a, validate: false);
+            $this->dm->saveType($b, validate: false);
         }
 
         return new Response(302, ['Location' => $this->prefix . '/' . $type]);
@@ -347,6 +422,80 @@ final class AdminController
         }
 
         return $rules;
+    }
+
+    /**
+     * Columns for the admin list: "list.columns" from the type JSON, else the
+     * first three plain-valued fields.
+     *
+     * @param array<string, mixed> $listConfig
+     * @return array<string, string> field => header label
+     */
+    private function listColumns(TypeDefinition $typeDef, array $listConfig): array
+    {
+        $names = array_values(array_filter(
+            (array) ($listConfig['columns'] ?? []),
+            static fn ($name) => is_string($name) && isset($typeDef->fields[$name]),
+        ));
+
+        if ($names === []) {
+            foreach ($typeDef->fields as $name => $fieldDef) {
+                if ($name !== $typeDef->idField && in_array($fieldDef->type, self::LIST_TYPES, true)) {
+                    $names[] = $name;
+                }
+                if (count($names) === 3) {
+                    break;
+                }
+            }
+        }
+
+        $renderer = new \Preflow\Form\FieldRenderer();
+        $columns = [];
+        foreach ($names as $name) {
+            $columns[$name] = $typeDef->fields[$name]->label ?? $renderer->humanize($name);
+        }
+
+        return $columns;
+    }
+
+    /** @param array<string, mixed> $listConfig */
+    private function listQuery(string $type, TypeDefinition $typeDef, array $listConfig): \Preflow\Data\QueryBuilder
+    {
+        $query = $this->dm->queryType($type);
+
+        if (($listConfig['orderable'] ?? false) === true) {
+            return $query->orderBy(self::ORDER)->orderBy($typeDef->idField);
+        }
+
+        $sort = (string) ($listConfig['sort'] ?? '');
+        if ($sort !== '') {
+            $desc = str_starts_with($sort, '-');
+            $query = $query->orderBy(ltrim($sort, '-'), $desc ? SortDirection::Desc : SortDirection::Asc);
+        }
+
+        return $query;
+    }
+
+    private function maxOrder(string $type): int
+    {
+        $max = 0;
+        foreach ($this->dm->queryType($type)->get()->items() as $record) {
+            $max = max($max, (int) $record->get(self::ORDER));
+        }
+
+        return $max;
+    }
+
+    /**
+     * System keys (leading underscore, e.g. _order) carried over on update:
+     * they are not form fields, so the form never submits them.
+     *
+     * @param array<string, mixed> $existing
+     * @return array<string, mixed>
+     */
+    private static function systemKeys(array $existing): array
+    {
+        return array_filter($existing, static fn ($key) => is_string($key) && str_starts_with($key, '_'), ARRAY_FILTER_USE_KEY);
     }
 
     /** @return \Psr\Http\Message\UploadedFileInterface[] */

@@ -624,6 +624,96 @@ final class FolioAppTest extends TestCase
         $this->app();
     }
 
+    public function test_list_uses_configured_columns(): void
+    {
+        $this->writeItemType(['columns' => ['title', 'featured']]);
+        $this->postItem(['title' => 'Alpha', 'featured' => '1', 'note' => 'n']);
+
+        $body = (string) $this->get('/folio/item')->getBody();
+
+        $this->assertMatchesRegularExpression('#<th[^>]*>Title</th>\s*<th[^>]*>Featured</th>#', $body);
+        $this->assertStringContainsString('<td>Yes</td>', $body);
+        $this->assertStringNotContainsString('<th>Note</th>', $body);
+    }
+
+    public function test_list_default_columns_without_config(): void
+    {
+        $this->writeItemType([]);
+        $this->postItem(['title' => 'Alpha', 'note' => 'n']);
+
+        $body = (string) $this->get('/folio/item')->getBody();
+
+        // first three plain fields, no hardcoded page columns
+        $this->assertMatchesRegularExpression('#<th>Title</th><th>Featured</th><th>Note</th>#', $body);
+        $this->assertStringNotContainsString('<th>Slug</th>', $body);
+        $this->assertStringContainsString('<td>No</td>', $body);
+    }
+
+    public function test_list_default_sort_descending(): void
+    {
+        $this->writeItemType(['sort' => '-title']);
+        $this->postItem(['title' => 'A item']);
+        $this->postItem(['title' => 'B item']);
+
+        $body = (string) $this->get('/folio/item')->getBody();
+
+        $this->assertLessThan(strpos($body, 'A item'), strpos($body, 'B item'));
+    }
+
+    public function test_orderable_move_down_persists(): void
+    {
+        $this->writeItemType(['orderable' => true]);
+        foreach (['A item', 'B item', 'C item'] as $title) {
+            $this->postItem(['title' => $title]);
+        }
+        $this->move($this->itemId('A item'), 'down');
+
+        $this->assertListOrder(['B item', 'A item', 'C item']);
+    }
+
+    public function test_reorder_initializes_missing_order(): void
+    {
+        $this->writeItemType(['orderable' => true]);
+        $app = $this->app();
+        $typeDef = $app->container()->get(\Preflow\Data\TypeRegistry::class)->get('item');
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        foreach (['i1' => 'A item', 'i2' => 'B item', 'i3' => 'C item'] as $id => $title) {
+            $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($typeDef, ['uuid' => $id, 'title' => $title]), validate: false);
+        }
+
+        $this->move('i2', 'up');
+
+        $this->assertListOrder(['B item', 'A item', 'C item']);
+        foreach (['i1', 'i2', 'i3'] as $id) {
+            $this->assertIsInt($dm->findType('item', $id)->get('_order'));
+        }
+    }
+
+    public function test_new_record_appends_to_end(): void
+    {
+        $this->writeItemType(['orderable' => true]);
+        $this->postItem(['title' => 'A item']);
+        $this->postItem(['title' => 'B item']);
+        $this->move($this->itemId('B item'), 'up');
+        $this->postItem(['title' => 'C item']);
+
+        $this->assertListOrder(['B item', 'A item', 'C item']);
+    }
+
+    public function test_update_keeps_order(): void
+    {
+        $this->writeItemType(['orderable' => true]);
+        $this->postItem(['title' => 'A item']);
+        $this->postItem(['title' => 'B item']);
+        $id = $this->itemId('A item');
+
+        $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/item/' . $id)
+            ->withAttribute('type', 'item')->withAttribute('id', $id)
+            ->withParsedBody(['title' => 'A item']));
+
+        $this->assertListOrder(['A item', 'B item']);
+    }
+
     public function test_edit_form_no_preview_button_for_non_frontend_type(): void
     {
         $app = $this->app();
@@ -751,6 +841,53 @@ final class FolioAppTest extends TestCase
         $app->container()->get(\Preflow\Data\DataManager::class)->saveType(\Preflow\Data\DynamicRecord::fromArray($typeDef, [
             'uuid' => $id, 'title' => ucfirst($slug) . ' article', 'slug' => $slug, 'status' => $status,
         ]), validate: false);
+    }
+
+    /** @param array<string, mixed> $list */
+    private function writeItemType(array $list): void
+    {
+        file_put_contents($this->dir . '/config/models/item.json', json_encode([
+            'key' => 'item', 'table' => 'item', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Items',
+            'fields' => [
+                'title' => ['type' => 'string', 'validate' => ['required']],
+                'featured' => ['type' => 'boolean'],
+                'note' => ['type' => 'string'],
+            ],
+            'list' => $list,
+        ]));
+    }
+
+    /** @param array<string, string> $body */
+    private function postItem(array $body): void
+    {
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/item')
+            ->withParsedBody($body));
+        $this->assertSame(302, $res->getStatusCode());
+    }
+
+    private function itemId(string $title): string
+    {
+        return (string) $this->app()->container()->get(\Preflow\Data\DataManager::class)
+            ->queryType('item')->where('title', $title)->first()->getId();
+    }
+
+    private function move(string $id, string $direction): void
+    {
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/item/' . $id . '/move')
+            ->withAttribute('type', 'item')->withAttribute('id', $id)
+            ->withParsedBody(['direction' => $direction]));
+        $this->assertSame(302, $res->getStatusCode());
+    }
+
+    /** @param list<string> $titles */
+    private function assertListOrder(array $titles): void
+    {
+        $body = (string) $this->get('/folio/item')->getBody();
+        $positions = array_map(fn (string $t) => strpos($body, $t), $titles);
+        $this->assertNotContains(false, $positions, 'all titles listed');
+        $sorted = $positions;
+        sort($sorted);
+        $this->assertSame($sorted, $positions, 'list order is ' . implode(', ', $titles));
     }
 
     /** A type exercising boolean, date and select fields. */

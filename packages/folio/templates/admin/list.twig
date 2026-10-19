@@ -12,15 +12,24 @@
         </div>
     {% else %}
         <table class="folio-table">
-            <thead><tr><th>Title</th><th>Slug</th><th>Status</th><th></th></tr></thead>
+            <thead><tr>{% for name, heading in columns %}<th>{{ heading }}</th>{% endfor %}<th></th></tr></thead>
             <tbody>
             {% for row in rows %}
+                {% set first = loop.first %}
+                {% set last = loop.last %}
                 <tr>
-                    <td>{{ row.title }}</td>
-                    <td>{{ row.slug }}</td>
-                    <td>{{ row.status }}</td>
+                    {% for name, heading in columns %}<td>{{ row.cells[name] }}</td>{% endfor %}
                     <td>
                         <div class="folio-row-actions">
+                            {% if orderable %}
+                                {% for direction, text in {'up': 'Move up', 'down': 'Move down'} %}
+                                    <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/move">
+                                        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+                                        <input type="hidden" name="direction" value="{{ direction }}">
+                                        <button type="submit" class="btn btn-ghost" aria-label="{{ text }}"{% if (direction == 'up' and first) or (direction == 'down' and last) %} disabled{% endif %}>{{ direction == 'up' ? '↑' : '↓' }}</button>
+                                    </form>
+                                {% endfor %}
+                            {% endif %}
                             <a class="btn btn-ghost" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">Edit</a>
                             <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/delete" data-confirm="Delete this record?">
                                 <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">

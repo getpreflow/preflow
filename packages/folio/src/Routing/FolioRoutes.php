@@ -37,6 +37,7 @@ final class FolioRoutes
             ['POST', $prefix . '/{type}/{id}/preview', 'preview', self::PREVIEW],
             ['POST', $prefix . '/{type}/{id}',         'update'],
             ['POST', $prefix . '/{type}/{id}/delete',  'destroy'],
+            ['POST', $prefix . '/{type}/{id}/move',    'reorder'],
         ]);
 
         $entries = [];
