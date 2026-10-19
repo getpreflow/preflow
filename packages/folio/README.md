@@ -181,6 +181,47 @@ A field type's own rules (e.g. `select`'s allowed values) are enforced in additi
 return ['field_types' => [App\Folio\ColorFieldType::class]];
 ```
 
+## Translations
+
+With more than one locale in `config/i18n.php`, fields marked `"translatable": true`
+hold one value per language: `{"en": "About", "de": "Über uns"}`. Everything else is
+shared across languages. With a single locale, the flag has no effect and values stay
+plain.
+
+```php
+// config/i18n.php
+return ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'prefix'];
+```
+
+**Editing:**
+- The edit form has language tabs (`?locale=de`). Saving one language never touches the
+  others.
+- Fields shared across languages are labelled.
+- An empty translation shows the default-language text as a placeholder ("Falls back to
+  English"), and a collapsible reference shows the default-language text.
+- **Visible in** checkboxes set the record's `_locales`. The default language is always
+  on.
+- The list shows a badge per language, e.g. `de · 2 missing` when fields required in
+  the default language are empty there.
+
+**Website:**
+- `/` and `/about` serve the default language; `/de/…` serves German, with translated
+  route values (e.g. `/de/ueber-uns`).
+- A page not visible in a language returns 404 there.
+- Missing translated values fall back field by field: requested, then fallback, then
+  default.
+- Templates receive `locale` and `alternates` (`[{locale, url}]`).
+- `{{ folio_alternate_links(alternates) }}` emits the `hreflang` links (including
+  `x-default`).
+- `{{ folio_url('page', id, 'de') }}` links to a record in a language.
+- Referenced records (relation, matrix) render in the page's language.
+
+**Validation:** `required` applies to the default language only. Other rules apply to
+every language that has a value; errors are keyed `field.de`.
+
+Older values stored before a field became translatable keep working as the default
+language's value. Upload fields are always shared.
+
 ## Status
 
 Shipped:
@@ -197,5 +238,5 @@ The admin runs under Preflow's strict, nonce-based CSP: no inline handlers or st
 Hand-written `<script>`/`<style>` tags in your own templates need
 `nonce="{{ csp_nonce() }}"`.
 
-Planned: content i18n, blocks and singletons, click-to-edit preview, draft/publish, the
+Planned: blocks and singletons, click-to-edit preview, draft/publish, the
 asset library, and `folio:pull`. See `docs/superpowers/specs/2026-10-19-*`.

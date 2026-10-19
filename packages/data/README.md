@@ -117,6 +117,33 @@ $rows = $dm->raw(
 );
 ```
 
+## Translatable fields
+
+Dynamic types can mark fields `"translatable": true`. When the app has several content
+locales, `config/i18n.php` builds a `Preflow\Data\Locales(available, default, fallback)`,
+which is bound in the container and carried on every `TypeDefinition`. Those fields then
+store a locale map, `{"en": "…", "de": "…"}`: native objects in JSON files, JSON text in
+SQL columns.
+
+```php
+$record->localized('de')->get('title');   // value with fallback (de → fallback → default)
+$record->localized('de')->isFallback('title');
+$record->availableLocales();              // from the _locales system key; the default is always included
+
+$dm->queryType('page')->locale('de')->where('slug', 'ueber-uns')->first();
+```
+
+- **`locale()`** makes `where`, `search` and `orderBy` compare a translatable field's
+  value in that locale. It works on JSON files, SQLite (`json_extract`) and MySQL
+  (`JSON_EXTRACT`).
+- Without `locale()`, the default locale is used.
+- A plain value stored before the field became translatable counts as the default
+  locale's value.
+- **`LocaleValue`** has the helpers: `map`, `pick` (exact), `resolve` (with fallback),
+  `default` and `resolveTree` (nested data).
+- **Validation:** `required` binds the default locale; other rules run for every locale
+  with a value, keyed `field.locale`.
+
 ## Usage
 
 **Model:**

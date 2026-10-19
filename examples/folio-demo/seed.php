@@ -10,7 +10,9 @@ declare(strict_types=1);
  * login and CSRF-protected (config/auth.php), so POSTing through the kernel
  * without a session/token would be rejected.
  *
- * Run: php examples/folio-demo/seed.php
+ * Run: php examples/folio-demo/seed.php [base-dir]
+ *
+ * base-dir (optional) seeds a copy of the demo instead (used by the tests).
  */
 
 require dirname(__DIR__, 2) . '/vendor/autoload.php';
@@ -20,7 +22,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
 
-$base = __DIR__;
+$base = isset($argv[1]) ? rtrim($argv[1], '/') : __DIR__;
 
 // Reset storage so re-seeding is deterministic.
 $dataDir = $base . '/storage/data';
@@ -44,7 +46,14 @@ $registry = $app->container()->get(TypeRegistry::class);
 
 $records = [
     ['page', ['title' => 'Home', 'slug' => 'home', 'body' => '<p>Welcome to the site.</p>', 'status' => 'published']],
-    ['page', ['title' => 'About Us', 'slug' => 'about', 'body' => '<p>Who we are and what we do.</p>', 'status' => 'published']],
+    // Translated: German title/slug/body, visible in both languages (/about and /de/ueber-uns).
+    ['page', [
+        'title' => ['en' => 'About Us', 'de' => 'Über uns'],
+        'slug' => ['en' => 'about', 'de' => 'ueber-uns'],
+        'body' => ['en' => '<p>Who we are and what we do.</p>', 'de' => '<p>Wer wir sind und was wir tun.</p>'],
+        'status' => 'published',
+        '_locales' => ['en', 'de'],
+    ]],
     ['page', ['title' => 'Contact', 'slug' => 'contact', 'body' => '<p>How to reach us.</p>', 'status' => 'draft']],
     ['article', ['title' => 'Hello World', 'slug' => 'hello-world', 'body' => '<p>The first post.</p>', 'status' => 'published']],
     ['article', ['title' => 'On Warm Minimalism', 'slug' => 'warm-minimalism', 'body' => '<p>Notes on the design.</p>', 'status' => 'draft']],
@@ -54,7 +63,7 @@ foreach ($records as [$type, $data]) {
     $typeDef = $registry->get($type);
     $data[$typeDef->idField] = bin2hex(random_bytes(16));
     $dm->saveType(DynamicRecord::fromArray($typeDef, $data));
-    echo sprintf("  %-8s %-18s -> ok\n", $type, $data['slug']);
+    echo sprintf("  %-8s %-18s -> ok\n", $type, is_array($data['slug']) ? $data['slug']['en'] : $data['slug']);
 }
 
 echo "Seeded " . count($records) . " records into {$dataDir}\n";

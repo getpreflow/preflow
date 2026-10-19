@@ -5,12 +5,12 @@
     "id_field": "uuid",
     "label": "Pages",
     "fields": {
-        "title": { "type": "string", "validate": ["required"] },
-        "slug": { "type": "string", "validate": ["required"] },
+        "title": { "type": "string", "translatable": true, "validate": ["required"] },
+        "slug": { "type": "string", "translatable": true, "validate": ["required"] },
         "cover": { "type": "asset", "label": "Cover image", "help": "Upload an image; stored under the Folio uploads dir.", "asset": { "multiple": false, "accept": "image/*" } },
         "author": { "type": "relation", "label": "Author", "help": "Pick an author record.", "relation": { "to": "author", "multiple": false } },
         "blocks": { "type": "matrix", "label": "Content blocks", "help": "Compose this page from Note records, in order.", "matrix": { "allowed": ["note"] } },
-        "body": { "type": "richtext", "label": "Body content", "help": "Rich text — formatting is preserved and sanitized on save." },
+        "body": { "type": "richtext", "translatable": true, "label": "Body content", "help": "Rich text — formatting is preserved and sanitized on save." },
         "status": { "type": "select", "options": { "draft": "Draft", "published": "Published" }, "validate": ["required"] }
     }
 }

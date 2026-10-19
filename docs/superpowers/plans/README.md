@@ -17,6 +17,7 @@
 | 10 | `preflow/skeleton` | TBD | Blocked on Phases 1-9 |
 | 11 | `preflow/notify` | [2026-10-19-preflow-notify.md](2026-10-19-preflow-notify.md) | Implemented |
 | 12 | groundwork (core CSP, htmx, folio basics) | [2026-10-19-groundwork-csp-htmx-folio-basics.md](2026-10-19-groundwork-csp-htmx-folio-basics.md) | Implemented |
+| 13 | folio content i18n | [2026-10-20-folio-content-i18n.md](2026-10-20-folio-content-i18n.md) | Implemented |
 
 ## Design Spec
 
