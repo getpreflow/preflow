@@ -433,9 +433,9 @@ the file to the library on save, so it works without JavaScript. A field's `acce
     `fetchpriority="high"` and `loading="eager"` and adds one
     `<link rel="preload" as="image" imagesrcset imagesizes>` to the head per image. A
     call can override it: `folio_image(img, 'hero', {priority: false})`. The link is
-    added while the image renders, so if a layout calls `{{ head() }}` before the body,
-    put the image's `priority` on a later page or let the app inject head assets (the
-    default).
+    added while the image renders. A layout that prints `{{ head() }}` before the body
+    has already written its head by then, so the link is missing there. Leave the head
+    to the app's automatic injection (the default) to keep it.
 - The focal point becomes classes (`folio-focal folio-fx-30 folio-fy-70`), never an
   inline style. Their CSS is added to the page with the CSP nonce. It only shows when
   your CSS crops the image, e.g. `object-fit: cover`.
