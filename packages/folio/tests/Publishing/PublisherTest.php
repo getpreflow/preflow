@@ -109,6 +109,22 @@ final class PublisherTest extends TestCase
         $this->assertSame(PublishState::Published, $p->state($this->reload('post')));
     }
 
+    public function test_missing_and_empty_values_are_the_same_content(): void
+    {
+        $p = $this->publisher();
+        $p->publish($this->working('post', ['title' => 'A']), null); // no body key, as seeded
+        $post = $this->reload('post');
+        $post->set('body', ''); // what a form save stores for an untouched empty field
+        $p->saveDraft($post, null);
+
+        $this->assertSame(PublishState::Published, $p->state($this->reload('post')));
+
+        $post = $this->reload('post');
+        $post->set('title', 'B');
+        $p->publish($post, null);
+        $this->assertSame(['title'], $p->revisions('post', 'r1')[0]->changed);
+    }
+
     public function test_publish_stamps_snapshot(): void
     {
         $p = $this->publisher();

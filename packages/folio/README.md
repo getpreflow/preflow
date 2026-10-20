@@ -129,7 +129,8 @@ CSP. If you override `_layout.twig`, keep the nonces and the
 
 ## Type options
 
-Besides `fields`, a type JSON can carry two optional blocks.
+Besides `fields`, a type JSON can carry two optional blocks, plus the flags `singleton`
+and `publishing` (see below).
 
 ### `frontend`: public rendering
 
@@ -149,7 +150,8 @@ Besides `fields`, a type JSON can carry two optional blocks.
   `@folio/frontend/{type}.twig`, then `@folio/frontend/page.twig`. Templates receive
   `record`, `rendered` (field → safe HTML), `type` and `preview`.
 - `published`: which field and value make a record public. The default is `status` /
-  `published`.
+  `published`. It only applies when [publishing](#drafts-and-publishing) is off for the
+  type.
 
 Routes are tried most specific first. Two types claiming the same route, or two types
 declaring `home`, stop the app at boot with a message naming both. Without any `frontend`
@@ -265,6 +267,87 @@ final class Hero extends BlockComponent
   language, or `null` before the first save, loaded once per request. In PHP, inject
   `Preflow\Folio\Content\Singletons`.
 
+## Drafts and publishing
+
+Types with a `frontend` block and singletons publish by default. Set
+`"publishing": true|false` in the type JSON to override that.
+
+**How it works:**
+- The admin edits a **working copy**.
+- The public site reads a **published snapshot**, stored in `{table}__published` with
+  the same id.
+- `folio_get()`, the frontend routes and per-language visibility (`_locales`) all come
+  from the snapshot. The live preview shows the working copy.
+
+**States** are derived by comparing the two copies, and shown in the list and editor
+header:
+- **Draft:** nothing published yet.
+- **Published:** the snapshot matches the working copy.
+- **Changed:** there are unpublished edits.
+
+**Editing:**
+- **Save draft** stores half-finished work and runs no validation rules.
+- **Publish** validates fully, then copies the working copy to the snapshot. When
+  validation fails, the edits stay saved as a draft and the live page is untouched.
+- **Discard changes** resets the working copy to what is published.
+- **Unpublish** removes the snapshot, so the public URL returns 404.
+- **Autosave:** existing records save themselves 3 seconds after the last change.
+  Uploads are only stored on a manual save.
+- **Conflicts:** each save sends the `_version` it was loaded with. If someone else
+  saved in between, the save is refused ("Someone else changed this record"). Saving
+  again overwrites their change; reloading discards yours.
+- **Revisions:** every publish keeps a full copy in `{table}__revisions`, with the date,
+  the user and the fields that changed. **Restore** copies one into the working copy,
+  and it then has to be published again. Keep more or fewer revisions with
+  `config/folio.php`:
+
+  ```php
+  'publishing' => ['revisions' => 20, 'preview_ttl' => 604800],
+  ```
+
+**Scheduled publishing:** "Publish at" stores a date and time on the working copy.
+Publish what is due from cron:
+
+```
+*/5 * * * * cd /path/to/app && php preflow folio:publish-scheduled
+```
+
+The command holds a lock, so overlapping runs do nothing. A record that fails validation
+stays scheduled and is reported on every run. To make Folio's commands available, list
+them in `config/commands.php`:
+
+```php
+return [...\Preflow\Folio\Console\FolioCommands::all()];
+```
+
+`php preflow folio:publish <type> [--id=<id>]` publishes all records of a type at once.
+This is useful after turning publishing on for a type that already has content: until
+then its records are drafts, and their pages return 404.
+
+**Share preview links:**
+- **Copy preview link** creates a signed URL to the record's real page that shows the
+  working copy to anyone holding it, without logging in.
+- Links expire after `preview_ttl` seconds (7 days by default).
+- **Revoke all links** invalidates every earlier link for that record.
+- Responses carry `X-Robots-Tag: noindex` and `Cache-Control: private, no-store`.
+- Links are signed with `APP_KEY` and are disabled while it is empty or still the
+  default.
+
+**Live content in your own code:** read published content through
+`Preflow\Folio\Publishing\Publisher`. `->query('article')` returns a `QueryBuilder` over the
+snapshots (or over the records themselves when the type does not publish), and
+`->live($type, $id)` returns one record. Querying the type directly with `DataManager`
+returns working copies, drafts included.
+
+**SQL storage:**
+- Create `{table}__published` with the type's columns plus `_published_at` and
+  `_published_by` (TEXT).
+- Create `{table}__revisions` with `uuid` (primary key), `record_id`, `seq` (INTEGER),
+  `data`, `changed`, `created_at` and `created_by`.
+- Add `_version` (INTEGER), `_publish_at` and `_share_token` (TEXT) to the type's own
+  table.
+- JSON-file storage needs no setup.
+
 ## Translations
 
 With more than one locale in `config/i18n.php`, fields marked `"translatable": true`
@@ -324,7 +407,9 @@ Shipped:
 - multi-type frontend routing (the home record is served at `/`);
 - the configurable list;
 - content translations;
-- blocks and singletons.
+- blocks and singletons;
+- drafts and publishing (autosave, conflicts, revisions, scheduled publishing, share
+  links).
 
 The admin runs under Preflow's strict, nonce-based CSP: no inline handlers or styles.
 Hand-written `<script>`/`<style>` tags in your own templates need

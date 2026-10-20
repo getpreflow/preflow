@@ -108,6 +108,32 @@ final class FolioDemoTest extends TestCase
         $this->assertStringContainsString('Folio Demo', $body);
     }
 
+    /** Pages publish: the seed publishes all but the Contact draft, which stays off the site. */
+    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
+    public function test_demo_publishes_seed_and_hides_drafts(): void
+    {
+        $copy = sys_get_temp_dir() . '/folio_demo_' . bin2hex(random_bytes(4));
+        foreach (['config', 'resources'] as $dir) {
+            $this->copyDir(dirname(__DIR__) . '/' . $dir, $copy . '/' . $dir);
+        }
+        mkdir($copy . '/storage/data', 0777, true);
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(dirname(__DIR__) . '/seed.php') . ' ' . escapeshellarg($copy), $out, $code);
+        $this->assertSame(0, $code, implode("\n", $out));
+
+        $app = Application::create($copy);
+        $app->boot();
+        $publisher = $app->container()->get(\Preflow\Folio\Publishing\Publisher::class);
+        $get = fn (string $uri): int => $app->handle((new Psr17Factory())->createServerRequest('GET', $uri))->getStatusCode();
+
+        $this->assertTrue($publisher->enabled('page'));
+        $this->assertSame(200, $get('/'));
+        $this->assertSame(200, $get('/about'));
+        $this->assertSame(404, $get('/contact'));
+        $counts = array_count_values(array_map(static fn ($s) => $s->value, $publisher->states('page')));
+        ksort($counts);
+        $this->assertSame(['draft' => 1, 'published' => 2], $counts);
+    }
+
     /** The demo must not bcrypt the admin password on every boot (~200 ms each). */
     public function test_demo_auth_config_does_not_hash_on_every_boot(): void
     {

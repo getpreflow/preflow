@@ -47,7 +47,7 @@ $registry = $app->container()->get(TypeRegistry::class);
 $publisher = $app->container()->get(Publisher::class);
 
 $records = [
-    ['page', ['title' => 'Home', 'slug' => 'home', 'body' => '<p>Welcome to the site.</p>', 'status' => 'published',
+    ['page', ['title' => 'Home', 'slug' => 'home', 'body' => '<p>Welcome to the site.</p>',
         'sections' => [[
             '_uid' => 'a1b2c3d4e5f60718', '_block' => 'hero',
             'headline' => 'Pages built from blocks', 'intro' => 'Each section is a Preflow component; edit it in Folio.',
@@ -61,10 +61,10 @@ $records = [
         'title' => ['en' => 'About Us', 'de' => 'Über uns'],
         'slug' => ['en' => 'about', 'de' => 'ueber-uns'],
         'body' => ['en' => '<p>Who we are and what we do.</p>', 'de' => '<p>Wer wir sind und was wir tun.</p>'],
-        'status' => 'published',
         '_locales' => ['en', 'de'],
     ]],
-    ['page', ['title' => 'Contact', 'slug' => 'contact', 'body' => '<p>How to reach us.</p>', 'status' => 'draft']],
+    // Never published: a draft that only the admin (and preview) can see.
+    ['page', ['title' => 'Contact', 'slug' => 'contact', 'body' => '<p>How to reach us.</p>', '_publish' => false]],
     ['article', ['title' => 'Hello World', 'slug' => 'hello-world', 'body' => '<p>The first post.</p>', 'status' => 'published']],
     ['article', ['title' => 'On Warm Minimalism', 'slug' => 'warm-minimalism', 'body' => '<p>Notes on the design.</p>', 'status' => 'draft']],
 ];
@@ -75,9 +75,11 @@ $records[] = ['site', ['uuid' => 'site', 'name' => 'Folio Demo', 'tagline' => ['
 foreach ($records as [$type, $data]) {
     $typeDef = $registry->get($type);
     $data[$typeDef->idField] ??= bin2hex(random_bytes(16));
+    $publish = $data['_publish'] ?? true;
+    unset($data['_publish']);
     $record = DynamicRecord::fromArray($typeDef, $data);
     $dm->saveType($record);
-    if ($publisher->enabled($type) && ($data['status'] ?? 'published') === 'published') {
+    if ($publish && $publisher->enabled($type)) {
         $publisher->publish($record, 'seed');
     }
     $slug = $data['slug'] ?? $data[$typeDef->idField];

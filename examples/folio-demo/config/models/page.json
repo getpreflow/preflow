@@ -4,6 +4,7 @@
     "storage": "json",
     "id_field": "uuid",
     "label": "Pages",
+    "frontend": { "route": "/{slug}", "home": "home" },
     "fields": {
         "title": { "type": "string", "translatable": true, "validate": ["required"] },
         "slug": { "type": "string", "translatable": true, "validate": ["required"] },
@@ -11,7 +12,6 @@
         "author": { "type": "relation", "label": "Author", "help": "Pick an author record.", "relation": { "to": "author", "multiple": false } },
         "sections": { "type": "blocks", "label": "Sections", "help": "Inline blocks owned by this page.", "allowed": ["hero"] },
         "blocks": { "type": "matrix", "label": "Content blocks", "help": "Compose this page from Note records, in order.", "matrix": { "allowed": ["note"] } },
-        "body": { "type": "richtext", "translatable": true, "label": "Body content", "help": "Rich text — formatting is preserved and sanitized on save." },
-        "status": { "type": "select", "options": { "draft": "Draft", "published": "Published" }, "validate": ["required"] }
+        "body": { "type": "richtext", "translatable": true, "label": "Body content", "help": "Rich text — formatting is preserved and sanitized on save." }
     }
 }

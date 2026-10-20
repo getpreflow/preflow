@@ -8,7 +8,7 @@
 <body>
     {% if site %}<header class="demo-site"><strong>{{ site.name }}</strong>{% if site.tagline %} · {{ site.tagline }}{% endif %}</header>{% endif %}
     <main>
-        {{ folio_blocks(record.sections, preview|default(false)) }}
+        {{ folio_blocks(record.sections|default([]), preview|default(false)) }}
         <article>
             <h1{% if preview|default(false) %} data-folio-field="title"{% endif %}>{{ record.title }}</h1>
             {% for name, html in rendered %}

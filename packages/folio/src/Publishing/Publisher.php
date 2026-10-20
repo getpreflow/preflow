@@ -253,13 +253,11 @@ final class Publisher
                 continue;
             }
             $now = $snapshot->toArray()[$name] ?? null;
-            if ($previous === null) {
-                if ($now !== null && $now !== '' && $now !== []) {
-                    $changed[] = $name;
-                }
+            $before = $previous?->toArray()[$name] ?? null;
+            if (self::isEmpty($now) && self::isEmpty($before)) {
                 continue;
             }
-            if (json_encode(self::sortKeys($now)) !== json_encode(self::sortKeys($previous->toArray()[$name] ?? null))) {
+            if ($previous === null || json_encode(self::sortKeys($now)) !== json_encode(self::sortKeys($before))) {
                 $changed[] = $name;
             }
         }
@@ -314,8 +312,28 @@ final class Publisher
     private static function content(DynamicRecord $record): string
     {
         $data = array_diff_key($record->toArray(), array_flip([...self::META, $record->getType()->idField]));
+        // A field never saved and a field saved empty (as a form does) are the same content.
+        $data = array_filter($data, static fn (mixed $value): bool => !self::isEmpty($value));
 
         return (string) json_encode(self::sortKeys($data));
+    }
+
+    /** null, '', an empty list or JSON '[]', or a locale map/list of only such values. */
+    private static function isEmpty(mixed $value): bool
+    {
+        if ($value === null || $value === '' || $value === '[]') {
+            return true;
+        }
+        if (!is_array($value)) {
+            return false;
+        }
+        foreach ($value as $item) {
+            if (!self::isEmpty($item)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static function sortKeys(mixed $value): mixed
