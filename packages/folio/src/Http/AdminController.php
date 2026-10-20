@@ -503,6 +503,7 @@ final class AdminController
             'label' => $this->labelFor($type),
             'types' => $this->catalog->all(),
             'heading' => $heading,
+            'record_title' => $editUrl !== null && !str_ends_with($editUrl, '/new') ? self::recordTitle($values, $locales) : null,
             'action' => $action,
             'csrf' => $csrf,
             'fields' => $fields,
@@ -744,6 +745,19 @@ final class AdminController
         }
 
         return $nested;
+    }
+
+    /** The record's own name for the editor header: its first non-empty title-like field. */
+    private static function recordTitle(array $values, \Preflow\Data\Locales $locales): ?string
+    {
+        foreach (['title', 'name', 'label', 'heading', 'email'] as $field) {
+            $text = mb_substr(self::plain(LocaleValue::default($values[$field] ?? null, $locales)), 0, 80);
+            if ($text !== '') {
+                return $text;
+            }
+        }
+
+        return null;
     }
 
     /** Plain text for placeholders and references (field values may hold rich text). */

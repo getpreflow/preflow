@@ -20,7 +20,8 @@
 <div class="folio-auth">
     <form class="folio-auth-card" method="post" action="{{ login_action|default('') }}">
         {{ csrf_field()|raw }}
-        <div class="folio-brand">Folio</div>
+        <div class="folio-brand"><span class="folio-brand-mark" aria-hidden="true">F</span><span class="folio-brand-name">Folio</span></div>
+        <p class="folio-auth-lead">Sign in to edit your site.</p>
         {% if login_error|default('') %}
             <div class="folio-alert folio-alert-error">{{ login_error }}</div>
         {% endif %}

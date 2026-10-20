@@ -5,9 +5,15 @@
     <div class="folio-card-grid">
         {% for card in cards %}
             <a class="folio-card" href="{{ prefix }}/{{ card.key }}">
+                <span class="folio-card-icon"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-file"></use></svg></span>
                 <span class="folio-card-label">{{ card.label }}</span>
                 <span class="folio-card-count">{{ card.count }} record{{ card.count == 1 ? '' : 's' }}</span>
             </a>
         {% endfor %}
+        <a class="folio-card" href="{{ prefix }}/assets">
+            <span class="folio-card-icon"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-library"></use></svg></span>
+            <span class="folio-card-label">Assets</span>
+            <span class="folio-card-count">Images, videos and files</span>
+        </a>
     </div>
 {% endblock %}

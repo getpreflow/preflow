@@ -2,23 +2,25 @@
 {% block title %}Folio — {{ label }}{% endblock %}
 {% block page_title %}{{ label }}{% endblock %}
 {% block actions %}
-    <a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new">New</a>
+    <a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>New</a>
 {% endblock %}
 {% block content %}
     {% if rows is empty %}
         <div class="folio-empty">
-            <p>No records yet.</p>
+            <svg class="folio-icon folio-empty-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-file"></use></svg>
+            <p>No {{ label|lower }} yet.</p>
             <a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new">Create one</a>
         </div>
     {% else %}
+        <div class="folio-table-wrap">
         <table class="folio-table">
-            <thead><tr>{% for name, heading in columns %}<th>{{ heading }}</th>{% endfor %}{% if multilingual|default(false) %}<th>Languages</th>{% endif %}{% if publishing|default(false) %}<th>Status</th>{% endif %}<th></th></tr></thead>
+            <thead><tr>{% for name, heading in columns %}<th>{{ heading }}</th>{% endfor %}{% if multilingual|default(false) %}<th>Languages</th>{% endif %}{% if publishing|default(false) %}<th>Publishing</th>{% endif %}<th><span class="folio-sr">Actions</span></th></tr></thead>
             <tbody>
             {% for row in rows %}
                 {% set first = loop.first %}
                 {% set last = loop.last %}
                 <tr>
-                    {% for name, heading in columns %}<td>{{ row.cells[name] }}</td>{% endfor %}
+                    {% for name, heading in columns %}<td>{% if loop.first %}<a class="folio-row-link" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">{{ row.cells[name] ?: '(untitled)' }}</a>{% else %}{{ row.cells[name] }}{% endif %}</td>{% endfor %}
                     {% if multilingual|default(false) %}<td>{% for badge in row.languages %}<span class="folio-badge{% if 'missing' in badge %} is-incomplete{% endif %}">{{ badge }}</span> {% endfor %}</td>{% endif %}
                     {% if publishing|default(false) %}<td><span class="folio-badge is-{{ row.state.value }}">{{ row.state.label() }}</span></td>{% endif %}
                     <td>
@@ -28,14 +30,14 @@
                                     <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/move">
                                         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                                         <input type="hidden" name="direction" value="{{ direction }}">
-                                        <button type="submit" class="btn btn-ghost" aria-label="{{ text }}"{% if (direction == 'up' and first) or (direction == 'down' and last) %} disabled{% endif %}>{{ direction == 'up' ? '↑' : '↓' }}</button>
+                                        <button type="submit" class="btn btn-ghost btn-icon" aria-label="{{ text }}" title="{{ text }}"{% if (direction == 'up' and first) or (direction == 'down' and last) %} disabled{% endif %}><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-{{ direction }}"></use></svg></button>
                                     </form>
                                 {% endfor %}
                             {% endif %}
-                            <a class="btn btn-ghost" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">Edit</a>
+                            <a class="btn btn-secondary btn-sm" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">Edit</a>
                             <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/delete" data-confirm="Delete this record?">
                                 <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                                <button type="submit" class="btn btn-danger">Delete</button>
+                                <button type="submit" class="btn btn-ghost btn-icon" data-tone="danger" aria-label="Delete" title="Delete"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-trash"></use></svg></button>
                             </form>
                         </div>
                     </td>
@@ -43,5 +45,6 @@
             {% endfor %}
             </tbody>
         </table>
+        </div>
     {% endif %}
 {% endblock %}

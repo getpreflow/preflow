@@ -257,7 +257,7 @@ final class FolioAppTest extends TestCase
     {
         $body = (string) $this->get('/folio/page')->getBody();
         $this->assertStringContainsString('folio-empty', $body);
-        $this->assertStringContainsString('No records yet', $body);
+        $this->assertStringContainsString('No pages yet', $body); // names the type
     }
 
     public function test_list_shows_row_with_edit_and_delete_actions(): void

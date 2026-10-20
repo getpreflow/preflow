@@ -1,9 +1,10 @@
 {% extends layout|default('@folio/admin/_layout.twig') %}
-{% block title %}Folio — {{ heading }}{% endblock %}
-{% block page_title %}{{ heading }}{% if publishing %} <span class="folio-badge is-{{ publishing.state }}">{{ publishing.label }}</span>{% if publishing.save_state %} <span id="folio-save-state" class="folio-save-state" aria-live="polite">{{ publishing.save_state }}</span>{% endif %}{% endif %}{% endblock %}
-{% block actions %}{% if previewable|default(false) %}<button type="button" class="btn btn-secondary" data-folio-preview data-preview-url="{{ preview_url }}">Preview</button>{% endif %}{% if publishing and publishing.share_url %} <button type="button" class="btn btn-secondary" hx-post="{{ publishing.share_url }}" hx-target="#folio-share" hx-swap="outerHTML" hx-include="[name=_csrf_token], [name=_locale]">Copy preview link</button>{% endif %}{% endblock %}
+{% block title %}Folio — {{ record_title|default(null) ?: heading }}{% endblock %}
+{% block breadcrumb %}<nav class="folio-breadcrumb" aria-label="Breadcrumb"><a href="{{ prefix }}/{{ type }}">{{ label }}</a>{% if record_title|default(null) %}<svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-chevron"></use></svg><span>Edit</span>{% endif %}</nav>{% endblock %}
+{% block page_title %}<span class="folio-title-text">{{ record_title|default(null) ?: heading }}</span>{% if publishing %} <span class="folio-badge is-{{ publishing.state }}">{{ publishing.label }}</span>{% if publishing.save_state %} <span id="folio-save-state" class="folio-save-state" aria-live="polite">{{ publishing.save_state != publishing.label ? publishing.save_state : '' }}</span>{% endif %}{% endif %}{% endblock %}
+{% block actions %}{% if publishing and publishing.share_url %}<button type="button" class="btn btn-ghost" hx-post="{{ publishing.share_url }}" hx-target="#folio-share" hx-swap="outerHTML" hx-include="[name=_csrf_token], [name=_locale]"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#link"></use></svg>Copy preview link</button>{% endif %}{% if previewable|default(false) %} <button type="button" class="btn btn-secondary" data-folio-preview data-preview-url="{{ preview_url }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-eye"></use></svg>Preview</button>{% endif %}{% endblock %}
 {% block content %}
-    <div class="folio-form">
+    <div class="folio-form folio-editor">
         {% if publishing and publishing.share_url %}<div class="folio-share" id="folio-share"></div>{% endif %}
         {% if notice %}
             <div class="folio-notice" role="alert">
@@ -74,18 +75,24 @@
         {% endfor %}
         <div class="folio-form-actions">
             {% if publishing %}
-                <label class="folio-publish-at">Publish at <input type="datetime-local" name="_publish_at" value="{{ publishing.publish_at }}"></label>
-                <button type="submit" class="btn btn-secondary">Save draft</button>
-                <button type="submit" class="btn btn-primary" name="_action" value="publish">Publish</button>
-            {% else %}
-                {{ form.submit('Save', {attrs: {class: 'btn btn-primary'}})|raw }}
+                <label class="folio-publish-at"><span>Publish at</span><input type="datetime-local" name="_publish_at" value="{{ publishing.publish_at }}"></label>
             {% endif %}
-            <a class="btn btn-secondary" href="{{ prefix }}/{{ type }}">Cancel</a>
+            <div class="folio-form-buttons">
+                <a class="btn btn-ghost" href="{{ prefix }}/{{ type }}">Cancel</a>
+                {% if publishing %}
+                    <button type="submit" class="btn btn-secondary">Save draft</button>
+                    <button type="submit" class="btn btn-primary" name="_action" value="publish">Publish</button>
+                {% else %}
+                    {{ form.submit('Save', {attrs: {class: 'btn btn-primary'}})|raw }}
+                {% endif %}
+            </div>
         </div>
         {{ form_end()|raw }}
-        {% if publishing and publishing.revisions is not empty %}
+        {% if publishing and (publishing.revisions is not empty or publishing.discard_url or publishing.unpublish_url) %}
+        <section class="folio-form-extras" aria-label="History and visibility">
+        {% if publishing.revisions is not empty %}
             <details class="folio-revisions">
-                <summary>Revisions ({{ publishing.revisions|length }})</summary>
+                <summary><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-history"></use></svg>Revisions <span class="folio-count">{{ publishing.revisions|length }}</span></summary>
                 <ol class="folio-revision-list">
                     {% for rev in publishing.revisions %}
                         <li class="folio-revision">
@@ -101,7 +108,7 @@
                 </ol>
             </details>
         {% endif %}
-        {% if publishing and (publishing.discard_url or publishing.unpublish_url) %}
+        {% if publishing.discard_url or publishing.unpublish_url %}
             <div class="folio-publish-actions">
                 {% if publishing.discard_url %}
                     <form method="post" action="{{ publishing.discard_url }}" data-confirm="Discard all changes since the last publish?">
@@ -116,6 +123,8 @@
                     </form>
                 {% endif %}
             </div>
+        {% endif %}
+        </section>
         {% endif %}
     </div>
 {% endblock %}

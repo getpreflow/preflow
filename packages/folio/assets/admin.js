@@ -325,7 +325,25 @@
         }
 
         function setWidth(w) {
-            if (frame) { frame.style.width = w; }
+            if (frame) {
+                frame.style.width = w;
+                frame.classList.toggle('is-device', w !== '100%');
+            }
+        }
+
+        // An icon from the admin sprite (the URL is taken from an icon already on the page).
+        function icon(id) {
+            var ns = 'http://www.w3.org/2000/svg';
+            var svg = document.createElementNS(ns, 'svg');
+            svg.setAttribute('class', 'folio-icon');
+            svg.setAttribute('aria-hidden', 'true');
+            var any = document.querySelector('use[href*="icons.svg"]');
+            if (any) {
+                var use = document.createElementNS(ns, 'use');
+                use.setAttribute('href', any.getAttribute('href').split('#')[0] + '#' + id);
+                svg.appendChild(use);
+            }
+            return svg;
         }
 
         function closePreview() {
@@ -349,18 +367,38 @@
             var bar = document.createElement('div');
             bar.className = 'folio-preview-bar';
 
-            [['Desktop', '100%'], ['Tablet', '768px'], ['Mobile', '375px']].forEach(function (vp) {
+            var title = document.createElement('span');
+            title.className = 'folio-preview-title';
+            title.appendChild(document.createElement('span')).className = 'folio-live-dot';
+            title.appendChild(document.createTextNode('Live preview'));
+            bar.appendChild(title);
+
+            var viewports = document.createElement('div');
+            viewports.className = 'folio-segmented';
+            viewports.setAttribute('role', 'group');
+            viewports.setAttribute('aria-label', 'Viewport');
+            [['Desktop', '100%', 'ui-monitor'], ['Tablet', '768px', 'ui-tablet'], ['Mobile', '375px', 'ui-phone']].forEach(function (vp, i) {
                 var b = document.createElement('button');
                 b.type = 'button';
-                b.textContent = vp[0];
                 b.setAttribute('data-preview-viewport', vp[1]);
-                b.addEventListener('click', function () { setWidth(vp[1]); });
-                bar.appendChild(b);
+                b.setAttribute('aria-pressed', i === 0 ? 'true' : 'false');
+                b.title = vp[0] + (vp[1] === '100%' ? '' : ' (' + vp[1] + ')');
+                b.appendChild(icon(vp[2]));
+                b.appendChild(document.createTextNode(vp[0]));
+                b.addEventListener('click', function () {
+                    setWidth(vp[1]);
+                    viewports.querySelectorAll('button').forEach(function (o) { o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); });
+                });
+                viewports.appendChild(b);
             });
+            bar.appendChild(viewports);
+
             var close = document.createElement('button');
             close.type = 'button';
-            close.className = 'folio-preview-close';
-            close.textContent = 'Close';
+            close.className = 'btn btn-ghost btn-icon folio-preview-close';
+            close.title = 'Close preview (Esc)';
+            close.setAttribute('aria-label', 'Close preview');
+            close.appendChild(icon('ui-x'));
             close.addEventListener('click', closePreview);
             bar.appendChild(close);
 

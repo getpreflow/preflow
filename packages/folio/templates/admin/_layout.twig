@@ -29,52 +29,88 @@
     {% endfor %}
 </head>
 <body>
+{% set icons = folio_asset('icons.svg') %}
 <div class="folio-shell">
     <aside class="folio-sidebar">
-        <div class="folio-brand">Folio</div>
-        <nav class="folio-nav">
-            <a href="{{ prefix }}"{% if type is not defined and section is not defined %} class="active"{% endif %}>Dashboard</a>
+        <a class="folio-brand" href="{{ prefix }}">
+            <span class="folio-brand-mark" aria-hidden="true">F</span>
+            <span class="folio-brand-name">Folio</span>
+        </a>
+        <nav class="folio-nav" aria-label="Folio">
+            <a href="{{ prefix }}"{% if type is not defined and section is not defined %} class="active" aria-current="page"{% endif %}>
+                <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-dashboard"></use></svg><span>Dashboard</span>
+            </a>
+            {% if types is not empty %}<span class="folio-nav-label">Content</span>{% endif %}
             {% for t in types %}
-                <a href="{{ prefix }}/{{ t.key }}"{% if type is defined and type == t.key %} class="active"{% endif %}>{{ t.label }}</a>
+                <a href="{{ prefix }}/{{ t.key }}"{% if type is defined and type == t.key %} class="active" aria-current="page"{% endif %}>
+                    <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ t.singleton ? 'ui-settings' : 'ui-file' }}"></use></svg><span>{{ t.label }}</span>
+                </a>
             {% endfor %}
-            <a href="{{ prefix }}/assets"{% if section|default('') == 'assets' %} class="active"{% endif %}>Assets</a>
+            <span class="folio-nav-label">Library</span>
+            <a href="{{ prefix }}/assets"{% if section|default('') == 'assets' %} class="active" aria-current="page"{% endif %}>
+                <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-library"></use></svg><span>Assets</span>
+            </a>
         </nav>
         <div class="folio-sidebar-foot">
-            <button type="button" id="folio-theme-toggle" class="folio-theme-toggle" aria-label="Toggle theme">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
-                <span>Theme</span>
-            </button>
+            <div id="folio-theme-toggle" class="folio-theme-switch" role="group" aria-label="Theme">
+                {% for choice, text in {'system': 'System', 'light': 'Light', 'dark': 'Dark'} %}
+                    <button type="button" data-theme-choice="{{ choice }}" aria-pressed="false" title="{{ text }} theme">
+                        <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ {'system': 'ui-monitor', 'light': 'ui-sun', 'dark': 'ui-moon'}[choice] }}"></use></svg>
+                        <span class="folio-sr">{{ text }} theme</span>
+                    </button>
+                {% endfor %}
+            </div>
+            {% if folio_auth_enabled|default(false) and auth_check() %}
+                {% set email = auth_user().email %}
+                <div class="folio-user">
+                    <span class="folio-avatar" aria-hidden="true">{{ email|first|upper }}</span>
+                    <span class="folio-user-email" title="{{ email }}">{{ email }}</span>
+                    <form method="post" action="{{ prefix }}/logout" class="folio-logout">{{ csrf_field()|raw }}
+                        <button type="submit" class="btn btn-ghost btn-icon" title="Log out">
+                            <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-logout"></use></svg><span class="folio-sr">Log out</span>
+                        </button>
+                    </form>
+                </div>
+            {% endif %}
         </div>
     </aside>
     <div class="folio-main">
         <header class="folio-topbar">
-            <h1>{% block page_title %}{% endblock %}</h1>
-            <div class="folio-actions">
-                {% block actions %}{% endblock %}
-                {% if folio_auth_enabled|default(false) %}
-                    {% if auth_check() %}
-                        <span class="folio-user">{{ auth_user().email }}</span>
-                        <form method="post" action="{{ prefix }}/logout" class="folio-logout">{{ csrf_field()|raw }}<button type="submit" class="btn btn-secondary">Log out</button></form>
-                    {% endif %}
-                {% endif %}
+            <div class="folio-topbar-title">
+                {% block breadcrumb %}{% endblock %}
+                <h1>{% block page_title %}{% endblock %}</h1>
             </div>
+            <div class="folio-actions">{% block actions %}{% endblock %}</div>
         </header>
         <main class="folio-content">{% block content %}{% endblock %}</main>
     </div>
 </div>
 <script nonce="{{ csp_nonce() }}">
 (function () {
-    var btn = document.getElementById('folio-theme-toggle');
-    if (!btn) { return; }
-    btn.addEventListener('click', function () {
-        var cur = document.documentElement.getAttribute('data-theme');
-        if (!cur) {
-            cur = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        }
-        var next = cur === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', next);
-        try { localStorage.setItem('folio-theme', next); } catch (e) {}
+    var group = document.getElementById('folio-theme-toggle');
+    if (!group) { return; }
+    var root = document.documentElement;
+    function current() {
+        var t = root.getAttribute('data-theme');
+        return t === 'light' || t === 'dark' ? t : 'system';
+    }
+    function mark() {
+        var c = current();
+        group.querySelectorAll('[data-theme-choice]').forEach(function (b) {
+            b.setAttribute('aria-pressed', b.getAttribute('data-theme-choice') === c ? 'true' : 'false');
+        });
+    }
+    group.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-theme-choice]');
+        if (!b) { return; }
+        var choice = b.getAttribute('data-theme-choice');
+        try {
+            if (choice === 'system') { localStorage.removeItem('folio-theme'); } else { localStorage.setItem('folio-theme', choice); }
+        } catch (err) {}
+        if (choice === 'system') { root.removeAttribute('data-theme'); } else { root.setAttribute('data-theme', choice); }
+        mark();
     });
+    mark();
 })();
 </script>
 </body>

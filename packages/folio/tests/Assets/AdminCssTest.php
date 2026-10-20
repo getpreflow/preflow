@@ -31,6 +31,25 @@ final class AdminCssTest extends TestCase
         }
     }
 
+    public function test_every_token_used_is_defined(): void
+    {
+        // An undefined token silently falls back (or to nothing): the light-only
+        // colours that leaked into dark mode came from exactly that.
+        $css = $this->css();
+        preg_match_all('/(--[a-z0-9-]+)\s*:/i', $css, $defined);
+        preg_match_all('/var\(\s*(--[a-z0-9-]+)/i', $css, $used);
+
+        $this->assertSame([], array_values(array_diff(array_unique($used[1]), $defined[1])));
+    }
+
+    public function test_tokens_follow_color_scheme(): void
+    {
+        $css = $this->css();
+        $this->assertStringContainsString('color-scheme: light dark', $css);
+        $this->assertStringContainsString('light-dark(', $css);
+        $this->assertStringContainsString(':root[data-theme="light"] { color-scheme: light; }', $css);
+    }
+
     public function test_styles_shell_and_reused_form_hooks(): void
     {
         $css = $this->css();

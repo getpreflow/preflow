@@ -3,17 +3,18 @@
     <input type="hidden" name="{{ name }}[{{ uid }}][_block]" value="{{ key }}">
     <div class="folio-block-head">
         <button type="button" class="folio-block-toggle" data-block-collapse aria-expanded="{{ open ? 'true' : 'false' }}">
+            <svg class="folio-icon folio-block-chevron" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-chevron"></use></svg>
             <svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ icon }}"></use></svg>
             <span class="folio-block-label">{{ label }}</span>
             {% if summary %}<span class="folio-block-summary">{{ summary }}</span>{% endif %}
         </button>
         <div class="folio-block-actions">
-            <button type="button" class="btn btn-ghost" data-block-up aria-label="Move up">↑</button>
-            <button type="button" class="btn btn-ghost" data-block-down aria-label="Move down">↓</button>
-            <button type="button" class="btn btn-ghost" data-block-duplicate aria-label="Duplicate"
+            <button type="button" class="btn btn-ghost btn-icon" data-block-up aria-label="Move up" title="Move up"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-up"></use></svg></button>
+            <button type="button" class="btn btn-ghost btn-icon" data-block-down aria-label="Move down" title="Move down"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-down"></use></svg></button>
+            <button type="button" class="btn btn-ghost btn-icon" data-block-duplicate aria-label="Duplicate" title="Duplicate"
                     hx-post="{{ duplicate_url }}" hx-include="closest [data-block-card], [name=_csrf_token]"
-                    hx-target="closest [data-block-card]" hx-swap="afterend">⧉</button>
-            <button type="button" class="btn btn-ghost" data-block-remove aria-label="Remove">✕</button>
+                    hx-target="closest [data-block-card]" hx-swap="afterend" hx-disabled-elt="this"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-copy"></use></svg></button>
+            <button type="button" class="btn btn-ghost btn-icon" data-tone="danger" data-block-remove aria-label="Remove" title="Remove"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-trash"></use></svg></button>
         </div>
     </div>
     <div class="folio-block-body">
