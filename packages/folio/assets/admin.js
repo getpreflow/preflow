@@ -389,9 +389,26 @@
         if (root.hasAttribute && root.hasAttribute('data-block-card')) { notifyChange(root); }
     }
 
+    // Share-preview link: copy the URL (select it when the clipboard is unavailable).
+    function onCopyClick(e) {
+        var btn = e.target.closest ? e.target.closest('[data-folio-copy]') : null;
+        if (!btn) { return; }
+        var box = btn.closest('.folio-share');
+        var input = box ? box.querySelector('.folio-share-url') : null;
+        if (!input) { return; }
+        var done = function () { btn.textContent = 'Copied'; };
+        var fallback = function () { input.focus(); input.select(); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(input.value).then(done, fallback);
+        } else {
+            fallback();
+        }
+    }
+
     function boot() {
         document.addEventListener('submit', onSubmitConfirm);
         document.addEventListener('click', onBlockClick);
+        document.addEventListener('click', onCopyClick);
         document.addEventListener('htmx:load', onHtmxLoad);
         document.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
         window.addEventListener('message', onMessage);

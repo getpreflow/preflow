@@ -43,6 +43,8 @@ final class FolioRoutes
             ['POST', $prefix . '/{type}/{id}/discard', 'discard', self::PUBLISHING],
             ['POST', $prefix . '/{type}/{id}/autosave', 'autosave', self::PUBLISHING],
             ['POST', $prefix . '/{type}/{id}/revisions/{rev}/restore', 'restore', self::PUBLISHING],
+            ['POST', $prefix . '/{type}/{id}/share', 'share', self::PUBLISHING],
+            ['POST', $prefix . '/{type}/{id}/share/revoke', 'revoke', self::PUBLISHING],
             ['POST', $prefix . '/{type}/{id}',         'update'],
             ['POST', $prefix . '/{type}/{id}/delete',  'destroy'],
             ['POST', $prefix . '/{type}/{id}/move',    'reorder'],

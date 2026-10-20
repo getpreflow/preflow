@@ -53,6 +53,7 @@ final class AdminController
         ?DraftRecordFactory $drafts = null,
         ?RecordValidator $validator = null,
         private readonly ?Publisher $publisher = null,
+        private readonly ?\Preflow\Folio\Publishing\PreviewLinks $previewLinks = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
         $this->validator = $validator ?? new RecordValidator($fieldTypes, $dm);
@@ -625,6 +626,7 @@ final class AdminController
             'save_state' => $stored !== null ? PublishingController::stateText($state) : null,
             'revisions' => $stored !== null ? $this->revisionRows($type, $typeDef, (string) $id) : [],
             'autosave_url' => $stored !== null ? $base . '/autosave' : null,
+            'share_url' => $stored !== null && $this->previewLinks?->enabled() === true && $this->frontend->routeFor($type) !== null ? $base . '/share' : null,
             'unpublish_url' => $stored !== null && $state !== PublishState::Draft ? $base . '/unpublish' : null,
             'discard_url' => $stored !== null && $state === PublishState::Changed ? $base . '/discard' : null,
         ];

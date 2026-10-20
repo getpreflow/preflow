@@ -1,9 +1,10 @@
 {% extends layout|default('@folio/admin/_layout.twig') %}
 {% block title %}Folio — {{ heading }}{% endblock %}
 {% block page_title %}{{ heading }}{% if publishing %} <span class="folio-badge is-{{ publishing.state }}">{{ publishing.label }}</span>{% if publishing.save_state %} <span id="folio-save-state" class="folio-save-state" aria-live="polite">{{ publishing.save_state }}</span>{% endif %}{% endif %}{% endblock %}
-{% block actions %}{% if previewable|default(false) %}<button type="button" class="btn btn-secondary" data-folio-preview data-preview-url="{{ preview_url }}">Preview</button>{% endif %}{% endblock %}
+{% block actions %}{% if previewable|default(false) %}<button type="button" class="btn btn-secondary" data-folio-preview data-preview-url="{{ preview_url }}">Preview</button>{% endif %}{% if publishing and publishing.share_url %} <button type="button" class="btn btn-secondary" hx-post="{{ publishing.share_url }}" hx-target="#folio-share" hx-swap="outerHTML" hx-include="[name=_csrf_token], [name=_locale]">Copy preview link</button>{% endif %}{% endblock %}
 {% block content %}
     <div class="folio-form">
+        {% if publishing and publishing.share_url %}<div class="folio-share" id="folio-share"></div>{% endif %}
         {% if notice %}
             <div class="folio-notice" role="alert">
                 <p>{{ notice }}{% if reload_url %} <a href="{{ reload_url }}">Reload</a>{% endif %}</p>

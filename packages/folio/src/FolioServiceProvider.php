@@ -162,6 +162,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DraftRecordFactory::class),
             $c->get(\Preflow\Folio\Content\RecordValidator::class),
             $c->get(\Preflow\Folio\Publishing\Publisher::class),
+            $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
         ));
         $container->bind(\Preflow\Folio\Http\PublishingController::class, fn (Container $c) => new \Preflow\Folio\Http\PublishingController(
             $c->get(TypeCatalog::class),
@@ -170,12 +171,20 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $c->get(DraftRecordFactory::class),
             $c->get(TemplateEngineInterface::class),
+            $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
+            $c->get(FrontendResolver::class),
+        ));
+        $container->singleton(\Preflow\Folio\Publishing\PreviewLinks::class, fn () => new \Preflow\Folio\Publishing\PreviewLinks(
+            (string) $app->config()->get('app.key', ''),
+            (int) ($folioConfig['publishing']['preview_ttl'] ?? 604800),
         ));
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),
             $c->get(TemplateEngineInterface::class),
             new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(TemplateEngineInterface::class), $c->get(ContentLocale::class)),
             $c->get(ContentLocale::class),
+            $c->get(DataManager::class),
+            $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
         ));
         $container->bind(PreviewController::class, fn (Container $c) => new PreviewController(
             $c->get(TypeCatalog::class),

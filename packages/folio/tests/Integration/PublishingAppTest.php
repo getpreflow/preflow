@@ -276,6 +276,86 @@ final class PublishingAppTest extends TestCase
         $this->assertSame(404, $this->post('/folio/post/p1/revisions/nope/restore')->getStatusCode());
     }
 
+    public function test_valid_link_renders_working_copy_with_headers(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'Secret'], 'slug' => ['en' => 'hello']]);
+        $token = $this->shareToken('p1');
+
+        $res = $this->getWithPreview('/hello', $token);
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('Secret', (string) $res->getBody());
+        $this->assertSame('noindex', $res->getHeaderLine('X-Robots-Tag'));
+        $this->assertSame('private, no-store', $res->getHeaderLine('Cache-Control'));
+    }
+
+    public function test_expired_link_falls_back(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'Secret'], 'slug' => ['en' => 'hello']]);
+        $this->shareToken('p1');
+        $nonce = (string) $this->stored('post', 'p1')->get('_share_token');
+        $old = (new \Preflow\Folio\Publishing\PreviewLinks('folio-integration-test-key', 604800, fn (): int => time() - 8 * 86400))->create('post', 'p1', $nonce);
+
+        $this->assertSame(404, $this->getWithPreview('/hello', $old)->getStatusCode());
+    }
+
+    public function test_tampered_foreign_or_revoked_token_is_ignored(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'Secret'], 'slug' => ['en' => 'hello']]);
+        $this->working('post', 'p2', ['title' => ['en' => 'Other'], 'slug' => ['en' => 'other']]);
+        $token = $this->shareToken('p1');
+
+        $tampered = substr($token, 0, -1) . (str_ends_with($token, 'A') ? 'B' : 'A');
+        $this->assertSame(404, $this->getWithPreview('/hello', $tampered)->getStatusCode());
+        $this->assertSame(404, $this->getWithPreview('/other', $token)->getStatusCode());
+
+        $this->post('/folio/post/p1/share/revoke');
+        $this->assertSame(404, $this->getWithPreview('/hello', $token)->getStatusCode());
+
+        // A changed, published page shows its published content to a revoked link.
+        $this->publisher()->publish($this->stored('post', 'p1'), null);
+        $draft = $this->stored('post', 'p1');
+        $draft->set('title', ['en' => 'Unreleased']);
+        $this->publisher()->saveDraft($draft, null);
+        $fresh = $this->shareToken('p1');
+        $this->assertStringContainsString('Unreleased', (string) $this->getWithPreview('/hello', $fresh)->getBody());
+        $this->post('/folio/post/p1/share/revoke');
+        $body = (string) $this->getWithPreview('/hello', $fresh)->getBody();
+        $this->assertStringContainsString('Secret', $body);
+        $this->assertStringNotContainsString('Unreleased', $body);
+    }
+
+    public function test_links_disabled_with_default_key(): void
+    {
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'preflow-default-key-change-me!!'];\n");
+        $this->working('post', 'p1', ['title' => ['en' => 'Secret'], 'slug' => ['en' => 'hello']]);
+
+        $this->assertSame(404, $this->post('/folio/post/p1/share')->getStatusCode());
+        $this->assertStringNotContainsString('Copy preview link', (string) $this->get('/folio/post/p1/edit')->getBody());
+    }
+
+    public function test_share_button_on_publishing_edit_form(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'Secret'], 'slug' => ['en' => 'hello']]);
+
+        $this->assertStringContainsString('Copy preview link', (string) $this->get('/folio/post/p1/edit')->getBody());
+    }
+
+    private function shareToken(string $id): string
+    {
+        $body = (string) $this->post('/folio/post/' . $id . '/share', ['_locale' => 'en'])->getBody();
+        $this->assertSame(1, preg_match('/folio_preview=([A-Za-z0-9_.\-]+)/', $body, $m), $body);
+
+        return $m[1];
+    }
+
+    private function getWithPreview(string $path, string $token): \Psr\Http\Message\ResponseInterface
+    {
+        return $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
+            ->createServerRequest('GET', $path . '?folio_preview=' . $token)
+            ->withQueryParams(['folio_preview' => $token]));
+    }
+
     public function test_published_field_is_ignored_when_publishing(): void
     {
         $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Shown'], 'slug' => ['en' => 'hello'], 'status' => 'draft']), null);

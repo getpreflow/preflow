@@ -7,15 +7,17 @@ namespace Preflow\Folio\Http;
 use Nyholm\Psr7\Response;
 use Preflow\Data\DataManager;
 use Preflow\Folio\Content\DraftRecordFactory;
+use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Publishing\Publisher;
+use Preflow\Folio\Publishing\PreviewLinks;
 use Preflow\Folio\Publishing\PublishState;
 use Preflow\Folio\Publishing\VersionConflict;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
-/** Publishing actions besides the form save: autosave, unpublish, discard, restore. */
+/** Publishing actions besides the form save: autosave, unpublish, discard, restore, share links. */
 final class PublishingController
 {
     public function __construct(
@@ -25,6 +27,8 @@ final class PublishingController
         private readonly DataManager $dm,
         private readonly DraftRecordFactory $drafts,
         private readonly TemplateEngineInterface $engine,
+        private readonly ?PreviewLinks $links = null,
+        private readonly ?FrontendResolver $resolver = null,
     ) {}
 
     /**
@@ -67,6 +71,42 @@ final class PublishingController
         return $this->backToEditor($type, $id, '?restored=1');
     }
 
+    /** A signed link to the working copy on its real URL, for people who are not logged in. */
+    public function share(ServerRequestInterface $request): ResponseInterface
+    {
+        $working = $this->shareable($request);
+        if ($working === null) {
+            return new Response(404, [], 'Not found');
+        }
+
+        $nonce = $working->get('_share_token');
+        if (!is_string($nonce) || preg_match('/^[a-f0-9]{32}$/', $nonce) !== 1) {
+            $nonce = $this->rotateShareToken($working);
+        }
+
+        $typeDef = $working->getType();
+        $locale = ((array) $request->getParsedBody())['_locale'] ?? null;
+        $locale = is_string($locale) && $typeDef->locales->has($locale) ? $locale : $typeDef->locales->default;
+        $path = $this->resolver?->urlFor($working, $locale);
+        $url = $path !== null
+            ? self::origin($request) . $path . '?folio_preview=' . $this->links?->create($typeDef->key, (string) $working->getId(), $nonce)
+            : null;
+
+        return $this->shareFragment($working, $url, $url === null ? 'This record has no URL in this language yet.' : null);
+    }
+
+    /** Rotate the record's share token: every earlier preview link stops working. */
+    public function revoke(ServerRequestInterface $request): ResponseInterface
+    {
+        $working = $this->shareable($request);
+        if ($working === null) {
+            return new Response(404, [], 'Not found');
+        }
+        $this->rotateShareToken($working);
+
+        return $this->shareFragment($working, null, 'Links revoked. Earlier preview links no longer work.');
+    }
+
     public static function stateText(PublishState $state): string
     {
         return $state === PublishState::Published ? 'Published' : 'Saved · not published';
@@ -92,6 +132,47 @@ final class PublishingController
         $this->publisher->discard($type, $id);
 
         return $this->backToEditor($type, $id);
+    }
+
+    private function shareable(ServerRequestInterface $request): ?\Preflow\Data\DynamicRecord
+    {
+        [$type, $id] = $this->target($request);
+        if ($type === null || $this->links === null || !$this->links->enabled() || $this->resolver?->routeFor($type) === null) {
+            return null;
+        }
+
+        return $this->dm->findType($type, $id);
+    }
+
+    /** The share token is not content: changing it does not bump _version. */
+    private function rotateShareToken(\Preflow\Data\DynamicRecord $working): string
+    {
+        $nonce = bin2hex(random_bytes(16));
+        $working->set('_share_token', $nonce);
+        $this->dm->saveType($working, false);
+
+        return $nonce;
+    }
+
+    private function shareFragment(\Preflow\Data\DynamicRecord $working, ?string $url, ?string $message): ResponseInterface
+    {
+        $base = $this->prefix . '/' . $working->getType()->key . '/' . rawurlencode((string) $working->getId());
+
+        return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->engine->render('@folio/admin/publishing/share.twig', [
+            'url' => $url,
+            'message' => $message,
+            'days' => intdiv($this->links?->ttl() ?? 0, 86400),
+            'revoke_url' => $base . '/share/revoke',
+        ]));
+    }
+
+    private static function origin(ServerRequestInterface $request): string
+    {
+        $uri = $request->getUri();
+
+        return $uri->getHost() !== ''
+            ? $uri->getScheme() . '://' . $uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '')
+            : '';
     }
 
     private function status(string $text, ?int $version, bool $conflict = false): ResponseInterface
