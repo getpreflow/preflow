@@ -58,6 +58,7 @@ final class DraftRecordFactory
                     $existing[$name] ?? null,
                     is_array($uploads[$name] ?? null) ? $uploads[$name] : [],
                     new BuildContext($locales, $locale, $writeUploads),
+                    $fieldDef->config,
                 );
                 continue;
             }

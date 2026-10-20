@@ -41,38 +41,53 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
         return 'blocks';
     }
 
-    public function buildValue(mixed $input, mixed $existing, array $files, BuildContext $ctx): mixed
+    public function buildValue(mixed $input, mixed $existing, array $files, BuildContext $ctx, array $config = []): mixed
     {
         $input = is_array($input) ? $input : [];
         $order = is_array($input['_order'] ?? null) ? $input['_order'] : [];
         $byUid = [];
         foreach ($this->fromStorage($existing) as $block) {
-            if (is_array($block) && is_string($block['_uid'] ?? null)) {
-                $byUid[$block['_uid']] = $block;
-            }
+            $byUid[$block['_uid']] = $block;
         }
         $multilingual = $ctx->locales->isMultilingual();
+        $allowed = isset($config['allowed']) ? array_values((array) $config['allowed']) : null;
 
         $out = [];
         foreach ($order as $uid) {
-            if (!is_string($uid) || preg_match(self::UID, $uid) !== 1 || !is_array($input[$uid] ?? null)) {
-                continue;
-            }
-            $data = $input[$uid];
-            $key = $data['_block'] ?? null;
-            if (!is_string($key) || $key === '') {
+            if (!is_string($uid) || preg_match(self::UID, $uid) !== 1) {
                 continue;
             }
             $previous = $byUid[$uid] ?? [];
-            $definition = $this->blocks->get($key);
+            $data = $input[$uid] ?? null;
+            $key = is_array($data) && is_string($data['_block'] ?? null) ? $data['_block'] : '';
 
+            if ($key === '') {
+                // Listed but no data (e.g. PHP's max_input_vars truncated the POST):
+                // keep what is stored rather than losing it.
+                if ($previous !== []) {
+                    $out[] = $previous;
+                }
+                continue;
+            }
+
+            $definition = $this->blocks->get($key);
             if ($definition === null) {
-                // Unknown block (class removed): keep the stored data verbatim.
+                // Unknown block (class removed): keep the stored data verbatim. A posted
+                // _raw copy is accepted only for that same unknown key (duplicates of
+                // unknown children), never to create a registered block.
                 $raw = is_string($data['_raw'] ?? null) ? json_decode($data['_raw'], true) : null;
                 if ($previous !== []) {
                     $out[] = $previous;
-                } elseif (is_array($raw) && ($raw['_uid'] ?? null) === $uid) {
+                } elseif (is_array($raw) && ($raw['_uid'] ?? null) === $uid && ($raw['_block'] ?? null) === $key) {
                     $out[] = $raw;
+                }
+                continue;
+            }
+
+            if ($allowed !== null && !in_array($key, $allowed, true)) {
+                // Not allowed here: never accept a new one; keep a stored one (allowed lists change).
+                if ($previous !== [] && ($previous['_block'] ?? null) === $key) {
+                    $out[] = $previous;
                 }
                 continue;
             }
@@ -85,7 +100,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
                 if ($type instanceof StructuredFieldType) {
                     $block[$name] = $ctx->depth + 1 >= $this->maxDepth
                         ? ($previous[$name] ?? [])
-                        : $type->buildValue($data[$name] ?? [], $previous[$name] ?? null, is_array($blockFiles[$name] ?? null) ? $blockFiles[$name] : [], $ctx->deeper());
+                        : $type->buildValue($data[$name] ?? [], $previous[$name] ?? null, is_array($blockFiles[$name] ?? null) ? $blockFiles[$name] : [], $ctx->deeper(), $field->config);
                     continue;
                 }
 
@@ -101,6 +116,11 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
                 if ($field->translatable && $multilingual) {
                     $map = LocaleValue::map($previous[$name] ?? null, $ctx->locales);
                     $map[$ctx->locale] = $value;
+                    if ($previous === [] && $ctx->locale !== $ctx->locales->default) {
+                        // A block created while editing another language starts with the
+                        // same text in the default language, so "required" never blocks it.
+                        $map[$ctx->locales->default] ??= $value;
+                    }
                     $value = $map;
                 }
                 $block[$name] = $value;
@@ -366,14 +386,31 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
         return $this->fromStorage($value);
     }
 
-    /** @return list<array<string, mixed>> */
+    /**
+     * The stored list. Blocks without a valid uid (hand-edited or imported JSON)
+     * get a stable derived one, so the editor can show and save them instead of
+     * silently dropping them.
+     *
+     * @return list<array<string, mixed>>
+     */
     public function fromStorage(mixed $value): array
     {
         if (is_string($value) && $value !== '') {
             $value = json_decode($value, true);
         }
+        if (!is_array($value)) {
+            return [];
+        }
 
-        return is_array($value) ? array_values(array_filter($value, 'is_array')) : [];
+        $blocks = [];
+        foreach (array_values(array_filter($value, 'is_array')) as $index => $block) {
+            if (!is_string($block['_uid'] ?? null) || preg_match(self::UID, $block['_uid']) !== 1) {
+                $block['_uid'] = hash('xxh3', 'folio-block:' . $index . ':' . json_encode($block['_uid'] ?? null) . ':' . json_encode($block['_block'] ?? null));
+            }
+            $blocks[] = $block;
+        }
+
+        return $blocks;
     }
 
     public function renderFrontend(mixed $value, array $config): string

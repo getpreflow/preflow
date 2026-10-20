@@ -109,7 +109,9 @@ final class BlocksFieldTypeTest extends TestCase
 
         $this->assertSame(['en' => 'H', 'de' => 'Ü'], $value[0]['headline']);
         $this->assertSame(['en' => 'I', 'de' => ''], $value[0]['intro']);
-        $this->assertSame(['de' => 'Neu'], $value[1]['headline']);
+        // A block created while editing German starts with the same text in English,
+        // so a required field never blocks the save (translate it later).
+        $this->assertSame(['de' => 'Neu', 'en' => 'Neu'], $value[1]['headline']);
     }
 
     public function test_unknown_block_survives_save_untouched(): void
@@ -197,5 +199,63 @@ final class BlocksFieldTypeTest extends TestCase
         $this->assertSame($list, $type->fromStorage(json_encode($list)));
         $this->assertSame($list, $type->fromStorage($type->toStorage($list)));
         $this->assertSame([], $type->fromStorage(null));
+    }
+
+    public function test_raw_cannot_smuggle_a_known_block(): void
+    {
+        $value = $this->type()->buildValue([
+            '_order' => [self::A],
+            self::A => ['_block' => 'gone', '_raw' => json_encode(['_uid' => self::A, '_block' => 'hero', 'headline' => '<script>x</script>'])],
+        ], null, [], $this->ctx());
+
+        $this->assertSame([], $value);
+    }
+
+    public function test_malformed_stored_uids_are_kept_with_a_stable_uid(): void
+    {
+        $type = $this->type();
+        $stored = [['_uid' => 'LEGACY-1', '_block' => 'link', 'label' => 'Old', 'url' => '/old'], ['_block' => 'link', 'label' => 'No uid', 'url' => '/n']];
+
+        $first = $type->fromStorage($stored);
+        $second = $type->fromStorage($stored);
+
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{16}$/', $first[0]['_uid']);
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{16}$/', $first[1]['_uid']);
+        $this->assertSame(array_column($first, '_uid'), array_column($second, '_uid'));
+        $this->assertNotSame($first[0]['_uid'], $first[1]['_uid']);
+
+        // The editor posts the normalized uids back; the blocks survive.
+        $uids = array_column($first, '_uid');
+        $value = $type->buildValue(['_order' => $uids, $uids[0] => ['_block' => 'link', 'label' => 'Old', 'url' => '/old'], $uids[1] => ['_block' => 'link', 'label' => 'No uid', 'url' => '/n']], $stored, [], $this->ctx(Locales::single('en')));
+        $this->assertSame(['Old', 'No uid'], array_column($value, 'label'));
+    }
+
+    public function test_allowed_is_enforced_on_the_server(): void
+    {
+        $value = $this->type()->buildValue([
+            '_order' => [self::A, self::B],
+            self::A => ['_block' => 'hero', 'headline' => 'H'],
+            self::B => ['_block' => 'link', 'label' => 'L', 'url' => '/x'],
+        ], [['_uid' => self::B, '_block' => 'link', 'label' => 'kept', 'url' => '/k']], [], $this->ctx(Locales::single('en')), ['allowed' => ['hero']]);
+
+        // A disallowed new block is dropped; a stored one is kept (allowed lists change).
+        $this->assertSame([self::A, self::B], array_column($value, '_uid'));
+        $this->assertSame('kept', $value[1]['label']);
+
+        $none = $this->type()->buildValue(['_order' => [self::C], self::C => ['_block' => 'link', 'label' => 'L']], null, [], $this->ctx(Locales::single('en')), ['allowed' => ['hero']]);
+        $this->assertSame([], $none);
+    }
+
+    public function test_truncated_post_keeps_stored_blocks(): void
+    {
+        // PHP's max_input_vars cut the request: uids are listed but their data is missing.
+        $stored = [['_uid' => self::A, '_block' => 'link', 'label' => 'First', 'url' => '/1'], ['_uid' => self::B, '_block' => 'link', 'label' => 'Second', 'url' => '/2']];
+
+        $value = $this->type()->buildValue([
+            '_order' => [self::A, self::B],
+            self::A => ['_block' => 'link', 'label' => 'First edited', 'url' => '/1'],
+        ], $stored, [], $this->ctx(Locales::single('en')));
+
+        $this->assertSame(['First edited', 'Second'], array_column($value, 'label'));
     }
 }
