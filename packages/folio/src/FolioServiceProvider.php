@@ -95,6 +95,17 @@ final class FolioServiceProvider extends ServiceProvider
             ),
         ));
 
+        $container->singleton(\Preflow\Folio\Assets\AssetReferences::class, fn (Container $c) => new \Preflow\Folio\Assets\AssetReferences(
+            $c->get(BlockRegistry::class),
+        ));
+        $container->bind(\Preflow\Folio\Assets\AssetUsage::class, fn (Container $c) => new \Preflow\Folio\Assets\AssetUsage(
+            $c->get(\Preflow\Folio\Assets\AssetReferences::class),
+            $c->get(DataManager::class),
+            $c->get(TypeCatalog::class),
+            $c->get(TypeRegistry::class),
+            $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
+            $prefix,
+        ));
         $container->singleton(\Preflow\Folio\Assets\ImageTag::class, fn (Container $c) => new \Preflow\Folio\Assets\ImageTag(
             $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
             $c->get(ContentLocale::class),
