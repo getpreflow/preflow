@@ -142,6 +142,36 @@ final class PullCommandTest extends TestCase
         $this->assertStringContainsString('besides the archive', $this->text($this->err)); // points at the likely cause
     }
 
+    public function test_ssh_value_starting_with_dash_is_refused(): void
+    {
+        file_put_contents($this->dir . '/config/folio.php', str_replace("'ssh' => 'user@host'", "'ssh' => '-oProxyCommand=evil'", (string) file_get_contents($this->dir . '/config/folio.php')));
+        $runner = $this->runner('');
+
+        $this->assertSame(1, $this->pull($runner, ['production']));
+        $this->assertSame([], $runner->calls);
+    }
+
+    public function test_incoming_archive_is_private(): void
+    {
+        $remote = $this->remoteExport();
+        $perms = null;
+        $runner = new class ($remote, $perms) implements CommandRunner {
+            public function __construct(private string $payload, public ?int &$perms) {}
+
+            public function run(array $argv, $stdout, $stderr): int
+            {
+                $this->perms = fileperms(stream_get_meta_data($stdout)['uri']) & 0777;
+                fwrite($stdout, $this->payload);
+
+                return 0;
+            }
+        };
+
+        $this->pull($runner, ['production', '--dry-run']);
+
+        $this->assertSame(0600, $perms);
+    }
+
     public function test_unknown_remote_exits_1(): void
     {
         $runner = $this->runner('');

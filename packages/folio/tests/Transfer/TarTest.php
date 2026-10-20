@@ -127,6 +127,21 @@ final class TarTest extends TestCase
         $this->readAll($s);
     }
 
+    public function test_short_write_while_extracting_throws(): void
+    {
+        $s = $this->memory();
+        $w = new TarWriter($s);
+        $w->addString('a.txt', str_repeat('x', 5000));
+        $w->close();
+        rewind($s);
+        $readOnly = fopen('php://memory', 'rb'); // every write fails, like a full disk
+
+        $this->expectException(TransferException::class);
+        foreach ((new TarReader($s))->entries() as [, , $copyTo]) {
+            $copyTo($readOnly);
+        }
+    }
+
     public function test_skips_directory_entries(): void
     {
         $s = $this->memory();

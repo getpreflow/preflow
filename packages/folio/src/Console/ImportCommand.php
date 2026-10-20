@@ -69,7 +69,13 @@ final class ImportCommand extends TransferCommand implements CommandInterface
 
                 return 0;
             }
-            $backup = Backups::write($app, $backupPrefix);
+            try {
+                $backup = Backups::write($app, $backupPrefix);
+            } catch (\Throwable $e) {
+                $cmd->warn('Backup failed (' . $e->getMessage() . '); nothing was changed.');
+
+                return 1;
+            }
             $cmd->say('Backup: ' . $backup);
             try {
                 $importer->apply($plan);

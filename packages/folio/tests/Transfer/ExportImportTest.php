@@ -178,6 +178,21 @@ final class ExportImportTest extends TestCase
         $this->assertSame($before, $this->snapshot());
     }
 
+    public function test_import_rejects_executable_or_config_files_in_media(): void
+    {
+        $before = $this->snapshot();
+
+        foreach (['media/x.php', 'media/2026/shell.PHTML', 'uploads/a.phar', 'media/.htaccess', 'media/2026/.user.ini', 'media/.hidden/a.jpg', 'uploads/run.sh'] as $entry) {
+            try {
+                $this->import($this->craft($entry, 'x'));
+                $this->fail("expected a TransferException for {$entry}");
+            } catch (TransferException) {
+            }
+        }
+
+        $this->assertSame($before, $this->snapshot());
+    }
+
     public function test_import_without_manifest_is_rejected(): void
     {
         $s = fopen('php://temp', 'w+b');

@@ -23,8 +23,11 @@ final class Backups
         }
         try {
             (new Exporter(ContentSet::fromApp($app), $app->container()->get(DataManager::class)))->export($out);
-        } finally {
             fclose($out);
+        } catch (\Throwable $e) {
+            fclose($out);
+            @unlink($path); // a partial backup must not look like one
+            throw $e;
         }
 
         return $path;

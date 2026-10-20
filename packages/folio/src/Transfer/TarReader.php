@@ -65,7 +65,12 @@ final class TarReader
                 $left = $size;
                 while ($left > 0) {
                     $chunk = $this->read(min(65536, $left));
-                    fwrite($out, $chunk);
+                    if (@fwrite($out, $chunk) !== strlen($chunk)) {
+                        if (is_string($target)) {
+                            fclose($out);
+                        }
+                        throw new TransferException('Could not write the extracted entry (disk full?)');
+                    }
                     $left -= strlen($chunk);
                 }
                 if (is_string($target)) {

@@ -119,6 +119,8 @@ final class Importer
                 }
             } elseif (preg_match('#^(media|uploads)/.+$#', $name, $m) !== 1 || !isset($this->set->fileRoots()[$m[1]])) {
                 throw new TransferException("Unexpected archive entry: {$name}");
+            } else {
+                self::assertServableFile($name);
             }
 
             $to = $dir . '/' . $name;
@@ -198,6 +200,19 @@ final class Importer
         }
 
         return $out;
+    }
+
+    /** Files that land in the web root: no dotfiles (.htaccess, .user.ini) and nothing a server would execute. */
+    private static function assertServableFile(string $name): void
+    {
+        foreach (array_slice(explode('/', $name), 1) as $segment) {
+            if (str_starts_with($segment, '.')) {
+                throw new TransferException("Refusing hidden or server config file: {$name}");
+            }
+        }
+        if (preg_match('/\\.(php\d?|phtml|phar|pht|phps|shtml|cgi|pl|py|sh|asp|aspx|jsp)$/i', $name) === 1) {
+            throw new TransferException("Refusing executable file: {$name}");
+        }
     }
 
     private static function canonical(mixed $value): string

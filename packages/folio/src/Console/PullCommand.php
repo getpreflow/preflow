@@ -54,6 +54,11 @@ final class PullCommand extends TransferCommand implements CommandInterface
         $app = $this->app();
         $cfg = is_file($app->basePath('config/folio.php')) ? (require $app->basePath('config/folio.php')) : [];
         $remote = is_array($cfg) ? ($cfg['remotes'][$name] ?? null) : null;
+        if (is_array($remote) && is_string($remote['ssh'] ?? null) && str_starts_with($remote['ssh'], '-')) {
+            $this->warn("Remote \"{$name}\": 'ssh' must be a host or user@host, not an ssh option.");
+
+            return 1;
+        }
         if (!is_array($remote) || !is_string($remote['ssh'] ?? null) || $remote['ssh'] === '' || !is_string($remote['path'] ?? null)) {
             $this->warn("Unknown remote \"{$name}\": add it under 'remotes' in config/folio.php (ssh, path, optional port and php).");
 
@@ -69,7 +74,9 @@ final class PullCommand extends TransferCommand implements CommandInterface
         array_push($argv, $remote['ssh'], $remoteCommand);
 
         $tmp = sys_get_temp_dir() . '/folio-pull-' . bin2hex(random_bytes(6)) . '.tar';
+        $umask = umask(0077); // the export holds live content: readable by this user only
         $file = fopen($tmp, 'w+b');
+        umask($umask);
         try {
             $this->say("Exporting from {$name} ({$remote['ssh']})…");
             $code = $this->runner->run($argv, $file, $this->stderr);

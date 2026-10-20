@@ -27,8 +27,13 @@ final class ProcessRunner implements CommandRunner
             }
             foreach ($open as $fd => $pipe) {
                 $chunk = fread($pipe, 65536);
-                if ($chunk !== false && $chunk !== '') {
-                    fwrite($targets[$fd], $chunk);
+                if ($chunk !== false && $chunk !== '' && @fwrite($targets[$fd], $chunk) !== strlen($chunk)) {
+                    foreach ($open as $p) {
+                        fclose($p);
+                    }
+                    proc_terminate($proc);
+                    proc_close($proc);
+                    throw new TransferException('Could not store the output of ' . $argv[0] . ' (disk full?)');
                 }
                 if (feof($pipe)) {
                     fclose($pipe);

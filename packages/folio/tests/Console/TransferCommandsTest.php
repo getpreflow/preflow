@@ -147,6 +147,37 @@ final class TransferCommandsTest extends TestCase
         $this->assertMatchesRegularExpression('#php preflow folio:import \S+/storage/backups/import-\d{8}-\d{6}\.tar\.gz#', $msg);
     }
 
+    public function test_failed_export_leaves_no_partial_file(): void
+    {
+        $this->dmSave('post', 'x', ['uuid' => 'über', 'title' => ['en' => 'Odd']]); // an id the export cannot carry
+
+        $code = null;
+        try {
+            $code = $this->export([$this->dir . '/partial.tar.gz']);
+        } catch (\Preflow\Folio\Transfer\TransferException) {
+        }
+
+        $this->assertNotSame(0, $code);
+        $this->assertFileDoesNotExist($this->dir . '/partial.tar.gz');
+    }
+
+    public function test_failed_backup_leaves_no_partial_backup(): void
+    {
+        $file = $this->dir . '/x.tar';
+        $this->export([$file]);
+        $this->dmSave('post', 'x', ['uuid' => 'über', 'title' => ['en' => 'Odd']]); // local content the backup cannot carry
+
+        $this->assertSame(1, $this->import([$file]));
+
+        $this->assertSame([], glob($this->dir . '/storage/backups/*') ?: []);
+        $this->assertFileExists($this->dir . '/storage/data/post/x.json'); // nothing applied without a backup
+    }
+
+    private function dmSave(string $table, string $file, array $row): void
+    {
+        $this->app()->container()->get(\Preflow\Data\DataManager::class)->driver('json')->save($table, $file, $row);
+    }
+
     public function test_import_bad_file_exits_1_and_changes_nothing(): void
     {
         file_put_contents($this->dir . '/bad.tar', str_repeat('x', 2048));
