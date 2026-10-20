@@ -282,6 +282,13 @@ They are the components Folio's own screens use, so core and extensions cannot d
 - **"Pick what you need, the rest stays out of your way":** opt-in per extension and part,
   with Craft-style committed config.
 - **Extension settings** must be editable live by the client.
+- **User data stays on the server:**
+  - Staff and member accounts are not carried by `folio:export/import/pull` by default.
+    A per-type switch (`"transfer": true`) includes a type.
+  - Role definitions travel, as structure. Role assignments stay with the accounts.
+  - Server-side backups keep everything.
+  - Locally, developers sign in with their own local staff user and test with made-up
+    members.
 
 ## Calls made after the builder check (marked as the designer's, for review)
 
