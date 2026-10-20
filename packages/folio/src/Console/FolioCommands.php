@@ -21,6 +21,7 @@ final class FolioCommands
             AssetsImportCommand::class,
             ExportCommand::class,
             ImportCommand::class,
+            PullCommand::class,
         ];
     }
 }
