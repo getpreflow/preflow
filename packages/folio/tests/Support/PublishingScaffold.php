@@ -34,7 +34,8 @@ trait PublishingScaffold
             ];
             PHP);
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");
-        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
+        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'blocks' => ['classes' => ["
+            . "\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\HeroBlock\\HeroBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\LinkBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\TradeoffNoteBlock::class]]];\n");
         $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'prefix'];\n");
         $this->writeModel('post', [
             'label' => 'Posts',
@@ -48,6 +49,7 @@ trait PublishingScaffold
                 'cover' => ['type' => 'asset', 'asset' => ['multiple' => false, 'accept' => 'image/*']],
                 'related' => ['type' => 'relation', 'relation' => ['to' => 'post', 'multiple' => false, 'labelField' => 'title']],
                 'notes' => ['type' => 'matrix', 'matrix' => ['allowed' => ['note']]],
+                'sections' => ['type' => 'blocks'],
             ],
         ]);
         $this->writeModel('note', [

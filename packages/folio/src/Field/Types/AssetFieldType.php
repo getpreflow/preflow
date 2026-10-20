@@ -324,6 +324,12 @@ final class AssetFieldType implements FieldType, HandlesUpload
         return str_ends_with($name, ']') ? substr($name, 0, -1) . '_ids]' : $name . '_ids';
     }
 
+    /** The absolute file of a legacy upload path, or null when it is not one (or is gone). */
+    public function legacyFile(string $path): ?string
+    {
+        return $this->isStoredUpload($path) ? $this->uploadsDir . '/' . $path : null;
+    }
+
     /** A path this field type wrote: "YYYY/MM/<32 hex>.<ext>" that exists in the uploads dir. */
     public function isStoredUpload(string $path): bool
     {
