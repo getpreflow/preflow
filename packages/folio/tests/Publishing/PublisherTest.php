@@ -125,6 +125,26 @@ final class PublisherTest extends TestCase
         $this->assertSame(['title'], $p->revisions('post', 'r1')[0]->changed);
     }
 
+    public function test_cleared_schedule_survives_null_dropping_storage(): void
+    {
+        // PdoDriver drops null values, and MySQL's upsert keeps the old column value.
+        $inner = new JsonFileDriver($this->dir . '/store');
+        $this->dm = new DataManager(
+            drivers: ['json' => new NullDroppingDriver($inner)],
+            defaultDriver: 'json',
+            typeRegistry: $this->registry,
+            validatorFactory: new ValidatorFactory(new RuleFactory()),
+        );
+        $p = $this->publisher();
+        $this->dm->saveType($this->working('post', ['title' => 'A', '_publish_at' => '2026-10-20T09:00']), false);
+
+        $p->publish($this->reload('post'), 'scheduler');
+
+        $due = (new \Preflow\Folio\Publishing\Scheduler($p, new TypeCatalog($this->dir . '/models'), $this->dm))
+            ->runDue(new \DateTimeImmutable('2026-10-20T10:00'));
+        $this->assertSame([], $due['published']);
+    }
+
     public function test_publish_stamps_snapshot(): void
     {
         $p = $this->publisher();
@@ -133,7 +153,7 @@ final class PublisherTest extends TestCase
         $snapshot = $p->snapshot('post', 'r1');
         $this->assertSame($this->now->format(DATE_ATOM), $snapshot?->get('_published_at'));
         $this->assertSame('u@x', $snapshot?->get('_published_by'));
-        $this->assertNull($this->reload('post')->get('_publish_at'));
+        $this->assertEmpty($this->reload('post')->get('_publish_at'));
     }
 
     public function test_publish_validates_fully_but_draft_does_not(): void

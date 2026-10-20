@@ -938,6 +938,7 @@ final class FolioAppTest extends TestCase
         // Once any type declares a route, page needs its own (the implicit legacy route is gone).
         $page = json_decode((string) file_get_contents($this->dir . '/config/models/page.json'), true);
         $page['frontend'] = ['route' => '/{slug}', 'home' => 'home'];
+        $page['publishing'] = false; // pins the legacy convention: the stored record is the live one
         file_put_contents($this->dir . '/config/models/page.json', json_encode($page));
         @mkdir($this->dir . '/folio', 0777, true);
         file_put_contents($this->dir . '/folio/article.twig', '<html><head></head><body>de={{ folio_url("page", "' . $id . '", "de") }} en={{ folio_url("page", "' . $id . '", "en") }} none={{ folio_url("page", "missing") ?? "null" }}</body></html>');

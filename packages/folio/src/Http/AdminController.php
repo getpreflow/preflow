@@ -639,15 +639,20 @@ final class AdminController
         }
     }
 
-    /** A valid "Y-m-d\TH:i" (datetime-local) value, else null (cleared). */
-    private static function publishAt(mixed $value): ?string
+    /**
+     * A valid future "Y-m-d\TH:i" (datetime-local) value in the app's zone; else ''
+     * (cleared). A past time is dropped: it is either a mistake or a stale tab
+     * re-sending a schedule that already ran. '' rather than null, because SQL
+     * drivers skip null values.
+     */
+    private static function publishAt(mixed $value): string
     {
         if (!is_string($value)) {
-            return null;
+            return '';
         }
         $at = \DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $value);
 
-        return $at !== false && $at->format('Y-m-d\TH:i') === $value ? $value : null;
+        return $at !== false && $at->format('Y-m-d\TH:i') === $value && $at > new \DateTimeImmutable() ? $value : '';
     }
 
     private static function restoredNotice(ServerRequestInterface $request): ?string

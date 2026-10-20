@@ -44,6 +44,34 @@ final class ConsoleAppCommandsTest extends TestCase
         $this->assertStringContainsString('stdClass', $warnings);
     }
 
+    public function test_broken_commands_file_does_not_take_the_cli_down(): void
+    {
+        file_put_contents($this->dir . '/config/commands.php', '<?php return [...\\Gone\\Package\\Commands::all()];');
+        $stderr = fopen('php://memory', 'w+');
+
+        ob_start();
+        $code = (new Console($this->dir, $stderr))->run(['preflow', 'help']);
+        ob_end_clean();
+
+        $this->assertSame(0, $code);
+        rewind($stderr);
+        $this->assertStringContainsString('config/commands.php', (string) stream_get_contents($stderr));
+    }
+
+    public function test_command_needing_constructor_arguments_is_skipped(): void
+    {
+        file_put_contents($this->dir . '/config/commands.php', '<?php return [' . \Preflow\DevTools\Tests\Fixtures\NeedsArgsCommand::class . '::class];');
+        $stderr = fopen('php://memory', 'w+');
+
+        ob_start();
+        $code = (new Console($this->dir, $stderr))->run(['preflow', 'help']);
+        ob_end_clean();
+
+        $this->assertSame(0, $code);
+        rewind($stderr);
+        $this->assertStringContainsString('NeedsArgsCommand', (string) stream_get_contents($stderr));
+    }
+
     public function test_no_commands_file_is_fine(): void
     {
         ob_start();

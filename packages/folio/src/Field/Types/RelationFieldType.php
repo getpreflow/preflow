@@ -21,6 +21,7 @@ final class RelationFieldType implements FieldType
         private readonly DataManager $dm,
         private readonly TypeRegistry $registry,
         private readonly ?\Preflow\Folio\Content\ContentLocale $contentLocale = null,
+        private readonly ?\Preflow\Folio\Content\LiveContent $live = null,
     ) {}
 
     public function key(): string
@@ -106,7 +107,7 @@ final class RelationFieldType implements FieldType
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
         $parts = [];
         foreach ($ids as $id) {
-            $record = $this->dm->findType($cfg['to'], $id);
+            $record = $this->live !== null ? $this->live->find($cfg['to'], $id) : $this->dm->findType($cfg['to'], $id);
             if ($record === null) {
                 continue;
             }

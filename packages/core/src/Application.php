@@ -125,6 +125,13 @@ final class Application
         $debug = DebugLevel::from((int) $this->config->get('app.debug', 0));
         $secretKey = $this->config->get('app.key', 'preflow-default-key-change-me!!');
 
+        // Wall-clock values (dates in content, scheduled publishing) use the app's
+        // zone, in web requests and the CLI alike. Unknown names keep php.ini's zone.
+        $timezone = $this->config->get('app.timezone');
+        if (is_string($timezone) && in_array($timezone, \DateTimeZone::listIdentifiers(), true)) {
+            date_default_timezone_set($timezone);
+        }
+
         // Debug collector — created early so subsystems can log into it
         $collector = null;
         if ($debug->isDebug()) {

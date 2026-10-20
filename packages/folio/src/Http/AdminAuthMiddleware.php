@@ -27,6 +27,11 @@ final class AdminAuthMiddleware implements MiddlewareInterface
     {
         $user = $this->auth->guard()->user($request);
         if ($user === null) {
+            // htmx requests (autosave, block picker) would follow a 302 and swap the
+            // login page into the editor: tell htmx to navigate instead.
+            if ($request->getHeaderLine('HX-Request') === 'true') {
+                return new Response(401, ['HX-Redirect' => $this->prefix . '/login']);
+            }
             return new Response(302, ['Location' => $this->prefix . '/login']);
         }
         $this->auth->setUser($user);

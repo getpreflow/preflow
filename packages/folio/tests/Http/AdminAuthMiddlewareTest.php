@@ -48,6 +48,16 @@ final class AdminAuthMiddlewareTest extends TestCase
         $this->assertSame('/folio/login', $res->getHeaderLine('Location'));
     }
 
+    public function test_htmx_request_gets_401_with_hx_redirect(): void
+    {
+        $am = new AuthManager(['session' => $this->guard(null)], 'session');
+        $mw = new AdminAuthMiddleware($am, '/folio');
+        $res = $mw->process((new Psr17Factory())->createServerRequest('POST', '/folio/post/p1/autosave')->withHeader('HX-Request', 'true'), $this->handler());
+
+        $this->assertSame(401, $res->getStatusCode());
+        $this->assertSame('/folio/login', $res->getHeaderLine('HX-Redirect'));
+    }
+
     public function test_passes_through_when_authenticated(): void
     {
         $user = new \Preflow\Auth\ArrayUser('a@b.test', 'a@b.test', 'H', ['admin']);

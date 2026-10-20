@@ -27,6 +27,7 @@ final class MatrixFieldType implements FieldType
         private readonly RecordRenderer $records,
         private readonly RecordLabeler $labeler,
         private readonly string $prefix,
+        private readonly ?\Preflow\Folio\Content\LiveContent $live = null,
     ) {}
 
     public function key(): string
@@ -135,7 +136,7 @@ final class MatrixFieldType implements FieldType
             if (!$this->registry->has($ref['_type'])) {
                 continue;
             }
-            $record = $this->dm->findType($ref['_type'], $ref['id']);
+            $record = $this->live !== null ? $this->live->find($ref['_type'], $ref['id']) : $this->dm->findType($ref['_type'], $ref['id']);
             if ($record === null) {
                 continue;
             }

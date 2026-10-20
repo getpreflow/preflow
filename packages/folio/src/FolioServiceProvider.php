@@ -80,6 +80,14 @@ final class FolioServiceProvider extends ServiceProvider
         // One request-scoped content locale shared by the frontend, preview and field types.
         $container->instance(ContentLocale::class, new ContentLocale($locales ?? \Preflow\Data\Locales::single('en')));
 
+        // Request-scoped: public renders read published snapshots, admin routes switch it to working copies.
+        $container->singleton(\Preflow\Folio\Content\LiveContent::class, fn (Container $c) => new \Preflow\Folio\Content\LiveContent(
+            $c->get(DataManager::class),
+            $c->get(TypeCatalog::class),
+        ));
+        $container->bind(\Preflow\Folio\Http\WorkingCopyMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\WorkingCopyMiddleware(
+            $c->get(\Preflow\Folio\Content\LiveContent::class),
+        ));
         $container->bind(ActionResolver::class, fn (Container $c) => new ActionResolver($c));
         // Routes are computed (and validated) now, so conflicting "frontend"
         // declarations fail at boot; the resolver itself is built lazily.
@@ -116,6 +124,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(\Preflow\Data\DataManager::class),
                 $c->get(TypeRegistry::class),
                 $c->get(ContentLocale::class),
+                $c->get(\Preflow\Folio\Content\LiveContent::class),
             ));
             $registry->register(new MatrixFieldType(
                 $c->get(TypeCatalog::class),
@@ -124,6 +133,7 @@ final class FolioServiceProvider extends ServiceProvider
                 new RecordRenderer($registry, $c->get(TemplateEngineInterface::class), $c->get(ContentLocale::class)),
                 new RecordLabeler(),
                 $prefix,
+                $c->get(\Preflow\Folio\Content\LiveContent::class),
             ));
             $registry->alias('int', 'number');
             $registry->alias('integer', 'number');
@@ -185,6 +195,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(ContentLocale::class),
             $c->get(DataManager::class),
             $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
+            $c->get(\Preflow\Folio\Content\LiveContent::class),
         ));
         $container->bind(PreviewController::class, fn (Container $c) => new PreviewController(
             $c->get(TypeCatalog::class),
@@ -205,7 +216,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $c->get(TypeCatalog::class),
             $c->get(ContentLocale::class),
-            $c->get(\Preflow\Folio\Publishing\Publisher::class),
+            $c->get(\Preflow\Folio\Content\LiveContent::class),
         ));
         $container->bind(\Preflow\Folio\Http\BlockEditorController::class, fn (Container $c) => new \Preflow\Folio\Http\BlockEditorController(
             $c->get(FieldTypeRegistry::class),
@@ -289,7 +300,7 @@ final class FolioServiceProvider extends ServiceProvider
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_url',
                 callable: function (string $type, string $id, ?string $locale = null) use ($resolver, $container): ?string {
-                    $record = $container->get(DataManager::class)->findType($type, $id);
+                    $record = $container->get(\Preflow\Folio\Content\LiveContent::class)->find($type, $id);
                     return $record === null ? null : $resolver()->urlFor($record, $locale ?? $container->get(ContentLocale::class)->get());
                 },
             ));

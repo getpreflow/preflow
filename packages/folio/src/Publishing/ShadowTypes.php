@@ -12,13 +12,16 @@ use Preflow\Data\TypeFieldDefinition;
  * ({table}__published, same fields and ids) and the revisions
  * ({table}__revisions, one full copy per publish). They are not JSON models,
  * so they never appear in the admin's type list.
+ *
+ * A snapshot keeps its type's key (only the table differs): it is the same
+ * content type, so routes, URLs and type templates resolve as for the record.
  */
 final class ShadowTypes
 {
     public static function published(TypeDefinition $def): TypeDefinition
     {
         return new TypeDefinition(
-            key: $def->key . '__published',
+            key: $def->key,
             table: $def->table . '__published',
             storage: $def->storage,
             fields: $def->fields,

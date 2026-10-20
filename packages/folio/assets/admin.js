@@ -405,10 +405,35 @@
         }
     }
 
+    // Autosave never races a real save: once the form is submitted, pending
+    // autosaves are dropped (their delay timer can still fire during navigation,
+    // and would bump _version under the submit, which then looks like a conflict).
+    function onAutosaveSubmit(e) {
+        if (e.target && e.target.hasAttribute && e.target.hasAttribute('hx-post')) { e.target._folioSubmitting = true; }
+    }
+
+    function onBeforeRequest(e) {
+        var elt = e.detail && e.detail.elt;
+        if (elt && elt._folioSubmitting) { e.preventDefault(); }
+    }
+
+    // A failed autosave must say so: htmx does not swap error responses.
+    function onAutosaveError(e) {
+        var elt = e.detail && e.detail.elt;
+        var state = document.getElementById('folio-save-state');
+        if (!elt || !state || elt.tagName !== 'FORM' || !elt.hasAttribute('hx-post')) { return; }
+        state.textContent = 'Not saved — check your connection and save manually.';
+        state.classList.add('is-conflict');
+    }
+
     function boot() {
         document.addEventListener('submit', onSubmitConfirm);
         document.addEventListener('click', onBlockClick);
         document.addEventListener('click', onCopyClick);
+        document.addEventListener('submit', onAutosaveSubmit);
+        document.addEventListener('htmx:beforeRequest', onBeforeRequest);
+        document.addEventListener('htmx:responseError', onAutosaveError);
+        document.addEventListener('htmx:sendError', onAutosaveError);
         document.addEventListener('htmx:load', onHtmxLoad);
         document.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
         window.addEventListener('message', onMessage);

@@ -124,7 +124,8 @@ final class Publisher
 
         $previous = $this->dm->findIn($shadow, (string) $working->getId());
 
-        $working->set('_publish_at', null);
+        // '' rather than null: SQL drivers skip null values, so null would never clear it.
+        $working->set('_publish_at', '');
         $this->dm->saveType($working, false);
 
         $stamp = ($this->now)()->format(DATE_ATOM);

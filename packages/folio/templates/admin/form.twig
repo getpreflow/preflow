@@ -30,7 +30,7 @@
         {% set form_attrs = multipart|default(false) ? {'enctype': 'multipart/form-data'} : {} %}
         {% if publishing and publishing.autosave_url %}
             {# Autosave: debounced htmx POST of the whole form; the native submit stays a normal save. #}
-            {% set form_attrs = form_attrs|merge({'hx-post': publishing.autosave_url, 'hx-trigger': 'input delay:3s, change delay:3s, trix-change delay:3s', 'hx-target': '#folio-save-state', 'hx-swap': 'outerHTML'}) %}
+            {% set form_attrs = form_attrs|merge({'hx-post': publishing.autosave_url, 'hx-trigger': 'input delay:3s, change delay:3s, trix-change delay:3s', 'hx-target': '#folio-save-state', 'hx-swap': 'outerHTML', 'hx-disabled-elt': 'find button[type=submit]'}) %}
         {% endif %}
         {% set form = form_begin({action: action, csrf_token: csrf, attrs: form_attrs}) %}
         {{ form.begin()|raw }}

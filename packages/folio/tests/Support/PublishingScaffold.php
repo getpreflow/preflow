@@ -46,14 +46,24 @@ trait PublishingScaffold
                 'body' => ['type' => 'text', 'translatable' => true],
                 'status' => ['type' => 'string'],
                 'cover' => ['type' => 'asset', 'asset' => ['multiple' => false, 'accept' => 'image/*']],
+                'related' => ['type' => 'relation', 'relation' => ['to' => 'post', 'multiple' => false, 'labelField' => 'title']],
+                'notes' => ['type' => 'matrix', 'matrix' => ['allowed' => ['note']]],
             ],
         ]);
+        $this->writeModel('note', [
+            'label' => 'Notes',
+            'publishing' => true,
+            'matrixable' => true,
+            'fields' => ['name' => ['type' => 'string', 'validate' => ['required']]],
+        ]);
+        $this->write('resources/folio/frontend/types/note.twig', '<aside class="note">{{ record.name }}</aside>');
         $this->writeModel('site', [
             'label' => 'Site',
             'singleton' => true,
             'fields' => ['tagline' => ['type' => 'string', 'translatable' => true]],
         ]);
-        $this->write('resources/folio/frontend/post.twig', '<h1>{{ record.title }}</h1><p class="tagline">{{ folio_get("site").tagline|default("") }}</p>');
+        $this->write('resources/folio/frontend/post.twig', '<html><head>{{ folio_alternate_links(alternates) }}</head><body><h1>{{ record.title }}</h1><p class="tagline">{{ folio_get("site").tagline|default("") }}</p>'
+            . '<div class="rel">{{ rendered.related|default("")|raw }}</div><div class="mx">{{ rendered.notes|default("")|raw }}</div><a class="link">{{ folio_url("post", "p2")|default("none") }}</a></body></html>');
         @mkdir($this->dir . '/storage/data', 0777, true);
     }
 

@@ -59,9 +59,9 @@ final class PublishCommandsTest extends TestCase
 
     public function test_publish_command_publishes_every_record(): void
     {
-        $this->working('post', 'a', ['title' => ['en' => 'A'], 'slug' => ['en' => 'a']]);
-        $this->working('post', 'b', ['title' => ['en' => 'B'], 'slug' => ['en' => 'b']]);
-        $this->working('post', 'bad', ['title' => ['en' => ''], 'slug' => ['en' => 'bad']]);
+        $this->working('post', 'a', ['title' => ['en' => 'A'], 'slug' => ['en' => 'a'], 'status' => 'published']);
+        $this->working('post', 'b', ['title' => ['en' => 'B'], 'slug' => ['en' => 'b'], 'status' => 'published']);
+        $this->working('post', 'bad', ['title' => ['en' => ''], 'slug' => ['en' => 'bad'], 'status' => 'published']);
 
         [$code, $out] = $this->runCommand(new PublishCommand(fn () => $this->app()), ['post']);
 
@@ -73,10 +73,32 @@ final class PublishCommandsTest extends TestCase
         $this->assertNull($this->publisher()->snapshot('post', 'bad'));
     }
 
+    public function test_publish_command_skips_legacy_drafts_and_existing_snapshots(): void
+    {
+        $this->working('post', 'live', ['title' => ['en' => 'Live'], 'slug' => ['en' => 'live'], 'status' => 'published']);
+        $this->working('post', 'old', ['title' => ['en' => 'Old draft'], 'slug' => ['en' => 'old'], 'status' => 'draft']);
+        $this->publisher()->publish($this->working('post', 'pub', ['title' => ['en' => 'Pub'], 'slug' => ['en' => 'pub'], 'status' => 'published']), null);
+        $changed = $this->stored('post', 'pub');
+        $changed->set('title', ['en' => 'Unfinished']);
+        $this->publisher()->saveDraft($changed, null);
+
+        [$code, $out] = $this->runCommand(new PublishCommand(fn () => $this->app()), ['post']);
+
+        $this->assertSame(0, $code);
+        $this->assertStringContainsString('Published post/live', $out);
+        $this->assertStringContainsString('Skipped post/old', $out);
+        $this->assertNull($this->publisher()->snapshot('post', 'old'));
+        $this->assertSame('Pub', $this->publisher()->snapshot('post', 'pub')?->get('title')['en']);
+
+        $this->runCommand(new PublishCommand(fn () => $this->app()), ['post', '--all']);
+        $this->assertNotNull($this->publisher()->snapshot('post', 'old'));
+        $this->assertSame('Unfinished', $this->publisher()->snapshot('post', 'pub')?->get('title')['en']);
+    }
+
     public function test_publish_command_single_id_and_bad_type(): void
     {
-        $this->working('post', 'a', ['title' => ['en' => 'A'], 'slug' => ['en' => 'a']]);
-        $this->working('post', 'b', ['title' => ['en' => 'B'], 'slug' => ['en' => 'b']]);
+        $this->working('post', 'a', ['title' => ['en' => 'A'], 'slug' => ['en' => 'a'], 'status' => 'published']);
+        $this->working('post', 'b', ['title' => ['en' => 'B'], 'slug' => ['en' => 'b'], 'status' => 'published']);
 
         [$code] = $this->runCommand(new PublishCommand(fn () => $this->app()), ['post', '--id=a']);
         $this->assertSame(0, $code);

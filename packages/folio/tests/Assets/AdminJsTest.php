@@ -99,4 +99,14 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString("new Event('change', { bubbles: true })", $js);
         $this->assertSame(1, preg_match('/data-block-remove[\s\S]*notifyChange\(/', $js));
     }
+
+    public function test_autosave_yields_to_submit_and_reports_failures(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString("'htmx:beforeRequest'", $js);
+        $this->assertStringContainsString('_folioSubmitting', $js);
+        $this->assertStringContainsString("'htmx:responseError'", $js);
+        $this->assertStringContainsString("'htmx:sendError'", $js);
+        $this->assertStringContainsString('Not saved', $js);
+    }
 }

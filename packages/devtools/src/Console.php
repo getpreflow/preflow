@@ -43,13 +43,22 @@ final class Console
         if (!is_file($file)) {
             return;
         }
-        $classes = require $file;
+        try {
+            $classes = require $file;
+        } catch (\Throwable $e) {
+            fwrite($stderr, 'Warning: config/commands.php failed to load (' . $e->getMessage() . "); its commands are unavailable.\n");
+            return;
+        }
         foreach (is_array($classes) ? $classes : [] as $class) {
             if (!is_string($class) || !class_exists($class) || !is_subclass_of($class, Command\CommandInterface::class)) {
                 fwrite($stderr, 'Warning: config/commands.php lists ' . (is_string($class) ? $class : get_debug_type($class)) . ", which is not a command class; skipped.\n");
                 continue;
             }
-            $this->register(new $class());
+            try {
+                $this->register(new $class());
+            } catch (\Throwable $e) {
+                fwrite($stderr, "Warning: config/commands.php lists {$class}, which could not be created (" . $e->getMessage() . "); skipped.\n");
+            }
         }
     }
 

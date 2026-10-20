@@ -166,15 +166,25 @@ final class PublishingAppTest extends TestCase
     {
         $this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 'hello']]);
 
-        $this->post('/folio/post/p1', ['title' => 'T', 'slug' => 'hello', '_locale' => 'en', '_publish_at' => '2026-11-01T09:30']);
-        $this->assertSame('2026-11-01T09:30', $this->stored('post', 'p1')->get('_publish_at'));
-        $this->assertStringContainsString('value="2026-11-01T09:30"', (string) $this->get('/folio/post/p1/edit')->getBody());
+        $this->post('/folio/post/p1', ['title' => 'T', 'slug' => 'hello', '_locale' => 'en', '_publish_at' => '2099-11-01T09:30']);
+        $this->assertSame('2099-11-01T09:30', $this->stored('post', 'p1')->get('_publish_at'));
+        $this->assertStringContainsString('value="2099-11-01T09:30"', (string) $this->get('/folio/post/p1/edit')->getBody());
 
         $this->post('/folio/post/p1', ['title' => 'T', 'slug' => 'hello', '_locale' => 'en', '_publish_at' => 'garbage']);
-        $this->assertNull($this->stored('post', 'p1')->get('_publish_at'));
+        $this->assertEmpty($this->stored('post', 'p1')->get('_publish_at'));
 
-        $this->post('/folio/post/p1', ['title' => 'T', 'slug' => 'hello', '_locale' => 'en', '_publish_at' => '2026-11-01T09:30', '_action' => 'publish']);
-        $this->assertNull($this->stored('post', 'p1')->get('_publish_at'));
+        $this->post('/folio/post/p1', ['title' => 'T', 'slug' => 'hello', '_locale' => 'en', '_publish_at' => '2099-11-01T09:30', '_action' => 'publish']);
+        $this->assertEmpty($this->stored('post', 'p1')->get('_publish_at'));
+    }
+
+    public function test_past_publish_at_is_not_stored(): void
+    {
+        // A stale editor tab still carrying a schedule that already ran must not re-arm it.
+        $this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 'hello']]);
+
+        $this->post('/folio/post/p1', ['title' => 'T', 'slug' => 'hello', '_locale' => 'en', '_publish_at' => '2000-01-01T00:00']);
+
+        $this->assertEmpty($this->stored('post', 'p1')->get('_publish_at'));
     }
 
     public function test_autosave_saves_working_copy_only(): void
@@ -354,6 +364,61 @@ final class PublishingAppTest extends TestCase
         return $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
             ->createServerRequest('GET', $path . '?folio_preview=' . $token)
             ->withQueryParams(['folio_preview' => $token]));
+    }
+
+    public function test_public_page_hides_drafts_of_referenced_records(): void
+    {
+        $this->working('post', 'p2', ['title' => ['en' => 'SecretDraftTitle'], 'slug' => ['en' => 'secret']]);
+        $this->working('note', 'n1', ['name' => 'SecretNote']);
+        $this->publisher()->publish($this->working('post', 'p1', [
+            'title' => ['en' => 'Live'], 'slug' => ['en' => 'hello'], 'related' => 'p2', 'notes' => '[{"_type":"note","id":"n1"}]',
+        ]), null);
+
+        $body = (string) $this->get('/hello')->getBody();
+        $this->assertStringNotContainsString('SecretDraftTitle', $body);
+        $this->assertStringNotContainsString('SecretNote', $body);
+        $this->assertStringNotContainsString('/secret', $body);
+
+        $this->publisher()->publish($this->stored('post', 'p2'), null);
+        $this->publisher()->publish($this->stored('note', 'n1'), null);
+        $draft = $this->stored('post', 'p2');
+        $draft->set('title', ['en' => 'UnreleasedTitle']);
+        $this->publisher()->saveDraft($draft, null);
+
+        $body = (string) $this->get('/hello')->getBody();
+        $this->assertStringContainsString('SecretDraftTitle', $body);
+        $this->assertStringNotContainsString('UnreleasedTitle', $body);
+        $this->assertStringContainsString('SecretNote', $body);
+        $this->assertStringContainsString('/secret', $body);
+    }
+
+    public function test_preview_shows_working_copies_of_referenced_records(): void
+    {
+        $this->working('post', 'p2', ['title' => ['en' => 'SecretDraftTitle'], 'slug' => ['en' => 'secret']]);
+        $this->working('post', 'p1', ['title' => ['en' => 'Live'], 'slug' => ['en' => 'hello']]);
+
+        $body = (string) $this->post('/folio/post/p1/preview', ['title' => 'Live', 'slug' => 'hello', 'related' => 'p2', '_locale' => 'en'])->getBody();
+
+        $this->assertStringContainsString('SecretDraftTitle', $body);
+    }
+
+    public function test_publishing_page_has_hreflang_alternates(): void
+    {
+        $this->publisher()->publish($this->working('post', 'p1', [
+            'title' => ['en' => 'Hello', 'de' => 'Hallo'], 'slug' => ['en' => 'hello', 'de' => 'hallo'], '_locales' => ['en', 'de'],
+        ]), null);
+
+        $body = (string) $this->get('/hello')->getBody();
+
+        $this->assertStringContainsString('hreflang="de"', $body);
+        $this->assertStringContainsString('/de/hallo', $body);
+    }
+
+    public function test_autosave_form_disables_submit_while_saving(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 'hello']]);
+
+        $this->assertStringContainsString('hx-disabled-elt="find button[type=submit]"', (string) $this->get('/folio/post/p1/edit')->getBody());
     }
 
     public function test_published_field_is_ignored_when_publishing(): void

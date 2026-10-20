@@ -26,6 +26,7 @@ final class FrontendController
         private readonly ?ContentLocale $contentLocale = null,
         private readonly ?DataManager $dm = null,
         private readonly ?PreviewLinks $previews = null,
+        private readonly ?\Preflow\Folio\Content\LiveContent $live = null,
     ) {}
 
     public function show(ServerRequestInterface $request): ResponseInterface
@@ -106,6 +107,8 @@ final class FrontendController
         if ($url === null || rtrim($url, '/') !== rtrim($request->getUri()->getPath(), '/')) {
             return null;
         }
+
+        $this->live?->showWorkingCopies(); // the shared draft shows draft references too
 
         return new Response(200, [
             'Content-Type' => 'text/html; charset=UTF-8',

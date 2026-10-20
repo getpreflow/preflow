@@ -13,6 +13,7 @@ final class FolioRoutes
     private const ADMIN = 'Preflow\\Folio\\Http\\AdminController';
     private const PREVIEW = 'Preflow\\Folio\\Http\\PreviewController';
     private const PUBLISHING = 'Preflow\\Folio\\Http\\PublishingController';
+    private const WORKING_MW = 'Preflow\\Folio\\Http\\WorkingCopyMiddleware';
     private const AUTH = 'Preflow\\Folio\\Http\\AuthController';
     private const AUTH_MW = 'Preflow\\Folio\\Http\\AdminAuthMiddleware';
 
@@ -55,6 +56,7 @@ final class FolioRoutes
             [$method, $pattern, $action] = $def;
             $handlerClass = $def[3] ?? self::ADMIN;
             $middleware = ($authEnabled && $handlerClass !== self::AUTH) ? [self::AUTH_MW] : [];
+            $middleware[] = self::WORKING_MW; // the admin shows drafts of referenced records
             $c = PatternCompiler::compile($pattern);
             $entries[] = new RouteEntry(
                 pattern: $pattern,

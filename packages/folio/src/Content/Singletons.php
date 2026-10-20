@@ -24,7 +24,7 @@ final class Singletons
         private readonly DataManager $dm,
         private readonly TypeCatalog $catalog,
         private readonly ContentLocale $contentLocale,
-        private readonly ?\Preflow\Folio\Publishing\Publisher $publisher = null,
+        private readonly ?LiveContent $live = null,
     ) {}
 
     /** @return array<string, mixed>|null the localized values; null before the first save */
@@ -42,7 +42,7 @@ final class Singletons
     {
         if (!array_key_exists($type, $this->records)) {
             $this->records[$type] = $this->catalog->get($type)?->singleton === true
-                ? ($this->publisher !== null ? $this->publisher->live($type, $type) : $this->dm->findType($type, $type))
+                ? ($this->live !== null ? $this->live->find($type, $type) : $this->dm->findType($type, $type))
                 : null;
         }
 

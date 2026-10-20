@@ -320,9 +320,24 @@ them in `config/commands.php`:
 return [...\Preflow\Folio\Console\FolioCommands::all()];
 ```
 
-`php preflow folio:publish <type> [--id=<id>]` publishes all records of a type at once.
-This is useful after turning publishing on for a type that already has content: until
-then its records are drafts, and their pages return 404.
+`php preflow folio:publish <type> [--id=<id>] [--all]` publishes the drafts of a type
+at once. By default it skips records that are already published, and records whose
+legacy `frontend.published` field (e.g. `status`) does not say published. `--all`
+publishes every working copy, including unfinished edits.
+
+"Publish at" is a wall-clock time in `app.timezone` (`config/app.php`), which Preflow
+applies on boot, in web requests and in the CLI alike. A time in the past is not
+stored.
+
+**Upgrading an existing site:** publishing switches on by itself for types with a
+`frontend` block and for singletons. Until their records are published:
+- their pages return 404;
+- `folio_get()` returns `null`.
+
+After deploying:
+1. On SQL storage, run the migrations below.
+2. Run `php preflow folio:publish <type>` for each such type.
+3. Or set `"publishing": false` to keep the previous behaviour.
 
 **Share preview links:**
 - **Copy preview link** creates a signed URL to the record's real page that shows the
@@ -332,6 +347,11 @@ then its records are drafts, and their pages return 404.
 - Responses carry `X-Robots-Tag: noindex` and `Cache-Control: private, no-store`.
 - Links are signed with `APP_KEY` and are disabled while it is empty or still the
   default.
+
+**Referenced records:** relations, matrix placements and `folio_url()` follow the same
+rule on public pages: they show the published copy of a publishing type, and nothing
+for a record that is only a draft. The admin, the live preview and share-preview links
+show working copies.
 
 **Live content in your own code:** read published content through
 `Preflow\Folio\Publishing\Publisher`. `->query('article')` returns a `QueryBuilder` over the
@@ -345,7 +365,7 @@ returns working copies, drafts included.
 - Create `{table}__revisions` with `uuid` (primary key), `record_id`, `seq` (INTEGER),
   `data`, `changed`, `created_at` and `created_by`.
 - Add `_version` (INTEGER), `_publish_at` and `_share_token` (TEXT) to the type's own
-  table.
+  table. A cleared schedule is stored as `''`, because the SQL drivers skip null values.
 - JSON-file storage needs no setup.
 
 ## Translations
