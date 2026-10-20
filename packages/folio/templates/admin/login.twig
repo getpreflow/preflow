@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
     <title>Folio — Sign in</title>
     <script nonce="{{ csp_nonce() }}">
     (function () {
@@ -18,23 +19,35 @@
 </head>
 <body>
 <div class="folio-auth">
-    <form class="folio-auth-card" method="post" action="{{ login_action|default('') }}">
-        {{ csrf_field()|raw }}
-        <div class="folio-brand"><span class="folio-brand-mark" aria-hidden="true">F</span><span class="folio-brand-name">Folio</span></div>
-        <p class="folio-auth-lead">Sign in to edit your site.</p>
-        {% if login_error|default('') %}
-            <div class="folio-alert folio-alert-error">{{ login_error }}</div>
-        {% endif %}
-        <div class="form-group">
-            <label for="email">Email</label>
-            <input type="email" name="email" id="email" autocomplete="username" required>
+    <aside class="folio-auth-art" aria-hidden="true">
+        {% include '@folio/admin/_auth_pattern.twig' %}
+        <div class="folio-auth-hello">
+            {% include '@folio/admin/_logo.twig' with {size: 'xl'} %}
+            <p class="folio-auth-word">Folio</p>
+            <p class="folio-auth-line">Every word in its place<span class="folio-auth-caret"></span></p>
         </div>
-        <div class="form-group">
-            <label for="password">Password</label>
-            <input type="password" name="password" id="password" autocomplete="current-password" required>
-        </div>
-        <button type="submit" class="btn btn-primary">Sign in</button>
-    </form>
+    </aside>
+    <main class="folio-auth-main">
+        <form class="folio-auth-card" method="post" action="{{ login_action|default('') }}">
+            {{ csrf_field()|raw }}
+            <div class="folio-brand folio-auth-brand">{% include '@folio/admin/_logo.twig' %}<span class="folio-brand-name">Folio</span></div>
+            <h1 class="folio-auth-title">Sign in</h1>
+            <p class="folio-auth-lead">Welcome back. Your pages are waiting.</p>
+            {% if login_error|default('') %}
+                <div class="folio-alert folio-alert-error" role="alert">{{ login_error }}</div>
+            {% endif %}
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" name="email" id="email" autocomplete="username" required autofocus>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" name="password" id="password" autocomplete="current-password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Sign in</button>
+        </form>
+        <p class="folio-auth-foot">Folio, the content side of <a href="https://preflow.dev" rel="noopener">Preflow</a></p>
+    </main>
 </div>
 </body>
 </html>

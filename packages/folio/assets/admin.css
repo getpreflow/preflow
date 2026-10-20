@@ -127,17 +127,11 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
   letter-spacing: -.01em;
 }
 .folio-brand:hover { color: var(--c-text); }
-.folio-brand-mark {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--r-sm);
-  background: var(--c-accent);
-  color: var(--c-accent-fg);
-  font-size: 14px;
-  font-weight: 750;
-}
+.folio-logo { width: 28px; height: 28px; flex: none; }
+.folio-logo--xl { width: 76px; height: 76px; }
+.folio-logo-page { fill: var(--c-accent); }
+.folio-logo-fold { fill: color-mix(in srgb, var(--c-accent-fg) 55%, var(--c-accent)); }
+.folio-logo-f { fill: none; stroke: var(--c-accent-fg); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
 
 .folio-nav { display: flex; flex-direction: column; gap: 1px; }
 .folio-nav-label {
@@ -941,25 +935,120 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
 .folio-auth {
   min-height: 100vh;
   display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  background: var(--c-bg);
+}
+
+/* The art side is always ink, whatever the theme: it is the brand. */
+.folio-auth-art {
+  position: relative;
+  overflow: hidden;
+  display: grid;
   place-items: center;
-  padding: 24px;
   background:
-    radial-gradient(60rem 30rem at 50% -10%, var(--c-accent-soft), transparent 70%),
-    var(--c-bg);
+    radial-gradient(42rem 30rem at 30% 40%, rgb(16 185 129 / .28), transparent 70%),
+    radial-gradient(30rem 24rem at 85% 90%, rgb(129 140 248 / .16), transparent 70%),
+    #0c1714;
+  color: #ecfdf5;
+}
+.folio-auth-pattern {
+  position: absolute;
+  inset: -40px;
+  width: calc(100% + 80px);
+  height: calc(100% + 80px);
+}
+.folio-auth-pattern use {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .78;
+}
+.folio-auth-pattern .fg-fill { fill: currentColor; stroke: none; }
+.folio-auth-pattern .pc-1 { color: #34d399; }
+.folio-auth-pattern .pc-2 { color: #fbbf24; }
+.folio-auth-pattern .pc-3 { color: #fb7185; }
+.folio-auth-pattern .pc-4 { color: #7dd3fc; }
+.folio-auth-pattern .pc-5 { color: #c4b5fd; }
+.folio-auth-pattern .pc-6 { color: #bef264; }
+.folio-auth-drift { animation: folio-drift 48s ease-in-out infinite alternate; }
+@keyframes folio-drift {
+  from { transform: translate(0, 0); }
+  to { transform: translate(-28px, -40px); }
+}
+
+.folio-auth-hello {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 44px 52px 40px;
+  border-radius: 28px;
+  background: rgb(12 23 20 / .72);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 0 0 1px rgb(236 253 245 / .08), 0 30px 80px rgb(0 0 0 / .45);
+  text-align: center;
+}
+.folio-auth-hello .folio-logo-page { fill: #34d399; }
+.folio-auth-hello .folio-logo-fold { fill: #a7f3d0; }
+.folio-auth-hello .folio-logo-f { stroke: #052e1f; }
+.folio-auth-word {
+  margin: 6px 0 0;
+  font-size: 44px;
+  font-weight: 760;
+  letter-spacing: -.035em;
+  line-height: 1;
+}
+.folio-auth-line {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: #a7f3d0;
+}
+.folio-auth-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.15em;
+  margin-left: 3px;
+  vertical-align: -3px;
+  background: #34d399;
+  animation: folio-blink 1.1s steps(1) infinite;
+}
+@keyframes folio-blink { 50% { opacity: 0; } }
+
+.folio-auth-main {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 18px;
+  padding: 32px 24px;
 }
 .folio-auth-card {
-  width: 100%;
-  max-width: 380px;
-  padding: 32px;
+  width: min(380px, 100%);
+  padding: 34px 32px 30px;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-lg);
 }
-.folio-auth-card .folio-brand { justify-content: center; padding: 0 0 6px; font-size: 17px; }
-.folio-auth-lead { margin: 0 0 24px; text-align: center; color: var(--c-text-muted); font-size: 13.5px; }
+.folio-auth-brand { padding: 0 0 22px; }
+.folio-auth-title { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+.folio-auth-lead { margin: 6px 0 24px; color: var(--c-text-muted); font-size: 14px; }
 .folio-auth-card .form-group { margin-bottom: 16px; }
-.folio-auth-card .btn-primary { width: 100%; min-height: 38px; margin-top: 8px; }
+.folio-auth-card .btn-primary { width: 100%; min-height: 40px; margin-top: 8px; font-size: 14px; }
+.folio-auth-foot { margin: 0; font-size: 12.5px; color: var(--c-text-subtle); }
+.folio-auth-foot a { color: var(--c-text-muted); text-decoration: underline; text-underline-offset: 2px; }
+
+/* Narrow screens: the scene becomes the backdrop behind the card. */
+@media (max-width: 900px) {
+  .folio-auth { grid-template-columns: minmax(0, 1fr); }
+  .folio-auth-art { position: fixed; inset: 0; }
+  .folio-auth-hello { display: none; }
+  .folio-auth-main { position: relative; min-height: 100vh; }
+  .folio-auth-foot { padding: 6px 12px; border-radius: 999px; background: rgb(12 23 20 / .78); }
+  .folio-auth-foot, .folio-auth-foot a { color: #a7f3d0; }
+}
 
 /* ---- drawer (create a related record) ---- */
 .folio-drawer {

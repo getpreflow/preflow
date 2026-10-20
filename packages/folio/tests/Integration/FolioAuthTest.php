@@ -62,6 +62,22 @@ final class FolioAuthTest extends TestCase
     /**
      * @runInSeparateProcess
      */
+    public function test_login_page_has_a_brand_scene_and_an_intact_form(): void
+    {
+        $body = (string) $this->app()->handle((new Psr17Factory())->createServerRequest('GET', '/folio/login'))->getBody();
+
+        $this->assertMatchesRegularExpression('#<aside class="folio-auth-art" aria-hidden="true">#', $body); // decorative only
+        $this->assertStringContainsString('class="folio-auth-pattern"', $body);
+        $this->assertStringContainsString('class="folio-logo"', $body);                                       // the Folio mark
+        $this->assertMatchesRegularExpression('#<h1[^>]*>[^<]*Sign in#', $body);
+        foreach (['name="email"', 'name="password"', 'name="_csrf_token"', 'autocomplete="current-password"'] as $needle) {
+            $this->assertStringContainsString($needle, $body);
+        }
+    }
+
+    /**
+     * @runInSeparateProcess
+     */
     public function test_assets_are_public_while_unauthenticated(): void
     {
         $res = $this->app()->handle((new Psr17Factory())->createServerRequest('GET', '/folio/_assets/admin.css'));
