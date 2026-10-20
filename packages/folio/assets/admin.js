@@ -145,6 +145,7 @@
     function onMessage(e) {
         if (e.origin !== window.location.origin) { return; }
         var data = e.data;
+        if (data && typeof data === 'object' && data.source === 'folio-assets') { onAssetsPicked(data); return; }
         if (!data || typeof data !== 'object' || data.source !== 'folio-drawer') { return; }
 
         var matrix = activeMatrix;
@@ -161,6 +162,76 @@
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (j) { ctrl.addRow(type, id, (j && j.label) ? j.label : id); })
             .catch(function () { ctrl.addRow(type, id, id); });
+    }
+
+    // Asset fields: "Choose" opens the library as a picker in the drawer; picked
+    // assets become hidden {name}_ids[] inputs with a thumbnail.
+    var activeAssetField = null;
+
+    function assetItem(field, id, thumb, label) {
+        var li = document.createElement('li');
+        li.className = 'folio-asset-item';
+        li.setAttribute('data-asset-item', '');
+        if (thumb) {
+            var img = document.createElement('img');
+            img.src = thumb;
+            img.alt = '';
+            img.className = 'folio-asset-thumb';
+            li.appendChild(img);
+        } else {
+            var span = document.createElement('span');
+            span.textContent = label || id;
+            li.appendChild(span);
+        }
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = field.getAttribute('data-selection-name');
+        input.value = id;
+        li.appendChild(input);
+        var remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'btn btn-ghost';
+        remove.setAttribute('data-folio-asset-remove', '');
+        remove.textContent = 'Remove';
+        li.appendChild(remove);
+        return li;
+    }
+
+    function onAssetsPicked(data) {
+        var field = activeAssetField;
+        if (!field || !field.isConnected) { return; }
+        var list = field.querySelector('.folio-asset-selection');
+        var multiple = field.getAttribute('data-multiple') === '1';
+        (data.items || []).forEach(function (item) {
+            var id = String(item.id || '');
+            if (!/^[a-f0-9]{32}$/.test(id)) { return; }
+            if (!multiple) { list.innerHTML = ''; }
+            var dupe = list.querySelector('input[value="' + id + '"]');
+            if (!dupe) { list.appendChild(assetItem(field, id, String(item.thumb || ''), String(item.label || ''))); }
+        });
+        notifyChange(field);
+        if (!multiple) { closeDrawer(); activeAssetField = null; }
+    }
+
+    function onAssetFieldClick(e) {
+        var choose = e.target.closest ? e.target.closest('[data-folio-asset-choose]') : null;
+        if (choose) {
+            var field = choose.closest('[data-folio-asset-field]');
+            if (field && field.getAttribute('data-picker-url')) {
+                openDrawer(field.getAttribute('data-picker-url'));
+                activeAssetField = field;
+            }
+            e.preventDefault();
+            return;
+        }
+        var remove = e.target.closest ? e.target.closest('[data-folio-asset-remove]') : null;
+        if (remove) {
+            var item = remove.closest('[data-asset-item]');
+            var owner = remove.closest('[data-folio-asset-field]');
+            if (item) { item.parentNode.removeChild(item); }
+            notifyChange(owner);
+            e.preventDefault();
+        }
     }
 
     function onKeydown(e) {
@@ -467,6 +538,7 @@
         document.addEventListener('click', onCopyClick);
         document.addEventListener('click', onFocalClick);
         document.addEventListener('click', onPickClick);
+        document.addEventListener('click', onAssetFieldClick);
         document.querySelectorAll('[data-folio-focal]').forEach(placeFocalMarker);
         document.addEventListener('submit', onAutosaveSubmit);
         document.addEventListener('htmx:beforeRequest', onBeforeRequest);

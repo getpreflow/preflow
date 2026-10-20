@@ -117,4 +117,13 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('[data-folio-pick]', $js);
         $this->assertStringContainsString("source: 'folio-assets'", $js);
     }
+
+    public function test_asset_field_choose_remove_and_message(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString('[data-folio-asset-choose]', $js);
+        $this->assertStringContainsString('[data-folio-asset-remove]', $js);
+        $this->assertStringContainsString("data.source === 'folio-assets'", $js);
+        $this->assertStringContainsString('e.origin !== window.location.origin', $js);
+    }
 }

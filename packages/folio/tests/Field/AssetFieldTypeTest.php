@@ -92,7 +92,7 @@ final class AssetFieldTypeTest extends TestCase
         $this->assertStringContainsString('type="file"', $html);
         $this->assertStringContainsString('name="cover"', $html);
         $this->assertStringContainsString('accept="image/*"', $html);
-        $this->assertStringContainsString('name="cover_remove[]"', $html);
+        $this->assertStringContainsString('name="cover_ids[]" value="2026/06/x.png"', $html);
         $this->assertStringContainsString('src="/folio/_uploads/2026/06/x.png"', $html);
     }
 

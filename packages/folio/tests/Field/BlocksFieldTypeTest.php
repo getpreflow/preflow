@@ -259,6 +259,27 @@ final class BlocksFieldTypeTest extends TestCase
         $this->assertSame(['First edited', 'Second'], array_column($value, 'label'));
     }
 
+    public function test_blocks_asset_uses_selection(): void
+    {
+        $path = '2026/10/' . str_repeat('a', 32) . '.png';
+        @mkdir($this->uploads . '/2026/10', 0777, true);
+        touch($this->uploads . '/' . $path);
+        $stored = [['_uid' => self::A, '_block' => 'hero', 'headline' => 'H', 'tradeoff' => [
+            ['_uid' => self::C, '_block' => 'tradeoff_note', 'chose' => 'x', 'cover' => $path],
+        ]]];
+
+        // No selection posted (e.g. a truncated form): the stored file stays; an empty selection clears it.
+        $kept = $this->type()->buildValue(['_order' => [self::A], self::A => ['_block' => 'hero', 'headline' => 'H', 'tradeoff' => [
+            '_order' => [self::C], self::C => ['_block' => 'tradeoff_note', 'chose' => 'x'],
+        ]]], $stored, [], $this->ctx(Locales::single('en')));
+        $this->assertSame($path, $kept[0]['tradeoff'][0]['cover']);
+
+        $cleared = $this->type()->buildValue(['_order' => [self::A], self::A => ['_block' => 'hero', 'headline' => 'H', 'tradeoff' => [
+            '_order' => [self::C], self::C => ['_block' => 'tradeoff_note', 'chose' => 'x', 'cover_ids' => ['']],
+        ]]], $stored, [], $this->ctx(Locales::single('en')));
+        $this->assertSame('', $cleared[0]['tradeoff'][0]['cover']);
+    }
+
     public function test_new_block_keeps_valid_posted_upload_paths_only(): void
     {
         $path = '2026/10/' . str_repeat('a', 32) . '.png';
@@ -269,7 +290,7 @@ final class BlocksFieldTypeTest extends TestCase
             '_order' => [self::A],
             self::A => ['_block' => 'hero', 'headline' => 'H', 'tradeoff' => [
                 '_order' => [self::C],
-                self::C => ['_block' => 'tradeoff_note', 'chose' => 'x', 'cover_keep' => [$path, '../../etc/passwd', '2026/10/' . str_repeat('b', 32) . '.png']],
+                self::C => ['_block' => 'tradeoff_note', 'chose' => 'x', 'cover_ids' => ['', $path, '../../etc/passwd', '2026/10/' . str_repeat('b', 32) . '.png']],
             ]],
         ], null, [], $this->ctx(Locales::single('en')));
 

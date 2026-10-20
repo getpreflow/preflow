@@ -10,9 +10,15 @@ use Preflow\Folio\Field\HandlesUpload;
 use Psr\Http\Message\UploadedFileInterface;
 
 /**
- * File-upload field. Stores relative path(s) under the Folio uploads dir; serves
- * them via the {prefix}/_uploads route. Uploaded files are validated against the
- * field's accept (extension allowlist) and given randomized names.
+ * File field. With the asset library (the normal setup) it stores asset ids:
+ * the editor shows the selection as thumbnails with "Choose" (the library as a
+ * picker in the drawer) and a plain file input that uploads into the library on
+ * save, so it works without JS. The posted selection ({name}_ids[], led by an
+ * empty marker) is authoritative; without it the stored value stays.
+ *
+ * Older values are relative paths under the Folio uploads dir (served by
+ * {prefix}/_uploads); they keep working. Without a library the field writes
+ * such paths itself (extension allowlist, randomized names).
  */
 final class AssetFieldType implements FieldType, HandlesUpload
 {
@@ -23,6 +29,8 @@ final class AssetFieldType implements FieldType, HandlesUpload
         private readonly string $uploadsDir,
         private readonly string $uploadUrlPrefix,
         private readonly ?\Preflow\Folio\Assets\ImageTag $images = null,
+        private readonly ?\Preflow\Folio\Assets\AssetLibrary $library = null,
+        private readonly string $adminPrefix = '/folio',
     ) {}
 
     public function key(): string
@@ -34,38 +42,46 @@ final class AssetFieldType implements FieldType, HandlesUpload
     {
         $cfg = $this->assetConfig($ctx->config);
         $name = $ctx->name;
-        $existing = $this->toList($ctx->value);
+        $selection = self::selectionName($name) . '[]';
         $label = $ctx->label ?? ucfirst(str_replace('_', ' ', $name));
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
         $hasError = $ctx->errors !== [];
 
-        $html = '<div class="form-group folio-asset' . ($hasError ? ' has-error' : '') . '">' . "\n";
+        $attrs = ' data-folio-asset-field data-selection-name="' . $e($selection) . '" data-multiple="' . ($cfg['multiple'] ? '1' : '0') . '"';
+        if ($this->library !== null) {
+            $attrs .= ' data-picker-url="' . $e(rtrim($this->adminPrefix, '/') . '/assets?picker=1&multiple=' . ($cfg['multiple'] ? '1' : '0')) . '"';
+        }
+        $html = '<div class="form-group folio-asset' . ($hasError ? ' has-error' : '') . '"' . $attrs . '>' . "\n";
         $html .= '  <label>' . $e($label);
         if ($ctx->required) {
             $html .= ' <span class="form-required">*</span>';
         }
         $html .= '</label>' . "\n";
 
-        if ($existing !== []) {
-            $html .= '  <ul class="folio-asset-list">' . "\n";
-            foreach ($existing as $path) {
-                $url = $this->urlFor($path);
-                $html .= '    <li>';
-                $html .= $this->isImage($path)
-                    ? '<img src="' . $e($url) . '" alt="" class="folio-asset-thumb">'
-                    : '<a href="' . $e($url) . '">' . $e($path) . '</a>';
-                $html .= ' <label class="folio-asset-remove"><input type="checkbox" name="' . $e(self::removeName($name)) . '[]" value="' . $e($path) . '"> remove</label>';
-                // Lets a block that isn't stored yet (a duplicate) keep this file on save.
-                $html .= '<input type="hidden" name="' . $e(self::keepName($name)) . '[]" value="' . $e($path) . '">';
-                $html .= '</li>' . "\n";
-            }
-            $html .= '  </ul>' . "\n";
+        // The empty marker makes an emptied selection distinguishable from a form that never posted one.
+        $html .= '  <input type="hidden" name="' . $e($selection) . '" value="">' . "\n";
+        $html .= '  <ul class="folio-asset-selection">' . "\n";
+        foreach ($this->toList($this->fromStorage($ctx->value)) as $value) {
+            [$thumb, $text, $href] = $this->describe($value);
+            $html .= '    <li class="folio-asset-item" data-asset-item>';
+            $html .= $thumb !== null
+                ? '<img src="' . $e($thumb) . '" alt="" class="folio-asset-thumb">'
+                : '<a href="' . $e($href) . '">' . $e($text) . '</a>';
+            $html .= '<input type="hidden" name="' . $e($selection) . '" value="' . $e($value) . '">';
+            $html .= '<button type="button" class="btn btn-ghost" data-folio-asset-remove aria-label="Remove ' . $e($text) . '">Remove</button>';
+            $html .= '</li>' . "\n";
         }
+        $html .= '  </ul>' . "\n";
 
+        $html .= '  <div class="folio-asset-actions">';
+        if ($this->library !== null) {
+            $html .= '<button type="button" class="btn btn-secondary" data-folio-asset-choose>Choose</button> ';
+        }
         $inputName = $cfg['multiple'] ? $name . '[]' : $name;
         $acceptAttr = $cfg['accept'] !== '' ? ' accept="' . $e($cfg['accept']) . '"' : '';
         $multipleAttr = $cfg['multiple'] ? ' multiple' : '';
-        $html .= '  <input type="file" name="' . $e($inputName) . '"' . $acceptAttr . $multipleAttr . '>' . "\n";
+        $html .= '<label class="folio-asset-upload">Upload <input type="file" name="' . $e($inputName) . '"' . $acceptAttr . $multipleAttr . '></label>';
+        $html .= '</div>' . "\n";
 
         if ($ctx->help !== null && $ctx->help !== '') {
             $html .= '  <small class="form-help">' . $e($ctx->help) . '</small>' . "\n";
@@ -76,6 +92,22 @@ final class AssetFieldType implements FieldType, HandlesUpload
         $html .= '</div>';
 
         return $html;
+    }
+
+    /**
+     * Thumbnail URL (images), label and link of a stored value.
+     *
+     * @return array{0: ?string, 1: string, 2: string}
+     */
+    private function describe(string $value): array
+    {
+        $asset = $this->library?->find($value);
+        if ($asset !== null) {
+            return [$this->library->thumbnailUrl($asset), $asset->label(), $this->library->url($asset->path)];
+        }
+        $url = $this->urlFor($value);
+
+        return [$this->isImage($value) ? $url : null, basename($value), $url];
     }
 
     public function normalizeInput(mixed $raw, array $config): mixed
@@ -133,30 +165,102 @@ final class AssetFieldType implements FieldType, HandlesUpload
         return [];
     }
 
+    /**
+     * The value to store from the editor's selection and new uploads.
+     *
+     * @param list<mixed>|null              $submittedIds {name}_ids[] as posted; null when absent
+     *                                                    (keeps the stored value)
+     * @param list<UploadedFileInterface>   $uploads
+     * @param array<string, mixed>          $config
+     * @return string a single value, or a JSON list for "multiple" fields
+     */
+    public function resolve(?array $submittedIds, mixed $existing, array $uploads, array $config, bool $writeUploads, ?string $by): string
+    {
+        $base = $submittedIds === null
+            ? $this->toList($this->fromStorage($existing))
+            // Only values that exist: asset ids, or paths this field wrote earlier.
+            : array_values(array_filter($submittedIds, fn ($v) => is_string($v) && $v !== '' && ($this->library?->isAssetId($v) === true || $this->isStoredUpload($v))));
+
+        return (string) $this->toStorage($this->limit($this->addUploads($base, $writeUploads ? $uploads : [], $config, $by), $config));
+    }
+
+    /** Trusted $kept values plus the uploads (HandlesUpload). */
     public function storeUploads(array $uploaded, array $kept, array $config): mixed
     {
-        $cfg = $this->assetConfig($config);
-        $allowed = $this->allowedExtensions($cfg['accept']);
-        $paths = array_values($kept);
+        return $this->limit($this->addUploads(array_values($kept), $uploaded, $config, null), $config);
+    }
 
-        foreach ($uploaded as $file) {
+    /**
+     * @param list<string> $values
+     * @param array<mixed> $uploads
+     * @param array<string, mixed> $config
+     * @return list<string>
+     */
+    private function addUploads(array $values, array $uploads, array $config, ?string $by): array
+    {
+        $cfg = $this->assetConfig($config);
+        foreach ($uploads as $file) {
             if (!$file instanceof UploadedFileInterface || $file->getError() !== UPLOAD_ERR_OK) {
                 continue;
             }
-            $ext = strtolower(pathinfo((string) $file->getClientFilename(), PATHINFO_EXTENSION));
-            if ($ext === '' || !in_array($ext, $allowed, true)) {
-                continue; // reject disallowed extensions; never store them
+            $stored = $this->library !== null ? $this->storeInLibrary($file, $cfg['accept'], $by) : $this->storeLegacy($file, $cfg['accept']);
+            if ($stored !== null) {
+                $values[] = $stored;
             }
-            $rel = date('Y/m') . '/' . bin2hex(random_bytes(16)) . '.' . $ext;
-            $dest = $this->uploadsDir . '/' . $rel;
-            if (!is_dir(dirname($dest))) {
-                mkdir(dirname($dest), 0775, true);
-            }
-            $file->moveTo($dest);
-            $paths[] = $rel;
         }
 
-        return $cfg['multiple'] ? $paths : ($paths[0] ?? '');
+        return $values;
+    }
+
+    /** The asset id, or null when the library refuses the file or it does not match "accept". */
+    private function storeInLibrary(UploadedFileInterface $file, string $accept, ?string $by): ?string
+    {
+        try {
+            $asset = $this->library?->upload($file, $by);
+        } catch (\Preflow\Folio\Assets\AssetUploadException) {
+            return null;
+        }
+        if ($asset === null) {
+            return null;
+        }
+        $kind = match (trim($accept)) {
+            'image/*' => 'image',
+            'video/*' => 'video',
+            default => null,
+        };
+        $exts = $kind === null && trim($accept) !== '' ? $this->allowedExtensions($accept) : null;
+        if (($kind !== null && $asset->kind() !== $kind) || ($exts !== null && !in_array(strtolower(pathinfo($asset->path, PATHINFO_EXTENSION)), $exts, true))) {
+            $this->library?->delete($asset->id);
+            return null;
+        }
+
+        return $asset->id;
+    }
+
+    private function storeLegacy(UploadedFileInterface $file, string $accept): ?string
+    {
+        $ext = strtolower(pathinfo((string) $file->getClientFilename(), PATHINFO_EXTENSION));
+        if ($ext === '' || !in_array($ext, $this->allowedExtensions($accept), true)) {
+            return null; // reject disallowed extensions; never store them
+        }
+        $rel = date('Y/m') . '/' . bin2hex(random_bytes(16)) . '.' . $ext;
+        $dest = $this->uploadsDir . '/' . $rel;
+        if (!is_dir(dirname($dest))) {
+            mkdir(dirname($dest), 0775, true);
+        }
+        $file->moveTo($dest);
+
+        return $rel;
+    }
+
+    /**
+     * @param list<string>         $values
+     * @param array<string, mixed> $config
+     * @return list<string>|string the list, or for single fields the last value
+     */
+    private function limit(array $values, array $config): array|string
+    {
+        return $this->assetConfig($config)['multiple'] ? array_values(array_unique($values)) : ($values === [] ? '' : $values[count($values) - 1]);
     }
 
     /**
@@ -214,19 +318,10 @@ final class AssetFieldType implements FieldType, HandlesUpload
         return in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), self::IMAGE_EXT, true);
     }
 
-    /**
-     * "cover" -> "cover_remove"; nested "a[b][cover]" -> "a[b][cover_remove]"
-     * (PHP ignores characters after the last bracket of a field name).
-     */
-    public static function removeName(string $name): string
+    /** "cover" -> "cover_ids"; nested "a[b][cover]" -> "a[b][cover_ids]" (PHP ignores text after the last bracket). */
+    public static function selectionName(string $name): string
     {
-        return str_ends_with($name, ']') ? substr($name, 0, -1) . '_remove]' : $name . '_remove';
-    }
-
-    /** "cover" -> "cover_keep"; nested "a[b][cover]" -> "a[b][cover_keep]". */
-    public static function keepName(string $name): string
-    {
-        return str_ends_with($name, ']') ? substr($name, 0, -1) . '_keep]' : $name . '_keep';
+        return str_ends_with($name, ']') ? substr($name, 0, -1) . '_ids]' : $name . '_ids';
     }
 
     /** A path this field type wrote: "YYYY/MM/<32 hex>.<ext>" that exists in the uploads dir. */

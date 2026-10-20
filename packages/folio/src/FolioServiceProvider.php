@@ -161,7 +161,13 @@ final class FolioServiceProvider extends ServiceProvider
                     ->allowRelativeLinks()
                     ->allowRelativeMedias(),
             )));
-            $registry->register(new AssetFieldType($uploadsDir, $uploadUrlPrefix, $c->get(\Preflow\Folio\Assets\ImageTag::class)));
+            $registry->register(new AssetFieldType(
+                $uploadsDir,
+                $uploadUrlPrefix,
+                $c->get(\Preflow\Folio\Assets\ImageTag::class),
+                $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
+                $prefix,
+            ));
             $registry->register(new RelationFieldType(
                 $c->get(\Preflow\Data\DataManager::class),
                 $c->get(TypeRegistry::class),

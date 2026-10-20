@@ -336,63 +336,68 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('name="cover"', $body);
     }
 
-    public function test_upload_is_stored_and_served(): void
+    public function test_upload_goes_into_the_library(): void
     {
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $file = $f->createUploadedFile($f->createStream('PNGDATA'), 7, UPLOAD_ERR_OK, 'pic.png', 'image/png');
+        $png = $this->pngBytes();
 
         $res = $app->handle($f->createServerRequest('POST', '/folio/page')
             ->withParsedBody(['title' => 'A', 'slug' => 'a', 'body' => 'b', 'status' => 'published'])
-            ->withUploadedFiles(['cover' => $file]));
+            ->withUploadedFiles(['cover' => $f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'pic.png', 'image/png')]));
         $this->assertSame(302, $res->getStatusCode());
 
-        $record = $app->container()->get(\Preflow\Data\DataManager::class)
-            ->queryType('page')->where('slug', 'a')->first();
+        $record = $app->container()->get(\Preflow\Data\DataManager::class)->queryType('page')->where('slug', 'a')->first();
         $cover = (string) $record->get('cover');
-        $this->assertStringEndsWith('.png', $cover);
-
-        $served = $app->handle($f->createServerRequest('GET', '/folio/_uploads/' . $cover));
-        $this->assertSame(200, $served->getStatusCode());
-        $this->assertSame('image/png', $served->getHeaderLine('Content-Type'));
-        $this->assertSame('PNGDATA', (string) $served->getBody());
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{32}$/', $cover);
+        $asset = $app->container()->get(\Preflow\Folio\Assets\AssetLibrary::class)->find($cover);
+        $this->assertSame('pic.png', $asset?->originalName);
+        $this->assertFileExists($this->dir . '/public/media/' . $asset->path);
     }
 
     public function test_frontend_renders_uploaded_image(): void
     {
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $file = $f->createUploadedFile($f->createStream('PNGDATA'), 7, UPLOAD_ERR_OK, 'pic.png', 'image/png');
+        $png = $this->pngBytes();
         $app->handle($f->createServerRequest('POST', '/folio/page')
             ->withParsedBody(['title' => 'Img', 'slug' => 'img', 'body' => 'b', 'status' => 'published'])
-            ->withUploadedFiles(['cover' => $file]));
+            ->withUploadedFiles(['cover' => $f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'pic.png', 'image/png')]));
 
         $html = (string) $app->handle($f->createServerRequest('GET', '/img'))->getBody();
-        $this->assertStringContainsString('<img src="/folio/_uploads/', $html);
+        $this->assertStringContainsString('<img src="/media/', $html);
     }
 
     public function test_update_removes_existing_asset(): void
     {
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $file = $f->createUploadedFile($f->createStream('PNGDATA'), 7, UPLOAD_ERR_OK, 'pic.png', 'image/png');
+        $png = $this->pngBytes();
         $app->handle($f->createServerRequest('POST', '/folio/page')
             ->withParsedBody(['title' => 'R', 'slug' => 'r', 'body' => 'b', 'status' => 'published'])
-            ->withUploadedFiles(['cover' => $file]));
+            ->withUploadedFiles(['cover' => $f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'pic.png', 'image/png')]));
 
         $dm = $app->container()->get(\Preflow\Data\DataManager::class);
         $record = $dm->queryType('page')->where('slug', 'r')->first();
         $id = $record->getId();
-        $cover = (string) $record->get('cover');
-        $this->assertStringEndsWith('.png', $cover);
+        $this->assertNotSame('', (string) $record->get('cover'));
 
-        // update with a remove marker for that path and no new upload
+        // The editor posts its selection: only the empty marker means "nothing selected".
         $app->handle($f->createServerRequest('POST', '/folio/page/' . $id)
             ->withAttribute('type', 'page')->withAttribute('id', $id)
-            ->withParsedBody(['title' => 'R', 'slug' => 'r', 'body' => 'b', 'status' => 'published', 'cover_remove' => [$cover]]));
+            ->withParsedBody(['title' => 'R', 'slug' => 'r', 'body' => 'b', 'status' => 'published', 'cover_ids' => ['']]));
 
         $after = $dm->findType('page', $id);
         $this->assertSame('', (string) $after->get('cover'));
+    }
+
+    private function pngBytes(): string
+    {
+        $image = imagecreatetruecolor(40, 20);
+        ob_start();
+        imagepng($image);
+
+        return (string) ob_get_clean();
     }
 
     public function test_relation_picker_lists_targets_and_round_trips(): void
@@ -1346,7 +1351,7 @@ final class FolioAppTest extends TestCase
         $this->assertStringNotContainsString($c, $body);
         $this->assertStringContainsString('value="Edited copy"', $body);
         $this->assertSame(2, preg_match_all('#data-block-uid="[a-f0-9]{16}"#', $body)); // card + nested child
-        $this->assertStringContainsString('_keep][]" value="2026/10/' . str_repeat('e', 32) . '.png"', $body);
+        $this->assertStringContainsString('[cover_ids][]" value="2026/10/' . str_repeat('e', 32) . '.png"', $body);
     }
 
     public function test_duplicate_rejects_bad_input(): void

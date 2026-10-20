@@ -104,18 +104,25 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
                     continue;
                 }
 
+                if ($type instanceof AssetFieldType) {
+                    // The posted selection is authoritative (a duplicate carries its files this way);
+                    // without one the stored value stays.
+                    $selection = $data[$name . '_ids'] ?? null;
+                    $block[$name] = $type->resolve(
+                        is_array($selection) ? array_values($selection) : null,
+                        $previous[$name] ?? null,
+                        $ctx->writeUploads ? self::uploadedFiles($blockFiles[$name] ?? null) : [],
+                        $field->config,
+                        $ctx->writeUploads,
+                        null,
+                    );
+                    continue;
+                }
+
                 if ($type instanceof HandlesUpload) {
-                    $removed = array_values(array_filter((array) ($data[$name . '_remove'] ?? []), 'is_string'));
-                    $current = $previous !== []
-                        ? self::pathList($type->fromStorage($previous[$name] ?? null))
-                        // Not stored yet (a duplicate): accept only real uploads it carried along.
-                        : array_values(array_filter(
-                            (array) ($data[$name . '_keep'] ?? []),
-                            static fn ($p) => is_string($p) && method_exists($type, 'isStoredUpload') && $type->isStoredUpload($p),
-                        ));
-                    $kept = array_values(array_diff($current, $removed));
+                    $current = self::pathList($type->fromStorage($previous[$name] ?? null));
                     $uploaded = $ctx->writeUploads ? self::uploadedFiles($blockFiles[$name] ?? null) : [];
-                    $block[$name] = $type->toStorage($type->storeUploads($uploaded, $kept, $field->config));
+                    $block[$name] = $type->toStorage($type->storeUploads($uploaded, $current, $field->config));
                     continue;
                 }
 

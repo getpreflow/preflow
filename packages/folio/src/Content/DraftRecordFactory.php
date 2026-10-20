@@ -11,6 +11,7 @@ use Preflow\Folio\Field\BuildContext;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\StructuredFieldType;
 use Preflow\Folio\Field\HandlesUpload;
+use Preflow\Folio\Field\Types\AssetFieldType;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\UploadedFileInterface;
 
@@ -63,15 +64,23 @@ final class DraftRecordFactory
                 continue;
             }
 
+            if ($fieldType instanceof AssetFieldType) {
+                $selection = $submitted[AssetFieldType::selectionName($name)] ?? null;
+                $data[$name] = $fieldType->resolve(
+                    is_array($selection) ? array_values($selection) : null,
+                    LocaleValue::default($existing[$name] ?? null, $locales),
+                    self::uploadedFiles($uploads[$name] ?? null),
+                    $fieldDef->config,
+                    $writeUploads,
+                    null,
+                );
+                continue;
+            }
+
             if ($fieldType instanceof HandlesUpload) {
                 $files = $writeUploads ? self::uploadedFiles($uploads[$name] ?? null) : [];
-                $removed = array_values(array_filter(
-                    (array) ($submitted[$name . '_remove'] ?? []),
-                    static fn ($v) => is_string($v),
-                ));
                 $existingList = self::pathList($fieldType->fromStorage(LocaleValue::default($existing[$name] ?? null, $locales)));
-                $kept = array_values(array_diff($existingList, $removed));
-                $data[$name] = $fieldType->toStorage($fieldType->storeUploads($files, $kept, $fieldDef->config));
+                $data[$name] = $fieldType->toStorage($fieldType->storeUploads($files, $existingList, $fieldDef->config));
                 continue;
             }
 
