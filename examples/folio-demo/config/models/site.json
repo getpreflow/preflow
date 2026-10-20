@@ -1,0 +1,12 @@
+{
+    "key": "site",
+    "table": "site",
+    "storage": "json",
+    "id_field": "uuid",
+    "label": "Site settings",
+    "singleton": true,
+    "fields": {
+        "name": { "type": "string", "validate": ["required"] },
+        "tagline": { "type": "string", "translatable": true }
+    }
+}

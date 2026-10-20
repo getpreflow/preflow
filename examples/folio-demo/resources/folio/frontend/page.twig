@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="{{ locale|default('en') }}">
+<head>
+    <meta charset="utf-8">
+    <title>{{ record.title }}{% set site = folio_get('site') %}{% if site %} — {{ site.name }}{% endif %}</title>
+    {{ folio_alternate_links(alternates|default([])) }}
+</head>
+<body>
+    {% if site %}<header class="demo-site"><strong>{{ site.name }}</strong>{% if site.tagline %} · {{ site.tagline }}{% endif %}</header>{% endif %}
+    <main>
+        {{ folio_blocks(record.sections, preview|default(false)) }}
+        <article>
+            <h1{% if preview|default(false) %} data-folio-field="title"{% endif %}>{{ record.title }}</h1>
+            {% for name, html in rendered %}
+                {% if name not in ['title', 'sections'] %}<div class="folio-field folio-field-{{ name }}"{% if preview|default(false) %} data-folio-field="{{ name }}"{% endif %}>{{ html|raw }}</div>{% endif %}
+            {% endfor %}
+        </article>
+    </main>
+</body>
+</html>

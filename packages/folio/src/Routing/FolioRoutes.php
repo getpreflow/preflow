@@ -104,7 +104,8 @@ final class FolioRoutes
             mode: RouteMode::Action,
             middleware: [],
             paramNames: $c['paramNames'],
-            regex: $c['regex'],
+            // Also match "/" (empty path): the home record is served at the root.
+            regex: '#^/(?P<path>.*)$#',
             isCatchAll: $c['isCatchAll'],
         );
     }

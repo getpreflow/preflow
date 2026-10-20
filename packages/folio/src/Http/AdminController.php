@@ -412,6 +412,8 @@ final class AdminController
                 'name' => $name,
                 'html' => $fieldType->renderEditor($ctx),
                 'translatable' => $isTranslatable,
+                // Blocks hold their own (possibly translated) leaves: no "shared" label.
+                'structured' => $fieldType instanceof BlocksFieldType,
                 'falls_back' => $fallsBack,
                 'reference' => $reference,
             ];

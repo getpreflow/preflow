@@ -181,6 +181,81 @@ A field type's own rules (e.g. `select`'s allowed values) are enforced in additi
 return ['field_types' => [App\Folio\ColorFieldType::class]];
 ```
 
+## Blocks
+
+A block is a Preflow component whose fields are PHP attributes. Schema, logic, template
+and CSS live in one component folder:
+
+```php
+#[Block(key: 'hero', label: 'Hero', group: 'Sections', icon: 'block')]
+final class Hero extends BlockComponent
+{
+    #[BlockField(type: 'string', translatable: true, validate: ['required'])]
+    public string $headline = '';
+
+    #[BlockField(type: 'blocks', allowed: ['link'], max: 3)]
+    public array $links = [];
+}
+```
+
+- **`key`** is the stable storage id; renaming the class never orphans content.
+- **Field types:** `#[BlockField]` takes every field type and option that JSON type
+  fields take (`label`, `help`, `validate`, `translatable`, `config` for things like
+  `options`). `blocks` nests further.
+- **Component blocks** extend `BlockComponent`. Their `#[BlockField]` properties are
+  filled from the block's data (already in the page's language) before
+  `resolveState()`.
+- **Data-only blocks** are plain classes with the attributes (put them in `app/Blocks/`).
+  They have no template; the parent's template iterates them (`{% for link in links %}`).
+- **Discovery:** blocks are found in `app/Components`, `app/Blocks`, and in
+  `config/folio.php` `'blocks' => ['classes' => [...], 'max_depth' => 4]`. Duplicate keys
+  fail at boot, and the registry is cached in `storage/cache` when debug is off.
+
+**On a content type:** `"sections": {"type": "blocks", "allowed": ["hero", "text"], "min": 1, "max": 10}`.
+
+**Storage:** an ordered list inside the record, so nothing extra to migrate.
+
+```json
+[{"_uid": "a1b2c3d4e5f60718", "_block": "hero", "headline": {"en": "…", "de": "…"}, "links": [ … ]}]
+```
+
+- **Language:** structure (which blocks, their order) is shared across languages;
+  translatable leaves hold one value per language.
+- **Removed classes:** a block whose class was removed is kept untouched, shown in the
+  editor as "Unknown block" (removable), and skipped on the website.
+
+**Editing:**
+- Collapsible cards with move up/down, duplicate (fresh ids) and remove.
+- Grouped "Add block" buttons that load a server-rendered card (htmx, served from the
+  admin itself).
+- Inputs are named by block id (`sections[<uid>][headline]`), and each card carries its
+  own order input, so reordering never renumbers anything.
+- Errors show on the card, with a summary that links to it.
+- Uploads work inside blocks.
+
+**Rendering:**
+- `{{ folio_blocks(record.sections, preview) }}` renders each block through its
+  component, in order and in the page's language.
+- `{{ folio_block(block) }}` renders one.
+- A block that throws is contained by the component error boundary.
+- In live preview each block is wrapped in `data-folio-block="<uid>"`.
+
+## Blocks, matrix or relation?
+
+- **blocks:** content this record owns, edited in place (page sections).
+- **matrix:** an ordered mix of references to standalone, reusable records.
+- **relation:** references to records of one type.
+
+## Singletons
+
+`"singleton": true` makes a type hold exactly one record, such as site settings:
+
+- **Admin:** its nav entry opens the edit form straight away. There is no list, "new"
+  or delete, and the first save creates the record (id = the type key).
+- **Templates:** `{% set site = folio_get('site') %}` returns its values in the page's
+  language, or `null` before the first save, loaded once per request. In PHP, inject
+  `Preflow\Folio\Content\Singletons`.
+
 ## Translations
 
 With more than one locale in `config/i18n.php`, fields marked `"translatable": true`
@@ -237,12 +312,14 @@ Shipped:
 - side-by-side live preview;
 - admin login;
 - per-action overrides;
-- multi-type frontend routing;
-- the configurable list.
+- multi-type frontend routing (the home record is served at `/`);
+- the configurable list;
+- content translations;
+- blocks and singletons.
 
 The admin runs under Preflow's strict, nonce-based CSP: no inline handlers or styles.
 Hand-written `<script>`/`<style>` tags in your own templates need
 `nonce="{{ csp_nonce() }}"`.
 
-Planned: blocks and singletons, click-to-edit preview, draft/publish, the
+Planned: click-to-edit preview, draft/publish, the
 asset library, and `folio:pull`. See `docs/superpowers/specs/2026-10-19-*`.

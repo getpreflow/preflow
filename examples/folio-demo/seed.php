@@ -45,7 +45,15 @@ $dm = $app->container()->get(DataManager::class);
 $registry = $app->container()->get(TypeRegistry::class);
 
 $records = [
-    ['page', ['title' => 'Home', 'slug' => 'home', 'body' => '<p>Welcome to the site.</p>', 'status' => 'published']],
+    ['page', ['title' => 'Home', 'slug' => 'home', 'body' => '<p>Welcome to the site.</p>', 'status' => 'published',
+        'sections' => [[
+            '_uid' => 'a1b2c3d4e5f60718', '_block' => 'hero',
+            'headline' => 'Pages built from blocks', 'intro' => 'Each section is a Preflow component; edit it in Folio.',
+            'links' => [
+                ['_uid' => '0f1e2d3c4b5a6978', '_block' => 'link', 'label' => 'About us', 'url' => '/about'],
+            ],
+        ]],
+    ]],
     // Translated: German title/slug/body, visible in both languages (/about and /de/ueber-uns).
     ['page', [
         'title' => ['en' => 'About Us', 'de' => 'Über uns'],
@@ -59,11 +67,15 @@ $records = [
     ['article', ['title' => 'On Warm Minimalism', 'slug' => 'warm-minimalism', 'body' => '<p>Notes on the design.</p>', 'status' => 'draft']],
 ];
 
+// Singleton: site settings (id = type key).
+$records[] = ['site', ['uuid' => 'site', 'name' => 'Folio Demo', 'tagline' => ['en' => 'A Preflow CMS', 'de' => 'Ein Preflow-CMS']]];
+
 foreach ($records as [$type, $data]) {
     $typeDef = $registry->get($type);
-    $data[$typeDef->idField] = bin2hex(random_bytes(16));
+    $data[$typeDef->idField] ??= bin2hex(random_bytes(16));
     $dm->saveType(DynamicRecord::fromArray($typeDef, $data));
-    echo sprintf("  %-8s %-18s -> ok\n", $type, is_array($data['slug']) ? $data['slug']['en'] : $data['slug']);
+    $slug = $data['slug'] ?? $data[$typeDef->idField];
+    echo sprintf("  %-8s %-18s -> ok\n", $type, is_array($slug) ? $slug['en'] : $slug);
 }
 
 echo "Seeded " . count($records) . " records into {$dataDir}\n";

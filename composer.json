@@ -125,7 +125,8 @@
             "Preflow\\Form\\Tests\\": "packages/form/tests/",
             "Preflow\\Notify\\Tests\\": "packages/notify/tests/",
             "Preflow\\Validation\\Tests\\": "packages/validation/tests/",
-            "Preflow\\Examples\\FolioDemo\\Tests\\": "examples/folio-demo/tests/"
+            "Preflow\\Examples\\FolioDemo\\Tests\\": "examples/folio-demo/tests/",
+            "Preflow\\Examples\\FolioDemo\\": "examples/folio-demo/app/"
         }
     },
     "config": {

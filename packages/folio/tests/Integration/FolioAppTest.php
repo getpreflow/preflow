@@ -1263,6 +1263,42 @@ final class FolioAppTest extends TestCase
             ->withAttribute('type', 'site')->withAttribute('id', 'site')->withParsedBody($body));
     }
 
+    public function test_home_resolves_at_root(): void
+    {
+        unlink($this->dir . '/app/pages/index.twig'); // no app route for "/" in this app
+        $this->createPage(['title' => 'Welcome home', 'slug' => 'home', 'body' => 'b', 'status' => 'published']);
+
+        $res = $this->get('/');
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('Welcome home', (string) $res->getBody());
+    }
+
+    public function test_admin_htmx_gets_the_page_nonce(): void
+    {
+        $this->enableBlocks();
+        putenv('APP_DEBUG=0');
+        $res = $this->get('/folio/page/new');
+        putenv('APP_DEBUG=1');
+
+        preg_match("/'nonce-([^']+)'/", $res->getHeaderLine('Content-Security-Policy'), $m);
+        // htmx inserts its own indicator <style>; without the nonce the CSP blocks it.
+        $this->assertStringContainsString('<meta name="htmx-config" content=\'{"inlineScriptNonce":"' . $m[1] . '","inlineStyleNonce":"' . $m[1] . '"}\'>', (string) $res->getBody());
+    }
+
+    public function test_blocks_field_is_not_labelled_shared(): void
+    {
+        $this->enableGerman();
+        $this->enableBlocks();
+
+        $body = (string) $this->get('/folio/page/new')->getBody();
+
+        $this->assertDoesNotMatchRegularExpression('#data-blocks-field[\s\S]*?</div>\s*</div>\s*<p class="folio-shared">#', $body);
+        $this->assertSame(1 + 0, substr_count($body, 'data-blocks-field'));
+        preg_match('#<div class="folio-field-wrap">\s*<div class="folio-blocks" data-blocks-field>[\s\S]*?(?=<div class="folio-field-wrap">)#', $body, $wrap);
+        $this->assertStringNotContainsString('Shared across languages', $wrap[0] ?? 'missing');
+    }
+
     public function test_edit_form_no_preview_button_for_non_frontend_type(): void
     {
         $app = $this->app();

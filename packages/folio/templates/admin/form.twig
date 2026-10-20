@@ -44,7 +44,7 @@
             <div class="folio-field-wrap">
                 {{ field.html|raw }}
                 {% if multilingual|default(false) %}
-                    {% if not field.translatable %}
+                    {% if not field.translatable and not field.structured|default(false) %}
                         <p class="folio-shared">Shared across languages</p>
                     {% elseif field.falls_back %}
                         <p class="folio-fallback-hint">Falls back to {{ default_language }}</p>

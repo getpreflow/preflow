@@ -1,0 +1,13 @@
+<h1>{{ headline }}</h1>
+{% if intro %}<p class="demo-hero-intro">{{ intro }}</p>{% endif %}
+{% if links is not empty %}
+    <ul class="demo-hero-links">
+        {% for link in links %}<li><a href="{{ link.url }}">{{ link.label }}</a></li>{% endfor %}
+    </ul>
+{% endif %}
+
+{% apply css %}
+.demo-hero { padding: 3rem 0; }
+.demo-hero h1 { font-size: 2.5rem; margin: 0 0 0.5rem; }
+.demo-hero-links { display: flex; gap: 1rem; padding: 0; list-style: none; }
+{% endapply %}
