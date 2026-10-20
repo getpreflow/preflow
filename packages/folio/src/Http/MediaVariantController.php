@@ -37,9 +37,17 @@ final class MediaVariantController
         if ($asset === null || substr($asset->path, 0, (int) strrpos($asset->path, '.')) !== $base) {
             throw new NotFoundHttpException('Not found');
         }
+        if (!$this->library->allowsVariant($asset, (int) $width, $format, $this->widths->allowed())) {
+            throw new NotFoundHttpException('Not found');
+        }
         $file = $this->library->variantFile($asset, (int) $width, $format, $this->widths->allowed());
         if ($file === null) {
-            throw new NotFoundHttpException('Not found');
+            // The encode failed (memory, time, encoder): never a broken image in a
+            // srcset. Point at the closest existing size, uncached, so it retries later.
+            return new Response(302, [
+                'Location' => $this->library->url($this->library->nearestVariant($asset, (int) $width, $format)),
+                'Cache-Control' => 'no-store',
+            ]);
         }
 
         return new Response(200, [

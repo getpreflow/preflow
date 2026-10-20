@@ -66,8 +66,8 @@ final class ImageTag
         if ($priority) {
             // The page's key image: fetch it before the parser reaches it.
             $this->css->addHeadTag($first !== null
-                ? '<link rel="preload" as="image" type="image/' . $first[0] . '" imagesrcset="' . self::e($first[1]) . '" imagesizes="' . self::e($sizes) . '">'
-                : '<link rel="preload" as="image" href="' . self::e($this->library->url($asset->path)) . '">', 'folio-preload:' . $asset->id . ':' . ($preset ?? ''));
+                ? '<link rel="preload" as="image" type="image/' . $first[0] . '" imagesrcset="' . self::e($first[1]) . '" imagesizes="' . self::e($sizes) . '" fetchpriority="high">'
+                : '<link rel="preload" as="image" href="' . self::e($this->library->url($asset->path)) . '" fetchpriority="high">', 'folio-preload:' . $asset->id . ':' . ($preset ?? ''));
         }
 
         $classes = array_filter([trim((string) $opts['class']), ...$this->focalClasses($asset)]);

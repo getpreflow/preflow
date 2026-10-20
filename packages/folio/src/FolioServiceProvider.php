@@ -92,7 +92,7 @@ final class FolioServiceProvider extends ServiceProvider
             $locales ?? \Preflow\Data\Locales::single('en'),
             (string) ($assetsConfig['dir'] ?? $app->basePath('public/media')),
             (string) ($assetsConfig['url'] ?? '/media'),
-            $assetsConfig,
+            $assetsConfig + ['warm_widths' => $c->get(\Preflow\Folio\Assets\ImageWidths::class)->allowed()],
             new \Preflow\Folio\Assets\VariantGenerator(
                 \Preflow\Folio\Assets\Image\ImageBackends::detect(),
                 $c->get(\Preflow\Folio\Assets\ImageWidths::class)->eager(),

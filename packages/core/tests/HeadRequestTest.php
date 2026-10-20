@@ -43,7 +43,8 @@ final class HeadRequestTest extends TestCase
         $this->assertSame(200, $get->getStatusCode());
         $this->assertStringContainsString('Hello', (string) $get->getBody());
         $this->assertSame(200, $head->getStatusCode());
-        $this->assertSame($get->getHeaderLine('Content-Type'), $head->getHeaderLine('Content-Type'));
+        $strip = static fn (array $h): array => array_diff_key(array_change_key_case($h), ['content-security-policy' => 1, 'content-security-policy-report-only' => 1]);
+        $this->assertSame($strip($get->getHeaders()), $strip($head->getHeaders())); // only the per-request nonce differs
         $this->assertSame('', (string) $head->getBody());
     }
 

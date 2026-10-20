@@ -136,7 +136,7 @@ final class ImageTagTest extends TestCase
         $this->assertSame(1, substr_count($head, 'rel="preload"'));
         $format = function_exists('imageavif') ? 'avif' : 'webp';
         preg_match('#<source type="image/' . $format . '" srcset="([^"]+)"#', $html, $m);
-        $this->assertStringContainsString('<link rel="preload" as="image" type="image/' . $format . '" imagesrcset="' . $m[1] . '" imagesizes="50vw">', $head);
+        $this->assertStringContainsString('<link rel="preload" as="image" type="image/' . $format . '" imagesrcset="' . $m[1] . '" imagesizes="50vw" fetchpriority="high">', $head);
     }
 
     public function test_without_priority_nothing_changes(): void

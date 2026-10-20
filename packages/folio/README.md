@@ -459,7 +459,12 @@ are made the first time a browser asks for one:
   supports, are made. Anything else under the media URL is a 404 that writes nothing;
 - concurrent first requests wait on a per-file lock, so a variant is encoded once.
 
-`php preflow folio:assets:variants --all` makes the step widths in advance as well.
+`php preflow folio:assets:variants --all` makes the step widths in advance as well, and
+`warm_on_upload` makes them during each upload. Use one of them on shared hosting, so a
+page full of new images doesn't start many encodes at once on its first view. If an
+encode fails, the browser is redirected (uncached) to the closest existing size, never
+shown a broken image. The media URL belongs to the library: a page under `/media/…`
+is not routed.
 
 **Config** (`config/folio.php`):
 
@@ -470,6 +475,7 @@ are made the first time a browser asks for one:
     'storage' => 'json',                  // a data driver name
     'max_bytes' => 20 * 1024 * 1024,
     'max_pixels' => 30_000_000,          // larger images get no variants
+    'warm_on_upload' => false,           // true: make the step widths during the upload too
     'allow_svg' => false,
     'widths' => [480, 768, 1024, 1600],   // default: the config/image.php preset widths
     'quality' => 75,

@@ -198,13 +198,7 @@ final class AssetLibrary
      */
     public function variantFile(Asset $asset, int $width, string $format, array $allowed): ?string
     {
-        if ($this->variants === null || $asset->width === null || $asset->height === null || $width > $asset->width
-            || !$this->variants->supports($asset->mime, $format)
-            || $asset->width * $asset->height > (int) ($this->config['max_pixels'] ?? self::DEFAULT_MAX_PIXELS)) {
-            return null;
-        }
-        $isOriginal = $width === $asset->width && $allowed !== [] && $width < max($allowed);
-        if (!in_array($width, $allowed, true) && !$isOriginal) {
+        if (!$this->allowsVariant($asset, $width, $format, $allowed)) {
             return null;
         }
 
@@ -233,6 +227,37 @@ final class AssetLibrary
         }
 
         return is_file($file) ? $file : null;
+    }
+
+    /**
+     * Whether a variant may exist: an allowed width (or the original width when
+     * it is narrower than the largest), never wider than the original, for a
+     * format the asset already has variants in (so a srcset lists it) and the
+     * backend can still write.
+     *
+     * @param list<int> $allowed
+     */
+    public function allowsVariant(Asset $asset, int $width, string $format, array $allowed): bool
+    {
+        if ($this->variants === null || $asset->width === null || $asset->height === null || $width > $asset->width
+            || !$this->variants->supports($asset->mime, $format)
+            || array_filter($asset->variants, static fn (Variant $v) => $v->format === $format) === []
+            || $asset->width * $asset->height > (int) ($this->config['max_pixels'] ?? self::DEFAULT_MAX_PIXELS)) {
+            return false;
+        }
+        $isOriginal = $width === $asset->width && $allowed !== [] && $width < max($allowed);
+
+        return in_array($width, $allowed, true) || $isOriginal;
+    }
+
+    /** The closest variant made at upload (the largest not wider, else the smallest), else the original. */
+    public function nearestVariant(Asset $asset, int $width, string $format): string
+    {
+        $made = array_values(array_filter($asset->variants, fn (Variant $v) => $v->format === $format && is_file($this->absolute($v->path))));
+        usort($made, static fn (Variant $a, Variant $b) => $a->width <=> $b->width);
+        $fit = array_values(array_filter($made, static fn (Variant $v) => $v->width <= $width));
+
+        return ($fit !== [] ? end($fit) : ($made[0] ?? null))?->path ?? $asset->path;
     }
 
     /**
@@ -356,8 +381,17 @@ final class AssetLibrary
         $asset = $this->save($asset->toData());
         $data = $asset->toData();
         $data['variants'] = array_map(static fn (Variant $v) => $v->toArray(), $this->generateVariants($asset));
+        if ($data['variants'] === []) {
+            return $asset;
+        }
+        $asset = $this->save($data);
+        // Optional: make the step widths now, so a page full of new images does not
+        // start many encodes at once on its first view (assets.warm_on_upload).
+        if (($this->config['warm_on_upload'] ?? false) === true && is_array($this->config['warm_widths'] ?? null)) {
+            $this->warm($asset, array_values(array_map('intval', $this->config['warm_widths'])));
+        }
 
-        return $data['variants'] === [] ? $asset : $this->save($data);
+        return $asset;
     }
 
     /** @return list<Variant> */

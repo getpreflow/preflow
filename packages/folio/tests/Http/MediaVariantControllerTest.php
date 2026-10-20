@@ -152,6 +152,82 @@ final class MediaVariantControllerTest extends TestCase
         $this->assertFileExists($this->file($rel));
     }
 
+    public function test_no_recorded_variant_in_the_format_means_no_generation(): void
+    {
+        $asset = $this->library()->upload($this->upload($this->png(1000, 600), 'a.png'), null); // no backend at upload: no variants
+        $this->assertSame([], $asset->variants);
+
+        try {
+            $this->serve($this->base($asset) . '-640.webp');
+            $this->fail('expected a 404');
+        } catch (NotFoundHttpException) {
+        }
+        $this->assertFileDoesNotExist($this->file($this->base($asset) . '-640.webp'));
+    }
+
+    public function test_failed_encode_redirects_to_the_nearest_existing_variant(): void
+    {
+        $asset = $this->asset();
+        $failing = new class implements \Preflow\Folio\Assets\Image\ImageBackend {
+            public function supports(string $format): bool { return true; }
+            public function writeVariants(string $src, array $jobs, int $quality): array { return array_fill(0, count($jobs), false); }
+        };
+        $this->lib = $this->library([], new VariantGenerator($failing, $this->widths->eager(), 75));
+
+        $res = $this->serve($this->base($asset) . '-800.webp');
+
+        $this->assertSame(302, $res->getStatusCode()); // never a broken image inside a srcset
+        $this->assertSame('/media/' . $this->base($asset) . '-480.webp', $res->getHeaderLine('Location'));
+        $this->assertSame('no-store', $res->getHeaderLine('Cache-Control'));
+        $this->assertFileDoesNotExist($this->file($this->base($asset) . '-800.webp'));
+    }
+
+    public function test_a_waiting_request_reuses_the_file_the_other_one_wrote(): void
+    {
+        $asset = $this->asset();
+        $rel = $this->base($asset) . '-800.webp';
+        $source = $this->file($this->base($asset) . '-480.webp'); // any valid bytes stand in for the other encode
+        $holder = proc_open([PHP_BINARY, '-r', '$h = fopen($argv[1] . ".lock", "c"); flock($h, LOCK_EX); fwrite(STDOUT, "locked\n"); usleep(400000); copy($argv[2], $argv[1]); flock($h, LOCK_UN);', $this->file($rel), $source], [1 => ['pipe', 'w']], $pipes);
+        $this->assertSame("locked\n", fgets($pipes[1]));
+
+        $res = $this->serve($rel);
+        proc_close($holder);
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertSame(file_get_contents($source), (string) $res->getBody()); // the other's file, not a second encode
+    }
+
+    public function test_gif_and_svg_assets_get_no_variants(): void
+    {
+        $gif = imagecreatetruecolor(800, 400);
+        ob_start();
+        imagegif($gif);
+        $assets = [
+            $this->lib->upload($this->upload((string) ob_get_clean(), 'a.gif'), null),
+            $this->library(['allow_svg' => true], new VariantGenerator(new GdBackend(), $this->widths->eager(), 75))
+                ->upload($this->upload('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400"/>', 'a.svg'), null),
+        ];
+
+        foreach ($assets as $asset) {
+            try {
+                $this->serve($this->base($asset) . '-480.webp');
+                $this->fail('expected a 404 for ' . $asset->mime);
+            } catch (NotFoundHttpException) {
+            }
+            $this->assertFileDoesNotExist($this->file($this->base($asset) . '-480.webp'));
+        }
+    }
+
+    public function test_warm_on_upload_makes_the_step_widths_at_once(): void
+    {
+        $this->lib = $this->library(['warm_on_upload' => true, 'warm_widths' => $this->widths->allowed()], new VariantGenerator(new GdBackend(), $this->widths->eager(), 75));
+
+        $asset = $this->asset();
+
+        $this->assertFileExists($this->file($this->base($asset) . '-640.webp'));
+        $this->assertFileExists($this->file($this->base($asset) . '-800.webp'));
+    }
+
     public function test_delete_removes_variants_made_on_demand(): void
     {
         $asset = $this->asset();
