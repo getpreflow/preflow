@@ -246,6 +246,11 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Content\LiveContent::class),
             $c->get(\Preflow\View\AssetCollector::class),
         ));
+        $container->singleton(\Preflow\Folio\Http\AdminAssetUrls::class, fn () => new \Preflow\Folio\Http\AdminAssetUrls(
+            rtrim($this->prefix($app), '/'),
+            dirname(__DIR__) . '/assets',
+            $this->assetMap(),
+        ));
         $container->bind(PreviewController::class, fn (Container $c) => new PreviewController(
             $c->get(TypeCatalog::class),
             $c->get(TypeRegistry::class),
@@ -257,6 +262,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DraftRecordFactory::class),
             $c->get(ContentLocale::class),
             $c->get(\Preflow\View\AssetCollector::class),
+            $c->get(\Preflow\Folio\Http\AdminAssetUrls::class),
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
             dirname(__DIR__) . '/assets',
@@ -309,17 +315,10 @@ final class FolioServiceProvider extends ServiceProvider
             // Single asset URL seam: folio_asset('admin.css') -> versioned URL.
             // Content-hash version so immutable caches bust on edit. A future
             // asset-publishing system can swap this one resolver.
-            $assetsDir = dirname(__DIR__) . '/assets';
-            $assetMap = $this->assetMap();
-            $prefix = rtrim($this->prefix($app), '/');
+            $assetUrls = $container->get(\Preflow\Folio\Http\AdminAssetUrls::class);
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_asset',
-                callable: function (string $file) use ($prefix, $assetsDir, $assetMap): string {
-                    $rel = $assetMap[$file] ?? $file;
-                    $path = str_starts_with($rel, '/') ? $rel : $assetsDir . '/' . $rel;
-                    $v = is_file($path) ? substr(hash_file('xxh3', $path), 0, 12) : 'dev';
-                    return $prefix . '/_assets/' . $file . '?v=' . $v;
-                },
+                callable: fn (string $file): string => $assetUrls($file),
                 isSafe: false,
             ));
 
@@ -445,6 +444,9 @@ final class FolioServiceProvider extends ServiceProvider
         return [
             'admin.css' => 'admin.css',
             'admin.js' => 'admin.js',
+            // Preview-only editor bridge: injected into admin preview renders, never the public site.
+            'preview-editor.css' => 'preview-editor.css',
+            'preview-editor.js' => 'preview-editor.js',
             'trix.css' => 'vendor/trix.css',
             'trix.js' => 'vendor/trix.umd.min.js',
             'icons.svg' => 'icons.svg',

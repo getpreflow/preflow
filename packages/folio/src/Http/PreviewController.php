@@ -40,6 +40,7 @@ final class PreviewController
         ?DraftRecordFactory $drafts = null,
         private readonly ?ContentLocale $contentLocale = null,
         private readonly ?\Preflow\View\AssetCollector $assets = null,
+        private readonly ?AdminAssetUrls $assetUrls = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
     }
@@ -69,7 +70,27 @@ final class PreviewController
             'alternates' => [],
         ]);
 
-        return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->assets?->injectInto($html) ?? $html);
+        $html = $this->assets?->injectInto($html) ?? $html;
+
+        return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->withEditor($html));
+    }
+
+    /**
+     * The preview-only editor bridge (hover outlines, click-to-edit). External
+     * same-origin files, so the page's own CSP allows them without a nonce.
+     */
+    private function withEditor(string $html): string
+    {
+        if ($this->assetUrls === null) {
+            return $html;
+        }
+        $e = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+        $css = '<link rel="stylesheet" href="' . $e(($this->assetUrls)('preview-editor.css')) . '">' . "\n";
+        $js = '<script src="' . $e(($this->assetUrls)('preview-editor.js')) . '" defer></script>' . "\n";
+
+        $html = ($pos = stripos($html, '</head>')) !== false ? substr_replace($html, $css, $pos, 0) : $css . $html;
+
+        return ($pos = strripos($html, '</body>')) !== false ? substr_replace($html, $js, $pos, 0) : $html . $js;
     }
 
 }

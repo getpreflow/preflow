@@ -286,6 +286,29 @@ final class PublishingAppTest extends TestCase
         $this->assertSame(404, $this->post('/folio/post/p1/revisions/nope/restore')->getStatusCode());
     }
 
+    public function test_preview_injects_editor_assets(): void
+    {
+        $body = (string) $this->post('/folio/post/p1/preview', ['title' => 'Hello', 'slug' => 'hello'])->getBody();
+
+        $this->assertMatchesRegularExpression('#<link rel="stylesheet" href="/folio/_assets/preview-editor\.css\?v=[^"]+">\s*</head>#', $body);
+        $this->assertMatchesRegularExpression('#</head>.*<script src="/folio/_assets/preview-editor\.js\?v=[^"]+" defer></script>.*</body>#s', $body); // in the body
+    }
+
+    public function test_public_and_share_renders_have_no_editor_assets(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'Secret'], 'slug' => ['en' => 'hello']]);
+        $token = $this->shareToken('p1');
+
+        $this->assertStringNotContainsString('preview-editor', (string) $this->getWithPreview('/hello', $token)->getBody());
+        $this->assertStringNotContainsString('preview-editor', (string) $this->get('/hello')->getBody());
+    }
+
+    public function test_editor_assets_are_served(): void
+    {
+        $this->assertSame(200, $this->get('/folio/_assets/preview-editor.js')->getStatusCode());
+        $this->assertSame(200, $this->get('/folio/_assets/preview-editor.css')->getStatusCode());
+    }
+
     public function test_valid_link_renders_working_copy_with_headers(): void
     {
         $this->working('post', 'p1', ['title' => ['en' => 'Secret'], 'slug' => ['en' => 'hello']]);
