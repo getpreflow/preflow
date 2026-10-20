@@ -91,4 +91,12 @@ final class AdminJsTest extends TestCase
         // must not get a second set of listeners.
         $this->assertMatchesRegularExpression('/function initMatrix\(root\) \{\s*if \(root\._folioMatrix\) \{ return; \}\s*root\._folioMatrix = true;/', $this->js());
     }
+
+    public function test_block_actions_dispatch_change(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString('function notifyChange', $js);
+        $this->assertStringContainsString("new Event('change', { bubbles: true })", $js);
+        $this->assertSame(1, preg_match('/data-block-remove[\s\S]*notifyChange\(/', $js));
+    }
 }

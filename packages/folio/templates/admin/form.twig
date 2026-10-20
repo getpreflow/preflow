@@ -1,6 +1,6 @@
 {% extends layout|default('@folio/admin/_layout.twig') %}
 {% block title %}Folio — {{ heading }}{% endblock %}
-{% block page_title %}{{ heading }}{% if publishing %} <span class="folio-badge is-{{ publishing.state }}">{{ publishing.label }}</span>{% endif %}{% endblock %}
+{% block page_title %}{{ heading }}{% if publishing %} <span class="folio-badge is-{{ publishing.state }}">{{ publishing.label }}</span>{% if publishing.save_state %} <span id="folio-save-state" class="folio-save-state" aria-live="polite">{{ publishing.save_state }}</span>{% endif %}{% endif %}{% endblock %}
 {% block actions %}{% if previewable|default(false) %}<button type="button" class="btn btn-secondary" data-folio-preview data-preview-url="{{ preview_url }}">Preview</button>{% endif %}{% endblock %}
 {% block content %}
     <div class="folio-form">
@@ -26,10 +26,15 @@
                 </ul>
             </div>
         {% endif %}
-        {% set form = form_begin({action: action, csrf_token: csrf, attrs: multipart|default(false) ? {'enctype': 'multipart/form-data'} : {}}) %}
+        {% set form_attrs = multipart|default(false) ? {'enctype': 'multipart/form-data'} : {} %}
+        {% if publishing and publishing.autosave_url %}
+            {# Autosave: debounced htmx POST of the whole form; the native submit stays a normal save. #}
+            {% set form_attrs = form_attrs|merge({'hx-post': publishing.autosave_url, 'hx-trigger': 'input delay:3s, change delay:3s, trix-change delay:3s', 'hx-target': '#folio-save-state', 'hx-swap': 'outerHTML'}) %}
+        {% endif %}
+        {% set form = form_begin({action: action, csrf_token: csrf, attrs: form_attrs}) %}
         {{ form.begin()|raw }}
         {% if publishing %}
-            <input type="hidden" name="_version" value="{{ publishing.version }}">
+            <input type="hidden" name="_version" id="folio-version" value="{{ publishing.version }}">
         {% endif %}
         {% if multilingual|default(false) %}
             <input type="hidden" name="_locale" value="{{ locale }}">

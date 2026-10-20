@@ -167,6 +167,9 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeCatalog::class),
             $c->get(\Preflow\Folio\Publishing\Publisher::class),
             $prefix,
+            $c->get(DataManager::class),
+            $c->get(DraftRecordFactory::class),
+            $c->get(TemplateEngineInterface::class),
         ));
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),

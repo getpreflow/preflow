@@ -45,6 +45,7 @@ trait PublishingScaffold
                 'slug' => ['type' => 'string', 'translatable' => true, 'validate' => ['required']],
                 'body' => ['type' => 'text', 'translatable' => true],
                 'status' => ['type' => 'string'],
+                'cover' => ['type' => 'asset', 'asset' => ['multiple' => false, 'accept' => 'image/*']],
             ],
         ]);
         $this->writeModel('site', [

@@ -41,6 +41,7 @@ final class FolioRoutes
             ['POST', $prefix . '/{type}/{id}/preview', 'preview', self::PREVIEW],
             ['POST', $prefix . '/{type}/{id}/unpublish', 'unpublish', self::PUBLISHING],
             ['POST', $prefix . '/{type}/{id}/discard', 'discard', self::PUBLISHING],
+            ['POST', $prefix . '/{type}/{id}/autosave', 'autosave', self::PUBLISHING],
             ['POST', $prefix . '/{type}/{id}',         'update'],
             ['POST', $prefix . '/{type}/{id}/delete',  'destroy'],
             ['POST', $prefix . '/{type}/{id}/move',    'reorder'],

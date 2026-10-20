@@ -350,6 +350,13 @@
         return el;
     }
 
+    // Changes that are not input events (moving, removing, adding cards) still
+    // count for autosave and the preview.
+    function notifyChange(el) {
+        var form = el && el.closest ? el.closest('form') : null;
+        if (form) { form.dispatchEvent(new Event('change', { bubbles: true })); }
+    }
+
     function onBlockClick(e) {
         // Duplicate is handled by htmx (server-rendered copy with fresh uids).
         var btn = e.target.closest ? e.target.closest('[data-block-collapse],[data-block-up],[data-block-down],[data-block-remove]') : null;
@@ -361,12 +368,14 @@
             btn.setAttribute('aria-expanded', open ? 'true' : 'false');
         } else if (btn.hasAttribute('data-block-up')) {
             var prev = siblingCard(card, -1);
-            if (prev) { card.parentNode.insertBefore(card, prev); }
+            if (prev) { card.parentNode.insertBefore(card, prev); notifyChange(card); }
         } else if (btn.hasAttribute('data-block-down')) {
             var next = siblingCard(card, 1);
-            if (next) { card.parentNode.insertBefore(next, card); }
+            if (next) { card.parentNode.insertBefore(next, card); notifyChange(card); }
         } else if (btn.hasAttribute('data-block-remove')) {
-            card.parentNode.removeChild(card);
+            var list = card.parentNode;
+            list.removeChild(card);
+            notifyChange(list);
         }
         e.preventDefault();
     }
@@ -377,6 +386,7 @@
         if (!root || !root.querySelectorAll) { return; }
         if (root.hasAttribute && root.hasAttribute('data-folio-matrix')) { initMatrix(root); }
         root.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
+        if (root.hasAttribute && root.hasAttribute('data-block-card')) { notifyChange(root); }
     }
 
     function boot() {

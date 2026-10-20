@@ -115,7 +115,7 @@ final class PublishingAppTest extends TestCase
         $this->assertSame(409, $res->getStatusCode());
         $body = (string) $res->getBody();
         $this->assertStringContainsString('Someone else changed this record', $body);
-        $this->assertStringContainsString('name="_version" value="2"', $body);
+        $this->assertStringContainsString('name="_version" id="folio-version" value="2"', $body);
         $this->assertSame('Theirs', $this->stored('post', 'p1')->get('title')['en']);
 
         $again = $this->post('/folio/post/p1', ['title' => 'Mine', 'slug' => 'hello', '_locale' => 'en', '_version' => '2']);
@@ -175,6 +175,64 @@ final class PublishingAppTest extends TestCase
 
         $this->post('/folio/post/p1', ['title' => 'T', 'slug' => 'hello', '_locale' => 'en', '_publish_at' => '2026-11-01T09:30', '_action' => 'publish']);
         $this->assertNull($this->stored('post', 'p1')->get('_publish_at'));
+    }
+
+    public function test_autosave_saves_working_copy_only(): void
+    {
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Live'], 'slug' => ['en' => 'hello']]), null);
+
+        $res = $this->post('/folio/post/p1/autosave', ['title' => 'Auto', 'slug' => 'hello', '_locale' => 'en', '_version' => '0']);
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('Saved · not published', (string) $res->getBody());
+        $this->assertSame('Auto', $this->stored('post', 'p1')->get('title')['en']);
+        $this->assertStringContainsString('Live', (string) $this->get('/hello')->getBody());
+    }
+
+    public function test_save_after_autosave_does_not_conflict(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 'hello'], '_version' => 4]);
+
+        $auto = (string) $this->post('/folio/post/p1/autosave', ['title' => 'Auto', 'slug' => 'hello', '_locale' => 'en', '_version' => '4'])->getBody();
+        $this->assertSame(1, preg_match('/<input type="hidden" name="_version" id="folio-version" value="(\d+)" hx-swap-oob="true">/', $auto, $m), $auto);
+
+        $res = $this->post('/folio/post/p1', ['title' => 'Manual', 'slug' => 'hello', '_locale' => 'en', '_version' => $m[1]]);
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame('Manual', $this->stored('post', 'p1')->get('title')['en']);
+    }
+
+    public function test_autosave_conflict_reports_and_does_not_save(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'Theirs'], 'slug' => ['en' => 'hello'], '_version' => 3]);
+
+        $body = (string) $this->post('/folio/post/p1/autosave', ['title' => 'Mine', 'slug' => 'hello', '_locale' => 'en', '_version' => '1'])->getBody();
+
+        $this->assertStringContainsString('Not saved — someone else changed this record', $body);
+        $this->assertStringNotContainsString('hx-swap-oob', $body);
+        $this->assertSame('Theirs', $this->stored('post', 'p1')->get('title')['en']);
+    }
+
+    public function test_autosave_writes_no_files(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 'hello']]);
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $request = $f->createServerRequest('POST', '/folio/post/p1/autosave')
+            ->withParsedBody(['title' => 'T', 'slug' => 'hello', '_locale' => 'en'])
+            ->withUploadedFiles(['cover' => $f->createUploadedFile($f->createStream('PNGDATA'), 7, UPLOAD_ERR_OK, 'pic.png', 'image/png')]);
+
+        $this->assertSame(200, $this->app()->handle($request)->getStatusCode());
+        $this->assertDirectoryDoesNotExist($this->dir . '/storage/uploads');
+    }
+
+    public function test_form_wires_autosave_for_publishing_types_only(): void
+    {
+        $this->writeModel('memo', ['fields' => ['title' => ['type' => 'string']]]);
+        $this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 'hello']]);
+        $this->working('memo', 'm1', ['title' => 'M']);
+
+        $this->assertStringContainsString('hx-trigger="input delay:3s', (string) $this->get('/folio/post/p1/edit')->getBody());
+        $this->assertStringNotContainsString('hx-trigger="input delay:3s', (string) $this->get('/folio/post/new')->getBody());
+        $this->assertStringNotContainsString('hx-trigger="input delay:3s', (string) $this->get('/folio/memo/m1/edit')->getBody());
     }
 
     public function test_published_field_is_ignored_when_publishing(): void

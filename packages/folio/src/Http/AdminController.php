@@ -497,7 +497,7 @@ final class AdminController
             'action' => $action,
             'csrf' => $csrf,
             'fields' => $fields,
-            'editor_assets' => array_keys($editorAssets),
+            'editor_assets' => array_keys($editorAssets + ($this->publishes($type) ? ['htmx.js' => true] : [])),
             'multipart' => $multipart,
             'layout' => $layout,
             'previewable' => $this->frontend->routeFor($type) !== null,
@@ -620,6 +620,8 @@ final class AdminController
             'label' => $state->label(),
             'version' => (int) ($values['_version'] ?? 0),
             'publish_at' => is_string($values['_publish_at'] ?? null) ? $values['_publish_at'] : '',
+            'save_state' => $stored !== null ? PublishingController::stateText($state) : null,
+            'autosave_url' => $stored !== null ? $base . '/autosave' : null,
             'unpublish_url' => $stored !== null && $state !== PublishState::Draft ? $base . '/unpublish' : null,
             'discard_url' => $stored !== null && $state === PublishState::Changed ? $base . '/discard' : null,
         ];
