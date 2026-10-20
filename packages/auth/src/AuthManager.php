@@ -8,6 +8,8 @@ final class AuthManager
 {
     private ?Authenticatable $resolvedUser = null;
 
+    private ?string $resolvedGuard = null;
+
     /** @param array<string, GuardInterface> $guards */
     public function __construct(
         private readonly array $guards,
@@ -23,9 +25,21 @@ final class AuthManager
         return $this->guards[$name];
     }
 
-    public function setUser(?Authenticatable $user): void
+    /** The user signed in for this request, and the guard that signed them in. */
+    public function setUser(?Authenticatable $user, ?string $guard = null): void
     {
         $this->resolvedUser = $user;
+        $this->resolvedGuard = $user === null ? null : ($guard ?? $this->defaultGuard);
+    }
+
+    public function guardName(): ?string
+    {
+        return $this->resolvedGuard;
+    }
+
+    public function defaultGuardName(): string
+    {
+        return $this->defaultGuard;
     }
 
     public function user(): ?Authenticatable
