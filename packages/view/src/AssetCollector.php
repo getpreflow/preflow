@@ -50,11 +50,16 @@ final class AssetCollector
     }
 
     /**
-     * Register an extra tag to include in <head> (e.g., library script tags).
+     * Register an extra tag to include in <head> (e.g., library script tags,
+     * preload links). With a key, the tag is added once per page.
      */
-    public function addHeadTag(string $tag): void
+    public function addHeadTag(string $tag, ?string $key = null): void
     {
-        $this->headTags[] = $tag;
+        if ($key === null) {
+            $this->headTags[] = $tag;
+            return;
+        }
+        $this->headTags[$key] ??= $tag;
     }
 
     public function addCss(string $css, ?string $key = null): void

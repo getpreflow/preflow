@@ -52,12 +52,21 @@ final class ImageTag
         $opts = array_merge(ResponsiveImage::DEFAULTS, $preset !== null ? (array) ($this->presets[$preset] ?? []) : [], $options);
         $sizes = (string) $opts['sizes'];
 
+        $priority = (bool) ($opts['priority'] ?? false);
         $sources = '';
+        $first = null; // [format, srcset] of the first source: what the browser will pick
         foreach (['avif', 'webp'] as $format) {
             $srcset = $this->srcset($asset, $format);
             if ($srcset !== '') {
+                $first ??= [$format, $srcset];
                 $sources .= '<source type="image/' . $format . '" srcset="' . self::e($srcset) . '" sizes="' . self::e($sizes) . '">';
             }
+        }
+        if ($priority) {
+            // The page's key image: fetch it before the parser reaches it.
+            $this->css->addHeadTag($first !== null
+                ? '<link rel="preload" as="image" type="image/' . $first[0] . '" imagesrcset="' . self::e($first[1]) . '" imagesizes="' . self::e($sizes) . '">'
+                : '<link rel="preload" as="image" href="' . self::e($this->library->url($asset->path)) . '">', 'folio-preload:' . $asset->id . ':' . ($preset ?? ''));
         }
 
         $classes = array_filter([trim((string) $opts['class']), ...$this->focalClasses($asset)]);
@@ -67,7 +76,10 @@ final class ImageTag
         if ($asset->width !== null && $asset->height !== null) {
             $img .= ' width="' . $asset->width . '" height="' . $asset->height . '"';
         }
-        $img .= ' alt="' . self::e($alt) . '" loading="' . self::e((string) $opts['loading']) . '" decoding="async"';
+        $img .= ' alt="' . self::e($alt) . '" loading="' . ($priority ? 'eager' : self::e((string) $opts['loading'])) . '" decoding="async"';
+        if ($priority) {
+            $img .= ' fetchpriority="high"';
+        }
         if ($classes !== []) {
             $img .= ' class="' . self::e(implode(' ', $classes)) . '"';
         }

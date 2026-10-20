@@ -19,6 +19,20 @@ final class AssetCollectorTest extends TestCase
         );
     }
 
+    public function test_keyed_head_tags_are_added_once(): void
+    {
+        $c = $this->collector();
+        $c->addHeadTag('<link rel="preload" href="/a.avif">', 'preload:a');
+        $c->addHeadTag('<link rel="preload" href="/a.avif">', 'preload:a');
+        $c->addHeadTag('<meta name="x">');
+        $c->addHeadTag('<meta name="x">'); // unkeyed tags keep today's behaviour
+
+        $head = $c->renderHead();
+
+        $this->assertSame(1, substr_count($head, 'rel="preload"'));
+        $this->assertSame(2, substr_count($head, '<meta name="x">'));
+    }
+
     public function test_add_css_and_render(): void
     {
         $c = $this->collector();

@@ -122,6 +122,43 @@ final class ImageTagTest extends TestCase
     }
 
     /** @param array<string, array<string, mixed>> $presets */
+    public function test_priority_sets_eager_fetchpriority_and_one_preload_link(): void
+    {
+        $asset = $this->lib->upload($this->upload($this->png(1200, 800), 'a.png'), null);
+        $tag = $this->tag(['hero' => ['sizes' => '50vw', 'priority' => true]]);
+
+        $html = $tag->render($asset->id, 'hero');
+        $tag->render($asset->id, 'hero'); // the same image twice on a page
+
+        $this->assertStringContainsString('loading="eager"', $html);
+        $this->assertStringContainsString('fetchpriority="high"', $html);
+        $head = $this->css->renderHead();
+        $this->assertSame(1, substr_count($head, 'rel="preload"'));
+        $format = function_exists('imageavif') ? 'avif' : 'webp';
+        preg_match('#<source type="image/' . $format . '" srcset="([^"]+)"#', $html, $m);
+        $this->assertStringContainsString('<link rel="preload" as="image" type="image/' . $format . '" imagesrcset="' . $m[1] . '" imagesizes="50vw">', $head);
+    }
+
+    public function test_without_priority_nothing_changes(): void
+    {
+        $asset = $this->lib->upload($this->upload($this->png(1200, 800), 'a.png'), null);
+
+        $html = $this->tag()->render($asset->id);
+
+        $this->assertStringNotContainsString('fetchpriority', $html);
+        $this->assertStringNotContainsString('preload', $this->css->renderHead());
+    }
+
+    public function test_call_option_overrides_preset_priority(): void
+    {
+        $asset = $this->lib->upload($this->upload($this->png(1200, 800), 'a.png'), null);
+
+        $html = $this->tag(['hero' => ['priority' => true]])->render($asset->id, 'hero', ['priority' => false]);
+
+        $this->assertStringNotContainsString('fetchpriority', $html);
+        $this->assertStringNotContainsString('preload', $this->css->renderHead());
+    }
+
     private function tag(array $presets = []): ImageTag
     {
         return new ImageTag($this->lib, $this->locale, $presets, $this->css, '/folio/_uploads');
