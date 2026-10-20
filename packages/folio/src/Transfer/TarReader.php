@@ -31,7 +31,7 @@ final class TarReader
                 return;
             }
 
-            $stored = octdec(trim(substr($h, 148, 8), " \0"));
+            $stored = self::octal(substr($h, 148, 8));
             $sum = array_sum(array_map('ord', str_split(substr_replace($h, '        ', 148, 8))));
             if ($stored !== $sum) {
                 throw new TransferException('Archive entry has a bad checksum');
@@ -43,7 +43,7 @@ final class TarReader
                 $name = $prefix . '/' . $name;
             }
             $type = $h[156];
-            $size = (int) octdec(trim(substr($h, 124, 12), " \0"));
+            $size = self::octal(substr($h, 124, 12));
             $padded = $size + (512 - $size % 512) % 512;
 
             if ($type === '5') {
@@ -81,6 +81,16 @@ final class TarReader
             }
             $this->skip($padded - $size);
         }
+    }
+
+    private static function octal(string $field): int
+    {
+        $digits = trim($field, " \0");
+        if ($digits === '' || preg_match('/^[0-7]+$/', $digits) !== 1) {
+            throw new TransferException('Not a tar archive');
+        }
+
+        return (int) octdec($digits);
     }
 
     private function skip(int $bytes): void

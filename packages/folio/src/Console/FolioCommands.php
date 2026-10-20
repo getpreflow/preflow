@@ -19,6 +19,8 @@ final class FolioCommands
             PublishCommand::class,
             AssetsVariantsCommand::class,
             AssetsImportCommand::class,
+            ExportCommand::class,
+            ImportCommand::class,
         ];
     }
 }
