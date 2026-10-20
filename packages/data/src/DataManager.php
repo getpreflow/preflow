@@ -351,6 +351,12 @@ final class DataManager
         return $this->typeRegistry;
     }
 
+    /** The storage driver for a configured name (falls back to the default driver). */
+    public function driver(string $name): StorageDriver
+    {
+        return $this->resolveDriver($name);
+    }
+
     private function resolveDriver(string $name): StorageDriver
     {
         if (isset($this->drivers[$name])) {
