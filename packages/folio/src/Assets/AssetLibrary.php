@@ -268,7 +268,7 @@ final class AssetLibrary
             return [];
         }
 
-        return $this->variants->generate($this->absolute($asset->path), $asset->mime, $asset->width);
+        return $this->variants->generate($this->dir, $asset->path, $asset->mime, $asset->width);
     }
 
     /** @param array<string, mixed> $data */

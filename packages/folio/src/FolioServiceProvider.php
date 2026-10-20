@@ -88,6 +88,11 @@ final class FolioServiceProvider extends ServiceProvider
             (string) ($assetsConfig['dir'] ?? $app->basePath('public/media')),
             (string) ($assetsConfig['url'] ?? '/media'),
             $assetsConfig,
+            new \Preflow\Folio\Assets\VariantGenerator(
+                \Preflow\Folio\Assets\Image\ImageBackends::detect(),
+                self::variantWidths($assetsConfig, (array) $app->config()->get('image.presets', [])),
+                (int) ($assetsConfig['quality'] ?? 75),
+            ),
         ));
 
         // Request-scoped: public renders read published snapshots, admin routes switch it to working copies.
@@ -428,6 +433,31 @@ final class FolioServiceProvider extends ServiceProvider
     }
 
     /** @return array<string, mixed> */
+    /**
+     * Variant widths: config/folio.php assets.widths, else every width used by
+     * the config/image.php presets, else a sensible ladder.
+     *
+     * @param array<string, mixed> $assets
+     * @param array<string, mixed> $presets
+     * @return list<int>
+     */
+    private static function variantWidths(array $assets, array $presets): array
+    {
+        if (is_array($assets['widths'] ?? null) && $assets['widths'] !== []) {
+            return array_values(array_map('intval', $assets['widths']));
+        }
+        $widths = [];
+        foreach ($presets as $preset) {
+            foreach ((array) ($preset['widths'] ?? []) as $w) {
+                $widths[] = (int) $w;
+            }
+        }
+        $widths = array_values(array_unique(array_filter($widths, static fn (int $w) => $w > 0)));
+        sort($widths);
+
+        return $widths !== [] ? $widths : [480, 768, 1024, 1600];
+    }
+
     private function folioConfig(Application $app): array
     {
         $path = $app->basePath('config/folio.php');
