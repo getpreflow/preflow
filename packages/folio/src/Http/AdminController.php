@@ -13,6 +13,7 @@ use Preflow\Data\TypeRegistry;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\DraftRecordFactory;
+use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
@@ -28,6 +29,7 @@ use Psr\Http\Message\ServerRequestInterface;
 final class AdminController
 {
     private readonly DraftRecordFactory $drafts;
+    private readonly RecordValidator $validator;
 
     /** System key holding the manual position of a record in an orderable list. */
     private const ORDER = '_order';
@@ -46,8 +48,10 @@ final class AdminController
         private readonly RecordLabeler $labeler,
         private readonly FrontendResolver $frontend,
         ?DraftRecordFactory $drafts = null,
+        ?RecordValidator $validator = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
+        $this->validator = $validator ?? new RecordValidator($fieldTypes, $dm);
     }
 
     public function index(ServerRequestInterface $request): ResponseInterface
@@ -510,28 +514,14 @@ final class AdminController
     }
 
     /**
-     * Validates blocks fields per instance, then saves (with the type's rules).
-     * Block errors stop the save; they are keyed "<field>.<uid>.<leaf>".
+     * Full validation (blocks, then the type's rules), then save.
      *
      * @throws ValidationException
      */
     private function saveWithBlocks(TypeDefinition $typeDef, DynamicRecord $record): void
     {
-        $errors = [];
-        foreach ($typeDef->fields as $name => $fieldDef) {
-            $fieldType = $this->fieldTypes->get($fieldDef->type);
-            if (!$fieldType instanceof BlocksFieldType) {
-                continue;
-            }
-            foreach ($fieldType->validateBlocks($record->get($name), $fieldDef->config, $typeDef->locales) as $key => $messages) {
-                $errors[$key === '' ? $name : $name . '.' . $key] = $messages;
-            }
-        }
-        if ($errors !== []) {
-            throw new ValidationException(new \Preflow\Validation\ValidationResult($errors));
-        }
-
-        $this->dm->saveType($record, true, $this->rulesFor($typeDef));
+        $this->validator->validate($record);
+        $this->dm->saveType($record, false);
     }
 
     private function isSingleton(string $type): bool
@@ -587,29 +577,6 @@ final class AdminController
         }
 
         return trim(html_entity_decode(strip_tags((string) $value), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-    }
-
-    /**
-     * Per-field rules: the JSON "validate" list plus the field type's own rules
-     * (e.g. select's in:…, date's format). Keyed by field, because saveType()
-     * merges extra rules per field.
-     *
-     * @return array<string, list<string>>
-     */
-    private function rulesFor(TypeDefinition $typeDef): array
-    {
-        $rules = [];
-        foreach ($typeDef->fields as $name => $fieldDef) {
-            $merged = array_values(array_unique([
-                ...$fieldDef->validate,
-                ...$this->fieldTypes->get($fieldDef->type)->rules($fieldDef->config),
-            ]));
-            if ($merged !== []) {
-                $rules[$name] = $merged;
-            }
-        }
-
-        return $rules;
     }
 
     /**

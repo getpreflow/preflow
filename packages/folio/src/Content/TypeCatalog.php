@@ -36,12 +36,15 @@ final class TypeCatalog
             $label = (isset($data['label']) && is_string($data['label']))
                 ? $data['label']
                 : ucfirst($key);
+            $frontend = isset($data['frontend']) && is_array($data['frontend']) ? $data['frontend'] : null;
+            $singleton = ($data['singleton'] ?? false) === true;
             $listings[] = new TypeListing(
                 $key,
                 $label,
-                isset($data['frontend']) && is_array($data['frontend']) ? $data['frontend'] : null,
+                $frontend,
                 isset($data['list']) && is_array($data['list']) ? $data['list'] : [],
-                ($data['singleton'] ?? false) === true,
+                $singleton,
+                is_bool($data['publishing'] ?? null) ? $data['publishing'] : ($frontend !== null || $singleton),
             );
         }
 

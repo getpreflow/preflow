@@ -138,6 +138,16 @@ final class FolioServiceProvider extends ServiceProvider
             return $registry;
         });
 
+        $container->singleton(\Preflow\Folio\Content\RecordValidator::class, fn (Container $c) => new \Preflow\Folio\Content\RecordValidator(
+            $c->get(FieldTypeRegistry::class),
+            $c->get(DataManager::class),
+        ));
+        $container->singleton(\Preflow\Folio\Publishing\Publisher::class, fn (Container $c) => new \Preflow\Folio\Publishing\Publisher(
+            $c->get(DataManager::class),
+            $c->get(TypeCatalog::class),
+            $c->get(\Preflow\Folio\Content\RecordValidator::class),
+            (int) ($folioConfig['publishing']['revisions'] ?? 20),
+        ));
         $container->bind(DraftRecordFactory::class, fn (Container $c) => new DraftRecordFactory($c->get(FieldTypeRegistry::class)));
         $container->bind(AdminController::class, fn (Container $c) => new AdminController(
             $c->get(TypeCatalog::class),
@@ -150,6 +160,7 @@ final class FolioServiceProvider extends ServiceProvider
             new RecordLabeler(),
             $c->get(FrontendResolver::class),
             $c->get(DraftRecordFactory::class),
+            $c->get(\Preflow\Folio\Content\RecordValidator::class),
         ));
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),

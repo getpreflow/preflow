@@ -1,0 +1,217 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Folio\Tests\Publishing;
+
+use PHPUnit\Framework\TestCase;
+use Preflow\Data\DataManager;
+use Preflow\Data\Driver\JsonFileDriver;
+use Preflow\Data\DynamicRecord;
+use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Content\RecordValidator;
+use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Field\FieldTypeRegistry;
+use Preflow\Folio\Field\Types\StringFieldType;
+use Preflow\Folio\Field\Types\TextFieldType;
+use Preflow\Folio\Publishing\PublishState;
+use Preflow\Folio\Publishing\Publisher;
+use Preflow\Folio\Publishing\VersionConflict;
+use Preflow\Validation\RuleFactory;
+use Preflow\Validation\ValidationException;
+use Preflow\Validation\ValidatorFactory;
+
+final class PublisherTest extends TestCase
+{
+    private string $dir;
+    private DataManager $dm;
+    private TypeRegistry $registry;
+    private \DateTimeImmutable $now;
+
+    protected function setUp(): void
+    {
+        $this->dir = sys_get_temp_dir() . '/pub_' . bin2hex(random_bytes(4));
+        mkdir($this->dir . '/models', 0777, true);
+        $fields = [
+            'title' => ['type' => 'string', 'validate' => ['required']],
+            'body' => ['type' => 'text'],
+        ];
+        $this->model('post', ['frontend' => ['route' => '/{slug}'], 'fields' => $fields]);
+        $this->model('memo', ['fields' => $fields]);
+        $this->model('memo2', ['publishing' => true, 'fields' => $fields]);
+        $this->model('post2', ['frontend' => ['route' => '/x/{slug}'], 'publishing' => false, 'fields' => $fields]);
+        $this->model('site', ['singleton' => true, 'fields' => $fields]);
+
+        $this->registry = new TypeRegistry($this->dir . '/models');
+        $this->dm = new DataManager(
+            drivers: ['json' => new JsonFileDriver($this->dir . '/store')],
+            defaultDriver: 'json',
+            typeRegistry: $this->registry,
+            validatorFactory: new ValidatorFactory(new RuleFactory()),
+        );
+        $this->now = new \DateTimeImmutable('2026-10-20T10:00:00+00:00');
+    }
+
+    protected function tearDown(): void
+    {
+        $rii = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($this->dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST,
+        );
+        foreach ($rii as $f) {
+            $f->isDir() ? rmdir($f->getPathname()) : unlink($f->getPathname());
+        }
+        rmdir($this->dir);
+    }
+
+    public function test_publishing_defaults(): void
+    {
+        $p = $this->publisher();
+
+        $this->assertTrue($p->enabled('post'));
+        $this->assertFalse($p->enabled('memo'));
+        $this->assertTrue($p->enabled('memo2'));
+        $this->assertTrue($p->enabled('site'));
+        $this->assertFalse($p->enabled('post2'));
+    }
+
+    public function test_states_follow_content(): void
+    {
+        $p = $this->publisher();
+        $post = $this->working('post', ['title' => 'A']);
+
+        $this->assertSame(PublishState::Draft, $p->state($post));
+
+        $p->publish($post, null);
+        $this->assertSame(PublishState::Published, $p->state($this->reload('post')));
+
+        $changed = $this->reload('post');
+        $changed->set('title', 'B');
+        $p->saveDraft($changed, null);
+        $this->assertSame(PublishState::Changed, $p->state($this->reload('post')));
+
+        $p->discard('post', 'r1');
+        $this->assertSame(PublishState::Published, $p->state($this->reload('post')));
+        $this->assertSame('A', $this->reload('post')->get('title'));
+    }
+
+    public function test_meta_keys_do_not_change_state(): void
+    {
+        $p = $this->publisher();
+        $p->publish($this->working('post', ['title' => 'A']), null);
+
+        $post = $this->reload('post');
+        $post->set('_publish_at', '2026-11-01T09:00');
+        $post->set('_order', 30);
+        $post->set('_share_token', str_repeat('a', 32));
+        $p->saveDraft($post, null);
+
+        $this->assertSame(PublishState::Published, $p->state($this->reload('post')));
+    }
+
+    public function test_publish_stamps_snapshot(): void
+    {
+        $p = $this->publisher();
+        $p->publish($this->working('post', ['title' => 'A', '_publish_at' => '2026-10-21T09:00']), 'u@x');
+
+        $snapshot = $p->snapshot('post', 'r1');
+        $this->assertSame($this->now->format(DATE_ATOM), $snapshot?->get('_published_at'));
+        $this->assertSame('u@x', $snapshot?->get('_published_by'));
+        $this->assertNull($this->reload('post')->get('_publish_at'));
+    }
+
+    public function test_publish_validates_fully_but_draft_does_not(): void
+    {
+        $p = $this->publisher();
+        $post = $this->working('post', ['title' => '']);
+        $p->saveDraft($post, null);
+        $this->assertSame('', $this->reload('post')->get('title'));
+
+        try {
+            $p->publish($this->reload('post'), null);
+            $this->fail('expected ValidationException');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('title', $e->errors());
+        }
+        $this->assertNull($p->snapshot('post', 'r1'));
+    }
+
+    public function test_unpublish_removes_snapshot(): void
+    {
+        $p = $this->publisher();
+        $p->publish($this->working('post', ['title' => 'A']), null);
+        $p->unpublish('post', 'r1');
+
+        $this->assertNull($p->snapshot('post', 'r1'));
+        $this->assertSame(PublishState::Draft, $p->state($this->reload('post')));
+    }
+
+    public function test_version_conflict(): void
+    {
+        $p = $this->publisher();
+        $this->dm->saveType($this->working('post', ['title' => 'A', '_version' => 3]), false);
+
+        try {
+            $p->saveDraft($this->reload('post'), 2);
+            $this->fail('expected VersionConflict');
+        } catch (VersionConflict $e) {
+            $this->assertSame(3, $e->current);
+        }
+
+        $p->saveDraft($this->reload('post'), 3);
+        $this->assertSame(4, $this->reload('post')->get('_version'));
+
+        $p->saveDraft($this->reload('post'), null);
+        $this->assertSame(5, $this->reload('post')->get('_version'));
+    }
+
+    public function test_live_and_query_read_snapshots_only_when_enabled(): void
+    {
+        $p = $this->publisher();
+        $p->saveDraft($this->working('post', ['title' => 'Draft']), null);
+        $p->saveDraft($this->working('memo', ['title' => 'Memo']), null);
+
+        $this->assertNull($p->live('post', 'r1'));
+        $this->assertSame(0, $p->query('post')->get()->total());
+        $this->assertSame('Memo', $p->live('memo', 'r1')?->get('title'));
+        $this->assertSame(1, $p->query('memo')->get()->total());
+
+        $p->publish($this->reload('post'), null);
+        $this->assertSame('Draft', $p->live('post', 'r1')?->get('title'));
+        $this->assertSame(1, $p->query('post')->get()->total());
+    }
+
+    private function publisher(int $keep = 20): Publisher
+    {
+        $fieldTypes = new FieldTypeRegistry();
+        $fieldTypes->register(new StringFieldType());
+        $fieldTypes->register(new TextFieldType());
+
+        return new Publisher(
+            $this->dm,
+            new TypeCatalog($this->dir . '/models'),
+            new RecordValidator($fieldTypes, $this->dm),
+            $keep,
+            fn (): \DateTimeImmutable => $this->now,
+        );
+    }
+
+    /** @param array<string, mixed> $data */
+    private function working(string $type, array $data): DynamicRecord
+    {
+        return DynamicRecord::fromArray($this->registry->get($type), ['uuid' => 'r1'] + $data);
+    }
+
+    private function reload(string $type): DynamicRecord
+    {
+        return $this->dm->findType($type, 'r1') ?? throw new \RuntimeException('missing');
+    }
+
+    /** @param array<string, mixed> $config */
+    private function model(string $key, array $config): void
+    {
+        file_put_contents($this->dir . "/models/{$key}.json", json_encode(
+            ['key' => $key, 'table' => $key, 'storage' => 'json', 'id_field' => 'uuid'] + $config,
+        ));
+    }
+}
