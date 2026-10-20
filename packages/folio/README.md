@@ -494,6 +494,45 @@ php -S 127.0.0.1:8000 -t public public/index.php
 
 `public/index.php` should `return false` for existing files under `cli-server`.
 
+## Live content to local: `folio:pull`
+
+Content is edited live; code goes through git. To work on a copy of the live content:
+
+```php
+// config/folio.php
+'remotes' => [
+    'production' => ['ssh' => 'user@host', 'path' => 'www/site/current', 'port' => 22, 'php' => 'php'],
+],
+```
+
+```
+php preflow folio:pull production --dry-run   # what would change
+php preflow folio:pull production             # backup, then replace local content
+php preflow folio:pull production --only=data # records only (or --only=media)
+```
+
+- **What content means:** the records of every Folio type (with their published and
+  revision copies), the asset records, the media directory and legacy uploads.
+  Never code, `.env`, caches, logs, sessions or other tables (`user_tokens`).
+- **SSH:** your SSH agent and `~/.ssh/config`, with no credentials in config. Host keys
+  are never ignored, so a changed key aborts.
+- **On the server:** it runs `php preflow folio:export --stdout`, so the remote needs
+  this Folio version and PHP CLI.
+- **Locally:** before anything changes, a backup of the local content goes to
+  `storage/backups/pull-YYYYmmdd-HHMMSS.tar.gz`. A failed or broken remote export changes
+  nothing.
+- **Local-only content:** records and files that exist only locally are removed, so the
+  copy matches live.
+
+The same archive works without SSH, as a content backup and restore:
+
+```
+php preflow folio:export backup.tar.gz        # or --stdout
+php preflow folio:import backup.tar.gz [--dry-run]
+```
+
+There is deliberately no `folio:push`: it would silently overwrite live edits.
+
 ## Translations
 
 With more than one locale in `config/i18n.php`, fields marked `"translatable": true`
