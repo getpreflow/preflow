@@ -75,6 +75,15 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString("type: 'highlight'", $js);
     }
 
+    public function test_patches_changed_blocks_and_keeps_scroll(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString('function patchBlocks(', $js); // block-level patch by _uid
+        $this->assertStringContainsString('.outerHTML =', $js);           // a changed block is replaced in place
+        $this->assertStringContainsString('scrollY', $js);                // full reloads keep the scroll position
+        $this->assertStringContainsString('folio-pe-badge', $js);         // editor artefacts are ignored when comparing
+    }
+
     public function test_defines_surgical_preview_patch(): void
     {
         $js = $this->js();

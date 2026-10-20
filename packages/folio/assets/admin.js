@@ -291,8 +291,11 @@
             }
         };
 
+        var keepScroll = null;
         frame.addEventListener('load', function () {
             try { hasDoc = frame.contentWindow.location.href !== 'about:blank'; } catch (e) { hasDoc = false; }
+            if (hasDoc && keepScroll !== null) { frame.contentWindow.scrollTo(0, keepScroll); }
+            keepScroll = null;
         });
 
         // Full render: POST the form's current state into the iframe, so the preview
@@ -300,6 +303,7 @@
         // document would inherit the admin page's policy and block the preview's
         // nonced assets). File inputs are skipped; unsaved uploads are not previewed.
         function fullRender() {
+            try { keepScroll = hasDoc ? frame.contentWindow.scrollY : null; } catch (e) { keepScroll = null; }
             var poster = document.createElement('form');
             poster.method = 'post';
             poster.action = url;
@@ -318,41 +322,42 @@
             document.body.removeChild(poster);
         }
 
-        // Patch only the [data-folio-field] regions that changed, directly into the
-        // same-origin preview document. Fall back to a full render on the first
-        // render, when the template has no markers, or when the field structure differs.
+        // Patch only what changed, directly into the same-origin preview document:
+        // first the [data-folio-field] regions, else the top-level blocks by _uid.
+        // Anything else (first render, no markers, structure changed) is a full render.
         function applyHtml(html) {
             try {
                 var doc = hasDoc ? frame.contentDocument : null;
                 if (!doc || !doc.body) { fullRender(); return; }
-
                 var incoming = new DOMParser().parseFromString(html, 'text/html');
-                var incomingRegions = incoming.querySelectorAll('[data-folio-field]');
-                var curRegions = doc.querySelectorAll('[data-folio-field]');
-                if (incomingRegions.length === 0 || incomingRegions.length !== curRegions.length) {
-                    fullRender();
-                    return;
-                }
-
-                var patches = [];
-                var seen = Object.create(null);
-                for (var i = 0; i < incomingRegions.length; i++) {
-                    var name = incomingRegions[i].getAttribute('data-folio-field');
-                    // Duplicate field name -> querySelector(name) is ambiguous; full-reload rather than patch the wrong region.
-                    if (seen[name]) { fullRender(); return; }
-                    seen[name] = true;
-                    var cur = doc.querySelector('[data-folio-field="' + name + '"]');
-                    if (!cur) { fullRender(); return; } // a region went missing -> full reload
-                    if (cur.innerHTML !== incomingRegions[i].innerHTML) {
-                        patches.push([cur, incomingRegions[i].innerHTML]);
-                    }
-                }
-                for (var j = 0; j < patches.length; j++) {
-                    patches[j][0].innerHTML = patches[j][1];
-                }
+                if (!patchRegions(doc, incoming) && !patchBlocks(doc, incoming)) { fullRender(); }
             } catch (e) {
                 fullRender();
             }
+        }
+
+        function patchRegions(doc, incoming) {
+            var incomingRegions = incoming.querySelectorAll('[data-folio-field]');
+            var curRegions = doc.querySelectorAll('[data-folio-field]');
+            if (incomingRegions.length === 0 || incomingRegions.length !== curRegions.length) { return false; }
+
+            var patches = [];
+            var seen = Object.create(null);
+            for (var i = 0; i < incomingRegions.length; i++) {
+                var name = incomingRegions[i].getAttribute('data-folio-field');
+                // Duplicate field name -> querySelector(name) is ambiguous; full-reload rather than patch the wrong region.
+                if (seen[name]) { return false; }
+                seen[name] = true;
+                var cur = doc.querySelector('[data-folio-field="' + name + '"]');
+                if (!cur) { return false; } // a region went missing -> full reload
+                if (cur.innerHTML !== incomingRegions[i].innerHTML) {
+                    patches.push([cur, incomingRegions[i].innerHTML]);
+                }
+            }
+            for (var j = 0; j < patches.length; j++) {
+                patches[j][0].innerHTML = patches[j][1];
+            }
+            return true;
         }
 
         function render() {
@@ -482,6 +487,58 @@
         preview.setMode = setMode;
         preview.mode = function () { return split.getAttribute('data-mode'); };
         setMode(stored('folio-split-mode') || (window.innerWidth >= 1100 ? 'split' : 'form'));
+    }
+
+    // ---- Block-level preview patching -------------------------------------
+
+    function topBlocks(root) {
+        return Array.prototype.filter.call(root.querySelectorAll('[data-folio-block]'), function (el) {
+            return !el.parentElement || !el.parentElement.closest('[data-folio-block]');
+        });
+    }
+
+    // A detached copy (parsed from markup, so live listeners never come along)
+    // without what differs between equal renders: the preview editor's outlines
+    // and label badge, and CSP nonces.
+    function cleaned(html) {
+        var t = document.createElement('template');
+        t.innerHTML = html;
+        t.content.querySelectorAll('.folio-pe-badge').forEach(function (b) { b.parentNode.removeChild(b); });
+        // Every response has a fresh CSP nonce, and loaded pages hide its value anyway.
+        t.content.querySelectorAll('[nonce]').forEach(function (n) { n.removeAttribute('nonce'); });
+        t.content.querySelectorAll('.is-folio-hover, .is-folio-active').forEach(function (n) {
+            n.classList.remove('is-folio-hover', 'is-folio-active');
+            if (n.getAttribute('class') === '') { n.removeAttribute('class'); }
+        });
+        return t;
+    }
+
+    // The body with every top-level block emptied: equal skeletons mean only blocks changed.
+    function skeleton(body) {
+        var t = cleaned(body.innerHTML);
+        topBlocks(t.content).forEach(function (b) { b.innerHTML = ''; });
+        return t.innerHTML;
+    }
+
+    // Replace the blocks whose markup changed; false when the page around them
+    // changed too, or the block list itself differs (added, removed, reordered).
+    function patchBlocks(doc, incoming) {
+        var cur = topBlocks(doc.body);
+        var next = topBlocks(incoming.body);
+        if (next.length === 0 || cur.length !== next.length) { return false; }
+        for (var i = 0; i < cur.length; i++) {
+            if (cur[i].getAttribute('data-folio-block') !== next[i].getAttribute('data-folio-block')) { return false; }
+        }
+        if (skeleton(doc.body) !== skeleton(incoming.body)) { return false; }
+        for (var j = 0; j < cur.length; j++) {
+            if (cleaned(cur[j].outerHTML).innerHTML !== cleaned(next[j].outerHTML).innerHTML) {
+                cur[j].outerHTML = next[j].outerHTML;
+            }
+        }
+        if (lastHighlight) {
+            preview.post({ type: 'highlight', uid: lastHighlight.uid, field: lastHighlight.field, scroll: false });
+        }
+        return true;
     }
 
     // ---- Click-to-edit: preview <-> form ----------------------------------
