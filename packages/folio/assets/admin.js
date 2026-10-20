@@ -101,6 +101,7 @@
                 '<button type="button" data-matrix-remove>Remove</button>' +
                 '</span>';
             rowsEl.appendChild(row);
+            notifyChange(root);
         }
 
         // Expose for the cross-frame message handler (keyed off activeMatrix).
@@ -138,7 +139,11 @@
                 rowsEl.insertBefore(row, row.previousElementSibling);
             } else if (btn.hasAttribute('data-matrix-down') && row.nextElementSibling) {
                 rowsEl.insertBefore(row.nextElementSibling, row);
+            } else {
+                return;
             }
+            // Autosave, the preview and the unsaved guard all listen for change.
+            notifyChange(root);
         });
     }
 
@@ -507,6 +512,8 @@
         var t = document.createElement('template');
         t.innerHTML = html;
         t.content.querySelectorAll('.folio-pe-badge').forEach(function (b) { b.parentNode.removeChild(b); });
+        // The debug toolbar (local debug mode) carries per-request timings.
+        t.content.querySelectorAll('#preflow-debug-toolbar').forEach(function (b) { b.parentNode.removeChild(b); });
         // Every response has a fresh CSP nonce, and loaded pages hide its value anyway.
         t.content.querySelectorAll('[nonce]').forEach(function (n) { n.removeAttribute('nonce'); });
         t.content.querySelectorAll('.is-folio-hover, .is-folio-active').forEach(function (n) {
@@ -804,6 +811,8 @@
         l.handle.setAttribute('aria-pressed', 'false');
         if (cancel) {
             l.parent.insertBefore(l.card, l.next);
+            // An autosave may have stored the moved order meanwhile: save the restored one.
+            if (l.moved) { notifyChange(l.card); }
             l.handle.focus();
             announce(l.card, 'Cancelled. ' + cardLabel(l.card) + ' is back at position ' + cardPosition(l.card) + '.');
             return;
@@ -830,6 +839,7 @@
             var other = siblingCard(card, e.key === 'ArrowUp' ? -1 : 1);
             if (!other) { return; }
             card.parentNode.insertBefore(card, e.key === 'ArrowUp' ? other : other.nextSibling);
+            lifted.moved = true;
             handle.focus();
             announce(card, cardLabel(card) + ', position ' + cardPosition(card) + '.');
         } else if (lifted && lifted.card === card && e.key === 'Escape') {
@@ -897,7 +907,12 @@
             var mark = function () { if (dirty.indexOf(form) < 0) { dirty.push(form); } };
             form.addEventListener('input', mark);
             form.addEventListener('change', mark);
-            form.addEventListener('submit', function () { dirty = dirty.filter(function (f) { return f !== form; }); });
+        });
+        // Registered after onSubmitConfirm (boot order), so a cancelled data-confirm
+        // is already defaultPrevented here and keeps the guard; a real submit clears it
+        // synchronously, before the navigation's beforeunload.
+        document.addEventListener('submit', function (e) {
+            if (!e.defaultPrevented) { dirty = dirty.filter(function (f) { return f !== e.target; }); }
         });
         window.addEventListener('beforeunload', function (e) {
             if (dirty.length === 0) { return; }

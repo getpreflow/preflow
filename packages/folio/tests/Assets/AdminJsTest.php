@@ -112,6 +112,15 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('headAssets(doc) !== headAssets(incoming)', $js);
     }
 
+    public function test_follow_up_fixes(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString("'#preflow-debug-toolbar'", $js); // debug toolbar ignored when comparing renders
+        $this->assertStringContainsString('lifted.moved', $js);             // Escape re-saves the restored order
+        $this->assertMatchesRegularExpression('/function initMatrix\(root\).*?notifyChange\(root\).*?\n    \}\n/s', $js); // matrix edits count as changes
+        $this->assertMatchesRegularExpression('/function initUnsavedGuard\(\).*?defaultPrevented/s', $js); // a cancelled confirm keeps the guard
+    }
+
     public function test_defines_surgical_preview_patch(): void
     {
         $js = $this->js();
