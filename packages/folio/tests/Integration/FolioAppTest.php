@@ -583,6 +583,29 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('data-preview-url="/folio/page/preview"', $body);
     }
 
+    public function test_edit_form_renders_split_view_for_routed_type(): void
+    {
+        $body = (string) $this->get('/folio/page/new')->getBody();
+
+        $this->assertStringContainsString('data-folio-split', $body);
+        $this->assertMatchesRegularExpression('#<section class="folio-split-stage" data-folio-stage data-preview-url="/folio/page/preview"#', $body);
+        $this->assertMatchesRegularExpression('#data-folio-resizer role="separator" aria-orientation="vertical"#', $body);
+        foreach (['form', 'split', 'preview'] as $mode) {
+            $this->assertStringContainsString('data-folio-view="' . $mode . '"', $body);
+        }
+        $this->assertStringContainsString('<iframe class="folio-preview-frame" name="folio-preview-frame"', $body);
+        $this->assertStringContainsString('data-preview-viewport="768px"', $body); // tablet preset
+        $this->assertStringContainsString('data-preview-viewport="375px"', $body); // mobile preset
+    }
+
+    public function test_plain_form_has_no_split_view(): void
+    {
+        $body = (string) $this->get('/folio/note/new')->getBody();
+
+        $this->assertStringNotContainsString('data-folio-split', $body);
+        $this->assertStringNotContainsString('data-folio-view', $body);
+    }
+
     public function test_userland_template_is_used(): void
     {
         $this->writeArticleType(['route' => '/blog/{slug}', 'template' => 'folio/article.twig']);

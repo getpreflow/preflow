@@ -238,14 +238,61 @@
         if (e.key === 'Escape' && drawerEl) { closeDrawer(); }
     }
 
-    function initPreview() {
-        var btn = document.querySelector('[data-folio-preview]');
-        if (!btn) { return; }
-        var form = document.querySelector('.folio-form form');
-        if (!form) { return; }
-        var url = btn.getAttribute('data-preview-url') || '';
+    // ---- Split-view editor ---------------------------------------------
+    // Routed types edit next to their live preview: form | resizer | stage.
+    // The view mode and form width are admin conveniences in localStorage.
 
-        var overlay = null, frame = null, anchor = null, parent = null, reqSeq = 0, timer = null, keyHandler = null, hasDoc = false;
+    function store(key, value) {
+        try {
+            if (value === null) { localStorage.removeItem(key); } else { localStorage.setItem(key, String(value)); }
+        } catch (e) {}
+    }
+
+    function stored(key) {
+        try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+
+    // An icon from the admin sprite (the URL is taken from an icon already on the page).
+    function icon(id) {
+        var ns = 'http://www.w3.org/2000/svg';
+        var svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('class', 'folio-icon');
+        svg.setAttribute('aria-hidden', 'true');
+        var any = document.querySelector('use[href*="icons.svg"]');
+        if (any) {
+            var use = document.createElementNS(ns, 'use');
+            use.setAttribute('href', any.getAttribute('href').split('#')[0] + '#' + id);
+            svg.appendChild(use);
+        }
+        return svg;
+    }
+
+    var preview = null; // { frame, form, post(msg) } once the split view runs
+
+    function initSplit() {
+        var split = document.querySelector('[data-folio-split]');
+        if (!split) { return; }
+        var form = split.querySelector('.folio-split-form form');
+        var stage = split.querySelector('[data-folio-stage]');
+        var frame = stage ? stage.querySelector('.folio-preview-frame') : null;
+        var resizer = split.querySelector('[data-folio-resizer]');
+        if (!form || !frame) { return; }
+        var url = stage.getAttribute('data-preview-url') || '';
+        var reqSeq = 0, timer = null, hasDoc = false, started = false, stale = false;
+
+        preview = {
+            frame: frame,
+            form: form,
+            post: function (msg) {
+                if (!hasDoc || !frame.contentWindow) { return; }
+                msg.source = 'folio-editor';
+                frame.contentWindow.postMessage(msg, window.location.origin);
+            }
+        };
+
+        frame.addEventListener('load', function () {
+            try { hasDoc = frame.contentWindow.location.href !== 'about:blank'; } catch (e) { hasDoc = false; }
+        });
 
         // Full render: POST the form's current state into the iframe, so the preview
         // is a real navigated document with its own CSP header and nonce (injected HTML
@@ -308,134 +355,112 @@
         }
 
         function render() {
-            if (!frame) { return; }
+            started = true;
+            stale = false;
             if (!hasDoc) { fullRender(); return; } // first render: navigate, no fetch needed
             var seq = ++reqSeq;
             fetch(url, { method: 'POST', body: new FormData(form), headers: { 'Accept': 'text/html' } })
                 .then(function (r) { return r.ok ? r.text() : null; })
                 .then(function (html) {
-                    if (html != null && seq === reqSeq && frame) { applyHtml(html); }
+                    if (html != null && seq === reqSeq) { applyHtml(html); }
                 })
                 .catch(function () {});
         }
 
         function schedule() {
+            if (split.getAttribute('data-mode') === 'form') { stale = true; return; }
             if (timer) { clearTimeout(timer); }
             timer = setTimeout(render, 400);
         }
 
-        function setWidth(w) {
-            if (frame) {
-                frame.style.width = w;
-                frame.classList.toggle('is-device', w !== '100%');
-            }
-        }
-
-        // An icon from the admin sprite (the URL is taken from an icon already on the page).
-        function icon(id) {
-            var ns = 'http://www.w3.org/2000/svg';
-            var svg = document.createElementNS(ns, 'svg');
-            svg.setAttribute('class', 'folio-icon');
-            svg.setAttribute('aria-hidden', 'true');
-            var any = document.querySelector('use[href*="icons.svg"]');
-            if (any) {
-                var use = document.createElementNS(ns, 'use');
-                use.setAttribute('href', any.getAttribute('href').split('#')[0] + '#' + id);
-                svg.appendChild(use);
-            }
-            return svg;
-        }
-
-        function closePreview() {
-            if (timer) { clearTimeout(timer); timer = null; }
-            if (keyHandler) { document.removeEventListener('keydown', keyHandler); keyHandler = null; }
-            form.removeEventListener('input', schedule);
-            form.removeEventListener('change', schedule);
-            if (anchor && parent) { parent.insertBefore(form, anchor); parent.removeChild(anchor); }
-            if (overlay && overlay.parentNode) { overlay.parentNode.removeChild(overlay); }
-            overlay = null; frame = null; anchor = null; parent = null; hasDoc = false;
-        }
-
-        function open() {
-            if (overlay) { return; }
-            overlay = document.createElement('div');
-            overlay.className = 'folio-preview';
-            var formPane = document.createElement('div');
-            formPane.className = 'folio-preview-form';
-            var stage = document.createElement('div');
-            stage.className = 'folio-preview-stage';
-            var bar = document.createElement('div');
-            bar.className = 'folio-preview-bar';
-
-            var title = document.createElement('span');
-            title.className = 'folio-preview-title';
-            title.appendChild(document.createElement('span')).className = 'folio-live-dot';
-            title.appendChild(document.createTextNode('Live preview'));
-            bar.appendChild(title);
-
-            var viewports = document.createElement('div');
-            viewports.className = 'folio-segmented';
-            viewports.setAttribute('role', 'group');
-            viewports.setAttribute('aria-label', 'Viewport');
-            [['Desktop', '100%', 'ui-monitor'], ['Tablet', '768px', 'ui-tablet'], ['Mobile', '375px', 'ui-phone']].forEach(function (vp, i) {
-                var b = document.createElement('button');
-                b.type = 'button';
-                b.setAttribute('data-preview-viewport', vp[1]);
-                b.setAttribute('aria-pressed', i === 0 ? 'true' : 'false');
-                b.title = vp[0] + (vp[1] === '100%' ? '' : ' (' + vp[1] + ')');
-                b.appendChild(icon(vp[2]));
-                b.appendChild(document.createTextNode(vp[0]));
-                b.addEventListener('click', function () {
-                    setWidth(vp[1]);
-                    viewports.querySelectorAll('button').forEach(function (o) { o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); });
+        // View mode: form | split | preview.
+        var switcher = document.querySelector('[data-folio-preview]');
+        function setMode(mode) {
+            if (['form', 'split', 'preview'].indexOf(mode) < 0) { mode = 'split'; }
+            split.setAttribute('data-mode', mode);
+            if (switcher) {
+                switcher.querySelectorAll('[data-folio-view]').forEach(function (b) {
+                    b.setAttribute('aria-pressed', b.getAttribute('data-folio-view') === mode ? 'true' : 'false');
                 });
-                viewports.appendChild(b);
+            }
+            if (mode !== 'form' && (!started || stale)) { render(); }
+        }
+        if (switcher) {
+            switcher.addEventListener('click', function (e) {
+                var b = e.target.closest('[data-folio-view]');
+                if (!b) { return; }
+                var mode = b.getAttribute('data-folio-view');
+                store('folio-split-mode', mode);
+                setMode(mode);
             });
-            bar.appendChild(viewports);
-
-            var close = document.createElement('button');
-            close.type = 'button';
-            close.className = 'btn btn-ghost btn-icon folio-preview-close';
-            close.title = 'Close preview (Esc)';
-            close.setAttribute('aria-label', 'Close preview');
-            close.appendChild(icon('ui-x'));
-            close.addEventListener('click', closePreview);
-            bar.appendChild(close);
-
-            frame = document.createElement('iframe');
-            frame.className = 'folio-preview-frame';
-            frame.name = 'folio-preview-frame';
-            frame.addEventListener('load', function () { hasDoc = true; });
-
-            stage.appendChild(bar);
-            stage.appendChild(frame);
-
-            // Remember the form's home, then move the real form into the overlay
-            // (appendChild preserves the node + its listeners, so trix/matrix survive).
-            parent = form.parentNode;
-            anchor = document.createElement('span');
-            anchor.style.display = 'none';
-            parent.insertBefore(anchor, form);
-            formPane.appendChild(form);
-
-            overlay.appendChild(formPane);
-            overlay.appendChild(stage);
-            document.body.appendChild(overlay);
-
-            form.addEventListener('input', schedule);
-            form.addEventListener('change', schedule);
-
-            // Escape closes; scoped to the overlay's lifetime so no listener leaks
-            // if boot()/initPreview ever runs more than once.
-            keyHandler = function (e) {
-                if (e.key === 'Escape') { closePreview(); }
-            };
-            document.addEventListener('keydown', keyHandler);
-
-            render();
         }
 
-        btn.addEventListener('click', open);
+        // Viewport widths inside the stage.
+        stage.addEventListener('click', function (e) {
+            var b = e.target.closest('[data-preview-viewport]');
+            if (!b) { return; }
+            var w = b.getAttribute('data-preview-viewport');
+            frame.style.width = w;
+            frame.classList.toggle('is-device', w !== '100%');
+            stage.querySelectorAll('[data-preview-viewport]').forEach(function (o) {
+                o.setAttribute('aria-pressed', o === b ? 'true' : 'false');
+            });
+        });
+
+        // Resizable form pane: pointer drag or arrow keys; the width is remembered.
+        function bounds() {
+            var total = split.getBoundingClientRect().width;
+            return [320, Math.max(320, Math.round(total * 0.6))];
+        }
+        function setFormWidth(px, remember) {
+            var b = bounds();
+            var w = Math.min(b[1], Math.max(b[0], Math.round(px)));
+            split.style.setProperty('--folio-form-w', w + 'px');
+            if (resizer) {
+                resizer.setAttribute('aria-valuemin', String(b[0]));
+                resizer.setAttribute('aria-valuemax', String(b[1]));
+                resizer.setAttribute('aria-valuenow', String(w));
+            }
+            if (remember) { store('folio-split-width', w); }
+            return w;
+        }
+        if (resizer) {
+            resizer.addEventListener('pointerdown', function (e) {
+                if (e.button !== 0) { return; }
+                e.preventDefault();
+                resizer.setPointerCapture(e.pointerId);
+                split.classList.add('is-resizing');
+                var left = split.getBoundingClientRect().left;
+                function move(ev) { setFormWidth(ev.clientX - left, false); }
+                function up(ev) {
+                    resizer.releasePointerCapture(ev.pointerId);
+                    resizer.removeEventListener('pointermove', move);
+                    resizer.removeEventListener('pointerup', up);
+                    resizer.removeEventListener('pointercancel', up);
+                    split.classList.remove('is-resizing');
+                    setFormWidth(ev.clientX - left, true);
+                }
+                resizer.addEventListener('pointermove', move);
+                resizer.addEventListener('pointerup', up);
+                resizer.addEventListener('pointercancel', up);
+            });
+            resizer.addEventListener('keydown', function (e) {
+                var cur = parseInt(resizer.getAttribute('aria-valuenow') || '0', 10) || split.querySelector('.folio-split-form').getBoundingClientRect().width;
+                var b = bounds();
+                var next = e.key === 'ArrowLeft' ? cur - 24 : e.key === 'ArrowRight' ? cur + 24 : e.key === 'Home' ? b[0] : e.key === 'End' ? b[1] : null;
+                if (next === null) { return; }
+                e.preventDefault();
+                setFormWidth(next, true);
+            });
+        }
+
+        var savedWidth = parseInt(stored('folio-split-width') || '', 10);
+        setFormWidth(savedWidth > 0 ? savedWidth : Math.min(520, Math.round(split.getBoundingClientRect().width * 0.42)), false);
+
+        form.addEventListener('input', schedule);
+        form.addEventListener('change', schedule);
+
+        setMode(stored('folio-split-mode') || (window.innerWidth >= 1100 ? 'split' : 'form'));
     }
 
     // Confirmation for destructive forms: <form data-confirm="…"> (replaces inline
@@ -586,7 +611,7 @@
         document.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
         window.addEventListener('message', onMessage);
         document.addEventListener('keydown', onKeydown);
-        initPreview();
+        initSplit();
     }
 
     if (document.readyState === 'loading') {

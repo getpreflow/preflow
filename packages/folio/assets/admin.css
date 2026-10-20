@@ -907,6 +907,8 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
 .folio-asset-item .btn { min-height: 26px; padding: 0 8px; font-size: 12.5px; }
 .folio-asset-actions { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
 .folio-asset-upload { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 560; color: var(--c-text-muted); }
+.folio-asset-actions > * { min-width: 0; max-width: 100%; }
+.folio-asset-upload input[type="file"] { flex: 1 1 12rem; min-width: 0; width: 100%; }
 
 /* ---- login ---- */
 .folio-auth {
@@ -956,46 +958,91 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
 .folio-drawer-content { padding: 24px; }
 .folio-drawer-heading { margin: 0 0 20px; font-size: 1.0625rem; }
 
-/* ---- live preview ---- */
-.folio-preview {
-  position: fixed;
-  inset: 0;
-  z-index: 1100;
-  display: grid;
-  grid-template-columns: clamp(340px, 32vw, 500px) minmax(0, 1fr);
-  background: var(--c-bg);
+/* ---- split-view editor (routed types) ---- */
+.folio-main:has(.folio-split) { height: 100vh; }
+.folio-content:has(> .folio-split) {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  max-width: none;
+  padding: 0;
 }
-.folio-preview-form {
+.folio-split {
+  --folio-form-w: 480px;
+  flex: 1;
+  display: grid;
+  grid-template-columns: var(--folio-form-w) 9px minmax(0, 1fr);
+  min-height: 0;
   min-width: 0;
+}
+.folio-split-form {
+  min-width: 0;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 20px 20px 0;
-  background: var(--c-bg);
-  border-right: 1px solid var(--c-border);
+  padding: 24px 24px 0;
 }
-.folio-preview-form > form { padding-bottom: 4px; }
-.folio-preview-stage {
+.folio-split-form .folio-editor { margin: 0 auto; }
+.folio-split-form .folio-form-extras { margin-bottom: 32px; }
+
+.folio-resizer {
+  position: relative;
+  cursor: col-resize;
+  touch-action: none;
+  background: var(--c-bg);
+  border-left: 1px solid var(--c-border);
+}
+.folio-resizer::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 4px;
+  height: 36px;
+  margin-top: -18px;
+  border-radius: 4px;
+  background: var(--c-border-strong);
+  transition: background-color .12s, height .12s;
+}
+.folio-resizer:hover::after,
+.folio-resizer:focus-visible::after,
+.folio-split.is-resizing .folio-resizer::after { background: var(--c-accent); height: 56px; margin-top: -28px; }
+.folio-resizer:focus-visible { outline: none; }
+.folio-split.is-resizing { cursor: col-resize; user-select: none; }
+.folio-split.is-resizing .folio-preview-frame { pointer-events: none; }
+
+.folio-split-stage {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   background-color: var(--c-surface-2);
-  background-image: radial-gradient(var(--c-border) 1px, transparent 1px);
-  background-size: 16px 16px;
+  background-image: radial-gradient(var(--c-border-strong) 1px, transparent 1px);
+  background-size: 18px 18px;
 }
+
+.folio-split[data-mode="form"] { grid-template-columns: minmax(0, 1fr); }
+.folio-split[data-mode="form"] .folio-resizer,
+.folio-split[data-mode="form"] .folio-split-stage { display: none; }
+.folio-split[data-mode="form"] .folio-split-form { padding: 28px 32px 0; }
+.folio-split[data-mode="form"] .folio-split-form .folio-editor { margin: 0; }
+.folio-split[data-mode="preview"] { grid-template-columns: minmax(0, 1fr); }
+.folio-split[data-mode="preview"] .folio-split-form,
+.folio-split[data-mode="preview"] .folio-resizer { display: none; }
+
 .folio-preview-bar {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
   align-items: center;
   gap: 12px;
   min-height: 52px;
-  padding: 0 10px 0 16px;
+  padding: 0 12px 0 16px;
   background: var(--c-surface);
   border-bottom: 1px solid var(--c-border);
 }
-.folio-preview-title { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 620; white-space: nowrap; }
+.folio-preview-title { display: inline-flex; align-items: center; gap: 8px; margin-right: auto; font-size: 13px; font-weight: 620; white-space: nowrap; }
 .folio-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-success); box-shadow: 0 0 0 3px var(--c-success-soft); }
-.folio-preview-close { justify-self: end; }
+.folio-focus-toggle[aria-pressed="true"] { background: var(--c-accent-soft); color: var(--c-accent-text); }
 
 .folio-segmented {
   display: inline-flex;
@@ -1018,6 +1065,7 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
   font: inherit;
   font-size: 12.5px;
   font-weight: 560;
+  white-space: nowrap;
   cursor: pointer;
 }
 .folio-segmented button:hover { color: var(--c-text); }
@@ -1029,29 +1077,33 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
   display: block;
   width: 100%;
   max-width: 100%;
-  height: 100%;
+  min-height: 0;
   margin: 0 auto;
   border: 0;
   background: #fff;
   transition: width .2s ease;
 }
 .folio-preview-frame.is-device {
-  height: auto;
   margin: 20px auto;
   border: 1px solid var(--c-border-strong);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-lg);
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1280px) {
   .folio-preview-title { display: none; }
-  .folio-preview-bar { grid-template-columns: auto 1fr; }
-  .folio-segmented { justify-self: start; }
+  .folio-preview-bar .folio-segmented { margin-right: auto; }
+  .folio-preview-bar .folio-segmented span,
+  .folio-view-switch span { display: none; }
 }
 @media (max-width: 900px) {
-  .folio-preview { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
-  .folio-preview-form { border-right: 0; border-bottom: 1px solid var(--c-border); }
-  .folio-segmented button { padding: 0 8px; }
+  .folio-main:has(.folio-split) { height: auto; }
+  .folio-split,
+  .folio-split[data-mode="split"] { grid-template-columns: minmax(0, 1fr); }
+  .folio-split[data-mode="split"] .folio-resizer,
+  .folio-split[data-mode="split"] .folio-split-stage { display: none; }
+  .folio-split-form { overflow: visible; padding: 18px 16px 0; }
+  .folio-split[data-mode="preview"] { min-height: 80vh; }
 }
 
 /* ---- small screens: the sidebar becomes a top bar ---- */

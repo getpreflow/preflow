@@ -44,15 +44,24 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString("'/label'", $js);                        // label fetch path
     }
 
-    public function test_defines_live_preview_overlay(): void
+    public function test_defines_live_preview(): void
     {
         $js = $this->js();
-        $this->assertStringContainsString('data-folio-preview', $js);   // button hook
-        $this->assertStringContainsString('folio-preview', $js);        // overlay class
+        $this->assertStringContainsString('data-folio-preview', $js);   // view switch hook
         $this->assertStringContainsString('new FormData(', $js);        // serializes the form
         $this->assertStringContainsString('folio-preview-frame', $js);  // iframe navigated by a form POST (own CSP + nonce)
-        $this->assertStringContainsString("'768px'", $js);              // tablet preset
-        $this->assertStringContainsString("'375px'", $js);              // mobile preset
+        $this->assertStringContainsString('data-preview-viewport', $js); // viewport presets live in form.twig
+    }
+
+    public function test_split_view_resizes_and_remembers(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString('[data-folio-split]', $js);
+        $this->assertStringContainsString("'folio-split-width'", $js);   // remembered pane width
+        $this->assertStringContainsString("'folio-split-mode'", $js);    // remembered view mode
+        $this->assertStringContainsString('[data-folio-resizer]', $js);
+        $this->assertStringContainsString('setPointerCapture', $js);      // drag keeps tracking outside the handle
+        $this->assertStringContainsString("'--folio-form-w'", $js);       // width as a custom property, not an inline style attribute
     }
 
     public function test_defines_surgical_preview_patch(): void

@@ -2,8 +2,10 @@
 {% block title %}Folio — {{ record_title|default(null) ?: heading }}{% endblock %}
 {% block breadcrumb %}<nav class="folio-breadcrumb" aria-label="Breadcrumb"><a href="{{ prefix }}/{{ type }}">{{ label }}</a>{% if record_title|default(null) %}<svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-chevron"></use></svg><span>Edit</span>{% endif %}</nav>{% endblock %}
 {% block page_title %}<span class="folio-title-text">{{ record_title|default(null) ?: heading }}</span>{% if publishing %} <span class="folio-badge is-{{ publishing.state }}">{{ publishing.label }}</span>{% if publishing.save_state %} <span id="folio-save-state" class="folio-save-state" aria-live="polite">{{ publishing.save_state != publishing.label ? publishing.save_state : '' }}</span>{% endif %}{% endif %}{% endblock %}
-{% block actions %}{% if publishing and publishing.share_url %}<button type="button" class="btn btn-ghost" hx-post="{{ publishing.share_url }}" hx-target="#folio-share" hx-swap="outerHTML" hx-include="[name=_csrf_token], [name=_locale]"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#link"></use></svg>Copy preview link</button>{% endif %}{% if previewable|default(false) %} <button type="button" class="btn btn-secondary" data-folio-preview data-preview-url="{{ preview_url }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-eye"></use></svg>Preview</button>{% endif %}{% endblock %}
+{% block actions %}{% if publishing and publishing.share_url %}<button type="button" class="btn btn-ghost" hx-post="{{ publishing.share_url }}" hx-target="#folio-share" hx-swap="outerHTML" hx-include="[name=_csrf_token], [name=_locale]"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#link"></use></svg>Copy preview link</button>{% endif %}{% if previewable|default(false) %} <div class="folio-segmented folio-view-switch" role="group" aria-label="View" data-folio-preview>{% for mode, text in {'form': 'Form', 'split': 'Split', 'preview': 'Preview'} %}<button type="button" data-folio-view="{{ mode }}" aria-pressed="false" title="{{ text }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ {'form': 'ui-file', 'split': 'ui-split', 'preview': 'ui-eye'}[mode] }}"></use></svg><span>{{ text }}</span></button>{% endfor %}</div>{% endif %}{% endblock %}
 {% block content %}
+    {% if previewable|default(false) %}<div class="folio-split" data-folio-split data-mode="form">
+    <div class="folio-split-form">{% endif %}
     <div class="folio-form folio-editor">
         {% if publishing and publishing.share_url %}<div class="folio-share" id="folio-share"></div>{% endif %}
         {% if notice %}
@@ -127,4 +129,19 @@
         </section>
         {% endif %}
     </div>
+    {% if previewable|default(false) %}</div>
+    <div class="folio-resizer" data-folio-resizer role="separator" aria-orientation="vertical" aria-label="Resize the preview" tabindex="0"></div>
+    <section class="folio-split-stage" data-folio-stage data-preview-url="{{ preview_url }}" aria-label="Live preview">
+        <div class="folio-preview-bar">
+            <span class="folio-preview-title"><span class="folio-live-dot"></span>Live preview</span>
+            <div class="folio-segmented" role="group" aria-label="Viewport">
+                {% for vp in [['Desktop', '100%', 'ui-monitor'], ['Tablet', '768px', 'ui-tablet'], ['Mobile', '375px', 'ui-phone']] %}
+                    <button type="button" data-preview-viewport="{{ vp[1] }}" aria-pressed="{{ loop.first ? 'true' : 'false' }}" title="{{ vp[0] }}{{ loop.first ? '' : ' (' ~ vp[1] ~ ')' }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ vp[2] }}"></use></svg><span>{{ vp[0] }}</span></button>
+                {% endfor %}
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm folio-focus-toggle" data-folio-focus aria-pressed="false" title="Focus mode: opening a block closes the others">Focus</button>
+        </div>
+        <iframe class="folio-preview-frame" name="folio-preview-frame" title="Live preview of this page"></iframe>
+    </section>
+    </div>{% endif %}
 {% endblock %}
