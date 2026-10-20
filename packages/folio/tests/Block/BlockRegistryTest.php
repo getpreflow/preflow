@@ -58,15 +58,22 @@ final class BlockRegistryTest extends TestCase
         $this->assertSame(['hero', 'link'], array_keys($registry->all()));
     }
 
-    public function test_cache_is_used_when_enabled(): void
+    public function test_cache_is_used_when_nothing_changed(): void
     {
         $cache = sys_get_temp_dir() . '/folio_blocks_' . bin2hex(random_bytes(4)) . '.php';
-        BlockRegistry::discover(new ComponentMap([]), '/nowhere', [HeroBlock::class, LinkBlock::class], $cache, useCache: true);
+        $classes = [HeroBlock::class, LinkBlock::class];
+        BlockRegistry::discover(new ComponentMap([]), '/nowhere', $classes, $cache, useCache: true);
 
-        $again = BlockRegistry::discover(new ComponentMap([]), '/nowhere', [], $cache, useCache: true);
+        // Tamper with the cached copy: if it is served, the tampered label comes back.
+        $data = unserialize((string) file_get_contents($cache));
+        $hero = $data['blocks'][0];
+        $data['blocks'][0] = new \Preflow\Folio\Block\BlockDefinition($hero->key, 'From cache', $hero->group, $hero->icon, $hero->description, $hero->class, $hero->isComponent, $hero->fields);
+        file_put_contents($cache, serialize($data));
+
+        $again = BlockRegistry::discover(new ComponentMap([]), '/nowhere', $classes, $cache, useCache: true);
         @unlink($cache);
 
-        $this->assertSame(['hero', 'link'], array_keys($again->all()));
+        $this->assertSame('From cache', $again->get('hero')->label);
         $this->assertTrue($again->get('hero')->fields['headline']->translatable);
     }
 
@@ -102,6 +109,52 @@ final class BlockRegistryTest extends TestCase
         $this->assertInstanceOf(ComponentMap::class, $app->container()->get(ComponentMap::class));
         @unlink($dir . '/config/app.php');
         @rmdir($dir . '/config');
+        @rmdir($dir);
+    }
+
+    public function test_reserved_field_names_are_rejected(): void
+    {
+        $this->expectException(BlockConfigException::class);
+        $this->expectExceptionMessageMatches('/reserved/');
+        new BlockRegistry([\Preflow\Folio\Tests\Fixtures\Blocks\ReservedNameBlock::class]);
+    }
+
+    public function test_cache_rebuilds_when_block_classes_change(): void
+    {
+        $cache = sys_get_temp_dir() . '/folio_blocks_' . bin2hex(random_bytes(4)) . '.cache';
+        BlockRegistry::discover(new ComponentMap([]), '/nowhere', [HeroBlock::class], $cache, useCache: true);
+
+        // Another class list (a block added) must not be served from the old cache.
+        $again = BlockRegistry::discover(new ComponentMap([]), '/nowhere', [HeroBlock::class, LinkBlock::class], $cache, useCache: true);
+        @unlink($cache);
+
+        $this->assertSame(['hero', 'link'], array_keys($again->all()));
+    }
+
+    public function test_cache_rebuilds_when_a_block_file_changes(): void
+    {
+        $dir = sys_get_temp_dir() . '/folio_blk_' . bin2hex(random_bytes(4));
+        mkdir($dir, 0777, true);
+        $class = 'TmpBlock' . bin2hex(random_bytes(4));
+        $file = $dir . '/' . $class . '.php';
+        $write = static function (string $label) use ($file, $class): void {
+            file_put_contents($file, "<?php\nnamespace Preflow\\Folio\\Tests\\Tmp;\n#[\\Preflow\\Folio\\Block\\Block(key: 'tmp', label: '{$label}')]\nfinal class {$class} {}\n");
+        };
+        $write('First');
+        require $file;
+        $fqcn = 'Preflow\\Folio\\Tests\\Tmp\\' . $class;
+        $cache = $dir . '/blocks.cache';
+
+        BlockRegistry::discover(new ComponentMap([]), '/nowhere', [$fqcn], $cache, useCache: true);
+        $before = (string) file_get_contents($cache);
+        touch($file, time() + 5); // the block's source changed
+        clearstatcache();
+        BlockRegistry::discover(new ComponentMap([]), '/nowhere', [$fqcn], $cache, useCache: true);
+
+        // The cache is keyed by the block files' modification times, so it was rebuilt.
+        $this->assertNotSame($before, (string) file_get_contents($cache));
+        @unlink($cache);
+        @unlink($file);
         @rmdir($dir);
     }
 }

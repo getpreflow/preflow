@@ -44,6 +44,8 @@
     }
 
     function initMatrix(root) {
+        if (root._folioMatrix) { return; }
+        root._folioMatrix = true;
         var field = root.getAttribute('data-field') || '';
         var rowsEl = root.querySelector('[data-matrix-rows]');
         var optsEl = root.querySelector('[data-matrix-options]');

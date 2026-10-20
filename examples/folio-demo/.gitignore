@@ -5,3 +5,6 @@ storage/data/*
 # Runtime uploads (asset field) created through the admin — keep the dir, ignore contents.
 storage/uploads/*
 !storage/uploads/.gitkeep
+
+# Runtime caches (e.g. the block registry) — rebuilt automatically.
+storage/cache/*

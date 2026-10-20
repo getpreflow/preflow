@@ -84,4 +84,11 @@ final class AdminJsTest extends TestCase
         // Duplicate is a server fragment (fresh uids, re-rendered editors), not a DOM clone.
         $this->assertStringNotContainsString('cloneNode', $js);
     }
+
+    public function test_matrix_init_is_idempotent(): void
+    {
+        // htmx fires htmx:load on <body> at start-up; matrices boot() already set up
+        // must not get a second set of listeners.
+        $this->assertMatchesRegularExpression('/function initMatrix\(root\) \{\s*if \(root\._folioMatrix\) \{ return; \}\s*root\._folioMatrix = true;/', $this->js());
+    }
 }

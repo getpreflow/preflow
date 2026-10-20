@@ -205,11 +205,14 @@ final class Hero extends BlockComponent
 - **Component blocks** extend `BlockComponent`. Their `#[BlockField]` properties are
   filled from the block's data (already in the page's language) before
   `resolveState()`.
-- **Data-only blocks** are plain classes with the attributes (put them in `app/Blocks/`).
+- **Data-only blocks** are plain classes with the attributes, in `app/Blocks/` under the
+  `App\Blocks\…` namespace (or listed in `config/folio.php`).
   They have no template; the parent's template iterates them (`{% for link in links %}`).
 - **Discovery:** blocks are found in `app/Components`, `app/Blocks`, and in
   `config/folio.php` `'blocks' => ['classes' => [...], 'max_depth' => 4]`. Duplicate keys
-  fail at boot, and the registry is cached in `storage/cache` when debug is off.
+  fail at boot. When debug is off the registry is cached in `storage/cache`; the cache
+  is keyed by the block classes and their files' modification times, so it rebuilds by
+  itself when a block is added, removed or edited.
 
 **On a content type:** `"sections": {"type": "blocks", "allowed": ["hero", "text"], "min": 1, "max": 10}`.
 
@@ -225,7 +228,8 @@ final class Hero extends BlockComponent
   editor as "Unknown block" (removable), and skipped on the website.
 
 **Editing:**
-- Collapsible cards with move up/down, duplicate (fresh ids) and remove.
+- Collapsible cards with move up/down, duplicate and remove. Duplicate is server-rendered:
+  the copy gets fresh ids throughout and keeps other languages and uploaded files.
 - Grouped "Add block" buttons that load a server-rendered card (htmx, served from the
   admin itself).
 - Inputs are named by block id (`sections[<uid>][headline]`), and each card carries its
@@ -237,6 +241,11 @@ final class Hero extends BlockComponent
 - `{{ folio_blocks(record.sections, preview) }}` renders each block through its
   component, in order and in the page's language.
 - `{{ folio_block(block) }}` renders one.
+- Templates must pass `preview` (`folio_blocks(record.sections, preview)`) for the
+  click-to-edit markers to appear in the live preview.
+- Block templates receive raw field values. Escape them as usual (`{{ headline }}`).
+  For a `richtext` block field, the editor sanitizes on save, so `{{ body|raw }}` is the
+  intended output.
 - A block that throws is contained by the component error boundary.
 - In live preview each block is wrapped in `data-folio-block="<uid>"`.
 

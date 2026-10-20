@@ -19,8 +19,8 @@
     </script>
     <link rel="stylesheet" href="{{ folio_asset('admin.css') }}">
     {% if 'htmx.js' in editor_assets|default([]) %}
-    {# htmx inserts its own indicator styles and swapped scripts: hand it the page nonce. #}
-    <meta name="htmx-config" content='{"inlineScriptNonce":"{{ csp_nonce() }}","inlineStyleNonce":"{{ csp_nonce() }}"}'>
+    {# htmx inserts its own indicator styles (needs the nonce); swapped admin fragments never run scripts. #}
+    <meta name="htmx-config" content='{"inlineStyleNonce":"{{ csp_nonce() }}","allowScriptTags":false}'>
     {% endif %}
     {% for a in editor_assets|default([]) %}
         {%- if a ends with '.css' %}<link rel="stylesheet" href="{{ folio_asset(a) }}">

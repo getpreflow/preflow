@@ -1283,7 +1283,8 @@ final class FolioAppTest extends TestCase
 
         preg_match("/'nonce-([^']+)'/", $res->getHeaderLine('Content-Security-Policy'), $m);
         // htmx inserts its own indicator <style>; without the nonce the CSP blocks it.
-        $this->assertStringContainsString('<meta name="htmx-config" content=\'{"inlineScriptNonce":"' . $m[1] . '","inlineStyleNonce":"' . $m[1] . '"}\'>', (string) $res->getBody());
+        // Only the indicator style needs the nonce; swapped content never runs scripts.
+        $this->assertStringContainsString('<meta name="htmx-config" content=\'{"inlineStyleNonce":"' . $m[1] . '","allowScriptTags":false}\'>', (string) $res->getBody());
     }
 
     public function test_blocks_field_is_not_labelled_shared(): void
@@ -1356,6 +1357,46 @@ final class FolioAppTest extends TestCase
         $this->assertSame(400, $this->app()->handle($f->createServerRequest('POST', '/folio/_blocks/duplicate?name=sections&uid=nope'))->getStatusCode());
         $this->assertSame(404, $this->app()->handle($f->createServerRequest('POST', '/folio/_blocks/duplicate?name=sections&uid=aaaaaaaaaaaaaaaa')
             ->withParsedBody(['sections' => ['aaaaaaaaaaaaaaaa' => ['_block' => 'nope']]]))->getStatusCode());
+    }
+
+    public function test_same_block_twice_gets_distinct_dom_ids(): void
+    {
+        $this->enableBlocks(withFrontendTemplate: true);
+        $a = 'aaaaaaaaaaaaaaaa';
+        $b = 'bbbbbbbbbbbbbbbb';
+        $this->createPage(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
+            'sections' => ['_order' => [$a, $b], $a => ['_block' => 'hero', 'headline' => 'One'], $b => ['_block' => 'hero', 'headline' => 'Two']]]);
+
+        preg_match_all('#<div id="(HeroBlock-[^"]+)"#', (string) $this->get('/blocks')->getBody(), $m);
+
+        $this->assertCount(2, $m[1]);
+        $this->assertNotSame($m[1][0], $m[1][1]);
+    }
+
+    public function test_block_that_cannot_be_built_is_contained(): void
+    {
+        $this->enableBlocks(withFrontendTemplate: true, extraClasses: [\Preflow\Folio\Tests\Fixtures\Blocks\NeedyBlock\NeedyBlock::class], allowedExtra: ['needy']);
+        $id = $this->createPage(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published']);
+        $record = $this->dm()->findType('page', $id);
+        $record->set('sections', [
+            ['_uid' => 'bbbbbbbbbbbbbbbb', '_block' => 'needy'],
+            ['_uid' => 'aaaaaaaaaaaaaaaa', '_block' => 'hero', 'headline' => 'Still here'],
+        ]);
+        $this->dm()->saveType($record, validate: false);
+
+        $res = $this->get('/blocks');
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('<h1>Still here</h1>', (string) $res->getBody());
+    }
+
+    public function test_camel_case_block_fields_can_add_blocks(): void
+    {
+        $this->enableBlocks();
+
+        $res = $this->get('/folio/_blocks/link/new?' . http_build_query(['name' => 'sections[aaaaaaaaaaaaaaaa][subItems]', 'locale' => 'en', 'depth' => 1]));
+
+        $this->assertSame(200, $res->getStatusCode());
     }
 
     public function test_edit_form_no_preview_button_for_non_frontend_type(): void
@@ -1488,8 +1529,11 @@ final class FolioAppTest extends TestCase
     }
 
     /** Page gets a "sections" blocks field; the fixture blocks are registered via config. */
-    /** @param list<class-string> $extraClasses */
-    private function enableBlocks(bool $withFrontendTemplate = false, array $extraClasses = []): void
+    /**
+     * @param list<class-string> $extraClasses
+     * @param list<string>       $allowedExtra
+     */
+    private function enableBlocks(bool $withFrontendTemplate = false, array $extraClasses = [], array $allowedExtra = ['boom']): void
     {
         $page = json_decode((string) file_get_contents($this->dir . '/config/models/page.json'), true);
         $page['fields']['sections'] = ['type' => 'blocks', 'label' => 'Sections', 'allowed' => ['hero', 'link']];
@@ -1502,7 +1546,7 @@ final class FolioAppTest extends TestCase
             . "]]];\n");
         if ($extraClasses !== []) {
             $page = json_decode((string) file_get_contents($this->dir . '/config/models/page.json'), true);
-            $page['fields']['sections']['allowed'] = ['hero', 'link', 'boom'];
+            $page['fields']['sections']['allowed'] = ['hero', 'link', ...$allowedExtra];
             file_put_contents($this->dir . '/config/models/page.json', json_encode($page));
         }
         if ($withFrontendTemplate) {

@@ -15,7 +15,7 @@ use Psr\Http\Message\ServerRequestInterface;
 final class BlockEditorController
 {
     /** A field name: "sections" or nested "sections[<uid>][<field>]…". */
-    private const NAME = '/^[a-z_][a-z0-9_]*(\[[a-f0-9]{16}\]\[[a-z_][a-z0-9_]*\])*$/';
+    private const NAME = '/^[A-Za-z_][A-Za-z0-9_]*(\[[a-f0-9]{16}\]\[[A-Za-z_][A-Za-z0-9_]*\])*$/';
 
     public function __construct(
         private readonly FieldTypeRegistry $fieldTypes,

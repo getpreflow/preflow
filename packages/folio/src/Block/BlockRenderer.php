@@ -52,8 +52,15 @@ final class BlockRenderer
             return '';
         }
 
-        $component = $this->container->make($definition->class);
-        $component->setProps($block);
+        try {
+            $component = $this->container->make($definition->class);
+            // "key" gives each instance its own DOM id (two heroes on one page).
+            $component->setProps([...$block, 'key' => (string) ($block['_uid'] ?? '')]);
+        } catch (\Throwable) {
+            // Could not be built (unresolvable dependency, bad data): skip this block,
+            // never the page. Render-time errors are handled by the error boundary.
+            return '';
+        }
         $html = $this->renderer->render($component);
 
         if (!$preview) {

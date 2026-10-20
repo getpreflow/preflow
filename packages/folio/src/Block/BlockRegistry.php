@@ -37,11 +37,17 @@ final class BlockRegistry
         ?string $cacheFile = null,
         bool $useCache = false,
     ): self {
-        if ($useCache && $cacheFile !== null && is_file($cacheFile)) {
+        $all = array_values($components instanceof ComponentMap ? $components->all() : $components);
+        $all = array_values(array_unique([...$all, ...self::scanBlocksDir($blocksDir), ...$classes]));
+
+        // The cache is keyed by the candidate classes and their files' mtimes, so
+        // adding, removing or editing a block rebuilds it (no manual clearing).
+        $signature = $useCache && $cacheFile !== null ? self::signature($all) : null;
+        if ($signature !== null && is_file($cacheFile)) {
             $cached = @unserialize((string) file_get_contents($cacheFile), ['allowed_classes' => [BlockDefinition::class, TypeFieldDefinition::class]]);
-            if (is_array($cached)) {
+            if (is_array($cached) && ($cached['signature'] ?? null) === $signature && is_array($cached['blocks'] ?? null)) {
                 $registry = new self();
-                foreach ($cached as $definition) {
+                foreach ($cached['blocks'] as $definition) {
                     if ($definition instanceof BlockDefinition) {
                         $registry->add($definition);
                     }
@@ -50,13 +56,11 @@ final class BlockRegistry
             }
         }
 
-        $all = array_values($components instanceof ComponentMap ? $components->all() : $components);
-        $all = [...$all, ...self::scanBlocksDir($blocksDir), ...$classes];
-        $registry = new self(array_values(array_unique($all)));
+        $registry = new self($all);
 
-        if ($useCache && $cacheFile !== null) {
+        if ($signature !== null) {
             @mkdir(dirname($cacheFile), 0755, true);
-            @file_put_contents($cacheFile, serialize(array_values($registry->blocks)), LOCK_EX);
+            @file_put_contents($cacheFile, serialize(['signature' => $signature, 'blocks' => array_values($registry->blocks)]), LOCK_EX);
         }
 
         return $registry;
@@ -89,6 +93,18 @@ final class BlockRegistry
         }
 
         return $groups;
+    }
+
+    /** @param list<class-string> $classes */
+    private static function signature(array $classes): string
+    {
+        $parts = [];
+        foreach ($classes as $class) {
+            $file = class_exists($class) ? (new \ReflectionClass($class))->getFileName() : false;
+            $parts[] = $class . '@' . ($file !== false && is_file($file) ? filemtime($file) : 0);
+        }
+
+        return hash('xxh3', implode('|', $parts));
     }
 
     private function add(BlockDefinition $definition): void
@@ -126,6 +142,13 @@ final class BlockRegistry
             }
             /** @var BlockField $field */
             $field = $fieldAttribute->newInstance();
+            if (str_starts_with($property->getName(), '_')) {
+                throw new BlockConfigException(sprintf(
+                    'Block field "%s" on %s uses a reserved name (names starting with "_" are system keys such as _uid, _block, _order).',
+                    $property->getName(),
+                    $class,
+                ));
+            }
             $fields[$property->getName()] = new TypeFieldDefinition(
                 name: $property->getName(),
                 type: $field->type,
