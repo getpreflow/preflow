@@ -116,6 +116,7 @@ final class AdminJsTest extends TestCase
     {
         $js = $this->js();
         $this->assertStringContainsString("'#preflow-debug-toolbar'", $js); // debug toolbar ignored when comparing renders
+        $this->assertStringContainsString("'#folio-pe-overlay'", $js);      // so is the preview's own overlay
         $this->assertStringContainsString('lifted.moved', $js);             // Escape re-saves the restored order
         $this->assertStringContainsString('if (l.moved || l.card.nextSibling !== l.next)', $js); // so does a drop back in place
         $this->assertMatchesRegularExpression('/function initMatrix\(root\).*?notifyChange\(root\).*?\n    \}\n/s', $js); // matrix edits count as changes

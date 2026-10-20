@@ -79,15 +79,15 @@ final class BlockRenderer
             return $this->renderer->render($component);
         }
 
+        // Preview: mark the component's own root element (no extra wrapper, so
+        // the page's layout and selectors behave exactly as on the public site).
+        $component->setRootAttribute('data-folio-block', (string) ($block['_uid'] ?? ''));
+        $component->setRootAttribute('data-folio-label', $definition->label);
         $this->previewDepth++;
         try {
-            $html = $this->renderer->render($component);
+            return $this->renderer->render($component);
         } finally {
             $this->previewDepth--;
         }
-
-        $e = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
-
-        return '<div class="folio-block" data-folio-block="' . $e((string) ($block['_uid'] ?? '')) . '" data-folio-label="' . $e($definition->label) . '">' . $html . '</div>';
     }
 }

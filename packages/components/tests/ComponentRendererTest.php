@@ -114,6 +114,21 @@ final class ComponentRendererTest extends TestCase
         $this->assertStringContainsString('<p>rendered</p>', $html);
     }
 
+    public function test_root_attributes_are_added_to_the_wrapper(): void
+    {
+        $component = new RenderableComponent();
+        $component->setRootAttribute('data-folio-block', 'a"b');
+        $component->setRootAttribute('data-folio-label', 'Hero');
+        $component->setRootAttribute('onclick', 'x()'); // only data-* attributes
+        $component->setRootAttribute('id', 'other');
+
+        $html = $this->renderer->render($component);
+
+        $this->assertMatchesRegularExpression('#^<div id="RenderableComponent-[^"]+" data-folio-block="a&quot;b" data-folio-label="Hero">#', $html);
+        $this->assertStringNotContainsString('onclick', $html);
+        $this->assertSame(1, substr_count($html, 'id="'));
+    }
+
     public function test_wrapper_has_component_id(): void
     {
         $component = new RenderableComponent();

@@ -1305,6 +1305,18 @@ final class FolioAppTest extends TestCase
         $this->assertStringNotContainsString('data-folio-edit', $public);
     }
 
+    public function test_preview_marks_the_component_root_instead_of_wrapping(): void
+    {
+        [$preview, $public] = $this->sectionPage();
+
+        $this->assertStringNotContainsString('class="folio-block"', $preview);
+        $this->assertMatchesRegularExpression('#<div id="SectionBlock-[^"]+" data-folio-block="aaaaaaaaaaaaaaaa"#', $preview);
+        $this->assertMatchesRegularExpression('#<div id="HeroBlock-[^"]+" data-folio-block="bbbbbbbbbbbbbbbb"#', $preview);
+        // Same elements as the public page: only the editor attributes are extra.
+        $strip = static fn (string $html): string => preg_replace('# data-folio-(block|label|edit)="[^"]*"#', '', substr($html, (int) strpos($html, '<main>'), (int) strpos($html, '</main>') - (int) strpos($html, '<main>')));
+        $this->assertSame($strip($public), $strip($preview));
+    }
+
     public function test_preview_wrapper_carries_block_label(): void
     {
         [$preview] = $this->sectionPage();

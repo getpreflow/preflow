@@ -142,6 +142,9 @@ final class ComponentRenderer
         if ($cssClass !== '') {
             $attrs .= ' class="' . htmlspecialchars($cssClass, ENT_QUOTES, 'UTF-8') . '"';
         }
+        foreach ($component->getRootAttributes() as $name => $value) {
+            $attrs .= ' ' . $name . '="' . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . '"';
+        }
 
         return "<{$tag} {$attrs}>{$innerHtml}</{$tag}>";
     }

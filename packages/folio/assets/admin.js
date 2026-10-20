@@ -514,6 +514,8 @@
         t.content.querySelectorAll('.folio-pe-badge').forEach(function (b) { b.parentNode.removeChild(b); });
         // The debug toolbar (local debug mode) carries per-request timings.
         t.content.querySelectorAll('#preflow-debug-toolbar').forEach(function (b) { b.parentNode.removeChild(b); });
+        // The preview editor's own overlay layer.
+        t.content.querySelectorAll('#folio-pe-overlay').forEach(function (b) { b.parentNode.removeChild(b); });
         // Every response has a fresh CSP nonce, and loaded pages hide its value anyway.
         t.content.querySelectorAll('[nonce]').forEach(function (n) { n.removeAttribute('nonce'); });
         t.content.querySelectorAll('.is-folio-hover, .is-folio-active').forEach(function (n) {

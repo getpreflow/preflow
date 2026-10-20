@@ -1,41 +1,68 @@
 /* Folio preview editor bridge: runs only inside the admin's preview iframe
    (injected by PreviewController, never on the public site). Clicking the page
    asks the editor to open that block or field; the editor asks back to
-   highlight what has focus in the form. Messages are same-origin only. */
+   highlight what has focus in the form. Messages are same-origin only.
+   Outlines live in an overlay layer of their own: the site's elements get no
+   classes, styles or children, so the preview lays out exactly like the page. */
 (function () {
     'use strict';
 
     if (window.parent === window) { return; }
 
+    var overlay = document.createElement('div');
+    overlay.id = 'folio-pe-overlay';
+    overlay.className = 'folio-pe-overlay';
+    overlay.setAttribute('aria-hidden', 'true');
+    var hoverBox = box('is-hover');
+    var label = document.createElement('span');
+    label.className = 'folio-pe-label';
+    hoverBox.appendChild(label);
+    var activeBox = box('is-active');
+    var hovered = null;
     var active = null;
-    var badge = null;
+    var frame = 0;
+
+    function box(state) {
+        var b = document.createElement('div');
+        b.className = 'folio-pe-box ' + state;
+        b.hidden = true;
+        overlay.appendChild(b);
+        return b;
+    }
+
+    function place(b, el) {
+        if (!el || !el.isConnected) { b.hidden = true; return; }
+        var r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) { b.hidden = true; return; }
+        b.hidden = false;
+        b.style.transform = 'translate(' + r.left + 'px,' + r.top + 'px)';
+        b.style.width = r.width + 'px';
+        b.style.height = r.height + 'px';
+    }
+
+    function update() {
+        frame = 0;
+        place(hoverBox, hovered);
+        place(activeBox, active);
+    }
+
+    function schedule() {
+        if (!frame) { frame = window.requestAnimationFrame(update); }
+    }
 
     function send(msg) {
         window.parent.postMessage(Object.assign({ source: 'folio-preview' }, msg), window.location.origin);
     }
 
-    function label(block) {
-        if (!badge) {
-            badge = document.createElement('span');
-            badge.className = 'folio-pe-badge';
-        }
-        badge.textContent = block.getAttribute('data-folio-label') || 'Block';
-        block.appendChild(badge);
-    }
-
     // Hover: outline the innermost block and show its label.
     document.addEventListener('mouseover', function (e) {
         var block = e.target.closest ? e.target.closest('[data-folio-block]') : null;
-        document.querySelectorAll('.is-folio-hover').forEach(function (el) {
-            if (el !== block) { el.classList.remove('is-folio-hover'); }
-        });
-        if (block) {
-            block.classList.add('is-folio-hover');
-            label(block);
-        } else if (badge && badge.parentNode) {
-            badge.parentNode.removeChild(badge);
-        }
+        if (block === hovered) { return; }
+        hovered = block;
+        label.textContent = block ? (block.getAttribute('data-folio-label') || 'Block') : '';
+        schedule();
     });
+    document.addEventListener('mouseleave', function () { hovered = null; schedule(); });
 
     // Click: select instead of following links or pressing buttons.
     document.addEventListener('click', function (e) {
@@ -72,16 +99,14 @@
     }
 
     function highlight(uid, field, scroll) {
-        if (active) { active.classList.remove('is-folio-active'); }
         active = find(uid, field);
-        if (!active) { return; }
-        active.classList.add('is-folio-active');
-        if (scroll) {
+        if (active && scroll) {
             var r = active.getBoundingClientRect();
             if (r.bottom < 0 || r.top > window.innerHeight) {
                 active.scrollIntoView({ block: 'center', behavior: 'smooth' });
             }
         }
+        schedule();
     }
 
     window.addEventListener('message', function (e) {
@@ -93,5 +118,11 @@
         }
     });
 
+    window.addEventListener('scroll', schedule, true);
+    window.addEventListener('resize', schedule);
+    // Blocks patched in place, images loading, layers toggling: keep the boxes on target.
+    new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+
+    document.body.appendChild(overlay);
     send({ type: 'ready' });
 })();

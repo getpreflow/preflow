@@ -129,6 +129,27 @@ abstract class Component
         return $this->componentId;
     }
 
+    /** @var array<string, string> extra data-* attributes on the wrapper element */
+    private array $rootAttributes = [];
+
+    /**
+     * Add a data-* attribute to the wrapper element (e.g. editor markers in a
+     * preview), without changing the component's markup or layout. Other
+     * names are ignored: the wrapper's id and class stay the component's.
+     */
+    public function setRootAttribute(string $name, string $value): void
+    {
+        if (preg_match('/^data-[a-z0-9-]+$/', $name) === 1) {
+            $this->rootAttributes[$name] = $value;
+        }
+    }
+
+    /** @return array<string, string> */
+    public function getRootAttributes(): array
+    {
+        return $this->rootAttributes;
+    }
+
     /**
      * Get the wrapper HTML tag.
      */

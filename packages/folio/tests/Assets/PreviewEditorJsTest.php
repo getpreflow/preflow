@@ -45,14 +45,25 @@ final class PreviewEditorJsTest extends TestCase
     public function test_highlight_scrolls_into_view(): void
     {
         $js = $this->file('preview-editor.js');
-        $this->assertStringContainsString('is-folio-active', $js);
+        $this->assertStringContainsString("box('is-active')", $js); // the active outline is an overlay box
         $this->assertStringContainsString('scrollIntoView', $js);
+    }
+
+    public function test_outlines_are_drawn_in_an_overlay_not_on_the_site_elements(): void
+    {
+        $js = $this->file('preview-editor.js');
+        $this->assertStringContainsString("'folio-pe-overlay'", $js);
+        $this->assertStringContainsString('getBoundingClientRect', $js);
+        $this->assertStringNotContainsString("classList.add('is-folio", $js); // site elements get no classes
+        $this->assertStringNotContainsString('appendChild(badge)', $js.'');  // nor injected children
+        $css = $this->file('preview-editor.css');
+        $this->assertDoesNotMatchRegularExpression('/\[data-folio-block\][^{]*\{[^}]*(position|outline)/', $css); // layout-neutral
     }
 
     public function test_styles_use_no_remote_resources(): void
     {
         $css = $this->file('preview-editor.css');
-        $this->assertStringContainsString('[data-folio-block]', $css);
+        $this->assertStringContainsString('.folio-pe-overlay', $css);
         $this->assertDoesNotMatchRegularExpression('#url\(|@import#', $css);
     }
 }
