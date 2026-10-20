@@ -107,4 +107,15 @@ final class FolioDemoTest extends TestCase
         $this->assertStringContainsString('<a href="/about">About us</a>', $body);
         $this->assertStringContainsString('Folio Demo', $body);
     }
+
+    /** The demo must not bcrypt the admin password on every boot (~200 ms each). */
+    public function test_demo_auth_config_does_not_hash_on_every_boot(): void
+    {
+        $first = require dirname(__DIR__) . '/config/auth.php';
+        $second = require dirname(__DIR__) . '/config/auth.php';
+        $hash = $first['providers']['config']['users'][0]['password_hash'];
+
+        $this->assertSame($hash, $second['providers']['config']['users'][0]['password_hash']);
+        $this->assertTrue(password_verify('folio-admin', $hash));
+    }
 }

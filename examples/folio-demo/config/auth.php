@@ -13,9 +13,12 @@ return [
             'users' => [
                 [
                     'email' => 'admin@folio.test',
-                    // Hash of the plaintext password below, recomputed each boot
-                    // (demo-only; a real app stores a fixed hash).
-                    'password_hash' => password_hash(getenv('FOLIO_ADMIN_PASSWORD') ?: 'folio-admin', PASSWORD_DEFAULT),
+                    // Fixed hash of the demo password "folio-admin". Hashing at boot would
+                    // cost ~200 ms per request (bcrypt is slow on purpose), so only an
+                    // explicit FOLIO_ADMIN_PASSWORD override is hashed here.
+                    'password_hash' => getenv('FOLIO_ADMIN_PASSWORD')
+                        ? password_hash((string) getenv('FOLIO_ADMIN_PASSWORD'), PASSWORD_DEFAULT)
+                        : '$2y$12$nKPo.49ITdlLr2shpSQ4YetSvwEFR8NJQYoWgvUTfusHiCd45rUiy',
                     'roles' => ['admin'],
                 ],
             ],

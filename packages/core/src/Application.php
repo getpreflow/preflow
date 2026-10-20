@@ -737,7 +737,7 @@ final class Application
             return;
         }
 
-        $authConfig = require $authConfigPath;
+        $authConfig = $this->authConfig();
         $sessionConfig = $authConfig['session'] ?? [];
 
         if ($sessionConfig === []) {
@@ -749,6 +749,15 @@ final class Application
         $this->container->instance(\Preflow\Core\Http\Session\SessionInterface::class, $session);
 
         $this->addMiddleware(new \Preflow\Core\Http\Session\SessionMiddleware($session));
+    }
+
+    /** @var array<string, mixed>|null config/auth.php, loaded once (it may hash passwords) */
+    private ?array $authConfigCache = null;
+
+    /** @return array<string, mixed> */
+    private function authConfig(): array
+    {
+        return $this->authConfigCache ??= (array) require $this->basePath('config/auth.php');
     }
 
     private function bootCsrf(): void
@@ -775,7 +784,7 @@ final class Application
             return;
         }
 
-        $authConfig = require $authConfigPath;
+        $authConfig = $this->authConfig();
 
         // Password hasher
         $hasherClass = $authConfig['password_hasher'] ?? \Preflow\Auth\NativePasswordHasher::class;

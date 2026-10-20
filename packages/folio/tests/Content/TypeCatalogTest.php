@@ -58,4 +58,20 @@ final class TypeCatalogTest extends TestCase
         $catalog = new TypeCatalog($this->dir . '/nope');
         $this->assertSame([], $catalog->all());
     }
+
+    public function test_scan_is_memoized(): void
+    {
+        $dir = sys_get_temp_dir() . '/tc_memo_' . bin2hex(random_bytes(4));
+        mkdir($dir, 0777, true);
+        file_put_contents($dir . '/a.json', json_encode(['key' => 'a', 'table' => 'a', 'fields' => []]));
+        $catalog = new \Preflow\Folio\Content\TypeCatalog($dir);
+
+        $this->assertCount(1, $catalog->all());
+        file_put_contents($dir . '/b.json', json_encode(['key' => 'b', 'table' => 'b', 'fields' => []]));
+        $this->assertCount(1, $catalog->all()); // one scan per catalog (i.e. per request)
+
+        @unlink($dir . '/a.json');
+        @unlink($dir . '/b.json');
+        @rmdir($dir);
+    }
 }

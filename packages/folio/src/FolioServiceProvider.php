@@ -61,7 +61,8 @@ final class FolioServiceProvider extends ServiceProvider
         // app/Blocks, plus classes listed in config/folio.php 'blocks'. Cached
         // when debug is off (conflicting keys fail at boot either way).
         $folioCfg = $this->folioConfig($app);
-        $container->bind(BlockRegistry::class, function (Container $c) use ($app, $folioCfg): BlockRegistry {
+        // Singletons: built once per request (discovery reflects over every component).
+        $container->singleton(BlockRegistry::class, function (Container $c) use ($app, $folioCfg): BlockRegistry {
             try {
                 $components = $c->get(\Preflow\Components\ComponentMap::class);
             } catch (\Throwable) {
@@ -88,7 +89,7 @@ final class FolioServiceProvider extends ServiceProvider
         $uploadsDir = $this->uploadsDir($app);
         $uploadUrlPrefix = rtrim($this->prefix($app), '/') . '/_uploads';
         $folioConfig = $this->folioConfig($app);
-        $container->bind(FieldTypeRegistry::class, function (Container $c) use ($uploadsDir, $uploadUrlPrefix, $prefix, $folioConfig): FieldTypeRegistry {
+        $container->singleton(FieldTypeRegistry::class, function (Container $c) use ($uploadsDir, $uploadUrlPrefix, $prefix, $folioConfig): FieldTypeRegistry {
             $registry = new FieldTypeRegistry();
             $registry->register(new StringFieldType());
             $registry->register(new TextFieldType());

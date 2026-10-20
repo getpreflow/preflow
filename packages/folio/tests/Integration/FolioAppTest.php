@@ -1299,6 +1299,17 @@ final class FolioAppTest extends TestCase
         $this->assertStringNotContainsString('Shared across languages', $wrap[0] ?? 'missing');
     }
 
+    public function test_registries_are_built_once_per_request(): void
+    {
+        $this->enableBlocks();
+        $c = $this->app()->container();
+
+        // Block discovery (reflection over all components) and the field type
+        // registry must not be rebuilt on every lookup.
+        $this->assertSame($c->get(\Preflow\Folio\Block\BlockRegistry::class), $c->get(\Preflow\Folio\Block\BlockRegistry::class));
+        $this->assertSame($c->get(\Preflow\Folio\Field\FieldTypeRegistry::class), $c->get(\Preflow\Folio\Field\FieldTypeRegistry::class));
+    }
+
     public function test_edit_form_no_preview_button_for_non_frontend_type(): void
     {
         $app = $this->app();

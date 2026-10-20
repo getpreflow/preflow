@@ -10,8 +10,17 @@ final class TypeCatalog
         private readonly string $modelsPath,
     ) {}
 
+    /** @var TypeListing[]|null scanned once per catalog (one request) */
+    private ?array $listings = null;
+
     /** @return TypeListing[] */
     public function all(): array
+    {
+        return $this->listings ??= $this->scan();
+    }
+
+    /** @return TypeListing[] */
+    private function scan(): array
     {
         if (!is_dir($this->modelsPath)) {
             return [];
