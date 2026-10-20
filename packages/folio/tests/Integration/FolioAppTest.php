@@ -1310,6 +1310,54 @@ final class FolioAppTest extends TestCase
         $this->assertSame($c->get(\Preflow\Folio\Field\FieldTypeRegistry::class), $c->get(\Preflow\Folio\Field\FieldTypeRegistry::class));
     }
 
+    public function test_duplicate_is_a_server_fragment_with_fresh_uids(): void
+    {
+        $this->enableGerman();
+        $this->enableBlocks();
+        $a = 'aaaaaaaaaaaaaaaa';
+        $c = 'cccccccccccccccc';
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published',
+            'sections' => ['_order' => [$a], $a => ['_block' => 'hero', 'headline' => 'English', 'intro' => 'I',
+                'tradeoff' => ['_order' => [$c], $c => ['_block' => 'tradeoff_note', 'chose' => 'note']]]]]);
+        // A stored upload inside the child, and a German translation.
+        $record = $this->dm()->findType('page', $id);
+        $sections = $record->get('sections');
+        $sections[0]['tradeoff'][0]['cover'] = '2026/10/' . str_repeat('e', 32) . '.png';
+        $sections[0]['headline'] = ['en' => 'English', 'de' => 'Deutsch'];
+        $record->set('sections', $sections);
+        $this->dm()->saveType($record, validate: false);
+        @mkdir($this->dir . '/storage/uploads/2026/10', 0777, true);
+        touch($this->dir . '/storage/uploads/2026/10/' . str_repeat('e', 32) . '.png');
+
+        $edit = (string) $this->get('/folio/page/' . $id . '/edit')->getBody();
+        $this->assertMatchesRegularExpression('#hx-post="/folio/_blocks/duplicate\?[^"]*uid=' . $a . '#', $edit);
+
+        // The card's current (unsaved) values are posted along.
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
+            ->createServerRequest('POST', '/folio/_blocks/duplicate?' . http_build_query(['name' => 'sections', 'uid' => $a, 'locale' => 'en', 'depth' => 0, 'type' => 'page', 'id' => $id]))
+            ->withParsedBody(['sections' => [$a => ['_block' => 'hero', 'headline' => 'Edited copy', 'intro' => 'I',
+                'tradeoff' => ['_order' => [$c], $c => ['_block' => 'tradeoff_note', 'chose' => 'note']]]]]));
+        $body = (string) $res->getBody();
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringNotContainsString($a, $body);
+        $this->assertStringNotContainsString($c, $body);
+        $this->assertStringContainsString('value="Edited copy"', $body);
+        $this->assertSame(2, preg_match_all('#data-block-uid="[a-f0-9]{16}"#', $body)); // card + nested child
+        $this->assertStringContainsString('_keep][]" value="2026/10/' . str_repeat('e', 32) . '.png"', $body);
+    }
+
+    public function test_duplicate_rejects_bad_input(): void
+    {
+        $this->enableBlocks();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+
+        $this->assertSame(400, $this->app()->handle($f->createServerRequest('POST', '/folio/_blocks/duplicate?name=' . rawurlencode('x"><b>') . '&uid=aaaaaaaaaaaaaaaa'))->getStatusCode());
+        $this->assertSame(400, $this->app()->handle($f->createServerRequest('POST', '/folio/_blocks/duplicate?name=sections&uid=nope'))->getStatusCode());
+        $this->assertSame(404, $this->app()->handle($f->createServerRequest('POST', '/folio/_blocks/duplicate?name=sections&uid=aaaaaaaaaaaaaaaa')
+            ->withParsedBody(['sections' => ['aaaaaaaaaaaaaaaa' => ['_block' => 'nope']]]))->getStatusCode());
+    }
+
     public function test_edit_form_no_preview_button_for_non_frontend_type(): void
     {
         $app = $this->app();

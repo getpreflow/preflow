@@ -106,7 +106,14 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
 
                 if ($type instanceof HandlesUpload) {
                     $removed = array_values(array_filter((array) ($data[$name . '_remove'] ?? []), 'is_string'));
-                    $kept = array_values(array_diff(self::pathList($type->fromStorage($previous[$name] ?? null)), $removed));
+                    $current = $previous !== []
+                        ? self::pathList($type->fromStorage($previous[$name] ?? null))
+                        // Not stored yet (a duplicate): accept only real uploads it carried along.
+                        : array_values(array_filter(
+                            (array) ($data[$name . '_keep'] ?? []),
+                            static fn ($p) => is_string($p) && method_exists($type, 'isStoredUpload') && $type->isStoredUpload($p),
+                        ));
+                    $kept = array_values(array_diff($current, $removed));
                     $uploaded = $ctx->writeUploads ? self::uploadedFiles($blockFiles[$name] ?? null) : [];
                     $block[$name] = $type->toStorage($type->storeUploads($uploaded, $kept, $field->config));
                     continue;
@@ -202,6 +209,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
             $ctx->locales ?? Locales::single($ctx->locale ?? 'en'),
             $ctx->locale ?? ($ctx->locales?->default ?? 'en'),
             0,
+            $ctx->record,
         );
     }
 
@@ -220,12 +228,86 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
     }
 
     /**
+     * A copy of one block as a fresh card: the posted (current, unsaved) values
+     * merged with the stored block (other locales, uploaded files), with new
+     * uids throughout. Null when nothing valid was posted.
+     *
+     * @param mixed                     $posted the posted data of the block (name[uid])
+     * @param mixed                     $stored the stored list at this level (or null)
+     * @param array{type: string, id: ?string}|null $record
+     */
+    public function renderDuplicate(string $namePrefix, string $uid, mixed $posted, mixed $stored, Locales $locales, string $locale, int $depth, ?array $record = null): ?string
+    {
+        if (preg_match(self::UID, $uid) !== 1 || $depth >= $this->maxDepth) {
+            return null;
+        }
+        $built = $this->buildValue(['_order' => [$uid], $uid => $posted], $stored, [], new BuildContext($locales, $locale, false, $depth));
+        if ($built === []) {
+            return null;
+        }
+        $copy = $this->withFreshUids($built[0]);
+        $definition = $this->blocks->get((string) $copy['_block']);
+
+        return $definition === null
+            ? $this->render('@folio/admin/blocks/unknown.twig', [
+                'uid' => $copy['_uid'],
+                'key' => (string) $copy['_block'],
+                'name' => $namePrefix,
+                'raw' => json_encode($copy, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ])
+            : $this->renderCard($definition, $copy, $namePrefix, [], $locales, $locale, $depth, open: true, record: $record);
+    }
+
+    /**
+     * The stored block list at a field path such as "sections[<uid>][links]"
+     * inside a record's data, or null.
+     *
+     * @param list<string>         $keys  ["sections", "<uid>", "links", …]
+     * @param array<string, mixed> $data  the record's stored data
+     */
+    public function storedLevel(array $data, array $keys): mixed
+    {
+        $value = $data[array_shift($keys)] ?? null;
+        while ($keys !== []) {
+            $uid = array_shift($keys);
+            $field = array_shift($keys);
+            $found = null;
+            foreach ($this->fromStorage($value) as $block) {
+                if ($block['_uid'] === $uid) {
+                    $found = $block;
+                    break;
+                }
+            }
+            if ($found === null || $field === null) {
+                return null;
+            }
+            $value = $found[$field] ?? null;
+        }
+
+        return $value;
+    }
+
+    /** @param array<string, mixed> $block */
+    private function withFreshUids(array $block): array
+    {
+        $block['_uid'] = bin2hex(random_bytes(8));
+        $definition = $this->blocks->get((string) ($block['_block'] ?? ''));
+        foreach ($definition?->fields ?? [] as $name => $field) {
+            if ($this->fieldTypes->get($field->type) instanceof self && is_array($block[$name] ?? null)) {
+                $block[$name] = array_map(fn ($child) => is_array($child) ? $this->withFreshUids($child) : $child, $this->fromStorage($block[$name]));
+            }
+        }
+
+        return $block;
+    }
+
+    /**
      * @param list<array<string, mixed>>  $blocks
      * @param array<string, mixed>        $config
      * @param list<string>                $errors       field-level errors (min/max)
      * @param array<string, list<string>> $nestedErrors keys "<uid>.<field>…" relative to this field
      */
-    private function renderField(string $name, string $label, ?string $help, array $blocks, array $config, array $errors, array $nestedErrors, Locales $locales, string $locale, int $depth): string
+    private function renderField(string $name, string $label, ?string $help, array $blocks, array $config, array $errors, array $nestedErrors, Locales $locales, string $locale, int $depth, ?array $record = null): string
     {
         if ($depth >= $this->maxDepth) {
             return $this->render('@folio/admin/blocks/too_deep.twig', ['label' => $label]);
@@ -245,7 +327,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
                     'name' => $name,
                     'raw' => json_encode($block, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 ])
-                : $this->renderCard($definition, $block, $name, self::scoped($nestedErrors, $uid), $locales, $locale, $depth);
+                : $this->renderCard($definition, $block, $name, self::scoped($nestedErrors, $uid), $locales, $locale, $depth, record: $record);
         }
 
         $summary = [];
@@ -284,7 +366,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
      * @param array<string, mixed>        $block
      * @param array<string, list<string>> $errors keys "<field>…" relative to this block
      */
-    private function renderCard(\Preflow\Folio\Block\BlockDefinition $definition, array $block, string $namePrefix, array $errors, Locales $locales, string $locale, int $depth, bool $open = false): string
+    private function renderCard(\Preflow\Folio\Block\BlockDefinition $definition, array $block, string $namePrefix, array $errors, Locales $locales, string $locale, int $depth, bool $open = false, ?array $record = null): string
     {
         $uid = (string) $block['_uid'];
         $base = $namePrefix . '[' . $uid . ']';
@@ -307,6 +389,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
                     $locales,
                     $locale,
                     $depth + 1,
+                    $record,
                 );
                 continue;
             }
@@ -345,6 +428,14 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
             'fields' => $fields,
             'open' => $open || $errors !== [],
             'has_errors' => $errors !== [],
+            'duplicate_url' => $this->adminPrefix . '/_blocks/duplicate?' . http_build_query([
+                'name' => $namePrefix,
+                'uid' => $uid,
+                'locale' => $locale,
+                'depth' => $depth,
+                'type' => $record['type'] ?? '',
+                'id' => $record['id'] ?? '',
+            ], '', '&', PHP_QUERY_RFC3986),
         ]);
     }
 

@@ -78,8 +78,10 @@ final class AdminJsTest extends TestCase
     public function test_block_editor_hooks(): void
     {
         $js = $this->js();
-        foreach (['data-block-up', 'data-block-down', 'data-block-duplicate', 'data-block-remove', 'data-block-collapse', 'htmx:load', 'data-block-uid'] as $hook) {
+        foreach (['data-block-up', 'data-block-down', 'data-block-remove', 'data-block-collapse', 'htmx:load'] as $hook) {
             $this->assertStringContainsString($hook, $js);
         }
+        // Duplicate is a server fragment (fresh uids, re-rendered editors), not a DOM clone.
+        $this->assertStringNotContainsString('cloneNode', $js);
     }
 }

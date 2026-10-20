@@ -10,7 +10,9 @@
         <div class="folio-block-actions">
             <button type="button" class="btn btn-ghost" data-block-up aria-label="Move up">↑</button>
             <button type="button" class="btn btn-ghost" data-block-down aria-label="Move down">↓</button>
-            <button type="button" class="btn btn-ghost" data-block-duplicate aria-label="Duplicate">⧉</button>
+            <button type="button" class="btn btn-ghost" data-block-duplicate aria-label="Duplicate"
+                    hx-post="{{ duplicate_url }}" hx-include="closest [data-block-card], [name=_csrf_token]"
+                    hx-target="closest [data-block-card]" hx-swap="afterend">⧉</button>
             <button type="button" class="btn btn-ghost" data-block-remove aria-label="Remove">✕</button>
         </div>
     </div>

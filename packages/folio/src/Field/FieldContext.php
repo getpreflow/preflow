@@ -26,5 +26,7 @@ final readonly class FieldContext
         public array $nestedErrors = [],
         public ?string $locale = null,
         public ?\Preflow\Data\Locales $locales = null,
+        /** @var array{type: string, id: ?string}|null the record being edited */
+        public ?array $record = null,
     ) {}
 }

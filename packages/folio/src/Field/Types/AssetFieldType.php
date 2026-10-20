@@ -54,6 +54,8 @@ final class AssetFieldType implements FieldType, HandlesUpload
                     ? '<img src="' . $e($url) . '" alt="" class="folio-asset-thumb">'
                     : '<a href="' . $e($url) . '">' . $e($path) . '</a>';
                 $html .= ' <label class="folio-asset-remove"><input type="checkbox" name="' . $e(self::removeName($name)) . '[]" value="' . $e($path) . '"> remove</label>';
+                // Lets a block that isn't stored yet (a duplicate) keep this file on save.
+                $html .= '<input type="hidden" name="' . $e(self::keepName($name)) . '[]" value="' . $e($path) . '">';
                 $html .= '</li>' . "\n";
             }
             $html .= '  </ul>' . "\n";
@@ -215,5 +217,17 @@ final class AssetFieldType implements FieldType, HandlesUpload
     public static function removeName(string $name): string
     {
         return str_ends_with($name, ']') ? substr($name, 0, -1) . '_remove]' : $name . '_remove';
+    }
+
+    /** "cover" -> "cover_keep"; nested "a[b][cover]" -> "a[b][cover_keep]". */
+    public static function keepName(string $name): string
+    {
+        return str_ends_with($name, ']') ? substr($name, 0, -1) . '_keep]' : $name . '_keep';
+    }
+
+    /** A path this field type wrote: "YYYY/MM/<32 hex>.<ext>" that exists in the uploads dir. */
+    public function isStoredUpload(string $path): bool
+    {
+        return preg_match('#^\d{4}/\d{2}/[a-f0-9]{32}\.[a-z0-9]{1,8}$#', $path) === 1 && is_file($this->uploadsDir . '/' . $path);
     }
 }

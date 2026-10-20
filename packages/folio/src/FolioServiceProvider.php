@@ -180,6 +180,8 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(\Preflow\Folio\Http\BlockEditorController::class, fn (Container $c) => new \Preflow\Folio\Http\BlockEditorController(
             $c->get(FieldTypeRegistry::class),
             $locales ?? \Preflow\Data\Locales::single('en'),
+            $c->get(DataManager::class),
+            $c->get(TypeCatalog::class),
         ));
         $container->bind(UploadController::class, fn (Container $c) => new UploadController($uploadsDir));
 

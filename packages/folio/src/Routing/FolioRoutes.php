@@ -30,6 +30,7 @@ final class FolioRoutes
         }
         $defs = array_merge($defs, [
             ['GET',  $prefix . '/_blocks/{key}/new',   'newBlock', self::BLOCKS],
+            ['POST', $prefix . '/_blocks/duplicate',   'duplicate', self::BLOCKS],
             ['GET',  $prefix . '/{type}',              'list'],
             ['GET',  $prefix . '/{type}/new',          'createForm'],
             ['POST', $prefix . '/{type}/preview',      'preview', self::PREVIEW],

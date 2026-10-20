@@ -407,6 +407,7 @@ final class AdminController
                 nestedErrors: self::nestedErrors($errors, $name),
                 locale: $locale,
                 locales: $locales,
+                record: ['type' => $type, 'id' => isset($values[$typeDef->idField]) ? (string) $values[$typeDef->idField] : null],
             );
             $fields[] = [
                 'name' => $name,

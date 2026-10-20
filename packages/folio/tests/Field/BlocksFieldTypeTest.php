@@ -258,4 +258,22 @@ final class BlocksFieldTypeTest extends TestCase
 
         $this->assertSame(['First edited', 'Second'], array_column($value, 'label'));
     }
+
+    public function test_new_block_keeps_valid_posted_upload_paths_only(): void
+    {
+        $path = '2026/10/' . str_repeat('a', 32) . '.png';
+        @mkdir($this->uploads . '/2026/10', 0777, true);
+        touch($this->uploads . '/' . $path);
+
+        $value = $this->type()->buildValue([
+            '_order' => [self::A],
+            self::A => ['_block' => 'hero', 'headline' => 'H', 'tradeoff' => [
+                '_order' => [self::C],
+                self::C => ['_block' => 'tradeoff_note', 'chose' => 'x', 'cover_keep' => [$path, '../../etc/passwd', '2026/10/' . str_repeat('b', 32) . '.png']],
+            ]],
+        ], null, [], $this->ctx(Locales::single('en')));
+
+        // Duplicates carry their files; only existing uploads in the expected format are accepted.
+        $this->assertSame($path, $value[0]['tradeoff'][0]['cover']);
+    }
 }
