@@ -3,17 +3,19 @@
 {% block page_title %}Dashboard{% endblock %}
 {% block content %}
     <div class="folio-card-grid">
-        {% for card in cards %}
+        {% for card in cards|filter(c => can(c.key ~ '.view')) %}
             <a class="folio-card" href="{{ prefix }}/{{ card.key }}">
                 <span class="folio-card-icon"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-file"></use></svg></span>
                 <span class="folio-card-label">{{ card.label }}</span>
                 <span class="folio-card-count">{{ card.count }} record{{ card.count == 1 ? '' : 's' }}</span>
             </a>
         {% endfor %}
+        {% if can('assets.view') %}
         <a class="folio-card" href="{{ prefix }}/assets">
             <span class="folio-card-icon"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-library"></use></svg></span>
             <span class="folio-card-label">Assets</span>
             <span class="folio-card-count">Images, videos and files</span>
         </a>
+        {% endif %}
     </div>
 {% endblock %}

@@ -231,6 +231,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Content\RecordValidator::class),
             $c->get(\Preflow\Folio\Publishing\Publisher::class),
             $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
+            $c->get(\Preflow\Auth\Access\Access::class),
         ));
         $container->bind(\Preflow\Folio\Http\PublishingController::class, fn (Container $c) => new \Preflow\Folio\Http\PublishingController(
             $c->get(TypeCatalog::class),
@@ -301,6 +302,12 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Auth\AuthManager::class),
             $prefix,
         ));
+        $container->bind(\Preflow\Folio\Http\FolioPermissionMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\FolioPermissionMiddleware(
+            $c->get(\Preflow\Auth\Access\Access::class),
+            $c->get(TypeCatalog::class),
+            $c->get(TemplateEngineInterface::class),
+            $prefix,
+        ));
         $container->bind(AuthController::class, fn (Container $c) => new AuthController(
             $c->get(\Preflow\Auth\AuthManager::class),
             $c->get(\Preflow\Auth\UserProviderInterface::class),
@@ -312,6 +319,7 @@ final class FolioServiceProvider extends ServiceProvider
     public function boot(Container $container): void
     {
         $app = $container->get(Application::class);
+        $this->declarePermissions($container, $app);
 
         // 1. Twig namespace: userland override dir first, package templates second.
         if ($container->has(TemplateEngineInterface::class)) {
@@ -417,6 +425,11 @@ final class FolioServiceProvider extends ServiceProvider
             if (file_exists($app->basePath('config/auth.php'))) {
                 $engine->addGlobal('folio_auth_enabled', true);
             } else {
+                // Without auth nobody is restricted: menus and buttons ask can() all the same.
+                $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                    name: 'can',
+                    callable: fn (string $permission, ?object $subject = null): bool => true,
+                ));
                 // Auth is off: AuthExtensionProvider never ran, so its Twig
                 // functions are unregistered. _layout.twig guards their *calls*
                 // behind folio_auth_enabled, but Twig resolves function existence
@@ -443,6 +456,32 @@ final class FolioServiceProvider extends ServiceProvider
                 $collection->add(FolioRoutes::media(is_string($assets['url'] ?? null) ? $assets['url'] : '/media'));
                 $collection->add(FolioRoutes::frontend());
             }
+        }
+    }
+
+    /**
+     * Folio's permissions: per content type "{type}.*" and its view, create,
+     * edit, publish and delete; the asset library; the dashboard. The guard
+     * Folio signs in with is staff, unless config/auth.php says otherwise.
+     */
+    private function declarePermissions(Container $container, Application $app): void
+    {
+        $access = $container->get(\Preflow\Auth\Access\Access::class);
+        $registry = $access->registry();
+        $registry->declare('folio.dashboard', 'Dashboard', 'Folio');
+        foreach ($container->get(TypeCatalog::class)->all() as $listing) {
+            $registry->declarePattern($listing->key . '.*');
+            foreach (['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'] as $action => $verb) {
+                $registry->declare($listing->key . '.' . $action, $verb, $listing->label);
+            }
+        }
+        $registry->declarePattern('assets.*');
+        foreach (['view' => 'View', 'upload' => 'Upload', 'edit' => 'Edit', 'delete' => 'Delete'] as $action => $verb) {
+            $registry->declare('assets.' . $action, $verb, 'Assets');
+        }
+
+        if (file_exists($app->basePath('config/auth.php'))) {
+            $access->markStaffGuard($container->get(\Preflow\Auth\AuthManager::class)->defaultGuardName());
         }
     }
 

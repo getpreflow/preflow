@@ -391,6 +391,8 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
 
 /* ---- form controls (preflow/form hooks and Folio's own) ---- */
 .folio-form { width: 100%; }
+/* Wraps the fields so a read-only form can disable them all; adds no box of its own. */
+.folio-fields { display: contents; }
 .folio-editor { max-width: 780px; }
 form:has(> .folio-form-actions) { container-type: inline-size; }
 

@@ -39,19 +39,24 @@
             <span class="folio-brand-name">Folio</span>
         </a>
         <nav class="folio-nav" aria-label="Folio">
+            {% if can('folio.dashboard') %}
             <a href="{{ prefix }}"{% if type is not defined and section is not defined %} class="active" aria-current="page"{% endif %}>
                 <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-dashboard"></use></svg><span>Dashboard</span>
             </a>
-            {% if types is not empty %}<span class="folio-nav-label">Content</span>{% endif %}
-            {% for t in types %}
+            {% endif %}
+            {% set visible_types = types|filter(t => can(t.key ~ '.view')) %}
+            {% if visible_types is not empty %}<span class="folio-nav-label">Content</span>{% endif %}
+            {% for t in visible_types %}
                 <a href="{{ prefix }}/{{ t.key }}"{% if type is defined and type == t.key %} class="active" aria-current="page"{% endif %}>
                     <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ t.singleton ? 'ui-settings' : 'ui-file' }}"></use></svg><span>{{ t.label }}</span>
                 </a>
             {% endfor %}
+            {% if can('assets.view') %}
             <span class="folio-nav-label">Library</span>
             <a href="{{ prefix }}/assets"{% if section|default('') == 'assets' %} class="active" aria-current="page"{% endif %}>
                 <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-library"></use></svg><span>Assets</span>
             </a>
+            {% endif %}
         </nav>
         <div class="folio-sidebar-foot">
             <div id="folio-theme-toggle" class="folio-theme-switch" role="group" aria-label="Theme">

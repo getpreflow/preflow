@@ -194,4 +194,12 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString("data.source === 'folio-assets'", $js);
         $this->assertStringContainsString('e.origin !== window.location.origin', $js);
     }
+
+    public function test_htmx_403_message_is_shown_as_a_toast(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString("addEventListener('folio:error'", $js); // HX-Trigger event from Forbidden
+        $this->assertStringContainsString('function showToast(', $js);
+        $this->assertStringContainsString('xhr.status === 403', $js);              // autosave says "no access", not "offline"
+    }
 }

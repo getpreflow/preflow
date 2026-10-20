@@ -1,15 +1,16 @@
 {% extends "@folio/admin/_layout.twig" %}
 {% block title %}Folio — {{ label }}{% endblock %}
 {% block page_title %}{{ label }}{% endblock %}
+{% set may = {create: can(type ~ '.create'), edit: can(type ~ '.edit'), delete: can(type ~ '.delete')} %}
 {% block actions %}
-    <a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>New</a>
+    {% if may.create %}<a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>New</a>{% endif %}
 {% endblock %}
 {% block content %}
     {% if rows is empty %}
         <div class="folio-empty">
             <svg class="folio-icon folio-empty-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-file"></use></svg>
             <p>No {{ label|lower }} yet.</p>
-            <a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new">Create one</a>
+            {% if may.create %}<a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new">Create one</a>{% endif %}
         </div>
     {% else %}
         <div class="folio-table-wrap">
@@ -25,7 +26,7 @@
                     {% if publishing|default(false) %}<td><span class="folio-badge is-{{ row.state.value }}">{{ row.state.label() }}</span></td>{% endif %}
                     <td>
                         <div class="folio-row-actions">
-                            {% if orderable %}
+                            {% if orderable and may.edit %}
                                 {% for direction, text in {'up': 'Move up', 'down': 'Move down'} %}
                                     <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/move">
                                         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
@@ -34,11 +35,13 @@
                                     </form>
                                 {% endfor %}
                             {% endif %}
-                            <a class="btn btn-secondary btn-sm" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">Edit</a>
+                            {% if may.edit %}<a class="btn btn-secondary btn-sm" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">Edit</a>{% endif %}
+                            {% if may.delete %}
                             <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/delete" data-confirm="Delete this record?">
                                 <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                                 <button type="submit" class="btn btn-ghost btn-icon" data-tone="danger" aria-label="Delete" title="Delete"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-trash"></use></svg></button>
                             </form>
+                            {% endif %}
                         </div>
                     </td>
                 </tr>

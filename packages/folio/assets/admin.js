@@ -967,8 +967,27 @@
         var elt = e.detail && e.detail.elt;
         var state = document.getElementById('folio-save-state');
         if (!elt || !state || elt.tagName !== 'FORM' || !elt.hasAttribute('hx-post')) { return; }
-        state.textContent = 'Not saved — check your connection and save manually.';
+        var xhr = e.detail.xhr;
+        state.textContent = xhr && xhr.status === 403
+            ? 'Not saved — you don\'t have access to edit this.'
+            : 'Not saved — check your connection and save manually.';
         state.classList.add('is-conflict');
+    }
+
+    // A short message in the toast region; the server sends it as HX-Trigger "folio:error" (e.g. a 403).
+    function showToast(message) {
+        var region = document.querySelector('[data-folio-toasts]');
+        if (!region || !message) { return; }
+        var toast = document.createElement('div');
+        toast.className = 'folio-toast';
+        toast.setAttribute('role', 'status');
+        toast.textContent = message;
+        region.appendChild(toast);
+        setTimeout(function () { if (toast.parentNode) { toast.parentNode.removeChild(toast); } }, 6000);
+    }
+
+    function onFolioError(e) {
+        showToast(e.detail && typeof e.detail.message === 'string' ? e.detail.message : '');
     }
 
     // Asset library: click the image to set the focal point (percent of width/height).
@@ -1026,6 +1045,7 @@
         document.addEventListener('htmx:responseError', onAutosaveError);
         document.addEventListener('htmx:sendError', onAutosaveError);
         document.addEventListener('htmx:load', onHtmxLoad);
+        document.addEventListener('folio:error', onFolioError);
         document.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
         window.addEventListener('message', onMessage);
         document.addEventListener('keydown', onKeydown);

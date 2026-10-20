@@ -40,6 +40,8 @@
         {% if publishing %}
             <input type="hidden" name="_version" id="folio-version" value="{{ publishing.version }}">
         {% endif %}
+        {# Without the right to save, the fields are shown read-only (display: contents, no layout change). #}
+        <fieldset class="folio-fields"{% if not (can_save ?? true) %} disabled{% endif %}>
         {% if multilingual|default(false) %}
             <input type="hidden" name="_locale" value="{{ locale }}">
             <fieldset class="folio-visibility">
@@ -75,15 +77,17 @@
                 {% endif %}
             </div>
         {% endfor %}
+        </fieldset>
         <div class="folio-form-actions">
-            {% if publishing %}
+            {% if publishing and (can_save ?? true) and (can_publish ?? true) %}
                 <label class="folio-publish-at"><span>Publish at</span><input type="datetime-local" name="_publish_at" value="{{ publishing.publish_at }}"></label>
             {% endif %}
             <div class="folio-form-buttons">
                 <a class="btn btn-ghost" href="{{ prefix }}/{{ type }}">Cancel</a>
-                {% if publishing %}
-                    <button type="submit" class="btn btn-secondary">Save draft</button>
-                    <button type="submit" class="btn btn-primary" name="_action" value="publish">Publish</button>
+                {% if not (can_save ?? true) %}
+                {% elseif publishing %}
+                    <button type="submit" class="btn {{ (can_publish ?? true) ? 'btn-secondary' : 'btn-primary' }}">Save draft</button>
+                    {% if (can_publish ?? true) %}<button type="submit" class="btn btn-primary" name="_action" value="publish">Publish</button>{% endif %}
                 {% else %}
                     {{ form.submit('Save', {attrs: {class: 'btn btn-primary'}})|raw }}
                 {% endif %}
@@ -101,10 +105,12 @@
                             <span class="folio-revision-date">{{ rev.date|date('Y-m-d H:i') }}</span>
                             <span class="folio-revision-by">{{ rev.by ?: '—' }}</span>
                             <span class="folio-revision-changed">Changed: {{ rev.changed is empty ? '—' : rev.changed|join(', ') }}</span>
+                            {% if (can_save ?? true) %}
                             <form method="post" action="{{ rev.restore_url }}" data-confirm="Replace the working copy with this revision?">
                                 <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                                 <button type="submit" class="btn btn-ghost">Restore</button>
                             </form>
+                            {% endif %}
                         </li>
                     {% endfor %}
                 </ol>

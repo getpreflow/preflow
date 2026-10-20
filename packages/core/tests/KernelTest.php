@@ -61,6 +61,17 @@ class TimingMiddleware implements MiddlewareInterface
     }
 }
 
+class RouteSpyMiddleware implements MiddlewareInterface
+{
+    public static ?Route $seen = null;
+
+    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    {
+        self::$seen = $request->getAttribute(Route::class);
+        return $handler->handle($request);
+    }
+}
+
 final class KernelTest extends TestCase
 {
     private function createRequest(string $method = 'GET', string $uri = '/'): ServerRequestInterface
@@ -160,5 +171,15 @@ final class KernelTest extends TestCase
         $response = $kernel->handle($this->createRequest());
 
         $this->assertSame(500, $response->getStatusCode());
+    }
+
+    public function test_route_middleware_sees_the_matched_route(): void
+    {
+        $route = new Route(mode: RouteMode::Action, handler: 'X@y', parameters: ['type' => 'page'], middleware: [RouteSpyMiddleware::class]);
+        RouteSpyMiddleware::$seen = null;
+
+        $this->createKernel(new StubRouter($route))->handle($this->createRequest());
+
+        $this->assertSame($route, RouteSpyMiddleware::$seen);
     }
 }

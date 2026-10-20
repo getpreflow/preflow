@@ -53,6 +53,7 @@ final class AdminController
         ?RecordValidator $validator = null,
         private readonly ?Publisher $publisher = null,
         private readonly ?\Preflow\Folio\Publishing\PreviewLinks $previewLinks = null,
+        private readonly ?\Preflow\Auth\Access\Access $access = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
         $this->validator = $validator ?? new RecordValidator($fieldTypes, $dm);
@@ -497,9 +498,13 @@ final class AdminController
             }
         }
 
+        $isNew = strtok($action, '?') === $this->prefix . '/' . $type;
         $html = $this->engine->render('@folio/admin/form.twig', [
             'prefix' => $this->prefix,
             'type' => $type,
+            // Read-only form (disabled fieldset, no save buttons) without the right to save it.
+            'can_save' => $this->can($type . ($isNew ? '.create' : '.edit')),
+            'can_publish' => $this->can($type . '.publish'),
             'label' => $this->labelFor($type),
             'types' => $this->catalog->all(),
             'heading' => $heading,
@@ -568,6 +573,12 @@ final class AdminController
         $this->dm->saveType($record, false);
     }
 
+    /** Without an Access service (unit tests, no auth) everything is allowed, as before. */
+    private function can(string $permission): bool
+    {
+        return $this->access?->can($permission) ?? true;
+    }
+
     private function publishes(string $type): bool
     {
         return $this->publisher !== null && $this->publisher->enabled($type);
@@ -581,7 +592,12 @@ final class AdminController
     private function savePublishing(ServerRequestInterface $request, DynamicRecord $record, string $type, string $action, string $heading, string $csrf, string $locale, string $editUrl, string $layout = '@folio/admin/_layout.twig'): ?ResponseInterface
     {
         $body = (array) $request->getParsedBody();
-        if (array_key_exists('_publish_at', $body)) {
+        $mayPublish = $this->can($type . '.publish');
+        if (($body['_action'] ?? null) === 'publish' && !$mayPublish) {
+            return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog); // nothing saved
+        }
+        // "Publish at" schedules a publish: only for those who may publish.
+        if ($mayPublish && array_key_exists('_publish_at', $body)) {
             $record->set('_publish_at', self::publishAt($body['_publish_at']));
         }
         $loaded = is_string($body['_version'] ?? null) && ctype_digit($body['_version']) ? (int) $body['_version'] : null;
@@ -625,6 +641,8 @@ final class AdminController
         $stored = is_string($id) && $id !== '' ? $this->dm->findType($type, $id) : null;
         $state = $stored !== null ? $this->publisher->state($stored) : PublishState::Draft;
         $base = $this->prefix . '/' . $type . '/' . $id;
+        $edit = $stored !== null && $this->can($type . '.edit');
+        $publish = $stored !== null && $this->can($type . '.publish');
 
         return [
             'state' => $state->value,
@@ -633,10 +651,10 @@ final class AdminController
             'publish_at' => is_string($values['_publish_at'] ?? null) ? $values['_publish_at'] : '',
             'save_state' => $stored !== null ? PublishingController::stateText($state) : null,
             'revisions' => $stored !== null ? $this->revisionRows($type, $typeDef, (string) $id) : [],
-            'autosave_url' => $stored !== null ? $base . '/autosave' : null,
-            'share_url' => $stored !== null && $this->previewLinks?->enabled() === true && $this->frontend->routeFor($type) !== null ? $base . '/share' : null,
-            'unpublish_url' => $stored !== null && $state !== PublishState::Draft ? $base . '/unpublish' : null,
-            'discard_url' => $stored !== null && $state === PublishState::Changed ? $base . '/discard' : null,
+            'autosave_url' => $edit ? $base . '/autosave' : null,
+            'share_url' => $edit && $this->previewLinks?->enabled() === true && $this->frontend->routeFor($type) !== null ? $base . '/share' : null,
+            'unpublish_url' => $publish && $state !== PublishState::Draft ? $base . '/unpublish' : null,
+            'discard_url' => $edit && $state === PublishState::Changed ? $base . '/discard' : null,
         ];
     }
 
