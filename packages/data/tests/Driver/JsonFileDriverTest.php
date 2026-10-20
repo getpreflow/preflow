@@ -37,6 +37,25 @@ final class JsonFileDriverTest extends TestCase
         rmdir($dir);
     }
 
+    public function test_save_is_atomic_and_leaves_no_temp_files(): void
+    {
+        for ($i = 1; $i <= 20; $i++) {
+            $this->driver->save('post', 'p1', ['uuid' => 'p1', 'n' => $i]);
+        }
+
+        $files = array_values(array_diff(scandir($this->dataDir . '/post'), ['.', '..']));
+        $this->assertSame(['p1.json'], $files);
+        $this->assertSame(20, $this->driver->findOne('post', 'p1')['n']);
+    }
+
+    public function test_find_many_ignores_temp_files(): void
+    {
+        $this->driver->save('post', 'p1', ['uuid' => 'p1']);
+        file_put_contents($this->dataDir . '/post/p2.json.tmp-1', '{"uuid":"p2"'); // a write in progress
+
+        $this->assertCount(1, $this->driver->findMany('post', new Query())->items());
+    }
+
     public function test_save_and_find_one(): void
     {
         $this->driver->save('post', 'abc-123', [

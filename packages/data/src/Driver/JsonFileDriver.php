@@ -82,7 +82,14 @@ final class JsonFileDriver implements StorageDriver
 
         $path = $this->filePath($type, $id);
         $json = json_encode($data, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        file_put_contents($path, $json);
+
+        // Write a temp file next to it, then rename: readers (and exports) only
+        // ever see the old or the new record, never half of one.
+        $tmp = $path . '.tmp-' . bin2hex(random_bytes(4));
+        if (file_put_contents($tmp, $json, LOCK_EX) === false || !rename($tmp, $path)) {
+            @unlink($tmp);
+            throw new \RuntimeException("Could not write {$path}.");
+        }
     }
 
     public function delete(string $type, string|int $id, string $idField = 'uuid'): void
