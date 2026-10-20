@@ -1198,6 +1198,47 @@ final class FolioAppTest extends TestCase
         $this->assertStringNotContainsString('data-folio-block', (string) $this->get('/blocks')->getBody());
     }
 
+    /** A section with one hero inside, published, then previewed with the same values. */
+    private function sectionPage(): array
+    {
+        $this->enableBlocks(withFrontendTemplate: true, extraClasses: [\Preflow\Folio\Tests\Fixtures\Blocks\SectionBlock\SectionBlock::class], allowedExtra: ['section']);
+        $s = 'aaaaaaaaaaaaaaaa';
+        $h = 'bbbbbbbbbbbbbbbb';
+        $values = ['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
+            'sections' => ['_order' => [$s], $s => ['_block' => 'section', 'heading' => 'Work',
+                'items' => ['_order' => [$h], $h => ['_block' => 'hero', 'headline' => 'Inner']]]]];
+        $id = $this->createPage($values);
+
+        return [(string) $this->postPage('/folio/page/' . $id . '/preview', $id, $values)->getBody(), (string) $this->get('/blocks')->getBody()];
+    }
+
+    public function test_nested_render_inherits_preview(): void
+    {
+        [$preview, $public] = $this->sectionPage();
+
+        $this->assertStringContainsString('data-folio-block="aaaaaaaaaaaaaaaa"', $preview);
+        $this->assertStringContainsString('data-folio-block="bbbbbbbbbbbbbbbb"', $preview); // child rendered without a flag
+        $this->assertStringContainsString('Inner', $public);
+        $this->assertStringNotContainsString('data-folio-block', $public);
+    }
+
+    public function test_folio_editable_only_in_preview(): void
+    {
+        [$preview, $public] = $this->sectionPage();
+
+        $this->assertStringContainsString('<h2 data-folio-edit="heading">Work</h2>', $preview);
+        $this->assertStringContainsString('<h2>Work</h2>', $public);
+        $this->assertStringNotContainsString('data-folio-edit', $public);
+    }
+
+    public function test_preview_wrapper_carries_block_label(): void
+    {
+        [$preview] = $this->sectionPage();
+
+        $this->assertStringContainsString('data-folio-block="aaaaaaaaaaaaaaaa" data-folio-label="Section"', $preview);
+        $this->assertStringContainsString('data-folio-block="bbbbbbbbbbbbbbbb" data-folio-label="Hero"', $preview);
+    }
+
     public function test_blocks_render_in_page_locale(): void
     {
         $this->enableGerman();

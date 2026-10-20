@@ -14,9 +14,15 @@ use Preflow\Folio\Content\ContentLocale;
  * request's content locale. Unknown and data-only blocks are skipped (data-
  * only blocks are rendered by their parent's template); a block that throws
  * is contained by the component error boundary.
+ *
+ * Preview mode reaches nested blocks: while a preview render runs, a block
+ * template that renders its children with folio_blocks(items) previews them
+ * too, and folio_editable() emits its field targets.
  */
 final class BlockRenderer
 {
+    private int $previewDepth = 0;
+
     public function __construct(
         private readonly BlockRegistry $blocks,
         private readonly ComponentRenderer $renderer,
@@ -24,8 +30,15 @@ final class BlockRenderer
         private readonly ContentLocale $contentLocale,
     ) {}
 
+    /** True while a preview render (of any depth) is running. */
+    public function inPreview(): bool
+    {
+        return $this->previewDepth > 0;
+    }
+
     public function render(mixed $blocks, bool $preview = false): string
     {
+        $preview = $preview || $this->inPreview();
         if (is_string($blocks) && $blocks !== '') {
             $blocks = json_decode($blocks, true);
         }
@@ -47,6 +60,7 @@ final class BlockRenderer
     /** @param array<string, mixed> $block */
     public function renderBlock(array $block, bool $preview = false): string
     {
+        $preview = $preview || $this->inPreview();
         $definition = $this->blocks->get((string) ($block['_block'] ?? ''));
         if ($definition === null || !$definition->isComponent) {
             return '';
@@ -61,14 +75,19 @@ final class BlockRenderer
             // never the page. Render-time errors are handled by the error boundary.
             return '';
         }
-        $html = $this->renderer->render($component);
-
         if (!$preview) {
-            return $html;
+            return $this->renderer->render($component);
         }
 
-        $uid = htmlspecialchars((string) ($block['_uid'] ?? ''), ENT_QUOTES, 'UTF-8');
+        $this->previewDepth++;
+        try {
+            $html = $this->renderer->render($component);
+        } finally {
+            $this->previewDepth--;
+        }
 
-        return '<div class="folio-block" data-folio-block="' . $uid . '">' . $html . '</div>';
+        $e = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+
+        return '<div class="folio-block" data-folio-block="' . $e((string) ($block['_uid'] ?? '')) . '" data-folio-label="' . $e($definition->label) . '">' . $html . '</div>';
     }
 }

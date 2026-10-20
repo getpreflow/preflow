@@ -340,15 +340,27 @@ final class FolioServiceProvider extends ServiceProvider
             ));
 
             // Blocks: rendered through their components in the content locale.
-            $blockRenderer = static fn (): \Preflow\Folio\Block\BlockRenderer => new \Preflow\Folio\Block\BlockRenderer(
-                $container->get(BlockRegistry::class),
-                $container->get(\Preflow\Components\ComponentRenderer::class),
-                $container,
-                $container->get(ContentLocale::class),
-            );
+            // One renderer per app, so nested folio_blocks() calls see the preview state.
+            $renderer = null;
+            $blockRenderer = static function () use (&$renderer, $container): \Preflow\Folio\Block\BlockRenderer {
+                return $renderer ??= new \Preflow\Folio\Block\BlockRenderer(
+                    $container->get(BlockRegistry::class),
+                    $container->get(\Preflow\Components\ComponentRenderer::class),
+                    $container,
+                    $container->get(ContentLocale::class),
+                );
+            };
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_blocks',
                 callable: fn (mixed $blocks, bool $preview = false): string => $blockRenderer()->render($blocks, $preview),
+                isSafe: true,
+            ));
+            // Field target for click-to-edit: emitted only while a preview renders.
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_editable',
+                callable: fn (string $field): string => $blockRenderer()->inPreview()
+                    ? ' data-folio-edit="' . htmlspecialchars($field, ENT_QUOTES, 'UTF-8') . '"'
+                    : '',
                 isSafe: true,
             ));
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
