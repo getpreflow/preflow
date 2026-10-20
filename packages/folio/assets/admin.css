@@ -407,6 +407,12 @@ h1 { font-size: 1.25rem; font-weight: 650; letter-spacing: -.01em; margin: 0; }
 .folio-reference { font-size: 0.85rem; margin: -0.25rem 0 1rem; opacity: 0.85; }
 .folio-badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; border: 1px solid var(--folio-border, #d0d0d0); }
 .folio-badge.is-incomplete { border-color: #d97706; color: #d97706; }
+.folio-badge.is-draft { border-color: #6b7280; color: #6b7280; }
+.folio-badge.is-published { border-color: #15803d; color: #15803d; }
+.folio-badge.is-changed { border-color: #b45309; color: #b45309; }
+.folio-notice { margin-bottom: 1rem; padding: 0.75rem 1rem; border: 1px solid #d97706; border-radius: 0.5rem; background: #fffbeb; color: #78350f; }
+.folio-publish-at { display: inline-flex; align-items: center; gap: 0.5rem; margin-right: auto; font-size: 0.875rem; }
+.folio-publish-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
 .folio-locale-errors { border: 1px solid #d97706; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
 .folio-locale-errors ul { margin: 0.25rem 0 0; padding-left: 1.25rem; }
 

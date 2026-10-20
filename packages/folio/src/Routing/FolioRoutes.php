@@ -12,6 +12,7 @@ final class FolioRoutes
     private const BLOCKS = 'Preflow\\Folio\\Http\\BlockEditorController';
     private const ADMIN = 'Preflow\\Folio\\Http\\AdminController';
     private const PREVIEW = 'Preflow\\Folio\\Http\\PreviewController';
+    private const PUBLISHING = 'Preflow\\Folio\\Http\\PublishingController';
     private const AUTH = 'Preflow\\Folio\\Http\\AuthController';
     private const AUTH_MW = 'Preflow\\Folio\\Http\\AdminAuthMiddleware';
 
@@ -38,6 +39,8 @@ final class FolioRoutes
             ['GET',  $prefix . '/{type}/{id}/edit',    'editForm'],
             ['GET',  $prefix . '/{type}/{id}/label',   'recordLabel'],
             ['POST', $prefix . '/{type}/{id}/preview', 'preview', self::PREVIEW],
+            ['POST', $prefix . '/{type}/{id}/unpublish', 'unpublish', self::PUBLISHING],
+            ['POST', $prefix . '/{type}/{id}/discard', 'discard', self::PUBLISHING],
             ['POST', $prefix . '/{type}/{id}',         'update'],
             ['POST', $prefix . '/{type}/{id}/delete',  'destroy'],
             ['POST', $prefix . '/{type}/{id}/move',    'reorder'],

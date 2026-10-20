@@ -1,9 +1,14 @@
 {% extends layout|default('@folio/admin/_layout.twig') %}
 {% block title %}Folio — {{ heading }}{% endblock %}
-{% block page_title %}{{ heading }}{% endblock %}
+{% block page_title %}{{ heading }}{% if publishing %} <span class="folio-badge is-{{ publishing.state }}">{{ publishing.label }}</span>{% endif %}{% endblock %}
 {% block actions %}{% if previewable|default(false) %}<button type="button" class="btn btn-secondary" data-folio-preview data-preview-url="{{ preview_url }}">Preview</button>{% endif %}{% endblock %}
 {% block content %}
     <div class="folio-form">
+        {% if notice %}
+            <div class="folio-notice" role="alert">
+                <p>{{ notice }}{% if reload_url %} <a href="{{ reload_url }}">Reload</a>{% endif %}</p>
+            </div>
+        {% endif %}
         {% if multilingual|default(false) %}
             <nav class="folio-languages" aria-label="Editing language">
                 {% for lang in languages %}
@@ -23,6 +28,9 @@
         {% endif %}
         {% set form = form_begin({action: action, csrf_token: csrf, attrs: multipart|default(false) ? {'enctype': 'multipart/form-data'} : {}}) %}
         {{ form.begin()|raw }}
+        {% if publishing %}
+            <input type="hidden" name="_version" value="{{ publishing.version }}">
+        {% endif %}
         {% if multilingual|default(false) %}
             <input type="hidden" name="_locale" value="{{ locale }}">
             <fieldset class="folio-visibility">
@@ -59,9 +67,31 @@
             </div>
         {% endfor %}
         <div class="folio-form-actions">
-            {{ form.submit('Save', {attrs: {class: 'btn btn-primary'}})|raw }}
+            {% if publishing %}
+                <label class="folio-publish-at">Publish at <input type="datetime-local" name="_publish_at" value="{{ publishing.publish_at }}"></label>
+                <button type="submit" class="btn btn-secondary">Save draft</button>
+                <button type="submit" class="btn btn-primary" name="_action" value="publish">Publish</button>
+            {% else %}
+                {{ form.submit('Save', {attrs: {class: 'btn btn-primary'}})|raw }}
+            {% endif %}
             <a class="btn btn-secondary" href="{{ prefix }}/{{ type }}">Cancel</a>
         </div>
         {{ form_end()|raw }}
+        {% if publishing and (publishing.discard_url or publishing.unpublish_url) %}
+            <div class="folio-publish-actions">
+                {% if publishing.discard_url %}
+                    <form method="post" action="{{ publishing.discard_url }}" data-confirm="Discard all changes since the last publish?">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+                        <button type="submit" class="btn btn-ghost">Discard changes</button>
+                    </form>
+                {% endif %}
+                {% if publishing.unpublish_url %}
+                    <form method="post" action="{{ publishing.unpublish_url }}" data-confirm="Unpublish? The public page will no longer be available.">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+                        <button type="submit" class="btn btn-danger">Unpublish</button>
+                    </form>
+                {% endif %}
+            </div>
+        {% endif %}
     </div>
 {% endblock %}

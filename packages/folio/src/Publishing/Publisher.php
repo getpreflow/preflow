@@ -143,6 +143,27 @@ final class Publisher
         $this->dm->deleteIn(ShadowTypes::published($this->definition($type)), $id);
     }
 
+    /** Carry a working copy's list position into its snapshot (ordering is not content). */
+    public function syncOrder(DynamicRecord $working): void
+    {
+        $shadow = ShadowTypes::published($working->getType());
+        $snapshot = $this->dm->findIn($shadow, (string) $working->getId());
+        if ($snapshot !== null) {
+            $snapshot->set('_order', $working->get('_order'));
+            $this->dm->saveType($snapshot, false);
+        }
+    }
+
+    /** Remove a deleted record's snapshot and revisions. */
+    public function forget(string $type, string $id): void
+    {
+        $def = $this->definition($type);
+        $this->dm->deleteIn(ShadowTypes::published($def), $id);
+        foreach ($this->revisionsOf($def, $id) as $revision) {
+            $this->dm->deleteIn(ShadowTypes::revisions($def), $revision->id);
+        }
+    }
+
     /** Reset the working copy to the published content; null when nothing is published. */
     public function discard(string $type, string $id): ?DynamicRecord
     {

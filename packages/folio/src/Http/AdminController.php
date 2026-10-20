@@ -14,6 +14,9 @@ use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\RecordValidator;
+use Preflow\Folio\Publishing\PublishState;
+use Preflow\Folio\Publishing\Publisher;
+use Preflow\Folio\Publishing\VersionConflict;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
@@ -49,6 +52,7 @@ final class AdminController
         private readonly FrontendResolver $frontend,
         ?DraftRecordFactory $drafts = null,
         ?RecordValidator $validator = null,
+        private readonly ?Publisher $publisher = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
         $this->validator = $validator ?? new RecordValidator($fieldTypes, $dm);
@@ -104,6 +108,7 @@ final class AdminController
         $columns = $this->listColumns($typeDef, $listConfig);
 
         $multilingual = $typeDef->translatableFields() !== [];
+        $states = $this->publishes($type) ? $this->publisher->states($type) : null;
         $rows = [];
         foreach ($this->listQuery($type, $typeDef, $listConfig)->get()->items() as $record) {
             $localized = $record->localized($typeDef->locales->default);
@@ -121,6 +126,7 @@ final class AdminController
                 'id' => $record->getId(),
                 'cells' => $cells,
                 'languages' => $multilingual ? $this->languageBadges($typeDef, $record) : [],
+                'state' => $states !== null ? ($states[(string) $record->getId()] ?? PublishState::Draft) : null,
             ];
         }
 
@@ -135,6 +141,7 @@ final class AdminController
             'rows' => $rows,
             'orderable' => $orderable,
             'multilingual' => $multilingual,
+            'publishing' => $states !== null,
             'csrf' => $csrf,
         ]));
     }
@@ -196,23 +203,33 @@ final class AdminController
         }
         $data = [$typeDef->idField => $record->getId()];
 
-        try {
-            $this->saveWithBlocks($typeDef, $record);
-        } catch (ValidationException $e) {
-            $action = $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : '');
+        if ($this->publishes($type)) {
+            // Once saved, the record exists: a re-rendered form must update it, not create another.
             $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
+            $base = $this->prefix . '/' . $type . '/' . $record->getId();
+            $failed = $this->savePublishing($request, $record, $type, $base . ($drawer ? '?_drawer=1' : ''), 'Edit ' . $this->labelFor($type), $csrf, $locale, $base . '/edit', $layout);
+            if ($failed !== null) {
+                return $failed;
+            }
+        } else {
+            try {
+                $this->saveWithBlocks($typeDef, $record);
+            } catch (ValidationException $e) {
+                $action = $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : '');
+                $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
 
-            return $this->form(
-                $type,
-                $record->toArray(),
-                $action,
-                'New ' . $this->labelFor($type),
-                $e->errors(),
-                $csrf,
-                422,
-                $layout,
-                $locale,
-            );
+                return $this->form(
+                    $type,
+                    $record->toArray(),
+                    $action,
+                    'New ' . $this->labelFor($type),
+                    $e->errors(),
+                    $csrf,
+                    422,
+                    $layout,
+                    $locale,
+                );
+            }
         }
 
         if ($drawer) {
@@ -271,20 +288,27 @@ final class AdminController
         $locale = $this->requestLocale($request, $typeDef);
         $record = $this->drafts->build($typeDef, $request, $existing, $locale);
 
-        try {
-            $this->saveWithBlocks($typeDef, $record);
-        } catch (ValidationException $e) {
-            return $this->form(
-                $type,
-                $record->toArray(),
-                $this->prefix . '/' . $type . '/' . $id,
-                'Edit ' . $this->labelFor($type),
-                $e->errors(),
-                $csrf,
-                422,
-                locale: $locale,
-                editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit',
-            );
+        if ($this->publishes($type)) {
+            $failed = $this->savePublishing($request, $record, $type, $this->prefix . '/' . $type . '/' . $id, 'Edit ' . $this->labelFor($type), $csrf, $locale, $this->prefix . '/' . $type . '/' . $id . '/edit');
+            if ($failed !== null) {
+                return $failed;
+            }
+        } else {
+            try {
+                $this->saveWithBlocks($typeDef, $record);
+            } catch (ValidationException $e) {
+                return $this->form(
+                    $type,
+                    $record->toArray(),
+                    $this->prefix . '/' . $type . '/' . $id,
+                    'Edit ' . $this->labelFor($type),
+                    $e->errors(),
+                    $csrf,
+                    422,
+                    locale: $locale,
+                    editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit',
+                );
+            }
         }
 
         return new Response(302, ['Location' => $this->prefix . '/' . $type . $this->localeQuery($typeDef, $locale)]);
@@ -313,6 +337,7 @@ final class AdminController
             foreach ($records as $i => $record) {
                 $record->set(self::ORDER, ($i + 1) * 10);
                 $this->dm->saveType($record, validate: false);
+                $this->syncOrder($type, $record);
             }
         }
 
@@ -332,6 +357,8 @@ final class AdminController
             $b->set(self::ORDER, $orderA);
             $this->dm->saveType($a, validate: false);
             $this->dm->saveType($b, validate: false);
+            $this->syncOrder($type, $a);
+            $this->syncOrder($type, $b);
         }
 
         return new Response(302, ['Location' => $this->prefix . '/' . $type]);
@@ -353,12 +380,15 @@ final class AdminController
         }
 
         $this->dm->deleteType($type, $id);
+        if ($this->publishes($type)) {
+            $this->publisher->forget($type, $id);
+        }
 
         return new Response(302, ['Location' => $this->prefix . '/' . $type]);
     }
 
     /** @param array<string, mixed> $values @param array<string, list<string>> $errors */
-    private function form(string $type, array $values, string $action, string $heading, array $errors, string $csrf = '', int $status = 200, string $layout = '@folio/admin/_layout.twig', ?string $locale = null, ?string $editUrl = null): ResponseInterface
+    private function form(string $type, array $values, string $action, string $heading, array $errors, string $csrf = '', int $status = 200, string $layout = '@folio/admin/_layout.twig', ?string $locale = null, ?string $editUrl = null, ?string $notice = null, ?string $reloadUrl = null): ResponseInterface
     {
         $typeDef = $this->registry->get($type);
         $locales = $typeDef->locales;
@@ -479,6 +509,9 @@ final class AdminController
             'default_locale' => $locales->default,
             'default_language' => self::languageName($locales->default),
             'available_in' => DynamicRecord::fromArray($typeDef, $values)->availableLocales(),
+            'publishing' => $this->publishingContext($type, $typeDef, $values),
+            'notice' => $notice,
+            'reload_url' => $reloadUrl,
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
@@ -522,6 +555,99 @@ final class AdminController
     {
         $this->validator->validate($record);
         $this->dm->saveType($record, false);
+    }
+
+    private function publishes(string $type): bool
+    {
+        return $this->publisher !== null && $this->publisher->enabled($type);
+    }
+
+    /**
+     * Publishing types: save the working copy (no rules; _publish_at and the
+     * loaded _version from the form), then publish when "_action" asks for it.
+     * Returns the form to re-render on a version conflict or a failed publish.
+     */
+    private function savePublishing(ServerRequestInterface $request, DynamicRecord $record, string $type, string $action, string $heading, string $csrf, string $locale, string $editUrl, string $layout = '@folio/admin/_layout.twig'): ?ResponseInterface
+    {
+        $body = (array) $request->getParsedBody();
+        if (array_key_exists('_publish_at', $body)) {
+            $record->set('_publish_at', self::publishAt($body['_publish_at']));
+        }
+        $loaded = is_string($body['_version'] ?? null) && ctype_digit($body['_version']) ? (int) $body['_version'] : null;
+
+        try {
+            $this->publisher?->saveDraft($record, $loaded);
+        } catch (VersionConflict $e) {
+            $values = $record->toArray();
+            $values['_version'] = $e->current; // saving again overwrites, deliberately
+            return $this->form($type, $values, $action, $heading, [], $csrf, 409, $layout, $locale, $editUrl,
+                notice: 'Someone else changed this record. Save again to overwrite, or reload to discard your edits.',
+                reloadUrl: $editUrl,
+            );
+        }
+
+        if (($body['_action'] ?? null) === 'publish') {
+            try {
+                $this->publisher?->publish($record, self::userId($request));
+            } catch (ValidationException $e) {
+                return $this->form($type, $record->toArray(), $action, $heading, $e->errors(), $csrf, 422, $layout, $locale, $editUrl,
+                    notice: 'Saved as draft — not published.',
+                );
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Badge, version and actions of a publishing type's editor; null otherwise.
+     *
+     * @param array<string, mixed> $values
+     * @return array<string, mixed>|null
+     */
+    private function publishingContext(string $type, TypeDefinition $typeDef, array $values): ?array
+    {
+        if (!$this->publishes($type)) {
+            return null;
+        }
+        $id = $values[$typeDef->idField] ?? null;
+        $stored = is_string($id) && $id !== '' ? $this->dm->findType($type, $id) : null;
+        $state = $stored !== null ? $this->publisher->state($stored) : PublishState::Draft;
+        $base = $this->prefix . '/' . $type . '/' . $id;
+
+        return [
+            'state' => $state->value,
+            'label' => $state->label(),
+            'version' => (int) ($values['_version'] ?? 0),
+            'publish_at' => is_string($values['_publish_at'] ?? null) ? $values['_publish_at'] : '',
+            'unpublish_url' => $stored !== null && $state !== PublishState::Draft ? $base . '/unpublish' : null,
+            'discard_url' => $stored !== null && $state === PublishState::Changed ? $base . '/discard' : null,
+        ];
+    }
+
+    private function syncOrder(string $type, DynamicRecord $record): void
+    {
+        if ($this->publishes($type)) {
+            $this->publisher->syncOrder($record);
+        }
+    }
+
+    /** A valid "Y-m-d\TH:i" (datetime-local) value, else null (cleared). */
+    private static function publishAt(mixed $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+        $at = \DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $value);
+
+        return $at !== false && $at->format('Y-m-d\TH:i') === $value ? $value : null;
+    }
+
+    private static function userId(ServerRequestInterface $request): ?string
+    {
+        $user = $request->getAttribute(\Preflow\Auth\Authenticatable::class);
+
+        return $user instanceof \Preflow\Auth\Authenticatable ? $user->getAuthId() : null;
     }
 
     private function isSingleton(string $type): bool
