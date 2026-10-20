@@ -80,6 +80,16 @@ final class FolioServiceProvider extends ServiceProvider
         // One request-scoped content locale shared by the frontend, preview and field types.
         $container->instance(ContentLocale::class, new ContentLocale($locales ?? \Preflow\Data\Locales::single('en')));
 
+        // Media library: files in a public, web-server-served directory (no PHP on delivery).
+        $assetsConfig = (array) ($folioCfg['assets'] ?? []);
+        $container->singleton(\Preflow\Folio\Assets\AssetLibrary::class, fn (Container $c) => new \Preflow\Folio\Assets\AssetLibrary(
+            $c->get(DataManager::class),
+            $locales ?? \Preflow\Data\Locales::single('en'),
+            (string) ($assetsConfig['dir'] ?? $app->basePath('public/media')),
+            (string) ($assetsConfig['url'] ?? '/media'),
+            $assetsConfig,
+        ));
+
         // Request-scoped: public renders read published snapshots, admin routes switch it to working copies.
         $container->singleton(\Preflow\Folio\Content\LiveContent::class, fn (Container $c) => new \Preflow\Folio\Content\LiveContent(
             $c->get(DataManager::class),
