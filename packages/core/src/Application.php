@@ -218,6 +218,10 @@ final class Application
         }
 
         $response = $this->kernel->handle($request);
+        if ($request->getMethod() === 'HEAD') {
+            // Same status and headers as GET, no body (RFC 9110).
+            $response = $response->withBody((new \Nyholm\Psr7\Factory\Psr17Factory())->createStream(''));
+        }
 
         // Log asset stats to debug collector
         if ($this->container->has(DebugCollector::class) && $this->container->has(\Preflow\View\AssetCollector::class)) {

@@ -107,6 +107,25 @@ final class RouteMatcherTest extends TestCase
         $this->assertNull($result);
     }
 
+    public function test_head_falls_back_to_get(): void
+    {
+        $collection = new RouteCollection();
+        $collection->add($this->entry('/posts', method: 'GET'));
+
+        $result = (new RouteMatcher($collection))->match('HEAD', '/posts');
+
+        $this->assertNotNull($result);
+        $this->assertSame('GET', $result['entry']->method);
+    }
+
+    public function test_head_does_not_match_post_only_routes(): void
+    {
+        $collection = new RouteCollection();
+        $collection->add($this->entry('/posts', method: 'POST'));
+
+        $this->assertNull((new RouteMatcher($collection))->match('HEAD', '/posts'));
+    }
+
     public function test_static_routes_match_before_dynamic(): void
     {
         $collection = new RouteCollection();

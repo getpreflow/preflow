@@ -60,7 +60,8 @@ final class RouteMatcher
             }
         }
 
-        return null;
+        // HEAD is GET without a body (RFC 9110): fall back to the GET route.
+        return $method === 'HEAD' ? $this->match('GET', $uri) : null;
     }
 
     /**
