@@ -82,6 +82,24 @@
             <a class="btn btn-secondary" href="{{ prefix }}/{{ type }}">Cancel</a>
         </div>
         {{ form_end()|raw }}
+        {% if publishing and publishing.revisions is not empty %}
+            <details class="folio-revisions">
+                <summary>Revisions ({{ publishing.revisions|length }})</summary>
+                <ol class="folio-revision-list">
+                    {% for rev in publishing.revisions %}
+                        <li class="folio-revision">
+                            <span class="folio-revision-date">{{ rev.date|date('Y-m-d H:i') }}</span>
+                            <span class="folio-revision-by">{{ rev.by ?: '—' }}</span>
+                            <span class="folio-revision-changed">Changed: {{ rev.changed is empty ? '—' : rev.changed|join(', ') }}</span>
+                            <form method="post" action="{{ rev.restore_url }}" data-confirm="Replace the working copy with this revision?">
+                                <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+                                <button type="submit" class="btn btn-ghost">Restore</button>
+                            </form>
+                        </li>
+                    {% endfor %}
+                </ol>
+            </details>
+        {% endif %}
         {% if publishing and (publishing.discard_url or publishing.unpublish_url) %}
             <div class="folio-publish-actions">
                 {% if publishing.discard_url %}

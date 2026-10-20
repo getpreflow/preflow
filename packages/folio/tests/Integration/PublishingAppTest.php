@@ -235,6 +235,47 @@ final class PublishingAppTest extends TestCase
         $this->assertStringNotContainsString('hx-trigger="input delay:3s', (string) $this->get('/folio/memo/m1/edit')->getBody());
     }
 
+    public function test_edit_form_lists_revisions(): void
+    {
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 'hello']]), 'u@x');
+        $post = $this->stored('post', 'p1');
+        $post->set('body', ['en' => 'More']);
+        $this->publisher()->publish($post, 'u@x');
+
+        $body = (string) $this->get('/folio/post/p1/edit')->getBody();
+
+        $this->assertSame(2, substr_count($body, 'class="folio-revision"'));
+        $newest = strpos($body, 'Changed: Body');
+        $oldest = strpos($body, 'Changed: Title, Slug');
+        $this->assertNotFalse($newest);
+        $this->assertNotFalse($oldest);
+        $this->assertLessThan($oldest, $newest);
+        $this->assertStringContainsString('u@x', $body);
+    }
+
+    public function test_restore_route_restores_and_redirects(): void
+    {
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'First'], 'slug' => ['en' => 'hello']]), null);
+        $post = $this->stored('post', 'p1');
+        $post->set('title', ['en' => 'Second']);
+        $this->publisher()->publish($post, null);
+        $first = $this->publisher()->revisions('post', 'p1')[1];
+
+        $res = $this->post('/folio/post/p1/revisions/' . $first->id . '/restore');
+
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame('/folio/post/p1/edit?restored=1', $res->getHeaderLine('Location'));
+        $this->assertSame('First', $this->stored('post', 'p1')->get('title')['en']);
+        $this->assertStringContainsString('Restored into the working copy — publish to make it live.', (string) $this->get('/folio/post/p1/edit?restored=1')->getBody());
+    }
+
+    public function test_restore_unknown_revision_is_404(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 'hello']]);
+
+        $this->assertSame(404, $this->post('/folio/post/p1/revisions/nope/restore')->getStatusCode());
+    }
+
     public function test_published_field_is_ignored_when_publishing(): void
     {
         $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Shown'], 'slug' => ['en' => 'hello'], 'status' => 'draft']), null);

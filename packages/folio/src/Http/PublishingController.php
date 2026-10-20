@@ -15,7 +15,7 @@ use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
-/** Publishing actions besides the form save: autosave, unpublish, discard. */
+/** Publishing actions besides the form save: autosave, unpublish, discard, restore. */
 final class PublishingController
 {
     public function __construct(
@@ -53,6 +53,18 @@ final class PublishingController
         }
 
         return $this->status(self::stateText($this->publisher->state($record)), (int) $record->get('_version'));
+    }
+
+    /** Copy a revision into the working copy (publish again to make it live). */
+    public function restore(ServerRequestInterface $request): ResponseInterface
+    {
+        [$type, $id] = $this->target($request);
+        $revision = (string) $request->getAttribute('rev', '');
+        if ($type === null || $this->publisher->restore($type, $id, $revision) === null) {
+            return new Response(404, [], 'Not found');
+        }
+
+        return $this->backToEditor($type, $id, '?restored=1');
     }
 
     public static function stateText(PublishState $state): string
@@ -100,12 +112,12 @@ final class PublishingController
         return [$this->catalog->has($type) && $this->publisher->enabled($type) ? $type : null, $id];
     }
 
-    private function backToEditor(string $type, string $id): ResponseInterface
+    private function backToEditor(string $type, string $id, string $query = ''): ResponseInterface
     {
         $url = $this->catalog->get($type)?->singleton === true
             ? $this->prefix . '/' . $type
             : $this->prefix . '/' . $type . '/' . rawurlencode($id) . '/edit';
 
-        return new Response(302, ['Location' => $url]);
+        return new Response(302, ['Location' => $url . $query]);
     }
 }

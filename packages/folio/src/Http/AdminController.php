@@ -99,6 +99,7 @@ final class AdminController
                 $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '',
                 locale: $this->requestLocale($request, $typeDef),
                 editUrl: $this->prefix . '/' . $type,
+                notice: self::restoredNotice($request),
             );
         }
 
@@ -265,6 +266,7 @@ final class AdminController
             $csrf,
             locale: $this->requestLocale($request, $this->registry->get($type)),
             editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit',
+            notice: self::restoredNotice($request),
         );
     }
 
@@ -621,6 +623,7 @@ final class AdminController
             'version' => (int) ($values['_version'] ?? 0),
             'publish_at' => is_string($values['_publish_at'] ?? null) ? $values['_publish_at'] : '',
             'save_state' => $stored !== null ? PublishingController::stateText($state) : null,
+            'revisions' => $stored !== null ? $this->revisionRows($type, $typeDef, (string) $id) : [],
             'autosave_url' => $stored !== null ? $base . '/autosave' : null,
             'unpublish_url' => $stored !== null && $state !== PublishState::Draft ? $base . '/unpublish' : null,
             'discard_url' => $stored !== null && $state === PublishState::Changed ? $base . '/discard' : null,
@@ -643,6 +646,39 @@ final class AdminController
         $at = \DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $value);
 
         return $at !== false && $at->format('Y-m-d\TH:i') === $value ? $value : null;
+    }
+
+    private static function restoredNotice(ServerRequestInterface $request): ?string
+    {
+        return ($request->getQueryParams()['restored'] ?? null) === '1'
+            ? 'Restored into the working copy — publish to make it live.'
+            : null;
+    }
+
+    /**
+     * Revision rows for the editor panel, newest first.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function revisionRows(string $type, TypeDefinition $typeDef, string $id): array
+    {
+        $rows = [];
+        foreach ($this->publisher?->revisions($type, $id) ?? [] as $revision) {
+            $labels = array_map(
+                fn (string $f): string => isset($typeDef->fields[$f])
+                    ? ($typeDef->fields[$f]->label ?? (new \Preflow\Form\FieldRenderer())->humanize($f))
+                    : $f,
+                $revision->changed,
+            );
+            $rows[] = [
+                'date' => $revision->createdAt,
+                'by' => $revision->createdBy,
+                'changed' => $labels,
+                'restore_url' => $this->prefix . '/' . $type . '/' . rawurlencode($id) . '/revisions/' . rawurlencode($revision->id) . '/restore',
+            ];
+        }
+
+        return $rows;
     }
 
     private static function userId(ServerRequestInterface $request): ?string
