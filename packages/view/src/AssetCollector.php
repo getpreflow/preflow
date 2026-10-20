@@ -90,6 +90,28 @@ final class AssetCollector
     }
 
     /**
+     * Put the collected assets into a full HTML document: head assets before
+     * </head>, body JS before </body>. Responses rendered outside the page
+     * pipeline (e.g. Folio's frontend) use this too, so CSS collected while
+     * rendering (components, focal-point rules) reaches the page.
+     */
+    public function injectInto(string $html): string
+    {
+        $head = $this->renderHead();
+        $headAt = stripos($html, '</head>');
+        if ($head !== '' && $headAt !== false) {
+            $html = substr_replace($html, $head, $headAt, 0);
+        }
+        $body = $this->renderAssets();
+        $bodyAt = strripos($html, '</body>');
+        if ($body !== '' && $bodyAt !== false) {
+            $html = substr_replace($html, $body, $bodyAt, 0);
+        }
+
+        return $html;
+    }
+
+    /**
      * Render for end of <body>: body JS only.
      */
     public function renderAssets(): string

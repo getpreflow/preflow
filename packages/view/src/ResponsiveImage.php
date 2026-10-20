@@ -6,7 +6,7 @@ namespace Preflow\View;
 
 final class ResponsiveImage
 {
-    private const DEFAULTS = [
+    public const DEFAULTS = [
         'widths' => [480, 768, 1024],
         'sizes' => '100vw',
         'format' => 'webp',

@@ -1081,17 +1081,6 @@ final class Application
      */
     private function injectAssets(string $html, \Preflow\View\AssetCollector $assets): string
     {
-        $headContent = $assets->renderHead();
-        $bodyContent = $assets->renderAssets();
-
-        if ($headContent !== '') {
-            $html = str_replace('</head>', $headContent . '</head>', $html);
-        }
-
-        if ($bodyContent !== '') {
-            $html = str_replace('</body>', $bodyContent . '</body>', $html);
-        }
-
-        return $html;
+        return $assets->injectInto($html);
     }
 }

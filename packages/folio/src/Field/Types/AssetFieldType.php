@@ -22,6 +22,7 @@ final class AssetFieldType implements FieldType, HandlesUpload
     public function __construct(
         private readonly string $uploadsDir,
         private readonly string $uploadUrlPrefix,
+        private readonly ?\Preflow\Folio\Assets\ImageTag $images = null,
     ) {}
 
     public function key(): string
@@ -107,6 +108,9 @@ final class AssetFieldType implements FieldType, HandlesUpload
         $list = $this->toList($value);
         if ($list === []) {
             return '';
+        }
+        if ($this->images !== null) {
+            return implode('', array_map(fn (string $v): string => $this->images->render($v), $list));
         }
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
         $out = '';

@@ -95,6 +95,14 @@ final class FolioServiceProvider extends ServiceProvider
             ),
         ));
 
+        $container->singleton(\Preflow\Folio\Assets\ImageTag::class, fn (Container $c) => new \Preflow\Folio\Assets\ImageTag(
+            $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
+            $c->get(ContentLocale::class),
+            (array) $app->config()->get('image.presets', []),
+            $c->get(\Preflow\View\AssetCollector::class),
+            rtrim($prefix, '/') . '/_uploads',
+        ));
+
         // Request-scoped: public renders read published snapshots, admin routes switch it to working copies.
         $container->singleton(\Preflow\Folio\Content\LiveContent::class, fn (Container $c) => new \Preflow\Folio\Content\LiveContent(
             $c->get(DataManager::class),
@@ -134,7 +142,7 @@ final class FolioServiceProvider extends ServiceProvider
                     ->allowRelativeLinks()
                     ->allowRelativeMedias(),
             )));
-            $registry->register(new AssetFieldType($uploadsDir, $uploadUrlPrefix));
+            $registry->register(new AssetFieldType($uploadsDir, $uploadUrlPrefix, $c->get(\Preflow\Folio\Assets\ImageTag::class)));
             $registry->register(new RelationFieldType(
                 $c->get(\Preflow\Data\DataManager::class),
                 $c->get(TypeRegistry::class),
@@ -211,6 +219,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
             $c->get(\Preflow\Folio\Content\LiveContent::class),
+            $c->get(\Preflow\View\AssetCollector::class),
         ));
         $container->bind(PreviewController::class, fn (Container $c) => new PreviewController(
             $c->get(TypeCatalog::class),
@@ -222,6 +231,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(FrontendResolver::class),
             $c->get(DraftRecordFactory::class),
             $c->get(ContentLocale::class),
+            $c->get(\Preflow\View\AssetCollector::class),
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
             dirname(__DIR__) . '/assets',
@@ -307,6 +317,12 @@ final class FolioServiceProvider extends ServiceProvider
                     \Preflow\Data\LocaleValue::resolveTree($block, $container->get(ContentLocale::class)->locales(), $container->get(ContentLocale::class)->get()),
                     $preview,
                 ),
+                isSafe: true,
+            ));
+
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_image',
+                callable: fn (mixed $value, ?string $preset = null, array $options = []): string => $container->get(\Preflow\Folio\Assets\ImageTag::class)->render($value, $preset, $options),
                 isSafe: true,
             ));
 

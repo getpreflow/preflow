@@ -39,6 +39,7 @@ final class PreviewController
         private readonly FrontendResolver $frontend,
         ?DraftRecordFactory $drafts = null,
         private readonly ?ContentLocale $contentLocale = null,
+        private readonly ?\Preflow\View\AssetCollector $assets = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
     }
@@ -68,7 +69,7 @@ final class PreviewController
             'alternates' => [],
         ]);
 
-        return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
+        return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->assets?->injectInto($html) ?? $html);
     }
 
 }

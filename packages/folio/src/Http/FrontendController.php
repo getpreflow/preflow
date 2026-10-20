@@ -27,6 +27,7 @@ final class FrontendController
         private readonly ?DataManager $dm = null,
         private readonly ?PreviewLinks $previews = null,
         private readonly ?\Preflow\Folio\Content\LiveContent $live = null,
+        private readonly ?\Preflow\View\AssetCollector $assets = null,
     ) {}
 
     public function show(ServerRequestInterface $request): ResponseInterface
@@ -67,7 +68,7 @@ final class FrontendController
             }
         }
 
-        return $this->engine->render(self::template($this->engine, $route), [
+        $html = $this->engine->render(self::template($this->engine, $route), [
             'record' => $record->localized($locale)->toArray(),
             'rendered' => $this->records->renderedMap($record, $locale),
             'type' => $route->type,
@@ -75,6 +76,9 @@ final class FrontendController
             'locale' => $locale,
             'alternates' => $alternates,
         ]);
+
+        // CSS collected while rendering (component styles, focal-point rules) goes into <head>.
+        return $this->assets?->injectInto($html) ?? $html;
     }
 
     /**
