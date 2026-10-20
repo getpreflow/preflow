@@ -15,5 +15,6 @@ final readonly class TypeListing
         public string $label,
         public ?array $frontend = null,
         public array $list = [],
+        public bool $singleton = false,
     ) {}
 }

@@ -32,6 +32,7 @@ final class TypeCatalog
                 $label,
                 isset($data['frontend']) && is_array($data['frontend']) ? $data['frontend'] : null,
                 isset($data['list']) && is_array($data['list']) ? $data['list'] : [],
+                ($data['singleton'] ?? false) === true,
             );
         }
 

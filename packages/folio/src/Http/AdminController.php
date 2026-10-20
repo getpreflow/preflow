@@ -78,6 +78,21 @@ final class AdminController
         if (!$this->catalog->has($type)) {
             return new Response(404, [], 'Unknown type');
         }
+        if ($this->isSingleton($type)) {
+            // A singleton has no list: its one record (id = type key) is edited directly.
+            $typeDef = $this->registry->get($type);
+            $record = $this->dm->findType($type, $type);
+            return $this->form(
+                $type,
+                $record?->toArray() ?? [],
+                $this->prefix . '/' . $type . '/' . $type,
+                $this->labelFor($type),
+                [],
+                $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '',
+                locale: $this->requestLocale($request, $typeDef),
+                editUrl: $this->prefix . '/' . $type,
+            );
+        }
 
         $typeDef = $this->registry->get($type);
         $listConfig = $this->catalog->get($type)?->list ?? [];
@@ -144,7 +159,7 @@ final class AdminController
     public function createForm(ServerRequestInterface $request): ResponseInterface
     {
         $type = (string) $request->getAttribute('type', '');
-        if (!$this->catalog->has($type)) {
+        if (!$this->catalog->has($type) || $this->isSingleton($type)) {
             return new Response(404, [], 'Unknown type');
         }
 
@@ -161,7 +176,7 @@ final class AdminController
     public function store(ServerRequestInterface $request): ResponseInterface
     {
         $type = (string) $request->getAttribute('type', '');
-        if (!$this->catalog->has($type)) {
+        if (!$this->catalog->has($type) || $this->isSingleton($type)) {
             return new Response(404, [], 'Unknown type');
         }
 
@@ -240,16 +255,17 @@ final class AdminController
             return new Response(404, [], 'Unknown type');
         }
 
+        $typeDef = $this->registry->get($type);
         $current = $this->dm->findType($type, $id);
-        if ($current === null) {
+        if ($current === null && !($this->isSingleton($type) && $id === $type)) {
             return new Response(404, [], 'Not found');
         }
+        $existing = $current?->toArray() ?? [$typeDef->idField => $id]; // a singleton is created on first save
 
-        $typeDef = $this->registry->get($type);
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
 
         $locale = $this->requestLocale($request, $typeDef);
-        $record = $this->drafts->build($typeDef, $request, $current->toArray(), $locale);
+        $record = $this->drafts->build($typeDef, $request, $existing, $locale);
 
         try {
             $this->saveWithBlocks($typeDef, $record);
@@ -278,7 +294,7 @@ final class AdminController
     {
         $type = (string) $request->getAttribute('type', '');
         $id = (string) $request->getAttribute('id', '');
-        if (!$this->catalog->has($type) || ($this->catalog->get($type)?->list['orderable'] ?? false) !== true) {
+        if (!$this->catalog->has($type) || $this->isSingleton($type) || ($this->catalog->get($type)?->list['orderable'] ?? false) !== true) {
             return new Response(404, [], 'Unknown type');
         }
 
@@ -320,6 +336,9 @@ final class AdminController
     public function destroy(ServerRequestInterface $request): ResponseInterface
     {
         $type = (string) $request->getAttribute('type', '');
+        if ($this->isSingleton($type)) {
+            return new Response(404, [], 'Singletons cannot be deleted');
+        }
         $id = (string) $request->getAttribute('id', '');
         if (!$this->catalog->has($type)) {
             return new Response(404, [], 'Unknown type');
@@ -510,6 +529,11 @@ final class AdminController
         }
 
         $this->dm->saveType($record, true, $this->rulesFor($typeDef));
+    }
+
+    private function isSingleton(string $type): bool
+    {
+        return $this->catalog->get($type)?->singleton === true;
     }
 
     /** The editing locale: ?locale= (GET) or _locale (POST), if configured; else the default. */

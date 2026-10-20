@@ -1180,6 +1180,89 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('<h1>English headline</h1>', (string) $this->get('/about')->getBody());
     }
 
+    public function test_singleton_nav_goes_straight_to_form(): void
+    {
+        $this->writeSiteType();
+
+        $res = $this->get('/folio/site');
+        $body = (string) $res->getBody();
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('action="/folio/site/site"', $body);
+        $this->assertStringNotContainsString('href="/folio/site/new"', $body);
+        $this->assertStringNotContainsString('/delete"', $body);
+    }
+
+    public function test_first_save_creates_record(): void
+    {
+        $this->writeSiteType();
+        $this->assertNull($this->dm()->findType('site', 'site'));
+
+        $res = $this->postSite(['name' => 'Steffen Meyer', 'tagline' => 'technologist']);
+
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame('Steffen Meyer', $this->dm()->findType('site', 'site')?->get('name'));
+    }
+
+    public function test_singleton_new_and_delete_are_404(): void
+    {
+        $this->writeSiteType();
+        $this->postSite(['name' => 'S']);
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+
+        $this->assertSame(404, $this->get('/folio/site/new')->getStatusCode());
+        $this->assertSame(404, $this->app()->handle($f->createServerRequest('POST', '/folio/site')->withParsedBody(['name' => 'X']))->getStatusCode());
+        $this->assertSame(404, $this->app()->handle($f->createServerRequest('POST', '/folio/site/site/delete')
+            ->withAttribute('type', 'site')->withAttribute('id', 'site'))->getStatusCode());
+        $this->assertNotNull($this->dm()->findType('site', 'site'));
+    }
+
+    public function test_folio_get_returns_null_before_first_save_then_values(): void
+    {
+        $this->writeSiteType(withTemplate: true);
+        $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published']);
+
+        $this->assertStringContainsString('site=none', (string) $this->get('/about')->getBody());
+
+        $this->postSite(['name' => 'Steffen Meyer']);
+        $this->assertStringContainsString('site=Steffen Meyer', (string) $this->get('/about')->getBody());
+    }
+
+    public function test_singleton_is_localized(): void
+    {
+        $this->enableGerman();
+        $this->writeSiteType(withTemplate: true);
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published', '_locales_submitted' => '1', '_locales' => ['de']]);
+        $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'de', 'title' => 'Über', 'slug' => 'about', 'body' => 'b', 'status' => 'published']);
+        $this->postSite(['name' => 'English name']);
+        $this->postSite(['_locale' => 'de', 'name' => 'Deutscher Name']);
+
+        $this->assertStringContainsString('site=Deutscher Name', (string) $this->get('/de/about')->getBody());
+        $this->assertStringContainsString('site=English name', (string) $this->get('/about')->getBody());
+    }
+
+    private function writeSiteType(bool $withTemplate = false): void
+    {
+        file_put_contents($this->dir . '/config/models/site.json', json_encode([
+            'key' => 'site', 'table' => 'site', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Site', 'singleton' => true,
+            'fields' => [
+                'name' => ['type' => 'string', 'translatable' => true, 'validate' => ['required']],
+                'tagline' => ['type' => 'string'],
+            ],
+        ]));
+        if ($withTemplate) {
+            @mkdir($this->dir . '/resources/folio/frontend', 0777, true);
+            file_put_contents($this->dir . '/resources/folio/frontend/page.twig', '<html><head></head><body>{% set site = folio_get(\'site\') %}site={{ site ? site.name : \'none\' }}</body></html>');
+        }
+    }
+
+    /** @param array<string, mixed> $body */
+    private function postSite(array $body): ResponseInterface
+    {
+        return $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/site/site')
+            ->withAttribute('type', 'site')->withAttribute('id', 'site')->withParsedBody($body));
+    }
+
     public function test_edit_form_no_preview_button_for_non_frontend_type(): void
     {
         $app = $this->app();

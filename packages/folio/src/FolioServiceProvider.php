@@ -171,6 +171,11 @@ final class FolioServiceProvider extends ServiceProvider
             dirname(__DIR__) . '/assets',
             $this->assetMap(),
         ));
+        $container->singleton(\Preflow\Folio\Content\Singletons::class, fn (Container $c) => new \Preflow\Folio\Content\Singletons(
+            $c->get(DataManager::class),
+            $c->get(TypeCatalog::class),
+            $c->get(ContentLocale::class),
+        ));
         $container->bind(\Preflow\Folio\Http\BlockEditorController::class, fn (Container $c) => new \Preflow\Folio\Http\BlockEditorController(
             $c->get(FieldTypeRegistry::class),
             $locales ?? \Preflow\Data\Locales::single('en'),
@@ -217,6 +222,12 @@ final class FolioServiceProvider extends ServiceProvider
                     return $prefix . '/_assets/' . $file . '?v=' . $v;
                 },
                 isSafe: false,
+            ));
+
+            // Singletons: folio_get('site') -> localized values (null before the first save).
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_get',
+                callable: fn (string $type): ?array => $container->get(\Preflow\Folio\Content\Singletons::class)->get($type),
             ));
 
             // Blocks: rendered through their components in the content locale.
