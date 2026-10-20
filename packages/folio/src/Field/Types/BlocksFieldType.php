@@ -524,7 +524,18 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
     public function assets(): array
     {
         // htmx: picker and duplicate fragments; admin.js: collapse, move, remove.
-        return ['htmx.js', 'admin.js'];
+        // Plus whatever the fields inside any block need (Trix for rich text…),
+        // since cards can be added after the page loaded.
+        $assets = ['htmx.js', 'admin.js'];
+        foreach ($this->blocks->all() as $definition) {
+            foreach ($definition->fields as $field) {
+                if ($field->type !== $this->key() && $this->fieldTypes->has($field->type)) {
+                    $assets = [...$assets, ...$this->fieldTypes->get($field->type)->assets()];
+                }
+            }
+        }
+
+        return array_values(array_unique($assets));
     }
 
     /** @return UploadedFileInterface[] */

@@ -1262,6 +1262,30 @@ final class FolioAppTest extends TestCase
         return [(string) $this->postPage('/folio/page/' . $id . '/preview', $id, $values)->getBody(), (string) $this->get('/blocks')->getBody()];
     }
 
+    public function test_blocks_editor_loads_assets_of_fields_inside_blocks(): void
+    {
+        // A rich text field inside a block needs Trix on the page (and on cards added later).
+        $this->enableBlocks(extraClasses: [\Preflow\Folio\Tests\Fixtures\Blocks\SectionBlock\SectionBlock::class], allowedExtra: ['section']);
+        $page = json_decode((string) file_get_contents($this->dir . '/config/models/page.json'), true);
+        $page['fields'] = array_intersect_key($page['fields'], array_flip(['title', 'slug', 'status', 'sections']));
+        file_put_contents($this->dir . '/config/models/page.json', json_encode($page));
+
+        $body = (string) $this->get('/folio/page/new')->getBody();
+
+        $this->assertStringContainsString('/folio/_assets/trix.js?v=', $body);
+        $this->assertStringContainsString('/folio/_assets/trix.css?v=', $body);
+    }
+
+    public function test_drawer_form_has_no_split_view(): void
+    {
+        // The create drawer must never run a preview: its form posts to the save route.
+        $body = (string) $this->get('/folio/page/new?_drawer=1')->getBody();
+
+        $this->assertStringContainsString('<form', $body);
+        $this->assertStringNotContainsString('data-folio-split', $body);
+        $this->assertStringNotContainsString('data-preview-url', $body);
+    }
+
     public function test_nested_render_inherits_preview(): void
     {
         [$preview, $public] = $this->sectionPage();

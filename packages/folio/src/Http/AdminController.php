@@ -510,8 +510,9 @@ final class AdminController
             'editor_assets' => array_keys($editorAssets + ($this->publishes($type) ? ['htmx.js' => true] : [])),
             'multipart' => $multipart,
             'layout' => $layout,
-            'previewable' => $this->frontend->routeFor($type) !== null,
-            'preview_url' => $action . '/preview',
+            // No preview in the create drawer: its form posts to the save route.
+            'previewable' => $this->frontend->routeFor($type) !== null && $layout !== '@folio/admin/_drawer_layout.twig',
+            'preview_url' => strtok($action, '?') . '/preview',
             'multilingual' => $multilingual,
             'languages' => $languages,
             'locale_errors' => $localeErrors,

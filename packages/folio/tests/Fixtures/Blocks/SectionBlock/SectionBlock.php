@@ -15,6 +15,9 @@ final class SectionBlock extends BlockComponent
     #[BlockField(type: 'string')]
     public string $heading = '';
 
+    #[BlockField(type: 'richtext')]
+    public string $body = '';
+
     #[BlockField(type: 'blocks', allowed: ['hero'])]
     public array $items = [];
 }
