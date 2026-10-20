@@ -109,4 +109,12 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString("'htmx:sendError'", $js);
         $this->assertStringContainsString('Not saved', $js);
     }
+
+    public function test_library_focal_and_pick_handlers(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString('[data-folio-focal]', $js);
+        $this->assertStringContainsString('[data-folio-pick]', $js);
+        $this->assertStringContainsString("source: 'folio-assets'", $js);
+    }
 }

@@ -448,3 +448,26 @@ h1 { font-size: 1.25rem; font-weight: 650; letter-spacing: -.01em; margin: 0; }
 .folio-share-url { width: 100%; font-family: ui-monospace, monospace; font-size: 0.8125rem; }
 .folio-save-state { font-size: 0.8125rem; font-weight: 400; color: #6b7280; }
 .folio-save-state.is-conflict { color: #b91c1c; }
+
+/* Asset library */
+.folio-assets-toolbar { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-bottom: 1rem; }
+.folio-assets-search { display: flex; gap: 0.5rem; flex: 1; min-width: 16rem; }
+.folio-assets-search input[type=search] { flex: 1; }
+.folio-assets-upload { display: flex; gap: 0.5rem; align-items: center; }
+.folio-asset-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 0.75rem; }
+.folio-asset-grid .folio-asset { display: flex; flex-direction: column; gap: 0.35rem; }
+.folio-asset-thumb { display: flex; align-items: center; justify-content: center; aspect-ratio: 1; border: 1px solid var(--folio-border, #d0d0d0); border-radius: 0.5rem; overflow: hidden; background: var(--folio-surface, #f5f5f5); }
+.folio-asset-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.folio-asset-kind { font-size: 0.75rem; font-weight: 600; opacity: 0.7; }
+.folio-asset-label { font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folio-asset.is-selected .folio-asset-thumb, .folio-asset-list .is-selected td { outline: 2px solid #15803d; }
+.folio-asset-mini { width: 2.5rem; height: 2.5rem; object-fit: cover; border-radius: 0.25rem; }
+.folio-asset-panel-slot:empty { display: none; }
+.folio-asset-panel-slot { margin-top: 1.5rem; }
+.folio-asset-panel { display: grid; gap: 1rem; max-width: 40rem; }
+.folio-focal-picker { position: relative; display: inline-block; cursor: crosshair; max-width: 100%; }
+.folio-focal-picker img { display: block; max-width: 100%; max-height: 22rem; }
+.folio-focal-marker { position: absolute; left: 50%; top: 50%; width: 1.25rem; height: 1.25rem; margin: -0.625rem 0 0 -0.625rem; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6); pointer-events: none; }
+.folio-asset-form { display: grid; gap: 0.75rem; }
+.folio-asset-meta, .folio-help { font-size: 0.8125rem; color: #6b7280; }
+.folio-pagination { display: flex; gap: 0.25rem; margin-top: 1rem; }

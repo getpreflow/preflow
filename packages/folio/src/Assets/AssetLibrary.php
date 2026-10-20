@@ -202,6 +202,18 @@ final class AssetLibrary
         return rtrim($this->dir, '/') . '/' . ltrim($relativePath, '/');
     }
 
+    /** A small preview URL: the 480 (else smallest) WebP variant, else the original image; null for other files. */
+    public function thumbnailUrl(Asset $asset): ?string
+    {
+        if ($asset->kind() !== 'image') {
+            return null;
+        }
+        $webp = array_filter($asset->variants, static fn (Variant $v) => $v->format === 'webp');
+        usort($webp, static fn (Variant $a, Variant $b) => [$a->width !== 480, $a->width] <=> [$b->width !== 480, $b->width]);
+
+        return $this->url(($webp[0] ?? null)?->path ?? $asset->path);
+    }
+
     /** True for the id of an existing asset (never for a path). */
     public function isAssetId(string $value): bool
     {

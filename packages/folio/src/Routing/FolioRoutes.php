@@ -13,6 +13,7 @@ final class FolioRoutes
     private const ADMIN = 'Preflow\\Folio\\Http\\AdminController';
     private const PREVIEW = 'Preflow\\Folio\\Http\\PreviewController';
     private const PUBLISHING = 'Preflow\\Folio\\Http\\PublishingController';
+    private const ASSETS = 'Preflow\\Folio\\Http\\AssetLibraryController';
     private const WORKING_MW = 'Preflow\\Folio\\Http\\WorkingCopyMiddleware';
     private const AUTH = 'Preflow\\Folio\\Http\\AuthController';
     private const AUTH_MW = 'Preflow\\Folio\\Http\\AdminAuthMiddleware';
@@ -33,6 +34,11 @@ final class FolioRoutes
         $defs = array_merge($defs, [
             ['GET',  $prefix . '/_blocks/{key}/new',   'newBlock', self::BLOCKS],
             ['POST', $prefix . '/_blocks/duplicate',   'duplicate', self::BLOCKS],
+            ['GET',  $prefix . '/assets',              'index', self::ASSETS],
+            ['POST', $prefix . '/assets',              'upload', self::ASSETS],
+            ['GET',  $prefix . '/assets/{id}',         'panel', self::ASSETS],
+            ['POST', $prefix . '/assets/{id}',         'save', self::ASSETS],
+            ['POST', $prefix . '/assets/{id}/delete',  'destroy', self::ASSETS],
             ['GET',  $prefix . '/{type}',              'list'],
             ['GET',  $prefix . '/{type}/new',          'createForm'],
             ['POST', $prefix . '/{type}/preview',      'preview', self::PREVIEW],

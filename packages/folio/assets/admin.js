@@ -387,6 +387,7 @@
         if (root.hasAttribute && root.hasAttribute('data-folio-matrix')) { initMatrix(root); }
         root.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
         if (root.hasAttribute && root.hasAttribute('data-block-card')) { notifyChange(root); }
+        root.querySelectorAll('[data-folio-focal]').forEach(placeFocalMarker);
     }
 
     // Share-preview link: copy the URL (select it when the clipboard is unavailable).
@@ -426,10 +427,47 @@
         state.classList.add('is-conflict');
     }
 
+    // Asset library: click the image to set the focal point (percent of width/height).
+    function placeFocalMarker(picker) {
+        var form = picker.closest('section') ? picker.closest('section').querySelector('.folio-asset-form') : null;
+        var marker = picker.querySelector('.folio-focal-marker');
+        if (!form || !marker) { return; }
+        marker.style.left = form.querySelector('[name=focal_x]').value + '%';
+        marker.style.top = form.querySelector('[name=focal_y]').value + '%';
+    }
+
+    function onFocalClick(e) {
+        var picker = e.target.closest ? e.target.closest('[data-folio-focal]') : null;
+        if (!picker) { return; }
+        var form = picker.closest('section') ? picker.closest('section').querySelector('.folio-asset-form') : null;
+        var rect = picker.getBoundingClientRect();
+        if (!form || rect.width === 0 || rect.height === 0) { return; }
+        var x = Math.round(Math.min(100, Math.max(0, (e.clientX - rect.left) / rect.width * 100)));
+        var y = Math.round(Math.min(100, Math.max(0, (e.clientY - rect.top) / rect.height * 100)));
+        form.querySelector('[name=focal_x]').value = String(x);
+        form.querySelector('[name=focal_y]').value = String(y);
+        placeFocalMarker(picker);
+    }
+
+    // Asset picker (inside the drawer iframe): hand the chosen asset to the editor.
+    function onPickClick(e) {
+        var btn = e.target.closest ? e.target.closest('[data-folio-pick]') : null;
+        if (!btn || window.parent === window) { return; }
+        window.parent.postMessage({ source: 'folio-assets', multiple: btn.getAttribute('data-multiple') === '1', items: [{
+            id: btn.getAttribute('data-id'),
+            thumb: btn.getAttribute('data-thumb') || '',
+            label: btn.getAttribute('data-label') || ''
+        }] }, window.location.origin);
+        btn.textContent = 'Selected';
+    }
+
     function boot() {
         document.addEventListener('submit', onSubmitConfirm);
         document.addEventListener('click', onBlockClick);
         document.addEventListener('click', onCopyClick);
+        document.addEventListener('click', onFocalClick);
+        document.addEventListener('click', onPickClick);
+        document.querySelectorAll('[data-folio-focal]').forEach(placeFocalMarker);
         document.addEventListener('submit', onAutosaveSubmit);
         document.addEventListener('htmx:beforeRequest', onBeforeRequest);
         document.addEventListener('htmx:responseError', onAutosaveError);

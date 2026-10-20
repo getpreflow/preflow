@@ -106,6 +106,14 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
             $prefix,
         ));
+        $container->bind(\Preflow\Folio\Http\AssetLibraryController::class, fn (Container $c) => new \Preflow\Folio\Http\AssetLibraryController(
+            $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
+            $c->get(\Preflow\Folio\Assets\AssetUsage::class),
+            $c->get(TemplateEngineInterface::class),
+            $c->get(TypeCatalog::class),
+            $locales ?? \Preflow\Data\Locales::single('en'),
+            $prefix,
+        ));
         $container->singleton(\Preflow\Folio\Assets\ImageTag::class, fn (Container $c) => new \Preflow\Folio\Assets\ImageTag(
             $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
             $c->get(ContentLocale::class),

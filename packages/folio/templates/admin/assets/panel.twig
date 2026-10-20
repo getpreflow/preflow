@@ -1,0 +1,51 @@
+<section class="folio-asset-panel" aria-label="Asset details">
+    {% if notice %}<p class="folio-saved" role="status">{{ notice }}</p>{% endif %}
+    {% if error %}<div class="folio-notice" role="alert"><p>{{ error }}</p></div>{% endif %}
+    <div class="folio-asset-preview">
+        {% if asset.kind == 'image' %}
+            <div class="folio-focal-picker" data-folio-focal>
+                <img src="{{ asset.thumb }}" alt="">
+                <span class="folio-focal-marker" aria-hidden="true"></span>
+            </div>
+            <p class="folio-help">Click the image to set the focal point (kept visible when the image is cropped).</p>
+        {% else %}
+            <p><a href="{{ asset.url }}">{{ asset.name }}</a></p>
+        {% endif %}
+        <p class="folio-asset-meta">{{ asset.mime }} · {{ (asset.size / 1024)|round(0, 'ceil') }} KB{% if asset.width %} · {{ asset.width }}×{{ asset.height }}{% endif %}</p>
+    </div>
+    <form method="post" action="{{ prefix }}/assets/{{ asset.id }}" class="folio-asset-form">
+        <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+        <input type="hidden" name="focal_x" value="{{ asset.focal_x }}">
+        <input type="hidden" name="focal_y" value="{{ asset.focal_y }}">
+        {% for code in locales %}
+            <label class="folio-field">Alt text{% if locales|length > 1 %} ({{ code }}){% endif %}
+                <input type="text" name="alt[{{ code }}]" value="{{ asset.alt[code]|default('') }}">
+            </label>
+        {% endfor %}
+        <label class="folio-field">Title
+            <input type="text" name="title" value="{{ asset.title }}">
+        </label>
+        {% if asset.kind == 'video' %}
+            <label class="folio-field">Poster image
+                <select name="poster">
+                    <option value="">— none —</option>
+                    {% for p in posters %}<option value="{{ p.id }}"{% if p.id == asset.poster %} selected{% endif %}>{{ p.label }}</option>{% endfor %}
+                </select>
+            </label>
+        {% endif %}
+        <button type="submit" class="btn btn-primary">Save</button>
+    </form>
+    <div class="folio-asset-usage">
+        <h2>Usage</h2>
+        {% if usage is empty %}
+            <p>Not used anywhere.</p>
+        {% else %}
+            <p>Used in {{ usage|length }} record{{ usage|length == 1 ? '' : 's' }}:</p>
+            <ul>{% for u in usage %}<li><a href="{{ u.url }}">{{ u.label }}</a>{% if u.where == 'published' %} (published version){% elseif u.where == 'poster' %} (as poster){% endif %}</li>{% endfor %}</ul>
+        {% endif %}
+    </div>
+    <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/delete" data-confirm="Delete this file permanently?">
+        <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+        <button type="submit" class="btn btn-danger"{% if usage is not empty %} disabled title="Remove it from the records above first"{% endif %}>Delete</button>
+    </form>
+</section>

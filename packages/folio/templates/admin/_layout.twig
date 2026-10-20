@@ -33,10 +33,11 @@
     <aside class="folio-sidebar">
         <div class="folio-brand">Folio</div>
         <nav class="folio-nav">
-            <a href="{{ prefix }}"{% if type is not defined %} class="active"{% endif %}>Dashboard</a>
+            <a href="{{ prefix }}"{% if type is not defined and section is not defined %} class="active"{% endif %}>Dashboard</a>
             {% for t in types %}
                 <a href="{{ prefix }}/{{ t.key }}"{% if type is defined and type == t.key %} class="active"{% endif %}>{{ t.label }}</a>
             {% endfor %}
+            <a href="{{ prefix }}/assets"{% if section|default('') == 'assets' %} class="active"{% endif %}>Assets</a>
         </nav>
         <div class="folio-sidebar-foot">
             <button type="button" id="folio-theme-toggle" class="folio-theme-toggle" aria-label="Toggle theme">
