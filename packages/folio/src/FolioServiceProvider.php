@@ -171,12 +171,15 @@ final class FolioServiceProvider extends ServiceProvider
                     ->allowRelativeLinks()
                     ->allowRelativeMedias(),
             )));
+            // Editors render only the controls the user may use (the routes check again).
+            $can = static fn (string $permission): bool => $c->get(\Preflow\Auth\Access\Access::class)->can($permission);
             $registry->register(new AssetFieldType(
                 $uploadsDir,
                 $uploadUrlPrefix,
                 $c->get(\Preflow\Folio\Assets\ImageTag::class),
                 $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
                 $prefix,
+                $can,
             ));
             $registry->register(new RelationFieldType(
                 $c->get(\Preflow\Data\DataManager::class),
@@ -192,6 +195,7 @@ final class FolioServiceProvider extends ServiceProvider
                 new RecordLabeler(),
                 $prefix,
                 $c->get(\Preflow\Folio\Content\LiveContent::class),
+                $can,
             ));
             $registry->alias('int', 'number');
             $registry->alias('integer', 'number');
@@ -242,6 +246,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TemplateEngineInterface::class),
             $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
             $c->get(FrontendResolver::class),
+            $c->get(\Preflow\Auth\Access\Access::class),
         ));
         $container->singleton(\Preflow\Folio\Publishing\PreviewLinks::class, fn () => new \Preflow\Folio\Publishing\PreviewLinks(
             (string) $app->config()->get('app.key', ''),

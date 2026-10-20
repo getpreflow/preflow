@@ -8,6 +8,9 @@
     <div class="folio-split-form">{% endif %}
     <div class="folio-form folio-editor">
         {% if publishing and publishing.share_url %}<div class="folio-share" id="folio-share"></div>{% endif %}
+        {% if publishing and publishing.schedule_cancels|default(false) %}
+            <div class="folio-notice" role="status"><p>Scheduled to publish on {{ publishing.publish_at|date('Y-m-d H:i') }}. Saving your changes cancels the schedule; someone who may publish can schedule it again.</p></div>
+        {% endif %}
         {% if notice %}
             <div class="folio-notice" role="alert">
                 <p>{{ notice }}{% if reload_url %} <a href="{{ reload_url }}">Reload</a>{% endif %}</p>

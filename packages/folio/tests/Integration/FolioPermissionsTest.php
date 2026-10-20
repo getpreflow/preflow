@@ -270,4 +270,91 @@ final class FolioPermissionsTest extends TestCase
         $this->assertSame(200, $this->send('GET', '/folio')->getStatusCode());
         $this->assertStringContainsString('value="publish"', (string) $this->send('GET', '/folio/post/p1/edit')->getBody());
     }
+
+    #[RunInSeparateProcess]
+    public function test_edit_without_publish_cancels_a_pending_schedule(): void
+    {
+        $this->as('editor');
+        $this->working('post', 'p1', ['title' => ['en' => 'Draft'], 'slug' => ['en' => 'hello'], '_publish_at' => '2099-01-01T10:00']);
+
+        $form = (string) $this->send('GET', '/folio/post/p1/edit')->getBody();
+        $this->assertStringContainsString('cancels the schedule', $form);
+
+        $this->send('POST', '/folio/post/p1', ['title' => 'Unreviewed', 'slug' => 'hello', '_locale' => 'en']);
+        $this->assertSame('', (string) $this->stored('post', 'p1')->get('_publish_at'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_autosave_without_publish_cancels_a_pending_schedule(): void
+    {
+        $this->as('editor');
+        $this->working('post', 'p1', ['title' => ['en' => 'Draft'], 'slug' => ['en' => 'hello'], '_publish_at' => '2099-01-01T10:00']);
+
+        $this->send('POST', '/folio/post/p1/autosave', ['title' => 'Unreviewed', 'slug' => 'hello', '_locale' => 'en']);
+        $this->assertSame('', (string) $this->stored('post', 'p1')->get('_publish_at'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_publisher_edits_keep_the_schedule(): void
+    {
+        $this->as('admin');
+        $this->working('post', 'p1', ['title' => ['en' => 'Draft'], 'slug' => ['en' => 'hello'], '_publish_at' => '2099-01-01T10:00']);
+
+        $this->send('POST', '/folio/post/p1/autosave', ['title' => 'Reviewed', 'slug' => 'hello', '_locale' => 'en']);
+        $this->assertSame('2099-01-01T10:00', (string) $this->stored('post', 'p1')->get('_publish_at'));
+    }
+
+    private function sendWithCover(string $uri, array $body): ResponseInterface
+    {
+        $f = new Psr17Factory();
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
+        $file = $f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'cover.png', 'image/png');
+        $req = $f->createServerRequest('POST', $uri)->withParsedBody($body + ['_csrf_token' => $this->token])->withUploadedFiles(['cover' => $file]);
+
+        return $this->session->handle($req);
+    }
+
+    private function libraryFiles(): int
+    {
+        return is_dir($this->dir . '/public/media')
+            ? count(iterator_to_array(new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->dir . '/public/media', \FilesystemIterator::SKIP_DOTS))))
+            : 0;
+    }
+
+    #[RunInSeparateProcess]
+    public function test_record_form_upload_needs_assets_upload(): void
+    {
+        $this->as('editor');
+        $this->sendWithCover('/folio/post/p1', ['title' => 'T', 'slug' => 'hello', '_locale' => 'en']);
+        $this->assertSame(0, $this->libraryFiles());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_refused_publish_writes_no_upload(): void
+    {
+        $this->as('editor');
+        $res = $this->sendWithCover('/folio/post/p1', ['title' => 'T', 'slug' => 'hello', '_locale' => 'en', '_action' => 'publish']);
+        $this->assertSame(403, $res->getStatusCode());
+        $this->assertSame(0, $this->libraryFiles());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_admin_record_form_upload_reaches_the_library(): void
+    {
+        $this->as('admin');
+        $this->sendWithCover('/folio/post/p1', ['title' => 'T', 'slug' => 'hello', '_locale' => 'en']);
+        $this->assertGreaterThan(0, $this->libraryFiles());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_asset_controls_follow_permissions(): void
+    {
+        $this->as('editor'); // assets.view only, no note.create
+        $this->assertStringNotContainsString('folio-assets-upload', (string) $this->send('GET', '/folio/assets')->getBody());
+
+        $form = (string) $this->send('GET', '/folio/post/p1/edit')->getBody();
+        $this->assertStringContainsString('data-folio-asset-choose', $form);
+        $this->assertStringNotContainsString('class="folio-asset-upload"', $form);
+        $this->assertStringNotContainsString('data-matrix-create', $form);
+    }
 }

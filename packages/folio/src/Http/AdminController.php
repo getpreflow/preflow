@@ -197,8 +197,11 @@ final class AdminController
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
         $drawer = $this->isDrawer($request);
 
+        if (($refused = $this->refusePublish($request, $type)) !== null) {
+            return $refused;
+        }
         $locale = $this->requestLocale($request, $typeDef);
-        $record = $this->drafts->build($typeDef, $request, [], $locale);
+        $record = $this->drafts->build($typeDef, $request, [], $locale, $this->can('assets.upload'));
         if ($this->drafts->uploadErrors() !== []) {
             $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
             return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), 'New ' . $this->labelFor($type), $this->drafts->uploadErrors(), $csrf, 422, $layout, $locale);
@@ -292,8 +295,11 @@ final class AdminController
 
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
 
+        if (($refused = $this->refusePublish($request, $type)) !== null) {
+            return $refused;
+        }
         $locale = $this->requestLocale($request, $typeDef);
-        $record = $this->drafts->build($typeDef, $request, $existing, $locale);
+        $record = $this->drafts->build($typeDef, $request, $existing, $locale, $this->can('assets.upload'));
         if ($this->drafts->uploadErrors() !== []) {
             return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . '/' . $id, 'Edit ' . $this->labelFor($type), $this->drafts->uploadErrors(), $csrf, 422, locale: $locale, editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit');
         }
@@ -573,6 +579,16 @@ final class AdminController
         $this->dm->saveType($record, false);
     }
 
+    /** Publishing through the form without the right to: refused before anything (uploads included) is written. */
+    private function refusePublish(ServerRequestInterface $request, string $type): ?ResponseInterface
+    {
+        $publish = (((array) $request->getParsedBody())['_action'] ?? null) === 'publish';
+
+        return $publish && $this->publishes($type) && !$this->can($type . '.publish')
+            ? Forbidden::response($request, $this->engine, $this->prefix, $this->catalog)
+            : null;
+    }
+
     /** Without an Access service (unit tests, no auth) everything is allowed, as before. */
     private function can(string $permission): bool
     {
@@ -592,12 +608,11 @@ final class AdminController
     private function savePublishing(ServerRequestInterface $request, DynamicRecord $record, string $type, string $action, string $heading, string $csrf, string $locale, string $editUrl, string $layout = '@folio/admin/_layout.twig'): ?ResponseInterface
     {
         $body = (array) $request->getParsedBody();
-        $mayPublish = $this->can($type . '.publish');
-        if (($body['_action'] ?? null) === 'publish' && !$mayPublish) {
-            return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog); // nothing saved
-        }
-        // "Publish at" schedules a publish: only for those who may publish.
-        if ($mayPublish && array_key_exists('_publish_at', $body)) {
+        // "Publish at" schedules a publish: only for those who may publish. A save by
+        // anyone else cancels a pending schedule, so their changes never go live unreviewed.
+        if (!$this->can($type . '.publish')) {
+            $record->set('_publish_at', '');
+        } elseif (array_key_exists('_publish_at', $body)) {
             $record->set('_publish_at', self::publishAt($body['_publish_at']));
         }
         $loaded = is_string($body['_version'] ?? null) && ctype_digit($body['_version']) ? (int) $body['_version'] : null;
@@ -649,6 +664,8 @@ final class AdminController
             'label' => $state->label(),
             'version' => (int) ($values['_version'] ?? 0),
             'publish_at' => is_string($values['_publish_at'] ?? null) ? $values['_publish_at'] : '',
+            // Shown to those who may edit but not publish: saving cancels the schedule.
+            'schedule_cancels' => $edit && !$publish && is_string($values['_publish_at'] ?? null) && $values['_publish_at'] !== '',
             'save_state' => $stored !== null ? PublishingController::stateText($state) : null,
             'revisions' => $stored !== null ? $this->revisionRows($type, $typeDef, (string) $id) : [],
             'autosave_url' => $edit ? $base . '/autosave' : null,

@@ -28,6 +28,8 @@ final class MatrixFieldType implements FieldType
         private readonly RecordLabeler $labeler,
         private readonly string $prefix,
         private readonly ?\Preflow\Folio\Content\LiveContent $live = null,
+        /** @var (\Closure(string): bool)|null permission check; null allows everything */
+        private readonly ?\Closure $can = null,
     ) {}
 
     public function key(): string
@@ -85,7 +87,11 @@ final class MatrixFieldType implements FieldType
         $html .= '</select>' . "\n";
         $html .= '      <select data-matrix-record></select>' . "\n";
         $html .= '      <button type="button" class="btn btn-secondary" data-matrix-add>Add</button>' . "\n";
-        $html .= '      <button type="button" class="btn btn-secondary" data-matrix-create>New</button>' . "\n";
+        // "New" opens a create drawer: offered when the user may create one of the allowed types.
+        $creatable = $this->can === null || array_filter($allowed, fn (string $key): bool => ($this->can)($key . '.create')) !== [];
+        if ($creatable) {
+            $html .= '      <button type="button" class="btn btn-secondary" data-matrix-create>New</button>' . "\n";
+        }
         $html .= '    </div>' . "\n";
         $html .= '  </div>' . "\n";
         $html .= '</div>';

@@ -28,12 +28,14 @@
                 <a class="btn btn-ghost{% if view == v %} is-active{% endif %}" href="{{ prefix }}/assets?{{ (query|merge({'view': v}))|url_encode }}"{% if view == v %} aria-current="true"{% endif %}>{{ label }}</a>
             {% endfor %}
         </nav>
+        {% if can('assets.upload') %}
         <form method="post" action="{{ prefix }}/assets" enctype="multipart/form-data" class="folio-assets-upload">
             <input type="hidden" name="_csrf_token" value="{{ csrf }}">
             {% if picker %}<input type="hidden" name="picker" value="1"><input type="hidden" name="multiple" value="{{ multiple ? '1' : '0' }}">{% endif %}
             <input type="file" name="files[]" multiple aria-label="Files to upload">
             <button type="submit" class="btn btn-primary">Upload</button>
         </form>
+        {% endif %}
     </div>
 
     {% if items is empty %}

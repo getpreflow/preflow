@@ -14,6 +14,7 @@
         <p class="folio-asset-meta">{{ asset.mime }} · {{ (asset.size / 1024)|round(0, 'ceil') }} KB{% if asset.width %} · {{ asset.width }}×{{ asset.height }}{% endif %}</p>
     </div>
     <form method="post" action="{{ prefix }}/assets/{{ asset.id }}" class="folio-asset-form">
+        <fieldset class="folio-fields"{% if not can('assets.edit') %} disabled{% endif %}>
         <input type="hidden" name="_csrf_token" value="{{ csrf }}">
         <input type="hidden" name="focal_x" value="{{ asset.focal_x }}">
         <input type="hidden" name="focal_y" value="{{ asset.focal_y }}">
@@ -33,7 +34,8 @@
                 </select>
             </label>
         {% endif %}
-        <button type="submit" class="btn btn-primary">Save</button>
+        </fieldset>
+        {% if can('assets.edit') %}<button type="submit" class="btn btn-primary">Save</button>{% endif %}
     </form>
     <div class="folio-asset-usage">
         <h2>Usage</h2>
@@ -44,8 +46,10 @@
             <ul>{% for u in usage %}<li><a href="{{ u.url }}">{{ u.label }}</a>{% if u.where == 'published' %} (published version){% elseif u.where == 'poster' %} (as poster){% endif %}</li>{% endfor %}</ul>
         {% endif %}
     </div>
+    {% if can('assets.delete') %}
     <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/delete" data-confirm="Delete this file permanently?">
         <input type="hidden" name="_csrf_token" value="{{ csrf }}">
         <button type="submit" class="btn btn-danger"{% if usage is not empty %} disabled title="Remove it from the records above first"{% endif %}>Delete</button>
     </form>
+    {% endif %}
 </section>
