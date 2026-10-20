@@ -56,6 +56,20 @@ trait AssetFixtures
         return (string) ob_get_clean();
     }
 
+    /** A JPEG whose EXIF says how to rotate it for display (e.g. 6 = a phone held upright). */
+    private function jpegWithOrientation(int $width, int $height, int $orientation): string
+    {
+        $image = imagecreatetruecolor($width, $height);
+        ob_start();
+        imagejpeg($image);
+        $jpeg = (string) ob_get_clean();
+        // APP1 "Exif": big-endian TIFF header, one IFD entry 0x0112 (Orientation, SHORT, 1).
+        $tiff = "MM\x00\x2A\x00\x00\x00\x08" . "\x00\x01" . "\x01\x12\x00\x03\x00\x00\x00\x01" . pack('n', $orientation) . "\x00\x00" . "\x00\x00\x00\x00";
+        $payload = "Exif\x00\x00" . $tiff;
+
+        return substr($jpeg, 0, 2) . "\xFF\xE1" . pack('n', strlen($payload) + 2) . $payload . substr($jpeg, 2);
+    }
+
     private function upload(string $bytes, string $name, string $clientType = 'application/octet-stream'): UploadedFileInterface
     {
         $f = new Psr17Factory();

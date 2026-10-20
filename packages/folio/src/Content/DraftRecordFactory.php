@@ -25,9 +25,22 @@ use Psr\Http\Message\UploadedFileInterface;
  */
 final class DraftRecordFactory
 {
+    /** @var array<string, list<string>> */
+    private array $uploadErrors = [];
+
     public function __construct(
         private readonly FieldTypeRegistry $fieldTypes,
     ) {}
+
+    /**
+     * Uploads the last build() could not store, keyed by field (form errors).
+     *
+     * @return array<string, list<string>>
+     */
+    public function uploadErrors(): array
+    {
+        return $this->uploadErrors;
+    }
 
     /**
      * @param array<string, mixed> $existing     the stored record (empty for a new one)
@@ -44,6 +57,11 @@ final class DraftRecordFactory
         $locale = $locales->has($locale) ? $locale : $locales->default;
         $translatable = array_flip($typeDef->translatableFields());
         $submitted = (array) $request->getParsedBody();
+        $this->uploadErrors = [];
+        $assetType = $this->fieldTypes->has('asset') ? $this->fieldTypes->get('asset') : null;
+        if ($assetType instanceof AssetFieldType) {
+            $assetType->drainErrors(); // nothing left over from an earlier build
+        }
         $uploads = $request->getUploadedFiles();
         $data = [];
 
@@ -61,6 +79,9 @@ final class DraftRecordFactory
                     new BuildContext($locales, $locale, $writeUploads),
                     $fieldDef->config,
                 );
+                if ($assetType instanceof AssetFieldType && ($errors = $assetType->drainErrors()) !== []) {
+                    $this->uploadErrors[$name] = $errors; // uploads inside blocks
+                }
                 continue;
             }
 
@@ -74,6 +95,9 @@ final class DraftRecordFactory
                     $writeUploads,
                     null,
                 );
+                if (($errors = $fieldType->drainErrors()) !== []) {
+                    $this->uploadErrors[$name] = $errors;
+                }
                 continue;
             }
 

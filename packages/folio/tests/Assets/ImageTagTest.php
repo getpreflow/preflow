@@ -46,7 +46,7 @@ final class ImageTagTest extends TestCase
         $html = $this->tag()->render($asset->id);
 
         $this->assertStringStartsWith('<picture>', $html);
-        $this->assertStringContainsString('<source type="image/webp" srcset="' . $base . '-480.webp 480w, ' . $base . '-768.webp 768w, ' . $base . '-1200.webp 1200w" sizes="100vw">', $html);
+        $this->assertStringContainsString('<source type="image/webp" srcset="' . $base . '-480.webp 480w, ' . $base . '-768.webp 768w" sizes="100vw">', $html);
         $this->assertStringContainsString('src="/media/' . $asset->path . '"', $html);
         $this->assertStringContainsString('width="1200" height="800"', $html);
         $this->assertStringContainsString('loading="lazy"', $html);
@@ -114,6 +114,8 @@ final class ImageTagTest extends TestCase
         $this->assertStringContainsString($asset->id, $this->tag()->render(json_encode([$asset->id])));
         $this->assertSame('<a href="/media/' . $doc->path . '">Notes.txt</a>', $this->tag()->render($doc->id));
         $this->assertSame('<img src="/folio/_uploads/' . $legacy . '" alt="" loading="lazy">', $this->tag()->render($legacy));
+        $legacyPdf = '2026/10/' . str_repeat('ab', 16) . '.pdf';
+        $this->assertSame('<a href="/folio/_uploads/' . $legacyPdf . '">' . str_repeat('ab', 16) . '.pdf</a>', $this->tag()->render($legacyPdf));
         $this->assertSame('', $this->tag()->render(str_repeat('c', 32)));
         $this->assertSame('', $this->tag()->render('../../etc/passwd'));
         $this->assertSame('', $this->tag()->render(null));

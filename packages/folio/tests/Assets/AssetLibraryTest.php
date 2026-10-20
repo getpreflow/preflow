@@ -60,6 +60,21 @@ final class AssetLibraryTest extends TestCase
         $library->upload($this->upload('<?php echo 1;', 'x.jpg', 'image/jpeg'), null);
     }
 
+    public function test_office_documents_are_accepted(): void
+    {
+        $file = $this->assetRoot . '/report.docx';
+        $zip = new \ZipArchive();
+        $zip->open($file, \ZipArchive::CREATE);
+        $zip->addFromString('[Content_Types].xml', '<Types/>');
+        $zip->addFromString('word/document.xml', '<w/>');
+        $zip->close();
+
+        $asset = $this->library()->importFile($file, 'report.docx', null);
+
+        $this->assertStringEndsWith('.docx', $asset->path);
+        $this->assertSame('document', $asset->kind());
+    }
+
     public function test_svg_refused_by_default(): void
     {
         $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>';

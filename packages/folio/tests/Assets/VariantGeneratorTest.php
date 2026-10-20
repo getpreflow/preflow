@@ -50,7 +50,7 @@ final class VariantGeneratorTest extends TestCase
             ->upload($this->upload($this->png(800, 400), 'a.png'), null);
 
         $avif = array_values(array_filter($asset->variants, static fn (Variant $v) => $v->format === 'avif'));
-        $this->assertSame([480, 800], array_map(static fn (Variant $v) => $v->width, $avif));
+        $this->assertSame([480], array_map(static fn (Variant $v) => $v->width, $avif));
         $this->assertFileExists($this->assetRoot . '/media/' . $avif[0]->path);
     }
 
@@ -86,6 +86,53 @@ final class VariantGeneratorTest extends TestCase
         $this->assertContains(600, array_map(static fn (Variant $v) => $v->width, $fresh->variants));
         $this->assertFileExists($this->assetRoot . '/media/' . dirname($asset->path) . '/' . $asset->id . '-600.webp');
         $this->assertEquals($fresh, $this->library()->find($asset->id));
+    }
+
+    #[RequiresFunction('exif_read_data')]
+    public function test_exif_orientation_is_applied(): void
+    {
+        $asset = $this->library([], new VariantGenerator(new GdBackend(), [50], 75))
+            ->upload($this->upload($this->jpegWithOrientation(200, 100, 6), 'phone.jpg'), null);
+
+        // Stored the way it is displayed: upright, 100×200.
+        $this->assertSame([100, 200], [$asset->width, $asset->height]);
+        $webp = array_values(array_filter($asset->variants, static fn (Variant $v) => $v->format === 'webp'));
+        $this->assertSame([50], array_map(static fn (Variant $v) => $v->width, $webp));
+        $size = getimagesize($this->assetRoot . '/media/' . $webp[0]->path);
+        $this->assertSame([50, 100], [$size[0], $size[1]]);
+    }
+
+    public function test_original_width_is_dropped_above_the_largest_preset(): void
+    {
+        $asset = $this->library([], new VariantGenerator(new GdBackend(), [480], 75))
+            ->upload($this->upload($this->png(1200, 800), 'a.png'), null);
+
+        $webp = array_values(array_filter($asset->variants, static fn (Variant $v) => $v->format === 'webp'));
+        $this->assertSame([480], array_map(static fn (Variant $v) => $v->width, $webp));
+    }
+
+    public function test_huge_images_get_no_variants(): void
+    {
+        $asset = $this->library(['max_pixels' => 1000], new VariantGenerator(new GdBackend(), [50], 75))
+            ->upload($this->upload($this->png(200, 100), 'big.png'), null);
+
+        $this->assertSame([], $asset->variants);
+        $this->assertSame(200, $asset->width);
+    }
+
+    public function test_failed_generation_keeps_the_asset(): void
+    {
+        $exploding = new class implements \Preflow\Folio\Assets\Image\ImageBackend {
+            public function supports(string $format): bool { return true; }
+            public function writeVariants(string $src, array $jobs, int $quality): array { throw new \RuntimeException('out of memory'); }
+        };
+        $library = $this->library([], new VariantGenerator($exploding, [50], 75));
+
+        $asset = $library->upload($this->upload($this->png(200, 100), 'a.png'), null);
+
+        $this->assertSame([], $asset->variants);
+        $this->assertNotNull($library->find($asset->id));
+        $this->assertFileExists($this->assetRoot . '/media/' . $asset->path);
     }
 
     public function test_detect_prefers_gd(): void

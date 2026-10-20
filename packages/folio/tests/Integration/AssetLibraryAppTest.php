@@ -136,13 +136,26 @@ final class AssetLibraryAppTest extends TestCase
         $this->assertSame(404, $this->post('/folio/assets/' . str_repeat('a', 32) . '/delete')->getStatusCode());
     }
 
-    public function test_type_named_assets_is_a_boot_error(): void
+    public function test_type_named_assets_does_not_break_the_site(): void
     {
-        $this->writeModel('assets', ['fields' => ['title' => ['type' => 'string']]]);
+        $this->writeModel('assets', ['frontend' => ['route' => '/gallery/{slug}'], 'publishing' => false, 'fields' => ['slug' => ['type' => 'string']]]);
+        $this->write('resources/folio/frontend/assets.twig', '<html><head></head><body>gallery {{ record.slug }}</body></html>');
+        $this->working('assets', 'g1', ['slug' => 'summer', 'status' => 'published']);
 
-        $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('conflicts with the asset library');
-        $this->app();
+        $this->assertSame(200, $this->get('/gallery/summer')->getStatusCode());
+        $this->assertStringContainsString('Assets', (string) $this->get('/folio/assets')->getBody());
+    }
+
+    public function test_refused_field_upload_shows_in_the_form(): void
+    {
+        $f = new Psr17Factory();
+        $res = $this->app()->handle($f->createServerRequest('POST', '/folio/post')
+            ->withParsedBody(['title' => 'T', 'slug' => 'hello', '_locale' => 'en'])
+            ->withUploadedFiles(['cover' => $f->createUploadedFile($f->createStream("notes\n"), 6, UPLOAD_ERR_OK, 'notes.txt')]));
+
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('notes.txt: this field only accepts image/*.', (string) $res->getBody());
+        $this->assertSame(0, $this->dm()->queryType('post')->get()->total());
     }
 
     private function lib(): AssetLibrary

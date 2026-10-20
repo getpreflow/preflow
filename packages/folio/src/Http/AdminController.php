@@ -199,6 +199,10 @@ final class AdminController
 
         $locale = $this->requestLocale($request, $typeDef);
         $record = $this->drafts->build($typeDef, $request, [], $locale);
+        if ($this->drafts->uploadErrors() !== []) {
+            $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
+            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), 'New ' . $this->labelFor($type), $this->drafts->uploadErrors(), $csrf, 422, $layout, $locale);
+        }
         $record->set($typeDef->idField, bin2hex(random_bytes(16)));
         if (($this->catalog->get($type)?->list['orderable'] ?? false) === true) {
             $record->set(self::ORDER, $this->maxOrder($type) + 10);
@@ -290,6 +294,9 @@ final class AdminController
 
         $locale = $this->requestLocale($request, $typeDef);
         $record = $this->drafts->build($typeDef, $request, $existing, $locale);
+        if ($this->drafts->uploadErrors() !== []) {
+            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . '/' . $id, 'Edit ' . $this->labelFor($type), $this->drafts->uploadErrors(), $csrf, 422, locale: $locale, editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit');
+        }
 
         if ($this->publishes($type)) {
             $failed = $this->savePublishing($request, $record, $type, $this->prefix . '/' . $type . '/' . $id, 'Edit ' . $this->labelFor($type), $csrf, $locale, $this->prefix . '/' . $type . '/' . $id . '/edit');

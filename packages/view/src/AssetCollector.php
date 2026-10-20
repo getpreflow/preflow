@@ -24,6 +24,9 @@ final class AssetCollector
     /** @var string|null Active CSS scope class — when set, addCss() wraps content in this selector */
     private ?string $cssScope = null;
 
+    private bool $headRendered = false;
+    private bool $bodyRendered = false;
+
     public function __construct(
         private readonly NonceGenerator $nonceGenerator,
         private readonly bool $isProd = false,
@@ -83,6 +86,7 @@ final class AssetCollector
      */
     public function renderHead(): string
     {
+        $this->headRendered = true;
         $out = $this->renderCss();
         $out .= $this->renderJsHead();
         $out .= implode("\n", $this->headTags);
@@ -97,12 +101,13 @@ final class AssetCollector
      */
     public function injectInto(string $html): string
     {
-        $head = $this->renderHead();
+        // What the template already printed ({{ head() }} / {{ assets() }}) is not added again.
+        $head = $this->headRendered ? '' : $this->renderHead();
         $headAt = stripos($html, '</head>');
         if ($head !== '' && $headAt !== false) {
             $html = substr_replace($html, $head, $headAt, 0);
         }
-        $body = $this->renderAssets();
+        $body = $this->bodyRendered ? '' : $this->renderAssets();
         $bodyAt = strripos($html, '</body>');
         if ($body !== '' && $bodyAt !== false) {
             $html = substr_replace($html, $body, $bodyAt, 0);
@@ -116,6 +121,7 @@ final class AssetCollector
      */
     public function renderAssets(): string
     {
+        $this->bodyRendered = true;
         return $this->renderJsBody();
     }
 

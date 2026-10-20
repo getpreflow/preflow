@@ -99,6 +99,32 @@ final class AssetFieldLibraryTest extends TestCase
         $this->assertSame([], $this->lib->all());
     }
 
+    public function test_accept_tokens_match_kinds_types_and_extensions(): void
+    {
+        $image = imagecreatetruecolor(10, 10);
+        ob_start();
+        imagejpeg($image);
+        $jpeg = (string) ob_get_clean();
+        $field = $this->field();
+
+        $this->assertNotSame('', $field->resolve(null, null, [$this->upload($jpeg, 'a.jpeg')], ['asset' => ['accept' => '.jpeg']], true, null));
+        $this->assertNotSame('', $field->resolve(null, null, [$this->upload($this->png(5, 5), 'a.png')], ['asset' => ['accept' => 'image/*,video/*']], true, null));
+        $this->assertNotSame('', $field->resolve(null, null, [$this->upload($this->png(5, 5), 'a.png')], ['asset' => ['accept' => 'image/png']], true, null));
+        $this->assertSame('', $field->resolve(null, null, [$this->upload($this->png(5, 5), 'a.png')], ['asset' => ['accept' => '.pdf']], true, null));
+    }
+
+    public function test_refused_uploads_are_reported(): void
+    {
+        $field = $this->field();
+        $field->resolve(null, null, [$this->upload("notes\n", 'notes.txt'), $this->upload('<?php echo 1;', 'x.php')], self::SINGLE, true, null);
+
+        $this->assertSame([
+            'notes.txt: this field only accepts image/*.',
+            'x.php: files of type text/x-php are not allowed.',
+        ], $field->drainErrors());
+        $this->assertSame([], $field->drainErrors());
+    }
+
     public function test_no_files_are_written_without_write_uploads(): void
     {
         $this->assertSame('', $this->field()->resolve(null, null, [$this->upload($this->png(5, 5), 'a.png')], self::SINGLE, false, null));

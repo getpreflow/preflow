@@ -33,9 +33,6 @@ final class TypeCatalog
                 continue; // skip malformed / incomplete definitions
             }
             $key = $data['key'];
-            if ($key === 'assets') {
-                throw new \LogicException('Folio type "assets" (' . basename($file) . ') conflicts with the asset library at {prefix}/assets; rename the type key.');
-            }
             $label = (isset($data['label']) && is_string($data['label']))
                 ? $data['label']
                 : ucfirst($key);

@@ -404,8 +404,11 @@ the file to the library on save, so it works without JavaScript. A field's `acce
   your CSS crops the image, e.g. `object-fit: cover`.
 - Asset fields in a type's default template render the same way.
 
-**Variants** are made on upload with GD or Imagick: every configured width below the
-image's own width, plus the original width, as WebP, and as AVIF where supported. The
+**Variants** are made on upload with GD or Imagick: every configured width the image
+can fill, plus its own width when it is narrower than the largest configured width. Each
+is made as WebP, and as AVIF where supported. Phone photos are turned upright using their
+EXIF orientation. Images above `max_pixels` (30 megapixels by default) keep only the
+original: decoding them could exceed a shared host's memory limit. The
 widths come from `assets.widths`, else from all preset widths in `config/image.php`. GIF
 and SVG files are served as they are, and without GD or Imagick no variants are made.
 After changing widths, run `php preflow folio:assets:variants`.
@@ -418,6 +421,7 @@ After changing widths, run `php preflow folio:assets:variants`.
     'url' => '/media',
     'storage' => 'json',                  // a data driver name
     'max_bytes' => 20 * 1024 * 1024,
+    'max_pixels' => 30_000_000,          // larger images get no variants
     'allow_svg' => false,
     'widths' => [480, 768, 1024, 1600],   // default: the config/image.php preset widths
     'quality' => 75,
@@ -428,9 +432,15 @@ After changing widths, run `php preflow folio:assets:variants`.
 - The type is sniffed from the file's content, never taken from the client's file name,
   and the stored extension follows the sniffed type. So a `shell.php` renamed to `.jpg`
   cannot land in the public directory.
-- Allowed: JPEG, PNG, GIF, WebP, AVIF, MP4, WebM, PDF, plain text, CSV and ZIP.
+- Allowed: JPEG, PNG, GIF, WebP, AVIF, MP4, WebM, QuickTime (`.mov`), PDF, plain
+  text, CSV, ZIP, and Word, Excel and PowerPoint files (`.doc`, `.docx`, `.xlsx`, `.pptx`).
+- A refused upload in a field (wrong type, too large, not matching the field's `accept`)
+  shows as a field error, and the record is not saved.
 - **SVG is refused** unless `allow_svg` is set: an SVG served from your own domain can
   run scripts.
+
+A content type keyed `assets` keeps working on the site, but its admin list is
+hidden behind the library at `{prefix}/assets`. Rename the type to edit it.
 
 **Older uploads:** paths stored before the library existed keep rendering through
 `{prefix}/_uploads`. `php preflow folio:assets:import [--dry-run]` moves them into the

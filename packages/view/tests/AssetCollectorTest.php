@@ -192,4 +192,17 @@ final class AssetCollectorTest extends TestCase
         // Both share the same nonce
         $this->assertSame($original->getNonce(), $forked->getNonce());
     }
+
+    public function test_inject_skips_what_the_template_already_rendered(): void
+    {
+        $assets = new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator());
+        $assets->addCss('.a{color:red}');
+        $assets->addJs('window.x=1;');
+        $body = $assets->renderAssets(); // the layout called {{ assets() }}
+
+        $html = $assets->injectInto('<html><head></head><body>' . $body . '</body></html>');
+
+        $this->assertSame(1, substr_count($html, 'window.x=1;'));
+        $this->assertSame(1, substr_count($html, '.a{color:red}'));
+    }
 }

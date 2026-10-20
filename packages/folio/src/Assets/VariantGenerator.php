@@ -31,23 +31,39 @@ final class VariantGenerator
             return [];
         }
 
-        $widths = array_values(array_unique(array_filter(
-            [...array_map('intval', $this->widths), $originalWidth],
-            static fn (int $w) => $w > 0 && $w <= $originalWidth,
-        )));
+        // Every configured width the image can fill; its own width only when it is
+        // narrower than the largest configured one (a full-size copy is rarely used
+        // and the most expensive to encode).
+        $configured = array_values(array_filter(array_map('intval', $this->widths), static fn (int $w) => $w > 0));
+        $widths = array_filter($configured, static fn (int $w) => $w <= $originalWidth);
+        if ($configured === [] || $originalWidth < max($configured)) {
+            $widths[] = $originalWidth;
+        }
+        $widths = array_values(array_unique($widths));
         sort($widths);
 
         $base = preg_replace('/\.[a-z0-9]+$/', '', $relativeSource);
-        $variants = [];
+        $jobs = [];
         foreach (['avif', 'webp'] as $format) {
-            if (!$this->backend->supports($format)) {
-                continue;
-            }
-            foreach ($widths as $width) {
-                $path = "{$base}-{$width}.{$format}";
-                if ($this->backend->resize(rtrim($dir, '/') . '/' . $relativeSource, rtrim($dir, '/') . '/' . $path, $width, $format, $this->quality)) {
-                    $variants[] = new Variant($width, $format, $path);
+            if ($this->backend->supports($format)) {
+                foreach ($widths as $width) {
+                    $jobs[] = ['dest' => rtrim($dir, '/') . '/' . "{$base}-{$width}.{$format}", 'width' => $width, 'format' => $format, 'path' => "{$base}-{$width}.{$format}"];
                 }
+            }
+        }
+        if ($jobs === []) {
+            return [];
+        }
+
+        $results = $this->backend->writeVariants(
+            rtrim($dir, '/') . '/' . $relativeSource,
+            array_map(static fn (array $j) => ['dest' => $j['dest'], 'width' => $j['width'], 'format' => $j['format']], $jobs),
+            $this->quality,
+        );
+        $variants = [];
+        foreach ($jobs as $i => $job) {
+            if (($results[$i] ?? false) === true) {
+                $variants[] = new Variant($job['width'], $job['format'], $job['path']);
             }
         }
 

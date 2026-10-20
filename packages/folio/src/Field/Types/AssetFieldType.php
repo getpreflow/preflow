@@ -33,6 +33,22 @@ final class AssetFieldType implements FieldType, HandlesUpload
         private readonly string $adminPrefix = '/folio',
     ) {}
 
+    /** @var list<string> refused uploads since the last drainErrors() */
+    private array $errors = [];
+
+    /**
+     * Messages for uploads the library refused (type, size, "accept") since
+     * the last call; the form shows them instead of dropping files silently.
+     *
+     * @return list<string>
+     */
+    public function drainErrors(): array
+    {
+        [$errors, $this->errors] = [$this->errors, []];
+
+        return $errors;
+    }
+
     public function key(): string
     {
         return 'asset';
@@ -212,29 +228,47 @@ final class AssetFieldType implements FieldType, HandlesUpload
         return $values;
     }
 
-    /** The asset id, or null when the library refuses the file or it does not match "accept". */
+    /** The asset id, or null (with a message) when the library refuses the file or it does not match "accept". */
     private function storeInLibrary(UploadedFileInterface $file, string $accept, ?string $by): ?string
     {
         try {
             $asset = $this->library?->upload($file, $by);
-        } catch (\Preflow\Folio\Assets\AssetUploadException) {
+        } catch (\Preflow\Folio\Assets\AssetUploadException $e) {
+            $this->errors[] = $e->getMessage();
             return null;
         }
         if ($asset === null) {
             return null;
         }
-        $kind = match (trim($accept)) {
-            'image/*' => 'image',
-            'video/*' => 'video',
-            default => null,
-        };
-        $exts = $kind === null && trim($accept) !== '' ? $this->allowedExtensions($accept) : null;
-        if (($kind !== null && $asset->kind() !== $kind) || ($exts !== null && !in_array(strtolower(pathinfo($asset->path, PATHINFO_EXTENSION)), $exts, true))) {
+        if (!self::accepts($asset, $accept)) {
             $this->library?->delete($asset->id);
+            $this->errors[] = ($file->getClientFilename() ?? 'upload') . ': this field only accepts ' . trim($accept) . '.';
             return null;
         }
 
         return $asset->id;
+    }
+
+    /** "accept" as in HTML: MIME wildcards (image/*), MIME types and extensions (.jpg), comma-separated. */
+    private static function accepts(\Preflow\Folio\Assets\Asset $asset, string $accept): bool
+    {
+        $tokens = array_filter(array_map('trim', explode(',', strtolower($accept))));
+        if ($tokens === []) {
+            return true;
+        }
+        $ext = strtolower(pathinfo($asset->path, PATHINFO_EXTENSION));
+        foreach ($tokens as $token) {
+            $matches = match (true) {
+                str_starts_with($token, '.') => in_array($ext, [ltrim($token, '.'), $token === '.jpeg' ? 'jpg' : null], true),
+                str_ends_with($token, '/*') => str_starts_with($asset->mime, substr($token, 0, -1)),
+                default => $asset->mime === $token,
+            };
+            if ($matches) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function storeLegacy(UploadedFileInterface $file, string $accept): ?string

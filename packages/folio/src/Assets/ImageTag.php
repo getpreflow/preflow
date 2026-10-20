@@ -36,7 +36,10 @@ final class ImageTag
             return '';
         }
         if (preg_match(self::LEGACY_PATH, $value) === 1) {
-            return '<img src="' . self::e(rtrim($this->legacyUrlPrefix, '/') . '/' . $value) . '" alt="" loading="lazy">';
+            $url = rtrim($this->legacyUrlPrefix, '/') . '/' . $value;
+            return in_array(strtolower(pathinfo($value, PATHINFO_EXTENSION)), ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif'], true)
+                ? '<img src="' . self::e($url) . '" alt="" loading="lazy">'
+                : '<a href="' . self::e($url) . '">' . self::e(basename($value)) . '</a>';
         }
         $asset = $this->library->find($value);
         if ($asset === null) {

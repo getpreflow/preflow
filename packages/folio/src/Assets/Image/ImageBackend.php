@@ -9,6 +9,12 @@ interface ImageBackend
     /** Whether the backend can write the format ("webp" or "avif"). */
     public function supports(string $format): bool;
 
-    /** Write $src scaled to $width (height keeps the ratio) as $format to $dest. */
-    public function resize(string $src, string $dest, int $width, string $format, int $quality): bool;
+    /**
+     * Decode $src once (upright, per its EXIF orientation) and write each job:
+     * scaled to its width (height keeps the ratio) in its format.
+     *
+     * @param list<array{dest: string, width: int, format: string}> $jobs
+     * @return list<bool> success per job
+     */
+    public function writeVariants(string $src, array $jobs, int $quality): array;
 }

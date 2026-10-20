@@ -34,7 +34,15 @@ final class AssetLibrary
         'text/plain' => 'txt',
         'text/csv' => 'csv',
         'application/zip' => 'zip',
+        'video/quicktime' => 'mov',
+        'application/msword' => 'doc',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation' => 'pptx',
     ];
+
+    /** Images above this many pixels are kept but get no variants (decoding them could exhaust memory). */
+    private const int DEFAULT_MAX_PIXELS = 30_000_000;
 
     public const string ID_PATTERN = '/^[a-f0-9]{32}$/';
 
@@ -239,13 +247,19 @@ final class AssetLibrary
         if (!is_dir(dirname($file)) && !mkdir(dirname($file), 0775, true) && !is_dir(dirname($file))) {
             throw new AssetUploadException('The media directory is not writable.');
         }
-        file_put_contents($file, $bytes);
+        if (file_put_contents($file, $bytes) !== strlen($bytes)) {
+            @unlink($file);
+            throw new AssetUploadException("{$name}: the file could not be written to the media directory.");
+        }
 
         $width = $height = null;
         if (str_starts_with($mime, 'image/') && $mime !== 'image/svg+xml') {
             $size = @getimagesize($file);
             if (is_array($size)) {
                 [$width, $height] = [(int) $size[0], (int) $size[1]];
+                if (Image\Orientation::swapsAxes(Image\Orientation::of($file))) {
+                    [$width, $height] = [$height, $width]; // stored as displayed
+                }
             }
         }
 
@@ -267,20 +281,29 @@ final class AssetLibrary
             createdAt: $now->format(DATE_ATOM),
             createdBy: $by,
         );
+        // The record first: if variant generation dies (time or memory limit), the
+        // file is still a usable asset whose variants can be made later.
+        $asset = $this->save($asset->toData());
         $data = $asset->toData();
         $data['variants'] = array_map(static fn (Variant $v) => $v->toArray(), $this->generateVariants($asset));
 
-        return $this->save($data);
+        return $data['variants'] === [] ? $asset : $this->save($data);
     }
 
     /** @return list<Variant> */
     private function generateVariants(Asset $asset): array
     {
-        if ($this->variants === null || $asset->width === null) {
+        if ($this->variants === null || $asset->width === null || $asset->height === null) {
             return [];
         }
-
-        return $this->variants->generate($this->dir, $asset->path, $asset->mime, $asset->width);
+        if ($asset->width * $asset->height > (int) ($this->config['max_pixels'] ?? self::DEFAULT_MAX_PIXELS)) {
+            return [];
+        }
+        try {
+            return $this->variants->generate($this->dir, $asset->path, $asset->mime, $asset->width);
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /** @param array<string, mixed> $data */
