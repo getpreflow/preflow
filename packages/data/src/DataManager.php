@@ -179,15 +179,18 @@ final class DataManager
      */
     public function findType(string $type, string $id): ?DynamicRecord
     {
-        $typeDef = $this->requireTypeRegistry()->get($type);
-        $driver = $this->resolveDriver($typeDef->storage);
-        $data = $driver->findOne($typeDef->table, $id, $typeDef->idField);
+        return $this->findIn($this->requireTypeRegistry()->get($type), $id);
+    }
 
-        if ($data === null) {
-            return null;
-        }
+    /**
+     * Find a record of a given definition (e.g. one built in code, such as a
+     * shadow table) without going through the registry.
+     */
+    public function findIn(TypeDefinition $typeDef, string|int $id): ?DynamicRecord
+    {
+        $data = $this->resolveDriver($typeDef->storage)->findOne($typeDef->table, $id, $typeDef->idField);
 
-        return DynamicRecord::fromArray($typeDef, $data);
+        return $data === null ? null : DynamicRecord::fromArray($typeDef, $data);
     }
 
     /**
@@ -195,10 +198,12 @@ final class DataManager
      */
     public function queryType(string $type): QueryBuilder
     {
-        $typeDef = $this->requireTypeRegistry()->get($type);
-        $driver = $this->resolveDriver($typeDef->storage);
+        return $this->queryIn($this->requireTypeRegistry()->get($type));
+    }
 
-        return QueryBuilder::forType($driver, $typeDef);
+    public function queryIn(TypeDefinition $typeDef): QueryBuilder
+    {
+        return QueryBuilder::forType($this->resolveDriver($typeDef->storage), $typeDef);
     }
 
     /**
@@ -227,9 +232,22 @@ final class DataManager
      */
     public function deleteType(string $type, string|int $id): void
     {
-        $typeDef = $this->requireTypeRegistry()->get($type);
-        $driver = $this->resolveDriver($typeDef->storage);
-        $driver->delete($typeDef->table, $id, $typeDef->idField);
+        $this->deleteIn($this->requireTypeRegistry()->get($type), $id);
+    }
+
+    public function deleteIn(TypeDefinition $typeDef, string|int $id): void
+    {
+        $this->resolveDriver($typeDef->storage)->delete($typeDef->table, $id, $typeDef->idField);
+    }
+
+    /**
+     * Validate a dynamic record as saveType() would, without saving it.
+     *
+     * @throws ValidationException
+     */
+    public function validate(DynamicRecord $record, array $rules = []): void
+    {
+        $this->validateDynamicRecord($record, $rules);
     }
 
     private function validateModel(Model $model, array $extraRules = [], ?string $scenario = null): void
