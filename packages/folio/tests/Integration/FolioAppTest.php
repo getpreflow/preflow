@@ -1091,6 +1091,95 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('Nested too deep to edit here', (string) $this->get('/folio/page/' . $id . '/edit')->getBody());
     }
 
+    public function test_renders_component_blocks_in_order_with_data_only_children(): void
+    {
+        $this->enableBlocks(withFrontendTemplate: true);
+        $a = 'aaaaaaaaaaaaaaaa';
+        $b = 'bbbbbbbbbbbbbbbb';
+        $c = 'cccccccccccccccc';
+        $this->createPage(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
+            'sections' => ['_order' => [$b, $a],
+                $a => ['_block' => 'hero', 'headline' => 'Second', 'tradeoff' => ['_order' => [$c], $c => ['_block' => 'tradeoff_note', 'chose' => 'one conviction']]],
+                $b => ['_block' => 'hero', 'headline' => 'First'],
+            ]]);
+
+        $body = (string) $this->get('/blocks')->getBody();
+
+        $this->assertLessThan(strpos($body, '<h1>Second</h1>'), strpos($body, '<h1>First</h1>'));
+        $this->assertStringContainsString('<p class="note">one conviction</p>', $body);
+        $this->assertStringNotContainsString('data-folio-block', $body);
+    }
+
+    public function test_unknown_block_is_skipped_on_frontend(): void
+    {
+        $this->enableBlocks(withFrontendTemplate: true);
+        $id = $this->createPage(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published']);
+        $record = $this->dm()->findType('page', $id);
+        $record->set('sections', [
+            ['_uid' => 'bbbbbbbbbbbbbbbb', '_block' => 'gone', 'headline' => 'ghost'],
+            ['_uid' => 'aaaaaaaaaaaaaaaa', '_block' => 'hero', 'headline' => 'Visible'],
+            ['_uid' => 'cccccccccccccccc', '_block' => 'link', 'label' => 'data-only', 'url' => '/x'],
+        ]);
+        $this->dm()->saveType($record, validate: false);
+
+        $res = $this->get('/blocks');
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('<h1>Visible</h1>', (string) $res->getBody());
+        $this->assertStringNotContainsString('ghost', (string) $res->getBody());
+        $this->assertStringNotContainsString('data-only', (string) $res->getBody());
+    }
+
+    public function test_throwing_block_is_contained(): void
+    {
+        $this->enableBlocks(withFrontendTemplate: true, extraClasses: [\Preflow\Folio\Tests\Fixtures\Blocks\BoomBlock\BoomBlock::class]);
+        $id = $this->createPage(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published']);
+        $record = $this->dm()->findType('page', $id);
+        $record->set('sections', [
+            ['_uid' => 'bbbbbbbbbbbbbbbb', '_block' => 'boom'],
+            ['_uid' => 'aaaaaaaaaaaaaaaa', '_block' => 'hero', 'headline' => 'Still here'],
+        ]);
+        $this->dm()->saveType($record, validate: false);
+
+        $res = $this->get('/blocks');
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('<h1>Still here</h1>', (string) $res->getBody());
+        $this->assertStringNotContainsString('<p>never</p>', (string) $res->getBody());
+    }
+
+    public function test_preview_markers_only_in_preview(): void
+    {
+        $this->enableBlocks(withFrontendTemplate: true);
+        $a = 'aaaaaaaaaaaaaaaa';
+        $id = $this->createPage(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
+            'sections' => ['_order' => [$a], $a => ['_block' => 'hero', 'headline' => 'H']]]);
+
+        $preview = (string) $this->postPage('/folio/page/' . $id . '/preview', $id, ['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
+            'sections' => ['_order' => [$a], $a => ['_block' => 'hero', 'headline' => 'H']]])->getBody();
+
+        $this->assertStringContainsString('data-folio-block="' . $a . '"', $preview);
+        $this->assertStringNotContainsString('data-folio-block', (string) $this->get('/blocks')->getBody());
+    }
+
+    public function test_blocks_render_in_page_locale(): void
+    {
+        $this->enableGerman();
+        $this->enableBlocks(withFrontendTemplate: true);
+        $a = 'aaaaaaaaaaaaaaaa';
+        $c = 'cccccccccccccccc';
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published', '_locales_submitted' => '1', '_locales' => ['de'],
+            'sections' => ['_order' => [$a], $a => ['_block' => 'hero', 'headline' => 'English headline', 'tradeoff' => ['_order' => [$c], $c => ['_block' => 'tradeoff_note', 'chose' => 'english note']]]]]);
+        $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'de', 'title' => 'Über', 'slug' => 'ueber', 'body' => 'b', 'status' => 'published',
+            'sections' => ['_order' => [$a], $a => ['_block' => 'hero', 'headline' => 'Deutsche Überschrift', 'tradeoff' => ['_order' => [$c], $c => ['_block' => 'tradeoff_note', 'chose' => '']]]]]);
+
+        $de = (string) $this->get('/de/ueber')->getBody();
+
+        $this->assertStringContainsString('<h1>Deutsche Überschrift</h1>', $de);
+        $this->assertStringContainsString('<p class="note">english note</p>', $de); // missing leaf falls back
+        $this->assertStringContainsString('<h1>English headline</h1>', (string) $this->get('/about')->getBody());
+    }
+
     public function test_edit_form_no_preview_button_for_non_frontend_type(): void
     {
         $app = $this->app();
@@ -1221,7 +1310,8 @@ final class FolioAppTest extends TestCase
     }
 
     /** Page gets a "sections" blocks field; the fixture blocks are registered via config. */
-    private function enableBlocks(): void
+    /** @param list<class-string> $extraClasses */
+    private function enableBlocks(bool $withFrontendTemplate = false, array $extraClasses = []): void
     {
         $page = json_decode((string) file_get_contents($this->dir . '/config/models/page.json'), true);
         $page['fields']['sections'] = ['type' => 'blocks', 'label' => 'Sections', 'allowed' => ['hero', 'link']];
@@ -1230,7 +1320,17 @@ final class FolioAppTest extends TestCase
             . "    \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\HeroBlock\\HeroBlock::class,\n"
             . "    \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\LinkBlock::class,\n"
             . "    \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\TradeoffNoteBlock::class,\n"
+            . implode('', array_map(fn (string $c) => '    \\' . $c . "::class,\n", $extraClasses))
             . "]]];\n");
+        if ($extraClasses !== []) {
+            $page = json_decode((string) file_get_contents($this->dir . '/config/models/page.json'), true);
+            $page['fields']['sections']['allowed'] = ['hero', 'link', 'boom'];
+            file_put_contents($this->dir . '/config/models/page.json', json_encode($page));
+        }
+        if ($withFrontendTemplate) {
+            @mkdir($this->dir . '/resources/folio/frontend', 0777, true);
+            file_put_contents($this->dir . '/resources/folio/frontend/page.twig', '<!DOCTYPE html><html lang="{{ locale|default(\'en\') }}"><head></head><body><main>{{ folio_blocks(record.sections, preview|default(false)) }}</main></body></html>');
+        }
     }
 
     /** English + German content; page title/slug/body translatable, slug lower-case only. */

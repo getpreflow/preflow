@@ -219,6 +219,27 @@ final class FolioServiceProvider extends ServiceProvider
                 isSafe: false,
             ));
 
+            // Blocks: rendered through their components in the content locale.
+            $blockRenderer = static fn (): \Preflow\Folio\Block\BlockRenderer => new \Preflow\Folio\Block\BlockRenderer(
+                $container->get(BlockRegistry::class),
+                $container->get(\Preflow\Components\ComponentRenderer::class),
+                $container,
+                $container->get(ContentLocale::class),
+            );
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_blocks',
+                callable: fn (mixed $blocks, bool $preview = false): string => $blockRenderer()->render($blocks, $preview),
+                isSafe: true,
+            ));
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_block',
+                callable: fn (array $block, bool $preview = false): string => $blockRenderer()->renderBlock(
+                    \Preflow\Data\LocaleValue::resolveTree($block, $container->get(ContentLocale::class)->locales(), $container->get(ContentLocale::class)->get()),
+                    $preview,
+                ),
+                isSafe: true,
+            ));
+
             // Public URLs and hreflang alternates of a (raw, stored) record.
             $resolver = static fn () => $container->get(FrontendResolver::class);
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(

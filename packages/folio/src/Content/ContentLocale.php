@@ -28,4 +28,9 @@ final class ContentLocale
     {
         return $this->locale ?? $this->locales->default;
     }
+
+    public function locales(): Locales
+    {
+        return $this->locales;
+    }
 }
