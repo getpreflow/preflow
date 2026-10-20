@@ -523,7 +523,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
 
     public function assets(): array
     {
-        return ['htmx.js'];
+        // htmx: picker and duplicate fragments; admin.js: collapse, move, remove.
+        return ['htmx.js', 'admin.js'];
     }
 
     /** @return UploadedFileInterface[] */

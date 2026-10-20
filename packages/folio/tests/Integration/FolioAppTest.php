@@ -1022,6 +1022,23 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('enctype="multipart/form-data"', $body); // blocks may hold uploads
     }
 
+    public function test_blocks_editor_loads_admin_js_for_card_controls(): void
+    {
+        // Collapse, move and remove are admin.js; without it only duplicate (htmx) responds.
+        // A type whose only non-plain field is the blocks list (no matrix or asset field
+        // to pull admin.js in by accident).
+        $this->enableBlocks();
+        $page = json_decode((string) file_get_contents($this->dir . '/config/models/page.json'), true);
+        $page['fields'] = array_intersect_key($page['fields'], array_flip(['title', 'slug', 'status', 'sections']));
+        file_put_contents($this->dir . '/config/models/page.json', json_encode($page));
+        $id = $this->createPage(['title' => 'Blocks', 'slug' => 'blocks', 'status' => 'published']);
+
+        $body = (string) $this->get('/folio/page/' . $id . '/edit')->getBody();
+
+        $this->assertStringContainsString('data-blocks-field', $body);
+        $this->assertStringContainsString('/folio/_assets/admin.js?v=', $body);
+    }
+
     public function test_block_errors_render_inside_the_card(): void
     {
         $this->enableBlocks();
