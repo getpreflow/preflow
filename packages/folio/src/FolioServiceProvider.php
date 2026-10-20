@@ -82,6 +82,11 @@ final class FolioServiceProvider extends ServiceProvider
 
         // Media library: files in a public, web-server-served directory (no PHP on delivery).
         $assetsConfig = (array) ($folioCfg['assets'] ?? []);
+        // Eager widths (made at upload) and the on-demand allow-list, from config/image.php presets.
+        $container->singleton(\Preflow\Folio\Assets\ImageWidths::class, fn () => \Preflow\Folio\Assets\ImageWidths::fromConfig(
+            (array) $app->config()->get('image.presets', []),
+            is_array($assetsConfig['widths'] ?? null) ? $assetsConfig['widths'] : null,
+        ));
         $container->singleton(\Preflow\Folio\Assets\AssetLibrary::class, fn (Container $c) => new \Preflow\Folio\Assets\AssetLibrary(
             $c->get(DataManager::class),
             $locales ?? \Preflow\Data\Locales::single('en'),
@@ -90,7 +95,7 @@ final class FolioServiceProvider extends ServiceProvider
             $assetsConfig,
             new \Preflow\Folio\Assets\VariantGenerator(
                 \Preflow\Folio\Assets\Image\ImageBackends::detect(),
-                self::variantWidths($assetsConfig, (array) $app->config()->get('image.presets', [])),
+                $c->get(\Preflow\Folio\Assets\ImageWidths::class)->eager(),
                 (int) ($assetsConfig['quality'] ?? 75),
             ),
         ));
@@ -120,6 +125,7 @@ final class FolioServiceProvider extends ServiceProvider
             (array) $app->config()->get('image.presets', []),
             $c->get(\Preflow\View\AssetCollector::class),
             rtrim($prefix, '/') . '/_uploads',
+            $c->get(\Preflow\Folio\Assets\ImageWidths::class),
         ));
 
         // Request-scoped: public renders read published snapshots, admin routes switch it to working copies.
@@ -511,23 +517,6 @@ final class FolioServiceProvider extends ServiceProvider
      * @param array<string, mixed> $presets
      * @return list<int>
      */
-    private static function variantWidths(array $assets, array $presets): array
-    {
-        if (is_array($assets['widths'] ?? null) && $assets['widths'] !== []) {
-            return array_values(array_map('intval', $assets['widths']));
-        }
-        $widths = [];
-        foreach ($presets as $preset) {
-            foreach ((array) ($preset['widths'] ?? []) as $w) {
-                $widths[] = (int) $w;
-            }
-        }
-        $widths = array_values(array_unique(array_filter($widths, static fn (int $w) => $w > 0)));
-        sort($widths);
-
-        return $widths !== [] ? $widths : [480, 768, 1024, 1600];
-    }
-
     private function folioConfig(Application $app): array
     {
         $path = $app->basePath('config/folio.php');

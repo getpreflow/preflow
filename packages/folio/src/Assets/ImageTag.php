@@ -26,6 +26,7 @@ final class ImageTag
         private readonly array $presets,
         private readonly AssetCollector $css,
         private readonly string $legacyUrlPrefix,
+        private readonly ?ImageWidths $widths = null,
     ) {}
 
     /** @param array<string, mixed> $options */
@@ -56,7 +57,7 @@ final class ImageTag
         $sources = '';
         $first = null; // [format, srcset] of the first source: what the browser will pick
         foreach (['avif', 'webp'] as $format) {
-            $srcset = $this->srcset($asset, $format);
+            $srcset = $this->srcset($asset, $format, $preset);
             if ($srcset !== '') {
                 $first ??= [$format, $srcset];
                 $sources .= '<source type="image/' . $format . '" srcset="' . self::e($srcset) . '" sizes="' . self::e($sizes) . '">';
@@ -93,8 +94,26 @@ final class ImageTag
         return $sources === '' ? $img : '<picture>' . $sources . $img . '</picture>';
     }
 
-    private function srcset(Asset $asset, string $format): string
+    /**
+     * With a width model: the preset's widths up to the original, by their
+     * deterministic file names (step widths are made on first request); the
+     * formats are those the asset already has variants in.
+     */
+    private function srcset(Asset $asset, string $format, ?string $preset): string
     {
+        if ($this->widths !== null) {
+            $has = array_filter($asset->variants, static fn (Variant $v) => $v->format === $format);
+            if ($has === [] || $asset->width === null) {
+                return '';
+            }
+            $base = substr($asset->path, 0, (int) strrpos($asset->path, '.'));
+
+            return implode(', ', array_map(
+                fn (int $w) => $this->library->url("{$base}-{$w}.{$format}") . ' ' . $w . 'w',
+                $this->widths->srcsetWidths($preset, $asset->width),
+            ));
+        }
+
         $variants = array_filter($asset->variants, static fn (Variant $v) => $v->format === $format);
         usort($variants, static fn (Variant $a, Variant $b) => $a->width <=> $b->width);
 

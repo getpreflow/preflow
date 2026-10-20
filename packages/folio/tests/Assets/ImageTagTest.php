@@ -159,8 +159,30 @@ final class ImageTagTest extends TestCase
         $this->assertStringNotContainsString('preload', $this->css->renderHead());
     }
 
+    public function test_srcset_lists_step_widths_up_to_the_original(): void
+    {
+        $asset = $this->lib->upload($this->upload($this->png(700, 400), 'a.png'), null);
+        $base = '/media/' . dirname($asset->path) . '/' . $asset->id;
+        $presets = ['card' => ['widths' => [480, 960], 'step' => 160, 'sizes' => '50vw']];
+
+        $html = $this->tag($presets)->render($asset->id, 'card');
+
+        // 640 is made on first request; 700 is the original (narrower than 960).
+        $this->assertStringContainsString('<source type="image/webp" srcset="' . $base . '-480.webp 480w, ' . $base . '-640.webp 640w, ' . $base . '-700.webp 700w" sizes="50vw">', $html);
+    }
+
+    public function test_preset_without_step_lists_its_own_widths(): void
+    {
+        $asset = $this->lib->upload($this->upload($this->png(1200, 800), 'a.png'), null);
+        $base = '/media/' . dirname($asset->path) . '/' . $asset->id;
+
+        $html = $this->tag(['thumb' => ['widths' => [480]]])->render($asset->id, 'thumb');
+
+        $this->assertStringContainsString('srcset="' . $base . '-480.webp 480w"', $html);
+    }
+
     private function tag(array $presets = []): ImageTag
     {
-        return new ImageTag($this->lib, $this->locale, $presets, $this->css, '/folio/_uploads');
+        return new ImageTag($this->lib, $this->locale, $presets, $this->css, '/folio/_uploads', \Preflow\Folio\Assets\ImageWidths::fromConfig($presets, [480, 768]));
     }
 }
