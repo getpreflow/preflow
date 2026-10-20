@@ -693,6 +693,145 @@
         e.preventDefault();
     }
 
+    // ---- Block reorder: drag the handle, or Space + arrows on it --------------
+    // Order is carried by each card's own [_order][] input, so moving the card
+    // in the DOM is the whole change. Moves stay within one list.
+
+    var dragCard = null;
+    var lifted = null; // { card, parent, next, handle }
+
+    function cardLabel(card) {
+        var el = card.querySelector(':scope > .folio-block-head .folio-block-label');
+        return el ? el.textContent.trim() : 'Block';
+    }
+
+    function cardPosition(card) {
+        var cards = Array.prototype.filter.call(card.parentNode.children, function (el) { return el.hasAttribute('data-block-card'); });
+        return (cards.indexOf(card) + 1) + ' of ' + cards.length;
+    }
+
+    function announce(card, text) {
+        var field = card.closest('[data-blocks-field]');
+        var live = field ? field.querySelector(':scope > [data-blocks-live]') : null;
+        if (!live) { return; }
+        live.textContent = '';
+        setTimeout(function () { live.textContent = text; }, 30);
+    }
+
+    function clearDropMarks() {
+        document.querySelectorAll('.is-drop-before, .is-drop-after').forEach(function (el) {
+            el.classList.remove('is-drop-before', 'is-drop-after');
+        });
+    }
+
+    // The card under the pointer at the dragged card's level, if any.
+    function dropTarget(el) {
+        var target = el && el.closest ? el.closest('[data-block-card]') : null;
+        while (target && target.parentNode !== dragCard.parentNode) { target = parentCard(target); }
+        return target && target !== dragCard ? target : null;
+    }
+
+    function onHandlePointerDown(e) {
+        var handle = e.target.closest ? e.target.closest('[data-block-handle]') : null;
+        if (!handle) { return; }
+        var card = handle.closest('[data-block-card]');
+        if (card) { card.draggable = true; }
+    }
+
+    function onDragStart(e) {
+        var card = e.target.closest ? e.target.closest('[data-block-card]') : null;
+        if (!card || !card.draggable) { return; }
+        dragCard = card;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', card.getAttribute('data-block-uid') || '');
+        card.classList.add('is-dragging');
+    }
+
+    function onDragOver(e) {
+        if (!dragCard) { return; }
+        var target = dropTarget(e.target);
+        clearDropMarks();
+        if (!target) { return; }
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        var r = target.getBoundingClientRect();
+        target.classList.add(e.clientY < r.top + r.height / 2 ? 'is-drop-before' : 'is-drop-after');
+    }
+
+    function onDrop(e) {
+        if (!dragCard) { return; }
+        var target = document.querySelector('.is-drop-before, .is-drop-after');
+        if (!target || target.parentNode !== dragCard.parentNode) { return; }
+        e.preventDefault();
+        target.parentNode.insertBefore(dragCard, target.classList.contains('is-drop-before') ? target : target.nextSibling);
+        announce(dragCard, 'Moved ' + cardLabel(dragCard) + ', position ' + cardPosition(dragCard) + '.');
+        notifyChange(dragCard);
+    }
+
+    function onDragEnd() {
+        clearDropMarks();
+        if (dragCard) {
+            dragCard.classList.remove('is-dragging');
+            dragCard.draggable = false;
+        }
+        dragCard = null;
+    }
+
+    function onPointerUp() {
+        if (dragCard) { return; }
+        document.querySelectorAll('[data-block-card][draggable="true"]').forEach(function (c) { c.draggable = false; });
+    }
+
+    function endLift(cancel) {
+        var l = lifted;
+        lifted = null;
+        l.card.classList.remove('is-lifted');
+        l.handle.setAttribute('aria-pressed', 'false');
+        if (cancel) {
+            l.parent.insertBefore(l.card, l.next);
+            l.handle.focus();
+            announce(l.card, 'Cancelled. ' + cardLabel(l.card) + ' is back at position ' + cardPosition(l.card) + '.');
+            return;
+        }
+        announce(l.card, 'Dropped ' + cardLabel(l.card) + ', position ' + cardPosition(l.card) + '.');
+        if (l.card.nextSibling !== l.next) { notifyChange(l.card); }
+    }
+
+    function onHandleKeydown(e) {
+        var handle = e.target.closest ? e.target.closest('[data-block-handle]') : null;
+        if (!handle) { return; }
+        var card = handle.closest('[data-block-card]');
+        if (!card) { return; }
+        if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            if (lifted && lifted.card === card) { endLift(false); return; }
+            if (lifted) { endLift(false); }
+            lifted = { card: card, parent: card.parentNode, next: card.nextSibling, handle: handle };
+            card.classList.add('is-lifted');
+            handle.setAttribute('aria-pressed', 'true');
+            announce(card, 'Lifted ' + cardLabel(card) + ', position ' + cardPosition(card) + '. Arrow keys move it, Space drops it, Escape cancels.');
+        } else if (lifted && lifted.card === card && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+            e.preventDefault();
+            var other = siblingCard(card, e.key === 'ArrowUp' ? -1 : 1);
+            if (!other) { return; }
+            card.parentNode.insertBefore(card, e.key === 'ArrowUp' ? other : other.nextSibling);
+            handle.focus();
+            announce(card, cardLabel(card) + ', position ' + cardPosition(card) + '.');
+        } else if (lifted && lifted.card === card && e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            endLift(true);
+        }
+    }
+
+    function onHandleFocusOut(e) {
+        if (!lifted || e.target !== lifted.handle) { return; }
+        // Moving the card can blur its handle for a moment; only a real focus loss drops.
+        setTimeout(function () {
+            if (lifted && document.activeElement !== lifted.handle) { endLift(false); }
+        }, 0);
+    }
+
     // Cards added by htmx: run the same per-element setup as on page load.
     function onHtmxLoad(e) {
         var root = e.detail && e.detail.elt ? e.detail.elt : null;
@@ -777,6 +916,14 @@
     function boot() {
         document.addEventListener('submit', onSubmitConfirm);
         document.addEventListener('click', onBlockClick);
+        document.addEventListener('pointerdown', onHandlePointerDown);
+        document.addEventListener('pointerup', onPointerUp);
+        document.addEventListener('dragstart', onDragStart);
+        document.addEventListener('dragover', onDragOver);
+        document.addEventListener('drop', onDrop);
+        document.addEventListener('dragend', onDragEnd);
+        document.addEventListener('keydown', onHandleKeydown);
+        document.addEventListener('focusout', onHandleFocusOut);
         document.addEventListener('click', onCopyClick);
         document.addEventListener('click', onFocalClick);
         document.addEventListener('click', onPickClick);

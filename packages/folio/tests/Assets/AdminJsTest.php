@@ -84,6 +84,17 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('folio-pe-badge', $js);         // editor artefacts are ignored when comparing
     }
 
+    public function test_drag_and_keyboard_reorder(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString("'dragstart'", $js);
+        $this->assertStringContainsString("'drop'", $js);
+        $this->assertStringContainsString('[data-block-handle]', $js);
+        $this->assertStringContainsString('[data-blocks-live]', $js);   // screen reader announcements
+        $this->assertStringContainsString("e.key === 'Escape'", $js);    // cancel a keyboard move
+        $this->assertStringContainsString('parentNode !== ', $js);       // drops stay within one list
+    }
+
     public function test_defines_surgical_preview_patch(): void
     {
         $js = $this->js();

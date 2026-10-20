@@ -2,6 +2,7 @@
     <input type="hidden" name="{{ name }}[_order][]" value="{{ uid }}">
     <input type="hidden" name="{{ name }}[{{ uid }}][_block]" value="{{ key }}">
     <div class="folio-block-head">
+        <button type="button" class="folio-block-handle" data-block-handle aria-roledescription="drag handle" aria-label="Reorder {{ label }}" title="Drag to reorder, or press Space and use the arrow keys"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-grip"></use></svg></button>
         <button type="button" class="folio-block-toggle" data-block-collapse aria-expanded="{{ open ? 'true' : 'false' }}">
             <svg class="folio-icon folio-block-chevron" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-chevron"></use></svg>
             <svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ icon }}"></use></svg>

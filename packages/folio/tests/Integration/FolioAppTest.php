@@ -1058,6 +1058,19 @@ final class FolioAppTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/<label[^>]*>\s*Sections\[/i', $body);
     }
 
+    public function test_block_card_has_drag_handle_and_live_region(): void
+    {
+        $this->enableBlocks();
+        $uid = 'aaaaaaaaaaaaaaaa';
+        $id = $this->createPage(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
+            'sections' => ['_order' => [$uid], $uid => ['_block' => 'hero', 'headline' => 'Hello']]]);
+
+        $body = (string) $this->get('/folio/page/' . $id . '/edit')->getBody();
+
+        $this->assertMatchesRegularExpression('#<button type="button" class="folio-block-handle" data-block-handle aria-roledescription="drag handle" aria-label="Reorder Hero"#', $body);
+        $this->assertStringContainsString('<div class="folio-sr" aria-live="assertive" data-blocks-live></div>', $body);
+    }
+
     public function test_blocks_editor_loads_admin_js_for_card_controls(): void
     {
         // Collapse, move and remove are admin.js; without it only duplicate (htmx) responds.

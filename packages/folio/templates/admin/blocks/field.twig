@@ -9,6 +9,7 @@
             {% for item in summary %}<li><a href="#block-{{ item.uid }}">{{ item.messages|join(' ') }}</a></li>{% endfor %}
         </ul>
     {% endif %}
+    <div class="folio-sr" aria-live="assertive" data-blocks-live></div>
     <div class="folio-blocks-list" data-blocks-list>
         {% for card in cards %}{{ card|raw }}{% endfor %}
         <div class="folio-blocks-picker" data-blocks-picker>

@@ -632,7 +632,29 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .folio-block-body .folio-block-card { background: var(--c-surface-2); }
 .folio-block-body .folio-block-card.is-open { box-shadow: none; }
 
-.folio-block-head { display: flex; align-items: center; gap: 4px; min-height: 46px; padding: 5px 6px 5px 5px; }
+.folio-block-head { display: flex; align-items: center; gap: 2px; min-height: 46px; padding: 5px 6px 5px 3px; }
+.folio-block-handle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--c-text-subtle);
+  cursor: grab;
+  touch-action: none;
+}
+.folio-block-handle:hover { color: var(--c-text-muted); background: var(--c-row-hover); }
+.folio-block-handle:active { cursor: grabbing; }
+.folio-block-handle .folio-icon { width: 16px; height: 16px; }
+.folio-block-handle[aria-pressed="true"] { color: var(--c-accent-text); background: var(--c-accent-soft); }
+.folio-block-card.is-dragging { opacity: .45; }
+.folio-block-card.is-lifted { border-color: var(--c-accent); box-shadow: 0 0 0 3px var(--c-focus-ring), var(--shadow-md); }
+.folio-block-card.is-drop-before { box-shadow: 0 -3px 0 0 var(--c-accent); }
+.folio-block-card.is-drop-after { box-shadow: 0 3px 0 0 var(--c-accent); }
 .folio-block-card.is-unknown .folio-block-head { padding-left: 14px; gap: 10px; }
 .folio-block-toggle {
   display: flex;
