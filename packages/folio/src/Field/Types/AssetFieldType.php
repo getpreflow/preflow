@@ -31,6 +31,8 @@ final class AssetFieldType implements FieldType, HandlesUpload
         private readonly ?\Preflow\Folio\Assets\ImageTag $images = null,
         private readonly ?\Preflow\Folio\Assets\AssetLibrary $library = null,
         private readonly string $adminPrefix = '/folio',
+        /** @var (\Closure(string): bool)|null permission check; null allows everything */
+        private readonly ?\Closure $can = null,
     ) {}
 
     /** @var list<string> refused uploads since the last drainErrors() */
@@ -52,6 +54,11 @@ final class AssetFieldType implements FieldType, HandlesUpload
     public function key(): string
     {
         return 'asset';
+    }
+
+    private function allows(string $permission): bool
+    {
+        return $this->can === null || ($this->can)($permission);
     }
 
     public function renderEditor(FieldContext $ctx): string
@@ -90,13 +97,15 @@ final class AssetFieldType implements FieldType, HandlesUpload
         $html .= '  </ul>' . "\n";
 
         $html .= '  <div class="folio-asset-actions">';
-        if ($this->library !== null) {
+        if ($this->library !== null && $this->allows('assets.view')) {
             $html .= '<button type="button" class="btn btn-secondary" data-folio-asset-choose>Choose</button> ';
         }
-        $inputName = $cfg['multiple'] ? $name . '[]' : $name;
-        $acceptAttr = $cfg['accept'] !== '' ? ' accept="' . $e($cfg['accept']) . '"' : '';
-        $multipleAttr = $cfg['multiple'] ? ' multiple' : '';
-        $html .= '<label class="folio-asset-upload">Upload <input type="file" name="' . $e($inputName) . '"' . $acceptAttr . $multipleAttr . '></label>';
+        if ($this->allows('assets.upload')) {
+            $inputName = $cfg['multiple'] ? $name . '[]' : $name;
+            $acceptAttr = $cfg['accept'] !== '' ? ' accept="' . $e($cfg['accept']) . '"' : '';
+            $multipleAttr = $cfg['multiple'] ? ' multiple' : '';
+            $html .= '<label class="folio-asset-upload">Upload <input type="file" name="' . $e($inputName) . '"' . $acceptAttr . $multipleAttr . '></label>';
+        }
         $html .= '</div>' . "\n";
 
         if ($ctx->help !== null && $ctx->help !== '') {

@@ -34,7 +34,7 @@ final class AdminAuthMiddleware implements MiddlewareInterface
             }
             return new Response(302, ['Location' => $this->prefix . '/login']);
         }
-        $this->auth->setUser($user);
+        $this->auth->setUser($user, $this->auth->defaultGuardName());
         $request = $request->withAttribute(Authenticatable::class, $user);
         return $handler->handle($request);
     }

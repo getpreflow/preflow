@@ -100,6 +100,40 @@ driver (e.g. `sqlite`); the admin and rendering are storage-agnostic.
 Admin and frontend templates live under `@folio/*` and are overridable: drop a same-named
 template in `resources/folio/` to replace the shipped one.
 
+## Access
+
+Every admin action asks one permission through `can()` (see `preflow/auth`).
+
+**Content types** have `{type}.view`, `create`, `edit`, `publish` and `delete`.
+- Viewing a list or a form needs `view`.
+- Saving a draft, autosave, discard, restore, sharing and reordering need `edit`.
+- Publishing and unpublishing need `publish`. Without it, "Publish" and
+  "Publish at" are not offered, and a posted `_action=publish` is refused (403)
+  without saving.
+
+**Assets** have `assets.view`, `upload`, `edit` and `delete`.
+
+**The dashboard** needs `folio.dashboard`. Without it, login lands on the first
+section the user may view.
+
+**Block editor fragments** need `edit` on any type.
+
+The sidebar, dashboard cards, list buttons and form buttons follow the same
+answers. A form the user may not save is shown read-only. Each check is also
+enforced on the server, so a hidden button is never the only protection. A
+refused htmx request (autosave, block picker) shows its message as a toast.
+
+**Defaults.** Without a permission package, every signed-in staff user may do
+everything, as before. For roles, add `preflow/roles`:
+
+```php
+// config/roles.php
+return ['staff' => [
+    'admin'  => ['*'],
+    'editor' => ['folio.dashboard', 'page.view', 'page.edit', 'assets.*'],
+]];
+```
+
 ## Overriding a core admin action
 
 Shadow a single core action without forking by adding a class under

@@ -14,6 +14,7 @@ final class AuthExtensionProvider implements TemplateExtensionProvider
     public function __construct(
         private readonly AuthManager $authManager,
         private readonly ?SessionInterface $session = null,
+        private readonly ?Access\Access $access = null,
     ) {}
 
     public function getTemplateFunctions(): array
@@ -27,6 +28,11 @@ final class AuthExtensionProvider implements TemplateExtensionProvider
             new TemplateFunctionDefinition(
                 name: 'auth_check',
                 callable: fn () => $this->authManager->user() !== null,
+                isSafe: true,
+            ),
+            new TemplateFunctionDefinition(
+                name: 'can',
+                callable: fn (string $permission, ?object $subject = null): bool => $this->access?->can($permission, $subject) ?? true,
                 isSafe: true,
             ),
             new TemplateFunctionDefinition(

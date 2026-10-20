@@ -25,6 +25,7 @@
         "preflow/htmx": "@dev",
         "preflow/i18n": "@dev",
         "preflow/notify": "@dev",
+        "preflow/roles": "@dev",
         "preflow/routing": "@dev",
         "preflow/testing": "@dev",
         "preflow/twig": "@dev",
@@ -113,6 +114,11 @@
             "type": "path",
             "url": "packages/notify",
             "options": { "symlink": true }
+        },
+        {
+            "type": "path",
+            "url": "packages/roles",
+            "options": { "symlink": true }
         }
     ],
     "autoload": {},
@@ -125,6 +131,7 @@
             "Preflow\\Folio\\Tests\\": "packages/folio/tests/",
             "Preflow\\Form\\Tests\\": "packages/form/tests/",
             "Preflow\\Notify\\Tests\\": "packages/notify/tests/",
+            "Preflow\\Roles\\Tests\\": "packages/roles/tests/",
             "Preflow\\Validation\\Tests\\": "packages/validation/tests/",
             "Preflow\\Examples\\FolioDemo\\Tests\\": "examples/folio-demo/tests/",
             "Preflow\\Examples\\FolioDemo\\": "examples/folio-demo/app/"

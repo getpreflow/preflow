@@ -17,6 +17,7 @@ final class FolioRoutes
     private const WORKING_MW = 'Preflow\\Folio\\Http\\WorkingCopyMiddleware';
     private const AUTH = 'Preflow\\Folio\\Http\\AuthController';
     private const AUTH_MW = 'Preflow\\Folio\\Http\\AdminAuthMiddleware';
+    private const PERMISSION_MW = 'Preflow\\Folio\\Http\\FolioPermissionMiddleware';
 
     /** @return RouteEntry[] */
     public static function admin(string $prefix, bool $authEnabled = false): array
@@ -61,7 +62,8 @@ final class FolioRoutes
         foreach ($defs as $def) {
             [$method, $pattern, $action] = $def;
             $handlerClass = $def[3] ?? self::ADMIN;
-            $middleware = ($authEnabled && $handlerClass !== self::AUTH) ? [self::AUTH_MW] : [];
+            // Signed-in staff, then the route's permission (FolioPermissionMiddleware::rule).
+            $middleware = ($authEnabled && $handlerClass !== self::AUTH) ? [self::AUTH_MW, self::PERMISSION_MW] : [];
             $middleware[] = self::WORKING_MW; // the admin shows drafts of referenced records
             $c = PatternCompiler::compile($pattern);
             $entries[] = new RouteEntry(

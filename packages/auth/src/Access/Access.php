@@ -1,0 +1,87 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Auth\Access;
+
+use Preflow\Auth\AuthManager;
+
+/**
+ * The one permission question: can('page.publish'). It asks about the user
+ * signed in for this request, in its population (staff or members, per guard),
+ * and lets the installed resolver answer. Undeclared permissions throw in
+ * debug and are denied (logged once) in production.
+ */
+final class Access
+{
+    private PermissionResolver $resolver;
+
+    /** @var array<string, true> undeclared permissions already logged this request */
+    private array $logged = [];
+
+    /** @var array<string, true> guards marked as staff by a package (Folio) */
+    private array $staffGuards = [];
+
+    /**
+     * @param array<string, string> $populations guard name => 'staff'|'members' from config/auth.php
+     */
+    public function __construct(
+        private readonly ?AuthManager $auth,
+        private readonly PermissionRegistry $registry,
+        private readonly bool $debug,
+        private readonly array $populations,
+    ) {
+        $this->resolver = new DefaultResolver();
+    }
+
+    public function setResolver(PermissionResolver $resolver): void
+    {
+        $this->resolver = $resolver;
+    }
+
+    /** A package that authenticates staff with this guard (Folio) marks it; config still wins. */
+    public function markStaffGuard(string $guard): void
+    {
+        $this->staffGuards[$guard] = true;
+    }
+
+    /** @return 'staff'|'members' */
+    public function populationOf(string $guard): string
+    {
+        $configured = $this->populations[$guard] ?? null;
+        if ($configured === 'staff' || $configured === 'members') {
+            return $configured;
+        }
+
+        return isset($this->staffGuards[$guard]) ? 'staff' : 'members';
+    }
+
+    public function can(string $permission, ?object $subject = null): bool
+    {
+        if ($this->auth === null) {
+            return true; // no auth configured: nothing to restrict (e.g. Folio without login)
+        }
+        if (!$this->registry->isDeclared($permission)) {
+            if ($this->debug) {
+                throw UndeclaredPermission::named($permission);
+            }
+            if (!isset($this->logged[$permission])) {
+                $this->logged[$permission] = true;
+                error_log("preflow/auth: undeclared permission \"{$permission}\" denied");
+            }
+
+            return false;
+        }
+        $user = $this->auth->user();
+        if ($user === null) {
+            return false;
+        }
+
+        return $this->resolver->allows($user, $this->populationOf($this->auth->guardName() ?? ''), $permission, $subject);
+    }
+
+    public function registry(): PermissionRegistry
+    {
+        return $this->registry;
+    }
+}

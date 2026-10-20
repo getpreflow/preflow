@@ -45,6 +45,8 @@ final class Kernel
         try {
             return $this->pipeline->process($request, function (ServerRequestInterface $req): ResponseInterface {
                 $route = $this->router->match($req);
+                // Route middleware (e.g. permission checks) can read the matched handler and parameters.
+                $req = $req->withAttribute(Route::class, $route);
                 $this->collector?->setRoute($route->mode->value, $route->handler, $route->parameters);
 
                 $dispatch = fn(ServerRequestInterface $r): ResponseInterface => match ($route->mode) {

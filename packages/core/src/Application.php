@@ -806,7 +806,11 @@ final class Application
         }
 
         $authConfigPath = $this->basePath('config/auth.php');
+        $registry = new \Preflow\Auth\Access\PermissionRegistry();
+        $this->container->instance(\Preflow\Auth\Access\PermissionRegistry::class, $registry);
         if (!file_exists($authConfigPath)) {
+            // No auth: can() allows everything, as there is nobody to restrict.
+            $this->container->instance(\Preflow\Auth\Access\Access::class, new \Preflow\Auth\Access\Access(null, $registry, false, []));
             return;
         }
 
@@ -864,6 +868,16 @@ final class Application
         $authManager = new \Preflow\Auth\AuthManager($guards, $defaultGuard);
         $this->container->instance(\Preflow\Auth\AuthManager::class, $authManager);
 
+        // The permission question: staff/members per guard (config), default resolver until a package sets one.
+        $populations = [];
+        foreach ($authConfig['guards'] ?? [] as $name => $guardConfig) {
+            if (is_string($guardConfig['population'] ?? null)) {
+                $populations[(string) $name] = $guardConfig['population'];
+            }
+        }
+        $access = new \Preflow\Auth\Access\Access($authManager, $registry, (bool) $this->config->get('app.debug', false), $populations);
+        $this->container->instance(\Preflow\Auth\Access\Access::class, $access);
+
         // Bind the default guard's provider under UserProviderInterface so controllers can resolve it
         $defaultProviderName = $authConfig['guards'][$defaultGuard]['provider'] ?? null;
         if ($defaultProviderName !== null && isset($providers[$defaultProviderName])) {
@@ -873,10 +887,11 @@ final class Application
         // Global middleware: resolve authenticated user on every request (no 401 — just populate)
         $defaultGuardInstance = $guards[$defaultGuard] ?? null;
         if ($defaultGuardInstance !== null) {
-            $this->addMiddleware(new class($authManager, $defaultGuardInstance) implements \Psr\Http\Server\MiddlewareInterface {
+            $this->addMiddleware(new class($authManager, $defaultGuardInstance, $defaultGuard) implements \Psr\Http\Server\MiddlewareInterface {
                 public function __construct(
                     private readonly \Preflow\Auth\AuthManager $authManager,
                     private readonly \Preflow\Auth\GuardInterface $guard,
+                    private readonly string $guardName,
                 ) {}
 
                 public function process(
@@ -885,7 +900,7 @@ final class Application
                 ): \Psr\Http\Message\ResponseInterface {
                     $user = $this->guard->user($request);
                     if ($user !== null) {
-                        $this->authManager->setUser($user);
+                        $this->authManager->setUser($user, $this->guardName);
                         $request = $request->withAttribute(\Preflow\Auth\Authenticatable::class, $user);
                     }
                     return $handler->handle($request);
@@ -910,7 +925,7 @@ final class Application
 
         if ($this->container->has(\Preflow\View\TemplateEngineInterface::class)) {
             $engine = $this->container->get(\Preflow\View\TemplateEngineInterface::class);
-            $authProvider = new \Preflow\Auth\AuthExtensionProvider($authManager, $session);
+            $authProvider = new \Preflow\Auth\AuthExtensionProvider($authManager, $session, $access);
             $this->registerExtensionProvider($engine, $authProvider);
         }
     }

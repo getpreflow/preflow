@@ -29,6 +29,7 @@ final class PublishingController
         private readonly TemplateEngineInterface $engine,
         private readonly ?PreviewLinks $links = null,
         private readonly ?FrontendResolver $resolver = null,
+        private readonly ?\Preflow\Auth\Access\Access $access = null,
     ) {}
 
     /**
@@ -49,6 +50,9 @@ final class PublishingController
         $locale = is_string($body['_locale'] ?? null) ? $body['_locale'] : $typeDef->locales->default;
         $record = $this->drafts->build($typeDef, $request, $current->toArray(), $locale, writeUploads: false);
         $loaded = is_string($body['_version'] ?? null) && ctype_digit($body['_version']) ? (int) $body['_version'] : null;
+        if (!$this->mayPublish($type)) {
+            $record->set('_publish_at', ''); // an unreviewed change cancels a pending schedule
+        }
 
         try {
             $this->publisher->saveDraft($record, $loaded);
@@ -64,8 +68,12 @@ final class PublishingController
     {
         [$type, $id] = $this->target($request);
         $revision = (string) $request->getAttribute('rev', '');
-        if ($type === null || $this->publisher->restore($type, $id, $revision) === null) {
+        if ($type === null || ($restored = $this->publisher->restore($type, $id, $revision)) === null) {
             return new Response(404, [], 'Not found');
+        }
+        if (!$this->mayPublish($type) && (string) $restored->get('_publish_at') !== '') {
+            $restored->set('_publish_at', ''); // restored content goes live only when someone who may publish says so
+            $this->dm->saveType($restored, false);
         }
 
         return $this->backToEditor($type, $id, '?restored=1');
@@ -105,6 +113,11 @@ final class PublishingController
         $this->rotateShareToken($working);
 
         return $this->shareFragment($working, null, 'Links revoked. Earlier preview links no longer work.');
+    }
+
+    private function mayPublish(string $type): bool
+    {
+        return $this->access?->can($type . '.publish') ?? true;
     }
 
     public static function stateText(PublishState $state): string

@@ -191,6 +191,58 @@ final class DashboardController
 
 Any template that previously used `{{ csrf_token()|raw }}` must be updated to `{{ csrf_field() }}`.
 
+## Permissions
+
+Code asks one question, the same way everywhere:
+
+```php
+$access->can('page.publish');          // Preflow\Auth\Access\Access, injected
+$access->can('invoice.view', $invoice); // a subject, for resolvers that check records
+```
+
+```twig
+{% if can('page.publish') %}<button>Publish</button>{% endif %}
+```
+
+It asks about the user signed in for this request. The answer comes from the
+installed resolver:
+
+- **The default** (no permission package): staff may do everything, members
+  nothing.
+- **`preflow/roles`**: roles from `config/roles.php`.
+- **A full RBAC package**: it sets its own resolver.
+
+Every permission is declared, so role editors can list them and typos are
+caught:
+
+```php
+$registry = $access->registry();
+$registry->declare('invoice.view', 'View', 'Invoices');
+$registry->declarePattern('invoice.*'); // a family, e.g. declared by a content type
+```
+
+- **Undeclared permissions:** an undeclared permission throws
+  `UndeclaredPermission` in debug. In production it is denied and logged once
+  per request.
+- **No auth:** without `config/auth.php`, `can()` is always true.
+
+**Staff and members.** Each guard serves one population. Set it with
+`population` in `config/auth.php`:
+
+```php
+'guards' => [
+    'session' => ['class' => SessionGuard::class, 'provider' => 'users', 'population' => 'staff'],
+    'members' => ['class' => SessionGuard::class, 'provider' => 'members', 'population' => 'members'],
+],
+```
+
+A package that signs staff in, such as Folio, marks its guard as staff itself;
+config wins. A guard with no population serves members.
+
+**A custom resolver:** implement `PermissionResolver::allows($user, $population,
+$permission, $subject)` and register it with `$access->setResolver(...)` in a
+service provider.
+
 ## Custom guards
 
 Implement `GuardInterface`:
