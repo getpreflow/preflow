@@ -29,7 +29,7 @@ final class AssetController
             return new Response(404, [], 'Not found');
         }
 
-        $path = $this->baseDir . '/' . $rel;
+        $path = str_starts_with($rel, '/') ? $rel : $this->baseDir . '/' . $rel; // absolute: a file from another package
         if (!is_file($path)) {
             return new Response(404, [], 'Not found');
         }
@@ -49,6 +49,7 @@ final class AssetController
         return match (true) {
             str_ends_with($file, '.css') => 'text/css',
             str_ends_with($file, '.js') => 'text/javascript',
+            str_ends_with($file, '.svg') => 'image/svg+xml',
             default => 'application/octet-stream',
         };
     }

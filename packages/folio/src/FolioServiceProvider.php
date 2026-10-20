@@ -101,6 +101,8 @@ final class FolioServiceProvider extends ServiceProvider
                 $registry,
                 (int) ($folioConfig['blocks']['max_depth'] ?? 4),
                 self::validatorFactory($c),
+                $c->get(TemplateEngineInterface::class),
+                $prefix,
             ));
             $registry->register(new RichTextFieldType(new HtmlSanitizer(
                 (new HtmlSanitizerConfig())
@@ -169,6 +171,10 @@ final class FolioServiceProvider extends ServiceProvider
             dirname(__DIR__) . '/assets',
             $this->assetMap(),
         ));
+        $container->bind(\Preflow\Folio\Http\BlockEditorController::class, fn (Container $c) => new \Preflow\Folio\Http\BlockEditorController(
+            $c->get(FieldTypeRegistry::class),
+            $locales ?? \Preflow\Data\Locales::single('en'),
+        ));
         $container->bind(UploadController::class, fn (Container $c) => new UploadController($uploadsDir));
 
         $container->bind(AdminAuthMiddleware::class, fn (Container $c) => new AdminAuthMiddleware(
@@ -206,7 +212,7 @@ final class FolioServiceProvider extends ServiceProvider
                 name: 'folio_asset',
                 callable: function (string $file) use ($prefix, $assetsDir, $assetMap): string {
                     $rel = $assetMap[$file] ?? $file;
-                    $path = $assetsDir . '/' . $rel;
+                    $path = str_starts_with($rel, '/') ? $rel : $assetsDir . '/' . $rel;
                     $v = is_file($path) ? substr(hash_file('xxh3', $path), 0, 12) : 'dev';
                     return $prefix . '/_assets/' . $file . '?v=' . $v;
                 },
@@ -282,6 +288,9 @@ final class FolioServiceProvider extends ServiceProvider
             'admin.js' => 'admin.js',
             'trix.css' => 'vendor/trix.css',
             'trix.js' => 'vendor/trix.umd.min.js',
+            'icons.svg' => 'icons.svg',
+            // The vendored htmx build from preflow/htmx (block picker fragments).
+            'htmx.js' => dirname((string) (new \ReflectionClass(\Preflow\Htmx\HtmxAssets::class))->getFileName(), 2) . '/assets/htmx.min.js',
         ];
     }
 

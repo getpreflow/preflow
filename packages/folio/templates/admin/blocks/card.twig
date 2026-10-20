@@ -1,0 +1,20 @@
+<div class="folio-block-card{% if open %} is-open{% endif %}{% if has_errors %} has-error{% endif %}" id="block-{{ uid }}" data-block-card data-block-uid="{{ uid }}">
+    <input type="hidden" name="{{ name }}[_order][]" value="{{ uid }}">
+    <input type="hidden" name="{{ name }}[{{ uid }}][_block]" value="{{ key }}">
+    <div class="folio-block-head">
+        <button type="button" class="folio-block-toggle" data-block-collapse aria-expanded="{{ open ? 'true' : 'false' }}">
+            <svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ icon }}"></use></svg>
+            <span class="folio-block-label">{{ label }}</span>
+            {% if summary %}<span class="folio-block-summary">{{ summary }}</span>{% endif %}
+        </button>
+        <div class="folio-block-actions">
+            <button type="button" class="btn btn-ghost" data-block-up aria-label="Move up">↑</button>
+            <button type="button" class="btn btn-ghost" data-block-down aria-label="Move down">↓</button>
+            <button type="button" class="btn btn-ghost" data-block-duplicate aria-label="Duplicate">⧉</button>
+            <button type="button" class="btn btn-ghost" data-block-remove aria-label="Remove">✕</button>
+        </div>
+    </div>
+    <div class="folio-block-body">
+        {% for field in fields %}{{ field|raw }}{% endfor %}
+    </div>
+</div>

@@ -53,7 +53,7 @@ final class AssetFieldType implements FieldType, HandlesUpload
                 $html .= $this->isImage($path)
                     ? '<img src="' . $e($url) . '" alt="" class="folio-asset-thumb">'
                     : '<a href="' . $e($url) . '">' . $e($path) . '</a>';
-                $html .= ' <label class="folio-asset-remove"><input type="checkbox" name="' . $e($name) . '_remove[]" value="' . $e($path) . '"> remove</label>';
+                $html .= ' <label class="folio-asset-remove"><input type="checkbox" name="' . $e(self::removeName($name)) . '[]" value="' . $e($path) . '"> remove</label>';
                 $html .= '</li>' . "\n";
             }
             $html .= '  </ul>' . "\n";
@@ -206,5 +206,14 @@ final class AssetFieldType implements FieldType, HandlesUpload
     private function isImage(string $path): bool
     {
         return in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), self::IMAGE_EXT, true);
+    }
+
+    /**
+     * "cover" -> "cover_remove"; nested "a[b][cover]" -> "a[b][cover_remove]"
+     * (PHP ignores characters after the last bracket of a field name).
+     */
+    public static function removeName(string $name): string
+    {
+        return str_ends_with($name, ']') ? substr($name, 0, -1) . '_remove]' : $name . '_remove';
     }
 }

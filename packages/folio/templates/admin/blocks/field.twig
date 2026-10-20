@@ -1,0 +1,31 @@
+<div class="folio-blocks" data-blocks-field>
+    <div class="folio-blocks-head">
+        <span class="form-label">{{ label }}</span>
+        {% if help %}<p class="form-help">{{ help }}</p>{% endif %}
+    </div>
+    {% for error in errors %}<div class="form-error">{{ error }}</div>{% endfor %}
+    {% if summary is not empty %}
+        <ul class="folio-blocks-errors" role="alert">
+            {% for item in summary %}<li><a href="#block-{{ item.uid }}">{{ item.messages|join(' ') }}</a></li>{% endfor %}
+        </ul>
+    {% endif %}
+    <div class="folio-blocks-list" data-blocks-list>
+        {% for card in cards %}{{ card|raw }}{% endfor %}
+        <div class="folio-blocks-picker" data-blocks-picker>
+            {% if not single %}<span class="folio-blocks-picker-label">Add block</span>{% endif %}
+            {% for group, items in groups %}
+                <div class="folio-blocks-group">
+                    {% if not single %}<span class="folio-blocks-group-label">{{ group }}</span>{% endif %}
+                    {% for item in items %}
+                        <button type="button" class="btn btn-secondary folio-blocks-add"
+                                hx-get="{{ item.url }}" hx-target="closest [data-blocks-picker]" hx-swap="beforebegin"
+                                {% if item.description %}title="{{ item.description }}"{% endif %}>
+                            <svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ item.icon }}"></use></svg>
+                            {% if single %}Add {{ item.label }}{% else %}{{ item.label }}{% endif %}
+                        </button>
+                    {% endfor %}
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>

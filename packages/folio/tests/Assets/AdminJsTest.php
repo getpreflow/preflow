@@ -74,4 +74,12 @@ final class AdminJsTest extends TestCase
         // A srcdoc document inherits the admin page's CSP and would block the preview's nonced assets.
         $this->assertStringNotContainsString('srcdoc', $this->js());
     }
+
+    public function test_block_editor_hooks(): void
+    {
+        $js = $this->js();
+        foreach (['data-block-up', 'data-block-down', 'data-block-duplicate', 'data-block-remove', 'data-block-collapse', 'htmx:load', 'data-block-uid'] as $hook) {
+            $this->assertStringContainsString($hook, $js);
+        }
+    }
 }

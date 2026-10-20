@@ -997,6 +997,100 @@ final class FolioAppTest extends TestCase
         $this->assertSame('Hello', $sections[0]['headline']);
     }
 
+    public function test_blocks_editor_renders_cards_picker_and_order(): void
+    {
+        $this->enableBlocks();
+        $uid = 'aaaaaaaaaaaaaaaa';
+        $id = $this->createPage(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
+            'sections' => ['_order' => [$uid], $uid => ['_block' => 'hero', 'headline' => 'Hello']]]);
+
+        $body = (string) $this->get('/folio/page/' . $id . '/edit')->getBody();
+
+        $this->assertStringContainsString('data-block-uid="' . $uid . '"', $body);
+        $this->assertStringContainsString('name="sections[_order][]" value="' . $uid . '"', $body);
+        $this->assertStringContainsString('name="sections[' . $uid . '][headline]"', $body);
+        $this->assertStringContainsString('name="sections[' . $uid . '][_block]" value="hero"', $body);
+        $this->assertStringContainsString('/folio/_blocks/hero/new?', $body);
+        $this->assertStringContainsString('/folio/_blocks/link/new?', $body);
+        $this->assertStringContainsString('/folio/_assets/htmx.js?v=', $body);
+        $this->assertStringContainsString('enctype="multipart/form-data"', $body); // blocks may hold uploads
+    }
+
+    public function test_block_errors_render_inside_the_card(): void
+    {
+        $this->enableBlocks();
+        $uid = 'aaaaaaaaaaaaaaaa';
+
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page')
+            ->withParsedBody(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
+                'sections' => ['_order' => [$uid], $uid => ['_block' => 'hero', 'headline' => '']]]));
+
+        $body = (string) $res->getBody();
+        $this->assertMatchesRegularExpression('#class="[^"]*is-open[^"]*" id="block-' . $uid . '"[\s\S]*?This field is required#', $body);
+        $this->assertStringContainsString('href="#block-' . $uid . '"', $body); // error summary link
+    }
+
+    public function test_new_block_fragment_returns_card_with_fresh_uid(): void
+    {
+        $this->enableBlocks();
+
+        $res = $this->get('/folio/_blocks/hero/new?name=sections&locale=en&depth=0');
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertMatchesRegularExpression('#name="sections\[([a-f0-9]{16})\]\[headline\]"#', (string) $res->getBody());
+        $this->assertStringContainsString('name="sections[_order][]"', (string) $res->getBody());
+    }
+
+    public function test_new_block_fragment_rejects_bad_name_and_unknown_key(): void
+    {
+        $this->enableBlocks();
+
+        $this->assertSame(400, $this->get('/folio/_blocks/hero/new?name=' . rawurlencode('x"><script>') . '&locale=en&depth=0')->getStatusCode());
+        $this->assertSame(404, $this->get('/folio/_blocks/nope/new?name=sections&locale=en&depth=0')->getStatusCode());
+    }
+
+    public function test_unknown_block_renders_remove_only_card(): void
+    {
+        $this->enableBlocks();
+        $id = $this->createPage(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published']);
+        $record = $this->dm()->findType('page', $id);
+        $record->set('sections', [['_uid' => 'bbbbbbbbbbbbbbbb', '_block' => 'gone', 'foo' => 'bar']]);
+        $this->dm()->saveType($record, validate: false);
+
+        $body = (string) $this->get('/folio/page/' . $id . '/edit')->getBody();
+
+        $this->assertStringContainsString('Unknown block', $body);
+        $this->assertStringContainsString('name="sections[bbbbbbbbbbbbbbbb][_raw]"', $body);
+        $this->assertStringContainsString('data-block-remove', $body);
+    }
+
+    public function test_nested_blocks_render_inside_card(): void
+    {
+        $this->enableBlocks();
+        $a = 'aaaaaaaaaaaaaaaa';
+        $c = 'cccccccccccccccc';
+        $id = $this->createPage(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
+            'sections' => ['_order' => [$a], $a => ['_block' => 'hero', 'headline' => 'H',
+                'tradeoff' => ['_order' => [$c], $c => ['_block' => 'tradeoff_note', 'chose' => 'one conviction']]]]]);
+
+        $body = (string) $this->get('/folio/page/' . $id . '/edit')->getBody();
+
+        $this->assertStringContainsString('name="sections[' . $a . '][tradeoff][' . $c . '][chose]"', $body);
+        $this->assertStringContainsString('name="sections[' . $a . '][tradeoff][' . $c . '][cover]"', $body);
+        $this->assertStringContainsString('/folio/_blocks/tradeoff_note/new?name=' . rawurlencode('sections[' . $a . '][tradeoff]'), $body);
+    }
+
+    public function test_depth_limit_shows_notice(): void
+    {
+        $this->enableBlocks();
+        file_put_contents($this->dir . '/config/folio.php', str_replace("'blocks' => [", "'blocks' => ['max_depth' => 1, ", (string) file_get_contents($this->dir . '/config/folio.php')));
+        $a = 'aaaaaaaaaaaaaaaa';
+        $id = $this->createPage(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
+            'sections' => ['_order' => [$a], $a => ['_block' => 'hero', 'headline' => 'H']]]);
+
+        $this->assertStringContainsString('Nested too deep to edit here', (string) $this->get('/folio/page/' . $id . '/edit')->getBody());
+    }
+
     public function test_edit_form_no_preview_button_for_non_frontend_type(): void
     {
         $app = $this->app();

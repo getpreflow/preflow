@@ -350,8 +350,8 @@ final class AdminController
                 continue;
             }
             $fieldType = $this->fieldTypes->get($fieldDef->type);
-            if ($fieldType instanceof HandlesUpload) {
-                $multipart = true;
+            if ($fieldType instanceof HandlesUpload || $fieldType instanceof BlocksFieldType) {
+                $multipart = true; // blocks may contain upload fields
             }
 
             $isTranslatable = isset($translatable[$name]) && !$fieldType instanceof HandlesUpload;

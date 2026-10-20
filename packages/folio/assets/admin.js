@@ -336,8 +336,80 @@
         }
     }
 
+    // ---- Blocks editor -------------------------------------------------
+    // Each card carries its own [_order][] input, so DOM order is the saved
+    // order: moving or duplicating a card never renumbers input names.
+
+    function randomUid() {
+        var hex = '';
+        for (var i = 0; i < 16; i++) { hex += Math.floor(Math.random() * 16).toString(16); }
+        return hex;
+    }
+
+    function siblingCard(card, dir) {
+        var el = dir < 0 ? card.previousElementSibling : card.nextElementSibling;
+        while (el && !el.hasAttribute('data-block-card')) {
+            el = dir < 0 ? el.previousElementSibling : el.nextElementSibling;
+        }
+        return el;
+    }
+
+    // Duplicate: clone the card and give it (and every nested block) fresh uids.
+    function duplicateCard(card) {
+        var clone = card.cloneNode(true);
+        var uids = [];
+        if (clone.hasAttribute('data-block-uid')) { uids.push(clone.getAttribute('data-block-uid')); }
+        clone.querySelectorAll('[data-block-uid]').forEach(function (el) { uids.push(el.getAttribute('data-block-uid')); });
+        var map = {};
+        uids.forEach(function (u) { map[u] = randomUid(); });
+        var all = [clone];
+        clone.querySelectorAll('*').forEach(function (el) { all.push(el); });
+        all.forEach(function (el) {
+            ['name', 'id', 'for', 'value', 'data-block-uid', 'href', 'hx-get'].forEach(function (attr) {
+                var v = el.getAttribute(attr);
+                if (v === null) { return; }
+                Object.keys(map).forEach(function (oldUid) { v = v.split(oldUid).join(map[oldUid]); });
+                el.setAttribute(attr, v);
+            });
+        });
+        card.parentNode.insertBefore(clone, card.nextSibling);
+        if (window.htmx) { window.htmx.process(clone); }
+    }
+
+    function onBlockClick(e) {
+        var btn = e.target.closest ? e.target.closest('[data-block-collapse],[data-block-up],[data-block-down],[data-block-duplicate],[data-block-remove]') : null;
+        if (!btn) { return; }
+        var card = btn.closest('[data-block-card]');
+        if (!card) { return; }
+        if (btn.hasAttribute('data-block-collapse')) {
+            var open = card.classList.toggle('is-open');
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        } else if (btn.hasAttribute('data-block-up')) {
+            var prev = siblingCard(card, -1);
+            if (prev) { card.parentNode.insertBefore(card, prev); }
+        } else if (btn.hasAttribute('data-block-down')) {
+            var next = siblingCard(card, 1);
+            if (next) { card.parentNode.insertBefore(next, card); }
+        } else if (btn.hasAttribute('data-block-duplicate')) {
+            duplicateCard(card);
+        } else if (btn.hasAttribute('data-block-remove')) {
+            card.parentNode.removeChild(card);
+        }
+        e.preventDefault();
+    }
+
+    // Cards added by htmx: run the same per-element setup as on page load.
+    function onHtmxLoad(e) {
+        var root = e.detail && e.detail.elt ? e.detail.elt : null;
+        if (!root || !root.querySelectorAll) { return; }
+        if (root.hasAttribute && root.hasAttribute('data-folio-matrix')) { initMatrix(root); }
+        root.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
+    }
+
     function boot() {
         document.addEventListener('submit', onSubmitConfirm);
+        document.addEventListener('click', onBlockClick);
+        document.addEventListener('htmx:load', onHtmxLoad);
         document.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
         window.addEventListener('message', onMessage);
         document.addEventListener('keydown', onKeydown);

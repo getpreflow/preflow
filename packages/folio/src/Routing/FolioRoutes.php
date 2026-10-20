@@ -9,6 +9,7 @@ use Preflow\Routing\RouteEntry;
 
 final class FolioRoutes
 {
+    private const BLOCKS = 'Preflow\\Folio\\Http\\BlockEditorController';
     private const ADMIN = 'Preflow\\Folio\\Http\\AdminController';
     private const PREVIEW = 'Preflow\\Folio\\Http\\PreviewController';
     private const AUTH = 'Preflow\\Folio\\Http\\AuthController';
@@ -28,6 +29,7 @@ final class FolioRoutes
             $defs[] = ['POST', $prefix . '/logout', 'logout',    self::AUTH];
         }
         $defs = array_merge($defs, [
+            ['GET',  $prefix . '/_blocks/{key}/new',   'newBlock', self::BLOCKS],
             ['GET',  $prefix . '/{type}',              'list'],
             ['GET',  $prefix . '/{type}/new',          'createForm'],
             ['POST', $prefix . '/{type}/preview',      'preview', self::PREVIEW],
