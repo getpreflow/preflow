@@ -41,6 +41,7 @@ jobs:
           - { local: 'packages/validation', remote: 'validation' }
           - { local: 'packages/form', remote: 'form' }
           - { local: 'packages/folio', remote: 'folio' }
+          - { local: 'packages/notify', remote: 'notify' }
 
     steps:
       - uses: actions/checkout@v4
