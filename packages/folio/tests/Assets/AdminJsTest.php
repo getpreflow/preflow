@@ -104,6 +104,14 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString("hasAttribute('hx-post')", $js); // autosaving forms are not guarded
     }
 
+    public function test_region_patch_falls_through_when_anything_else_changed(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString("skeleton(doc.body, '[data-folio-field]')", $js); // page around the regions must be unchanged
+        $this->assertStringContainsString('function headAssets(', $js);                    // new component CSS in <head> forces a reload
+        $this->assertStringContainsString('headAssets(doc) !== headAssets(incoming)', $js);
+    }
+
     public function test_defines_surgical_preview_patch(): void
     {
         $js = $this->js();

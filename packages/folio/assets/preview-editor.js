@@ -43,7 +43,12 @@
         var block = e.target.closest('[data-folio-block]');
         var edit = e.target.closest('[data-folio-edit]');
         var region = e.target.closest('[data-folio-field]');
-        if (!block && !region) { return; }
+        if (!block && !region) {
+            // Header, footer, pages without markers: stay on the preview.
+            var link = e.target.closest('a[href]');
+            if (link && (link.getAttribute('href') || '').charAt(0) !== '#') { e.preventDefault(); }
+            return;
+        }
         e.preventDefault();
         e.stopPropagation();
         if (block) {

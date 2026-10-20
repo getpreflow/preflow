@@ -35,6 +35,13 @@ final class PreviewEditorJsTest extends TestCase
         $this->assertStringContainsString('data-folio-block', $js);
     }
 
+    public function test_links_outside_blocks_do_not_navigate(): void
+    {
+        $js = $this->file('preview-editor.js');
+        $this->assertStringContainsString("closest('a[href]')", $js);
+        $this->assertStringContainsString("charAt(0) !== '#'", $js); // same-page anchors still scroll
+    }
+
     public function test_highlight_scrolls_into_view(): void
     {
         $js = $this->file('preview-editor.js');

@@ -330,6 +330,7 @@
                 var doc = hasDoc ? frame.contentDocument : null;
                 if (!doc || !doc.body) { fullRender(); return; }
                 var incoming = new DOMParser().parseFromString(html, 'text/html');
+                if (headAssets(doc) !== headAssets(incoming)) { fullRender(); return; }
                 if (!patchRegions(doc, incoming) && !patchBlocks(doc, incoming)) { fullRender(); }
             } catch (e) {
                 fullRender();
@@ -340,6 +341,8 @@
             var incomingRegions = incoming.querySelectorAll('[data-folio-field]');
             var curRegions = doc.querySelectorAll('[data-folio-field]');
             if (incomingRegions.length === 0 || incomingRegions.length !== curRegions.length) { return false; }
+            // Only the regions may differ; blocks or markup outside them need another path.
+            if (skeleton(doc.body, '[data-folio-field]') !== skeleton(incoming.body, '[data-folio-field]')) { return false; }
 
             var patches = [];
             var seen = Object.create(null);
@@ -513,11 +516,21 @@
         return t;
     }
 
-    // The body with every top-level block emptied: equal skeletons mean only blocks changed.
-    function skeleton(body) {
+    // The body with the patchable parts emptied (top-level blocks, or every element
+    // matching selector): equal skeletons mean nothing else on the page changed.
+    function skeleton(body, selector) {
         var t = cleaned(body.innerHTML);
-        topBlocks(t.content).forEach(function (b) { b.innerHTML = ''; });
+        (selector ? Array.prototype.slice.call(t.content.querySelectorAll(selector)) : topBlocks(t.content))
+            .forEach(function (el) { el.innerHTML = ''; });
         return t.innerHTML;
+    }
+
+    // Stylesheets in <head> (component CSS is collected there): a new or changed
+    // one cannot be patched in, because its nonce would not match the page's CSP.
+    function headAssets(doc) {
+        return Array.prototype.map.call(doc.head ? doc.head.querySelectorAll('style, link[rel="stylesheet"]') : [], function (el) {
+            return cleaned(el.outerHTML).innerHTML;
+        }).join('');
     }
 
     // Replace the blocks whose markup changed; false when the page around them
