@@ -6,6 +6,8 @@ namespace Preflow\Folio\Content;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\QueryBuilder;
+use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Publishing\ShadowTypes;
 
 /**
@@ -35,11 +37,30 @@ final class LiveContent
 
     public function find(string $type, string $id): ?DynamicRecord
     {
-        if ($this->workingCopies || !($this->catalog->get($type)?->publishing ?? false)) {
+        if ($this->readsWorkingCopies($type)) {
             return $this->dm->findType($type, $id);
         }
+
+        return $this->dm->findIn(ShadowTypes::published($this->definition($type)), $id);
+    }
+
+    /** A query over the same records find() reads (snapshots or working copies). */
+    public function query(string $type): QueryBuilder
+    {
+        return $this->readsWorkingCopies($type)
+            ? $this->dm->queryType($type)
+            : $this->dm->queryIn(ShadowTypes::published($this->definition($type)));
+    }
+
+    public function definition(string $type): TypeDefinition
+    {
         $registry = $this->dm->getTypeRegistry() ?? throw new \LogicException('Folio needs a TypeRegistry.');
 
-        return $this->dm->findIn(ShadowTypes::published($registry->get($type)), $id);
+        return $registry->get($type);
+    }
+
+    private function readsWorkingCopies(string $type): bool
+    {
+        return $this->workingCopies || !($this->catalog->get($type)?->publishing ?? false);
     }
 }

@@ -162,10 +162,23 @@ and `publishing` (see below).
 - `home` (optional): the value `/` resolves to. Only one type may declare it.
 - `template` (optional): a userland Twig path. When it is absent, Folio uses
   `@folio/frontend/{type}.twig`, then `@folio/frontend/page.twig`. Templates receive
-  `record`, `rendered` (field → safe HTML), `type` and `preview`.
+  `record`, `rendered` (field → safe HTML), `type`, `preview`, `locale`, `alternates` and
+  `query` (the request's query parameters).
 - `published`: which field and value make a record public. The default is `status` /
   `published`. It only applies when [publishing](#drafts-and-publishing) is off for the
   type.
+
+Any template can read other content too:
+
+- `folio_get('site')`: a singleton's values.
+- `folio_list('app')`: a collection's records, in the type's list order (`orderable`
+  position or `sort`).
+- `folio_find('force', id)`: one record, or null.
+
+All three return live content only: published snapshots of publishing types, so drafts
+never reach the site. In the admin preview they return working copies. Values are
+localized to the page's locale. App code gets the same lists from
+`Preflow\Folio\Content\Collections`.
 
 Routes are tried most specific first. Two types claiming the same route, or two types
 declaring `home`, stop the app at boot with a message naming both. Without any `frontend`

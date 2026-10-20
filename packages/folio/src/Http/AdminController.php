@@ -8,7 +8,6 @@ use Nyholm\Psr7\Response;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\LocaleValue;
-use Preflow\Data\SortDirection;
 use Preflow\Data\TypeRegistry;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\RecordLabeler;
@@ -794,19 +793,7 @@ final class AdminController
     /** @param array<string, mixed> $listConfig */
     private function listQuery(string $type, TypeDefinition $typeDef, array $listConfig): \Preflow\Data\QueryBuilder
     {
-        $query = $this->dm->queryType($type);
-
-        if (($listConfig['orderable'] ?? false) === true) {
-            return $query->orderBy(self::ORDER)->orderBy($typeDef->idField);
-        }
-
-        $sort = (string) ($listConfig['sort'] ?? '');
-        if ($sort !== '') {
-            $desc = str_starts_with($sort, '-');
-            $query = $query->orderBy(ltrim($sort, '-'), $desc ? SortDirection::Desc : SortDirection::Asc);
-        }
-
-        return $query;
+        return \Preflow\Folio\Content\ListOrder::apply($this->dm->queryType($type), $typeDef, $listConfig);
     }
 
     private function maxOrder(string $type): int

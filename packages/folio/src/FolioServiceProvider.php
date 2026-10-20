@@ -268,6 +268,11 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(ContentLocale::class),
             $c->get(\Preflow\Folio\Content\LiveContent::class),
         ));
+        $container->singleton(\Preflow\Folio\Content\Collections::class, fn (Container $c) => new \Preflow\Folio\Content\Collections(
+            $c->get(\Preflow\Folio\Content\LiveContent::class),
+            $c->get(TypeCatalog::class),
+            $c->get(ContentLocale::class),
+        ));
         $container->bind(\Preflow\Folio\Http\BlockEditorController::class, fn (Container $c) => new \Preflow\Folio\Http\BlockEditorController(
             $c->get(FieldTypeRegistry::class),
             $locales ?? \Preflow\Data\Locales::single('en'),
@@ -322,6 +327,16 @@ final class FolioServiceProvider extends ServiceProvider
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_get',
                 callable: fn (string $type): ?array => $container->get(\Preflow\Folio\Content\Singletons::class)->get($type),
+            ));
+
+            // Collections: folio_list('app') -> live records in list order; folio_find('force', id).
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_list',
+                callable: fn (string $type): array => $container->get(\Preflow\Folio\Content\Collections::class)->list($type),
+            ));
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_find',
+                callable: fn (string $type, string $id): ?array => $container->get(\Preflow\Folio\Content\Collections::class)->find($type, $id),
             ));
 
             // Blocks: rendered through their components in the content locale.

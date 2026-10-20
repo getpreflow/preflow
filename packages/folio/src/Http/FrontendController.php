@@ -75,6 +75,7 @@ final class FrontendController
             'preview' => $preview,
             'locale' => $locale,
             'alternates' => $alternates,
+            'query' => $request->getQueryParams(),
         ]);
 
         // CSS collected while rendering (component styles, focal-point rules) goes into <head>.
