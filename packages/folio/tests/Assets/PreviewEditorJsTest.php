@@ -60,6 +60,14 @@ final class PreviewEditorJsTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/\[data-folio-block\][^{]*\{[^}]*(position|outline)/', $css); // layout-neutral
     }
 
+    public function test_field_targets_are_underlined_in_the_overlay(): void
+    {
+        $js = $this->file('preview-editor.js');
+        $this->assertStringContainsString("box('is-field')", $js);                 // a third overlay box
+        $this->assertStringContainsString("closest('[data-folio-edit]')", $js);   // follows the field under the pointer
+        $this->assertStringContainsString('.folio-pe-box.is-field', $this->file('preview-editor.css'));
+    }
+
     public function test_styles_use_no_remote_resources(): void
     {
         $css = $this->file('preview-editor.css');

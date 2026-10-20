@@ -18,7 +18,9 @@
     label.className = 'folio-pe-label';
     hoverBox.appendChild(label);
     var activeBox = box('is-active');
+    var fieldBox = box('is-field');
     var hovered = null;
+    var hoveredField = null;
     var active = null;
     var frame = 0;
 
@@ -44,6 +46,7 @@
         frame = 0;
         place(hoverBox, hovered);
         place(activeBox, active);
+        place(fieldBox, hoveredField);
     }
 
     function schedule() {
@@ -55,14 +58,19 @@
     }
 
     // Hover: outline the innermost block and show its label.
+    // Hover: outline the innermost block, show its label, and underline the
+    // field target (folio_editable) under the pointer: a click opens that field.
     document.addEventListener('mouseover', function (e) {
         var block = e.target.closest ? e.target.closest('[data-folio-block]') : null;
-        if (block === hovered) { return; }
+        var field = e.target.closest ? e.target.closest('[data-folio-edit]') : null;
+        if (field && field.closest('[data-folio-block]') !== block) { field = null; }
+        if (block === hovered && field === hoveredField) { return; }
         hovered = block;
+        hoveredField = field;
         label.textContent = block ? (block.getAttribute('data-folio-label') || 'Block') : '';
         schedule();
     });
-    document.addEventListener('mouseleave', function () { hovered = null; schedule(); });
+    document.addEventListener('mouseleave', function () { hovered = null; hoveredField = null; schedule(); });
 
     // Click: select instead of following links or pressing buttons.
     document.addEventListener('click', function (e) {

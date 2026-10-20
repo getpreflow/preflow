@@ -23,6 +23,8 @@
 .folio-pe-box[hidden] { display: none; }
 .folio-pe-box.is-hover { border: 2px solid rgb(4 120 87 / .5); }
 .folio-pe-box.is-active { border: 2px solid #047857; box-shadow: 0 0 0 4px rgb(4 120 87 / .15); }
+/* The field under the pointer: a soft tint with an underline, like a text cursor target. */
+.folio-pe-box.is-field { border-radius: 2px; border-bottom: 2px solid #047857; background: rgb(4 120 87 / .07); transition: none; }
 
 .folio-pe-label {
   position: absolute;
