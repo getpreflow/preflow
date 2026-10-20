@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "1e150b6ead60b59bfd6cd8306dc86946",
+    "content-hash": "332fe6f4982001ca56b30095e5ac37db",
     "packages": [
         {
             "name": "matthiasmullie/minify",
@@ -2299,7 +2299,7 @@
         },
         {
             "name": "preflow/auth",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/auth",
@@ -2336,7 +2336,7 @@
         },
         {
             "name": "preflow/blade",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/blade",
@@ -2374,7 +2374,7 @@
         },
         {
             "name": "preflow/components",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/components",
@@ -2410,7 +2410,7 @@
         },
         {
             "name": "preflow/core",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/core",
@@ -2450,7 +2450,7 @@
         },
         {
             "name": "preflow/data",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/data",
@@ -2488,7 +2488,7 @@
         },
         {
             "name": "preflow/devtools",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/devtools",
@@ -2528,19 +2528,22 @@
         },
         {
             "name": "preflow/folio",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/folio",
-                "reference": "9fd397a6073d645631f84482363bd3cf74675fef"
+                "reference": "cc89a4562710b107e5bcd13cb1da657cd88447d9"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
                 "php": ">=8.4",
                 "preflow/auth": "^0.1 || @dev",
+                "preflow/components": "^0.1 || @dev",
                 "preflow/core": "^0.1 || @dev",
                 "preflow/data": "^0.1 || @dev",
+                "preflow/devtools": "^0.1 || @dev",
                 "preflow/form": "^0.1 || @dev",
+                "preflow/htmx": "^0.1 || @dev",
                 "preflow/routing": "^0.1 || @dev",
                 "preflow/validation": "^0.1 || @dev",
                 "preflow/view": "^0.1 || @dev",
@@ -2571,7 +2574,7 @@
         },
         {
             "name": "preflow/form",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/form",
@@ -2607,7 +2610,7 @@
         },
         {
             "name": "preflow/htmx",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/htmx",
@@ -2644,7 +2647,7 @@
         },
         {
             "name": "preflow/i18n",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/i18n",
@@ -2680,7 +2683,7 @@
         },
         {
             "name": "preflow/notify",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/notify",
@@ -2719,8 +2722,45 @@
             }
         },
         {
+            "name": "preflow/roles",
+            "version": "dev-feat/access-and-roles",
+            "dist": {
+                "type": "path",
+                "url": "packages/roles",
+                "reference": "747e18f479da5e25a60bd0d8ca086dab68d6ff67"
+            },
+            "require": {
+                "php": ">=8.4",
+                "preflow/auth": "^0.18 || @dev",
+                "preflow/core": "^0.18 || @dev"
+            },
+            "require-dev": {
+                "nyholm/psr7": "^1.8",
+                "phpunit/phpunit": "^11.0"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Preflow\\Roles\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Preflow\\Roles\\Tests\\": "tests/"
+                }
+            },
+            "license": [
+                "MIT"
+            ],
+            "description": "Preflow roles — simple roles from config/roles.php answering can()",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
             "name": "preflow/routing",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/routing",
@@ -2755,7 +2795,7 @@
         },
         {
             "name": "preflow/testing",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/testing",
@@ -2796,7 +2836,7 @@
         },
         {
             "name": "preflow/twig",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/twig",
@@ -2837,7 +2877,7 @@
         },
         {
             "name": "preflow/validation",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/validation",
@@ -2872,7 +2912,7 @@
         },
         {
             "name": "preflow/view",
-            "version": "dev-feat/notify",
+            "version": "dev-feat/access-and-roles",
             "dist": {
                 "type": "path",
                 "url": "packages/view",
@@ -6182,6 +6222,7 @@
         "preflow/htmx": 20,
         "preflow/i18n": 20,
         "preflow/notify": 20,
+        "preflow/roles": 20,
         "preflow/routing": 20,
         "preflow/testing": 20,
         "preflow/twig": 20,

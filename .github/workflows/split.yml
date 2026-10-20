@@ -26,6 +26,7 @@ jobs:
       matrix:
         package:
           - { local: 'packages/auth', remote: 'auth' }
+          - { local: 'packages/roles', remote: 'roles' }
           - { local: 'packages/core', remote: 'core' }
           - { local: 'packages/routing', remote: 'routing' }
           - { local: 'packages/view', remote: 'view' }
