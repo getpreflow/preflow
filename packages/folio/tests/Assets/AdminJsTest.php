@@ -64,6 +64,17 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString("'--folio-form-w'", $js);       // width as a custom property, not an inline style attribute
     }
 
+    public function test_click_to_edit_and_two_way_highlight(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString("data.source === 'folio-preview'", $js); // preview -> editor messages
+        $this->assertStringContainsString("data.type === 'select'", $js);          // click in the preview
+        $this->assertStringContainsString("'is-located'", $js);                    // card flash
+        $this->assertStringContainsString("'folio-focus-mode'", $js);              // remembered focus mode
+        $this->assertStringContainsString("'focusin'", $js);                       // form focus -> preview highlight
+        $this->assertStringContainsString("type: 'highlight'", $js);
+    }
+
     public function test_defines_surgical_preview_patch(): void
     {
         $js = $this->js();

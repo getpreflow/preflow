@@ -146,6 +146,7 @@
         if (e.origin !== window.location.origin) { return; }
         var data = e.data;
         if (data && typeof data === 'object' && data.source === 'folio-assets') { onAssetsPicked(data); return; }
+        if (data && typeof data === 'object' && data.source === 'folio-preview') { onPreviewMessage(data); return; }
         if (!data || typeof data !== 'object' || data.source !== 'folio-drawer') { return; }
 
         var matrix = activeMatrix;
@@ -460,7 +461,128 @@
         form.addEventListener('input', schedule);
         form.addEventListener('change', schedule);
 
+        // Focus mode: opening a block from the preview closes the others.
+        var focusToggle = stage.querySelector('[data-folio-focus]');
+        if (focusToggle) {
+            focusToggle.setAttribute('aria-pressed', stored('folio-focus-mode') === '1' ? 'true' : 'false');
+            focusToggle.addEventListener('click', function () {
+                var on = focusToggle.getAttribute('aria-pressed') !== 'true';
+                focusToggle.setAttribute('aria-pressed', on ? 'true' : 'false');
+                store('folio-focus-mode', on ? '1' : null);
+            });
+        }
+
+        // Whatever has focus in the form is outlined in the preview.
+        form.addEventListener('focusin', function (e) {
+            var card = e.target.closest('[data-block-card]');
+            var name = typeof e.target.name === 'string' ? e.target.name : '';
+            highlight(card ? card.getAttribute('data-block-uid') : null, card ? null : (name.split('[')[0] || null), true);
+        });
+
+        preview.setMode = setMode;
+        preview.mode = function () { return split.getAttribute('data-mode'); };
         setMode(stored('folio-split-mode') || (window.innerWidth >= 1100 ? 'split' : 'form'));
+    }
+
+    // ---- Click-to-edit: preview <-> form ----------------------------------
+
+    var lastHighlight = null;
+
+    function highlight(uid, field, scroll) {
+        if (!preview) { return; }
+        var key = (uid || '') + '|' + (field || '');
+        var now = Date.now();
+        if (lastHighlight && lastHighlight.key === key && now - lastHighlight.at < 150) { return; }
+        lastHighlight = { key: key, at: now, uid: uid, field: field };
+        preview.post({ type: 'highlight', uid: uid, field: field, scroll: !!scroll });
+    }
+
+    function setOpen(card, open) {
+        card.classList.toggle('is-open', open);
+        var toggle = card.querySelector(':scope > .folio-block-head [data-block-collapse]');
+        if (toggle) { toggle.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+    }
+
+    function parentCard(card) {
+        return card.parentElement ? card.parentElement.closest('[data-block-card]') : null;
+    }
+
+    // The editable control for one field: inputs named "…[uid][field]" (or a
+    // locale under it), or a top-level "field"; rich text focuses its editor.
+    function fieldControl(scope, uid, field) {
+        var controls = scope.querySelectorAll('input, textarea, select');
+        for (var i = 0; i < controls.length; i++) {
+            var name = controls[i].name || '';
+            var hit;
+            if (uid) {
+                var key = '[' + uid + '][' + field + ']';
+                var at = name.lastIndexOf(key);
+                hit = at > -1 && /^(\[[a-z]{2}(-[A-Za-z]{2})?\])?$/.test(name.slice(at + key.length));
+            } else {
+                hit = name === field || name.indexOf(field + '[') === 0;
+            }
+            if (!hit) { continue; }
+            var el = controls[i];
+            if (el.type === 'hidden') {
+                var editor = el.id ? scope.querySelector('trix-editor[input="' + CSS.escape(el.id) + '"]') : null;
+                if (editor) { return editor; }
+                var group = el.closest('.form-group');
+                var visible = group ? group.querySelector('input:not([type="hidden"]), textarea, select, button') : null;
+                if (visible) { return visible; }
+                continue;
+            }
+            return el;
+        }
+        return null;
+    }
+
+    function selectInForm(uid, field) {
+        if (!preview) { return; }
+        var form = preview.form;
+        var card = uid ? form.querySelector('#block-' + CSS.escape(uid)) : null;
+        if (uid && !card) { return; }
+        if (preview.mode() === 'preview') { preview.setMode('split'); }
+
+        var target = null;
+        if (card) {
+            var focus = stored('folio-focus-mode') === '1';
+            for (var c = card; c; c = parentCard(c)) {
+                if (focus && c.parentElement) {
+                    Array.prototype.forEach.call(c.parentElement.children, function (sib) {
+                        if (sib !== c && sib.hasAttribute('data-block-card')) { setOpen(sib, false); }
+                    });
+                }
+                setOpen(c, true);
+            }
+            var body = card.querySelector(':scope > .folio-block-body');
+            target = field && body ? fieldControl(body, uid, field) : null;
+            if (!target && body) {
+                target = Array.prototype.find.call(body.querySelectorAll('input:not([type="hidden"]), textarea, select, trix-editor'), function (el) {
+                    return el.closest('[data-block-card]') === card;
+                }) || null;
+            }
+            card.classList.remove('is-located');
+            void card.offsetWidth; // restart the flash
+            card.classList.add('is-located');
+            setTimeout(function () { card.classList.remove('is-located'); }, 1400);
+        } else if (field) {
+            target = fieldControl(form, null, field);
+        }
+
+        var anchor = card || (target && (target.closest('.form-group') || target));
+        if (anchor) { anchor.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+        if (target && target.focus) { target.focus({ preventScroll: true }); }
+        highlight(uid, uid ? null : field, false);
+    }
+
+    function onPreviewMessage(data) {
+        var uid = typeof data.uid === 'string' && /^[a-f0-9]{16}$/.test(data.uid) ? data.uid : null;
+        var field = typeof data.field === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(data.field) ? data.field : null;
+        if (data.type === 'select') {
+            selectInForm(uid, field);
+        } else if (data.type === 'ready' && lastHighlight) {
+            preview.post({ type: 'highlight', uid: lastHighlight.uid, field: lastHighlight.field, scroll: false });
+        }
     }
 
     // Confirmation for destructive forms: <form data-confirm="…"> (replaces inline
