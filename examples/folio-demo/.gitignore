@@ -8,3 +8,6 @@ storage/uploads/*
 
 # Runtime caches (e.g. the block registry) — rebuilt automatically.
 storage/cache/*
+
+# Cron lock for folio:publish-scheduled.
+storage/locks/

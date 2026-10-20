@@ -121,6 +121,7 @@
             "App\\": "packages/skeleton/app/",
             "Tests\\": "packages/skeleton/tests/",
             "Preflow\\Auth\\Tests\\": "packages/auth/tests/",
+            "Preflow\\DevTools\\Tests\\": "packages/devtools/tests/",
             "Preflow\\Folio\\Tests\\": "packages/folio/tests/",
             "Preflow\\Form\\Tests\\": "packages/form/tests/",
             "Preflow\\Notify\\Tests\\": "packages/notify/tests/",

@@ -9,7 +9,12 @@ final class Console
     /** @var array<string, Command\CommandInterface> */
     private array $commands = [];
 
-    public function __construct()
+    /**
+     * @param string|null   $basePath app root whose config/commands.php lists extra
+     *                                command classes (default: the working directory)
+     * @param resource|null $stderr   warnings stream (default STDERR)
+     */
+    public function __construct(?string $basePath = null, mixed $stderr = null)
     {
         $this->register(new Command\ServeCommand());
         $this->register(new Command\MigrateCommand());
@@ -22,6 +27,30 @@ final class Console
         $this->register(new Command\SeedCommand());
         $this->register(new Command\KeyGenerateCommand());
         $this->register(new Command\NotifyTestCommand());
+
+        $this->registerAppCommands(($basePath ?? (getcwd() ?: '.')) . '/config/commands.php', $stderr ?? STDERR);
+    }
+
+    /**
+     * Commands an app (or a package it uses, e.g. Folio) lists by class name;
+     * each is constructed without arguments. Bad entries are warned about and
+     * skipped, so one broken entry never takes the whole CLI down.
+     *
+     * @param resource $stderr
+     */
+    private function registerAppCommands(string $file, mixed $stderr): void
+    {
+        if (!is_file($file)) {
+            return;
+        }
+        $classes = require $file;
+        foreach (is_array($classes) ? $classes : [] as $class) {
+            if (!is_string($class) || !class_exists($class) || !is_subclass_of($class, Command\CommandInterface::class)) {
+                fwrite($stderr, 'Warning: config/commands.php lists ' . (is_string($class) ? $class : get_debug_type($class)) . ", which is not a command class; skipped.\n");
+                continue;
+            }
+            $this->register(new $class());
+        }
     }
 
     public function register(Command\CommandInterface $command): void
@@ -56,8 +85,9 @@ final class Console
         echo "Preflow CLI\n\n";
         echo "Usage: preflow <command> [arguments]\n\n";
         echo "Available commands:\n";
+        $width = max(22, ...array_map(static fn (string $n): int => strlen($n) + 2, array_keys($this->commands)));
         foreach ($this->commands as $name => $command) {
-            echo "  " . str_pad($name, 22) . $command->getDescription() . "\n";
+            echo "  " . str_pad($name, $width) . $command->getDescription() . "\n";
         }
         echo "\n";
     }
