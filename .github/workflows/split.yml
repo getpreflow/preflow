@@ -73,6 +73,14 @@ jobs:
           git remote add split "https://x-access-token:${SPLIT_TOKEN}@github.com/getpreflow/${{ matrix.package.remote }}.git"
           git push split ${SHA}:refs/heads/main -f
 
+      - name: Split and push tag
+        if: github.ref_type == 'tag'
+        env:
+          SPLIT_TOKEN: ${{ secrets.SPLIT_TOKEN }}
+        run: |
+          SHA=$(splitsh-lite --prefix=${{ matrix.package.local }} --target=refs/tags/${{ github.ref_name }})
+          git push split ${SHA}:refs/tags/${{ github.ref_name }} -f
+
       - name: Notify Packagist
         env:
           PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}
@@ -92,11 +100,3 @@ jobs:
           else
             echo "::warning::Packagist notification for preflow/${{ matrix.package.remote }} returned HTTP ${status}: $(cat /tmp/packagist.out)"
           fi
-
-      - name: Split and push tag
-        if: github.ref_type == 'tag'
-        env:
-          SPLIT_TOKEN: ${{ secrets.SPLIT_TOKEN }}
-        run: |
-          SHA=$(splitsh-lite --prefix=${{ matrix.package.local }} --target=refs/tags/${{ github.ref_name }})
-          git push split ${SHA}:refs/tags/${{ github.ref_name }} -f
