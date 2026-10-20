@@ -85,6 +85,7 @@ final class PullCommand extends TransferCommand implements CommandInterface
                 $plan = $importer->read($file, $only);
             } catch (TransferException $e) {
                 $this->warn('The remote export is not usable (' . $e->getMessage() . '); nothing was changed.');
+                $this->warn('If the remote printed something besides the archive (PHP notices, shell startup output in ~/.bashrc), fix that and try again.');
 
                 return 1;
             }

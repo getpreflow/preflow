@@ -137,8 +137,9 @@ final class PullCommandTest extends TestCase
     {
         $partial = substr($this->remoteExport(), 0, 700);
 
-        $this->assertSame(1, $this->pull($this->runner($partial), ['production']));
+        $this->assertSame(1, $this->pull($this->runner("Notice: something\n" . $partial), ['production']));
         $this->assertDirectoryDoesNotExist($this->dir . '/storage/backups');
+        $this->assertStringContainsString('besides the archive', $this->text($this->err)); // points at the likely cause
     }
 
     public function test_unknown_remote_exits_1(): void

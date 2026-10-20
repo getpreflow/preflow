@@ -114,6 +114,39 @@ final class TransferCommandsTest extends TestCase
         $this->assertFileExists($this->dir . '/storage/data/post/p2.json');
     }
 
+    public function test_export_to_stdout_sends_php_messages_to_stderr(): void
+    {
+        $before = ini_get('display_errors');
+        try {
+            $this->export(['--stdout']);
+            $this->assertSame('stderr', ini_get('display_errors'));
+        } finally {
+            ini_set('display_errors', (string) $before);
+        }
+    }
+
+    public function test_failure_part_way_reports_the_backup_to_restore(): void
+    {
+        $file = $this->dir . '/x.tar';
+        $this->export([$file]);
+        $this->working('post', 'p2', ['title' => ['en' => 'Only local'], 'slug' => ['en' => 'local']]);
+        // Media can no longer be written: public/media is now a plain file.
+        foreach (glob($this->dir . '/public/media/2026/10/*') as $f) {
+            unlink($f);
+        }
+        rmdir($this->dir . '/public/media/2026/10');
+        rmdir($this->dir . '/public/media/2026');
+        rmdir($this->dir . '/public/media');
+        file_put_contents($this->dir . '/public/media', 'not a directory');
+
+        $code = $this->import([$file]);
+
+        $this->assertSame(1, $code);
+        $msg = $this->text($this->err);
+        $this->assertStringContainsString('stopped part-way', $msg);
+        $this->assertMatchesRegularExpression('#php preflow folio:import \S+/storage/backups/import-\d{8}-\d{6}\.tar\.gz#', $msg);
+    }
+
     public function test_import_bad_file_exits_1_and_changes_nothing(): void
     {
         file_put_contents($this->dir . '/bad.tar', str_repeat('x', 2048));

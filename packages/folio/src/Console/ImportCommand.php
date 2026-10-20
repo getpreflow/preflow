@@ -71,7 +71,14 @@ final class ImportCommand extends TransferCommand implements CommandInterface
             }
             $backup = Backups::write($app, $backupPrefix);
             $cmd->say('Backup: ' . $backup);
-            $importer->apply($plan);
+            try {
+                $importer->apply($plan);
+            } catch (\Throwable $e) {
+                $cmd->warn('Import stopped part-way: ' . $e->getMessage());
+                $cmd->warn('Local content is now mixed. Restore it with: php preflow folio:import ' . $backup);
+
+                return 1;
+            }
             $cmd->say('Done. Run "php preflow cache:clear" if pages look stale.');
 
             return 0;

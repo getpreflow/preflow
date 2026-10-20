@@ -31,6 +31,10 @@ final class ExportCommand extends TransferCommand implements CommandInterface
             return 1;
         }
 
+        if ($file === null) {
+            // The archive owns stdout: PHP notices (CLI prints them to stdout by default) go to stderr.
+            ini_set('display_errors', 'stderr');
+        }
         $app = $this->app();
         $out = $file === null ? $this->stdout : fopen((str_ends_with($file, '.gz') ? 'compress.zlib://' : '') . $file, 'wb');
         if ($out === false) {

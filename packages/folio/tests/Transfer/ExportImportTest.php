@@ -221,6 +221,21 @@ final class ExportImportTest extends TestCase
         $this->assertFileExists($this->dir . '/storage/data/site/site.json');
     }
 
+    public function test_export_refuses_ids_it_cannot_carry(): void
+    {
+        // Skipping them would delete the record locally on the next import (backup included).
+        foreach (['über-uns', '.draft'] as $id) {
+            $this->driver()->save('post', 'x', ['uuid' => $id, 'title' => ['en' => 'Odd']]);
+            try {
+                $this->export();
+                $this->fail("expected a TransferException for {$id}");
+            } catch (TransferException $e) {
+                $this->assertStringContainsString($id, $e->getMessage());
+            }
+            $this->driver()->delete('post', 'x');
+        }
+    }
+
     public function test_plan_summary_counts_added_changed_removed(): void
     {
         $archive = $this->export();

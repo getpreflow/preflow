@@ -14,6 +14,9 @@ use Preflow\Data\Query;
  */
 final class Importer
 {
+    /** Record ids an archive can carry (file names; no leading dot, so globbing sees them). */
+    public const ID = '/^[A-Za-z0-9_-][A-Za-z0-9._-]*$/';
+
     public function __construct(
         private readonly ContentSet $set,
         private readonly DataManager $dm,
@@ -69,11 +72,11 @@ final class Importer
             $target = $roots[$root];
             foreach ([...$diff['added'], ...$diff['changed']] as $rel) {
                 $to = $target . '/' . $rel;
-                if (!is_dir(dirname($to))) {
-                    mkdir(dirname($to), 0775, true);
+                if (!is_dir(dirname($to)) && !@mkdir(dirname($to), 0775, true) && !is_dir(dirname($to))) {
+                    throw new TransferException('Could not create ' . dirname($to));
                 }
                 $tmp = $to . '.tmp-' . bin2hex(random_bytes(4));
-                if (!copy("{$plan->dir}/{$root}/{$rel}", $tmp) || !rename($tmp, $to)) {
+                if (!@copy("{$plan->dir}/{$root}/{$rel}", $tmp) || !@rename($tmp, $to)) {
                     @unlink($tmp);
                     throw new TransferException("Could not write {$to}");
                 }
@@ -110,7 +113,7 @@ final class Importer
                 continue;
             }
 
-            if (preg_match('#^data/([A-Za-z0-9_]+)/([A-Za-z0-9._-]+)\.json$#', $name, $m) === 1) {
+            if (preg_match('#^data/([A-Za-z0-9_]+)/([A-Za-z0-9_-][A-Za-z0-9._-]*)\.json$#', $name, $m) === 1) {
                 if (!array_key_exists($m[1], $manifest['tables'])) {
                     throw new TransferException("Record for a table outside the manifest: {$name}");
                 }

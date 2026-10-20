@@ -32,9 +32,11 @@ final class Exporter
                 $rows[$table] = [];
                 foreach ($this->dm->driver($def->storage)->findMany($table, new Query())->items() as $row) {
                     $id = (string) ($row[$def->idField] ?? '');
-                    if (preg_match('/^[A-Za-z0-9._-]+$/', $id) === 1 && $id !== '.' && $id !== '..') {
-                        $rows[$table][$id] = $row;
+                    // Never skip a record: a missing one is deleted on the importing side.
+                    if (preg_match(Importer::ID, $id) !== 1) {
+                        throw new TransferException("Record {$table}/{$id} has an id the export cannot carry (allowed: letters, digits, '.', '_', '-', not starting with '.')");
                     }
+                    $rows[$table][$id] = $row;
                 }
                 ksort($rows[$table]);
             }
