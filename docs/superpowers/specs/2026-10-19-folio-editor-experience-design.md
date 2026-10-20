@@ -211,9 +211,14 @@ aborts the pull.
 **Mechanism.**
 1. Locally: `php preflow folio:pull production [--dry-run] [--only=data|media]`.
 2. Over SSH it runs `php preflow folio:export --stdout` **on the remote**. That writes a
-   consistent tar stream: SQLite is copied via `VACUUM INTO` and JSON is read under a
-   short lock. This needs PHP CLI on the server, which shared hosts with SSH (e.g. cyon)
+   tar stream. This needs PHP CLI on the server, which shared hosts with SSH (e.g. cyon)
    provide.
+   - **As built (v0.16):** records are read through each table's storage driver, so JSON,
+     SQLite and MySQL types export alike, instead of copying files or using `VACUUM INTO`.
+   - JSON records are written atomically (temp file + rename), so every record is read
+     whole.
+   - There is no snapshot across tables: a publish during an export can tear a record
+     from its `__published`/`__revisions` copy, and the next pull heals it.
 3. Before touching anything locally, the command writes a backup to
    `storage/backups/pull-YYYYmmdd-HHMMSS.tar.gz`.
 4. It unpacks into place, prints a summary (records and files added, changed, removed), and

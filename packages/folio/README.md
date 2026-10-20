@@ -516,6 +516,14 @@ php preflow folio:pull production --only=data # records only (or --only=media)
   Never code, `.env`, caches, logs, sessions or other tables (`user_tokens`).
 - **SSH:** your SSH agent and `~/.ssh/config`, with no credentials in config. Host keys
   are never ignored, so a changed key aborts.
+- **Remote settings:**
+  - `ssh` is a host alias or `user@host`, never an ssh option.
+  - `path` is absolute or relative to the remote home, without `~`.
+  - `php` is a single binary path (`/usr/local/bin/php84`), without arguments.
+- **Symlinks:** a symlinked media root (a Deployer `shared/` link) is followed. Symlinked
+  subdirectories inside it are skipped.
+- **Refused on import:** dotfiles (`.htaccess`, `.user.ini`) and executable files (`.php`,
+  `.phtml`, `.sh`, …) under media or uploads.
 - **On the server:** it runs `php preflow folio:export --stdout`, so the remote needs
   this Folio version and PHP CLI.
 - **Locally:** before anything changes, a backup of the local content goes to
