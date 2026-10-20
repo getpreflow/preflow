@@ -182,7 +182,8 @@ final class ExportImportTest extends TestCase
     {
         $before = $this->snapshot();
 
-        foreach (['media/x.php', 'media/2026/shell.PHTML', 'uploads/a.phar', 'media/.htaccess', 'media/2026/.user.ini', 'media/.hidden/a.jpg', 'uploads/run.sh'] as $entry) {
+        foreach (['media/x.php', 'media/2026/shell.PHTML', 'uploads/a.phar', 'media/.htaccess', 'media/2026/.user.ini', 'media/.hidden/a.jpg', 'uploads/run.sh',
+            'media/x.php.jpg', 'media/a.php.', 'media/a.php ', 'media/web.config', 'media/2026/php.ini'] as $entry) {
             try {
                 $this->import($this->craft($entry, 'x'));
                 $this->fail("expected a TransferException for {$entry}");

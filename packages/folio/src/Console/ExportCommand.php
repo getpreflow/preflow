@@ -44,10 +44,12 @@ final class ExportCommand extends TransferCommand implements CommandInterface
         }
         try {
             $summary = (new Exporter(ContentSet::fromApp($app), $app->container()->get(DataManager::class)))->export($out, $only);
-        } catch (\Preflow\Folio\Transfer\TransferException $e) {
+        } catch (\Throwable $e) {
             if ($file !== null) {
                 fclose($out);
-                @unlink($file); // never leave a partial archive that looks complete
+                if (is_file($file)) {
+                    @unlink($file); // never leave a partial archive that looks complete
+                }
                 $file = null;
             }
             $this->warn('Export failed: ' . $e->getMessage());

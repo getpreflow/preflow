@@ -161,6 +161,16 @@ final class TransferCommandsTest extends TestCase
         $this->assertFileDoesNotExist($this->dir . '/partial.tar.gz');
     }
 
+    public function test_export_failing_for_any_reason_leaves_no_file(): void
+    {
+        file_put_contents($this->dir . '/storage/data/post/broken.json', '{"uuid": "broken", '); // unreadable record
+
+        $code = $this->export([$this->dir . '/partial.tar.gz']);
+
+        $this->assertSame(1, $code);
+        $this->assertFileDoesNotExist($this->dir . '/partial.tar.gz');
+    }
+
     public function test_failed_backup_leaves_no_partial_backup(): void
     {
         $file = $this->dir . '/x.tar';

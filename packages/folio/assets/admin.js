@@ -818,7 +818,8 @@
             return;
         }
         announce(l.card, 'Dropped ' + cardLabel(l.card) + ', position ' + cardPosition(l.card) + '.');
-        if (l.card.nextSibling !== l.next) { notifyChange(l.card); }
+        // Moved and back again counts too: an autosave may have stored the moved order.
+        if (l.moved || l.card.nextSibling !== l.next) { notifyChange(l.card); }
     }
 
     function onHandleKeydown(e) {

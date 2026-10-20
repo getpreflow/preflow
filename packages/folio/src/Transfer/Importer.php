@@ -210,8 +210,13 @@ final class Importer
                 throw new TransferException("Refusing hidden or server config file: {$name}");
             }
         }
-        if (preg_match('/\\.(php\d?|phtml|phar|pht|phps|shtml|cgi|pl|py|sh|asp|aspx|jsp)$/i', $name) === 1) {
-            throw new TransferException("Refusing executable file: {$name}");
+        $base = basename($name);
+        // Any suffix counts (Apache's AddHandler matches x.php.jpg), and trailing dots or
+        // spaces are stripped by some servers; per-directory PHP and IIS config by name.
+        if (preg_match('/\\.(php\\d?|phtml|phar|pht|phps|shtml|cgi|pl|py|sh|asp|aspx|jsp)(\\.|$)/i', $base) === 1
+            || preg_match('/[.\\s]$/', $base) === 1
+            || in_array(strtolower($base), ['php.ini', 'web.config'], true)) {
+            throw new TransferException("Refusing executable or server config file: {$name}");
         }
     }
 
