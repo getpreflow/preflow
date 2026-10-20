@@ -181,6 +181,50 @@ final class PublisherTest extends TestCase
         $this->assertSame(1, $p->query('post')->get()->total());
     }
 
+    public function test_publish_appends_revision_with_changed_fields(): void
+    {
+        $p = $this->publisher();
+        $p->publish($this->working('post', ['title' => 'A']), 'u@x');
+        $post = $this->reload('post');
+        $post->set('body', 'More');
+        $p->publish($post, 'u@x');
+
+        $revisions = $p->revisions('post', 'r1');
+        $this->assertCount(2, $revisions);
+        $this->assertSame(['body'], $revisions[0]->changed);
+        $this->assertSame(['title'], $revisions[1]->changed);
+        $this->assertSame('u@x', $revisions[0]->createdBy);
+        $this->assertSame('More', $revisions[0]->data['body']);
+    }
+
+    public function test_revisions_are_capped(): void
+    {
+        $p = $this->publisher(keep: 3);
+        for ($i = 1; $i <= 5; $i++) {
+            $post = $i === 1 ? $this->working('post', ['title' => 'T1']) : $this->reload('post');
+            $post->set('title', 'T' . $i);
+            $p->publish($post, null);
+        }
+
+        $this->assertSame([5, 4, 3], array_map(static fn ($r) => $r->seq, $p->revisions('post', 'r1')));
+    }
+
+    public function test_restore_copies_into_working_copy_only(): void
+    {
+        $p = $this->publisher();
+        $p->publish($this->working('post', ['title' => 'A']), null);
+        $post = $this->reload('post');
+        $post->set('title', 'B');
+        $p->publish($post, null);
+
+        $first = $p->revisions('post', 'r1')[1];
+        $p->restore('post', 'r1', $first->id);
+
+        $this->assertSame('A', $this->reload('post')->get('title'));
+        $this->assertSame(PublishState::Changed, $p->state($this->reload('post')));
+        $this->assertSame('B', $p->snapshot('post', 'r1')?->get('title'));
+    }
+
     private function publisher(int $keep = 20): Publisher
     {
         $fieldTypes = new FieldTypeRegistry();

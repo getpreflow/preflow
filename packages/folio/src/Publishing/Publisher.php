@@ -122,14 +122,18 @@ final class Publisher
         $def = $working->getType();
         $shadow = ShadowTypes::published($def);
 
+        $previous = $this->dm->findIn($shadow, (string) $working->getId());
+
         $working->set('_publish_at', null);
         $this->dm->saveType($working, false);
 
+        $stamp = ($this->now)()->format(DATE_ATOM);
         $snapshot = DynamicRecord::fromArray($shadow, array_merge(
             array_diff_key($working->toArray(), array_flip(self::WORKING_ONLY)),
-            ['_published_at' => ($this->now)()->format(DATE_ATOM), '_published_by' => $by],
+            ['_published_at' => $stamp, '_published_by' => $by],
         ));
         $this->dm->saveType($snapshot, false);
+        $this->appendRevision($def, $snapshot, $previous, $stamp, $by);
 
         return $snapshot;
     }
@@ -148,6 +152,98 @@ final class Publisher
         }
 
         return $this->replaceContent($type, $id, $snapshot->toArray());
+    }
+
+    /**
+     * Revisions of a record, newest first.
+     *
+     * @return list<Revision>
+     */
+    public function revisions(string $type, string $id): array
+    {
+        return $this->revisionsOf($this->definition($type), $id);
+    }
+
+    /** Copy a revision into the working copy; it must be published again to go live. */
+    public function restore(string $type, string $id, string $revisionId): ?DynamicRecord
+    {
+        foreach ($this->revisions($type, $id) as $revision) {
+            if ($revision->id === $revisionId) {
+                return $this->replaceContent($type, $id, $revision->data);
+            }
+        }
+
+        return null;
+    }
+
+    /** @return list<Revision> */
+    private function revisionsOf(TypeDefinition $def, string $id): array
+    {
+        $revisions = [];
+        foreach ($this->dm->queryIn(ShadowTypes::revisions($def))->where('record_id', $id)->get()->items() as $row) {
+            $data = json_decode((string) $row->get('data'), true);
+            $changed = json_decode((string) $row->get('changed'), true);
+            $revisions[] = new Revision(
+                (string) $row->getId(),
+                (int) $row->get('seq'),
+                is_array($data) ? $data : [],
+                is_array($changed) ? array_values(array_filter($changed, 'is_string')) : [],
+                (string) $row->get('created_at'),
+                is_string($row->get('created_by')) ? $row->get('created_by') : null,
+            );
+        }
+        usort($revisions, static fn (Revision $a, Revision $b) => $b->seq <=> $a->seq);
+
+        return $revisions;
+    }
+
+    private function appendRevision(TypeDefinition $def, DynamicRecord $snapshot, ?DynamicRecord $previous, string $stamp, ?string $by): void
+    {
+        $id = (string) $snapshot->getId();
+        $existing = $this->revisionsOf($def, $id);
+        $revisionsDef = ShadowTypes::revisions($def);
+
+        $this->dm->saveType(DynamicRecord::fromArray($revisionsDef, [
+            'uuid' => bin2hex(random_bytes(8)),
+            'record_id' => $id,
+            'seq' => ($existing[0]->seq ?? 0) + 1,
+            'data' => json_encode($snapshot->toArray()),
+            'changed' => json_encode(self::changedFields($def, $snapshot, $previous)),
+            'created_at' => $stamp,
+            'created_by' => $by,
+        ]), false);
+
+        foreach (array_slice($existing, max(0, $this->keepRevisions - 1)) as $old) {
+            $this->dm->deleteIn($revisionsDef, $old->id);
+        }
+    }
+
+    /**
+     * Top-level fields that differ from the previous snapshot; for a first
+     * publish, the fields that have a value.
+     *
+     * @return list<string>
+     */
+    private static function changedFields(TypeDefinition $def, DynamicRecord $snapshot, ?DynamicRecord $previous): array
+    {
+        $changed = [];
+        foreach (array_keys($def->fields) as $name) {
+            if ($name === $def->idField) {
+                continue;
+            }
+            $now = $snapshot->toArray()[$name] ?? null;
+            if ($previous === null) {
+                if ($now !== null && $now !== '' && $now !== []) {
+                    $changed[] = $name;
+                }
+                continue;
+            }
+            if (json_encode(self::sortKeys($now)) !== json_encode(self::sortKeys($previous->toArray()[$name] ?? null))) {
+                $changed[] = $name;
+            }
+        }
+
+        return $changed;
     }
 
     /**
