@@ -22,9 +22,11 @@
     {# htmx inserts its own indicator styles (needs the nonce); swapped admin fragments never run scripts. #}
     <meta name="htmx-config" content='{"inlineStyleNonce":"{{ csp_nonce() }}","allowScriptTags":false}'>
     {% endif %}
+    {# admin.js on every admin page: confirm dialogs, toasts, the unsaved-changes guard. #}
+    <script src="{{ folio_asset('admin.js') }}" defer></script>
     {% for a in editor_assets|default([]) %}
         {%- if a ends with '.css' %}<link rel="stylesheet" href="{{ folio_asset(a) }}">
-        {%- elseif a ends with '.js' %}<script src="{{ folio_asset(a) }}" defer></script>
+        {%- elseif a ends with '.js' and a != 'admin.js' %}<script src="{{ folio_asset(a) }}" defer></script>
         {%- endif %}
     {% endfor %}
 </head>
@@ -85,6 +87,7 @@
         <main class="folio-content">{% block content %}{% endblock %}</main>
     </div>
 </div>
+<div class="folio-toasts" aria-live="polite" data-folio-toasts></div>
 <script nonce="{{ csp_nonce() }}">
 (function () {
     var group = document.getElementById('folio-theme-toggle');

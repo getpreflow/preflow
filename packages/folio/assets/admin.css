@@ -1133,6 +1133,35 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
   .folio-split[data-mode="preview"] { min-height: 80vh; }
 }
 
+/* ---- toasts ---- */
+.folio-toasts {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 1200;
+  display: grid;
+  gap: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.folio-toast {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 8px 8px 16px;
+  border-radius: var(--r);
+  background: light-dark(#1f1f1c, #ecece8);
+  color: light-dark(#f4f4f1, #1a1a17);
+  box-shadow: var(--shadow-lg);
+  font-size: 13.5px;
+  font-weight: 520;
+  pointer-events: auto;
+  animation: folio-toast-in .18s ease-out;
+}
+.folio-toast-action { background: transparent; color: light-dark(#6ee7b7, #047857); }
+.folio-toast-action:hover { background: light-dark(rgb(255 255 255 / .1), rgb(0 0 0 / .06)); color: light-dark(#a7f3d0, #065f46); }
+@keyframes folio-toast-in { from { opacity: 0; transform: translateY(6px); } }
+
 /* ---- small screens: the sidebar becomes a top bar ---- */
 @media (max-width: 760px) {
   .folio-shell { grid-template-columns: minmax(0, 1fr); }

@@ -218,6 +218,20 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString("localStorage.getItem('folio-theme')", $body); // no-flash script
     }
 
+    public function test_admin_js_loads_on_every_admin_page(): void
+    {
+        // Confirm dialogs, toasts and the unsaved-changes guard live in admin.js.
+        foreach (['/folio', '/folio/page', '/folio/note/new'] as $uri) {
+            $body = (string) $this->get($uri)->getBody();
+            $this->assertSame(1, substr_count($body, '/folio/_assets/admin.js?v='), $uri);
+        }
+    }
+
+    public function test_layout_has_toast_region(): void
+    {
+        $this->assertStringContainsString('<div class="folio-toasts" aria-live="polite" data-folio-toasts></div>', (string) $this->get('/folio')->getBody());
+    }
+
     public function test_admin_stylesheet_is_served(): void
     {
         $res = $this->get('/folio/_assets/admin.css');

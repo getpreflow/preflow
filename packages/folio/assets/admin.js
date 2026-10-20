@@ -687,8 +687,10 @@
             if (next) { card.parentNode.insertBefore(next, card); notifyChange(card); }
         } else if (btn.hasAttribute('data-block-remove')) {
             var list = card.parentNode;
+            var next = card.nextSibling;
             list.removeChild(card);
             notifyChange(list);
+            offerUndo(card, list, next);
         }
         e.preventDefault();
     }
@@ -832,6 +834,65 @@
         }, 0);
     }
 
+    // ---- Undo a removed block ---------------------------------------------
+    // The removed card is kept (with its inputs) until the toast times out or a
+    // newer removal replaces it; Undo puts it back where it was.
+
+    var pendingUndo = null; // { toast, timer }
+
+    function dismissUndo() {
+        if (!pendingUndo) { return; }
+        clearTimeout(pendingUndo.timer);
+        if (pendingUndo.toast.parentNode) { pendingUndo.toast.parentNode.removeChild(pendingUndo.toast); }
+        pendingUndo = null;
+    }
+
+    function offerUndo(card, list, next) {
+        var region = document.querySelector('[data-folio-toasts]');
+        if (!region) { return; }
+        dismissUndo();
+        var toast = document.createElement('div');
+        toast.className = 'folio-toast';
+        var text = document.createElement('span');
+        text.textContent = cardLabel(card) + ' removed';
+        var undo = document.createElement('button');
+        undo.type = 'button';
+        undo.className = 'btn btn-sm folio-toast-action';
+        undo.textContent = 'Undo';
+        undo.addEventListener('click', function () {
+            if (!list.isConnected) { dismissUndo(); return; }
+            var before = next && next.parentNode === list ? next : list.querySelector(':scope > [data-blocks-picker]');
+            list.insertBefore(card, before);
+            notifyChange(card);
+            dismissUndo();
+            var toggle = card.querySelector(':scope > .folio-block-head [data-block-collapse]');
+            if (toggle) { toggle.focus(); }
+        });
+        toast.appendChild(text);
+        toast.appendChild(undo);
+        region.appendChild(toast);
+        pendingUndo = { toast: toast, timer: setTimeout(dismissUndo, 8000) };
+    }
+
+    // ---- Unsaved-changes guard ---------------------------------------------
+    // Forms that autosave (hx-post) never lose work; the others ask before leaving.
+
+    function initUnsavedGuard() {
+        var dirty = [];
+        document.querySelectorAll('.folio-form form').forEach(function (form) {
+            if (form.hasAttribute('hx-post')) { return; }
+            var mark = function () { if (dirty.indexOf(form) < 0) { dirty.push(form); } };
+            form.addEventListener('input', mark);
+            form.addEventListener('change', mark);
+            form.addEventListener('submit', function () { dirty = dirty.filter(function (f) { return f !== form; }); });
+        });
+        window.addEventListener('beforeunload', function (e) {
+            if (dirty.length === 0) { return; }
+            e.preventDefault();
+            e.returnValue = '';
+        });
+    }
+
     // Cards added by htmx: run the same per-element setup as on page load.
     function onHtmxLoad(e) {
         var root = e.detail && e.detail.elt ? e.detail.elt : null;
@@ -938,6 +999,7 @@
         window.addEventListener('message', onMessage);
         document.addEventListener('keydown', onKeydown);
         initSplit();
+        initUnsavedGuard();
     }
 
     if (document.readyState === 'loading') {

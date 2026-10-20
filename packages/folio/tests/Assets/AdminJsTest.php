@@ -95,6 +95,15 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('parentNode !== ', $js);       // drops stay within one list
     }
 
+    public function test_undo_remove_and_unsaved_guard(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString("'Undo'", $js);               // toast action after removing a block
+        $this->assertStringContainsString('[data-folio-toasts]', $js);
+        $this->assertStringContainsString("'beforeunload'", $js);       // leaving with unsaved changes asks
+        $this->assertStringContainsString("hasAttribute('hx-post')", $js); // autosaving forms are not guarded
+    }
+
     public function test_defines_surgical_preview_patch(): void
     {
         $js = $this->js();
