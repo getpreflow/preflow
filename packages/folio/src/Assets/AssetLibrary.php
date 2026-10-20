@@ -184,7 +184,77 @@ final class AssetLibrary
                 unlink($file);
             }
         }
+        $this->variants?->remove($asset, $this->dir); // also those made on demand
         $this->dm->deleteIn($this->definition(), $id);
+    }
+
+    /**
+     * The file of one variant, made now if missing. Only widths in $allowed
+     * (and the original width, which srcsets list when it is narrower than
+     * the largest) and never wider than the original; null for anything else.
+     * Concurrent first requests wait on a per-file lock, so it is encoded once.
+     *
+     * @param list<int> $allowed
+     */
+    public function variantFile(Asset $asset, int $width, string $format, array $allowed): ?string
+    {
+        if ($this->variants === null || $asset->width === null || $asset->height === null || $width > $asset->width
+            || !$this->variants->supports($asset->mime, $format)
+            || $asset->width * $asset->height > (int) ($this->config['max_pixels'] ?? self::DEFAULT_MAX_PIXELS)) {
+            return null;
+        }
+        $isOriginal = $width === $asset->width && $allowed !== [] && $width < max($allowed);
+        if (!in_array($width, $allowed, true) && !$isOriginal) {
+            return null;
+        }
+
+        $rel = substr($asset->path, 0, (int) strrpos($asset->path, '.')) . "-{$width}.{$format}";
+        $file = $this->absolute($rel);
+        if (is_file($file)) {
+            return $file;
+        }
+        if (!is_dir(dirname($file)) && !@mkdir(dirname($file), 0775, true) && !is_dir(dirname($file))) {
+            return null;
+        }
+        $lock = @fopen($file . '.lock', 'c');
+        if ($lock === false) {
+            return null;
+        }
+        try {
+            flock($lock, LOCK_EX);
+            clearstatcache(true, $file);
+            if (!is_file($file)) {
+                $this->variants->generateOne($this->dir, $asset->path, $asset->mime, $width, $format);
+            }
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+            @unlink($file . '.lock');
+        }
+
+        return is_file($file) ? $file : null;
+    }
+
+    /**
+     * Make every allowed variant the image can fill, in advance
+     * (folio:assets:variants --all). Returns how many were new.
+     *
+     * @param list<int> $allowed
+     */
+    public function warm(Asset $asset, array $allowed): int
+    {
+        $made = 0;
+        foreach (['avif', 'webp'] as $format) {
+            foreach ($allowed as $width) {
+                $rel = substr($asset->path, 0, (int) strrpos($asset->path, '.')) . "-{$width}.{$format}";
+                $had = is_file($this->absolute($rel));
+                if ($this->variantFile($asset, $width, $format, $allowed) !== null && !$had) {
+                    $made++;
+                }
+            }
+        }
+
+        return $made;
     }
 
     /** Replace an image's variants (e.g. after the configured widths changed). */

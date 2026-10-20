@@ -110,6 +110,27 @@ final class FolioRoutes
         return $entries;
     }
 
+    /**
+     * Missing image variants under the media URL (made on first request). Placed
+     * before the frontend catch-all; existing files never reach PHP.
+     */
+    public static function media(string $url): RouteEntry
+    {
+        $pattern = rtrim($url, '/') . '/{...path}';
+        $c = PatternCompiler::compile($pattern);
+
+        return new RouteEntry(
+            pattern: $pattern,
+            handler: 'Preflow\\Folio\\Http\\MediaVariantController@serve',
+            method: 'GET',
+            mode: RouteMode::Action,
+            middleware: [],
+            paramNames: $c['paramNames'],
+            regex: $c['regex'],
+            isCatchAll: $c['isCatchAll'],
+        );
+    }
+
     public static function frontend(): RouteEntry
     {
         $c = PatternCompiler::compile('/{...path}');

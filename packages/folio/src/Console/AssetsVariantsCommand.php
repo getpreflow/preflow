@@ -8,13 +8,17 @@ use Preflow\DevTools\Command\CommandInterface;
 use Preflow\Folio\Assets\AssetLibrary;
 use Preflow\Folio\Assets\Image\ImageBackends;
 
-/** Rebuild image variants, e.g. after changing the configured widths: folio:assets:variants [--id=<id>] */
+/**
+ * Rebuild image variants, e.g. after changing the configured widths:
+ * folio:assets:variants [--id=<id>] [--all]. With --all, the step widths that
+ * are otherwise made on first request are made now as well.
+ */
 final class AssetsVariantsCommand implements CommandInterface
 {
     use BootsApplication;
 
     public function getName(): string { return 'folio:assets:variants'; }
-    public function getDescription(): string { return 'Regenerate WebP/AVIF variants of library images'; }
+    public function getDescription(): string { return 'Regenerate WebP/AVIF variants of library images [--id=<id>] [--all: also the step widths]'; }
 
     public function execute(array $args): int
     {
@@ -29,16 +33,26 @@ final class AssetsVariantsCommand implements CommandInterface
             }
         }
 
-        $library = $this->app()->container()->get(AssetLibrary::class);
+        $app = $this->app();
+        $library = $app->container()->get(AssetLibrary::class);
+        $all = in_array('--all', $args, true);
+        $allowed = $app->container()->get(\Preflow\Folio\Assets\ImageWidths::class)->allowed();
         $assets = $id !== null ? array_filter([$library->find($id)]) : $library->all();
         $count = 0;
+        $made = 0;
         foreach ($assets as $asset) {
             if ($asset->kind() === 'image') {
-                $library->regenerate($asset);
+                $asset = $library->regenerate($asset);
+                if ($all) {
+                    $made += $library->warm($asset, $allowed);
+                }
                 $count++;
             }
         }
         echo "Regenerated variants of {$count} image" . ($count === 1 ? '' : 's') . ".\n";
+        if ($all) {
+            echo "Made {$made} step-width variant" . ($made === 1 ? '' : 's') . " in advance.\n";
+        }
 
         return 0;
     }

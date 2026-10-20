@@ -53,6 +53,23 @@ final class AssetCommandsTest extends TestCase
         }
     }
 
+    public function test_variants_all_also_makes_step_widths(): void
+    {
+        $this->write('config/image.php', "<?php\nreturn ['presets' => ['card' => ['widths' => [480, 960], 'step' => 160]]];\n");
+        $f = new Psr17Factory();
+        $png = $this->png();
+        $asset = $this->lib()->upload($f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'a.png'), null);
+        $base = $this->dir . '/public/media/' . substr($asset->path, 0, (int) strrpos($asset->path, '.'));
+        $this->assertFileDoesNotExist($base . '-640.webp');
+
+        [$code, $out] = $this->runCommand(new AssetsVariantsCommand(fn () => $this->app()), ['--all']);
+
+        $this->assertSame(0, $code);
+        $this->assertFileExists($base . '-640.webp');
+        $this->assertFileExists($base . '-800.webp');
+        $this->assertStringContainsString('step-width', $out);
+    }
+
     public function test_import_rewrites_working_snapshot_and_revision(): void
     {
         $legacy = $this->legacyFile();

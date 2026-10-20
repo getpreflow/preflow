@@ -70,10 +70,44 @@ final class VariantGenerator
         return $variants;
     }
 
+    /** Whether variants can be made for this source type in this format. */
+    public function supports(string $mime, string $format): bool
+    {
+        return $this->backend !== null && in_array($mime, self::SOURCE_TYPES, true)
+            && in_array($format, ['avif', 'webp'], true) && $this->backend->supports($format);
+    }
+
+    /**
+     * One variant, written to a temp file and renamed into place, so a reader
+     * never sees half of it. Returns the relative path, or null on failure.
+     */
+    public function generateOne(string $dir, string $relativeSource, string $mime, int $width, string $format): ?string
+    {
+        if (!$this->supports($mime, $format) || $width < 1) {
+            return null;
+        }
+        $rel = preg_replace('/\.[a-z0-9]+$/', '', $relativeSource) . "-{$width}.{$format}";
+        $dest = rtrim($dir, '/') . '/' . $rel;
+        $tmp = $dest . '.tmp-' . bin2hex(random_bytes(4)) . '.' . $format;
+        $ok = ($this->backend->writeVariants(rtrim($dir, '/') . '/' . $relativeSource, [['dest' => $tmp, 'width' => $width, 'format' => $format]], $this->quality)[0] ?? false) === true;
+        if (!$ok || !@rename($tmp, $dest)) {
+            @unlink($tmp);
+
+            return null;
+        }
+
+        return $rel;
+    }
+
+    /** Every variant file of the asset: the recorded ones and those made on demand. */
     public function remove(Asset $asset, string $dir): void
     {
-        foreach ($asset->variants as $variant) {
-            $file = rtrim($dir, '/') . '/' . $variant->path;
+        $files = array_map(static fn (Variant $v) => rtrim($dir, '/') . '/' . $v->path, $asset->variants);
+        $base = rtrim($dir, '/') . '/' . preg_replace('/\.[a-z0-9]+$/', '', $asset->path);
+        foreach (['avif', 'webp'] as $format) {
+            $files = [...$files, ...(glob($base . '-[0-9]*.' . $format) ?: [])];
+        }
+        foreach (array_unique($files) as $file) {
             if (is_file($file)) {
                 unlink($file);
             }

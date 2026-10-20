@@ -100,6 +100,10 @@ final class FolioServiceProvider extends ServiceProvider
             ),
         ));
 
+        $container->bind(\Preflow\Folio\Http\MediaVariantController::class, fn (Container $c) => new \Preflow\Folio\Http\MediaVariantController(
+            $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
+            $c->get(\Preflow\Folio\Assets\ImageWidths::class),
+        ));
         $container->singleton(\Preflow\Folio\Assets\AssetReferences::class, fn (Container $c) => new \Preflow\Folio\Assets\AssetReferences(
             $c->get(BlockRegistry::class),
         ));
@@ -435,6 +439,8 @@ final class FolioServiceProvider extends ServiceProvider
                 $collection = $router->getCollection(); // builds app routes first (lazy)
                 $authEnabled = file_exists($app->basePath('config/auth.php'));
                 $collection->addMany(FolioRoutes::admin($this->prefix($app), $authEnabled));
+                $assets = (array) ($this->folioConfig($app)['assets'] ?? []);
+                $collection->add(FolioRoutes::media(is_string($assets['url'] ?? null) ? $assets['url'] : '/media'));
                 $collection->add(FolioRoutes::frontend());
             }
         }

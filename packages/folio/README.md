@@ -425,7 +425,17 @@ the file to the library on save, so it works without JavaScript. A field's `acce
 - It emits `<picture>` with AVIF and WebP `srcset`s, and an `<img>` with `width`,
   `height`, `loading` and the alt text in the page's language.
 - Options and presets are those of `responsive_image()`: `config/image.php`
-  `presets` (`widths`, `sizes`, `loading`, `class`, `attrs`).
+  `presets` (`widths`, `sizes`, `loading`, `class`, `attrs`), plus two of Folio's own:
+  - `step: 160` adds widths every 160 px between the preset's smallest and largest
+    width, so browsers can pick close to the size they display. Those widths are made
+    on first request (see below).
+  - `priority: true` is for the page's key image (a hero or portrait). It sets
+    `fetchpriority="high"` and `loading="eager"` and adds one
+    `<link rel="preload" as="image" imagesrcset imagesizes>` to the head per image. A
+    call can override it: `folio_image(img, 'hero', {priority: false})`. The link is
+    added while the image renders, so if a layout calls `{{ head() }}` before the body,
+    put the image's `priority` on a later page or let the app inject head assets (the
+    default).
 - The focal point becomes classes (`folio-focal folio-fx-30 folio-fy-70`), never an
   inline style. Their CSS is added to the page with the CSP nonce. It only shows when
   your CSS crops the image, e.g. `object-fit: cover`.
@@ -439,6 +449,17 @@ original: decoding them could exceed a shared host's memory limit. The
 widths come from `assets.widths`, else from all preset widths in `config/image.php`. GIF
 and SVG files are served as they are, and without GD or Imagick no variants are made.
 After changing widths, run `php preflow folio:assets:variants`.
+
+**Step widths on first request.** The listed `widths` are made on upload. Step widths
+are made the first time a browser asks for one:
+- the missing file reaches the front controller, and Folio makes it, writes it next to
+  the original and returns it;
+- from then on the web server serves it as a static file;
+- only widths a preset defines, never wider than the original and in formats the backend
+  supports, are made. Anything else under the media URL is a 404 that writes nothing;
+- concurrent first requests wait on a per-file lock, so a variant is encoded once.
+
+`php preflow folio:assets:variants --all` makes the step widths in advance as well.
 
 **Config** (`config/folio.php`):
 
