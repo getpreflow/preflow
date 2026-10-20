@@ -759,11 +759,18 @@ final class Application
             return;
         }
 
+        // session.paths limits sessions (and their cookie) to these path prefixes;
+        // without it the session starts on every request.
+        $paths = isset($sessionConfig['paths']) ? array_values((array) $sessionConfig['paths']) : null;
+        unset($sessionConfig['paths']);
+
         $session = new \Preflow\Core\Http\Session\NativeSession($sessionConfig);
-        $session->start();
+        if ($paths === null) {
+            $session->start();
+        }
         $this->container->instance(\Preflow\Core\Http\Session\SessionInterface::class, $session);
 
-        $this->addMiddleware(new \Preflow\Core\Http\Session\SessionMiddleware($session));
+        $this->addMiddleware(new \Preflow\Core\Http\Session\SessionMiddleware($session, $paths));
     }
 
     /** @var array<string, mixed>|null config/auth.php, loaded once (it may hash passwords) */

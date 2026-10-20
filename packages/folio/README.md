@@ -45,6 +45,20 @@ return [
 ];
 ```
 
+The admin login uses the session from `config/auth.php`. By default core starts it on
+every request, so public pages get a session cookie too. To keep public pages
+cookie-free, limit the session to the admin path:
+
+```php
+'session' => [
+    'cookie' => 'site_admin',
+    'paths' => ['/folio'], // prefixes, matched per path segment
+],
+```
+
+Requests outside those prefixes get no session and therefore no CSRF check either, so
+a public form needs its own protection.
+
 ### 3. Define a content type
 
 Content types are JSON files in `config/models/` (the existing `data.models_path`).
