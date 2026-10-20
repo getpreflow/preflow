@@ -413,7 +413,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
 
             $fields[] = $type->renderEditor(new FieldContext(
                 name: $base . '[' . $field . ']',
-                label: $def->label,
+                label: $def->label ?? ucfirst(str_replace('_', ' ', $field)),
                 help: $def->help,
                 value: $type->fromStorage($value),
                 errors: $errors[$field] ?? [],

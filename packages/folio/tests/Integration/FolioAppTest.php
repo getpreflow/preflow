@@ -1022,6 +1022,19 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('enctype="multipart/form-data"', $body); // blocks may hold uploads
     }
 
+    public function test_block_fields_without_a_label_are_labelled_by_field_name(): void
+    {
+        $this->enableBlocks();
+        $uid = 'aaaaaaaaaaaaaaaa';
+        $id = $this->createPage(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
+            'sections' => ['_order' => [$uid], $uid => ['_block' => 'hero', 'headline' => 'Hello']]]);
+
+        $body = (string) $this->get('/folio/page/' . $id . '/edit')->getBody();
+
+        $this->assertMatchesRegularExpression('/<label[^>]*>\s*Headline\b/', $body);
+        $this->assertDoesNotMatchRegularExpression('/<label[^>]*>\s*Sections\[/i', $body);
+    }
+
     public function test_blocks_editor_loads_admin_js_for_card_controls(): void
     {
         // Collapse, move and remove are admin.js; without it only duplicate (htmx) responds.
