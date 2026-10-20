@@ -22,6 +22,9 @@ final class Hero extends BlockComponent
     #[BlockField(type: 'text', translatable: true)]
     public string $intro = '';
 
+    #[BlockField(type: 'asset', label: 'Image', help: 'From the asset library; set its focal point there.', config: ['asset' => ['accept' => 'image/*']])]
+    public string $image = '';
+
     #[BlockField(type: 'blocks', label: 'Links', allowed: ['link'], max: 3)]
     public array $links = [];
 }

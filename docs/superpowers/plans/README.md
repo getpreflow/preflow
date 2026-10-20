@@ -20,6 +20,7 @@
 | 13 | folio content i18n | [2026-10-20-folio-content-i18n.md](2026-10-20-folio-content-i18n.md) | Implemented |
 | 14 | folio blocks and singletons | [2026-10-20-folio-blocks-singletons.md](2026-10-20-folio-blocks-singletons.md) | Implemented |
 | 15 | folio drafts and publishing | [2026-10-20-folio-drafts-publishing.md](2026-10-20-folio-drafts-publishing.md) | Implemented |
+| 16 | folio asset library | [2026-10-20-folio-asset-library.md](2026-10-20-folio-asset-library.md) | Implemented |
 
 ## Design Spec
 

@@ -368,6 +368,95 @@ returns working copies, drafts included.
   table. A cleared schedule is stored as `''`, because the SQL drivers skip null values.
 - JSON-file storage needs no setup.
 
+## Asset library
+
+Uploads go into a shared media library at `{prefix}/assets`. Files are written to
+`public/media/Y/m/{id}.{ext}` and served by the web server directly, with no PHP
+involved. Their metadata (alt text per language, title, focal point, video poster)
+are records of an internal type, stored in the `folio_assets` table.
+
+**Library screen:**
+- grid and list views;
+- search by name, title or alt text, and filters by kind (images, videos, documents);
+- multi-file upload;
+- a details panel for alt text, title and focal point (click the image to set it), and
+  a poster image for videos;
+- **usage:** the records that use the asset, including published versions that still
+  show it. Deleting a used asset is refused.
+
+**Asset fields** store asset ids. The editor shows the selection with **Choose**, which
+opens the library as a picker in the drawer, and **Upload**, a plain file input that adds
+the file to the library on save, so it works without JavaScript. A field's `accept`
+(`image/*`, `video/*` or `.pdf,.zip`) limits what an upload may be.
+
+**Images in templates:**
+
+```twig
+{{ folio_image(record.cover, 'hero', {sizes: '(min-width: 60rem) 50vw, 100vw', class: 'cover'}) }}
+```
+
+- It emits `<picture>` with AVIF and WebP `srcset`s, and an `<img>` with `width`,
+  `height`, `loading` and the alt text in the page's language.
+- Options and presets are those of `responsive_image()`: `config/image.php`
+  `presets` (`widths`, `sizes`, `loading`, `class`, `attrs`).
+- The focal point becomes classes (`folio-focal folio-fx-30 folio-fy-70`), never an
+  inline style. Their CSS is added to the page with the CSP nonce. It only shows when
+  your CSS crops the image, e.g. `object-fit: cover`.
+- Asset fields in a type's default template render the same way.
+
+**Variants** are made on upload with GD or Imagick: every configured width below the
+image's own width, plus the original width, as WebP, and as AVIF where supported. The
+widths come from `assets.widths`, else from all preset widths in `config/image.php`. GIF
+and SVG files are served as they are, and without GD or Imagick no variants are made.
+After changing widths, run `php preflow folio:assets:variants`.
+
+**Config** (`config/folio.php`):
+
+```php
+'assets' => [
+    'dir' => __DIR__ . '/../public/media', // default
+    'url' => '/media',
+    'storage' => 'json',                  // a data driver name
+    'max_bytes' => 20 * 1024 * 1024,
+    'allow_svg' => false,
+    'widths' => [480, 768, 1024, 1600],   // default: the config/image.php preset widths
+    'quality' => 75,
+],
+```
+
+**Allowed files:**
+- The type is sniffed from the file's content, never taken from the client's file name,
+  and the stored extension follows the sniffed type. So a `shell.php` renamed to `.jpg`
+  cannot land in the public directory.
+- Allowed: JPEG, PNG, GIF, WebP, AVIF, MP4, WebM, PDF, plain text, CSV and ZIP.
+- **SVG is refused** unless `allow_svg` is set: an SVG served from your own domain can
+  run scripts.
+
+**Older uploads:** paths stored before the library existed keep rendering through
+`{prefix}/_uploads`. `php preflow folio:assets:import [--dry-run]` moves them into the
+library:
+- it rewrites every reference to them, in working copies, published versions,
+  revisions and nested blocks;
+- it lists files that are missing;
+- running it again changes nothing.
+
+**SQL storage:** create `folio_assets` with:
+- `uuid` (primary key);
+- `path`, `original_name`, `mime`, `title`, `poster`, `created_at` and `created_by`
+  (TEXT);
+- `size`, `width`, `height`, `focal_x` and `focal_y` (INTEGER);
+- `duration` (REAL);
+- `alt` and `variants` (TEXT, JSON).
+
+**Dev server:** the PHP built-in server must serve `public/` as its document root for
+`/media` files:
+
+```
+php -S 127.0.0.1:8000 -t public public/index.php
+```
+
+`public/index.php` should `return false` for existing files under `cli-server`.
+
 ## Translations
 
 With more than one locale in `config/i18n.php`, fields marked `"translatable": true`
@@ -429,7 +518,8 @@ Shipped:
 - content translations;
 - blocks and singletons;
 - drafts and publishing (autosave, conflicts, revisions, scheduled publishing, share
-  links).
+  links);
+- the asset library (variants, `folio_image()`, picker, usage, legacy import).
 
 The admin runs under Preflow's strict, nonce-based CSP: no inline handlers or styles.
 Hand-written `<script>`/`<style>` tags in your own templates need

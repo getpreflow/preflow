@@ -66,8 +66,16 @@ final class Application
 
         $configPath = rtrim($basePath, '/') . '/config/app.php';
         $appConfig = file_exists($configPath) ? require $configPath : [];
+        $config = ['app' => $appConfig];
 
-        return new self(new Config(['app' => $appConfig]), $basePath);
+        // Responsive image presets (image.presets), read by the view layer and Folio's asset library.
+        $imagePath = rtrim($basePath, '/') . '/config/image.php';
+        if (file_exists($imagePath)) {
+            $image = require $imagePath;
+            $config['image'] = is_array($image) ? $image : [];
+        }
+
+        return new self(new Config($config), $basePath);
     }
 
     public function container(): Container

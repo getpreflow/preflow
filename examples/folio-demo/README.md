@@ -16,8 +16,8 @@ From the repo root:
 # 1. Seed a few Pages and Articles (idempotent — clears and reseeds)
 php examples/folio-demo/seed.php
 
-# 2. Serve it (index.php doubles as the dev-server router)
-php -S 127.0.0.1:8000 examples/folio-demo/public/index.php
+# 2. Serve it (index.php doubles as the dev-server router; -t lets it send /media files)
+php -S 127.0.0.1:8000 -t examples/folio-demo/public examples/folio-demo/public/index.php
 ```
 
 Then open:
@@ -25,6 +25,7 @@ Then open:
 - `http://127.0.0.1:8000/folio` — dashboard (content-type cards with counts)
 - `http://127.0.0.1:8000/folio/page` — list view (table, edit/delete)
 - `http://127.0.0.1:8000/folio/page/new` — create form
+- `http://127.0.0.1:8000/folio/assets` — the asset library (the seed adds a hero image)
 
 Toggle dark mode with the **Theme** button in the sidebar (it follows your OS by
 default and remembers your choice).

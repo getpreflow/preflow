@@ -21,6 +21,7 @@ use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Assets\AssetLibrary;
 use Preflow\Folio\Publishing\Publisher;
 
 $base = isset($argv[1]) ? rtrim($argv[1], '/') : __DIR__;
@@ -40,17 +41,49 @@ if (is_dir($dataDir)) {
     }
 }
 
+// Library files are runtime data too: start from an empty media directory.
+$mediaDir = $base . '/public/media';
+if (is_dir($mediaDir)) {
+    $rii = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($mediaDir, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST,
+    );
+    foreach ($rii as $file) {
+        if ($file->getFilename() !== '.gitkeep') {
+            $file->isDir() ? @rmdir($file->getPathname()) : @unlink($file->getPathname());
+        }
+    }
+}
+
 $app = Application::create($base);
 $app->boot();
 $dm = $app->container()->get(DataManager::class);
 $registry = $app->container()->get(TypeRegistry::class);
 $publisher = $app->container()->get(Publisher::class);
 
+// A sample hero image, drawn with GD (no binary in the repo) and imported into the asset library.
+$heroImage = '';
+if (function_exists('imagecreatetruecolor')) {
+    $img = imagecreatetruecolor(1920, 820);
+    for ($y = 0; $y < 820; $y++) {
+        $c = imagecolorallocate($img, 20 + (int) ($y / 12), 60 + (int) ($y / 9), 120 + (int) ($y / 8));
+        imageline($img, 0, $y, 1919, $y, (int) $c);
+    }
+    imagefilledellipse($img, 1440, 300, 260, 260, (int) imagecolorallocate($img, 250, 214, 120));
+    $tmp = tempnam(sys_get_temp_dir(), 'folio-demo') . '.png';
+    imagepng($img, $tmp);
+    $library = $app->container()->get(AssetLibrary::class);
+    $asset = $library->importFile($tmp, 'demo-hero.png', 'seed');
+    $library->update($asset->id, ['alt' => ['en' => 'An evening sky over a calm sea', 'de' => 'Ein Abendhimmel über ruhiger See'], 'focal_x' => 75, 'focal_y' => 35]);
+    unlink($tmp);
+    $heroImage = $asset->id;
+}
+
 $records = [
     ['page', ['title' => 'Home', 'slug' => 'home', 'body' => '<p>Welcome to the site.</p>',
         'sections' => [[
             '_uid' => 'a1b2c3d4e5f60718', '_block' => 'hero',
-            'headline' => 'Pages built from blocks', 'intro' => 'Each section is a Preflow component; edit it in Folio.',
+            'headline' => 'Pages built from blocks', 'intro' => 'Each section is a Preflow component; edit it in Folio.', 'image' => $heroImage,
             'links' => [
                 ['_uid' => '0f1e2d3c4b5a6978', '_block' => 'link', 'label' => 'About us', 'url' => '/about'],
             ],

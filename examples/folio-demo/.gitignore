@@ -11,3 +11,7 @@ storage/cache/*
 
 # Cron lock for folio:publish-scheduled.
 storage/locks/
+
+# Asset library files (public, served by the web server) — keep the dir, ignore contents.
+public/media/*
+!public/media/.gitkeep
