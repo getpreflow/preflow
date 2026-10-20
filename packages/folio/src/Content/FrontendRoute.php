@@ -21,10 +21,15 @@ final readonly class FrontendRoute
         public ?string $template,
         public string $publishedField,
         public string|int|float|bool $publishedValue,
+        public bool $publishing = false,
     ) {}
 
-    /** @param array<string, mixed> $frontend */
-    public static function fromConfig(string $type, array $frontend): self
+    /**
+     * @param array<string, mixed> $frontend
+     * @param bool                 $publishing records are read from published snapshots; the
+     *                                         "published" field convention is then ignored
+     */
+    public static function fromConfig(string $type, array $frontend, bool $publishing = false): self
     {
         $pattern = '/' . trim((string) ($frontend['route'] ?? '/{slug}'), '/');
         self::assertValidPattern($type, $pattern);
@@ -49,6 +54,7 @@ final readonly class FrontendRoute
             template: isset($frontend['template']) ? (string) $frontend['template'] : null,
             publishedField: (string) ($published['field'] ?? 'status'),
             publishedValue: self::publishedValue($type, $published['value'] ?? 'published'),
+            publishing: $publishing,
         );
     }
 

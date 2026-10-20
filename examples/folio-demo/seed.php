@@ -21,6 +21,7 @@ use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Publishing\Publisher;
 
 $base = isset($argv[1]) ? rtrim($argv[1], '/') : __DIR__;
 
@@ -43,6 +44,7 @@ $app = Application::create($base);
 $app->boot();
 $dm = $app->container()->get(DataManager::class);
 $registry = $app->container()->get(TypeRegistry::class);
+$publisher = $app->container()->get(Publisher::class);
 
 $records = [
     ['page', ['title' => 'Home', 'slug' => 'home', 'body' => '<p>Welcome to the site.</p>', 'status' => 'published',
@@ -73,7 +75,11 @@ $records[] = ['site', ['uuid' => 'site', 'name' => 'Folio Demo', 'tagline' => ['
 foreach ($records as [$type, $data]) {
     $typeDef = $registry->get($type);
     $data[$typeDef->idField] ??= bin2hex(random_bytes(16));
-    $dm->saveType(DynamicRecord::fromArray($typeDef, $data));
+    $record = DynamicRecord::fromArray($typeDef, $data);
+    $dm->saveType($record);
+    if ($publisher->enabled($type) && ($data['status'] ?? 'published') === 'published') {
+        $publisher->publish($record, 'seed');
+    }
     $slug = $data['slug'] ?? $data[$typeDef->idField];
     echo sprintf("  %-8s %-18s -> ok\n", $type, is_array($slug) ? $slug['en'] : $slug);
 }

@@ -177,6 +177,7 @@ final class FrontendResolverTest extends TestCase
                 'status' => ['type' => 'string'],
             ] + $extraFields,
             'frontend' => $frontend,
+            'publishing' => false, // these tests pin the frontend.published convention
         ]));
     }
 

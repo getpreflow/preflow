@@ -1244,7 +1244,7 @@ final class FolioAppTest extends TestCase
     private function writeSiteType(bool $withTemplate = false): void
     {
         file_put_contents($this->dir . '/config/models/site.json', json_encode([
-            'key' => 'site', 'table' => 'site', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Site', 'singleton' => true,
+            'key' => 'site', 'table' => 'site', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Site', 'singleton' => true, 'publishing' => false,
             'fields' => [
                 'name' => ['type' => 'string', 'translatable' => true, 'validate' => ['required']],
                 'tagline' => ['type' => 'string'],
@@ -1509,6 +1509,7 @@ final class FolioAppTest extends TestCase
         $path = $this->dir . '/config/models/article.json';
         $def = is_file($path) ? json_decode((string) file_get_contents($path), true) : [
             'key' => 'article', 'table' => 'article', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Articles',
+            'publishing' => false, // these tests pin the legacy frontend.published convention
             'fields' => [
                 'title' => ['type' => 'string', 'validate' => ['required']],
                 'slug' => ['type' => 'string', 'validate' => ['required']],

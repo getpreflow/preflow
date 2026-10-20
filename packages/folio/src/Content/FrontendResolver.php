@@ -7,6 +7,7 @@ namespace Preflow\Folio\Content;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\LocaleValue;
+use Preflow\Folio\Publishing\ShadowTypes;
 
 /**
  * Maps a public path to a published record of any type that declares a
@@ -52,7 +53,7 @@ final class FrontendResolver
             if ($listing->frontend === null) {
                 continue;
             }
-            $route = FrontendRoute::fromConfig($listing->key, $listing->frontend);
+            $route = FrontendRoute::fromConfig($listing->key, $listing->frontend, $listing->publishing);
 
             if (isset($byShape[$route->shape()])) {
                 throw new FrontendConfigException(sprintf(
@@ -109,11 +110,15 @@ final class FrontendResolver
                 continue;
             }
 
-            $query = $this->dm->queryType($route->type);
+            $query = $route->publishing
+                ? $this->dm->queryIn(ShadowTypes::published($this->definition($route->type)))
+                : $this->dm->queryType($route->type);
             if ($localized) {
                 $query = $query->locale($locale);
             }
-            $query = $query->where($route->publishedField, $route->publishedValue);
+            if (!$route->publishing) {
+                $query = $query->where($route->publishedField, $route->publishedValue);
+            }
             foreach ($params as $field => $value) {
                 $query = $query->where($field, $value);
             }
@@ -214,5 +219,12 @@ final class FrontendResolver
         sort($types);
 
         return sprintf('"%s" and "%s"', ...$types);
+    }
+
+    private function definition(string $type): \Preflow\Data\TypeDefinition
+    {
+        $registry = $this->dm->getTypeRegistry() ?? throw new \LogicException('Folio frontend routes need a TypeRegistry.');
+
+        return $registry->get($type);
     }
 }
