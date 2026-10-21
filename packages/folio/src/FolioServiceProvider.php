@@ -186,6 +186,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(TypeRegistry::class),
                 $c->get(ContentLocale::class),
                 $c->get(\Preflow\Folio\Content\LiveContent::class),
+                $can,
             ));
             $registry->register(new MatrixFieldType(
                 $c->get(TypeCatalog::class),

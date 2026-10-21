@@ -17,6 +17,10 @@ final class Forbidden
 
     public static function response(ServerRequestInterface $request, TemplateEngineInterface $engine, string $prefix, TypeCatalog $catalog): ResponseInterface
     {
+        // A fetch() (preview, relation label) gets a short answer, not an admin page.
+        if ($request->getHeaderLine('Sec-Fetch-Dest') === 'empty' && $request->getHeaderLine('HX-Request') !== 'true') {
+            return new Response(403, ['Content-Type' => 'text/plain; charset=UTF-8'], self::MESSAGE);
+        }
         if ($request->getHeaderLine('HX-Request') === 'true') {
             return new Response(403, [
                 'Content-Type' => 'text/plain; charset=UTF-8',
@@ -28,6 +32,10 @@ final class Forbidden
             'prefix' => $prefix,
             'types' => $catalog->all(),
             'message' => self::MESSAGE,
+            // Inside a drawer (asset picker, "New" related record): the drawer's own layout.
+            'layout' => $request->getHeaderLine('Sec-Fetch-Dest') === 'iframe' || ($request->getQueryParams()['_drawer'] ?? null) === '1'
+                ? '@folio/admin/_drawer_layout.twig'
+                : '@folio/admin/_layout.twig',
         ]));
     }
 }

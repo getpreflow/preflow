@@ -16,7 +16,8 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Every admin route asks one permission, by handler. "{type}" is the route's
- * type; "*.edit" means edit on any type (block editor fragments have no type).
+ * type; "*.edit|create" means edit or create on any type (block editor
+ * fragments have no type).
  * Runs after AdminAuthMiddleware, so the user is known.
  */
 final class FolioPermissionMiddleware implements MiddlewareInterface
@@ -46,8 +47,8 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'AssetLibraryController@upload' => 'assets.upload',
         'AssetLibraryController@save' => 'assets.edit',
         'AssetLibraryController@destroy' => 'assets.delete',
-        'BlockEditorController@newBlock' => '*.edit',
-        'BlockEditorController@duplicate' => '*.edit',
+        'BlockEditorController@newBlock' => '*.edit|create',
+        'BlockEditorController@duplicate' => '*.edit|create',
     ];
 
     public function __construct(
@@ -71,8 +72,9 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
             return $this->forbidden($request); // fail closed: an unmapped admin route is never open
         }
 
-        if ($rule === '*.edit') {
-            return $this->anyType('edit') ? $handler->handle($request) : $this->forbidden($request);
+        // Block fragments belong to a form being filled in: creating counts as much as editing.
+        if ($rule === '*.edit|create') {
+            return $this->anyType('edit') || $this->anyType('create') ? $handler->handle($request) : $this->forbidden($request);
         }
 
         if (str_starts_with($rule, '{type}.')) {

@@ -218,7 +218,7 @@ caught:
 ```php
 $registry = $access->registry();
 $registry->declare('invoice.view', 'View', 'Invoices');
-$registry->declarePattern('invoice.*'); // a family, e.g. declared by a content type
+$registry->declarePattern('invoice.*'); // groups the family (role editors, docs); names are still declared one by one
 ```
 
 - **Undeclared permissions:** an undeclared permission throws

@@ -31,6 +31,10 @@ final class ConfigRoleResolver implements PermissionResolver
         $defined = is_array($this->roles[$population] ?? null) ? $this->roles[$population] : [];
 
         foreach ($user->getRoles() as $role) {
+            if (!is_string($role) && !is_int($role)) {
+                continue; // malformed role data grants nothing
+            }
+            $role = (string) $role;
             if (!isset($defined[$role])) {
                 $this->logUnknown($population, (string) $role);
                 continue;

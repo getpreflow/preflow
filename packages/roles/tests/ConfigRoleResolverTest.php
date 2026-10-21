@@ -91,4 +91,16 @@ final class ConfigRoleResolverTest extends TestCase
         $this->assertFalse($r->allows($this->user('editor'), 'staff', 'page.edit', null));
         $this->assertFalse($r->allows($this->user('odd'), 'staff', 'page.edit', null));
     }
+
+    public function test_non_scalar_roles_are_skipped(): void
+    {
+        $user = new class implements \Preflow\Auth\Authenticatable {
+            use \Preflow\Auth\AuthenticatableTrait;
+            public string $uuid = 'u';
+            public string $passwordHash = '';
+            public function getRoles(): array { return [['nested'], null, 'editor']; }
+        };
+
+        $this->assertTrue($this->resolver()->allows($user, 'staff', 'page.edit', null));
+    }
 }
