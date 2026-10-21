@@ -26,6 +26,7 @@ final class Console
         $this->register(new Command\CacheClearCommand());
         $this->register(new Command\SeedCommand());
         $this->register(new Command\KeyGenerateCommand());
+        $this->register(new Command\AuthUserCommand());
         $this->register(new Command\NotifyTestCommand());
 
         $this->registerAppCommands(($basePath ?? (getcwd() ?: '.')) . '/config/commands.php', $stderr ?? STDERR);
