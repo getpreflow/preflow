@@ -99,3 +99,17 @@ Deletes all files under `storage/cache/` recursively.
 php preflow cache:clear
 # Cleared 14 cached file(s).
 ```
+
+### `auth:user [PREFIX]` — set a login in `.env`
+
+Asks for an email and a password (hidden, twice, at least 8 characters) and
+writes `<PREFIX>_EMAIL` and `<PREFIX>_PASSWORD_HASH` to `.env`, replacing the
+lines when they exist. The prefix defaults to `FOLIO_ADMIN`; the password and
+its hash are never printed. `config/auth.php` reads the two values, e.g. for a
+`ConfigUserProvider` user.
+
+```
+php preflow auth:user
+php preflow auth:user FOLIO_EDITOR --email=editor@example.com
+# Set FOLIO_EDITOR_EMAIL=editor@example.com and FOLIO_EDITOR_PASSWORD_HASH in .env.
+```
