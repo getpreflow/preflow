@@ -290,11 +290,17 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeCatalog::class),
             $c->get(ContentLocale::class),
             $c->get(\Preflow\Folio\Content\LiveContent::class),
+            $c->get(\Preflow\Folio\Content\SafeRichText::class),
         ));
         $container->singleton(\Preflow\Folio\Content\Collections::class, fn (Container $c) => new \Preflow\Folio\Content\Collections(
             $c->get(\Preflow\Folio\Content\LiveContent::class),
             $c->get(TypeCatalog::class),
             $c->get(ContentLocale::class),
+            $c->get(\Preflow\Folio\Content\SafeRichText::class),
+        ));
+        $container->singleton(\Preflow\Folio\Content\SafeRichText::class, fn (Container $c) => new \Preflow\Folio\Content\SafeRichText(
+            $c->get(FieldTypeRegistry::class),
+            $c->get(BlockRegistry::class),
         ));
         $container->bind(\Preflow\Folio\Http\BlockEditorController::class, fn (Container $c) => new \Preflow\Folio\Http\BlockEditorController(
             $c->get(FieldTypeRegistry::class),
@@ -371,6 +377,7 @@ final class FolioServiceProvider extends ServiceProvider
                     $container->get(\Preflow\Components\ComponentRenderer::class),
                     $container,
                     $container->get(ContentLocale::class),
+                    $container->get(\Preflow\Folio\Content\SafeRichText::class),
                 );
             };
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
@@ -399,6 +406,11 @@ final class FolioServiceProvider extends ServiceProvider
                 name: 'folio_image',
                 callable: fn (mixed $value, ?string $preset = null, array $options = []): string => $container->get(\Preflow\Folio\Assets\ImageTag::class)->render($value, $preset, $options),
                 isSafe: true,
+            ));
+            // folio_asset_url(id): an asset's public URL ('' without one), e.g. a PDF download link.
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_asset_url',
+                callable: fn (mixed $value = null): string => $container->get(\Preflow\Folio\Assets\ImageTag::class)->url($value),
             ));
 
             // Public URLs and hreflang alternates of a (raw, stored) record.

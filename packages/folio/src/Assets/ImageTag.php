@@ -30,6 +30,25 @@ final class ImageTag
     ) {}
 
     /** @param array<string, mixed> $options */
+    /**
+     * The public URL of an asset value (a library id, a legacy upload path, or a list of
+     * either: its first), for links to files (PDFs, downloads) and custom markup; '' when
+     * there is none.
+     */
+    public function url(mixed $value): string
+    {
+        $value = self::first($value);
+        if ($value === null) {
+            return '';
+        }
+        if (preg_match(self::LEGACY_PATH, $value) === 1) {
+            return rtrim($this->legacyUrlPrefix, '/') . '/' . $value;
+        }
+        $asset = $this->library->find($value);
+
+        return $asset !== null ? $this->library->url($asset->path) : '';
+    }
+
     public function render(mixed $value, ?string $preset = null, array $options = []): string
     {
         $value = self::first($value);

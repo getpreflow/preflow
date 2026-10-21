@@ -8,6 +8,7 @@ use Preflow\Components\ComponentRenderer;
 use Preflow\Core\Container\Container;
 use Preflow\Data\LocaleValue;
 use Preflow\Folio\Content\ContentLocale;
+use Preflow\Folio\Content\SafeRichText;
 
 /**
  * Renders a blocks field through the blocks' own components, in the
@@ -28,6 +29,7 @@ final class BlockRenderer
         private readonly ComponentRenderer $renderer,
         private readonly Container $container,
         private readonly ContentLocale $contentLocale,
+        private readonly ?SafeRichText $richText = null,
     ) {}
 
     /** True while a preview render (of any depth) is running. */
@@ -65,6 +67,9 @@ final class BlockRenderer
         if ($definition === null || !$definition->isComponent) {
             return '';
         }
+
+        // Rich text reaches the block's template sanitized, nested blocks included.
+        $block = $this->richText?->block($block) ?? $block;
 
         try {
             $component = $this->container->make($definition->class);

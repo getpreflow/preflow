@@ -19,6 +19,7 @@ final class Collections
         private readonly LiveContent $live,
         private readonly TypeCatalog $catalog,
         private readonly ContentLocale $locale,
+        private readonly ?SafeRichText $richText = null,
     ) {}
 
     /** @return list<array<string, mixed>> */
@@ -35,7 +36,7 @@ final class Collections
             $query = $this->live->query($type);
             $records = [];
             foreach (ListOrder::apply($query, $this->live->definition($type), $listing->list)->get()->items() as $record) {
-                $records[] = $record->localized($locale)->toArray();
+                $records[] = $this->safe($record->localized($locale)->toArray(), $type);
             }
             $this->lists[$key] = $records;
         }
@@ -50,6 +51,17 @@ final class Collections
             return null;
         }
 
-        return $this->live->find($type, $id)?->localized($this->locale->get())->toArray();
+        $values = $this->live->find($type, $id)?->localized($this->locale->get())->toArray();
+
+        return $values !== null ? $this->safe($values, $type) : null;
+    }
+
+    /**
+     * @param array<string, mixed> $values
+     * @return array<string, mixed>
+     */
+    private function safe(array $values, string $type): array
+    {
+        return $this->richText?->fields($values, $this->live->definition($type)->fields) ?? $values;
     }
 }
