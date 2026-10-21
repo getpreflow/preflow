@@ -664,11 +664,11 @@ Shipped:
 - blocks and singletons;
 - drafts and publishing (autosave, conflicts, revisions, scheduled publishing, share
   links);
-- the asset library (variants, `folio_image()`, picker, usage, legacy import).
+- the asset library (variants, `folio_image()`, picker, usage, legacy import);
+- click-to-edit in the live preview;
+- `folio:pull` (live content to local);
+- permissions on every admin action (`can()`, with `preflow/roles` for roles).
 
 The admin runs under Preflow's strict, nonce-based CSP: no inline handlers or styles.
 Hand-written `<script>`/`<style>` tags in your own templates need
 `nonce="{{ csp_nonce() }}"`.
-
-Planned: click-to-edit preview, draft/publish, the
-asset library, and `folio:pull`. See `docs/superpowers/specs/2026-10-19-*`.

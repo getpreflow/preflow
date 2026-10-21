@@ -219,4 +219,33 @@ final class AssetCollectorTest extends TestCase
         $this->assertSame(1, substr_count($html, 'window.x=1;'));
         $this->assertSame(1, substr_count($html, '.a{color:red}'));
     }
+
+    public function test_assets_collected_after_an_early_head_call_are_still_injected(): void
+    {
+        $assets = $this->collector();
+        $assets->addCss('.early{color:red}');
+        $head = $assets->renderHead(); // the layout's {{ head() }} runs before the page's CSS is collected
+        $assets->addCss('.late{color:blue}');
+        $assets->addJs('window.late=1;', JsPosition::Head);
+        $assets->addHeadTag('<link rel="preload" href="/a.avif">', 'a');
+
+        $html = $assets->injectInto('<html><head>' . $head . '</head><body></body></html>');
+
+        $this->assertSame(1, substr_count($html, '.early{color:red}'));
+        $this->assertSame(1, substr_count($html, '.late{color:blue}'));
+        $this->assertSame(1, substr_count($html, 'window.late=1;'));
+        $this->assertSame(1, substr_count($html, 'href="/a.avif"'));
+        $this->assertLessThan(strpos($html, '</head>'), strpos($html, '.late{color:blue}'));
+    }
+
+    public function test_body_js_collected_after_assets_call_is_still_injected(): void
+    {
+        $assets = $this->collector();
+        $body = $assets->renderAssets();
+        $assets->addJs('window.after=1;');
+
+        $html = $assets->injectInto('<html><head></head><body>' . $body . '</body></html>');
+
+        $this->assertSame(1, substr_count($html, 'window.after=1;'));
+    }
 }
