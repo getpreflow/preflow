@@ -128,4 +128,45 @@ final class AuthGuardsBootTest extends TestCase
 
         $this->assertNotNull(PipelineCounter::$seen?->getAttribute(\Preflow\Auth\Authenticatable::class));
     }
+
+    #[RunInSeparateProcess]
+    public function test_auth_middleware_admits_only_the_default_guard(): void
+    {
+        file_put_contents($this->dir . '/config/middleware.php', "<?php\nreturn [\\Preflow\\Auth\\Http\\AuthMiddleware::class];\n");
+        $app = $this->boot([
+            'staff' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'users', 'population' => 'staff'],
+            'members' => ['class' => HeaderGuard::class, 'provider' => 'users', 'population' => 'members'],
+        ]);
+        $member = (new Psr17Factory())->createServerRequest('GET', '/')->withHeader('X-User', $this->idOf('member@site.test'));
+
+        $this->assertSame(401, $app->handle($member)->getStatusCode());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_guest_middleware_ignores_other_guards(): void
+    {
+        file_put_contents($this->dir . '/config/middleware.php', "<?php\nreturn [\\Preflow\\Auth\\Http\\GuestMiddleware::class];\n");
+        $app = $this->boot([
+            'staff' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'users', 'population' => 'staff'],
+            'members' => ['class' => HeaderGuard::class, 'provider' => 'users', 'population' => 'members'],
+        ]);
+        $member = (new Psr17Factory())->createServerRequest('GET', '/')->withHeader('X-User', $this->idOf('member@site.test'));
+
+        $this->assertSame(200, $app->handle($member)->getStatusCode()); // a member is still a guest for the staff login
+    }
+
+    public function test_auth_middleware_for_a_named_guard(): void
+    {
+        $auth = new AuthManager(['staff' => new HeaderGuard(new \Preflow\Auth\ConfigUserProvider([])), 'members' => new HeaderGuard(new \Preflow\Auth\ConfigUserProvider([['email' => 'm@site.test', 'password_hash' => '']]))], 'staff');
+        $auth->setUser(new \Preflow\Auth\ArrayUser('m@site.test', 'm@site.test', '', []), 'members');
+        $handler = new class implements \Psr\Http\Server\RequestHandlerInterface {
+            public function handle(\Psr\Http\Message\ServerRequestInterface $r): \Psr\Http\Message\ResponseInterface { return new \Nyholm\Psr7\Response(204); }
+        };
+
+        $res = (new \Preflow\Auth\Http\AuthMiddleware($auth, 'members'))->process((new Psr17Factory())->createServerRequest('GET', '/'), $handler);
+        $this->assertSame(204, $res->getStatusCode());
+
+        $this->expectException(\Preflow\Core\Exceptions\UnauthorizedHttpException::class);
+        (new \Preflow\Auth\Http\AuthMiddleware($auth))->process((new Psr17Factory())->createServerRequest('GET', '/'), $handler);
+    }
 }

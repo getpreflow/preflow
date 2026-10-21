@@ -64,4 +64,16 @@ final class AuthTestHelpersTest extends TestCase
 
         $this->assertSame(401, $app->handle((new Psr17Factory())->createServerRequest('GET', '/'))->getStatusCode());
     }
+
+    #[RunInSeparateProcess]
+    public function test_a_signed_in_request_does_not_leak_into_the_next(): void
+    {
+        $app = Application::create($this->dir);
+        $app->boot();
+        $app->container()->get(Access::class)->registry()->declare('x');
+
+        $signedIn = $this->actingAs(new ArrayUser('staff@site.test', 'staff@site.test', '', []), (new Psr17Factory())->createServerRequest('GET', '/'));
+        $this->assertSame(200, $app->handle($signedIn)->getStatusCode());
+        $this->assertSame(401, $app->handle((new Psr17Factory())->createServerRequest('GET', '/'))->getStatusCode());
+    }
 }

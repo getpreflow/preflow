@@ -241,7 +241,10 @@ config wins. A guard with no population serves members.
 
 Every request asks each guard who is signed in, the default guard first; the first
 user found counts (`auth_user()`, `can()`, `AuthManager::guardName()`). Sign members
-in with their own guard, `$auth->guard('members')->login($user, $request)`. Each
+in with their own guard, `$auth->guard('members')->login($user, $request)`.
+`AuthMiddleware` and `GuestMiddleware` check one guard, the default one unless
+you name another: `new AuthMiddleware($auth, 'members')`. So a signed-in member
+does not pass a staff route, and staff can still sign in as a member. Each
 session guard keeps its own session key, so signing a member out leaves staff
 signed in (the session id is renewed either way; the session ends when nobody is
 left).

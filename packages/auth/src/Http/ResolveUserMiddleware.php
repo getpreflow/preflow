@@ -42,7 +42,10 @@ final class ResolveUserMiddleware implements MiddlewareInterface
             }
         }
 
-        if ($user !== null && $name !== null) {
+        if ($user === null || $name === null) {
+            // Nobody this time: never keep the previous request's user (tests, long-running workers).
+            $this->authManager->setUser(null);
+        } else {
             $this->authManager->setUser($user, $name);
             $request = $request
                 ->withAttribute(Authenticatable::class, $user)
