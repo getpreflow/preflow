@@ -36,7 +36,8 @@ final class DebugToolbarMiddleware implements MiddlewareInterface
         $toolbar = new DebugToolbar();
         $toolbarHtml = $toolbar->render($this->collector, $this->nonce !== null ? ($this->nonce)() : null, $body);
 
-        $body = str_replace('</body>', $toolbarHtml . '</body>', $body);
+        // Before the last </body> only: inlined scripts (e.g. htmx) can carry the tag in a string.
+        $body = substr_replace($body, $toolbarHtml, (int) strrpos($body, '</body>'), 0);
 
         return $response->withBody(\Nyholm\Psr7\Stream::create($body));
     }
