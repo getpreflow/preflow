@@ -214,6 +214,11 @@ never reach the site. In the admin preview they return working copies. Values ar
 localized to the page's locale. App code gets the same lists from
 `Preflow\Folio\Content\Collections`.
 
+Rich text arrives sanitized wherever a template reads it: in `rendered`, in blocks
+(nested data-only blocks too), and from `folio_get`, `folio_list` and `folio_find`. That
+holds however the value was stored (admin save, import, app code), so `|raw` is safe for
+`richtext` fields. Other fields stay plain text and are escaped as usual.
+
 Routes are tried most specific first. Two types claiming the same route, or two types
 declaring `home`, stop the app at boot with a message naming both. Without any `frontend`
 block, a `page` type is served at `/{slug}` exactly as before. The live preview is
@@ -449,6 +454,10 @@ are records of an internal type, stored in the `folio_assets` table.
 opens the library as a picker in the drawer, and **Upload**, a plain file input that adds
 the file to the library on save, so it works without JavaScript. A field's `accept`
 (`image/*`, `video/*` or `.pdf,.zip`) limits what an upload may be.
+
+**Files in templates:** `{{ folio_asset_url(record.whitepaper) }}` gives an asset's public
+URL (`''` without one), for download links and custom markup. It accepts what an asset
+field stores: a library id, a legacy upload path, or a list (its first item).
 
 **Images in templates:**
 

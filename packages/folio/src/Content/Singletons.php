@@ -25,6 +25,7 @@ final class Singletons
         private readonly TypeCatalog $catalog,
         private readonly ContentLocale $contentLocale,
         private readonly ?LiveContent $live = null,
+        private readonly ?SafeRichText $richText = null,
     ) {}
 
     /** @return array<string, mixed>|null the localized values; null before the first save */
@@ -32,7 +33,11 @@ final class Singletons
     {
         $key = $type . '@' . $this->contentLocale->get();
         if (!array_key_exists($key, $this->values)) {
-            $this->values[$key] = $this->record($type)?->localized($this->contentLocale->get())->toArray();
+            $record = $this->record($type);
+            $values = $record?->localized($this->contentLocale->get())->toArray();
+            $this->values[$key] = $values !== null && $this->richText !== null
+                ? $this->richText->fields($values, $record->getType()->fields)
+                : $values;
         }
 
         return $this->values[$key];
