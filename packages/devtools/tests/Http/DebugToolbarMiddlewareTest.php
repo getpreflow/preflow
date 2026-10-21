@@ -39,6 +39,20 @@ final class DebugToolbarMiddlewareTest extends TestCase
         $this->assertStringContainsString('</body>', $html);
     }
 
+    public function test_injects_once_before_the_last_body_tag(): void
+    {
+        // e.g. the inlined htmx build carries "</body>" in a string literal
+        $body = '<html><body><script>var t = "<body>" + x + "</body>";</script><p>Hello</p></body></html>';
+        $response = new Response(200, ['Content-Type' => 'text/html'], $body);
+        $result = (new DebugToolbarMiddleware(new DebugCollector()))->process(new ServerRequest('GET', '/'), $this->makeHandler($response));
+        $html = (string) $result->getBody();
+
+        $this->assertSame(1, substr_count($html, 'id="preflow-debug-toolbar"'));
+        $this->assertStringContainsString('var t = "<body>" + x + "</body>";</script>', $html);
+        $this->assertLessThan(strrpos($html, '</body>'), strpos($html, 'id="preflow-debug-toolbar"'));
+        $this->assertGreaterThan(strpos($html, '<p>Hello</p>'), strpos($html, 'id="preflow-debug-toolbar"'));
+    }
+
     public function test_does_not_inject_into_json_response(): void
     {
         $collector = new DebugCollector();
