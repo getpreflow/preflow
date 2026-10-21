@@ -24,8 +24,8 @@ final class AssetCollector
     /** @var string|null Active CSS scope class — when set, addCss() wraps content in this selector */
     private ?string $cssScope = null;
 
-    private bool $headRendered = false;
-    private bool $bodyRendered = false;
+    /** @var array<string, array<string|int, true>> keys already printed by renderHead()/renderAssets(), per registry */
+    private array $printed = ['css' => [], 'jsHead' => [], 'jsBody' => [], 'headTags' => []];
 
     public function __construct(
         private readonly NonceGenerator $nonceGenerator,
@@ -91,10 +91,14 @@ final class AssetCollector
      */
     public function renderHead(): string
     {
-        $this->headRendered = true;
-        $out = $this->renderCss();
-        $out .= $this->renderJsHead();
-        $out .= implode("\n", $this->headTags);
+        // Only what wasn't printed yet: a layout's {{ head() }} may run before the
+        // page's CSS is collected; injectInto() adds the rest before </head>.
+        $out = '';
+        if (($css = $this->pending('css', $this->cssRegistry)) !== []) {
+            $out .= $this->renderCssBlock($css);
+        }
+        $out .= $this->renderJsBlock($this->pending('jsHead', $this->jsHead));
+        $out .= implode("\n", $this->pending('headTags', $this->headTags));
         return $out;
     }
 
@@ -106,13 +110,14 @@ final class AssetCollector
      */
     public function injectInto(string $html): string
     {
-        // What the template already printed ({{ head() }} / {{ assets() }}) is not added again.
-        $head = $this->headRendered ? '' : $this->renderHead();
+        // What the template already printed ({{ head() }} / {{ assets() }}) is not added again;
+        // whatever was collected after those calls is.
+        $head = $this->renderHead();
         $headAt = stripos($html, '</head>');
         if ($head !== '' && $headAt !== false) {
             $html = substr_replace($html, $head, $headAt, 0);
         }
-        $body = $this->bodyRendered ? '' : $this->renderAssets();
+        $body = $this->renderAssets();
         $bodyAt = strripos($html, '</body>');
         if ($body !== '' && $bodyAt !== false) {
             $html = substr_replace($html, $body, $bodyAt, 0);
@@ -126,17 +131,36 @@ final class AssetCollector
      */
     public function renderAssets(): string
     {
-        $this->bodyRendered = true;
-        return $this->renderJsBody();
+        return $this->renderJsBlock($this->pending('jsBody', $this->jsBody));
+    }
+
+    /**
+     * Entries of a registry not printed yet, now marked as printed.
+     *
+     * @param array<string|int, string> $registry
+     * @return array<string|int, string>
+     */
+    private function pending(string $name, array $registry): array
+    {
+        $new = array_diff_key($registry, $this->printed[$name]);
+        $this->printed[$name] += array_fill_keys(array_keys($new), true);
+
+        return $new;
     }
 
     public function renderCss(): string
     {
-        if ($this->cssRegistry === []) {
+        return $this->renderCssBlock($this->cssRegistry);
+    }
+
+    /** @param array<string|int, string> $registry */
+    private function renderCssBlock(array $registry): string
+    {
+        if ($registry === []) {
             return '';
         }
 
-        $css = implode("\n", $this->cssRegistry);
+        $css = implode("\n", $registry);
 
         if ($this->isProd) {
             $css = $this->minifyCss($css);
