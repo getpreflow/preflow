@@ -159,4 +159,14 @@ final class RouterTest extends TestCase
         $this->assertInstanceOf(\Preflow\Core\Routing\Route::class, $route);
         $this->assertSame(RouteMode::Component, $route->mode);
     }
+
+    public function test_blade_pages_are_routed(): void
+    {
+        $this->createPage('about.blade.php');
+
+        $router = new Router(pagesDir: $this->pagesDir, templateExtension: 'blade.php');
+        $route = $router->match((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('GET', '/about'));
+
+        $this->assertStringEndsWith('about.blade.php', $route->handler);
+    }
 }

@@ -21,9 +21,19 @@ final class ResponsiveImage
 
     /** @param array<string, array<string, mixed>> $presets */
     public function __construct(
-        private readonly ImageUrlTransformer $transformer,
+        /** @var ImageUrlTransformer|\Closure(): ImageUrlTransformer resolved at first use */
+        private ImageUrlTransformer|\Closure $transformer,
         private readonly array $presets = [],
     ) {}
+
+    private function transformer(): ImageUrlTransformer
+    {
+        if ($this->transformer instanceof \Closure) {
+            $this->transformer = ($this->transformer)();
+        }
+
+        return $this->transformer;
+    }
 
     /** @param array<string, mixed> $options */
     public function render(string $path, array $options = []): string
@@ -34,7 +44,7 @@ final class ResponsiveImage
         $quality = $options['quality'];
         $srcsetStr = $this->srcset($path, $widths, $format, $quality);
         $maxWidth = max($widths);
-        $src = $this->transformer->transform($path, $maxWidth, $format, $quality);
+        $src = $this->transformer()->transform($path, $maxWidth, $format, $quality);
 
         $attrs = [
             'src' => $src,
@@ -55,7 +65,7 @@ final class ResponsiveImage
     {
         $parts = [];
         foreach ($widths as $w) {
-            $url = $this->transformer->transform($path, $w, $format, $quality);
+            $url = $this->transformer()->transform($path, $w, $format, $quality);
             $parts[] = $url . ' ' . $w . 'w';
         }
         return implode(', ', $parts);

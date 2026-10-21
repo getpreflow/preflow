@@ -43,6 +43,16 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
     }
 
     /**
+     * A plain URL for a component action, e.g. a form's action or a link.
+     *
+     * @param array<string, mixed> $props
+     */
+    public function actionUrl(string $action, string $componentClass, array $props = []): string
+    {
+        return $this->endpointPrefix . '/action?token=' . urlencode($this->token->encode($componentClass, $props, $action));
+    }
+
+    /**
      * Generate action attributes for POST.
      *
      * @param array<string, mixed> $props

@@ -476,8 +476,10 @@ final class Application
         // Responsive image helper
         $responsiveImage = null;
         if (class_exists(\Preflow\View\ResponsiveImage::class)) {
-            $transformer = $this->container->has(\Preflow\View\ImageUrlTransformer::class)
-                ? $this->container->get(\Preflow\View\ImageUrlTransformer::class)
+            // Looked up at first use, so a service provider can bind its own transformer.
+            $container = $this->container;
+            $transformer = static fn (): \Preflow\View\ImageUrlTransformer => $container->has(\Preflow\View\ImageUrlTransformer::class)
+                ? $container->get(\Preflow\View\ImageUrlTransformer::class)
                 : new \Preflow\View\PathBasedTransformer();
 
             $presets = $this->config->get('image.presets', []);
@@ -618,6 +620,9 @@ final class Application
         $router = new \Preflow\Routing\Router(
             pagesDir: is_dir($pagesDir) ? $pagesDir : null,
             controllers: $controllers,
+            templateExtension: $this->container->has(\Preflow\View\TemplateEngineInterface::class)
+                ? $this->container->get(\Preflow\View\TemplateEngineInterface::class)->getTemplateExtension()
+                : 'twig',
         );
 
         $this->setRouter($router);
