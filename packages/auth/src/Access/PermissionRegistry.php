@@ -21,24 +21,19 @@ final class PermissionRegistry
         $this->names[$name] = ['label' => $label, 'group' => $group];
     }
 
-    /** A family, e.g. "page.*" declared by a content type. */
+    /** A family, e.g. "page.*" of a content type; declare its members with declare(). */
     public function declarePattern(string $pattern): void
     {
         $this->patterns[] = $pattern;
     }
 
+    /**
+     * Only declared names count: a pattern groups a family (for role editors and
+     * role config) but does not declare its members, so a typo stays an error.
+     */
     public function isDeclared(string $name): bool
     {
-        if (isset($this->names[$name])) {
-            return true;
-        }
-        foreach ($this->patterns as $pattern) {
-            if (Pattern::matches($pattern, $name)) {
-                return true;
-            }
-        }
-
-        return false;
+        return isset($this->names[$name]);
     }
 
     /** @return array<string, array{label: string, group: string}> */

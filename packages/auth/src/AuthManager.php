@@ -6,6 +6,9 @@ namespace Preflow\Auth;
 
 final class AuthManager
 {
+    /** Request attribute naming the guard that signed in the request's Authenticatable. */
+    public const string GUARD_ATTRIBUTE = 'preflow.auth.guard';
+
     private ?Authenticatable $resolvedUser = null;
 
     private ?string $resolvedGuard = null;

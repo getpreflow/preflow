@@ -188,7 +188,7 @@ final class FormBuilder
 
         // Driver may add hx-include, etc.
         if ($this->driver !== null && $this->componentId !== null) {
-            $driverAttrs = $this->driver->submitAttributes($this->componentId, $options);
+            $driverAttrs = $this->driver->submitAttributes('#' . $this->componentId, $options);
             $attrs       = array_merge($attrs, $driverAttrs);
         }
 

@@ -23,6 +23,9 @@ final class AccessTest extends TestCase
     {
         $this->registry = new PermissionRegistry();
         $this->registry->declarePattern('page.*');
+        foreach (['page.view', 'page.edit', 'page.publish'] as $name) {
+            $this->registry->declare($name);
+        }
         $this->auth = new AuthManager([], 'session');
         $this->log = (string) tempnam(sys_get_temp_dir(), 'acc');
         ini_set('error_log', $this->log);
@@ -108,5 +111,12 @@ final class AccessTest extends TestCase
     public function test_without_auth_configured_everything_is_allowed(): void
     {
         $this->assertTrue((new Access(null, $this->registry, true, []))->can('anything.at.all'));
+    }
+
+    public function test_typo_in_a_family_throws_in_debug(): void
+    {
+        $this->auth->setUser(new \Preflow\Auth\Tests\Fixtures\TestUser(), 'folio');
+        $this->expectException(\Preflow\Auth\Access\UndeclaredPermission::class);
+        $this->access(debug: true, populations: ['folio' => 'staff'])->can('page.pubish');
     }
 }

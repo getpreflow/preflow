@@ -29,7 +29,7 @@ final class FolioPermissionsTest extends TestCase
         $this->scaffoldPublishing();
         $hash = password_hash('secret', PASSWORD_DEFAULT);
         $users = [];
-        foreach (['admin', 'editor', 'viewer'] as $role) {
+        foreach (['admin', 'editor', 'viewer', 'creator', 'eventer'] as $role) {
             $users[] = ['email' => "{$role}@site.test", 'password_hash' => $hash, 'roles' => [$role]];
         }
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
@@ -42,7 +42,17 @@ final class FolioPermissionsTest extends TestCase
             'admin' => ['*'],
             'editor' => ['folio.dashboard', 'post.view', 'post.edit', 'assets.view'],
             'viewer' => ['post.view'],
+            'creator' => ['post.view', 'post.create'],
+            'eventer' => ['event.view', 'event.edit'], // no post.view
         ]], true) . ";\n");
+        // A type whose relation points at posts, for users who may not see posts.
+        $this->writeModel('event', [
+            'label' => 'Events',
+            'fields' => [
+                'name' => ['type' => 'string'],
+                'related' => ['type' => 'relation', 'relation' => ['to' => 'post', 'multiple' => false, 'labelField' => 'title']],
+            ],
+        ]);
         $this->withRoles(true);
     }
 
@@ -356,5 +366,68 @@ final class FolioPermissionsTest extends TestCase
         $this->assertStringContainsString('data-folio-asset-choose', $form);
         $this->assertStringNotContainsString('class="folio-asset-upload"', $form);
         $this->assertStringNotContainsString('data-matrix-create', $form);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_create_only_role_can_use_the_block_picker(): void
+    {
+        $this->as('creator');
+        $this->assertNotSame(403, $this->send('GET', '/folio/_blocks/hero/new?name=sections')->getStatusCode());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_readonly_form_offers_no_preview(): void
+    {
+        $this->as('viewer');
+        $this->assertStringNotContainsString('data-folio-preview', (string) $this->send('GET', '/folio/post/p1/edit')->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_fetch_403_is_plain_text(): void
+    {
+        $this->as('viewer');
+        $res = $this->send('GET', '/folio/post/new', [], ['Sec-Fetch-Dest' => 'empty']);
+
+        $this->assertSame(403, $res->getStatusCode());
+        $this->assertStringStartsWith('text/plain', $res->getHeaderLine('Content-Type'));
+        $this->assertStringNotContainsString('<html', (string) $res->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_drawer_403_uses_the_drawer_layout(): void
+    {
+        $this->as('viewer');
+        $res = $this->send('GET', '/folio/post/new?_drawer=1', [], ['Sec-Fetch-Dest' => 'iframe']);
+        $body = (string) $res->getBody();
+
+        $this->assertSame(403, $res->getStatusCode());
+        $this->assertStringContainsString('folio-drawer-heading', $body);
+        $this->assertStringNotContainsString('folio-sidebar', $body);
+        $this->assertStringContainsString('have access to this', $body);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_relation_without_target_view_keeps_the_selection(): void
+    {
+        $this->as('eventer');
+        $this->working('post', 'p2', ['title' => ['en' => 'Other post'], 'slug' => ['en' => 'other']]);
+        $this->working('event', 'e1', ['name' => 'Launch', 'related' => 'p1']);
+
+        $form = (string) $this->send('GET', '/folio/event/e1/edit')->getBody();
+        $this->assertStringContainsString('value="p1"', $form);
+        $this->assertStringNotContainsString('Other post', $form);
+
+        $this->send('POST', '/folio/event/e1', ['name' => 'Launch 2', 'related' => 'p1']);
+        $this->assertSame('p1', $this->stored('event', 'e1')->get('related'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_matrix_lists_only_viewable_types(): void
+    {
+        $this->as('editor'); // post.view, post.edit, no note.view
+        $this->working('note', 'n1', ['name' => 'Secret note']);
+
+        $form = (string) $this->send('GET', '/folio/post/p1/edit')->getBody();
+        $this->assertStringNotContainsString('Secret note', $form);
     }
 }

@@ -61,6 +61,29 @@ class GuardedComponent extends Component implements Guarded
     }
 }
 
+class ThrowingActionComponent extends Component
+{
+    public function actions(): array
+    {
+        return ['explode', 'forbid'];
+    }
+
+    public function actionExplode(array $params = []): void
+    {
+        throw new \RuntimeException('boom');
+    }
+
+    public function actionForbid(array $params = []): void
+    {
+        throw new ForbiddenHttpException('nope');
+    }
+
+    public function fallback(\Throwable $e): ?string
+    {
+        return '<div class="fallback">Something went wrong</div>';
+    }
+}
+
 class EndpointFakeEngine implements TemplateEngineInterface
 {
     public function render(string $template, array $context = []): string
@@ -380,5 +403,30 @@ final class ComponentEndpointTest extends TestCase
         $body = (string) $response->getBody();
         // When HX-Target matches the component's own ID, the full wrapper is returned
         $this->assertStringContainsString('id="EndpointTestComponent-', $body);
+    }
+
+    public function test_action_exception_renders_the_fallback(): void
+    {
+        $token = $this->tokenService->encode(ThrowingActionComponent::class, [], 'explode');
+        $response = $this->endpoint->handle($this->createRequest('POST', '/--component/action', ['token' => $token]));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertStringContainsString('Something went wrong', (string) $response->getBody());
+    }
+
+    public function test_forbidden_from_an_action_stays_an_http_error(): void
+    {
+        $token = $this->tokenService->encode(ThrowingActionComponent::class, [], 'forbid');
+
+        $this->expectException(ForbiddenHttpException::class);
+        $this->endpoint->handle($this->createRequest('POST', '/--component/action', ['token' => $token]));
+    }
+
+    public function test_forbidden_from_authorize_stays_403(): void
+    {
+        $token = $this->tokenService->encode(GuardedComponent::class, [], 'admin');
+
+        $this->expectException(ForbiddenHttpException::class);
+        $this->endpoint->handle($this->createRequest('POST', '/--component/action', ['token' => $token]));
     }
 }

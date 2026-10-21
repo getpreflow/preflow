@@ -235,4 +235,16 @@ final class FormBuilderTest extends TestCase
         $html = $builder->begin();
         $this->assertStringContainsString('hx-boost="true"', $html);
     }
+
+    public function test_submit_targets_the_component_by_id_selector(): void
+    {
+        $driver = new class implements \Preflow\View\FormHypermediaDriver {
+            public function formAttributes(string $action, string $method, array $options = []): array { return []; }
+            public function inlineValidationAttributes(string $endpoint, string $field, string $trigger = 'blur'): array { return []; }
+            public function submitAttributes(string $target, array $options = []): array { return ['hx-target' => $target]; }
+        };
+        $html = $this->createBuilder(['driver' => $driver, 'componentId' => 'Signup-ab12'])->submit('Save');
+
+        $this->assertStringContainsString('hx-target="#Signup-ab12"', $html);
+    }
 }

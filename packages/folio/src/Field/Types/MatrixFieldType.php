@@ -48,6 +48,9 @@ final class MatrixFieldType implements FieldType
         // Options blob for the JS picker: types + their records (id,label) + declared views.
         $options = ['prefix' => $this->prefix, 'types' => [], 'records' => [], 'views' => []];
         foreach ($allowed as $key) {
+            if ($this->can !== null && !($this->can)($key . '.view')) {
+                continue; // existing rows stay; records of a type the user may not view are not offered
+            }
             $options['types'][] = ['key' => $key, 'label' => $this->typeLabel($key)];
             $recs = [];
             foreach ($this->dm->queryType($key)->get()->items() as $record) {
@@ -81,7 +84,7 @@ final class MatrixFieldType implements FieldType
         $html .= '    </div>' . "\n";
         $html .= '    <div class="folio-matrix-add">' . "\n";
         $html .= '      <select data-matrix-type>';
-        foreach ($allowed as $key) {
+        foreach (array_column($options['types'], 'key') as $key) {
             $html .= '<option value="' . $e($key) . '">' . $e($this->typeLabel($key)) . '</option>';
         }
         $html .= '</select>' . "\n";

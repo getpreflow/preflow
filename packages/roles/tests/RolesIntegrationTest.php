@@ -57,6 +57,7 @@ final class RolesIntegrationTest extends TestCase
         $app = Application::create($this->dir);
         $app->boot();
         $app->container()->get(Access::class)->registry()->declarePattern('page.*');
+        $app->container()->get(Access::class)->registry()->declare('page.edit');
         $app->container()->get(Access::class)->registry()->declare('site.edit');
 
         return $app;

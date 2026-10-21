@@ -55,4 +55,18 @@ final class HtmxExtensionProviderTest extends TestCase
         $this->assertSame('', $provider->assetTag());
         $this->assertTrue($assets->isRequired());
     }
+
+    public function test_action_url_carries_a_decodable_token(): void
+    {
+        $token = new ComponentToken('test-secret-key-32-chars-long!!');
+        $provider = new HtmxExtensionProvider(new HtmxDriver(new ResponseHeaders()), $token);
+
+        $url = $provider->actionUrl('save', \stdClass::class, ['id' => 7]);
+
+        $this->assertStringStartsWith('/--component/action?token=', $url);
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+        $payload = $token->decode($query['token']);
+        $this->assertSame('save', $payload->action);
+        $this->assertSame(['id' => 7], $payload->props);
+    }
 }

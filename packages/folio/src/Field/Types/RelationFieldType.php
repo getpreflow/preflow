@@ -22,6 +22,8 @@ final class RelationFieldType implements FieldType
         private readonly TypeRegistry $registry,
         private readonly ?\Preflow\Folio\Content\ContentLocale $contentLocale = null,
         private readonly ?\Preflow\Folio\Content\LiveContent $live = null,
+        /** @var (\Closure(string): bool)|null permission check; null allows everything */
+        private readonly ?\Closure $can = null,
     ) {}
 
     public function key(): string
@@ -51,7 +53,12 @@ final class RelationFieldType implements FieldType
         if (!$cfg['multiple']) {
             $html .= '    <option value="">— none —</option>' . "\n";
         }
-        foreach ($this->options($cfg) as $id => $optLabel) {
+        $options = $this->options($cfg);
+        if ($this->can !== null && $cfg['to'] !== '' && !($this->can)($cfg['to'] . '.view')) {
+            // No access to the target type: list nothing else, keep what is linked (saving keeps it).
+            $options = array_intersect_key($options, array_flip($selected));
+        }
+        foreach ($options as $id => $optLabel) {
             $sel = in_array((string) $id, $selected, true) ? ' selected' : '';
             $html .= '    <option value="' . $e((string) $id) . '"' . $sel . '>' . $e($optLabel) . '</option>' . "\n";
         }

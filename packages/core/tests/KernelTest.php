@@ -182,4 +182,49 @@ final class KernelTest extends TestCase
 
         $this->assertSame($route, RouteSpyMiddleware::$seen);
     }
+
+    public function test_component_paths_go_to_the_endpoint_through_the_pipeline(): void
+    {
+        $container = new Container();
+        $pipeline = new MiddlewarePipeline();
+        $pipeline->pipe(new TimingMiddleware());
+        $router = new class implements RouterInterface {
+            public bool $called = false;
+            public function match(ServerRequestInterface $request): Route
+            {
+                $this->called = true;
+                throw new NotFoundHttpException();
+            }
+        };
+        $kernel = new Kernel(
+            container: $container,
+            router: $router,
+            pipeline: $pipeline,
+            errorHandler: new ErrorHandler(new DevErrorRenderer()),
+            actionDispatcher: fn () => new Response(500),
+            componentRenderer: fn () => new Response(500),
+            componentEndpoint: fn (ServerRequestInterface $r) => new Response(200, [], 'endpoint'),
+        );
+
+        $response = $kernel->handle($this->createRequest('POST', '/--component/action'));
+
+        $this->assertSame('endpoint', (string) $response->getBody());
+        $this->assertSame('applied', $response->getHeaderLine('X-Timing'));
+        $this->assertFalse($router->called);
+    }
+
+    public function test_endpoint_exceptions_use_the_error_handler(): void
+    {
+        $kernel = new Kernel(
+            container: new Container(),
+            router: new StubRouter(),
+            pipeline: new MiddlewarePipeline(),
+            errorHandler: new ErrorHandler(new DevErrorRenderer()),
+            actionDispatcher: fn () => new Response(500),
+            componentRenderer: fn () => new Response(500),
+            componentEndpoint: fn () => throw new \Preflow\Core\Exceptions\SecurityException('Missing component token.'),
+        );
+
+        $this->assertSame(403, $kernel->handle($this->createRequest('GET', '/--component/render'))->getStatusCode());
+    }
 }

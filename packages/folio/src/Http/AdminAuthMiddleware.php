@@ -25,7 +25,12 @@ final class AdminAuthMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        $user = $this->auth->guard()->user($request);
+        // Folio's guard is the default one; a user resolved for it already (or set in tests) counts.
+        $preset = $request->getAttribute(Authenticatable::class);
+        $presetGuard = $request->getAttribute(AuthManager::GUARD_ATTRIBUTE) ?? $this->auth->defaultGuardName();
+        $user = $preset instanceof Authenticatable && $presetGuard === $this->auth->defaultGuardName()
+            ? $preset
+            : $this->auth->guard()->user($request);
         if ($user === null) {
             // htmx requests (autosave, block picker) would follow a 302 and swap the
             // login page into the editor: tell htmx to navigate instead.

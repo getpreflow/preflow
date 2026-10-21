@@ -22,6 +22,8 @@ final class Router implements RouterInterface
         private readonly ?string $pagesDir = null,
         private readonly array $controllers = [],
         private readonly ?string $cachePath = null,
+        /** File pages' extension: the template engine's ('twig', 'blade.php') */
+        private readonly string $templateExtension = 'twig',
     ) {}
 
     public function match(ServerRequestInterface $request): Route
@@ -65,7 +67,7 @@ final class Router implements RouterInterface
         $this->collection = new RouteCollection();
 
         if ($this->pagesDir !== null) {
-            $fileScanner = new FileRouteScanner($this->pagesDir);
+            $fileScanner = new FileRouteScanner($this->pagesDir, $this->templateExtension);
             $this->collection->addMany($fileScanner->scan());
         }
 

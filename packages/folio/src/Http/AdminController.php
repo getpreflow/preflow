@@ -522,7 +522,9 @@ final class AdminController
             'multipart' => $multipart,
             'layout' => $layout,
             // No preview in the create drawer: its form posts to the save route.
-            'previewable' => $this->frontend->routeFor($type) !== null && $layout !== '@folio/admin/_drawer_layout.twig',
+            // A read-only form has nothing to preview (and its user may not post to the preview route).
+            'previewable' => $this->frontend->routeFor($type) !== null && $layout !== '@folio/admin/_drawer_layout.twig'
+                && $this->can($type . ($isNew ? '.create' : '.edit')),
             'preview_url' => strtok($action, '?') . '/preview',
             'multilingual' => $multilingual,
             'languages' => $languages,
