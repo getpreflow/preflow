@@ -9,11 +9,15 @@ use Psr\Http\Message\ServerRequestInterface;
 
 final class SessionGuard implements GuardInterface
 {
-    private const SESSION_KEY = '_auth_user_id';
-
+    /**
+     * @param string       $sessionKey where this guard keeps its user id (one key per guard)
+     * @param list<string> $otherKeys  other guards' keys: logging out keeps the session while one is set
+     */
     public function __construct(
         private readonly UserProviderInterface $provider,
         private readonly PasswordHasherInterface $hasher,
+        private readonly string $sessionKey = '_auth_user_id',
+        private readonly array $otherKeys = [],
     ) {}
 
     public function user(ServerRequestInterface $request): ?Authenticatable
@@ -24,7 +28,7 @@ final class SessionGuard implements GuardInterface
             return null;
         }
 
-        $userId = $session->get(self::SESSION_KEY);
+        $userId = $session->get($this->sessionKey);
 
         if ($userId === null) {
             return null;
@@ -55,7 +59,7 @@ final class SessionGuard implements GuardInterface
         }
 
         $session->regenerate();
-        $session->set(self::SESSION_KEY, $user->getAuthId());
+        $session->set($this->sessionKey, $user->getAuthId());
     }
 
     public function logout(ServerRequestInterface $request): void
@@ -66,6 +70,15 @@ final class SessionGuard implements GuardInterface
             return;
         }
 
+        // Only this guard's user leaves; a new id either way (fixation). The whole
+        // session ends when no other guard still has someone signed in.
+        $session->remove($this->sessionKey);
+        foreach ($this->otherKeys as $key) {
+            if ($session->get($key) !== null) {
+                $session->regenerate();
+                return;
+            }
+        }
         $session->invalidate();
     }
 }

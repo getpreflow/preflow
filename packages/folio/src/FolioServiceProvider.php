@@ -430,11 +430,6 @@ final class FolioServiceProvider extends ServiceProvider
             if (file_exists($app->basePath('config/auth.php'))) {
                 $engine->addGlobal('folio_auth_enabled', true);
             } else {
-                // Without auth nobody is restricted: menus and buttons ask can() all the same.
-                $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
-                    name: 'can',
-                    callable: fn (string $permission, ?object $subject = null): bool => true,
-                ));
                 // Auth is off: AuthExtensionProvider never ran, so its Twig
                 // functions are unregistered. _layout.twig guards their *calls*
                 // behind folio_auth_enabled, but Twig resolves function existence

@@ -20,7 +20,8 @@ final class GuestMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        $user = $this->authManager->guard()->user($request);
+        // The user resolved for this request (any guard), else the default guard's.
+        $user = $this->authManager->user() ?? $this->authManager->guard()->user($request);
         if ($user !== null) {
             return new Response(302, ['Location' => $this->redirectTo]);
         }

@@ -131,4 +131,39 @@ final class SessionGuardTest extends TestCase
 
         $this->assertFalse($result);
     }
+
+    public function test_two_guards_keep_separate_users(): void
+    {
+        $members = new SessionGuard($this->provider, $this->hasher, '_auth_user_id.members', ['_auth_user_id']);
+        $members->login($this->user, $this->createRequest());
+
+        $this->assertSame('user-1', $this->session->get('_auth_user_id.members'));
+        $this->assertNull($this->guard->user($this->createRequest())); // the default guard's key is untouched
+        $this->assertSame($this->user, $members->user($this->createRequest()));
+    }
+
+    public function test_logout_of_one_guard_keeps_the_other(): void
+    {
+        $staff = new SessionGuard($this->provider, $this->hasher, '_auth_user_id', ['_auth_user_id.members']);
+        $members = new SessionGuard($this->provider, $this->hasher, '_auth_user_id.members', ['_auth_user_id']);
+        $staff->login($this->user, $this->createRequest());
+        $members->login($this->user, $this->createRequest());
+        $id = $this->session->getId();
+
+        $members->logout($this->createRequest());
+
+        $this->assertNull($members->user($this->createRequest()));
+        $this->assertSame($this->user, $staff->user($this->createRequest()));
+        $this->assertNotSame($id, $this->session->getId());
+    }
+
+    public function test_logout_of_the_last_guard_invalidates_the_session(): void
+    {
+        $this->guard->login($this->user, $this->createRequest());
+        $this->session->set('cart', 'x');
+
+        $this->guard->logout($this->createRequest());
+
+        $this->assertNull($this->session->get('cart'));
+    }
 }

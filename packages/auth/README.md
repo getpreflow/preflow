@@ -239,6 +239,13 @@ $registry->declarePattern('invoice.*'); // a family, e.g. declared by a content 
 A package that signs staff in, such as Folio, marks its guard as staff itself;
 config wins. A guard with no population serves members.
 
+Every request asks each guard who is signed in, the default guard first; the first
+user found counts (`auth_user()`, `can()`, `AuthManager::guardName()`). Sign members
+in with their own guard, `$auth->guard('members')->login($user, $request)`. Each
+session guard keeps its own session key, so signing a member out leaves staff
+signed in (the session id is renewed either way; the session ends when nobody is
+left).
+
 **A custom resolver:** implement `PermissionResolver::allows($user, $population,
 $permission, $subject)` and register it with `$access->setResolver(...)` in a
 service provider.
@@ -260,7 +267,13 @@ final class LdapGuard implements GuardInterface
 }
 ```
 
-Register in `config/auth.php` under `guards`.
+Register it in `config/auth.php` under `guards`. It is built from the container
+with its user provider as the `provider` argument; a class that is not a
+`GuardInterface` fails at boot:
+
+```php
+'guards' => ['ldap' => ['class' => LdapGuard::class, 'provider' => 'users', 'population' => 'staff']],
+```
 
 ## Testing
 
@@ -271,11 +284,13 @@ final class DashboardTest extends TestCase
 {
     use AuthTestHelpers;
 
-    public function test_dashboard_requires_auth(): void
+    public function test_dashboard_for_a_signed_in_user(): void
     {
-        $user = new TestUser(uuid: 'u1', roles: ['admin']);
-        $request = $this->actingAs($user, $this->createRequest('GET', '/dashboard'));
-        // $request now has Authenticatable attribute set
+        $user = new ArrayUser('u1', 'u1@site.test', '', ['admin']);
+        $request = $this->actingAs($user, (new Psr17Factory())->createServerRequest('GET', '/dashboard'));
+
+        // Handled by the app, the user counts everywhere: AuthMiddleware, auth_user(), can().
+        $response = $this->app->handle($request);
     }
 }
 ```

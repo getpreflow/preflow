@@ -806,8 +806,15 @@ final class Application
         $registry = new \Preflow\Auth\Access\PermissionRegistry();
         $this->container->instance(\Preflow\Auth\Access\PermissionRegistry::class, $registry);
         if (!file_exists($authConfigPath)) {
-            // No auth: can() allows everything, as there is nobody to restrict.
-            $this->container->instance(\Preflow\Auth\Access\Access::class, new \Preflow\Auth\Access\Access(null, $registry, false, []));
+            // No auth: can() allows everything, as there is nobody to restrict. Templates may still ask.
+            $access = new \Preflow\Auth\Access\Access(null, $registry, false, []);
+            $this->container->instance(\Preflow\Auth\Access\Access::class, $access);
+            if ($this->container->has(\Preflow\View\TemplateEngineInterface::class)) {
+                $this->container->get(\Preflow\View\TemplateEngineInterface::class)->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                    name: 'can',
+                    callable: fn (string $permission, ?object $subject = null): bool => $access->can($permission, $subject),
+                ));
+            }
             return;
         }
 
@@ -837,30 +844,48 @@ final class Application
             }
         }
 
-        // Guards
+        // Guards. Each session guard keeps its own key (the default guard the classic
+        // one), so a member signing out leaves staff signed in. Other classes are
+        // built from the container with their provider.
+        $defaultGuard = $authConfig['default_guard'] ?? 'session';
+        $sessionKeys = [];
+        foreach ($authConfig['guards'] ?? [] as $name => $guardConfig) {
+            if (($guardConfig['class'] ?? null) === \Preflow\Auth\SessionGuard::class) {
+                $sessionKeys[(string) $name] = $name === $defaultGuard ? '_auth_user_id' : '_auth_user_id.' . $name;
+            }
+        }
         $guards = [];
         foreach ($authConfig['guards'] ?? [] as $name => $guardConfig) {
-            $guardClass = $guardConfig['class'];
+            $name = (string) $name;
+            $guardClass = (string) ($guardConfig['class'] ?? '');
             $provider = $providers[$guardConfig['provider'] ?? ''] ?? null;
 
             if ($provider === null) {
                 continue;
             }
 
-            $guards[$name] = match ($guardClass) {
-                \Preflow\Auth\SessionGuard::class => new \Preflow\Auth\SessionGuard($provider, $hasher),
+            $guard = match ($guardClass) {
+                \Preflow\Auth\SessionGuard::class => new \Preflow\Auth\SessionGuard(
+                    $provider,
+                    $hasher,
+                    $sessionKeys[$name],
+                    array_values(array_diff_key($sessionKeys, [$name => true])),
+                ),
                 \Preflow\Auth\TokenGuard::class => $this->container->has(\Preflow\Data\DataManager::class)
                     ? new \Preflow\Auth\TokenGuard(
                         $provider,
                         $this->container->get(\Preflow\Data\DataManager::class),
                     )
                     : null,
-                default => null,
+                default => $this->container->make($guardClass, ['provider' => $provider]),
             };
+            if ($guard !== null && !$guard instanceof \Preflow\Auth\GuardInterface) {
+                throw new \RuntimeException("Guard \"{$name}\" ({$guardClass}) does not implement " . \Preflow\Auth\GuardInterface::class . '.');
+            }
+            if ($guard !== null) {
+                $guards[$name] = $guard;
+            }
         }
-
-        $guards = array_filter($guards);
-        $defaultGuard = $authConfig['default_guard'] ?? 'session';
 
         $authManager = new \Preflow\Auth\AuthManager($guards, $defaultGuard);
         $this->container->instance(\Preflow\Auth\AuthManager::class, $authManager);
@@ -881,28 +906,11 @@ final class Application
             $this->container->instance(\Preflow\Auth\UserProviderInterface::class, $providers[$defaultProviderName]);
         }
 
-        // Global middleware: resolve authenticated user on every request (no 401 — just populate)
-        $defaultGuardInstance = $guards[$defaultGuard] ?? null;
-        if ($defaultGuardInstance !== null) {
-            $this->addMiddleware(new class($authManager, $defaultGuardInstance, $defaultGuard) implements \Psr\Http\Server\MiddlewareInterface {
-                public function __construct(
-                    private readonly \Preflow\Auth\AuthManager $authManager,
-                    private readonly \Preflow\Auth\GuardInterface $guard,
-                    private readonly string $guardName,
-                ) {}
-
-                public function process(
-                    \Psr\Http\Message\ServerRequestInterface $request,
-                    \Psr\Http\Server\RequestHandlerInterface $handler,
-                ): \Psr\Http\Message\ResponseInterface {
-                    $user = $this->guard->user($request);
-                    if ($user !== null) {
-                        $this->authManager->setUser($user, $this->guardName);
-                        $request = $request->withAttribute(\Preflow\Auth\Authenticatable::class, $user);
-                    }
-                    return $handler->handle($request);
-                }
-            });
+        // Global middleware: who is signed in for this request (no 401, just populate).
+        // Every guard is asked, the default first.
+        if ($guards !== []) {
+            $ordered = isset($guards[$defaultGuard]) ? [$defaultGuard => $guards[$defaultGuard]] + $guards : $guards;
+            $this->addMiddleware(new \Preflow\Auth\Http\ResolveUserMiddleware($authManager, $ordered));
         }
 
         // Register middleware instances in container for route-level use
