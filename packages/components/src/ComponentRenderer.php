@@ -115,6 +115,12 @@ final class ComponentRenderer
         }
     }
 
+    /** What the error boundary shows for a component that failed outside rendering (e.g. in an action). */
+    public function renderError(Component $component, \Throwable $e, string $phase = 'action'): string
+    {
+        return $this->errorBoundary->render($e, $component, $phase);
+    }
+
     private function renderTemplate(Component $component): string
     {
         $templatePath = $component->getTemplatePath($this->templateEngine->getTemplateExtension());

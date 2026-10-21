@@ -35,6 +35,8 @@ final class Kernel
         callable $componentRenderer,
         private readonly ?DebugCollector $collector = null,
         private readonly ?\Preflow\Core\Http\SecurityHeadersMiddleware $securityHeaders = null,
+        /** @var (\Closure(ServerRequestInterface): ResponseInterface)|null the /--component endpoint */
+        private readonly ?\Closure $componentEndpoint = null,
     ) {
         $this->actionDispatcher = $actionDispatcher;
         $this->componentRenderer = $componentRenderer;
@@ -44,6 +46,10 @@ final class Kernel
     {
         try {
             return $this->pipeline->process($request, function (ServerRequestInterface $req): ResponseInterface {
+                // Component requests get the same middleware (headers, session, auth) as pages.
+                if ($this->componentEndpoint !== null && str_starts_with($req->getUri()->getPath(), '/--component')) {
+                    return ($this->componentEndpoint)($req);
+                }
                 $route = $this->router->match($req);
                 // Route middleware (e.g. permission checks) can read the matched handler and parameters.
                 $req = $req->withAttribute(Route::class, $route);

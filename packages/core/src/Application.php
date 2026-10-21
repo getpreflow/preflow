@@ -196,6 +196,9 @@ final class Application
             componentRenderer: $this->componentRenderer,
             collector: $collector,
             securityHeaders: $this->securityHeaders,
+            componentEndpoint: $this->container->has('preflow.component_endpoint')
+                ? fn (\Psr\Http\Message\ServerRequestInterface $r) => $this->container->get('preflow.component_endpoint')->handle($r)
+                : null,
         );
     }
 
@@ -210,12 +213,6 @@ final class Application
             path: $request->getUri()->getPath(),
             method: $request->getMethod(),
         ));
-
-        // Component endpoint — intercept before routing
-        $path = $request->getUri()->getPath();
-        if (str_starts_with($path, '/--component') && $this->container->has('preflow.component_endpoint')) {
-            return $this->container->get('preflow.component_endpoint')->handle($request);
-        }
 
         $response = $this->kernel->handle($request);
         if ($request->getMethod() === 'HEAD') {

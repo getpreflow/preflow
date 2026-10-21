@@ -9,6 +9,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Preflow\Components\Component;
 use Preflow\Components\ComponentRenderer;
+use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\Exceptions\SecurityException;
 use Preflow\View\AssetCollector;
 
@@ -75,14 +76,21 @@ final class ComponentEndpoint
 
         // Dispatch action or resolve initial state
         if ($payload->action !== 'render') {
-            // Resolve state first so the action operates on correct base state
-            $component->resolveState();
-            $params = is_array($bodyParams) ? $bodyParams : [];
-            $component->handleAction($payload->action, $params);
-            // Render without re-calling resolveState so action side-effects are preserved
-            $html = $isFragmentRequest
-                ? $this->renderer->renderResolvedFragment($component)
-                : $this->renderer->renderResolved($component);
+            try {
+                // Resolve state first so the action operates on correct base state
+                $component->resolveState();
+                $params = is_array($bodyParams) ? $bodyParams : [];
+                $component->handleAction($payload->action, $params);
+                // Render without re-calling resolveState so action side-effects are preserved
+                $html = $isFragmentRequest
+                    ? $this->renderer->renderResolvedFragment($component)
+                    : $this->renderer->renderResolved($component);
+            } catch (HttpException $e) {
+                throw $e; // a deliberate refusal (403, 404…) stays an HTTP error
+            } catch (\Throwable $e) {
+                // Like a render error: the boundary's fallback replaces the component (200, so htmx swaps it).
+                $html = $this->renderer->renderError($component, $e, 'action');
+            }
         } else {
             // Plain render — resolveState is called inside renderer
             $html = $isFragmentRequest
