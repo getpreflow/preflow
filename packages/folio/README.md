@@ -812,6 +812,7 @@ final class NoteTweaks
 | `#[FormPanel(label, position: 'after')]` | `fn(DynamicRecord): ScreenView\|string` | A panel on the edit form (not on create), `before` or `after` Folio's own extras. A string is shown as escaped text, a `ScreenView` as a template fragment. |
 | `#[RecordAction(name, label, permission, icon, confirm)]` | `fn(DynamicRecord, ServerRequestInterface): ?ResponseInterface` | A POST button at `{prefix}/{type}/{id}/_action/{name}`; null redirects back to the form with "{label}: done". Needs the permission and the type's edit permission. |
 | `#[ListColumn(label, position: 100)]` | `fn(DynamicRecord): string` | A column after the type's own, ordered by position, shown as escaped text. |
+| `#[NavBadge]` | `fn(): ?int` | A count badge on the type's sidebar item (e.g. waiting members), computed only while the item is visible; `null` or `0` shows none, several add up, one per class. |
 | `#[BeforeSave]` | `fn(DynamicRecord): void` | Before validation; may `set()` fields. Throw `Preflow\Validation\ValidationException` to refuse the save: the form is shown again with its errors (422). |
 | `#[AfterSave]` | `fn(DynamicRecord): void` | After the record is stored. |
 | `#[BeforeDelete]` | `fn(DynamicRecord): void` | Throw `Customization\Refused('message')` to keep the record; the message is shown to the editor. |

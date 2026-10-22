@@ -43,7 +43,7 @@
                 {% if nav_section.label != '' %}<span class="folio-nav-label">{{ nav_section.label }}</span>{% endif %}
                 {% for item in nav_section.items %}
                     <a href="{{ item.url }}"{% if item.active %} class="active" aria-current="page"{% endif %}>
-                        <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ item.icon }}"></use></svg><span>{{ item.label }}</span>
+                        <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ item.icon }}"></use></svg><span>{{ item.label }}</span>{% if item.badge %}<span class="folio-nav-badge" aria-label="{{ item.badge }} waiting">{{ item.badge }}</span>{% endif %}
                     </a>
                 {% endfor %}
             {% endfor %}

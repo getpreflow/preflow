@@ -455,6 +455,8 @@ final class FolioServiceProvider extends ServiceProvider
         $app = $container->get(Application::class);
         $screens = $container->get(ScreenRegistry::class);
         $customizations = $container->get(Customizations::class);
+        // Set here, not in the AdminNav factory: Customizations validate extensions and resolve only now.
+        $container->get(\Preflow\Folio\Http\AdminNav::class)->setBadges(static fn (string $type): ?int => $customizations->navBadge($type));
         $this->declarePermissions($container, $app);
 
         // Settings → Extensions, once there is an extension (sites without any keep today's sidebar).

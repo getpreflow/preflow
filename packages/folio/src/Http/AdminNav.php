@@ -21,6 +21,8 @@ final class AdminNav
     private string $path = '';
     /** @var list<array{section: string, label: string, url: string, icon: string, permission: ?string, order: int}> */
     private array $added = [];
+    /** @var (Closure(string): ?int)|null the count badge of a type key; set at boot (Customizations resolve after the nav is built) */
+    private ?Closure $badges = null;
 
     /** @param Closure(string): bool $can */
     public function __construct(
@@ -37,25 +39,31 @@ final class AdminNav
         $this->added[] = compact('section', 'label', 'url', 'icon', 'permission', 'order');
     }
 
+    /** @param Closure(string): ?int $badges a type key's nav badge count; called only for visible items */
+    public function setBadges(Closure $badges): void
+    {
+        $this->badges = $badges;
+    }
+
     /** The path of the admin request being rendered; decides the active item. */
     public function setCurrentPath(string $path): void
     {
         $this->path = '/' . trim($path, '/');
     }
 
-    /** @return list<array{label: string, items: list<array{label: string, url: string, icon: string, active: bool}>}> */
+    /** @return list<array{label: string, items: list<array{label: string, url: string, icon: string, active: bool, badge: ?int}>}> */
     public function sections(): array
     {
         $groups = array_fill_keys(array_keys(self::BUILTIN), []);
-        $add = function (string $section, string $label, string $url, string $icon, ?string $permission, int $order) use (&$groups): void {
-            $groups[$section][] = compact('label', 'url', 'icon', 'permission', 'order');
+        $add = function (string $section, string $label, string $url, string $icon, ?string $permission, int $order, ?string $type = null) use (&$groups): void {
+            $groups[$section][] = compact('label', 'url', 'icon', 'permission', 'order', 'type');
         };
 
         $add('dashboard', 'Dashboard', $this->prefix === '' ? '/' : $this->prefix, 'ui-dashboard', 'folio.dashboard', 100);
         foreach ($this->catalog->all() as $listing) {
             if ($listing->nav) {
                 $icon = $listing->icon !== '' ? $listing->icon : ($listing->singleton ? 'ui-settings' : 'ui-file');
-                $add($listing->section, $listing->label, $this->prefix . '/' . $listing->key, $icon, $listing->key . '.view', $listing->order);
+                $add($listing->section, $listing->label, $this->prefix . '/' . $listing->key, $icon, $listing->key . '.view', $listing->order, $listing->key);
             }
         }
         $add('library', 'Assets', $this->prefix . '/assets', 'ui-library', 'assets.view', 100);
@@ -91,6 +99,7 @@ final class AdminNav
                     'url' => $item['url'],
                     'icon' => $item['icon'],
                     'active' => $item['url'] === $active,
+                    'badge' => $item['type'] !== null && $this->badges !== null ? ($this->badges)($item['type']) : null,
                 ], $items),
             ];
         }

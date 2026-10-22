@@ -15,6 +15,7 @@ use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Extension\ExtensionRegistry;
 use Preflow\Folio\Extension\FormPanel;
 use Preflow\Folio\Extension\ListColumn;
+use Preflow\Folio\Extension\NavBadge;
 use Preflow\Folio\Extension\RecordAction;
 
 /**
@@ -28,10 +29,10 @@ final class Customizations
     /** Hook attributes, the names runHooks() takes. */
     public const array HOOKS = [BeforeSave::class, AfterSave::class, BeforeDelete::class, AfterDelete::class];
 
-    private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, ListColumn::class, ...self::HOOKS];
+    private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, ListColumn::class, NavBadge::class, ...self::HOOKS];
 
     /**
-     * @param array<string, array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, hooks: array<class-string, list<\Closure>>}> $types
+     * @param array<string, array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>}> $types
      */
     private function __construct(
         private readonly array $types,
@@ -56,8 +57,9 @@ final class Customizations
                 if (!$catalog->has($key)) {
                     throw new ExtensionException("Type customization {$class}: #[FolioType('{$key}')] names no content type \"{$key}\".");
                 }
-                $types[$key] ??= ['panels' => [], 'actions' => [], 'columns' => [], 'hooks' => []];
+                $types[$key] ??= ['panels' => [], 'actions' => [], 'columns' => [], 'badges' => [], 'hooks' => []];
 
+                $badgeMethod = null;
                 $built = new \stdClass(); // one instance per class, shared by its methods' closures
                 foreach ($reflection->getMethods() as $method) {
                     $name = $method->getName();
@@ -103,6 +105,12 @@ final class Customizations
                             ];
                         } elseif ($meta instanceof ListColumn) {
                             $types[$key]['columns'][] = ['label' => $meta->label, 'position' => $meta->position, 'callable' => $call];
+                        } elseif ($meta instanceof NavBadge) {
+                            if ($badgeMethod !== null) {
+                                throw new ExtensionException("{$class} has more than one #[NavBadge]: {$badgeMethod} and {$name}.");
+                            }
+                            $badgeMethod = $name;
+                            $types[$key]['badges'][] = $call;
                         } else {
                             $types[$key]['hooks'][$attributeClass][] = $call;
                         }
@@ -118,11 +126,22 @@ final class Customizations
     }
 
     /**
-     * @return array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, hooks: array<class-string, list<\Closure>>}
+     * @return array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>}
      */
     public function forType(string $key): array
     {
-        return $this->types[$key] ?? ['panels' => [], 'actions' => [], 'columns' => [], 'hooks' => []];
+        return $this->types[$key] ?? ['panels' => [], 'actions' => [], 'columns' => [], 'badges' => [], 'hooks' => []];
+    }
+
+    /** The type's sidebar badge: the sum of its #[NavBadge] methods, null when none or 0. Calls them, so only for a visible item. */
+    public function navBadge(string $key): ?int
+    {
+        $sum = 0;
+        foreach ($this->types[$key]['badges'] ?? [] as $call) {
+            $sum += (int) $call();
+        }
+
+        return $sum > 0 ? $sum : null;
     }
 
     /** @param class-string $hook one of HOOKS (BeforeSave::class, ...) */
