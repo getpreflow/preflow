@@ -38,6 +38,29 @@ final class DateFieldType extends AbstractScalarFieldType
         return $this->renderer->renderField($ctx->name, $options);
     }
 
+    /**
+     * "22 Oct 2026", or "22 Oct 2026, 23:15" with "time": true. Reads "Y-m-d", "Y-m-d\TH:i" and ISO 8601
+     * with an offset (shown in the app timezone); a value that does not parse is shown escaped as it is.
+     */
+    public function renderFrontend(mixed $value, array $config): string
+    {
+        $raw = is_scalar($value) ? trim((string) $value) : '';
+        $text = $raw;
+        if ($raw !== '') {
+            try {
+                $date = new \DateTimeImmutable($raw);
+                if (preg_match('/(Z|[+-]\d{2}:?\d{2})$/', $raw) === 1) {
+                    $date = $date->setTimezone(new \DateTimeZone(date_default_timezone_get()));
+                }
+                $text = $date->format(($config['time'] ?? false) === true ? 'j M Y, H:i' : 'j M Y');
+            } catch (\Exception) {
+                // not a date: shown as stored
+            }
+        }
+
+        return htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+
     public function rules(array $config): array
     {
         return ($config['time'] ?? false) === true

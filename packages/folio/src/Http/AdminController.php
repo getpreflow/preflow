@@ -483,8 +483,9 @@ final class AdminController
             if (($fieldDef->config['readonly'] ?? false) === true) {
                 $fields[] = [
                     'name' => $name,
-                    'html' => self::readonlyField($name, $fieldDef->label, $fieldDef->help, $fieldType->fromStorage(
-                        isset($translatable[$name]) ? LocaleValue::pick($values[$name] ?? null, $locales, $locale) : LocaleValue::default($values[$name] ?? null, $locales),
+                    'html' => self::readonlyField($name, $fieldDef->label, $fieldDef->help, $this->readonlyDisplay(
+                        $fieldDef,
+                        $fieldType->fromStorage(isset($translatable[$name]) ? LocaleValue::pick($values[$name] ?? null, $locales, $locale) : LocaleValue::default($values[$name] ?? null, $locales)),
                     )),
                     'translatable' => isset($translatable[$name]),
                     'structured' => false,
@@ -969,20 +970,30 @@ final class AdminController
         return null;
     }
 
-    /** A read-only field: its label and value as escaped plain text, no input. */
-    private static function readonlyField(string $name, ?string $label, ?string $help, mixed $value): string
+    /**
+     * A read-only value as its field type displays it (the list-cell path): select labels, relation labels,
+     * comma-separated roles, formatted dates. Rich text keeps its sanitised markup; the rest is escaped plain text.
+     * Returns ready HTML.
+     */
+    private function readonlyDisplay(\Preflow\Data\TypeFieldDefinition $fieldDef, mixed $value): string
+    {
+        $type = $this->fieldTypes->get($fieldDef->type);
+        $html = $type->renderFrontend($value, $fieldDef->config);
+        if ($fieldDef->type !== 'richtext') {
+            $html = htmlspecialchars(html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        }
+
+        return trim(strip_tags($html)) === '' ? '—' : $html;
+    }
+
+    /** A read-only field: its label and value (ready HTML from readonlyDisplay), no input. */
+    private static function readonlyField(string $name, ?string $label, ?string $help, string $valueHtml): string
     {
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $text = match (true) {
-            $value === null, $value === '', $value === [] => '—',
-            is_bool($value) => $value ? 'Yes' : 'No',
-            is_scalar($value) => (string) $value,
-            default => (string) json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-        };
 
         return '<div class="form-group folio-readonly">' . "\n"
             . '  <span class="form-label">' . $e($label ?? (new \Preflow\Form\FieldRenderer())->humanize($name)) . '</span>' . "\n"
-            . '  <p class="folio-readonly-value">' . $e($text) . '</p>' . "\n"
+            . '  <div class="folio-readonly-value">' . $valueHtml . '</div>' . "\n"
             . ($help !== null && $help !== '' ? '  <small class="form-help">' . $e($help) . '</small>' . "\n" : '')
             . '</div>';
     }
