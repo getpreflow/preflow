@@ -107,7 +107,7 @@ final class Importer
                 }
                 foreach (array_keys($manifest['tables']) as $table) {
                     if (!isset($tables[$table])) {
-                        throw new TransferException("The export contains a table this site does not own: {$table}");
+                        throw new TransferException("{$table} is not transferred (user data or not a Folio type)");
                     }
                 }
                 continue;

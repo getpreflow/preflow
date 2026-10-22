@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Tests\Content;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Folio\Content\FrontendConfigException;
 use Preflow\Folio\Content\TypeCatalog;
 
 final class TypeCatalogTest extends TestCase
@@ -73,5 +74,66 @@ final class TypeCatalogTest extends TestCase
         @unlink($dir . '/a.json');
         @unlink($dir . '/b.json');
         @rmdir($dir);
+    }
+
+    private function model(array $extra): void
+    {
+        file_put_contents($this->dir . '/member.json', json_encode(['key' => 'member', 'table' => 'member', 'fields' => []] + $extra));
+    }
+
+    public function test_user_type_defaults_to_no_transfer(): void
+    {
+        $this->model(['users' => 'members']);
+        $l = (new TypeCatalog($this->dir))->get('member');
+
+        $this->assertSame('members', $l->users);
+        $this->assertFalse($l->transfer);
+    }
+
+    public function test_user_type_can_opt_in(): void
+    {
+        $this->model(['users' => 'members', 'transfer' => true]);
+
+        $this->assertTrue((new TypeCatalog($this->dir))->get('member')->transfer);
+    }
+
+    public function test_non_user_type_can_opt_out(): void
+    {
+        $this->model(['transfer' => false]);
+        $l = (new TypeCatalog($this->dir))->get('member');
+
+        $this->assertNull($l->users);
+        $this->assertFalse($l->transfer);
+    }
+
+    public function test_plain_type_transfers(): void
+    {
+        $this->model([]);
+
+        $this->assertTrue((new TypeCatalog($this->dir))->get('member')->transfer);
+    }
+
+    public function test_user_type_with_frontend_throws(): void
+    {
+        $this->model(['users' => 'members', 'frontend' => ['route' => '/{slug}']]);
+        $this->expectException(FrontendConfigException::class);
+
+        (new TypeCatalog($this->dir))->all();
+    }
+
+    public function test_user_type_singleton_throws(): void
+    {
+        $this->model(['users' => 'members', 'singleton' => true]);
+        $this->expectException(FrontendConfigException::class);
+
+        (new TypeCatalog($this->dir))->all();
+    }
+
+    public function test_users_must_be_a_non_empty_string(): void
+    {
+        $this->model(['users' => '']);
+        $this->expectException(FrontendConfigException::class);
+
+        (new TypeCatalog($this->dir))->all();
     }
 }

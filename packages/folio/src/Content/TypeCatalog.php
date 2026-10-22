@@ -38,6 +38,19 @@ final class TypeCatalog
                 : ucfirst($key);
             $frontend = isset($data['frontend']) && is_array($data['frontend']) ? $data['frontend'] : null;
             $singleton = ($data['singleton'] ?? false) === true;
+            $users = null;
+            if (array_key_exists('users', $data)) {
+                if (!is_string($data['users']) || $data['users'] === '') {
+                    throw new FrontendConfigException("Type \"{$key}\": \"users\" must be a non-empty population name");
+                }
+                if ($frontend !== null) {
+                    throw new FrontendConfigException("Type \"{$key}\": a user type cannot have a \"frontend\"");
+                }
+                if ($singleton) {
+                    throw new FrontendConfigException("Type \"{$key}\": a user type cannot be a singleton");
+                }
+                $users = $data['users'];
+            }
             $listings[] = new TypeListing(
                 $key,
                 $label,
@@ -45,6 +58,8 @@ final class TypeCatalog
                 isset($data['list']) && is_array($data['list']) ? $data['list'] : [],
                 $singleton,
                 is_bool($data['publishing'] ?? null) ? $data['publishing'] : ($frontend !== null || $singleton),
+                $users,
+                is_bool($data['transfer'] ?? null) ? $data['transfer'] : $users === null,
             );
         }
 
