@@ -275,6 +275,58 @@ final class DiscoveryTest extends TestCase
         $this->boot();
     }
 
+    public function test_disabled_extension_with_broken_constructor_does_not_break_boot(): void
+    {
+        $this->project('Members');
+        $this->appConfig();
+        $this->write('app/Folio/Broken/Extension.php', <<<'PHP'
+            <?php
+            namespace App\Folio\Broken;
+            #[\Preflow\Folio\Extension\Attributes\FolioExtension(name: 'broken', label: 'Broken')]
+            final class Extension extends \Preflow\Folio\Extension\Extension
+            {
+                public function __construct()
+                {
+                    throw new \LogicException('broken constructor');
+                }
+
+                public function settings(): array
+                {
+                    return ['flag' => ['type' => 'boolean']];
+                }
+            }
+            PHP);
+        $this->write('config/folio/extensions.json', '{"enabled": {"members": {"disabled_parts": []}}}');
+
+        $registry = $this->boot()->container()->get(ExtensionRegistry::class);
+
+        $this->assertFalse($registry->isEnabled('broken'));
+        $this->assertTrue($registry->get('broken')->hasPart('settings')); // detected without instantiating
+        $this->assertTrue($registry->isEnabled('members'));
+    }
+
+    public function test_enabled_extension_with_empty_settings_throws(): void
+    {
+        $this->appConfig();
+        $this->write('app/Folio/Bare/Extension.php', <<<'PHP'
+            <?php
+            namespace App\Folio\Bare;
+            #[\Preflow\Folio\Extension\Attributes\FolioExtension(name: 'bare', label: 'Bare')]
+            final class Extension extends \Preflow\Folio\Extension\Extension
+            {
+                public function settings(): array
+                {
+                    return [];
+                }
+            }
+            PHP);
+        $this->write('config/folio/extensions.json', '{"enabled": {"bare": {"disabled_parts": []}}}');
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessage('Extension "bare" has a settings part but settings() returns no fields.');
+        $this->boot();
+    }
+
     private function project(string ...$names): void
     {
         foreach ($names as $name) {

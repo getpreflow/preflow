@@ -733,7 +733,9 @@ Things to know:
 
 `Extension::settings()` returns a form in the model JSON `fields` format. Folio shows it
 under *Settings* as the singleton type `{name}_settings` (no publishing) and reads it with
-the declared defaults:
+the declared defaults. Overriding `settings()` declares the `settings` part; discovery sees
+that without instantiating the extension, so a disabled extension's constructor never runs.
+An enabled one whose `settings()` returns no fields is an error on boot.
 
 ```php
 'greeting' => ['type' => 'string', 'label' => 'Greeting', 'default' => 'Hello from the demo extension'],

@@ -74,7 +74,6 @@ final class FolioServiceProvider extends ServiceProvider
             $app->basePath(),
             debug: (bool) $app->config()->get('app.debug', false),
             cacheFile: $app->basePath('storage/cache/folio-extensions.cache'),
-            make: static fn (string $class): object => $container->get($class),
         );
         $container->instance(ExtensionRegistry::class, $extensions);
         // Their settings forms (Extension::settings()) are singleton types under Settings.

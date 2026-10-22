@@ -45,9 +45,8 @@ final class ExtensionRegistry
     /**
      * @param bool          $debug     file errors (unknown extension or part) throw; otherwise they are logged and ignored
      * @param string|null   $cacheFile used when !$debug, written only when there is an extension
-     * @param \Closure|null $make      builds an extension instance (for settings()); default `new $class()`
      */
-    public static function discover(string $basePath, bool $debug, ?string $cacheFile = null, ?\Closure $make = null): self
+    public static function discover(string $basePath, bool $debug, ?string $cacheFile = null): self
     {
         $file = new ExtensionsFile($basePath . '/config/folio/extensions.json');
         $projectDir = $basePath . '/app/Folio';
@@ -64,16 +63,15 @@ final class ExtensionRegistry
             }
         }
 
-        $make ??= static fn (string $class): object => new $class();
         $definitions = [];
         foreach (self::projectClasses($projectDir) as $class => $path) {
-            $definitions[] = self::define($class, $path, $make);
+            $definitions[] = self::define($class, $path);
         }
         foreach (self::packageClasses($installed) as $package => $class) {
             if (!class_exists($class)) {
                 throw new ExtensionException("Package {$package} names extension class {$class} (extra.folio.extension), which does not exist.");
             }
-            $definitions[] = self::define($class, (string) (new \ReflectionClass($class))->getFileName(), $make);
+            $definitions[] = self::define($class, (string) (new \ReflectionClass($class))->getFileName());
         }
         $registry = new self($definitions);
         $registry = new self($definitions, $registry->validate($file, $debug));
@@ -172,11 +170,8 @@ final class ExtensionRegistry
         error_log("preflow/folio: {$message}; ignored");
     }
 
-    /**
-     * @param class-string $class
-     * @param \Closure(class-string): object $make
-     */
-    private static function define(string $class, string $path, \Closure $make): ExtensionDefinition
+    /** @param class-string $class */
+    private static function define(string $class, string $path): ExtensionDefinition
     {
         $reflection = new \ReflectionClass($class);
         $attribute = $reflection->getAttributes(FolioExtension::class)[0] ?? null;
@@ -214,7 +209,9 @@ final class ExtensionRegistry
                 $parts[] = ['id' => $kind . ':' . $key, 'kind' => $kind, 'class' => $partClass, 'label' => $label];
             }
         }
-        if ($make($class)->settings() !== []) { // the same call FolioServiceProvider registers the settings type from
+        // Overriding settings() declares the part; nothing is instantiated here, so a disabled
+        // extension's constructor never runs (FolioServiceProvider calls settings() when enabled).
+        if ($reflection->getMethod('settings')->getDeclaringClass()->getName() !== Extension::class) {
             $parts[] = ['id' => 'settings', 'kind' => 'settings', 'label' => 'Settings'];
         }
 
