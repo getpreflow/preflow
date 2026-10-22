@@ -132,6 +132,22 @@ final class CodesTest extends TestCase
         $this->assertSame('Book, first edition', $record->get('label'));
     }
 
+    public function test_readable_code_with_unicode_dashes_and_spaces(): void
+    {
+        $codes = $this->codes();
+        $codes->issue('members.book', [], 'SMART-STACK 2026');
+
+        foreach ([
+            "SMART\u{2013}STACK 2026",            // en dash
+            "SMART\u{2011}STACK\u{00A0}2026",     // non-breaking hyphen, non-breaking space
+            "SMART\u{200B}STACK\u{2014}2026",     // zero-width space, em dash
+            "\u{FEFF}smart stack\u{2009}2026\u{2060}", // BOM, thin space, word joiner
+        ] as $typed) {
+            $this->assertTrue($codes->check($typed, 'members.book')->ok, bin2hex($typed));
+        }
+        $this->assertSame('SMARTSTACK2026', Codes::normalizeReadable("SMART\u{2013}STACK\u{2011}\u{00A0}\u{200B}2026"));
+    }
+
     public function test_readable_code_normalised(): void
     {
         $codes = $this->codes();

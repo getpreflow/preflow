@@ -55,7 +55,8 @@ if (!$result->ok) {
 
 - A readable code (given to `issue()`) is stored upper case without whitespace and dashes,
   4–64 characters `A-Z0-9`, and only for purposes with `readable: true`. Visitors may type
-  it in any case, with spaces or dashes.
+  it in any case, with spaces or dashes (also Unicode ones such as an en dash, a
+  non-breaking space or a zero-width space, as word processors and phones insert them).
 - A random code is 16 random bytes, base64url without padding (22 characters). Lookups trim
   it, nothing more.
 - Codes are unique within their purpose; an unknown purpose throws. Codes are bearer tokens:
