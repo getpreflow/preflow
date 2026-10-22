@@ -260,6 +260,27 @@ final class CodesInFolioTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_counters_and_state_read_only_payload_hidden(): void
+    {
+        $this->codes()->issue('members.book', ['edition' => 1], 'BOOKCODE1', 'Book');
+        $id = $this->idOf('BOOKCODE1');
+        $this->login();
+
+        $form = (string) $this->send('GET', "/folio/code/{$id}/edit")->getBody();
+        foreach (['uses', 'revoked_at', 'form', 'payload'] as $field) {
+            $this->assertStringNotContainsString('name="' . $field . '"', $form, $field);
+        }
+        $this->assertStringContainsString('<span class="form-label">Uses</span>', $form);
+        $this->assertStringContainsString('<span class="form-label">Form</span>', $form);
+        $this->assertStringNotContainsString('Payload', $form);
+        $this->assertStringContainsString('name="code"', $form); // the code stays an input (required on create)
+
+        // A payload typed into a create post is ignored.
+        $this->assertSame(302, $this->send('POST', '/folio/code', $this->create(['payload' => '{"grant":"all"}']))->getStatusCode());
+        $this->assertSame([], $this->codes()->check('Smart Stack 2026', 'members.book')->payload);
+    }
+
+    #[RunInSeparateProcess]
     public function test_revoke_action(): void
     {
         $this->codes()->issue('members.book', [], 'BOOKCODE1');

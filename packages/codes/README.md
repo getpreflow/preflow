@@ -89,7 +89,9 @@ when one is configured (an optional alias), otherwise in the default storage.
   `A-Z0-9` and unique within its purpose; otherwise the form shows the error. Random codes
   come from `Codes::issue()`.
 - **Edit:** only *Label*, *Expires at* and *Max uses* change. Code, purpose, form, uses,
-  revocation and payload keep their stored values, whatever the form posts.
+  revocation and payload keep their stored values, whatever the form posts. Uses,
+  *Revoked at* and form are shown as read-only text; the payload is not shown (nor taken
+  on create: an admin-made code has an empty payload).
 - **Revoke:** the *Revoke* button on a code needs the permission `codes.revoke` and
   `code.edit`. It stops the code at once.
 - **Redemptions:** the edit form lists who redeemed the code (the redeemer reference you

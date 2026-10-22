@@ -15,9 +15,9 @@
         "label": { "type": "string", "label": "Label" },
         "expires_at": { "type": "date", "label": "Expires at", "time": true, "help": "Empty: never expires." },
         "max_uses": { "type": "number", "label": "Max uses", "help": "Empty: unlimited." },
-        "uses": { "type": "number", "label": "Uses" },
-        "revoked_at": { "type": "string", "label": "Revoked at" },
-        "payload": { "type": "string", "label": "Payload (JSON)" },
-        "form": { "type": "select", "label": "Form", "options": { "readable": "Readable", "random": "Random" }, "validate": ["required", "in:readable,random"] }
+        "uses": { "type": "number", "label": "Uses", "readonly": true },
+        "revoked_at": { "type": "string", "label": "Revoked at", "readonly": true },
+        "payload": { "type": "string", "label": "Payload (JSON)", "hidden": true },
+        "form": { "type": "select", "label": "Form", "readonly": true, "options": { "readable": "Readable", "random": "Random" }, "validate": ["required", "in:readable,random"] }
     }
 }
