@@ -6,7 +6,7 @@
     "require": {
         "php": ">=8.4",
         "preflow/core": "^0.20 || @dev",
-        "preflow/data": "^0.1 || @dev",
+        "preflow/data": "^0.20 || @dev",
         "preflow/view": "^0.1 || @dev",
         "preflow/routing": "^0.1 || @dev",
         "preflow/form": "^0.1 || @dev",
@@ -14,7 +14,7 @@
         "preflow/auth": "^0.20 || @dev",
         "preflow/components": "^0.1 || @dev",
         "preflow/htmx": "^0.1 || @dev",
-        "preflow/devtools": "^0.1 || @dev",
+        "preflow/devtools": "^0.20 || @dev",
         "nyholm/psr7": "^1.8",
         "symfony/html-sanitizer": "^7.0"
     },

@@ -89,7 +89,7 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 - **Codes package** (`preflow/codes`) — redeemable codes managed in Folio
 - Folio sidebar built from model JSON; admin assets for packages
 - CLI exit-code fix
-- Constraints of `preflow/folio` and `preflow/roles` raised to `^0.20`
+- Provider constraints raised to `^0.20 || @dev` where 0.20 features are used (folio, devtools, roles)
 
 ### v0.12.0
 
