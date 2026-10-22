@@ -47,7 +47,8 @@ final class PermissionsFieldType implements FieldType
             . '<input type="hidden" name="' . $name . '" value="">' // none checked still posts an empty list
             . '<label class="rbac-everything"><span class="rbac-everything-text"><span class="rbac-everything-label">Everything</span>'
             . '<span class="rbac-everything-hint">Grants every permission, now and in future extensions (<code>*</code>)</span></span>'
-            . '<input type="checkbox" class="rbac-switch" role="switch" name="' . $name . '" value="*" data-rbac-everything' . (in_array('*', $selected, true) ? ' checked' : '') . '></label>';
+            . '<input type="checkbox" class="rbac-switch-input" role="switch" name="' . $name . '" value="*" data-rbac-everything' . (in_array('*', $selected, true) ? ' checked' : '') . '>'
+            . '<span class="rbac-switch" aria-hidden="true"></span></label>';
         $unknown = array_diff($selected, $this->known());
         if ($unknown !== []) {
             $html .= '<p class="rbac-unknown">Unknown, removed on save: '
@@ -70,7 +71,7 @@ final class PermissionsFieldType implements FieldType
                         $permission = $row['key'] . '.' . $action;
                         $html .= '<td class="rbac-cell">' . (in_array($permission, $row['names'], true)
                             ? $input($permission, ' title="' . $e($permission) . '" aria-label="' . $label . ': ' . $verb . '"')
-                            : '<span class="rbac-none" title="' . $label . ' have no ' . $action . ' permission">–</span>') . '</td>';
+                            : '<span class="rbac-none" title="No ' . $action . ' permission for ' . $label . '">–</span>') . '</td>';
                     }
                     $html .= '<td class="rbac-cell rbac-cell-all">' . ($row['pattern'] !== null
                         ? $input($row['pattern'], ' title="' . $e($row['pattern']) . '" aria-label="' . $label . ': All" data-rbac-all')
@@ -145,7 +146,8 @@ final class PermissionsFieldType implements FieldType
 
     /**
      * The matrix rows (each content type with a declared standard verb: its label, declared
-     * verbs and "{type}.*" if declared) by sidebar section label, in sidebar order; and every
+     * verbs that can apply, i.e. no create or delete on a singleton and no publish without
+     * publishing, and "{type}.*" if declared) by sidebar section label, in sidebar order; and every
      * other declared name by group in declaration order, with the group's patterns: a pattern
      * "x.*" goes to the first group with a name starting "x." (patterns without one to "Other").
      *
@@ -165,9 +167,14 @@ final class PermissionsFieldType implements FieldType
             if ($names === []) {
                 continue;
             }
+            $taken += array_fill_keys($names, true); // declared, so never a chip; only shown where they can apply
+            $inapplicable = [...($listing->singleton ? ['create', 'delete'] : []), ...($listing->publishing ? [] : ['publish'])];
+            $names = array_values(array_filter($names, static fn (string $permission): bool => !in_array(substr($permission, strlen($listing->key) + 1), $inapplicable, true)));
             $pattern = in_array($listing->key . '.*', $patterns, true) ? $listing->key . '.*' : null;
             $bySection[$listing->section][] = ['key' => $listing->key, 'label' => $listing->label, 'names' => $names, 'pattern' => $pattern];
-            $taken += array_fill_keys([...$names, ...($pattern !== null ? [$pattern] : [])], true);
+            if ($pattern !== null) {
+                $taken[$pattern] = true;
+            }
         }
         $sections = [];
         foreach (AdminNav::sectionOrder(array_keys($bySection)) as $section) {

@@ -58,7 +58,7 @@ final class RolesInFolioTest extends TestCase
 
         $form = (string) $this->send('GET', '/folio/rbac_role/r-editor/edit')->getBody();
         $this->assertMatchesRegularExpression('#<input type="hidden" name="permissions\[\]" value="">#', $form);
-        $this->assertMatchesRegularExpression('#<input type="checkbox" class="rbac-switch" role="switch" name="permissions\[\]" value="\*" data-rbac-everything>#', $form);
+        $this->assertMatchesRegularExpression('#<input type="checkbox" class="rbac-switch-input" role="switch" name="permissions\[\]" value="\*" data-rbac-everything><span class="rbac-switch" aria-hidden="true"></span>#', $form);
         // The "Pages" row: its verbs and its whole-type pattern (checked) as "All".
         $this->assertMatchesRegularExpression(
             '#<tr class="rbac-row" data-rbac-row><th scope="row" title="page\.\*">Pages</th><td class="rbac-cell"><input type="checkbox" name="permissions\[\]" value="page\.view"[^>]*></td>.*value="page\.\*" title="page\.\*" aria-label="Pages: All" data-rbac-all checked>#',

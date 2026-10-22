@@ -29,12 +29,14 @@ final class PermissionsFieldTest extends TestCase
         $catalog->add(['key' => 'rbac_role', 'label' => 'Roles', 'fields' => []], 'settings');
         $catalog->add(['key' => 'member', 'label' => 'Members', 'section' => 'members', 'fields' => []]);
         $catalog->add(['key' => 'post', 'label' => 'Posts', 'fields' => []]);
-        $catalog->add(['key' => 'page', 'label' => 'Pages', 'section' => 'pages', 'fields' => []]);
+        $catalog->add(['key' => 'page', 'label' => 'Pages', 'section' => 'pages', 'publishing' => true, 'fields' => []]);
+        $catalog->add(['key' => 'site', 'label' => 'Site', 'singleton' => true, 'fields' => []], 'settings');
+        $catalog->add(['key' => 'members_settings', 'label' => 'Members settings', 'singleton' => true, 'publishing' => false, 'fields' => []], 'settings');
 
         $registry = new PermissionRegistry();
         $registry->declare('folio.dashboard', 'Dashboard', 'Folio');
         $registry->declare('folio.extensions', 'Extensions', 'Folio');
-        foreach (['rbac_role' => 'Roles', 'member' => 'Members', 'post' => 'Posts', 'page' => 'Pages'] as $type => $label) {
+        foreach (['rbac_role' => 'Roles', 'member' => 'Members', 'post' => 'Posts', 'page' => 'Pages', 'site' => 'Site', 'members_settings' => 'Members'] as $type => $label) {
             $registry->declarePattern($type . '.*');
             foreach (self::VERBS as $action => $verb) {
                 if ($type !== 'post' || $action !== 'publish') {
@@ -83,10 +85,31 @@ final class PermissionsFieldTest extends TestCase
         );
         $this->assertMatchesRegularExpression('#value="post\.view" title="post\.view" aria-label="Posts: View" checked>#', $html);
         // A verb the type does not declare: a muted dash, no checkbox.
-        $this->assertMatchesRegularExpression('#aria-label="Posts: Edit"></td><td class="rbac-cell"><span class="rbac-none" title="Posts have no publish permission">–</span></td><td class="rbac-cell"><input[^>]+value="post\.delete"#', $html);
+        $this->assertMatchesRegularExpression('#aria-label="Posts: Edit"></td><td class="rbac-cell"><span class="rbac-none" title="No publish permission for Posts">–</span></td><td class="rbac-cell"><input[^>]+value="post\.delete"#', $html);
         $this->assertStringNotContainsString('value="post.publish"', $html);
         // Type verbs never show up again among the other permissions.
         $this->assertSame(1, substr_count($html, 'value="member.view"'));
+    }
+
+    public function test_inapplicable_verbs_dashed(): void
+    {
+        $html = $this->render([]);
+        $cells = function (string $type) use ($html): array {
+            $this->assertSame(1, preg_match('#<tr class="rbac-row" data-rbac-row><th scope="row" title="' . preg_quote($type, '#') . '\.\*">[^<]+</th>(.*?)</tr>#', $html, $m));
+            preg_match_all('#<td class="rbac-cell[^"]*">(<input[^>]+value="' . preg_quote($type, '#') . '\.([a-z*]+)"|<span class="rbac-none")#', $m[1], $c);
+
+            return array_map(static fn (string $verb): string => $verb === '' ? '–' : $verb, $c[2]);
+        };
+
+        // A singleton has no create or delete; a type without publishing has no publish.
+        $this->assertSame(['view', '–', 'edit', 'publish', '–', '*'], $cells('site'));
+        $this->assertSame(['view', '–', 'edit', '–', '–', '*'], $cells('members_settings'));
+        $this->assertSame(['view', 'create', 'edit', '–', 'delete', '*'], $cells('member'));
+        $this->assertSame(['view', 'create', 'edit', 'publish', 'delete', '*'], $cells('page'));
+        $this->assertMatchesRegularExpression('#<span class="rbac-none" title="No create permission for Site">–</span>#', $html);
+        // Hidden only in the editor: the names stay declared, so they are never offered elsewhere either.
+        $this->assertStringNotContainsString('value="site.create"', $html);
+        $this->assertStringNotContainsString('value="member.publish"', $html);
     }
 
     public function test_other_permissions_as_chips(): void
@@ -120,7 +143,7 @@ final class PermissionsFieldTest extends TestCase
         $this->assertMatchesRegularExpression(
             '#<label class="rbac-everything"><span class="rbac-everything-text"><span class="rbac-everything-label">Everything</span>'
             . '<span class="rbac-everything-hint">Grants every permission, now and in future extensions \(<code>\*</code>\)</span></span>'
-            . '<input type="checkbox" class="rbac-switch" role="switch" name="permissions\[\]" value="\*" data-rbac-everything checked></label>#',
+            . '<input type="checkbox" class="rbac-switch-input" role="switch" name="permissions\[\]" value="\*" data-rbac-everything checked><span class="rbac-switch" aria-hidden="true"></span></label>#',
             $html,
         );
         // Unknown stored names: one muted warning line above the matrix.
@@ -141,7 +164,7 @@ final class PermissionsFieldTest extends TestCase
             $this->as('admin');
 
             $form = (string) $this->send('GET', '/folio/rbac_role/r-editor/edit')->getBody();
-            $this->assertMatchesRegularExpression('#<input type="checkbox" class="rbac-switch" role="switch" name="permissions\[\]" value="\*" data-rbac-everything>#', $form);
+            $this->assertMatchesRegularExpression('#<input type="checkbox" class="rbac-switch-input" role="switch" name="permissions\[\]" value="\*" data-rbac-everything><span class="rbac-switch" aria-hidden="true"></span>#', $form);
             // Loaded only where the field renders, from Folio's asset route.
             $this->assertMatchesRegularExpression('#<link rel="stylesheet" href="/folio/_assets/rbac\.css\?v=[0-9a-f]{12}">#', $form);
             $this->assertMatchesRegularExpression('#<script src="/folio/_assets/rbac\.js\?v=[0-9a-f]{12}" defer></script>#', $form);

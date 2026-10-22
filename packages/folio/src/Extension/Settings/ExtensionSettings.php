@@ -39,7 +39,7 @@ final class ExtensionSettings
     }
 
     /**
-     * The settings type of an extension, as a model JSON schema.
+     * The settings type of an extension, as a model JSON schema, labelled "{label} settings".
      *
      * @param array<string, array<string, mixed>> $fields Extension::settings()
      * @return array<string, mixed>
@@ -60,7 +60,7 @@ final class ExtensionSettings
 
         return [
             'key' => self::typeKey($definition->name),
-            'label' => $definition->label,
+            'label' => $definition->label . ' settings', // never reads like the extension's own types
             'singleton' => true,
             'publishing' => false,
             'table' => 'folio_settings_' . $definition->name,
