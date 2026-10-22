@@ -137,6 +137,15 @@ final class TypeCatalogTest extends TestCase
         (new TypeCatalog($this->dir))->all();
     }
 
+    public function test_non_bool_transfer_throws(): void
+    {
+        $this->model(['transfer' => 'false']);
+        $this->expectException(FrontendConfigException::class);
+        $this->expectExceptionMessage('Type "member": "transfer" must be true or false');
+
+        (new TypeCatalog($this->dir))->all();
+    }
+
     public function test_catalog_add_appears_after_files(): void
     {
         $this->model([]);

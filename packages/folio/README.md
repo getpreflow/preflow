@@ -769,7 +769,8 @@ A type can hold the site's own users or members:
 - `"users": "<population>"` marks a type as user data. It is **not** transferred
   (`folio:export`, `folio:import`, `folio:pull`) unless it also says `"transfer": true`:
   live users never travel to a laptop by accident.
-- Any other type can opt out with `"transfer": false`.
+- Any other type can opt out with `"transfer": false`. `"transfer"` must be a JSON boolean;
+  anything else (`"false"`, `0`) is an error naming the type.
 - Per-environment state (installed extension versions, throttle rows) is never exported.
 
 ## SQL storage

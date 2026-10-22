@@ -83,6 +83,9 @@ final class TypeCatalog
             }
             $users = $data['users'];
         }
+        if (array_key_exists('transfer', $data) && !is_bool($data['transfer'])) {
+            throw new FrontendConfigException("Type \"{$key}\": \"transfer\" must be true or false");
+        }
         return new TypeListing(
             $key,
             $label,
@@ -91,7 +94,7 @@ final class TypeCatalog
             $singleton,
             is_bool($data['publishing'] ?? null) ? $data['publishing'] : ($frontend !== null || $singleton),
             $users,
-            is_bool($data['transfer'] ?? null) ? $data['transfer'] : $users === null,
+            $data['transfer'] ?? $users === null,
             $section,
         );
     }
