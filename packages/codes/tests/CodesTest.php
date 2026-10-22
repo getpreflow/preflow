@@ -198,6 +198,27 @@ final class CodesTest extends TestCase
         $this->assertSame([], $codes->redemptions($id));
     }
 
+    public function test_empty_code_never_matches(): void
+    {
+        $codes = $this->codes();
+        $dm = $this->app()->container()->get(DataManager::class);
+        $type = $dm->getTypeRegistry()->get('code');
+        foreach (['readable', 'random'] as $form) {
+            foreach (['members.book', 'forcemap.round'] as $purpose) {
+                $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($type, [
+                    'uuid' => "empty-{$form}-{$purpose}", 'purpose' => $purpose, 'code' => '', 'form' => $form, 'uses' => 0, 'payload' => '{}',
+                ]), false);
+            }
+        }
+
+        foreach (['members.book', 'forcemap.round'] as $purpose) {
+            foreach (['', '   ', '---', "\xff"] as $typed) {
+                $this->assertSame('unknown', $codes->check($typed, $purpose)->reason, bin2hex($typed) . " / {$purpose}");
+                $this->assertSame('unknown', $codes->redeem($typed, $purpose)->reason, bin2hex($typed) . " / {$purpose}");
+            }
+        }
+    }
+
     public function test_check_does_not_count_use(): void
     {
         $codes = $this->codes();

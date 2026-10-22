@@ -91,7 +91,7 @@ final class Codes
                 throw new \InvalidArgumentException("Code purpose [{$purpose}] does not allow readable codes.");
             }
             $code = self::normalizeReadable($code);
-            if (preg_match('/^[A-Z0-9]{4,64}$/', $code) !== 1) {
+            if ($code === null || preg_match('/^[A-Z0-9]{4,64}$/', $code) !== 1) {
                 throw new \InvalidArgumentException('A readable code needs 4 to 64 letters A-Z and digits (spaces and dashes are ignored).');
             }
             $form = 'readable';
@@ -211,20 +211,29 @@ final class Codes
         return $rows;
     }
 
-    /** Readable codes: upper case, whitespace and dashes removed. */
-    public static function normalizeReadable(string $code): string
+    /** Readable codes: upper case, whitespace and dashes removed; null when the input is not valid UTF-8. */
+    public static function normalizeReadable(string $code): ?string
     {
-        return strtoupper((string) preg_replace('/[\s-]+/u', '', $code));
+        $stripped = preg_replace('/[\s-]+/u', '', $code);
+
+        return $stripped === null ? null : strtoupper($stripped);
     }
 
-    /** The purpose's code matching the typed one, normalised as its form says. */
+    /**
+     * The purpose's code matching the typed one, normalised as its form says. An empty code
+     * (typed or stored) never matches: it would be a bearer token without a secret.
+     */
     private function find(string $code, string $purpose): ?DynamicRecord
     {
         $readable = self::normalizeReadable($code);
         $random = trim($code);
         foreach ($this->dm->queryType('code')->where('purpose', '=', $purpose)->get()->items() as $record) {
+            $stored = (string) ($record->get('code') ?? '');
             $typed = $record->get('form') === 'readable' ? $readable : $random;
-            if (hash_equals((string) $record->get('code'), $typed)) {
+            if ($stored === '' || $typed === null || $typed === '') {
+                continue;
+            }
+            if (hash_equals($stored, $typed)) {
                 return $record;
             }
         }
