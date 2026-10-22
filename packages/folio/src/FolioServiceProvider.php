@@ -140,15 +140,31 @@ final class FolioServiceProvider extends ServiceProvider
 
         // `preflow migrate` creates the tables of SQL-stored types from their model JSON
         // (the asset table too when config/folio.php names its storage).
+        // With extensions, the install state's table too (folio:extensions:apply runs the same sync).
+        $container->bind(\Preflow\Folio\Storage\TableSync::class, fn (Container $c) => new \Preflow\Folio\Storage\TableSync(
+            $c->get(TypeCatalog::class),
+            $c->get(TypeRegistry::class),
+            $c->get(DataManager::class),
+            isset($assetsConfig['storage']) ? $c->get(\Preflow\Folio\Assets\AssetLibrary::class)->definition() : null,
+            $extensions->all() !== [] ? [$c->get(\Preflow\Folio\Extension\ExtensionState::class)->definition()] : [],
+        ));
         $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
             'folio.tables',
-            static fn (): array => (new \Preflow\Folio\Storage\TableSync(
-                $container->get(TypeCatalog::class),
-                $container->get(TypeRegistry::class),
-                $container->get(DataManager::class),
-                isset($assetsConfig['storage']) ? $container->get(\Preflow\Folio\Assets\AssetLibrary::class)->definition() : null,
-            ))->sync(),
+            static fn (): array => $container->get(\Preflow\Folio\Storage\TableSync::class)->sync(),
         );
+        $container->singleton(\Preflow\Folio\Extension\ExtensionState::class, fn (Container $c) => new \Preflow\Folio\Extension\ExtensionState(
+            $c->get(DataManager::class),
+        ));
+        $container->bind(\Preflow\Folio\Http\ExtensionsController::class, fn (Container $c) => new \Preflow\Folio\Http\ExtensionsController(
+            $c->get(ExtensionRegistry::class),
+            $c->get(\Preflow\Folio\Extension\ExtensionState::class),
+            new \Preflow\Folio\Extension\ExtensionsFile($app->basePath('config/folio/extensions.json')),
+            $c->get(TemplateEngineInterface::class),
+            $c->get(TypeCatalog::class),
+            $prefix,
+            // Toggling on the screen: development by default; elsewhere the committed file is the source.
+            (bool) ($folioCfg['extensions']['allow_admin_changes'] ?? $app->config()->get('app.debug', false)),
+        ));
 
         $container->bind(\Preflow\Folio\Http\MediaVariantController::class, fn (Container $c) => new \Preflow\Folio\Http\MediaVariantController(
             $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
@@ -425,6 +441,10 @@ final class FolioServiceProvider extends ServiceProvider
         $customizations = $container->get(Customizations::class);
         $this->declarePermissions($container, $app);
 
+        // Settings → Extensions, once there is an extension (sites without any keep today's sidebar).
+        if ($container->get(ExtensionRegistry::class)->all() !== []) {
+            $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', 'Extensions', rtrim($this->prefix($app), '/') . '/extensions', 'ui-settings', 'folio.extensions', 900);
+        }
         // Extension screens in the sidebar (filtered by their permission).
         foreach ($screens->all() as $screen) {
             $container->get(\Preflow\Folio\Http\AdminNav::class)->add(
@@ -626,6 +646,7 @@ final class FolioServiceProvider extends ServiceProvider
         $access = $container->get(\Preflow\Auth\Access\Access::class);
         $registry = $access->registry();
         $registry->declare('folio.dashboard', 'Dashboard', 'Folio');
+        $registry->declare('folio.extensions', 'Extensions', 'Folio');
         foreach ($container->get(TypeCatalog::class)->all() as $listing) {
             $registry->declarePattern($listing->key . '.*');
             foreach (['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'] as $action => $verb) {

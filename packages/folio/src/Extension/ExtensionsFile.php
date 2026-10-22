@@ -53,6 +53,43 @@ final class ExtensionsFile
         return $entries;
     }
 
+    /** Enables an extension (kept as is when it already is), or with $part one part of an enabled extension. */
+    public function enable(ExtensionDefinition $extension, ?string $part = null): void
+    {
+        $this->change($extension, $part, true);
+    }
+
+    /** Disables an extension (its data stays), or with $part one part of an enabled extension. */
+    public function disable(ExtensionDefinition $extension, ?string $part = null): void
+    {
+        $this->change($extension, $part, false);
+    }
+
+    private function change(ExtensionDefinition $extension, ?string $part, bool $on): void
+    {
+        $entries = $this->read();
+        $name = $extension->name;
+        if ($part === null) {
+            if ($on) {
+                $entries[$name] ??= ['disabled_parts' => []];
+            } else {
+                unset($entries[$name]);
+            }
+            $this->write($entries);
+
+            return;
+        }
+        if (!$extension->hasPart($part)) {
+            throw new ExtensionException("Extension \"{$name}\" has no part \"{$part}\".");
+        }
+        if (!isset($entries[$name])) {
+            throw new ExtensionException("Extension \"{$name}\" is not enabled; enable it before its parts.");
+        }
+        $disabled = array_values(array_diff($entries[$name]['disabled_parts'], [$part]));
+        $entries[$name]['disabled_parts'] = $on ? $disabled : [...$disabled, $part];
+        $this->write($entries);
+    }
+
     /** @param array<string, array{disabled_parts?: list<string>}> $enabled pretty-printed, keys and part ids sorted, trailing newline */
     public function write(array $enabled): void
     {
