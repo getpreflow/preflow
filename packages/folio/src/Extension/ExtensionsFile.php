@@ -65,6 +65,19 @@ final class ExtensionsFile
         $this->change($extension, $part, false);
     }
 
+    /** Removes an extension's entry by name, whether or not it is still discovered; false when it had none. */
+    public function remove(string $name): bool
+    {
+        $entries = $this->read();
+        if (!isset($entries[$name])) {
+            return false;
+        }
+        unset($entries[$name]);
+        $this->write($entries);
+
+        return true;
+    }
+
     private function change(ExtensionDefinition $extension, ?string $part, bool $on): void
     {
         $entries = $this->read();

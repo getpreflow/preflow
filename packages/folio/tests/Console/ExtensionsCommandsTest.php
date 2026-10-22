@@ -111,25 +111,79 @@ final class ExtensionsCommandsTest extends TestCase
         $this->counter(null);
         $file = $this->dir . '/config/folio/extensions.json';
 
-        $this->assertSame(0, $this->runCommand(new ExtensionsEnableCommand(fn () => $this->app()), ['counter'])[0]);
+        $this->assertSame(0, $this->runCommand(new ExtensionsEnableCommand($this->dir), ['counter'])[0]);
         $this->assertSame("{\n    \"enabled\": {\n        \"counter\": {\n            \"disabled_parts\": []\n        }\n    }\n}\n", file_get_contents($file));
 
-        $this->assertSame(0, $this->runCommand(new ExtensionsDisableCommand(fn () => $this->app()), ['counter', '--part=screen:board'])[0]);
+        $this->assertSame(0, $this->runCommand(new ExtensionsDisableCommand($this->dir), ['counter', '--part=screen:board'])[0]);
         $this->assertSame(['enabled' => ['counter' => ['disabled_parts' => ['screen:board']]]], $this->extensionsFile());
 
-        $this->assertSame(0, $this->runCommand(new ExtensionsEnableCommand(fn () => $this->app()), ['counter', '--part=screen:board'])[0]);
+        $this->assertSame(0, $this->runCommand(new ExtensionsEnableCommand($this->dir), ['counter', '--part=screen:board'])[0]);
         $this->assertSame(['enabled' => ['counter' => ['disabled_parts' => []]]], $this->extensionsFile());
 
-        $this->assertSame(0, $this->runCommand(new ExtensionsDisableCommand(fn () => $this->app()), ['counter'])[0]);
+        $this->assertSame(0, $this->runCommand(new ExtensionsDisableCommand($this->dir), ['counter'])[0]);
         $this->assertSame(['enabled' => []], $this->extensionsFile());
 
-        [$code, $out] = $this->runCommand(new ExtensionsEnableCommand(fn () => $this->app()), ['ghost']);
+        [$code, $out] = $this->runCommand(new ExtensionsEnableCommand($this->dir), ['ghost']);
         $this->assertSame(1, $code);
         $this->assertStringContainsString('Unknown extension "ghost"', $out);
-        [$code, $out] = $this->runCommand(new ExtensionsEnableCommand(fn () => $this->app()), ['counter', '--part=screen:nope']);
+        [$code, $out] = $this->runCommand(new ExtensionsEnableCommand($this->dir), ['counter', '--part=screen:nope']);
         $this->assertSame(1, $code);
         $this->assertStringContainsString('"screen:nope"', $out);
         $this->assertSame(['enabled' => []], $this->extensionsFile());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_disable_works_when_extension_breaks_boot(): void
+    {
+        $this->scaffoldPublishing();
+        $this->counter();
+        $this->clashWithPost();
+        $this->assertSame(1, $this->runCommand(new ExtensionsCheckCommand($this->dir))[0]); // the app no longer boots
+
+        [$code, $out] = $this->runCommand(new ExtensionsDisableCommand($this->dir), ['counter']);
+
+        $this->assertSame(0, $code, $out);
+        $this->assertStringContainsString('Disabled counter', $out);
+        $this->assertSame(['enabled' => []], $this->extensionsFile());
+        $this->assertSame("ok\n", $this->runCommand(new ExtensionsCheckCommand($this->dir))[1]);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_disable_removes_stale_entry(): void
+    {
+        $this->scaffoldPublishing();
+        $this->write('config/folio/extensions.json', '{"enabled": {"gone": {"disabled_parts": ["screen:x"]}}}'); // its folder was deleted
+
+        [$code, $out] = $this->runCommand(new ExtensionsDisableCommand($this->dir), ['gone']);
+        $this->assertSame(0, $code, $out);
+        $this->assertStringContainsString('not discovered', $out);
+        $this->assertSame(['enabled' => []], $this->extensionsFile());
+
+        [$code, $out] = $this->runCommand(new ExtensionsDisableCommand($this->dir), ['gone']);
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('"gone" is not enabled', $out);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_unknown_option_or_extra_argument_exits_1(): void
+    {
+        $this->scaffoldPublishing();
+        $this->counter();
+        $before = (string) file_get_contents($this->dir . '/config/folio/extensions.json');
+
+        foreach ([
+            [ExtensionsDisableCommand::class, ['counter', '--part', 'screen:board']],
+            [ExtensionsDisableCommand::class, ['counter', '--force']],
+            [ExtensionsDisableCommand::class, ['counter', 'screen:board']],
+            [ExtensionsEnableCommand::class, ['counter', '--parts=screen:board']],
+            [ExtensionsEnableCommand::class, ['counter', 'other']],
+            [ExtensionsDisableCommand::class, []],
+        ] as [$class, $args]) {
+            [$code, $out] = $this->runCommand(new $class($this->dir), $args);
+            $this->assertSame(1, $code, implode(' ', $args));
+            $this->assertStringContainsString('Usage: preflow folio:extensions:', $out);
+            $this->assertSame($before, file_get_contents($this->dir . '/config/folio/extensions.json'));
+        }
     }
 
     #[RunInSeparateProcess]
@@ -151,16 +205,7 @@ final class ExtensionsCommandsTest extends TestCase
 
         // A screen colliding with a type (ScreenRegistry, at boot).
         $this->write('config/folio/extensions.json', '{"enabled": {"counter": {"disabled_parts": []}}}');
-        $this->write('app/Folio/Counter/Screens/Clash.php', <<<'PHP'
-            <?php
-            namespace App\Folio\Counter\Screens;
-            #[\Preflow\Folio\Extension\Attributes\FolioScreen('post', 'Clash', permission: 'counter.clash')]
-            final class Clash
-            {
-                #[\Preflow\Routing\Attributes\Get('/')]
-                public function index(): string { return 'clash'; }
-            }
-            PHP);
+        $this->clashWithPost();
         [$code, $out] = $this->runCommand(new ExtensionsCheckCommand($this->dir));
         $this->assertSame(1, $code);
         $this->assertStringContainsString('"post"', $out);
@@ -198,6 +243,21 @@ final class ExtensionsCommandsTest extends TestCase
         $names = array_map(static fn (array $e) => $e[0], iterator_to_array((new TarReader($out))->entries(), false));
         $this->assertContains('folio-export.json', $names);
         $this->assertSame([], array_filter($names, static fn (string $n) => str_contains($n, 'extension_state')));
+    }
+
+    /** A second counter screen whose path collides with the "post" type: boot throws in every environment. */
+    private function clashWithPost(): void
+    {
+        $this->write('app/Folio/Counter/Screens/Clash.php', <<<'PHP'
+            <?php
+            namespace App\Folio\Counter\Screens;
+            #[\Preflow\Folio\Extension\Attributes\FolioScreen('post', 'Clash', permission: 'counter.clash')]
+            final class Clash
+            {
+                #[\Preflow\Routing\Attributes\Get('/')]
+                public function index(): string { return 'clash'; }
+            }
+            PHP);
     }
 
     /** @return array{int, string} */
