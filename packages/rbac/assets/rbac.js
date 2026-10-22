@@ -24,6 +24,10 @@
         if (rest) {
             rest.classList.toggle('is-locked', all);
         }
+        // Kept names (no control) go with the rest: Everything alone stores just "*".
+        field.querySelectorAll('[data-rbac-kept]').forEach(function (input) {
+            input.disabled = all;
+        });
         // The "All" boxes first, so their own state is back before their members follow them.
         field.querySelectorAll('[data-rbac-all]').forEach(function (box) {
             lock(box, all);

@@ -16,7 +16,8 @@ use Preflow\Rbac\RoleList;
  * on top, the content types as a matrix (rows by sidebar section, a column per standard
  * verb, "All" = "{type}.*"), every other declared permission as a chip under its group (the
  * group's pattern, if declared, as the group's "All"). The value is a list of names and
- * patterns; anything not declared is shown as unknown and dropped on save. rbac.js dims and
+ * patterns; anything not declared is shown as unknown and dropped on save, a stored declared
+ * name without a control (a verb that cannot apply) is kept in a hidden input. rbac.js dims and
  * locks what "Everything" or an "All" already grants; without it every box stays usable.
  */
 final class PermissionsFieldType implements FieldType
@@ -56,6 +57,10 @@ final class PermissionsFieldType implements FieldType
         }
 
         $html .= '<div class="rbac-rest" data-rbac-rest>';
+        // Stored, declared names without a control here (a verb that cannot apply): kept as they are.
+        foreach (array_diff(array_intersect($selected, $this->known()), $this->controlled($sections, $others)) as $kept) {
+            $html .= '<input type="hidden" name="' . $name . '" value="' . $e($kept) . '" data-rbac-kept>';
+        }
         if ($sections !== []) {
             $html .= '<div class="folio-table-wrap"><table class="folio-table rbac-matrix"><thead><tr><th scope="col">Type</th>';
             foreach ([...self::VERBS, 'All'] as $verb) {
@@ -207,6 +212,28 @@ final class PermissionsFieldType implements FieldType
         }
 
         return [$sections, array_map(static fn (array $g): array => ['patterns' => $g['patterns'] ?? [], 'names' => $g['names'] ?? []], $groups)];
+    }
+
+    /**
+     * Every value the editor has a control for: "*", the rows' verbs and patterns, the chips and group patterns.
+     *
+     * @param array<string, list<array{names: list<string>, pattern: ?string}>> $sections
+     * @param array<string, array{patterns: list<string>, names: array<string, string>}> $others
+     * @return list<string>
+     */
+    private function controlled(array $sections, array $others): array
+    {
+        $values = ['*'];
+        foreach ($sections as $rows) {
+            foreach ($rows as $row) {
+                array_push($values, ...$row['names'], ...($row['pattern'] !== null ? [$row['pattern']] : []));
+            }
+        }
+        foreach ($others as $group) {
+            array_push($values, ...$group['patterns'], ...array_map('strval', array_keys($group['names'])));
+        }
+
+        return $values;
     }
 
     /** @return list<string> */

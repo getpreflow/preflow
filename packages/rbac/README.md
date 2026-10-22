@@ -34,7 +34,7 @@ population), a label, a population (`staff` or `members`) and permissions.
   as a matrix: one row per type, grouped by sidebar section, a column per verb (View,
   Create, Edit, Publish, Delete) and "All" for the type's `{type}.*`. A verb that cannot
   apply shows as "–": create and delete on a singleton, publish on a type without
-  publishing. Every other declared
+  publishing. Such a name, if a role has it stored, is kept unchanged on save. Every other declared
   permission (Dashboard, assets, extensions' own) is a chip under its group, with the
   group's pattern (e.g. `assets.*`) as the group's "All". With JavaScript, what
   "Everything" or an "All" already grants is shown checked and locked. A stored name that

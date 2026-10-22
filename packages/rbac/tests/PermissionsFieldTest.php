@@ -184,6 +184,38 @@ final class PermissionsFieldTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_stored_names_without_control_survive_save(): void
+    {
+        $this->scaffold();
+        try {
+            $this->install();
+            // No publishing on page and rbac_role: their publish has no checkbox, but stays declared.
+            $stored = ['page.publish', 'page.view', 'rbac_role.publish', 'ghost.view'];
+            $this->role('r-editor', 'staff', 'editor', $stored);
+            $this->as('admin');
+
+            $form = (string) $this->send('GET', '/folio/rbac_role/r-editor/edit')->getBody();
+            $this->assertMatchesRegularExpression('#<input type="hidden" name="permissions\[\]" value="page\.publish" data-rbac-kept>#', $form);
+            $this->assertMatchesRegularExpression('#<input type="hidden" name="permissions\[\]" value="rbac_role\.publish" data-rbac-kept>#', $form);
+            $this->assertStringNotContainsString('<code>page.publish</code>', $form); // not "unknown"
+            $this->assertStringContainsString('Unknown, removed on save: <code>ghost.view</code>', $form);
+
+            // What a browser posts: the empty marker, the checked boxes and the kept names.
+            preg_match_all('#<input type="(?:checkbox|hidden)" name="permissions\[\]" value="([^"]*)"(?:[^>]* checked| data-rbac-kept|)>#', $form, $m);
+            $posted = array_values(array_filter($m[0] === [] ? [] : array_map(
+                static fn (string $tag, string $value): ?string => str_contains($tag, ' checked') || str_contains($tag, 'data-rbac-kept') || $value === '' ? $value : null,
+                $m[0],
+                $m[1],
+            ), static fn (?string $v): bool => $v !== null));
+            $this->assertEqualsCanonicalizing(['', 'page.publish', 'page.view', 'rbac_role.publish'], $posted);
+            $this->assertSame(302, $this->send('POST', '/folio/rbac_role/r-editor', ['name' => 'editor', 'label' => 'Editor', 'population' => 'staff', 'permissions' => $posted])->getStatusCode());
+            $this->assertEqualsCanonicalizing(['page.publish', 'page.view', 'rbac_role.publish'], $this->stored('rbac_role', 'r-editor')?->get('permissions'));
+        } finally {
+            $this->removeScaffold();
+        }
+    }
+
+    #[RunInSeparateProcess]
     public function test_saved_values_roundtrip_unchanged(): void
     {
         $this->scaffold();
