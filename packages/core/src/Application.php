@@ -342,7 +342,7 @@ final class Application
             \Preflow\Core\Throttle\Throttle::class,
             new \Preflow\Core\Throttle\Throttle(
                 $dataManager,
-                (string) $this->config->get('app.key', 'preflow-default-key-change-me!!'),
+                (string) $this->config->get('app.key', \Preflow\Core\Throttle\Throttle::DEFAULT_KEY),
             ),
         );
     }

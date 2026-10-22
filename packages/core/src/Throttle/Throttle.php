@@ -19,9 +19,14 @@ use Psr\Http\Message\ServerRequestInterface;
  * UTC, so a window spanning midnight starts over. hit() is a non-atomic
  * read-modify-write, so this is a soft limit. Rows of earlier days are
  * orphaned by the rotation; hit() prunes them (see prune()).
+ *
+ * client() refuses an empty or the well-known default key: a hash salted with a
+ * public key could be brute-forced back to the IP.
  */
 final class Throttle
 {
+    public const string DEFAULT_KEY = 'preflow-default-key-change-me!!';
+
     private const TABLE = 'preflow_throttle';
 
     private readonly TypeDefinition $type;
@@ -51,6 +56,9 @@ final class Throttle
     /** Daily-rotating, salted client hash from REMOTE_ADDR only (no forwarded headers). */
     public function client(ServerRequestInterface $request): string
     {
+        if ($this->key === '' || $this->key === self::DEFAULT_KEY) {
+            throw new \RuntimeException('Throttle needs APP_KEY (app.key) to be set; the default key would make client hashes reversible.');
+        }
         $ip = $request->getServerParams()['REMOTE_ADDR'] ?? null;
         $ip = is_string($ip) && $ip !== '' ? $ip : 'unknown';
 

@@ -86,6 +86,26 @@ final class ThrottleTest extends DataTestCase
         $this->assertSame($client, $this->throttle()->client($forwarded));
     }
 
+    public function test_client_refuses_default_key(): void
+    {
+        $request = new ServerRequest('GET', '/', [], null, '1.1', ['REMOTE_ADDR' => '203.0.113.7']);
+        foreach (['preflow-default-key-change-me!!', ''] as $key) {
+            $throttle = new Throttle($this->dataManager(), $key, 'default', fn (): int => $this->now);
+            $message = null;
+            try {
+                $throttle->client($request);
+            } catch (\RuntimeException $e) {
+                $message = $e->getMessage();
+            }
+            $this->assertSame('Throttle needs APP_KEY (app.key) to be set; the default key would make client hashes reversible.', $message, "key \"{$key}\"");
+            // The rest works on a client string.
+            $throttle->hit('login', 'some-client', 60);
+            $this->assertTrue($throttle->tooMany('login', 'some-client', 1, 60));
+            $throttle->clear('login', 'some-client');
+            $this->assertFalse($throttle->tooMany('login', 'some-client', 1, 60));
+        }
+    }
+
     public function test_missing_remote_addr_is_unknown_client(): void
     {
         $t = $this->throttle();

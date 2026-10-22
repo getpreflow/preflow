@@ -215,6 +215,8 @@ return [
 `Preflow\Core\Throttle\Throttle` limits attempts (a login, a form, a code guess) in fixed
 windows. It is bound when `config/data.php` exists, stores through the `DataManager` in the
 table `preflow_throttle` (created by `preflow migrate`), and is keyed by `app.key`.
+`client()` throws a `RuntimeException` while `app.key` is empty or the default key: a hash
+salted with a public key could be brute-forced back to the IP.
 
 ```php
 $throttle = $container->get(\Preflow\Core\Throttle\Throttle::class);
