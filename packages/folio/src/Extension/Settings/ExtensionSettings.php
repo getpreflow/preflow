@@ -17,8 +17,9 @@ use Preflow\Folio\Field\FieldTypeRegistry;
 /**
  * Live extension settings: Extension::settings() as the singleton type "{name}_settings"
  * (section Settings, no publishing), edited on the site and read here with the declared
- * defaults. Values come from the working record; null and '' count as not set, translatable
- * ones follow the content fallback chain. An "env" field reads its environment variable.
+ * defaults. Values come from the working record, read through the field type (a boolean
+ * stored as '' or '0' reads false); only null counts as not set. Translatable ones follow
+ * the content fallback chain. An "env" field reads its environment variable.
  */
 final class ExtensionSettings
 {
@@ -100,7 +101,8 @@ final class ExtensionSettings
             : LocaleValue::default($raw, $locales);
 
         $value = $read($this->singletons->record($type)?->get($key));
-        if ($value !== null && $value !== '') {
+        if ($value !== null) {
+            // '' is a real value: a cleared string, or false as SQL storage hands it back
             return $this->fieldTypes->get($field->type)->fromStorage($value);
         }
 

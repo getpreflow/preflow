@@ -121,6 +121,40 @@ final class SettingsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_boolean_default_true_can_be_switched_off_on_sqlite(): void
+    {
+        $this->write('config/data.php', <<<'PHP'
+            <?php
+            return [
+                'drivers' => [
+                    'json' => ['driver' => \Preflow\Data\Driver\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data'],
+                    'sqlite' => ['path' => __DIR__ . '/../storage/app.sqlite'],
+                ],
+                'default' => 'sqlite',
+                'models_path' => __DIR__ . '/models',
+            ];
+            PHP);
+        $this->members();
+        ($this->app()->container()->get(\Preflow\Data\Migration\MigrationRegistry::class)->steps()['folio.tables'])();
+
+        // The unchecked box submits only its hidden "0".
+        $this->assertSame(302, $this->post('/folio/members_settings/members_settings', ['registration_open' => '0'])->getStatusCode());
+
+        $this->assertFalse($this->app()->container()->get(ExtensionSettings::class)->get('members', 'registration_open'));
+        $this->assertDoesNotMatchRegularExpression('#name="registration_open"[^>]*checked#', (string) $this->get('/folio/members_settings')->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_string_setting_with_default_can_be_cleared(): void
+    {
+        $this->members();
+
+        $this->post('/folio/members_settings/members_settings', ['registration_open' => '1', 'notice_address' => '']);
+
+        $this->assertSame('', $this->app()->container()->get(ExtensionSettings::class)->get('members', 'notice_address'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_translatable_setting_per_locale(): void
     {
         $this->members();

@@ -752,8 +752,8 @@ $settings->get('demo', 'greeting', 'de');    // translatable fields: a locale
 - Before the first save the form and `get()` return the declared defaults.
 - Permissions are the settings type's standard ones: `{name}_settings.view` and
   `{name}_settings.edit`.
-- `null` and `''` count as "not set", so a string setting with a non-empty default cannot
-  be cleared (the default returns); use a boolean or a different default for "off".
+- Only `null` (never saved) counts as "not set": a cleared string reads `''`, and an
+  unchecked boolean reads `false` on every storage, also where SQL hands it back as `''`.
 - An unknown extension or key throws in debug and returns null in production.
 - **Secrets stay out of settings.** A field of `'type' => 'env', 'env' => 'MAIL_PASSWORD'`
   stores nothing and shows only "set" or "not set"; `get()` reads the environment variable.
