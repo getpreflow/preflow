@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Auth\Remember;
 
+use Preflow\Auth\Support\FileLock;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
@@ -112,7 +113,7 @@ final class RememberMe
             return null;
         }
 
-        return $this->locked($selector, function () use ($selector, $guard, $validator): array {
+        return FileLock::run($this->lockDir, 'remember-' . $selector, function () use ($selector, $guard, $validator): array {
             $record = $this->dm->findIn($this->type, $selector);
             if ($record === null) {
                 return [null, true];
@@ -157,7 +158,7 @@ final class RememberMe
         if ($this->dm->findIn($this->type, $selector) === null) {
             return;
         }
-        $this->locked($selector, function () use ($selector, $guard): array {
+        FileLock::run($this->lockDir, 'remember-' . $selector, function () use ($selector, $guard): array {
             $record = $this->dm->findIn($this->type, $selector);
             if ($record !== null && hash_equals((string) $record->getId(), $selector) && $record->get('guard') === $guard) {
                 $this->dm->deleteIn($this->type, $selector);
@@ -242,50 +243,5 @@ final class RememberMe
     private static function random(int $bytes): string
     {
         return rtrim(strtr(base64_encode(random_bytes($bytes)), '+/', '-_'), '=');
-    }
-
-    /**
-     * Runs $fn holding an exclusive lock on remember-{selector}.lock in the lock
-     * directory, as Tokens does: $fn returns [result, gone]; the lock file is removed
-     * (best effort) only when gone is true, i.e. the row no longer exists. A lock
-     * taken on a file that was removed meanwhile is retried on the current file.
-     *
-     * @param \Closure(): array{mixed, bool} $fn
-     */
-    private function locked(string $selector, \Closure $fn): mixed
-    {
-        if (!is_dir($this->lockDir) && !@mkdir($this->lockDir, 0755, true) && !is_dir($this->lockDir)) {
-            throw new \RuntimeException("Remember lock directory {$this->lockDir} cannot be created.");
-        }
-        $path = $this->lockDir . '/remember-' . $selector . '.lock';
-        for ($try = 0; $try < 10; $try++) {
-            $handle = fopen($path, 'c');
-            if ($handle === false || !flock($handle, LOCK_EX)) {
-                throw new \RuntimeException("Remember lock {$path} cannot be taken.");
-            }
-            clearstatcache(true, $path);
-            $current = @stat($path);
-            if ($current !== false && $current['ino'] === fstat($handle)['ino']) {
-                break;
-            }
-            flock($handle, LOCK_UN);
-            fclose($handle);
-            $handle = null;
-        }
-        if ($handle === null) {
-            throw new \RuntimeException("Remember lock {$path} cannot be taken.");
-        }
-        try {
-            [$result, $gone] = $fn();
-            if ($gone) {
-                // Before the release: a waiter on this file then retries on a fresh one and finds the row gone.
-                @unlink($path);
-            }
-
-            return $result;
-        } finally {
-            flock($handle, LOCK_UN);
-            fclose($handle);
-        }
     }
 }
