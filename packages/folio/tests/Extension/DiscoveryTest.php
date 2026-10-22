@@ -236,6 +236,21 @@ final class DiscoveryTest extends TestCase
         $this->assertSame("<p>Hi</p>\n", $container->get(\Preflow\View\TemplateEngineInterface::class)->render('@members/hello.twig', ['greeting' => 'Hi']));
     }
 
+    public function test_extension_model_queryable_through_data_manager(): void
+    {
+        $this->project('Members');
+        $this->appConfig();
+        $this->write('config/folio/extensions.json', '{"enabled": {"members": {"disabled_parts": []}}}');
+
+        $container = $this->boot()->container();
+        $dm = $container->get(\Preflow\Data\DataManager::class);
+
+        $this->assertSame($container->get(TypeRegistry::class), $dm->getTypeRegistry());
+        $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get('member'), ['uuid' => 'm1', 'email' => 'a@site.test']));
+        $this->assertSame('a@site.test', $dm->findType('member', 'm1')?->get('email'));
+        $this->assertCount(1, $dm->queryType('member')->get()->items());
+    }
+
     public function test_disabled_model_part_not_registered(): void
     {
         $this->project('Members');

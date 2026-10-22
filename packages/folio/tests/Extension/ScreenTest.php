@@ -89,8 +89,20 @@ final class ScreenTest extends TestCase
         $this->assertMatchesRegularExpression('#<span class="folio-nav-label">Settings</span>\s*<a href="/folio/approvals" class="active" aria-current="page">#', $body);
         $this->assertStringContainsString('#ui-file"></use></svg><span>Approvals</span>', $body);
 
-        $list = (string) $this->send('GET', '/folio/post')->getBody();
-        $this->assertStringContainsString('<a href="/folio/approvals">', $list);
+        $dashboard = (string) $this->send('GET', '/folio')->getBody();
+        $this->assertStringContainsString('<a href="/folio/approvals">', $dashboard);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_dashboard_renders_with_extension_model(): void
+    {
+        $this->members(); // enables the "member" model
+        $this->as('admin');
+
+        $res = $this->send('GET', '/folio');
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('href="/folio/member"', (string) $res->getBody());
     }
 
     #[RunInSeparateProcess]
@@ -118,7 +130,7 @@ final class ScreenTest extends TestCase
         $this->assertStringContainsString('have access to this', (string) $res->getBody());
         $this->assertSame(403, $this->send('POST', '/folio/approvals/m1/approve')->getStatusCode());
 
-        $list = $this->send('GET', '/folio/post');
+        $list = $this->send('GET', '/folio'); // editor has folio.dashboard
         $this->assertSame(200, $list->getStatusCode());
         $this->assertStringNotContainsString('href="/folio/approvals"', (string) $list->getBody());
     }
@@ -131,7 +143,7 @@ final class ScreenTest extends TestCase
 
         $this->assertSame(404, $this->send('GET', '/folio/approvals')->getStatusCode());
         $this->assertNotSame(302, $this->send('POST', '/folio/approvals/m1/approve')->getStatusCode());
-        $this->assertStringNotContainsString('href="/folio/approvals"', (string) $this->send('GET', '/folio/post')->getBody());
+        $this->assertStringNotContainsString('href="/folio/approvals"', (string) $this->send('GET', '/folio')->getBody());
     }
 
     #[RunInSeparateProcess]

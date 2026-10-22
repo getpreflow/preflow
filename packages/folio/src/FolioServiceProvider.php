@@ -56,10 +56,12 @@ final class FolioServiceProvider extends ServiceProvider
         $catalog = new TypeCatalog($modelsPath);
         $container->instance(TypeCatalog::class, $catalog);
 
-        // Bind unconditionally: Container::has() falls back to class_exists(),
-        // so the guard would always be false and the instance would never be bound.
+        // The DataManager's registry when it has one, so types defined at runtime (extension
+        // models) are the ones it queries. Otherwise Folio's own, bound unconditionally:
+        // Container::has() falls back to class_exists(), so a has() guard would never bind it.
         $locales = $this->locales($container);
-        $types = new TypeRegistry($modelsPath, $locales);
+        $dataManager = $this->dataManager($container, $app);
+        $types = $dataManager?->getTypeRegistry() ?? new TypeRegistry($modelsPath, $locales);
         $container->instance(TypeRegistry::class, $types);
 
         // Extensions (app/Folio/*, Composer extra.folio.extension), enabled by the committed
@@ -72,7 +74,11 @@ final class FolioServiceProvider extends ServiceProvider
             make: static fn (string $class): object => $container->get($class),
         );
         $container->instance(ExtensionRegistry::class, $extensions);
-        foreach ($extensions->enabledModels() as $schema) {
+        $extensionModels = $extensions->enabledModels();
+        if ($extensionModels !== [] && $dataManager !== null && $dataManager->getTypeRegistry() === null) {
+            throw new \Preflow\Folio\Extension\ExtensionException("Extension models need the models directory {$modelsPath} (data.models_path); create it.");
+        }
+        foreach ($extensionModels as $schema) {
             try {
                 $types->define($schema);
                 $catalog->add($schema);
@@ -618,6 +624,19 @@ final class FolioServiceProvider extends ServiceProvider
     {
         try {
             return $container->get(\Preflow\Data\Locales::class);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /** The app's DataManager (core builds it from config/data.php), or null without one. */
+    private function dataManager(Container $container, Application $app): ?DataManager
+    {
+        if (!is_file($app->basePath('config/data.php'))) {
+            return null;
+        }
+        try {
+            return $container->get(DataManager::class);
         } catch (\Throwable) {
             return null;
         }
