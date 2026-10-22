@@ -402,3 +402,32 @@ A code is a string that grants something to whoever redeems it, for one purpose.
   9. release 0.20.
 - Whether this step is one plan or two (for example the extension core and settings
   first, then RBAC, codes and the site). It is large; the builder may split it.
+
+## Amendments (2026-10-22, after plan A)
+
+- **Sidebar structure** (requested by the user):
+  - A model JSON chooses where its type sits in the Folio sidebar: `"section"`, `"order"`
+    and `"icon"`, plus `"nav": false` to leave it out.
+  - Pages get their own section, apart from the data and collection types. The Site
+    singleton moves to Settings.
+- **RBAC as Folio types** (designer's call, replaces "Settings → Roles screen" and "a
+  form panel on user records"):
+  - Roles are an extension model type `rbac_role` under Settings → Roles. Its permissions
+    field is an RBAC field type with grouped checkboxes.
+  - A user's roles are an RBAC field type on the user type, edited in the normal form.
+  - Lock-out protection runs as BeforeSave and BeforeDelete hooks.
+  - The permissions are the type's standard ones (`rbac_role.view|edit|…`), not
+    `rbac.manage`.
+  - *Why:* this reuses Folio's list, form, validation and transfer instead of a second
+    editor.
+- **Codes as a Folio type** (designer's call):
+  - Codes are an extension model type `code` (no transfer) under Library → Codes.
+  - Revoking is a record action, redemptions are a panel, and the redemption count is a
+    list column.
+  - Redemptions live in their own table.
+- **Storage aliases** (designer's call):
+  - `config/data.php` may map an alias to a configured driver (`'aliases' => ['codes' =>
+    'sqlite']`).
+  - Packages name an alias (`codes`, `throttle`), so the site decides where their data
+    lives. An unconfigured alias is an error, except `throttle`, which falls back to
+    `default`.
