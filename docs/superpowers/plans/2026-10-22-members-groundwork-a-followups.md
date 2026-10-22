@@ -62,3 +62,5 @@ reviews. Plan B has to handle them before smart-stack.works adopts the groundwor
 - Readable codes: also strip U+2212 (minus) and U+00AD (soft hyphen).
 - `check()` on codes is unthrottled — visitor-facing code must use `redeem()` with a client.
 - A delegation rule is needed before any site manages staff accounts as a Folio user type (`rbac_roles` on staff is refused for now).
+- smart-stack.works: `storage/backups` is not in Deployer's shared_dirs, so `folio:import`/pull backups land in the release folder and disappear when releases rotate — add it to shared_dirs.
+- MySQL: `preflow_throttle` (and other migrations using `uuid()->primary()`) declare a TEXT primary key, which MySQL rejects without a key length.
