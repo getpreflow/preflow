@@ -6,6 +6,7 @@ namespace Preflow\Codes;
 
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DataManager;
+use Preflow\Data\Driver\MysqlDialect;
 use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\SortDirection;
@@ -223,9 +224,12 @@ final class Codes
             $id = $dialect->quoteIdentifier($type->idField);
             $uses = $dialect->quoteIdentifier('uses');
             $max = $dialect->quoteIdentifier('max_uses');
+            // Folio syncs these columns as TEXT, so compare as numbers, never as strings.
+            $int = $dialect instanceof MysqlDialect ? 'SIGNED' : 'INTEGER';
+            $count = "CAST(COALESCE({$uses}, 0) AS {$int})";
 
             return $this->dm->execute(
-                "UPDATE {$table} SET {$uses} = {$uses} + 1 WHERE {$id} = ? AND ({$max} IS NULL OR {$max} = '' OR {$uses} < {$max})",
+                "UPDATE {$table} SET {$uses} = {$count} + 1 WHERE {$id} = ? AND ({$max} IS NULL OR {$max} = '' OR {$count} < CAST({$max} AS {$int}))",
                 [$codeId],
                 $type->storage,
             ) === 1;

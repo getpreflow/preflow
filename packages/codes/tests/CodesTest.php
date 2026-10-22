@@ -370,7 +370,7 @@ final class CodesTest extends TestCase
         $this->assertCount(1, $a->redemptions($id));
     }
 
-    public function test_concurrent_redeem_on_json_storage_counts_under_lock(): void
+    public function test_json_storage_counts_under_file_lock(): void
     {
         $this->dataConfig(['codes' => 'json']);
         $codes = $this->codes();
@@ -379,6 +379,30 @@ final class CodesTest extends TestCase
         $this->assertTrue($codes->redeem('ONLYONCE', 'members.book')->ok);
         $this->assertSame('used_up', $codes->redeem('ONLYONCE', 'members.book')->reason);
         $this->assertFileExists($this->dir . '/storage/locks');
+    }
+
+    public function test_max_uses_ten_allows_exactly_ten(): void
+    {
+        $codes = $this->codes();
+        $codes->issue('members.book', [], 'TENTIMES', maxUses: 10);
+        for ($i = 0; $i < 10; $i++) {
+            $this->assertTrue($codes->redeem('TENTIMES', 'members.book')->ok, "use {$i}");
+        }
+        $this->assertSame('used_up', $codes->redeem('TENTIMES', 'members.book')->reason);
+    }
+
+    public function test_uses_above_nine_compared_numerically(): void
+    {
+        $codes = $this->codes();
+        $dm = $this->app()->container()->get(DataManager::class);
+        foreach ([[12, true], [2, false]] as [$max, $ok]) {
+            $codes->issue('members.book', [], "MAX{$max}CODE", maxUses: $max);
+            $id = (string) $codes->check("MAX{$max}CODE", 'members.book')->codeId;
+            $dm->execute("UPDATE code SET uses = '10' WHERE uuid = ?", [$id], 'codes');
+            $result = $codes->redeem("MAX{$max}CODE", 'members.book');
+            $this->assertSame($ok, $result->ok, "max {$max}");
+            $this->assertSame($ok ? null : 'used_up', $result->reason);
+        }
     }
 
     public function test_unlimited_code_counts_every_use(): void
