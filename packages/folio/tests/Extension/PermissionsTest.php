@@ -107,6 +107,17 @@ final class PermissionsTest extends TestCase
         $this->assertNull($registry->disabledReason('post.view'));
     }
 
+    #[RunInSeparateProcess]
+    public function test_disabled_extension_model_shadowing_site_type_throws(): void
+    {
+        $this->crm(enabled: false);
+        $this->write('app/Folio/Crm/models/post.json', '{"key": "post", "label": "Posts", "table": "post", "storage": "json", "id_field": "uuid", "fields": {"title": {"type": "string"}}}');
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessage('"post"');
+        $this->app();
+    }
+
     /**
      * An extension "crm": a #[DeclaresPermission], a screen, a "lead" model and a type
      * customization of "post" with a record action.

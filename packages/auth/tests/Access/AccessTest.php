@@ -144,4 +144,15 @@ final class AccessTest extends TestCase
         $log = (string) file_get_contents($this->log);
         $this->assertSame(1, substr_count($log, 'permission members.approve belongs to a disabled extension members'));
     }
+
+    public function test_disabled_permission_denied_without_auth(): void
+    {
+        $this->registry->declare('members.approve');
+        $this->registry->disable('members.approve', 'extension members');
+        $access = new Access(null, $this->registry, true, []);
+
+        $this->assertFalse($access->can('members.approve'));
+        $this->assertFalse($access->can('members.approve'));
+        $this->assertSame(1, substr_count((string) file_get_contents($this->log), 'permission members.approve belongs to a disabled extension members'));
+    }
 }

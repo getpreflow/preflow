@@ -59,9 +59,6 @@ final class Access
 
     public function can(string $permission, ?object $subject = null): bool
     {
-        if ($this->auth === null) {
-            return true; // no auth configured: nothing to restrict (e.g. Folio without login)
-        }
         $disabled = $this->registry->disabledReason($permission);
         if ($disabled !== null) { // before the undeclared check; a disabled name never throws, not even in debug
             if (!isset($this->logged[$permission])) {
@@ -70,6 +67,9 @@ final class Access
             }
 
             return false;
+        }
+        if ($this->auth === null) {
+            return true; // no auth configured: nothing to restrict (e.g. Folio without login)
         }
         if (!$this->registry->isDeclared($permission)) {
             if ($this->debug) {

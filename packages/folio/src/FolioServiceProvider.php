@@ -612,7 +612,7 @@ final class FolioServiceProvider extends ServiceProvider
         foreach (['view' => 'View', 'upload' => 'Upload', 'edit' => 'Edit', 'delete' => 'Delete'] as $action => $verb) {
             $registry->declare('assets.' . $action, $verb, 'Assets');
         }
-        $this->declareExtensionPermissions($registry, $container->get(ExtensionRegistry::class));
+        $this->declareExtensionPermissions($registry, $container->get(ExtensionRegistry::class), $container->get(TypeCatalog::class));
 
         if (file_exists($app->basePath('config/auth.php'))) {
             $access->markStaffGuard($container->get(\Preflow\Auth\AuthManager::class)->defaultGuardName());
@@ -626,14 +626,14 @@ final class FolioServiceProvider extends ServiceProvider
      * disabled part) are declared and disabled: denied and logged once, never a 500. A name
      * Folio declares itself (folio.*, assets.*, a non-extension type's) is an ExtensionException.
      */
-    private function declareExtensionPermissions(\Preflow\Auth\Access\PermissionRegistry $registry, ExtensionRegistry $extensions): void
+    private function declareExtensionPermissions(\Preflow\Auth\Access\PermissionRegistry $registry, ExtensionRegistry $extensions, TypeCatalog $catalog): void
     {
         $standard = ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'];
         $declared = array_keys($registry->all()); // Folio's own plus the enabled extension models' standard names
         $modelNames = [];
         foreach ($extensions->all() as $definition) {
             foreach ($definition->parts as $part) {
-                if ($part['kind'] === 'model') {
+                if ($part['kind'] === 'model' && $extensions->partEnabled($definition->name, $part['id'])) {
                     foreach (array_keys($standard) as $action) {
                         $modelNames[substr($part['id'], 6) . '.' . $action] = true;
                     }
@@ -657,6 +657,9 @@ final class FolioServiceProvider extends ServiceProvider
             foreach ($definition->parts as $part) {
                 $reason = $extensionReason ?? ($extensions->partEnabled($definition->name, $part['id']) ? null : "part {$part['id']} of extension {$definition->name}");
                 if ($part['kind'] === 'model' && $reason !== null) {
+                    if ($catalog->has(substr($part['id'], 6))) { // a switched-off model must not shadow the site's own type
+                        throw new \Preflow\Folio\Extension\ExtensionException("Extension \"{$definition->name}\" ships model \"" . substr($part['id'], 6) . '", which is already a content type of the site.');
+                    }
                     foreach ($standard as $action => $verb) {
                         $entries[] = ['name' => substr($part['id'], 6) . '.' . $action, 'label' => $verb, 'group' => $part['label'], 'reason' => $reason];
                     }
