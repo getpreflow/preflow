@@ -236,7 +236,7 @@ available for every type that has a route.
 ```
 
 - `columns`: the fields shown. The default is the first three
-  string/number/select/boolean/date fields.
+  string/number/select/boolean/date fields that are not hidden.
 - `sort`: the default order. A `-` prefix means descending.
 - `orderable: true`: up/down buttons that store a manual position in the record's
   `_order` key. New records go to the end.
@@ -267,6 +267,15 @@ an error naming the type.
 `string`, `text` (`"monospace": true` gives a code-style editor), `number`, `boolean`,
 `date` (`"time": true` for date and time), `select` (`"options"` as a map or a list;
 `"display": "radio"`), `richtext`, `asset`, `relation` and `matrix`.
+
+Any field also takes:
+
+- `"hidden": true`: not shown in the edit form or the default list columns. A save keeps
+  the stored value; a posted value is ignored.
+- `"readonly": true`: shown in the edit form as plain text, without an input. A save keeps
+  the stored value; a posted value is ignored.
+
+Both apply on create too: such a field starts empty unless a `#[BeforeSave]` hook sets it.
 
 A field type's own rules (e.g. `select`'s allowed values) are enforced in addition to
 `validate`. To add or replace a type, list the classes in `config/folio.php`:

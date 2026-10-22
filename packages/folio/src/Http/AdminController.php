@@ -476,10 +476,23 @@ final class AdminController
         $editorAssets = [];
         $multipart = false;
         foreach ($typeDef->fields as $name => $fieldDef) {
-            if ($name === $typeDef->idField) {
+            if ($name === $typeDef->idField || ($fieldDef->config['hidden'] ?? false) === true) {
                 continue;
             }
             $fieldType = $this->fieldTypes->get($fieldDef->type);
+            if (($fieldDef->config['readonly'] ?? false) === true) {
+                $fields[] = [
+                    'name' => $name,
+                    'html' => self::readonlyField($name, $fieldDef->label, $fieldDef->help, $fieldType->fromStorage(
+                        isset($translatable[$name]) ? LocaleValue::pick($values[$name] ?? null, $locales, $locale) : LocaleValue::default($values[$name] ?? null, $locales),
+                    )),
+                    'translatable' => isset($translatable[$name]),
+                    'structured' => false,
+                    'falls_back' => false,
+                    'reference' => null,
+                ];
+                continue;
+            }
             if ($fieldType instanceof HandlesUpload || $fieldType instanceof BlocksFieldType) {
                 $multipart = true; // blocks may contain upload fields
             }
@@ -956,6 +969,24 @@ final class AdminController
         return null;
     }
 
+    /** A read-only field: its label and value as escaped plain text, no input. */
+    private static function readonlyField(string $name, ?string $label, ?string $help, mixed $value): string
+    {
+        $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = match (true) {
+            $value === null, $value === '', $value === [] => '—',
+            is_bool($value) => $value ? 'Yes' : 'No',
+            is_scalar($value) => (string) $value,
+            default => (string) json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+        };
+
+        return '<div class="form-group folio-readonly">' . "\n"
+            . '  <span class="form-label">' . $e($label ?? (new \Preflow\Form\FieldRenderer())->humanize($name)) . '</span>' . "\n"
+            . '  <p class="folio-readonly-value">' . $e($text) . '</p>' . "\n"
+            . ($help !== null && $help !== '' ? '  <small class="form-help">' . $e($help) . '</small>' . "\n" : '')
+            . '</div>';
+    }
+
     /** Plain text for placeholders and references (field values may hold rich text). */
     private static function plain(mixed $value): string
     {
@@ -968,7 +999,7 @@ final class AdminController
 
     /**
      * Columns for the admin list: "list.columns" from the type JSON, else the
-     * first three plain-valued fields.
+     * first three plain-valued fields that are not hidden.
      *
      * @param array<string, mixed> $listConfig
      * @return array<string, string> field => header label
@@ -982,7 +1013,7 @@ final class AdminController
 
         if ($names === []) {
             foreach ($typeDef->fields as $name => $fieldDef) {
-                if ($name !== $typeDef->idField && in_array($fieldDef->type, self::LIST_TYPES, true)) {
+                if ($name !== $typeDef->idField && in_array($fieldDef->type, self::LIST_TYPES, true) && ($fieldDef->config['hidden'] ?? false) !== true) {
                     $names[] = $name;
                 }
                 if (count($names) === 3) {
