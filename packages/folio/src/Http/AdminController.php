@@ -223,7 +223,10 @@ final class AdminController
             $record->set(self::ORDER, $this->maxOrder($type) + 10);
         }
         $data = [$typeDef->idField => $record->getId()];
-        $this->customizations?->runHooks(BeforeSave::class, $record); // before validation
+        if (($errors = $this->beforeSave($record)) !== null) {
+            $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
+            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), 'New ' . $this->labelFor($type), $errors, $csrf, 422, $layout, $locale);
+        }
 
         if ($this->publishes($type)) {
             // Once saved, the record exists: a re-rendered form must update it, not create another.
@@ -316,7 +319,9 @@ final class AdminController
         if ($this->drafts->uploadErrors() !== []) {
             return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . '/' . $id, 'Edit ' . $this->labelFor($type), $this->drafts->uploadErrors(), $csrf, 422, locale: $locale, editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit');
         }
-        $this->customizations?->runHooks(BeforeSave::class, $record); // before validation
+        if (($errors = $this->beforeSave($record)) !== null) {
+            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . '/' . $id, 'Edit ' . $this->labelFor($type), $errors, $csrf, 422, locale: $locale, editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit');
+        }
 
         if ($this->publishes($type)) {
             $failed = $this->savePublishing($request, $record, $type, $this->prefix . '/' . $type . '/' . $id, 'Edit ' . $this->labelFor($type), $csrf, $locale, $this->prefix . '/' . $type . '/' . $id . '/edit');
@@ -683,6 +688,23 @@ final class AdminController
         }
 
         return $badges;
+    }
+
+    /**
+     * The #[BeforeSave] hooks, before validation. A hook throwing ValidationException refuses
+     * the save: its errors, for the form to show again.
+     *
+     * @return array<string, list<string>>|null
+     */
+    private function beforeSave(DynamicRecord $record): ?array
+    {
+        try {
+            $this->customizations?->runHooks(BeforeSave::class, $record);
+        } catch (ValidationException $e) {
+            return $e->errors();
+        }
+
+        return null;
     }
 
     /**

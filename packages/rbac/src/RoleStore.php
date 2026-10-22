@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Rbac;
 
 use Preflow\Data\DataManager;
+use Preflow\Data\DynamicRecord;
 
 /** The rbac_role records, loaded once per instance (one per request). */
 final class RoleStore
@@ -18,6 +19,28 @@ final class RoleStore
     public function rolesFor(string $population): array
     {
         return $this->all()[$population] ?? [];
+    }
+
+    /**
+     * Creates the role when the population has none of that name; an existing role is never
+     * changed (sites seed their roles with it, editors own them afterwards).
+     *
+     * @param list<string> $permissions
+     */
+    public function ensure(string $population, string $name, string $label, array $permissions): void
+    {
+        if (isset($this->rolesFor($population)[$name])) {
+            return;
+        }
+        $type = $this->dm->getTypeRegistry()->get('rbac_role');
+        $this->dm->saveType(DynamicRecord::fromArray($type, [
+            $type->idField => bin2hex(random_bytes(16)),
+            'name' => $name,
+            'label' => $label,
+            'population' => $population,
+            'permissions' => RoleList::normalize($permissions),
+        ]), false);
+        $this->roles = null;
     }
 
     /** @return array<string, array<string, list<string>>> */

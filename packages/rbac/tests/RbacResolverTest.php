@@ -15,6 +15,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Extension\ExtensionState;
 use Preflow\Rbac\RbacResolver;
 use Preflow\Rbac\RoleStore;
 use Preflow\Roles\ConfigRoleResolver;
@@ -42,10 +43,14 @@ final class RbacResolverTest extends TestCase
     }
 
     /** @param list<array{string, string, mixed}> $roles population, name, permissions */
-    private function resolver(array $roles): RbacResolver
+    private function resolver(array $roles, bool $installed = true): RbacResolver
     {
         $registry = new TypeRegistry(dirname(__DIR__) . '/src/models');
         $dm = new DataManager(drivers: ['default' => new JsonFileDriver($this->dir . '/store')], typeRegistry: $registry);
+        $state = new ExtensionState($dm);
+        if ($installed) {
+            $state->markInstalled('rbac', '1.0.0');
+        }
         foreach ($roles as $i => [$population, $name, $permissions]) {
             $dm->saveType(DynamicRecord::fromArray($registry->get('rbac_role'), [
                 'uuid' => 'r' . $i, 'name' => $name, 'label' => ucfirst($name),
@@ -53,7 +58,7 @@ final class RbacResolverTest extends TestCase
             ]), validate: false);
         }
 
-        return new RbacResolver(new RoleStore($dm));
+        return new RbacResolver(new RoleStore($dm), $state);
     }
 
     public function test_staff_role_pattern_grants(): void
@@ -101,21 +106,52 @@ final class RbacResolverTest extends TestCase
 
     public function test_no_staff_roles_yet_staff_may_do_everything(): void
     {
-        $resolver = $this->resolver([['members', 'member', ['tools.*']]]);
-        $log = $this->dir . '/error.log';
-        $previous = ini_set('error_log', $log);
-
-        try {
+        // Enabled, but folio:extensions:apply has not installed it here yet.
+        $resolver = $this->resolver([['members', 'member', ['tools.*']]], installed: false);
+        $lines = $this->logged(function () use ($resolver): void {
             $this->assertTrue($resolver->allows(new TestUser(roles: ['admin']), 'staff', 'rbac_role.edit', null));
             $this->assertTrue($resolver->allows(new TestUser(roles: []), 'staff', 'page.edit', null));
             $this->assertFalse($resolver->allows(new TestUser(roles: []), 'members', 'tools.use', null));
+        }, 'not installed');
+
+        $this->assertCount(1, $lines, 'logged once per request');
+        $this->assertStringContainsString('folio:extensions:apply', $lines[0]);
+    }
+
+    public function test_not_installed_staff_may_do_everything_even_with_staff_roles(): void
+    {
+        $resolver = $this->resolver([['staff', 'editor', ['page.*']]], installed: false);
+
+        $this->logged(function () use ($resolver): void {
+            $this->assertTrue($resolver->allows(new TestUser(roles: ['editor']), 'staff', 'rbac_role.edit', null));
+        }, 'not installed');
+    }
+
+    public function test_after_install_empty_staff_roles_grant_nothing(): void
+    {
+        $resolver = $this->resolver([['members', 'member', ['tools.*']]]);
+        $lines = $this->logged(function () use ($resolver): void {
+            $this->assertFalse($resolver->allows(new TestUser(roles: ['admin']), 'staff', 'rbac_role.edit', null));
+            $this->assertFalse($resolver->allows(new TestUser(roles: []), 'staff', 'page.edit', null));
+            $this->assertTrue($resolver->allows(new TestUser(roles: ['member']), 'members', 'tools.use', null));
+        }, 'no staff roles defined');
+
+        $this->assertCount(1, $lines, 'logged once per request');
+        $this->assertStringContainsString('run folio:extensions:apply or create one under Settings → Roles', $lines[0]);
+    }
+
+    /** @return list<string> the error_log lines containing $needle written while $run ran */
+    private function logged(\Closure $run, string $needle): array
+    {
+        $log = $this->dir . '/error.log';
+        $previous = ini_set('error_log', $log);
+        try {
+            $run();
         } finally {
             ini_set('error_log', (string) $previous);
         }
 
-        $lines = array_values(array_filter(explode("\n", (string) @file_get_contents($log)), fn ($l) => str_contains($l, 'no staff roles')));
-        $this->assertCount(1, $lines, 'logged once per request');
-        $this->assertStringContainsString('folio:extensions:apply', $lines[0]);
+        return array_values(array_filter(explode("\n", (string) @file_get_contents($log)), fn ($l) => str_contains($l, $needle)));
     }
 
     /** @return array<string, array{bool, class-string}> */

@@ -199,6 +199,24 @@ final class CustomizationTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_before_save_validation_exception_shows_form_again(): void
+    {
+        $this->crm();
+        $this->as('admin');
+
+        $res = $this->send('POST', '/folio/contact', ['name' => 'Ada', 'status' => 'blocked']);
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('Blocked contacts cannot be saved.', (string) $res->getBody());
+        $this->assertSame([], $this->session->container()->get(DataManager::class)->queryType('contact')->get()->items());
+
+        $this->seed('contact', 'c1', ['name' => 'Ada', 'status' => 'new']);
+        $update = $this->send('POST', '/folio/contact/c1', ['name' => 'Ada L.', 'status' => 'blocked']);
+        $this->assertSame(422, $update->getStatusCode());
+        $this->assertStringContainsString('Blocked contacts cannot be saved.', (string) $update->getBody());
+        $this->assertSame('Ada', $this->stored('contact', 'c1')?->get('name'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_after_save_sees_saved_record(): void
     {
         $this->crm();
@@ -376,6 +394,9 @@ final class CustomizationTest extends TestCase
                         $record->set('name', 'Anonymous');
                     }
                     $record->set('email', strtolower((string) $record->get('email')));
+                    if ($record->get('status') === 'blocked') {
+                        throw new \Preflow\Validation\ValidationException(new \Preflow\Validation\ValidationResult(['status' => ['Blocked contacts cannot be saved.']]));
+                    }
                     Log::$entries[] = 'before:contact:' . $record->get('name');
                 }
 
