@@ -176,6 +176,7 @@ final class FrontendGateTest extends TestCase
 
         $res = $this->fetch('/vault/secret');
         $this->assertSame(404, $res->getStatusCode());
+        $this->assertSame('private, no-store', $res->getHeaderLine('Cache-Control'));
         $this->assertStringNotContainsString('Vault page', (string) $res->getBody());
     }
 
@@ -233,6 +234,53 @@ final class FrontendGateTest extends TestCase
         $this->assertSame(200, $ok->getStatusCode());
         $this->assertStringContainsString('Unreleased guide', (string) $ok->getBody());
         $this->assertSame('private, no-store', $ok->getHeaderLine('Cache-Control'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_gated_type_refused_without_auth_config(): void
+    {
+        unlink($this->dir . '/config/auth.php');
+        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");
+        $this->published('resource', 'r1', 'Members guide', 'guide');
+        $this->published('vault', 'v1', 'Vault page', 'secret');
+
+        $res = $this->fetch('/tools/r/guide');
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame('/tools/login?next=%2Ftools%2Fr%2Fguide', $res->getHeaderLine('Location'));
+        $this->assertSame(404, $this->fetch('/vault/secret')->getStatusCode());
+    }
+
+    /** A public post listing and finding resources. */
+    private function listingPost(): void
+    {
+        $this->write('resources/folio/frontend/post.twig', '<ul>{% for r in folio_list("resource") %}<li>{{ r.title }}</li>{% endfor %}</ul>'
+            . '<p class="found">{{ folio_find("resource", "r1").title|default("none") }}</p>');
+        $this->published('post', 'p1', 'Public post', 'hello');
+        $this->published('resource', 'r1', 'Members guide', 'guide');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_folio_list_hides_gated_type_from_visitors(): void
+    {
+        $this->listingPost();
+
+        $body = (string) $this->fetch('/hello')->getBody();
+        $this->assertStringNotContainsString('Members guide', $body);
+        $this->assertStringContainsString('<p class="found">none</p>', $body);
+
+        $this->signIn('_auth_user_id.members', 'guest@site.test'); // signed in, without the permission
+        $this->assertStringNotContainsString('Members guide', (string) $this->fetch('/hello')->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_folio_list_shows_gated_type_to_member(): void
+    {
+        $this->listingPost();
+        $this->signIn('_auth_user_id.members', 'member@site.test');
+
+        $body = (string) $this->fetch('/hello')->getBody();
+        $this->assertStringContainsString('<li>Members guide</li>', $body);
+        $this->assertStringContainsString('<p class="found">Members guide</p>', $body);
     }
 
     #[RunInSeparateProcess]

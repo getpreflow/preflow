@@ -206,10 +206,12 @@ A type's `key` cannot be a path Folio uses under its prefix (`login`, `logout`,
 - `published`: which field and value make a record public. The default is `status` /
   `published`. It only applies when [publishing](#drafts-and-publishing) is off for the
   type.
-- `permission` (optional): only users with this permission see the type's pages, e.g.
-  `"members.access"`. It must be declared (by an extension's `#[DeclaresPermission]` or
-  app code); an undeclared name throws in debug and refuses everyone otherwise. Staff
-  with `*` pass too. Allowed pages are sent with `Cache-Control: private, no-store`.
+- `permission` (optional): only signed-in users with this permission see the type's
+  pages, e.g. `"members.access"`. It must be declared (by an extension's
+  `#[DeclaresPermission]` or app code); an undeclared name throws in debug and refuses
+  everyone otherwise. Staff with `*` pass too. Allowed pages, redirects and refusal 404s
+  are sent with `Cache-Control: private, no-store`. `folio_list()` and `folio_find()`
+  (and `Collections`) return nothing for the type to anyone the gate refuses.
 - `login` (optional, with `permission`): where refused visitors go, as
   `login?next={the page's URL}`. A path on this site, or one per locale:
   `{"en": "/tools/login", "de": "/de/tools/login"}`. Without it they get a 404.
@@ -222,8 +224,8 @@ The gate needs the signed-in user, and sessions only exist on `session.paths` (w
 config/auth.php sets them): include the route's prefix there (`/tools`, and `/de/tools`
 for prefixed locales), or every visitor counts as signed out. A share-preview link does not
 open the gate: it stays a staff tool, and the reviewer must pass the gate as well. The
-admin live preview is unaffected. Without auth configured, `Access` allows everything, so
-the gate does too.
+admin live preview is unaffected. The gate fails closed: without auth configured nobody is
+signed in, so nobody passes it.
 
 Any template can read other content too:
 

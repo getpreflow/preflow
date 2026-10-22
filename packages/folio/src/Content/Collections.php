@@ -8,7 +8,8 @@ namespace Preflow\Folio\Content;
  * Records of a collection for public templates and app code (folio_list,
  * folio_find): live content only (published snapshots of publishing types;
  * working copies in the admin preview), localized to the content locale, in
- * the type's list order. Memoized per request.
+ * the type's list order. Memoized per request. A type gated by
+ * frontend.permission lists nothing for visitors without it (FrontendGate).
  */
 final class Collections
 {
@@ -20,13 +21,14 @@ final class Collections
         private readonly TypeCatalog $catalog,
         private readonly ContentLocale $locale,
         private readonly ?SafeRichText $richText = null,
+        private readonly ?FrontendGate $gate = null,
     ) {}
 
     /** @return list<array<string, mixed>> */
     public function list(string $type): array
     {
         $listing = $this->catalog->get($type);
-        if ($listing === null) {
+        if ($listing === null || !$this->visible($listing)) {
             return [];
         }
 
@@ -47,13 +49,20 @@ final class Collections
     /** @return array<string, mixed>|null */
     public function find(string $type, string $id): ?array
     {
-        if (!$this->catalog->has($type)) {
+        $listing = $this->catalog->get($type);
+        if ($listing === null || !$this->visible($listing)) {
             return null;
         }
 
         $values = $this->live->find($type, $id)?->localized($this->locale->get())->toArray();
 
         return $values !== null ? $this->safe($values, $type) : null;
+    }
+
+    /** Without a gate, only types without frontend.permission are visible. */
+    private function visible(TypeListing $listing): bool
+    {
+        return $this->gate?->allowsType($listing) ?? !isset($listing->frontend['permission']);
     }
 
     /**

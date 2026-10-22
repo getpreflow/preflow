@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Auth\Access;
 
+use Preflow\Auth\Authenticatable;
 use Preflow\Auth\AuthManager;
 
 /**
@@ -88,6 +89,12 @@ final class Access
         }
 
         return $this->resolver->allows($user, $this->populationOf($this->auth->guardName() ?? ''), $permission, $subject);
+    }
+
+    /** The user signed in for this request; null when nobody is, or no auth is configured. */
+    public function user(): ?Authenticatable
+    {
+        return $this->auth?->user();
     }
 
     public function registry(): PermissionRegistry

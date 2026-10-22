@@ -340,6 +340,10 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
             $c->get(\Preflow\Folio\Content\LiveContent::class),
             $c->get(\Preflow\View\AssetCollector::class),
+            $c->get(\Preflow\Folio\Content\FrontendGate::class),
+            $c->get(\Preflow\Core\Error\ErrorHandler::class),
+        ));
+        $container->singleton(\Preflow\Folio\Content\FrontendGate::class, fn (Container $c) => new \Preflow\Folio\Content\FrontendGate(
             $c->get(\Preflow\Auth\Access\Access::class),
             (bool) $app->config()->get('app.debug', false),
         ));
@@ -388,6 +392,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeCatalog::class),
             $c->get(ContentLocale::class),
             $c->get(\Preflow\Folio\Content\SafeRichText::class),
+            $c->get(\Preflow\Folio\Content\FrontendGate::class),
         ));
         $container->singleton(\Preflow\Folio\Content\SafeRichText::class, fn (Container $c) => new \Preflow\Folio\Content\SafeRichText(
             $c->get(FieldTypeRegistry::class),

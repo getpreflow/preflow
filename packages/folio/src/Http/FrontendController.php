@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
-use Preflow\Auth\Access\Access;
-use Preflow\Auth\Access\UndeclaredPermission;
+use Preflow\Core\Error\ErrorHandler;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Content\ContentLocale;
+use Preflow\Folio\Content\FrontendGate;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\FrontendRoute;
 use Preflow\Folio\Content\RecordRenderer;
@@ -30,8 +30,8 @@ final class FrontendController
         private readonly ?PreviewLinks $previews = null,
         private readonly ?\Preflow\Folio\Content\LiveContent $live = null,
         private readonly ?\Preflow\View\AssetCollector $assets = null,
-        private readonly ?Access $access = null,
-        private readonly bool $debug = false,
+        private readonly ?FrontendGate $gate = null,
+        private readonly ?ErrorHandler $errors = null,
     ) {}
 
     public function show(ServerRequestInterface $request): ResponseInterface
@@ -62,30 +62,23 @@ final class FrontendController
     }
 
     /**
-     * A type with frontend.permission shows its pages only to users who have it.
-     * Anyone else goes to the type's login with the requested path as "next", or
-     * gets a 404 when there is no login. Undeclared permissions throw in debug and
-     * are refused otherwise (even without auth configured, where Access allows all).
+     * A type with frontend.permission shows its pages only to signed-in users who
+     * have it (FrontendGate). Anyone else goes to the type's login with the page's
+     * URL as "next", or gets a 404 when there is no login; neither is cached.
      */
     private function gate(ServerRequestInterface $request, DynamicRecord $record, FrontendRoute $route): ?ResponseInterface
     {
-        $permission = $route->permission;
-        if ($permission === null) {
-            return null;
-        }
-        $registry = $this->access?->registry();
-        $declared = $registry !== null && ($registry->isDeclared($permission) || $registry->disabledReason($permission) !== null);
-        if (!$declared && $this->debug) {
-            throw UndeclaredPermission::named($permission);
-        }
-        if ($declared && $this->access?->can($permission) === true) {
+        if ($route->permission === null || $this->gate?->allows($route->permission) === true) {
             return null;
         }
 
         $locale = $this->locale($request, $record);
         $login = $route->loginFor($locale, $record->getType()->locales->default);
         if ($login === null) {
-            throw new NotFoundHttpException();
+            $notFound = $this->errors?->handleException(new NotFoundHttpException(), $request)
+                ?? new Response(404, ['Content-Type' => 'text/html; charset=UTF-8'], 'Not Found');
+
+            return $notFound->withHeader('Cache-Control', 'private, no-store');
         }
         // The page's own URL (the locale prefix is already stripped from the request); always a path on this site, never "//host".
         $next = '/' . ltrim($this->resolver->urlFor($record, $locale) ?? $request->getUri()->getPath(), '/\\');

@@ -42,6 +42,17 @@ final class AccessTest extends TestCase
         return new Access($this->auth, $this->registry, $debug, $populations);
     }
 
+    public function test_user_is_the_signed_in_user(): void
+    {
+        $access = $this->access();
+        $this->assertNull($access->user());
+
+        $user = new TestUser();
+        $this->auth->setUser($user, 'site');
+        $this->assertSame($user, $access->user());
+        $this->assertNull((new Access(null, $this->registry, false, []))->user());
+    }
+
     public function test_staff_may_do_everything_by_default(): void
     {
         $access = $this->access(populations: ['folio' => 'staff']);

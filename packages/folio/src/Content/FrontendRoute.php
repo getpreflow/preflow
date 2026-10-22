@@ -91,7 +91,8 @@ final readonly class FrontendRoute
     }
 
     /**
-     * A same-origin path ("/tools/login"), or a map of them by locale.
+     * A same-origin path ("/tools/login"), or a map of them by locale; no
+     * backslashes, whitespace or control characters.
      *
      * @return string|array<string, string>|null
      */
@@ -102,7 +103,7 @@ final readonly class FrontendRoute
         }
         $paths = is_array($login) ? $login : [$login];
         foreach ($paths as $locale => $path) {
-            if ((is_array($login) && !is_string($locale)) || !is_string($path) || !str_starts_with($path, '/') || str_starts_with($path, '//') || str_contains($path, '\\')) {
+            if ((is_array($login) && !is_string($locale)) || !is_string($path) || !str_starts_with($path, '/') || str_starts_with($path, '//') || preg_match('/[\\\\\s\x00-\x1f\x7f]/', $path) === 1) {
                 throw new FrontendConfigException(sprintf('Folio type "%s": frontend.login must be a path on this site ("/login") or a map of them by locale ({"en": "/login", "de": "/de/login"}).', $type));
             }
         }
