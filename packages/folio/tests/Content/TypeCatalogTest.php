@@ -136,4 +136,44 @@ final class TypeCatalogTest extends TestCase
 
         (new TypeCatalog($this->dir))->all();
     }
+
+    public function test_catalog_add_appears_after_files(): void
+    {
+        $this->model([]);
+        $catalog = new TypeCatalog($this->dir);
+        $catalog->add(['key' => 'early', 'table' => 'early', 'fields' => []]);
+        $this->assertSame(['member', 'early'], array_map(fn ($l) => $l->key, $catalog->all()));
+
+        // added after the first all() call: appended, in insertion order
+        $catalog->add(['key' => 'late', 'table' => 'late', 'label' => 'Late', 'fields' => []], 'settings');
+        $keys = array_map(fn ($l) => $l->key, $catalog->all());
+        $this->assertSame(['member', 'early', 'late'], $keys);
+        $this->assertSame('content', $catalog->get('early')->section);
+        $this->assertSame('settings', $catalog->get('late')->section);
+        $this->assertSame('Late', $catalog->get('late')->label);
+    }
+
+    public function test_catalog_add_duplicate_throws(): void
+    {
+        $this->model([]);
+        $catalog = new TypeCatalog($this->dir);
+        $catalog->add(['key' => 'ext', 'table' => 'ext', 'fields' => []]);
+
+        $this->expectException(\RuntimeException::class);
+        $catalog->add(['key' => 'ext', 'table' => 'ext', 'fields' => []]);
+    }
+
+    public function test_catalog_add_duplicate_of_file_throws(): void
+    {
+        $this->model([]);
+
+        $this->expectException(\RuntimeException::class);
+        (new TypeCatalog($this->dir))->add(['key' => 'member', 'table' => 'member', 'fields' => []]);
+    }
+
+    public function test_catalog_add_validates_like_scan(): void
+    {
+        $this->expectException(FrontendConfigException::class);
+        (new TypeCatalog($this->dir))->add(['key' => 'u', 'table' => 'u', 'users' => '', 'fields' => []]);
+    }
 }

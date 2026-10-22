@@ -113,4 +113,33 @@ final class TypeRegistryTest extends TestCase
         $second = $this->registry->get('cached');
         $this->assertSame($first, $second);
     }
+
+    public function test_define_then_get(): void
+    {
+        $def = $this->registry->define([
+            'key' => 'ext', 'table' => 'ext_table',
+            'fields' => ['title' => ['type' => 'string', 'searchable' => true]],
+        ]);
+
+        $this->assertTrue($this->registry->has('ext'));
+        $this->assertSame($def, $this->registry->get('ext'));
+        $this->assertSame('ext_table', $def->table);
+        $this->assertSame(['title'], $def->searchableFields);
+    }
+
+    public function test_define_duplicate_of_file_throws(): void
+    {
+        $this->writeSchema('post', ['key' => 'post', 'table' => 'posts', 'fields' => []]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->registry->define(['key' => 'post', 'table' => 'x', 'fields' => []]);
+    }
+
+    public function test_define_duplicate_of_definition_throws(): void
+    {
+        $this->registry->define(['key' => 'ext', 'table' => 'ext', 'fields' => []]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->registry->define(['key' => 'ext', 'table' => 'ext', 'fields' => []]);
+    }
 }
