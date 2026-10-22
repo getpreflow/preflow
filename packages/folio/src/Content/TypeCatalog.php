@@ -8,8 +8,12 @@ use Preflow\Folio\Extension\Screen\ScreenRegistry;
 
 final class TypeCatalog
 {
-    /** Field types that store uploaded files (the built-in ones implementing HandlesUpload). */
-    public const array UPLOAD_FIELD_TYPES = ['asset'];
+    /**
+     * Built-in field types whose values hold files: the ones implementing HandlesUpload, plus
+     * blocks (hands uploads to nested types) and matrix (its assets()). Field types a site
+     * registers itself (config/folio.php "field_types") are not known here.
+     */
+    public const array FILE_HOLDING_FIELD_TYPES = ['asset', 'blocks', 'matrix'];
 
     public function __construct(
         private readonly string $modelsPath,
@@ -98,7 +102,7 @@ final class TypeCatalog
         $transfer = $data['transfer'] ?? $users === null;
         if (!$transfer) {
             foreach (is_array($data['fields'] ?? null) ? $data['fields'] : [] as $field) {
-                if (is_array($field) && in_array($field['type'] ?? null, self::UPLOAD_FIELD_TYPES, true)) {
+                if (is_array($field) && in_array($field['type'] ?? null, self::FILE_HOLDING_FIELD_TYPES, true)) {
                     throw new FrontendConfigException("Type \"{$key}\" keeps its records on the server, but its files would still be exported; file fields are not supported on it yet.");
                 }
             }

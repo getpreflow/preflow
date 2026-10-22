@@ -231,30 +231,43 @@ final class TypeCatalogTest extends TestCase
         }
     }
 
-    public function test_non_transferred_type_with_asset_field_throws(): void
+    /** @return iterable<string, array{string}> */
+    public static function fileHoldingFieldTypes(): iterable
+    {
+        yield 'asset' => ['asset'];
+        yield 'blocks' => ['blocks'];
+        yield 'matrix' => ['matrix'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('fileHoldingFieldTypes')]
+    public function test_non_transferred_type_with_asset_field_throws(string $fieldType): void
     {
         $catalog = new TypeCatalog($this->dir);
-        $catalog->add(['key' => 'gallery', 'transfer' => true, 'fields' => ['image' => ['type' => 'asset']]]);
+        $catalog->add(['key' => 'gallery', 'transfer' => true, 'fields' => ['image' => ['type' => $fieldType]]]);
         $catalog->add(['key' => 'note', 'transfer' => false, 'fields' => ['body' => ['type' => 'text']]]);
 
         $this->expectException(FrontendConfigException::class);
         $this->expectExceptionMessage('Type "member" keeps its records on the server, but its files would still be exported; file fields are not supported on it yet.');
 
-        $catalog->add(['key' => 'member', 'users' => 'members', 'fields' => ['name' => ['type' => 'string'], 'avatar' => ['type' => 'asset']]]);
+        $catalog->add(['key' => 'member', 'users' => 'members', 'fields' => ['name' => ['type' => 'string'], 'files' => ['type' => $fieldType]]]);
     }
 
-    public function test_upload_field_type_names_match_registered_types(): void
+    public function test_file_holding_field_types_cover_upload_types(): void
     {
         $uploads = [];
         foreach (glob(dirname(__DIR__, 2) . '/src/Field/Types/*FieldType.php') ?: [] as $file) {
-            $class = 'Preflow\\Folio\\Field\\Types\\' . basename($file, '.php');
-            $reflection = new \ReflectionClass($class);
+            $reflection = new \ReflectionClass('Preflow\\Folio\\Field\\Types\\' . basename($file, '.php'));
             if (!$reflection->isAbstract() && $reflection->implementsInterface(\Preflow\Folio\Field\HandlesUpload::class)) {
-                $uploads[] = $class;
+                $uploads[] = $reflection->newInstanceWithoutConstructor()->key(); // key() returns a literal
             }
         }
 
-        $this->assertSame([\Preflow\Folio\Field\Types\AssetFieldType::class], $uploads);
-        $this->assertSame(['asset'], TypeCatalog::UPLOAD_FIELD_TYPES);
+        $this->assertNotSame([], $uploads);
+        foreach ($uploads as $key) {
+            $this->assertContains($key, TypeCatalog::FILE_HOLDING_FIELD_TYPES, "Upload field type \"{$key}\"");
+        }
+        // Types that nest other fields or assets: blocks hand uploads to nested types, matrix has assets().
+        $this->assertContains('blocks', TypeCatalog::FILE_HOLDING_FIELD_TYPES);
+        $this->assertContains('matrix', TypeCatalog::FILE_HOLDING_FIELD_TYPES);
     }
 }

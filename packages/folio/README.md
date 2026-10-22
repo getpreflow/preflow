@@ -798,8 +798,11 @@ A type can hold the site's own users or members:
   live users never travel to a laptop by accident.
 - Any other type can opt out with `"transfer": false`. `"transfer"` must be a JSON boolean;
   anything else (`"false"`, `0`) is an error naming the type.
-- A type that is not transferred cannot have file fields (`asset`) yet: its records stay
-  on the server, but the uploaded files would still be exported. Such a type is an error.
+- A type that is not transferred cannot have fields that hold files (`asset`, `blocks`,
+  `matrix`) yet: its records stay on the server, but the uploaded files would still be
+  exported. Such a type is an error. Field types a site registers itself
+  (`config/folio.php` `field_types`) are not checked; don't give one that stores files
+  to a type that is not transferred.
 - Per-environment state (installed extension versions, throttle rows) is never exported.
 
 ## SQL storage
