@@ -6,6 +6,7 @@ namespace Preflow\Codes;
 
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DataManager;
+use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\SortDirection;
 use Preflow\Data\TypeDefinition;
@@ -19,7 +20,9 @@ use Preflow\Data\TypeFieldDefinition;
  *
  * Codes are the Folio type "code" (storage alias "codes"); redemptions are the internal table
  * code_redemption on the same storage, never in the TypeCatalog, so neither is exported.
- * Counting uses is a read-modify-write, so max_uses is a soft limit under concurrent redeems.
+ * redeem() counts a use atomically, so max_uses holds under concurrent redeems: on a SQL
+ * storage one conditional UPDATE, on the JSON driver a file lock in $lockDir around the
+ * read-modify-write.
  */
 final class Codes
 {
@@ -31,6 +34,7 @@ final class Codes
     private readonly int $throttleMax;
     private readonly int $throttleWindow;
     private readonly \Closure $clock;
+    private readonly string $lockDir;
     private ?TypeDefinition $redemptions = null;
 
     /**
@@ -42,6 +46,7 @@ final class Codes
         private readonly Throttle $throttle,
         array $config = [],
         ?\Closure $clock = null,
+        ?string $lockDir = null,
     ) {
         $purposes = [];
         foreach ((array) ($config['purposes'] ?? []) as $name => $purpose) {
@@ -55,6 +60,7 @@ final class Codes
         $this->purposes = $purposes;
         $this->throttleMax = (int) ($config['throttle']['max'] ?? 10);
         $this->throttleWindow = (int) ($config['throttle']['window'] ?? 900);
+        $this->lockDir = $lockDir ?? sys_get_temp_dir();
         $this->clock = $clock ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
     }
 
@@ -121,10 +127,32 @@ final class Codes
         return $code;
     }
 
-    /** Whether the code would be accepted for the purpose now; counts no use. */
-    public function check(string $code, string $purpose): Result
+    /**
+     * Whether the code would be accepted for the purpose now; counts no use. With a $client
+     * (Throttle::client()) it is throttled like redeem(): same key, and every failure counts.
+     */
+    public function check(string $code, string $purpose, ?string $client = null): Result
     {
         $this->purpose($purpose);
+        if ($client !== null && $this->tooMany($purpose, $client)) {
+            return Result::failure('throttled');
+        }
+
+        $result = $this->evaluate($code, $purpose);
+        if (!$result->ok && $client !== null) {
+            $this->throttle->hit("codes.{$purpose}", $client, $this->throttleWindow);
+        }
+
+        return $result;
+    }
+
+    private function tooMany(string $purpose, string $client): bool
+    {
+        return $this->throttle->tooMany("codes.{$purpose}", $client, $this->throttleMax, $this->throttleWindow);
+    }
+
+    private function evaluate(string $code, string $purpose): Result
+    {
         $record = $this->find($code, $purpose);
         if ($record === null) {
             return Result::failure('unknown');
@@ -152,23 +180,22 @@ final class Codes
     public function redeem(string $code, string $purpose, ?string $redeemer = null, ?string $client = null): Result
     {
         $this->purpose($purpose);
-        $throttle = "codes.{$purpose}";
-        if ($client !== null && $this->throttle->tooMany($throttle, $client, $this->throttleMax, $this->throttleWindow)) {
+        if ($client !== null && $this->tooMany($purpose, $client)) {
             return Result::failure('throttled');
         }
 
-        $result = $this->check($code, $purpose);
+        $result = $this->evaluate($code, $purpose);
+        if ($result->ok && !$this->countUse((string) $result->codeId)) {
+            $result = Result::failure('used_up', $result->codeId);
+        }
         if (!$result->ok) {
             if ($client !== null) {
-                $this->throttle->hit($throttle, $client, $this->throttleWindow);
+                $this->throttle->hit("codes.{$purpose}", $client, $this->throttleWindow);
             }
 
             return $result;
         }
 
-        $record = $this->dm->findType('code', (string) $result->codeId);
-        $record->set('uses', (int) $record->get('uses') + 1);
-        $this->dm->saveType($record, false);
         $this->dm->saveType(new DynamicRecord($this->redemptionType(), [
             'id' => bin2hex(random_bytes(16)),
             'code_id' => $result->codeId,
@@ -178,6 +205,65 @@ final class Codes
         ]), false);
 
         return $result;
+    }
+
+    /**
+     * Counts one use if the code still has one left; false when it is used up. The check
+     * evaluate() made may be stale by now, so the limit is enforced here, atomically.
+     */
+    private function countUse(string $codeId): bool
+    {
+        $type = $this->dm->getTypeRegistry()?->get('code')
+            ?? throw new \RuntimeException('preflow/codes needs the Folio type "code" (enable the codes extension).');
+        $driver = $this->dm->driver($type->storage);
+
+        if ($driver instanceof PdoDriver) {
+            $dialect = $driver->dialect();
+            $table = $dialect->quoteIdentifier($type->table);
+            $id = $dialect->quoteIdentifier($type->idField);
+            $uses = $dialect->quoteIdentifier('uses');
+            $max = $dialect->quoteIdentifier('max_uses');
+
+            return $this->dm->execute(
+                "UPDATE {$table} SET {$uses} = {$uses} + 1 WHERE {$id} = ? AND ({$max} IS NULL OR {$max} = '' OR {$uses} < {$max})",
+                [$codeId],
+                $type->storage,
+            ) === 1;
+        }
+
+        return $this->locked($codeId, function () use ($codeId): bool {
+            $record = $this->dm->findType('code', $codeId);
+            if ($record === null) {
+                return false;
+            }
+            $max = $record->get('max_uses');
+            if ($max !== null && $max !== '' && (int) $record->get('uses') >= (int) $max) {
+                return false;
+            }
+            $record->set('uses', (int) $record->get('uses') + 1);
+            $this->dm->saveType($record, false);
+
+            return true;
+        });
+    }
+
+    /** Runs $fn holding an exclusive lock on codes-{id}.lock in the lock directory. */
+    private function locked(string $codeId, \Closure $fn): bool
+    {
+        if (!is_dir($this->lockDir) && !@mkdir($this->lockDir, 0755, true) && !is_dir($this->lockDir)) {
+            throw new \RuntimeException("Codes lock directory {$this->lockDir} cannot be created.");
+        }
+        $path = $this->lockDir . '/codes-' . $codeId . '.lock';
+        $handle = fopen($path, 'c');
+        if ($handle === false || !flock($handle, LOCK_EX)) {
+            throw new \RuntimeException("Codes lock {$path} cannot be taken.");
+        }
+        try {
+            return $fn();
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
     }
 
     /** Revokes the code; a revoked code keeps its first revocation time. */

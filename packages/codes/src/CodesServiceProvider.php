@@ -29,6 +29,7 @@ final class CodesServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $c->get(Throttle::class),
             self::config($c),
+            lockDir: $c->get(Application::class)->basePath('storage/locks'),
         ));
     }
 

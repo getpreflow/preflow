@@ -9,6 +9,7 @@ use Preflow\Codes\Codes;
 use Preflow\Core\Application;
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DataManager;
+use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Migration\Migrator;
 use Preflow\Folio\Transfer\ContentSet;
@@ -94,7 +95,10 @@ final class CodesTest extends TestCase
         $app->boot();
         $c = $app->container();
         $registry = $c->get(MigrationRegistry::class);
-        (new Migrator($c->get(DataManager::class)->driver('codes')->pdo(), $registry->paths()))->migrate();
+        $driver = $c->get(DataManager::class)->driver('codes');
+        if ($driver instanceof PdoDriver) {
+            (new Migrator($driver->pdo(), $registry->paths()))->migrate();
+        }
         foreach ($registry->steps() as $step) {
             $step();
         }
@@ -111,6 +115,7 @@ final class CodesTest extends TestCase
             $c->get(Throttle::class),
             require $this->dir . '/config/codes.php',
             fn (): \DateTimeImmutable => $this->now,
+            $this->dir . '/storage/locks',
         );
     }
 
@@ -300,6 +305,91 @@ final class CodesTest extends TestCase
             $this->assertSame('unknown', $codes->redeem("WRONG{$i}", 'members.book')->reason);
         }
         $this->assertTrue($codes->redeem('VALIDCODE', 'members.book')->ok);
+    }
+
+    public function test_check_with_client_is_throttled(): void
+    {
+        $codes = $this->codes();
+        $codes->issue('members.book', [], 'VALIDCODE');
+
+        for ($i = 0; $i < 10; $i++) {
+            $this->assertSame('unknown', $codes->check("WRONG{$i}", 'members.book', 'client-a')->reason);
+        }
+        $refused = $codes->check('VALIDCODE', 'members.book', 'client-a');
+        $this->assertFalse($refused->ok);
+        $this->assertSame('throttled', $refused->reason);
+        $this->assertNull($refused->codeId);
+
+        // Another client is not throttled; the failures were shared with redeem()'s key.
+        $this->assertTrue($codes->check('VALIDCODE', 'members.book', 'client-b')->ok);
+        $this->assertSame('throttled', $codes->redeem('VALIDCODE', 'members.book', null, 'client-a')->reason);
+    }
+
+    public function test_check_without_client_not_throttled(): void
+    {
+        $codes = $this->codes();
+        $codes->issue('members.book', [], 'VALIDCODE');
+
+        for ($i = 0; $i < 15; $i++) {
+            $this->assertSame('unknown', $codes->check("WRONG{$i}", 'members.book')->reason);
+        }
+        $this->assertTrue($codes->check('VALIDCODE', 'members.book')->ok);
+    }
+
+    public function test_concurrent_redeem_cannot_exceed_max_uses(): void
+    {
+        $c = $this->app()->container();
+        $a = $this->codes();
+        $b = new Codes(
+            $c->get(DataManager::class),
+            $c->get(Throttle::class),
+            require $this->dir . '/config/codes.php',
+            function () use (&$between): \DateTimeImmutable {
+                if ($between !== null) {
+                    [$run, $between] = [$between, null];
+                    $run();
+                }
+
+                return $this->now;
+            },
+            $this->dir . '/storage/locks',
+        );
+        // An expiry makes check() read the clock, after it loaded the code and before it decides.
+        $a->issue('members.book', [], 'ONLYONCE', maxUses: 1, expiresAt: new \DateTimeImmutable('2027-01-01'));
+
+        // $b has passed check() with uses = 0 when $a redeems the last use.
+        $first = null;
+        $between = static function () use ($a, &$first): void { $first = $a->redeem('ONLYONCE', 'members.book', 'a'); };
+        $second = $b->redeem('ONLYONCE', 'members.book', 'b');
+
+        $this->assertTrue($first->ok);
+        $this->assertFalse($second->ok);
+        $this->assertSame('used_up', $second->reason);
+        $id = (string) $first->codeId;
+        $this->assertSame(1, (int) $this->app()->container()->get(DataManager::class)->findType('code', $id)->get('uses'));
+        $this->assertCount(1, $a->redemptions($id));
+    }
+
+    public function test_concurrent_redeem_on_json_storage_counts_under_lock(): void
+    {
+        $this->dataConfig(['codes' => 'json']);
+        $codes = $this->codes();
+        $codes->issue('members.book', [], 'ONLYONCE', maxUses: 1);
+
+        $this->assertTrue($codes->redeem('ONLYONCE', 'members.book')->ok);
+        $this->assertSame('used_up', $codes->redeem('ONLYONCE', 'members.book')->reason);
+        $this->assertFileExists($this->dir . '/storage/locks');
+    }
+
+    public function test_unlimited_code_counts_every_use(): void
+    {
+        $codes = $this->codes();
+        $codes->issue('members.book', [], 'UNLIMITED');
+        for ($i = 0; $i < 3; $i++) {
+            $this->assertTrue($codes->redeem('UNLIMITED', 'members.book')->ok);
+        }
+        $id = (string) $codes->check('UNLIMITED', 'members.book')->codeId;
+        $this->assertSame(3, (int) $this->app()->container()->get(DataManager::class)->findType('code', $id)->get('uses'));
     }
 
     public function test_unknown_purpose_throws(): void
