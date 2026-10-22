@@ -13,7 +13,7 @@ final class MissingTypeUserProvider implements UserProviderInterface
     /** @param array<string, mixed> $config */
     public function __construct(array $config = [])
     {
-        throw new \RuntimeException('User provider: type "member" does not exist.');
+        throw new \Preflow\Auth\UserProviderUnavailable('User provider: type "member" does not exist.');
     }
 
     public function findById(string $id): ?Authenticatable

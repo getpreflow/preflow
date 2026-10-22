@@ -153,7 +153,7 @@ final class RecordUserProviderTest extends TestCase
 
     public function test_unknown_type_throws(): void
     {
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(\Preflow\Auth\UserProviderUnavailable::class);
         $this->expectExceptionMessage('does not exist');
         $this->provider(['type' => 'ghost']);
     }

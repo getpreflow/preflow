@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Tests;
 
+require_once __DIR__ . '/Fixtures/BrokenUserProvider.php';
 require_once __DIR__ . '/Fixtures/ConfigEntryUserProvider.php';
 require_once __DIR__ . '/Fixtures/LateServiceUserProvider.php';
 require_once __DIR__ . '/Fixtures/MissingTypeUserProvider.php';
@@ -13,6 +14,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Tokens\Tokens;
 use Preflow\Auth\UserProviderInterface;
 use Preflow\Core\Application;
+use Preflow\Core\Tests\Fixtures\BrokenUserProvider;
 use Preflow\Core\Tests\Fixtures\ConfigEntryUserProvider;
 use Preflow\Core\Tests\Fixtures\LateServiceProvider;
 use Preflow\Core\Tests\Fixtures\LateServiceUserProvider;
@@ -123,5 +125,14 @@ final class BootAuthProvidersTest extends TestCase
         $provider = $app->container()->get(UserProviderInterface::class);
         $this->assertNull($provider->findById('m1'));
         $this->assertNull($provider->findByCredentials(['email' => 'a@b.test']));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_provider_failing_for_another_reason_still_throws_at_boot(): void
+    {
+        file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [" . LateServiceProvider::class . "::class];\n");
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('could not connect');
+        $this->boot(['class' => BrokenUserProvider::class]);
     }
 }

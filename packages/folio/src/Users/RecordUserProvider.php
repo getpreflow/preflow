@@ -6,6 +6,7 @@ namespace Preflow\Folio\Users;
 
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\UserProviderInterface;
+use Preflow\Auth\UserProviderUnavailable;
 use Preflow\Data\DataManager;
 use Preflow\Folio\Content\TypeCatalog;
 
@@ -30,7 +31,7 @@ final class RecordUserProvider implements UserProviderInterface
         $this->type = (string) ($config['type'] ?? '');
         $listing = $catalog->get($this->type);
         if ($listing === null) {
-            throw new \RuntimeException("User provider: type \"{$this->type}\" does not exist.");
+            throw new UserProviderUnavailable("User provider: type \"{$this->type}\" does not exist.");
         }
         if ($listing->users === null) {
             throw new \RuntimeException("User provider: type \"{$this->type}\" is not a user type (set \"users\" in its model).");

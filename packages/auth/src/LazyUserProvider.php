@@ -22,15 +22,16 @@ final class LazyUserProvider implements UserProviderInterface
     ) {}
 
     /**
-     * Build the provider during boot. One whose own setup fails (Folio's user type is gone because an
-     * extension was disabled) then resolves nobody instead of breaking every request; the failure is
-     * returned for logging. A class that is not a provider still throws.
+     * Build the provider during boot. One whose user source is gone (UserProviderUnavailable: Folio's
+     * user type after its extension was disabled) then resolves nobody instead of breaking every
+     * request; the failure is returned for logging. Any other setup error, and a class that is not a
+     * provider, still throws.
      */
-    public function bootResolve(): ?\RuntimeException
+    public function bootResolve(): ?UserProviderUnavailable
     {
         try {
             $built = ($this->factory)();
-        } catch (\RuntimeException $e) {
+        } catch (UserProviderUnavailable $e) {
             $this->unavailable = true;
 
             return $e;
@@ -43,6 +44,10 @@ final class LazyUserProvider implements UserProviderInterface
     /** Build the provider once (a class that is not a provider throws here). */
     public function resolve(): UserProviderInterface
     {
+        if ($this->unavailable) {
+            throw new UserProviderUnavailable("Provider \"{$this->name}\" ({$this->class}) is unavailable.");
+        }
+
         return $this->provider ??= $this->check(($this->factory)());
     }
 
