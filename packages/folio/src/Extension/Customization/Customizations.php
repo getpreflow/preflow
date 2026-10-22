@@ -32,7 +32,7 @@ final class Customizations
     private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, ListColumn::class, NavBadge::class, ...self::HOOKS];
 
     /**
-     * @param array<string, array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>}> $types
+     * @param array<string, array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>}> $types
      */
     /** @var array<string, ?int> */
     private array $badgeCounts = [];
@@ -82,8 +82,8 @@ final class Customizations
                         }
                         $meta = self::instance($attribute, $where);
                         if ($meta instanceof FormPanel) {
-                            if (!in_array($meta->position, ['before', 'after'], true)) {
-                                throw new ExtensionException("#[FormPanel] on {$where}: position must be \"before\" or \"after\", not \"{$meta->position}\".");
+                            if (!in_array($meta->position, ['before', 'after', 'side'], true)) {
+                                throw new ExtensionException("#[FormPanel] on {$where}: position must be \"before\", \"after\" or \"side\", not \"{$meta->position}\".");
                             }
                             $types[$key]['panels'][] = ['label' => $meta->label, 'position' => $meta->position, 'callable' => $call];
                         } elseif ($meta instanceof RecordAction) {
@@ -103,6 +103,7 @@ final class Customizations
                                 'permission' => $meta->permission,
                                 'icon' => $meta->icon,
                                 'confirm' => $meta->confirm,
+                                'toolbar' => $meta->toolbar,
                                 'group' => $definition->label,
                                 'callable' => $call,
                             ];
@@ -129,7 +130,7 @@ final class Customizations
     }
 
     /**
-     * @return array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>}
+     * @return array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>}
      */
     public function forType(string $key): array
     {
@@ -170,7 +171,7 @@ final class Customizations
         }
     }
 
-    /** @return array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, group: string, callable: \Closure}|null */
+    /** @return array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}|null */
     public function action(string $type, string $name): ?array
     {
         foreach ($this->types[$type]['actions'] ?? [] as $action) {

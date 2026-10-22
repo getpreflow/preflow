@@ -9,7 +9,8 @@
 {% block content %}
     {% if previewable|default(false) %}<div class="folio-split" data-folio-split data-mode="form">
     <div class="folio-split-form">{% endif %}
-    <div class="folio-form folio-editor">
+    {% set side_panels = panels|default([])|filter(p => p.position == 'side') %}
+    <div class="folio-form folio-editor{% if side_panels is not empty %} has-side{% endif %}">
         {% if publishing and publishing.share_url %}<div class="folio-share" id="folio-share"></div>{% endif %}
         {% if publishing and publishing.schedule_cancels|default(false) %}
             <div class="folio-notice" role="status"><p>Scheduled to publish on {{ publishing.publish_at|date('Y-m-d H:i') }}. Saving your changes cancels the schedule; someone who may publish can schedule it again.</p></div>
@@ -101,9 +102,10 @@
         </div>
         {{ form_end()|raw }}
         {% set history = publishing and (publishing.revisions is not empty or publishing.discard_url or publishing.unpublish_url) %}
-        {% if history or panels|default([]) is not empty %}
+        {% set extras = panels|default([])|filter(p => p.position != 'side') %}
+        {% if history or extras is not empty %}
         <section class="folio-form-extras" aria-label="{{ history ? 'History and visibility' : 'More about this record' }}">
-        {% for panel in panels|default([])|filter(p => p.position == 'before') %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}
+        {% for panel in extras|filter(p => p.position == 'before') %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}
         {% if history %}
         {% if publishing.revisions is not empty %}
             <details class="folio-revisions">
@@ -142,8 +144,13 @@
             </div>
         {% endif %}
         {% endif %}
-        {% for panel in panels|default([])|filter(p => p.position == 'after') %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}
+        {% for panel in extras|filter(p => p.position == 'after') %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}
         </section>
+        {% endif %}
+        {% if side_panels is not empty %}
+        <aside class="folio-side" aria-label="Side panels">
+            {% for panel in side_panels %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}
+        </aside>
         {% endif %}
     </div>
     {% if previewable|default(false) %}</div>

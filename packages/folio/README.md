@@ -817,14 +817,54 @@ final class NoteTweaks
 
 | Attribute | Method signature | Effect |
 |---|---|---|
-| `#[FormPanel(label, position: 'after')]` | `fn(DynamicRecord): ScreenView\|string` | A panel on the edit form (not on create), `before` or `after` Folio's own extras. A string is shown as escaped text, a `ScreenView` as a template fragment. |
-| `#[RecordAction(name, label, permission, icon, confirm)]` | `fn(DynamicRecord, ServerRequestInterface): ?ResponseInterface` | A POST button at `{prefix}/{type}/{id}/_action/{name}`; null redirects back to the form with "{label}: done". Needs the permission and the type's edit permission. |
-| `#[ListColumn(label, position: 100)]` | `fn(DynamicRecord): string` | A column after the type's own, ordered by position, shown as escaped text. |
+| `#[FormPanel(label, position: 'after')]` | `fn(DynamicRecord): ScreenView\|string` | A panel on the edit form (not on create), `before` or `after` Folio's own extras, or `side`: a sticky column about 340 px wide to the right of the fields from 1100 px, stacked under the form below that. A string is shown as escaped text, a `ScreenView` as a template fragment (it gets `prefix`, `csrf`, `type`, `id` and `record`). Any other position is a boot error. |
+| `#[RecordAction(name, label, permission, icon, confirm, toolbar: true)]` | `fn(DynamicRecord, ServerRequestInterface): ?ResponseInterface` | A POST button at `{prefix}/{type}/{id}/_action/{name}`; null redirects back to the form with "{label}: done". Needs the permission and the type's edit permission. With `toolbar: false` there is no button in the form header; the action stays routed and permission-checked, for a form inside a `FormPanel` to post to. |
+| `#[ListColumn(label, position: 100)]` | `fn(DynamicRecord): string\|Badge` | A column after the type's own, ordered by position, shown as escaped text, or as a status pill for `new Badge($label, $tone)` (tone `''`, `published`, `draft`, `changed` or `incomplete`; the label is escaped, an unknown tone is shown plain). |
 | `#[NavBadge]` | `fn(): ?int` | A count badge on the type's sidebar item (e.g. waiting members), computed only while the item is visible and at most once per request; `null`, `0` or any non-int return shows none, a callback that throws shows no badge (the admin still renders), several add up, one per class. Keep it cheap: it runs on admin page renders. |
 | `#[BeforeSave]` | `fn(DynamicRecord): void` | Before validation; may `set()` fields. Throw `Preflow\Validation\ValidationException` to refuse the save: the form is shown again with its errors (422). |
 | `#[AfterSave]` | `fn(DynamicRecord): void` | After the record is stored. |
 | `#[BeforeDelete]` | `fn(DynamicRecord): void` | Throw `Customization\Refused('message')` to keep the record; the message is shown to the editor. |
 | `#[AfterDelete]` | `fn(DynamicRecord): void` | After the record is gone. |
+
+A decision panel in the side column, with its own form and tabs:
+
+```php
+#[FormPanel('Decision', position: 'side')]
+public function decision(DynamicRecord $record): ScreenView
+{
+    return new ScreenView('@members/decision.twig');
+}
+
+#[RecordAction('decide', 'Decide', 'members.decide', toolbar: false)]
+public function decide(DynamicRecord $record, ServerRequestInterface $request): null { /* ... */ }
+
+#[ListColumn('State')]
+public function state(DynamicRecord $record): Badge
+{
+    return new Badge('Waiting', 'changed');
+}
+```
+
+```twig
+{# decision.twig #}
+<form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/decide">
+    <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+    <div data-folio-tabs>
+        <div class="folio-segmented">
+            <button type="button" data-folio-tab="accept">Accept</button>
+            <button type="button" data-folio-tab="decline">Decline</button>
+        </div>
+        <div data-folio-tabpanel="accept">...</div>
+        <div data-folio-tabpanel="decline">...</div>
+    </div>
+    <button type="submit" class="btn btn-primary">Send</button>
+</form>
+```
+
+Tabs: `<div data-folio-tabs>` holds a `.folio-segmented` of `<button data-folio-tab="key">` and
+sibling `<div data-folio-tabpanel="key">` panels. admin.js adds the ARIA roles, arrow keys
+(Home/End too) and hides the inactive panels; the first tab is active unless one carries
+`data-folio-tab-active`. Without JS every panel shows, stacked.
 
 Things to know:
 

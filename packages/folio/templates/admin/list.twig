@@ -21,7 +21,7 @@
                 {% set first = loop.first %}
                 {% set last = loop.last %}
                 <tr>
-                    {% for name, heading in columns %}<td>{% if loop.first %}<a class="folio-row-link" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">{{ row.cells[name] ?: '(untitled)' }}</a>{% else %}{{ row.cells[name] }}{% endif %}</td>{% endfor %}{% for cell in row.extra|default([]) %}<td>{{ cell }}</td>{% endfor %}
+                    {% for name, heading in columns %}<td>{% if loop.first %}<a class="folio-row-link" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">{{ row.cells[name] ?: '(untitled)' }}</a>{% else %}{{ row.cells[name] }}{% endif %}</td>{% endfor %}{% for cell in row.extra|default([]) %}<td>{% if cell is iterable %}<span class="folio-badge{% if cell.tone %} is-{{ cell.tone }}{% endif %}">{{ cell.label }}</span>{% else %}{{ cell }}{% endif %}</td>{% endfor %}
                     {% if multilingual|default(false) %}<td>{% for badge in row.languages %}<span class="folio-badge{% if 'missing' in badge %} is-incomplete{% endif %}">{{ badge }}</span> {% endfor %}</td>{% endif %}
                     {% if publishing|default(false) %}<td><span class="folio-badge is-{{ row.state.value }}">{{ row.state.label() }}</span></td>{% endif %}
                     <td>

@@ -20,6 +20,7 @@ use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Extension\AfterDelete;
 use Preflow\Folio\Extension\AfterSave;
+use Preflow\Folio\Extension\Badge;
 use Preflow\Folio\Extension\BeforeDelete;
 use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\Customization\Customizations;
@@ -137,8 +138,12 @@ final class AdminController
             $rows[] = [
                 'id' => $record->getId(),
                 'cells' => $cells,
-                // Extension columns (#[ListColumn]): plain text, escaped by the template.
-                'extra' => array_map(static fn (array $column): string => (string) ($column['callable'])($record), $extraColumns),
+                // Extension columns (#[ListColumn]): plain text, or a Badge; both escaped by the template.
+                'extra' => array_map(static function (array $column) use ($record): string|array {
+                    $value = ($column['callable'])($record);
+
+                    return $value instanceof Badge ? ['label' => $value->label, 'tone' => $value->tone()] : (string) $value;
+                }, $extraColumns),
                 'languages' => $multilingual ? $this->languageBadges($typeDef, $record) : [],
                 'state' => $states !== null ? ($states[(string) $record->getId()] ?? PublishState::Draft) : null,
             ];
@@ -643,13 +648,13 @@ final class AdminController
                 'label' => $panel['label'],
                 'position' => $panel['position'],
                 'html' => $result instanceof ScreenView
-                    ? $result->render($this->engine, ['prefix' => $this->prefix, 'csrf' => $csrf, 'type' => $type, 'record' => $record->toArray()], "Panel \"{$panel['label']}\" of type \"{$type}\"")
+                    ? $result->render($this->engine, ['prefix' => $this->prefix, 'csrf' => $csrf, 'type' => $type, 'id' => $id, 'record' => $record->toArray()], "Panel \"{$panel['label']}\" of type \"{$type}\"")
                     : htmlspecialchars((string) $result, ENT_QUOTES | ENT_HTML5, 'UTF-8'),
             ];
         }
         $actions = [];
         foreach ($custom['actions'] as $action) {
-            if ($this->can($action['permission']) && $this->can($type . '.edit')) {
+            if ($action['toolbar'] && $this->can($action['permission']) && $this->can($type . '.edit')) {
                 $actions[] = [
                     'label' => $action['label'],
                     'url' => $this->prefix . '/' . $type . '/' . rawurlencode($id) . '/_action/' . $action['name'],

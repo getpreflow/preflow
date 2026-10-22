@@ -932,6 +932,7 @@
         root.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
         if (root.hasAttribute && root.hasAttribute('data-block-card')) { notifyChange(root); }
         root.querySelectorAll('[data-folio-focal]').forEach(placeFocalMarker);
+        initTabs(root);
     }
 
     // Share-preview link: copy the URL (select it when the clipboard is unavailable).
@@ -1024,6 +1025,57 @@
         btn.textContent = 'Selected';
     }
 
+    // Tabs: <div data-folio-tabs> with a .folio-segmented of <button data-folio-tab="key"> and
+    // sibling <div data-folio-tabpanel="key">. Without JS every panel shows.
+    function initTabs(root) {
+        root.querySelectorAll('[data-folio-tabs]').forEach(function (box) {
+            if (box.hasAttribute('data-folio-tabs-ready')) { return; }
+            var tabs = Array.prototype.slice.call(box.querySelectorAll('[data-folio-tab]'));
+            if (!tabs.length) { return; }
+            box.setAttribute('data-folio-tabs-ready', '');
+            var tablist = tabs[0].parentNode;
+            tablist.setAttribute('role', 'tablist');
+            var n = 0;
+            var uid = Math.random().toString(36).slice(2, 7);
+            function panelOf(tab) {
+                return box.querySelector('[data-folio-tabpanel="' + tab.getAttribute('data-folio-tab') + '"]');
+            }
+            function select(tab, focus) {
+                tabs.forEach(function (t) {
+                    var on = t === tab;
+                    t.setAttribute('aria-selected', on ? 'true' : 'false');
+                    t.tabIndex = on ? 0 : -1;
+                    var p = panelOf(t);
+                    if (p) { p.hidden = !on; }
+                });
+                if (focus) { tab.focus(); }
+            }
+            tabs.forEach(function (t) {
+                var p = panelOf(t);
+                var id = 'folio-tab-' + uid + '-' + (n++);
+                t.setAttribute('role', 'tab');
+                t.id = id;
+                if (!t.hasAttribute('type')) { t.type = 'button'; }
+                if (p) {
+                    p.setAttribute('role', 'tabpanel');
+                    p.setAttribute('aria-labelledby', id);
+                    t.setAttribute('aria-controls', p.id || (p.id = id + '-panel'));
+                }
+                t.addEventListener('click', function () { select(t, false); });
+                t.addEventListener('keydown', function (e) {
+                    var i = tabs.indexOf(t);
+                    var next = null;
+                    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { next = tabs[(i + 1) % tabs.length]; }
+                    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { next = tabs[(i - 1 + tabs.length) % tabs.length]; }
+                    else if (e.key === 'Home') { next = tabs[0]; }
+                    else if (e.key === 'End') { next = tabs[tabs.length - 1]; }
+                    if (next) { e.preventDefault(); select(next, true); }
+                });
+            });
+            select(tabs.filter(function (t) { return t.hasAttribute('data-folio-tab-active'); })[0] || tabs[0], false);
+        });
+    }
+
     function boot() {
         document.addEventListener('submit', onSubmitConfirm);
         document.addEventListener('click', onBlockClick);
@@ -1049,6 +1101,7 @@
         document.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
         window.addEventListener('message', onMessage);
         document.addEventListener('keydown', onKeydown);
+        initTabs(document);
         initSplit();
         initUnsavedGuard();
     }

@@ -1203,7 +1203,8 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
   cursor: pointer;
 }
 .folio-segmented button:hover { color: var(--c-text); }
-.folio-segmented button[aria-pressed="true"] { background: var(--c-surface-raised); color: var(--c-text); box-shadow: var(--shadow-sm); }
+.folio-segmented button[aria-pressed="true"],
+.folio-segmented button[aria-selected="true"] { background: var(--c-surface-raised); color: var(--c-text); box-shadow: var(--shadow-sm); }
 .folio-segmented .folio-icon { width: 15px; height: 15px; }
 
 .folio-preview-frame {
@@ -1303,3 +1304,30 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
 .folio-panel { border: 1px solid var(--c-border); border-radius: var(--r); background: var(--c-surface); padding: 12px 16px; }
 .folio-panel-title { margin: 0 0 8px; font-size: 14px; font-weight: 620; }
 .folio-panel-body { font-size: 13.5px; }
+
+/* ---- side panels and tabs ---- */
+/* Narrow: the side panels stack under the form. From 1100px they sit in a sticky right-hand column. */
+.folio-side { display: grid; gap: 12px; margin-top: 28px; max-width: 780px; min-width: 0; }
+@media (min-width: 1100px) {
+  .folio-editor.has-side {
+    max-width: 1160px;
+    display: grid;
+    grid-template-columns: minmax(0, 780px) 340px;
+    column-gap: 28px;
+    align-items: start;
+  }
+  .folio-editor.has-side > * { grid-column: 1; min-width: 0; }
+  .folio-editor.has-side > .folio-side {
+    grid-column: 2;
+    grid-row: 1 / span 12;
+    position: sticky;
+    top: 16px;
+    margin-top: 0;
+    max-width: none;
+  }
+  .folio-split-form .folio-editor.has-side { display: block; max-width: 780px; }
+  .folio-split-form .folio-editor.has-side > .folio-side { position: static; margin-top: 28px; }
+}
+[data-folio-tabs] > .folio-segmented { display: flex; width: 100%; margin-bottom: 12px; }
+[data-folio-tabs] > .folio-segmented button { flex: 1 1 0; justify-content: center; }
+.folio-segmented button[role="tab"]:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
