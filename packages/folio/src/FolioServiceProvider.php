@@ -15,6 +15,7 @@ use Preflow\Folio\Content\ContentLocale;
 use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Extension\ExtensionRegistry;
 use Preflow\Folio\Http\AdminAuthMiddleware;
 use Preflow\Folio\Http\AdminController;
 use Preflow\Folio\Http\AssetController;
@@ -51,12 +52,33 @@ final class FolioServiceProvider extends ServiceProvider
         $modelsPath = $this->modelsPath($app);
         $prefix = $this->prefix($app);
 
-        $container->instance(TypeCatalog::class, new TypeCatalog($modelsPath));
+        $catalog = new TypeCatalog($modelsPath);
+        $container->instance(TypeCatalog::class, $catalog);
 
         // Bind unconditionally: Container::has() falls back to class_exists(),
         // so the guard would always be false and the instance would never be bound.
         $locales = $this->locales($container);
-        $container->instance(TypeRegistry::class, new TypeRegistry($modelsPath, $locales));
+        $types = new TypeRegistry($modelsPath, $locales);
+        $container->instance(TypeRegistry::class, $types);
+
+        // Extensions (app/Folio/*, Composer extra.folio.extension), enabled by the committed
+        // config/folio/extensions.json. Built before anything reads the catalog, so the models
+        // of enabled extensions are types like the model files (frontend routes, permissions).
+        $extensions = ExtensionRegistry::discover(
+            $app->basePath(),
+            debug: (bool) $app->config()->get('app.debug', false),
+            cacheFile: $app->basePath('storage/cache/folio-extensions.cache'),
+            make: static fn (string $class): object => $container->get($class),
+        );
+        $container->instance(ExtensionRegistry::class, $extensions);
+        foreach ($extensions->enabledModels() as $schema) {
+            try {
+                $types->define($schema);
+                $catalog->add($schema);
+            } catch (\RuntimeException $e) {
+                throw new \Preflow\Folio\Extension\ExtensionException("Extension model \"{$schema['key']}\": {$e->getMessage()}", 0, $e);
+            }
+        }
         // Blocks: component blocks from app/Components, data-only blocks from
         // app/Blocks, plus classes listed in config/folio.php 'blocks'. Cached
         // when debug is off (conflicting keys fail at boot either way).
@@ -353,6 +375,12 @@ final class FolioServiceProvider extends ServiceProvider
                 $engine->addNamespace('folio', $userDir);
             }
             $engine->addNamespace('folio', dirname(__DIR__) . '/templates');
+            // Enabled extensions' templates/ as @{extension name}/…
+            foreach ($container->get(ExtensionRegistry::class)->enabled() as $extension) {
+                if (is_dir($extension->folder . '/templates')) {
+                    $engine->addNamespace($extension->name, $extension->folder . '/templates');
+                }
+            }
 
             // Single asset URL seam: folio_asset('admin.css') -> versioned URL.
             // Content-hash version so immutable caches bust on edit. A future
