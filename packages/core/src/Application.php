@@ -272,6 +272,9 @@ final class Application
         $migrations = new \Preflow\Data\Migration\MigrationRegistry();
         $migrations->addPath($this->basePath('migrations'));
         $migrations->addPath(dirname(__DIR__) . '/migrations');
+        if (class_exists(\Preflow\Auth\Tokens\Tokens::class)) {
+            $migrations->addPath(dirname((string) (new \ReflectionClass(\Preflow\Auth\Tokens\Tokens::class))->getFileName(), 3) . '/migrations');
+        }
         $this->container->instance(\Preflow\Data\Migration\MigrationRegistry::class, $migrations);
 
         $dataConfigPath = $this->basePath('config/data.php');
@@ -358,6 +361,18 @@ final class Application
                 lockDir: $this->basePath('storage/locks'),
             ),
         );
+
+        // Single-use tokens of preflow/auth (table auth_tokens), on storage "auth" when configured.
+        if (class_exists(\Preflow\Auth\Tokens\Tokens::class)) {
+            $this->container->instance(
+                \Preflow\Auth\Tokens\Tokens::class,
+                new \Preflow\Auth\Tokens\Tokens(
+                    $dataManager,
+                    isset($drivers['auth']) ? 'auth' : 'default',
+                    lockDir: $this->basePath('storage/locks'),
+                ),
+            );
+        }
     }
 
     private function createSqliteDriver(array $config, ?DebugCollector $collector = null): \Preflow\Data\Driver\SqliteDriver
@@ -875,6 +890,16 @@ final class Application
 
             if ($providerClass === \Preflow\Auth\ConfigUserProvider::class) {
                 $providers[$name] = new \Preflow\Auth\ConfigUserProvider($providerConfig['users'] ?? []);
+            }
+
+            // Any other class is built from the container with its config entry.
+            if ($providerClass !== \Preflow\Auth\DataManagerUserProvider::class
+                && $providerClass !== \Preflow\Auth\ConfigUserProvider::class) {
+                $provider = $this->container->make($providerClass, ['config' => $providerConfig]);
+                if (!$provider instanceof \Preflow\Auth\UserProviderInterface) {
+                    throw new \RuntimeException("Provider \"{$name}\" ({$providerClass}) does not implement " . \Preflow\Auth\UserProviderInterface::class . '.');
+                }
+                $providers[$name] = $provider;
             }
         }
 
