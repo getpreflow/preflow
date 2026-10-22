@@ -9,7 +9,10 @@ use Preflow\Folio\Routing\PatternCompiler;
 /** One content type's public route, from its "frontend" block. */
 final readonly class FrontendRoute
 {
-    /** @param list<string> $paramNames */
+    /**
+     * @param list<string>                      $paramNames
+     * @param string|array<string, string>|null $login      the login path, or one per locale
+     */
     public function __construct(
         public string $type,
         public string $pattern,
@@ -22,6 +25,8 @@ final readonly class FrontendRoute
         public string $publishedField,
         public string|int|float|bool $publishedValue,
         public bool $publishing = false,
+        public ?string $permission = null,
+        public string|array|null $login = null,
     ) {}
 
     /**
@@ -55,7 +60,57 @@ final readonly class FrontendRoute
             publishedField: (string) ($published['field'] ?? 'status'),
             publishedValue: self::publishedValue($type, $published['value'] ?? 'published'),
             publishing: $publishing,
+            permission: self::permission($type, $frontend['permission'] ?? null),
+            login: self::login($type, $frontend['login'] ?? null),
         );
+    }
+
+    /**
+     * The login path for a locale: its own, the default locale's, or the first
+     * one; null when the type has no login (a refused visitor gets a 404).
+     */
+    public function loginFor(string $locale, string $default): ?string
+    {
+        if (!is_array($this->login)) {
+            return $this->login;
+        }
+
+        return $this->login[$locale] ?? $this->login[$default] ?? $this->login[array_key_first($this->login)];
+    }
+
+    private static function permission(string $type, mixed $permission): ?string
+    {
+        if ($permission === null) {
+            return null;
+        }
+        if (!is_string($permission) || $permission === '') {
+            throw new FrontendConfigException(sprintf('Folio type "%s": frontend.permission must be a permission name, e.g. "members.access".', $type));
+        }
+
+        return $permission;
+    }
+
+    /**
+     * A same-origin path ("/tools/login"), or a map of them by locale.
+     *
+     * @return string|array<string, string>|null
+     */
+    private static function login(string $type, mixed $login): string|array|null
+    {
+        if ($login === null) {
+            return null;
+        }
+        $paths = is_array($login) ? $login : [$login];
+        foreach ($paths as $locale => $path) {
+            if ((is_array($login) && !is_string($locale)) || !is_string($path) || !str_starts_with($path, '/') || str_starts_with($path, '//') || str_contains($path, '\\')) {
+                throw new FrontendConfigException(sprintf('Folio type "%s": frontend.login must be a path on this site ("/login") or a map of them by locale ({"en": "/login", "de": "/de/login"}).', $type));
+            }
+        }
+        if ($paths === []) {
+            throw new FrontendConfigException(sprintf('Folio type "%s": frontend.login must not be empty.', $type));
+        }
+
+        return $login;
     }
 
     /**

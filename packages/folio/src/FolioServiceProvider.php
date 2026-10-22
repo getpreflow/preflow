@@ -340,6 +340,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
             $c->get(\Preflow\Folio\Content\LiveContent::class),
             $c->get(\Preflow\View\AssetCollector::class),
+            $c->get(\Preflow\Auth\Access\Access::class),
+            (bool) $app->config()->get('app.debug', false),
         ));
         // Folio's admin assets; packages add their field types' files (AdminAssets::add()).
         $container->singleton(\Preflow\Folio\Http\AdminAssets::class, fn () => new \Preflow\Folio\Http\AdminAssets($this->assetMap()));

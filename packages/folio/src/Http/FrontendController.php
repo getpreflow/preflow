@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
+use Preflow\Auth\Access\Access;
+use Preflow\Auth\Access\UndeclaredPermission;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
@@ -28,6 +30,8 @@ final class FrontendController
         private readonly ?PreviewLinks $previews = null,
         private readonly ?\Preflow\Folio\Content\LiveContent $live = null,
         private readonly ?\Preflow\View\AssetCollector $assets = null,
+        private readonly ?Access $access = null,
+        private readonly bool $debug = false,
     ) {}
 
     public function show(ServerRequestInterface $request): ResponseInterface
@@ -44,15 +48,67 @@ final class FrontendController
         if ($match === null) {
             throw new NotFoundHttpException();
         }
+        $refused = $this->gate($request, $match->record, $match->route);
+        if ($refused !== null) {
+            return $refused;
+        }
 
-        return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->render($request, $match->record, $match->route, false));
+        $headers = ['Content-Type' => 'text/html; charset=UTF-8'];
+        if ($match->route->permission !== null) {
+            $headers['Cache-Control'] = 'private, no-store';
+        }
+
+        return new Response(200, $headers, $this->render($request, $match->record, $match->route, false));
+    }
+
+    /**
+     * A type with frontend.permission shows its pages only to users who have it.
+     * Anyone else goes to the type's login with the requested path as "next", or
+     * gets a 404 when there is no login. Undeclared permissions throw in debug and
+     * are refused otherwise (even without auth configured, where Access allows all).
+     */
+    private function gate(ServerRequestInterface $request, DynamicRecord $record, FrontendRoute $route): ?ResponseInterface
+    {
+        $permission = $route->permission;
+        if ($permission === null) {
+            return null;
+        }
+        $registry = $this->access?->registry();
+        $declared = $registry !== null && ($registry->isDeclared($permission) || $registry->disabledReason($permission) !== null);
+        if (!$declared && $this->debug) {
+            throw UndeclaredPermission::named($permission);
+        }
+        if ($declared && $this->access?->can($permission) === true) {
+            return null;
+        }
+
+        $locale = $this->locale($request, $record);
+        $login = $route->loginFor($locale, $record->getType()->locales->default);
+        if ($login === null) {
+            throw new NotFoundHttpException();
+        }
+        // The page's own URL (the locale prefix is already stripped from the request); always a path on this site, never "//host".
+        $next = '/' . ltrim($this->resolver->urlFor($record, $locale) ?? $request->getUri()->getPath(), '/\\');
+
+        return new Response(302, [
+            'Location' => $login . (str_contains($login, '?') ? '&' : '?') . 'next=' . rawurlencode($next),
+            'Cache-Control' => 'private, no-store',
+        ]);
+    }
+
+    /** The page's locale: the requested one when the record's type has it, else the type's default. */
+    private function locale(ServerRequestInterface $request, DynamicRecord $record): string
+    {
+        $requested = $request->getAttribute('locale');
+        $locales = $record->getType()->locales;
+
+        return is_string($requested) && $locales->has($requested) ? $requested : $locales->default;
     }
 
     private function render(ServerRequestInterface $request, DynamicRecord $record, FrontendRoute $route, bool $preview): string
     {
-        $requested = $request->getAttribute('locale');
         $locales = $record->getType()->locales;
-        $locale = is_string($requested) && $locales->has($requested) ? $requested : $locales->default;
+        $locale = $this->locale($request, $record);
         $this->contentLocale?->set($locale);
 
         // hreflang needs absolute URLs; 'url' stays relative for language switchers.
@@ -87,6 +143,7 @@ final class FrontendController
      * holding it: the token must verify, its nonce must match the record's
      * current _share_token (rotating it revokes links), and the request path
      * must be the record's own URL. Anything else falls back to the public page.
+     * A gated type's link is for staff review: the reviewer must pass the gate too.
      */
     private function sharedPreview(ServerRequestInterface $request): ?ResponseInterface
     {
@@ -111,6 +168,11 @@ final class FrontendController
         $url = $this->resolver->urlFor($working, is_string($locale) ? $locale : $working->getType()->locales->default);
         if ($url === null || rtrim($url, '/') !== rtrim($request->getUri()->getPath(), '/')) {
             return null;
+        }
+
+        $refused = $this->gate($request, $working, $route);
+        if ($refused !== null) {
+            return $refused;
         }
 
         $this->live?->showWorkingCopies(); // the shared draft shows draft references too
