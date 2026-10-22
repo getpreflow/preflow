@@ -117,7 +117,7 @@ final class Importer
                 if (!array_key_exists($m[1], $manifest['tables'])) {
                     throw new TransferException("Record for a table outside the manifest: {$name}");
                 }
-            } elseif (preg_match('#^(media|uploads)/.+$#', $name, $m) !== 1 || !isset($this->set->fileRoots()[$m[1]])) {
+            } elseif (preg_match('#^(media|uploads|private-media)/.+$#', $name, $m) !== 1 || !isset($this->set->fileRoots()[$m[1]])) {
                 throw new TransferException("Unexpected archive entry: {$name}");
             } else {
                 self::assertServableFile($name);

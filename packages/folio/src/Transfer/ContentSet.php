@@ -14,7 +14,8 @@ use Preflow\Folio\Publishing\ShadowTypes;
 /**
  * Everything Folio owns at runtime: its types' tables (with the published and
  * revision shadows of publishing types), the asset records, the media
- * directory and legacy uploads. Nothing else (code, .env, caches, sessions,
+ * directory, the private media directory (its files travel with their asset
+ * records, archive root "private-media") and legacy uploads. Nothing else (code, .env, caches, sessions,
  * other tables such as user_tokens) is content.
  */
 final class ContentSet
@@ -24,6 +25,7 @@ final class ContentSet
         private readonly array $tables,
         private readonly ?string $mediaDir,
         private readonly ?string $uploadsDir,
+        private readonly ?string $privateDir = null,
     ) {}
 
     public static function fromApp(Application $app): self
@@ -51,8 +53,14 @@ final class ContentSet
         $cfg = is_array($cfg) ? $cfg : [];
         $media = $cfg['assets']['dir'] ?? $app->basePath('public/media');
         $uploads = $cfg['uploads_path'] ?? $app->basePath('storage/uploads');
+        $private = $cfg['assets']['private_dir'] ?? $app->basePath('storage/private-media');
 
-        return new self($tables, is_string($media) ? rtrim($media, '/') : null, is_string($uploads) ? rtrim($uploads, '/') : null);
+        return new self(
+            $tables,
+            is_string($media) ? rtrim($media, '/') : null,
+            is_string($uploads) ? rtrim($uploads, '/') : null,
+            is_string($private) ? rtrim($private, '/') : null,
+        );
     }
 
     /** @return array<string, TypeDefinition> */
@@ -74,7 +82,7 @@ final class ContentSet
     /** @return array<string, string> archive root => local directory */
     public function fileRoots(): array
     {
-        return array_filter(['media' => $this->mediaDir, 'uploads' => $this->uploadsDir], 'is_string');
+        return array_filter(['media' => $this->mediaDir, 'uploads' => $this->uploadsDir, 'private-media' => $this->privateDir], 'is_string');
     }
 
     /**

@@ -17,6 +17,10 @@ use Psr\Http\Message\UploadedFileInterface;
  * type (key "_asset", table "folio_assets"). The extension always follows the
  * sniffed MIME type, never the client's file name, and only allowed types are
  * stored, so nothing executable can land in the public directory.
+ *
+ * Private assets (an asset field with "private": true) live in
+ * config "private_dir", outside the public directory, without variants; their
+ * only URL is {private_url}/{id}, which PrivateAssetController gates.
  */
 final class AssetLibrary
 {
@@ -52,7 +56,7 @@ final class AssetLibrary
     private readonly \Closure $now;
 
     /**
-     * @param array<string, mixed> $config config/folio.php "assets" (storage, max_bytes, allow_svg, …)
+     * @param array<string, mixed> $config config/folio.php "assets" (storage, max_bytes, allow_svg, private_dir, private_url, …)
      */
     public function __construct(
         private readonly DataManager $dm,
@@ -75,6 +79,7 @@ final class AssetLibrary
         foreach (['path', 'original_name', 'mime', 'size', 'width', 'height', 'duration', 'alt', 'title', 'focal_x', 'focal_y', 'poster', 'variants', 'created_at', 'created_by'] as $name) {
             $fields[$name] = new TypeFieldDefinition($name, 'string', translatable: $name === 'alt');
         }
+        $fields['private'] = new TypeFieldDefinition('private', 'boolean'); // missing on older records: public
 
         return $this->definition = new TypeDefinition(
             key: '_asset',
@@ -86,8 +91,11 @@ final class AssetLibrary
         );
     }
 
-    /** @throws AssetUploadException */
-    public function upload(UploadedFileInterface $file, ?string $by): Asset
+    /**
+     * @param bool $private store in the private directory, served only through the gated URL
+     * @throws AssetUploadException
+     */
+    public function upload(UploadedFileInterface $file, ?string $by, bool $private = false): Asset
     {
         $name = (string) ($file->getClientFilename() ?? 'upload');
         if ($file->getError() !== UPLOAD_ERR_OK) {
@@ -99,7 +107,7 @@ final class AssetLibrary
             $stream->rewind();
         }
 
-        return $this->store($stream->getContents(), $name, $by);
+        return $this->store($stream->getContents(), $name, $by, $private);
     }
 
     /**
@@ -178,6 +186,15 @@ final class AssetLibrary
         if ($asset === null) {
             return;
         }
+        if ($asset->private) {
+            $file = $this->file($asset);
+            if ($file !== null && is_file($file)) {
+                unlink($file);
+            }
+            $this->dm->deleteIn($this->definition(), $id);
+
+            return;
+        }
         foreach ([$asset->path, ...array_map(static fn (Variant $v) => $v->path, $asset->variants)] as $path) {
             $file = $this->absolute($path);
             if (is_file($file)) {
@@ -239,7 +256,7 @@ final class AssetLibrary
      */
     public function allowsVariant(Asset $asset, int $width, string $format, array $allowed): bool
     {
-        if ($this->variants === null || $asset->width === null || $asset->height === null || $width > $asset->width
+        if ($this->variants === null || $asset->private || $asset->width === null || $asset->height === null || $width > $asset->width
             || !$this->variants->supports($asset->mime, $format)
             || array_filter($asset->variants, static fn (Variant $v) => $v->format === $format) === []
             || $asset->width * $asset->height > (int) ($this->config['max_pixels'] ?? self::DEFAULT_MAX_PIXELS)) {
@@ -285,7 +302,7 @@ final class AssetLibrary
     /** Replace an image's variants (e.g. after the configured widths changed). */
     public function regenerate(Asset $asset): Asset
     {
-        if ($this->variants === null) {
+        if ($this->variants === null || $asset->private) {
             return $asset;
         }
         $this->variants->remove($asset, $this->dir);
@@ -295,9 +312,36 @@ final class AssetLibrary
         return $this->save($data);
     }
 
-    public function url(string $relativePath): string
+    /** The URL of an asset (a private one: only the gated {private_url}/{id}) or of a path under the media URL. */
+    public function url(Asset|string $target): string
     {
-        return rtrim($this->url, '/') . '/' . ltrim($relativePath, '/');
+        if ($target instanceof Asset) {
+            if ($target->private) {
+                return rtrim((string) ($this->config['private_url'] ?? '/files'), '/') . '/' . $target->id;
+            }
+            $target = $target->path;
+        }
+
+        return rtrim($this->url, '/') . '/' . ltrim($target, '/');
+    }
+
+    /** The private directory (config "private_dir"); null when none is configured. */
+    public function privateDir(): ?string
+    {
+        $dir = $this->config['private_dir'] ?? null;
+
+        return is_string($dir) && $dir !== '' ? rtrim($dir, '/') : null;
+    }
+
+    /** The asset's file on disk (unchecked; the private route confines it with realpath); null for a private asset without a private dir. */
+    public function file(Asset $asset): ?string
+    {
+        if (!$asset->private) {
+            return $this->absolute($asset->path);
+        }
+        $dir = $this->privateDir();
+
+        return $dir === null ? null : $dir . '/' . ltrim($asset->path, '/');
     }
 
     public function absolute(string $relativePath): string
@@ -310,6 +354,9 @@ final class AssetLibrary
     {
         if ($asset->kind() !== 'image') {
             return null;
+        }
+        if ($asset->private) {
+            return $this->url($asset); // gated: staff need the private permission (or "*") to see it
         }
         $webp = array_filter($asset->variants, static fn (Variant $v) => $v->format === 'webp');
         usort($webp, static fn (Variant $a, Variant $b) => [$a->width !== 480, $a->width] <=> [$b->width !== 480, $b->width]);
@@ -324,7 +371,7 @@ final class AssetLibrary
     }
 
     /** @throws AssetUploadException */
-    private function store(string $bytes, string $name, ?string $by): Asset
+    private function store(string $bytes, string $name, ?string $by, bool $private = false): Asset
     {
         $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($bytes) ?: 'application/octet-stream';
         if ($mime === 'image/svg+xml' && ($this->config['allow_svg'] ?? false) !== true) {
@@ -338,7 +385,10 @@ final class AssetLibrary
         $now = ($this->now)();
         $id = bin2hex(random_bytes(16));
         $path = $now->format('Y/m') . '/' . $id . '.' . $ext;
-        $file = $this->absolute($path);
+        if ($private && $this->privateDir() === null) {
+            throw new AssetUploadException("{$name}: no private directory is configured (assets.private_dir).");
+        }
+        $file = $private ? $this->privateDir() . '/' . $path : $this->absolute($path);
         if (!is_dir(dirname($file)) && !mkdir(dirname($file), 0775, true) && !is_dir(dirname($file))) {
             throw new AssetUploadException('The media directory is not writable.');
         }
@@ -375,10 +425,14 @@ final class AssetLibrary
             variants: [],
             createdAt: $now->format(DATE_ATOM),
             createdBy: $by,
+            private: $private,
         );
         // The record first: if variant generation dies (time or memory limit), the
         // file is still a usable asset whose variants can be made later.
         $asset = $this->save($asset->toData());
+        if ($private) {
+            return $asset; // no variants: they would be public files
+        }
         $data = $asset->toData();
         $data['variants'] = array_map(static fn (Variant $v) => $v->toArray(), $this->generateVariants($asset));
         if ($data['variants'] === []) {

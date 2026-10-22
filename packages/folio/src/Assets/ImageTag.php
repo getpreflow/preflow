@@ -14,6 +14,7 @@ use Preflow\View\ResponsiveImage;
  * text in the page's language and the focal point as classes (CSP forbids
  * inline styles). Options are ResponsiveImage's, merged with config/image.php
  * presets. Legacy upload paths render as a plain <img>; documents as a link.
+ * Private assets have no variants: their gated URL, without a srcset.
  */
 final class ImageTag
 {
@@ -46,7 +47,7 @@ final class ImageTag
         }
         $asset = $this->library->find($value);
 
-        return $asset !== null ? $this->library->url($asset->path) : '';
+        return $asset !== null ? $this->library->url($asset) : '';
     }
 
     public function render(mixed $value, ?string $preset = null, array $options = []): string
@@ -66,7 +67,7 @@ final class ImageTag
             return '';
         }
         if ($asset->kind() !== 'image') {
-            return '<a href="' . self::e($this->library->url($asset->path)) . '">' . self::e($asset->label()) . '</a>';
+            return '<a href="' . self::e($this->library->url($asset)) . '">' . self::e($asset->label()) . '</a>';
         }
 
         $opts = array_merge(ResponsiveImage::DEFAULTS, $preset !== null ? (array) ($this->presets[$preset] ?? []) : [], $options);
@@ -75,7 +76,7 @@ final class ImageTag
         $priority = (bool) ($opts['priority'] ?? false);
         $sources = '';
         $first = null; // [format, srcset] of the first source: what the browser will pick
-        foreach (['avif', 'webp'] as $format) {
+        foreach ($asset->private ? [] : ['avif', 'webp'] as $format) {
             $srcset = $this->srcset($asset, $format, $preset);
             if ($srcset !== '') {
                 $first ??= [$format, $srcset];
@@ -86,13 +87,13 @@ final class ImageTag
             // The page's key image: fetch it before the parser reaches it.
             $this->css->addHeadTag($first !== null
                 ? '<link rel="preload" as="image" type="image/' . $first[0] . '" imagesrcset="' . self::e($first[1]) . '" imagesizes="' . self::e($sizes) . '" fetchpriority="high">'
-                : '<link rel="preload" as="image" href="' . self::e($this->library->url($asset->path)) . '" fetchpriority="high">', 'folio-preload:' . $asset->id . ':' . ($preset ?? ''));
+                : '<link rel="preload" as="image" href="' . self::e($this->library->url($asset)) . '" fetchpriority="high">', 'folio-preload:' . $asset->id . ':' . ($preset ?? ''));
         }
 
         $classes = array_filter([trim((string) $opts['class']), ...$this->focalClasses($asset)]);
         $alt = is_string($options['alt'] ?? null) ? $options['alt'] : $asset->altFor($this->locale->get(), $this->locale->locales()->default);
 
-        $img = '<img src="' . self::e($this->library->url($asset->path)) . '"';
+        $img = '<img src="' . self::e($this->library->url($asset)) . '"';
         if ($asset->width !== null && $asset->height !== null) {
             $img .= ' width="' . $asset->width . '" height="' . $asset->height . '"';
         }

@@ -119,7 +119,8 @@ final class FolioServiceProvider extends ServiceProvider
         $container->instance(ContentLocale::class, new ContentLocale($locales ?? \Preflow\Data\Locales::single('en')));
 
         // Media library: files in a public, web-server-served directory (no PHP on delivery).
-        $assetsConfig = (array) ($folioCfg['assets'] ?? []);
+        // Private assets: a directory outside public/, served only through the gated private URL.
+        $assetsConfig = self::privateAssetsConfig((array) ($folioCfg['assets'] ?? []), $app);
         // Eager widths (made at upload) and the on-demand allow-list, from config/image.php presets.
         $container->singleton(\Preflow\Folio\Assets\ImageWidths::class, fn () => \Preflow\Folio\Assets\ImageWidths::fromConfig(
             (array) $app->config()->get('image.presets', []),
@@ -166,6 +167,12 @@ final class FolioServiceProvider extends ServiceProvider
             (bool) ($folioCfg['extensions']['allow_admin_changes'] ?? $app->config()->get('app.debug', false)),
         ));
 
+        $container->bind(\Preflow\Folio\Http\PrivateAssetController::class, fn (Container $c) => new \Preflow\Folio\Http\PrivateAssetController(
+            $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
+            $c->get(\Preflow\Folio\Content\FrontendGate::class),
+            (string) $assetsConfig['private_permission'],
+            is_string($assetsConfig['private_login'] ?? null) && $assetsConfig['private_login'] !== '' ? $assetsConfig['private_login'] : null,
+        ));
         $container->bind(\Preflow\Folio\Http\MediaVariantController::class, fn (Container $c) => new \Preflow\Folio\Http\MediaVariantController(
             $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
             $c->get(\Preflow\Folio\Assets\ImageWidths::class),
@@ -637,11 +644,52 @@ final class FolioServiceProvider extends ServiceProvider
                 // Screens first: their routes must win over the admin's {type} routes.
                 $collection->addMany($screens->routes($this->prefix($app), $authEnabled));
                 $collection->addMany(FolioRoutes::admin($this->prefix($app), $authEnabled));
-                $assets = (array) ($this->folioConfig($app)['assets'] ?? []);
+                $assets = self::privateAssetsConfig((array) ($this->folioConfig($app)['assets'] ?? []), $app);
+                $collection->add(FolioRoutes::privateAssets((string) $assets['private_url']));
                 $collection->add(FolioRoutes::media(is_string($assets['url'] ?? null) ? $assets['url'] : '/media'));
                 $collection->add(FolioRoutes::frontend());
             }
         }
+    }
+
+    /**
+     * config/folio.php "assets" with the private-asset defaults (private_dir
+     * storage/private-media, private_url /files, private_permission
+     * folio.dashboard). A private_dir inside public/ or the media directory is
+     * refused: those files would be served without the gate.
+     *
+     * @param array<string, mixed> $assets
+     * @return array<string, mixed>
+     */
+    private static function privateAssetsConfig(array $assets, Application $app): array
+    {
+        $assets += [
+            'private_dir' => $app->basePath('storage/private-media'),
+            'private_url' => '/files',
+            'private_permission' => 'folio.dashboard',
+        ];
+        $private = self::normalizePath((string) $assets['private_dir']);
+        foreach ([$app->basePath('public'), (string) ($assets['dir'] ?? $app->basePath('public/media'))] as $served) {
+            $served = self::normalizePath($served);
+            if ($private === $served || str_starts_with($private, $served . '/') || str_starts_with($served, $private . '/')) {
+                throw new \RuntimeException("config/folio.php assets.private_dir ({$assets['private_dir']}) must be outside public/ and the media directory.");
+            }
+        }
+
+        return $assets;
+    }
+
+    /** An absolute path, symlinks resolved up to its deepest existing ancestor. */
+    private static function normalizePath(string $path): string
+    {
+        $path = rtrim($path, '/');
+        $suffix = '';
+        while ($path !== '' && $path !== '/' && $path !== '.' && realpath($path) === false) {
+            $suffix = '/' . basename($path) . $suffix;
+            $path = dirname($path);
+        }
+
+        return rtrim((string) realpath($path === '' ? '/' : $path), '/') . $suffix;
     }
 
     /**

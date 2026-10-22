@@ -197,7 +197,7 @@ final class AssetLibraryController
             'size' => $asset->size,
             'width' => $asset->width,
             'height' => $asset->height,
-            'url' => $this->library->url($asset->path),
+            'url' => $this->library->url($asset),
             'thumb' => $this->library->thumbnailUrl($asset),
             'alt' => $asset->alt,
             'title' => $asset->title,

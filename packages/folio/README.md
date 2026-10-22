@@ -583,7 +583,40 @@ is not routed.
     'allow_svg' => false,
     'widths' => [480, 768, 1024, 1600],   // default: the config/image.php preset widths
     'quality' => 75,
+    'private_dir' => __DIR__ . '/../storage/private-media', // default; never under public/
+    'private_url' => '/files',                // default
+    'private_permission' => 'folio.dashboard', // default
+    'private_login' => null,                  // optional: '/tools/login'
 ],
+```
+
+**Private assets.** An asset field with `"private": true` stores its uploads in
+`private_dir`, outside `public/`:
+
+```json
+"pdf": { "type": "asset", "asset": { "accept": "application/pdf", "private": true } }
+```
+
+- Private files get no variants, and nothing under the media URL serves them.
+- Their only URL is `{private_url}/{id}`, e.g. `/files/3f…e1`. `folio_asset_url()`,
+  `folio_image()` (a plain `<img>`, no srcset) and the admin thumbnails all use it.
+- The route serves the file only to a signed-in user with `private_permission`; staff
+  with `*` pass. It fails closed like the frontend gate.
+- Anyone else gets a 403, or with `private_login` a redirect to
+  `login?next={the file's URL}`.
+- Files are sent with `Cache-Control: private, no-store` and their stored type. Images
+  are `inline`; everything else, SVG included, is an `attachment` with the original
+  file name.
+- The route needs the session: when config/auth.php sets `session.paths`, include the
+  private URL's prefix (`/files`, or `/tools` for `/tools/files`).
+- A `private_dir` inside `public/` or the media directory is refused at boot.
+- Export and pull carry the private files with their asset records (archive root
+  `private-media/`).
+
+For a members area:
+
+```php
+'assets' => ['private_url' => '/tools/files', 'private_permission' => 'members.access', 'private_login' => '/tools/login'],
 ```
 
 **Allowed files:**
@@ -612,7 +645,7 @@ library:
 - `uuid` (primary key);
 - `path`, `original_name`, `mime`, `title`, `poster`, `created_at` and `created_by`
   (TEXT);
-- `size`, `width`, `height`, `focal_x` and `focal_y` (INTEGER);
+- `size`, `width`, `height`, `focal_x`, `focal_y` and `private` (INTEGER);
 - `duration` (REAL);
 - `alt` and `variants` (TEXT, JSON).
 

@@ -29,6 +29,8 @@ final readonly class Asset
         public array $variants,
         public string $createdAt,
         public ?string $createdBy,
+        /** Stored in assets.private_dir and served only through the gated private URL. */
+        public bool $private = false,
     ) {}
 
     public function kind(): string
@@ -82,6 +84,8 @@ final readonly class Asset
             variants: $variants,
             createdAt: (string) ($data['created_at'] ?? ''),
             createdBy: is_string($data['created_by'] ?? null) && $data['created_by'] !== '' ? $data['created_by'] : null,
+            // Records stored before the flag existed are public.
+            private: in_array($data['private'] ?? null, [true, 1, '1'], true),
         );
     }
 
@@ -105,6 +109,7 @@ final readonly class Asset
             'variants' => array_map(static fn (Variant $v) => $v->toArray(), $this->variants),
             'created_at' => $this->createdAt,
             'created_by' => $this->createdBy ?? '',
+            'private' => $this->private ? 1 : 0,
         ];
     }
 

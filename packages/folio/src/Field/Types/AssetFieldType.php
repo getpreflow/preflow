@@ -128,7 +128,7 @@ final class AssetFieldType implements FieldType, HandlesUpload
     {
         $asset = $this->library?->find($value);
         if ($asset !== null) {
-            return [$this->library->thumbnailUrl($asset), $asset->label(), $this->library->url($asset->path)];
+            return [$this->library->thumbnailUrl($asset), $asset->label(), $this->library->url($asset)];
         }
         $url = $this->urlFor($value);
 
@@ -228,7 +228,7 @@ final class AssetFieldType implements FieldType, HandlesUpload
             if (!$file instanceof UploadedFileInterface || $file->getError() !== UPLOAD_ERR_OK) {
                 continue;
             }
-            $stored = $this->library !== null ? $this->storeInLibrary($file, $cfg['accept'], $by) : $this->storeLegacy($file, $cfg['accept']);
+            $stored = $this->library !== null ? $this->storeInLibrary($file, $cfg['accept'], $by, $cfg['private']) : $this->storeLegacy($file, $cfg['accept']);
             if ($stored !== null) {
                 $values[] = $stored;
             }
@@ -238,10 +238,10 @@ final class AssetFieldType implements FieldType, HandlesUpload
     }
 
     /** The asset id, or null (with a message) when the library refuses the file or it does not match "accept". */
-    private function storeInLibrary(UploadedFileInterface $file, string $accept, ?string $by): ?string
+    private function storeInLibrary(UploadedFileInterface $file, string $accept, ?string $by, bool $private): ?string
     {
         try {
-            $asset = $this->library?->upload($file, $by);
+            $asset = $this->library?->upload($file, $by, private: $private);
         } catch (\Preflow\Folio\Assets\AssetUploadException $e) {
             $this->errors[] = $e->getMessage();
             return null;
@@ -308,7 +308,7 @@ final class AssetFieldType implements FieldType, HandlesUpload
 
     /**
      * @param array<string, mixed> $config
-     * @return array{multiple: bool, accept: string}
+     * @return array{multiple: bool, accept: string, private: bool}
      */
     private function assetConfig(array $config): array
     {
@@ -316,6 +316,8 @@ final class AssetFieldType implements FieldType, HandlesUpload
         return [
             'multiple' => (bool) ($asset['multiple'] ?? false),
             'accept' => (string) ($asset['accept'] ?? ''),
+            // Uploads go to the private directory, served only through the gated URL.
+            'private' => ($asset['private'] ?? false) === true,
         ];
     }
 

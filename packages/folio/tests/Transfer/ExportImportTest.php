@@ -103,6 +103,22 @@ final class ExportImportTest extends TestCase
         }
     }
 
+    public function test_private_media_travels_with_its_records(): void
+    {
+        $this->driver()->save('folio_assets', 'p1', ['uuid' => 'p1', 'path' => '2026/10/p1.pdf', 'mime' => 'application/pdf', 'private' => 1]);
+        $this->put('storage/private-media/2026/10/p1.pdf', 'PRIVATEPDF');
+        $archive = $this->export();
+
+        $this->wipe('storage/private-media');
+        $this->driver()->delete('folio_assets', 'p1', 'uuid');
+        $summary = $this->import($archive);
+
+        $this->assertSame('PRIVATEPDF', file_get_contents($this->dir . '/storage/private-media/2026/10/p1.pdf'));
+        $this->assertSame(1, $this->driver()->findOne('folio_assets', 'p1')['private'] ?? null);
+        $this->assertFileDoesNotExist($this->dir . '/public/media/2026/10/p1.pdf');
+        $this->assertSame(['added' => [], 'changed' => [], 'removed' => []], $summary['media']);
+    }
+
     public function test_round_trip_restores_records_shadows_assets_and_files(): void
     {
         $before = $this->snapshot();
