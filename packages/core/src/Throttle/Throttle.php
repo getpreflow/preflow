@@ -14,6 +14,11 @@ use Psr\Http\Message\ServerRequestInterface;
  * Fixed-window attempt limits, stored through the DataManager (table
  * preflow_throttle). Clients are identified by a salted hash that rotates
  * daily; a raw IP is never stored.
+ *
+ * Windows should be much shorter than a day: the client hash rotates at 00:00
+ * UTC, so a window spanning midnight starts over. hit() is a non-atomic
+ * read-modify-write, so this is a soft limit. Rows of earlier days are
+ * orphaned by the rotation; hit() prunes them (see prune()).
  */
 final class Throttle
 {
@@ -21,6 +26,7 @@ final class Throttle
 
     private readonly TypeDefinition $type;
     private readonly \Closure $clock;
+    private bool $pruned = false;
 
     public function __construct(
         private readonly DataManager $dm,
@@ -73,6 +79,10 @@ final class Throttle
                 'hits' => 1,
                 'window_start' => ($this->clock)(),
             ]);
+            if (!$this->pruned) {
+                $this->pruned = true;
+                $this->prune();
+            }
         } else {
             $record->set('hits', (int) $record->get('hits') + 1);
         }
@@ -83,6 +93,22 @@ final class Throttle
     public function clear(string $purpose, string $client): void
     {
         $this->dm->deleteIn($this->type, $this->id($purpose, $client));
+    }
+
+    /**
+     * Delete rows whose window started before now - $olderThanSeconds
+     * (default two days). Returns how many were deleted.
+     */
+    public function prune(int $olderThanSeconds = 172800): int
+    {
+        $cutoff = ($this->clock)() - $olderThanSeconds;
+        $count = 0;
+        foreach ($this->dm->queryIn($this->type)->where('window_start', '<', $cutoff)->get() as $record) {
+            $this->dm->deleteIn($this->type, (string) $record->getId());
+            $count++;
+        }
+
+        return $count;
     }
 
     private function id(string $purpose, string $client): string

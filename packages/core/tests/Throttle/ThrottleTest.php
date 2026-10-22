@@ -112,4 +112,55 @@ final class ThrottleTest extends DataTestCase
             $this->now -= 61;
         }
     }
+
+    private function oldRow(string $id, int $start): void
+    {
+        $this->dataManager()->saveType(new \Preflow\Data\DynamicRecord(
+            (new \ReflectionProperty(Throttle::class, 'type'))->getValue($this->throttle),
+            ['id' => $id, 'purpose' => 'code', 'hits' => 1, 'window_start' => $start],
+        ), validate: false);
+    }
+
+    private function rowExists(string $id): bool
+    {
+        return $this->dataManager()->findIn(
+            (new \ReflectionProperty(Throttle::class, 'type'))->getValue($this->throttle),
+            $id,
+        ) !== null;
+    }
+
+    private Throttle $throttle;
+
+    public function test_prune_removes_rows_older_than_cutoff(): void
+    {
+        $this->throttle = $t = $this->throttle();
+        $this->oldRow('old', $this->now - 3 * 86400);
+        $this->oldRow('recent', $this->now - 3600);
+
+        $this->assertSame(1, $t->prune());
+        $this->assertFalse($this->rowExists('old'));
+        $this->assertTrue($this->rowExists('recent'));
+    }
+
+    public function test_new_row_triggers_prune_once(): void
+    {
+        $this->throttle = $t = $this->throttle();
+        $this->oldRow('old1', $this->now - 2 * 86400 - 10);
+        $t->hit('code', 'c1', 60);
+        $this->assertFalse($this->rowExists('old1'));
+
+        $this->oldRow('old2', $this->now - 2 * 86400 - 10);
+        $t->hit('code', 'c2', 60);
+        $this->assertTrue($this->rowExists('old2'));
+    }
+
+    public function test_window_expires_exactly_at_boundary(): void
+    {
+        $t = $this->throttle();
+        $t->hit('code', 'c1', 60);
+        $this->now += 59;
+        $this->assertTrue($t->tooMany('code', 'c1', 1, 60));
+        $this->now += 1;
+        $this->assertFalse($t->tooMany('code', 'c1', 1, 60));
+    }
 }
