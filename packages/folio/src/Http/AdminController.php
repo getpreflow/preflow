@@ -602,7 +602,7 @@ final class AdminController
 
     /**
      * Extension panels (#[FormPanel], rendered) and record action buttons (#[RecordAction],
-     * those the user may run) of a stored record's edit form; none on create.
+     * those the user may run: the action's permission and {type}.edit) of a stored record's edit form; none on create.
      *
      * @param array<string, mixed> $values
      * @return array{list<array{label: string, position: string, html: string}>, list<array{label: string, url: string, icon: ?string, confirm: ?string}>}
@@ -629,7 +629,7 @@ final class AdminController
         }
         $actions = [];
         foreach ($custom['actions'] as $action) {
-            if ($this->can($action['permission'])) {
+            if ($this->can($action['permission']) && $this->can($type . '.edit')) {
                 $actions[] = [
                     'label' => $action['label'],
                     'url' => $this->prefix . '/' . $type . '/' . rawurlencode($id) . '/_action/' . $action['name'],

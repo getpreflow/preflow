@@ -185,4 +185,76 @@ final class TypeCatalogTest extends TestCase
         $this->expectException(FrontendConfigException::class);
         (new TypeCatalog($this->dir))->add(['key' => 'u', 'table' => 'u', 'users' => '', 'fields' => []]);
     }
+
+    public function test_nav_keys_default_and_read(): void
+    {
+        $catalog = new TypeCatalog($this->dir);
+        $catalog->add(['key' => 'plain']);
+        $catalog->add(['key' => 'placed', 'section' => 'pages', 'order' => 5, 'icon' => 'ui-users', 'nav' => false], 'settings');
+
+        $plain = $catalog->get('plain');
+        $this->assertSame(['content', 100, '', true], [$plain->section, $plain->order, $plain->icon, $plain->nav]);
+        $placed = $catalog->get('placed');
+        $this->assertSame(['pages', 5, 'ui-users', false], [$placed->section, $placed->order, $placed->icon, $placed->nav]);
+    }
+
+    /** @return iterable<string, array{array<string, mixed>, string}> */
+    public static function invalidNavKeys(): iterable
+    {
+        yield 'section not a string' => [['section' => 3], '"section"'];
+        yield 'section not a slug' => [['section' => 'Member Area'], '"section"'];
+        yield 'order not an int' => [['order' => '10'], '"order"'];
+        yield 'icon without ui- prefix' => [['icon' => 'users'], '"icon"'];
+        yield 'icon not a string' => [['icon' => true], '"icon"'];
+        yield 'nav not a bool' => [['nav' => 'no'], '"nav"'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidNavKeys')]
+    public function test_invalid_section_type_throws(array $extra, string $names): void
+    {
+        $this->model($extra);
+        $this->expectException(FrontendConfigException::class);
+        $this->expectExceptionMessageMatches('/Type "member".*' . preg_quote($names, '/') . '/');
+
+        (new TypeCatalog($this->dir))->all();
+    }
+
+    public function test_reserved_type_key_throws(): void
+    {
+        foreach (\Preflow\Folio\Extension\Screen\ScreenRegistry::RESERVED as $key) {
+            try {
+                (new TypeCatalog($this->dir))->add(['key' => $key]);
+                $this->fail("Type key \"{$key}\" was accepted");
+            } catch (FrontendConfigException $e) {
+                $this->assertStringContainsString("Type \"{$key}\"", $e->getMessage());
+            }
+        }
+    }
+
+    public function test_non_transferred_type_with_asset_field_throws(): void
+    {
+        $catalog = new TypeCatalog($this->dir);
+        $catalog->add(['key' => 'gallery', 'transfer' => true, 'fields' => ['image' => ['type' => 'asset']]]);
+        $catalog->add(['key' => 'note', 'transfer' => false, 'fields' => ['body' => ['type' => 'text']]]);
+
+        $this->expectException(FrontendConfigException::class);
+        $this->expectExceptionMessage('Type "member" keeps its records on the server, but its files would still be exported; file fields are not supported on it yet.');
+
+        $catalog->add(['key' => 'member', 'users' => 'members', 'fields' => ['name' => ['type' => 'string'], 'avatar' => ['type' => 'asset']]]);
+    }
+
+    public function test_upload_field_type_names_match_registered_types(): void
+    {
+        $uploads = [];
+        foreach (glob(dirname(__DIR__, 2) . '/src/Field/Types/*FieldType.php') ?: [] as $file) {
+            $class = 'Preflow\\Folio\\Field\\Types\\' . basename($file, '.php');
+            $reflection = new \ReflectionClass($class);
+            if (!$reflection->isAbstract() && $reflection->implementsInterface(\Preflow\Folio\Field\HandlesUpload::class)) {
+                $uploads[] = $class;
+            }
+        }
+
+        $this->assertSame([\Preflow\Folio\Field\Types\AssetFieldType::class], $uploads);
+        $this->assertSame(['asset'], TypeCatalog::UPLOAD_FIELD_TYPES);
+    }
 }

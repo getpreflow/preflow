@@ -119,4 +119,74 @@ final class AdminNavTest extends TestCase
 
         $this->assertSame(['Site'], $active);
     }
+
+    /** @param array<string, array<string, mixed>> $models by file name */
+    private function navOf(array $models): AdminNav
+    {
+        foreach ($models as $name => $model) {
+            file_put_contents($this->dir . '/' . $name . '.json', json_encode($model));
+        }
+
+        return new AdminNav(new TypeCatalog($this->dir), static fn (string $permission): bool => true, '/folio');
+    }
+
+    public function test_model_json_section_order_icon(): void
+    {
+        $nav = $this->navOf([
+            'a_post' => ['key' => 'post', 'label' => 'Posts', 'fields' => []],
+            'b_page' => ['key' => 'page', 'label' => 'Pages', 'section' => 'pages', 'icon' => 'ui-dashboard', 'fields' => []],
+            'c_mail' => ['key' => 'mail', 'label' => 'Mail', 'section' => 'settings', 'fields' => []],
+            'd_site' => ['key' => 'site', 'label' => 'Site', 'singleton' => true, 'section' => 'settings', 'order' => 10, 'fields' => []],
+        ]);
+        $nav->setCurrentPath('/folio');
+
+        $sections = $nav->sections();
+
+        $this->assertSame(['', 'Pages', 'Content', 'Library', 'Settings'], array_column($sections, 'label'));
+        $this->assertSame(['Pages'], array_column($sections[1]['items'], 'label'));
+        $this->assertSame('ui-dashboard', $sections[1]['items'][0]['icon']);
+        $this->assertSame(['Posts'], array_column($sections[2]['items'], 'label'));
+        $this->assertSame('ui-file', $sections[2]['items'][0]['icon']);
+        $this->assertSame(['Site', 'Mail'], array_column($sections[4]['items'], 'label'));
+        $this->assertSame(['ui-settings', 'ui-file'], array_column($sections[4]['items'], 'icon'));
+    }
+
+    public function test_nav_false_type_hidden(): void
+    {
+        $nav = $this->navOf([
+            'post' => ['key' => 'post', 'label' => 'Posts', 'fields' => []],
+            'secret' => ['key' => 'secret', 'label' => 'Secret', 'nav' => false, 'fields' => []],
+        ]);
+
+        $sections = $nav->sections();
+
+        $this->assertSame(['Posts'], array_column($sections[1]['items'], 'label'));
+    }
+
+    public function test_custom_section_label(): void
+    {
+        $nav = $this->navOf([
+            'a_member' => ['key' => 'member', 'label' => 'Members', 'section' => 'member_area', 'icon' => 'ui-users', 'fields' => []],
+            'b_code' => ['key' => 'code', 'label' => 'Codes', 'section' => 'access-codes', 'fields' => []],
+        ]);
+        $nav->add('member_area', 'Invite', '/folio/invite', 'ui-key', null, 200);
+
+        $sections = $nav->sections();
+
+        $this->assertSame(['', 'Library', 'Member area', 'Access codes'], array_column($sections, 'label'));
+        $this->assertSame(['Members', 'Invite'], array_column($sections[2]['items'], 'label'));
+        $this->assertSame('ui-users', $sections[2]['items'][0]['icon']);
+    }
+
+    public function test_without_nav_keys_unchanged(): void
+    {
+        $nav = $this->nav();
+        $nav->setCurrentPath('/folio');
+
+        $sections = $nav->sections();
+
+        $this->assertSame(['', 'Content', 'Library', 'Settings'], array_column($sections, 'label'));
+        $this->assertSame(['ui-file'], array_column($sections[1]['items'], 'icon'));
+        $this->assertSame(['ui-settings'], array_column($sections[3]['items'], 'icon'));
+    }
 }

@@ -45,12 +45,14 @@ final class CustomizationTest extends TestCase
             'providers' => ['config' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [
                 ['email' => 'admin@site.test', 'password_hash' => $hash, 'roles' => ['admin']],
                 ['email' => 'editor@site.test', 'password_hash' => $hash, 'roles' => ['editor']],
+                ['email' => 'approver@site.test', 'password_hash' => $hash, 'roles' => ['approver']],
             ]]],
             'session' => ['cookie' => 'folio_custom_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
         $this->write('config/roles.php', "<?php\nreturn " . var_export(['staff' => [
             'admin' => ['*'],
             'editor' => ['folio.dashboard', 'contact.view', 'contact.edit'],
+            'approver' => ['folio.dashboard', 'contact.view', 'crm.approve'],
         ]], true) . ";\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Roles\\RolesServiceProvider::class];\n");
 
@@ -134,6 +136,20 @@ final class CustomizationTest extends TestCase
         $res = $this->send('POST', '/folio/contact/c1/_action/approve');
         $this->assertSame(403, $res->getStatusCode());
         $this->assertStringContainsString('have access to this', (string) $res->getBody());
+        $this->assertSame('new', $this->stored('contact', 'c1')?->get('status'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_action_button_hidden_without_type_edit(): void
+    {
+        $this->crm();
+        $this->as('approver'); // crm.approve, not contact.edit
+        $this->seed('contact', 'c1', ['name' => 'Ada', 'status' => 'new']);
+
+        $edit = $this->send('GET', '/folio/contact/c1/edit');
+        $this->assertSame(200, $edit->getStatusCode());
+        $this->assertStringNotContainsString('/_action/approve', (string) $edit->getBody());
+        $this->assertSame(403, $this->send('POST', '/folio/contact/c1/_action/approve')->getStatusCode());
         $this->assertSame('new', $this->stored('contact', 'c1')?->get('status'));
     }
 

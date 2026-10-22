@@ -136,14 +136,15 @@ final class AssetLibraryAppTest extends TestCase
         $this->assertSame(404, $this->post('/folio/assets/' . str_repeat('a', 32) . '/delete')->getStatusCode());
     }
 
-    public function test_type_named_assets_does_not_break_the_site(): void
+    public function test_type_named_assets_is_an_error_at_boot(): void
     {
+        // {prefix}/assets is the asset library, so a type cannot take the key.
         $this->writeModel('assets', ['frontend' => ['route' => '/gallery/{slug}'], 'publishing' => false, 'fields' => ['slug' => ['type' => 'string']]]);
-        $this->write('resources/folio/frontend/assets.twig', '<html><head></head><body>gallery {{ record.slug }}</body></html>');
-        $this->working('assets', 'g1', ['slug' => 'summer', 'status' => 'published']);
 
-        $this->assertSame(200, $this->get('/gallery/summer')->getStatusCode());
-        $this->assertStringContainsString('Assets', (string) $this->get('/folio/assets')->getBody());
+        $this->expectException(\Preflow\Folio\Content\FrontendConfigException::class);
+        $this->expectExceptionMessage('Type "assets": the key is a path Folio uses itself');
+
+        $this->get('/gallery/summer');
     }
 
     public function test_refused_field_upload_shows_in_the_form(): void

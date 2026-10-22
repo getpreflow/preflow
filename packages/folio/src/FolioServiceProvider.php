@@ -76,7 +76,8 @@ final class FolioServiceProvider extends ServiceProvider
             cacheFile: $app->basePath('storage/cache/folio-extensions.cache'),
         );
         $container->instance(ExtensionRegistry::class, $extensions);
-        // Their settings forms (Extension::settings()) are singleton types under Settings.
+        // Models go under Content unless their JSON names a "section"; their settings forms
+        // (Extension::settings()) are singleton types under Settings.
         $extensionTypes = array_map(static fn (array $schema): array => [$schema, 'content', 'Extension model'], $extensions->enabledModels());
         foreach ($extensions->enabled() as $definition) {
             if ($extensions->partEnabled($definition->name, 'settings')) {

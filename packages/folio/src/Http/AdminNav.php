@@ -8,13 +8,14 @@ use Closure;
 use Preflow\Folio\Content\TypeCatalog;
 
 /**
- * The admin sidebar as data: Dashboard, Content, Library, Settings, then sections
- * extensions add. One instance per application (container singleton), so items
- * added at boot are there when a template renders.
+ * The admin sidebar as data: Dashboard, Pages, Content, Library, Settings, then other
+ * sections types ("section" in a model JSON) and extensions add. One instance per
+ * application (container singleton), so items added at boot are there when a template
+ * renders.
  */
 final class AdminNav
 {
-    private const BUILTIN = ['dashboard' => '', 'content' => 'Content', 'library' => 'Library', 'settings' => 'Settings'];
+    private const BUILTIN = ['dashboard' => '', 'pages' => 'Pages', 'content' => 'Content', 'library' => 'Library', 'settings' => 'Settings'];
 
     private string $prefix;
     private string $path = '';
@@ -52,7 +53,10 @@ final class AdminNav
 
         $add('dashboard', 'Dashboard', $this->prefix === '' ? '/' : $this->prefix, 'ui-dashboard', 'folio.dashboard', 100);
         foreach ($this->catalog->all() as $listing) {
-            $add($listing->section === 'settings' ? 'settings' : 'content', $listing->label, $this->prefix . '/' . $listing->key, $listing->singleton ? 'ui-settings' : 'ui-file', $listing->key . '.view', 100);
+            if ($listing->nav) {
+                $icon = $listing->icon !== '' ? $listing->icon : ($listing->singleton ? 'ui-settings' : 'ui-file');
+                $add($listing->section, $listing->label, $this->prefix . '/' . $listing->key, $icon, $listing->key . '.view', $listing->order);
+            }
         }
         $add('library', 'Assets', $this->prefix . '/assets', 'ui-library', 'assets.view', 100);
         foreach ($this->added as $item) {
@@ -75,7 +79,7 @@ final class AdminNav
         $sections = [];
         foreach ($visible as $section => $items) {
             $sections[] = [
-                'label' => self::BUILTIN[$section] ?? $section,
+                'label' => self::BUILTIN[$section] ?? ucfirst(str_replace(['_', '-'], ' ', $section)),
                 'items' => array_map(fn (array $item): array => [
                     'label' => $item['label'],
                     'url' => $item['url'],

@@ -178,7 +178,11 @@ CSP. If you override `_layout.twig`, keep the nonces and the
 ## Type options
 
 Besides `fields`, a type JSON can carry two optional blocks, plus the flags `singleton`
-and `publishing` (see below).
+and `publishing` (see below) and its [sidebar](#sidebar) place.
+
+A type's `key` cannot be a path Folio uses under its prefix (`login`, `logout`,
+`_assets`, `_uploads`, `_blocks`, `media`, `extensions`, `blocks`, `preview`, `upload`,
+`assets`); such a key is an error naming the type.
 
 ### `frontend`: public rendering
 
@@ -235,6 +239,27 @@ available for every type that has a route.
 - `sort`: the default order. A `-` prefix means descending.
 - `orderable: true`: up/down buttons that store a manual position in the record's
   `_order` key. New records go to the end.
+
+### Sidebar
+
+```json
+{ "key": "site", "singleton": true, "section": "settings", "order": 10, "icon": "ui-settings" }
+```
+
+- `section`: the sidebar section, a lowercase name (`a-z`, `0-9`, `_`, `-`, starting
+  with a letter). The default is `content` (extension settings types: `settings`); a
+  `section` in an extension model wins over that.
+- `order`: an integer; lower comes first within the section. The default is 100.
+- `icon`: a `ui-*` icon of Folio's sprite (for example `ui-file`, `ui-settings`,
+  `ui-users`, `ui-key`). The default is `ui-settings` for singletons, `ui-file`
+  otherwise.
+- `nav: false` leaves the type out of the sidebar; its admin pages stay reachable.
+
+The sections, in this order: the dashboard, **Pages** (`pages`), **Content**
+(`content`), **Library** (`library`), **Settings** (`settings`). Any other name is
+appended after them, labelled from the name (`member_area` becomes "Member area").
+Sections the user can see nothing in are left out. A wrong type for any of these keys is
+an error naming the type.
 
 ## Field types
 
@@ -773,6 +798,8 @@ A type can hold the site's own users or members:
   live users never travel to a laptop by accident.
 - Any other type can opt out with `"transfer": false`. `"transfer"` must be a JSON boolean;
   anything else (`"false"`, `0`) is an error naming the type.
+- A type that is not transferred cannot have file fields (`asset`) yet: its records stay
+  on the server, but the uploaded files would still be exported. Such a type is an error.
 - Per-environment state (installed extension versions, throttle rows) is never exported.
 
 ## SQL storage

@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
+use Preflow\Folio\Extension\Screen\ScreenRegistry;
+
 final class TypeCatalog
 {
+    /** Field types that store uploaded files (the built-in ones implementing HandlesUpload). */
+    public const array UPLOAD_FIELD_TYPES = ['asset'];
+
     public function __construct(
         private readonly string $modelsPath,
     ) {}
@@ -24,6 +29,7 @@ final class TypeCatalog
 
     /**
      * Add a type defined at runtime (extension models, settings). Listed after the file types, in insertion order.
+     * A "section" in the schema wins over $section.
      *
      * @param array<string, mixed> $schema same shape as a model JSON file
      */
@@ -65,6 +71,9 @@ final class TypeCatalog
         if (!is_string($key) || $key === '') {
             throw new FrontendConfigException('A type needs a "key"');
         }
+        if (in_array($key, ScreenRegistry::RESERVED, true)) {
+            throw new FrontendConfigException("Type \"{$key}\": the key is a path Folio uses itself; choose another");
+        }
         $label = (isset($data['label']) && is_string($data['label']))
             ? $data['label']
             : ucfirst($key);
@@ -86,6 +95,27 @@ final class TypeCatalog
         if (array_key_exists('transfer', $data) && !is_bool($data['transfer'])) {
             throw new FrontendConfigException("Type \"{$key}\": \"transfer\" must be true or false");
         }
+        $transfer = $data['transfer'] ?? $users === null;
+        if (!$transfer) {
+            foreach (is_array($data['fields'] ?? null) ? $data['fields'] : [] as $field) {
+                if (is_array($field) && in_array($field['type'] ?? null, self::UPLOAD_FIELD_TYPES, true)) {
+                    throw new FrontendConfigException("Type \"{$key}\" keeps its records on the server, but its files would still be exported; file fields are not supported on it yet.");
+                }
+            }
+        }
+        $section = $data['section'] ?? $section;
+        if (!is_string($section) || preg_match('/^[a-z][a-z0-9_-]*$/', $section) !== 1) {
+            throw new FrontendConfigException("Type \"{$key}\": \"section\" must be a lowercase name (a-z, 0-9, _ and -, starting with a letter)");
+        }
+        if (array_key_exists('order', $data) && !is_int($data['order'])) {
+            throw new FrontendConfigException("Type \"{$key}\": \"order\" must be an integer");
+        }
+        if (array_key_exists('icon', $data) && (!is_string($data['icon']) || preg_match('/^ui-[a-z0-9-]+$/', $data['icon']) !== 1)) {
+            throw new FrontendConfigException("Type \"{$key}\": \"icon\" must be a ui-* icon name");
+        }
+        if (array_key_exists('nav', $data) && !is_bool($data['nav'])) {
+            throw new FrontendConfigException("Type \"{$key}\": \"nav\" must be true or false");
+        }
         return new TypeListing(
             $key,
             $label,
@@ -94,8 +124,11 @@ final class TypeCatalog
             $singleton,
             is_bool($data['publishing'] ?? null) ? $data['publishing'] : ($frontend !== null || $singleton),
             $users,
-            $data['transfer'] ?? $users === null,
+            $transfer,
             $section,
+            $data['order'] ?? 100,
+            $data['icon'] ?? '',
+            $data['nav'] ?? true,
         );
     }
 
