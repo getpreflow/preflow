@@ -80,6 +80,22 @@ final class DataManager
     }
 
     /**
+     * Execute a raw SQL write (UPDATE, DELETE, an upsert) and return the
+     * affected rows. Only PDO drivers run SQL; any other driver is a LogicException.
+     *
+     * @param array<int|string, mixed> $bindings Parameter bindings
+     */
+    public function execute(string $sql, array $bindings = [], string $storage = 'default'): int
+    {
+        $driver = $this->resolveDriver($storage);
+        if (!$driver instanceof Driver\PdoDriver) {
+            throw new \LogicException("Storage driver [{$storage}] does not run SQL; execute() needs a PDO driver.");
+        }
+
+        return $driver->execute($sql, $bindings);
+    }
+
+    /**
      * Save a model.
      */
     public function save(Model $model, bool $validate = true, array $rules = [], ?string $scenario = null): void

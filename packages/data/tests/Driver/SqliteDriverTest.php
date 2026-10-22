@@ -195,4 +195,25 @@ final class SqliteDriverTest extends TestCase
     {
         $this->assertSame($this->pdo, $this->driver->pdo());
     }
+
+    public function test_execute_returns_affected_rows(): void
+    {
+        $this->driver->save('posts', 'a', ['title' => 'A']);
+        $this->driver->save('posts', 'b', ['title' => 'B']);
+        $this->driver->save('posts', 'c', ['title' => 'C', 'status' => 'published']);
+
+        $this->assertSame(2, $this->driver->execute('UPDATE posts SET status = ? WHERE status = ?', ['published', 'draft']));
+        $this->assertSame('published', $this->driver->findOne('posts', 'a')['status']);
+        $this->assertSame(0, $this->driver->execute('DELETE FROM posts WHERE uuid = ?', ['nope']));
+
+        $dm = new \Preflow\Data\DataManager([
+            'default' => $this->driver,
+            'json' => new \Preflow\Data\Driver\JsonFileDriver(sys_get_temp_dir()),
+        ]);
+        $this->assertSame(1, $dm->execute('DELETE FROM posts WHERE uuid = ?', ['c']));
+        $this->assertNull($this->driver->findOne('posts', 'c'));
+
+        $this->expectException(\LogicException::class);
+        $dm->execute('DELETE FROM posts', [], 'json');
+    }
 }

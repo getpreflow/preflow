@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Core\Throttle;
 
 use Preflow\Data\DataManager;
+use Preflow\Data\Driver\MysqlDialect;
+use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
@@ -16,9 +18,11 @@ use Psr\Http\Message\ServerRequestInterface;
  * daily; a raw IP is never stored.
  *
  * Windows should be much shorter than a day: the client hash rotates at 00:00
- * UTC, so a window spanning midnight starts over. hit() is a non-atomic
- * read-modify-write, so this is a soft limit. Rows of earlier days are
- * orphaned by the rotation; hit() prunes them (see prune()).
+ * UTC, so a window spanning midnight starts over. hit() is atomic: on SQL one
+ * upsert counts the attempt (or restarts an expired window), on the JSON driver
+ * an exclusive file lock in $lockDir guards the read-modify-write, so
+ * concurrent requests never lose a hit. Rows of earlier days are orphaned by
+ * the rotation; hit() prunes them (see prune()).
  *
  * client() refuses an empty or the well-known default key: a hash salted with a
  * public key could be brute-forced back to the IP.
@@ -31,6 +35,7 @@ final class Throttle
 
     private readonly TypeDefinition $type;
     private readonly \Closure $clock;
+    private readonly string $lockDir;
     private bool $pruned = false;
 
     public function __construct(
@@ -38,8 +43,10 @@ final class Throttle
         private readonly string $key,
         string $storage = 'default',
         ?\Closure $clock = null,
+        ?string $lockDir = null,
     ) {
         $this->clock = $clock ?? static fn (): int => time();
+        $this->lockDir = $lockDir ?? sys_get_temp_dir();
         $this->type = new TypeDefinition(
             key: self::TABLE,
             table: self::TABLE,
@@ -96,24 +103,86 @@ final class Throttle
     public function hit(string $purpose, string $client, int $windowSeconds): void
     {
         $id = $this->id($purpose, $client);
-        $record = $this->dm->findIn($this->type, $id);
+        $driver = $this->dm->driver($this->type->storage);
 
-        if ($record === null || $this->expired($record, $windowSeconds)) {
-            $record = new DynamicRecord($this->type, [
-                'id' => $id,
-                'purpose' => $purpose,
-                'hits' => 1,
-                'window_start' => ($this->clock)(),
-            ]);
+        if ($driver instanceof PdoDriver) {
             if (!$this->pruned) {
-                $this->pruned = true;
-                $this->prune();
+                $record = $this->dm->findIn($this->type, $id);
+                if ($record === null || $this->expired($record, $windowSeconds)) {
+                    $this->pruned = true;
+                    $this->prune();
+                }
             }
-        } else {
-            $record->set('hits', (int) $record->get('hits') + 1);
+            $this->upsert($driver, $id, $purpose, $windowSeconds);
+
+            return;
         }
 
-        $this->dm->saveType($record, validate: false);
+        $this->locked($id, function () use ($id, $purpose, $windowSeconds): void {
+            $record = $this->dm->findIn($this->type, $id);
+
+            if ($record === null || $this->expired($record, $windowSeconds)) {
+                $record = new DynamicRecord($this->type, [
+                    'id' => $id,
+                    'purpose' => $purpose,
+                    'hits' => 1,
+                    'window_start' => ($this->clock)(),
+                ]);
+                if (!$this->pruned) {
+                    $this->pruned = true;
+                    $this->prune();
+                }
+            } else {
+                $record->set('hits', (int) $record->get('hits') + 1);
+            }
+
+            $this->dm->saveType($record, validate: false);
+        });
+    }
+
+    /**
+     * One statement: insert the row, or count the hit on it, restarting the
+     * window when it has expired. MySQL applies the assignments left to right,
+     * so hits is set first, while window_start still holds the old value.
+     */
+    private function upsert(PdoDriver $driver, string $id, string $purpose, int $windowSeconds): void
+    {
+        $dialect = $driver->dialect();
+        $table = $dialect->quoteIdentifier(self::TABLE);
+        $hits = $dialect->quoteIdentifier('hits');
+        $start = $dialect->quoteIdentifier('window_start');
+        $columns = implode(', ', array_map($dialect->quoteIdentifier(...), ['id', 'purpose', 'hits', 'window_start']));
+        $update = "{$hits} = CASE WHEN ? >= {$start} + ? THEN 1 ELSE {$hits} + 1 END, "
+            . "{$start} = CASE WHEN ? >= {$start} + ? THEN ? ELSE {$start} END";
+        $conflict = $dialect instanceof MysqlDialect
+            ? "ON DUPLICATE KEY UPDATE {$update}"
+            : 'ON CONFLICT(' . $dialect->quoteIdentifier('id') . ") DO UPDATE SET {$update}";
+        $now = ($this->clock)();
+
+        $this->dm->execute(
+            "INSERT INTO {$table} ({$columns}) VALUES (?, ?, 1, ?) {$conflict}",
+            [$id, $purpose, $now, $now, $windowSeconds, $now, $windowSeconds, $now],
+            $this->type->storage,
+        );
+    }
+
+    /** Runs $fn holding an exclusive lock on throttle-{id}.lock in the lock directory. */
+    private function locked(string $id, \Closure $fn): void
+    {
+        if (!is_dir($this->lockDir) && !@mkdir($this->lockDir, 0755, true) && !is_dir($this->lockDir)) {
+            throw new \RuntimeException("Throttle lock directory {$this->lockDir} cannot be created.");
+        }
+        $path = $this->lockDir . '/throttle-' . $id . '.lock';
+        $handle = fopen($path, 'c');
+        if ($handle === false || !flock($handle, LOCK_EX)) {
+            throw new \RuntimeException("Throttle lock {$path} cannot be taken.");
+        }
+        try {
+            $fn();
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
     }
 
     public function clear(string $purpose, string $client): void

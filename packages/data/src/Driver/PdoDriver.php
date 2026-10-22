@@ -23,6 +23,12 @@ abstract class PdoDriver implements StorageDriver
         return $this->pdo;
     }
 
+    /** The SQL dialect of this connection (callers writing their own SQL branch on it). */
+    public function dialect(): Dialect
+    {
+        return $this->dialect;
+    }
+
     protected function executeWithLogging(\PDOStatement $stmt, string $sql, array $bindings = []): void
     {
         $start = hrtime(true);
@@ -161,5 +167,31 @@ abstract class PdoDriver implements StorageDriver
         $stmt = $this->pdo->prepare($sql);
         $this->executeWithLogging($stmt, $sql, $bindings);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Runs a write statement (UPDATE, DELETE, an upsert) and returns the affected rows.
+     * Ints, bools and nulls are bound with their type, so SQL arithmetic and
+     * comparisons on bound values work as numbers (SQLite orders any text above
+     * any number).
+     *
+     * @param array<int|string, mixed> $bindings
+     */
+    public function execute(string $sql, array $bindings = []): int
+    {
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($bindings as $key => $value) {
+            $stmt->bindValue(is_int($key) ? $key + 1 : $key, $value, match (true) {
+                is_int($value) => \PDO::PARAM_INT,
+                is_bool($value) => \PDO::PARAM_BOOL,
+                $value === null => \PDO::PARAM_NULL,
+                default => \PDO::PARAM_STR,
+            });
+        }
+        $start = hrtime(true);
+        $stmt->execute();
+        $this->collector?->logQuery($sql, $bindings, (hrtime(true) - $start) / 1_000_000);
+
+        return $stmt->rowCount();
     }
 }

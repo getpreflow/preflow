@@ -355,6 +355,7 @@ final class Application
                 $dataManager,
                 (string) $this->config->get('app.key', \Preflow\Core\Throttle\Throttle::DEFAULT_KEY),
                 isset($drivers['throttle']) ? 'throttle' : 'default',
+                lockDir: $this->basePath('storage/locks'),
             ),
         );
     }

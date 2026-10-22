@@ -6,6 +6,8 @@ namespace Preflow\Core\Tests\Throttle;
 
 use Nyholm\Psr7\ServerRequest;
 use Preflow\Core\Throttle\Throttle;
+use Preflow\Data\DataManager;
+use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\Migration\Migration;
 use Preflow\Data\Migration\Schema;
 use Preflow\Testing\DataTestCase;
@@ -200,5 +202,137 @@ final class ThrottleTest extends DataTestCase
         $this->assertTrue($t->tooMany('code', 'c1', 1, 60));
         $this->now += 1;
         $this->assertFalse($t->tooMany('code', 'c1', 1, 60));
+    }
+
+    /** @var list<string> */
+    private array $tempFiles = [];
+
+    protected function tearDown(): void
+    {
+        foreach ($this->tempFiles as $path) {
+            if (is_dir($path)) {
+                array_map(unlink(...), glob($path . '/*') ?: []);
+                rmdir($path);
+            } elseif (is_file($path)) {
+                unlink($path);
+            }
+        }
+        parent::tearDown();
+    }
+
+    /**
+     * Two Throttles on two DataManagers (two connections) over one SQLite file, as two
+     * requests would be. $hook runs once, inside $a's next hit(), at its first clock read.
+     *
+     * @return array{Throttle, Throttle, \Closure(\Closure): void, DataManager}
+     */
+    private function sharedFile(): array
+    {
+        $file = tempnam(sys_get_temp_dir(), 'preflow_throttle_');
+        $this->tempFiles[] = $file;
+        $dm = static fn (): DataManager => new DataManager(['default' => new SqliteDriver(new \PDO('sqlite:' . $file))]);
+        $dmA = $dm();
+        /** @var Migration $migration */
+        $migration = require dirname(__DIR__, 2) . '/migrations/2026_10_22_000000_preflow_throttle.php';
+        $migration->up(new Schema($dmA->driver('default')->pdo()));
+
+        $hook = null;
+        $a = new Throttle($dmA, 'secret', 'default', function () use (&$hook): int {
+            if ($hook !== null) {
+                [$run, $hook] = [$hook, null];
+                $run();
+            }
+
+            return $this->now;
+        });
+        $b = new Throttle($dm(), 'secret', 'default', fn (): int => $this->now);
+
+        return [$a, $b, static function (\Closure $run) use (&$hook): void { $hook = $run; }, $dmA];
+    }
+
+    /** @return array{hits: int, window_start: int}|null */
+    private function storedRow(DataManager $dm, string $purpose, string $client): ?array
+    {
+        $rows = $dm->raw('SELECT hits, window_start FROM preflow_throttle WHERE id = ?', [hash('sha256', $purpose . '|' . $client)]);
+
+        return $rows === [] ? null : ['hits' => (int) $rows[0]['hits'], 'window_start' => (int) $rows[0]['window_start']];
+    }
+
+    public function test_hit_is_atomic_under_interleaving(): void
+    {
+        [$a, $b, $between, $dm] = $this->sharedFile();
+
+        // Both requests checked the limit before either counted its attempt.
+        $this->assertFalse($a->tooMany('login', 'c1', 5, 60));
+        $this->assertFalse($b->tooMany('login', 'c1', 5, 60));
+        // $b's hit lands between $a's read and $a's write.
+        $between(static fn () => $b->hit('login', 'c1', 60));
+        $a->hit('login', 'c1', 60);
+        $this->assertSame(2, $this->storedRow($dm, 'login', 'c1')['hits']);
+
+        $between(static fn () => $b->hit('login', 'c1', 60));
+        $a->hit('login', 'c1', 60);
+        $this->assertSame(4, $this->storedRow($dm, 'login', 'c1')['hits']);
+        $this->assertFalse($a->tooMany('login', 'c1', 5, 60));
+        $this->assertTrue($b->tooMany('login', 'c1', 4, 60));
+    }
+
+    public function test_window_reset_in_upsert(): void
+    {
+        [$a, $b, $between, $dm] = $this->sharedFile();
+        $start = $this->now;
+        $a->hit('login', 'c1', 60);
+        $a->hit('login', 'c1', 60);
+        $this->assertSame(['hits' => 2, 'window_start' => $start], $this->storedRow($dm, 'login', 'c1'));
+
+        // Still inside the window one second before it ends.
+        $this->now += 59;
+        $a->hit('login', 'c1', 60);
+        $this->assertSame(['hits' => 3, 'window_start' => $start], $this->storedRow($dm, 'login', 'c1'));
+
+        // Expired: the row starts over at now.
+        $this->now += 1;
+        $a->hit('login', 'c1', 60);
+        $this->assertSame(['hits' => 1, 'window_start' => $this->now], $this->storedRow($dm, 'login', 'c1'));
+
+        // Expired again, and $b resets the window between $a's read and write: $a's
+        // hit counts in the new window instead of resetting it a second time.
+        $this->now += 60;
+        $between(static fn () => $b->hit('login', 'c1', 60));
+        $a->hit('login', 'c1', 60);
+        $this->assertSame(['hits' => 2, 'window_start' => $this->now], $this->storedRow($dm, 'login', 'c1'));
+    }
+
+    public function test_json_hit_locks(): void
+    {
+        $lockDir = sys_get_temp_dir() . '/preflow_throttle_locks_' . uniqid();
+        $this->tempFiles[] = $lockDir;
+        $lockFile = $lockDir . '/throttle-' . hash('sha256', 'login|c1') . '.lock';
+        $heldDuringHit = [];
+        $t = new Throttle($this->dataManager(), 'secret', 'json', function () use ($lockFile, &$heldDuringHit): int {
+            if (is_file($lockFile)) {
+                $probe = fopen($lockFile, 'c');
+                $heldDuringHit[] = !flock($probe, LOCK_EX | LOCK_NB);
+                fclose($probe);
+            }
+
+            return $this->now;
+        }, $lockDir);
+
+        $t->hit('login', 'c1', 60);
+        $t->hit('login', 'c1', 60);
+        $t->hit('login', 'c1', 60);
+
+        $this->assertFileExists($lockFile);
+        $this->assertNotEmpty($heldDuringHit);
+        $this->assertNotContains(false, $heldDuringHit, 'the lock is held while hit() reads and writes');
+        // Released afterwards.
+        $probe = fopen($lockFile, 'c');
+        $this->assertTrue(flock($probe, LOCK_EX | LOCK_NB));
+        flock($probe, LOCK_UN);
+        fclose($probe);
+
+        $this->assertTrue($t->tooMany('login', 'c1', 3, 60));
+        $this->assertFalse($t->tooMany('login', 'c1', 4, 60));
     }
 }
