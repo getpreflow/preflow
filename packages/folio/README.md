@@ -256,8 +256,8 @@ available for every type that has a route.
 - `nav: false` leaves the type out of the sidebar; its admin pages stay reachable.
 
 The sections, in this order: the dashboard, **Pages** (`pages`), **Content**
-(`content`), **Library** (`library`), **Settings** (`settings`). Any other name is
-appended after them, labelled from the name (`member_area` becomes "Member area").
+(`content`), **Library** (`library`), **Settings** (`settings`). Any other name sits
+between Content and Library (several, in the order first used), labelled from the name (`member_area` becomes "Member area").
 Sections the user can see nothing in are left out. A wrong type for any of these keys is
 an error naming the type.
 

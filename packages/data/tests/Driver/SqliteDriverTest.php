@@ -44,6 +44,22 @@ final class SqliteDriverTest extends TestCase
         $this->assertSame('published', $result['status']);
     }
 
+    public function test_missing_table_on_read_names_migrate(): void
+    {
+        foreach ([
+            fn () => $this->driver->findOne('nope', 'x'),
+            fn () => $this->driver->findMany('nope', new \Preflow\Data\Query()),
+        ] as $read) {
+            try {
+                $read();
+                $this->fail('Expected a RuntimeException.');
+            } catch (\RuntimeException $e) {
+                $this->assertSame('Table nope does not exist; run `preflow migrate`.', $e->getMessage());
+                $this->assertInstanceOf(\PDOException::class, $e->getPrevious());
+            }
+        }
+    }
+
     public function test_find_one_returns_null(): void
     {
         $this->assertNull($this->driver->findOne('posts', 'nonexistent'));

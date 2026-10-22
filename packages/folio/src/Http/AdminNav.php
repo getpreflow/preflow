@@ -8,10 +8,10 @@ use Closure;
 use Preflow\Folio\Content\TypeCatalog;
 
 /**
- * The admin sidebar as data: Dashboard, Pages, Content, Library, Settings, then other
- * sections types ("section" in a model JSON) and extensions add. One instance per
- * application (container singleton), so items added at boot are there when a template
- * renders.
+ * The admin sidebar as data: Dashboard, Pages, Content, the other sections types
+ * ("section" in a model JSON) and extensions add, then Library and Settings. One
+ * instance per application (container singleton), so items added at boot are there when
+ * a template renders.
  */
 final class AdminNav
 {
@@ -31,7 +31,7 @@ final class AdminNav
         $this->prefix = rtrim($prefix, '/');
     }
 
-    /** Adds an item to a section; a new section name is appended after the built-in ones. A null permission shows it to everyone. */
+    /** Adds an item to a section; a new section name sits between Content and Library, in the order first used. A null permission shows it to everyone. */
     public function add(string $section, string $label, string $url, string $icon, ?string $permission, int $order = 100): void
     {
         $this->added[] = compact('section', 'label', 'url', 'icon', 'permission', 'order');
@@ -61,6 +61,17 @@ final class AdminNav
         $add('library', 'Assets', $this->prefix . '/assets', 'ui-library', 'assets.view', 100);
         foreach ($this->added as $item) {
             $add($item['section'], $item['label'], $item['url'], $item['icon'], $item['permission'], $item['order']);
+        }
+
+        // Custom sections (in the order first used) go between Content and Library.
+        $custom = array_diff_key($groups, self::BUILTIN);
+        $ordered = $groups;
+        $groups = [];
+        foreach (self::BUILTIN as $section => $_) {
+            if ($section === 'library') {
+                $groups += $custom;
+            }
+            $groups[$section] = $ordered[$section] ?? [];
         }
 
         $visible = [];

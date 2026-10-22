@@ -38,8 +38,7 @@ abstract class PdoDriver implements StorageDriver
         $table = $this->dialect->quoteIdentifier($type);
         $col = $this->dialect->quoteIdentifier($idField);
         $sql = "SELECT * FROM {$table} WHERE {$col} = ? LIMIT 1";
-        $stmt = $this->pdo->prepare($sql);
-        $this->executeWithLogging($stmt, $sql, [$id]);
+        $stmt = $this->read($type, $sql, [$id]);
         $result = $stmt->fetch(\PDO::FETCH_ASSOC);
 
         return $result !== false ? $result : null;
@@ -49,14 +48,12 @@ abstract class PdoDriver implements StorageDriver
     {
         // Get total count (without limit/offset)
         [$countSql, $countBindings] = $this->compiler->compileCount($type, $query);
-        $countStmt = $this->pdo->prepare($countSql);
-        $this->executeWithLogging($countStmt, $countSql, $countBindings);
+        $countStmt = $this->read($type, $countSql, $countBindings);
         $total = (int) $countStmt->fetchColumn();
 
         // Get items
         [$sql, $bindings] = $this->compiler->compile($type, $query);
-        $stmt = $this->pdo->prepare($sql);
-        $this->executeWithLogging($stmt, $sql, $bindings);
+        $stmt = $this->read($type, $sql, $bindings);
         $items = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
         return new ResultSet($items, $total);
@@ -106,6 +103,27 @@ abstract class PdoDriver implements StorageDriver
         } catch (\PDOException $e) {
             if (preg_match('/(?:no such column:|has no column named)\s*[\'"`]?([A-Za-z0-9_]+)/', $e->getMessage(), $m) === 1) {
                 throw new \RuntimeException("Table {$table} has no column {$m[1]}; run `preflow migrate`.", 0, $e);
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Runs a read; a missing table (a type never migrated) names the fix
+     * instead of the raw PDO error.
+     *
+     * @param list<mixed> $bindings
+     */
+    private function read(string $table, string $sql, array $bindings): \PDOStatement
+    {
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $this->executeWithLogging($stmt, $sql, $bindings);
+
+            return $stmt;
+        } catch (\PDOException $e) {
+            if (preg_match('/no such table|base table or view not found|relation .* does not exist/i', $e->getMessage()) === 1) {
+                throw new \RuntimeException("Table {$table} does not exist; run `preflow migrate`.", 0, $e);
             }
             throw $e;
         }

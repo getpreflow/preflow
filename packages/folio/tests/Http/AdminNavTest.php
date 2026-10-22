@@ -43,13 +43,14 @@ final class AdminNavTest extends TestCase
 
         $sections = $nav->sections();
 
-        $this->assertSame(['', 'Content', 'Library', 'Settings', 'Members'], array_column($sections, 'label'));
+        $this->assertSame(['', 'Content', 'Members', 'Library', 'Settings'], array_column($sections, 'label'));
         $labels = static fn (array $section): array => array_column($section['items'], 'label');
         $this->assertSame(['Dashboard'], $labels($sections[0]));
         $this->assertSame(['Early', 'Pages'], $labels($sections[1]));
-        $this->assertSame(['Assets', 'Gallery'], $labels($sections[2]));
-        $this->assertSame(['Site'], $labels($sections[3]));
-        $this->assertSame('ui-settings', $sections[3]['items'][0]['icon']);
+        $this->assertSame(['Members'], $labels($sections[2]));
+        $this->assertSame(['Assets', 'Gallery'], $labels($sections[3]));
+        $this->assertSame(['Site'], $labels($sections[4]));
+        $this->assertSame('ui-settings', $sections[4]['items'][0]['icon']);
         $this->assertSame('ui-file', $sections[1]['items'][1]['icon']);
     }
 
@@ -173,9 +174,9 @@ final class AdminNavTest extends TestCase
 
         $sections = $nav->sections();
 
-        $this->assertSame(['', 'Library', 'Member area', 'Access codes'], array_column($sections, 'label'));
-        $this->assertSame(['Members', 'Invite'], array_column($sections[2]['items'], 'label'));
-        $this->assertSame('ui-users', $sections[2]['items'][0]['icon']);
+        $this->assertSame(['', 'Member area', 'Access codes', 'Library'], array_column($sections, 'label'));
+        $this->assertSame(['Members', 'Invite'], array_column($sections[1]['items'], 'label'));
+        $this->assertSame('ui-users', $sections[1]['items'][0]['icon']);
     }
 
     public function test_without_nav_keys_unchanged(): void
@@ -188,5 +189,18 @@ final class AdminNavTest extends TestCase
         $this->assertSame(['', 'Content', 'Library', 'Settings'], array_column($sections, 'label'));
         $this->assertSame(['ui-file'], array_column($sections[1]['items'], 'icon'));
         $this->assertSame(['ui-settings'], array_column($sections[3]['items'], 'icon'));
+    }
+
+    public function test_custom_sections_between_content_and_library(): void
+    {
+        $nav = $this->navOf([
+            'a_member' => ['key' => 'member', 'label' => 'Members', 'section' => 'members', 'fields' => []],
+        ]);
+        $nav->add('reports', 'Sales', '/folio/sales', 'ui-file', null);
+        $nav->setCurrentPath('/folio');
+
+        $sections = $nav->sections();
+
+        $this->assertSame(['', 'Members', 'Reports', 'Library'], array_column($sections, 'label'));
     }
 }
