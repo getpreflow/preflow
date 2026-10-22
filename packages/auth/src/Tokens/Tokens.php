@@ -18,7 +18,8 @@ use Preflow\Data\TypeFieldDefinition;
  * the row id, with a purpose, a subject (who it is for) and expires_at.
  * consume() spends a token at most once: on SQL one DELETE decides by its
  * affected rows, on the JSON driver an exclusive file lock in $lockDir guards
- * the read and the delete.
+ * the read and the delete (only for a token that exists; the file is removed
+ * afterwards).
  */
 final class Tokens
 {
@@ -90,6 +91,11 @@ final class Tokens
             return $deleted === 1 ? (string) $record->get('subject') : null;
         }
 
+        // Unknown tokens (anything posted to a public link) never get a lock file.
+        if ($this->dm->findIn($this->type, $id) === null) {
+            return null;
+        }
+
         return $this->locked($id, function () use ($id, $purpose): ?string {
             $record = $this->dm->findIn($this->type, $id);
             // The file lookup found the hash; hash_equals confirms the stored one exactly.
@@ -154,7 +160,8 @@ final class Tokens
     }
 
     /**
-     * Runs $fn holding an exclusive lock on tokens-{id}.lock in the lock directory.
+     * Runs $fn holding an exclusive lock on tokens-{id}.lock in the lock directory;
+     * the file is removed afterwards (best effort).
      *
      * @template T
      * @param \Closure(): T $fn
@@ -173,6 +180,8 @@ final class Tokens
         try {
             return $fn();
         } finally {
+            // Removed first, so the lock directory does not grow; a waiter on the old file re-reads and finds the row gone.
+            @unlink($path);
             flock($handle, LOCK_UN);
             fclose($handle);
         }

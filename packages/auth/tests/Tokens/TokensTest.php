@@ -179,8 +179,21 @@ final class TokensTest extends DataTestCase
         $lockFile = $lockDir . '/tokens-' . hash('sha256', $token) . '.lock';
 
         $this->assertSame('user-1', $t->consume($token, 'confirm'));
-        $this->assertFileExists($lockFile);
         $this->assertNotEmpty($held);
         $this->assertNotContains(false, $held, 'the lock is held while consume() reads and deletes');
+        $this->assertFileDoesNotExist($lockFile, 'the lock file is removed afterwards');
+        $this->assertSame([], glob($lockDir . '/*') ?: []);
+    }
+
+    public function test_unknown_token_creates_no_lock_file_on_json(): void
+    {
+        $lockDir = sys_get_temp_dir() . '/preflow_tokens_locks_' . uniqid();
+        $this->lockDirs[] = $lockDir;
+        $t = new Tokens($this->dataManager(), 'json', fn (): int => $this->now, $lockDir);
+        $t->issue('confirm', 'user-1', 3600);
+        $before = is_dir($lockDir) ? (glob($lockDir . '/*') ?: []) : [];
+
+        $this->assertNull($t->consume(rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '='), 'confirm'));
+        $this->assertSame($before, is_dir($lockDir) ? (glob($lockDir . '/*') ?: []) : []);
     }
 }
