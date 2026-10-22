@@ -17,6 +17,7 @@ use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Extension\Customization\Customizations;
 use Preflow\Folio\Extension\ExtensionRegistry;
+use Preflow\Folio\Extension\Settings\ExtensionSettings;
 use Preflow\Folio\Extension\Screen\ScreenRegistry;
 use Preflow\Folio\Http\AdminAuthMiddleware;
 use Preflow\Folio\Http\AdminController;
@@ -30,6 +31,7 @@ use Preflow\Folio\Field\Types\AssetFieldType;
 use Preflow\Folio\Field\Types\BlocksFieldType;
 use Preflow\Folio\Field\Types\BooleanFieldType;
 use Preflow\Folio\Field\Types\DateFieldType;
+use Preflow\Folio\Field\Types\EnvFieldType;
 use Preflow\Folio\Field\Types\NumberFieldType;
 use Preflow\Folio\Field\Types\SelectFieldType;
 use Preflow\Folio\Field\Types\RichTextFieldType;
@@ -75,16 +77,22 @@ final class FolioServiceProvider extends ServiceProvider
             make: static fn (string $class): object => $container->get($class),
         );
         $container->instance(ExtensionRegistry::class, $extensions);
-        $extensionModels = $extensions->enabledModels();
-        if ($extensionModels !== [] && $dataManager !== null && $dataManager->getTypeRegistry() === null) {
-            throw new \Preflow\Folio\Extension\ExtensionException("Extension models need the models directory {$modelsPath} (data.models_path); create it.");
+        // Their settings forms (Extension::settings()) are singleton types under Settings.
+        $extensionTypes = array_map(static fn (array $schema): array => [$schema, 'content', 'Extension model'], $extensions->enabledModels());
+        foreach ($extensions->enabled() as $definition) {
+            if ($extensions->partEnabled($definition->name, 'settings')) {
+                $extensionTypes[] = [ExtensionSettings::schema($definition, $container->get($definition->class)->settings()), 'settings', 'Extension settings type'];
+            }
         }
-        foreach ($extensionModels as $schema) {
+        if ($extensionTypes !== [] && $dataManager !== null && $dataManager->getTypeRegistry() === null) {
+            throw new \Preflow\Folio\Extension\ExtensionException("Extension models and settings need the models directory {$modelsPath} (data.models_path); create it.");
+        }
+        foreach ($extensionTypes as [$schema, $section, $what]) {
             try {
                 $types->define($schema);
-                $catalog->add($schema);
+                $catalog->add($schema, $section);
             } catch (\RuntimeException $e) {
-                throw new \Preflow\Folio\Extension\ExtensionException("Extension model \"{$schema['key']}\": {$e->getMessage()}", 0, $e);
+                throw new \Preflow\Folio\Extension\ExtensionException("{$what} \"{$schema['key']}\": {$e->getMessage()}", 0, $e);
             }
         }
         // Blocks: component blocks from app/Components, data-only blocks from
@@ -209,6 +217,7 @@ final class FolioServiceProvider extends ServiceProvider
             $registry->register(new BooleanFieldType());
             $registry->register(new DateFieldType());
             $registry->register(new SelectFieldType());
+            $registry->register(new EnvFieldType());
             $registry->register(new BlocksFieldType(
                 $c->get(BlockRegistry::class),
                 $registry,
@@ -345,6 +354,15 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Content\LiveContent::class),
             $c->get(\Preflow\Folio\Content\SafeRichText::class),
         ));
+        $container->singleton(ExtensionSettings::class, fn (Container $c) => new ExtensionSettings(
+            $c->get(ExtensionRegistry::class),
+            $c->get(TypeCatalog::class),
+            $c->get(TypeRegistry::class),
+            $c->get(\Preflow\Folio\Content\Singletons::class),
+            $c->get(FieldTypeRegistry::class),
+            $c->get(ContentLocale::class),
+            (bool) $app->config()->get('app.debug', false),
+        ));
         $container->singleton(\Preflow\Folio\Content\Collections::class, fn (Container $c) => new \Preflow\Folio\Content\Collections(
             $c->get(\Preflow\Folio\Content\LiveContent::class),
             $c->get(TypeCatalog::class),
@@ -473,6 +491,12 @@ final class FolioServiceProvider extends ServiceProvider
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_get',
                 callable: fn (string $type): ?array => $container->get(\Preflow\Folio\Content\Singletons::class)->get($type),
+            ));
+
+            // Extension settings: folio_setting('members', 'registration_open') -> the value or its default.
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_setting',
+                callable: fn (string $extension, string $key): mixed => $container->get(ExtensionSettings::class)->get($extension, $key),
             ));
 
             // Collections: folio_list('app') -> live records in list order; folio_find('force', id).
@@ -622,20 +646,22 @@ final class FolioServiceProvider extends ServiceProvider
     /**
      * Permissions of every discovered extension, grouped under its label: its
      * #[DeclaresPermission], its screens' and record actions' permissions, and the standard
-     * permissions of its model types. Those of an extension that is not enabled (or of a
-     * disabled part) are declared and disabled: denied and logged once, never a 500. A name
-     * Folio declares itself (folio.*, assets.*, a non-extension type's) is an ExtensionException.
+     * permissions of its model types and settings type. Those of an extension that is not
+     * enabled (or of a disabled part) are declared and disabled: denied and logged once, never
+     * a 500. A name Folio declares itself (folio.*, assets.*, a non-extension type's) is an
+     * ExtensionException.
      */
     private function declareExtensionPermissions(\Preflow\Auth\Access\PermissionRegistry $registry, ExtensionRegistry $extensions, TypeCatalog $catalog): void
     {
         $standard = ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'];
-        $declared = array_keys($registry->all()); // Folio's own plus the enabled extension models' standard names
+        $declared = array_keys($registry->all()); // Folio's own plus the standard names of enabled extension types
         $modelNames = [];
         foreach ($extensions->all() as $definition) {
             foreach ($definition->parts as $part) {
-                if ($part['kind'] === 'model' && $extensions->partEnabled($definition->name, $part['id'])) {
+                $typeKey = self::extensionTypeKey($definition->name, $part);
+                if ($typeKey !== null && $extensions->partEnabled($definition->name, $part['id'])) {
                     foreach (array_keys($standard) as $action) {
-                        $modelNames[substr($part['id'], 6) . '.' . $action] = true;
+                        $modelNames[$typeKey . '.' . $action] = true;
                     }
                 }
             }
@@ -656,12 +682,13 @@ final class FolioServiceProvider extends ServiceProvider
             }
             foreach ($definition->parts as $part) {
                 $reason = $extensionReason ?? ($extensions->partEnabled($definition->name, $part['id']) ? null : "part {$part['id']} of extension {$definition->name}");
-                if ($part['kind'] === 'model' && $reason !== null) {
-                    if ($catalog->has(substr($part['id'], 6))) { // a switched-off model must not shadow the site's own type
-                        throw new \Preflow\Folio\Extension\ExtensionException("Extension \"{$definition->name}\" ships model \"" . substr($part['id'], 6) . '", which is already a content type of the site.');
+                $typeKey = self::extensionTypeKey($definition->name, $part);
+                if ($typeKey !== null && $reason !== null) {
+                    if ($catalog->has($typeKey)) { // a switched-off model or settings type must not shadow the site's own type
+                        throw new \Preflow\Folio\Extension\ExtensionException("Extension \"{$definition->name}\" ships " . ($part['kind'] === 'settings' ? 'settings type' : 'model') . " \"{$typeKey}\", which is already a content type of the site.");
                     }
                     foreach ($standard as $action => $verb) {
-                        $entries[] = ['name' => substr($part['id'], 6) . '.' . $action, 'label' => $verb, 'group' => $part['label'], 'reason' => $reason];
+                        $entries[] = ['name' => $typeKey . '.' . $action, 'label' => $verb, 'group' => $part['kind'] === 'settings' ? $definition->label : $part['label'], 'reason' => $reason];
                     }
                 } elseif ($part['kind'] === 'screen' && isset($part['class'])) {
                     $meta = (new \ReflectionClass($part['class']))->getAttributes(\Preflow\Folio\Extension\Attributes\FolioScreen::class)[0] ?? null;
@@ -697,6 +724,20 @@ final class FolioServiceProvider extends ServiceProvider
                 $registry->disable($entry['name'], $entry['reason']);
             }
         }
+    }
+
+    /**
+     * The type key an extension part defines (a model's key, the settings type), or null.
+     *
+     * @param array{id: string, kind: string} $part
+     */
+    private static function extensionTypeKey(string $extension, array $part): ?string
+    {
+        return match ($part['kind']) {
+            'model' => substr($part['id'], 6),
+            'settings' => ExtensionSettings::typeKey($extension),
+            default => null,
+        };
     }
 
     /** A part attribute's instance; one that cannot be built is the enabled-path validation's to report, not a reason to fail here. */

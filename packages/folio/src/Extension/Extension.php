@@ -20,4 +20,16 @@ abstract class Extension
     public function uninstall(Container $c): void
     {
     }
+
+    /**
+     * The extension's settings form, in the model JSON "fields" format; a field may carry a
+     * "default", and an "env" field names an environment variable. Non-empty: Folio edits it
+     * under Settings as the singleton type "{name}_settings" (read with ExtensionSettings).
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function settings(): array
+    {
+        return [];
+    }
 }

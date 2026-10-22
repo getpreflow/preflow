@@ -214,7 +214,7 @@ final class ExtensionRegistry
                 $parts[] = ['id' => $kind . ':' . $key, 'kind' => $kind, 'class' => $partClass, 'label' => $label];
             }
         }
-        if (method_exists($class, 'settings') && ($make($class)->settings() ?: []) !== []) {
+        if ($make($class)->settings() !== []) { // the same call FolioServiceProvider registers the settings type from
             $parts[] = ['id' => 'settings', 'kind' => 'settings', 'label' => 'Settings'];
         }
 

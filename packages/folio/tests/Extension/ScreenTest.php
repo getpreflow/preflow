@@ -85,8 +85,8 @@ final class ScreenTest extends TestCase
         $this->assertMatchesRegularExpression('#<h1>\s*Approvals\s*</h1>#', $body);
         $this->assertStringContainsString('action="/folio/approvals/m1/approve"', $body);
         $this->assertStringContainsString('name="_csrf_token" value="' . $this->token . '"', $body);
-        // The sidebar item, under Settings, active on its screen.
-        $this->assertMatchesRegularExpression('#<span class="folio-nav-label">Settings</span>\s*<a href="/folio/approvals" class="active" aria-current="page">#', $body);
+        // The sidebar item, under Settings (after the extension's settings form), active on its screen.
+        $this->assertMatchesRegularExpression('#<span class="folio-nav-label">Settings</span>\s*<a href="/folio/members_settings">.*?</a>\s*<a href="/folio/approvals" class="active" aria-current="page">#s', $body);
         $this->assertStringContainsString('#ui-file"></use></svg><span>Approvals</span>', $body);
 
         $dashboard = (string) $this->send('GET', '/folio')->getBody();

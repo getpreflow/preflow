@@ -101,7 +101,7 @@ final class AdminController
             $record = $this->dm->findType($type, $type);
             return $this->form(
                 $type,
-                $record?->toArray() ?? [],
+                $record?->toArray() ?? self::defaults($typeDef), // before the first save: the declared defaults
                 $this->prefix . '/' . $type . '/' . $type,
                 $this->labelFor($type),
                 [],
@@ -862,6 +862,23 @@ final class AdminController
     private function isSingleton(string $type): bool
     {
         return $this->catalog->get($type)?->singleton === true;
+    }
+
+    /**
+     * Field values from the fields' "default" (extension settings declare them).
+     *
+     * @return array<string, mixed>
+     */
+    private static function defaults(TypeDefinition $typeDef): array
+    {
+        $values = [];
+        foreach ($typeDef->fields as $name => $fieldDef) {
+            if (array_key_exists('default', $fieldDef->config)) {
+                $values[$name] = $fieldDef->config['default'];
+            }
+        }
+
+        return $values;
     }
 
     /** The editing locale: ?locale= (GET) or _locale (POST), if configured; else the default. */
