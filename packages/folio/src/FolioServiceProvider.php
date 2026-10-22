@@ -392,6 +392,18 @@ final class FolioServiceProvider extends ServiceProvider
                 isSafe: false,
             ));
 
+            // The sidebar: sections and items from the nav model (extensions add theirs), filtered by permission.
+            $access = $container->get(\Preflow\Auth\Access\Access::class);
+            \Preflow\Folio\Http\AdminNav::configure(
+                $container->get(TypeCatalog::class),
+                static fn (string $permission): bool => $access->can($permission),
+                $this->prefix($app),
+            );
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_nav',
+                callable: static fn (): array => \Preflow\Folio\Http\AdminNav::sections(),
+            ));
+
             // Singletons: folio_get('site') -> localized values (null before the first save).
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_get',

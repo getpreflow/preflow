@@ -18,6 +18,7 @@ final class WorkingCopyMiddleware implements MiddlewareInterface
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $this->live->showWorkingCopies();
+        AdminNav::setCurrentPath($request->getUri()->getPath()); // every admin route, with or without auth
 
         return $handler->handle($request);
     }
