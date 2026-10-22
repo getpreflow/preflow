@@ -61,6 +61,9 @@
         <testsuite name="Roles">
             <directory>packages/roles/tests</directory>
         </testsuite>
+        <testsuite name="Rbac">
+            <directory>packages/rbac/tests</directory>
+        </testsuite>
         <testsuite name="Examples">
             <directory>examples/folio-demo/tests</directory>
         </testsuite>
@@ -76,6 +79,7 @@
             <directory>packages/view/src</directory>
             <directory>packages/notify/src</directory>
             <directory>packages/roles/src</directory>
+            <directory>packages/rbac/src</directory>
             <directory>packages/twig/src</directory>
             <directory>packages/blade/src</directory>
             <directory>packages/testing/src</directory>

@@ -27,6 +27,7 @@ jobs:
         package:
           - { local: 'packages/auth', remote: 'auth' }
           - { local: 'packages/roles', remote: 'roles' }
+          - { local: 'packages/rbac', remote: 'rbac' }
           - { local: 'packages/core', remote: 'core' }
           - { local: 'packages/routing', remote: 'routing' }
           - { local: 'packages/view', remote: 'view' }

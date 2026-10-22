@@ -1,0 +1,17 @@
+{
+    "key": "rbac_role",
+    "table": "rbac_role",
+    "storage": "default",
+    "id_field": "uuid",
+    "label": "Roles",
+    "section": "settings",
+    "order": 20,
+    "icon": "ui-users",
+    "publishing": false,
+    "fields": {
+        "name": { "type": "string", "label": "Name", "validate": ["required", "regex:/^[a-z][a-z0-9_-]*$/"] },
+        "label": { "type": "string", "label": "Label", "validate": ["required"] },
+        "population": { "type": "select", "label": "Population", "options": { "staff": "Staff", "members": "Members" }, "validate": ["required"] },
+        "permissions": { "type": "rbac_permissions", "label": "Permissions" }
+    }
+}

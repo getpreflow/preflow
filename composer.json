@@ -25,6 +25,7 @@
         "preflow/htmx": "@dev",
         "preflow/i18n": "@dev",
         "preflow/notify": "@dev",
+        "preflow/rbac": "@dev",
         "preflow/roles": "@dev",
         "preflow/routing": "@dev",
         "preflow/testing": "@dev",
@@ -119,6 +120,11 @@
             "type": "path",
             "url": "packages/roles",
             "options": { "symlink": true }
+        },
+        {
+            "type": "path",
+            "url": "packages/rbac",
+            "options": { "symlink": true }
         }
     ],
     "autoload": {},
@@ -131,6 +137,7 @@
             "Preflow\\Folio\\Tests\\": "packages/folio/tests/",
             "Preflow\\Form\\Tests\\": "packages/form/tests/",
             "Preflow\\Notify\\Tests\\": "packages/notify/tests/",
+            "Preflow\\Rbac\\Tests\\": "packages/rbac/tests/",
             "Preflow\\Roles\\Tests\\": "packages/roles/tests/",
             "Preflow\\Validation\\Tests\\": "packages/validation/tests/",
             "Preflow\\Examples\\FolioDemo\\Tests\\": "examples/folio-demo/tests/",
