@@ -8,6 +8,7 @@ use Nyholm\Psr7\Response;
 use Preflow\Auth\Access\Access;
 use Preflow\Core\Routing\Route;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Extension\Screen\ScreenRegistry;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -17,7 +18,8 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * Every admin route asks one permission, by handler. "{type}" is the route's
  * type; "*.edit|create" means edit or create on any type (block editor
- * fragments have no type).
+ * fragments have no type). Extension screens ask the permission their
+ * #[FolioScreen] declares; any other handler is refused.
  * Runs after AdminAuthMiddleware, so the user is known.
  */
 final class FolioPermissionMiddleware implements MiddlewareInterface
@@ -56,6 +58,7 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         private readonly TypeCatalog $catalog,
         private readonly TemplateEngineInterface $engine,
         private readonly string $prefix,
+        private readonly ScreenRegistry $screens,
     ) {}
 
     /** The permission a handler requires; null for handlers that need none (or are unknown). */
@@ -67,7 +70,9 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $route = $request->getAttribute(Route::class);
-        $rule = $route instanceof Route ? self::rule($route->handler) : null;
+        $rule = $route instanceof Route
+            ? self::rule($route->handler) ?? $this->screens->permissionFor(explode('@', $route->handler, 2)[0])
+            : null;
         if ($rule === null) {
             return $this->forbidden($request); // fail closed: an unmapped admin route is never open
         }

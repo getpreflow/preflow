@@ -16,6 +16,7 @@ use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Extension\ExtensionRegistry;
+use Preflow\Folio\Extension\Screen\ScreenRegistry;
 use Preflow\Folio\Http\AdminAuthMiddleware;
 use Preflow\Folio\Http\AdminController;
 use Preflow\Folio\Http\AssetController;
@@ -364,6 +365,18 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeCatalog::class),
             $c->get(TemplateEngineInterface::class),
             $prefix,
+            $c->get(ScreenRegistry::class),
+        ));
+        // Extension screens: validated when first resolved (in boot()), so collisions fail at boot.
+        $container->singleton(ScreenRegistry::class, fn (Container $c) => ScreenRegistry::fromExtensions(
+            $c->get(ExtensionRegistry::class),
+            $c->get(TypeCatalog::class),
+        ));
+        $container->bind(\Preflow\Folio\Extension\Screen\ScreenDispatcher::class, fn (Container $c) => new \Preflow\Folio\Extension\Screen\ScreenDispatcher(
+            $c,
+            $c->get(ScreenRegistry::class),
+            $c->get(TemplateEngineInterface::class),
+            $prefix,
         ));
         $container->bind(AuthController::class, fn (Container $c) => new AuthController(
             $c->get(\Preflow\Auth\AuthManager::class),
@@ -376,7 +389,20 @@ final class FolioServiceProvider extends ServiceProvider
     public function boot(Container $container): void
     {
         $app = $container->get(Application::class);
-        $this->declarePermissions($container, $app);
+        $screens = $container->get(ScreenRegistry::class);
+        $this->declarePermissions($container, $app, $screens);
+
+        // Extension screens in the sidebar (filtered by their permission).
+        foreach ($screens->all() as $screen) {
+            $container->get(\Preflow\Folio\Http\AdminNav::class)->add(
+                $screen['section'],
+                $screen['label'],
+                rtrim($this->prefix($app), '/') . '/' . $screen['path'],
+                $screen['icon'],
+                $screen['permission'],
+                $screen['order'],
+            );
+        }
 
         // 1. Twig namespace: userland override dir first, package templates second.
         if ($container->has(TemplateEngineInterface::class)) {
@@ -521,6 +547,8 @@ final class FolioServiceProvider extends ServiceProvider
             if ($router instanceof Router) {
                 $collection = $router->getCollection(); // builds app routes first (lazy)
                 $authEnabled = file_exists($app->basePath('config/auth.php'));
+                // Screens first: their routes must win over the admin's {type} routes.
+                $collection->addMany($screens->routes($this->prefix($app), $authEnabled));
                 $collection->addMany(FolioRoutes::admin($this->prefix($app), $authEnabled));
                 $assets = (array) ($this->folioConfig($app)['assets'] ?? []);
                 $collection->add(FolioRoutes::media(is_string($assets['url'] ?? null) ? $assets['url'] : '/media'));
@@ -531,10 +559,11 @@ final class FolioServiceProvider extends ServiceProvider
 
     /**
      * Folio's permissions: per content type "{type}.*" and its view, create,
-     * edit, publish and delete; the asset library; the dashboard. The guard
+     * edit, publish and delete; the asset library; the dashboard; each enabled
+     * extension screen's (grouped under its extension's label). The guard
      * Folio signs in with is staff, unless config/auth.php says otherwise.
      */
-    private function declarePermissions(Container $container, Application $app): void
+    private function declarePermissions(Container $container, Application $app, ScreenRegistry $screens): void
     {
         $access = $container->get(\Preflow\Auth\Access\Access::class);
         $registry = $access->registry();
@@ -548,6 +577,10 @@ final class FolioServiceProvider extends ServiceProvider
         $registry->declarePattern('assets.*');
         foreach (['view' => 'View', 'upload' => 'Upload', 'edit' => 'Edit', 'delete' => 'Delete'] as $action => $verb) {
             $registry->declare('assets.' . $action, $verb, 'Assets');
+        }
+        $extensions = $container->get(ExtensionRegistry::class);
+        foreach ($screens->all() as $screen) {
+            $registry->declare($screen['permission'], $screen['label'], $extensions->get($screen['extension'])->label);
         }
 
         if (file_exists($app->basePath('config/auth.php'))) {
