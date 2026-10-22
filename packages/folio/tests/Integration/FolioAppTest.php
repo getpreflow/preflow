@@ -218,6 +218,30 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString("localStorage.getItem('folio-theme')", $body); // no-flash script
     }
 
+    public function test_no_extensions_keeps_todays_sidebar(): void
+    {
+        $body = (string) $this->get('/folio')->getBody();
+        preg_match('#<nav class="folio-nav".*?</nav>#s', $body, $nav);
+        preg_match_all('#<a href="([^"]*)"[^>]*>.*?<span>([^<]*)</span>#s', $nav[0], $links, PREG_SET_ORDER);
+        $items = array_map(static fn (array $m): array => [$m[2], $m[1]], $links);
+        preg_match_all('#<span class="folio-nav-label">([^<]*)</span>#', $nav[0], $labels);
+
+        $this->assertSame([
+            ['Dashboard', '/folio'],
+            ['Authors', '/folio/author'],
+            ['Notes', '/folio/note'],
+            ['Pages', '/folio/page'],
+            ['Assets', '/folio/assets'],
+        ], $items);
+        $this->assertSame(['Content', 'Library'], $labels[1]);
+        $this->assertSame(1, substr_count($nav[0], 'class="active" aria-current="page"'));
+        $this->assertMatchesRegularExpression('#<a href="/folio" class="active"#', $nav[0]);
+
+        $page = (string) $this->get('/folio/page')->getBody();
+        $this->assertMatchesRegularExpression('#<a href="/folio/page" class="active"#', $page);
+        $this->assertDoesNotMatchRegularExpression('#<a href="/folio" class="active"#', $page);
+    }
+
     public function test_admin_js_loads_on_every_admin_page(): void
     {
         // Confirm dialogs, toasts and the unsaved-changes guard live in admin.js.

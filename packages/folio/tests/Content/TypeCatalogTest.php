@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Tests\Content;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Folio\Content\FrontendConfigException;
 use Preflow\Folio\Content\TypeCatalog;
 
 final class TypeCatalogTest extends TestCase
@@ -73,5 +74,115 @@ final class TypeCatalogTest extends TestCase
         @unlink($dir . '/a.json');
         @unlink($dir . '/b.json');
         @rmdir($dir);
+    }
+
+    private function model(array $extra): void
+    {
+        file_put_contents($this->dir . '/member.json', json_encode(['key' => 'member', 'table' => 'member', 'fields' => []] + $extra));
+    }
+
+    public function test_user_type_defaults_to_no_transfer(): void
+    {
+        $this->model(['users' => 'members']);
+        $l = (new TypeCatalog($this->dir))->get('member');
+
+        $this->assertSame('members', $l->users);
+        $this->assertFalse($l->transfer);
+    }
+
+    public function test_user_type_can_opt_in(): void
+    {
+        $this->model(['users' => 'members', 'transfer' => true]);
+
+        $this->assertTrue((new TypeCatalog($this->dir))->get('member')->transfer);
+    }
+
+    public function test_non_user_type_can_opt_out(): void
+    {
+        $this->model(['transfer' => false]);
+        $l = (new TypeCatalog($this->dir))->get('member');
+
+        $this->assertNull($l->users);
+        $this->assertFalse($l->transfer);
+    }
+
+    public function test_plain_type_transfers(): void
+    {
+        $this->model([]);
+
+        $this->assertTrue((new TypeCatalog($this->dir))->get('member')->transfer);
+    }
+
+    public function test_user_type_with_frontend_throws(): void
+    {
+        $this->model(['users' => 'members', 'frontend' => ['route' => '/{slug}']]);
+        $this->expectException(FrontendConfigException::class);
+
+        (new TypeCatalog($this->dir))->all();
+    }
+
+    public function test_user_type_singleton_throws(): void
+    {
+        $this->model(['users' => 'members', 'singleton' => true]);
+        $this->expectException(FrontendConfigException::class);
+
+        (new TypeCatalog($this->dir))->all();
+    }
+
+    public function test_users_must_be_a_non_empty_string(): void
+    {
+        $this->model(['users' => '']);
+        $this->expectException(FrontendConfigException::class);
+
+        (new TypeCatalog($this->dir))->all();
+    }
+
+    public function test_non_bool_transfer_throws(): void
+    {
+        $this->model(['transfer' => 'false']);
+        $this->expectException(FrontendConfigException::class);
+        $this->expectExceptionMessage('Type "member": "transfer" must be true or false');
+
+        (new TypeCatalog($this->dir))->all();
+    }
+
+    public function test_catalog_add_appears_after_files(): void
+    {
+        $this->model([]);
+        $catalog = new TypeCatalog($this->dir);
+        $catalog->add(['key' => 'early', 'table' => 'early', 'fields' => []]);
+        $this->assertSame(['member', 'early'], array_map(fn ($l) => $l->key, $catalog->all()));
+
+        // added after the first all() call: appended, in insertion order
+        $catalog->add(['key' => 'late', 'table' => 'late', 'label' => 'Late', 'fields' => []], 'settings');
+        $keys = array_map(fn ($l) => $l->key, $catalog->all());
+        $this->assertSame(['member', 'early', 'late'], $keys);
+        $this->assertSame('content', $catalog->get('early')->section);
+        $this->assertSame('settings', $catalog->get('late')->section);
+        $this->assertSame('Late', $catalog->get('late')->label);
+    }
+
+    public function test_catalog_add_duplicate_throws(): void
+    {
+        $this->model([]);
+        $catalog = new TypeCatalog($this->dir);
+        $catalog->add(['key' => 'ext', 'table' => 'ext', 'fields' => []]);
+
+        $this->expectException(\RuntimeException::class);
+        $catalog->add(['key' => 'ext', 'table' => 'ext', 'fields' => []]);
+    }
+
+    public function test_catalog_add_duplicate_of_file_throws(): void
+    {
+        $this->model([]);
+
+        $this->expectException(\RuntimeException::class);
+        (new TypeCatalog($this->dir))->add(['key' => 'member', 'table' => 'member', 'fields' => []]);
+    }
+
+    public function test_catalog_add_validates_like_scan(): void
+    {
+        $this->expectException(FrontendConfigException::class);
+        (new TypeCatalog($this->dir))->add(['key' => 'u', 'table' => 'u', 'users' => '', 'fields' => []]);
     }
 }

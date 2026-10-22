@@ -18,6 +18,13 @@ use Preflow\Folio\Publishing\Publisher;
 use Preflow\Folio\Publishing\VersionConflict;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Extension\AfterDelete;
+use Preflow\Folio\Extension\AfterSave;
+use Preflow\Folio\Extension\BeforeDelete;
+use Preflow\Folio\Extension\BeforeSave;
+use Preflow\Folio\Extension\Customization\Customizations;
+use Preflow\Folio\Extension\Customization\Refused;
+use Preflow\Folio\Extension\Screen\ScreenView;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\HandlesUpload;
@@ -54,6 +61,7 @@ final class AdminController
         private readonly ?Publisher $publisher = null,
         private readonly ?\Preflow\Folio\Publishing\PreviewLinks $previewLinks = null,
         private readonly ?\Preflow\Auth\Access\Access $access = null,
+        private readonly ?Customizations $customizations = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
         $this->validator = $validator ?? new RecordValidator($fieldTypes, $dm);
@@ -93,7 +101,7 @@ final class AdminController
             $record = $this->dm->findType($type, $type);
             return $this->form(
                 $type,
-                $record?->toArray() ?? [],
+                ($record?->toArray() ?? []) + self::defaults($typeDef), // declared defaults for keys not stored yet (first save, a setting added later)
                 $this->prefix . '/' . $type . '/' . $type,
                 $this->labelFor($type),
                 [],
@@ -108,6 +116,7 @@ final class AdminController
         $listConfig = $this->catalog->get($type)?->list ?? [];
         $orderable = ($listConfig['orderable'] ?? false) === true;
         $columns = $this->listColumns($typeDef, $listConfig);
+        $extraColumns = $this->customized($type)['columns'];
 
         $multilingual = $typeDef->translatableFields() !== [];
         $states = $this->publishes($type) ? $this->publisher->states($type) : null;
@@ -127,6 +136,8 @@ final class AdminController
             $rows[] = [
                 'id' => $record->getId(),
                 'cells' => $cells,
+                // Extension columns (#[ListColumn]): plain text, escaped by the template.
+                'extra' => array_map(static fn (array $column): string => (string) ($column['callable'])($record), $extraColumns),
                 'languages' => $multilingual ? $this->languageBadges($typeDef, $record) : [],
                 'state' => $states !== null ? ($states[(string) $record->getId()] ?? PublishState::Draft) : null,
             ];
@@ -140,6 +151,7 @@ final class AdminController
             'label' => $this->labelFor($type),
             'types' => $this->catalog->all(),
             'columns' => $columns,
+            'extra_columns' => array_column($extraColumns, 'label'),
             'rows' => $rows,
             'orderable' => $orderable,
             'multilingual' => $multilingual,
@@ -211,6 +223,7 @@ final class AdminController
             $record->set(self::ORDER, $this->maxOrder($type) + 10);
         }
         $data = [$typeDef->idField => $record->getId()];
+        $this->customizations?->runHooks(BeforeSave::class, $record); // before validation
 
         if ($this->publishes($type)) {
             // Once saved, the record exists: a re-rendered form must update it, not create another.
@@ -303,6 +316,7 @@ final class AdminController
         if ($this->drafts->uploadErrors() !== []) {
             return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . '/' . $id, 'Edit ' . $this->labelFor($type), $this->drafts->uploadErrors(), $csrf, 422, locale: $locale, editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit');
         }
+        $this->customizations?->runHooks(BeforeSave::class, $record); // before validation
 
         if ($this->publishes($type)) {
             $failed = $this->savePublishing($request, $record, $type, $this->prefix . '/' . $type . '/' . $id, 'Edit ' . $this->labelFor($type), $csrf, $locale, $this->prefix . '/' . $type . '/' . $id . '/edit');
@@ -347,7 +361,8 @@ final class AdminController
 
         $missing = false;
         foreach ($records as $record) {
-            $missing = $missing || !is_int($record->get(self::ORDER));
+            // Numeric, not int: SQL drivers return positions as text.
+            $missing = $missing || !is_numeric($record->get(self::ORDER));
         }
         if ($missing) {
             foreach ($records as $i => $record) {
@@ -391,16 +406,57 @@ final class AdminController
             return new Response(404, [], 'Unknown type');
         }
 
-        if ($this->dm->findType($type, $id) === null) {
+        $record = $this->dm->findType($type, $id);
+        if ($record === null) {
             return new Response(404, [], 'Not found');
         }
 
+        try {
+            $this->customizations?->runHooks(BeforeDelete::class, $record);
+        } catch (Refused $e) {
+            self::flash($request, 'error', $e->getMessage());
+
+            return new Response(302, ['Location' => $this->prefix . '/' . $type]);
+        }
         $this->dm->deleteType($type, $id);
         if ($this->publishes($type)) {
             $this->publisher->forget($type, $id);
         }
+        $this->customizations?->runHooks(AfterDelete::class, $record);
 
         return new Response(302, ['Location' => $this->prefix . '/' . $type]);
+    }
+
+    /**
+     * An extension's #[RecordAction] (POST {type}/{id}/_action/{name}), for those with its
+     * permission (the route asks {type}.edit). A null result returns to the form with "{label}: done".
+     */
+    public function recordAction(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = (string) $request->getAttribute('type', '');
+        $id = (string) $request->getAttribute('id', '');
+        $action = $this->catalog->has($type) ? $this->customizations?->action($type, (string) $request->getAttribute('name', '')) : null;
+        if ($action === null) {
+            return new Response(404, [], 'Unknown action');
+        }
+        if (!$this->can($action['permission'])) {
+            return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog);
+        }
+        $record = $this->dm->findType($type, $id);
+        if ($record === null) {
+            return new Response(404, [], 'Not found');
+        }
+
+        $response = ($action['callable'])($record, $request);
+        if ($response instanceof ResponseInterface) {
+            return $response;
+        }
+        if ($response !== null) {
+            throw new \Preflow\Folio\Extension\ExtensionException("Record action \"{$action['name']}\" of type \"{$type}\" must return a response or null, not " . get_debug_type($response) . '.');
+        }
+        self::flash($request, 'success', $action['label'] . ': done');
+
+        return new Response(302, ['Location' => $this->prefix . '/' . $type . ($this->isSingleton($type) ? '' : '/' . $id . '/edit')]);
     }
 
     /** @param array<string, mixed> $values @param array<string, list<string>> $errors */
@@ -505,6 +561,7 @@ final class AdminController
         }
 
         $isNew = strtok($action, '?') === $this->prefix . '/' . $type;
+        [$panels, $recordActions] = $this->recordExtras($type, $typeDef, $values, $isNew, $csrf);
         $html = $this->engine->render('@folio/admin/form.twig', [
             'prefix' => $this->prefix,
             'type' => $type,
@@ -536,9 +593,67 @@ final class AdminController
             'publishing' => $this->publishingContext($type, $typeDef, $values),
             'notice' => $notice,
             'reload_url' => $reloadUrl,
+            'panels' => $panels,
+            'record_actions' => $recordActions,
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
+    }
+
+    /**
+     * Extension panels (#[FormPanel], rendered) and record action buttons (#[RecordAction],
+     * those the user may run) of a stored record's edit form; none on create.
+     *
+     * @param array<string, mixed> $values
+     * @return array{list<array{label: string, position: string, html: string}>, list<array{label: string, url: string, icon: ?string, confirm: ?string}>}
+     */
+    private function recordExtras(string $type, TypeDefinition $typeDef, array $values, bool $isNew, string $csrf): array
+    {
+        $custom = $this->customized($type);
+        $id = $values[$typeDef->idField] ?? null;
+        if ($isNew || ($custom['panels'] === [] && $custom['actions'] === []) || !is_string($id) || $id === ''
+            || ($record = $this->dm->findType($type, $id)) === null) {
+            return [[], []];
+        }
+
+        $panels = [];
+        foreach ($custom['panels'] as $panel) {
+            $result = ($panel['callable'])($record);
+            $panels[] = [
+                'label' => $panel['label'],
+                'position' => $panel['position'],
+                'html' => $result instanceof ScreenView
+                    ? $result->render($this->engine, ['prefix' => $this->prefix, 'csrf' => $csrf, 'type' => $type, 'record' => $record->toArray()], "Panel \"{$panel['label']}\" of type \"{$type}\"")
+                    : htmlspecialchars((string) $result, ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            ];
+        }
+        $actions = [];
+        foreach ($custom['actions'] as $action) {
+            if ($this->can($action['permission'])) {
+                $actions[] = [
+                    'label' => $action['label'],
+                    'url' => $this->prefix . '/' . $type . '/' . rawurlencode($id) . '/_action/' . $action['name'],
+                    'icon' => $action['icon'],
+                    'confirm' => $action['confirm'],
+                ];
+            }
+        }
+
+        return [$panels, $actions];
+    }
+
+    /** @return array{panels: list<array<string, mixed>>, actions: list<array<string, mixed>>, columns: list<array<string, mixed>>, hooks: array<string, list<\Closure>>} */
+    private function customized(string $type): array
+    {
+        return $this->customizations?->forType($type) ?? ['panels' => [], 'actions' => [], 'columns' => [], 'hooks' => []];
+    }
+
+    private static function flash(ServerRequestInterface $request, string $type, string $message): void
+    {
+        $session = $request->getAttribute(\Preflow\Core\Http\Session\SessionInterface::class);
+        if ($session instanceof \Preflow\Core\Http\Session\SessionInterface) {
+            $session->flash($type, $message);
+        }
     }
 
     /**
@@ -571,7 +686,7 @@ final class AdminController
     }
 
     /**
-     * Full validation (blocks, then the type's rules), then save.
+     * Full validation (blocks, then the type's rules), then save and the #[AfterSave] hooks.
      *
      * @throws ValidationException
      */
@@ -579,6 +694,7 @@ final class AdminController
     {
         $this->validator->validate($record);
         $this->dm->saveType($record, false);
+        $this->customizations?->runHooks(AfterSave::class, $record);
     }
 
     /** Publishing through the form without the right to: refused before anything (uploads included) is written. */
@@ -605,6 +721,7 @@ final class AdminController
     /**
      * Publishing types: save the working copy (no rules; _publish_at and the
      * loaded _version from the form), then publish when "_action" asks for it.
+     * The #[AfterSave] hooks run once the working copy is saved (after the publish attempt).
      * Returns the form to re-render on a version conflict or a failed publish.
      */
     private function savePublishing(ServerRequestInterface $request, DynamicRecord $record, string $type, string $action, string $heading, string $csrf, string $locale, string $editUrl, string $layout = '@folio/admin/_layout.twig'): ?ResponseInterface
@@ -634,11 +751,13 @@ final class AdminController
             try {
                 $this->publisher?->publish($record, self::userId($request));
             } catch (ValidationException $e) {
+                $this->customizations?->runHooks(AfterSave::class, $record); // the working copy was saved
                 return $this->form($type, $record->toArray(), $action, $heading, $e->errors(), $csrf, 422, $layout, $locale, $editUrl,
                     notice: 'Saved as draft — not published.',
                 );
             }
         }
+        $this->customizations?->runHooks(AfterSave::class, $record);
 
         return null;
     }
@@ -743,6 +862,23 @@ final class AdminController
     private function isSingleton(string $type): bool
     {
         return $this->catalog->get($type)?->singleton === true;
+    }
+
+    /**
+     * Field values from the fields' "default" (extension settings declare them), for keys a record lacks.
+     *
+     * @return array<string, mixed>
+     */
+    private static function defaults(TypeDefinition $typeDef): array
+    {
+        $values = [];
+        foreach ($typeDef->fields as $name => $fieldDef) {
+            if (array_key_exists('default', $fieldDef->config)) {
+                $values[$name] = $fieldDef->config['default'];
+            }
+        }
+
+        return $values;
     }
 
     /** The editing locale: ?locale= (GET) or _locale (POST), if configured; else the default. */

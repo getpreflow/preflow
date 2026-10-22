@@ -276,4 +276,62 @@ final class ExportImportTest extends TestCase
         $this->assertTrue($plan->isEmpty());
         $plan->cleanup();
     }
+
+    private function addMemberType(array $extra = []): void
+    {
+        $this->writeModel('member', ['users' => 'members', 'fields' => ['email' => ['type' => 'string']]] + $extra);
+        $this->driver()->save('member', 'm1', ['uuid' => 'm1', 'email' => 'a@example.com']);
+    }
+
+    public function test_export_leaves_out_user_type(): void
+    {
+        $this->addMemberType();
+
+        $manifest = $this->manifestOf($this->export());
+
+        $this->assertArrayNotHasKey('member', $manifest['tables']);
+        $this->assertArrayHasKey('post', $manifest['tables']);
+    }
+
+    public function test_import_refuses_user_type_table(): void
+    {
+        $this->addMemberType();
+
+        try {
+            $this->import($this->craft('data/member/m1.json', '{"uuid":"m1"}', ['member' => 1]));
+            $this->fail('expected a TransferException');
+        } catch (TransferException $e) {
+            $this->assertSame('member is not transferred (user data or not a Folio type)', $e->getMessage());
+        }
+    }
+
+    public function test_backup_leaves_out_user_type(): void
+    {
+        $this->addMemberType();
+
+        $file = \Preflow\Folio\Transfer\Backups::write($this->app(), 'test');
+
+        $this->assertArrayNotHasKey('member', $this->manifestOf(\Preflow\Folio\Transfer\Backups::open($file))['tables']);
+    }
+
+    public function test_user_type_with_transfer_true_is_exported(): void
+    {
+        $this->addMemberType(['transfer' => true]);
+
+        $this->assertArrayHasKey('member', $this->manifestOf($this->export())['tables']);
+    }
+
+    /** @return array{tables: array<string, int>} */
+    private function manifestOf($stream): array
+    {
+        foreach ((new \Preflow\Folio\Transfer\TarReader($stream))->entries() as [$name, $size, $copyTo]) {
+            $this->assertSame('folio-export.json', $name);
+            $buf = fopen('php://temp', 'w+b');
+            $copyTo($buf);
+            rewind($buf);
+
+            return json_decode((string) stream_get_contents($buf), true);
+        }
+        $this->fail('empty archive');
+    }
 }

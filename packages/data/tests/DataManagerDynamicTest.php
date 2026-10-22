@@ -118,4 +118,25 @@ final class DataManagerDynamicTest extends TestCase
     {
         $this->assertNull($this->dm->findType('event', 'nonexistent'));
     }
+
+    public function test_type_with_unknown_storage_throws(): void
+    {
+        $def = new \Preflow\Data\TypeDefinition('thing', 'things', 'nope', []);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Storage driver [nope] is not configured');
+        $this->dm->queryIn($def)->get();
+    }
+
+    public function test_default_storage_name_still_resolves(): void
+    {
+        $this->pdo->exec('CREATE TABLE things (uuid TEXT PRIMARY KEY, title TEXT)');
+        $def = new \Preflow\Data\TypeDefinition('thing', 'things', 'default', [
+            'title' => new \Preflow\Data\TypeFieldDefinition('title', 'string'),
+        ]);
+
+        $this->dm->saveType(new DynamicRecord($def, ['uuid' => 't1', 'title' => 'X']), false);
+
+        $this->assertSame('X', $this->dm->findIn($def, 't1')?->get('title'));
+    }
 }

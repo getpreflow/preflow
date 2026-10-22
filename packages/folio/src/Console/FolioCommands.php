@@ -22,6 +22,11 @@ final class FolioCommands
             ExportCommand::class,
             ImportCommand::class,
             PullCommand::class,
+            ExtensionsListCommand::class,
+            ExtensionsEnableCommand::class,
+            ExtensionsDisableCommand::class,
+            ExtensionsApplyCommand::class,
+            ExtensionsCheckCommand::class,
         ];
     }
 }

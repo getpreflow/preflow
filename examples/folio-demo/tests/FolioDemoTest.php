@@ -62,7 +62,7 @@ final class FolioDemoTest extends TestCase
     public function test_demo_serves_german_page(): void
     {
         $copy = sys_get_temp_dir() . '/folio_demo_' . bin2hex(random_bytes(4));
-        foreach (['config', 'resources'] as $dir) {
+        foreach (['config', 'resources', 'app'] as $dir) {
             $this->copyDir(dirname(__DIR__) . '/' . $dir, $copy . '/' . $dir);
         }
         mkdir($copy . '/storage/data', 0777, true);
@@ -92,7 +92,7 @@ final class FolioDemoTest extends TestCase
     public function test_demo_renders_hero_block(): void
     {
         $copy = sys_get_temp_dir() . '/folio_demo_' . bin2hex(random_bytes(4));
-        foreach (['config', 'resources'] as $dir) {
+        foreach (['config', 'resources', 'app'] as $dir) {
             $this->copyDir(dirname(__DIR__) . '/' . $dir, $copy . '/' . $dir);
         }
         mkdir($copy . '/storage/data', 0777, true);
@@ -119,7 +119,7 @@ final class FolioDemoTest extends TestCase
     public function test_demo_publishes_seed_and_hides_drafts(): void
     {
         $copy = sys_get_temp_dir() . '/folio_demo_' . bin2hex(random_bytes(4));
-        foreach (['config', 'resources'] as $dir) {
+        foreach (['config', 'resources', 'app'] as $dir) {
             $this->copyDir(dirname(__DIR__) . '/' . $dir, $copy . '/' . $dir);
         }
         mkdir($copy . '/storage/data', 0777, true);

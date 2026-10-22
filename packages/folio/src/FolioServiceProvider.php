@@ -15,6 +15,10 @@ use Preflow\Folio\Content\ContentLocale;
 use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Extension\Customization\Customizations;
+use Preflow\Folio\Extension\ExtensionRegistry;
+use Preflow\Folio\Extension\Settings\ExtensionSettings;
+use Preflow\Folio\Extension\Screen\ScreenRegistry;
 use Preflow\Folio\Http\AdminAuthMiddleware;
 use Preflow\Folio\Http\AdminController;
 use Preflow\Folio\Http\AssetController;
@@ -27,6 +31,7 @@ use Preflow\Folio\Field\Types\AssetFieldType;
 use Preflow\Folio\Field\Types\BlocksFieldType;
 use Preflow\Folio\Field\Types\BooleanFieldType;
 use Preflow\Folio\Field\Types\DateFieldType;
+use Preflow\Folio\Field\Types\EnvFieldType;
 use Preflow\Folio\Field\Types\NumberFieldType;
 use Preflow\Folio\Field\Types\SelectFieldType;
 use Preflow\Folio\Field\Types\RichTextFieldType;
@@ -51,12 +56,44 @@ final class FolioServiceProvider extends ServiceProvider
         $modelsPath = $this->modelsPath($app);
         $prefix = $this->prefix($app);
 
-        $container->instance(TypeCatalog::class, new TypeCatalog($modelsPath));
+        $catalog = new TypeCatalog($modelsPath);
+        $container->instance(TypeCatalog::class, $catalog);
 
-        // Bind unconditionally: Container::has() falls back to class_exists(),
-        // so the guard would always be false and the instance would never be bound.
+        // The DataManager's registry when it has one, so types defined at runtime (extension
+        // models) are the ones it queries. Otherwise Folio's own, bound unconditionally:
+        // Container::has() falls back to class_exists(), so a has() guard would never bind it.
         $locales = $this->locales($container);
-        $container->instance(TypeRegistry::class, new TypeRegistry($modelsPath, $locales));
+        $dataManager = $this->dataManager($container, $app);
+        $types = $dataManager?->getTypeRegistry() ?? new TypeRegistry($modelsPath, $locales);
+        $container->instance(TypeRegistry::class, $types);
+
+        // Extensions (app/Folio/*, Composer extra.folio.extension), enabled by the committed
+        // config/folio/extensions.json. Built before anything reads the catalog, so the models
+        // of enabled extensions are types like the model files (frontend routes, permissions).
+        $extensions = ExtensionRegistry::discover(
+            $app->basePath(),
+            debug: (bool) $app->config()->get('app.debug', false),
+            cacheFile: $app->basePath('storage/cache/folio-extensions.cache'),
+        );
+        $container->instance(ExtensionRegistry::class, $extensions);
+        // Their settings forms (Extension::settings()) are singleton types under Settings.
+        $extensionTypes = array_map(static fn (array $schema): array => [$schema, 'content', 'Extension model'], $extensions->enabledModels());
+        foreach ($extensions->enabled() as $definition) {
+            if ($extensions->partEnabled($definition->name, 'settings')) {
+                $extensionTypes[] = [ExtensionSettings::schema($definition, $container->get($definition->class)->settings()), 'settings', 'Extension settings type'];
+            }
+        }
+        if ($extensionTypes !== [] && $dataManager !== null && $dataManager->getTypeRegistry() === null) {
+            throw new \Preflow\Folio\Extension\ExtensionException("Extension models and settings need the models directory {$modelsPath} (data.models_path); create it.");
+        }
+        foreach ($extensionTypes as [$schema, $section, $what]) {
+            try {
+                $types->define($schema);
+                $catalog->add($schema, $section);
+            } catch (\RuntimeException $e) {
+                throw new \Preflow\Folio\Extension\ExtensionException("{$what} \"{$schema['key']}\": {$e->getMessage()}", 0, $e);
+            }
+        }
         // Blocks: component blocks from app/Components, data-only blocks from
         // app/Blocks, plus classes listed in config/folio.php 'blocks'. Cached
         // when debug is off (conflicting keys fail at boot either way).
@@ -100,6 +137,34 @@ final class FolioServiceProvider extends ServiceProvider
             ),
         ));
 
+        // `preflow migrate` creates the tables of SQL-stored types from their model JSON
+        // (the asset table too when config/folio.php names its storage).
+        // With extensions, the install state's table too (folio:extensions:apply runs the same sync).
+        $container->bind(\Preflow\Folio\Storage\TableSync::class, fn (Container $c) => new \Preflow\Folio\Storage\TableSync(
+            $c->get(TypeCatalog::class),
+            $c->get(TypeRegistry::class),
+            $c->get(DataManager::class),
+            isset($assetsConfig['storage']) ? $c->get(\Preflow\Folio\Assets\AssetLibrary::class)->definition() : null,
+            $extensions->all() !== [] ? [$c->get(\Preflow\Folio\Extension\ExtensionState::class)->definition()] : [],
+        ));
+        $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
+            'folio.tables',
+            static fn (): array => $container->get(\Preflow\Folio\Storage\TableSync::class)->sync(),
+        );
+        $container->singleton(\Preflow\Folio\Extension\ExtensionState::class, fn (Container $c) => new \Preflow\Folio\Extension\ExtensionState(
+            $c->get(DataManager::class),
+        ));
+        $container->bind(\Preflow\Folio\Http\ExtensionsController::class, fn (Container $c) => new \Preflow\Folio\Http\ExtensionsController(
+            $c->get(ExtensionRegistry::class),
+            $c->get(\Preflow\Folio\Extension\ExtensionState::class),
+            new \Preflow\Folio\Extension\ExtensionsFile($app->basePath('config/folio/extensions.json')),
+            $c->get(TemplateEngineInterface::class),
+            $c->get(TypeCatalog::class),
+            $prefix,
+            // Toggling on the screen: development by default; elsewhere the committed file is the source.
+            (bool) ($folioCfg['extensions']['allow_admin_changes'] ?? $app->config()->get('app.debug', false)),
+        ));
+
         $container->bind(\Preflow\Folio\Http\MediaVariantController::class, fn (Container $c) => new \Preflow\Folio\Http\MediaVariantController(
             $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
             $c->get(\Preflow\Folio\Assets\ImageWidths::class),
@@ -139,7 +204,17 @@ final class FolioServiceProvider extends ServiceProvider
         ));
         $container->bind(\Preflow\Folio\Http\WorkingCopyMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\WorkingCopyMiddleware(
             $c->get(\Preflow\Folio\Content\LiveContent::class),
+            $c->get(\Preflow\Folio\Http\AdminNav::class),
         ));
+        $container->singleton(\Preflow\Folio\Http\AdminNav::class, function (Container $c) use ($prefix): \Preflow\Folio\Http\AdminNav {
+            $access = $c->get(\Preflow\Auth\Access\Access::class);
+
+            return new \Preflow\Folio\Http\AdminNav(
+                $c->get(TypeCatalog::class),
+                static fn (string $permission): bool => $access->can($permission),
+                $prefix,
+            );
+        });
         $container->bind(ActionResolver::class, fn (Container $c) => new ActionResolver($c));
         // Routes are computed (and validated) now, so conflicting "frontend"
         // declarations fail at boot; the resolver itself is built lazily.
@@ -157,6 +232,7 @@ final class FolioServiceProvider extends ServiceProvider
             $registry->register(new BooleanFieldType());
             $registry->register(new DateFieldType());
             $registry->register(new SelectFieldType());
+            $registry->register(new EnvFieldType());
             $registry->register(new BlocksFieldType(
                 $c->get(BlockRegistry::class),
                 $registry,
@@ -237,6 +313,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Publishing\Publisher::class),
             $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
             $c->get(\Preflow\Auth\Access\Access::class),
+            $c->get(Customizations::class),
         ));
         $container->bind(\Preflow\Folio\Http\PublishingController::class, fn (Container $c) => new \Preflow\Folio\Http\PublishingController(
             $c->get(TypeCatalog::class),
@@ -292,6 +369,15 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Content\LiveContent::class),
             $c->get(\Preflow\Folio\Content\SafeRichText::class),
         ));
+        $container->singleton(ExtensionSettings::class, fn (Container $c) => new ExtensionSettings(
+            $c->get(ExtensionRegistry::class),
+            $c->get(TypeCatalog::class),
+            $c->get(TypeRegistry::class),
+            $c->get(\Preflow\Folio\Content\Singletons::class),
+            $c->get(FieldTypeRegistry::class),
+            $c->get(ContentLocale::class),
+            (bool) $app->config()->get('app.debug', false),
+        ));
         $container->singleton(\Preflow\Folio\Content\Collections::class, fn (Container $c) => new \Preflow\Folio\Content\Collections(
             $c->get(\Preflow\Folio\Content\LiveContent::class),
             $c->get(TypeCatalog::class),
@@ -313,10 +399,29 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(AdminAuthMiddleware::class, fn (Container $c) => new AdminAuthMiddleware(
             $c->get(\Preflow\Auth\AuthManager::class),
             $prefix,
+            $c->get(\Preflow\Folio\Http\AdminNav::class),
         ));
         $container->bind(\Preflow\Folio\Http\FolioPermissionMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\FolioPermissionMiddleware(
             $c->get(\Preflow\Auth\Access\Access::class),
             $c->get(TypeCatalog::class),
+            $c->get(TemplateEngineInterface::class),
+            $prefix,
+            $c->get(ScreenRegistry::class),
+        ));
+        // Extension screens: validated when first resolved (in boot()), so collisions fail at boot.
+        $container->singleton(ScreenRegistry::class, fn (Container $c) => ScreenRegistry::fromExtensions(
+            $c->get(ExtensionRegistry::class),
+            $c->get(TypeCatalog::class),
+        ));
+        // Type customizations: validated when first resolved (in boot()); their classes come from the container.
+        $container->singleton(Customizations::class, fn (Container $c) => Customizations::fromExtensions(
+            $c->get(ExtensionRegistry::class),
+            $c->get(TypeCatalog::class),
+            static fn (string $class): object => $c->get($class),
+        ));
+        $container->bind(\Preflow\Folio\Extension\Screen\ScreenDispatcher::class, fn (Container $c) => new \Preflow\Folio\Extension\Screen\ScreenDispatcher(
+            $c,
+            $c->get(ScreenRegistry::class),
             $c->get(TemplateEngineInterface::class),
             $prefix,
         ));
@@ -331,7 +436,25 @@ final class FolioServiceProvider extends ServiceProvider
     public function boot(Container $container): void
     {
         $app = $container->get(Application::class);
+        $screens = $container->get(ScreenRegistry::class);
+        $customizations = $container->get(Customizations::class);
         $this->declarePermissions($container, $app);
+
+        // Settings → Extensions, once there is an extension (sites without any keep today's sidebar).
+        if ($container->get(ExtensionRegistry::class)->all() !== []) {
+            $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', 'Extensions', rtrim($this->prefix($app), '/') . '/extensions', 'ui-settings', 'folio.extensions', 900);
+        }
+        // Extension screens in the sidebar (filtered by their permission).
+        foreach ($screens->all() as $screen) {
+            $container->get(\Preflow\Folio\Http\AdminNav::class)->add(
+                $screen['section'],
+                $screen['label'],
+                rtrim($this->prefix($app), '/') . '/' . $screen['path'],
+                $screen['icon'],
+                $screen['permission'],
+                $screen['order'],
+            );
+        }
 
         // 1. Twig namespace: userland override dir first, package templates second.
         if ($container->has(TemplateEngineInterface::class)) {
@@ -341,6 +464,12 @@ final class FolioServiceProvider extends ServiceProvider
                 $engine->addNamespace('folio', $userDir);
             }
             $engine->addNamespace('folio', dirname(__DIR__) . '/templates');
+            // Enabled extensions' templates/ as @{extension name}/…
+            foreach ($container->get(ExtensionRegistry::class)->enabled() as $extension) {
+                if (is_dir($extension->folder . '/templates')) {
+                    $engine->addNamespace($extension->name, $extension->folder . '/templates');
+                }
+            }
 
             // Single asset URL seam: folio_asset('admin.css') -> versioned URL.
             // Content-hash version so immutable caches bust on edit. A future
@@ -352,10 +481,41 @@ final class FolioServiceProvider extends ServiceProvider
                 isSafe: false,
             ));
 
+            // The sidebar: sections and items from the nav model (extensions add theirs), filtered by permission.
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_nav',
+                callable: fn (): array => $container->get(\Preflow\Folio\Http\AdminNav::class)->sections(),
+            ));
+
+            // Session flashes for the admin layout (a record action's "done", a refused delete).
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_flashes',
+                callable: function () use ($container): array {
+                    $session = $container->has(\Preflow\Core\Http\Session\SessionInterface::class)
+                        ? $container->get(\Preflow\Core\Http\Session\SessionInterface::class)
+                        : null;
+                    $flashes = [];
+                    foreach (['success', 'error'] as $type) {
+                        $message = $session?->isStarted() ? $session->getFlash($type) : null;
+                        if (is_string($message) && $message !== '') {
+                            $flashes[$type] = $message;
+                        }
+                    }
+
+                    return $flashes;
+                },
+            ));
+
             // Singletons: folio_get('site') -> localized values (null before the first save).
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_get',
                 callable: fn (string $type): ?array => $container->get(\Preflow\Folio\Content\Singletons::class)->get($type),
+            ));
+
+            // Extension settings: folio_setting('members', 'registration_open') -> the value or its default.
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_setting',
+                callable: fn (string $extension, string $key): mixed => $container->get(ExtensionSettings::class)->get($extension, $key),
             ));
 
             // Collections: folio_list('app') -> live records in list order; folio_find('force', id).
@@ -464,6 +624,8 @@ final class FolioServiceProvider extends ServiceProvider
             if ($router instanceof Router) {
                 $collection = $router->getCollection(); // builds app routes first (lazy)
                 $authEnabled = file_exists($app->basePath('config/auth.php'));
+                // Screens first: their routes must win over the admin's {type} routes.
+                $collection->addMany($screens->routes($this->prefix($app), $authEnabled));
                 $collection->addMany(FolioRoutes::admin($this->prefix($app), $authEnabled));
                 $assets = (array) ($this->folioConfig($app)['assets'] ?? []);
                 $collection->add(FolioRoutes::media(is_string($assets['url'] ?? null) ? $assets['url'] : '/media'));
@@ -474,7 +636,8 @@ final class FolioServiceProvider extends ServiceProvider
 
     /**
      * Folio's permissions: per content type "{type}.*" and its view, create,
-     * edit, publish and delete; the asset library; the dashboard. The guard
+     * edit, publish and delete; the asset library; the dashboard; each extension's
+     * (declareExtensionPermissions()). The guard
      * Folio signs in with is staff, unless config/auth.php says otherwise.
      */
     private function declarePermissions(Container $container, Application $app): void
@@ -482,6 +645,7 @@ final class FolioServiceProvider extends ServiceProvider
         $access = $container->get(\Preflow\Auth\Access\Access::class);
         $registry = $access->registry();
         $registry->declare('folio.dashboard', 'Dashboard', 'Folio');
+        $registry->declare('folio.extensions', 'Extensions', 'Folio');
         foreach ($container->get(TypeCatalog::class)->all() as $listing) {
             $registry->declarePattern($listing->key . '.*');
             foreach (['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'] as $action => $verb) {
@@ -492,9 +656,117 @@ final class FolioServiceProvider extends ServiceProvider
         foreach (['view' => 'View', 'upload' => 'Upload', 'edit' => 'Edit', 'delete' => 'Delete'] as $action => $verb) {
             $registry->declare('assets.' . $action, $verb, 'Assets');
         }
+        $this->declareExtensionPermissions($registry, $container->get(ExtensionRegistry::class), $container->get(TypeCatalog::class));
 
         if (file_exists($app->basePath('config/auth.php'))) {
             $access->markStaffGuard($container->get(\Preflow\Auth\AuthManager::class)->defaultGuardName());
+        }
+    }
+
+    /**
+     * Permissions of every discovered extension, grouped under its label: its
+     * #[DeclaresPermission], its screens' and record actions' permissions, and the standard
+     * permissions of its model types and settings type. Those of an extension that is not
+     * enabled (or of a disabled part) are declared and disabled: denied and logged once, never
+     * a 500. A name Folio declares itself (folio.*, assets.*, a non-extension type's) is an
+     * ExtensionException.
+     */
+    private function declareExtensionPermissions(\Preflow\Auth\Access\PermissionRegistry $registry, ExtensionRegistry $extensions, TypeCatalog $catalog): void
+    {
+        $standard = ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'];
+        $declared = array_keys($registry->all()); // Folio's own plus the standard names of enabled extension types
+        $modelNames = [];
+        foreach ($extensions->all() as $definition) {
+            foreach ($definition->parts as $part) {
+                $typeKey = self::extensionTypeKey($definition->name, $part);
+                if ($typeKey !== null && $extensions->partEnabled($definition->name, $part['id'])) {
+                    foreach (array_keys($standard) as $action) {
+                        $modelNames[$typeKey . '.' . $action] = true;
+                    }
+                }
+            }
+        }
+        $builtin = array_flip(array_filter($declared, static fn (string $name): bool => !isset($modelNames[$name])));
+        $active = array_flip($declared);
+
+        /** @var list<array{name: string, label: string, group: string, reason: ?string}> $entries */
+        $entries = [];
+        foreach ($extensions->all() as $definition) {
+            $extensionReason = $extensions->isEnabled($definition->name) ? null : "extension {$definition->name}";
+            foreach ((new \ReflectionClass($definition->class))->getAttributes(\Preflow\Folio\Extension\Attributes\DeclaresPermission::class) as $attribute) {
+                $meta = $attribute->newInstance();
+                if (!str_starts_with($meta->name, $definition->name . '.')) {
+                    throw new \Preflow\Folio\Extension\ExtensionException("{$definition->class}: permission \"{$meta->name}\" must start with \"{$definition->name}.\" (the extension's name).");
+                }
+                $entries[] = ['name' => $meta->name, 'label' => $meta->label, 'group' => $definition->label, 'reason' => $extensionReason];
+            }
+            foreach ($definition->parts as $part) {
+                $reason = $extensionReason ?? ($extensions->partEnabled($definition->name, $part['id']) ? null : "part {$part['id']} of extension {$definition->name}");
+                $typeKey = self::extensionTypeKey($definition->name, $part);
+                if ($typeKey !== null && $reason !== null) {
+                    if ($catalog->has($typeKey)) { // a switched-off model or settings type must not shadow the site's own type
+                        throw new \Preflow\Folio\Extension\ExtensionException("Extension \"{$definition->name}\" ships " . ($part['kind'] === 'settings' ? 'settings type' : 'model') . " \"{$typeKey}\", which is already a content type of the site.");
+                    }
+                    foreach ($standard as $action => $verb) {
+                        $entries[] = ['name' => $typeKey . '.' . $action, 'label' => $verb, 'group' => $part['kind'] === 'settings' ? $definition->label : $part['label'], 'reason' => $reason];
+                    }
+                } elseif ($part['kind'] === 'screen' && isset($part['class'])) {
+                    $meta = (new \ReflectionClass($part['class']))->getAttributes(\Preflow\Folio\Extension\Attributes\FolioScreen::class)[0] ?? null;
+                    $meta = $meta === null ? null : $this->attributeOrNull($meta);
+                    if ($meta !== null && is_string($meta->permission) && $meta->permission !== '') {
+                        $entries[] = ['name' => $meta->permission, 'label' => $meta->label, 'group' => $definition->label, 'reason' => $reason];
+                    }
+                } elseif ($part['kind'] === 'type' && isset($part['class'])) {
+                    foreach ((new \ReflectionClass($part['class']))->getMethods() as $method) {
+                        $meta = $method->getAttributes(\Preflow\Folio\Extension\RecordAction::class)[0] ?? null;
+                        $meta = $meta === null ? null : $this->attributeOrNull($meta);
+                        if ($meta !== null) {
+                            $entries[] = ['name' => $meta->permission, 'label' => $meta->label, 'group' => $definition->label, 'reason' => $reason];
+                        }
+                    }
+                }
+            }
+        }
+
+        foreach ($entries as $entry) {
+            if (isset($builtin[$entry['name']])) {
+                throw new \Preflow\Folio\Extension\ExtensionException("Permission \"{$entry['name']}\" ({$entry['group']}) is a Folio built-in; extensions declare their own names.");
+            }
+            if ($entry['reason'] === null) {
+                $active[$entry['name']] = true;
+            }
+        }
+        foreach ($entries as $entry) {
+            if (!$registry->isDeclared($entry['name'])) { // e.g. a record action reusing its type's own "member.edit"
+                $registry->declare($entry['name'], $entry['label'], $entry['group']);
+            }
+            if ($entry['reason'] !== null && !isset($active[$entry['name']])) {
+                $registry->disable($entry['name'], $entry['reason']);
+            }
+        }
+    }
+
+    /**
+     * The type key an extension part defines (a model's key, the settings type), or null.
+     *
+     * @param array{id: string, kind: string} $part
+     */
+    private static function extensionTypeKey(string $extension, array $part): ?string
+    {
+        return match ($part['kind']) {
+            'model' => substr($part['id'], 6),
+            'settings' => ExtensionSettings::typeKey($extension),
+            default => null,
+        };
+    }
+
+    /** A part attribute's instance; one that cannot be built is the enabled-path validation's to report, not a reason to fail here. */
+    private function attributeOrNull(\ReflectionAttribute $attribute): ?object
+    {
+        try {
+            return $attribute->newInstance();
+        } catch (\Error) {
+            return null;
         }
     }
 
@@ -528,6 +800,19 @@ final class FolioServiceProvider extends ServiceProvider
     {
         try {
             return $container->get(\Preflow\Data\Locales::class);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /** The app's DataManager (core builds it from config/data.php), or null without one. */
+    private function dataManager(Container $container, Application $app): ?DataManager
+    {
+        if (!is_file($app->basePath('config/data.php'))) {
+            return null;
+        }
+        try {
+            return $container->get(DataManager::class);
         } catch (\Throwable) {
             return null;
         }

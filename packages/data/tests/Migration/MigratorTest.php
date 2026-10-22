@@ -128,4 +128,57 @@ final class MigratorTest extends TestCase
         $pending = $migrator->pending();
         $this->assertCount(2, $pending);
     }
+
+    public function test_migrates_files_from_two_paths_in_name_order(): void
+    {
+        $second = sys_get_temp_dir() . '/preflow_migration_test_' . uniqid();
+        mkdir($second, 0755, true);
+
+        try {
+            $this->createMigration(
+                '2026_01_02_b.php',
+                '$schema->create("b", function (Table $table) { $table->uuid("id")->primary(); });'
+            );
+            file_put_contents($second . '/2026_01_01_a.php', str_replace(
+                '"b"',
+                '"a"',
+                file_get_contents($this->migrationsDir . '/2026_01_02_b.php')
+            ));
+
+            $migrator = new Migrator($this->pdo, [$this->migrationsDir, $second]);
+            $this->assertSame(
+                ['2026_01_01_a.php', '2026_01_02_b.php'],
+                array_map('basename', $migrator->pending())
+            );
+            $migrator->migrate();
+
+            $tables = $this->pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('a','b') ORDER BY name")->fetchAll(\PDO::FETCH_COLUMN);
+            $this->assertSame(['a', 'b'], $tables);
+        } finally {
+            foreach (glob($second . '/*.php') as $file) {
+                unlink($file);
+            }
+            rmdir($second);
+        }
+    }
+
+    public function test_duplicate_migration_name_across_paths_throws(): void
+    {
+        $second = sys_get_temp_dir() . '/preflow_migration_test_' . uniqid();
+        mkdir($second, 0755, true);
+
+        try {
+            $this->createMigration('2026_01_01_a.php', '// no-op');
+            copy($this->migrationsDir . '/2026_01_01_a.php', $second . '/2026_01_01_a.php');
+
+            $migrator = new Migrator($this->pdo, [$this->migrationsDir, $second]);
+
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('2026_01_01_a.php');
+            $migrator->pending();
+        } finally {
+            unlink($second . '/2026_01_01_a.php');
+            rmdir($second);
+        }
+    }
 }

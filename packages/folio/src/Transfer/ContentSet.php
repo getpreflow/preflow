@@ -32,6 +32,9 @@ final class ContentSet
         $registry = $c->get(DataManager::class)->getTypeRegistry();
         $tables = [];
         foreach ($c->get(TypeCatalog::class)->all() as $listing) {
+            if (!$listing->transfer) {
+                continue; // user types and opted-out types stay on the server
+            }
             $def = $registry->get($listing->key);
             $tables[$def->table] = $def;
             if ($listing->publishing) {

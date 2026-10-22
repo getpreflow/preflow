@@ -28,4 +28,38 @@ final class Schema
     {
         $this->pdo->exec("DROP TABLE IF EXISTS \"{$table}\"");
     }
+
+    public function hasTable(string $table): bool
+    {
+        $this->requireSqlite();
+        $stmt = $this->pdo->prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?");
+        $stmt->execute([$table]);
+
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /**
+     * @return list<string> Column names in table order
+     */
+    public function columns(string $table): array
+    {
+        $this->requireSqlite();
+        $rows = $this->pdo->query("PRAGMA table_info(\"{$table}\")")->fetchAll(\PDO::FETCH_ASSOC);
+
+        return array_map(static fn (array $row): string => (string) $row['name'], $rows);
+    }
+
+    /** Adds a nullable column to an existing table. */
+    public function addColumn(string $table, string $column, string $type = 'TEXT'): void
+    {
+        $this->requireSqlite();
+        $this->pdo->exec("ALTER TABLE \"{$table}\" ADD COLUMN \"{$column}\" {$type}");
+    }
+
+    private function requireSqlite(): void
+    {
+        if ($this->pdo->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'sqlite') {
+            throw new \LogicException('Schema introspection supports SQLite only for now.');
+        }
+    }
 }

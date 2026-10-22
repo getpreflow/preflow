@@ -8,6 +8,7 @@ use Nyholm\Psr7\Response;
 use Preflow\Auth\Access\Access;
 use Preflow\Core\Routing\Route;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Extension\Screen\ScreenRegistry;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -17,7 +18,8 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * Every admin route asks one permission, by handler. "{type}" is the route's
  * type; "*.edit|create" means edit or create on any type (block editor
- * fragments have no type).
+ * fragments have no type). Extension screens ask the permission their
+ * #[FolioScreen] declares; any other handler is refused.
  * Runs after AdminAuthMiddleware, so the user is known.
  */
 final class FolioPermissionMiddleware implements MiddlewareInterface
@@ -34,6 +36,7 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'AdminController@store' => '{type}.create',
         'AdminController@update' => '{type}.edit',
         'AdminController@reorder' => '{type}.edit',
+        'AdminController@recordAction' => '{type}.edit', // then the action's own permission (in the controller)
         'AdminController@destroy' => '{type}.delete',
         'PublishingController@autosave' => '{type}.edit',
         'PublishingController@discard' => '{type}.edit',
@@ -47,6 +50,8 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'AssetLibraryController@upload' => 'assets.upload',
         'AssetLibraryController@save' => 'assets.edit',
         'AssetLibraryController@destroy' => 'assets.delete',
+        'ExtensionsController@index' => 'folio.extensions',
+        'ExtensionsController@toggle' => 'folio.extensions',
         'BlockEditorController@newBlock' => '*.edit|create',
         'BlockEditorController@duplicate' => '*.edit|create',
     ];
@@ -56,6 +61,7 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         private readonly TypeCatalog $catalog,
         private readonly TemplateEngineInterface $engine,
         private readonly string $prefix,
+        private readonly ScreenRegistry $screens,
     ) {}
 
     /** The permission a handler requires; null for handlers that need none (or are unknown). */
@@ -68,6 +74,11 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
     {
         $route = $request->getAttribute(Route::class);
         $rule = $route instanceof Route ? self::rule($route->handler) : null;
+        if ($rule === null && $route instanceof Route
+            && ($permission = $this->screens->permissionFor(explode('@', $route->handler, 2)[0])) !== null) {
+            // A screen's own permission, asked as is: never a {type} placeholder, wildcard or redirect.
+            return $this->access->can($permission) ? $handler->handle($request) : $this->forbidden($request);
+        }
         if ($rule === null) {
             return $this->forbidden($request); // fail closed: an unmapped admin route is never open
         }

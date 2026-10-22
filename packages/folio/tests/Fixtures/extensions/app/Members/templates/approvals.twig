@@ -1,0 +1,10 @@
+{% extends '@folio/admin/_layout.twig' %}
+{% block title %}{{ screen.label }} — Folio{% endblock %}
+{% block page_title %}{{ screen.label }}{% endblock %}
+{% block content %}
+    <ul class="approvals">
+        {% for id in pending %}
+            <li><form method="post" action="{{ prefix }}/{{ screen.path }}/{{ id }}/approve"><input type="hidden" name="_csrf_token" value="{{ csrf }}"><button type="submit" class="btn">Approve {{ id }}</button></form></li>
+        {% endfor %}
+    </ul>
+{% endblock %}

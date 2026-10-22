@@ -134,7 +134,8 @@
             "Preflow\\Roles\\Tests\\": "packages/roles/tests/",
             "Preflow\\Validation\\Tests\\": "packages/validation/tests/",
             "Preflow\\Examples\\FolioDemo\\Tests\\": "examples/folio-demo/tests/",
-            "Preflow\\Examples\\FolioDemo\\": "examples/folio-demo/app/"
+            "Preflow\\Examples\\FolioDemo\\": "examples/folio-demo/app/",
+            "App\\Folio\\": "examples/folio-demo/app/Folio/"
         }
     },
     "config": {

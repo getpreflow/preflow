@@ -61,6 +61,14 @@ final class QueryCompilerTest extends TestCase
         $this->assertSame('SELECT * FROM "posts" ORDER BY "created" DESC, "title" ASC', $sql);
     }
 
+    public function test_numeric_order_by(): void
+    {
+        $q = (new Query())->orderBy('_order', numeric: true)->orderBy('uuid');
+        [$sql] = $this->compiler->compile('posts', $q);
+
+        $this->assertSame('SELECT * FROM "posts" ORDER BY ("_order" + 0) ASC, "uuid" ASC', $sql);
+    }
+
     public function test_limit_offset(): void
     {
         $q = (new Query())->limit(10)->offset(20);

@@ -14,6 +14,7 @@ final class FolioRoutes
     private const PREVIEW = 'Preflow\\Folio\\Http\\PreviewController';
     private const PUBLISHING = 'Preflow\\Folio\\Http\\PublishingController';
     private const ASSETS = 'Preflow\\Folio\\Http\\AssetLibraryController';
+    private const EXTENSIONS = 'Preflow\\Folio\\Http\\ExtensionsController';
     private const WORKING_MW = 'Preflow\\Folio\\Http\\WorkingCopyMiddleware';
     private const AUTH = 'Preflow\\Folio\\Http\\AuthController';
     private const AUTH_MW = 'Preflow\\Folio\\Http\\AdminAuthMiddleware';
@@ -40,6 +41,8 @@ final class FolioRoutes
             ['GET',  $prefix . '/assets/{id}',         'panel', self::ASSETS],
             ['POST', $prefix . '/assets/{id}',         'save', self::ASSETS],
             ['POST', $prefix . '/assets/{id}/delete',  'destroy', self::ASSETS],
+            ['GET',  $prefix . '/extensions',          'index', self::EXTENSIONS],
+            ['POST', $prefix . '/extensions/{name}',   'toggle', self::EXTENSIONS],
             ['GET',  $prefix . '/{type}',              'list'],
             ['GET',  $prefix . '/{type}/new',          'createForm'],
             ['POST', $prefix . '/{type}/preview',      'preview', self::PREVIEW],
@@ -56,6 +59,7 @@ final class FolioRoutes
             ['POST', $prefix . '/{type}/{id}',         'update'],
             ['POST', $prefix . '/{type}/{id}/delete',  'destroy'],
             ['POST', $prefix . '/{type}/{id}/move',    'reorder'],
+            ['POST', $prefix . '/{type}/{id}/_action/{name}', 'recordAction'],
         ]);
 
         $entries = [];

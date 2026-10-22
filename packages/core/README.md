@@ -210,6 +210,34 @@ return [
 ];
 ```
 
+### Throttle
+
+`Preflow\Core\Throttle\Throttle` limits attempts (a login, a form, a code guess) in fixed
+windows. It is bound when `config/data.php` exists, stores through the `DataManager` in the
+table `preflow_throttle` (created by `preflow migrate`), and is keyed by `app.key`.
+`client()` throws a `RuntimeException` while `app.key` is empty or the default key: a hash
+salted with a public key could be brute-forced back to the IP.
+
+```php
+$throttle = $container->get(\Preflow\Core\Throttle\Throttle::class);
+$client = $throttle->client($request);                    // salted hash, never the IP
+
+if ($throttle->tooMany('login', $client, max: 5, windowSeconds: 600)) {
+    // answer 429
+}
+$throttle->hit('login', $client, windowSeconds: 600);     // after a failed attempt
+$throttle->clear('login', $client);                       // after a success
+```
+
+- **Soft limit.** `hit()` is a non-atomic read-modify-write; concurrent requests can slip
+  past by a few.
+- **Windows must be much shorter than a day.** The client hash rotates at 00:00 UTC, so a
+  window spanning midnight starts over.
+- **No raw IP is stored**, only an HMAC of `REMOTE_ADDR` (forwarded headers are ignored).
+  Without a `REMOTE_ADDR` (CLI, tests) all requests are one `unknown` client; it never throws.
+- `prune(olderThanSeconds: 172800)` deletes old rows and returns how many; `hit()` runs it
+  opportunistically, once per request when a new window starts.
+
 ### HTTP exceptions
 
 Throw these anywhere in the request lifecycle — `ErrorHandler` converts them to the correct status code automatically.

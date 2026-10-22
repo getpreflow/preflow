@@ -267,6 +267,13 @@ final class Application
         // without config/data.php), so packages like Folio can always read them.
         $this->container->instance(\Preflow\Data\Locales::class, $this->contentLocales());
 
+        // The migration registry is bound without config/data.php too, so
+        // packages can register paths and steps regardless of data config.
+        $migrations = new \Preflow\Data\Migration\MigrationRegistry();
+        $migrations->addPath($this->basePath('migrations'));
+        $migrations->addPath(dirname(__DIR__) . '/migrations');
+        $this->container->instance(\Preflow\Data\Migration\MigrationRegistry::class, $migrations);
+
         $dataConfigPath = $this->basePath('config/data.php');
         if (!file_exists($dataConfigPath)) {
             return;
@@ -329,6 +336,15 @@ final class Application
 
         $dataManager = new \Preflow\Data\DataManager($drivers, 'default', $typeRegistry, $validatorFactory);
         $this->container->instance(\Preflow\Data\DataManager::class, $dataManager);
+
+        // Bound only with a DataManager (i.e. config/data.php present); it has nothing to store through otherwise.
+        $this->container->instance(
+            \Preflow\Core\Throttle\Throttle::class,
+            new \Preflow\Core\Throttle\Throttle(
+                $dataManager,
+                (string) $this->config->get('app.key', \Preflow\Core\Throttle\Throttle::DEFAULT_KEY),
+            ),
+        );
     }
 
     private function createSqliteDriver(array $config, ?DebugCollector $collector = null): \Preflow\Data\Driver\SqliteDriver

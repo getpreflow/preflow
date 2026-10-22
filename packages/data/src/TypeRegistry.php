@@ -24,7 +24,23 @@ final class TypeRegistry
 
     public function has(string $type): bool
     {
-        return file_exists($this->modelsPath . '/' . $type . '.json');
+        return isset($this->cache[$type]) || file_exists($this->modelsPath . '/' . $type . '.json');
+    }
+
+    /**
+     * Define a type at runtime (extension models). The schema has the shape of a model JSON file.
+     */
+    public function define(array $schema): TypeDefinition
+    {
+        $key = $schema['key'] ?? null;
+        if (!is_string($key) || $key === '') {
+            throw new \InvalidArgumentException('A defined type needs a "key"');
+        }
+        if ($this->has($key)) {
+            throw new \RuntimeException("Type \"{$key}\" already exists (as a model file or an earlier definition)");
+        }
+
+        return $this->cache[$key] = $this->parse($schema);
     }
 
     private function load(string $type): TypeDefinition
@@ -34,8 +50,11 @@ final class TypeRegistry
             throw new \RuntimeException("Unknown type: {$type}. No schema at {$path}");
         }
 
-        $schema = json_decode(file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        return $this->parse(json_decode(file_get_contents($path), true, 512, JSON_THROW_ON_ERROR));
+    }
 
+    private function parse(array $schema): TypeDefinition
+    {
         $fields = [];
         $searchableFields = [];
         $transformers = [];

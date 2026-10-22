@@ -84,6 +84,39 @@ abstract class Migration
 
 `Table` builder: `uuid`, `string`, `text`, `integer`, `boolean`, `json`, `timestamps`, `nullable()`, `primary()`, `index()`.
 
+**Schema introspection** (SQLite only for now; other drivers throw a `LogicException`):
+
+```php
+$schema->hasTable('post');                 // bool
+$schema->columns('post');                  // ['id', 'title', ...] in table order
+$schema->addColumn('post', 'subtitle');    // nullable column, type TEXT by default
+```
+
+`addColumn()` is what lets a re-runnable step add what a newer model needs without a
+migration file.
+
+**Several migration paths.** `new Migrator($pdo, [$dir1, $dir2])` takes one path or a list
+and runs the files of all of them in name order; the same file name in two paths is one
+migration. `preflow migrate` (see `preflow/devtools`) uses the paths of
+`Preflow\Data\Migration\MigrationRegistry`, a container singleton that packages fill from
+their service provider:
+
+```php
+$registry = $container->get(\Preflow\Data\Migration\MigrationRegistry::class);
+$registry->addPath(__DIR__ . '/../migrations');        // a missing directory is ignored
+$registry->afterMigrate('mypkg.tables', fn (): array => ['created table x']); // lines to print
+```
+
+The app's `migrations/` and core's own (the `preflow_throttle` table) are registered by
+the application. A post-migrate step runs on **every** `preflow migrate`, so it must be
+idempotent (`hasTable()` / `columns()` before changing anything); registering the same step
+name twice throws.
+
+Related behaviour: a storage name that is not configured is an error, never a silent
+fallback to the default; a record key with no column fails with a message naming
+`preflow migrate`; and `orderBy($field, $direction, numeric: true)` compares as numbers even
+where the column stores text.
+
 ### Auto-increment IDs
 
 Place `#[Id]` on an `int` property and leave it at `0` (or unset). `save()` / `insert()` will issue an INSERT and read the generated ID back via `lastInsertId()`.

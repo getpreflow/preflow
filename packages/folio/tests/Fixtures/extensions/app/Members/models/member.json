@@ -1,0 +1,10 @@
+{
+    "key": "member",
+    "label": "Members",
+    "table": "member",
+    "storage": "json",
+    "id_field": "uuid",
+    "fields": {
+        "email": { "type": "string", "validate": ["required"] }
+    }
+}

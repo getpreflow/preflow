@@ -10,7 +10,8 @@ use Preflow\Auth\AuthManager;
  * The one permission question: can('page.publish'). It asks about the user
  * signed in for this request, in its population (staff or members, per guard),
  * and lets the installed resolver answer. Undeclared permissions throw in
- * debug and are denied (logged once) in production.
+ * debug and are denied (logged once) in production; so are
+ * those of a disabled extension.
  */
 final class Access
 {
@@ -58,6 +59,15 @@ final class Access
 
     public function can(string $permission, ?object $subject = null): bool
     {
+        $disabled = $this->registry->disabledReason($permission);
+        if ($disabled !== null) { // before the undeclared check; a disabled name never throws, not even in debug
+            if (!isset($this->logged[$permission])) {
+                $this->logged[$permission] = true;
+                error_log("preflow/auth: permission {$permission} belongs to a disabled {$disabled}");
+            }
+
+            return false;
+        }
         if ($this->auth === null) {
             return true; // no auth configured: nothing to restrict (e.g. Folio without login)
         }

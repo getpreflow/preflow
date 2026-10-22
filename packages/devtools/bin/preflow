@@ -3,18 +3,27 @@
 
 declare(strict_types=1);
 
-// Find autoloader
-$autoloadPaths = [
-    __DIR__ . '/../../../vendor/autoload.php',  // monorepo
-    __DIR__ . '/../vendor/autoload.php',         // standalone
+// Find the autoloader. The project's comes first: with symlinked path
+// installs __DIR__ lies inside the framework checkout, whose autoloader
+// knows nothing of the project's own classes.
+$autoloadPaths = array_filter([
+    $GLOBALS['_composer_autoload_path'] ?? null, // Composer 2.2+ proxy (vendor/bin/preflow)
     getcwd() . '/vendor/autoload.php',           // project
-];
+    __DIR__ . '/../../../vendor/autoload.php',   // monorepo
+    __DIR__ . '/../vendor/autoload.php',         // standalone
+], is_string(...));
 
 foreach ($autoloadPaths as $path) {
     if (file_exists($path)) {
         require $path;
+        $autoloaded = true;
         break;
     }
+}
+
+if (!isset($autoloaded)) {
+    fwrite(STDERR, "preflow: no Composer autoloader found; run `composer install` first.\n");
+    exit(1);
 }
 
 use Preflow\DevTools\Console;

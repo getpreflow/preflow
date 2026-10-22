@@ -12,6 +12,7 @@ use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\StructuredFieldType;
 use Preflow\Folio\Field\HandlesUpload;
 use Preflow\Folio\Field\Types\AssetFieldType;
+use Preflow\Folio\Field\Types\EnvFieldType;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\UploadedFileInterface;
 
@@ -70,6 +71,9 @@ final class DraftRecordFactory
                 continue;
             }
             $fieldType = $this->fieldTypes->get($fieldDef->type);
+            if ($fieldType instanceof EnvFieldType) {
+                continue; // names an environment variable: nothing is taken or stored, not even the key
+            }
 
             if ($fieldType instanceof StructuredFieldType) {
                 $data[$name] = $fieldType->buildValue(
@@ -148,7 +152,7 @@ final class DraftRecordFactory
     {
         $chosen = isset($submitted['_locales_submitted'])
             ? (array) ($submitted['_locales'] ?? [])
-            : (array) ($existing['_locales'] ?? []);
+            : ($existing['_locales'] ?? []); // as stored (SQL drivers: JSON text); availableLocales() decodes
 
         return DynamicRecord::fromArray($typeDef, ['_locales' => $chosen])->availableLocales();
     }
