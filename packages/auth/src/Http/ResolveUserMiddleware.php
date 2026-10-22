@@ -23,7 +23,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * cookie when its session has nobody (every such guard, not only up to the
  * winner, so a member stays remembered beside a signed-in staff user). Cookies
  * the guards queue (login, logout, rotation) go on the response, only where the
- * request has a session: public pages never get a Set-Cookie.
+ * request has a session: public pages never get a Set-Cookie. When the handler
+ * throws, the Kernel applies the shared CookieQueue to the error response.
  */
 final class ResolveUserMiddleware implements MiddlewareInterface
 {

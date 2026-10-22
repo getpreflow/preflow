@@ -37,6 +37,8 @@ final class Kernel
         private readonly ?\Preflow\Core\Http\SecurityHeadersMiddleware $securityHeaders = null,
         /** @var (\Closure(ServerRequestInterface): ResponseInterface)|null the /--component endpoint */
         private readonly ?\Closure $componentEndpoint = null,
+        /** cookies queued before an exception (a rotated remember-me cookie) still reach the error response */
+        private readonly ?\Preflow\Core\Http\CookieQueue $cookies = null,
     ) {
         $this->actionDispatcher = $actionDispatcher;
         $this->componentRenderer = $componentRenderer;
@@ -75,8 +77,9 @@ final class Kernel
                 return $dispatch($req);
             });
         } catch (\Throwable $e) {
-            // Error responses bypass the pipeline, so add the security headers here.
+            // Error responses bypass the pipeline, so add the queued cookies and the security headers here.
             $response = $this->errorHandler->handleException($e, $request);
+            $response = $this->cookies?->apply($response) ?? $response;
             return $this->securityHeaders?->decorate($request, $response) ?? $response;
         }
     }

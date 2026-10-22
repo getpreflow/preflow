@@ -13,6 +13,8 @@ return new class extends Migration
             $table->string('guard');
             $table->string('user_id');
             $table->string('validator_hash');
+            $table->string('previous_hash')->nullable();
+            $table->integer('rotated_at')->nullable();
             $table->integer('expires_at');
         });
     }

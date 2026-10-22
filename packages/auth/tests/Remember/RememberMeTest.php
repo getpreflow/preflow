@@ -16,6 +16,15 @@ use Preflow\Auth\SessionGuard;
 use Preflow\Auth\Tests\Fixtures\TestUser;
 use Preflow\Auth\UserProviderInterface;
 use Preflow\Core\Application;
+use Preflow\Core\Container\Container;
+use Preflow\Core\Error\ErrorHandler;
+use Preflow\Core\Error\ProdErrorRenderer;
+use Preflow\Core\Exceptions\NotFoundHttpException;
+use Preflow\Core\Http\CookieQueue;
+use Preflow\Core\Http\MiddlewarePipeline;
+use Preflow\Core\Kernel;
+use Preflow\Core\Routing\Route;
+use Preflow\Core\Routing\RouterInterface;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Core\Http\Session\SessionMiddleware;
 use Preflow\Data\Migration\Migration;
@@ -75,9 +84,9 @@ final class RememberMeTest extends DataTestCase
         return new RememberMe($this->dataManager(), $storage, $clock ?? fn (): int => $this->now, $lockDir);
     }
 
-    private function guard(?RememberMe $remember, array $config = self::CONFIG): SessionGuard
+    private function guard(?RememberMe $remember, array $config = self::CONFIG, ?CookieQueue $queue = null): SessionGuard
     {
-        return new SessionGuard($this->provider, new NativePasswordHasher(), '_auth_user_id.member', [], $remember, 'member', $remember === null ? [] : $config);
+        return new SessionGuard($this->provider, new NativePasswordHasher(), '_auth_user_id.member', [], $remember, 'member', $remember === null ? [] : $config, $queue ?? new CookieQueue());
     }
 
     /**
@@ -156,7 +165,7 @@ final class RememberMeTest extends DataTestCase
         [$selector, $validator] = explode(':', self::cookieValue($response));
         $rows = $this->rows();
         $this->assertCount(1, $rows);
-        $this->assertSame(['id', 'guard', 'user_id', 'validator_hash', 'expires_at'], array_keys($rows[0]));
+        $this->assertSame(['id', 'guard', 'user_id', 'validator_hash', 'previous_hash', 'rotated_at', 'expires_at'], array_keys($rows[0]));
         $this->assertSame([$selector, 'member', 'user-1', hash('sha256', $validator), $this->now + 30 * 86400], [
             $rows[0]['id'], $rows[0]['guard'], $rows[0]['user_id'], $rows[0]['validator_hash'], (int) $rows[0]['expires_at'],
         ]);
@@ -217,6 +226,7 @@ final class RememberMeTest extends DataTestCase
             // The owner comes back first: the cookie rotates.
             $owner = $remember->resolve('member', $stolen);
             $this->assertNotNull($owner, $storage);
+            $this->now += RememberMe::GRACE + 1;
 
             // The thief replays the old value: nobody, a clearing cookie, and every
             // member token of user-1 is gone (the rotated one and the other device).
@@ -228,6 +238,7 @@ final class RememberMeTest extends DataTestCase
 
             $this->assertSame('user-1', $remember->resolve('staff', $otherGuard)['userId'] ?? null, $storage);
             $this->assertSame('user-2', $remember->resolve('member', $otherUser)['userId'] ?? null, $storage);
+            $this->now -= RememberMe::GRACE + 1;
         }
     }
 
@@ -333,10 +344,110 @@ final class RememberMeTest extends DataTestCase
             $won = $other->resolve('member', $cookie);
         };
 
-        $this->assertNull($remember->resolve('member', $cookie));
-        $this->assertNotNull($won);
+        // The loser still gets the user, without a cookie to send (the winner's response carries it).
+        $this->assertSame(['userId' => 'user-1', 'cookie' => null], $remember->resolve('member', $cookie));
+        $this->assertNotNull($won['cookie'] ?? null);
         // The loser revoked nothing: the winner's rotated cookie still works.
         $this->assertSame('user-1', $other->resolve('member', $won['cookie'])['userId'] ?? null);
+    }
+
+    public function test_previous_validator_accepted_within_grace(): void
+    {
+        foreach (['sqlite', 'json'] as $storage) {
+            $remember = $this->remember($storage);
+            $old = $remember->issue('member', 'user-1');
+            $rotated = $remember->resolve('member', $old)['cookie'] ?? '';
+            $this->now += RememberMe::GRACE;
+
+            $this->assertSame(['userId' => 'user-1', 'cookie' => null], $remember->resolve('member', $old), $storage);
+            // Through the middleware: signed in, and no cookie set or cleared.
+            $session = new ArraySession();
+            [$response, $authManager] = $this->handle($this->guard($remember), ['ss_member' => $old], session: $session);
+            $this->assertSame('user-1', $authManager->user()?->getAuthId(), $storage);
+            $this->assertSame('user-1', $session->get('_auth_user_id.member'), $storage);
+            $this->assertSame([], $response->getHeader('Set-Cookie'), $storage);
+            // Not rotated by the grace: the current value still works.
+            $this->assertSame('user-1', $remember->resolve('member', $rotated)['userId'] ?? null, $storage);
+            $this->now -= RememberMe::GRACE;
+        }
+    }
+
+    public function test_previous_validator_after_grace_is_theft(): void
+    {
+        foreach (['sqlite', 'json'] as $storage) {
+            $remember = $this->remember($storage);
+            $old = $remember->issue('member', 'user-1');
+            $otherDevice = $remember->issue('member', 'user-1');
+            $rotated = $remember->resolve('member', $old)['cookie'] ?? '';
+            $this->now += RememberMe::GRACE + 1;
+
+            [$response, $authManager] = $this->handle($this->guard($remember), ['ss_member' => $old]);
+            $this->assertNull($authManager->user(), $storage);
+            $this->assertStringStartsWith('ss_member=; Max-Age=0;', $response->getHeaderLine('Set-Cookie'), $storage);
+            $this->assertNull($remember->resolve('member', $rotated), $storage);
+            $this->assertNull($remember->resolve('member', $otherDevice), $storage);
+            $this->now -= RememberMe::GRACE + 1;
+        }
+    }
+
+    public function test_concurrent_restore_read_after_commit_keeps_member_logged_in(): void
+    {
+        // Two tabs (or htmx loads) without a session send the same cookie; the second
+        // reads the row only after the first rotated it.
+        foreach (['sqlite', 'json'] as $storage) {
+            $remember = $this->remember($storage);
+            $cookie = $remember->issue('member', 'user-1');
+
+            [$first, $firstAuth] = $this->handle($this->guard($remember), ['ss_member' => $cookie]);
+            [$second, $secondAuth] = $this->handle($this->guard($remember), ['ss_member' => $cookie]);
+
+            $this->assertSame('user-1', $firstAuth->user()?->getAuthId(), $storage);
+            $this->assertSame('user-1', $secondAuth->user()?->getAuthId(), $storage);
+            $this->assertCount(1, $first->getHeader('Set-Cookie'), $storage);
+            $this->assertSame([], $second->getHeader('Set-Cookie'), $storage);
+            $this->assertSame('user-1', $remember->resolve('member', self::cookieValue($first))['userId'] ?? null, $storage);
+        }
+    }
+
+    public function test_rotated_cookie_reaches_error_responses(): void
+    {
+        $remember = $this->remember();
+        $cookie = $remember->issue('member', 'user-1');
+        $queue = new CookieQueue();
+        $guard = $this->guard($remember, queue: $queue);
+        $authManager = new AuthManager(['member' => $guard], 'member');
+        $session = new ArraySession();
+        $session->start();
+
+        $pipeline = new MiddlewarePipeline();
+        $pipeline->pipe(new class($session) implements MiddlewareInterface {
+            public function __construct(private readonly SessionInterface $session) {}
+
+            public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+            {
+                return $handler->handle($request->withAttribute(SessionInterface::class, $this->session));
+            }
+        });
+        $pipeline->pipe(new ResolveUserMiddleware($authManager, ['member' => $guard]));
+        $router = new class implements RouterInterface {
+            public function match(ServerRequestInterface $request): Route
+            {
+                throw new NotFoundHttpException('gone');
+            }
+        };
+        $fail = fn (): ResponseInterface => throw new \LogicException('not dispatched');
+        $kernel = new Kernel(new Container(), $router, $pipeline, new ErrorHandler(new ProdErrorRenderer()), $fail, $fail, cookies: $queue);
+
+        $response = $kernel->handle((new Psr17Factory())->createServerRequest('GET', '/members/stale')->withCookieParams(['ss_member' => $cookie]));
+
+        $this->assertSame(404, $response->getStatusCode());
+        $this->assertSame('user-1', $session->get('_auth_user_id.member'));
+        $rotated = self::cookieValue($response);
+        $this->assertNotSame($cookie, $rotated);
+        $this->assertSame([], $queue->pull());
+        // The browser got the new value: it works (and rotates) once the grace is over.
+        $this->now += RememberMe::GRACE + 1;
+        $this->assertNotNull($remember->resolve('member', $rotated)['cookie'] ?? null);
     }
 
     #[RunInSeparateProcess]

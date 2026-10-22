@@ -199,6 +199,9 @@ final class Application
             componentEndpoint: $this->container->has('preflow.component_endpoint')
                 ? fn (\Psr\Http\Message\ServerRequestInterface $r) => $this->container->get('preflow.component_endpoint')->handle($r)
                 : null,
+            cookies: $this->container->has(\Preflow\Core\Http\CookieQueue::class)
+                ? $this->container->get(\Preflow\Core\Http\CookieQueue::class)
+                : null,
         );
     }
 
@@ -922,6 +925,9 @@ final class Application
                 $sessionKeys[(string) $name] = $name === $defaultGuard ? '_auth_user_id' : '_auth_user_id.' . $name;
             }
         }
+        // One queue for the session guards' cookies: ResolveUserMiddleware and the Kernel's error path apply it.
+        $cookieQueue = new \Preflow\Core\Http\CookieQueue();
+        $this->container->instance(\Preflow\Core\Http\CookieQueue::class, $cookieQueue);
         $guards = [];
         foreach ($authConfig['guards'] ?? [] as $name => $guardConfig) {
             $name = (string) $name;
@@ -952,6 +958,7 @@ final class Application
                     $remember === [] ? null : $this->container->get(\Preflow\Auth\Remember\RememberMe::class),
                     $name,
                     $remember,
+                    $cookieQueue,
                 ),
                 \Preflow\Auth\TokenGuard::class => $this->container->has(\Preflow\Data\DataManager::class)
                     ? new \Preflow\Auth\TokenGuard(

@@ -18,8 +18,10 @@ use Preflow\Data\TypeFieldDefinition;
  * The cookie value is {selector}:{validator}, 16 and 32 random bytes, base64url.
  * The selector is the row id; only the validator's SHA-256 hash is stored.
  * Each use rotates the validator under the same selector (the expiry stays).
- * A known selector with a wrong validator means an old value was replayed
- * after the owner used it: every row of that user for the guard is deleted.
+ * The previous validator stays valid for GRACE seconds after a rotation
+ * (parallel requests with one value), without rotating again. Any other wrong
+ * validator for a known selector means an old value was replayed after the
+ * owner used it: every row of that user for the guard is deleted.
  * On SQL a conditional UPDATE decides the rotation by its affected rows, so
  * two uses of one value never both rotate; on the JSON driver an exclusive
  * file lock in $lockDir guards the read and the write.
@@ -28,6 +30,12 @@ final class RememberMe
 {
     private const TABLE = 'auth_remember';
     private const COOKIE = '/^([A-Za-z0-9_-]{22}):([A-Za-z0-9_-]{43})$/';
+
+    /** Seconds the previous validator is still accepted after a rotation (parallel requests, tabs). */
+    public const GRACE = 60;
+
+    /** check(): accepted without rotating. */
+    private const KEEP = '';
 
     private readonly TypeDefinition $type;
     private readonly \Closure $clock;
@@ -49,6 +57,8 @@ final class RememberMe
                 'guard' => new TypeFieldDefinition('guard', 'string'),
                 'user_id' => new TypeFieldDefinition('user_id', 'string'),
                 'validator_hash' => new TypeFieldDefinition('validator_hash', 'string'),
+                'previous_hash' => new TypeFieldDefinition('previous_hash', 'string'),
+                'rotated_at' => new TypeFieldDefinition('rotated_at', 'number'),
                 'expires_at' => new TypeFieldDefinition('expires_at', 'number'),
             ],
             idField: 'id',
@@ -66,6 +76,8 @@ final class RememberMe
             'guard' => $guard,
             'user_id' => $userId,
             'validator_hash' => hash('sha256', $validator),
+            'previous_hash' => null,
+            'rotated_at' => null,
             'expires_at' => ($this->clock)() + $ttlSeconds,
         ]), validate: false);
 
@@ -74,10 +86,12 @@ final class RememberMe
 
     /**
      * Who $cookie remembers on $guard, with the rotated cookie value to send back;
-     * null when it is malformed, unknown, expired, for another guard or lost the
-     * rotation to a concurrent use. A wrong validator revokes all of the user's rows.
+     * null when it is malformed, unknown, expired or for another guard. A wrong
+     * validator revokes all of the user's rows. The previous validator within
+     * GRACE seconds of a rotation, or a rotation lost to a concurrent use of the
+     * same value, still gives the user, with cookie null: nothing to send back.
      *
-     * @return array{userId: string, cookie: string}|null
+     * @return array{userId: string, cookie: ?string}|null
      */
     public function resolve(string $guard, string $cookie): ?array
     {
@@ -92,20 +106,23 @@ final class RememberMe
             if ($record === null) {
                 return null;
             }
-            $next = $this->check($record, $selector, $guard, $validator);
-            if (!is_string($next)) {
-                return $next;
+            $now = ($this->clock)();
+            $next = $this->check($record, $selector, $guard, $validator, $now);
+            $userId = (string) $record->get('user_id');
+            if ($next === null || $next === self::KEEP) {
+                return $next === null ? null : ['userId' => $userId, 'cookie' => null];
             }
             $dialect = $driver->dialect();
             $q = $dialect->quoteIdentifier(...);
             $rotated = $this->dm->execute(
-                'UPDATE ' . $q(self::TABLE) . ' SET ' . $q('validator_hash') . ' = ?'
+                'UPDATE ' . $q(self::TABLE) . ' SET ' . $q('validator_hash') . ' = ?, ' . $q('previous_hash') . ' = ?, ' . $q('rotated_at') . ' = ?'
                     . ' WHERE ' . $q('id') . ' = ? AND ' . $q('validator_hash') . ' = ? AND ' . $q('expires_at') . ' > ?',
-                [hash('sha256', $next), $selector, hash('sha256', $validator), ($this->clock)()],
+                [hash('sha256', $next), hash('sha256', $validator), $now, $selector, hash('sha256', $validator), $now],
                 $this->storage,
             );
 
-            return $rotated === 1 ? ['userId' => (string) $record->get('user_id'), 'cookie' => $selector . ':' . $next] : null;
+            // A lost UPDATE: a concurrent request with this value rotated first, and its response carries the new cookie.
+            return ['userId' => $userId, 'cookie' => $rotated === 1 ? $selector . ':' . $next : null];
         }
 
         // Unknown selectors (any cookie a client makes up) never get a lock file.
@@ -118,19 +135,26 @@ final class RememberMe
             if ($record === null) {
                 return [null, true];
             }
-            $next = $this->check($record, $selector, $guard, $validator);
-            if (!is_string($next)) {
-                return [$next, $this->dm->findIn($this->type, $selector) === null];
+            $now = ($this->clock)();
+            $next = $this->check($record, $selector, $guard, $validator, $now);
+            $userId = (string) $record->get('user_id');
+            if ($next === null) {
+                return [null, $this->dm->findIn($this->type, $selector) === null];
+            }
+            if ($next === self::KEEP) {
+                return [['userId' => $userId, 'cookie' => null], false];
             }
             $this->dm->saveType(new DynamicRecord($this->type, [
                 'id' => $selector,
                 'guard' => $guard,
-                'user_id' => (string) $record->get('user_id'),
+                'user_id' => $userId,
                 'validator_hash' => hash('sha256', $next),
+                'previous_hash' => hash('sha256', $validator),
+                'rotated_at' => $now,
                 'expires_at' => (int) $record->get('expires_at'),
             ]), validate: false);
 
-            return [['userId' => (string) $record->get('user_id'), 'cookie' => $selector . ':' . $next], false];
+            return [['userId' => $userId, 'cookie' => $selector . ':' . $next], false];
         });
     }
 
@@ -217,27 +241,34 @@ final class RememberMe
     }
 
     /**
-     * The next validator when $record accepts $validator on $guard; otherwise null
-     * (an expired row is deleted, a wrong validator revokes all of the user's rows).
+     * The next validator when $record accepts $validator on $guard; KEEP for the
+     * previous validator within GRACE seconds of the rotation (accepted, not
+     * rotated); otherwise null (an expired row is deleted, any other validator
+     * revokes all of the user's rows).
      */
-    private function check(DynamicRecord $record, string $selector, string $guard, string $validator): ?string
+    private function check(DynamicRecord $record, string $selector, string $guard, string $validator, int $now): ?string
     {
         // The file lookup found the selector; hash_equals confirms the stored one exactly.
         if (!hash_equals((string) $record->getId(), $selector) || $record->get('guard') !== $guard) {
             return null;
         }
-        if ((int) $record->get('expires_at') <= ($this->clock)()) {
+        if ((int) $record->get('expires_at') <= $now) {
             $this->dm->deleteIn($this->type, $selector);
 
             return null;
         }
-        if (!hash_equals((string) $record->get('validator_hash'), hash('sha256', $validator))) {
-            $this->revokeAll($guard, (string) $record->get('user_id'));
-
-            return null;
+        $hash = hash('sha256', $validator);
+        if (hash_equals((string) $record->get('validator_hash'), $hash)) {
+            return self::random(32);
         }
+        $previous = $record->get('previous_hash');
+        $rotatedAt = $record->get('rotated_at');
+        if (is_string($previous) && $rotatedAt !== null && hash_equals($previous, $hash) && $now - (int) $rotatedAt <= self::GRACE) {
+            return self::KEEP;
+        }
+        $this->revokeAll($guard, (string) $record->get('user_id'));
 
-        return self::random(32);
+        return null;
     }
 
     private static function random(int $bytes): string

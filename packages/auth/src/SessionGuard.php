@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Auth;
 
 use Preflow\Auth\Remember\RememberMe;
+use Preflow\Core\Http\CookieQueue;
 use Preflow\Core\Http\Session\SessionInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -16,6 +17,7 @@ final class SessionGuard implements GuardInterface
      * @param string       $name       this guard's name (the remember rows are per guard)
      * @param array{cookie?: string, days?: int, path?: string, secure?: bool} $remember
      *                                 remember-me cookie; empty (or no $rememberMe) means none
+     * @param CookieQueue  $cookies    where its Set-Cookie values wait for the response (shared with the Kernel)
      */
     public function __construct(
         private readonly UserProviderInterface $provider,
@@ -25,10 +27,8 @@ final class SessionGuard implements GuardInterface
         private readonly ?RememberMe $rememberMe = null,
         private readonly string $name = 'session',
         private readonly array $remember = [],
+        private readonly CookieQueue $cookies = new CookieQueue(),
     ) {}
-
-    /** @var list<string> Set-Cookie values for the response (ResolveUserMiddleware sends them) */
-    private array $cookies = [];
 
     public function user(ServerRequestInterface $request): ?Authenticatable
     {
@@ -97,7 +97,7 @@ final class SessionGuard implements GuardInterface
         $user = $resolved === null ? null : $this->provider->findById($resolved['userId']);
         if ($user === null) {
             if ($resolved !== null) {
-                $this->rememberMe->forget($this->name, $resolved['cookie']);
+                $this->rememberMe->forget($this->name, $cookie);
             }
             $this->queueCookie(null);
 
@@ -105,7 +105,10 @@ final class SessionGuard implements GuardInterface
         }
 
         $this->login($user, $request);
-        $this->queueCookie($resolved['cookie']);
+        // No new value (previous validator within the grace, a lost rotation): the browser keeps its cookie.
+        if ($resolved['cookie'] !== null) {
+            $this->queueCookie($resolved['cookie']);
+        }
 
         return $user;
     }
@@ -117,9 +120,7 @@ final class SessionGuard implements GuardInterface
      */
     public function pullCookies(): array
     {
-        [$cookies, $this->cookies] = [$this->cookies, []];
-
-        return $cookies;
+        return $this->cookies->pull();
     }
 
     public function logout(ServerRequestInterface $request): void
@@ -168,10 +169,10 @@ final class SessionGuard implements GuardInterface
     /** Queues the remember cookie with $value, or a clearing one for null. */
     private function queueCookie(?string $value): void
     {
-        $this->cookies[] = $this->cookieName() . '=' . ($value ?? '')
+        $this->cookies->queue($this->cookieName() . '=' . ($value ?? '')
             . '; Max-Age=' . ($value === null ? 0 : $this->days() * 86400)
             . '; Path=' . ($this->remember['path'] ?? '/')
             . '; HttpOnly; SameSite=Lax'
-            . (($this->remember['secure'] ?? false) ? '; Secure' : '');
+            . (($this->remember['secure'] ?? false) ? '; Secure' : ''));
     }
 }
