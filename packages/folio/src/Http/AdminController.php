@@ -101,7 +101,7 @@ final class AdminController
             $record = $this->dm->findType($type, $type);
             return $this->form(
                 $type,
-                $record?->toArray() ?? self::defaults($typeDef), // before the first save: the declared defaults
+                ($record?->toArray() ?? []) + self::defaults($typeDef), // declared defaults for keys not stored yet (first save, a setting added later)
                 $this->prefix . '/' . $type . '/' . $type,
                 $this->labelFor($type),
                 [],
@@ -865,7 +865,7 @@ final class AdminController
     }
 
     /**
-     * Field values from the fields' "default" (extension settings declare them).
+     * Field values from the fields' "default" (extension settings declare them), for keys a record lacks.
      *
      * @return array<string, mixed>
      */

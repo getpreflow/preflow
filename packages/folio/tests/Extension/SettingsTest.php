@@ -27,6 +27,9 @@ final class SettingsTest extends TestCase
 
     private const ENV = 'FOLIO_SETTINGS_TEST_MAIL_PASSWORD';
 
+    /** Set: the extension's settings() also declares "auto_approve" (a setting added by a later version). */
+    private const EXTRA = 'FOLIO_SETTINGS_TEST_EXTRA_FIELD';
+
     private \Closure $autoload;
 
     protected function setUp(): void
@@ -43,12 +46,14 @@ final class SettingsTest extends TestCase
         };
         spl_autoload_register($this->autoload);
         putenv(self::ENV);
+        putenv(self::EXTRA);
     }
 
     protected function tearDown(): void
     {
         spl_autoload_unregister($this->autoload);
         putenv(self::ENV);
+        putenv(self::EXTRA);
         $this->removeScaffold();
     }
 
@@ -131,6 +136,25 @@ final class SettingsTest extends TestCase
         $this->assertSame('Why join?', $settings->get('members', 'screening_label', 'en'));
         $this->assertSame('Warum beitreten?', $settings->get('members', 'screening_label', 'de'));
         $this->assertSame(['en' => 'Why join?', 'de' => 'Warum beitreten?'], $this->stored('members_settings', 'members_settings')->get('screening_label'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_new_setting_with_default_prefilled_on_existing_record(): void
+    {
+        $this->members();
+        $this->post('/folio/members_settings/members_settings', ['registration_open' => '1', 'notice_address' => 'board@example.org']);
+        $this->assertArrayNotHasKey('auto_approve', $this->stored('members_settings', 'members_settings')->toArray());
+
+        putenv(self::EXTRA . '=1'); // a later version adds a boolean defaulting to true
+        $page = (string) $this->get('/folio/members_settings')->getBody();
+        $this->assertMatchesRegularExpression('#name="auto_approve"[^>]*checked#', $page);
+        $this->assertStringContainsString('value="board@example.org"', $page); // stored values still win
+        $this->assertTrue($this->app()->container()->get(ExtensionSettings::class)->get('members', 'auto_approve'));
+
+        // Saving the form untouched submits what it shows: the new setting stays on.
+        $this->post('/folio/members_settings/members_settings', ['registration_open' => '1', 'notice_address' => 'board@example.org', 'auto_approve' => '1']);
+        $this->assertTrue($this->app()->container()->get(ExtensionSettings::class)->get('members', 'auto_approve'));
+        $this->assertSame('board@example.org', $this->app()->container()->get(ExtensionSettings::class)->get('members', 'notice_address'));
     }
 
     #[RunInSeparateProcess]
@@ -238,6 +262,7 @@ final class SettingsTest extends TestCase
     private function members(bool $enabled = true): void
     {
         $env = self::ENV;
+        $extra = self::EXTRA;
         $this->write('app/Folio/Members/Extension.php', <<<PHP
             <?php
             namespace App\\Folio\\Members;
@@ -253,7 +278,7 @@ final class SettingsTest extends TestCase
                         'screening_label' => ['type' => 'string', 'label' => 'Screening field label', 'translatable' => true,
                             'default' => ['en' => 'What brings you here?', 'de' => 'Was führt dich her?']],
                         'mail_password' => ['type' => 'env', 'label' => 'Mail password', 'env' => '{$env}'],
-                    ];
+                    ] + (getenv('{$extra}') ? ['auto_approve' => ['type' => 'boolean', 'label' => 'Approve automatically', 'default' => true]] : []);
                 }
             }
             PHP);
