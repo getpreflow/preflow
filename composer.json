@@ -16,6 +16,7 @@
         "phpunit/phpunit": "^11.0",
         "preflow/auth": "@dev",
         "preflow/blade": "@dev",
+        "preflow/codes": "@dev",
         "preflow/components": "@dev",
         "preflow/core": "@dev",
         "preflow/data": "@dev",
@@ -125,6 +126,11 @@
             "type": "path",
             "url": "packages/rbac",
             "options": { "symlink": true }
+        },
+        {
+            "type": "path",
+            "url": "packages/codes",
+            "options": { "symlink": true }
         }
     ],
     "autoload": {},
@@ -134,6 +140,7 @@
             "Tests\\": "packages/skeleton/tests/",
             "Preflow\\Auth\\Tests\\": "packages/auth/tests/",
             "Preflow\\DevTools\\Tests\\": "packages/devtools/tests/",
+            "Preflow\\Codes\\Tests\\": "packages/codes/tests/",
             "Preflow\\Folio\\Tests\\": "packages/folio/tests/",
             "Preflow\\Form\\Tests\\": "packages/form/tests/",
             "Preflow\\Notify\\Tests\\": "packages/notify/tests/",

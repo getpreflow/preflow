@@ -1,0 +1,23 @@
+{
+    "key": "code",
+    "table": "code",
+    "storage": "codes",
+    "id_field": "uuid",
+    "label": "Codes",
+    "section": "library",
+    "order": 20,
+    "icon": "ui-key",
+    "publishing": false,
+    "transfer": false,
+    "fields": {
+        "purpose": { "type": "codes_purpose", "label": "Purpose", "validate": ["required"] },
+        "code": { "type": "string", "label": "Code" },
+        "label": { "type": "string", "label": "Label" },
+        "expires_at": { "type": "date", "label": "Expires at", "time": true, "help": "Empty: never expires." },
+        "max_uses": { "type": "number", "label": "Max uses", "help": "Empty: unlimited." },
+        "uses": { "type": "number", "label": "Uses" },
+        "revoked_at": { "type": "string", "label": "Revoked at" },
+        "payload": { "type": "string", "label": "Payload (JSON)" },
+        "form": { "type": "select", "label": "Form", "options": { "readable": "Readable", "random": "Random" }, "validate": ["required", "in:readable,random"] }
+    }
+}
