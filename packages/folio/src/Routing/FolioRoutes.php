@@ -56,6 +56,7 @@ final class FolioRoutes
             ['POST', $prefix . '/{type}/{id}',         'update'],
             ['POST', $prefix . '/{type}/{id}/delete',  'destroy'],
             ['POST', $prefix . '/{type}/{id}/move',    'reorder'],
+            ['POST', $prefix . '/{type}/{id}/_action/{name}', 'recordAction'],
         ]);
 
         $entries = [];

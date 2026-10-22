@@ -15,6 +15,7 @@ use Preflow\Folio\Content\ContentLocale;
 use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Extension\Customization\Customizations;
 use Preflow\Folio\Extension\ExtensionRegistry;
 use Preflow\Folio\Extension\Screen\ScreenRegistry;
 use Preflow\Folio\Http\AdminAuthMiddleware;
@@ -288,6 +289,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Publishing\Publisher::class),
             $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
             $c->get(\Preflow\Auth\Access\Access::class),
+            $c->get(Customizations::class),
         ));
         $container->bind(\Preflow\Folio\Http\PublishingController::class, fn (Container $c) => new \Preflow\Folio\Http\PublishingController(
             $c->get(TypeCatalog::class),
@@ -378,6 +380,12 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(ExtensionRegistry::class),
             $c->get(TypeCatalog::class),
         ));
+        // Type customizations: validated when first resolved (in boot()); their classes come from the container.
+        $container->singleton(Customizations::class, fn (Container $c) => Customizations::fromExtensions(
+            $c->get(ExtensionRegistry::class),
+            $c->get(TypeCatalog::class),
+            static fn (string $class): object => $c->get($class),
+        ));
         $container->bind(\Preflow\Folio\Extension\Screen\ScreenDispatcher::class, fn (Container $c) => new \Preflow\Folio\Extension\Screen\ScreenDispatcher(
             $c,
             $c->get(ScreenRegistry::class),
@@ -396,7 +404,8 @@ final class FolioServiceProvider extends ServiceProvider
     {
         $app = $container->get(Application::class);
         $screens = $container->get(ScreenRegistry::class);
-        $this->declarePermissions($container, $app, $screens);
+        $customizations = $container->get(Customizations::class);
+        $this->declarePermissions($container, $app, $screens, $customizations);
 
         // Extension screens in the sidebar (filtered by their permission).
         foreach ($screens->all() as $screen) {
@@ -439,6 +448,25 @@ final class FolioServiceProvider extends ServiceProvider
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_nav',
                 callable: fn (): array => $container->get(\Preflow\Folio\Http\AdminNav::class)->sections(),
+            ));
+
+            // Session flashes for the admin layout (a record action's "done", a refused delete).
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_flashes',
+                callable: function () use ($container): array {
+                    $session = $container->has(\Preflow\Core\Http\Session\SessionInterface::class)
+                        ? $container->get(\Preflow\Core\Http\Session\SessionInterface::class)
+                        : null;
+                    $flashes = [];
+                    foreach (['success', 'error'] as $type) {
+                        $message = $session?->isStarted() ? $session->getFlash($type) : null;
+                        if (is_string($message) && $message !== '') {
+                            $flashes[$type] = $message;
+                        }
+                    }
+
+                    return $flashes;
+                },
             ));
 
             // Singletons: folio_get('site') -> localized values (null before the first save).
@@ -566,10 +594,10 @@ final class FolioServiceProvider extends ServiceProvider
     /**
      * Folio's permissions: per content type "{type}.*" and its view, create,
      * edit, publish and delete; the asset library; the dashboard; each enabled
-     * extension screen's (grouped under its extension's label). The guard
+     * extension screen's and record action's (grouped under its extension's label). The guard
      * Folio signs in with is staff, unless config/auth.php says otherwise.
      */
-    private function declarePermissions(Container $container, Application $app, ScreenRegistry $screens): void
+    private function declarePermissions(Container $container, Application $app, ScreenRegistry $screens, Customizations $customizations): void
     {
         $access = $container->get(\Preflow\Auth\Access\Access::class);
         $registry = $access->registry();
@@ -587,6 +615,11 @@ final class FolioServiceProvider extends ServiceProvider
         $extensions = $container->get(ExtensionRegistry::class);
         foreach ($screens->all() as $screen) {
             $registry->declare($screen['permission'], $screen['label'], $extensions->get($screen['extension'])->label);
+        }
+        foreach ($customizations->permissions() as $name => $permission) {
+            if (!$registry->isDeclared($name)) { // e.g. a screen's, or a type's own "member.edit"
+                $registry->declare($name, $permission['label'], $permission['group']);
+            }
         }
 
         if (file_exists($app->basePath('config/auth.php'))) {

@@ -36,6 +36,7 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'AdminController@store' => '{type}.create',
         'AdminController@update' => '{type}.edit',
         'AdminController@reorder' => '{type}.edit',
+        'AdminController@recordAction' => '{type}.edit', // then the action's own permission (in the controller)
         'AdminController@destroy' => '{type}.delete',
         'PublishingController@autosave' => '{type}.edit',
         'PublishingController@discard' => '{type}.edit',

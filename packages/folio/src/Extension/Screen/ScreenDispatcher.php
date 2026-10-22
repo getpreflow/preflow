@@ -48,15 +48,11 @@ final class ScreenDispatcher implements MiddlewareInterface
             return $result;
         }
         if ($result instanceof ScreenView) {
-            if (!$this->engine->exists($result->template)) {
-                throw new ExtensionException("Screen {$class}::{$method} renders \"{$result->template}\", which does not exist.");
-            }
-
-            return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->engine->render($result->template, array_merge([
+            return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $result->render($this->engine, [
                 'prefix' => $this->prefix,
                 'csrf' => $request->getAttribute(CsrfToken::class)?->getValue() ?? '',
                 'screen' => ['label' => $screen['label'], 'path' => $screen['path']],
-            ], $result->data)));
+            ], "Screen {$class}::{$method}"));
         }
         if (is_string($result) || $result instanceof \Stringable) {
             return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], (string) $result);

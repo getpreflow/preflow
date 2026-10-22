@@ -1281,3 +1281,9 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* ---- extension panels and record actions ---- */
+.folio-actions form { margin: 0; }
+.folio-panel { border: 1px solid var(--c-border); border-radius: var(--r); background: var(--c-surface); padding: 12px 16px; }
+.folio-panel-title { margin: 0 0 8px; font-size: 14px; font-weight: 620; }
+.folio-panel-body { font-size: 13.5px; }

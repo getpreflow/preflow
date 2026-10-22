@@ -293,7 +293,8 @@ final class DiscoveryTest extends TestCase
         $this->write('config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json', 'models_path' => __DIR__ . '/models'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");
         $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
-        @mkdir($this->dir . '/config/models', 0777, true);
+        // The type the Members fixture's PostTweaks customizes (an unknown type key fails at boot).
+        $this->write('config/models/post.json', '{"key": "post", "storage": "json", "fields": {"title": {"type": "string"}}}');
         @mkdir($this->dir . '/storage/data', 0777, true);
     }
 
