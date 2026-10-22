@@ -51,3 +51,14 @@ reviews. Plan B has to handle them before smart-stack.works adopts the groundwor
   collection types (Forces, Practices, …). The Site singleton belongs under Settings.
   Let model JSON choose a type's sidebar section (and order). Today every file type
   lands in Content.
+
+## From plan B (2026-10-22), for step 2 and later
+
+- Throttle increments are read-modify-write; make them atomic before the member login uses the throttle.
+- Member email format and uniqueness validation (registration).
+- `decided_at` and `registered_at` are read-only in the admin; the approval/registration flow must set them.
+- An explicit `list.columns` can still name a hidden field — make that an error.
+- Read-only selects/dates show the raw stored value, not the option label/format.
+- Readable codes: also strip U+2212 (minus) and U+00AD (soft hyphen).
+- `check()` on codes is unthrottled — visitor-facing code must use `redeem()` with a client.
+- A delegation rule is needed before any site manages staff accounts as a Folio user type (`rbac_roles` on staff is refused for now).
