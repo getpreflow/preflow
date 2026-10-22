@@ -14,13 +14,15 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Extension\ExtensionRegistry;
 use Preflow\Folio\Extension\ExtensionState;
 use Preflow\Folio\Field\FieldTypeRegistry;
+use Preflow\Folio\Http\AdminAssets;
 use Preflow\Rbac\Fields\PermissionsFieldType;
 use Preflow\Rbac\Fields\RolesFieldType;
 
 /**
  * Answers can() from the rbac_role records when the Folio extension "rbac" is enabled
- * (config/folio/extensions.json), and registers the field types rbac_permissions and
- * rbac_roles. In boot(), so it wins over preflow/roles, which sets its resolver in register().
+ * (config/folio/extensions.json), and registers the field types rbac_permissions (its
+ * editor's assets/rbac.css and rbac.js served by Folio) and rbac_roles. In boot(), so it
+ * wins over preflow/roles, which sets its resolver in register().
  */
 final class RbacServiceProvider extends ServiceProvider
 {
@@ -41,7 +43,10 @@ final class RbacServiceProvider extends ServiceProvider
         ));
 
         $fieldTypes = $container->get(FieldTypeRegistry::class);
-        $fieldTypes->register(new PermissionsFieldType($container->get(PermissionRegistry::class)));
+        $fieldTypes->register(new PermissionsFieldType($container->get(PermissionRegistry::class), $container->get(TypeCatalog::class)));
+        $assets = $container->get(AdminAssets::class);
+        $assets->add('rbac.css', dirname(__DIR__) . '/assets/rbac.css');
+        $assets->add('rbac.js', dirname(__DIR__) . '/assets/rbac.js');
         $fieldTypes->register(new RolesFieldType($container->get(DataManager::class), $container->get(TypeCatalog::class)));
     }
 }

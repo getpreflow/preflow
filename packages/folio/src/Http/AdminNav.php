@@ -63,15 +63,10 @@ final class AdminNav
             $add($item['section'], $item['label'], $item['url'], $item['icon'], $item['permission'], $item['order']);
         }
 
-        // Custom sections (in the order first used) go between Content and Library.
-        $custom = array_diff_key($groups, self::BUILTIN);
         $ordered = $groups;
         $groups = [];
-        foreach (self::BUILTIN as $section => $_) {
-            if ($section === 'library') {
-                $groups += $custom;
-            }
-            $groups[$section] = $ordered[$section] ?? [];
+        foreach (self::sectionOrder(array_keys($ordered)) as $section) {
+            $groups[$section] = $ordered[$section];
         }
 
         $visible = [];
@@ -90,7 +85,7 @@ final class AdminNav
         $sections = [];
         foreach ($visible as $section => $items) {
             $sections[] = [
-                'label' => self::BUILTIN[$section] ?? ucfirst(str_replace(['_', '-'], ' ', $section)),
+                'label' => self::sectionLabel($section),
                 'items' => array_map(fn (array $item): array => [
                     'label' => $item['label'],
                     'url' => $item['url'],
@@ -101,6 +96,33 @@ final class AdminNav
         }
 
         return $sections;
+    }
+
+    /**
+     * Section names in sidebar order: the built-in ones (dashboard first), with the others
+     * of $sections (in the given order, i.e. first used) between Content and Library.
+     *
+     * @param list<string> $sections
+     * @return list<string>
+     */
+    public static function sectionOrder(array $sections): array
+    {
+        $custom = array_values(array_diff(array_unique($sections), array_keys(self::BUILTIN)));
+        $ordered = [];
+        foreach (array_keys(self::BUILTIN) as $section) {
+            if ($section === 'library') {
+                array_push($ordered, ...$custom);
+            }
+            $ordered[] = $section;
+        }
+
+        return $ordered;
+    }
+
+    /** A section's heading: "Pages" for pages, "Member area" for member_area. */
+    public static function sectionLabel(string $section): string
+    {
+        return self::BUILTIN[$section] ?? ucfirst(str_replace(['_', '-'], ' ', $section));
     }
 
     /**

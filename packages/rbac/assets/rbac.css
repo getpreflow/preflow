@@ -1,0 +1,124 @@
+/* The rbac_permissions editor (preflow/rbac), on Folio's tokens so light and dark both work. */
+
+.rbac-permissions { border: 0; padding: 0; margin-inline: 0; }
+.rbac-legend {
+  padding: 0;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 620;
+  color: var(--c-text);
+}
+
+/* "Everything" (*): a switch row */
+.rbac-everything {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.rbac-everything:has(.rbac-switch:checked) { border-color: color-mix(in srgb, var(--c-accent) 40%, var(--c-border)); background: var(--c-accent-soft); }
+.rbac-everything-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rbac-everything-label { font-weight: 620; font-size: 14px; color: var(--c-text); }
+.rbac-everything-hint { color: var(--c-text-muted); font-size: 12.5px; line-height: 1.45; }
+.rbac-switch {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--c-border-strong);
+  cursor: pointer;
+  transition: background-color .15s;
+}
+.rbac-switch::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--c-surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform .15s;
+}
+.rbac-switch:checked { background: var(--c-accent); }
+.rbac-switch:checked::before { transform: translateX(16px); }
+.rbac-switch:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--c-focus-ring); }
+
+.rbac-unknown { margin: 0 0 14px; color: var(--c-warning); font-size: 12.5px; }
+
+/* Everything on (rbac.js): the rest is dimmed and locked */
+.rbac-rest { transition: opacity .15s; }
+.rbac-rest.is-locked { opacity: .45; }
+
+/* The matrix of content types */
+.rbac-matrix thead th:not(:first-child),
+.rbac-matrix .rbac-cell { text-align: center; width: 72px; padding-inline: 8px; }
+.rbac-matrix tbody th[scope="row"] { text-align: left; padding: 10px 16px; font-weight: 560; color: var(--c-text); border-bottom: 1px solid var(--c-border); }
+.rbac-matrix tbody tr:last-child th { border-bottom: 0; }
+.rbac-matrix .rbac-cell input { display: block; margin: 0 auto; cursor: pointer; }
+.rbac-matrix .rbac-cell input:disabled { cursor: default; }
+.rbac-matrix .rbac-cell-all { border-left: 1px solid var(--c-border); }
+.rbac-none { color: var(--c-text-subtle); }
+.rbac-matrix tbody tr.rbac-section:hover { background: none; }
+.rbac-section th {
+  padding: 16px 16px 6px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--c-text-subtle);
+  border-bottom: 1px solid var(--c-border);
+}
+.rbac-matrix tbody tr.rbac-section:first-child th { padding-top: 10px; }
+
+/* Other permissions: chips by group */
+.rbac-others { margin-top: 22px; }
+.rbac-others-heading { margin: 0 0 10px; font-size: 13px; font-weight: 620; color: var(--c-text); }
+.rbac-group { padding: 10px 0; border-top: 1px solid var(--c-border); }
+.rbac-group:last-child { padding-bottom: 0; }
+.rbac-group-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.rbac-group-label {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--c-text-subtle);
+}
+.rbac-group-all { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--c-text-muted); cursor: pointer; }
+.rbac-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rbac-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0 11px 0 9px;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-surface);
+  font-size: 12.5px;
+  font-weight: 520;
+  color: var(--c-text-muted);
+  cursor: pointer;
+  transition: background-color .1s, border-color .1s, color .1s;
+}
+.rbac-chip:hover { background: var(--c-row-hover); }
+.rbac-chip input { width: 14px; height: 14px; margin: 0; }
+.rbac-chip:has(input:checked) {
+  background: var(--c-accent-soft);
+  border-color: color-mix(in srgb, var(--c-accent) 35%, transparent);
+  color: var(--c-accent-text);
+}
+.rbac-chip:has(input:disabled) { cursor: default; }
+.rbac-chip:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--c-focus-ring); }

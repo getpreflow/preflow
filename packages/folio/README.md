@@ -274,6 +274,12 @@ A field type's own rules (e.g. `select`'s allowed values) are enforced in additi
 return ['field_types' => [App\Folio\ColorFieldType::class]];
 ```
 
+A field type's `assets()` names the `.css` and `.js` files its editor needs; Folio loads
+them only on forms that render the field, from `{prefix}/_assets/{file}`. A package
+serves its own files there by adding them in its provider's `boot()`:
+`$container->get(Preflow\Folio\Http\AdminAssets::class)->add('color.css', __DIR__ . '/../assets/color.css')`
+(an absolute path; a name already taken is an error).
+
 ## Blocks
 
 A block is a Preflow component whose fields are PHP attributes. Schema, logic, template

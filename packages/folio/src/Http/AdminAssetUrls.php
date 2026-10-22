@@ -10,16 +10,20 @@ namespace Preflow\Folio\Http;
  */
 final class AdminAssetUrls
 {
-    /** @param array<string, string> $map URL filename => path relative to $dir (or absolute) */
+    private readonly AdminAssets $map;
+
+    /** @param array<string, string>|AdminAssets $map URL filename => path relative to $dir (or absolute) */
     public function __construct(
         private readonly string $prefix,
         private readonly string $dir,
-        private readonly array $map,
-    ) {}
+        array|AdminAssets $map,
+    ) {
+        $this->map = $map instanceof AdminAssets ? $map : new AdminAssets($map);
+    }
 
     public function __invoke(string $file): string
     {
-        $rel = $this->map[$file] ?? $file;
+        $rel = $this->map->get($file) ?? $file;
         $path = str_starts_with($rel, '/') ? $rel : $this->dir . '/' . $rel;
         $v = is_file($path) ? substr(hash_file('xxh3', $path), 0, 12) : 'dev';
 

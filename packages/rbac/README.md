@@ -30,9 +30,13 @@ php preflow folio:extensions:apply
 Roles are `rbac_role` records, edited under *Settings → Roles*: a name (unique per
 population), a label, a population (`staff` or `members`) and permissions.
 
-- The permissions editor lists every declared permission by group, with a "whole group"
-  checkbox for each `{type}.*` pattern and "Everything" (`*`) on top. A stored name that is
-  no longer declared is shown as unknown and dropped on the next save.
+- The permissions editor has "Everything" (`*`) as a switch on top, then the content types
+  as a matrix: one row per type, grouped by sidebar section, a column per verb (View,
+  Create, Edit, Publish, Delete) and "All" for the type's `{type}.*`. Every other declared
+  permission (Dashboard, assets, extensions' own) is a chip under its group, with the
+  group's pattern (e.g. `assets.*`) as the group's "All". With JavaScript, what
+  "Everything" or an "All" already grants is shown checked and locked. A stored name that
+  is no longer declared is shown as unknown and dropped on the next save.
 - A user may do X when any of their roles (`getRoles()`) defined for their population has
   a pattern matching X. Unknown roles grant nothing (logged in debug).
 - Roles stored as a JSON string (as SQL returns a list) or a comma-separated string work.
