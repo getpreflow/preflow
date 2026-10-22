@@ -66,6 +66,21 @@ final class DataAliasesTest extends TestCase
         $this->assertSame($dm->driver('json'), $dm->driver('default'));
     }
 
+    public function test_alias_to_default_is_allowed(): void
+    {
+        $app = $this->boot($this->config('json', "['codes' => 'default']"));
+        $dm = $app->container()->get(DataManager::class);
+
+        $this->assertSame($dm->driver('default'), $dm->driver('codes'));
+    }
+
+    public function test_alias_named_default_throws(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Storage alias [default] collides with a configured driver.');
+        $this->boot($this->config('json', "['default' => 'sqlite']"));
+    }
+
     public function test_alias_to_unknown_driver_throws(): void
     {
         $this->expectException(\RuntimeException::class);

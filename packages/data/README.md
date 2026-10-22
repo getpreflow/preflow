@@ -163,8 +163,8 @@ return [
 ];
 ```
 
-An alias is the same driver instance as its target. A target that is not a configured driver,
-or an alias named like a driver, throws a `RuntimeException` at boot.
+An alias is the same driver instance as its target; `default` is a valid target (`'codes' => 'default'`). A target that is not a configured driver,
+or an alias named like a driver (or `default`), throws a `RuntimeException` at boot.
 
 ## Translatable fields
 

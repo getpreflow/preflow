@@ -302,10 +302,10 @@ final class Application
 
         // Aliases name a purpose ('codes', 'throttle') and map it to a configured driver.
         foreach ($dataConfig['aliases'] ?? [] as $alias => $target) {
-            if (isset($drivers[$alias])) {
+            if ($alias === 'default' || isset($drivers[$alias])) {
                 throw new \RuntimeException("Storage alias [{$alias}] collides with a configured driver.");
             }
-            if (!isset($drivers[$target]) || $target === 'default') {
+            if (!isset($drivers[$target])) {
                 throw new \RuntimeException("Storage alias [{$alias}] points to [{$target}], which is not a configured driver.");
             }
             $drivers[$alias] = $drivers[$target];
