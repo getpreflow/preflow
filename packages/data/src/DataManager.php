@@ -351,7 +351,7 @@ final class DataManager
         return $this->typeRegistry;
     }
 
-    /** The storage driver for a configured name (falls back to the default driver). */
+    /** The storage driver for a configured name; an unknown name is an error, never a fallback. */
     public function driver(string $name): StorageDriver
     {
         return $this->resolveDriver($name);
@@ -363,10 +363,6 @@ final class DataManager
             return $this->drivers[$name];
         }
 
-        if (isset($this->drivers[$this->defaultDriver])) {
-            return $this->drivers[$this->defaultDriver];
-        }
-
-        throw new \RuntimeException("Storage driver [{$name}] not configured.");
+        throw new \RuntimeException("Storage driver [{$name}] is not configured (config/data.php drivers).");
     }
 }
