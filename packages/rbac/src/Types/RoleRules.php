@@ -19,13 +19,15 @@ use Preflow\Validation\ValidationResult;
 /**
  * Role names are unique per population, and nobody locks roles editing away: a save or
  * delete is refused when, on the roles as they would be afterwards, the signed-in user's
- * own roles no longer grant rbac_role.edit, or no staff role grants it at all. A changed
- * name or population counts as losing the role.
+ * own staff roles together no longer grant both rbac_role.view (the list and edit form)
+ * and rbac_role.edit, or the staff roles together grant them no more. A changed name or
+ * population counts as losing the role.
  */
 #[FolioType('rbac_role')]
 final class RoleRules
 {
-    private const string EDIT = 'rbac_role.edit';
+    /** Seeing the roles list and edit form, and saving them. */
+    private const array NEEDED = ['rbac_role.view', 'rbac_role.edit'];
     private const string OWN = 'You would lose the right to edit roles.';
     private const string LAST = 'No staff role would be left that may edit roles.';
 
@@ -79,18 +81,17 @@ final class RoleRules
      */
     private static function grants(array $roles, ?array $names): bool
     {
+        $missing = self::NEEDED;
         foreach ($roles as $role) {
             if ($role['population'] !== 'staff' || ($names !== null && !in_array($role['name'], $names, true))) {
                 continue;
             }
             foreach ($role['permissions'] as $pattern) {
-                if (Pattern::matches($pattern, self::EDIT)) {
-                    return true;
-                }
+                $missing = array_filter($missing, static fn (string $needed): bool => !Pattern::matches($pattern, $needed));
             }
         }
 
-        return false;
+        return $missing === [];
     }
 
     /** @return array<string, array{name: string, population: string, permissions: list<string>}> by id, as stored now */

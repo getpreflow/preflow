@@ -58,14 +58,16 @@ field lists another population's. The value is a list of role names.
 
 A save or delete of a role is refused when, on the roles as they would be afterwards:
 
-- the signed-in user's own roles no longer grant `rbac_role.edit` ("You would lose the
-  right to edit roles."), or
-- no staff role grants `rbac_role.edit` any more.
+- the signed-in user's own staff roles together no longer grant both `rbac_role.view`
+  (the roles list and edit form) and `rbac_role.edit` ("You would lose the right to edit
+  roles."), or
+- the staff roles together no longer grant both.
 
 This covers removing permissions, renaming the role, moving it to `members` and deleting
 it. A refused save shows the form again with the message; a refused delete keeps the role.
 Before the extension is installed, the same check applies: the first role you save must
-grant yourself `rbac_role.edit` (or run `folio:extensions:apply`, which creates `admin`).
+grant yourself `rbac_role.view` and `rbac_role.edit` (or run `folio:extensions:apply`,
+which creates `admin`).
 
 ## Bootstrap
 

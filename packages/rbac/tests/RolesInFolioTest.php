@@ -158,6 +158,48 @@ final class RolesInFolioTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_save_removing_own_role_view_refused(): void
+    {
+        $this->install();
+        $admin = $this->adminId();
+        $this->as('admin');
+
+        // Editing roles without seeing them (list and edit form need rbac_role.view) locks out too.
+        $res = $this->send('POST', '/folio/rbac_role/' . $admin, ['name' => 'admin', 'label' => 'Administrator', 'population' => 'staff', 'permissions' => ['page.*', 'rbac_role.edit']]);
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('You would lose the right to edit roles.', (string) $res->getBody());
+        $this->assertSame(['*'], $this->stored('rbac_role', $admin)?->get('permissions'));
+
+        // Keeping both is fine.
+        $this->assertSame(302, $this->send('POST', '/folio/rbac_role/' . $admin, ['name' => 'admin', 'label' => 'Administrator', 'population' => 'staff', 'permissions' => ['page.*', 'rbac_role.view', 'rbac_role.edit']])->getStatusCode());
+        $this->assertSame(['page.*', 'rbac_role.view', 'rbac_role.edit'], $this->stored('rbac_role', $admin)?->get('permissions'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_last_staff_view_grant_cannot_go(): void
+    {
+        $this->install();
+        $this->role('r-editor', 'staff', 'editor', ['rbac_role.view']);
+        $c = $this->container(); // nobody signed in: only the staff-wide check applies
+        $rules = $c->get(\Preflow\Rbac\Types\RoleRules::class);
+        $dm = $c->get(\Preflow\Data\DataManager::class);
+        $admin = $dm->findType('rbac_role', $this->adminId());
+
+        // The admin role keeps edit but drops view; the editor role still grants view.
+        $admin->set('permissions', ['rbac_role.edit']);
+        $rules->beforeSave($admin);
+
+        // Without the editor role's view grant, no staff role may see roles any more.
+        $dm->saveType($admin, false);
+        try {
+            $rules->beforeDelete($dm->findType('rbac_role', 'r-editor'));
+            $this->fail('deleting the only staff role granting rbac_role.view was allowed');
+        } catch (\Preflow\Folio\Extension\Customization\Refused $e) {
+            $this->assertSame('No staff role would be left that may edit roles.', $e->getMessage());
+        }
+    }
+
+    #[RunInSeparateProcess]
     public function test_population_change_of_last_admin_role_refused(): void
     {
         $this->install();
