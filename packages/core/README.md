@@ -236,6 +236,7 @@ $throttle->clear('login', $client);                       // after a success
 - **Windows must be much shorter than a day.** The client hash rotates at 00:00 UTC, so a
   window spanning midnight starts over.
 - **No raw IP is stored**, only an HMAC of `REMOTE_ADDR` (forwarded headers are ignored).
+  IPv6 clients count by their /64 prefix, since one subscriber usually holds a whole /64.
   Without a `REMOTE_ADDR` (CLI, tests) all requests are one `unknown` client; it never throws.
 - `prune(olderThanSeconds: 172800)` deletes old rows and returns how many; `hit()` runs it
   opportunistically, once per request when a new window starts.
