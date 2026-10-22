@@ -19,7 +19,7 @@ use Preflow\Data\TypeFieldDefinition;
  * consume() spends a token at most once: on SQL one DELETE decides by its
  * affected rows, on the JSON driver an exclusive file lock in $lockDir guards
  * the read and the delete (only for a token that exists; the file is removed
- * afterwards).
+ * once the row is gone).
  */
 final class Tokens
 {
@@ -96,18 +96,21 @@ final class Tokens
             return null;
         }
 
-        return $this->locked($id, function () use ($id, $purpose): ?string {
+        return $this->locked($id, function () use ($id, $purpose): array {
             $record = $this->dm->findIn($this->type, $id);
+            if ($record === null) {
+                return [null, true];
+            }
+            $now = ($this->clock)();
             // The file lookup found the hash; hash_equals confirms the stored one exactly.
-            if ($record === null
-                || !hash_equals((string) $record->getId(), $id)
+            if (!hash_equals((string) $record->getId(), $id)
                 || $record->get('purpose') !== $purpose
-                || (int) $record->get('expires_at') <= ($this->clock)()) {
-                return null;
+                || (int) $record->get('expires_at') <= $now) {
+                return [null, false];
             }
             $this->dm->deleteIn($this->type, $id);
 
-            return (string) $record->get('subject');
+            return [(string) $record->get('subject'), true];
         });
     }
 
@@ -160,28 +163,45 @@ final class Tokens
     }
 
     /**
-     * Runs $fn holding an exclusive lock on tokens-{id}.lock in the lock directory;
-     * the file is removed afterwards (best effort).
+     * Runs $fn holding an exclusive lock on tokens-{id}.lock in the lock directory.
+     * $fn returns [result, gone]; the lock file is removed (best effort) only when
+     * gone is true, i.e. the row no longer exists. A lock taken on a file that was
+     * removed meanwhile is retried on the current file, so two holders never overlap.
      *
-     * @template T
-     * @param \Closure(): T $fn
-     * @return T
+     * @param \Closure(): array{?string, bool} $fn
      */
-    private function locked(string $id, \Closure $fn): mixed
+    private function locked(string $id, \Closure $fn): ?string
     {
         if (!is_dir($this->lockDir) && !@mkdir($this->lockDir, 0755, true) && !is_dir($this->lockDir)) {
             throw new \RuntimeException("Tokens lock directory {$this->lockDir} cannot be created.");
         }
         $path = $this->lockDir . '/tokens-' . $id . '.lock';
-        $handle = fopen($path, 'c');
-        if ($handle === false || !flock($handle, LOCK_EX)) {
+        for ($try = 0; $try < 10; $try++) {
+            $handle = fopen($path, 'c');
+            if ($handle === false || !flock($handle, LOCK_EX)) {
+                throw new \RuntimeException("Tokens lock {$path} cannot be taken.");
+            }
+            clearstatcache(true, $path);
+            $current = @stat($path);
+            if ($current !== false && $current['ino'] === fstat($handle)['ino']) {
+                break;
+            }
+            flock($handle, LOCK_UN);
+            fclose($handle);
+            $handle = null;
+        }
+        if ($handle === null) {
             throw new \RuntimeException("Tokens lock {$path} cannot be taken.");
         }
         try {
-            return $fn();
+            [$result, $gone] = $fn();
+            if ($gone) {
+                // Before the release: a waiter on this file then retries on a fresh one and finds the row gone.
+                @unlink($path);
+            }
+
+            return $result;
         } finally {
-            // Removed first, so the lock directory does not grow; a waiter on the old file re-reads and finds the row gone.
-            @unlink($path);
             flock($handle, LOCK_UN);
             fclose($handle);
         }

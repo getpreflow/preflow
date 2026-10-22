@@ -196,4 +196,47 @@ final class TokensTest extends DataTestCase
         $this->assertNull($t->consume(rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '='), 'confirm'));
         $this->assertSame($before, is_dir($lockDir) ? (glob($lockDir . '/*') ?: []) : []);
     }
+
+    /**
+     * Three requests on one token, in separate processes as on a server: H probes it with
+     * the wrong purpose; B starts consuming while H holds the lock; C arrives once H is
+     * done. B and C each pause between reading the row and deleting it, so if both got
+     * into the critical section they would both return the subject.
+     */
+    #[\PHPUnit\Framework\Attributes\RequiresPhpExtension('pcntl')]
+    #[\PHPUnit\Framework\Attributes\RequiresPhpExtension('posix')]
+    public function test_wrong_purpose_probe_cannot_let_two_consumers_through(): void
+    {
+        $lockDir = sys_get_temp_dir() . '/preflow_tokens_locks_' . uniqid();
+        $this->lockDirs[] = $lockDir;
+        $resultFile = $lockDir . '-b.json';
+        $slow = function (): int {
+            usleep(300_000); // between reading the row and deleting it
+
+            return $this->now;
+        };
+        $token = (new Tokens($this->dataManager(), 'json', fn (): int => $this->now, $lockDir))->issue('confirm', 'user-1', 3600);
+
+        $child = null;
+        $h = new Tokens($this->dataManager(), 'json', function () use (&$child, $token, $slow, $lockDir, $resultFile): int {
+            // Inside H's critical section: B starts and waits for the lock.
+            $child = pcntl_fork();
+            if ($child === 0) {
+                $result = (new Tokens($this->dataManager(), 'json', $slow, $lockDir))->consume($token, 'confirm');
+                file_put_contents($resultFile, json_encode($result));
+                posix_kill(posix_getpid(), SIGKILL);
+            }
+            usleep(200_000);
+
+            return $this->now;
+        }, $lockDir);
+
+        $this->assertNull($h->consume($token, 'reset'));
+        $c = (new Tokens($this->dataManager(), 'json', $slow, $lockDir))->consume($token, 'confirm');
+        pcntl_waitpid($child, $status);
+        $b = json_decode((string) file_get_contents($resultFile), true);
+        @unlink($resultFile);
+
+        $this->assertSame(['user-1'], array_values(array_filter([$b, $c])), 'exactly one consumer gets the subject');
+    }
 }
