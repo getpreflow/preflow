@@ -104,6 +104,26 @@ final class RecordUserProviderTest extends TestCase
         $this->assertNull($this->provider()->findByCredentials([]));
     }
 
+    public function test_find_by_id_does_not_cross_types(): void
+    {
+        $this->member('m1', 'ada@example.com');
+        $this->dm->saveType(new DynamicRecord($this->dm->getTypeRegistry()->get('page'), ['uuid' => 'p1', 'title' => 'Hi']), false);
+
+        $this->assertNull($this->provider()->findById('p1'));
+    }
+
+    public function test_lookalike_or_duplicate_emails_never_match_another_account(): void
+    {
+        $this->member('m1', 'ada@example.com');
+        $this->member('m2', 'ADA@example.com');
+
+        $this->assertSame('m1', $this->provider()->findByCredentials(['email' => 'ada@example.com'])?->getAuthId());
+
+        $this->member('m3', 'ada@example.com');
+
+        $this->assertNull($this->provider()->findByCredentials(['email' => 'ada@example.com']));
+    }
+
     public function test_roles_from_json_string_on_sqlite(): void
     {
         $this->member('m1', 'ada@example.com', '["gold"," silver ","gold"]');
@@ -134,6 +154,7 @@ final class RecordUserProviderTest extends TestCase
     public function test_unknown_type_throws(): void
     {
         $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('does not exist');
         $this->provider(['type' => 'ghost']);
     }
 

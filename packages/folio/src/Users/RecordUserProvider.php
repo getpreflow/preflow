@@ -53,11 +53,17 @@ final class RecordUserProvider implements UserProviderInterface
         if (!is_string($email) || trim($email) === '') {
             return null;
         }
-        $record = $this->dm->queryType($this->type)
-            ->where($this->emailField, mb_strtolower(trim($email)))
-            ->first();
+        $email = mb_strtolower(trim($email));
+        // The database may compare loosely (MySQL collations ignore case and accents): only the exact
+        // stored value counts, and a look-alike or duplicate never picks an account.
+        $exact = [];
+        foreach ($this->dm->queryType($this->type)->where($this->emailField, $email)->get() as $record) {
+            if ($record->get($this->emailField) === $email) {
+                $exact[] = $record;
+            }
+        }
 
-        return $record === null ? null : $this->user($record);
+        return count($exact) === 1 ? $this->user($exact[0]) : null;
     }
 
     private function user(\Preflow\Data\DynamicRecord $record): RecordUser
