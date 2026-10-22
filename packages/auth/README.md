@@ -144,7 +144,9 @@ $guard->login($user, $request, remember: true);   // also queues the cookie
 
 - The cookie is `{selector}:{validator}`, 16 and 32 random bytes. Only the SHA-256 hash of
   the validator is stored (table `auth_remember`, on the `auth` storage alias when
-  `config/data.php` has one, else the default). It is `HttpOnly`, `SameSite=Lax`, and
+  `config/data.php` has one, else the default). A site whose default storage is JSON but
+  which migrates the auth tables into SQLite needs `'auth' => 'sqlite'` under `aliases` in
+  `config/data.php`; the same alias holds the tokens (`auth_tokens`). It is `HttpOnly`, `SameSite=Lax`, and
   `Secure` when `APP_SECURE` is set.
 - When a request has a session but nobody is signed in on the guard,
   `ResolveUserMiddleware` signs the user in from the cookie. Every session guard does this,

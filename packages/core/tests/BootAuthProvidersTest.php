@@ -6,6 +6,7 @@ namespace Preflow\Core\Tests;
 
 require_once __DIR__ . '/Fixtures/ConfigEntryUserProvider.php';
 require_once __DIR__ . '/Fixtures/LateServiceUserProvider.php';
+require_once __DIR__ . '/Fixtures/MissingTypeUserProvider.php';
 
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -15,6 +16,7 @@ use Preflow\Core\Application;
 use Preflow\Core\Tests\Fixtures\ConfigEntryUserProvider;
 use Preflow\Core\Tests\Fixtures\LateServiceProvider;
 use Preflow\Core\Tests\Fixtures\LateServiceUserProvider;
+use Preflow\Core\Tests\Fixtures\MissingTypeUserProvider;
 use Preflow\Data\Migration\MigrationRegistry;
 
 /** User providers from config/auth.php (any class), and the auth services core binds. */
@@ -110,5 +112,16 @@ final class BootAuthProvidersTest extends TestCase
 
         $provider = $app->container()->get(UserProviderInterface::class);
         $this->assertSame('late', $provider->resolve()->marker->value);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_provider_for_a_missing_user_type_resolves_nobody(): void
+    {
+        file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [" . LateServiceProvider::class . "::class];\n");
+        $app = $this->boot(['class' => MissingTypeUserProvider::class]);
+
+        $provider = $app->container()->get(UserProviderInterface::class);
+        $this->assertNull($provider->findById('m1'));
+        $this->assertNull($provider->findByCredentials(['email' => 'a@b.test']));
     }
 }

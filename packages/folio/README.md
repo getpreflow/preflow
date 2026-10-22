@@ -222,7 +222,9 @@ A type's `key` cannot be a path Folio uses under its prefix (`login`, `logout`,
 
 The gate needs the signed-in user, and sessions only exist on `session.paths` (when
 config/auth.php sets them): include the route's prefix there (`/tools`, and `/de/tools`
-for prefixed locales), or every visitor counts as signed out. A share-preview link does not
+for prefixed locales), or every visitor counts as signed out. The session cookie's path
+(`session.path`) must cover the prefix as well. Access is granted when any signed-in user,
+staff or member guard, has the permission. A share-preview link does not
 open the gate: it stays a staff tool, and the reviewer must pass the gate as well. The
 admin live preview is unaffected. The gate fails closed: without auth configured nobody is
 signed in, so nobody passes it.
@@ -611,8 +613,14 @@ is not routed.
 - Files are sent with `Cache-Control: private, no-store` and their stored type. Images
   are `inline`; everything else, SVG included, is an `attachment` with the original
   file name.
-- The route needs the session: when config/auth.php sets `session.paths`, include the
-  private URL's prefix (`/files`, or `/tools` for `/tools/files`).
+- The route needs the session, so the private URL's prefix (`/files`, or `/tools` for
+  `/tools/files`) must be covered twice: by `session.paths` in config/auth.php, and by the
+  session cookie's path (`session.path`). A cookie with path `/folio` is never sent to
+  `/files`, staff count as signed out there, and they get a 403 on their own private files,
+  admin thumbnails included.
+- `assets.private_dir` (default `storage/private-media`) lies inside each release. A deployment
+  must list it as a shared dir (Deployer `shared_dirs`) and git-ignore it, or the private
+  files vanish on the next deploy.
 - A `private_dir` inside `public/` or the media directory is refused at boot.
 - Export and pull carry the private files with their asset records (archive root
   `private-media/`). An archive from before private assets has no such root, and

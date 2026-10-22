@@ -35,7 +35,7 @@ final class FrontendGate
             return false;
         }
 
-        return $this->access?->user() !== null && $this->access->can($permission);
+        return $this->access?->user() !== null && $this->access->canAny($permission);
     }
 
     /** A type without frontend.permission is open; a malformed one (never past boot) is closed. */

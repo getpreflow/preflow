@@ -42,6 +42,7 @@ final class FrontendGateTest extends TestCase
             'providers' => [
                 'staff' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [
                     ['email' => 'admin@site.test', 'password_hash' => $hash, 'roles' => ['admin']],
+                    ['email' => 'editor@site.test', 'password_hash' => $hash, 'roles' => ['editor']],
                 ]],
                 'members' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [
                     ['email' => 'member@site.test', 'password_hash' => $hash, 'roles' => ['member']],
@@ -51,7 +52,7 @@ final class FrontendGateTest extends TestCase
             'session' => ['cookie' => 'folio_gate_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
         $this->write('config/roles.php', "<?php\nreturn " . var_export([
-            'staff' => ['admin' => ['*']],
+            'staff' => ['admin' => ['*'], 'editor' => []],
             'members' => ['member' => ['members.access']],
         ], true) . ";\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Roles\\RolesServiceProvider::class];\n");
@@ -192,6 +193,31 @@ final class FrontendGateTest extends TestCase
         $this->assertSame('private, no-store', $res->getHeaderLine('Cache-Control'));
 
         $this->assertSame(404, $this->fetch('/tools/r/missing')->getStatusCode()); // allowed, unknown slug: plain 404
+    }
+
+    #[RunInSeparateProcess]
+    public function test_either_guard_passes_the_gate(): void
+    {
+        $this->published('resource', 'r1', 'Members guide', 'guide');
+        // The staff guard wins resolution, but its editor lacks the permission; the member has it.
+        $this->signIn('_auth_user_id', 'editor@site.test');
+        $this->signIn('_auth_user_id.members', 'member@site.test');
+
+        $res = $this->fetch('/tools/r/guide');
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('Members guide', (string) $res->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_neither_guard_having_the_permission_is_refused(): void
+    {
+        $this->published('resource', 'r1', 'Members guide', 'guide');
+        $this->signIn('_auth_user_id', 'editor@site.test');
+        $this->signIn('_auth_user_id.members', 'guest@site.test');
+
+        $res = $this->fetch('/tools/r/guide');
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertStringNotContainsString('Members guide', (string) $res->getBody());
     }
 
     #[RunInSeparateProcess]

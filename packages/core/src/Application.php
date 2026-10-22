@@ -864,7 +864,10 @@ final class Application
     private function bootLazyUserProviders(): void
     {
         foreach ($this->lazyUserProviders as $provider) {
-            $provider->resolve();
+            $failure = $provider->bootResolve();
+            if ($failure !== null && $this->container->has(\Psr\Log\LoggerInterface::class)) {
+                $this->container->get(\Psr\Log\LoggerInterface::class)->warning('User provider unavailable, it resolves no users: ' . $failure->getMessage());
+            }
         }
     }
 

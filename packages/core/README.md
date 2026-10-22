@@ -246,7 +246,9 @@ $throttle->clear('login', $client);                       // after a success
 ### Cookie queue
 
 `Preflow\Core\Http\CookieQueue` holds `Set-Cookie` values queued during a request (the
-remember-me cookies of `preflow/auth`). It is bound when `config/auth.php` exists. The
+remember-me cookies of `preflow/auth`, whose tokens use the `auth` storage alias, else the
+default: with a JSON default and the auth tables in SQLite, set `'auth' => 'sqlite'` in
+`config/data.php`). It is bound when `config/auth.php` exists. The
 middleware that queued them applies them to its response; the Kernel applies what is left to
 an error response, which bypasses the pipeline, so a rotated cookie is never lost.
 

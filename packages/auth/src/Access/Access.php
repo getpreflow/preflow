@@ -60,6 +60,40 @@ final class Access
 
     public function can(string $permission, ?object $subject = null): bool
     {
+        $early = $this->earlyAnswer($permission);
+        if ($early !== null) {
+            return $early;
+        }
+        $user = $this->auth?->user();
+        if ($user === null) {
+            return false;
+        }
+
+        return $this->resolver->allows($user, $this->populationOf($this->auth->guardName() ?? ''), $permission, $subject);
+    }
+
+    /**
+     * Like can(), but any user signed in for this request counts, across guards (a staff
+     * editor who is also a signed-in member passes by the member's permission).
+     */
+    public function canAny(string $permission, ?object $subject = null): bool
+    {
+        $early = $this->earlyAnswer($permission);
+        if ($early !== null) {
+            return $early;
+        }
+        foreach ($this->auth?->users() ?? [] as $guard => $user) {
+            if ($this->resolver->allows($user, $this->populationOf((string) $guard), $permission, $subject)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** The answer that holds whoever is signed in (disabled, no auth, undeclared), or null to ask the user. */
+    private function earlyAnswer(string $permission): ?bool
+    {
         $disabled = $this->registry->disabledReason($permission);
         if ($disabled !== null) { // before the undeclared check; a disabled name never throws, not even in debug
             if (!isset($this->logged[$permission])) {
@@ -83,12 +117,8 @@ final class Access
 
             return false;
         }
-        $user = $this->auth->user();
-        if ($user === null) {
-            return false;
-        }
 
-        return $this->resolver->allows($user, $this->populationOf($this->auth->guardName() ?? ''), $permission, $subject);
+        return null;
     }
 
     /** The user signed in for this request; null when nobody is, or no auth is configured. */

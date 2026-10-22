@@ -16,7 +16,7 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Finds who is signed in for this request (never a 401: AuthMiddleware decides
- * that). Guards are asked in order, default first; the first user wins. A user
+ * that). Guards are asked in order, default first; the first user wins for can(), though every signed-in guard's user is kept for canAny(). A user
  * already on the request (set in-process, e.g. by tests) is taken as is.
  *
  * A session guard with a remember-me cookie signs its user back in from the
@@ -41,24 +41,25 @@ final class ResolveUserMiddleware implements MiddlewareInterface
 
         $user = $request->getAttribute(Authenticatable::class);
         $name = null;
+        $others = [];
         if ($user instanceof Authenticatable) {
             $preset = $request->getAttribute(AuthManager::GUARD_ATTRIBUTE);
             $name = is_string($preset) ? $preset : $this->authManager->defaultGuardName();
         } else {
             $user = null;
             foreach ($this->guards as $guardName => $guard) {
-                if ($user !== null) {
-                    if ($guard instanceof SessionGuard) {
-                        $guard->restore($request);
-                    }
+                $found = $guard->user($request);
+                if ($found === null && $guard instanceof SessionGuard) {
+                    $found = $guard->restore($request);
+                }
+                if ($found === null) {
                     continue;
                 }
-                $user = $guard->user($request);
-                if ($user === null && $guard instanceof SessionGuard) {
-                    $user = $guard->restore($request);
-                }
-                if ($user !== null) {
+                if ($user === null) {
+                    $user = $found;
                     $name = (string) $guardName;
+                } else {
+                    $others[(string) $guardName] = $found;
                 }
             }
         }
@@ -68,6 +69,9 @@ final class ResolveUserMiddleware implements MiddlewareInterface
             $this->authManager->setUser(null);
         } else {
             $this->authManager->setUser($user, $name);
+            foreach ($others as $otherName => $other) {
+                $this->authManager->addUser($other, $otherName);
+            }
             $request = $request
                 ->withAttribute(Authenticatable::class, $user)
                 ->withAttribute(AuthManager::GUARD_ATTRIBUTE, $name);

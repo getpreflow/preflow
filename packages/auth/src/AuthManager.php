@@ -13,6 +13,9 @@ final class AuthManager
 
     private ?string $resolvedGuard = null;
 
+    /** @var array<string, Authenticatable> every user resolved for this request, by guard (the first is the primary) */
+    private array $resolvedUsers = [];
+
     /** @param array<string, GuardInterface> $guards */
     public function __construct(
         private readonly array $guards,
@@ -33,6 +36,19 @@ final class AuthManager
     {
         $this->resolvedUser = $user;
         $this->resolvedGuard = $user === null ? null : ($guard ?? $this->defaultGuard);
+        $this->resolvedUsers = $user === null ? [] : [$this->resolvedGuard => $user];
+    }
+
+    /** Another guard's user, signed in for this request beside the primary one. */
+    public function addUser(Authenticatable $user, string $guard): void
+    {
+        $this->resolvedUsers[$guard] ??= $user;
+    }
+
+    /** @return array<string, Authenticatable> every user signed in for this request, by guard */
+    public function users(): array
+    {
+        return $this->resolvedUsers;
     }
 
     public function guardName(): ?string
