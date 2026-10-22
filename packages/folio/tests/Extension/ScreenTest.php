@@ -164,6 +164,28 @@ final class ScreenTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_screen_permission_with_placeholder_throws(): void
+    {
+        $this->clash('reports', '{type}.view');
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessage('"{type}.view"');
+        $this->app();
+    }
+
+    #[RunInSeparateProcess]
+    public function test_screen_permission_checked_directly(): void
+    {
+        $this->clash('reports', 'reports.view');
+        $this->as('editor'); // has post.view and folio.dashboard, not reports.view
+
+        $this->assertSame(403, $this->send('GET', '/folio/reports')->getStatusCode());
+        $byType = $this->send('GET', '/folio/reports/post'); // a "type" parameter naming a type the editor may view
+        $this->assertSame(403, $byType->getStatusCode());
+        $this->assertStringNotContainsString('clash by type', (string) $byType->getBody());
+    }
+
+    #[RunInSeparateProcess]
     public function test_unmapped_non_folio_handler_still_403(): void
     {
         $this->members(); // a screen is enabled; other handlers stay closed
@@ -190,8 +212,8 @@ final class ScreenTest extends TestCase
         $this->write('config/folio/extensions.json', (string) json_encode(['enabled' => ['members' => ['disabled_parts' => $disabled]]]));
     }
 
-    /** An enabled extension "clash" whose one screen has this path. */
-    private function clash(string $path): void
+    /** An enabled extension "clash" whose one screen has this path and permission (GET / and GET /{type}). */
+    private function clash(string $path, string $permission = 'clash.view'): void
     {
         $this->write('app/Folio/Clash/Extension.php', <<<'PHP'
             <?php
@@ -202,11 +224,14 @@ final class ScreenTest extends TestCase
         $this->write('app/Folio/Clash/Screens/Clash.php', <<<PHP
             <?php
             namespace App\\Folio\\Clash\\Screens;
-            #[\\Preflow\\Folio\\Extension\\Attributes\\FolioScreen('{$path}', 'Clash', permission: 'clash.view')]
+            #[\\Preflow\\Folio\\Extension\\Attributes\\FolioScreen('{$path}', 'Clash', permission: '{$permission}')]
             final class Clash
             {
                 #[\\Preflow\\Routing\\Attributes\\Get('/')]
                 public function index(): string { return 'clash'; }
+
+                #[\\Preflow\\Routing\\Attributes\\Get('/{type}')]
+                public function byType(): string { return 'clash by type'; }
             }
             PHP);
         $this->write('config/folio/extensions.json', '{"enabled": {"clash": {"disabled_parts": []}}}');

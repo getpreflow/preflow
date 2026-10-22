@@ -177,6 +177,9 @@ final class ScreenRegistry
         if ($meta->permission === null || $meta->permission === '') {
             throw new ExtensionException("Screen {$class} needs a permission (#[FolioScreen(..., permission: '...')]).");
         }
+        if (preg_match('/^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)+$/', $meta->permission) !== 1) {
+            throw new ExtensionException("Screen {$class}: permission \"{$meta->permission}\" must match /^[a-z][a-z0-9_-]*(\\.[a-z0-9_-]+)+$/ (e.g. \"members.approve\").");
+        }
 
         $actions = [];
         foreach ($reflection->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {

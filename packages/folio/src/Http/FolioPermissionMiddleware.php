@@ -70,9 +70,12 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $route = $request->getAttribute(Route::class);
-        $rule = $route instanceof Route
-            ? self::rule($route->handler) ?? $this->screens->permissionFor(explode('@', $route->handler, 2)[0])
-            : null;
+        $rule = $route instanceof Route ? self::rule($route->handler) : null;
+        if ($rule === null && $route instanceof Route
+            && ($permission = $this->screens->permissionFor(explode('@', $route->handler, 2)[0])) !== null) {
+            // A screen's own permission, asked as is: never a {type} placeholder, wildcard or redirect.
+            return $this->access->can($permission) ? $handler->handle($request) : $this->forbidden($request);
+        }
         if ($rule === null) {
             return $this->forbidden($request); // fail closed: an unmapped admin route is never open
         }
