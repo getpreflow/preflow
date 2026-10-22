@@ -76,4 +76,28 @@ final class SchemaTest extends TestCase
         $this->assertContains('created_at', $columns);
         $this->assertContains('updated_at', $columns);
     }
+
+    public function test_has_table_and_columns(): void
+    {
+        $this->schema->create('t', function (Table $table) {
+            $table->uuid('id')->primary();
+            $table->string('name');
+        });
+
+        $this->assertTrue($this->schema->hasTable('t'));
+        $this->assertFalse($this->schema->hasTable('x'));
+        $this->assertSame(['id', 'name'], $this->schema->columns('t'));
+    }
+
+    public function test_add_column_is_nullable(): void
+    {
+        $this->schema->create('t', function (Table $table) {
+            $table->uuid('id')->primary();
+        });
+        $this->schema->addColumn('t', 'note');
+        $this->pdo->exec("INSERT INTO t (id) VALUES ('a')");
+
+        $this->assertSame(['id', 'note'], $this->schema->columns('t'));
+        $this->assertNull($this->pdo->query('SELECT note FROM t')->fetchColumn());
+    }
 }

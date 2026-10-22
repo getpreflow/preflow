@@ -6,10 +6,14 @@ namespace Preflow\Data\Migration;
 
 final class Migrator
 {
+    /** @var list<string> */
+    private readonly array $migrationsPaths;
+
     public function __construct(
         private readonly \PDO $pdo,
-        private readonly string $migrationsPath,
+        string|array $migrationsPaths,
     ) {
+        $this->migrationsPaths = is_array($migrationsPaths) ? array_values($migrationsPaths) : [$migrationsPaths];
         $this->ensureMigrationsTable();
     }
 
@@ -45,18 +49,29 @@ final class Migrator
     }
 
     /**
-     * @return string[] All migration file paths, sorted by name
+     * @return string[] All migration file paths across all directories, sorted by name
      */
     private function allFiles(): array
     {
-        if (!is_dir($this->migrationsPath)) {
-            return [];
+        $byName = [];
+
+        foreach ($this->migrationsPaths as $path) {
+            if (!is_dir($path)) {
+                continue;
+            }
+
+            foreach (glob($path . '/*.php') as $file) {
+                $name = basename($file);
+                if (isset($byName[$name])) {
+                    throw new \RuntimeException("Duplicate migration name [{$name}]: {$byName[$name]} and {$file}.");
+                }
+                $byName[$name] = $file;
+            }
         }
 
-        $files = glob($this->migrationsPath . '/*.php');
-        sort($files);
+        ksort($byName, SORT_STRING);
 
-        return $files;
+        return array_values($byName);
     }
 
     /**

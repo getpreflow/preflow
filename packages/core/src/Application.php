@@ -267,6 +267,12 @@ final class Application
         // without config/data.php), so packages like Folio can always read them.
         $this->container->instance(\Preflow\Data\Locales::class, $this->contentLocales());
 
+        // The migration registry is bound without config/data.php too, so
+        // packages can register paths and steps regardless of data config.
+        $migrations = new \Preflow\Data\Migration\MigrationRegistry();
+        $migrations->addPath($this->basePath('migrations'));
+        $this->container->instance(\Preflow\Data\Migration\MigrationRegistry::class, $migrations);
+
         $dataConfigPath = $this->basePath('config/data.php');
         if (!file_exists($dataConfigPath)) {
             return;
