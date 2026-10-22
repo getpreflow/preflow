@@ -45,6 +45,9 @@ php preflow migrate --storage=sqlite   # the storage to migrate (default: sqlite
   idempotent. Folio's step is SQLite-only for now (a Folio type on MySQL makes it throw),
   and creates and adds only; it never drops or renames.
 - `--pretend` skips the steps. The command exits 1 with `Error: ...` on stderr when it fails.
+- A site without SQL storage (JSON only, or no `config/data.php`) prints
+  `Nothing to migrate: no SQL storage configured.` and exits 0, so a shared deploy step
+  can always run it. An explicit `--storage=<key>` that is unknown or not SQL still exits 1.
 
 ### `make:component Name` — scaffold a component
 

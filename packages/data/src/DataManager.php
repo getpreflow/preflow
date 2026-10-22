@@ -351,6 +351,12 @@ final class DataManager
         return $this->typeRegistry;
     }
 
+    /** @return list<string> the configured driver names ('default' included when it resolves) */
+    public function driverNames(): array
+    {
+        return array_keys($this->drivers);
+    }
+
     /** The storage driver for a configured name; an unknown name is an error, never a fallback. */
     public function driver(string $name): StorageDriver
     {

@@ -23,7 +23,7 @@ final class MigrateCommand implements CommandInterface
 
     public function execute(array $args): int
     {
-        $storage = 'sqlite';
+        $storage = null;
         $pretend = false;
         foreach ($args as $arg) {
             if ($arg === '--pretend') {
@@ -37,11 +37,20 @@ final class MigrateCommand implements CommandInterface
             $app = $this->app();
             $container = $app->container();
 
-            if (!$container->has(DataManager::class)) {
+            // Without --storage, a site with no SQL storage (JSON only, or no config/data.php)
+            // has nothing to migrate: that is success, so a shared deploy step can always run it.
+            // (The DataManager is bound only with config/data.php; has() is true for any class.)
+            $dm = is_file($app->basePath('config/data.php')) ? $container->get(DataManager::class) : null;
+            if ($storage === null && !$this->hasSqlStorage($dm)) {
+                echo "Nothing to migrate: no SQL storage configured.\n";
+                return 0;
+            }
+            if ($dm === null) {
                 throw new \RuntimeException('No data configuration found (config/data.php).');
             }
 
-            $driver = $container->get(DataManager::class)->driver($storage);
+            $storage ??= 'sqlite';
+            $driver = $dm->driver($storage);
             if (!$driver instanceof PdoDriver) {
                 throw new \RuntimeException("Storage driver [{$storage}] is not a SQL driver; nothing to migrate.");
             }
@@ -77,6 +86,17 @@ final class MigrateCommand implements CommandInterface
             fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
             return 1;
         }
+    }
+
+    private function hasSqlStorage(?DataManager $dm): bool
+    {
+        foreach ($dm?->driverNames() ?? [] as $name) {
+            if ($dm->driver($name) instanceof PdoDriver) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function app(): Application

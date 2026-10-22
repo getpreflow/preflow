@@ -135,20 +135,28 @@ final class MigrateCommandTest extends TestCase
         $this->assertNotContains('apps', $this->tables());
     }
 
-    public function test_without_sqlite_driver_exits_1(): void
+    public function test_json_only_site_exits_0(): void
     {
-        $dir = $this->dir; // no config/data.php: no sqlite driver
-        $command = new MigrateCommand(static function () use ($dir): Application {
-            $app = Application::create($dir);
-            $app->boot();
+        file_put_contents($this->dir . '/config/data.php', '<?php return ["default" => "json", "drivers" => ["json" => ["path" => ' . var_export($this->dir . '/data', true) . ']]];');
 
-            return $app;
-        });
+        [$code, $out] = $this->migrate();
 
-        ob_start();
-        $code = $command->execute([]);
-        ob_end_clean();
+        $this->assertSame(0, $code);
+        $this->assertSame("Nothing to migrate: no SQL storage configured.\n", $out);
+        $this->assertFileDoesNotExist($this->dir . '/app.sqlite');
 
-        $this->assertSame(1, $code);
+        unlink($this->dir . '/config/data.php'); // no data configuration at all: no SQL storage either
+        $this->assertSame([0, "Nothing to migrate: no SQL storage configured.\n"], $this->migrate());
+    }
+
+    public function test_explicit_storage_that_is_unknown_or_not_sql_exits_1(): void
+    {
+        file_put_contents($this->dir . '/config/data.php', '<?php return ["default" => "json", "drivers" => ["json" => ["path" => ' . var_export($this->dir . '/data', true) . ']]];');
+
+        foreach (['--storage=sqlite', '--storage=json'] as $arg) {
+            [$code, $out] = $this->migrate([$arg]);
+            $this->assertSame(1, $code, $arg);
+            $this->assertStringNotContainsString('seeded', $out, $arg);
+        }
     }
 }
