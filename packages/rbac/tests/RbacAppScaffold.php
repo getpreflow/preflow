@@ -15,7 +15,8 @@ use Psr\Http\Message\ResponseInterface;
 /**
  * A temp app with Folio, auth (staff from config/auth.php: admin, editor, keeper) and the
  * rbac extension enabled (a fake vendor/composer/installed.json lists the package), with
- * a "page" type and a "member" user type (population members).
+ * a "page" type, a "member" user type (population members) and a "team" type whose
+ * rbac_roles field names its population.
  */
 trait RbacAppScaffold
 {
@@ -58,7 +59,13 @@ trait RbacAppScaffold
             'fields' => [
                 'email' => ['type' => 'string'],
                 'roles' => ['type' => 'rbac_roles', 'label' => 'Roles'],
-                'staff_roles' => ['type' => 'rbac_roles', 'label' => 'Staff roles', 'population' => 'staff'],
+            ],
+        ]));
+        $this->write('config/models/team.json', (string) json_encode([
+            'key' => 'team', 'table' => 'team', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Teams',
+            'fields' => [
+                'title' => ['type' => 'string'],
+                'member_roles' => ['type' => 'rbac_roles', 'label' => 'Member roles', 'population' => 'members'],
             ],
         ]));
         $this->write('vendor/composer/installed.json', (string) json_encode(['packages' => [

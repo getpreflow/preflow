@@ -95,19 +95,42 @@ final class RolesInFolioTest extends TestCase
             '#<legend>Roles</legend>\s*<input type="hidden" name="roles\[\]" value="">\s*<label class="form-radio"><input type="checkbox" name="roles\[\]" value="member"> Member</label>\s*<label class="form-radio"><input type="checkbox" name="roles\[\]" value="supporter"> Supporter</label>\s*</fieldset>#',
             $form,
         );
-        // "population" in the field config wins over the type's.
+        // A type without "users" takes the field config's "population".
         $this->assertMatchesRegularExpression(
-            '#<legend>Staff roles</legend>\s*<input type="hidden" name="staff_roles\[\]" value="">\s*<label class="form-radio"><input type="checkbox" name="staff_roles\[\]" value="admin"> Administrator</label>\s*</fieldset>#',
-            $form,
+            '#<legend>Member roles</legend>\s*<input type="hidden" name="member_roles\[\]" value="">\s*<label class="form-radio"><input type="checkbox" name="member_roles\[\]" value="member"> Member</label>\s*<label class="form-radio"><input type="checkbox" name="member_roles\[\]" value="supporter"> Supporter</label>\s*</fieldset>#',
+            (string) $this->send('GET', '/folio/team/new')->getBody(),
         );
 
-        $this->assertSame(302, $this->send('POST', '/folio/member', ['email' => 'm@site.test', 'roles' => ['', 'supporter'], 'staff_roles' => ['']])->getStatusCode());
+        $this->assertSame(302, $this->send('POST', '/folio/member', ['email' => 'm@site.test', 'roles' => ['', 'supporter']])->getStatusCode());
         $member = array_values($this->container()->get(\Preflow\Data\DataManager::class)->queryType('member')->get()->items())[0];
         $this->assertSame(['supporter'], $member->get('roles'));
-        $this->assertSame([], $member->get('staff_roles'));
 
         $edit = (string) $this->send('GET', '/folio/member/' . $member->getId() . '/edit')->getBody();
         $this->assertStringContainsString('<input type="checkbox" name="roles[]" value="supporter" checked> Supporter', $edit);
+    }
+
+    /** @return array<string, array{array<string, mixed>, string}> */
+    public static function staffRoleFields(): array
+    {
+        return [
+            'field population' => [['fields' => ['staff_roles' => ['type' => 'rbac_roles', 'population' => 'staff']]], 'team.staff_roles'],
+            // The type's "users" population counts when the field names none.
+            'staff user type' => [['users' => 'staff', 'fields' => ['roles' => ['type' => 'rbac_roles']]], 'team.roles'],
+        ];
+    }
+
+    /** @param array<string, mixed> $model */
+    #[RunInSeparateProcess]
+    #[\PHPUnit\Framework\Attributes\DataProvider('staffRoleFields')]
+    public function test_rbac_roles_for_staff_population_throws(array $model, string $field): void
+    {
+        $this->write('config/models/team.json', (string) json_encode(['key' => 'team', 'table' => 'team', 'storage' => 'json', 'id_field' => 'uuid'] + $model));
+        try {
+            $this->app();
+            $this->fail('an rbac_roles field for the staff population booted');
+        } catch (\Preflow\Folio\Extension\ExtensionException $e) {
+            $this->assertSame("Field {$field}: Assigning staff roles through Folio has no delegation rule yet; staff logins come from config/auth.php.", $e->getMessage());
+        }
     }
 
     #[RunInSeparateProcess]

@@ -51,8 +51,12 @@ A user type gives its users roles with an `rbac_roles` field:
 { "key": "member", "users": "members", "fields": { "roles": { "type": "rbac_roles" } } }
 ```
 
-The field lists the roles of the type's `users` population; `"population": "staff"` on the
-field lists another population's. The value is a list of role names.
+The field lists the roles of the type's `users` population; a `"population"` on the field
+names another one. The value is a list of role names.
+
+Only member populations are supported for now: an `rbac_roles` field whose population is
+`staff` is an error at boot ("Assigning staff roles through Folio has no delegation rule
+yet; staff logins come from config/auth.php."). Staff roles are given in `config/auth.php`.
 
 ## Lock-out protection
 
