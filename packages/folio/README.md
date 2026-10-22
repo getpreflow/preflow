@@ -598,6 +598,10 @@ is not routed.
 ```
 
 - Private files get no variants, and nothing under the media URL serves them.
+- A private field only takes private assets, and a public field only public ones. Its
+  picker lists just those, and its uploads match. Choosing the other kind is refused with
+  a field error, so a public file never ends up in a private field. Without the asset
+  library, a private field refuses uploads.
 - Their only URL is `{private_url}/{id}`, e.g. `/files/3f…e1`. `folio_asset_url()`,
   `folio_image()` (a plain `<img>`, no srcset) and the admin thumbnails all use it.
 - The route serves the file only to a signed-in user with `private_permission`; staff
@@ -611,7 +615,8 @@ is not routed.
   private URL's prefix (`/files`, or `/tools` for `/tools/files`).
 - A `private_dir` inside `public/` or the media directory is refused at boot.
 - Export and pull carry the private files with their asset records (archive root
-  `private-media/`).
+  `private-media/`). An archive from before private assets has no such root, and
+  importing it leaves local private files alone.
 
 For a members area:
 

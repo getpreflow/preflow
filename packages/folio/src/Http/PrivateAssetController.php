@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
+use Nyholm\Psr7\Stream;
 use Preflow\Folio\Assets\AssetLibrary;
 use Preflow\Folio\Content\FrontendGate;
 use Psr\Http\Message\ResponseInterface;
@@ -65,6 +66,6 @@ final class PrivateAssetController
             'Content-Disposition' => ($inline ? 'inline' : 'attachment') . '; filename="' . $ascii . '"; filename*=UTF-8\'\'' . rawurlencode($name),
             'Cache-Control' => self::NO_STORE,
             'X-Content-Type-Options' => 'nosniff',
-        ], (string) file_get_contents($full));
+        ], Stream::create(fopen($full, 'rb'))); // streamed: member files may be large
     }
 }

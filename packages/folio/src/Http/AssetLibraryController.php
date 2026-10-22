@@ -44,6 +44,7 @@ final class AssetLibraryController
     {
         $body = (array) $request->getParsedBody();
         $picker = ($body['picker'] ?? '') === '1';
+        $private = $picker ? self::privacy($body) : null;
         $user = $request->getAttribute(\Preflow\Auth\Authenticatable::class);
         $by = $user instanceof \Preflow\Auth\Authenticatable ? $user->getAuthId() : null;
 
@@ -56,7 +57,7 @@ final class AssetLibraryController
                 continue;
             }
             try {
-                $created[] = $this->library->upload($file, $by)->id;
+                $created[] = $this->library->upload($file, $by, private: $private === true)->id;
             } catch (AssetUploadException $e) {
                 $errors[] = $e->getMessage();
             }
@@ -68,7 +69,8 @@ final class AssetLibraryController
 
         $location = $this->prefix . '/assets';
         if ($picker) {
-            $location .= '?picker=1&multiple=' . (($body['multiple'] ?? '') === '1' ? '1' : '0') . '&selected=' . implode(',', $created);
+            $location .= '?picker=1&multiple=' . (($body['multiple'] ?? '') === '1' ? '1' : '0')
+                . ($private !== null ? '&private=' . ($private ? '1' : '0') : '') . '&selected=' . implode(',', $created);
         }
 
         return new Response(302, ['Location' => $location]);
@@ -128,12 +130,13 @@ final class AssetLibraryController
         $view = ($params['view'] ?? '') === 'list' ? 'list' : 'grid';
         $picker = ($params['picker'] ?? '') === '1';
         $multiple = ($params['multiple'] ?? '') === '1';
+        $private = $picker ? self::privacy($params) : null; // a field's picker lists only what the field accepts
         $page = max(1, (int) ($params['page'] ?? 1));
         if ($selected === [] && is_string($params['selected'] ?? null)) {
             $selected = array_values(array_filter(explode(',', $params['selected'])));
         }
 
-        $assets = array_values(array_filter($this->library->all(), static fn (Asset $a) => ($kind === '' || $a->kind() === $kind) && self::matches($a, $q)));
+        $assets = array_values(array_filter($this->library->all(), static fn (Asset $a) => ($kind === '' || $a->kind() === $kind) && ($private === null || $a->private === $private) && self::matches($a, $q)));
         $total = count($assets);
         $pages = max(1, (int) ceil($total / self::PER_PAGE));
         $page = min($page, $pages);
@@ -153,10 +156,11 @@ final class AssetLibraryController
             'view' => $view,
             'picker' => $picker,
             'multiple' => $multiple,
+            'private' => $private,
             'selected' => $selected,
             'errors' => $errors,
             'csrf' => self::csrf($request),
-            'query' => array_filter(['q' => $q, 'kind' => $kind, 'picker' => $picker ? '1' : '', 'multiple' => $picker ? ($multiple ? '1' : '0') : ''], static fn ($v) => $v !== ''),
+            'query' => array_filter(['q' => $q, 'kind' => $kind, 'picker' => $picker ? '1' : '', 'multiple' => $picker ? ($multiple ? '1' : '0') : '', 'private' => $private === null ? '' : ($private ? '1' : '0')], static fn ($v) => $v !== ''),
         ]), $status);
     }
 
@@ -206,6 +210,20 @@ final class AssetLibraryController
             'poster' => $asset->posterId,
             'created_at' => $asset->createdAt,
         ];
+    }
+
+    /**
+     * The picker's "private" parameter: true or false, null when absent (any).
+     *
+     * @param array<mixed> $params
+     */
+    private static function privacy(array $params): ?bool
+    {
+        return match ($params['private'] ?? null) {
+            '1' => true,
+            '0' => false,
+            default => null,
+        };
     }
 
     private static function matches(Asset $asset, string $q): bool

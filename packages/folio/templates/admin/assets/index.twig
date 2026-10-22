@@ -12,7 +12,7 @@
 
     <div class="folio-assets-toolbar">
         <form method="get" action="{{ prefix }}/assets" class="folio-assets-search">
-            {% if picker %}<input type="hidden" name="picker" value="1"><input type="hidden" name="multiple" value="{{ multiple ? '1' : '0' }}">{% endif %}
+            {% if picker %}<input type="hidden" name="picker" value="1"><input type="hidden" name="multiple" value="{{ multiple ? '1' : '0' }}">{% if private is not null %}<input type="hidden" name="private" value="{{ private ? '1' : '0' }}">{% endif %}{% endif %}
             <input type="search" name="q" value="{{ q }}" placeholder="Search name, title or alt text" aria-label="Search assets">
             <select name="kind" aria-label="Kind">
                 <option value="">All kinds</option>
@@ -31,7 +31,7 @@
         {% if can('assets.upload') %}
         <form method="post" action="{{ prefix }}/assets" enctype="multipart/form-data" class="folio-assets-upload">
             <input type="hidden" name="_csrf_token" value="{{ csrf }}">
-            {% if picker %}<input type="hidden" name="picker" value="1"><input type="hidden" name="multiple" value="{{ multiple ? '1' : '0' }}">{% endif %}
+            {% if picker %}<input type="hidden" name="picker" value="1"><input type="hidden" name="multiple" value="{{ multiple ? '1' : '0' }}">{% if private is not null %}<input type="hidden" name="private" value="{{ private ? '1' : '0' }}">{% endif %}{% endif %}
             <input type="file" name="files[]" multiple aria-label="Files to upload">
             <button type="submit" class="btn btn-primary">Upload</button>
         </form>

@@ -72,7 +72,7 @@ final class AssetFieldType implements FieldType, HandlesUpload
 
         $attrs = ' data-folio-asset-field data-selection-name="' . $e($selection) . '" data-multiple="' . ($cfg['multiple'] ? '1' : '0') . '"';
         if ($this->library !== null) {
-            $attrs .= ' data-picker-url="' . $e(rtrim($this->adminPrefix, '/') . '/assets?picker=1&multiple=' . ($cfg['multiple'] ? '1' : '0')) . '"';
+            $attrs .= ' data-picker-url="' . $e(rtrim($this->adminPrefix, '/') . '/assets?picker=1&multiple=' . ($cfg['multiple'] ? '1' : '0') . '&private=' . ($cfg['private'] ? '1' : '0')) . '"';
         }
         $html = '<div class="form-group folio-asset' . ($hasError ? ' has-error' : '') . '"' . $attrs . '>' . "\n";
         $html .= '  <label>' . $e($label);
@@ -204,9 +204,38 @@ final class AssetFieldType implements FieldType, HandlesUpload
         $base = $submittedIds === null
             ? $this->toList($this->fromStorage($existing))
             // Only values that exist: asset ids, or paths this field wrote earlier.
-            : array_values(array_filter($submittedIds, fn ($v) => is_string($v) && $v !== '' && ($this->library?->isAssetId($v) === true || $this->isStoredUpload($v))));
+            : $this->matchingPrivacy(
+                array_values(array_filter($submittedIds, fn ($v) => is_string($v) && $v !== '' && ($this->library?->isAssetId($v) === true || $this->isStoredUpload($v)))),
+                $this->assetConfig($config)['private'],
+            );
 
         return (string) $this->toStorage($this->limit($this->addUploads($base, $writeUploads ? $uploads : [], $config, $by), $config));
+    }
+
+    /**
+     * Posted values whose privacy matches the field's: a private field takes only
+     * private assets (a public one, or a legacy upload, stays world-readable), a
+     * public field only public ones. The others are refused with a message.
+     *
+     * @param list<string> $values
+     * @return list<string>
+     */
+    private function matchingPrivacy(array $values, bool $private): array
+    {
+        $kept = [];
+        foreach ($values as $value) {
+            $asset = $this->library?->find($value);
+            if (($asset?->private ?? false) === $private) {
+                $kept[] = $value;
+                continue;
+            }
+            $label = $asset?->originalName ?? basename($value);
+            $this->errors[] = $private
+                ? "{$label} is a public file; upload it here to make it private."
+                : "{$label} is a private file; it can only be used in a private field.";
+        }
+
+        return $kept;
     }
 
     /** Trusted $kept values plus the uploads (HandlesUpload). */
@@ -226,6 +255,11 @@ final class AssetFieldType implements FieldType, HandlesUpload
         $cfg = $this->assetConfig($config);
         foreach ($uploads as $file) {
             if (!$file instanceof UploadedFileInterface || $file->getError() !== UPLOAD_ERR_OK) {
+                continue;
+            }
+            if ($cfg['private'] && $this->library === null) {
+                // Legacy uploads are served publicly: never store a private file there.
+                $this->errors[] = ($file->getClientFilename() ?? 'upload') . ': private files need the asset library; it was not stored.';
                 continue;
             }
             $stored = $this->library !== null ? $this->storeInLibrary($file, $cfg['accept'], $by, $cfg['private']) : $this->storeLegacy($file, $cfg['accept']);

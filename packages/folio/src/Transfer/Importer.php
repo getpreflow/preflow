@@ -44,7 +44,7 @@ final class Importer
             return new ImportPlan(
                 $dir,
                 $withData ? $this->diffTables($dir, $manifest) : [],
-                $withFiles ? $this->diffFiles($dir) : [],
+                $withFiles ? $this->diffFiles($dir, $manifest) : [],
             );
         } catch (\Throwable $e) {
             self::removeDir($dir);
@@ -180,8 +180,11 @@ final class Importer
         return $out;
     }
 
-    /** @return array<string, array{added: list<string>, changed: list<string>, removed: list<string>}> */
-    private function diffFiles(string $dir): array
+    /**
+     * @param array<string, mixed> $manifest
+     * @return array<string, array{added: list<string>, changed: list<string>, removed: list<string>}>
+     */
+    private function diffFiles(string $dir, array $manifest): array
     {
         $out = [];
         foreach ($this->set->fileRoots() as $root => $local) {
@@ -195,7 +198,8 @@ final class Importer
                     $diff['changed'][] = $rel;
                 }
             }
-            $diff['removed'] = array_values(array_diff($existing, $incoming));
+            // A root the archive does not name (an export from before private assets) removes nothing.
+            $diff['removed'] = array_key_exists($root, $manifest) ? array_values(array_diff($existing, $incoming)) : [];
             $out[$root] = $diff;
         }
 

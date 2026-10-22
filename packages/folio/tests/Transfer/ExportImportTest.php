@@ -153,6 +153,31 @@ final class ExportImportTest extends TestCase
         $this->assertSame(['2026/10/stray.jpg'], $summary['media']['removed']);
     }
 
+    public function test_import_without_private_root_keeps_local_private_files(): void
+    {
+        // An archive from a server before private assets: its manifest has no "private-media" root.
+        $this->put('storage/private-media/2026/10/p1.pdf', 'PRIVATEPDF');
+        $summary = $this->import($this->craft('media/2026/10/a1.jpg', 'JPEGBYTES'));
+
+        $this->assertSame('PRIVATEPDF', file_get_contents($this->dir . '/storage/private-media/2026/10/p1.pdf'));
+        $this->assertSame([], $this->importer()->read($this->craft('media/2026/10/a1.jpg', 'JPEGBYTES'))->files['private-media']['removed'] ?? []);
+
+        // A current archive carries the root, so a file only here is removed as before.
+        $archive = $this->export();
+        $this->put('storage/private-media/2026/10/stray.pdf', 'X');
+        $this->import($archive);
+        $this->assertFileDoesNotExist($this->dir . '/storage/private-media/2026/10/stray.pdf');
+        $this->assertFileExists($this->dir . '/storage/private-media/2026/10/p1.pdf');
+        $this->assertArrayHasKey('media', $summary);
+    }
+
+    private function importer(): Importer
+    {
+        $app = $this->app();
+
+        return new Importer(ContentSet::fromApp($app), $app->container()->get(DataManager::class));
+    }
+
     /** An archive with a valid manifest plus one extra entry. */
     private function craft(string $entry, string $bytes, array $tables = ['post' => 0]): mixed
     {

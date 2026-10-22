@@ -140,7 +140,7 @@ final class AssetFieldLibraryTest extends TestCase
         $this->assertStringContainsString('<input type="hidden" name="cover_ids[]" value="">', $html);
         $this->assertStringContainsString('name="cover_ids[]" value="' . $a . '"', $html);
         $this->assertStringContainsString('data-folio-asset-choose', $html);
-        $this->assertStringContainsString('data-picker-url="/folio/assets?picker=1&amp;multiple=0"', $html);
+        $this->assertStringContainsString('data-picker-url="/folio/assets?picker=1&amp;multiple=0&amp;private=0"', $html);
         $this->assertStringContainsString('data-selection-name="cover_ids[]"', $html);
         $this->assertStringContainsString('src="' . $this->lib->thumbnailUrl($this->lib->find($a)) . '"', $html);
         $this->assertStringContainsString('data-folio-asset-remove', $html);

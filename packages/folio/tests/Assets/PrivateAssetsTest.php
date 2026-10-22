@@ -310,6 +310,94 @@ final class PrivateAssetsTest extends TestCase
         $this->app();
     }
 
+    /** The asset field type and a resolve() of these posted ids for a private or public field. */
+    private function resolveIds(array $ids, bool $private): array
+    {
+        $field = $this->app()->container()->get(FieldTypeRegistry::class)->get('asset');
+        $this->assertInstanceOf(\Preflow\Folio\Field\Types\AssetFieldType::class, $field);
+        $value = $field->resolve(['', ...$ids], null, [], ['asset' => ['multiple' => true, 'private' => $private]], true, null);
+
+        return [json_decode($value, true), $field->drainErrors()];
+    }
+
+    #[RunInSeparateProcess]
+    public function test_public_asset_refused_in_private_field(): void
+    {
+        $public = $this->lib()->upload($this->file($this->png(40, 30), 'Open.png'), null);
+        $private = $this->uploadPrivate($this->file($this->pdf(), 'Guide.pdf'));
+
+        [$kept, $errors] = $this->resolveIds([$public->id, $private->id], true);
+        $this->assertSame([$private->id], $kept);
+        $this->assertSame(['Open.png is a public file; upload it here to make it private.'], $errors);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_private_asset_refused_in_public_field(): void
+    {
+        $public = $this->lib()->upload($this->file($this->png(40, 30), 'Open.png'), null);
+        $private = $this->uploadPrivate($this->file($this->pdf(), 'Guide.pdf'));
+
+        [$kept, $errors] = $this->resolveIds([$public->id, $private->id], false);
+        $this->assertSame([$public->id], $kept);
+        $this->assertSame(['Guide.pdf is a private file; it can only be used in a private field.'], $errors);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_picker_lists_and_uploads_matching_assets(): void
+    {
+        $public = $this->lib()->upload($this->file($this->png(40, 30), 'Open.png'), null);
+        $private = $this->uploadPrivate($this->file($this->pdf(), 'Guide.pdf'));
+        $this->signIn('_auth_user_id', 'admin@site.test');
+
+        // The field's picker URL names its privacy.
+        $field = $this->app()->container()->get(FieldTypeRegistry::class)->get('asset');
+        $ctx = new \Preflow\Folio\Field\FieldContext(name: 'pdf', value: null, config: ['asset' => ['private' => true]]);
+        $this->assertStringContainsString('data-picker-url="/folio/assets?picker=1&amp;multiple=0&amp;private=1"', $field->renderEditor($ctx));
+
+        $onlyPrivate = (string) $this->fetch('/folio/assets?picker=1&multiple=0&private=1')->getBody();
+        $this->assertStringContainsString('data-id="' . $private->id . '"', $onlyPrivate);
+        $this->assertStringNotContainsString('data-id="' . $public->id . '"', $onlyPrivate);
+        $this->assertStringContainsString('name="private" value="1"', $onlyPrivate); // kept by search and upload
+        $onlyPublic = (string) $this->fetch('/folio/assets?picker=1&multiple=0&private=0')->getBody();
+        $this->assertStringContainsString('data-id="' . $public->id . '"', $onlyPublic);
+        $this->assertStringNotContainsString('data-id="' . $private->id . '"', $onlyPublic);
+
+        // An upload from the private picker is private.
+        preg_match('/name="_csrf_token" value="([^"]+)"/', $onlyPrivate, $m);
+        $f = new Psr17Factory();
+        $res = $this->app()->handle($f->createServerRequest('POST', '/folio/assets')
+            ->withParsedBody(['_csrf_token' => $m[1] ?? '', 'picker' => '1', 'multiple' => '0', 'private' => '1'])
+            ->withUploadedFiles(['files' => [$this->file($this->pdf(), 'New.pdf')]]));
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertStringContainsString('private=1', $res->getHeaderLine('Location'));
+        $new = array_values(array_filter($this->lib()->all(), static fn (Asset $a) => $a->originalName === 'New.pdf'));
+        $this->assertCount(1, $new);
+        $this->assertTrue($new[0]->private);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_private_field_without_library_refuses_upload(): void
+    {
+        $uploads = $this->dir . '/storage/uploads';
+        $field = new \Preflow\Folio\Field\Types\AssetFieldType($uploads, '/folio/_uploads');
+
+        $value = $field->storeUploads([$this->file($this->pdf(), 'Guide.pdf')], [], ['asset' => ['private' => true]]);
+        $this->assertSame('', $value);
+        $this->assertSame(['Guide.pdf: private files need the asset library; it was not stored.'], $field->drainErrors());
+        $this->assertSame([], $this->filesUnder($uploads));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_private_download_is_streamed_from_disk(): void
+    {
+        $pdf = $this->uploadPrivate($this->file($this->pdf(), 'Guide.pdf'));
+        $this->signIn('_auth_user_id.members', 'member@site.test');
+
+        $body = $this->fetch('/tools/files/' . $pdf->id)->getBody();
+        $this->assertSame(realpath($this->dir . '/storage/private-media/' . $pdf->path), $body->getMetadata('uri'));
+        $this->assertSame($this->pdf(), (string) $body);
+    }
+
     #[RunInSeparateProcess]
     public function test_public_assets_unchanged(): void
     {

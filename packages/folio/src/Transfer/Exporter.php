@@ -62,6 +62,8 @@ final class Exporter
             'tables' => $summary['tables'],
             'media' => $summary['media'],
             'uploads' => $summary['uploads'],
+            // Names the root: an import removes local private files only when the archive carries it.
+            'private-media' => count($files['private-media'] ?? []),
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
 
         foreach ($rows as $table => $byId) {
