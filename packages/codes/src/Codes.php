@@ -241,7 +241,8 @@ final class Codes
         return null;
     }
 
-    private function expired(mixed $expiresAt): bool
+    /** Whether an expires_at value (empty: never) has passed; an unreadable one counts as passed. */
+    public function expired(mixed $expiresAt): bool
     {
         if ($expiresAt === null || $expiresAt === '') {
             return false;

@@ -71,3 +71,36 @@ if (!$result->ok) {
 - `revoke($codeId)` stops a code for good.
 - Codes are the Folio type `code` (*Library → Codes*); neither codes nor redemptions are
   exported or imported. The `purpose` field (`codes_purpose`) offers the configured purposes.
+
+## Aliases
+
+The extension stores codes and redemptions in the storage alias `codes` (`config/data.php`
+`aliases`); it must name a SQL driver. A missing alias is an error at boot. The failure
+counters of the throttle live in the table `preflow_throttle` of the driver named `throttle`
+when one is configured (an optional alias), otherwise in the default storage.
+
+## Admin
+
+*Library → Codes* lists the codes with a *Redemptions* column: the number of redemptions, or
+`revoked` / `expired`.
+
+- **Create:** the admin creates readable codes only, for purposes with `readable: true`.
+  The code is normalised (upper case, no spaces or dashes) and must be 4–64 characters
+  `A-Z0-9` and unique within its purpose; otherwise the form shows the error. Random codes
+  come from `Codes::issue()`.
+- **Edit:** only *Label*, *Expires at* and *Max uses* change. Code, purpose, form, uses,
+  revocation and payload keep their stored values, whatever the form posts.
+- **Revoke:** the *Revoke* button on a code needs the permission `codes.revoke` and
+  `code.edit`. It stops the code at once.
+- **Redemptions:** the edit form lists who redeemed the code (the redeemer reference you
+  passed to `redeem()`) and when.
+- **Permissions:** `code.view|create|edit|delete` and `codes.revoke`.
+
+## Privacy
+
+A code is a bearer token. Redemptions store the redeemer reference you pass and the time,
+never an IP address or user agent. The throttle counts failures per client key
+(`Throttle::client($request)`, a daily-rotating salted hash, never the raw IP) in
+`preflow_throttle`, not with the redemption. Codes and
+redemptions are never exported or imported with content, so they do not travel between
+sites.
