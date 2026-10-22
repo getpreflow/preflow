@@ -294,10 +294,20 @@ Any field also takes:
 
 - `"hidden": true`: not shown in the edit form or the default list columns. A save keeps
   the stored value; a posted value is ignored.
-- `"readonly": true`: shown in the edit form as plain text, without an input. A save keeps
-  the stored value; a posted value is ignored.
+- `"readonly": true`: shown in the edit form as its label and display value, without an input:
+  a select its option label, a relation its record labels, a date formatted for the admin,
+  rich text its sanitised markup. A save keeps the stored value; a posted value is ignored.
 
 Both apply on create too: such a field starts empty unless a `#[BeforeSave]` hook sets it.
+
+The admin display (read-only fields and list cells) is the field type's `renderAdmin()` when
+it implements `Preflow\Folio\Field\DisplaysInAdmin`, otherwise its frontend output. A custom
+field type can implement it to show a friendlier value in the admin than it stores. The
+frontend output is never changed by it.
+
+A `date` shows "22 Oct 2026" in the admin, or "22 Oct 2026, 23:15" with `"time": true`. Only
+`Y-m-d`, `Y-m-d\TH:i` and ISO 8601 with an offset (shown in the app's timezone) are parsed; any
+other value is shown escaped as it is stored, never as an error.
 
 A field type's own rules (e.g. `select`'s allowed values) are enforced in addition to
 `validate`. To add or replace a type, list the classes in `config/folio.php`:
