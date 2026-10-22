@@ -1,0 +1,7 @@
+{% extends '@folio/admin/_layout.twig' %}
+{% block title %}{{ screen.label }} — Folio{% endblock %}
+{% block page_title %}{{ screen.label }}{% endblock %}
+{% block content %}
+    <p class="demo-greeting">{{ folio_setting('demo', 'greeting') }}</p>
+    <p>{{ notes|length }} notes</p>
+{% endblock %}

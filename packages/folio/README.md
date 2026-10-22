@@ -564,6 +564,238 @@ php -S 127.0.0.1:8000 -t public public/index.php
 
 `public/index.php` should `return false` for existing files under `cli-server`.
 
+## Extensions
+
+An extension adds screens, type customizations, models and settings to Folio without
+touching Folio itself. A working one ships in
+[`examples/folio-demo/app/Folio/Demo`](../../examples/folio-demo/app/Folio/Demo); the examples below are
+copied from it.
+
+**Where they live.** A project extension is a folder `app/Folio/{Dir}/` with an
+`Extension.php` (class `App\Folio\{Dir}\Extension`). A package names its extension class
+in `composer.json`: `"extra": {"folio": {"extension": "Vendor\\Pkg\\Extension"}}`.
+
+```php
+// app/Folio/Demo/Extension.php
+#[FolioExtension(name: 'demo', label: 'Demo', description: 'A screen, a note customization and a setting', icon: 'ui-puzzle', version: '1.0.0')]
+#[DeclaresPermission('demo.view', 'See the demo screen')]
+#[DeclaresPermission('demo.shout', 'Shout a note')]
+final class Extension extends \Preflow\Folio\Extension\Extension
+{
+    public function settings(): array
+    {
+        return [
+            'greeting' => ['type' => 'string', 'label' => 'Greeting', 'default' => 'Hello from the demo extension'],
+        ];
+    }
+}
+```
+
+The folder's other parts are found by their attributes: `Screens/*` (`#[FolioScreen]`),
+`Types/*` (`#[FolioType]`), `models/*.json` (content types in the model JSON format) and
+`templates/` (Twig, namespace `@{name}`, e.g. `@demo/overview.twig`). A part is named
+`screen:{path}`, `type:{key}`, `model:{key}` or `settings`.
+
+**Enabling.** Nothing runs until `config/folio/extensions.json`, which is committed,
+lists it:
+
+```json
+{"enabled": {"demo": {"disabled_parts": []}}}
+```
+
+A site without that file and without `app/Folio/*/Extension.php` behaves exactly as
+before. Misnamed classes, missing templates, duplicate routes and unknown names are
+errors on boot in debug (in production they are logged and the part is skipped);
+`folio:extensions:check` always treats them as errors.
+
+**Permissions.** An extension declares each permission it uses with `#[DeclaresPermission]`;
+the name must start with `{extension}.`, and the extension's label is its group in
+`preflow/roles`. An undeclared permission throws in debug. While the extension or the part
+is disabled its permissions are denied (and logged once), never a 500.
+
+**Management.** *Settings → Extensions* (`{prefix}/extensions`, permission
+`folio.extensions`) lists extensions, parts and installed versions. It is read-only unless
+`config/folio.php` has `'extensions' => ['allow_admin_changes' => true]` (default:
+`app.debug`); then it toggles extensions and parts by writing `extensions.json`.
+
+```
+php preflow folio:extensions:list
+php preflow folio:extensions:enable  <name> [--part=<id>]
+php preflow folio:extensions:disable <name> [--part=<id>]
+php preflow folio:extensions:apply
+php preflow folio:extensions:check
+```
+
+- `disable <name>` works without booting the app, so it is the recovery path for an
+  extension that breaks boot or whose folder is gone. Disabling an extension forgets
+  its `disabled_parts`.
+- `apply` runs the Folio table sync (as `preflow migrate` does) and then `install()` of
+  every enabled extension, once per version per environment (the installed version is
+  kept in the environment's own storage, never exported). Run it on every deploy.
+- `check` boots with debug forced on and exits 1 on any extension error; use it in CI.
+
+### Screens
+
+A screen is an admin page under the Folio prefix, in the sidebar, behind a permission.
+Its methods carry `#[Get]` / `#[Post]` with paths relative to the screen. The class is
+built from the container, so it can take constructor dependencies.
+
+```php
+// app/Folio/Demo/Screens/Overview.php
+#[FolioScreen('demo', 'Demo overview', icon: 'ui-file', permission: 'demo.view')]
+final class Overview
+{
+    public function __construct(private readonly DataManager $data) {}
+
+    #[Get('/')]
+    public function index(): ScreenView
+    {
+        return new ScreenView('@demo/overview.twig', [
+            'notes' => $this->data->queryType('note')->get()->items(),
+        ]);
+    }
+}
+```
+
+```twig
+{# app/Folio/Demo/templates/overview.twig #}
+{% extends '@folio/admin/_layout.twig' %}
+{% block title %}{{ screen.label }} — Folio{% endblock %}
+{% block page_title %}{{ screen.label }}{% endblock %}
+{% block content %}
+    <p class="demo-greeting">{{ folio_setting('demo', 'greeting') }}</p>
+    <p>{{ notes|length }} notes</p>
+{% endblock %}
+```
+
+- `FolioScreen(path, label, icon, section, order, permission)`: the permission is
+  required. `section` is `settings` by default; a new name adds a sidebar section after
+  the built-in ones.
+- A method returns a `ScreenView(template, data)` (rendered in the admin layout with
+  `prefix`, `csrf` and `screen` added to your data), a string, or any PSR-7 response.
+  POSTs need the CSRF token (`_csrf_token`, available as `csrf` in the template).
+- A path colliding with a type key or a Folio path (`login`, `logout`, `_assets`,
+  `_uploads`, `media`, `extensions`) is a boot error.
+- The sidebar is data: `folio_nav()` in Twig, `Preflow\Folio\Http\AdminNav` in PHP
+  (`add()` for your own items). Session flashes for the layout come from `folio_flashes()`.
+
+### Type customizations
+
+A class with `#[FolioType('note')]` customizes the admin of an existing type (an unknown
+key is a boot error). It is built from the container; its methods carry:
+
+```php
+// app/Folio/Demo/Types/NoteTweaks.php
+#[FolioType('note')]
+final class NoteTweaks
+{
+    public function __construct(private readonly DataManager $data) {}
+
+    #[FormPanel('Name length')]
+    public function nameLength(DynamicRecord $record): string
+    {
+        return mb_strlen((string) $record->get('name')) . ' characters';
+    }
+
+    #[RecordAction('shout', 'Shout', 'demo.shout', icon: 'ui-check', confirm: 'Upper-case this note\'s name?')]
+    public function shout(DynamicRecord $record): null
+    {
+        $record->set('name', mb_strtoupper((string) $record->get('name')));
+        $this->data->saveType($record, false);
+
+        return null;
+    }
+}
+```
+
+| Attribute | Method signature | Effect |
+|---|---|---|
+| `#[FormPanel(label, position: 'after')]` | `fn(DynamicRecord): ScreenView\|string` | A panel on the edit form (not on create), `before` or `after` Folio's own extras. A string is shown as escaped text, a `ScreenView` as a template fragment. |
+| `#[RecordAction(name, label, permission, icon, confirm)]` | `fn(DynamicRecord, ServerRequestInterface): ?ResponseInterface` | A POST button at `{prefix}/{type}/{id}/_action/{name}`; null redirects back to the form with "{label}: done". Needs the permission and the type's edit permission. |
+| `#[ListColumn(label, position: 100)]` | `fn(DynamicRecord): string` | A column after the type's own, ordered by position, shown as escaped text. |
+| `#[BeforeSave]` | `fn(DynamicRecord): void` | Before validation; may `set()` fields. |
+| `#[AfterSave]` | `fn(DynamicRecord): void` | After the record is stored. |
+| `#[BeforeDelete]` | `fn(DynamicRecord): void` | Throw `Customization\Refused('message')` to keep the record; the message is shown to the editor. |
+| `#[AfterDelete]` | `fn(DynamicRecord): void` | After the record is gone. |
+
+Things to know:
+
+- **Hooks** run on the admin store, update (plain and publishing types) and destroy. They
+  do **not** run on reorder, nor on the publishing controller's restore, discard or autosave.
+- **Record actions:** a click submits only the action's own form, so unsaved edits in the
+  edit form are not saved. On a publishing type the action receives the working copy;
+  saving it directly (as above) bypasses the Publisher's versioning, so changes appear in
+  the next publish rather than as a revision.
+- Duplicate action names on a type are a boot error. A disabled `type:{key}` part has no
+  effect.
+
+### Settings
+
+`Extension::settings()` returns a form in the model JSON `fields` format. Folio shows it
+under *Settings* as the singleton type `{name}_settings` (no publishing) and reads it with
+the declared defaults:
+
+```php
+'greeting' => ['type' => 'string', 'label' => 'Greeting', 'default' => 'Hello from the demo extension'],
+```
+
+```twig
+{{ folio_setting('demo', 'greeting') }}
+```
+
+```php
+$settings = $container->get(\Preflow\Folio\Extension\Settings\ExtensionSettings::class);
+$settings->get('demo', 'greeting');          // the stored value, else the default, else null
+$settings->get('demo', 'greeting', 'de');    // translatable fields: a locale
+```
+
+- Before the first save the form and `get()` return the declared defaults.
+- Permissions are the settings type's standard ones: `{name}_settings.view` and
+  `{name}_settings.edit`.
+- `null` and `''` count as "not set", so a string setting with a non-empty default cannot
+  be cleared (the default returns); use a boolean or a different default for "off".
+- An unknown extension or key throws in debug and returns null in production.
+- **Secrets stay out of settings.** A field of `'type' => 'env', 'env' => 'MAIL_PASSWORD'`
+  stores nothing and shows only "set" or "not set"; `get()` reads the environment variable.
+
+## User types and transfer
+
+A type can hold the site's own users or members:
+
+```json
+{ "key": "member", "users": "members", "storage": "sqlite", "fields": { "email": { "type": "string" } } }
+```
+
+- `"users": "<population>"` marks a type as user data. It is **not** transferred
+  (`folio:export`, `folio:import`, `folio:pull`) unless it also says `"transfer": true`:
+  live users never travel to a laptop by accident.
+- Any other type can opt out with `"transfer": false`.
+- Per-environment state (installed extension versions, throttle rows) is never exported.
+
+## SQL storage
+
+Folio content can live in SQLite by setting `"storage": "sqlite"` in a type's model JSON
+(a storage named in a model that is not configured in `config/data.php` is an error, not a
+fallback to the default). Tables come from the model JSON, with no migration files:
+
+```
+php preflow migrate
+# [folio.tables] created table post
+# [folio.tables] created table post__published
+```
+
+- The step creates the type's table, the `__published` and `__revisions` shadows of
+  publishing types, the asset table, and Folio's own internal tables. The id is
+  `TEXT PRIMARY KEY`, every other column nullable `TEXT`.
+- It **creates and adds only**: missing tables and columns are added, nothing is ever
+  dropped, renamed or altered. Re-running it is safe.
+- **SQLite only for now.** A Folio type stored on MySQL makes the step throw.
+- A record key without a column (a JSON field added to the model before migrating) fails
+  with a message naming `preflow migrate`, not a raw PDO error.
+- JSON-stored types are left alone. `folio:extensions:apply` runs the same sync.
+- Lists ordered by `_order` compare numerically (`orderBy(..., numeric: true)`), also
+  where the column is text.
+
 ## Live content to local: `folio:pull`
 
 Content is edited live; code goes through git. To work on a copy of the live content:

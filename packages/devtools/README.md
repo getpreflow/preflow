@@ -23,16 +23,28 @@ php preflow serve 0.0.0.0 9000
 # Binds to 0.0.0.0:9000
 ```
 
-### `migrate` — run pending migrations
+### `migrate` — run pending migrations and post-migrate steps
 
-Reads `config/data.php` for the SQLite path, then runs any unexecuted files from `migrations/`.
+Boots the application (so packages register their migration paths and steps), then:
+
+1. runs every pending file from `migrations/` and from the paths packages registered
+   (core's `preflow_throttle` table among them) on a SQL storage;
+2. runs every registered post-migrate step, such as Folio's table sync for SQL-stored
+   content types.
 
 ```
 php preflow migrate
-# Running migrations...
 # 2 pending migration(s).
+# [folio.tables] created table post
 # Done.
+php preflow migrate --pretend          # list the pending migrations, change nothing
+php preflow migrate --storage=sqlite   # the storage to migrate (default: sqlite)
 ```
+
+- Steps run on **every** run, not only when a migration was pending, so they must be
+  idempotent. Folio's step is SQLite-only for now (a Folio type on MySQL makes it throw),
+  and creates and adds only; it never drops or renames.
+- `--pretend` skips the steps. The command exits 1 with `Error: ...` on stderr when it fails.
 
 ### `make:component Name` — scaffold a component
 

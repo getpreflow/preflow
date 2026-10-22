@@ -41,6 +41,14 @@ default and remembers your choice).
   `FolioServiceProvider`, `folio.php` sets the admin path, and `models/*.json`
   define the content types.
 
+## Extension
+
+`app/Folio/Demo` is a small Folio extension, enabled in `config/folio/extensions.json`: an
+admin screen (`/folio/demo`), a panel and an action on the `note` type, and a setting
+(*Settings → Demo*). See the Extensions section of the
+[Folio README](../../packages/folio/README.md). `composer.json` maps `App\Folio\` to it for
+the monorepo autoloader; a real project gets that from its own `App\` mapping.
+
 ## Tests
 
 A smoke test (`tests/FolioDemoTest.php`) boots this app and asserts the admin
