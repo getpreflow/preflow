@@ -372,6 +372,15 @@ final class Application
                     lockDir: $this->basePath('storage/locks'),
                 ),
             );
+            // Remember-me tokens of session guards (table auth_remember), on the same storage.
+            $this->container->instance(
+                \Preflow\Auth\Remember\RememberMe::class,
+                new \Preflow\Auth\Remember\RememberMe(
+                    $dataManager,
+                    isset($drivers['auth']) ? 'auth' : 'default',
+                    lockDir: $this->basePath('storage/locks'),
+                ),
+            );
         }
     }
 
@@ -923,12 +932,26 @@ final class Application
                 continue;
             }
 
+            // 'remember' => ['cookie' => …, 'days' => …, 'path' => …] gives a session guard a
+            // remember-me cookie (Secure when APP_SECURE is set); without it there is none.
+            $remember = (array) ($guardConfig['remember'] ?? []);
+            if ($remember !== [] && $guardClass === \Preflow\Auth\SessionGuard::class) {
+                if (!$this->container->has(\Preflow\Auth\Remember\RememberMe::class)) {
+                    throw new \RuntimeException("Guard \"{$name}\" remembers users: that needs preflow/data configured (config/data.php).");
+                }
+                $remember += ['cookie' => 'remember_' . $name, 'days' => 30, 'path' => '/'];
+                $remember['secure'] = (bool) (getenv('APP_SECURE') ?: false);
+            }
+
             $guard = match ($guardClass) {
                 \Preflow\Auth\SessionGuard::class => new \Preflow\Auth\SessionGuard(
                     $provider,
                     $hasher,
                     $sessionKeys[$name],
                     array_values(array_diff_key($sessionKeys, [$name => true])),
+                    $remember === [] ? null : $this->container->get(\Preflow\Auth\Remember\RememberMe::class),
+                    $name,
+                    $remember,
                 ),
                 \Preflow\Auth\TokenGuard::class => $this->container->has(\Preflow\Data\DataManager::class)
                     ? new \Preflow\Auth\TokenGuard(
