@@ -126,7 +126,8 @@ final class AdminController
             $cells = [];
             foreach ($columns as $name => $label) {
                 $fieldDef = $typeDef->fields[$name];
-                $html = $this->fieldTypes->get($fieldDef->type)->renderFrontend(
+                $html = self::adminDisplay(
+                    $this->fieldTypes->get($fieldDef->type),
                     $this->fieldTypes->get($fieldDef->type)->fromStorage($localized->get($name)),
                     $fieldDef->config,
                 );
@@ -970,6 +971,12 @@ final class AdminController
         return null;
     }
 
+    /** The field type's admin display (list cells, read-only fields): renderAdmin() when it has one, else renderFrontend(). */
+    private static function adminDisplay(\Preflow\Folio\Field\FieldType $type, mixed $value, array $config): string
+    {
+        return $type instanceof \Preflow\Folio\Field\DisplaysInAdmin ? $type->renderAdmin($value, $config) : $type->renderFrontend($value, $config);
+    }
+
     /**
      * A read-only value as its field type displays it (the list-cell path): select labels, relation labels,
      * comma-separated roles, formatted dates. Rich text keeps its sanitised markup; the rest is escaped plain text.
@@ -978,7 +985,7 @@ final class AdminController
     private function readonlyDisplay(\Preflow\Data\TypeFieldDefinition $fieldDef, mixed $value): string
     {
         $type = $this->fieldTypes->get($fieldDef->type);
-        $html = $type->renderFrontend($value, $fieldDef->config);
+        $html = self::adminDisplay($type, $value, $fieldDef->config);
         if ($fieldDef->type !== 'richtext') {
             $html = htmlspecialchars(html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         }

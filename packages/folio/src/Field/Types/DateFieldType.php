@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Field\Types;
 
+use Preflow\Folio\Field\DisplaysInAdmin;
 use Preflow\Folio\Field\FieldContext;
 
 /**
  * A date ("Y-m-d"), or date and time ("Y-m-d\TH:i") with "time": true.
  * Stored as the string the browser input produces; empty is allowed unless required.
  */
-final class DateFieldType extends AbstractScalarFieldType
+final class DateFieldType extends AbstractScalarFieldType implements DisplaysInAdmin
 {
     public function key(): string
     {
@@ -39,23 +40,34 @@ final class DateFieldType extends AbstractScalarFieldType
     }
 
     /**
-     * "22 Oct 2026", or "22 Oct 2026, 23:15" with "time": true. Reads "Y-m-d", "Y-m-d\TH:i" and ISO 8601
-     * with an offset (shown in the app timezone); a value that does not parse is shown escaped as it is.
+     * Admin display: "22 Oct 2026", or "22 Oct 2026, 23:15" with "time": true. Reads exactly "Y-m-d", "Y-m-d\TH:i"
+     * and ISO 8601 with an offset (also with seconds; shown in the app timezone). Anything else is shown
+     * escaped as it is. The frontend output (renderFrontend) stays the stored string.
      */
-    public function renderFrontend(mixed $value, array $config): string
+    public function renderAdmin(mixed $value, array $config): string
     {
         $raw = is_scalar($value) ? trim((string) $value) : '';
         $text = $raw;
-        if ($raw !== '') {
-            try {
-                $date = new \DateTimeImmutable($raw);
-                if (preg_match('/(Z|[+-]\d{2}:?\d{2})$/', $raw) === 1) {
-                    $date = $date->setTimezone(new \DateTimeZone(date_default_timezone_get()));
-                }
-                $text = $date->format(($config['time'] ?? false) === true ? 'j M Y, H:i' : 'j M Y');
-            } catch (\Exception) {
-                // not a date: shown as stored
+        $zone = new \DateTimeZone(date_default_timezone_get());
+        $date = false;
+        foreach (['Y-m-d|', 'Y-m-d\TH:i'] as $format) {
+            $date = \DateTimeImmutable::createFromFormat($format, $raw, $zone);
+            if ($date !== false && $date->format($format === 'Y-m-d|' ? 'Y-m-d' : 'Y-m-d\TH:i') === $raw) {
+                break;
             }
+            $date = false;
+        }
+        if ($date === false) {
+            foreach (['Y-m-d\TH:i:sP', 'Y-m-d\TH:i:s.uP', 'Y-m-d\TH:iP'] as $format) {
+                $date = \DateTimeImmutable::createFromFormat($format, $raw);
+                if ($date !== false) {
+                    $date = $date->setTimezone($zone);
+                    break;
+                }
+            }
+        }
+        if ($date !== false) {
+            $text = $date->format(($config['time'] ?? false) === true ? 'j M Y, H:i' : 'j M Y');
         }
 
         return htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');

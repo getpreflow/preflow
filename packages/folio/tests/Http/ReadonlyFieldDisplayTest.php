@@ -152,9 +152,11 @@ final class ReadonlyFieldDisplayTest extends TestCase
 
     public function test_readonly_richtext_is_sanitised(): void
     {
-        $html = $this->render(['bio' => '<p>Hello <b>you</b></p><script>alert(1)</script>'])['bio'];
+        $html = $this->render(['bio' => '<p>Hello <b>you</b></p><script>alert(1)</script><a href="/x" onclick="alert(2)">l</a><img src="/i.png" onerror="alert(3)">'])['bio'];
         $this->assertStringContainsString('<p>Hello <b>you</b></p>', $html);
         $this->assertStringNotContainsString('<script', $html);
+        $this->assertStringNotContainsString('onclick', $html);
+        $this->assertStringNotContainsString('onerror', $html);
     }
 
     public function test_readonly_plain_text_stays_escaped_and_date_is_formatted(): void
