@@ -28,7 +28,7 @@ Findings with file:line references: `.superpowers/sdd/2026-10-23-members-step2-s
   - New optional parameters must default to today's behaviour.
   - Existing tests stay green: run `vendor/bin/phpunit` at the repo root; 1986 tests passed at the start of this plan.
 - Use Folio's existing tokens and classes only:
-  - `.folio-badge` with the tones `is-published`, `is-draft`, `is-changed` and `is-incomplete` (`packages/folio/resources/admin.css` ~558-577);
+  - `.folio-badge` with the tones `is-published`, `is-draft`, `is-changed` and `is-incomplete` (`packages/folio/assets/admin.css` ~558-577);
   - `.folio-segmented` (~1181-1207).
 - New CSS goes into admin.css, and new JS into admin.js, with no inline scripts or styles. The strict nonce CSP stays as it is.
 - Every visible change is checked with light and dark screenshots taken from the `examples/folio-demo` app or a test scaffold, saved in this plan's SDD workspace, and looked at.
@@ -96,7 +96,7 @@ Findings with file:line references: `.superpowers/sdd/2026-10-23-members-step2-s
   - `packages/folio/src/Http/AdminController.php` (action list ~648-657, list cells ~139-140, panels);
   - `packages/folio/templates/admin/form.twig` (header actions 5-8, panel slots 104-145);
   - `packages/folio/templates/admin/list.twig:24`;
-  - `packages/folio/resources/admin.css`, `packages/folio/resources/admin.js` (~396-421);
+  - `packages/folio/assets/admin.css`, `packages/folio/assets/admin.js` (~396-421);
   - `packages/folio/src/Customization/Customizations.php` (validation of the new values);
   - `packages/folio/README.md`.
 - Create: `packages/folio/src/Extension/Badge.php`.
