@@ -1306,28 +1306,44 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
 .folio-panel-body { font-size: 13.5px; }
 
 /* ---- side panels and tabs ---- */
-/* Narrow: the side panels stack under the form. From 1100px they sit in a sticky right-hand column. */
+/* Narrow: the side panels stack right under the form fields. From 1280px they sit in a sticky
+   right-hand column; below that the field column would drop under ~600px and wrap the rich-text toolbar. */
 .folio-side { display: grid; gap: 12px; margin-top: 28px; max-width: 780px; min-width: 0; }
-@media (min-width: 1100px) {
+@media (min-width: 1280px) {
   .folio-editor.has-side {
-    max-width: 1160px;
+    max-width: none; /* the page's own width caps the two columns */
     display: grid;
     grid-template-columns: minmax(0, 780px) 340px;
     column-gap: 28px;
     align-items: start;
   }
   .folio-editor.has-side > * { grid-column: 1; min-width: 0; }
+  /* The column spans every row of the form (rows add no gap, so the count only has to exceed the children). */
   .folio-editor.has-side > .folio-side {
     grid-column: 2;
-    grid-row: 1 / span 12;
+    grid-row: 1 / span 40;
     position: sticky;
-    top: 16px;
+    top: 80px; /* clear of the 64px sticky topbar */
+    max-height: calc(100vh - 96px);
+    overflow-y: auto;
     margin-top: 0;
     max-width: none;
   }
-  .folio-split-form .folio-editor.has-side { display: block; max-width: 780px; }
-  .folio-split-form .folio-editor.has-side > .folio-side { position: static; margin-top: 28px; }
+  /* In split view the form pane is narrow and scrolls by itself: the panels stack. */
+  .folio-split:not([data-mode="form"]) .folio-editor.has-side { display: block; }
+  .folio-split:not([data-mode="form"]) .folio-editor.has-side > .folio-side { position: static; max-height: none; margin-top: 28px; }
+  /* The form pane scrolls on its own, below the topbar. */
+  .folio-split-form .folio-editor.has-side > .folio-side { top: 16px; max-height: calc(100vh - 160px); }
 }
+[data-folio-tabs]:not([data-folio-tabs-ready]) > .folio-segmented { display: none; }
 [data-folio-tabs] > .folio-segmented { display: flex; width: 100%; margin-bottom: 12px; }
 [data-folio-tabs] > .folio-segmented button { flex: 1 1 0; justify-content: center; }
+[data-folio-tabpanel][hidden] { display: none; }
+[data-folio-tabpanel]:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; border-radius: var(--r-xs); }
 .folio-segmented button[role="tab"]:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+/* Neutral, but clearly raised in dark mode too. */
+[data-folio-tabs] > .folio-segmented button[aria-selected="true"] {
+  background: light-dark(var(--c-surface-raised), var(--c-border-strong));
+  color: var(--c-text);
+  box-shadow: var(--shadow-sm);
+}

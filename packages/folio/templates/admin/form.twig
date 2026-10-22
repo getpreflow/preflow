@@ -101,6 +101,11 @@
             </div>
         </div>
         {{ form_end()|raw }}
+        {% if side_panels is not empty %}
+        <aside class="folio-side" aria-label="Side panels">
+            {% for panel in side_panels %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}
+        </aside>
+        {% endif %}
         {% set history = publishing and (publishing.revisions is not empty or publishing.discard_url or publishing.unpublish_url) %}
         {% set extras = panels|default([])|filter(p => p.position != 'side') %}
         {% if history or extras is not empty %}
@@ -146,11 +151,6 @@
         {% endif %}
         {% for panel in extras|filter(p => p.position == 'after') %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}
         </section>
-        {% endif %}
-        {% if side_panels is not empty %}
-        <aside class="folio-side" aria-label="Side panels">
-            {% for panel in side_panels %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}
-        </aside>
         {% endif %}
     </div>
     {% if previewable|default(false) %}</div>

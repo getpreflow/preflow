@@ -79,7 +79,7 @@ final class AdminPolishTest extends TestCase
 
         $edit = (string) $this->send('GET', '/folio/member/m1/edit')->getBody();
         $this->assertStringContainsString('/folio/member/m1/_action/toolbar-on"', $edit); // the header button
-        $this->assertStringNotContainsString('/_action/panel-only"', substr($edit, 0, (int) strpos($edit, 'class="folio-form-extras"')));
+        $this->assertStringNotContainsString('/_action/panel-only"', substr($edit, 0, (int) strpos($edit, 'folio-form folio-editor')));
         // The panel's own form posts to it.
         $this->assertStringContainsString('action="/folio/member/m1/_action/panel-only"', $edit);
 
@@ -131,9 +131,10 @@ final class AdminPolishTest extends TestCase
         $aside = substr($edit, (int) strpos($edit, '<aside class="folio-side"'));
         $this->assertStringContainsString('<h2 class="folio-panel-title">Decision</h2>', $aside);
         $this->assertStringContainsString('data-folio-tabs', $aside);
-        // After the form and not in the extras section; the "after" panel stays there.
+        // Right after the form, before the extras section; the "after" panel stays there.
         $this->assertGreaterThan(strpos($edit, '</form>'), strpos($edit, '<aside class="folio-side"'));
-        $extras = substr($edit, (int) strpos($edit, 'class="folio-form-extras"'), (int) strpos($edit, '<aside class="folio-side"') - (int) strpos($edit, 'class="folio-form-extras"'));
+        $this->assertLessThan(strpos($edit, 'class="folio-form-extras"'), strpos($edit, '<aside class="folio-side"'));
+        $extras = substr($edit, (int) strpos($edit, 'class="folio-form-extras"'));
         $this->assertStringContainsString('Plain after', $extras);
         $this->assertStringNotContainsString('Decision', $extras);
         // No side panel, no side column.
@@ -160,12 +161,13 @@ final class AdminPolishTest extends TestCase
         }
         $css = (string) file_get_contents(__DIR__ . '/../../assets/admin.css');
         $this->assertStringContainsString('.folio-editor.has-side', $css);
-        $this->assertStringContainsString('min-width: 1100px', $css);
+        $this->assertStringContainsString('min-width: 1280px', $css);
 
         // The README example renders as documented markup (panels show without JS).
         $readme = (string) file_get_contents(__DIR__ . '/../../README.md');
         $this->assertStringContainsString('<div data-folio-tabs>', $readme);
         $this->assertStringContainsString('data-folio-tabpanel="decline"', $readme);
+        $this->assertStringContainsString('_action/decline', $readme);
         $this->assertStringContainsString('toolbar: false', $readme);
         $this->assertStringContainsString('new Badge(', $readme);
         $this->assertStringContainsString("position: 'side'", $readme);
@@ -182,7 +184,9 @@ final class AdminPolishTest extends TestCase
         $this->assertMatchesRegularExpression('#<div class="folio-segmented">\s*<button type="button" data-folio-tab="accept">Accept</button>#', $edit);
         $this->assertStringContainsString('<div data-folio-tabpanel="accept">', $edit);
         $this->assertStringContainsString('<div data-folio-tabpanel="decline">', $edit);
-        $this->assertStringNotContainsString('hidden', substr($edit, (int) strpos($edit, 'data-folio-tabs')));
+        $box = substr($edit, (int) strpos($edit, '<div data-folio-tabs>'));
+        $box = substr($box, 0, (int) strpos($box, '</form>'));
+        $this->assertStringNotContainsString('hidden', $box);
     }
 
     private function polish(): void

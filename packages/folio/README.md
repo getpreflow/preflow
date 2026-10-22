@@ -817,7 +817,7 @@ final class NoteTweaks
 
 | Attribute | Method signature | Effect |
 |---|---|---|
-| `#[FormPanel(label, position: 'after')]` | `fn(DynamicRecord): ScreenView\|string` | A panel on the edit form (not on create), `before` or `after` Folio's own extras, or `side`: a sticky column about 340 px wide to the right of the fields from 1100 px, stacked under the form below that. A string is shown as escaped text, a `ScreenView` as a template fragment (it gets `prefix`, `csrf`, `type`, `id` and `record`). Any other position is a boot error. |
+| `#[FormPanel(label, position: 'after')]` | `fn(DynamicRecord): ScreenView\|string` | A panel on the edit form (not on create), `before` or `after` Folio's own extras, or `side`: a sticky column about 340 px wide to the right of the fields from 1280 px (on a previewable type in its plain form view; in split view the panels stack), stacked right under the form fields below that. A string is shown as escaped text, a `ScreenView` as a template fragment (it gets `prefix`, `csrf`, `type`, `id` and `record`). Any other position is a boot error. |
 | `#[RecordAction(name, label, permission, icon, confirm, toolbar: true)]` | `fn(DynamicRecord, ServerRequestInterface): ?ResponseInterface` | A POST button at `{prefix}/{type}/{id}/_action/{name}`; null redirects back to the form with "{label}: done". Needs the permission and the type's edit permission. With `toolbar: false` there is no button in the form header; the action stays routed and permission-checked, for a form inside a `FormPanel` to post to. |
 | `#[ListColumn(label, position: 100)]` | `fn(DynamicRecord): string\|Badge` | A column after the type's own, ordered by position, shown as escaped text, or as a status pill for `new Badge($label, $tone)` (tone `''`, `published`, `draft`, `changed` or `incomplete`; the label is escaped, an unknown tone is shown plain). |
 | `#[NavBadge]` | `fn(): ?int` | A count badge on the type's sidebar item (e.g. waiting members), computed only while the item is visible and at most once per request; `null`, `0` or any non-int return shows none, a callback that throws shows no badge (the admin still renders), several add up, one per class. Keep it cheap: it runs on admin page renders. |
@@ -846,25 +846,36 @@ public function state(DynamicRecord $record): Badge
 ```
 
 ```twig
-{# decision.twig #}
-<form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/decide">
-    <input type="hidden" name="_csrf_token" value="{{ csrf }}">
-    <div data-folio-tabs>
-        <div class="folio-segmented">
-            <button type="button" data-folio-tab="accept">Accept</button>
-            <button type="button" data-folio-tab="decline">Decline</button>
-        </div>
-        <div data-folio-tabpanel="accept">...</div>
-        <div data-folio-tabpanel="decline">...</div>
+{# decision.twig: one form per tab panel, each posting to its own action #}
+<div data-folio-tabs>
+    <div class="folio-segmented">
+        <button type="button" data-folio-tab="accept">Accept</button>
+        <button type="button" data-folio-tab="decline">Decline</button>
     </div>
-    <button type="submit" class="btn btn-primary">Send</button>
-</form>
+    <div data-folio-tabpanel="accept">
+        <form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/accept">
+            <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+            <textarea name="message" rows="6"></textarea>
+            <button type="submit" class="btn btn-primary">Accept and send</button>
+        </form>
+    </div>
+    <div data-folio-tabpanel="decline">
+        <form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/decline">
+            <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+            <textarea name="message" rows="6"></textarea>
+            <button type="submit" class="btn btn-primary">Decline and send</button>
+        </form>
+    </div>
+</div>
 ```
+
+Use one form (and one `toolbar: false` RecordAction) per tab, so a click on a send button
+says which decision was made and only that panel's fields are posted.
 
 Tabs: `<div data-folio-tabs>` holds a `.folio-segmented` of `<button data-folio-tab="key">` and
 sibling `<div data-folio-tabpanel="key">` panels. admin.js adds the ARIA roles, arrow keys
 (Home/End too) and hides the inactive panels; the first tab is active unless one carries
-`data-folio-tab-active`. Without JS every panel shows, stacked.
+`data-folio-tab-active`. Panels are focusable. Without JS every panel shows, stacked, and the tab buttons stay hidden.
 
 Things to know:
 

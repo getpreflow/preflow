@@ -1028,17 +1028,18 @@
     // Tabs: <div data-folio-tabs> with a .folio-segmented of <button data-folio-tab="key"> and
     // sibling <div data-folio-tabpanel="key">. Without JS every panel shows.
     function initTabs(root) {
-        root.querySelectorAll('[data-folio-tabs]').forEach(function (box) {
+        var boxes = Array.prototype.slice.call(root.querySelectorAll('[data-folio-tabs]'));
+        if (root.matches && root.matches('[data-folio-tabs]')) { boxes.unshift(root); }
+        boxes.forEach(function (box) {
             if (box.hasAttribute('data-folio-tabs-ready')) { return; }
-            var tabs = Array.prototype.slice.call(box.querySelectorAll('[data-folio-tab]'));
+            var tabs = Array.prototype.slice.call(box.querySelectorAll(':scope > * > [data-folio-tab], :scope > [data-folio-tab]'));
             if (!tabs.length) { return; }
-            box.setAttribute('data-folio-tabs-ready', '');
             var tablist = tabs[0].parentNode;
             tablist.setAttribute('role', 'tablist');
             var n = 0;
             var uid = Math.random().toString(36).slice(2, 7);
             function panelOf(tab) {
-                return box.querySelector('[data-folio-tabpanel="' + tab.getAttribute('data-folio-tab') + '"]');
+                return box.querySelector(':scope > [data-folio-tabpanel="' + tab.getAttribute('data-folio-tab') + '"]');
             }
             function select(tab, focus) {
                 tabs.forEach(function (t) {
@@ -1058,6 +1059,7 @@
                 if (!t.hasAttribute('type')) { t.type = 'button'; }
                 if (p) {
                     p.setAttribute('role', 'tabpanel');
+                    p.tabIndex = 0;
                     p.setAttribute('aria-labelledby', id);
                     t.setAttribute('aria-controls', p.id || (p.id = id + '-panel'));
                 }
@@ -1073,6 +1075,7 @@
                 });
             });
             select(tabs.filter(function (t) { return t.hasAttribute('data-folio-tab-active'); })[0] || tabs[0], false);
+            box.setAttribute('data-folio-tabs-ready', '');
         });
     }
 
