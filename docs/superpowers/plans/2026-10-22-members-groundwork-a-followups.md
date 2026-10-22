@@ -44,3 +44,10 @@ reviews. Plan B has to handle them before smart-stack.works adopts the groundwor
 - **migrate:** a MySQL-only site run without `--storage` still defaults to `sqlite`.
 - **Sorting:** `list.sort` on number fields sorts as text on SQLite.
 - **Tests:** 129 PHPUnit doc-comment deprecations in FolioAuthTest.
+
+## Requested by the user (2026-10-22)
+
+- Folio sidebar structure: Pages belong in their own group, apart from the data and
+  collection types (Forces, Practices, …). The Site singleton belongs under Settings.
+  Let model JSON choose a type's sidebar section (and order). Today every file type
+  lands in Content.
