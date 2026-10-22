@@ -124,7 +124,8 @@ enforced on the server, so a hidden button is never the only protection. A
 refused htmx request (autosave, block picker) shows its message as a toast.
 
 **Defaults.** Without a permission package, every signed-in staff user may do
-everything, as before. For roles, add `preflow/roles`:
+everything, as before. For roles from a config file, add `preflow/roles`; for roles
+and permissions edited in Folio itself, add [`preflow/rbac`](../rbac/README.md):
 
 ```php
 // config/roles.php
@@ -948,7 +949,7 @@ Shipped:
 - the asset library (variants, `folio_image()`, picker, usage, legacy import);
 - click-to-edit in the live preview;
 - `folio:pull` (live content to local);
-- permissions on every admin action (`can()`, with `preflow/roles` for roles).
+- permissions on every admin action (`can()`, with `preflow/roles` or `preflow/rbac` for roles).
 
 The admin runs under Preflow's strict, nonce-based CSP: no inline handlers or styles.
 Hand-written `<script>`/`<style>` tags in your own templates need
