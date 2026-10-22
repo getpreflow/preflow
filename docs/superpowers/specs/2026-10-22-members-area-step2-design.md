@@ -346,6 +346,28 @@ Members whose role is `pending`, `rejected`, or none (unconfirmed) never see the
   - *Designer's call:* a data deletion path is expected for accounts holding personal
     data.
 
+## Decided after the builder check (by the owner, 2026-10-22)
+
+- **Staff see the toolbox.**
+  - A staff login to Folio also counts as a member on `/tools`: the toolbox, resource
+    pages and file downloads accept either guard, staff with `members.access` or `*`.
+  - Folio's live preview works for resource pages.
+  - This needs a login gate for a Folio type's frontend routes, which is a framework item
+    for 0.21: a type is reachable only with a permission. Resources require
+    `members.access`.
+  - Staff sessions keep their own cookie path. Staff stay recognised on `/tools`, either
+    through a shared session or through a staff cookie that also covers `/tools`; the
+    builder decides how, under the cookie anti-goal.
+- **Retention**, run by a nightly cron task:
+  - unconfirmed accounts are deleted 7 days after registration;
+  - declined accounts are deleted 30 days after the decision;
+  - waiting accounts stay until the owner decides;
+  - members stay until they delete their account.
+
+  The privacy text states these periods.
+- **Member sessions** last 30 days unless the member logs out. They use their own cookie,
+  set only under `/tools` and `/de/tools`. Staff sessions keep today's lifetime.
+
 ## Calls made by the designer (for review)
 
 - **`/tools` stays the existing Folio page.**
