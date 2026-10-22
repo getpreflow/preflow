@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Core\Tests;
 
 require_once __DIR__ . '/Fixtures/ConfigEntryUserProvider.php';
+require_once __DIR__ . '/Fixtures/LateServiceUserProvider.php';
 
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -12,6 +13,8 @@ use Preflow\Auth\Tokens\Tokens;
 use Preflow\Auth\UserProviderInterface;
 use Preflow\Core\Application;
 use Preflow\Core\Tests\Fixtures\ConfigEntryUserProvider;
+use Preflow\Core\Tests\Fixtures\LateServiceProvider;
+use Preflow\Core\Tests\Fixtures\LateServiceUserProvider;
 use Preflow\Data\Migration\MigrationRegistry;
 
 /** User providers from config/auth.php (any class), and the auth services core binds. */
@@ -60,8 +63,9 @@ final class BootAuthProvidersTest extends TestCase
         $app = $this->boot($entry);
         $provider = $app->container()->get(UserProviderInterface::class);
 
-        $this->assertInstanceOf(ConfigEntryUserProvider::class, $provider);
-        $this->assertSame($entry, $provider->config);
+        $this->assertInstanceOf(\Preflow\Auth\LazyUserProvider::class, $provider);
+        $this->assertInstanceOf(ConfigEntryUserProvider::class, $provider->resolve());
+        $this->assertSame($entry, $provider->resolve()->config);
         $this->assertSame('m1', $provider->findById('m1')?->getAuthId());
     }
 
@@ -96,5 +100,15 @@ final class BootAuthProvidersTest extends TestCase
         );
         $tokens = $app->container()->get(Tokens::class);
         $this->assertSame('default', (new \ReflectionProperty(Tokens::class, 'storage'))->getValue($tokens));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_provider_needing_late_services_is_resolved_after_providers(): void
+    {
+        file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [" . LateServiceProvider::class . "::class];\n");
+        $app = $this->boot(['class' => LateServiceUserProvider::class]);
+
+        $provider = $app->container()->get(UserProviderInterface::class);
+        $this->assertSame('late', $provider->resolve()->marker->value);
     }
 }

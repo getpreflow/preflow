@@ -30,6 +30,8 @@ final class Application
     private ?Kernel $kernel = null;
     private ?\Preflow\Core\Http\SecurityHeadersMiddleware $securityHeaders = null;
     private string $basePath;
+    /** @var list<\Preflow\Auth\LazyUserProvider> */
+    private array $lazyUserProviders = [];
 
     /** @var callable(Route, ServerRequestInterface): ResponseInterface|null */
     private $actionDispatcher = null;
@@ -167,6 +169,7 @@ final class Application
 
         // Register user service providers
         $this->bootProviders();
+        $this->bootLazyUserProviders();
 
         // Load user-defined middleware from config/middleware.php
         $this->bootMiddleware();
@@ -857,6 +860,14 @@ final class Application
         $this->addMiddleware(new \Preflow\Core\Http\Csrf\CsrfMiddleware());
     }
 
+    /** Build the config-named user providers now that all services exist: a bad class fails during boot. */
+    private function bootLazyUserProviders(): void
+    {
+        foreach ($this->lazyUserProviders as $provider) {
+            $provider->resolve();
+        }
+    }
+
     private function bootAuth(): void
     {
         if (!class_exists(\Preflow\Auth\AuthManager::class)) {
@@ -907,10 +918,14 @@ final class Application
             // Any other class is built from the container with its config entry.
             if ($providerClass !== \Preflow\Auth\DataManagerUserProvider::class
                 && $providerClass !== \Preflow\Auth\ConfigUserProvider::class) {
-                $provider = $this->container->make($providerClass, ['config' => $providerConfig]);
-                if (!$provider instanceof \Preflow\Auth\UserProviderInterface) {
-                    throw new \RuntimeException("Provider \"{$name}\" ({$providerClass}) does not implement " . \Preflow\Auth\UserProviderInterface::class . '.');
-                }
+                // Lazily: it may need services that providers register later; bootLazyUserProviders() resolves it during boot.
+                $container = $this->container;
+                $provider = new \Preflow\Auth\LazyUserProvider(
+                    (string) $name,
+                    $providerClass,
+                    static fn (): object => $container->make($providerClass, ['config' => $providerConfig]),
+                );
+                $this->lazyUserProviders[] = $provider;
                 $providers[$name] = $provider;
             }
         }
