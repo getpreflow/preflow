@@ -108,7 +108,8 @@ final class MigrateCommandTest extends TestCase
         $this->assertSame(0, $code);
         $this->assertContains('apps', $this->tables());
         $this->assertContains('pkgs', $this->tables());
-        $this->assertStringContainsString('2 pending migration(s)', $out);
+        $this->assertContains('preflow_throttle', $this->tables());
+        $this->assertStringContainsString('3 pending migration(s)', $out);
     }
 
     public function test_runs_after_migrate_steps_and_prints_changes(): void

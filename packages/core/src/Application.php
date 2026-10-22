@@ -271,6 +271,7 @@ final class Application
         // packages can register paths and steps regardless of data config.
         $migrations = new \Preflow\Data\Migration\MigrationRegistry();
         $migrations->addPath($this->basePath('migrations'));
+        $migrations->addPath(dirname(__DIR__) . '/migrations');
         $this->container->instance(\Preflow\Data\Migration\MigrationRegistry::class, $migrations);
 
         $dataConfigPath = $this->basePath('config/data.php');
@@ -335,6 +336,15 @@ final class Application
 
         $dataManager = new \Preflow\Data\DataManager($drivers, 'default', $typeRegistry, $validatorFactory);
         $this->container->instance(\Preflow\Data\DataManager::class, $dataManager);
+
+        // Bound only with a DataManager (i.e. config/data.php present); it has nothing to store through otherwise.
+        $this->container->instance(
+            \Preflow\Core\Throttle\Throttle::class,
+            new \Preflow\Core\Throttle\Throttle(
+                $dataManager,
+                (string) $this->config->get('app.key', 'preflow-default-key-change-me!!'),
+            ),
+        );
     }
 
     private function createSqliteDriver(array $config, ?DebugCollector $collector = null): \Preflow\Data\Driver\SqliteDriver
