@@ -210,7 +210,8 @@ installed resolver:
 - **The default** (no permission package): staff may do everything, members
   nothing.
 - **`preflow/roles`**: roles from `config/roles.php`.
-- **A full RBAC package**: it sets its own resolver.
+- **[`preflow/rbac`](../rbac/README.md)**: roles and permissions stored in the database and
+  edited in Folio; it sets its own resolver.
 
 Every permission is declared, so role editors can list them and typos are
 caught:

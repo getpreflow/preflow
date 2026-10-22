@@ -150,6 +150,22 @@ $rows = $dm->raw(
 );
 ```
 
+## Aliases
+
+`config/data.php` may map purpose names to configured drivers, so a package can store on its
+own name and the app decides where that lives:
+
+```php
+return [
+    'default' => 'json',
+    'drivers' => ['json' => [...], 'sqlite' => [...]],
+    'aliases' => ['codes' => 'sqlite', 'throttle' => 'sqlite'],
+];
+```
+
+An alias is the same driver instance as its target; `default` is a valid target (`'codes' => 'default'`). A target that is not a configured driver,
+or an alias named like a driver (or `default`), throws a `RuntimeException` at boot.
+
 ## Translatable fields
 
 Dynamic types can mark fields `"translatable": true`. When the app has several content

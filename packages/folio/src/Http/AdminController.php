@@ -223,7 +223,10 @@ final class AdminController
             $record->set(self::ORDER, $this->maxOrder($type) + 10);
         }
         $data = [$typeDef->idField => $record->getId()];
-        $this->customizations?->runHooks(BeforeSave::class, $record); // before validation
+        if (($errors = $this->beforeSave($record)) !== null) {
+            $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
+            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), 'New ' . $this->labelFor($type), $errors, $csrf, 422, $layout, $locale);
+        }
 
         if ($this->publishes($type)) {
             // Once saved, the record exists: a re-rendered form must update it, not create another.
@@ -316,7 +319,9 @@ final class AdminController
         if ($this->drafts->uploadErrors() !== []) {
             return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . '/' . $id, 'Edit ' . $this->labelFor($type), $this->drafts->uploadErrors(), $csrf, 422, locale: $locale, editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit');
         }
-        $this->customizations?->runHooks(BeforeSave::class, $record); // before validation
+        if (($errors = $this->beforeSave($record)) !== null) {
+            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . '/' . $id, 'Edit ' . $this->labelFor($type), $errors, $csrf, 422, locale: $locale, editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit');
+        }
 
         if ($this->publishes($type)) {
             $failed = $this->savePublishing($request, $record, $type, $this->prefix . '/' . $type . '/' . $id, 'Edit ' . $this->labelFor($type), $csrf, $locale, $this->prefix . '/' . $type . '/' . $id . '/edit');
@@ -471,10 +476,23 @@ final class AdminController
         $editorAssets = [];
         $multipart = false;
         foreach ($typeDef->fields as $name => $fieldDef) {
-            if ($name === $typeDef->idField) {
+            if ($name === $typeDef->idField || ($fieldDef->config['hidden'] ?? false) === true) {
                 continue;
             }
             $fieldType = $this->fieldTypes->get($fieldDef->type);
+            if (($fieldDef->config['readonly'] ?? false) === true) {
+                $fields[] = [
+                    'name' => $name,
+                    'html' => self::readonlyField($name, $fieldDef->label, $fieldDef->help, $fieldType->fromStorage(
+                        isset($translatable[$name]) ? LocaleValue::pick($values[$name] ?? null, $locales, $locale) : LocaleValue::default($values[$name] ?? null, $locales),
+                    )),
+                    'translatable' => isset($translatable[$name]),
+                    'structured' => false,
+                    'falls_back' => false,
+                    'reference' => null,
+                ];
+                continue;
+            }
             if ($fieldType instanceof HandlesUpload || $fieldType instanceof BlocksFieldType) {
                 $multipart = true; // blocks may contain upload fields
             }
@@ -602,7 +620,7 @@ final class AdminController
 
     /**
      * Extension panels (#[FormPanel], rendered) and record action buttons (#[RecordAction],
-     * those the user may run) of a stored record's edit form; none on create.
+     * those the user may run: the action's permission and {type}.edit) of a stored record's edit form; none on create.
      *
      * @param array<string, mixed> $values
      * @return array{list<array{label: string, position: string, html: string}>, list<array{label: string, url: string, icon: ?string, confirm: ?string}>}
@@ -629,7 +647,7 @@ final class AdminController
         }
         $actions = [];
         foreach ($custom['actions'] as $action) {
-            if ($this->can($action['permission'])) {
+            if ($this->can($action['permission']) && $this->can($type . '.edit')) {
                 $actions[] = [
                     'label' => $action['label'],
                     'url' => $this->prefix . '/' . $type . '/' . rawurlencode($id) . '/_action/' . $action['name'],
@@ -683,6 +701,23 @@ final class AdminController
         }
 
         return $badges;
+    }
+
+    /**
+     * The #[BeforeSave] hooks, before validation. A hook throwing ValidationException refuses
+     * the save: its errors, for the form to show again.
+     *
+     * @return array<string, list<string>>|null
+     */
+    private function beforeSave(DynamicRecord $record): ?array
+    {
+        try {
+            $this->customizations?->runHooks(BeforeSave::class, $record);
+        } catch (ValidationException $e) {
+            return $e->errors();
+        }
+
+        return null;
     }
 
     /**
@@ -934,6 +969,24 @@ final class AdminController
         return null;
     }
 
+    /** A read-only field: its label and value as escaped plain text, no input. */
+    private static function readonlyField(string $name, ?string $label, ?string $help, mixed $value): string
+    {
+        $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = match (true) {
+            $value === null, $value === '', $value === [] => '—',
+            is_bool($value) => $value ? 'Yes' : 'No',
+            is_scalar($value) => (string) $value,
+            default => (string) json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+        };
+
+        return '<div class="form-group folio-readonly">' . "\n"
+            . '  <span class="form-label">' . $e($label ?? (new \Preflow\Form\FieldRenderer())->humanize($name)) . '</span>' . "\n"
+            . '  <p class="folio-readonly-value">' . $e($text) . '</p>' . "\n"
+            . ($help !== null && $help !== '' ? '  <small class="form-help">' . $e($help) . '</small>' . "\n" : '')
+            . '</div>';
+    }
+
     /** Plain text for placeholders and references (field values may hold rich text). */
     private static function plain(mixed $value): string
     {
@@ -946,7 +999,7 @@ final class AdminController
 
     /**
      * Columns for the admin list: "list.columns" from the type JSON, else the
-     * first three plain-valued fields.
+     * first three plain-valued fields that are not hidden.
      *
      * @param array<string, mixed> $listConfig
      * @return array<string, string> field => header label
@@ -960,7 +1013,7 @@ final class AdminController
 
         if ($names === []) {
             foreach ($typeDef->fields as $name => $fieldDef) {
-                if ($name !== $typeDef->idField && in_array($fieldDef->type, self::LIST_TYPES, true)) {
+                if ($name !== $typeDef->idField && in_array($fieldDef->type, self::LIST_TYPES, true) && ($fieldDef->config['hidden'] ?? false) !== true) {
                     $names[] = $name;
                 }
                 if (count($names) === 3) {

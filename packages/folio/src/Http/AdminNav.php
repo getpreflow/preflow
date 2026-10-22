@@ -8,13 +8,14 @@ use Closure;
 use Preflow\Folio\Content\TypeCatalog;
 
 /**
- * The admin sidebar as data: Dashboard, Content, Library, Settings, then sections
- * extensions add. One instance per application (container singleton), so items
- * added at boot are there when a template renders.
+ * The admin sidebar as data: Dashboard, Pages, Content, the other sections types
+ * ("section" in a model JSON) and extensions add, then Library and Settings. One
+ * instance per application (container singleton), so items added at boot are there when
+ * a template renders.
  */
 final class AdminNav
 {
-    private const BUILTIN = ['dashboard' => '', 'content' => 'Content', 'library' => 'Library', 'settings' => 'Settings'];
+    private const BUILTIN = ['dashboard' => '', 'pages' => 'Pages', 'content' => 'Content', 'library' => 'Library', 'settings' => 'Settings'];
 
     private string $prefix;
     private string $path = '';
@@ -30,7 +31,7 @@ final class AdminNav
         $this->prefix = rtrim($prefix, '/');
     }
 
-    /** Adds an item to a section; a new section name is appended after the built-in ones. A null permission shows it to everyone. */
+    /** Adds an item to a section; a new section name sits between Content and Library, in the order first used. A null permission shows it to everyone. */
     public function add(string $section, string $label, string $url, string $icon, ?string $permission, int $order = 100): void
     {
         $this->added[] = compact('section', 'label', 'url', 'icon', 'permission', 'order');
@@ -52,11 +53,20 @@ final class AdminNav
 
         $add('dashboard', 'Dashboard', $this->prefix === '' ? '/' : $this->prefix, 'ui-dashboard', 'folio.dashboard', 100);
         foreach ($this->catalog->all() as $listing) {
-            $add($listing->section === 'settings' ? 'settings' : 'content', $listing->label, $this->prefix . '/' . $listing->key, $listing->singleton ? 'ui-settings' : 'ui-file', $listing->key . '.view', 100);
+            if ($listing->nav) {
+                $icon = $listing->icon !== '' ? $listing->icon : ($listing->singleton ? 'ui-settings' : 'ui-file');
+                $add($listing->section, $listing->label, $this->prefix . '/' . $listing->key, $icon, $listing->key . '.view', $listing->order);
+            }
         }
         $add('library', 'Assets', $this->prefix . '/assets', 'ui-library', 'assets.view', 100);
         foreach ($this->added as $item) {
             $add($item['section'], $item['label'], $item['url'], $item['icon'], $item['permission'], $item['order']);
+        }
+
+        $ordered = $groups;
+        $groups = [];
+        foreach (self::sectionOrder(array_keys($ordered)) as $section) {
+            $groups[$section] = $ordered[$section];
         }
 
         $visible = [];
@@ -75,7 +85,7 @@ final class AdminNav
         $sections = [];
         foreach ($visible as $section => $items) {
             $sections[] = [
-                'label' => self::BUILTIN[$section] ?? $section,
+                'label' => self::sectionLabel($section),
                 'items' => array_map(fn (array $item): array => [
                     'label' => $item['label'],
                     'url' => $item['url'],
@@ -86,6 +96,33 @@ final class AdminNav
         }
 
         return $sections;
+    }
+
+    /**
+     * Section names in sidebar order: the built-in ones (dashboard first), with the others
+     * of $sections (in the given order, i.e. first used) between Content and Library.
+     *
+     * @param list<string> $sections
+     * @return list<string>
+     */
+    public static function sectionOrder(array $sections): array
+    {
+        $custom = array_values(array_diff(array_unique($sections), array_keys(self::BUILTIN)));
+        $ordered = [];
+        foreach (array_keys(self::BUILTIN) as $section) {
+            if ($section === 'library') {
+                array_push($ordered, ...$custom);
+            }
+            $ordered[] = $section;
+        }
+
+        return $ordered;
+    }
+
+    /** A section's heading: "Pages" for pages, "Member area" for member_area. */
+    public static function sectionLabel(string $section): string
+    {
+        return self::BUILTIN[$section] ?? ucfirst(str_replace(['_', '-'], ' ', $section));
     }
 
     /**

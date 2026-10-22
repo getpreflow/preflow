@@ -62,12 +62,30 @@ final class BinAutoloadTest extends TestCase
         $this->assertStringContainsString('autoload', $err);
     }
 
+    public function test_bin_exits_with_command_code(): void
+    {
+        $this->makeProject($this->root . '/project', true);
+
+        [, , $code] = $this->runBin($this->root . '/project', [], null, 'marker:fail');
+
+        $this->assertSame(3, $code);
+    }
+
+    public function test_unknown_command_exits_1(): void
+    {
+        $this->makeProject($this->root . '/project', true);
+
+        [, , $code] = $this->runBin($this->root . '/project', [], null, 'no:such');
+
+        $this->assertSame(1, $code);
+    }
+
     private function bin(): string
     {
         return dirname(__DIR__) . '/bin/preflow';
     }
 
-    /** A project whose autoloader loads the framework's and, when $withCommand, defines App\MarkerCommand. */
+    /** A project whose autoloader loads the framework's and, when $withCommand, defines App\MarkerCommand and App\FailCommand (exits 3). */
     private function makeProject(string $dir, bool $withCommand): void
     {
         mkdir($dir . '/vendor', 0777, true);
@@ -83,10 +101,17 @@ namespace App {
         public function getDescription(): string { return 'marker'; }
         public function execute(array $args): int { return 0; }
     }
+
+    final class FailCommand implements \Preflow\DevTools\Command\CommandInterface
+    {
+        public function getName(): string { return 'marker:fail'; }
+        public function getDescription(): string { return 'fails'; }
+        public function execute(array $args): int { return 3; }
+    }
 }
 PHP;
         }
-        file_put_contents($dir . '/config/commands.php', "<?php return ['App\\\\MarkerCommand'];");
+        file_put_contents($dir . '/config/commands.php', "<?php return ['App\\\\MarkerCommand', 'App\\\\FailCommand'];");
         file_put_contents($dir . '/vendor/autoload.php', $autoload);
     }
 
@@ -94,10 +119,10 @@ PHP;
      * @param string[] $phpArgs
      * @return array{0: string, 1: string, 2: int}
      */
-    private function runBin(string $cwd, array $phpArgs = [], ?string $bin = null): array
+    private function runBin(string $cwd, array $phpArgs = [], ?string $bin = null, string $command = 'help'): array
     {
         $proc = proc_open(
-            [PHP_BINARY, ...$phpArgs, $bin ?? $this->bin(), 'help'],
+            [PHP_BINARY, ...$phpArgs, $bin ?? $this->bin(), $command],
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             $cwd,

@@ -214,7 +214,9 @@ return [
 
 `Preflow\Core\Throttle\Throttle` limits attempts (a login, a form, a code guess) in fixed
 windows. It is bound when `config/data.php` exists, stores through the `DataManager` in the
-table `preflow_throttle` (created by `preflow migrate`), and is keyed by `app.key`.
+table `preflow_throttle` (created by `preflow migrate`), and is keyed by `app.key`. It stores on
+the `throttle` storage alias when `config/data.php` defines one, otherwise on the default
+driver.
 `client()` throws a `RuntimeException` while `app.key` is empty or the default key: a hash
 salted with a public key could be brute-forced back to the IP.
 
@@ -234,6 +236,7 @@ $throttle->clear('login', $client);                       // after a success
 - **Windows must be much shorter than a day.** The client hash rotates at 00:00 UTC, so a
   window spanning midnight starts over.
 - **No raw IP is stored**, only an HMAC of `REMOTE_ADDR` (forwarded headers are ignored).
+  IPv6 clients count by their /64 prefix, since one subscriber usually holds a whole /64.
   Without a `REMOTE_ADDR` (CLI, tests) all requests are one `unknown` client; it never throws.
 - `prune(olderThanSeconds: 172800)` deletes old rows and returns how many; `hit()` runs it
   opportunistically, once per request when a new window starts.

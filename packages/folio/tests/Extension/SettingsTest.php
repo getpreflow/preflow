@@ -65,7 +65,7 @@ final class SettingsTest extends TestCase
 
         $listing = $app->container()->get(TypeCatalog::class)->get('members_settings');
         $this->assertNotNull($listing);
-        $this->assertSame('Members', $listing->label);
+        $this->assertSame('Members settings', $listing->label);
         $this->assertTrue($listing->singleton);
         $this->assertFalse($listing->publishing);
         $this->assertSame('settings', $listing->section);
@@ -73,13 +73,26 @@ final class SettingsTest extends TestCase
 
         $page = (string) $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('GET', '/folio/members_settings'))->getBody();
         $this->assertMatchesRegularExpression(
-            '#<span class="folio-nav-label">Settings</span>\s*<a href="/folio/members_settings" class="active" aria-current="page">\s*<svg class="folio-icon" aria-hidden="true"><use href="[^"]*\#ui-settings"></use></svg><span>Members</span>#',
+            '#<span class="folio-nav-label">Settings</span>\s*<a href="/folio/members_settings" class="active" aria-current="page">\s*<svg class="folio-icon" aria-hidden="true"><use href="[^"]*\#ui-settings"></use></svg><span>Members settings</span>#',
             $page,
         );
         // Before the first save the form shows the declared defaults.
         $this->assertStringContainsString('action="/folio/members_settings/members_settings"', $page);
         $this->assertStringContainsString('value="office@example.org"', $page);
         $this->assertMatchesRegularExpression('#name="registration_open"[^>]*checked#', $page);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_settings_type_label_has_settings_suffix(): void
+    {
+        $this->members();
+        $app = $this->app();
+
+        // "{extension label} settings", so it never reads like the extension's own types ("Members").
+        $this->assertSame('Members settings', $app->container()->get(TypeCatalog::class)->get('members_settings')?->label);
+        $page = (string) $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('GET', '/folio/members_settings'))->getBody();
+        $this->assertStringContainsString('<span>Members settings</span>', $page);
+        $this->assertStringNotContainsString('<span>Members</span>', $page);
     }
 
     #[RunInSeparateProcess]

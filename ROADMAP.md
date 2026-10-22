@@ -81,6 +81,16 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 
 ## Completed
 
+### v0.20.0
+
+- **Folio on SQLite, extensions and live settings** (plan A): extension system, live settings, SQL storage, storage aliases
+- **User types and transfer**, **Throttle service**
+- **RBAC package** (`preflow/rbac`) — roles stored in Folio, matrix permissions editor
+- **Codes package** (`preflow/codes`) — redeemable codes managed in Folio
+- Folio sidebar built from model JSON; admin assets for packages
+- CLI exit-code fix
+- Provider constraints raised to `^0.20 || @dev` where 0.20 features are used (folio, devtools, roles)
+
 ### v0.12.0
 
 - **Validation package** (`preflow/validation`) — 14th package

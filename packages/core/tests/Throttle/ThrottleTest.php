@@ -86,6 +86,24 @@ final class ThrottleTest extends DataTestCase
         $this->assertSame($client, $this->throttle()->client($forwarded));
     }
 
+    public function test_ipv6_clients_grouped_by_64(): void
+    {
+        $t = $this->throttle();
+        $client = static fn (string $ip): string => $t->client(new ServerRequest('GET', '/', [], null, '1.1', ['REMOTE_ADDR' => $ip]));
+
+        // One /64 (a single subscriber's usual allocation) is one client, however written.
+        $a = $client('2001:db8:1:2::1');
+        $this->assertSame($a, $client('2001:0db8:0001:0002:ffff:ffff:ffff:fffe'));
+        $this->assertSame($a, $client('2001:DB8:1:2:abcd::9'));
+        $this->assertSame(hash_hmac('sha256', '2001:db8:1:2::/64', 'secret|' . gmdate('Y-m-d')), $a);
+        $this->assertNotSame($a, $client('2001:db8:1:3::1'));
+
+        // IPv4 unchanged, also when written IPv4-mapped.
+        $this->assertSame(hash_hmac('sha256', '203.0.113.7', 'secret|' . gmdate('Y-m-d')), $client('203.0.113.7'));
+        $this->assertSame($client('203.0.113.7'), $client('::ffff:203.0.113.7'));
+        $this->assertNotSame($client('203.0.113.7'), $client('203.0.113.8'));
+    }
+
     public function test_client_refuses_default_key(): void
     {
         $request = new ServerRequest('GET', '/', [], null, '1.1', ['REMOTE_ADDR' => '203.0.113.7']);

@@ -185,4 +185,89 @@ final class TypeCatalogTest extends TestCase
         $this->expectException(FrontendConfigException::class);
         (new TypeCatalog($this->dir))->add(['key' => 'u', 'table' => 'u', 'users' => '', 'fields' => []]);
     }
+
+    public function test_nav_keys_default_and_read(): void
+    {
+        $catalog = new TypeCatalog($this->dir);
+        $catalog->add(['key' => 'plain']);
+        $catalog->add(['key' => 'placed', 'section' => 'pages', 'order' => 5, 'icon' => 'ui-users', 'nav' => false], 'settings');
+
+        $plain = $catalog->get('plain');
+        $this->assertSame(['content', 100, '', true], [$plain->section, $plain->order, $plain->icon, $plain->nav]);
+        $placed = $catalog->get('placed');
+        $this->assertSame(['pages', 5, 'ui-users', false], [$placed->section, $placed->order, $placed->icon, $placed->nav]);
+    }
+
+    /** @return iterable<string, array{array<string, mixed>, string}> */
+    public static function invalidNavKeys(): iterable
+    {
+        yield 'section not a string' => [['section' => 3], '"section"'];
+        yield 'section not a slug' => [['section' => 'Member Area'], '"section"'];
+        yield 'order not an int' => [['order' => '10'], '"order"'];
+        yield 'icon without ui- prefix' => [['icon' => 'users'], '"icon"'];
+        yield 'icon not a string' => [['icon' => true], '"icon"'];
+        yield 'nav not a bool' => [['nav' => 'no'], '"nav"'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidNavKeys')]
+    public function test_invalid_section_type_throws(array $extra, string $names): void
+    {
+        $this->model($extra);
+        $this->expectException(FrontendConfigException::class);
+        $this->expectExceptionMessageMatches('/Type "member".*' . preg_quote($names, '/') . '/');
+
+        (new TypeCatalog($this->dir))->all();
+    }
+
+    public function test_reserved_type_key_throws(): void
+    {
+        foreach (\Preflow\Folio\Extension\Screen\ScreenRegistry::RESERVED as $key) {
+            try {
+                (new TypeCatalog($this->dir))->add(['key' => $key]);
+                $this->fail("Type key \"{$key}\" was accepted");
+            } catch (FrontendConfigException $e) {
+                $this->assertStringContainsString("Type \"{$key}\"", $e->getMessage());
+            }
+        }
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function fileHoldingFieldTypes(): iterable
+    {
+        yield 'asset' => ['asset'];
+        yield 'blocks' => ['blocks'];
+        yield 'matrix' => ['matrix'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('fileHoldingFieldTypes')]
+    public function test_non_transferred_type_with_asset_field_throws(string $fieldType): void
+    {
+        $catalog = new TypeCatalog($this->dir);
+        $catalog->add(['key' => 'gallery', 'transfer' => true, 'fields' => ['image' => ['type' => $fieldType]]]);
+        $catalog->add(['key' => 'note', 'transfer' => false, 'fields' => ['body' => ['type' => 'text']]]);
+
+        $this->expectException(FrontendConfigException::class);
+        $this->expectExceptionMessage('Type "member" keeps its records on the server, but its files would still be exported; file fields are not supported on it yet.');
+
+        $catalog->add(['key' => 'member', 'users' => 'members', 'fields' => ['name' => ['type' => 'string'], 'files' => ['type' => $fieldType]]]);
+    }
+
+    public function test_file_holding_field_types_cover_upload_types(): void
+    {
+        $uploads = [];
+        foreach (glob(dirname(__DIR__, 2) . '/src/Field/Types/*FieldType.php') ?: [] as $file) {
+            $reflection = new \ReflectionClass('Preflow\\Folio\\Field\\Types\\' . basename($file, '.php'));
+            if (!$reflection->isAbstract() && $reflection->implementsInterface(\Preflow\Folio\Field\HandlesUpload::class)) {
+                $uploads[] = $reflection->newInstanceWithoutConstructor()->key(); // key() returns a literal
+            }
+        }
+
+        $this->assertNotSame([], $uploads);
+        foreach ($uploads as $key) {
+            $this->assertContains($key, TypeCatalog::FILE_HOLDING_FIELD_TYPES, "Upload field type \"{$key}\"");
+        }
+        // Types that nest other fields or assets: blocks hand uploads to nested types, matrix has assets().
+        $this->assertContains('blocks', TypeCatalog::FILE_HOLDING_FIELD_TYPES);
+        $this->assertContains('matrix', TypeCatalog::FILE_HOLDING_FIELD_TYPES);
+    }
 }

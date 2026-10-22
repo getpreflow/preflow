@@ -263,4 +263,80 @@ final class AdminControllerTest extends TestCase
         $this->assertStringContainsString('"layout":"@folio/admin/_drawer_layout.twig"', $body);
         $this->assertStringContainsString('"action":"/folio/page?_drawer=1"', $body);
     }
+    /** An "account" type with a hidden and a read-only field (written only for the tests using it). */
+    private function accountType(): void
+    {
+        file_put_contents($this->base . '/m/account.json', json_encode([
+            'key' => 'account', 'table' => 'account', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Accounts',
+            'fields' => [
+                'email' => ['type' => 'string'],
+                'secret' => ['type' => 'string', 'hidden' => true],
+                'uses' => ['type' => 'string', 'label' => 'Times used', 'readonly' => true],
+                'note' => ['type' => 'string'],
+            ],
+        ]));
+        $this->registry = new TypeRegistry($this->base . '/m');
+        $this->dm = new DataManager(['json' => new JsonFileDriver($this->base . '/s')], 'json', $this->registry, new ValidatorFactory(new RuleFactory()));
+        $this->dm->saveType(\Preflow\Data\DynamicRecord::fromArray($this->registry->get('account'), [
+            'uuid' => 'a1', 'email' => 'a@site.test', 'secret' => 's3cret', 'uses' => '<b>5</b>', 'note' => 'n',
+        ]), false);
+    }
+
+    public function test_hidden_field_not_rendered_and_kept(): void
+    {
+        $this->accountType();
+        $f = new Psr17Factory();
+        $body = (string) $this->controllerWith($this->capturingEngine())->editForm(
+            $f->createServerRequest('GET', '/folio/account/a1/edit')->withAttribute('type', 'account')->withAttribute('id', 'a1'),
+        )->getBody();
+        $this->assertStringContainsString('name=\\"email\\"', $body);
+        $this->assertStringNotContainsString('name=\\"secret\\"', $body);
+        $this->assertStringNotContainsString('s3cret', $body);
+
+        // A posted value is ignored: the stored one stays.
+        $res = $this->controller()->update($f->createServerRequest('POST', '/folio/account/a1')->withAttribute('type', 'account')->withAttribute('id', 'a1')
+            ->withParsedBody(['email' => 'b@site.test', 'secret' => 'typed', 'note' => 'n']));
+        $this->assertSame(302, $res->getStatusCode());
+        $stored = $this->dm->findType('account', 'a1');
+        $this->assertSame('b@site.test', $stored?->get('email'));
+        $this->assertSame('s3cret', $stored?->get('secret'));
+
+        // On create it starts empty.
+        $this->controller()->store($f->createServerRequest('POST', '/folio/account')->withAttribute('type', 'account')
+            ->withParsedBody(['email' => 'new@site.test', 'secret' => 'typed', 'uses' => '9']));
+        $created = $this->dm->queryType('account')->where('email', 'new@site.test')->first();
+        $this->assertNotNull($created);
+        $this->assertNull($created->get('secret'));
+        $this->assertNull($created->get('uses'));
+    }
+
+    public function test_readonly_field_shown_as_text_and_kept(): void
+    {
+        $this->accountType();
+        $f = new Psr17Factory();
+        $body = (string) $this->controllerWith($this->capturingEngine())->editForm(
+            $f->createServerRequest('GET', '/folio/account/a1/edit')->withAttribute('type', 'account')->withAttribute('id', 'a1'),
+        )->getBody();
+        $this->assertStringNotContainsString('name=\\"uses\\"', $body);
+        $this->assertStringContainsString('Times used', $body);
+        $this->assertStringContainsString('&lt;b&gt;5&lt;/b&gt;', $body); // escaped plain text
+        $this->assertStringNotContainsString('<b>5', $body);
+
+        $this->controller()->update($f->createServerRequest('POST', '/folio/account/a1')->withAttribute('type', 'account')->withAttribute('id', 'a1')
+            ->withParsedBody(['email' => 'a@site.test', 'uses' => '99', 'note' => 'n2']));
+        $stored = $this->dm->findType('account', 'a1');
+        $this->assertSame('<b>5</b>', $stored?->get('uses'));
+        $this->assertSame('n2', $stored?->get('note'));
+    }
+
+    public function test_hidden_field_not_in_auto_list_columns(): void
+    {
+        $this->accountType();
+        $body = (string) $this->controllerWith($this->capturingEngine())->list(
+            (new Psr17Factory())->createServerRequest('GET', '/folio/account')->withAttribute('type', 'account'),
+        )->getBody();
+
+        $this->assertStringContainsString('"columns":{"email":"Email","uses":"Times used","note":"Note"}', $body);
+        $this->assertStringNotContainsString('s3cret', $body);
+    }
 }

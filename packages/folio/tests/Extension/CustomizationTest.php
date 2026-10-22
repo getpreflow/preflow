@@ -45,12 +45,14 @@ final class CustomizationTest extends TestCase
             'providers' => ['config' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [
                 ['email' => 'admin@site.test', 'password_hash' => $hash, 'roles' => ['admin']],
                 ['email' => 'editor@site.test', 'password_hash' => $hash, 'roles' => ['editor']],
+                ['email' => 'approver@site.test', 'password_hash' => $hash, 'roles' => ['approver']],
             ]]],
             'session' => ['cookie' => 'folio_custom_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
         $this->write('config/roles.php', "<?php\nreturn " . var_export(['staff' => [
             'admin' => ['*'],
             'editor' => ['folio.dashboard', 'contact.view', 'contact.edit'],
+            'approver' => ['folio.dashboard', 'contact.view', 'crm.approve'],
         ]], true) . ";\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Roles\\RolesServiceProvider::class];\n");
 
@@ -138,6 +140,20 @@ final class CustomizationTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_action_button_hidden_without_type_edit(): void
+    {
+        $this->crm();
+        $this->as('approver'); // crm.approve, not contact.edit
+        $this->seed('contact', 'c1', ['name' => 'Ada', 'status' => 'new']);
+
+        $edit = $this->send('GET', '/folio/contact/c1/edit');
+        $this->assertSame(200, $edit->getStatusCode());
+        $this->assertStringNotContainsString('/_action/approve', (string) $edit->getBody());
+        $this->assertSame(403, $this->send('POST', '/folio/contact/c1/_action/approve')->getStatusCode());
+        $this->assertSame('new', $this->stored('contact', 'c1')?->get('status'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_record_action_needs_csrf(): void
     {
         $this->crm();
@@ -180,6 +196,24 @@ final class CustomizationTest extends TestCase
         $update = $this->send('POST', '/folio/contact/' . $record->getId(), ['name' => 'Ada', 'email' => 'X@Y.Z']);
         $this->assertSame(302, $update->getStatusCode());
         $this->assertSame('x@y.z', $this->stored('contact', (string) $record->getId())?->get('email'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_before_save_validation_exception_shows_form_again(): void
+    {
+        $this->crm();
+        $this->as('admin');
+
+        $res = $this->send('POST', '/folio/contact', ['name' => 'Ada', 'status' => 'blocked']);
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('Blocked contacts cannot be saved.', (string) $res->getBody());
+        $this->assertSame([], $this->session->container()->get(DataManager::class)->queryType('contact')->get()->items());
+
+        $this->seed('contact', 'c1', ['name' => 'Ada', 'status' => 'new']);
+        $update = $this->send('POST', '/folio/contact/c1', ['name' => 'Ada L.', 'status' => 'blocked']);
+        $this->assertSame(422, $update->getStatusCode());
+        $this->assertStringContainsString('Blocked contacts cannot be saved.', (string) $update->getBody());
+        $this->assertSame('Ada', $this->stored('contact', 'c1')?->get('name'));
     }
 
     #[RunInSeparateProcess]
@@ -360,6 +394,9 @@ final class CustomizationTest extends TestCase
                         $record->set('name', 'Anonymous');
                     }
                     $record->set('email', strtolower((string) $record->get('email')));
+                    if ($record->get('status') === 'blocked') {
+                        throw new \Preflow\Validation\ValidationException(new \Preflow\Validation\ValidationResult(['status' => ['Blocked contacts cannot be saved.']]));
+                    }
                     Log::$entries[] = 'before:contact:' . $record->get('name');
                 }
 

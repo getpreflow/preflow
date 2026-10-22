@@ -300,6 +300,17 @@ final class Application
             $drivers['default'] = $drivers[$default];
         }
 
+        // Aliases name a purpose ('codes', 'throttle') and map it to a configured driver.
+        foreach ($dataConfig['aliases'] ?? [] as $alias => $target) {
+            if ($alias === 'default' || isset($drivers[$alias])) {
+                throw new \RuntimeException("Storage alias [{$alias}] collides with a configured driver.");
+            }
+            if (!isset($drivers[$target])) {
+                throw new \RuntimeException("Storage alias [{$alias}] points to [{$target}], which is not a configured driver.");
+            }
+            $drivers[$alias] = $drivers[$target];
+        }
+
         // TypeRegistry for dynamic models
         $typeRegistry = null;
         $modelsPath = $dataConfig['models_path'] ?? $this->basePath('config/models');
@@ -343,6 +354,7 @@ final class Application
             new \Preflow\Core\Throttle\Throttle(
                 $dataManager,
                 (string) $this->config->get('app.key', \Preflow\Core\Throttle\Throttle::DEFAULT_KEY),
+                isset($drivers['throttle']) ? 'throttle' : 'default',
             ),
         );
     }

@@ -23,6 +23,10 @@ use Psr\Http\Message\UploadedFileInterface;
  *
  * Upload fields are always treated as shared across locales, even when marked
  * translatable (one file per record).
+ *
+ * Hidden and read-only fields ("hidden": true, "readonly": true) are never taken from
+ * the form: the stored value is kept (a new record starts without one, unless a
+ * BeforeSave hook sets it).
  */
 final class DraftRecordFactory
 {
@@ -68,6 +72,12 @@ final class DraftRecordFactory
 
         foreach ($typeDef->fields as $name => $fieldDef) {
             if ($name === $typeDef->idField) {
+                continue;
+            }
+            if (self::locked($fieldDef->config)) {
+                if (array_key_exists($name, $existing)) {
+                    $data[$name] = $existing[$name];
+                }
                 continue;
             }
             $fieldType = $this->fieldTypes->get($fieldDef->type);
@@ -155,6 +165,16 @@ final class DraftRecordFactory
             : ($existing['_locales'] ?? []); // as stored (SQL drivers: JSON text); availableLocales() decodes
 
         return DynamicRecord::fromArray($typeDef, ['_locales' => $chosen])->availableLocales();
+    }
+
+    /**
+     * A field the admin form never sets: "hidden" or "readonly" in its config.
+     *
+     * @param array<string, mixed> $config
+     */
+    private static function locked(array $config): bool
+    {
+        return ($config['hidden'] ?? false) === true || ($config['readonly'] ?? false) === true;
     }
 
     /** @return UploadedFileInterface[] */

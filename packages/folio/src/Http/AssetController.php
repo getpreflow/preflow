@@ -15,16 +15,20 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final class AssetController
 {
-    /** @param array<string, string> $allowlist flat URL filename => path relative to $baseDir */
+    private readonly AdminAssets $allowlist;
+
+    /** @param array<string, string>|AdminAssets $allowlist flat URL filename => path relative to $baseDir (or absolute) */
     public function __construct(
         private readonly string $baseDir,
-        private readonly array $allowlist,
-    ) {}
+        array|AdminAssets $allowlist,
+    ) {
+        $this->allowlist = $allowlist instanceof AdminAssets ? $allowlist : new AdminAssets($allowlist);
+    }
 
     public function serve(ServerRequestInterface $request): ResponseInterface
     {
         $file = (string) $request->getAttribute('file', '');
-        $rel = $this->allowlist[$file] ?? null;
+        $rel = $this->allowlist->get($file);
         if ($rel === null) {
             return new Response(404, [], 'Not found');
         }

@@ -124,7 +124,8 @@ enforced on the server, so a hidden button is never the only protection. A
 refused htmx request (autosave, block picker) shows its message as a toast.
 
 **Defaults.** Without a permission package, every signed-in staff user may do
-everything, as before. For roles, add `preflow/roles`:
+everything, as before. For roles from a config file, add `preflow/roles`; for roles
+and permissions edited in Folio itself, add [`preflow/rbac`](../rbac/README.md):
 
 ```php
 // config/roles.php
@@ -178,7 +179,11 @@ CSP. If you override `_layout.twig`, keep the nonces and the
 ## Type options
 
 Besides `fields`, a type JSON can carry two optional blocks, plus the flags `singleton`
-and `publishing` (see below).
+and `publishing` (see below) and its [sidebar](#sidebar) place.
+
+A type's `key` cannot be a path Folio uses under its prefix (`login`, `logout`,
+`_assets`, `_uploads`, `_blocks`, `media`, `extensions`, `blocks`, `preview`, `upload`,
+`assets`); such a key is an error naming the type.
 
 ### `frontend`: public rendering
 
@@ -231,10 +236,31 @@ available for every type that has a route.
 ```
 
 - `columns`: the fields shown. The default is the first three
-  string/number/select/boolean/date fields.
+  string/number/select/boolean/date fields that are not hidden.
 - `sort`: the default order. A `-` prefix means descending.
 - `orderable: true`: up/down buttons that store a manual position in the record's
   `_order` key. New records go to the end.
+
+### Sidebar
+
+```json
+{ "key": "site", "singleton": true, "section": "settings", "order": 10, "icon": "ui-settings" }
+```
+
+- `section`: the sidebar section, a lowercase name (`a-z`, `0-9`, `_`, `-`, starting
+  with a letter). The default is `content` (extension settings types: `settings`); a
+  `section` in an extension model wins over that.
+- `order`: an integer; lower comes first within the section. The default is 100.
+- `icon`: a `ui-*` icon of Folio's sprite (for example `ui-file`, `ui-settings`,
+  `ui-users`, `ui-key`). The default is `ui-settings` for singletons, `ui-file`
+  otherwise.
+- `nav: false` leaves the type out of the sidebar; its admin pages stay reachable.
+
+The sections, in this order: the dashboard, **Pages** (`pages`), **Content**
+(`content`), **Library** (`library`), **Settings** (`settings`). Any other name sits
+between Content and Library (several, in the order first used), labelled from the name (`member_area` becomes "Member area").
+Sections the user can see nothing in are left out. A wrong type for any of these keys is
+an error naming the type.
 
 ## Field types
 
@@ -242,12 +268,27 @@ available for every type that has a route.
 `date` (`"time": true` for date and time), `select` (`"options"` as a map or a list;
 `"display": "radio"`), `richtext`, `asset`, `relation` and `matrix`.
 
+Any field also takes:
+
+- `"hidden": true`: not shown in the edit form or the default list columns. A save keeps
+  the stored value; a posted value is ignored.
+- `"readonly": true`: shown in the edit form as plain text, without an input. A save keeps
+  the stored value; a posted value is ignored.
+
+Both apply on create too: such a field starts empty unless a `#[BeforeSave]` hook sets it.
+
 A field type's own rules (e.g. `select`'s allowed values) are enforced in addition to
 `validate`. To add or replace a type, list the classes in `config/folio.php`:
 
 ```php
 return ['field_types' => [App\Folio\ColorFieldType::class]];
 ```
+
+A field type's `assets()` names the `.css` and `.js` files its editor needs; Folio loads
+them only on forms that render the field, from `{prefix}/_assets/{file}`. A package
+serves its own files there by adding them in its provider's `boot()`:
+`$container->get(Preflow\Folio\Http\AdminAssets::class)->add('color.css', __DIR__ . '/../assets/color.css')`
+(an absolute path; a name already taken is an error).
 
 ## Blocks
 
@@ -713,7 +754,7 @@ final class NoteTweaks
 | `#[FormPanel(label, position: 'after')]` | `fn(DynamicRecord): ScreenView\|string` | A panel on the edit form (not on create), `before` or `after` Folio's own extras. A string is shown as escaped text, a `ScreenView` as a template fragment. |
 | `#[RecordAction(name, label, permission, icon, confirm)]` | `fn(DynamicRecord, ServerRequestInterface): ?ResponseInterface` | A POST button at `{prefix}/{type}/{id}/_action/{name}`; null redirects back to the form with "{label}: done". Needs the permission and the type's edit permission. |
 | `#[ListColumn(label, position: 100)]` | `fn(DynamicRecord): string` | A column after the type's own, ordered by position, shown as escaped text. |
-| `#[BeforeSave]` | `fn(DynamicRecord): void` | Before validation; may `set()` fields. |
+| `#[BeforeSave]` | `fn(DynamicRecord): void` | Before validation; may `set()` fields. Throw `Preflow\Validation\ValidationException` to refuse the save: the form is shown again with its errors (422). |
 | `#[AfterSave]` | `fn(DynamicRecord): void` | After the record is stored. |
 | `#[BeforeDelete]` | `fn(DynamicRecord): void` | Throw `Customization\Refused('message')` to keep the record; the message is shown to the editor. |
 | `#[AfterDelete]` | `fn(DynamicRecord): void` | After the record is gone. |
@@ -732,7 +773,8 @@ Things to know:
 ### Settings
 
 `Extension::settings()` returns a form in the model JSON `fields` format. Folio shows it
-under *Settings* as the singleton type `{name}_settings` (no publishing) and reads it with
+under *Settings* as the singleton type `{name}_settings` (no publishing), labelled
+"{extension label} settings" (e.g. "Members settings"), and reads it with
 the declared defaults. Overriding `settings()` declares the `settings` part; discovery sees
 that without instantiating the extension, so a disabled extension's constructor never runs.
 An enabled one whose `settings()` returns no fields is an error on boot.
@@ -773,6 +815,11 @@ A type can hold the site's own users or members:
   live users never travel to a laptop by accident.
 - Any other type can opt out with `"transfer": false`. `"transfer"` must be a JSON boolean;
   anything else (`"false"`, `0`) is an error naming the type.
+- A type that is not transferred cannot have fields that hold files (`asset`, `blocks`,
+  `matrix`) yet: its records stay on the server, but the uploaded files would still be
+  exported. Such a type is an error. Field types a site registers itself
+  (`config/folio.php` `field_types`) are not checked; don't give one that stores files
+  to a type that is not transferred.
 - Per-environment state (installed extension versions, throttle rows) is never exported.
 
 ## SQL storage
@@ -911,7 +958,7 @@ Shipped:
 - the asset library (variants, `folio_image()`, picker, usage, legacy import);
 - click-to-edit in the live preview;
 - `folio:pull` (live content to local);
-- permissions on every admin action (`can()`, with `preflow/roles` for roles).
+- permissions on every admin action (`can()`, with `preflow/roles` or `preflow/rbac` for roles).
 
 The admin runs under Preflow's strict, nonce-based CSP: no inline handlers or styles.
 Hand-written `<script>`/`<style>` tags in your own templates need

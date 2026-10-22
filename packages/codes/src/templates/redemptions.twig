@@ -1,0 +1,12 @@
+{% if redemptions is empty %}
+    <p>No redemptions yet.</p>
+{% else %}
+    <table class="folio-table">
+        <thead><tr><th>Redeemed by</th><th>Time</th></tr></thead>
+        <tbody>
+        {% for r in redemptions %}
+            <tr><td>{{ r.redeemer }}</td><td>{{ r.at }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% endif %}

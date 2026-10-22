@@ -76,7 +76,8 @@ final class FolioServiceProvider extends ServiceProvider
             cacheFile: $app->basePath('storage/cache/folio-extensions.cache'),
         );
         $container->instance(ExtensionRegistry::class, $extensions);
-        // Their settings forms (Extension::settings()) are singleton types under Settings.
+        // Models go under Content unless their JSON names a "section"; their settings forms
+        // (Extension::settings()) are singleton types under Settings.
         $extensionTypes = array_map(static fn (array $schema): array => [$schema, 'content', 'Extension model'], $extensions->enabledModels());
         foreach ($extensions->enabled() as $definition) {
             if ($extensions->partEnabled($definition->name, 'settings')) {
@@ -340,10 +341,12 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Content\LiveContent::class),
             $c->get(\Preflow\View\AssetCollector::class),
         ));
-        $container->singleton(\Preflow\Folio\Http\AdminAssetUrls::class, fn () => new \Preflow\Folio\Http\AdminAssetUrls(
+        // Folio's admin assets; packages add their field types' files (AdminAssets::add()).
+        $container->singleton(\Preflow\Folio\Http\AdminAssets::class, fn () => new \Preflow\Folio\Http\AdminAssets($this->assetMap()));
+        $container->singleton(\Preflow\Folio\Http\AdminAssetUrls::class, fn (Container $c) => new \Preflow\Folio\Http\AdminAssetUrls(
             rtrim($this->prefix($app), '/'),
             dirname(__DIR__) . '/assets',
-            $this->assetMap(),
+            $c->get(\Preflow\Folio\Http\AdminAssets::class),
         ));
         $container->bind(PreviewController::class, fn (Container $c) => new PreviewController(
             $c->get(TypeCatalog::class),
@@ -360,7 +363,7 @@ final class FolioServiceProvider extends ServiceProvider
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
             dirname(__DIR__) . '/assets',
-            $this->assetMap(),
+            $c->get(\Preflow\Folio\Http\AdminAssets::class),
         ));
         $container->singleton(\Preflow\Folio\Content\Singletons::class, fn (Container $c) => new \Preflow\Folio\Content\Singletons(
             $c->get(DataManager::class),

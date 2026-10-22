@@ -53,16 +53,34 @@ final class Throttle
         );
     }
 
-    /** Daily-rotating, salted client hash from REMOTE_ADDR only (no forwarded headers). */
+    /**
+     * Daily-rotating, salted client hash from REMOTE_ADDR only (no forwarded headers). An
+     * IPv6 address counts by its /64 prefix (one subscriber usually holds a whole /64);
+     * IPv4, also IPv4-mapped IPv6, by the address.
+     */
     public function client(ServerRequestInterface $request): string
     {
         if ($this->key === '' || $this->key === self::DEFAULT_KEY) {
             throw new \RuntimeException('Throttle needs APP_KEY (app.key) to be set; the default key would make client hashes reversible.');
         }
         $ip = $request->getServerParams()['REMOTE_ADDR'] ?? null;
-        $ip = is_string($ip) && $ip !== '' ? $ip : 'unknown';
+        $ip = is_string($ip) && $ip !== '' ? self::network($ip) : 'unknown';
 
         return hash_hmac('sha256', $ip, $this->key . '|' . gmdate('Y-m-d'));
+    }
+
+    /** "2001:db8:1:2::/64" for an IPv6 address, the dotted address for IPv4; anything else as given. */
+    private static function network(string $ip): string
+    {
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
+            return $ip;
+        }
+        $packed = (string) inet_pton($ip);
+        if (str_starts_with($packed, str_repeat("\0", 10) . "\xff\xff")) {
+            return (string) inet_ntop(substr($packed, 12));
+        }
+
+        return inet_ntop(substr($packed, 0, 8) . str_repeat("\0", 8)) . '/64';
     }
 
     public function tooMany(string $purpose, string $client, int $max, int $windowSeconds): bool

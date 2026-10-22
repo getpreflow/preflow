@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "332fe6f4982001ca56b30095e5ac37db",
+    "content-hash": "ac7a1b3e43b8fd572760b614a3418e4d",
     "packages": [
         {
             "name": "matthiasmullie/minify",
@@ -2299,7 +2299,7 @@
         },
         {
             "name": "preflow/auth",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/auth",
@@ -2336,7 +2336,7 @@
         },
         {
             "name": "preflow/blade",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/blade",
@@ -2373,8 +2373,50 @@
             }
         },
         {
+            "name": "preflow/codes",
+            "version": "dev-feat/members-groundwork-b",
+            "dist": {
+                "type": "path",
+                "url": "packages/codes",
+                "reference": "37f13faeeea5c082a42569a2bea1d4d335a03a5f"
+            },
+            "require": {
+                "php": ">=8.4",
+                "preflow/core": "^0.20 || @dev",
+                "preflow/data": "^0.20 || @dev",
+                "preflow/folio": "^0.20 || @dev"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^11.0"
+            },
+            "type": "library",
+            "extra": {
+                "folio": {
+                    "extension": "Preflow\\Codes\\Extension"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Preflow\\Codes\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Preflow\\Codes\\Tests\\": "tests/"
+                }
+            },
+            "license": [
+                "MIT"
+            ],
+            "description": "Preflow codes — readable and random codes that grant something for one purpose",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
             "name": "preflow/components",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/components",
@@ -2410,7 +2452,7 @@
         },
         {
             "name": "preflow/core",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/core",
@@ -2450,7 +2492,7 @@
         },
         {
             "name": "preflow/data",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/data",
@@ -2488,7 +2530,7 @@
         },
         {
             "name": "preflow/devtools",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/devtools",
@@ -2528,18 +2570,18 @@
         },
         {
             "name": "preflow/folio",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/folio",
-                "reference": "cc89a4562710b107e5bcd13cb1da657cd88447d9"
+                "reference": "2aad49ff705be3a11c153ef87b791f2aaa89e666"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
                 "php": ">=8.4",
-                "preflow/auth": "^0.1 || @dev",
+                "preflow/auth": "^0.19 || @dev",
                 "preflow/components": "^0.1 || @dev",
-                "preflow/core": "^0.1 || @dev",
+                "preflow/core": "^0.19 || @dev",
                 "preflow/data": "^0.1 || @dev",
                 "preflow/devtools": "^0.1 || @dev",
                 "preflow/form": "^0.1 || @dev",
@@ -2574,7 +2616,7 @@
         },
         {
             "name": "preflow/form",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/form",
@@ -2610,7 +2652,7 @@
         },
         {
             "name": "preflow/htmx",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/htmx",
@@ -2647,7 +2689,7 @@
         },
         {
             "name": "preflow/i18n",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/i18n",
@@ -2683,7 +2725,7 @@
         },
         {
             "name": "preflow/notify",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/notify",
@@ -2722,8 +2764,52 @@
             }
         },
         {
+            "name": "preflow/rbac",
+            "version": "dev-feat/members-groundwork-b",
+            "dist": {
+                "type": "path",
+                "url": "packages/rbac",
+                "reference": "be03b075f9376d2f347feb3d2bd0fd1fca04804d"
+            },
+            "require": {
+                "php": ">=8.4",
+                "preflow/auth": "^0.20 || @dev",
+                "preflow/core": "^0.20 || @dev",
+                "preflow/data": "^0.20 || @dev",
+                "preflow/folio": "^0.20 || @dev"
+            },
+            "require-dev": {
+                "nyholm/psr7": "^1.8",
+                "phpunit/phpunit": "^11.0"
+            },
+            "type": "library",
+            "extra": {
+                "folio": {
+                    "extension": "Preflow\\Rbac\\Extension"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Preflow\\Rbac\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Preflow\\Rbac\\Tests\\": "tests/"
+                }
+            },
+            "license": [
+                "MIT"
+            ],
+            "description": "Preflow RBAC — roles managed in Folio answering can()",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
             "name": "preflow/roles",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/roles",
@@ -2760,7 +2846,7 @@
         },
         {
             "name": "preflow/routing",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/routing",
@@ -2795,7 +2881,7 @@
         },
         {
             "name": "preflow/testing",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/testing",
@@ -2836,7 +2922,7 @@
         },
         {
             "name": "preflow/twig",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/twig",
@@ -2877,7 +2963,7 @@
         },
         {
             "name": "preflow/validation",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/validation",
@@ -2912,7 +2998,7 @@
         },
         {
             "name": "preflow/view",
-            "version": "dev-feat/access-and-roles",
+            "version": "dev-feat/members-groundwork-b",
             "dist": {
                 "type": "path",
                 "url": "packages/view",
@@ -6213,6 +6299,7 @@
     "stability-flags": {
         "preflow/auth": 20,
         "preflow/blade": 20,
+        "preflow/codes": 20,
         "preflow/components": 20,
         "preflow/core": 20,
         "preflow/data": 20,
@@ -6222,6 +6309,7 @@
         "preflow/htmx": 20,
         "preflow/i18n": 20,
         "preflow/notify": 20,
+        "preflow/rbac": 20,
         "preflow/roles": 20,
         "preflow/routing": 20,
         "preflow/testing": 20,
