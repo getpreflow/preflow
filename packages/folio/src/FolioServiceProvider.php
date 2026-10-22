@@ -173,7 +173,17 @@ final class FolioServiceProvider extends ServiceProvider
         ));
         $container->bind(\Preflow\Folio\Http\WorkingCopyMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\WorkingCopyMiddleware(
             $c->get(\Preflow\Folio\Content\LiveContent::class),
+            $c->get(\Preflow\Folio\Http\AdminNav::class),
         ));
+        $container->singleton(\Preflow\Folio\Http\AdminNav::class, function (Container $c) use ($prefix): \Preflow\Folio\Http\AdminNav {
+            $access = $c->get(\Preflow\Auth\Access\Access::class);
+
+            return new \Preflow\Folio\Http\AdminNav(
+                $c->get(TypeCatalog::class),
+                static fn (string $permission): bool => $access->can($permission),
+                $prefix,
+            );
+        });
         $container->bind(ActionResolver::class, fn (Container $c) => new ActionResolver($c));
         // Routes are computed (and validated) now, so conflicting "frontend"
         // declarations fail at boot; the resolver itself is built lazily.
@@ -347,6 +357,7 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(AdminAuthMiddleware::class, fn (Container $c) => new AdminAuthMiddleware(
             $c->get(\Preflow\Auth\AuthManager::class),
             $prefix,
+            $c->get(\Preflow\Folio\Http\AdminNav::class),
         ));
         $container->bind(\Preflow\Folio\Http\FolioPermissionMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\FolioPermissionMiddleware(
             $c->get(\Preflow\Auth\Access\Access::class),
@@ -393,15 +404,9 @@ final class FolioServiceProvider extends ServiceProvider
             ));
 
             // The sidebar: sections and items from the nav model (extensions add theirs), filtered by permission.
-            $access = $container->get(\Preflow\Auth\Access\Access::class);
-            \Preflow\Folio\Http\AdminNav::configure(
-                $container->get(TypeCatalog::class),
-                static fn (string $permission): bool => $access->can($permission),
-                $this->prefix($app),
-            );
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_nav',
-                callable: static fn (): array => \Preflow\Folio\Http\AdminNav::sections(),
+                callable: fn (): array => $container->get(\Preflow\Folio\Http\AdminNav::class)->sections(),
             ));
 
             // Singletons: folio_get('site') -> localized values (null before the first save).

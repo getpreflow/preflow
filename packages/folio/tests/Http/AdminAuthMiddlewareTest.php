@@ -41,7 +41,7 @@ final class AdminAuthMiddlewareTest extends TestCase
     public function test_redirects_to_login_when_unauthenticated(): void
     {
         $am = new AuthManager(['session' => $this->guard(null)], 'session');
-        $mw = new AdminAuthMiddleware($am, '/folio');
+        $mw = new AdminAuthMiddleware($am, '/folio', new \Preflow\Folio\Http\AdminNav(new \Preflow\Folio\Content\TypeCatalog(sys_get_temp_dir() . '/folio_none'), static fn (): bool => true, '/folio'));
         $res = $mw->process((new Psr17Factory())->createServerRequest('GET', '/folio'), $this->handler());
 
         $this->assertSame(302, $res->getStatusCode());
@@ -51,7 +51,7 @@ final class AdminAuthMiddlewareTest extends TestCase
     public function test_htmx_request_gets_401_with_hx_redirect(): void
     {
         $am = new AuthManager(['session' => $this->guard(null)], 'session');
-        $mw = new AdminAuthMiddleware($am, '/folio');
+        $mw = new AdminAuthMiddleware($am, '/folio', new \Preflow\Folio\Http\AdminNav(new \Preflow\Folio\Content\TypeCatalog(sys_get_temp_dir() . '/folio_none'), static fn (): bool => true, '/folio'));
         $res = $mw->process((new Psr17Factory())->createServerRequest('POST', '/folio/post/p1/autosave')->withHeader('HX-Request', 'true'), $this->handler());
 
         $this->assertSame(401, $res->getStatusCode());
@@ -62,7 +62,7 @@ final class AdminAuthMiddlewareTest extends TestCase
     {
         $user = new \Preflow\Auth\ArrayUser('a@b.test', 'a@b.test', 'H', ['admin']);
         $am = new AuthManager(['session' => $this->guard($user)], 'session');
-        $mw = new AdminAuthMiddleware($am, '/folio');
+        $mw = new AdminAuthMiddleware($am, '/folio', new \Preflow\Folio\Http\AdminNav(new \Preflow\Folio\Content\TypeCatalog(sys_get_temp_dir() . '/folio_none'), static fn (): bool => true, '/folio'));
         $res = $mw->process((new Psr17Factory())->createServerRequest('GET', '/folio'), $this->handler());
 
         $this->assertSame(200, $res->getStatusCode());

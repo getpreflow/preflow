@@ -25,23 +25,23 @@ final class AdminNavTest extends TestCase
     }
 
     /** @param list<string> $denied */
-    private function nav(array $denied = []): void
+    private function nav(array $denied = []): AdminNav
     {
         file_put_contents($this->dir . '/page.json', json_encode(['key' => 'page', 'label' => 'Pages', 'fields' => []]));
         $catalog = new TypeCatalog($this->dir);
         $catalog->add(['key' => 'site', 'label' => 'Site', 'singleton' => true], 'settings');
-        AdminNav::configure($catalog, static fn (string $permission): bool => !in_array($permission, $denied, true), '/folio');
+        return new AdminNav($catalog, static fn (string $permission): bool => !in_array($permission, $denied, true), '/folio');
     }
 
     public function test_sections_in_fixed_order_with_extension_items(): void
     {
-        $this->nav();
-        AdminNav::add('library', 'Gallery', '/folio/gallery', 'ui-file', null);
-        AdminNav::add('Members', 'Members', '/folio/members', 'ui-file', null);
-        AdminNav::add('content', 'Early', '/folio/early', 'ui-file', null, 10);
-        AdminNav::setCurrentPath('/folio');
+        $nav = $this->nav();
+        $nav->add('library', 'Gallery', '/folio/gallery', 'ui-file', null);
+        $nav->add('Members', 'Members', '/folio/members', 'ui-file', null);
+        $nav->add('content', 'Early', '/folio/early', 'ui-file', null, 10);
+        $nav->setCurrentPath('/folio');
 
-        $sections = AdminNav::sections();
+        $sections = $nav->sections();
 
         $this->assertSame(['', 'Content', 'Library', 'Settings', 'Members'], array_column($sections, 'label'));
         $labels = static fn (array $section): array => array_column($section['items'], 'label');
@@ -55,13 +55,13 @@ final class AdminNavTest extends TestCase
 
     public function test_longest_prefix_is_active(): void
     {
-        $this->nav();
-        AdminNav::add('library', 'Gallery', '/folio/assets/gallery', 'ui-file', null);
+        $nav = $this->nav();
+        $nav->add('library', 'Gallery', '/folio/assets/gallery', 'ui-file', null);
 
-        $active = static function (string $path): array {
-            AdminNav::setCurrentPath($path);
+        $active = function (string $path) use ($nav): array {
+            $nav->setCurrentPath($path);
             $names = [];
-            foreach (AdminNav::sections() as $section) {
+            foreach ($nav->sections() as $section) {
                 foreach ($section['items'] as $item) {
                     if ($item['active']) {
                         $names[] = $item['label'];
@@ -80,14 +80,43 @@ final class AdminNavTest extends TestCase
 
     public function test_items_without_permission_hidden_and_empty_section_dropped(): void
     {
-        $this->nav(['page.view', 'assets.view', 'site.view', 'secret.view']);
-        AdminNav::add('Members', 'Members', '/folio/members', 'ui-file', null);
-        AdminNav::add('Hidden', 'Secret', '/folio/secret', 'ui-file', 'secret.view');
-        AdminNav::setCurrentPath('/folio');
+        $nav = $this->nav(['page.view', 'assets.view', 'site.view', 'secret.view']);
+        $nav->add('Members', 'Members', '/folio/members', 'ui-file', null);
+        $nav->add('Hidden', 'Secret', '/folio/secret', 'ui-file', 'secret.view');
+        $nav->setCurrentPath('/folio');
 
-        $sections = AdminNav::sections();
+        $sections = $nav->sections();
 
         $this->assertSame(['', 'Members'], array_column($sections, 'label'));
         $this->assertSame(['Dashboard'], array_column($sections[0]['items'], 'label'));
+    }
+
+    public function test_settings_section_types_listed_under_settings(): void
+    {
+        $nav = $this->nav();
+        $nav->setCurrentPath('/folio');
+
+        $sections = $nav->sections();
+
+        $this->assertSame(['', 'Content', 'Library', 'Settings'], array_column($sections, 'label'));
+        $this->assertSame(['Pages'], array_column($sections[1]['items'], 'label'));
+        $this->assertSame(['Site'], array_column($sections[3]['items'], 'label'));
+    }
+
+    public function test_singleton_form_path_marks_item_active(): void
+    {
+        $nav = $this->nav();
+        $nav->setCurrentPath('/folio/site');
+
+        $active = [];
+        foreach ($nav->sections() as $section) {
+            foreach ($section['items'] as $item) {
+                if ($item['active']) {
+                    $active[] = $item['label'];
+                }
+            }
+        }
+
+        $this->assertSame(['Site'], $active);
     }
 }

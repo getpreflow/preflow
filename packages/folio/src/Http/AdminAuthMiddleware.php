@@ -21,6 +21,7 @@ final class AdminAuthMiddleware implements MiddlewareInterface
     public function __construct(
         private readonly AuthManager $auth,
         private readonly string $prefix,
+        private readonly AdminNav $nav,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -40,7 +41,7 @@ final class AdminAuthMiddleware implements MiddlewareInterface
             return new Response(302, ['Location' => $this->prefix . '/login']);
         }
         $this->auth->setUser($user, $this->auth->defaultGuardName());
-        AdminNav::setCurrentPath($request->getUri()->getPath());
+        $this->nav->setCurrentPath($request->getUri()->getPath());
         $request = $request->withAttribute(Authenticatable::class, $user);
         return $handler->handle($request);
     }
