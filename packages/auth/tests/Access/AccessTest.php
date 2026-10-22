@@ -119,4 +119,29 @@ final class AccessTest extends TestCase
         $this->expectException(\Preflow\Auth\Access\UndeclaredPermission::class);
         $this->access(debug: true, populations: ['folio' => 'staff'])->can('page.pubish');
     }
+
+    public function test_disabled_permission_denied_not_thrown_in_debug(): void
+    {
+        $this->registry->declare('members.approve', 'Approve', 'Members');
+        $this->registry->disable('members.approve', 'extension members');
+        $this->auth->setUser(new TestUser(), 'folio');
+
+        $this->assertFalse($this->access(debug: true, populations: ['folio' => 'staff'])->can('members.approve'));
+        $this->assertSame('extension members', $this->registry->disabledReason('members.approve'));
+        $this->assertNull($this->registry->disabledReason('page.view'));
+    }
+
+    public function test_disabled_logged_once(): void
+    {
+        $this->registry->declare('members.approve');
+        $this->registry->disable('members.approve', 'extension members');
+        $access = $this->access(populations: ['folio' => 'staff']);
+        $this->auth->setUser(new TestUser(), 'folio');
+
+        $access->can('members.approve');
+        $access->can('members.approve');
+
+        $log = (string) file_get_contents($this->log);
+        $this->assertSame(1, substr_count($log, 'permission members.approve belongs to a disabled extension members'));
+    }
 }

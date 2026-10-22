@@ -405,7 +405,7 @@ final class FolioServiceProvider extends ServiceProvider
         $app = $container->get(Application::class);
         $screens = $container->get(ScreenRegistry::class);
         $customizations = $container->get(Customizations::class);
-        $this->declarePermissions($container, $app, $screens, $customizations);
+        $this->declarePermissions($container, $app);
 
         // Extension screens in the sidebar (filtered by their permission).
         foreach ($screens->all() as $screen) {
@@ -593,11 +593,11 @@ final class FolioServiceProvider extends ServiceProvider
 
     /**
      * Folio's permissions: per content type "{type}.*" and its view, create,
-     * edit, publish and delete; the asset library; the dashboard; each enabled
-     * extension screen's and record action's (grouped under its extension's label). The guard
+     * edit, publish and delete; the asset library; the dashboard; each extension's
+     * (declareExtensionPermissions()). The guard
      * Folio signs in with is staff, unless config/auth.php says otherwise.
      */
-    private function declarePermissions(Container $container, Application $app, ScreenRegistry $screens, Customizations $customizations): void
+    private function declarePermissions(Container $container, Application $app): void
     {
         $access = $container->get(\Preflow\Auth\Access\Access::class);
         $registry = $access->registry();
@@ -612,18 +612,97 @@ final class FolioServiceProvider extends ServiceProvider
         foreach (['view' => 'View', 'upload' => 'Upload', 'edit' => 'Edit', 'delete' => 'Delete'] as $action => $verb) {
             $registry->declare('assets.' . $action, $verb, 'Assets');
         }
-        $extensions = $container->get(ExtensionRegistry::class);
-        foreach ($screens->all() as $screen) {
-            $registry->declare($screen['permission'], $screen['label'], $extensions->get($screen['extension'])->label);
-        }
-        foreach ($customizations->permissions() as $name => $permission) {
-            if (!$registry->isDeclared($name)) { // e.g. a screen's, or a type's own "member.edit"
-                $registry->declare($name, $permission['label'], $permission['group']);
-            }
-        }
+        $this->declareExtensionPermissions($registry, $container->get(ExtensionRegistry::class));
 
         if (file_exists($app->basePath('config/auth.php'))) {
             $access->markStaffGuard($container->get(\Preflow\Auth\AuthManager::class)->defaultGuardName());
+        }
+    }
+
+    /**
+     * Permissions of every discovered extension, grouped under its label: its
+     * #[DeclaresPermission], its screens' and record actions' permissions, and the standard
+     * permissions of its model types. Those of an extension that is not enabled (or of a
+     * disabled part) are declared and disabled: denied and logged once, never a 500. A name
+     * Folio declares itself (folio.*, assets.*, a non-extension type's) is an ExtensionException.
+     */
+    private function declareExtensionPermissions(\Preflow\Auth\Access\PermissionRegistry $registry, ExtensionRegistry $extensions): void
+    {
+        $standard = ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'];
+        $declared = array_keys($registry->all()); // Folio's own plus the enabled extension models' standard names
+        $modelNames = [];
+        foreach ($extensions->all() as $definition) {
+            foreach ($definition->parts as $part) {
+                if ($part['kind'] === 'model') {
+                    foreach (array_keys($standard) as $action) {
+                        $modelNames[substr($part['id'], 6) . '.' . $action] = true;
+                    }
+                }
+            }
+        }
+        $builtin = array_flip(array_filter($declared, static fn (string $name): bool => !isset($modelNames[$name])));
+        $active = array_flip($declared);
+
+        /** @var list<array{name: string, label: string, group: string, reason: ?string}> $entries */
+        $entries = [];
+        foreach ($extensions->all() as $definition) {
+            $extensionReason = $extensions->isEnabled($definition->name) ? null : "extension {$definition->name}";
+            foreach ((new \ReflectionClass($definition->class))->getAttributes(\Preflow\Folio\Extension\Attributes\DeclaresPermission::class) as $attribute) {
+                $meta = $attribute->newInstance();
+                if (!str_starts_with($meta->name, $definition->name . '.')) {
+                    throw new \Preflow\Folio\Extension\ExtensionException("{$definition->class}: permission \"{$meta->name}\" must start with \"{$definition->name}.\" (the extension's name).");
+                }
+                $entries[] = ['name' => $meta->name, 'label' => $meta->label, 'group' => $definition->label, 'reason' => $extensionReason];
+            }
+            foreach ($definition->parts as $part) {
+                $reason = $extensionReason ?? ($extensions->partEnabled($definition->name, $part['id']) ? null : "part {$part['id']} of extension {$definition->name}");
+                if ($part['kind'] === 'model' && $reason !== null) {
+                    foreach ($standard as $action => $verb) {
+                        $entries[] = ['name' => substr($part['id'], 6) . '.' . $action, 'label' => $verb, 'group' => $part['label'], 'reason' => $reason];
+                    }
+                } elseif ($part['kind'] === 'screen' && isset($part['class'])) {
+                    $meta = (new \ReflectionClass($part['class']))->getAttributes(\Preflow\Folio\Extension\Attributes\FolioScreen::class)[0] ?? null;
+                    $meta = $meta === null ? null : $this->attributeOrNull($meta);
+                    if ($meta !== null && is_string($meta->permission) && $meta->permission !== '') {
+                        $entries[] = ['name' => $meta->permission, 'label' => $meta->label, 'group' => $definition->label, 'reason' => $reason];
+                    }
+                } elseif ($part['kind'] === 'type' && isset($part['class'])) {
+                    foreach ((new \ReflectionClass($part['class']))->getMethods() as $method) {
+                        $meta = $method->getAttributes(\Preflow\Folio\Extension\RecordAction::class)[0] ?? null;
+                        $meta = $meta === null ? null : $this->attributeOrNull($meta);
+                        if ($meta !== null) {
+                            $entries[] = ['name' => $meta->permission, 'label' => $meta->label, 'group' => $definition->label, 'reason' => $reason];
+                        }
+                    }
+                }
+            }
+        }
+
+        foreach ($entries as $entry) {
+            if (isset($builtin[$entry['name']])) {
+                throw new \Preflow\Folio\Extension\ExtensionException("Permission \"{$entry['name']}\" ({$entry['group']}) is a Folio built-in; extensions declare their own names.");
+            }
+            if ($entry['reason'] === null) {
+                $active[$entry['name']] = true;
+            }
+        }
+        foreach ($entries as $entry) {
+            if (!$registry->isDeclared($entry['name'])) { // e.g. a record action reusing its type's own "member.edit"
+                $registry->declare($entry['name'], $entry['label'], $entry['group']);
+            }
+            if ($entry['reason'] !== null && !isset($active[$entry['name']])) {
+                $registry->disable($entry['name'], $entry['reason']);
+            }
+        }
+    }
+
+    /** A part attribute's instance; one that cannot be built is the enabled-path validation's to report, not a reason to fail here. */
+    private function attributeOrNull(\ReflectionAttribute $attribute): ?object
+    {
+        try {
+            return $attribute->newInstance();
+        } catch (\Error) {
+            return null;
         }
     }
 
