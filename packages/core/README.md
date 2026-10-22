@@ -231,8 +231,10 @@ $throttle->hit('login', $client, windowSeconds: 600);     // after a failed atte
 $throttle->clear('login', $client);                       // after a success
 ```
 
-- **Soft limit.** `hit()` is a non-atomic read-modify-write; concurrent requests can slip
-  past by a few.
+- **Atomic hits.** Concurrent requests never lose a hit. On SQL, `hit()` is one upsert
+  (`DataManager::execute()`) that counts the attempt or restarts an expired window; on the
+  JSON driver an exclusive file lock in `storage/locks` guards the read-modify-write.
+  The limit itself is still a fixed window, so a burst at a window's edge can double.
 - **Windows must be much shorter than a day.** The client hash rotates at 00:00 UTC, so a
   window spanning midnight starts over.
 - **No raw IP is stored**, only an HMAC of `REMOTE_ADDR` (forwarded headers are ignored).
@@ -240,6 +242,21 @@ $throttle->clear('login', $client);                       // after a success
   Without a `REMOTE_ADDR` (CLI, tests) all requests are one `unknown` client; it never throws.
 - `prune(olderThanSeconds: 172800)` deletes old rows and returns how many; `hit()` runs it
   opportunistically, once per request when a new window starts.
+
+### Cookie queue
+
+`Preflow\Core\Http\CookieQueue` holds `Set-Cookie` values queued during a request (the
+remember-me cookies of `preflow/auth`). It is bound when `config/auth.php` exists. The
+middleware that queued them applies them to its response; the Kernel applies what is left to
+an error response, which bypasses the pipeline, so a rotated cookie is never lost.
+
+### Auth providers from config
+
+Any class in `config/auth.php` `providers` (other than the two built-in ones) is built from
+the container with its config entry as `config`. It is built lazily (`LazyUserProvider`) and
+resolved at the end of `boot()`, after the service providers, so it may use services they
+register (e.g. Folio's type catalog). A class that is not a `UserProviderInterface` throws at
+boot.
 
 ### HTTP exceptions
 

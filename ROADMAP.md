@@ -73,13 +73,19 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 ## Lower Priority
 
 - **Error page customization** — app-level 404/500 templates
-- **Remember me** — persistent login via rotated token cookies
 - **Blade adapter testing** — stress test the Blade adapter like Twig was tested
 - **Testing utilities** — component render assertions, HTMX action dispatch helpers, snapshot testing
 
 ---
 
 ## Completed
+
+### v0.21.0
+
+- **Atomic counters:** `DataManager::execute()` (raw SQL writes); `Throttle::hit()` and code uses are atomic (SQL upsert / conditional `UPDATE`, file lock on JSON); `Codes::check()` takes a throttled client
+- **Auth:** single-use hashed `Tokens`; remember-me cookies for session guards (rotating selector/validator, theft detection, 60 s grace, `CookieQueue`); any user provider class from `config/auth.php` (`LazyUserProvider`)
+- **Folio members support:** `RecordUserProvider` over user types; `frontend.permission` gate for a type's pages; private assets behind a permission-gated route; `#[NavBadge]` sidebar counts
+- Constraints raised to `^0.21 || @dev` where 0.21 features are used (auth, codes, folio)
 
 ### v0.20.0
 

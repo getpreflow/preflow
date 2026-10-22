@@ -812,7 +812,7 @@ final class NoteTweaks
 | `#[FormPanel(label, position: 'after')]` | `fn(DynamicRecord): ScreenView\|string` | A panel on the edit form (not on create), `before` or `after` Folio's own extras. A string is shown as escaped text, a `ScreenView` as a template fragment. |
 | `#[RecordAction(name, label, permission, icon, confirm)]` | `fn(DynamicRecord, ServerRequestInterface): ?ResponseInterface` | A POST button at `{prefix}/{type}/{id}/_action/{name}`; null redirects back to the form with "{label}: done". Needs the permission and the type's edit permission. |
 | `#[ListColumn(label, position: 100)]` | `fn(DynamicRecord): string` | A column after the type's own, ordered by position, shown as escaped text. |
-| `#[NavBadge]` | `fn(): ?int` | A count badge on the type's sidebar item (e.g. waiting members), computed only while the item is visible; `null` or `0` shows none, several add up, one per class. |
+| `#[NavBadge]` | `fn(): ?int` | A count badge on the type's sidebar item (e.g. waiting members), computed only while the item is visible and at most once per request; `null`, `0` or any non-int return shows none, a callback that throws shows no badge (the admin still renders), several add up, one per class. Keep it cheap: it runs on admin page renders. |
 | `#[BeforeSave]` | `fn(DynamicRecord): void` | Before validation; may `set()` fields. Throw `Preflow\Validation\ValidationException` to refuse the save: the form is shown again with its errors (422). |
 | `#[AfterSave]` | `fn(DynamicRecord): void` | After the record is stored. |
 | `#[BeforeDelete]` | `fn(DynamicRecord): void` | Throw `Customization\Refused('message')` to keep the record; the message is shown to the editor. |
@@ -880,6 +880,30 @@ A type can hold the site's own users or members:
   (`config/folio.php` `field_types`) are not checked; don't give one that stores files
   to a type that is not transferred.
 - Per-environment state (installed extension versions, throttle rows) is never exported.
+
+**Signing users in.** `Preflow\Folio\Users\RecordUserProvider` is a user provider over a
+user type, for a `SessionGuard` in `config/auth.php`:
+
+```php
+'providers' => [
+    'members' => [
+        'class' => Preflow\Folio\Users\RecordUserProvider::class,
+        'type' => 'member',
+        'email' => 'email', 'password' => 'password_hash', 'roles' => 'roles',  // the defaults
+    ],
+],
+'guards' => [
+    'members' => ['class' => Preflow\Auth\SessionGuard::class, 'provider' => 'members'],
+],
+```
+
+- The type must exist and have `"users"` set, or boot fails with a message naming it.
+- `findByCredentials()` lowercases and trims the typed email and accepts only an exact match
+  of the stored value, and only when exactly one record has it: a database that compares
+  loosely (MySQL collations) never lets a look-alike or duplicate pick an account. Store
+  emails lowercase.
+- The record is the signed-in `RecordUser`; its `roles` field (a list or a JSON/comma
+  string) feeds the permission resolver.
 
 ## SQL storage
 

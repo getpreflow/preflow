@@ -150,6 +150,25 @@ $rows = $dm->raw(
 );
 ```
 
+### Raw writes
+
+`execute()` runs a write the builder cannot express (a conditional `UPDATE`, a `DELETE`,
+an upsert) and returns the affected rows. Only SQL (PDO) storages run it; any other driver
+throws a `LogicException`. Ints, bools and nulls are bound with their type, so arithmetic and
+comparisons in SQL work on numbers.
+
+```php
+$taken = $dm->execute(
+    'UPDATE seats SET free = free - 1 WHERE id = ? AND free > 0',
+    [$id],
+    'sqlite',
+);   // 1 if a seat was taken, 0 if none was left
+```
+
+One conditional statement decides by its affected rows, so concurrent requests cannot both
+take the last seat. A package writing its own SQL for both SQLite and MySQL asks the driver
+for `PdoDriver::dialect()` (`quoteIdentifier()`, `MysqlDialect`).
+
 ## Aliases
 
 `config/data.php` may map purpose names to configured drivers, so a package can store on its

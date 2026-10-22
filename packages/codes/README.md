@@ -61,9 +61,16 @@ if (!$result->ok) {
   it, nothing more.
 - Codes are unique within their purpose; an unknown purpose throws. Codes are bearer tokens:
   they are compared with `hash_equals`.
-- `check()` says whether a code would be accepted and counts no use. `redeem()` counts a use
+- `check()` says whether a code would be accepted and counts no use. Give it a client
+  (`$codes->check($typed, 'members.book', $throttle->client($request))`) when it answers a
+  visitor, e.g. a live "is this code valid?" form: it is throttled like `redeem()` (same
+  key, every failure counts), so it cannot be used to guess codes. `redeem()` counts a use
   and records a redemption (`redemptions($codeId)`: id, redeemer, time; no IP address or
   user agent).
+- **Uses are counted atomically**, so `max_uses` holds under concurrent redeems: on SQL one
+  conditional `UPDATE` (`DataManager::execute()`; `uses` and `max_uses` are compared as
+  numbers, though Folio stores them as TEXT), on the JSON driver a file lock in
+  `storage/locks`. The last use goes to one request; the others get `used_up`.
 - `Result`: `ok`, `reason` (`unknown`, `expired`, `used_up`, `revoked`, `throttled`),
   `payload` (on success) and `codeId`.
 - With a client (`Throttle::client($request)`), every failed redeem counts against it under

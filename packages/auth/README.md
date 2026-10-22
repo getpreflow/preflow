@@ -45,6 +45,9 @@ return [
         ],
     ],
 
+    // Any other provider class is built from the container with its entry as `config`,
+    // e.g. Preflow\Folio\Users\RecordUserProvider (members stored as a Folio type).
+
     'password_hasher' => Preflow\Auth\NativePasswordHasher::class,
 
     'session' => [
@@ -121,6 +124,64 @@ $dm->save($token);
 
 // Return $plain to the user (only shown once)
 ```
+
+### Remember me
+
+A session guard gets a remember-me cookie when its `config/auth.php` entry has a `remember`
+key (it needs `preflow/data`; without one there is no cookie):
+
+```php
+'guards' => ['members' => [
+    'class' => Preflow\Auth\SessionGuard::class,
+    'provider' => 'members',
+    'remember' => ['cookie' => 'remember_members', 'days' => 30, 'path' => '/'],
+]],
+```
+
+```php
+$guard->login($user, $request, remember: true);   // also queues the cookie
+```
+
+- The cookie is `{selector}:{validator}`, 16 and 32 random bytes. Only the SHA-256 hash of
+  the validator is stored (table `auth_remember`, on the `auth` storage alias when
+  `config/data.php` has one, else the default). It is `HttpOnly`, `SameSite=Lax`, and
+  `Secure` when `APP_SECURE` is set.
+- When a request has a session but nobody is signed in on the guard,
+  `ResolveUserMiddleware` signs the user in from the cookie. Every session guard does this,
+  so a member stays remembered beside a signed-in staff user. Pages without a session never
+  get a `Set-Cookie`.
+- Each use rotates the validator under the same selector; the expiry stays.
+- **Theft detection.** A wrong validator for a known selector means an old value was replayed
+  after its owner used it: all the user's remember rows for the guard are deleted.
+- **Grace window.** The previous validator stays valid for 60 seconds after a rotation, for
+  parallel requests carrying one value; it does not rotate again, and a lost rotation keeps
+  the member signed in.
+- `logout()` deletes the row and clears the cookie. Cookies reach error responses through the
+  core `CookieQueue`.
+- On SQL one conditional `UPDATE` decides a rotation, so two uses of one value never both
+  rotate; on the JSON driver a file lock in `storage/locks` does. `RememberMe::revokeAll()`
+  (e.g. after a password change) and `prune()` are also available.
+
+### Tokens
+
+`Preflow\Auth\Tokens\Tokens` issues single-use, expiring tokens for links sent by email
+(address confirmation, password reset). It is bound when `preflow/data` is configured; the
+table `auth_tokens` is created by `preflow migrate`.
+
+```php
+$tokens = $container->get(Preflow\Auth\Tokens\Tokens::class);
+
+$token = $tokens->issue('reset', (string) $user->getAuthId(), ttlSeconds: 3600);  // put it in the link
+$subject = $tokens->consume($token, 'reset');   // the subject once, then null
+$tokens->revokeAll('reset', $subject);          // e.g. after the password changed
+$tokens->prune();                               // expired ones
+```
+
+- A token is 32 random bytes, base64url; only its SHA-256 hash is stored, as the row id.
+- `consume()` spends a token at most once: on SQL one `DELETE` decides by its affected rows,
+  on the JSON driver a file lock does. An unknown, expired or wrong-purpose token returns
+  `null` and nothing is deleted.
+- Tokens are never in the TypeCatalog and never exported.
 
 ### Password hashing
 
