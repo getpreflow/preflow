@@ -91,6 +91,38 @@ final class NavBadgeTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_throwing_badge_callback_shows_no_badge_and_keeps_others(): void
+    {
+        $this->crm(['count' => 3, 'more' => 0]);
+        $this->noteBadge('throw new \\RuntimeException("db down");');
+
+        $html = $this->dashboardAs('admin');
+        $this->assertStringContainsString('aria-label="3 waiting">3</span>', $html);
+        $this->assertSame(1, substr_count($html, 'folio-nav-badge"'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_non_int_badge_return_shows_no_badge(): void
+    {
+        $this->crm(['count' => 'null', 'more' => 0]);
+        $this->noteBadge('return "5";');
+
+        $this->assertStringNotContainsString('folio-nav-badge"', $this->dashboardAs('admin'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_badge_callbacks_run_once_per_request(): void
+    {
+        $this->crm(['count' => 3, 'more' => 0]);
+        $app = $this->app();
+        $customizations = $app->container()->get(\Preflow\Folio\Extension\Customization\Customizations::class);
+
+        $this->assertSame(3, $customizations->navBadge('contact'));
+        $this->assertSame(3, $customizations->navBadge('contact'));
+        $this->assertSame(2, \App\Folio\Crm\Log::$calls); // two callbacks, one pass
+    }
+
+    #[RunInSeparateProcess]
     public function test_invalid_navbadge_method_throws(): void
     {
         $this->crm(['count' => 3]);
@@ -191,6 +223,19 @@ final class NavBadgeTest extends TestCase
 
                     return {$more};
                 }
+            }
+            PHP);
+    }
+
+    /** A badge on the note type from its own extension; $body is the method body (untyped, so it can return anything). */
+    private function noteBadge(string $body): void
+    {
+        $this->extension('nb', 'NoteBadge', <<<PHP
+            #[\\Preflow\\Folio\\Extension\\Attributes\\FolioType('note')]
+            final class NoteBadge
+            {
+                #[\\Preflow\\Folio\\Extension\\NavBadge]
+                public function count() { {$body} }
             }
             PHP);
     }

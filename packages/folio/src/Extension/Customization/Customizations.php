@@ -34,6 +34,9 @@ final class Customizations
     /**
      * @param array<string, array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>}> $types
      */
+    /** @var array<string, ?int> */
+    private array $badgeCounts = [];
+
     private function __construct(
         private readonly array $types,
     ) {}
@@ -133,15 +136,30 @@ final class Customizations
         return $this->types[$key] ?? ['panels' => [], 'actions' => [], 'columns' => [], 'badges' => [], 'hooks' => []];
     }
 
-    /** The type's sidebar badge: the sum of its #[NavBadge] methods, null when none or 0. Calls them, so only for a visible item. */
+    /**
+     * The type's sidebar badge: the sum of its #[NavBadge] methods, null when none or 0. Calls
+     * them, so only for a visible item; each type is counted once per request. A callback that
+     * throws or returns something other than ?int adds nothing (the admin must render even when
+     * an extension's count is broken); callbacks should be cheap, they run on admin page renders.
+     */
     public function navBadge(string $key): ?int
     {
+        if (array_key_exists($key, $this->badgeCounts)) {
+            return $this->badgeCounts[$key];
+        }
         $sum = 0;
         foreach ($this->types[$key]['badges'] ?? [] as $call) {
-            $sum += (int) $call();
+            try {
+                $count = $call();
+            } catch (\Throwable) {
+                continue;
+            }
+            if (is_int($count) && $count > 0) {
+                $sum += $count;
+            }
         }
 
-        return $sum > 0 ? $sum : null;
+        return $this->badgeCounts[$key] = $sum > 0 ? $sum : null;
     }
 
     /** @param class-string $hook one of HOOKS (BeforeSave::class, ...) */
