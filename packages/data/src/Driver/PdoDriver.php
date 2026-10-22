@@ -17,6 +17,12 @@ abstract class PdoDriver implements StorageDriver
         protected readonly ?\Preflow\Core\Debug\DebugCollector $collector = null,
     ) {}
 
+    /** The connection this driver runs on (the migrator needs it). */
+    public function pdo(): \PDO
+    {
+        return $this->pdo;
+    }
+
     protected function executeWithLogging(\PDOStatement $stmt, string $sql, array $bindings = []): void
     {
         $start = hrtime(true);

@@ -174,4 +174,9 @@ final class SqliteDriverTest extends TestCase
         $this->assertNotNull($result);
         $this->assertSame('Hello', $result['name']);
     }
+
+    public function test_exposes_its_pdo_connection(): void
+    {
+        $this->assertSame($this->pdo, $this->driver->pdo());
+    }
 }
