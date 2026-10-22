@@ -47,9 +47,10 @@ final class QueryBuilder
         return $this;
     }
 
-    public function orderBy(string $field, SortDirection $direction = SortDirection::Asc): self
+    /** @param bool $numeric compare as numbers even where the column stores text */
+    public function orderBy(string $field, SortDirection $direction = SortDirection::Asc, bool $numeric = false): self
     {
-        $this->query->orderBy($field, $direction);
+        $this->query->orderBy($field, $direction, $numeric);
         return $this;
     }
 

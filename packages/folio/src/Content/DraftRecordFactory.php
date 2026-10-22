@@ -148,7 +148,7 @@ final class DraftRecordFactory
     {
         $chosen = isset($submitted['_locales_submitted'])
             ? (array) ($submitted['_locales'] ?? [])
-            : (array) ($existing['_locales'] ?? []);
+            : ($existing['_locales'] ?? []); // as stored (SQL drivers: JSON text); availableLocales() decodes
 
         return DynamicRecord::fromArray($typeDef, ['_locales' => $chosen])->availableLocales();
     }

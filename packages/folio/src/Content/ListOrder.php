@@ -21,7 +21,8 @@ final class ListOrder
     public static function apply(QueryBuilder $query, TypeDefinition $def, array $listConfig): QueryBuilder
     {
         if (($listConfig['orderable'] ?? false) === true) {
-            return $query->orderBy(self::POSITION)->orderBy($def->idField);
+            // Numeric: SQL-stored types keep positions in TEXT columns.
+            return $query->orderBy(self::POSITION, numeric: true)->orderBy($def->idField);
         }
 
         $sort = (string) ($listConfig['sort'] ?? '');

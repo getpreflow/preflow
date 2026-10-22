@@ -100,6 +100,18 @@ final class FolioServiceProvider extends ServiceProvider
             ),
         ));
 
+        // `preflow migrate` creates the tables of SQL-stored types from their model JSON
+        // (the asset table too when config/folio.php names its storage).
+        $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
+            'folio.tables',
+            static fn (): array => (new \Preflow\Folio\Storage\TableSync(
+                $container->get(TypeCatalog::class),
+                $container->get(TypeRegistry::class),
+                $container->get(DataManager::class),
+                isset($assetsConfig['storage']) ? $container->get(\Preflow\Folio\Assets\AssetLibrary::class)->definition() : null,
+            ))->sync(),
+        );
+
         $container->bind(\Preflow\Folio\Http\MediaVariantController::class, fn (Container $c) => new \Preflow\Folio\Http\MediaVariantController(
             $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
             $c->get(\Preflow\Folio\Assets\ImageWidths::class),

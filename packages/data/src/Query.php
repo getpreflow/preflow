@@ -9,7 +9,7 @@ final class Query
     /** @var array<int, array{field: string, operator: string, value: mixed, boolean: string}> */
     private array $wheres = [];
 
-    /** @var array<int, array{field: string, direction: SortDirection}> */
+    /** @var array<int, array{field: string, direction: SortDirection, numeric: bool}> */
     private array $orderBy = [];
 
     private ?int $limit = null;
@@ -52,11 +52,16 @@ final class Query
         return $this;
     }
 
-    public function orderBy(string $field, SortDirection $direction = SortDirection::Asc): self
+    /**
+     * @param bool $numeric compare as numbers even where the column stores text
+     *                      (SQL TEXT columns otherwise sort "10" before "2")
+     */
+    public function orderBy(string $field, SortDirection $direction = SortDirection::Asc, bool $numeric = false): self
     {
         $this->orderBy[] = [
             'field' => $field,
             'direction' => $direction,
+            'numeric' => $numeric,
         ];
 
         return $this;

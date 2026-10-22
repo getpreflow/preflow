@@ -77,8 +77,7 @@ abstract class PdoDriver implements StorageDriver
             $data = array_filter($data, fn ($v) => $v !== null);
             $columns = array_keys($data);
             $sql = $this->dialect->insertSql($type, $columns);
-            $stmt = $this->pdo->prepare($sql);
-            $this->executeWithLogging($stmt, $sql, array_values($data));
+            $this->write($type, $sql, array_values($data));
         } else {
             if (!isset($data[$idField])) {
                 $data[$idField] = $id;
@@ -89,8 +88,26 @@ abstract class PdoDriver implements StorageDriver
 
             $columns = array_keys($data);
             $sql = $this->dialect->upsertSql($type, $columns, $idField);
+            $this->write($type, $sql, array_values($data));
+        }
+    }
+
+    /**
+     * Runs a write; a record key the table has no column for (a model field
+     * added without migrating) names the fix instead of the raw PDO error.
+     *
+     * @param list<mixed> $bindings
+     */
+    private function write(string $table, string $sql, array $bindings): void
+    {
+        try {
             $stmt = $this->pdo->prepare($sql);
-            $this->executeWithLogging($stmt, $sql, array_values($data));
+            $this->executeWithLogging($stmt, $sql, $bindings);
+        } catch (\PDOException $e) {
+            if (preg_match('/(?:no such column:|has no column named)\s*[\'"`]?([A-Za-z0-9_]+)/', $e->getMessage(), $m) === 1) {
+                throw new \RuntimeException("Table {$table} has no column {$m[1]}; run `preflow migrate`.", 0, $e);
+            }
+            throw $e;
         }
     }
 

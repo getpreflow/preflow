@@ -19,16 +19,24 @@ trait PublishingScaffold
 {
     private string $dir;
 
-    private function scaffoldPublishing(): void
+    /** The storage the scaffold's models use: 'json' or 'sqlite' (tables via TableSync). */
+    private string $storage = 'json';
+
+    private function scaffoldPublishing(string $storage = 'json'): void
     {
+        $this->storage = $storage;
         putenv('APP_DEBUG=1');
         $this->dir = sys_get_temp_dir() . '/folio_pub_' . bin2hex(random_bytes(4));
 
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key'];\n");
-        $this->write('config/data.php', <<<'PHP'
+        $sqlite = $storage === 'sqlite' ? "'sqlite' => ['path' => __DIR__ . '/../storage/app.sqlite']," : '';
+        $this->write('config/data.php', <<<PHP
             <?php
             return [
-                'drivers' => ['json' => ['driver' => \Preflow\Data\Driver\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']],
+                'drivers' => [
+                    'json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data'],
+                    {$sqlite}
+                ],
                 'default' => 'json',
                 'models_path' => __DIR__ . '/models',
             ];
@@ -89,7 +97,7 @@ trait PublishingScaffold
     private function writeModel(string $key, array $config): void
     {
         $this->write("config/models/{$key}.json", (string) json_encode(
-            ['key' => $key, 'table' => $key, 'storage' => 'json', 'id_field' => 'uuid'] + $config,
+            ['key' => $key, 'table' => $key, 'storage' => $this->storage, 'id_field' => 'uuid'] + $config,
         ));
     }
 

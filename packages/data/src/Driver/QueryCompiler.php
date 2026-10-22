@@ -122,7 +122,9 @@ class QueryCompiler
 
         $parts = [];
         foreach ($orders as $order) {
-            $parts[] = $this->column($order['field'], $query) . " {$order['direction']->value}";
+            $column = $this->column($order['field'], $query);
+            // "+ 0" makes stored text numeric in SQLite and MySQL alike.
+            $parts[] = (($order['numeric'] ?? false) ? "({$column} + 0)" : $column) . " {$order['direction']->value}";
         }
 
         return 'ORDER BY ' . implode(', ', $parts);

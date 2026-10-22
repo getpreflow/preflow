@@ -347,7 +347,8 @@ final class AdminController
 
         $missing = false;
         foreach ($records as $record) {
-            $missing = $missing || !is_int($record->get(self::ORDER));
+            // Numeric, not int: SQL drivers return positions as text.
+            $missing = $missing || !is_numeric($record->get(self::ORDER));
         }
         if ($missing) {
             foreach ($records as $i => $record) {
