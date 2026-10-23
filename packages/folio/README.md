@@ -845,8 +845,11 @@ public function decision(DynamicRecord $record): ScreenView
     return new ScreenView('@members/decision.twig');
 }
 
-#[RecordAction('decide', 'Decide', 'members.decide', toolbar: false)]
-public function decide(DynamicRecord $record, ServerRequestInterface $request): null { /* ... */ }
+#[RecordAction('accept', 'Accept', 'members.decide', toolbar: false)]
+public function accept(DynamicRecord $record, ServerRequestInterface $request): null { /* ... */ }
+
+#[RecordAction('decline', 'Decline', 'members.decide', toolbar: false)]
+public function decline(DynamicRecord $record, ServerRequestInterface $request): null { /* ... */ }
 
 #[ListColumn('State')]
 public function state(DynamicRecord $record): Badge

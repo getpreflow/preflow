@@ -487,11 +487,13 @@ final class AdminController
             }
             $fieldType = $this->fieldTypes->get($fieldDef->type);
             if (($fieldDef->config['readonly'] ?? false) === true) {
+                $stored = isset($translatable[$name]) ? LocaleValue::pick($values[$name] ?? null, $locales, $locale) : LocaleValue::default($values[$name] ?? null, $locales);
                 $fields[] = [
                     'name' => $name,
                     'html' => self::readonlyField($name, $fieldDef->label, $fieldDef->help, $this->readonlyDisplay(
                         $fieldDef,
-                        $fieldType->fromStorage(isset($translatable[$name]) ? LocaleValue::pick($values[$name] ?? null, $locales, $locale) : LocaleValue::default($values[$name] ?? null, $locales)),
+                        // nothing stored stays nothing (fromStorage would turn a missing boolean into false)
+                        $stored === null || $stored === '' ? $stored : $fieldType->fromStorage($stored),
                     )),
                     'translatable' => isset($translatable[$name]),
                     'structured' => false,

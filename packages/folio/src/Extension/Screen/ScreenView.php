@@ -10,7 +10,7 @@ use Preflow\View\TemplateEngineInterface;
 /**
  * What a screen method returns to be rendered in the admin: a template (extending
  * @folio/admin/_layout.twig) and its data. Folio adds prefix, csrf and screen (label, path).
- * A form panel may return one too: a fragment template, given prefix, csrf, type and record.
+ * A form panel may return one too: a fragment template, given prefix, csrf, type, id and record.
  */
 final readonly class ScreenView
 {

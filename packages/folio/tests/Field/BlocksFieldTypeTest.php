@@ -68,6 +68,14 @@ final class BlocksFieldTypeTest extends TestCase
         return new BuildContext($locales ?? $this->bilingual, $locale, $writeUploads);
     }
 
+    public function test_admin_display_is_a_block_count(): void
+    {
+        $t = $this->type();
+        $this->assertSame('2 blocks', $t->renderAdmin([['_block' => 'hero'], ['_block' => 'link']], []));
+        $this->assertSame('1 block', $t->renderAdmin(json_encode([['_block' => 'hero']]), []));
+        $this->assertSame('', $t->renderAdmin([], []));
+    }
+
     public function test_builds_ordered_blocks_with_uids(): void
     {
         $value = $this->type()->buildValue([

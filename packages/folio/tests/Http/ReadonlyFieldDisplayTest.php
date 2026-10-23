@@ -57,6 +57,8 @@ final class ReadonlyFieldDisplayTest extends TestCase
                 'writer' => ['type' => 'relation', 'readonly' => true, 'relation' => ['to' => 'author', 'multiple' => false]],
                 'bio' => ['type' => 'richtext', 'readonly' => true],
                 'note' => ['type' => 'string', 'readonly' => true],
+                'cover' => ['type' => 'asset', 'readonly' => true],
+                'active' => ['type' => 'boolean', 'readonly' => true],
             ],
         ]));
         $this->registry = new TypeRegistry($this->base . '/m');
@@ -91,6 +93,8 @@ final class ReadonlyFieldDisplayTest extends TestCase
         $registry = new FieldTypeRegistry();
         $registry->register(new StringFieldType());
         $registry->register(new SelectFieldType());
+        $registry->register(new \Preflow\Folio\Field\Types\AssetFieldType($this->base . '/up', '/folio/_uploads'));
+        $registry->register(new \Preflow\Folio\Field\Types\BooleanFieldType());
         $registry->register(new DateFieldType());
         $registry->register(new RelationFieldType($this->dm, $this->registry));
         $registry->register(new RichTextFieldType(new HtmlSanitizer((new HtmlSanitizerConfig())->allowSafeElements())));
@@ -169,9 +173,25 @@ final class ReadonlyFieldDisplayTest extends TestCase
     public function test_readonly_empty_shows_dash(): void
     {
         $fields = $this->render([]);
-        foreach (['language', 'roles', 'joined', 'writer', 'bio', 'note'] as $name) {
+        foreach (['language', 'roles', 'joined', 'writer', 'bio', 'note', 'cover'] as $name) {
             $this->assertStringContainsString('>—</div>', $fields[$name], $name);
         }
+    }
+
+    public function test_readonly_asset_shows_its_name_not_a_dash(): void
+    {
+        $html = $this->render(['cover' => '2026/10/<b>photo</b>.png'])['cover'];
+        $this->assertStringContainsString('2026/10/&lt;b&gt;photo&lt;/b&gt;.png', $html);
+        $this->assertStringNotContainsString('>—</div>', $html);
+    }
+
+    public function test_readonly_boolean_without_a_value_shows_dash_and_with_a_value_yes_no(): void
+    {
+        foreach ([null, ''] as $empty) {
+            $this->assertStringContainsString('>—</div>', $this->render(['active' => $empty])['active']);
+        }
+        $this->assertStringContainsString('>Yes</div>', $this->render(['active' => true])['active']);
+        $this->assertStringContainsString('>No</div>', $this->render(['active' => false])['active']);
     }
 
     public function test_list_cell_formats_dates(): void

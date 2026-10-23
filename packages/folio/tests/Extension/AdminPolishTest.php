@@ -159,6 +159,8 @@ final class AdminPolishTest extends TestCase
         foreach (['data-folio-tabs', 'data-folio-tab', 'data-folio-tabpanel', 'data-folio-tab-active', 'tablist', 'aria-selected', 'ArrowRight'] as $needle) {
             $this->assertStringContainsString($needle, $js);
         }
+        $this->assertStringNotContainsString('data-folio-tabpanel="\' +', $js); // no tab key inside a selector
+        $this->assertStringContainsString('initTabBox', $js); // one bad group cannot stop the others
         $css = (string) file_get_contents(__DIR__ . '/../../assets/admin.css');
         $this->assertStringContainsString('.folio-editor.has-side', $css);
         $this->assertStringContainsString('min-width: 1280px', $css);
@@ -169,6 +171,11 @@ final class AdminPolishTest extends TestCase
         $this->assertStringContainsString('data-folio-tabpanel="decline"', $readme);
         $this->assertStringContainsString('_action/decline', $readme);
         $this->assertStringContainsString('toolbar: false', $readme);
+        foreach (['accept', 'decline'] as $name) { // every form's _action/{name} has its RecordAction
+            $this->assertStringContainsString("#[RecordAction('" . $name . "', ", $readme);
+            $this->assertStringContainsString('_action/' . $name . '"', $readme);
+        }
+        $this->assertStringNotContainsString("RecordAction('decide'", $readme);
         $this->assertStringContainsString('new Badge(', $readme);
         $this->assertStringContainsString("position: 'side'", $readme);
     }

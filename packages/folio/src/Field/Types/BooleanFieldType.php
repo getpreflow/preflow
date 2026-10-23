@@ -10,7 +10,7 @@ use Preflow\Folio\Field\FieldContext;
  * A yes/no checkbox. A hidden "0" sibling makes an unchecked box submit, and a
  * missing value normalizes to false, so unchecking always saves false.
  */
-final class BooleanFieldType extends AbstractScalarFieldType
+final class BooleanFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\DisplaysInAdmin
 {
     public function key(): string
     {
@@ -52,6 +52,12 @@ final class BooleanFieldType extends AbstractScalarFieldType
     public function fromStorage(mixed $value): bool
     {
         return $this->normalizeInput($value, []);
+    }
+
+    /** Yes / No; nothing stored (null or '') shows as empty rather than "No". */
+    public function renderAdmin(mixed $value, array $config): string
+    {
+        return $value === null || $value === '' ? '' : $this->renderFrontend($value, $config);
     }
 
     public function renderFrontend(mixed $value, array $config): string

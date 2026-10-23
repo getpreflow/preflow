@@ -1031,52 +1031,62 @@
         var boxes = Array.prototype.slice.call(root.querySelectorAll('[data-folio-tabs]'));
         if (root.matches && root.matches('[data-folio-tabs]')) { boxes.unshift(root); }
         boxes.forEach(function (box) {
-            if (box.hasAttribute('data-folio-tabs-ready')) { return; }
-            var tabs = Array.prototype.slice.call(box.querySelectorAll(':scope > * > [data-folio-tab], :scope > [data-folio-tab]'));
-            if (!tabs.length) { return; }
-            var tablist = tabs[0].parentNode;
-            tablist.setAttribute('role', 'tablist');
-            var n = 0;
-            var uid = Math.random().toString(36).slice(2, 7);
-            function panelOf(tab) {
-                return box.querySelector(':scope > [data-folio-tabpanel="' + tab.getAttribute('data-folio-tab') + '"]');
-            }
-            function select(tab, focus) {
-                tabs.forEach(function (t) {
-                    var on = t === tab;
-                    t.setAttribute('aria-selected', on ? 'true' : 'false');
-                    t.tabIndex = on ? 0 : -1;
-                    var p = panelOf(t);
-                    if (p) { p.hidden = !on; }
-                });
-                if (focus) { tab.focus(); }
-            }
-            tabs.forEach(function (t) {
-                var p = panelOf(t);
-                var id = 'folio-tab-' + uid + '-' + (n++);
-                t.setAttribute('role', 'tab');
-                t.id = id;
-                if (!t.hasAttribute('type')) { t.type = 'button'; }
-                if (p) {
-                    p.setAttribute('role', 'tabpanel');
-                    p.tabIndex = 0;
-                    p.setAttribute('aria-labelledby', id);
-                    t.setAttribute('aria-controls', p.id || (p.id = id + '-panel'));
-                }
-                t.addEventListener('click', function () { select(t, false); });
-                t.addEventListener('keydown', function (e) {
-                    var i = tabs.indexOf(t);
-                    var next = null;
-                    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { next = tabs[(i + 1) % tabs.length]; }
-                    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { next = tabs[(i - 1 + tabs.length) % tabs.length]; }
-                    else if (e.key === 'Home') { next = tabs[0]; }
-                    else if (e.key === 'End') { next = tabs[tabs.length - 1]; }
-                    if (next) { e.preventDefault(); select(next, true); }
-                });
-            });
-            select(tabs.filter(function (t) { return t.hasAttribute('data-folio-tab-active'); })[0] || tabs[0], false);
-            box.setAttribute('data-folio-tabs-ready', '');
+            try { initTabBox(box); } catch (e) { if (window.console) { console.error('folio tabs', e); } } // one bad group must not stop the rest
         });
+    }
+
+    function initTabBox(box) {
+        if (box.hasAttribute('data-folio-tabs-ready')) { return; }
+        var tabs = Array.prototype.slice.call(box.querySelectorAll(':scope > * > [data-folio-tab], :scope > [data-folio-tab]'));
+        if (!tabs.length) { return; }
+        var tablist = tabs[0].parentNode;
+        tablist.setAttribute('role', 'tablist');
+        var n = 0;
+        var uid = Math.random().toString(36).slice(2, 7);
+        function panelOf(tab) {
+            // compared by attribute, not through a selector, so any key is safe (quotes, backslashes)
+            var key = tab.getAttribute('data-folio-tab');
+            var panels = box.querySelectorAll(':scope > [data-folio-tabpanel]');
+            for (var i = 0; i < panels.length; i++) {
+                if (panels[i].getAttribute('data-folio-tabpanel') === key) { return panels[i]; }
+            }
+            return null;
+        }
+        function select(tab, focus) {
+            tabs.forEach(function (t) {
+                var on = t === tab;
+                t.setAttribute('aria-selected', on ? 'true' : 'false');
+                t.tabIndex = on ? 0 : -1;
+                var p = panelOf(t);
+                if (p) { p.hidden = !on; }
+            });
+            if (focus) { tab.focus(); }
+        }
+        tabs.forEach(function (t) {
+            var p = panelOf(t);
+            var id = 'folio-tab-' + uid + '-' + (n++);
+            t.setAttribute('role', 'tab');
+            t.id = id;
+            if (!t.hasAttribute('type')) { t.type = 'button'; }
+            if (p) {
+                p.setAttribute('role', 'tabpanel');
+                p.tabIndex = 0;
+                p.setAttribute('aria-labelledby', id);
+                t.setAttribute('aria-controls', p.id || (p.id = id + '-panel'));
+            }
+            t.addEventListener('click', function () { select(t, false); });
+            t.addEventListener('keydown', function (e) {
+                var i = tabs.indexOf(t);
+                var next = null;
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { next = tabs[(i + 1) % tabs.length]; }
+                else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { next = tabs[(i - 1 + tabs.length) % tabs.length]; }
+                else if (e.key === 'Home') { next = tabs[0]; }
+                else if (e.key === 'End') { next = tabs[tabs.length - 1]; }
+                if (next) { e.preventDefault(); select(next, true); }
+            });
+        });
+        select(tabs.filter(function (t) { return t.hasAttribute('data-folio-tab-active'); })[0] || tabs[0], false);
+        box.setAttribute('data-folio-tabs-ready', '');
     }
 
     function boot() {

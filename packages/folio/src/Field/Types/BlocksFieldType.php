@@ -23,7 +23,7 @@ use Psr\Http\Message\UploadedFileInterface;
  * their own "blocks" fields; translatable leaves are locale maps, structure
  * is shared across locales. Unknown block keys are kept untouched.
  */
-final class BlocksFieldType implements FieldType, StructuredFieldType
+final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\Folio\Field\DisplaysInAdmin
 {
     private const UID = '/^[a-f0-9]{16}$/';
 
@@ -509,6 +509,14 @@ final class BlocksFieldType implements FieldType, StructuredFieldType
         }
 
         return $blocks;
+    }
+
+    /** "3 blocks": a summary; the frontend output is empty (folio_blocks() renders them). */
+    public function renderAdmin(mixed $value, array $config): string
+    {
+        $n = count($this->fromStorage($value));
+
+        return $n === 0 ? '' : $n . ($n === 1 ? ' block' : ' blocks');
     }
 
     public function renderFrontend(mixed $value, array $config): string

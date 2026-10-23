@@ -20,7 +20,7 @@ use Psr\Http\Message\UploadedFileInterface;
  * {prefix}/_uploads); they keep working. Without a library the field writes
  * such paths itself (extension allowlist, randomized names).
  */
-final class AssetFieldType implements FieldType, HandlesUpload
+final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\Field\DisplaysInAdmin
 {
     private const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
     private const DEFAULT_ALLOWED = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'pdf', 'txt', 'doc', 'docx', 'csv', 'zip'];
@@ -158,6 +158,14 @@ final class AssetFieldType implements FieldType, HandlesUpload
             }
         }
         return $value;
+    }
+
+    /** The file names (the library's original name, else the stored path), comma-separated and escaped. */
+    public function renderAdmin(mixed $value, array $config): string
+    {
+        $names = array_map(fn (string $v): string => $this->library?->find($v)?->label() ?? $v, $this->toList($value));
+
+        return htmlspecialchars(implode(', ', $names), ENT_QUOTES, 'UTF-8');
     }
 
     public function renderFrontend(mixed $value, array $config): string

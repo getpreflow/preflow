@@ -18,7 +18,7 @@ use Preflow\Folio\Field\FieldType;
  * (add pick-existing / remove / reorder); rendered on the frontend through each
  * reference's per-type template.
  */
-final class MatrixFieldType implements FieldType
+final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysInAdmin
 {
     public function __construct(
         private readonly TypeCatalog $catalog,
@@ -136,6 +136,14 @@ final class MatrixFieldType implements FieldType
     public function fromStorage(mixed $value): mixed
     {
         return $this->toRefs($value);
+    }
+
+    /** "3 rows": a summary, not the frontend templates. */
+    public function renderAdmin(mixed $value, array $config): string
+    {
+        $n = count($this->toRefs($value));
+
+        return $n === 0 ? '' : $n . ($n === 1 ? ' row' : ' rows');
     }
 
     public function renderFrontend(mixed $value, array $config): string

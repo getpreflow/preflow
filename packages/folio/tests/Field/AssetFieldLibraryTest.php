@@ -164,6 +164,14 @@ final class AssetFieldLibraryTest extends TestCase
         $this->assertStringContainsString('<img src="/folio/_uploads/' . $legacy . '"', $this->field()->renderFrontend($legacy, self::SINGLE));
     }
 
+    public function test_admin_display_is_the_library_label_or_the_path(): void
+    {
+        $id = $this->asset();
+        $this->assertSame('x.png', $this->field()->renderAdmin($id, self::SINGLE));
+        $this->assertSame('a/&lt;b&gt;.png, c.pdf', $this->field()->renderAdmin(['a/<b>.png', 'c.pdf'], self::SINGLE));
+        $this->assertSame('', $this->field()->renderAdmin(null, self::SINGLE));
+    }
+
     private function asset(): string
     {
         return $this->lib->upload($this->upload($this->png(10, 10), 'x.png'), null)->id;

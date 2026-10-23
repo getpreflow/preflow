@@ -100,6 +100,14 @@ final class MatrixFieldTypeTest extends TestCase
         return ['matrix' => ['allowed' => $allowed]];
     }
 
+    public function test_admin_display_is_a_row_count(): void
+    {
+        $t = $this->type();
+        $this->assertSame('2 rows', $t->renderAdmin([['_type' => 'page', 'id' => 'a'], ['_type' => 'page', 'id' => 'b']], []));
+        $this->assertSame('1 row', $t->renderAdmin('[{"_type":"page","id":"a"}]', []));
+        $this->assertSame('', $t->renderAdmin([], []));
+    }
+
     public function test_key_and_assets(): void
     {
         $t = $this->type();
