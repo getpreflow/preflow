@@ -103,8 +103,7 @@ final class FolioServiceProvider extends ServiceProvider
             }
         }
         if ($patches !== []) {
-            $key = array_key_first($patches);
-            throw new \Preflow\Folio\Content\FrontendConfigException("Model \"{$key}\" extends an extension type, but no enabled extension defines it");
+            throw ModelExtension::orphanError((string) array_key_first($patches), $modelsPath, $extensions);
         }
         // Blocks: component blocks from app/Components, data-only blocks from
         // app/Blocks, plus classes listed in config/folio.php 'blocks'. Cached
@@ -170,7 +169,7 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(\Preflow\Folio\Http\ExtensionsController::class, fn (Container $c) => new \Preflow\Folio\Http\ExtensionsController(
             $c->get(ExtensionRegistry::class),
             $c->get(\Preflow\Folio\Extension\ExtensionState::class),
-            new \Preflow\Folio\Extension\ExtensionsFile($app->basePath('config/folio/extensions.json')),
+            new \Preflow\Folio\Extension\ExtensionsFile($app->basePath('config/folio/extensions.json'), $modelsPath),
             $c->get(TemplateEngineInterface::class),
             $c->get(TypeCatalog::class),
             $prefix,

@@ -235,6 +235,106 @@ final class ModelExtensionTest extends TestCase
         $this->app();
     }
 
+    #[RunInSeparateProcess]
+    public function test_boot_error_names_the_patch_file_and_the_recovery_command(): void
+    {
+        $this->members(enabled: false);
+        $this->write('config/models/member.json', (string) json_encode(['key' => 'member', 'extends' => true, 'fields' => ['company' => ['type' => 'string']]]));
+
+        try {
+            $this->app();
+            $this->fail('expected a FrontendConfigException');
+        } catch (FrontendConfigException $e) {
+            $this->assertStringContainsString('Model "member" extends an extension type, but no enabled extension defines it', $e->getMessage());
+            $this->assertStringContainsString($this->dir . '/config/models/member.json', $e->getMessage());
+            $this->assertStringContainsString('preflow folio:extensions:enable members', $e->getMessage());
+        }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_boot_error_for_a_disabled_part_names_the_part(): void
+    {
+        $this->members();
+        $this->write('config/folio/extensions.json', '{"enabled": {"members": {"disabled_parts": ["settings"]}}}');
+        $this->write('config/models/members_settings.json', (string) json_encode(['key' => 'members_settings', 'extends' => true, 'fields' => ['book_code' => ['type' => 'string']]]));
+
+        $this->expectException(FrontendConfigException::class);
+        $this->expectExceptionMessage('preflow folio:extensions:enable members --part=settings');
+        $this->app();
+    }
+
+    #[RunInSeparateProcess]
+    public function test_admin_toggle_refuses_to_disable_an_extended_extension(): void
+    {
+        $this->members();
+        $this->write('config/models/member.json', (string) json_encode(['key' => 'member', 'extends' => true, 'fields' => ['company' => ['type' => 'string']]]));
+        $before = (string) file_get_contents($this->dir . '/config/folio/extensions.json');
+
+        $res = $this->post('/folio/extensions/members', ['enabled' => '0']);
+
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('Can\'t disable extension "members"', (string) $res->getBody());
+        $this->assertStringContainsString($this->dir . '/config/models/member.json extends its type "member"', (string) $res->getBody());
+        $this->assertSame($before, (string) file_get_contents($this->dir . '/config/folio/extensions.json'));
+        $this->assertSame(200, $this->get('/folio/member')->getStatusCode()); // still boots
+    }
+
+    #[RunInSeparateProcess]
+    public function test_admin_toggle_refuses_to_disable_an_extended_part(): void
+    {
+        $this->members();
+        $this->write('config/models/members_settings.json', (string) json_encode(['key' => 'members_settings', 'extends' => true, 'fields' => ['book_code' => ['type' => 'string']]]));
+
+        $res = $this->post('/folio/extensions/members', ['part' => 'settings', 'enabled' => '0']);
+
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('Can\'t disable part "settings" of extension "members"', (string) $res->getBody());
+        $this->assertStringContainsString('members_settings.json extends its type "members_settings"', (string) $res->getBody());
+        // Parts the patch does not touch still toggle.
+        $this->assertSame(302, $this->post('/folio/extensions/members', ['part' => 'model:member', 'enabled' => '0'])->getStatusCode());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_cli_refuses_to_disable_an_extended_extension_or_part(): void
+    {
+        $this->members();
+        $this->write('config/models/member.json', (string) json_encode(['key' => 'member', 'extends' => true, 'fields' => ['company' => ['type' => 'string']]]));
+        $before = (string) file_get_contents($this->dir . '/config/folio/extensions.json');
+
+        [$code, $out] = $this->cli(new \Preflow\Folio\Console\ExtensionsDisableCommand($this->dir), ['members']);
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('Can\'t disable extension "members": the site model file ' . $this->dir . '/config/models/member.json extends its type "member"', $out);
+
+        [$code, $out] = $this->cli(new \Preflow\Folio\Console\ExtensionsDisableCommand($this->dir), ['members', '--part=model:member']);
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('Can\'t disable part "model:member" of extension "members"', $out);
+        $this->assertSame($before, (string) file_get_contents($this->dir . '/config/folio/extensions.json'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_cli_enable_recovers_from_the_patch_boot_error(): void
+    {
+        $this->members(enabled: false);
+        $this->write('config/models/member.json', (string) json_encode(['key' => 'member', 'extends' => true, 'fields' => ['company' => ['type' => 'string']]]));
+
+        [$code, $out] = $this->cli(new \Preflow\Folio\Console\ExtensionsEnableCommand($this->dir), ['members']);
+
+        $this->assertSame(0, $code, $out);
+        $this->assertSame(['email', 'name', 'company'], array_keys($this->app()->container()->get(DataManager::class)->getTypeRegistry()->get('member')->fields));
+    }
+
+    /**
+     * @param list<string> $args
+     * @return array{int, string}
+     */
+    private function cli(object $command, array $args): array
+    {
+        ob_start();
+        $code = $command->execute($args);
+
+        return [$code, (string) ob_get_clean()];
+    }
+
     /** The "members" extension: a "member" model and a settings form. */
     private function members(bool $enabled = true): void
     {

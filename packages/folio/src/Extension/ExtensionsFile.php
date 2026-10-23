@@ -11,8 +11,10 @@ namespace Preflow\Folio\Extension;
  */
 final class ExtensionsFile
 {
+    /** @param string|null $modelsPath the site's models directory: with it, disable() refuses what a site model file extends */
     public function __construct(
         private readonly string $path,
+        private readonly ?string $modelsPath = null,
     ) {}
 
     public function path(): string
@@ -62,6 +64,9 @@ final class ExtensionsFile
     /** Disables an extension (its data stays), or with $part one part of an enabled extension. */
     public function disable(ExtensionDefinition $extension, ?string $part = null): void
     {
+        if ($this->modelsPath !== null) {
+            ModelExtension::assertCanDisable($extension, $part, $this->modelsPath);
+        }
         $this->change($extension, $part, false);
     }
 
