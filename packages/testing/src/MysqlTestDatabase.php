@@ -83,7 +83,7 @@ final class MysqlTestDatabase
             $c['password'],
             [
                 \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-                \PDO::MYSQL_ATTR_FOUND_ROWS => true,
+                \Pdo\Mysql::ATTR_FOUND_ROWS => true,
             ],
         );
         $pdo->exec("SET SESSION sql_mode = '" . self::SQL_MODE . "'");
