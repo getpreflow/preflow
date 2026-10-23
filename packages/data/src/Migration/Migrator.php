@@ -4,21 +4,21 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Migration;
 
+use Preflow\Data\Migration\Grammar\Grammars;
+use Preflow\Data\Migration\Grammar\SchemaGrammar;
+
 final class Migrator
 {
     /** @var list<string> */
     private readonly array $migrationsPaths;
 
+    private readonly SchemaGrammar $grammar;
+
     public function __construct(
         private readonly \PDO $pdo,
         string|array $migrationsPaths,
     ) {
-        // The generated SQL (double-quoted names, TEXT primary keys, sqlite_master) is SQLite's;
-        // refuse other servers clearly instead of failing on the first statement.
-        $driver = (string) $pdo->getAttribute(\PDO::ATTR_DRIVER_NAME);
-        if ($driver !== 'sqlite') {
-            throw new \LogicException("Migrations support SQLite only for now (this connection is {$driver}).");
-        }
+        $this->grammar = Grammars::for($pdo);
         $this->migrationsPaths = is_array($migrationsPaths) ? array_values($migrationsPaths) : [$migrationsPaths];
         $this->ensureMigrationsTable();
     }
@@ -98,9 +98,6 @@ final class Migrator
 
     private function ensureMigrationsTable(): void
     {
-        $this->pdo->exec('CREATE TABLE IF NOT EXISTS preflow_migrations (
-            migration TEXT PRIMARY KEY,
-            ran_at TEXT NOT NULL
-        )');
+        $this->pdo->exec($this->grammar->createMigrationsTable());
     }
 }

@@ -32,18 +32,17 @@ final class MigratorTest extends TestCase
         rmdir($this->migrationsDir);
     }
 
-    public function test_non_sqlite_connection_is_refused_with_a_clear_message(): void
+    public function test_unknown_driver_is_refused(): void
     {
-        // A connection that reports MySQL: the generated SQL (double-quoted names, TEXT keys) is SQLite's.
         $pdo = new class ('sqlite::memory:') extends \PDO {
             public function getAttribute(int $attribute): mixed
             {
-                return $attribute === \PDO::ATTR_DRIVER_NAME ? 'mysql' : parent::getAttribute($attribute);
+                return $attribute === \PDO::ATTR_DRIVER_NAME ? 'pgsql' : parent::getAttribute($attribute);
             }
         };
 
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('Migrations support SQLite only for now (this connection is mysql).');
+        $this->expectExceptionMessage('No schema grammar for PDO driver "pgsql".');
 
         new Migrator($pdo, $this->migrationsDir);
     }

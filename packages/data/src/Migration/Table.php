@@ -6,7 +6,7 @@ namespace Preflow\Data\Migration;
 
 final class Table
 {
-    /** @var array<int, array{name: string, type: string, nullable: bool, primary: bool, index: bool}> */
+    /** @var array<int, array{name: string, kind: string, length: ?int, nullable: bool, primary: bool, index: bool}> */
     private array $columns = [];
 
     public function __construct(
@@ -15,39 +15,39 @@ final class Table
 
     public function uuid(string $name): self
     {
-        return $this->addColumn($name, 'TEXT');
+        return $this->addColumn($name, 'uuid');
     }
 
     public function string(string $name, int $length = 255): self
     {
-        return $this->addColumn($name, 'TEXT');
+        return $this->addColumn($name, 'string', $length);
     }
 
     public function text(string $name): self
     {
-        return $this->addColumn($name, 'TEXT');
+        return $this->addColumn($name, 'text');
     }
 
     public function integer(string $name): self
     {
-        return $this->addColumn($name, 'INTEGER');
+        return $this->addColumn($name, 'integer');
     }
 
     public function json(string $name): self
     {
-        return $this->addColumn($name, 'TEXT');
+        return $this->addColumn($name, 'json');
     }
 
     public function boolean(string $name): self
     {
-        return $this->addColumn($name, 'INTEGER');
+        return $this->addColumn($name, 'boolean');
     }
 
     public function timestamps(): self
     {
-        $this->addColumn('created_at', 'TEXT');
+        $this->addColumn('created_at', 'timestamp');
         $this->columns[array_key_last($this->columns)]['nullable'] = true;
-        $this->addColumn('updated_at', 'TEXT');
+        $this->addColumn('updated_at', 'timestamp');
         $this->columns[array_key_last($this->columns)]['nullable'] = true;
         return $this;
     }
@@ -77,29 +77,19 @@ final class Table
     }
 
     /**
-     * Generate the CREATE TABLE SQL.
+     * Column definitions in the shape SchemaGrammar::createTable() takes.
+     *
+     * @return list<array{name: string, kind: string, length: ?int, nullable: bool, primary: bool}>
      */
-    public function toSql(): string
+    public function columns(): array
     {
-        $parts = [];
-
-        foreach ($this->columns as $col) {
-            $def = "\"{$col['name']}\" {$col['type']}";
-
-            if ($col['primary']) {
-                $def .= ' PRIMARY KEY';
-            }
-
-            if (!$col['nullable'] && !$col['primary']) {
-                $def .= ' NOT NULL';
-            }
-
-            $parts[] = $def;
-        }
-
-        $sql = "CREATE TABLE \"{$this->name}\" (\n    " . implode(",\n    ", $parts) . "\n)";
-
-        return $sql;
+        return array_map(static fn (array $col): array => [
+            'name' => $col['name'],
+            'kind' => $col['kind'],
+            'length' => $col['length'],
+            'nullable' => $col['nullable'],
+            'primary' => $col['primary'],
+        ], array_values($this->columns));
     }
 
     /**
@@ -121,11 +111,12 @@ final class Table
         return $this->name;
     }
 
-    private function addColumn(string $name, string $type): self
+    private function addColumn(string $name, string $kind, ?int $length = null): self
     {
         $this->columns[] = [
             'name' => $name,
-            'type' => $type,
+            'kind' => $kind,
+            'length' => $length,
             'nullable' => false,
             'primary' => false,
             'index' => false,
