@@ -93,10 +93,8 @@ final class RegistrationController
         if (!$input['consent']) {
             $errors['consent'] = 'consent';
         }
-        // The admission only sees an otherwise valid post: its check may cost (a throttled code lookup).
-        if ($errors === []) {
-            $errors = $this->admission->validate($input, $request);
-        }
+        // Always asked, so its errors show with the form's; told about these, it skips a costly check (a throttled code lookup).
+        $errors += $this->admission->validate($input, $request, $errors);
         if ($errors !== []) {
             return $this->page($request, $errors, $input, 422);
         }

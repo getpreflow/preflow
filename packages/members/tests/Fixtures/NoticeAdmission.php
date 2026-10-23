@@ -15,7 +15,7 @@ final class NoticeAdmission implements Admission
     /** The request afterConfirm() was given (the tests run in separate processes). */
     public static ?ServerRequestInterface $confirmRequest = null;
 
-    public function validate(array $input, ServerRequestInterface $request): array
+    public function validate(array $input, ServerRequestInterface $request, array $baseErrors): array
     {
         return [];
     }

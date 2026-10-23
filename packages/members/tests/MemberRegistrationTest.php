@@ -117,7 +117,7 @@ final class MemberRegistrationTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_the_admission_checks_an_otherwise_valid_post_and_its_values_are_stored(): void
+    public function test_the_admission_always_validates_with_the_base_errors_and_its_values_are_stored(): void
     {
         $this->removeScaffold();
         $this->flowSite(['admission' => CompanyAdmission::class], files: [
@@ -128,22 +128,26 @@ final class MemberRegistrationTest extends TestCase
 TWIG,
         ]);
 
-        $base = $this->register(['name' => '', 'company' => ' ']);
-        $html = (string) $base->getBody();
-        $this->assertSame(422, $base->getStatusCode());
+        $empty = $this->post('/members/register', []);
+        $html = (string) $empty->getBody();
+        $this->assertSame(422, $empty->getStatusCode());
         $this->assertStringContainsString('Please enter your name.', $html);
-        $this->assertNull(Dom::first($html, '//p[@class="company-error"]'), 'the base fields first: the admission is not asked yet');
-        $this->assertSame(0, CompanyAdmission::$validations);
-        $this->assertSame('Holz AG', Dom::first((string) $this->register(['name' => '', 'company' => 'Holz AG'])->getBody(), '//input[@name="company"]')?->getAttribute('value'), 'the admission\'s input is kept');
-        $this->assertSame(0, CompanyAdmission::$validations);
+        $this->assertSame('Please name your company.', Dom::text($html, '//p[@class="company-error"]'), 'the admission\'s error shows together with the base errors');
+        $this->assertSame(1, CompanyAdmission::$validations);
+        $this->assertSame(0, CompanyAdmission::$lookups, 'no costly check while the base fields fail');
+
+        $named = (string) $this->register(['name' => '', 'company' => 'Holz AG'])->getBody();
+        $this->assertSame('Holz AG', Dom::first($named, '//input[@name="company"]')?->getAttribute('value'), 'the admission\'s input is kept');
+        $this->assertNull(Dom::first($named, '//p[@class="company-error"]'));
+        $this->assertSame(0, CompanyAdmission::$lookups, 'a given company is not looked up while the name is missing');
 
         $missing = $this->register(['company' => ' ']);
         $this->assertSame(422, $missing->getStatusCode());
-        $this->assertSame('Please name your company.', Dom::text((string) $missing->getBody(), '//p[@class="company-error"]'), 'on an otherwise valid post');
-        $this->assertSame(1, CompanyAdmission::$validations);
+        $this->assertSame('Please name your company.', Dom::text((string) $missing->getBody(), '//p[@class="company-error"]'));
         $this->assertNull($this->flow->container()->get(Members::class)->findByEmail('ada@example.com'));
 
         $this->assertSame(200, $this->register(['company' => ' Holz AG '])->getStatusCode());
+        $this->assertSame(1, CompanyAdmission::$lookups, 'looked up on the otherwise valid post');
         $this->assertSame('Holz AG', $this->member('ada@example.com')->get('company'));
     }
 

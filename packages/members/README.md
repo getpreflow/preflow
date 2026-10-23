@@ -133,7 +133,7 @@ Folio, the default). A site's own rule implements the interface:
 ```php
 interface Admission
 {
-    public function validate(array $input, ServerRequestInterface $request): array;   // field => message
+    public function validate(array $input, ServerRequestInterface $request, array $baseErrors): array; // field => message
     public function recordValues(array $input): array;                                // stored on the member
     public function afterConfirm(DynamicRecord $member, ServerRequestInterface $request): Decision; // Accept or Pending
     public function confirmNotice(DynamicRecord $member): ?string;                   // a line after confirming, or null
@@ -141,9 +141,9 @@ interface Admission
 }
 ```
 
-`validate()` is asked only when the form's own fields (name, email, password, consent) are
-valid, so a costly or throttled check (a code lookup) never runs for a post that fails anyway;
-its errors then show with the form.
+`validate()` is asked on every post, so its errors show together with those of the form's own
+fields (name, email, password, consent). `$baseErrors` are those (field => key): skip a costly
+or throttled check (a code lookup) when `$baseErrors !== []`, the post fails anyway.
 
 `details($member, Admission::PANEL)` appear in the Decision panel (`Registered … · label: value`),
 `details($member, Admission::NOTICE)` in the owner's notice mail, one paragraph each; an entry

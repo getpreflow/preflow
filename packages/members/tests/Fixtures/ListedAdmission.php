@@ -12,7 +12,7 @@ use Psr\Http\Message\ServerRequestInterface;
 /** A site rule for the tests: the owner decides; the panel lists two lines, the owner's notice two others (one without a label). */
 final class ListedAdmission implements Admission
 {
-    public function validate(array $input, ServerRequestInterface $request): array
+    public function validate(array $input, ServerRequestInterface $request, array $baseErrors): array
     {
         return [];
     }

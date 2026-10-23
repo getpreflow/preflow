@@ -20,12 +20,16 @@ interface Admission
     public const string NOTICE = 'notice';
 
     /**
-     * Extra registration rules on the submitted input.
+     * Extra registration rules on the submitted input, asked on every post so its errors show
+     * together with the form's own. $baseErrors are those of the form's fields (name, email,
+     * password, consent; field => key): skip a costly or throttled check (a code lookup) while
+     * it is not empty, the post fails anyway.
      *
      * @param array<string, mixed> $input
+     * @param array<string, string> $baseErrors
      * @return array<string, string> field => message
      */
-    public function validate(array $input, ServerRequestInterface $request): array;
+    public function validate(array $input, ServerRequestInterface $request, array $baseErrors): array;
 
     /**
      * Values to store on the new member record from the input (beyond email/name/password/language);

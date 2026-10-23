@@ -10,7 +10,7 @@ use Psr\Http\Message\ServerRequestInterface;
 /** Everyone who confirms the e-mail is a member at once. No extra fields. */
 final class AcceptOnConfirm implements Admission
 {
-    public function validate(array $input, ServerRequestInterface $request): array
+    public function validate(array $input, ServerRequestInterface $request, array $baseErrors): array
     {
         return [];
     }

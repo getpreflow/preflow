@@ -68,8 +68,9 @@ in smart-stack's app code (~1,500 generic lines, ~2,400 lines of tests).
 ### Admission hook
 ```php
 interface Admission {
-    /** Extra registration rules on the submitted input; field => message. */
-    public function validate(array $input, ServerRequestInterface $request): array;
+    /** Extra registration rules on the submitted input; field => message. Asked on every post; $baseErrors
+     *  are the form's own (name, email, password, consent): skip costly checks when $baseErrors !== []. */
+    public function validate(array $input, ServerRequestInterface $request, array $baseErrors): array;
     /** Values to store on the new member record from the input (beyond email/name/password/language). */
     public function recordValues(array $input): array;
     /** After the e-mail is confirmed: Decision::Accept (member now, signed in) or Decision::Pending (owner decides). */
@@ -81,7 +82,7 @@ interface Admission {
 }
 ```
 smart-stack keeps its rule as `App\Members\BookCodeOrScreening implements Admission` (code check
-at submit, redeem at confirm, `book_code_skips_screening`, screening answer). Its form fields come
+at submit only when the base fields pass, redeem at confirm, `book_code_skips_screening`, screening answer). Its form fields come
 from a template block the site overrides.
 
 ### Extending an extension's type (Folio, generic)

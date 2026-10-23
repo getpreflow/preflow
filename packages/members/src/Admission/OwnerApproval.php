@@ -10,7 +10,7 @@ use Psr\Http\Message\ServerRequestInterface;
 /** Everyone who confirms the e-mail waits for the owner's decision in Folio. No extra fields. */
 final class OwnerApproval implements Admission
 {
-    public function validate(array $input, ServerRequestInterface $request): array
+    public function validate(array $input, ServerRequestInterface $request, array $baseErrors): array
     {
         return [];
     }

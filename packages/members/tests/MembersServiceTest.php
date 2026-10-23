@@ -179,7 +179,7 @@ final class MembersServiceTest extends TestCase
         $request = (new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/members/register');
 
         foreach ([[new AcceptOnConfirm(), Decision::Accept], [new OwnerApproval(), Decision::Pending]] as [$admission, $decision]) {
-            $this->assertSame([], $admission->validate(['email' => 'ada@example.com'], $request));
+            $this->assertSame([], $admission->validate(['email' => 'ada@example.com'], $request, []));
             $this->assertSame([], $admission->recordValues(['email' => 'ada@example.com', 'company' => 'x']));
             $this->assertSame($decision, $admission->afterConfirm($m, $request));
             $this->assertSame([], $admission->details($m, Admission::PANEL));
