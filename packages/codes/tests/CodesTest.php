@@ -433,6 +433,25 @@ final class CodesTest extends TestCase
         }
     }
 
+    /** Folio's number field and hand edits store text: '3.0', '' (unlimited) and '' uses all count as numbers. */
+    public function test_max_uses_and_uses_stored_as_loose_text(): void
+    {
+        $codes = $this->codes();
+        $dm = $this->app()->container()->get(DataManager::class);
+        $codes->issue('members.book', [], 'THREEDOT0');
+        $codes->issue('members.book', [], 'EMPTYMAX');
+        $dm->execute("UPDATE code SET max_uses = '3.0', uses = '' WHERE uuid = ?", [(string) $codes->check('THREEDOT0', 'members.book')->codeId], 'codes');
+        $dm->execute("UPDATE code SET max_uses = '', uses = '' WHERE uuid = ?", [(string) $codes->check('EMPTYMAX', 'members.book')->codeId], 'codes');
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->assertTrue($codes->redeem('THREEDOT0', 'members.book')->ok, "use {$i}");
+        }
+        $this->assertSame('used_up', $codes->redeem('THREEDOT0', 'members.book')->reason);
+        for ($i = 0; $i < 4; $i++) {
+            $this->assertTrue($codes->redeem('EMPTYMAX', 'members.book')->ok, "unlimited use {$i}");
+        }
+    }
+
     public function test_unlimited_code_counts_every_use(): void
     {
         $codes = $this->codes();
@@ -602,6 +621,13 @@ final class CodesTest extends TestCase
     {
         $this->onMysql();
         $this->test_uses_above_nine_compared_numerically();
+    }
+
+    #[Group('mysql')]
+    public function test_max_uses_and_uses_stored_as_loose_text_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_max_uses_and_uses_stored_as_loose_text();
     }
 
     #[Group('mysql')]

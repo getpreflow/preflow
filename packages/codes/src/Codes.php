@@ -225,11 +225,18 @@ final class Codes
             $uses = $dialect->quoteIdentifier('uses');
             $max = $dialect->quoteIdentifier('max_uses');
             // Folio syncs these columns as TEXT, so compare as numbers, never as strings.
-            $int = $dialect instanceof MysqlDialect ? 'SIGNED' : 'INTEGER';
-            $count = "CAST(COALESCE({$uses}, 0) AS {$int})";
+            if ($dialect instanceof MysqlDialect) {
+                // Strict mode turns CAST('' AS SIGNED) and CAST('3.0' AS SIGNED) into errors
+                // inside an UPDATE, so only well-formed numbers are cast; '' uses count as 0.
+                $count = "(CASE WHEN {$uses} REGEXP '^[0-9]+$' THEN CAST({$uses} AS SIGNED) ELSE 0 END)";
+                $limit = "(CASE WHEN {$max} REGEXP '^[0-9]+([.][0-9]*)?$' THEN CAST({$max} AS DECIMAL(65,10)) ELSE 0 END)";
+            } else {
+                $count = "CAST(COALESCE({$uses}, 0) AS INTEGER)";
+                $limit = "CAST({$max} AS INTEGER)";
+            }
 
             return $this->dm->execute(
-                "UPDATE {$table} SET {$uses} = {$count} + 1 WHERE {$id} = ? AND ({$max} IS NULL OR {$max} = '' OR {$count} < CAST({$max} AS {$int}))",
+                "UPDATE {$table} SET {$uses} = {$count} + 1 WHERE {$id} = ? AND ({$max} IS NULL OR {$max} = '' OR {$count} < {$limit})",
                 [$codeId],
                 $type->storage,
             ) === 1;

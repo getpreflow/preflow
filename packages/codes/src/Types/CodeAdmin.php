@@ -36,6 +36,8 @@ final class CodeAdmin
     #[BeforeSave]
     public function beforeSave(DynamicRecord $record): void
     {
+        $record->set('max_uses', self::maxUses($record->get('max_uses')));
+
         $stored = $this->dm->findType('code', (string) $record->getId());
         if ($stored !== null) {
             foreach (self::KEPT as $field) {
@@ -101,6 +103,23 @@ final class CodeAdmin
         }
 
         return new ScreenView('@codes/redemptions.twig', ['redemptions' => $rows]);
+    }
+
+    /**
+     * A whole-number string, or '' for unlimited: the number field may send '3.0', which
+     * MySQL's strict mode refuses to cast to an integer in Codes' atomic use count.
+     */
+    private static function maxUses(mixed $value): string
+    {
+        $text = trim((string) ($value ?? ''));
+        if ($text === '') {
+            return '';
+        }
+        if (!is_numeric($text) || (float) $text < 0 || floor((float) $text) !== (float) $text) {
+            throw self::refuse('max_uses', 'Max uses must be a whole number (empty: unlimited).');
+        }
+
+        return (string) (int) $text;
     }
 
     private static function refuse(string $field, string $message): ValidationException

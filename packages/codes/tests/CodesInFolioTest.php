@@ -201,6 +201,28 @@ final class CodesInFolioTest extends TestCase
         $this->assertTrue($this->codes()->check('Smart Stack 2026', 'members.book')->ok);
     }
 
+    /** A whole-number string or '' (unlimited) is what Codes compares; the number field may send '3.0'. */
+    #[RunInSeparateProcess]
+    public function test_max_uses_saved_as_whole_number_or_empty(): void
+    {
+        $this->app();
+        $this->login();
+
+        $this->assertSame(302, $this->send('POST', '/folio/code', $this->create(['max_uses' => '3.0']))->getStatusCode());
+        $id = $this->idOf('SMARTSTACK2026');
+        $this->assertSame('3', $this->stored($id)->get('max_uses'));
+
+        $this->assertSame(302, $this->send('POST', "/folio/code/{$id}", ['label' => 'Book', 'max_uses' => ' 5.0 '])->getStatusCode());
+        $this->assertSame('5', $this->stored($id)->get('max_uses'));
+
+        $this->assertSame(302, $this->send('POST', "/folio/code/{$id}", ['label' => 'Book', 'max_uses' => ''])->getStatusCode());
+        $this->assertSame('', (string) $this->stored($id)->get('max_uses'));
+
+        $res = $this->send('POST', "/folio/code/{$id}", ['label' => 'Book', 'max_uses' => '2.5']);
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('whole number', (string) $res->getBody());
+    }
+
     #[RunInSeparateProcess]
     public function test_create_for_non_readable_purpose_rejected(): void
     {
