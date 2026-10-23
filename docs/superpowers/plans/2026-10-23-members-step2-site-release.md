@@ -6,12 +6,12 @@ Site branch: `feat/members-step2` (smart-stack.works). Every step is gated by th
 
 The owner reads and approves, in EN and DE:
 
-- [ ] the pages: `/tools` entry, register, confirm, login, forgot, reset, account, toolbox, error and notice pages
-- [ ] the mails: confirmation, reset, accept, decline, and the owner's info mail
-- [ ] the defaults in Settings, Members: screening question and help, accept and decline messages, welcome note
-- [ ] the privacy text: `app/Content/PrivacyText.php`, sections Cookies, Contact & email and Members area (draft written 2026-10-23)
+- [x] the pages: `/tools` entry, register, confirm, login, forgot, reset, account, toolbox, error and notice pages
+- [x] the mails: confirmation, reset, accept, decline, and the owner's info mail
+- [x] the defaults in Settings, Members: screening question and help, accept and decline messages, welcome note
+- [x] the privacy text: `app/Content/PrivacyText.php`, sections Cookies, Contact & email and Members area (draft written 2026-10-23)
 
-Changes from this review are made on the branch before step 2.
+Approved by the owner on 2026-10-23, as built (including the full-name greeting "Hi Ada Lovelace,").
 
 ## 2. Merge the site branch
 
