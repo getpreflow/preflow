@@ -8,18 +8,26 @@ use Preflow\Data\DataManager;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
+use Preflow\Rbac\PermissionCoverage;
 use Preflow\Rbac\RoleList;
+use Preflow\Rbac\RoleStore;
+use Preflow\Rbac\StaffManagers;
 
 /**
  * A user's roles ("rbac_roles"): checkboxes of the roles of the user type's population
  * ("users" of the type) or of the field's "population". The value is a list of role names;
  * a stored role no longer defined stays checked under its name, so saving keeps it.
+ * On a staff account (StaffRules) a role whose patterns the signed-in user doesn't cover
+ * (PermissionCoverage) is disabled ("You can't grant this"); StaffRules refuses it anyway.
  */
 final class RolesFieldType implements FieldType
 {
+    private const string DENIED = "You can't grant this";
+
     public function __construct(
         private readonly DataManager $dm,
         private readonly TypeCatalog $catalog,
+        private readonly ?PermissionCoverage $coverage = null,
     ) {}
 
     public function key(): string
@@ -39,11 +47,15 @@ final class RolesFieldType implements FieldType
             $roles[$name] ??= $name . ' (not defined)';
         }
         $name = $e($ctx->name . '[]');
+        $held = ($ctx->record['type'] ?? null) === StaffManagers::TYPE ? $this->coverage?->held() : null;
+        $patterns = $held !== null ? (new RoleStore($this->dm))->rolesFor('staff') : [];
 
         $html = '<fieldset class="form-group rbac-roles' . ($ctx->errors !== [] ? ' has-error' : '') . '"><legend>' . $e($ctx->label ?? 'Roles') . '</legend>'
             . "\n" . '<input type="hidden" name="' . $name . '" value="">'; // none checked still posts an empty list
         foreach ($roles as $role => $label) {
-            $html .= "\n" . '<label class="form-radio"><input type="checkbox" name="' . $name . '" value="' . $e((string) $role) . '"'
+            $denied = $held !== null && !PermissionCoverage::coversAll($held, $patterns[(string) $role] ?? []);
+            $html .= "\n" . '<label class="form-radio"' . ($denied ? ' title="' . $e(self::DENIED) . '"' : '') . '><input type="checkbox" name="' . $name . '" value="' . $e((string) $role) . '"'
+                . ($denied ? ' disabled data-rbac-denied' : '')
                 . (in_array((string) $role, $selected, true) ? ' checked' : '') . '> ' . $e($label) . '</label>';
         }
         if ($population === null) {

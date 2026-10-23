@@ -1,0 +1,67 @@
+{
+    "key": "staff",
+    "table": "staff",
+    "storage": "default",
+    "id_field": "uuid",
+    "label": "Staff",
+    "users": "staff",
+    "opt_in": true,
+    "section": "settings",
+    "order": 10,
+    "icon": "ui-users",
+    "publishing": false,
+    "list": {
+        "columns": [
+            "email",
+            "name",
+            "roles",
+            "active",
+            "last_login_at"
+        ]
+    },
+    "fields": {
+        "email": {
+            "type": "string",
+            "label": "Email",
+            "validate": [
+                "required"
+            ]
+        },
+        "name": {
+            "type": "string",
+            "label": "Name"
+        },
+        "password_hash": {
+            "type": "string",
+            "hidden": true
+        },
+        "roles": {
+            "type": "rbac_roles",
+            "label": "Roles"
+        },
+        "active": {
+            "type": "boolean",
+            "label": "Active",
+            "help": "An inactive account can't sign in.",
+            "default": true
+        },
+        "auth_epoch": {
+            "type": "string",
+            "hidden": true,
+            "readonly": true,
+            "default": "0"
+        },
+        "last_login_at": {
+            "type": "date",
+            "label": "Last sign-in",
+            "time": true,
+            "readonly": true
+        },
+        "created_at": {
+            "type": "date",
+            "label": "Created",
+            "time": true,
+            "readonly": true
+        }
+    }
+}

@@ -1,0 +1,10 @@
+{
+    "key": "note",
+    "label": "Notes",
+    "table": "note",
+    "storage": "json",
+    "id_field": "uuid",
+    "fields": {
+        "title": { "type": "string" }
+    }
+}

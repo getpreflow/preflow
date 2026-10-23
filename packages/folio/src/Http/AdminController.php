@@ -201,7 +201,8 @@ final class AdminController
 
         $locale = $this->requestLocale($request, $this->registry->get($type));
 
-        return $this->form($type, [], $action, 'New ' . $this->labelFor($type), [], $csrf, 200, $layout, $locale, $this->prefix . '/' . $type . '/new');
+        // The fields' declared defaults, so a new record's form starts from them (a boolean defaulting to true is checked).
+        return $this->form($type, self::defaults($this->registry->get($type)), $action, 'New ' . $this->labelFor($type), [], $csrf, 200, $layout, $locale, $this->prefix . '/' . $type . '/new');
     }
 
     public function store(ServerRequestInterface $request): ResponseInterface
@@ -914,7 +915,8 @@ final class AdminController
     }
 
     /**
-     * Field values from the fields' "default" (extension settings declare them), for keys a record lacks.
+     * Field values from the fields' "default" (extension settings declare them), for keys a record
+     * lacks, and for a new record's form.
      *
      * @return array<string, mixed>
      */

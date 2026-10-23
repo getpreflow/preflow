@@ -6,8 +6,9 @@ namespace Preflow\Folio\Extension;
 
 /**
  * config/folio/extensions.json, the committed list of enabled extensions:
- * {"enabled": {"<name>": {"disabled_parts": ["screen:x"]}}}. Unlisted extensions are off;
- * a missing file means everything is off.
+ * {"enabled": {"<name>": {"disabled_parts": ["screen:x"], "enabled_parts": ["model:y"]}}}.
+ * Unlisted extensions are off; a missing file means everything is off. "enabled_parts" (written
+ * only when not empty) switches on opt-in models, which are off with their extension otherwise.
  */
 final class ExtensionsFile
 {
@@ -27,7 +28,7 @@ final class ExtensionsFile
         return is_file($this->path);
     }
 
-    /** @return array<string, array{disabled_parts: list<string>}> by extension name */
+    /** @return array<string, array{disabled_parts: list<string>, enabled_parts?: non-empty-list<string>}> by extension name */
     public function read(): array
     {
         if (!is_file($this->path)) {
@@ -49,7 +50,11 @@ final class ExtensionsFile
             if (!is_array($parts) || !array_is_list($parts) || array_filter($parts, 'is_string') !== $parts) {
                 throw new ExtensionException("{$this->path}: \"enabled.{$name}.disabled_parts\" must be a list of part ids");
             }
-            $entries[(string) $name] = ['disabled_parts' => $parts];
+            $opted = is_array($entry) ? ($entry['enabled_parts'] ?? []) : [];
+            if (!is_array($opted) || !array_is_list($opted) || array_filter($opted, 'is_string') !== $opted) {
+                throw new ExtensionException("{$this->path}: \"enabled.{$name}.enabled_parts\" must be a list of part ids");
+            }
+            $entries[(string) $name] = ['disabled_parts' => $parts] + ($opted !== [] ? ['enabled_parts' => $opted] : []);
         }
 
         return $entries;
@@ -104,11 +109,21 @@ final class ExtensionsFile
             throw new ExtensionException("Extension \"{$name}\" is not enabled; enable it before its parts.");
         }
         $disabled = array_values(array_diff($entries[$name]['disabled_parts'], [$part]));
-        $entries[$name]['disabled_parts'] = $on ? $disabled : [...$disabled, $part];
+        $optIn = false;
+        foreach ($extension->parts as $declared) {
+            $optIn = $optIn || ($declared['id'] === $part && ($declared['opt_in'] ?? false) === true);
+        }
+        if ($optIn) { // off unless listed: switched on and off through enabled_parts
+            $opted = array_values(array_diff($entries[$name]['enabled_parts'] ?? [], [$part]));
+            $entries[$name]['disabled_parts'] = $disabled;
+            $entries[$name]['enabled_parts'] = $on ? [...$opted, $part] : $opted;
+        } else {
+            $entries[$name]['disabled_parts'] = $on ? $disabled : [...$disabled, $part];
+        }
         $this->write($entries);
     }
 
-    /** @param array<string, array{disabled_parts?: list<string>}> $enabled pretty-printed, keys and part ids sorted, trailing newline */
+    /** @param array<string, array{disabled_parts?: list<string>, enabled_parts?: list<string>}> $enabled pretty-printed, keys and part ids sorted, trailing newline */
     public function write(array $enabled): void
     {
         ksort($enabled);
@@ -117,6 +132,11 @@ final class ExtensionsFile
             $parts = array_values(array_unique($entry['disabled_parts'] ?? []));
             sort($parts);
             $out[$name] = ['disabled_parts' => $parts];
+            $opted = array_values(array_unique($entry['enabled_parts'] ?? []));
+            if ($opted !== []) {
+                sort($opted);
+                $out[$name]['enabled_parts'] = $opted;
+            }
         }
         $json = json_encode(['enabled' => (object) $out], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 

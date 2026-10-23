@@ -1,0 +1,11 @@
+{
+    "key": "crew",
+    "label": "Crew",
+    "table": "crew",
+    "storage": "json",
+    "id_field": "uuid",
+    "opt_in": true,
+    "fields": {
+        "email": { "type": "string" }
+    }
+}

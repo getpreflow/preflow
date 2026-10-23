@@ -746,7 +746,7 @@ final class FolioServiceProvider extends ServiceProvider
      * #[DeclaresPermission], its screens' and record actions' permissions, and the standard
      * permissions of its model types and settings type. Those of an extension that is not
      * enabled (or of a disabled part) are declared and disabled: denied and logged once, never
-     * a 500. A name Folio declares itself (folio.*, assets.*, a non-extension type's) is an
+     * a 500; an opt-in model the site hasn't switched on (and its type part) declares none. A name Folio declares itself (folio.*, assets.*, a non-extension type's) is an
      * ExtensionException.
      */
     private function declareExtensionPermissions(\Preflow\Auth\Access\PermissionRegistry $registry, ExtensionRegistry $extensions, TypeCatalog $catalog): void
@@ -779,6 +779,9 @@ final class FolioServiceProvider extends ServiceProvider
                 $entries[] = ['name' => $meta->name, 'label' => $meta->label, 'group' => $definition->label, 'reason' => $extensionReason];
             }
             foreach ($definition->parts as $part) {
+                if ($extensions->optIn($definition->name, $part['id']) && !$extensions->partEnabled($definition->name, $part['id'])) {
+                    continue; // an opt-in model the site hasn't switched on (and its type part): as if not shipped
+                }
                 $reason = $extensionReason ?? ($extensions->partEnabled($definition->name, $part['id']) ? null : "part {$part['id']} of extension {$definition->name}");
                 $typeKey = self::extensionTypeKey($definition->name, $part);
                 if ($typeKey !== null && $reason !== null) {

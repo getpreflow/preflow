@@ -58,7 +58,7 @@ final class InstallTest extends TestCase
             'members' => ['member' => ['tools.*']],
         ], true) . ";\n");
 
-        $this->assertStringContainsString('installed rbac 1.0.0', $this->apply());
+        $this->assertStringContainsString('installed rbac 1.1.0', $this->apply());
 
         $this->assertSame([
             'members/member' => ['label' => 'Member', 'permissions' => ['tools.*']],
@@ -66,7 +66,7 @@ final class InstallTest extends TestCase
             'staff/content_lead' => ['label' => 'Content lead', 'permissions' => ['page.*', 'assets.*']],
             'staff/editor' => ['label' => 'Editor', 'permissions' => ['page.*']],
         ], $this->byName());
-        $this->assertSame('1.0.0', $this->container()->get(ExtensionState::class)->installedVersion('rbac'));
+        $this->assertSame('1.1.0', $this->container()->get(ExtensionState::class)->installedVersion('rbac'));
     }
 
     #[RunInSeparateProcess]

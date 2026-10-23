@@ -10,7 +10,7 @@ final readonly class ExtensionDefinition
     /**
      * @param class-string $class
      * @param string       $folder the directory of the extension's Extension.php
-     * @param list<array{id: string, kind: string, class?: string, label: string}> $parts
+     * @param list<array{id: string, kind: string, class?: string, label: string, opt_in?: true}> $parts (opt_in: a model the site switches on itself)
      */
     public function __construct(
         public string $name,

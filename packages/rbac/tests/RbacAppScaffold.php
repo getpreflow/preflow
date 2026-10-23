@@ -122,7 +122,7 @@ trait RbacAppScaffold
     {
         $c = $this->container();
         $c->get(Extension::class)->install($c);
-        $c->get(ExtensionState::class)->markInstalled('rbac', '1.0.0');
+        $c->get(ExtensionState::class)->markInstalled('rbac', '1.1.0');
     }
 
     /** @param list<string> $permissions */

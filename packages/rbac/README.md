@@ -69,6 +69,28 @@ grant this"); the server check is the authority. Without a signed-in user (the C
 the CLI. `Preflow\Rbac\PermissionCoverage` has the check
 (`covers()`, `coversAll()`, `uncovered()`, and `held()` for the signed-in user).
 
+## Staff accounts
+
+The opt-in part `model:staff` (list it under the extension's `enabled_parts`) gives staff
+accounts as records: type and table `staff` under Settings, on the storage alias `staff`
+when the site has one, else `default`, never exported (a user type). Fields: email (stored
+lowercased, unique), name, password_hash (hidden), roles (`rbac_roles`, population staff),
+active (default true), auth_epoch (hidden), last_login_at and created_at (read-only). A new
+account is stored active, with epoch `"0"` and its created_at. Sign them in with a
+`RecordUserProvider` (`'type' => 'staff', 'active' => 'active'`), usually first in a
+`ChainUserProvider` before the config users (see preflow/auth).
+
+`Types/StaffRules` applies delegation to accounts: with a signed-in user, an account whose
+roles they don't fully cover can't be changed or deleted by them ("You can't change an
+account with roles you can't grant."; viewing stays a matter of `staff.view`), and every
+role added or removed must be covered ("You can't grant permissions you don't have:
+{patterns}"). The roles checkboxes show what you can't grant disabled. Always (the CLI
+too), no account save or delete, and no role save or delete, may leave no active
+*manager*: an account whose roles grant `staff.edit` and `rbac_role.edit` ("At least one
+account must keep the right to manage staff and roles."). That covers disabling, demoting
+and deleting the last one, yourself included. A site whose staff are all config users has
+no manager to keep. Other write paths call `StaffRules::beforeSave()` themselves.
+
 ## Lock-out protection
 
 A save or delete of a role is refused when, on the roles as they would be afterwards:

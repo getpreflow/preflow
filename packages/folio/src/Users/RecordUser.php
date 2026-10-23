@@ -22,6 +22,7 @@ final class RecordUser implements Authenticatable, HasSessionEpoch
         private readonly string $passwordField = 'password_hash',
         string $rolesField = 'roles',
         private readonly string $epochField = 'auth_epoch',
+        private readonly string $emailField = 'email',
     ) {
         $this->roles = self::roles($record->get($rolesField));
     }
@@ -29,6 +30,14 @@ final class RecordUser implements Authenticatable, HasSessionEpoch
     public function getAuthId(): string
     {
         return (string) $this->record->getId();
+    }
+
+    /** The address the account signs in with (as a config user's getEmail()). */
+    public function getEmail(): string
+    {
+        $email = $this->record->get($this->emailField);
+
+        return is_scalar($email) ? (string) $email : '';
     }
 
     public function getPasswordHash(): string

@@ -730,6 +730,17 @@ lists it:
 {"enabled": {"demo": {"disabled_parts": []}}}
 ```
 
+Every part of an enabled extension is on unless listed under `disabled_parts`, with one
+exception: a model whose JSON says `"opt_in": true` (and the extension's type part
+`type:{key}` for it) stays off until the site lists it under `enabled_parts`, so a new
+version can ship a model existing sites don't get unasked. Until then it is as if the
+extension did not ship it: no type, no table, no permissions.
+
+```json
+{"enabled": {"rbac": {"disabled_parts": [], "enabled_parts": ["model:staff"]}}}
+```
+
+`folio:extensions:enable <name> --part=<id>` and the Extensions screen write either list.
 A site without that file and without `app/Folio/*/Extension.php` behaves exactly as
 before. Misnamed classes, missing templates, duplicate routes and unknown names are
 errors on boot in debug (in production they are logged and the part is skipped);

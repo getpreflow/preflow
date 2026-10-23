@@ -55,6 +55,6 @@ final class RbacServiceProvider extends ServiceProvider
         $assets = $container->get(AdminAssets::class);
         $assets->add('rbac.css', dirname(__DIR__) . '/assets/rbac.css');
         $assets->add('rbac.js', dirname(__DIR__) . '/assets/rbac.js');
-        $fieldTypes->register(new RolesFieldType($container->get(DataManager::class), $container->get(TypeCatalog::class)));
+        $fieldTypes->register(new RolesFieldType($container->get(DataManager::class), $container->get(TypeCatalog::class), $coverage));
     }
 }

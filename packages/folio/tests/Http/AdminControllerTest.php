@@ -236,6 +236,20 @@ final class AdminControllerTest extends TestCase
         $this->assertStringContainsString('"action":"/folio/page"', $body);
     }
 
+    public function test_create_form_prefills_declared_defaults(): void
+    {
+        file_put_contents($this->base . '/m/note.json', json_encode([
+            'key' => 'note', 'table' => 'note', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Notes',
+            'fields' => ['title' => ['type' => 'string', 'default' => 'Untitled'], 'body' => ['type' => 'text']],
+        ]));
+        $this->registry = new TypeRegistry($this->base . '/m');
+        $this->dm = new DataManager(['json' => new JsonFileDriver($this->base . '/s')], 'json', $this->registry, new ValidatorFactory(new RuleFactory()));
+        $req = (new Psr17Factory())->createServerRequest('GET', '/folio/note/new')->withAttribute('type', 'note');
+        $body = (string) $this->controllerWith($this->capturingEngine())->createForm($req)->getBody();
+
+        $this->assertStringContainsString('value=\\"Untitled\\"', $body);
+    }
+
     public function test_store_drawer_returns_postmessage_page_not_redirect(): void
     {
         $req = (new Psr17Factory())->createServerRequest('POST', '/folio/page?_drawer=1')

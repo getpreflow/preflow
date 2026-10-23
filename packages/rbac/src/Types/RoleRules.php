@@ -15,6 +15,7 @@ use Preflow\Folio\Extension\Customization\Refused;
 use Preflow\Rbac\Messages;
 use Preflow\Rbac\PermissionCoverage;
 use Preflow\Rbac\RoleList;
+use Preflow\Rbac\StaffManagers;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationResult;
 
@@ -26,7 +27,9 @@ use Preflow\Validation\ValidationResult;
  * editing away either: a save or delete is refused when, on the roles as they would be
  * afterwards, the signed-in user's own staff roles together no longer grant both
  * rbac_role.view (the list and edit form) and rbac_role.edit, or the staff roles together
- * grant them no more. A changed name or population counts as losing the role.
+ * grant them no more. A changed name or population counts as losing the role. With staff
+ * accounts (the staff type), a role save or delete may not leave no active manager either
+ * (StaffManagers: staff.edit and rbac_role.edit).
  */
 #[FolioType('rbac_role')]
 final class RoleRules
@@ -59,8 +62,9 @@ final class RoleRules
             throw new ValidationException(new ValidationResult(['permissions' => [$message]]));
         }
 
+        $before = $roles;
         $roles[$id] = $role;
-        if (($message = $this->lockout($roles)) !== null) {
+        if (($message = $this->lockout($roles) ?? $this->managers($before, $roles)) !== null) {
             throw new ValidationException(new ValidationResult(['permissions' => [$message]]));
         }
     }
@@ -73,10 +77,45 @@ final class RoleRules
         if (($message = $this->delegation($roles[$id]['permissions'] ?? self::role($record)['permissions'], [])) !== null) {
             throw new Refused($message);
         }
+        $before = $roles;
         unset($roles[$id]);
-        if (($message = $this->lockout($roles)) !== null) {
+        if (($message = $this->lockout($roles) ?? $this->managers($before, $roles)) !== null) {
             throw new Refused($message);
         }
+    }
+
+    /**
+     * The refusal when the staff accounts had an active manager with the roles before and none after.
+     *
+     * @param array<string, array{name: string, population: string, permissions: list<string>}> $before
+     * @param array<string, array{name: string, population: string, permissions: list<string>}> $after
+     */
+    private function managers(array $before, array $after): ?string
+    {
+        $accounts = (new StaffManagers($this->dm))->accounts();
+        if ($accounts === []) {
+            return null;
+        }
+
+        return StaffManagers::count($accounts, self::staffRoles($before)) > 0 && StaffManagers::count($accounts, self::staffRoles($after)) === 0
+            ? $this->messages->get('delegation.last')
+            : null;
+    }
+
+    /**
+     * @param array<string, array{name: string, population: string, permissions: list<string>}> $roles
+     * @return array<string, list<string>> staff role name => patterns
+     */
+    private static function staffRoles(array $roles): array
+    {
+        $staff = [];
+        foreach ($roles as $role) {
+            if ($role['population'] === 'staff' && $role['name'] !== '') {
+                $staff[$role['name']] = [...($staff[$role['name']] ?? []), ...$role['permissions']];
+            }
+        }
+
+        return $staff;
     }
 
     /**

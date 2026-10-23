@@ -9,7 +9,10 @@ use Preflow\Folio\Extension\Attributes\FolioExtension;
 /**
  * Discovered extensions (project folders app/Folio/{Dir}/Extension.php and Composer packages
  * naming one in extra.folio.extension) and which of them, and of their parts,
- * config/folio/extensions.json enables.
+ * config/folio/extensions.json enables. A part is on with its extension unless listed under
+ * "disabled_parts"; a model whose JSON says "opt_in": true (and the extension's type part
+ * "type:{key}" for it) is off until listed under "enabled_parts", so a new version of an
+ * extension can ship a model existing sites don't get unasked.
  */
 final class ExtensionRegistry
 {
@@ -23,10 +26,12 @@ final class ExtensionRegistry
     /**
      * @param list<ExtensionDefinition>  $extensions
      * @param array<string, list<string>> $enabled disabled part ids by enabled extension name (validated)
+     * @param array<string, list<string>> $optedIn opt-in part ids switched on, by enabled extension name (validated)
      */
     public function __construct(
         array $extensions = [],
         private readonly array $enabled = [],
+        private readonly array $optedIn = [],
     ) {
         foreach ($extensions as $definition) {
             if (isset($this->extensions[$definition->name])) {
@@ -58,8 +63,8 @@ final class ExtensionRegistry
         if ($signature !== null && is_file($cacheFile)) {
             $cached = @unserialize((string) file_get_contents($cacheFile), ['allowed_classes' => [ExtensionDefinition::class]]);
             if (is_array($cached) && ($cached['signature'] ?? null) === $signature
-                && is_array($cached['extensions'] ?? null) && is_array($cached['enabled'] ?? null)) {
-                return new self(array_values(array_filter($cached['extensions'], fn ($d) => $d instanceof ExtensionDefinition)), $cached['enabled']);
+                && is_array($cached['extensions'] ?? null) && is_array($cached['enabled'] ?? null) && is_array($cached['opted'] ?? null)) {
+                return new self(array_values(array_filter($cached['extensions'], fn ($d) => $d instanceof ExtensionDefinition)), $cached['enabled'], $cached['opted']);
             }
         }
 
@@ -74,7 +79,8 @@ final class ExtensionRegistry
             $definitions[] = self::define($class, (string) (new \ReflectionClass($class))->getFileName());
         }
         $registry = new self($definitions);
-        $registry = new self($definitions, $registry->validate($file, $debug));
+        [$disabled, $opted] = $registry->validate($file, $debug);
+        $registry = new self($definitions, $disabled, $opted);
 
         if ($signature !== null) {
             if ($definitions === []) {
@@ -85,6 +91,7 @@ final class ExtensionRegistry
                     'signature' => $signature,
                     'extensions' => array_values($registry->extensions),
                     'enabled' => $registry->enabled,
+                    'opted' => $registry->optedIn,
                 ]), LOCK_EX);
             }
         }
@@ -111,9 +118,35 @@ final class ExtensionRegistry
 
     public function partEnabled(string $name, string $partId): bool
     {
-        return $this->isEnabled($name)
-            && $this->extensions[$name]->hasPart($partId)
-            && !in_array($partId, $this->enabled[$name], true);
+        if (!$this->isEnabled($name) || !$this->extensions[$name]->hasPart($partId) || in_array($partId, $this->enabled[$name], true)) {
+            return false;
+        }
+        $gate = self::gate($this->extensions[$name], $partId);
+
+        return $gate === null || in_array($gate, $this->optedIn[$name] ?? [], true);
+    }
+
+    /**
+     * Whether the site has to switch the part on itself ("enabled_parts"): an opt-in model, or
+     * the type part of one. Such a part, not switched on, is left out entirely (no type, no
+     * permissions), as if the extension did not ship it.
+     */
+    public function optIn(string $name, string $partId): bool
+    {
+        return isset($this->extensions[$name]) && self::gate($this->extensions[$name], $partId) !== null;
+    }
+
+    /** The opt-in part id that switches $partId on: itself for an opt-in model, model:{key} for its type part; null for a normal part. */
+    private static function gate(ExtensionDefinition $definition, string $partId): ?string
+    {
+        $model = str_starts_with($partId, 'type:') ? 'model:' . substr($partId, 5) : $partId;
+        foreach ($definition->parts as $part) {
+            if ($part['id'] === $model && ($part['opt_in'] ?? false) === true) {
+                return $model;
+            }
+        }
+
+        return null;
     }
 
     public function get(string $name): ExtensionDefinition
@@ -136,7 +169,9 @@ final class ExtensionRegistry
             }
             foreach ($definition->parts as $part) {
                 if ($part['kind'] === 'model' && $this->partEnabled($definition->name, $part['id'])) {
-                    $schemas[] = self::model($definition->folder . '/models/' . substr($part['id'], 6) . '.json');
+                    $schema = self::model($definition->folder . '/models/' . substr($part['id'], 6) . '.json');
+                    unset($schema['opt_in']); // a part setting, not the type's
+                    $schemas[] = $schema;
                 }
             }
         }
@@ -144,10 +179,16 @@ final class ExtensionRegistry
         return $schemas;
     }
 
-    /** @return array<string, list<string>> disabled part ids by enabled name; unknown entries throw (debug) or are logged and dropped */
+    /**
+     * Disabled part ids and switched-on opt-in part ids, by enabled name; unknown entries (and
+     * "enabled_parts" naming a part that isn't an opt-in model) throw (debug) or are logged and dropped.
+     *
+     * @return array{0: array<string, list<string>>, 1: array<string, list<string>>}
+     */
     private function validate(ExtensionsFile $file, bool $debug): array
     {
         $enabled = [];
+        $opted = [];
         foreach ($file->read() as $name => $entry) {
             if (!isset($this->extensions[$name])) {
                 self::fileError("{$file->path()} enables unknown extension \"{$name}\"", $debug);
@@ -161,9 +202,16 @@ final class ExtensionRegistry
                 }
                 $enabled[$name][] = $partId;
             }
+            foreach ($entry['enabled_parts'] ?? [] as $partId) {
+                if (self::gate($this->extensions[$name], $partId) !== $partId) {
+                    self::fileError("{$file->path()} lists \"{$partId}\" of extension \"{$name}\" under enabled_parts, which only takes opt-in models", $debug);
+                    continue;
+                }
+                $opted[$name][] = $partId;
+            }
         }
 
-        return $enabled;
+        return [$enabled, $opted];
     }
 
     private static function fileError(string $message, bool $debug): void
@@ -195,7 +243,8 @@ final class ExtensionRegistry
         $parts = [];
         foreach (glob($folder . '/models/*.json') ?: [] as $model) {
             $schema = self::model($model);
-            $parts[] = ['id' => 'model:' . $schema['key'], 'kind' => 'model', 'label' => is_string($schema['label'] ?? null) ? $schema['label'] : $schema['key']];
+            $parts[] = ['id' => 'model:' . $schema['key'], 'kind' => 'model', 'label' => is_string($schema['label'] ?? null) ? $schema['label'] : $schema['key']]
+                + (($schema['opt_in'] ?? false) === true ? ['opt_in' => true] : []);
         }
         foreach (self::partClasses($folder, $reflection->getNamespaceName(), $path) as $partClass) {
             $partReflection = new \ReflectionClass($partClass);

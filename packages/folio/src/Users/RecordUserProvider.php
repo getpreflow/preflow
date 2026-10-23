@@ -103,6 +103,6 @@ final class RecordUserProvider implements UserProviderInterface, ClaimsCredentia
 
     private function user(\Preflow\Data\DynamicRecord $record): RecordUser
     {
-        return new RecordUser($record, $this->passwordField, $this->rolesField, $this->epochField);
+        return new RecordUser($record, $this->passwordField, $this->rolesField, $this->epochField, $this->emailField);
     }
 }

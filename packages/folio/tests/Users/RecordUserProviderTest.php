@@ -117,6 +117,7 @@ final class RecordUserProviderTest extends TestCase
         $this->assertSame('m1', $user->getAuthId());
         $this->assertSame('hash-m1', $user->getPasswordHash());
         $this->assertSame('ada@example.com', $user->record()->get('email'));
+        $this->assertSame('ada@example.com', $user->getEmail(), 'as a config user: the Folio sidebar shows it');
         $this->assertNull($this->provider()->findById('nope'));
     }
 
