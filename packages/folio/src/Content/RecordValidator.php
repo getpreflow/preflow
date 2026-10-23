@@ -30,7 +30,7 @@ final class RecordValidator
         $errors = [];
         foreach ($typeDef->fields as $name => $fieldDef) {
             $fieldType = $this->fieldTypes->get($fieldDef->type);
-            if (!$fieldType instanceof BlocksFieldType) {
+            if (!$fieldType instanceof BlocksFieldType || self::readonly($fieldDef->config)) {
                 continue;
             }
             foreach ($fieldType->validateBlocks($record->get($name), $fieldDef->config, $typeDef->locales) as $key => $messages) {
@@ -47,7 +47,8 @@ final class RecordValidator
     /**
      * Per-field rules: the JSON "validate" list plus the field type's own rules
      * (e.g. select's in:…, date's format). Keyed by field, because the data
-     * layer merges extra rules per field.
+     * layer merges extra rules per field. A "readonly" field gets an empty list:
+     * it is not validated on save.
      *
      * @return array<string, list<string>>
      */
@@ -55,6 +56,12 @@ final class RecordValidator
     {
         $rules = [];
         foreach ($typeDef->fields as $name => $fieldDef) {
+            if (self::readonly($fieldDef->config)) {
+                // The editor can't touch it, so its stored value is not checked: it would block
+                // every save (and "required" can't be met). An empty list replaces the type's own rules.
+                $rules[$name] = [];
+                continue;
+            }
             $merged = array_values(array_unique([
                 ...$fieldDef->validate,
                 ...$this->fieldTypes->get($fieldDef->type)->rules($fieldDef->config),
@@ -65,5 +72,11 @@ final class RecordValidator
         }
 
         return $rules;
+    }
+
+    /** @param array<string, mixed> $config */
+    private static function readonly(array $config): bool
+    {
+        return ($config['readonly'] ?? false) === true;
     }
 }

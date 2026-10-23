@@ -297,6 +297,8 @@ Any field also takes:
 - `"readonly": true`: shown in the edit form as its label and display value, without an input:
   a select its option label, a relation its record labels, a date formatted for the admin,
   rich text its sanitised markup. A save keeps the stored value; a posted value is ignored.
+  A read-only field is not validated on save (not its `validate` rules, its type's rules or
+  `required`): the editor can't change it, so checking it would only block the save.
 
 Both apply on create too: such a field starts empty unless a `#[BeforeSave]` hook sets it.
 

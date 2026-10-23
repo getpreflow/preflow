@@ -62,7 +62,7 @@ final class ChoiceFieldTypesTest extends TestCase
             $date->renderEditor(new FieldContext(name: 'd', config: ['time' => true])),
         );
         $this->assertSame(['regex:/^\d{4}-\d{2}-\d{2}$/'], $date->rules([]));
-        $this->assertSame(['regex:/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/'], $date->rules(['time' => true]));
+        $this->assertSame(['regex:/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/'], $date->rules(['time' => true]));
     }
 
     public function test_select_options_map_and_list(): void

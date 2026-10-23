@@ -76,7 +76,7 @@ final class DateFieldType extends AbstractScalarFieldType implements DisplaysInA
     public function rules(array $config): array
     {
         return ($config['time'] ?? false) === true
-            ? ['regex:/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/']
+            ? ['regex:/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/']
             : ['regex:/^\d{4}-\d{2}-\d{2}$/'];
     }
 }
