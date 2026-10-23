@@ -72,4 +72,20 @@ final class MysqlDriverTest extends TestCase
             MysqlTestDatabase::dropAllTables($pdo);
         }
     }
+
+    #[Group('mysql')]
+    public function test_saving_an_unmigrated_field_names_the_fix(): void
+    {
+        $pdo = MysqlTestDatabase::pdo();
+        MysqlTestDatabase::dropAllTables($pdo);
+        (new Schema($pdo))->create('notes', fn (Table $t) => $t->uuid('uuid')->primary()->string('title'));
+
+        try {
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('Table notes has no column subtitle; run `preflow migrate`.');
+            (new MysqlDriver($pdo))->save('notes', 'n1', ['title' => 'T', 'subtitle' => 'S']);
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+    }
 }

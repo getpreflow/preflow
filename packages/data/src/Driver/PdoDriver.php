@@ -119,7 +119,7 @@ abstract class PdoDriver implements StorageDriver
             $stmt = $this->pdo->prepare($sql);
             $this->executeWithLogging($stmt, $sql, $bindings);
         } catch (\PDOException $e) {
-            if (preg_match('/(?:no such column:|has no column named)\s*[\'"`]?([A-Za-z0-9_]+)/', $e->getMessage(), $m) === 1) {
+            if (preg_match('/(?:no such column:|has no column named|Unknown column)\s*[\'"`]?([A-Za-z0-9_]+)/', $e->getMessage(), $m) === 1) {
                 throw new \RuntimeException("Table {$table} has no column {$m[1]}; run `preflow migrate`.", 0, $e);
             }
             throw $e;
