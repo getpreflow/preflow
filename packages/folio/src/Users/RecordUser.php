@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace Preflow\Folio\Users;
 
 use Preflow\Auth\Authenticatable;
+use Preflow\Auth\HasSessionEpoch;
 use Preflow\Data\DynamicRecord;
 
-/** A record of a Folio user type as the logged-in account. */
-final class RecordUser implements Authenticatable
+/**
+ * A record of a Folio user type as the logged-in account. Its session epoch is the value of
+ * $epochField ("0" when the type has no such field): bumping it ends the user's other sessions.
+ */
+final class RecordUser implements Authenticatable, HasSessionEpoch
 {
     /** @var list<string> */
     private readonly array $roles;
@@ -17,6 +21,7 @@ final class RecordUser implements Authenticatable
         private readonly DynamicRecord $record,
         private readonly string $passwordField = 'password_hash',
         string $rolesField = 'roles',
+        private readonly string $epochField = 'auth_epoch',
     ) {
         $this->roles = self::roles($record->get($rolesField));
     }
@@ -40,6 +45,13 @@ final class RecordUser implements Authenticatable
     public function hasRole(string $role): bool
     {
         return in_array($role, $this->roles, true);
+    }
+
+    public function getSessionEpoch(): string
+    {
+        $epoch = $this->record->get($this->epochField);
+
+        return is_scalar($epoch) && (string) $epoch !== '' ? (string) $epoch : '0';
     }
 
     public function record(): DynamicRecord

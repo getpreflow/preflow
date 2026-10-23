@@ -13,7 +13,9 @@ use Preflow\Folio\Content\TypeCatalog;
 /**
  * Users from a Folio user type (a type with "users": "<population>"), for a SessionGuard.
  * Config: ['class' => self::class, 'type' => 'member', 'email' => 'email',
- * 'password' => 'password_hash', 'roles' => 'roles'] (the field names shown are the defaults).
+ * 'password' => 'password_hash', 'roles' => 'roles', 'epoch' => 'auth_epoch'] (the field names shown
+ * are the defaults). The epoch field ends a user's other sessions when it changes (RecordUser); a
+ * type without it never does.
  */
 final class RecordUserProvider implements UserProviderInterface
 {
@@ -21,6 +23,7 @@ final class RecordUserProvider implements UserProviderInterface
     private readonly string $emailField;
     private readonly string $passwordField;
     private readonly string $rolesField;
+    private readonly string $epochField;
 
     /** @param array<string, mixed> $config */
     public function __construct(
@@ -39,6 +42,7 @@ final class RecordUserProvider implements UserProviderInterface
         $this->emailField = (string) ($config['email'] ?? 'email');
         $this->passwordField = (string) ($config['password'] ?? 'password_hash');
         $this->rolesField = (string) ($config['roles'] ?? 'roles');
+        $this->epochField = (string) ($config['epoch'] ?? 'auth_epoch');
     }
 
     public function findById(string $id): ?Authenticatable
@@ -69,6 +73,6 @@ final class RecordUserProvider implements UserProviderInterface
 
     private function user(\Preflow\Data\DynamicRecord $record): RecordUser
     {
-        return new RecordUser($record, $this->passwordField, $this->rolesField);
+        return new RecordUser($record, $this->passwordField, $this->rolesField, $this->epochField);
     }
 }

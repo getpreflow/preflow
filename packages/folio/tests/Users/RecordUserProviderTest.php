@@ -120,6 +120,28 @@ final class RecordUserProviderTest extends TestCase
         $this->assertNull($this->provider()->findById('nope'));
     }
 
+    public function test_the_session_epoch_comes_from_the_auth_epoch_field_and_is_0_without_one(): void
+    {
+        $def = $this->dm->getTypeRegistry()->get('member');
+
+        $this->assertInstanceOf(\Preflow\Auth\HasSessionEpoch::class, new RecordUser(new DynamicRecord($def, ['uuid' => 'm1'])));
+        $this->assertSame('0', (new RecordUser(new DynamicRecord($def, ['uuid' => 'm1'])))->getSessionEpoch(), 'no field');
+        $this->assertSame('0', (new RecordUser(new DynamicRecord($def, ['uuid' => 'm1', 'auth_epoch' => ''])))->getSessionEpoch(), 'empty');
+        $this->assertSame('4', (new RecordUser(new DynamicRecord($def, ['uuid' => 'm1', 'auth_epoch' => 4])))->getSessionEpoch());
+        $this->assertSame('7', (new RecordUser(new DynamicRecord($def, ['uuid' => 'm1', 'gen' => '7']), epochField: 'gen'))->getSessionEpoch());
+    }
+
+    public function test_the_provider_reads_the_configured_epoch_field(): void
+    {
+        $this->member('m1', 'ada@example.com');
+
+        $this->assertSame('0', $this->provider()->findById('m1')?->getSessionEpoch());
+        $record = $this->dm->findType('member', 'm1');
+        $record->set('roles', '5'); // any field of the type serves; roles stands in for a counter here
+        $this->dm->saveType($record, false);
+        $this->assertSame('5', $this->provider(['type' => 'member', 'epoch' => 'roles'])->findById('m1')?->getSessionEpoch());
+    }
+
     public function test_find_by_credentials_is_case_insensitive(): void
     {
         $this->member('m1', 'ada@example.com');

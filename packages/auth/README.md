@@ -164,6 +164,15 @@ $guard->login($user, $request, remember: true);   // also queues the cookie
   rotate; on the JSON driver a file lock in `storage/locks` does. `RememberMe::revokeAll()`
   (e.g. after a password change) and `prune()` are also available.
 
+### Ending a user's other sessions
+
+A user that implements `Preflow\Auth\HasSessionEpoch` (`getSessionEpoch(): string`) carries
+an epoch. `SessionGuard::login()` keeps it in the session (`{key}:epoch`); `user()` signs a
+session out (this guard only) once the user's epoch differs. Bump the epoch on a password
+change or reset and sign the current request in again: every other session ends, this one
+stays. A session without a stored epoch counts as `"0"`. Revoke the remember rows too
+(`RememberMe::revokeAll()`), or a cookie signs the other browsers back in.
+
 ### Tokens
 
 `Preflow\Auth\Tokens\Tokens` issues single-use, expiring tokens for links sent by email

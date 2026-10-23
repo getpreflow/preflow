@@ -987,6 +987,9 @@ user type, for a `SessionGuard` in `config/auth.php`:
   emails lowercase.
 - The record is the signed-in `RecordUser`; its `roles` field (a list or a JSON/comma
   string) feeds the permission resolver.
+- Its `auth_epoch` field (provider key `epoch`; `"0"` when the type has none) is the
+  session epoch (`Preflow\Auth\HasSessionEpoch`): when it changes, the user's other
+  sessions are signed out.
 
 ## SQL storage
 

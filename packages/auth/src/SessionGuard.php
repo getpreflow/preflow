@@ -44,7 +44,16 @@ final class SessionGuard implements GuardInterface
             return null;
         }
 
-        return $this->provider->findById($userId);
+        $user = $this->provider->findById($userId);
+        // The user's sessions were ended (password changed elsewhere): this one signs out too.
+        if ($user instanceof HasSessionEpoch && (string) $session->get($this->epochKey(), '0') !== $user->getSessionEpoch()) {
+            $session->remove($this->sessionKey);
+            $session->remove($this->epochKey());
+
+            return null;
+        }
+
+        return $user;
     }
 
     public function validate(array $credentials): bool
@@ -71,6 +80,11 @@ final class SessionGuard implements GuardInterface
 
         $session->regenerate();
         $session->set($this->sessionKey, $user->getAuthId());
+        if ($user instanceof HasSessionEpoch) {
+            $session->set($this->epochKey(), $user->getSessionEpoch());
+        } else {
+            $session->remove($this->epochKey());
+        }
 
         if ($remember && $this->remembers()) {
             $this->queueCookie($this->rememberMe->issue($this->name, (string) $user->getAuthId(), $this->days() * 86400));
@@ -142,6 +156,7 @@ final class SessionGuard implements GuardInterface
         // Only this guard's user leaves; a new id either way (fixation). The whole
         // session ends when no other guard still has someone signed in.
         $session->remove($this->sessionKey);
+        $session->remove($this->epochKey());
         foreach ($this->otherKeys as $key) {
             if ($session->get($key) !== null) {
                 $session->regenerate();
@@ -149,6 +164,12 @@ final class SessionGuard implements GuardInterface
             }
         }
         $session->invalidate();
+    }
+
+    /** Where the session keeps the user's epoch at sign-in ({@see HasSessionEpoch}). */
+    private function epochKey(): string
+    {
+        return $this->sessionKey . ':epoch';
     }
 
     private function remembers(): bool

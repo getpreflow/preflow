@@ -7,6 +7,7 @@ namespace Preflow\Auth\Tests;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Authenticatable;
+use Preflow\Auth\HasSessionEpoch;
 use Preflow\Auth\NativePasswordHasher;
 use Preflow\Auth\SessionGuard;
 use Preflow\Auth\Tests\Fixtures\TestUser;
@@ -165,5 +166,87 @@ final class SessionGuardTest extends TestCase
         $this->guard->logout($this->createRequest());
 
         $this->assertNull($this->session->get('cart'));
+    }
+
+    /** A user whose epoch the test moves on, as a password change does. */
+    private function epochUser(string $epoch): Authenticatable&HasSessionEpoch
+    {
+        return new class($epoch) implements Authenticatable, HasSessionEpoch {
+            public function __construct(public string $epoch) {}
+            public function getAuthId(): string { return 'user-e'; }
+            public function getPasswordHash(): string { return ''; }
+            public function getRoles(): array { return []; }
+            public function hasRole(string $role): bool { return false; }
+            public function getSessionEpoch(): string { return $this->epoch; }
+        };
+    }
+
+    private function epochGuard(Authenticatable $user): SessionGuard
+    {
+        $provider = new class($user) implements UserProviderInterface {
+            public function __construct(private readonly Authenticatable $user) {}
+            public function findById(string $id): ?Authenticatable { return $id === $this->user->getAuthId() ? $this->user : null; }
+            public function findByCredentials(array $credentials): ?Authenticatable { return null; }
+        };
+
+        return new SessionGuard($provider, $this->hasher, '_auth_user_id.members', name: 'members');
+    }
+
+    public function test_login_keeps_the_users_session_epoch(): void
+    {
+        $user = $this->epochUser('3');
+        $guard = $this->epochGuard($user);
+
+        $guard->login($user, $this->createRequest());
+
+        $this->assertSame('3', $this->session->get('_auth_user_id.members:epoch'));
+        $this->assertSame($user, $guard->user($this->createRequest()));
+    }
+
+    public function test_a_session_of_an_older_epoch_is_signed_out(): void
+    {
+        $user = $this->epochUser('0');
+        $guard = $this->epochGuard($user);
+        $guard->login($user, $this->createRequest());
+
+        $user->epoch = '1'; // the password changed in another session
+
+        $this->assertNull($guard->user($this->createRequest()));
+        $this->assertNull($this->session->get('_auth_user_id.members'), 'this guard\'s sign-in is gone');
+        $this->assertNull($this->session->get('_auth_user_id.members:epoch'));
+    }
+
+    public function test_signing_in_again_takes_the_new_epoch(): void
+    {
+        $user = $this->epochUser('0');
+        $guard = $this->epochGuard($user);
+        $guard->login($user, $this->createRequest());
+        $user->epoch = '1';
+
+        $guard->login($user, $this->createRequest());
+
+        $this->assertSame($user, $guard->user($this->createRequest()));
+    }
+
+    public function test_a_session_from_before_epochs_counts_as_epoch_0(): void
+    {
+        $user = $this->epochUser('0');
+        $guard = $this->epochGuard($user);
+        $this->session->set('_auth_user_id.members', 'user-e'); // signed in before the epoch was stored
+
+        $this->assertSame($user, $guard->user($this->createRequest()));
+        $user->epoch = '1';
+        $this->assertNull($guard->user($this->createRequest()));
+    }
+
+    public function test_logout_drops_the_epoch(): void
+    {
+        $user = $this->epochUser('2');
+        $guard = $this->epochGuard($user);
+        $guard->login($user, $this->createRequest());
+
+        $guard->logout($this->createRequest());
+
+        $this->assertNull($this->session->get('_auth_user_id.members:epoch'));
     }
 }
