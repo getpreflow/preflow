@@ -73,9 +73,11 @@ interface Admission {
     /** Values to store on the new member record from the input (beyond email/name/password/language). */
     public function recordValues(array $input): array;
     /** After the e-mail is confirmed: Decision::Accept (member now, signed in) or Decision::Pending (owner decides). */
-    public function afterConfirm(Member $member): Decision;
-    /** Lines for the owner's notice mail and the decision panel (label => value). */
-    public function details(Member $member): array;
+    public function afterConfirm(DynamicRecord $member, ServerRequestInterface $request): Decision;
+    /** A line shown after confirming (thanks page, or flashed `members.notice` for an accepted member), or null. */
+    public function confirmNotice(DynamicRecord $member): ?string;
+    /** Lines for the decision panel (`Admission::PANEL`) and the owner's notice mail (`Admission::NOTICE`): label => value. */
+    public function details(DynamicRecord $member, string $for): array;
 }
 ```
 smart-stack keeps its rule as `App\Members\BookCodeOrScreening implements Admission` (code check

@@ -128,3 +128,17 @@ php preflow auth:user
 php preflow auth:user FOLIO_EDITOR --email=editor@example.com
 # Set FOLIO_EDITOR_EMAIL=editor@example.com and FOLIO_EDITOR_PASSWORD_HASH in .env.
 ```
+
+## Commands from packages and the app
+
+A package brings its own console commands by listing the classes in its `composer.json`
+(constructed without arguments, so they implement `Command\CommandInterface`):
+
+```json
+"extra": { "preflow": { "commands": ["Vendor\\Pkg\\Console\\PruneCommand"] } }
+```
+
+`Console` reads them from `vendor/composer/installed.json`, so the site needs no
+`config/commands.php` line (e.g. `members:prune` from `preflow/members`). A site's own
+`config/commands.php` is registered after and wins on a name clash. A class that is missing or
+not a command is skipped with a warning on stderr.

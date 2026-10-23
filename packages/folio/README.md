@@ -911,6 +911,38 @@ Things to know:
 - Duplicate action names on a type are a boot error. A disabled `type:{key}` part has no
   effect.
 
+### Extending an extension's type
+
+A site adds fields to a type an extension ships (and to its `{name}_settings` singleton)
+without forking it: a model file in `config/models/` whose key is that type and which says
+`"extends": true`.
+
+```json
+{
+    "key": "member",
+    "extends": true,
+    "fields": {
+        "company": { "type": "string", "label": "Company" },
+        "role_title": { "type": "string", "label": "Role", "after": "name" }
+    },
+    "list": { "columns": ["name", "email", "company"] }
+}
+```
+
+- `fields` are appended after the extension's; `"after": "name"` on a field puts it right
+  after that field instead (the field must exist, in the extension or earlier in the file).
+- `list.columns`, when given, replace the extension's columns; its other `list` options stay.
+- `storage`, `table`, `users`, `id_field` and `key` are locked: repeating the extension's value
+  is fine, a different one is a boot error naming the option. So is redefining a field the
+  extension defines. Other keys of the file (`label`, `icon`...) are ignored.
+- The patch is never a type of its own; `folio.tables` (`preflow migrate`) adds the new
+  columns. A patch no enabled extension type takes is a boot error that names the file and,
+  when the extension is switched off, the command that enables it.
+- `folio:extensions:disable` (and the admin toggle) refuse to disable an extension or part a
+  patch extends, so the site never ends up unbootable. Remove the file first. If it happens
+  anyway, `preflow folio:extensions:enable <name>` still works (it enables on discovery alone
+  when the boot fails on such a patch), and `disable` works without booting.
+
 ### Settings
 
 `Extension::settings()` returns a form in the model JSON `fields` format. Folio shows it

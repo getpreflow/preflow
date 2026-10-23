@@ -159,6 +159,50 @@ Site fields come after the package's in the edit form; `"after": "name"` on a fi
 right after that field instead. The same works for the Members settings (`members_settings.json`
 with `"extends": true`).
 
+## Overriding templates
+
+The pages are `@members/{register,confirm,login,forgot,reset,resend,check-inbox,thanks,closed,account}.twig`
+plus the shared `_card.twig`, all extending the configured `layout`. A site overrides one by
+putting a file of the same name in `resources/members/` (searched before the package; a new
+directory needs a fresh request to be picked up).
+
+To change only a part of a page, extend the original through `@members-package` (extending
+`@members/register.twig` from the override of the same name would recurse into itself):
+
+```twig
+{# resources/members/register.twig #}
+{% extends '@members-package/register.twig' %}
+
+{% block admission_fields %}
+  <label for="f-code">{{ t('members.code.label') }}</label>
+  <input id="f-code" name="code" value="{{ old('code') }}">
+{% endblock %}
+```
+
+`register.twig` has the blocks `intro`, `admission_fields` (the admission rule's own fields),
+`extra_fields` (fields you added to the member type) and `consent_text`; pass `privacy_url`
+or override `consent_text` for the privacy link. The mail layout (`mail.layout`) is a template
+too. Words are changed in the lang files (see Copy and mails), not in templates.
+
+## Cron
+
+Run `members:prune` nightly (the package registers the command through
+`extra.preflow.commands`, `preflow list` shows it):
+
+```
+17 3 * * * cd /path/to/site/current && php preflow members:prune
+```
+
+Unconfirmed accounts go after `retention.unconfirmed_days` (7, from registration), declined
+ones after `retention.declined_days` (30, from the decision); expired tokens, remember rows and
+throttle hits are pruned. It prints counts only (no addresses or names) and a lock file in
+`storage/locks` keeps two runs from overlapping.
+
+## Locales
+
+Locales and URL prefixes come from `config/i18n.php`; the package lang files ship `en`, `de`
+and `fr`. Without `config/i18n.php` the pages run in a single locale with no prefix.
+
 ## In Folio
 
 - Members (sidebar section Members) with a waiting badge and a State column.
