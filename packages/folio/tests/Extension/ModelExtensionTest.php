@@ -78,6 +78,31 @@ final class ModelExtensionTest extends TestCase
         }
     }
 
+    public function test_merge_places_a_site_field_after_the_field_it_names(): void
+    {
+        // The edit form follows the field order: a site field can sit next to the fields it belongs with.
+        $merged = ModelExtension::merge(self::MEMBER, [
+            'key' => 'member',
+            'extends' => true,
+            'fields' => [
+                'company' => ['type' => 'string', 'after' => 'email'],
+                'vat' => ['type' => 'string', 'after' => 'company'],
+                'note' => ['type' => 'text'],
+            ],
+        ]);
+
+        $this->assertSame(['email', 'company', 'vat', 'name', 'note'], array_keys($merged['fields']));
+        $this->assertSame(['type' => 'string'], $merged['fields']['company'], '"after" is placement only, not field config');
+    }
+
+    public function test_merge_refuses_after_an_unknown_field(): void
+    {
+        $this->expectException(FrontendConfigException::class);
+        $this->expectExceptionMessage('Model "member" extends the extension type: field "company" goes "after" "phone", which the type does not have (yet)');
+
+        ModelExtension::merge(self::MEMBER, ['key' => 'member', 'extends' => true, 'fields' => ['company' => ['type' => 'string', 'after' => 'phone']]]);
+    }
+
     public function test_merge_site_list_columns_replace_the_extensions(): void
     {
         $merged = ModelExtension::merge(self::MEMBER, [

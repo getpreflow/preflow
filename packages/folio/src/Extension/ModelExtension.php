@@ -126,7 +126,7 @@ final class ModelExtension
     }
 
     /**
-     * The extension's schema with the site's fields appended and its list columns, when given, in place of the extension's.
+     * The extension's schema with the site's fields appended (or each placed "after" a field it names) and its list columns, when given, in place of the extension's.
      *
      * @param array<string, mixed> $extensionSchema
      * @param array<string, mixed> $siteSchema
@@ -147,7 +147,18 @@ final class ModelExtension
             if (array_key_exists($name, $fields)) {
                 throw new FrontendConfigException("Model \"{$key}\" extends the extension type: field \"{$name}\" is already defined by the extension");
             }
-            $fields[$name] = $field;
+            // "after": placement in the field order (the edit form's), not field config.
+            $after = is_array($field) ? ($field['after'] ?? null) : null;
+            if ($after === null) {
+                $fields[$name] = $field;
+                continue;
+            }
+            unset($field['after']);
+            $position = is_string($after) ? array_search($after, array_keys($fields), true) : false;
+            if ($position === false) {
+                throw new FrontendConfigException("Model \"{$key}\" extends the extension type: field \"{$name}\" goes \"after\" \"" . (is_string($after) ? $after : get_debug_type($after)) . '", which the type does not have (yet)');
+            }
+            $fields = array_slice($fields, 0, $position + 1, true) + [$name => $field] + array_slice($fields, $position + 1, null, true);
         }
         $merged['fields'] = $fields;
 
