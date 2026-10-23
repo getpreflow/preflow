@@ -69,8 +69,13 @@ final class ExtensionSettings
         ];
     }
 
-    /** The stored value, else the field's default, else null; an unknown key throws in debug. */
-    public function get(string $extension, string $key, ?string $locale = null): mixed
+    /**
+     * The stored value, else the field's default, else null; an unknown key throws in debug.
+     * $exact: a translatable setting reads only $locale's own value and default, never another
+     * locale's (a text the caller would rather word itself, e.g. from lang files, than show in
+     * the wrong language).
+     */
+    public function get(string $extension, string $key, ?string $locale = null, bool $exact = false): mixed
     {
         $type = self::typeKey($extension);
         if (!$this->catalog->has($type)) {
@@ -96,9 +101,11 @@ final class ExtensionSettings
 
         $locales = $typeDef->locales;
         $locale ??= $this->contentLocale->get();
-        $read = static fn (mixed $raw): mixed => $field->translatable
-            ? LocaleValue::resolve($raw, $locales, $locale)[0]
-            : LocaleValue::default($raw, $locales);
+        $read = static fn (mixed $raw): mixed => match (true) {
+            !$field->translatable => LocaleValue::default($raw, $locales),
+            $exact => ($own = LocaleValue::pick($raw, $locales, $locale)) === '' ? null : $own,
+            default => LocaleValue::resolve($raw, $locales, $locale)[0],
+        };
 
         $value = $read($this->singletons->record($type)?->get($key));
         if ($value !== null) {

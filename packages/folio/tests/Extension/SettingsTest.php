@@ -211,6 +211,23 @@ final class SettingsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_exact_read_takes_no_other_locales_value(): void
+    {
+        $this->members();
+
+        $this->post('/folio/members_settings/members_settings?locale=en', ['registration_open' => '1', 'screening_label' => 'Why join?']);
+        $settings = $this->app()->container()->get(ExtensionSettings::class);
+        $this->assertSame('Why join?', $settings->get('members', 'screening_label', 'de'), 'the fallback chain, as before');
+        $this->assertSame('Was führt dich her?', $settings->get('members', 'screening_label', 'de', exact: true), 'not stored for de: the de default');
+        $this->assertSame('Why join?', $settings->get('members', 'screening_label', 'en', exact: true));
+
+        $this->post('/folio/members_settings/members_settings?locale=de', ['registration_open' => '1', 'screening_label' => 'Warum beitreten?']);
+        $settings = $this->app()->container()->get(ExtensionSettings::class);
+        $this->assertSame('Warum beitreten?', $settings->get('members', 'screening_label', 'de', exact: true));
+        $this->assertTrue($settings->get('members', 'registration_open', 'de', exact: true), 'not translatable: unaffected');
+    }
+
+    #[RunInSeparateProcess]
     public function test_new_setting_with_default_prefilled_on_existing_record(): void
     {
         $this->members();

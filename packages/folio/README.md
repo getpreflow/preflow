@@ -931,7 +931,8 @@ An enabled one whose `settings()` returns no fields is an error on boot.
 ```php
 $settings = $container->get(\Preflow\Folio\Extension\Settings\ExtensionSettings::class);
 $settings->get('demo', 'greeting');          // the stored value, else the default, else null
-$settings->get('demo', 'greeting', 'de');    // translatable fields: a locale
+$settings->get('demo', 'greeting', 'de');    // translatable fields: a locale (falls back like content)
+$settings->get('demo', 'greeting', 'de', exact: true); // only de's own value or default, never another locale's
 ```
 
 - Before the first save the form and `get()` return the declared defaults.
