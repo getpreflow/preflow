@@ -6,6 +6,7 @@ namespace Preflow\Data\Tests\Migration;
 
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Preflow\Data\Driver\MysqlDriver;
 use Preflow\Data\Migration\Migrator;
 use Preflow\Data\Migration\Schema;
 use Preflow\Data\Migration\Table;
@@ -77,5 +78,30 @@ final class MysqlMigrationsTest extends TestCase
         $this->expectExceptionMessage('Cannot index TEXT column "t.body" on MySQL: use string() for indexed columns.');
 
         (new Schema($this->pdo))->create('t', fn (Table $t) => $t->uuid('id')->primary()->text('body')->index());
+    }
+
+    public function test_ids_differing_in_case_or_accent_coexist(): void
+    {
+        (new Schema($this->pdo))->create('t', fn (Table $t) => $t->uuid('id')->primary()->string('name'));
+        $driver = new MysqlDriver($this->pdo);
+
+        foreach (['A', 'a', 'ä'] as $id) {
+            $driver->save('t', $id, ['name' => "name {$id}"], 'id');
+        }
+
+        $this->assertSame(3, (int) $this->pdo->query('SELECT COUNT(*) FROM `t`')->fetchColumn());
+        foreach (['A', 'a', 'ä'] as $id) {
+            $this->assertSame("name {$id}", $driver->findOne('t', $id, 'id')['name'] ?? null, $id);
+        }
+    }
+
+    public function test_migration_names_compare_exactly(): void
+    {
+        (new Migrator($this->pdo, []))->pending();
+        $insert = $this->pdo->prepare('INSERT INTO `preflow_migrations` (`migration`, `ran_at`) VALUES (?, ?)');
+        $insert->execute(['2026_01_01_a', 'now']);
+        $insert->execute(['2026_01_01_A', 'now']);
+
+        $this->assertSame(2, (int) $this->pdo->query('SELECT COUNT(*) FROM `preflow_migrations`')->fetchColumn());
     }
 }

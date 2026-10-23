@@ -5,12 +5,16 @@ declare(strict_types=1);
 namespace Preflow\Data\Migration\Grammar;
 
 /**
- * MySQL 8 / MariaDB 10.6. InnoDB utf8mb4 limits index keys to 3072 bytes (767 on old row formats),
+ * MariaDB 10.6+ / MySQL 8. InnoDB utf8mb4 limits index keys to 3072 bytes (767 on old row formats),
  * so primary keys and indexed columns stay VARCHAR; TEXT/LONGTEXT cannot be indexed without a prefix.
+ * Ids and keys are utf8mb4_bin so they compare exactly, as on SQLite ('A', 'a' and 'ä' are three
+ * rows, not one upsert target); value columns keep the case- and accent-insensitive table default.
  */
 final class MysqlGrammar implements SchemaGrammar
 {
     private const TABLE_OPTIONS = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
+
+    private const EXACT = ' COLLATE utf8mb4_bin';
 
     public function quote(string $identifier): string
     {
@@ -20,7 +24,7 @@ final class MysqlGrammar implements SchemaGrammar
     public function columnType(string $kind, ?int $length = null): string
     {
         return match ($kind) {
-            'uuid' => 'VARCHAR(64)',
+            'uuid' => 'VARCHAR(64)' . self::EXACT,
             'string' => 'VARCHAR(' . ($length ?? 255) . ')',
             'text' => 'TEXT',
             'json' => 'LONGTEXT',
@@ -38,6 +42,10 @@ final class MysqlGrammar implements SchemaGrammar
         foreach ($columns as $col) {
             $def = $this->quote($col['name']) . ' ' . $this->columnType($col['kind'], $col['length']);
 
+            if ($col['primary'] && $col['kind'] === 'string') {
+                $def .= self::EXACT;
+            }
+
             if ($col['primary']) {
                 $def .= ' PRIMARY KEY';
             } elseif (!$col['nullable']) {
@@ -54,7 +62,7 @@ final class MysqlGrammar implements SchemaGrammar
     {
         $defs = array_map(fn (string $c): string => $this->quote($c) . ' LONGTEXT', $columns);
 
-        return 'CREATE TABLE ' . $this->quote($table) . ' (' . $this->quote($idField) . ' VARCHAR(191) PRIMARY KEY, '
+        return 'CREATE TABLE ' . $this->quote($table) . ' (' . $this->quote($idField) . ' VARCHAR(191)' . self::EXACT . ' PRIMARY KEY, '
             . implode(', ', $defs) . ') ' . self::TABLE_OPTIONS;
     }
 
@@ -94,7 +102,7 @@ final class MysqlGrammar implements SchemaGrammar
 
     public function createMigrationsTable(): string
     {
-        return 'CREATE TABLE IF NOT EXISTS `preflow_migrations` (`migration` VARCHAR(191) PRIMARY KEY, `ran_at` VARCHAR(32) NOT NULL) '
+        return 'CREATE TABLE IF NOT EXISTS `preflow_migrations` (`migration` VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, `ran_at` VARCHAR(32) NOT NULL) '
             . self::TABLE_OPTIONS;
     }
 

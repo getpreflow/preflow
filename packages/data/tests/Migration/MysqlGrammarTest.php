@@ -24,10 +24,30 @@ final class MysqlGrammarTest extends TestCase
         ]);
 
         $this->assertSame(
-            'CREATE TABLE `t` (`id` VARCHAR(64) PRIMARY KEY, `name` VARCHAR(255), `code` VARCHAR(32) NOT NULL, '
+            'CREATE TABLE `t` (`id` VARCHAR(64) COLLATE utf8mb4_bin PRIMARY KEY, `name` VARCHAR(255), `code` VARCHAR(32) NOT NULL, '
             . '`n` BIGINT NOT NULL, `b` TINYINT(1) NOT NULL, `j` LONGTEXT NOT NULL, `x` TEXT NOT NULL) '
             . 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
             $sql,
+        );
+    }
+
+    /** Ids compare exactly (as on SQLite); integer keys take no collation, value columns keep the table's. */
+    public function test_keys_are_binary_values_are_not(): void
+    {
+        $g = new MysqlGrammar();
+
+        $this->assertSame(
+            'CREATE TABLE `s` (`slug` VARCHAR(80) COLLATE utf8mb4_bin PRIMARY KEY, `ref` VARCHAR(64) COLLATE utf8mb4_bin NOT NULL, `name` VARCHAR(255)) '
+            . 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+            $g->createTable('s', [
+                ['name' => 'slug', 'kind' => 'string', 'length' => 80, 'nullable' => false, 'primary' => true],
+                ['name' => 'ref', 'kind' => 'uuid', 'length' => null, 'nullable' => false, 'primary' => false],
+                ['name' => 'name', 'kind' => 'string', 'length' => null, 'nullable' => true, 'primary' => false],
+            ]),
+        );
+        $this->assertSame(
+            'CREATE TABLE `n` (`id` BIGINT PRIMARY KEY) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+            $g->createTable('n', [['name' => 'id', 'kind' => 'integer', 'length' => null, 'nullable' => false, 'primary' => true]]),
         );
     }
 
@@ -44,7 +64,7 @@ final class MysqlGrammarTest extends TestCase
     public function test_migrations_table(): void
     {
         $this->assertSame(
-            'CREATE TABLE IF NOT EXISTS `preflow_migrations` (`migration` VARCHAR(191) PRIMARY KEY, `ran_at` VARCHAR(32) NOT NULL) '
+            'CREATE TABLE IF NOT EXISTS `preflow_migrations` (`migration` VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, `ran_at` VARCHAR(32) NOT NULL) '
             . 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
             (new MysqlGrammar())->createMigrationsTable(),
         );
@@ -64,7 +84,7 @@ final class MysqlGrammarTest extends TestCase
     public function test_record_table_mysql(): void
     {
         $this->assertSame(
-            'CREATE TABLE `posts` (`id` VARCHAR(191) PRIMARY KEY, `title` LONGTEXT, `body` LONGTEXT) '
+            'CREATE TABLE `posts` (`id` VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, `title` LONGTEXT, `body` LONGTEXT) '
             . 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
             (new MysqlGrammar())->createRecordTable('posts', 'id', ['title', 'body']),
         );

@@ -95,6 +95,20 @@ final class MysqlAppTest extends TestCase
         }
     }
 
+    public function test_record_ids_differing_in_case_or_accent_coexist(): void
+    {
+        $this->migrateStep();
+        foreach (['A', 'a', 'ä'] as $id) {
+            $this->working('post', $id, ['title' => ['en' => "T {$id}"], 'slug' => ['en' => "s-{$id}"]]);
+        }
+
+        $this->assertSame(3, (int) MysqlTestDatabase::pdo()->query('SELECT COUNT(*) FROM `post`')->fetchColumn());
+        foreach (['A', 'a', 'ä'] as $id) {
+            $this->assertSame($id, $this->dm()->findType('post', $id)?->getId());
+            $this->assertSame("T {$id}", json_decode((string) $this->stored('post', $id)->get('title'), true)['en'] ?? null, $id);
+        }
+    }
+
     public function test_large_text_field_round_trip(): void
     {
         $this->migrateStep();
