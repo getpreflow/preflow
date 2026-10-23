@@ -28,16 +28,10 @@ final class Extension extends \Preflow\Folio\Extension\Extension
         return [
             'registration_open' => ['type' => 'boolean', 'label' => 'Registration open', 'default' => true],
             'notice_email' => ['type' => 'string', 'label' => 'Notify about waiting members', 'help' => 'Address that gets a mail when someone waits for approval'],
-            'accept_message' => ['type' => 'text', 'label' => 'Accept message', 'translatable' => true, 'help' => 'Pre-filled in the Decision panel. {name} and {login_url} are filled in.', 'default' => [
-                'en' => "Hi {name},\n\nyour account is ready. Sign in here: {login_url}\n\nBest regards",
-                'de' => "Hallo {name},\n\ndein Konto ist bereit. Hier meldest du dich an: {login_url}\n\nFreundliche Grüsse",
-                'fr' => "Bonjour {name},\n\nvotre compte est prêt. Connectez-vous ici : {login_url}\n\nMeilleures salutations",
-            ]],
-            'decline_message' => ['type' => 'text', 'label' => 'Decline message', 'translatable' => true, 'help' => 'Pre-filled in the Decision panel. {name} is filled in.', 'default' => [
-                'en' => "Hi {name},\n\nthank you for your interest. Unfortunately we can't give you an account at this time.\n\nBest regards",
-                'de' => "Hallo {name},\n\nvielen Dank für dein Interesse. Leider können wir dir im Moment kein Konto geben.\n\nFreundliche Grüsse",
-                'fr' => "Bonjour {name},\n\nmerci de votre intérêt. Malheureusement, nous ne pouvons pas vous ouvrir de compte pour le moment.\n\nMeilleures salutations",
-            ]],
+            // No default here: left empty, the panel takes lang/{locale}/members.php mail.accepted.body /
+            // mail.declined.body, so a site words them in its own lang files (see MemberAdmin).
+            'accept_message' => ['type' => 'text', 'label' => 'Accept message', 'translatable' => true, 'help' => 'Pre-filled in the Decision panel; empty means the standard text. {name} and {login_url} are filled in.'],
+            'decline_message' => ['type' => 'text', 'label' => 'Decline message', 'translatable' => true, 'help' => 'Pre-filled in the Decision panel; empty means the standard text. {name} is filled in.'],
         ];
     }
 

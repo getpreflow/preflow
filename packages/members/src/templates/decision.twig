@@ -1,6 +1,6 @@
 {# The Decision panel (side column): state, a one-line summary with the admission's details, then Accept / Decline with an editable message. #}
 <p><span class="folio-badge{% if state_tone %} is-{{ state_tone }}{% endif %}">{{ state_label }}</span></p>
-<p class="folio-help">Registered {{ registered }}{% for label, value in details %} · {{ label }}: {{ value }}{% endfor %}</p>
+<p class="folio-help">Registered {{ registered }}{% for line in details %} · {{ line }}{% endfor %}</p>
 
 {% if state == 'unconfirmed' %}
     <p class="folio-help">Not confirmed yet — nothing to decide.</p>

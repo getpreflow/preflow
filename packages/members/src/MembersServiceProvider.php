@@ -8,16 +8,20 @@ use Preflow\Auth\PasswordHasherInterface;
 use Preflow\Core\Application;
 use Preflow\Core\Config\Config;
 use Preflow\Core\Container\Container;
+use Preflow\Core\Container\Exceptions\ContainerException;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Data\DataManager;
 use Preflow\Data\Locales;
 use Preflow\Folio\Extension\ExtensionRegistry;
+use Preflow\I18n\Translator;
 use Preflow\Members\Admission\Admission;
 use Preflow\Notify\Notifier;
+use Preflow\View\TemplateEngineInterface;
 
 /**
  * Binds the members services: MembersConfig (config/members.php; a missing file means the
- * defaults), Members, Links, MemberMailer and the configured Admission. When the Folio
+ * defaults), Members, Links, MemberMailer and the configured Admission, and adds the
+ * package copy (lang/{locale}/members.php) under the site's own. When the Folio
  * extension "members" is enabled, boot checks that rbac (the member roles) is enabled too
  * and that the admission class is one.
  */
@@ -25,6 +29,7 @@ final class MembersServiceProvider extends ServiceProvider
 {
     public function register(Container $container): void
     {
+        self::translator($container)->addDefaults('members', dirname(__DIR__) . '/lang');
         $container->singleton(MembersConfig::class, static fn (Container $c): MembersConfig => MembersConfig::fromFile(
             $c->get(Application::class)->basePath('config/members.php'),
         ));
@@ -35,7 +40,13 @@ final class MembersServiceProvider extends ServiceProvider
         $container->singleton(Links::class, static fn (Container $c): Links => self::links($c));
         $container->singleton(MemberMailer::class, static fn (Container $c): MemberMailer => new MemberMailer(
             $c->get(Notifier::class),
+            $c->get(TemplateEngineInterface::class),
+            $c->get(Translator::class),
+            $c->get(Links::class),
             $c->get(Locales::class),
+            $c->get(MembersConfig::class),
+            $c->get(Admission::class),
+            self::from($c),
         ));
         $container->singleton(Admission::class, static function (Container $c): Admission {
             $class = $c->get(MembersConfig::class)->admission();
@@ -73,6 +84,40 @@ final class MembersServiceProvider extends ServiceProvider
             ($i18n['url_strategy'] ?? 'prefix') === 'prefix',
             '/' . trim((string) ($folio['path'] ?? '/folio'), '/'),
         );
+    }
+
+    /**
+     * The app's translator; without config/i18n.php and lang/ the app has none, so the
+     * package brings one (site lang/ over the package copy, the default locale).
+     */
+    private static function translator(Container $c): Translator
+    {
+        try {
+            return $c->get(Translator::class);
+        } catch (ContainerException) {
+            $locale = $c->get(Locales::class)->default;
+            $translator = new Translator($c->get(Application::class)->basePath('lang'), $locale, $locale);
+            $c->instance(Translator::class, $translator);
+
+            return $translator;
+        }
+    }
+
+    /**
+     * The sender: mail.from_name with the address of the mail channel (config/notify.php
+     * channels.email.from); null without a from name or address, so the channel's own applies.
+     */
+    private static function from(Container $c): ?string
+    {
+        $name = $c->get(MembersConfig::class)->mailFromName();
+        $from = self::config($c->get(Application::class)->basePath('config/notify.php'))['channels']['email']['from'] ?? null;
+        if ($name === null || !is_string($from) || trim($from) === '') {
+            return null;
+        }
+        $address = preg_match('/<([^<>]+)>\s*$/', $from, $m) === 1 ? $m[1] : $from;
+        $name = trim((string) preg_replace('/[\p{Cc}\p{Cf}<>"]+/u', ' ', $name));
+
+        return $name . ' <' . trim($address) . '>';
     }
 
     /** @return array<string, mixed> */

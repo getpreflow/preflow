@@ -7,6 +7,7 @@ namespace Preflow\Members\Tests;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\PasswordHasherInterface;
 use Preflow\Members\Admission\AcceptOnConfirm;
+use Preflow\Members\Admission\Admission;
 use Preflow\Members\Admission\Decision;
 use Preflow\Members\Admission\OwnerApproval;
 use Preflow\Members\MemberState;
@@ -181,7 +182,8 @@ final class MembersServiceTest extends TestCase
             $this->assertSame([], $admission->validate(['email' => 'ada@example.com'], $request));
             $this->assertSame([], $admission->recordValues(['email' => 'ada@example.com', 'company' => 'x']));
             $this->assertSame($decision, $admission->afterConfirm($m));
-            $this->assertSame([], $admission->details($m));
+            $this->assertSame([], $admission->details($m, Admission::PANEL));
+            $this->assertSame([], $admission->details($m, Admission::NOTICE));
         }
     }
 

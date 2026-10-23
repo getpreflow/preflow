@@ -13,6 +13,12 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 interface Admission
 {
+    /** details() for the owner's Decision panel in Folio (one line: "Registered … · label: value"). */
+    public const string PANEL = 'panel';
+
+    /** details() for the owner's notice mail (one paragraph per entry). */
+    public const string NOTICE = 'notice';
+
     /**
      * Extra registration rules on the submitted input.
      *
@@ -34,9 +40,12 @@ interface Admission
     public function afterConfirm(DynamicRecord $member): Decision;
 
     /**
-     * Lines for the owner's notice mail and the decision panel.
+     * What the owner should know about the member, for the Decision panel ({@see PANEL}) or
+     * the notice mail ({@see NOTICE}); the two may differ (a short "code: yes" in the panel,
+     * the member's own words in the mail).
      *
-     * @return array<string, string> label => value
+     * @param self::PANEL|self::NOTICE $for
+     * @return array<int|string, string> label => value; an entry with an int key is shown without a label
      */
-    public function details(DynamicRecord $member): array;
+    public function details(DynamicRecord $member, string $for): array;
 }

@@ -116,6 +116,21 @@ final class Members
         $this->dm->deleteType(self::TYPE, (string) $m->getId());
     }
 
+    /**
+     * Removes a member whose confirm mail could not be sent, read afresh: one who confirmed
+     * meanwhile (with the link of an earlier mail) is kept. Returns whether it was removed.
+     */
+    public function removeIfUnconfirmed(string $id): bool
+    {
+        $m = $this->find($id);
+        if ($m === null || MemberState::fromRecord($m) !== MemberState::Unconfirmed) {
+            return false;
+        }
+        $this->delete($m);
+
+        return true;
+    }
+
     /** Confirmed accounts the owner has not decided yet. */
     public function pendingCount(): int
     {

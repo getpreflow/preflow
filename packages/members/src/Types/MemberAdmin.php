@@ -18,6 +18,7 @@ use Preflow\Folio\Extension\NavBadge;
 use Preflow\Folio\Extension\RecordAction;
 use Preflow\Folio\Extension\Screen\ScreenView;
 use Preflow\Folio\Extension\Settings\ExtensionSettings;
+use Preflow\I18n\Translator;
 use Preflow\Members\Admission\Admission;
 use Preflow\Members\Languages;
 use Preflow\Members\Links;
@@ -56,6 +57,7 @@ final class MemberAdmin
         private readonly RememberMe $remember,
         private readonly Admission $admission,
         private readonly Locales $locales,
+        private readonly Translator $translator,
     ) {}
 
     /** The owner may edit the address: store it the way login and reset look it up, and keep it unique. */
@@ -102,11 +104,11 @@ final class MemberAdmin
             'state_label' => ucfirst($state->label()),
             'state_tone' => self::TONES[$state->value],
             'registered' => $registered,
-            'details' => $this->admission->details($m),
+            'details' => self::lines($this->admission->details($m, Admission::PANEL)),
             'can_accept' => in_array($state, self::ALLOWED['member'], true),
             'can_decline' => in_array($state, self::ALLOWED['rejected'], true),
-            'accept_text' => $this->text('accept_message', $lang, $name, $this->links->url($lang, '/login')),
-            'decline_text' => $this->text('decline_message', $lang, $name),
+            'accept_text' => $this->text('accept_message', 'accepted', $lang, $name, $this->links->url($lang, '/login')),
+            'decline_text' => $this->text('decline_message', 'declined', $lang, $name),
             'language_label' => Languages::english($lang),
         ]);
     }
@@ -172,11 +174,32 @@ final class MemberAdmin
         return $this->locales->has($lang) ? $lang : $this->locales->default;
     }
 
-    /** The default message in the member's language, with the placeholders filled in. */
-    private function text(string $key, string $lang, string $name, string $loginUrl = ''): string
+    /**
+     * The default message in the member's language, with the placeholders filled in: the
+     * owner's text from Members settings, else the lang files' (mail.{mail}.body), which a
+     * site overrides with its own lang/{locale}/members.php.
+     */
+    private function text(string $setting, string $mail, string $lang, string $name, string $loginUrl = ''): string
     {
-        $text = $this->settings->get('members', $key, $lang);
+        $text = $this->settings->get('members', $setting, $lang);
+        if (!is_string($text) || trim($text) === '') {
+            $text = $this->translator->get('members.mail.' . $mail . '.body', [], $lang);
+        }
 
-        return strtr(is_string($text) ? $text : '', ['{name}' => $name, '{login_url}' => $loginUrl]);
+        return strtr($text, ['{name}' => $name, '{login_url}' => $loginUrl]);
+    }
+
+    /**
+     * @param array<int|string, string> $details
+     * @return list<string> "label: value", or the value alone for an int key
+     */
+    private static function lines(array $details): array
+    {
+        $lines = [];
+        foreach ($details as $label => $value) {
+            $lines[] = is_int($label) ? $value : $label . ': ' . $value;
+        }
+
+        return $lines;
     }
 }

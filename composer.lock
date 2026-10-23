@@ -2732,7 +2732,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/members",
-                "reference": "98fcbec80787cd4a9f9ac0df61b6c4c5112b56aa"
+                "reference": "114a38e3105be02506c7fce2b0a12b0dd0fe9b66"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
@@ -2741,8 +2741,10 @@
                 "preflow/core": "^0.25 || @dev",
                 "preflow/data": "^0.25 || @dev",
                 "preflow/folio": "^0.26 || @dev",
+                "preflow/i18n": "^0.26 || @dev",
                 "preflow/notify": "^0.25 || @dev",
-                "preflow/rbac": "^0.25 || @dev"
+                "preflow/rbac": "^0.25 || @dev",
+                "preflow/view": "^0.25 || @dev"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0"

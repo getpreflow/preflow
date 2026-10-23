@@ -116,6 +116,53 @@ final class MemberApprovalTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_panel_defaults_come_from_the_lang_files_a_site_overrides(): void
+    {
+        $this->write('lang/de/members.php', "<?php\nreturn ['mail' => ['accepted' => ['body' => 'Servus {name}, hier: {login_url}']]];\n");
+        $this->flow = $this->app();
+        $m = $this->makeMember('ada@example.com', 'pending', 'de');
+        $this->signIn();
+        $html = $this->admin('/folio/member/' . $m->getId() . '/edit');
+
+        $accept = Dom::first($html, '//form[contains(@action, "/_action/accept")]//textarea[@name="message"]')?->textContent ?? '';
+        $this->assertSame('Servus Ada Lovelace, hier: https://site.test/de/members/login', $accept);
+        $decline = Dom::first($html, '//form[contains(@action, "/_action/decline")]//textarea[@name="message"]')?->textContent ?? '';
+        $this->assertStringContainsString("Hallo Ada Lovelace,\n\nvielen Dank für dein Interesse.", $decline, 'the package copy for keys the site leaves alone');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_stored_message_wins_over_the_lang_default(): void
+    {
+        $m = $this->makeMember('ada@example.com', 'pending', 'de');
+        $this->signIn();
+        $saved = $this->postFrom('/folio/members_settings?locale=de', '/folio/members_settings/members_settings?locale=de', [
+            'registration_open' => '1', 'accept_message' => 'Gespeichert für {name}',
+        ]);
+        $this->assertSame(302, $saved->getStatusCode());
+        $html = $this->admin('/folio/member/' . $m->getId() . '/edit');
+
+        $accept = Dom::first($html, '//form[contains(@action, "/_action/accept")]//textarea[@name="message"]')?->textContent ?? '';
+        $this->assertSame('Gespeichert für Ada Lovelace', $accept);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_panel_prefill_in_french(): void
+    {
+        $this->removeScaffold();
+        $this->scaffold(locales: ['en', 'de', 'fr']);
+        $this->migrateAndApply();
+        $this->flow = $this->app();
+        $m = $this->makeMember('ada@example.com', 'pending', 'fr');
+        $this->signIn();
+        $html = $this->admin('/folio/member/' . $m->getId() . '/edit');
+
+        $accept = Dom::first($html, '//form[contains(@action, "/_action/accept")]//textarea[@name="message"]')?->textContent ?? '';
+        $this->assertStringStartsWith('Bonjour Ada Lovelace,', $accept);
+        $this->assertStringContainsString('https://site.test/fr/members/login', $accept);
+        $this->assertStringContainsString('Sent in French.', $html);
+    }
+
+    #[RunInSeparateProcess]
     public function test_panel_offers_what_fits_the_state(): void
     {
         $this->signIn();
@@ -270,6 +317,24 @@ final class MemberApprovalTest extends TestCase
 
         $this->assertSame(['pending'], RoleList::normalize($this->reload($m)->get('roles')));
         $this->assertSame('', (string) $this->reload($m)->get('decided_at'));
+        $this->assertStringContainsString('The mail could not be sent — nothing was changed.', html_entity_decode($this->admin('/folio/member/' . $m->getId() . '/edit'), ENT_QUOTES));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_decline_mail_failure_changes_nothing(): void
+    {
+        $m = $this->makeMember('ada@example.com', 'member');
+        $c = $this->flow->container();
+        $cookie = $c->get(RememberMe::class)->issue('members', (string) $m->getId());
+        $c->instance(Notifier::class, new Notifier($c->get(TransportFactory::class), []));
+        $this->signIn();
+        $decided = (string) $this->reload($m)->get('decided_at');
+
+        $this->action($m, 'decline', 'Sorry.');
+
+        $this->assertSame(['member'], RoleList::normalize($this->reload($m)->get('roles')));
+        $this->assertSame($decided, (string) $this->reload($m)->get('decided_at'));
+        $this->assertNotNull($c->get(RememberMe::class)->resolve('members', $cookie), 'remember-me left alone');
         $this->assertStringContainsString('The mail could not be sent — nothing was changed.', html_entity_decode($this->admin('/folio/member/' . $m->getId() . '/edit'), ENT_QUOTES));
     }
 

@@ -83,11 +83,13 @@ interface Admission
     public function validate(array $input, ServerRequestInterface $request): array;   // field => message
     public function recordValues(array $input): array;                                // stored on the member
     public function afterConfirm(DynamicRecord $member): Decision;                    // Accept or Pending
-    public function details(DynamicRecord $member): array;                            // label => value
+    public function details(DynamicRecord $member, string $for): array;              // label => value
 }
 ```
 
-`details()` appear in the Decision panel (`Registered … · label: value`). The keys of
+`details($member, Admission::PANEL)` appear in the Decision panel (`Registered … · label: value`),
+`details($member, Admission::NOTICE)` in the owner's notice mail, one paragraph each; an entry
+with an int key is shown without a label. The keys of
 `recordValues()` must be fields of the member type; a site adds fields with its own
 `config/models/member.json`:
 
@@ -102,4 +104,28 @@ interface Admission
   Member; the server refuses anything else. The mail goes out first; when it fails,
   nothing changes. Declining ends the member's remembered sessions.
 - Settings → Members settings: `registration_open`, `notice_email`, `accept_message`,
-  `decline_message` (translatable; `{name}` and `{login_url}` are filled in).
+  `decline_message` (translatable; `{name}` and `{login_url}` are filled in). Left empty,
+  the panel takes `mail.accepted.body` / `mail.declined.body` of the lang files.
+
+## Copy and mails
+
+The words of the member pages and mails are in `lang/{en,de,fr}/members.php`. A site changes
+single keys in its own `lang/<locale>/members.php`; the rest stays the package's:
+
+```php
+// lang/de/members.php
+return ['mail' => ['confirm' => ['subject' => 'Bitte bestätige deine Adresse']]];
+```
+
+- `MemberMailer` sends `confirmLater`, `existingLater`, `resetLater` and `noticeLater` after the
+  response (a failure goes to the optional `$onFailure`), and `accepted` / `declined` at once
+  (a `TransportException` aborts the decision).
+- Each mail is in the member's language (the site default when the site lacks it); the owner's
+  notice is in the site default locale. Mail bodies use `{name}`, `{link}`, `{login_url}`,
+  `{reset_url}`, `{email}`, `{details}`, `{folio_url}`.
+- The HTML part renders `mail.layout` (default the neutral `@members/mail/layout.twig`) with
+  `lang`, `subject`, `accent` and `paragraphs` (escaped text, URLs linked in the accent colour).
+- The sender is `mail.from_name` with the address of `config/notify.php` `channels.email.from`;
+  without a from name the channel's own sender applies.
+- When a new member's confirm mail fails, remove the account with
+  `Members::removeIfUnconfirmed($id)`: it keeps a member who confirmed meanwhile.

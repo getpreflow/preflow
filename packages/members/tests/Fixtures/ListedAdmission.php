@@ -9,7 +9,7 @@ use Preflow\Members\Admission\Admission;
 use Preflow\Members\Admission\Decision;
 use Psr\Http\Message\ServerRequestInterface;
 
-/** A site rule for the tests: the owner decides, and the panel lists two lines about the member. */
+/** A site rule for the tests: the owner decides; the panel lists two lines, the owner's notice two others (one without a label). */
 final class ListedAdmission implements Admission
 {
     public function validate(array $input, ServerRequestInterface $request): array
@@ -27,8 +27,10 @@ final class ListedAdmission implements Admission
         return Decision::Pending;
     }
 
-    public function details(DynamicRecord $member): array
+    public function details(DynamicRecord $member, string $for): array
     {
-        return ['book code' => 'no', 'email' => (string) $member->get('email')];
+        return $for === self::NOTICE
+            ? ['Book code' => 'given, but it no longer worked.', '“I build things”']
+            : ['book code' => 'no', 'email' => (string) $member->get('email')];
     }
 }
