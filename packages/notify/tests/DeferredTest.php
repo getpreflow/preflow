@@ -122,4 +122,67 @@ final class DeferredTest extends TestCase
         $this->notifier('bad', null, false)->sendLater($this->mail('a@x.test'), function (\Throwable $e) use (&$seen) { $seen = $e; });
         $this->assertInstanceOf(TransportException::class, $seen);
     }
+
+    public function test_requeueing_failure_handler_is_capped(): void
+    {
+        $logger = new class extends AbstractLogger {
+            public array $records = [];
+
+            public function log($level, string|\Stringable $message, array $context = []): void
+            {
+                $this->records[] = (string) $message;
+            }
+        };
+        $n = $this->notifier('bad', $logger);
+        $calls = 0;
+        $retry = function () use (&$retry, &$calls, $n) {
+            $calls++;
+            $n->sendLater($this->mail('x@x.test'), $retry);
+        };
+        $n->sendLater($this->mail('x@x.test'), $retry);
+
+        $n->flushDeferred();
+
+        $this->assertSame(Notifier::FLUSH_LIMIT, $calls);
+        $this->assertNotEmpty($logger->records);
+    }
+
+    public function test_throwing_failure_handler_falls_back_to_generic_log(): void
+    {
+        $logger = new class extends AbstractLogger {
+            public array $records = [];
+
+            public function log($level, string|\Stringable $message, array $context = []): void
+            {
+                $this->records[] = (string) $message;
+            }
+        };
+        $n = $this->notifier('bad', $logger);
+        $n->sendLater($this->mail('secret@example.com'), fn () => throw new \RuntimeException('boom secret@example.com'));
+        $n->sendLater($this->mail('b@x.test'));
+
+        $this->assertSame(0, $n->flushDeferred());
+        $this->assertCount(2, $logger->records);
+        $this->assertStringNotContainsString('example.com', implode(' ', $logger->records));
+    }
+
+    public function test_logger_closure_is_resolved_at_failure_time(): void
+    {
+        $logger = new class extends AbstractLogger {
+            public int $count = 0;
+
+            public function log($level, string|\Stringable $message, array $context = []): void
+            {
+                $this->count++;
+            }
+        };
+        $resolved = null;
+        $n = $this->notifier('bad', null);
+        $n = new Notifier($this->factory, ['email' => ['transport' => 'bad']], function () use (&$resolved) { return $resolved; });
+        $n->sendLater($this->mail('a@x.test'));
+        $resolved = $logger; // bound after the notifier was built
+        $n->flushDeferred();
+
+        $this->assertSame(1, $logger->count);
+    }
 }

@@ -109,10 +109,18 @@ $notifier->sendLater(
 ```
 
 `sendLater()` only queues. Core sends the queue once the response has gone out:
-`Application::run()` emits the response, calls `fastcgi_finish_request()` when it exists
-(PHP-FPM, so the client is released), then calls `flushDeferred()`. Plain
-`register_shutdown_function` was not used: it would run after the script ends, outside the
-application's control, and could not be flushed deterministically in the CLI and in tests.
+`Application::run()` emits the response, releases the client the way Symfony's
+`Response::send()` does (`fastcgi_finish_request()` on PHP-FPM, else
+`litespeed_finish_request()` on LiteSpeed LSAPI, else outside the CLI it flushes all output
+buffers), then calls `flushDeferred()`. The flush sits in a `finally`, so mail queued before
+an exception or an error page still goes out.
+
+The "after the response" guarantee holds on **PHP-FPM and LSAPI**. Elsewhere (mod_php, plain
+CGI) it is best effort: the connection stays open until the script ends. Some timing
+differences remain regardless of the transport: building the message and any database
+writes happen before the response. Keep those equally cheap on both branches of an account
+flow. `register_shutdown_function` was not used: it runs outside the application's control
+and cannot be flushed deterministically in the CLI and in tests.
 
 - Order is FIFO; every message is isolated, one failure does not stop the others.
 - A deferred failure never throws into the request. It calls `$onFailure(\Throwable)` when
@@ -120,8 +128,13 @@ application's control, and could not be flushed deterministically in the CLI and
   bound in the container, else `error_log()`.
 - `flushDeferred()` returns the number sent.
 - **CLI and tests:** `Application::handle()` flushes the queue itself before returning
-  (only `run()` postpones it until after emitting), so in-process requests and CLI commands
-  never lose mail.
+  (only `run()` postpones it until after emitting), so in-process requests and tests never
+  lose mail. A CLI command that does not go through `handle()`/`run()` must call
+  `$notifier->flushDeferred()` itself.
+- A single flush sends at most `Notifier::FLUSH_LIMIT` (100) messages, so an `onFailure`
+  that keeps re-queuing cannot loop forever. If `onFailure` throws, a generic line is logged.
+- The logger is looked up in the container when a failure happens, so one bound by a
+  provider is used. `defer` is read as a boolean (`"false"`, `0` and `off` count as false).
 - Without `config/notify.php` there is no Notifier and nothing happens.
 - `'defer' => false` in `config/notify.php` (default `true`) makes `sendLater()` send at
   once, a failure going to `$onFailure`/the log. Handy to debug; tests rarely need it.

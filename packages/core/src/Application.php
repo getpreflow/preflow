@@ -220,7 +220,15 @@ final class Application
             method: $request->getMethod(),
         ));
 
-        $response = $this->kernel->handle($request);
+        try {
+            $response = $this->kernel->handle($request);
+        } catch (\Throwable $e) {
+            // Mails queued before the failure still go out (CLI, tests); run() flushes itself.
+            if (!$this->emitting) {
+                $this->flushDeferredNotifications();
+            }
+            throw $e;
+        }
         if ($request->getMethod() === 'HEAD') {
             // Same status and headers as GET, no body (RFC 9110).
             $response = $response->withBody((new \Nyholm\Psr7\Factory\Psr17Factory())->createStream(''));
@@ -249,12 +257,54 @@ final class Application
 
     private bool $emitting = false;
 
-    private ?\Preflow\Notify\Notifier $notifier = null;
+    private bool $notifyBooted = false;
+
+    private ?\Closure $emitter = null;
+
+    private ?\Closure $finisher = null;
+
+    /**
+     * Replace how run() emits the response and releases the client (tests).
+     *
+     * @param \Closure(ResponseInterface): void $emit
+     * @param \Closure(): void|null $finish
+     */
+    public function emitUsing(\Closure $emit, ?\Closure $finish = null): void
+    {
+        $this->emitter = $emit;
+        $this->finisher = $finish;
+    }
 
     private function flushDeferredNotifications(): void
     {
-        // Set only when config/notify.php exists, so this is a no-op without it.
-        $this->notifier?->flushDeferred();
+        // Only bound when config/notify.php exists, so this is a no-op without it.
+        // The container's current Notifier is used, not a boot-time snapshot.
+        if (!$this->notifyBooted) {
+            return;
+        }
+        $this->container->get(\Preflow\Notify\Notifier::class)->flushDeferred();
+    }
+
+    /**
+     * Release the client before slow work, as Symfony's Response::send() does:
+     * PHP-FPM, then LiteSpeed LSAPI, then (outside the CLI) flush all buffers.
+     */
+    private function finishResponse(): void
+    {
+        if ($this->finisher !== null) {
+            ($this->finisher)();
+
+            return;
+        }
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        } elseif (function_exists('litespeed_finish_request')) {
+            litespeed_finish_request();
+        } elseif (!in_array(PHP_SAPI, ['cli', 'phpdbg'], true)) {
+            while (ob_get_level() > 0 && @ob_end_flush()) {
+            }
+            flush();
+        }
     }
 
     /**
@@ -271,17 +321,15 @@ final class Application
             $this->emitting = true;
             try {
                 $response = $this->handle($request);
+                ($this->emitter ?? static fn (ResponseInterface $r) => (new Emitter())->emit($r))($response);
+                // The client has its response; deferred mail (sendLater) goes out now so
+                // the SMTP round trip cannot show in the response time. In a finally so an
+                // exception (or an error page) never drops what was queued.
             } finally {
                 $this->emitting = false;
+                $this->finishResponse();
+                $this->flushDeferredNotifications();
             }
-            (new Emitter())->emit($response);
-
-            // The client has its response; deferred mail (sendLater) goes out now so
-            // the SMTP round trip cannot show in the response time.
-            if (function_exists('fastcgi_finish_request')) {
-                fastcgi_finish_request();
-            }
-            $this->flushDeferredNotifications();
         } else {
             throw new \RuntimeException('Install nyholm/psr7 and nyholm/psr7-server to use run().');
         }
@@ -795,15 +843,17 @@ final class Application
         $this->container->instance(\Preflow\Notify\TransportFactory::class, $factory);
         $this->container->instance(
             \Preflow\Notify\Notifier::class,
-            $this->notifier = new \Preflow\Notify\Notifier(
+            new \Preflow\Notify\Notifier(
                 $factory,
                 (array) ($notifyConfig['channels'] ?? []),
-                $this->container->has(\Psr\Log\LoggerInterface::class)
+                // Resolved at failure time: a provider may bind the logger after boot.
+                fn () => $this->container->has(\Psr\Log\LoggerInterface::class)
                     ? $this->container->get(\Psr\Log\LoggerInterface::class)
                     : null,
-                (bool) ($notifyConfig['defer'] ?? true),
+                filter_var($notifyConfig['defer'] ?? true, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? true,
             ),
         );
+        $this->notifyBooted = true;
     }
 
     private function bootProviders(): void

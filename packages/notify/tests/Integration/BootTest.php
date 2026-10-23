@@ -117,6 +117,92 @@ final class BootTest extends TestCase
         $this->assertSame(200, $app->handle(new \Nyholm\Psr7\ServerRequest('GET', '/'))->getStatusCode());
     }
 
+    public function test_run_postpones_the_flush_until_after_emitting(): void
+    {
+        $this->writeNotifyConfig([
+            'transports' => ['memory' => ['driver' => 'memory']],
+            'channels' => ['email' => ['transport' => 'memory']],
+        ]);
+        $app = Application::create($this->dir);
+        $app->boot();
+        $container = $app->container();
+        $app->addMiddleware($this->queueingMiddleware($container, false));
+        $sentAt = [];
+        $mem = fn () => count($container->get(TransportFactory::class)->get('memory')->sent());
+        $app->emitUsing(
+            function () use (&$sentAt, $mem) { $sentAt[] = 'emit:' . $mem(); },
+            function () use (&$sentAt, $mem) { $sentAt[] = 'finish:' . $mem(); },
+        );
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/';
+
+        $app->run();
+
+        $this->assertSame(['emit:0', 'finish:0'], $sentAt);
+        $this->assertSame(1, $mem());
+    }
+
+    public function test_mail_queued_before_an_error_response_is_still_sent(): void
+    {
+        $this->writeNotifyConfig([
+            'transports' => ['memory' => ['driver' => 'memory']],
+            'channels' => ['email' => ['transport' => 'memory']],
+        ]);
+        $app = Application::create($this->dir);
+        $app->boot();
+        $container = $app->container();
+        $app->addMiddleware($this->queueingMiddleware($container, true));
+
+        try {
+            $app->handle(new \Nyholm\Psr7\ServerRequest('GET', '/'));
+        } catch (\Throwable) {
+        }
+
+        $this->assertCount(1, $container->get(TransportFactory::class)->get('memory')->sent());
+    }
+
+    public function test_logger_bound_after_boot_receives_deferred_failures(): void
+    {
+        $this->writeNotifyConfig([
+            'transports' => ['bad' => ['driver' => 'nope']],
+            'channels' => ['email' => ['transport' => 'bad']],
+        ]);
+        $app = Application::create($this->dir);
+        $app->boot();
+        $container = $app->container();
+        $logger = new class extends \Psr\Log\AbstractLogger {
+            public array $records = [];
+
+            public function log($level, string|\Stringable $message, array $context = []): void
+            {
+                $this->records[] = (string) $message;
+            }
+        };
+        $container->instance(\Psr\Log\LoggerInterface::class, $logger);
+        $app->addMiddleware($this->queueingMiddleware($container, false));
+
+        $app->handle(new \Nyholm\Psr7\ServerRequest('GET', '/'));
+
+        $this->assertCount(1, $logger->records);
+    }
+
+    private function queueingMiddleware(\Preflow\Core\Container\Container $c, bool $throw): \Psr\Http\Server\MiddlewareInterface
+    {
+        return new class($c, $throw) implements \Psr\Http\Server\MiddlewareInterface {
+            public function __construct(private \Preflow\Core\Container\Container $c, private bool $throw) {}
+
+            public function process(\Psr\Http\Message\ServerRequestInterface $r, \Psr\Http\Server\RequestHandlerInterface $h): \Psr\Http\Message\ResponseInterface
+            {
+                $this->c->get(Notifier::class)->sendLater(new Email('a@b.test', 'S', 'T'));
+                if ($this->throw) {
+                    throw new \RuntimeException('page broke');
+                }
+
+                return new \Nyholm\Psr7\Response(200, [], 'ok');
+            }
+        };
+    }
+
     /** @param array<string, mixed> $config */
     private function writeNotifyConfig(array $config): void
     {

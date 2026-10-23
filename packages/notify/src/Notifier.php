@@ -10,20 +10,23 @@ namespace Preflow\Notify;
  */
 final class Notifier
 {
-    /**
-     * @param array<string, array{transport?: string, from?: string|null}> $channels
-     */
+    /** Most messages one flushDeferred() call sends, so an onFailure that re-queues cannot loop forever. */
+    public const FLUSH_LIMIT = 100;
+
     /** @var list<array{Message, ?\Closure}> */
     private array $deferred = [];
 
     /**
-     * @param \Psr\Log\LoggerInterface|null $logger receives deferred failures that have no callback
+     * @param array<string, array{transport?: string, from?: string|null}> $channels
+     * @param \Psr\Log\LoggerInterface|\Closure():(\Psr\Log\LoggerInterface|null)|null $logger
+     *        receives deferred failures that have no callback; a closure is resolved at failure
+     *        time, so a logger bound late (by a provider) is still used
      * @param bool $defer false makes sendLater() send at once (tests, debugging)
      */
     public function __construct(
         private readonly TransportFactory $transports,
         private readonly array $channels,
-        private readonly ?\Psr\Log\LoggerInterface $logger = null,
+        private readonly \Psr\Log\LoggerInterface|\Closure|null $logger = null,
         private readonly bool $defer = true,
     ) {}
 
@@ -49,7 +52,12 @@ final class Notifier
     public function flushDeferred(): int
     {
         $sent = 0;
+        $handled = 0;
         while ($this->deferred !== []) {
+            if ($handled++ >= self::FLUSH_LIMIT) {
+                $this->log('Deferred notifications: flush limit reached, ' . count($this->deferred) . ' left unsent.');
+                break;
+            }
             [$message, $onFailure] = array_shift($this->deferred);
             if ($this->deliver($message, $onFailure)) {
                 $sent++;
@@ -74,22 +82,35 @@ final class Notifier
 
     private function reportFailure(\Throwable $e, ?\Closure $onFailure): void
     {
-        try {
-            if ($onFailure !== null) {
+        if ($onFailure !== null) {
+            try {
                 $onFailure($e);
 
                 return;
+            } catch (\Throwable $handlerError) {
+                // Generic on purpose: messages can carry addresses or DSNs.
+                $this->log('Deferred notification failure handler threw (' . $handlerError::class . ').');
+
+                return;
             }
-            // Generic on purpose: exception messages can carry addresses or DSNs.
-            $text = 'Deferred notification failed (' . $e::class . ').';
-            if ($this->logger !== null) {
-                $this->logger->error($text);
-            } else {
-                error_log($text);
+        }
+
+        $this->log('Deferred notification failed (' . $e::class . ').');
+    }
+
+    private function log(string $text): void
+    {
+        try {
+            $logger = $this->logger instanceof \Closure ? ($this->logger)() : $this->logger;
+            if ($logger instanceof \Psr\Log\LoggerInterface) {
+                $logger->error($text);
+
+                return;
             }
         } catch (\Throwable) {
-            // A broken failure handler must not break the others or the request.
+            // fall through to error_log
         }
+        error_log($text);
     }
 
     /** @throws TransportException */

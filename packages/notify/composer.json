@@ -6,12 +6,17 @@
     "require": {
         "php": ">=8.4"
     },
+    "conflict": {
+        "preflow/core": "<0.24"
+    },
     "require-dev": {
+        "psr/log": "^3.0",
         "phpunit/phpunit": "^11.0",
         "symfony/mailer": "^7.3 || ^8.0",
         "symfony/notifier": "^7.3 || ^8.0"
     },
     "suggest": {
+        "psr/log": "Logs deferred (sendLater) failures that have no onFailure callback",
         "symfony/mailer": "Enables the symfony-mailer transport (SMTP and all Symfony mailer bridges)",
         "symfony/notifier": "Enables the symfony-notifier-sms transport (Twilio, Vonage and other Symfony SMS bridges)"
     },
