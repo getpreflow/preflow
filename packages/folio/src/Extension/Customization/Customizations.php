@@ -62,6 +62,10 @@ final class Customizations
                 if ($key === null) {
                     throw new ExtensionException("{$class} has no #[FolioType] attribute.");
                 }
+                // The extension's own settings form, switched off with its "settings" part: nothing to customize.
+                if ($key === \Preflow\Folio\Extension\Settings\ExtensionSettings::typeKey($definition->name) && !$extensions->partEnabled($definition->name, 'settings')) {
+                    continue;
+                }
                 if (!$catalog->has($key)) {
                     throw new ExtensionException("Type customization {$class}: #[FolioType('{$key}')] names no content type \"{$key}\".");
                 }
