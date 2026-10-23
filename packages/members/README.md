@@ -1,0 +1,105 @@
+# preflow/members
+
+Member accounts for a Preflow + Folio site: the member type in Folio with a waiting badge,
+a state column and a Decision panel (accept or decline with an editable message), the
+member roles, and a pluggable admission rule.
+
+## Install
+
+```
+composer require preflow/members
+php preflow folio:extensions:enable rbac
+php preflow folio:extensions:enable members
+php preflow migrate
+php preflow folio:extensions:apply
+```
+
+- Add `Preflow\Members\MembersServiceProvider` to `config/providers.php` (after
+  `FolioServiceProvider` and `RbacServiceProvider`).
+- The member roles (`pending`, `member`, `rejected`) need the `rbac` extension; booting
+  without it is an error. `folio:extensions:apply` creates the roles that are missing and
+  never changes one that exists.
+- Members live in the storage alias `members` when `config/data.php` has it, else on
+  `default`:
+
+  ```php
+  'aliases' => ['members' => 'sqlite'],
+  ```
+
+- Members sign in through their own guard. In `config/auth.php`:
+
+  ```php
+  'guards' => [
+      'members' => [
+          'class' => Preflow\Auth\SessionGuard::class,
+          'provider' => 'members',
+          'population' => 'members',
+          'remember' => ['cookie' => 'site_member', 'days' => 30, 'path' => '/'],
+      ],
+  ],
+  'providers' => [
+      'members' => [
+          'class' => Preflow\Folio\Users\RecordUserProvider::class,
+          'type' => 'member', 'email' => 'email', 'password' => 'password_hash', 'roles' => 'roles',
+      ],
+  ],
+  ```
+
+## Configuration
+
+`config/members.php`, every key optional:
+
+```php
+return [
+    'path' => '/members',                       // base path of the member pages
+    'landing' => null,                          // where sign-in lands; null = path
+    'layout' => '@folio/frontend/_site.twig',   // the layout the member pages extend
+    'mail' => ['from_name' => null, 'layout' => '@members/mail/layout.twig', 'accent' => '#d42a34'],
+    'admission' => Preflow\Members\Admission\OwnerApproval::class,
+    'throttle' => ['login' => [10, 900], 'register' => [5, 3600], 'forgot' => [5, 3600], 'resend' => [3, 3600]],
+    'password_min' => 10,
+    'confirm_ttl' => 86400,
+    'reset_ttl' => 3600,
+    'retention' => ['unconfirmed_days' => 7, 'declined_days' => 30],
+];
+```
+
+Fixed names (stored data depends on them; `MembersConfig` lists them as constants): type
+and table `member`, guard `members`, permissions `members.access` and `members.decide`,
+token purposes `members.confirm` and `members.reset`.
+
+Links in mails use `app.url` and the locale prefixes of `config/i18n.php` (the default
+locale at the root): `https://site.test/de/members/login`.
+
+## Admission
+
+After a member confirms the e-mail, the configured `Preflow\Members\Admission\Admission`
+decides: `AcceptOnConfirm` (a member at once) or `OwnerApproval` (the owner decides in
+Folio, the default). A site's own rule implements the interface:
+
+```php
+interface Admission
+{
+    public function validate(array $input, ServerRequestInterface $request): array;   // field => message
+    public function recordValues(array $input): array;                                // stored on the member
+    public function afterConfirm(DynamicRecord $member): Decision;                    // Accept or Pending
+    public function details(DynamicRecord $member): array;                            // label => value
+}
+```
+
+`details()` appear in the Decision panel (`Registered … · label: value`). The keys of
+`recordValues()` must be fields of the member type; a site adds fields with its own
+`config/models/member.json`:
+
+```json
+{ "key": "member", "extends": true, "fields": { "company": { "type": "string" } } }
+```
+
+## In Folio
+
+- Members (sidebar section Members) with a waiting badge and a State column.
+- The Decision panel offers Accept from Waiting or Declined and Decline from Waiting or
+  Member; the server refuses anything else. The mail goes out first; when it fails,
+  nothing changes. Declining ends the member's remembered sessions.
+- Settings → Members settings: `registration_open`, `notice_email`, `accept_message`,
+  `decline_message` (translatable; `{name}` and `{login_url}` are filled in).

@@ -67,6 +67,9 @@
         <testsuite name="Codes">
             <directory>packages/codes/tests</directory>
         </testsuite>
+        <testsuite name="Members">
+            <directory>packages/members/tests</directory>
+        </testsuite>
         <testsuite name="Examples">
             <directory>examples/folio-demo/tests</directory>
         </testsuite>
@@ -84,6 +87,7 @@
             <directory>packages/roles/src</directory>
             <directory>packages/rbac/src</directory>
             <directory>packages/codes/src</directory>
+            <directory>packages/members/src</directory>
             <directory>packages/twig/src</directory>
             <directory>packages/blade/src</directory>
             <directory>packages/testing/src</directory>

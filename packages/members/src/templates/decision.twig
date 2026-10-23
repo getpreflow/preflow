@@ -1,0 +1,31 @@
+{# The Decision panel (side column): state, a one-line summary with the admission's details, then Accept / Decline with an editable message. #}
+<p><span class="folio-badge{% if state_tone %} is-{{ state_tone }}{% endif %}">{{ state_label }}</span></p>
+<p class="folio-help">Registered {{ registered }}{% for label, value in details %} · {{ label }}: {{ value }}{% endfor %}</p>
+
+{% if state == 'unconfirmed' %}
+    <p class="folio-help">Not confirmed yet — nothing to decide.</p>
+{% else %}
+    {% set tabs = [] %}
+    {% if can_accept %}{% set tabs = tabs|merge([{key: 'accept', label: 'Accept', text: accept_text, button: 'Accept and send', style: 'btn-primary'}]) %}{% endif %}
+    {% if can_decline %}{% set tabs = tabs|merge([{key: 'decline', label: 'Decline', text: decline_text, button: 'Decline and send', style: 'btn-secondary'}]) %}{% endif %}
+    <div{% if tabs|length > 1 %} data-folio-tabs{% endif %}>
+        {% if tabs|length > 1 %}
+            <div class="folio-segmented">
+                {% for tab in tabs %}<button type="button" data-folio-tab="{{ tab.key }}">{{ tab.label }}</button>{% endfor %}
+            </div>
+        {% endif %}
+        {% for tab in tabs %}
+            <div data-folio-tabpanel="{{ tab.key }}">
+                <form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/{{ tab.key }}">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                    <div class="form-group">
+                        <label for="decision-{{ tab.key }}">Message to {{ record.name ?: record.email }}</label>
+                        <textarea id="decision-{{ tab.key }}" name="message" rows="12">{{ tab.text }}</textarea>
+                        <p class="folio-help">Sent in {{ language_label }}. The default comes from Members settings; edit it freely.</p>
+                    </div>
+                    <button type="submit" class="btn {{ tab.style }}">{{ tab.button }}</button>
+                </form>
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}

@@ -1,0 +1,34 @@
+{
+    "name": "preflow/members",
+    "description": "Preflow members — member accounts for a Preflow + Folio site: the member type, the owner's decision, pluggable admission",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "nyholm/psr7": "^1.8",
+        "preflow/auth": "^0.25 || @dev",
+        "preflow/core": "^0.25 || @dev",
+        "preflow/data": "^0.25 || @dev",
+        "preflow/folio": "^0.26 || @dev",
+        "preflow/notify": "^0.25 || @dev",
+        "preflow/rbac": "^0.25 || @dev"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Preflow\\Members\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Preflow\\Members\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "folio": {
+            "extension": "Preflow\\Members\\Extension"
+        }
+    }
+}

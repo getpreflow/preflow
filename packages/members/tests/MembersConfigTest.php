@@ -1,0 +1,141 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Members\Tests;
+
+use PHPUnit\Framework\TestCase;
+use Preflow\Members\Admission\AcceptOnConfirm;
+use Preflow\Members\Admission\Admission;
+use Preflow\Members\Admission\OwnerApproval;
+use Preflow\Members\Links;
+use Preflow\Members\MembersConfig;
+use Preflow\Members\Tests\Support\MembersScaffold;
+
+/** config/members.php: every key optional, defaults as smart-stack runs today; the provider reads the site's file. */
+final class MembersConfigTest extends TestCase
+{
+    use MembersScaffold;
+
+    protected function tearDown(): void
+    {
+        $this->removeScaffold();
+    }
+
+    public function test_defaults(): void
+    {
+        $config = new MembersConfig([]);
+
+        $this->assertSame('/members', $config->path());
+        $this->assertSame('/members', $config->landing(), 'landing defaults to the path');
+        $this->assertSame('@folio/frontend/_site.twig', $config->layout());
+        $this->assertNull($config->mailFromName());
+        $this->assertSame('@members/mail/layout.twig', $config->mailLayout());
+        $this->assertSame('#d42a34', $config->accent());
+        $this->assertSame(OwnerApproval::class, $config->admission());
+        $this->assertSame([10, 900], $config->throttle('login'));
+        $this->assertSame([5, 3600], $config->throttle('register'));
+        $this->assertSame([5, 3600], $config->throttle('forgot'));
+        $this->assertSame([3, 3600], $config->throttle('resend'));
+        $this->assertSame(10, $config->passwordMin());
+        $this->assertSame(86400, $config->confirmTtl());
+        $this->assertSame(3600, $config->resetTtl());
+        $this->assertSame(7, $config->retention('unconfirmed'));
+        $this->assertSame(30, $config->retention('declined'));
+    }
+
+    public function test_site_values_win_key_by_key(): void
+    {
+        $config = new MembersConfig([
+            'path' => 'konto/',
+            'landing' => '/konto/objekte',
+            'layout' => '@site/layout.twig',
+            'mail' => ['from_name' => 'Holz', 'accent' => '#333'],
+            'admission' => AcceptOnConfirm::class,
+            'throttle' => ['login' => [3, 60]],
+            'password_min' => 12,
+            'retention' => ['declined_days' => 90],
+        ]);
+
+        $this->assertSame('/konto', $config->path(), 'one leading slash, no trailing one');
+        $this->assertSame('/konto/objekte', $config->landing());
+        $this->assertSame('@site/layout.twig', $config->layout());
+        $this->assertSame('Holz', $config->mailFromName());
+        $this->assertSame('@members/mail/layout.twig', $config->mailLayout(), 'mail keys merge');
+        $this->assertSame('#333', $config->accent());
+        $this->assertSame(AcceptOnConfirm::class, $config->admission());
+        $this->assertSame([3, 60], $config->throttle('login'));
+        $this->assertSame([5, 3600], $config->throttle('register'), 'throttle keys merge');
+        $this->assertSame([0, 0], $config->throttle('unknown'));
+        $this->assertSame(12, $config->passwordMin());
+        $this->assertSame(90, $config->retention('declined'));
+        $this->assertSame(7, $config->retention('unconfirmed'));
+    }
+
+    public function test_landing_without_path_follows_the_path(): void
+    {
+        $this->assertSame('/tools', (new MembersConfig(['path' => '/tools']))->landing());
+    }
+
+    public function test_the_fixed_names(): void
+    {
+        $this->assertSame('member', MembersConfig::TYPE);
+        $this->assertSame('members', MembersConfig::GUARD);
+        $this->assertSame('members.access', MembersConfig::PERMISSION);
+        $this->assertSame('members.decide', MembersConfig::DECIDE);
+        $this->assertSame('members.confirm', MembersConfig::CONFIRM_PURPOSE);
+        $this->assertSame('members.reset', MembersConfig::RESET_PURPOSE);
+    }
+
+    public function test_provider_reads_config_members_php(): void
+    {
+        $this->scaffold();
+        $this->write('config/members.php', "<?php\nreturn ['path' => '/tools', 'password_min' => 14, 'admission' => " . AcceptOnConfirm::class . "::class];\n");
+        $c = $this->app()->container();
+
+        $config = $c->get(MembersConfig::class);
+        $this->assertSame('/tools', $config->path());
+        $this->assertSame(14, $config->passwordMin());
+        $this->assertSame([10, 900], $config->throttle('login'));
+        $this->assertInstanceOf(AcceptOnConfirm::class, $c->get(Admission::class));
+    }
+
+    public function test_provider_without_config_file_uses_defaults(): void
+    {
+        $this->scaffold();
+        $c = $this->app()->container();
+
+        $this->assertSame('/members', $c->get(MembersConfig::class)->path());
+        $this->assertInstanceOf(OwnerApproval::class, $c->get(Admission::class));
+    }
+
+    public function test_an_admission_class_that_is_no_admission_fails_at_boot(): void
+    {
+        $this->scaffold();
+        $this->write('config/members.php', "<?php\nreturn ['admission' => \\stdClass::class];\n");
+
+        $this->expectExceptionMessage('config/members.php admission: stdClass does not implement ' . Admission::class);
+        $this->app();
+    }
+
+    public function test_links_never_use_the_request_host(): void
+    {
+        $this->scaffold();
+        $links = $this->app()->container()->get(Links::class);
+
+        $this->assertSame('https://site.test/members/reset/x', $links->url('en', '/reset/x'));
+        $this->assertSame('https://site.test/de/members', $links->url('de'));
+        $this->assertSame('https://site.test/members/login', $links->url('xx', '/login'), 'an unknown locale gets the default');
+        $this->assertSame('https://site.test/folio/member/abc/edit', $links->folioMember('abc'));
+    }
+
+    public function test_links_follow_path_and_locales(): void
+    {
+        $this->scaffold(locales: ['de', 'fr']);
+        $this->write('config/members.php', "<?php\nreturn ['path' => '/konto'];\n");
+        $links = $this->app()->container()->get(Links::class);
+
+        $this->assertSame('https://site.test/konto/login', $links->url('de', '/login'));
+        $this->assertSame('https://site.test/fr/konto/login', $links->url('fr', '/login'));
+    }
+}

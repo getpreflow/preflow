@@ -31,6 +31,7 @@ jobs:
           - { local: 'packages/roles', remote: 'roles' }
           - { local: 'packages/rbac', remote: 'rbac' }
           - { local: 'packages/codes', remote: 'codes' }
+          - { local: 'packages/members', remote: 'members' }
           - { local: 'packages/core', remote: 'core' }
           - { local: 'packages/routing', remote: 'routing' }
           - { local: 'packages/view', remote: 'view' }
