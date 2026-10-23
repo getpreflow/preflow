@@ -64,3 +64,7 @@ reviews. Plan B has to handle them before smart-stack.works adopts the groundwor
 - A delegation rule is needed before any site manages staff accounts as a Folio user type (`rbac_roles` on staff is refused for now).
 - smart-stack.works: `storage/backups` is not in Deployer's shared_dirs, so `folio:import`/pull backups land in the release folder and disappear when releases rotate — add it to shared_dirs.
 - MySQL: `preflow_throttle` (and other migrations using `uuid()->primary()`) declare a TEXT primary key, which MySQL rejects without a key length.
+
+## Status (2026-10-23)
+
+Checked against the code; 15 items were already done in plans B to D. Fixed in v0.24.1: readable codes (U+2212, U+00AD), `list.columns` naming a hidden field (boot error), cleared number setting, `list.sort` on number fields, migrate's default storage, the FolioAuthTest deprecations. The missing-state-table message already names the fix (`preflow migrate` creates the table). A first `migrate`, `folio:extensions:apply` and `folio:extensions:check` on an empty data folder of smart-stack.works runs through. MySQL: migrations now refuse a non-SQLite connection clearly; real MySQL support (identifier quoting, key lengths for TEXT keys, introspection) is a feature of its own, open. smart-stack.works `storage/backups` in shared_dirs: on the site. Still parked on purpose: record actions on publishing types (no such action exists), and the delegation rule for staff as a Folio user type.
