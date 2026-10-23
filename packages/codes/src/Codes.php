@@ -303,12 +303,12 @@ final class Codes
 
     /**
      * Readable codes: upper case, with whitespace, Unicode separators and dashes (en dash,
-     * non-breaking hyphen, …) and zero-width characters removed; null when the input is not
-     * valid UTF-8.
+     * non-breaking hyphen, minus sign, …), soft hyphens and zero-width characters removed; null
+     * when the input is not valid UTF-8.
      */
     public static function normalizeReadable(string $code): ?string
     {
-        $stripped = preg_replace('/[\s\p{Z}\p{Pd}\x{200B}-\x{200D}\x{2060}\x{FEFF}]+/u', '', $code);
+        $stripped = preg_replace('/[\s\p{Z}\p{Pd}\x{2212}\x{00AD}\x{200B}-\x{200D}\x{2060}\x{FEFF}]+/u', '', $code);
 
         return $stripped === null ? null : strtoupper($stripped);
     }

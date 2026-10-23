@@ -153,6 +153,17 @@ final class CodesTest extends TestCase
         $this->assertSame('SMARTSTACK2026', Codes::normalizeReadable("SMART\u{2013}STACK\u{2011}\u{00A0}\u{200B}2026"));
     }
 
+    public function test_readable_code_with_minus_sign_and_soft_hyphen(): void
+    {
+        $codes = $this->codes();
+        $codes->issue('members.book', [], 'SMART-STACK 2026');
+
+        // Copied from a PDF or an ebook: U+2212 minus sign, U+00AD soft hyphen.
+        $this->assertTrue($codes->check("SMART\u{2212}STACK 2026", 'members.book')->ok);
+        $this->assertTrue($codes->check("SMART\u{00AD}STACK 2026", 'members.book')->ok);
+        $this->assertSame('SMARTSTACK2026', Codes::normalizeReadable("SMART\u{2212}STA\u{00AD}CK 2026"));
+    }
+
     public function test_readable_code_normalised(): void
     {
         $codes = $this->codes();
