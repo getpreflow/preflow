@@ -414,7 +414,12 @@ TWIG,
 
         $this->assertNotNull(Dom::first($this->html('/members/login'), '//a[@href="/members"]'), 'the login links the register home');
         $this->assertNotNull(Dom::first($this->html('/de/members/login'), '//a[@href="/de/members"]'));
-        $this->assertNotNull(Dom::first($this->html('/members/register'), '//form[@action="/members/register"]'), 'the package page still serves');
+        foreach (['/members/register' => '/members', '/de/members/register' => '/de/members'] as $uri => $to) {
+            $response = $this->send('GET', $uri);
+            $this->assertSame(303, $response->getStatusCode(), $uri . ': the register page is the configured one');
+            $this->assertSame($to, $response->getHeaderLine('Location'), $uri);
+        }
+        $this->assertSame(422, $this->register(['name' => ''])->getStatusCode(), 'the form still posts to {path}/register');
     }
 
     #[RunInSeparateProcess]

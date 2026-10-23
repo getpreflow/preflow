@@ -98,7 +98,7 @@ default locale without a prefix):
 
 | Method | Path | Page |
 |---|---|---|
-| GET, POST | `{path}/register` | register form; POST registers (same answer for known addresses) |
+| GET, POST | `{path}/register` | register form; POST registers (same answer for known addresses); GET is a 303 to `register` when that is another page |
 | GET | `{path}/confirm/{token}` | the confirm form (a mail scanner's GET uses nothing) |
 | POST | `{path}/confirm` | confirms; then the admission decides |
 | GET, POST | `{path}/login` | sign in (30-day remember cookie) |

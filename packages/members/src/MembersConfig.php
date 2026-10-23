@@ -86,7 +86,7 @@ final class MembersConfig
     /**
      * Where the pages link for registering; {path}/register (the package's page) unless set.
      * A site whose members home shows the form itself sets it to that page; the form still
-     * posts to {path}/register.
+     * posts to {path}/register, and GET {path}/register redirects there.
      */
     public function register(): string
     {

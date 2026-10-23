@@ -55,6 +55,10 @@ final class RegistrationController
         if ($this->viewer->member() !== null && $this->viewer->canAccess()) {
             return $this->view->redirect($this->landing($request));
         }
+        // A site that shows the form on its own page (config "register") has no second one here.
+        if ($this->config->register() !== $this->config->path() . '/register') {
+            return $this->view->redirect($this->links->localize($this->locale($request), $this->config->register()));
+        }
 
         return $this->page($request);
     }

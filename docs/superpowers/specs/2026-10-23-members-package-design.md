@@ -112,7 +112,8 @@ The package registers its routes under `{path}` for every locale: `GET/POST {pat
 `GET/POST {path}/forgot`, `GET {path}/reset/{token}`, `POST {path}/reset`, `GET/POST {path}/resend`,
 `GET {path}/account`, `POST {path}/account/password`, `POST {path}/account/delete`.
 The members *home* (`GET {path}`) stays the site's (smart-stack: the tools entry/toolbox;
-holz-objekte: "Meine Objekte"); the package only redirects there.
+holz-objekte: "Meine Objekte"); the package only redirects there. When `register` is another
+page than `{path}/register`, `GET {path}/register` is a 303 to it (localized); the POST stays.
 
 ### Folio extension
 Member type (`member.json`: email, password_hash, name, language, registered_at,
