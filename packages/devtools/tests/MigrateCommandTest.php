@@ -151,6 +151,21 @@ final class MigrateCommandTest extends TestCase
         $this->assertSame([0, "Nothing to migrate: no SQL storage configured.\n"], $this->migrate());
     }
 
+    public function test_default_storage_is_the_sql_storage_the_site_has(): void
+    {
+        $json = new \Preflow\Data\Driver\JsonFileDriver($this->dir . '/data');
+        $sql = new \Preflow\Data\Driver\SqliteDriver(new \PDO('sqlite::memory:'));
+        $other = new \Preflow\Data\Driver\SqliteDriver(new \PDO('sqlite::memory:'));
+        $dm = static fn (array $drivers): \Preflow\Data\DataManager => new \Preflow\Data\DataManager($drivers);
+
+        // The default storage when it is SQL; else the one SQL storage (a MySQL site with JSON content).
+        $this->assertSame('default', MigrateCommand::defaultStorage($dm(['sqlite' => $sql, 'default' => $sql])));
+        $this->assertSame('mysql', MigrateCommand::defaultStorage($dm(['json' => $json, 'default' => $json, 'mysql' => $sql])));
+        $this->assertSame('sqlite', MigrateCommand::defaultStorage($dm(['json' => $json, 'default' => $json, 'sqlite' => $sql, 'throttle' => $sql])));
+        // Two SQL storages and a JSON default: the site has to say which.
+        $this->assertNull(MigrateCommand::defaultStorage($dm(['json' => $json, 'default' => $json, 'sqlite' => $sql, 'mysql' => $other])));
+    }
+
     public function test_explicit_storage_that_is_unknown_or_not_sql_exits_1(): void
     {
         file_put_contents($this->dir . '/config/data.php', '<?php return ["default" => "json", "drivers" => ["json" => ["path" => ' . var_export($this->dir . '/data', true) . ']]];');

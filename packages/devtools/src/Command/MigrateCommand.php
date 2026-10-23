@@ -49,7 +49,8 @@ final class MigrateCommand implements CommandInterface
                 throw new \RuntimeException('No data configuration found (config/data.php).');
             }
 
-            $storage ??= 'sqlite';
+            $storage ??= self::defaultStorage($dm)
+                ?? throw new \RuntimeException('Several SQL storages are configured; choose one with --storage=<driver>.');
             $driver = $dm->driver($storage);
             if (!$driver instanceof PdoDriver) {
                 throw new \RuntimeException("Storage driver [{$storage}] is not a SQL driver; nothing to migrate.");
@@ -86,6 +87,26 @@ final class MigrateCommand implements CommandInterface
             fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
             return 1;
         }
+    }
+
+    /**
+     * The storage to migrate without --storage: the default storage when it is SQL, else the
+     * one SQL storage the site has (aliases of it count once); null when there are several.
+     */
+    public static function defaultStorage(DataManager $dm): ?string
+    {
+        if (in_array('default', $dm->driverNames(), true) && $dm->driver('default') instanceof PdoDriver) {
+            return 'default';
+        }
+        $sql = [];
+        foreach ($dm->driverNames() as $name) {
+            $driver = $dm->driver($name);
+            if ($driver instanceof PdoDriver && !in_array($driver, $sql, true)) {
+                $sql[$name] = $driver;
+            }
+        }
+
+        return count($sql) === 1 ? array_key_first($sql) : null;
     }
 
     private function hasSqlStorage(?DataManager $dm): bool
