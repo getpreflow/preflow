@@ -69,7 +69,7 @@ The owner, in Folio on live:
 
 ## 7. Cron
 
-- [ ] In my.cyon add the cron job:
+- [x] In my.cyon add the cron job (done 2026-10-23 over SSH with `crontab`, appended to the shared crontab; the previous crontab is saved in `~/crontab-backup-20261023122915.txt`):
 
   ```
   15 3 * * * cd ~/public_html/smart-stack.works/current && /usr/local/bin/php84 preflow members:prune >> storage/logs/cron.log 2>&1
