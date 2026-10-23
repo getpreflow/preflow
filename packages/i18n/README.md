@@ -57,7 +57,13 @@ $translator->get('blog.published', ['date' => '2026-01-01']); // "Published on 2
 $translator->choice('blog.post_count', 5);              // "5 posts"
 $translator->setLocale('de');
 $translator->getLocale();                               // "de"
+$translator->get('blog.title', [], 'fr');               // in another locale, the current one unchanged
 ```
+
+A package ships its own strings for a group and registers them with
+`$translator->addDefaults('members', __DIR__ . '/../lang')` (files `lang/{locale}/members.php`).
+The site's `lang/{locale}/members.php` is laid over them key by key, so a site overrides single
+phrases without copying the whole file.
 
 ### PluralResolver
 

@@ -179,4 +179,55 @@ final class TranslatorTest extends TestCase
         // Should still return cached value
         $this->assertSame('Blog', $t->get('blog.title'));
     }
+
+    public function test_get_in_a_given_locale_leaves_the_current_one(): void
+    {
+        $t = new Translator($this->langDir, 'en', 'en');
+
+        $this->assertSame('Willkommen, Ada!', $t->get('app.welcome', ['name' => 'Ada'], 'de'));
+        $this->assertSame('Welcome, Ada!', $t->get('app.welcome', ['name' => 'Ada']));
+        $this->assertSame('en', $t->getLocale());
+        $this->assertSame('Nested value', $t->get('app.nested.deep', [], 'de'), 'falls back like the current locale');
+        $this->assertSame('Ein Beitrag', $t->choice('blog.post_count', 1, [], 'de'));
+    }
+
+    public function test_package_defaults_are_overridden_key_by_key_by_the_site(): void
+    {
+        $package = $this->langDir . '/../pkg_' . uniqid();
+        foreach (['en' => ['form' => ['name' => 'Name', 'email' => 'Email'], 'only' => 'Package'], 'fr' => ['form' => ['name' => 'Nom']]] as $locale => $data) {
+            mkdir($package . '/' . $locale, 0755, true);
+            file_put_contents($package . '/' . $locale . '/members.php', '<?php return ' . var_export($data, true) . ';');
+        }
+        $this->createLangFile('en', 'members', ['form' => ['email' => 'E-mail address']]);
+
+        try {
+            $t = new Translator($this->langDir, 'en', 'en');
+            $t->addDefaults('members', $package);
+
+            $this->assertSame('Name', $t->get('members.form.name'), 'package key');
+            $this->assertSame('E-mail address', $t->get('members.form.email'), 'site key wins');
+            $this->assertSame('Package', $t->get('members.only'));
+            $this->assertSame('Nom', $t->get('members.form.name', [], 'fr'), 'a locale only the package has');
+            $this->assertSame('E-mail address', $t->get('members.form.email', [], 'fr'), 'fallback locale, site first');
+            $this->assertSame('Blog', $t->get('blog.title'), 'other groups untouched');
+        } finally {
+            $this->deleteDir($package);
+        }
+    }
+
+    public function test_defaults_added_after_a_lookup_still_apply(): void
+    {
+        $package = $this->langDir . '/../pkg_' . uniqid();
+        mkdir($package . '/en', 0755, true);
+        file_put_contents($package . '/en/members.php', "<?php return ['title' => 'Members'];");
+
+        try {
+            $t = new Translator($this->langDir, 'en', 'en');
+            $this->assertSame('members.title', $t->get('members.title'));
+            $t->addDefaults('members', $package);
+            $this->assertSame('Members', $t->get('members.title'));
+        } finally {
+            $this->deleteDir($package);
+        }
+    }
 }

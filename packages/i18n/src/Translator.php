@@ -11,6 +11,9 @@ final class Translator
     /** @var array<string, array<string, mixed>> Cache: "locale.group" => translations */
     private array $loaded = [];
 
+    /** @var array<string, list<string>> group => lang directories of packages, in the order added */
+    private array $defaults = [];
+
     public function __construct(
         private readonly string $langPath,
         string $locale,
@@ -23,13 +26,15 @@ final class Translator
      * Translate a key with optional parameter replacement.
      *
      * @param array<string, string|int> $params Parameters to replace (:name => value)
+     * @param string|null $locale another locale than the current one (a mail in the recipient's language)
      */
-    public function get(string $key, array $params = []): string
+    public function get(string $key, array $params = [], ?string $locale = null): string
     {
-        $value = $this->resolve($key, $this->locale);
+        $locale ??= $this->locale;
+        $value = $this->resolve($key, $locale);
 
         // Fallback to default locale
-        if ($value === null && $this->locale !== $this->fallbackLocale) {
+        if ($value === null && $locale !== $this->fallbackLocale) {
             $value = $this->resolve($key, $this->fallbackLocale);
         }
 
@@ -50,11 +55,12 @@ final class Translator
      *
      * @param array<string, string|int> $params
      */
-    public function choice(string $key, int $count, array $params = []): string
+    public function choice(string $key, int $count, array $params = [], ?string $locale = null): string
     {
-        $value = $this->resolve($key, $this->locale);
+        $locale ??= $this->locale;
+        $value = $this->resolve($key, $locale);
 
-        if ($value === null && $this->locale !== $this->fallbackLocale) {
+        if ($value === null && $locale !== $this->fallbackLocale) {
             $value = $this->resolve($key, $this->fallbackLocale);
         }
 
@@ -68,6 +74,21 @@ final class Translator
         $params['count'] = (string) $count;
 
         return $this->replaceParams($resolved, $params);
+    }
+
+    /**
+     * A package's own strings for a group: $langPath/{locale}/{group}.php. The site's
+     * lang/{locale}/{group}.php is laid over them key by key, so a site changes single
+     * phrases without copying the whole file.
+     */
+    public function addDefaults(string $group, string $langPath): void
+    {
+        $this->defaults[$group][] = rtrim($langPath, '/');
+        foreach (array_keys($this->loaded) as $cacheKey) {
+            if (str_ends_with($cacheKey, '.' . $group)) {
+                unset($this->loaded[$cacheKey]);
+            }
+        }
     }
 
     public function getLocale(): string
@@ -120,23 +141,24 @@ final class Translator
             return $this->loaded[$cacheKey];
         }
 
-        $path = $this->langPath . '/' . $locale . '/' . $group . '.php';
-
-        if (!file_exists($path)) {
-            $this->loaded[$cacheKey] = [];
-            return [];
+        $translations = [];
+        foreach ([...($this->defaults[$group] ?? []), $this->langPath] as $dir) {
+            $translations = array_replace_recursive($translations, self::read($dir . '/' . $locale . '/' . $group . '.php'));
         }
-
-        $translations = require $path;
-
-        if (!is_array($translations)) {
-            $this->loaded[$cacheKey] = [];
-            return [];
-        }
-
         $this->loaded[$cacheKey] = $translations;
 
         return $translations;
+    }
+
+    /** @return array<string, mixed> */
+    private static function read(string $path): array
+    {
+        if (!file_exists($path)) {
+            return [];
+        }
+        $translations = require $path;
+
+        return is_array($translations) ? $translations : [];
     }
 
     /**
