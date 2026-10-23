@@ -15,4 +15,10 @@ final class NumberFieldType extends AbstractScalarFieldType
     {
         return 'number';
     }
+
+    /** An emptied number field holds no number. */
+    public function fromStorage(mixed $value): mixed
+    {
+        return $value === '' ? null : $value;
+    }
 }

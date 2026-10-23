@@ -102,8 +102,12 @@ final class ExtensionSettings
 
         $value = $read($this->singletons->record($type)?->get($key));
         if ($value !== null) {
-            // '' is a real value: a cleared string, or false as SQL storage hands it back
-            return $this->fieldTypes->get($field->type)->fromStorage($value);
+            // '' is a real value: a cleared string, or false as SQL storage hands it back.
+            // A field type may still read it as no value (an emptied number): then the default applies.
+            $value = $this->fieldTypes->get($field->type)->fromStorage($value);
+            if ($value !== null) {
+                return $value;
+            }
         }
 
         return $read($field->config['default'] ?? null);

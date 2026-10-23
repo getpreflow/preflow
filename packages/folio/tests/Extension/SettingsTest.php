@@ -168,6 +168,31 @@ final class SettingsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_cleared_number_setting_reads_as_not_set(): void
+    {
+        $this->members();
+
+        $this->post('/folio/members_settings/members_settings', ['registration_open' => '1', 'max_waiting' => '', 'reminder_days' => '']);
+
+        // An empty number field is no number: the default applies, or null without one.
+        $settings = $this->app()->container()->get(ExtensionSettings::class);
+        $this->assertSame(50, $settings->get('members', 'max_waiting'));
+        $this->assertNull($settings->get('members', 'reminder_days'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_saved_number_setting_wins_over_default(): void
+    {
+        $this->members();
+
+        $this->post('/folio/members_settings/members_settings', ['registration_open' => '1', 'max_waiting' => '0', 'reminder_days' => '3']);
+
+        $settings = $this->app()->container()->get(ExtensionSettings::class);
+        $this->assertEquals(0, $settings->get('members', 'max_waiting'));
+        $this->assertEquals(3, $settings->get('members', 'reminder_days'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_translatable_setting_per_locale(): void
     {
         $this->members();
@@ -325,6 +350,8 @@ final class SettingsTest extends TestCase
                         'screening_label' => ['type' => 'string', 'label' => 'Screening field label', 'translatable' => true,
                             'default' => ['en' => 'What brings you here?', 'de' => 'Was führt dich her?']],
                         'mail_password' => ['type' => 'env', 'label' => 'Mail password', 'env' => '{$env}'],
+                        'max_waiting' => ['type' => 'number', 'label' => 'Most waiting members', 'default' => 50],
+                        'reminder_days' => ['type' => 'number', 'label' => 'Remind after days'],
                     ] + (getenv('{$extra}') ? ['auto_approve' => ['type' => 'boolean', 'label' => 'Approve automatically', 'default' => true]] : []);
                 }
             }
