@@ -396,7 +396,10 @@ final class Hero extends BlockComponent
 
 - **blocks:** content this record owns, edited in place (page sections).
 - **matrix:** an ordered mix of references to standalone, reusable records.
-- **relation:** references to records of one type.
+- **relation:** references to records of one type. `"relation": {"to": "author", "multiple": true}`
+  shows checkbox chips (a filter input above 12 options; they post `name[]`, as the old multi-select
+  did); `"labelField"` picks the chip label, `"orderBy": "<field>"` sorts the options (default:
+  stored order). A single relation stays a select.
 
 ## Singletons
 

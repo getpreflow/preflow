@@ -930,6 +930,7 @@
         if (!root || !root.querySelectorAll) { return; }
         if (root.hasAttribute && root.hasAttribute('data-folio-matrix')) { initMatrix(root); }
         root.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
+        initRelationFilter(root);
         if (root.hasAttribute && root.hasAttribute('data-block-card')) { notifyChange(root); }
         root.querySelectorAll('[data-folio-focal]').forEach(placeFocalMarker);
         initTabs(root);
@@ -1089,6 +1090,24 @@
         box.setAttribute('data-folio-tabs-ready', '');
     }
 
+    // Multi relation: the filter input narrows the checkbox chips (checked ones stay in the form).
+    function initRelationFilter(root) {
+        var inputs = Array.prototype.slice.call(root.querySelectorAll('[data-folio-relation-filter]'));
+        if (root.matches && root.matches('[data-folio-relation-filter]')) { inputs.unshift(root); }
+        inputs.forEach(function (input) {
+            var box = input.closest('[data-folio-relation-multi]');
+            if (!box || input.hasAttribute('data-folio-relation-ready')) { return; }
+            input.setAttribute('data-folio-relation-ready', '');
+            input.addEventListener('input', function () {
+                var q = input.value.trim().toLowerCase();
+                box.querySelectorAll('.folio-chip').forEach(function (chip) {
+                    chip.hidden = q !== '' && chip.textContent.toLowerCase().indexOf(q) === -1;
+                });
+            });
+            input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); } });
+        });
+    }
+
     function boot() {
         document.addEventListener('submit', onSubmitConfirm);
         document.addEventListener('click', onBlockClick);
@@ -1115,6 +1134,7 @@
         window.addEventListener('message', onMessage);
         document.addEventListener('keydown', onKeydown);
         initTabs(document);
+        initRelationFilter(document);
         initSplit();
         initUnsavedGuard();
     }

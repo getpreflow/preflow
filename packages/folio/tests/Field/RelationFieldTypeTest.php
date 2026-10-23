@@ -73,14 +73,61 @@ final class RelationFieldTypeTest extends TestCase
         $this->assertStringContainsString('<option value="a2">Bob</option>', $html);
     }
 
-    public function test_render_editor_multiple_uses_array_name_and_marks_selected(): void
+    private function multi(array $value = [], int $count = 2, array $extra = []): string
     {
-        $html = $this->type()->renderEditor(new FieldContext(
-            name: 'writers', value: ['a2'], config: ['relation' => ['to' => 'author', 'multiple' => true]],
+        for ($i = 3; $i <= $count; $i++) {
+            $this->dm->saveType(DynamicRecord::fromArray($this->registry->get('author'), ['uuid' => 'a' . $i, 'name' => 'Person ' . $i]));
+        }
+        return $this->type()->renderEditor(new FieldContext(
+            name: 'writers', label: 'Writers', value: $value,
+            config: ['relation' => ['to' => 'author', 'multiple' => true] + $extra],
         ));
-        $this->assertStringContainsString('<select name="writers[]"', $html);
-        $this->assertStringContainsString('multiple', $html);
-        $this->assertStringContainsString('<option value="a2" selected>Bob</option>', $html);
+    }
+
+    public function test_multiple_renders_checkbox_chips_with_array_name_and_checked_state(): void
+    {
+        $html = $this->multi(['a2']);
+        $this->assertStringNotContainsString('<select', $html);
+        $this->assertStringContainsString('<fieldset', $html);
+        $this->assertStringContainsString('<legend>Writers', $html);
+        $this->assertMatchesRegularExpression('/<input type="checkbox" name="writers\[\]" value="a1"(?! checked)[^>]*>/', $html);
+        $this->assertMatchesRegularExpression('/<input type="checkbox" name="writers\[\]" value="a2" checked[^>]*>/', $html);
+        $this->assertStringContainsString('<span class="folio-chip-label">Bob</span>', $html);
+    }
+
+    public function test_multiple_escapes_labels_and_values(): void
+    {
+        $this->dm->saveType(DynamicRecord::fromArray($this->registry->get('author'), ['uuid' => 'x"1', 'name' => '<b>Eve</b> & "co"']));
+        $html = $this->multi();
+        $this->assertStringNotContainsString('<b>Eve', $html);
+        $this->assertStringContainsString('&lt;b&gt;Eve&lt;/b&gt; &amp; &quot;co&quot;', $html);
+        $this->assertStringContainsString('value="x&quot;1"', $html);
+    }
+
+    public function test_filter_only_above_threshold(): void
+    {
+        $this->assertStringNotContainsString('data-folio-relation-filter', $this->multi([], 12));
+        $html = $this->multi([], 13);
+        $this->assertStringContainsString('data-folio-relation-filter', $html);
+        $this->assertStringNotContainsString('name=""', $html);
+        $this->assertDoesNotMatchRegularExpression('/data-folio-relation-filter[^>]*name=/', $html);
+    }
+
+    public function test_order_by_sorts_options(): void
+    {
+        $html = $this->multi([], 2, ['orderBy' => 'name']);
+        $this->assertLessThan(strpos($html, 'Bob'), strpos($html, 'Ann'));
+        $this->dm->saveType(DynamicRecord::fromArray($this->registry->get('author'), ['uuid' => 'a0', 'name' => 'Aaron']));
+        $html = $this->multi([], 2, ['orderBy' => 'name']);
+        $this->assertLessThan(strpos($html, 'Ann'), strpos($html, 'Aaron'));
+    }
+
+    public function test_posted_checkbox_values_store_as_before(): void
+    {
+        $t = $this->type();
+        $posted = ['a2', 'a1'];
+        $this->assertSame(['a2', 'a1'], $t->normalizeInput($posted, ['relation' => ['to' => 'author', 'multiple' => true]]));
+        $this->assertSame('["a2","a1"]', $t->toStorage($t->normalizeInput($posted, ['relation' => ['to' => 'author', 'multiple' => true]])));
     }
 
     public function test_normalize_single_and_multiple(): void

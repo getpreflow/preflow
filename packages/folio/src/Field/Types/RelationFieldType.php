@@ -17,6 +17,9 @@ use Preflow\Folio\Field\FieldType;
  */
 final class RelationFieldType implements FieldType
 {
+    /** A multi relation shows a filter input above this many options. */
+    private const FILTER_THRESHOLD = 12;
+
     public function __construct(
         private readonly DataManager $dm,
         private readonly TypeRegistry $registry,
@@ -40,29 +43,46 @@ final class RelationFieldType implements FieldType
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
         $hasError = $ctx->errors !== [];
 
-        $html = '<div class="form-group folio-relation' . ($hasError ? ' has-error' : '') . '">' . "\n";
-        $html .= '  <label for="' . $e($name) . '">' . $e($label);
-        if ($ctx->required) {
-            $html .= ' <span class="form-required">*</span>';
-        }
-        $html .= '</label>' . "\n";
-
-        $selectName = $cfg['multiple'] ? $name . '[]' : $name;
-        $multipleAttr = $cfg['multiple'] ? ' multiple' : '';
-        $html .= '  <select name="' . $e($selectName) . '" id="' . $e($name) . '"' . $multipleAttr . '>' . "\n";
-        if (!$cfg['multiple']) {
-            $html .= '    <option value="">— none —</option>' . "\n";
-        }
         $options = $this->options($cfg);
         if ($this->can !== null && $cfg['to'] !== '' && !($this->can)($cfg['to'] . '.view')) {
             // No access to the target type: list nothing else, keep what is linked (saving keeps it).
             $options = array_intersect_key($options, array_flip($selected));
         }
-        foreach ($options as $id => $optLabel) {
-            $sel = in_array((string) $id, $selected, true) ? ' selected' : '';
-            $html .= '    <option value="' . $e((string) $id) . '"' . $sel . '>' . $e($optLabel) . '</option>' . "\n";
+
+        if ($cfg['multiple']) {
+            $html = '<fieldset class="form-group folio-relation folio-relation-multi' . ($hasError ? ' has-error' : '') . '" data-folio-relation-multi>' . "\n";
+            $html .= '  <legend>' . $e($label);
+            if ($ctx->required) {
+                $html .= ' <span class="form-required">*</span>';
+            }
+            $html .= '</legend>' . "\n";
+            if (count($options) > self::FILTER_THRESHOLD) {
+                // No name: the filter is never posted.
+                $html .= '  <input type="search" class="folio-relation-filter" data-folio-relation-filter'
+                    . ' placeholder="Filter…" aria-label="' . $e('Filter ' . $label) . '" autocomplete="off">' . "\n";
+            }
+            $html .= '  <div class="folio-chips">' . "\n";
+            foreach ($options as $id => $optLabel) {
+                $chk = in_array((string) $id, $selected, true) ? ' checked' : '';
+                $html .= '    <label class="folio-chip"><input type="checkbox" name="' . $e($name . '[]') . '" value="' . $e((string) $id) . '"' . $chk . '>'
+                    . '<span class="folio-chip-label">' . $e($optLabel) . '</span></label>' . "\n";
+            }
+            $html .= '  </div>' . "\n";
+        } else {
+            $html = '<div class="form-group folio-relation' . ($hasError ? ' has-error' : '') . '">' . "\n";
+            $html .= '  <label for="' . $e($name) . '">' . $e($label);
+            if ($ctx->required) {
+                $html .= ' <span class="form-required">*</span>';
+            }
+            $html .= '</label>' . "\n";
+            $html .= '  <select name="' . $e($name) . '" id="' . $e($name) . '">' . "\n";
+            $html .= '    <option value="">— none —</option>' . "\n";
+            foreach ($options as $id => $optLabel) {
+                $sel = in_array((string) $id, $selected, true) ? ' selected' : '';
+                $html .= '    <option value="' . $e((string) $id) . '"' . $sel . '>' . $e($optLabel) . '</option>' . "\n";
+            }
+            $html .= '  </select>' . "\n";
         }
-        $html .= '  </select>' . "\n";
 
         if ($ctx->help !== null && $ctx->help !== '') {
             $html .= '  <small class="form-help">' . $e($ctx->help) . '</small>' . "\n";
@@ -70,7 +90,7 @@ final class RelationFieldType implements FieldType
         if ($hasError) {
             $html .= '  <div class="form-error">' . $e((string) ($ctx->errors[0] ?? '')) . '</div>' . "\n";
         }
-        $html .= '</div>';
+        $html .= $cfg['multiple'] ? '</fieldset>' : '</div>';
 
         return $html;
     }
@@ -135,7 +155,7 @@ final class RelationFieldType implements FieldType
 
     /**
      * @param array<string, mixed> $config
-     * @return array{to: string, multiple: bool, labelField: ?string}
+     * @return array{to: string, multiple: bool, labelField: ?string, orderBy: ?string}
      */
     private function relationConfig(array $config): array
     {
@@ -144,11 +164,12 @@ final class RelationFieldType implements FieldType
             'to' => (string) ($r['to'] ?? ''),
             'multiple' => (bool) ($r['multiple'] ?? false),
             'labelField' => isset($r['labelField']) ? (string) $r['labelField'] : null,
+            'orderBy' => isset($r['orderBy']) && $r['orderBy'] !== '' ? (string) $r['orderBy'] : null,
         ];
     }
 
     /**
-     * @param array{to: string, multiple: bool, labelField: ?string} $cfg
+     * @param array{to: string, multiple: bool, labelField: ?string, orderBy: ?string} $cfg
      * @return array<string, string> id => label
      */
     private function options(array $cfg): array
@@ -157,17 +178,27 @@ final class RelationFieldType implements FieldType
             return [];
         }
         $out = [];
+        $keys = [];
         foreach ($this->dm->queryType($cfg['to'])->get()->items() as $record) {
             $id = $record->getId();
             if ($id === null) {
                 continue;
             }
             $out[(string) $id] = $this->labelFor($record, $cfg);
+            if ($cfg['orderBy'] !== null) {
+                $v = $record->localized($this->contentLocale?->get() ?? $record->getType()->locales->default)->get($cfg['orderBy']);
+                $keys[(string) $id] = is_scalar($v) ? mb_strtolower((string) $v) : '';
+            }
+        }
+        if ($cfg['orderBy'] !== null) {
+            // Stable: equal keys keep their stored order.
+            $pos = array_flip(array_keys($out));
+            uksort($out, static fn ($a, $b) => ($keys[$a] <=> $keys[$b]) ?: ($pos[$a] <=> $pos[$b]));
         }
         return $out;
     }
 
-    /** @param array{to: string, multiple: bool, labelField: ?string} $cfg */
+    /** @param array{to: string, multiple: bool, labelField: ?string, orderBy: ?string} $cfg */
     private function labelFor(DynamicRecord $record, array $cfg): string
     {
         $localized = $record->localized($this->contentLocale?->get() ?? $record->getType()->locales->default);

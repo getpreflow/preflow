@@ -1207,6 +1207,44 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
 .folio-segmented button[aria-selected="true"] { background: var(--c-surface-raised); color: var(--c-text); box-shadow: var(--shadow-sm); }
 .folio-segmented .folio-icon { width: 15px; height: 15px; }
 
+/* Multi relation: a fieldset of checkbox chips (same vocabulary as the rbac permission chips). */
+.folio-relation-multi { border: 0; padding: 0; margin-inline: 0; min-width: 0; }
+.folio-relation-multi > legend {
+  padding: 0;
+  margin-bottom: 7px;
+  font-size: 13px;
+  font-weight: 620;
+  color: var(--c-text);
+}
+.folio-relation-filter { margin-bottom: 10px; max-width: 280px; }
+.folio-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.folio-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 12px 0 10px;
+  margin: 0;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-surface);
+  font-size: 13px;
+  font-weight: 520;
+  color: var(--c-text-muted);
+  cursor: pointer;
+  transition: background-color .1s, border-color .1s, color .1s;
+}
+.folio-chip:hover { background: var(--c-row-hover); }
+.folio-chip input { width: 14px; height: 14px; margin: 0; }
+.folio-chip:has(input:checked) {
+  background: var(--c-accent-soft);
+  border-color: color-mix(in srgb, var(--c-accent) 35%, transparent);
+  color: var(--c-accent-text);
+}
+.folio-chip:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--c-focus-ring); }
+.folio-chip[hidden] { display: none; }
+.folio-relation-multi.has-error .folio-chip { border-color: var(--c-danger); }
+
 .folio-preview-frame {
   flex: 1 1 auto;
   display: block;
