@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace Preflow\Auth\Tests\Tokens;
 
+use PHPUnit\Framework\Attributes\Group;
 use Preflow\Auth\Tokens\Tokens;
+use Preflow\Data\DataManager;
+use Preflow\Data\Driver\MysqlDriver;
 use Preflow\Data\Migration\Migration;
 use Preflow\Data\Migration\Schema;
 use Preflow\Testing\DataTestCase;
+use Preflow\Testing\MysqlTestDatabase;
 
 final class TokensTest extends DataTestCase
 {
@@ -19,9 +23,26 @@ final class TokensTest extends DataTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->migrate($this->getPdo());
+    }
+
+    private function migrate(\PDO $pdo): void
+    {
         /** @var Migration $migration */
         $migration = require dirname(__DIR__, 2) . '/migrations/2026_10_23_000000_auth_tokens.php';
-        $migration->up(new Schema($this->getPdo()));
+        $migration->up(new Schema($pdo));
+    }
+
+    /** The rest of the test on MySQL: 'default' and 'mysql' are a migrated MySQL storage. */
+    private function onMysql(): void
+    {
+        $this->migrate($this->useMysql()->pdo());
+    }
+
+    /** @return list<string> the storages a looping test covers */
+    private function storages(): array
+    {
+        return $this->usesMysql() ? ['mysql'] : ['sqlite', 'json'];
     }
 
     protected function tearDown(): void
@@ -43,7 +64,7 @@ final class TokensTest extends DataTestCase
 
     public function test_issue_and_consume_once(): void
     {
-        foreach (['sqlite', 'json'] as $storage) {
+        foreach ($this->storages() as $storage) {
             $t = $this->tokens($storage);
             $token = $t->issue('confirm', 'user-1', 3600);
 
@@ -56,7 +77,7 @@ final class TokensTest extends DataTestCase
 
     public function test_expired_token_rejected(): void
     {
-        foreach (['sqlite', 'json'] as $storage) {
+        foreach ($this->storages() as $storage) {
             $t = $this->tokens($storage);
             $token = $t->issue('reset', 'user-1', 60);
             $this->now += 59;
@@ -71,7 +92,7 @@ final class TokensTest extends DataTestCase
 
     public function test_wrong_purpose_rejected(): void
     {
-        foreach (['sqlite', 'json'] as $storage) {
+        foreach ($this->storages() as $storage) {
             $t = $this->tokens($storage);
             $token = $t->issue('confirm', 'user-1', 3600);
 
@@ -103,7 +124,7 @@ final class TokensTest extends DataTestCase
 
     public function test_revoke_all(): void
     {
-        foreach (['sqlite', 'json'] as $storage) {
+        foreach ($this->storages() as $storage) {
             $t = $this->tokens($storage);
             $a = $t->issue('reset', 'user-1', 3600);
             $b = $t->issue('reset', 'user-1', 3600);
@@ -121,7 +142,7 @@ final class TokensTest extends DataTestCase
 
     public function test_prune_deletes_expired_rows(): void
     {
-        foreach (['sqlite', 'json'] as $storage) {
+        foreach ($this->storages() as $storage) {
             $t = $this->tokens($storage);
             $t->issue('reset', 'user-1', 60);
             $t->issue('reset', 'user-2', 120);
@@ -139,7 +160,8 @@ final class TokensTest extends DataTestCase
     {
         // A second request spends the token between this one's read and its delete.
         $hook = null;
-        $t = $this->tokens('sqlite', function () use (&$hook): int {
+        $sql = $this->usesMysql() ? 'mysql' : 'sqlite';
+        $t = $this->tokens($sql, function () use (&$hook): int {
             if ($hook !== null) {
                 [$run, $hook] = [$hook, null];
                 $run();
@@ -147,7 +169,7 @@ final class TokensTest extends DataTestCase
 
             return $this->now;
         });
-        $other = $this->tokens('sqlite');
+        $other = $this->tokens($sql);
         $token = $t->issue('confirm', 'user-1', 3600);
         $hook = static function () use ($other, $token): void {
             // Runs at consume()'s clock read, before its DELETE.
@@ -159,6 +181,99 @@ final class TokensTest extends DataTestCase
     }
 
     public static ?string $spent = null;
+
+    #[Group('mysql')]
+    public function test_issue_and_consume_once_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_issue_and_consume_once();
+    }
+
+    #[Group('mysql')]
+    public function test_expired_token_rejected_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_expired_token_rejected();
+    }
+
+    #[Group('mysql')]
+    public function test_wrong_purpose_rejected_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_wrong_purpose_rejected();
+    }
+
+    #[Group('mysql')]
+    public function test_token_stored_only_as_hash_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_token_stored_only_as_hash();
+    }
+
+    #[Group('mysql')]
+    public function test_revoke_all_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_revoke_all();
+    }
+
+    #[Group('mysql')]
+    public function test_prune_deletes_expired_rows_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_prune_deletes_expired_rows();
+    }
+
+    #[Group('mysql')]
+    public function test_consume_is_decided_by_the_delete_on_mysql(): void
+    {
+        $this->onMysql();
+        self::$spent = null;
+        $this->test_consume_is_decided_by_the_delete();
+    }
+
+    /**
+     * Four requests consume one token at once, in separate processes on their own
+     * connections, each pausing between reading the row and deleting it: the DELETE
+     * lets exactly one of them have the subject.
+     */
+    #[Group('mysql')]
+    #[\PHPUnit\Framework\Attributes\RequiresPhpExtension('pcntl')]
+    #[\PHPUnit\Framework\Attributes\RequiresPhpExtension('posix')]
+    public function test_concurrent_consumers_get_the_subject_once_on_mysql(): void
+    {
+        $this->onMysql();
+        $token = $this->tokens()->issue('confirm', 'user-1', 3600);
+        $results = sys_get_temp_dir() . '/preflow_tokens_race_' . uniqid();
+        $this->lockDirs[] = $results;
+        mkdir($results);
+
+        $children = [];
+        for ($i = 0; $i < 4; $i++) {
+            $pid = pcntl_fork();
+            if ($pid === 0) {
+                $dm = new DataManager(['default' => new MysqlDriver(MysqlTestDatabase::reconnect())]);
+                $slow = function (): int {
+                    usleep(200_000); // between reading the row and deleting it
+
+                    return $this->now;
+                };
+                $result = (new Tokens($dm, 'default', $slow))->consume($token, 'confirm');
+                file_put_contents("{$results}/{$i}.json", json_encode($result));
+                // No shutdown: PHPUnit's handlers and the inherited connection belong to the parent.
+                posix_kill(posix_getpid(), SIGKILL);
+            }
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            pcntl_waitpid($pid, $status);
+        }
+
+        $got = array_map(static fn (string $f): mixed => json_decode((string) file_get_contents($f), true), glob($results . '/*.json') ?: []);
+        $this->assertCount(4, $got, 'every child reported');
+        $this->assertSame(['user-1'], array_values(array_filter($got)), 'exactly one consumer gets the subject');
+        $this->assertSame([], $this->dataManager()->raw('SELECT id FROM auth_tokens'));
+    }
 
     public function test_json_consume_locks(): void
     {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Tests\Users;
 
 use Nyholm\Psr7\Factory\Psr17Factory;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\AuthManager;
@@ -12,6 +13,7 @@ use Preflow\Auth\SessionGuard;
 use Preflow\Core\Application;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Data\DataManager;
+use Preflow\Data\Driver\MysqlDriver;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
@@ -20,6 +22,7 @@ use Preflow\Folio\Storage\TableSync;
 use Preflow\Folio\Users\RecordUser;
 use Preflow\Folio\Users\RecordUserProvider;
 use Preflow\Testing\ArraySession;
+use Preflow\Testing\MysqlTestDatabase;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidatorFactory;
 
@@ -34,27 +37,49 @@ final class RecordUserProviderTest extends TestCase
         'fields' => ['email' => ['type' => 'string'], 'password_hash' => ['type' => 'string'], 'roles' => ['type' => 'string']],
     ];
 
+    private bool $mysql = false;
+
     protected function setUp(): void
     {
         $this->dir = sys_get_temp_dir() . '/recuser_' . bin2hex(random_bytes(4));
         mkdir($this->dir . '/models', 0777, true);
-        file_put_contents($this->dir . '/models/member.json', json_encode(self::MEMBER));
+        $this->build('sqlite');
+    }
+
+    /** The member and page types on $storage, tables made by TableSync. */
+    private function build(string $storage): void
+    {
+        file_put_contents($this->dir . '/models/member.json', json_encode(['storage' => $storage] + self::MEMBER));
         file_put_contents($this->dir . '/models/page.json', json_encode([
-            'key' => 'page', 'table' => 'page', 'storage' => 'sqlite', 'id_field' => 'uuid', 'fields' => ['title' => ['type' => 'string']],
+            'key' => 'page', 'table' => 'page', 'storage' => $storage, 'id_field' => 'uuid', 'fields' => ['title' => ['type' => 'string']],
         ]));
         $this->catalog = new TypeCatalog($this->dir . '/models');
         $registry = new TypeRegistry($this->dir . '/models');
+        $driver = $storage === 'mysql'
+            ? new MysqlDriver(MysqlTestDatabase::pdo())
+            : new SqliteDriver(new \PDO('sqlite:' . $this->dir . '/a.sqlite'));
         $this->dm = new DataManager(
-            drivers: ['sqlite' => new SqliteDriver(new \PDO('sqlite:' . $this->dir . '/a.sqlite'))],
-            defaultDriver: 'sqlite',
+            drivers: [$storage => $driver],
+            defaultDriver: $storage,
             typeRegistry: $registry,
             validatorFactory: new ValidatorFactory(new RuleFactory()),
         );
         (new TableSync($this->catalog, $registry, $this->dm))->sync();
     }
 
+    /** The rest of the test with both types on MySQL (an emptied test database). */
+    private function onMysql(): void
+    {
+        MysqlTestDatabase::dropAllTables(MysqlTestDatabase::pdo());
+        $this->mysql = true;
+        $this->build('mysql');
+    }
+
     protected function tearDown(): void
     {
+        if ($this->mysql) {
+            MysqlTestDatabase::dropAllTables(MysqlTestDatabase::pdo());
+        }
         $this->rmTree($this->dir);
     }
 
@@ -135,6 +160,41 @@ final class RecordUserProviderTest extends TestCase
         $this->assertFalse($user->hasRole('bronze'));
     }
 
+    #[Group('mysql')]
+    public function test_find_by_id_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_find_by_id();
+    }
+
+    #[Group('mysql')]
+    public function test_find_by_credentials_is_case_insensitive_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_find_by_credentials_is_case_insensitive();
+    }
+
+    #[Group('mysql')]
+    public function test_find_by_id_does_not_cross_types_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_find_by_id_does_not_cross_types();
+    }
+
+    #[Group('mysql')]
+    public function test_lookalike_or_duplicate_emails_never_match_another_account_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_lookalike_or_duplicate_emails_never_match_another_account();
+    }
+
+    #[Group('mysql')]
+    public function test_roles_from_json_string_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_roles_from_json_string_on_sqlite();
+    }
+
     public function test_roles_from_array_and_csv(): void
     {
         $type = $this->dm->getTypeRegistry()->get('member');
@@ -161,6 +221,20 @@ final class RecordUserProviderTest extends TestCase
     #[RunInSeparateProcess]
     public function test_login_through_session_guard(): void
     {
+        $this->loginThroughSessionGuard('sqlite');
+    }
+
+    #[RunInSeparateProcess]
+    #[Group('mysql')]
+    public function test_login_through_session_guard_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->loginThroughSessionGuard('mysql');
+    }
+
+    /** A booted app whose member guard signs in by email against member records on $storage. */
+    private function loginThroughSessionGuard(string $storage): void
+    {
         $this->rmTree($this->dir);
         $dir = $this->dir = sys_get_temp_dir() . '/recuser_app_' . bin2hex(random_bytes(4));
         $w = function (string $rel, string $content) use ($dir): void {
@@ -171,9 +245,9 @@ final class RecordUserProviderTest extends TestCase
         $w('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");
         $w('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
         $w('config/data.php', "<?php\nreturn " . var_export([
-            'default' => 'sqlite',
+            'default' => $storage,
             'models_path' => $dir . '/config/models',
-            'drivers' => ['sqlite' => ['path' => $dir . '/app.sqlite']],
+            'drivers' => $storage === 'mysql' ? ['mysql' => MysqlTestDatabase::dataConfig()] : ['sqlite' => ['path' => $dir . '/app.sqlite']],
         ], true) . ";\n");
         $w('config/auth.php', "<?php\nreturn " . var_export([
             'default_guard' => 'member',
@@ -181,7 +255,7 @@ final class RecordUserProviderTest extends TestCase
             'providers' => ['members' => ['class' => RecordUserProvider::class, 'type' => 'member']],
             'session' => ['cookie' => 'record_user_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
-        $w('config/models/member.json', (string) json_encode(self::MEMBER));
+        $w('config/models/member.json', (string) json_encode(['storage' => $storage] + self::MEMBER));
         $w('app/pages/index.twig', 'HOME');
 
         $app = Application::create($dir);

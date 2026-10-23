@@ -148,6 +148,25 @@ final class MysqlAppTest extends TestCase
         $this->assertStringContainsString('<h1>Hello</h1>', (string) $this->get('/hello')->getBody());
     }
 
+    public function test_table_sync_adds_a_new_field_column_on_mysql(): void
+    {
+        $this->migrateStep();
+        $model = json_decode((string) file_get_contents($this->dir . '/config/models/post.json'), true);
+        $model['fields']['subtitle'] = ['type' => 'string'];
+        unset($model['key'], $model['table'], $model['storage'], $model['id_field']);
+        $this->writeModel('post', $model);
+
+        $this->assertContains('added column post.subtitle', $this->migrateStep());
+
+        $column = MysqlTestDatabase::pdo()->query(
+            "SELECT COLUMN_TYPE, IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'post' AND COLUMN_NAME = 'subtitle'"
+        )->fetch(\PDO::FETCH_ASSOC);
+        $this->assertSame(['COLUMN_TYPE' => 'longtext', 'IS_NULLABLE' => 'YES'], $column === false ? null : ['COLUMN_TYPE' => strtolower($column['COLUMN_TYPE']), 'IS_NULLABLE' => $column['IS_NULLABLE']]);
+
+        $this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 't'], 'subtitle' => 'Sub']);
+        $this->assertSame('Sub', $this->stored('post', 'p1')->get('subtitle'));
+    }
+
     /** @return list<string> */
     private function migrateStep(): array
     {

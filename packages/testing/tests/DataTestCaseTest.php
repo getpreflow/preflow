@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Preflow\Testing\Tests;
 
+use PHPUnit\Framework\Attributes\Group;
 use Preflow\Data\Attributes\Entity;
 use Preflow\Data\Attributes\Field;
 use Preflow\Data\Attributes\Id;
 use Preflow\Data\Model;
 use Preflow\Data\ModelMetadata;
+use Preflow\Data\Driver\MysqlDriver;
+use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Testing\DataTestCase;
+use Preflow\Testing\MysqlTestDatabase;
 
 #[Entity(table: 'notes', storage: 'sqlite')]
 class TestNote extends Model
@@ -80,5 +84,22 @@ final class DataTestCaseTest extends DataTestCase
         $note->content = $content;
         $note->status = $status;
         $this->dataManager()->save($note);
+    }
+
+    #[Group('mysql')]
+    public function test_use_mysql_points_default_and_mysql_at_an_emptied_database(): void
+    {
+        $pdo = MysqlTestDatabase::pdo();
+        $pdo->exec('CREATE TABLE IF NOT EXISTS leftover (id INT)');
+        $this->assertInstanceOf(SqliteDriver::class, $this->dataManager()->driver('default'));
+
+        $driver = $this->useMysql();
+
+        $this->assertTrue($this->usesMysql());
+        $this->assertSame($driver, $this->dataManager()->driver('default'));
+        $this->assertSame($driver, $this->dataManager()->driver('mysql'));
+        $this->assertInstanceOf(MysqlDriver::class, $driver);
+        $this->assertInstanceOf(SqliteDriver::class, $this->dataManager()->driver('sqlite'));
+        $this->assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()')->fetchColumn());
     }
 }

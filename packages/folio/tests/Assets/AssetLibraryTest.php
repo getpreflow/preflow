@@ -4,10 +4,21 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Assets;
 
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
+use Preflow\Data\DataManager;
+use Preflow\Data\Driver\MysqlDriver;
+use Preflow\Data\Driver\PdoDriver;
+use Preflow\Data\Driver\SqliteDriver;
+use Preflow\Data\Locales;
+use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Assets\AssetLibrary;
 use Preflow\Folio\Assets\AssetUploadException;
+use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Storage\TableSync;
 use Preflow\Folio\Tests\Support\AssetFixtures;
+use Preflow\Testing\MysqlTestDatabase;
 
 #[RequiresPhpExtension('gd')]
 #[RequiresPhpExtension('fileinfo')]
@@ -20,8 +31,13 @@ final class AssetLibraryTest extends TestCase
         $this->makeAssetRoot();
     }
 
+    private bool $mysql = false;
+
     protected function tearDown(): void
     {
+        if ($this->mysql) {
+            MysqlTestDatabase::dropAllTables(MysqlTestDatabase::pdo());
+        }
         $this->removeAssetRoot();
     }
 
@@ -165,5 +181,44 @@ final class AssetLibraryTest extends TestCase
         $b = $library->upload($this->upload($this->png(5, 5), 'b.png', 'image/png'), null);
 
         $this->assertSame([$b->id, $a->id], array_map(static fn ($x) => $x->id, $library->all()));
+    }
+
+    public function test_upload_stores_its_index_row_on_sqlite(): void
+    {
+        $this->assertSqlIndexRoundTrip('sqlite', new SqliteDriver(new \PDO('sqlite::memory:')));
+    }
+
+    #[Group('mysql')]
+    public function test_upload_stores_its_index_row_on_mysql(): void
+    {
+        $pdo = MysqlTestDatabase::pdo();
+        MysqlTestDatabase::dropAllTables($pdo);
+        $this->mysql = true;
+        $this->assertSqlIndexRoundTrip('mysql', new MysqlDriver($pdo));
+    }
+
+    /** The asset index on a SQL storage (config assets.storage), its table made by TableSync. */
+    private function assertSqlIndexRoundTrip(string $storage, PdoDriver $driver): void
+    {
+        mkdir($this->assetRoot . '/models');
+        $dm = new DataManager(drivers: [$storage => $driver], defaultDriver: $storage, typeRegistry: new TypeRegistry($this->assetRoot . '/models'));
+        $library = new AssetLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', ['storage' => $storage]);
+        $lines = (new TableSync(new TypeCatalog($this->assetRoot . '/models'), $dm->getTypeRegistry(), $dm, $library->definition()))->sync();
+        $this->assertSame(['created table folio_assets'], $lines);
+
+        $asset = $library->upload($this->upload($this->png(), 'Sea View.PNG', 'image/png'), 'u@x');
+
+        $rows = $driver->pdo()->query('SELECT uuid, path, mime FROM folio_assets')->fetchAll(\PDO::FETCH_ASSOC);
+        $this->assertSame([['uuid' => $asset->id, 'path' => $asset->path, 'mime' => 'image/png']], $rows);
+        $this->assertEquals($asset, $library->find($asset->id));
+        $this->assertSame([$asset->id], array_map(static fn ($a) => $a->id, $library->all()));
+
+        $updated = $library->update($asset->id, ['alt' => ['en' => 'Sea', 'de' => 'Meer'], 'focal_x' => 30]);
+        $this->assertSame(['en' => 'Sea', 'de' => 'Meer'], $library->find($asset->id)?->alt);
+        $this->assertSame(30, $updated->focalX);
+
+        $library->delete($asset->id);
+        $this->assertNull($library->find($asset->id));
+        $this->assertSame([], $driver->pdo()->query('SELECT uuid FROM folio_assets')->fetchAll());
     }
 }

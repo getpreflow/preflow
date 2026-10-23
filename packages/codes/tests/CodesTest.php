@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Codes\Tests;
 
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Preflow\Codes\Codes;
 use Preflow\Core\Application;
@@ -14,6 +15,7 @@ use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Migration\Migrator;
 use Preflow\Folio\Transfer\ContentSet;
 use Preflow\Folio\Transfer\Exporter;
+use Preflow\Testing\MysqlTestDatabase;
 
 /**
  * A temp app with Folio and the codes extension enabled (a fake vendor/composer/installed.json
@@ -24,6 +26,7 @@ final class CodesTest extends TestCase
     private string $dir;
     private ?Application $app = null;
     private \DateTimeImmutable $now;
+    private bool $mysql = false;
 
     protected function setUp(): void
     {
@@ -54,6 +57,9 @@ final class CodesTest extends TestCase
 
     protected function tearDown(): void
     {
+        if ($this->mysql) {
+            MysqlTestDatabase::dropAllTables(MysqlTestDatabase::pdo());
+        }
         $it = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($this->dir, \FilesystemIterator::SKIP_DOTS),
             \RecursiveIteratorIterator::CHILD_FIRST,
@@ -73,9 +79,17 @@ final class CodesTest extends TestCase
             'drivers' => [
                 'json' => ['driver' => \Preflow\Data\Driver\JsonFileDriver::class, 'path' => $this->dir . '/storage/data'],
                 'sqlite' => ['path' => $this->dir . '/storage/codes.sqlite'],
-            ],
+            ] + ($this->mysql ? ['mysql' => MysqlTestDatabase::dataConfig()] : []),
             'aliases' => $aliases,
         ], true) . ";\n");
+    }
+
+    /** The rest of the test with the codes alias on MySQL (an emptied test database). */
+    private function onMysql(): void
+    {
+        MysqlTestDatabase::dropAllTables(MysqlTestDatabase::pdo());
+        $this->mysql = true;
+        $this->dataConfig(['codes' => 'mysql']);
     }
 
     private function write(string $rel, string $content): void
@@ -280,7 +294,9 @@ final class CodesTest extends TestCase
         $this->assertNull($redemptions[1]['redeemer']);
 
         $pdo = $this->app()->container()->get(DataManager::class)->driver('codes')->pdo();
-        $columns = array_column($pdo->query('PRAGMA table_info(code_redemption)')->fetchAll(\PDO::FETCH_ASSOC), 'name');
+        $columns = $this->mysql
+            ? $pdo->query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'code_redemption' ORDER BY ORDINAL_POSITION")->fetchAll(\PDO::FETCH_COLUMN)
+            : array_column($pdo->query('PRAGMA table_info(code_redemption)')->fetchAll(\PDO::FETCH_ASSOC), 'name');
         $this->assertSame(['id', 'code_id', 'purpose', 'redeemer', 'redeemed_at'], $columns);
         $row = $pdo->query('SELECT * FROM code_redemption')->fetch(\PDO::FETCH_ASSOC);
         $this->assertNotContains('client-hash', array_values($row));
@@ -501,5 +517,110 @@ final class CodesTest extends TestCase
         $this->assertArrayNotHasKey('code', $summary['tables']);
         $this->assertArrayNotHasKey('code_redemption', $summary['tables']);
         $this->assertSame(['page'], array_values(array_diff(array_keys($summary['tables']), ['folio_assets'])));
+    }
+
+    #[Group('mysql')]
+    public function test_issue_readable_and_redeem_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_issue_readable_and_redeem();
+    }
+
+    #[Group('mysql')]
+    public function test_readable_code_normalised_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_readable_code_normalised();
+    }
+
+    #[Group('mysql')]
+    public function test_random_code_is_url_safe_and_128_bits_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_random_code_is_url_safe_and_128_bits();
+    }
+
+    #[Group('mysql')]
+    public function test_wrong_purpose_is_unknown_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_wrong_purpose_is_unknown();
+    }
+
+    #[Group('mysql')]
+    public function test_expired_used_up_revoked_reasons_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_expired_used_up_revoked_reasons();
+    }
+
+    #[Group('mysql')]
+    public function test_empty_code_never_matches_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_empty_code_never_matches();
+    }
+
+    #[Group('mysql')]
+    public function test_check_does_not_count_use_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_check_does_not_count_use();
+    }
+
+    #[Group('mysql')]
+    public function test_redemption_recorded_without_ip_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_redemption_recorded_without_ip();
+    }
+
+    #[Group('mysql')]
+    public function test_throttled_client_refused_even_with_valid_code_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_throttled_client_refused_even_with_valid_code();
+    }
+
+    #[Group('mysql')]
+    public function test_concurrent_redeem_cannot_exceed_max_uses_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_concurrent_redeem_cannot_exceed_max_uses();
+    }
+
+    #[Group('mysql')]
+    public function test_max_uses_ten_allows_exactly_ten_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_max_uses_ten_allows_exactly_ten();
+    }
+
+    #[Group('mysql')]
+    public function test_uses_above_nine_compared_numerically_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_uses_above_nine_compared_numerically();
+    }
+
+    #[Group('mysql')]
+    public function test_unlimited_code_counts_every_use_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_unlimited_code_counts_every_use();
+    }
+
+    #[Group('mysql')]
+    public function test_readable_not_allowed_for_purpose_throws_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_readable_not_allowed_for_purpose_throws();
+    }
+
+    #[Group('mysql')]
+    public function test_codes_and_redemptions_not_exported_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_codes_and_redemptions_not_exported();
     }
 }

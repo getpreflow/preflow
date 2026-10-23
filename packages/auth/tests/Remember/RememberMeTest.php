@@ -6,6 +6,7 @@ namespace Preflow\Auth\Tests\Remember;
 
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\AuthManager;
@@ -50,9 +51,7 @@ final class RememberMeTest extends DataTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        /** @var Migration $migration */
-        $migration = require dirname(__DIR__, 2) . '/migrations/2026_10_23_000001_auth_remember.php';
-        $migration->up(new Schema($this->getPdo()));
+        $this->migrate($this->getPdo());
 
         $this->provider = new class implements UserProviderInterface {
             public function findById(string $id): ?Authenticatable
@@ -65,6 +64,25 @@ final class RememberMeTest extends DataTestCase
                 return null;
             }
         };
+    }
+
+    private function migrate(\PDO $pdo): void
+    {
+        /** @var Migration $migration */
+        $migration = require dirname(__DIR__, 2) . '/migrations/2026_10_23_000001_auth_remember.php';
+        $migration->up(new Schema($pdo));
+    }
+
+    /** The rest of the test on MySQL: 'default' and 'mysql' are a migrated MySQL storage. */
+    private function onMysql(): void
+    {
+        $this->migrate($this->useMysql()->pdo());
+    }
+
+    /** @return list<string> the storages a looping test covers */
+    private function storages(): array
+    {
+        return $this->usesMysql() ? ['mysql'] : ['sqlite', 'json'];
     }
 
     protected function tearDown(): void
@@ -181,7 +199,7 @@ final class RememberMeTest extends DataTestCase
 
     public function test_cookie_restores_user_and_rotates(): void
     {
-        foreach (['sqlite', 'json'] as $storage) {
+        foreach ($this->storages() as $storage) {
             $remember = $this->remember($storage);
             $cookie = $remember->issue('member', 'user-1');
             [$selector] = explode(':', $cookie);
@@ -216,7 +234,7 @@ final class RememberMeTest extends DataTestCase
 
     public function test_replayed_old_validator_revokes_all(): void
     {
-        foreach (['sqlite', 'json'] as $storage) {
+        foreach ($this->storages() as $storage) {
             $remember = $this->remember($storage);
             $stolen = $remember->issue('member', 'user-1');
             $otherDevice = $remember->issue('member', 'user-1');
@@ -244,7 +262,7 @@ final class RememberMeTest extends DataTestCase
 
     public function test_expired_remember_ignored(): void
     {
-        foreach (['sqlite', 'json'] as $storage) {
+        foreach ($this->storages() as $storage) {
             $remember = $this->remember($storage);
             $cookie = $remember->issue('member', 'user-1');
             $live = $remember->issue('member', 'user-2', 31 * 86400);
@@ -267,7 +285,7 @@ final class RememberMeTest extends DataTestCase
 
     public function test_logout_clears_cookie_and_row(): void
     {
-        foreach (['sqlite', 'json'] as $storage) {
+        foreach ($this->storages() as $storage) {
             $remember = $this->remember($storage);
             $cookie = $remember->issue('member', 'user-1');
             $kept = $remember->issue('member', 'user-1');
@@ -329,7 +347,8 @@ final class RememberMeTest extends DataTestCase
     {
         // A second request rotates the same cookie between this one's read and its update.
         $hook = null;
-        $remember = $this->remember('sqlite', function () use (&$hook): int {
+        $sql = $this->usesMysql() ? 'mysql' : 'sqlite';
+        $remember = $this->remember($sql, function () use (&$hook): int {
             if ($hook !== null) {
                 [$run, $hook] = [$hook, null];
                 $run();
@@ -337,7 +356,7 @@ final class RememberMeTest extends DataTestCase
 
             return $this->now;
         });
-        $other = $this->remember('sqlite');
+        $other = $this->remember($sql);
         $cookie = $other->issue('member', 'user-1');
         $won = null;
         $hook = function () use ($other, $cookie, &$won): void {
@@ -353,7 +372,7 @@ final class RememberMeTest extends DataTestCase
 
     public function test_previous_validator_accepted_within_grace(): void
     {
-        foreach (['sqlite', 'json'] as $storage) {
+        foreach ($this->storages() as $storage) {
             $remember = $this->remember($storage);
             $old = $remember->issue('member', 'user-1');
             $rotated = $remember->resolve('member', $old)['cookie'] ?? '';
@@ -374,7 +393,7 @@ final class RememberMeTest extends DataTestCase
 
     public function test_previous_validator_after_grace_is_theft(): void
     {
-        foreach (['sqlite', 'json'] as $storage) {
+        foreach ($this->storages() as $storage) {
             $remember = $this->remember($storage);
             $old = $remember->issue('member', 'user-1');
             $otherDevice = $remember->issue('member', 'user-1');
@@ -394,7 +413,7 @@ final class RememberMeTest extends DataTestCase
     {
         // Two tabs (or htmx loads) without a session send the same cookie; the second
         // reads the row only after the first rotated it.
-        foreach (['sqlite', 'json'] as $storage) {
+        foreach ($this->storages() as $storage) {
             $remember = $this->remember($storage);
             $cookie = $remember->issue('member', 'user-1');
 
@@ -407,6 +426,69 @@ final class RememberMeTest extends DataTestCase
             $this->assertSame([], $second->getHeader('Set-Cookie'), $storage);
             $this->assertSame('user-1', $remember->resolve('member', self::cookieValue($first))['userId'] ?? null, $storage);
         }
+    }
+
+    #[Group('mysql')]
+    public function test_login_with_remember_sets_cookie_with_attributes_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_login_with_remember_sets_cookie_with_attributes();
+    }
+
+    #[Group('mysql')]
+    public function test_cookie_restores_user_and_rotates_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_cookie_restores_user_and_rotates();
+    }
+
+    #[Group('mysql')]
+    public function test_replayed_old_validator_revokes_all_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_replayed_old_validator_revokes_all();
+    }
+
+    #[Group('mysql')]
+    public function test_expired_remember_ignored_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_expired_remember_ignored();
+    }
+
+    #[Group('mysql')]
+    public function test_logout_clears_cookie_and_row_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_logout_clears_cookie_and_row();
+    }
+
+    #[Group('mysql')]
+    public function test_rotation_is_decided_by_the_update_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_rotation_is_decided_by_the_update();
+    }
+
+    #[Group('mysql')]
+    public function test_previous_validator_accepted_within_grace_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_previous_validator_accepted_within_grace();
+    }
+
+    #[Group('mysql')]
+    public function test_previous_validator_after_grace_is_theft_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_previous_validator_after_grace_is_theft();
+    }
+
+    #[Group('mysql')]
+    public function test_concurrent_restore_read_after_commit_keeps_member_logged_in_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_concurrent_restore_read_after_commit_keeps_member_logged_in();
     }
 
     public function test_rotated_cookie_reaches_error_responses(): void

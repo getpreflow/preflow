@@ -5,12 +5,16 @@ declare(strict_types=1);
 namespace Preflow\Core\Tests\Throttle;
 
 use Nyholm\Psr7\ServerRequest;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DataManager;
+use Preflow\Data\Driver\MysqlDriver;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\Migration\Migration;
 use Preflow\Data\Migration\Schema;
 use Preflow\Testing\DataTestCase;
+use Preflow\Testing\MysqlTestDatabase;
 
 final class ThrottleTest extends DataTestCase
 {
@@ -21,11 +25,17 @@ final class ThrottleTest extends DataTestCase
         return new Throttle($this->dataManager(), 'secret', $storage, fn (): int => $this->now);
     }
 
-    private function migrate(): void
+    private function migrate(?\PDO $pdo = null): void
     {
         /** @var Migration $migration */
         $migration = require dirname(__DIR__, 2) . '/migrations/2026_10_22_000000_preflow_throttle.php';
-        $migration->up(new Schema($this->getPdo()));
+        $migration->up(new Schema($pdo ?? $this->getPdo()));
+    }
+
+    /** The rest of the test on MySQL: 'default' is a migrated MySQL storage. */
+    private function onMysql(): void
+    {
+        $this->migrate($this->useMysql()->pdo());
     }
 
     protected function setUp(): void
@@ -137,7 +147,7 @@ final class ThrottleTest extends DataTestCase
 
     public function test_works_on_sqlite_and_json(): void
     {
-        foreach (['sqlite', 'json'] as $storage) {
+        foreach ($this->usesMysql() ? ['mysql'] : ['sqlite', 'json'] as $storage) {
             $t = $this->throttle($storage);
             $t->hit('code', 'c1', 60);
             $t->hit('code', 'c1', 60);
@@ -202,6 +212,90 @@ final class ThrottleTest extends DataTestCase
         $this->assertTrue($t->tooMany('code', 'c1', 1, 60));
         $this->now += 1;
         $this->assertFalse($t->tooMany('code', 'c1', 1, 60));
+    }
+
+    #[Group('mysql')]
+    public function test_allows_until_max_then_blocks_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_allows_until_max_then_blocks();
+    }
+
+    #[Group('mysql')]
+    public function test_window_expiry_resets_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_window_expiry_resets();
+    }
+
+    #[Group('mysql')]
+    public function test_clear_resets_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_clear_resets();
+    }
+
+    #[Group('mysql')]
+    public function test_purposes_are_separate_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_purposes_are_separate();
+    }
+
+    #[Group('mysql')]
+    public function test_works_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_works_on_sqlite_and_json();
+    }
+
+    #[Group('mysql')]
+    public function test_prune_removes_rows_older_than_cutoff_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_prune_removes_rows_older_than_cutoff();
+    }
+
+    #[Group('mysql')]
+    public function test_new_row_triggers_prune_once_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_new_row_triggers_prune_once();
+    }
+
+    #[Group('mysql')]
+    public function test_window_expires_exactly_at_boundary_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_window_expires_exactly_at_boundary();
+    }
+
+    /** Four processes, each on its own connection, hit one key 25 times: the upsert loses none. */
+    #[Group('mysql')]
+    #[RequiresPhpExtension('pcntl')]
+    #[RequiresPhpExtension('posix')]
+    public function test_concurrent_hits_are_all_counted_on_mysql(): void
+    {
+        $this->onMysql();
+        $children = [];
+        for ($i = 0; $i < 4; $i++) {
+            $pid = pcntl_fork();
+            if ($pid === 0) {
+                $dm = new DataManager(['default' => new MysqlDriver(MysqlTestDatabase::reconnect())]);
+                $t = new Throttle($dm, 'secret', 'default', fn (): int => $this->now);
+                for ($n = 0; $n < 25; $n++) {
+                    $t->hit('login', 'c1', 60);
+                }
+                // No shutdown: PHPUnit's handlers and the inherited connection belong to the parent.
+                posix_kill(posix_getpid(), SIGKILL);
+            }
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            pcntl_waitpid($pid, $status);
+        }
+
+        $this->assertSame(['hits' => 100, 'window_start' => $this->now], $this->storedRow($this->dataManager(), 'login', 'c1'));
     }
 
     /** @var list<string> */

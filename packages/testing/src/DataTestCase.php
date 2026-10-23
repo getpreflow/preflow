@@ -7,6 +7,7 @@ namespace Preflow\Testing;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
+use Preflow\Data\Driver\MysqlDriver;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\Migration\Schema;
 
@@ -17,6 +18,7 @@ abstract class DataTestCase extends TestCase
     private ?SqliteDriver $sqliteDriver = null;
     private ?JsonFileDriver $jsonDriver = null;
     private ?DataManager $dataManager = null;
+    private ?MysqlDriver $mysqlDriver = null;
 
     protected function setUp(): void
     {
@@ -35,6 +37,10 @@ abstract class DataTestCase extends TestCase
 
     protected function tearDown(): void
     {
+        if ($this->mysqlDriver !== null) {
+            MysqlTestDatabase::dropAllTables($this->mysqlDriver->pdo());
+            $this->mysqlDriver = null;
+        }
         if ($this->jsonDir !== null && is_dir($this->jsonDir)) {
             $this->deleteDir($this->jsonDir);
         }
@@ -51,14 +57,38 @@ abstract class DataTestCase extends TestCase
         return $this->jsonDriver;
     }
 
+    /**
+     * Runs the rest of the test on MySQL: 'mysql' and 'default' then name a
+     * MysqlDriver on the emptied test database (the test skips without MYSQL_* env).
+     * Its tables are dropped again in tearDown.
+     */
+    protected function useMysql(): MysqlDriver
+    {
+        $pdo = MysqlTestDatabase::pdo();
+        MysqlTestDatabase::dropAllTables($pdo);
+        $this->mysqlDriver = new MysqlDriver($pdo);
+        $this->dataManager = null;
+
+        return $this->mysqlDriver;
+    }
+
+    protected function usesMysql(): bool
+    {
+        return $this->mysqlDriver !== null;
+    }
+
     protected function dataManager(): DataManager
     {
         if ($this->dataManager === null) {
-            $this->dataManager = new DataManager([
+            $drivers = [
                 'sqlite' => $this->sqliteDriver,
                 'json' => $this->jsonDriver,
                 'default' => $this->sqliteDriver,
-            ]);
+            ];
+            if ($this->mysqlDriver !== null) {
+                $drivers['mysql'] = $drivers['default'] = $this->mysqlDriver;
+            }
+            $this->dataManager = new DataManager($drivers);
         }
         return $this->dataManager;
     }
