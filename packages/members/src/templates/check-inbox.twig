@@ -1,0 +1,7 @@
+{% extends '@members/_card.twig' %}
+
+{% block card %}
+<h1>{{ t('members.inbox.title') }}</h1>
+<p>{{ t('members.inbox.text', {email: '<strong>' ~ email ~ '</strong>'})|replace({('&lt;strong&gt;'): '<strong>', ('&lt;/strong&gt;'): '</strong>'})|raw }}</p>
+<p>{{ t('members.inbox.hint', {validity: validity.confirm}) }}</p>
+{% endblock %}

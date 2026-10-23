@@ -1,0 +1,21 @@
+{% extends '@members/_card.twig' %}
+
+{% block card %}
+<h1>{{ t('members.forgot.title') }}</h1>
+{% if sent %}
+<p role="status">{{ t('members.forgot.sent') }}</p>
+<p class="members-switch"><a href="{{ base }}/login">{{ t('members.forgot.back') }}</a></p>
+{% else %}
+<p>{{ t('members.forgot.text') }}</p>
+<form class="members-grid" method="post" action="{{ base }}/forgot" novalidate>
+  {{ csrf_field() }}
+  {% if error %}<div class="members-errors" role="alert">{{ t('members.errors.' ~ error) }}</div>{% endif %}
+  <div class="field">
+    <label for="f-email">{{ t('members.form.email') }}</label>
+    <input id="f-email" name="email" type="email" autocomplete="email" required>
+  </div>
+  <button class="btn btn-primary members-submit" type="submit">{{ t('members.forgot.submit') }}</button>
+</form>
+<p class="members-switch"><a href="{{ base }}/login">{{ t('members.forgot.back') }}</a></p>
+{% endif %}
+{% endblock %}

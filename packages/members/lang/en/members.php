@@ -3,6 +3,8 @@
 // The members pages and mails. A site changes single keys in its own lang/en/members.php.
 // :name parameters are filled by t(); {name} placeholders in the mails by the mailer.
 return [
+    // The page title and the tag on the status pages.
+    'label' => 'Members',
     'form' => [
         'name' => 'Name',
         'email' => 'Email',
@@ -76,6 +78,7 @@ return [
         'button' => 'Send the link again',
     ],
     'account' => [
+        'back' => 'Back',
         'title' => 'Your account',
         'changed' => 'Password changed.',
         'deleted' => 'Your account is deleted.',

@@ -3,6 +3,8 @@
 // Die Texte der Mitgliederseiten und -mails, in der Sie-Form. Eine Site ändert einzelne Schlüssel in ihrer lang/de/members.php.
 // :name-Parameter füllt t(), {name}-Platzhalter in den Mails der Mailer.
 return [
+    // The page title and the tag on the status pages.
+    'label' => 'Mitglieder',
     'form' => [
         'name' => 'Name',
         'email' => 'E-Mail',
@@ -76,6 +78,7 @@ return [
         'button' => 'Link noch einmal senden',
     ],
     'account' => [
+        'back' => 'Zurück',
         'title' => 'Ihr Konto',
         'changed' => 'Passwort geändert.',
         'deleted' => 'Ihr Konto ist gelöscht.',

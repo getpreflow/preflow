@@ -29,10 +29,24 @@ final class Links
     /** A member page in $locale (an unknown locale gets the default), e.g. url('de', '/login'). */
     public function url(string $locale, string $path = ''): string
     {
+        return $this->base . $this->local($locale, $path);
+    }
+
+    /** The same page without the host, for links inside the site: "/de/members/login". */
+    public function local(string $locale, string $path = ''): string
+    {
         $locale = $this->locales->has($locale) ? $locale : $this->locales->default;
         $prefix = $this->prefixed && $locale !== $this->locales->default ? '/' . $locale : '';
 
-        return $this->base . $prefix . $this->path . $path;
+        return $prefix . $this->path . $path;
+    }
+
+    /** The locale prefix of a site path ("/de/start" for "/start"), none for the default locale. */
+    public function localize(string $locale, string $path): string
+    {
+        $locale = $this->locales->has($locale) ? $locale : $this->locales->default;
+
+        return ($this->prefixed && $locale !== $this->locales->default ? '/' . $locale : '') . $path;
     }
 
     /** The member's edit page in Folio. */

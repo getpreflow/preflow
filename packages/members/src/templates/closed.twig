@@ -1,0 +1,7 @@
+{% extends '@members/_card.twig' %}
+
+{% block card %}
+<h1>{{ t('members.closed.title') }}</h1>
+<p>{{ t('members.closed.text') }}</p>
+<a class="btn btn-primary" href="{{ base }}/login">{{ t('members.form.login') }}</a>
+{% endblock %}

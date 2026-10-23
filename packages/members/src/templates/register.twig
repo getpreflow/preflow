@@ -1,0 +1,136 @@
+{% extends layout %}
+
+{% block meta %}
+<title>{{ t('members.label') }}{% if site.name|default('') %} | {{ site.name }}{% endif %}</title>
+<meta name="robots" content="noindex">
+{% endblock %}
+
+{% block content %}
+{# The site's intro (page sections, headline) goes here. #}
+{% block intro %}{% endblock %}
+
+<section class="members-form">
+  <div class="section-inner">
+    {% if notice %}<p class="members-note" role="status">{{ notice }}</p>{% endif %}
+    {% if open %}
+    <form class="members-card" method="post" action="{{ base }}/register" novalidate>
+      {{ csrf_field() }}
+      {% if errors %}
+      <div class="members-errors" role="alert">
+        {% if errors.form is defined %}{{ t('members.errors.' ~ errors.form) }}{% else %}{{ t('members.errors.summary') }}{% endif %}
+      </div>
+      {% endif %}
+      <div class="members-row">
+        <div class="field{{ errors.name is defined ? ' field--error' : '' }}">
+          <label for="f-name">{{ t('members.form.name') }}</label>
+          <input id="f-name" name="name" type="text" autocomplete="name" required value="{{ old.name|default('') }}">
+          {% if errors.name is defined %}<p class="field-error">{{ t('members.errors.name') }}</p>{% endif %}
+        </div>
+        <div class="field{{ errors.email is defined ? ' field--error' : '' }}">
+          <label for="f-email">{{ t('members.form.email') }}</label>
+          <input id="f-email" name="email" type="email" autocomplete="email" required value="{{ old.email|default('') }}">
+          {% if errors.email is defined %}<p class="field-error">{{ t('members.errors.email') }}</p>{% endif %}
+        </div>
+      </div>
+      <div class="field{{ errors.password is defined ? ' field--error' : '' }}">
+        <label for="f-password">{{ t('members.form.password') }}</label>
+        <input id="f-password" name="password" type="password" autocomplete="new-password" minlength="{{ password_min }}" required>
+        <p class="field-hint">{{ t('members.form.password_hint', {min: password_min}) }}</p>
+        {% if errors.password is defined %}<p class="field-error">{{ t('members.errors.password', {min: password_min}) }}</p>{% endif %}
+      </div>
+      {# The admission rule's own fields (a code, a question); the site fills this block. #}
+      {% block admission_fields %}{% endblock %}
+      {# More fields of an extended member type. #}
+      {% block extra_fields %}{% endblock %}
+      <div class="field{{ errors.consent is defined ? ' field--error' : '' }}">
+        <label class="members-check" for="f-consent">
+          <input id="f-consent" name="consent" type="checkbox" value="1" required{{ old.consent|default(false) ? ' checked' : '' }}>
+          {# The privacy page is the site's: pass privacy_url, or override this block. #}
+          {% block consent_text %}
+          {% set link = privacy_url|default('') ? '<a href="' ~ privacy_url|e('html_attr') ~ '" target="_blank" rel="noopener">' ~ t('members.form.privacy') ~ '</a>' : t('members.form.privacy') %}
+          <span>{{ t('members.form.consent')|replace({':link': link})|raw }}</span>
+          {% endblock %}
+        </label>
+        {% if errors.consent is defined %}<p class="field-error">{{ t('members.errors.consent') }}</p>{% endif %}
+      </div>
+      <button class="btn btn-primary members-submit" type="submit">{{ t('members.form.submit') }}</button>
+      <p class="members-switch">{{ t('members.form.registered') }} <a href="{{ base }}/login">{{ t('members.form.login') }}</a></p>
+    </form>
+    {% else %}
+    <div class="members-card">
+      <h2>{{ t('members.closed.title') }}</h2>
+      <p>{{ t('members.closed.text') }}</p>
+      <p class="members-switch"><a href="{{ base }}/login">{{ t('members.form.login') }}</a></p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% apply css %}
+.members-form { padding: 1.5rem 2rem 6rem; }
+.members-form .section-inner { max-width: 760px; }
+.members-card {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  padding: 1.6rem 1.8rem 1.8rem;
+  display: grid;
+  gap: 1rem;
+}
+.members-card h2 {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  text-transform: uppercase;
+  line-height: 1;
+}
+.members-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.members-form .field label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.3rem; }
+.members-form .field input[type="text"],
+.members-form .field input[type="email"],
+.members-form .field input[type="password"],
+.members-form .field textarea {
+  width: 100%;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 0.6rem 0.75rem;
+}
+.members-form .field textarea { resize: vertical; min-height: 5rem; }
+.members-form .field input:focus,
+.members-form .field textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+.members-code { font-family: var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; }
+.field-hint { font-size: 0.75rem; color: var(--ink-muted); margin-top: 0.3rem; }
+.field-error { font-size: 0.8rem; color: var(--accent-deep); font-weight: 600; margin-top: 0.3rem; }
+.field--error input,
+.field--error textarea { border-color: var(--accent); }
+.members-or {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--ink-muted);
+}
+.members-check { display: flex !important; gap: 0.6rem; align-items: flex-start; font-weight: 400 !important; font-size: 0.85rem !important; color: var(--ink-soft); }
+.members-check input { margin-top: 0.25rem; accent-color: var(--accent); }
+.members-submit { justify-content: center; width: 100%; padding: 1rem; font-size: 0.9rem; }
+.members-switch { font-size: 0.85rem; color: var(--ink-soft); text-align: center; }
+.members-switch a { color: var(--accent); font-weight: 600; }
+.members-errors,
+.members-note {
+  border: 1px solid var(--accent);
+  background: var(--accent-tint);
+  color: var(--ink);
+  font-size: 0.9rem;
+  padding: 0.7rem 0.9rem;
+}
+.members-note { margin-bottom: 1rem; }
+@media (max-width: 768px) {
+  .members-form { padding: 1rem 1.2rem 4rem; }
+  .members-card { padding: 1.2rem; }
+  .members-row { grid-template-columns: 1fr; }
+}
+{% endapply %}
+{% endblock %}
+

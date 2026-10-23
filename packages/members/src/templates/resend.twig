@@ -1,0 +1,11 @@
+{% extends '@members/_card.twig' %}
+
+{% block card %}
+<h1>{{ t('members.resend.title') }}</h1>
+<p>{{ t('members.resend.text') }}</p>
+<form method="post" action="{{ base }}/resend">
+  {{ csrf_field() }}
+  <input type="hidden" name="email" value="{{ email }}">
+  <button class="btn btn-primary" type="submit">{{ t('members.resend.button') }}</button>
+</form>
+{% endblock %}

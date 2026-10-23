@@ -1,0 +1,66 @@
+{# A member's account: change the password, delete the account. #}
+{% extends '@members/_card.twig' %}
+
+{% block card %}
+<span class="members-status__tag">{{ t('members.label') }}</span>
+<h1>{{ t('members.account.title') }}</h1>
+<p class="account-who"><strong>{{ name }}</strong> · {{ email }}</p>
+{% if notice %}<p class="members-status__note" role="status">{{ notice }}</p>{% endif %}
+{% if error == 'throttled' %}<div class="members-errors" role="alert">{{ t('members.errors.throttled') }}</div>{% endif %}
+
+<div class="account-section">
+  <h2>{{ t('members.account.password_title') }}</h2>
+  <form class="members-grid" method="post" action="{{ base }}/account/password" novalidate>
+    {{ csrf_field() }}
+    {% if error in ['password', 'mismatch', 'current'] %}
+    <div class="members-errors" role="alert">{{ error == 'password' ? t('members.errors.password', {min: password_min}) : t('members.account.errors.' ~ error) }}</div>
+    {% endif %}
+    <div class="field">
+      <label for="f-current">{{ t('members.account.current') }}</label>
+      <input id="f-current" name="current" type="password" autocomplete="current-password" required>
+    </div>
+    <div class="field">
+      <label for="f-password">{{ t('members.reset.password') }}</label>
+      <input id="f-password" name="password" type="password" autocomplete="new-password" minlength="{{ password_min }}" required>
+      <p class="field-hint">{{ t('members.form.password_hint', {min: password_min}) }}</p>
+    </div>
+    <div class="field">
+      <label for="f-repeat">{{ t('members.reset.repeat') }}</label>
+      <input id="f-repeat" name="repeat" type="password" autocomplete="new-password" minlength="{{ password_min }}" required>
+    </div>
+    <button class="btn btn-primary members-submit" type="submit">{{ t('members.account.password_submit') }}</button>
+  </form>
+</div>
+
+<div class="account-section account-section--danger">
+  <h2>{{ t('members.account.delete_title') }}</h2>
+  <p>{{ t('members.account.delete_text') }}</p>
+  <form class="members-grid" method="post" action="{{ base }}/account/delete" novalidate>
+    {{ csrf_field() }}
+    {% if error in ['confirm', 'delete_current'] %}
+    <div class="members-errors" role="alert">{{ t('members.account.errors.' ~ error) }}</div>
+    {% endif %}
+    <div class="field">
+      <label for="f-delete-current">{{ t('members.account.current') }}</label>
+      <input id="f-delete-current" name="current" type="password" autocomplete="current-password" required>
+    </div>
+    <label class="account-check" for="f-confirm">
+      <input id="f-confirm" name="confirm" type="checkbox" value="1" required>
+      <span>{{ t('members.account.confirm') }}</span>
+    </label>
+    <button class="btn account-delete" type="submit">{{ t('members.account.delete_submit') }}</button>
+  </form>
+</div>
+<p class="members-switch"><a href="{{ landing }}">{{ t('members.account.back') }}</a></p>
+{% apply css %}
+.members-status .account-who { margin-bottom: 1.4rem; }
+.members-status .account-who strong { color: var(--ink); }
+.members-status .account-section { border-top: 1px solid var(--rule); padding-top: 1.4rem; margin-top: 1.6rem; }
+.members-status .account-section h2 { font-family: var(--font-display); font-size: 1.4rem; text-transform: uppercase; line-height: 1; margin-bottom: 0.9rem; }
+.members-status .account-check { display: flex; gap: 0.6rem; align-items: flex-start; font-size: 0.85rem; color: var(--ink-soft); }
+.members-status .account-check input { margin-top: 0.2rem; accent-color: var(--accent); }
+.members-status .account-delete { width: 100%; padding: 1rem; font-size: 0.9rem; background: transparent; color: var(--accent-deep); border: 1px solid var(--accent); cursor: pointer; }
+.members-status .account-delete:hover { background: var(--accent-tint); }
+.members-status .members-switch { margin-top: 1.6rem; }
+{% endapply %}
+{% endblock %}

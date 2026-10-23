@@ -3,6 +3,8 @@
 // Les textes des pages et des e-mails des membres. Un site modifie des clés isolées dans son lang/fr/members.php.
 // Les paramètres :name sont remplis par t(), les marqueurs {name} des e-mails par le mailer.
 return [
+    // The page title and the tag on the status pages.
+    'label' => 'Membres',
     'form' => [
         'name' => 'Nom',
         'email' => 'E-mail',
@@ -76,6 +78,7 @@ return [
         'button' => 'Renvoyer le lien',
     ],
     'account' => [
+        'back' => 'Retour',
         'title' => 'Votre compte',
         'changed' => 'Mot de passe modifié.',
         'deleted' => 'Votre compte a été supprimé.',

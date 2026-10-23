@@ -1,0 +1,68 @@
+{# Shared frame of the small status pages (check-inbox, confirm, thanks, login, forgot, reset, resend, account). Extends the configured page layout. #}
+{% extends layout %}
+
+{% block meta %}
+<title>{{ t('members.label') }}{% if site.name|default('') %} | {{ site.name }}{% endif %}</title>
+<meta name="robots" content="noindex">
+{% endblock %}
+
+{% block content %}
+<section class="members-status">
+  <div class="section-inner">
+    <div class="members-status__card">
+      {% block card %}{% endblock %}
+    </div>
+  </div>
+</section>
+{% apply css %}
+.members-status { padding: 8rem 2rem 6rem; min-height: 60vh; }
+.members-status .section-inner { max-width: 640px; }
+.members-status__card { background: var(--paper); border: 1px solid var(--rule); padding: 1.8rem; }
+.members-status__tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--ink);
+  margin-bottom: 0.8rem;
+}
+.members-status h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 2.6rem);
+  text-transform: uppercase;
+  line-height: 1;
+  margin-bottom: 0.8rem;
+}
+.members-status p { color: var(--ink-soft); line-height: 1.6; }
+.members-status p + p,
+.members-status p + .btn,
+.members-status form { margin-top: 1rem; }
+.members-status a:not(.btn) { color: var(--accent); font-weight: 600; }
+.members-status form.members-grid { display: grid; gap: 1rem; }
+.members-status .field label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.3rem; }
+.members-status .field input[type="email"],
+.members-status .field input[type="password"] {
+  width: 100%;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 0.6rem 0.75rem;
+}
+.members-status .field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+.members-status .field-hint { font-size: 0.75rem; color: var(--ink-muted); margin-top: 0.3rem; }
+.members-status .members-errors { border: 1px solid var(--accent); background: var(--accent-tint); color: var(--ink); font-size: 0.9rem; padding: 0.7rem 0.9rem; }
+.members-status .members-submit { justify-content: center; width: 100%; padding: 1rem; font-size: 0.9rem; }
+.members-status form .btn { justify-content: center; }
+.members-status .members-submit + .members-switch,
+.members-status form + .members-switch { margin-top: 1.2rem; }
+.members-status .members-switch { font-size: 0.85rem; text-align: center; }
+.members-status__note { border: 1px solid var(--accent); background: var(--accent-tint); padding: 0.7rem 0.9rem; margin-bottom: 1rem; font-size: 0.9rem; }
+@media (max-width: 768px) { .members-status { padding: 6.5rem 1.2rem 4rem; } }
+{% endapply %}
+{% endblock %}
+

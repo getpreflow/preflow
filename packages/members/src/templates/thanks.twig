@@ -1,0 +1,8 @@
+{% extends '@members/_card.twig' %}
+
+{% block card %}
+{% if notice %}<p class="members-status__note" role="status">{{ notice }}</p>{% endif %}
+<span class="members-status__tag">{{ t('members.thanks.tag') }}</span>
+<h1>{{ t('members.thanks.title') }}</h1>
+<p>{{ t('members.thanks.text') }}</p>
+{% endblock %}

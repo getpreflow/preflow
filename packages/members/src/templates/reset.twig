@@ -1,0 +1,26 @@
+{% extends '@members/_card.twig' %}
+
+{% block card %}
+{% if error == 'expired' %}
+<h1>{{ t('members.reset.expired_title') }}</h1>
+<p role="alert">{{ t('members.reset.expired') }}</p>
+<p><a class="btn btn-primary" href="{{ base }}/forgot">{{ t('members.reset.again') }}</a></p>
+{% else %}
+<h1>{{ t('members.reset.title') }}</h1>
+<form class="members-grid" method="post" action="{{ base }}/reset" novalidate>
+  {{ csrf_field() }}
+  <input type="hidden" name="token" value="{{ token }}">
+  {% if error %}<div class="members-errors" role="alert">{{ error == 'password' ? t('members.errors.password', {min: password_min}) : t('members.reset.mismatch') }}</div>{% endif %}
+  <div class="field">
+    <label for="f-password">{{ t('members.reset.password') }}</label>
+    <input id="f-password" name="password" type="password" autocomplete="new-password" minlength="{{ password_min }}" required>
+    <p class="field-hint">{{ t('members.form.password_hint', {min: password_min}) }}</p>
+  </div>
+  <div class="field">
+    <label for="f-repeat">{{ t('members.reset.repeat') }}</label>
+    <input id="f-repeat" name="repeat" type="password" autocomplete="new-password" minlength="{{ password_min }}" required>
+  </div>
+  <button class="btn btn-primary members-submit" type="submit">{{ t('members.reset.submit') }}</button>
+</form>
+{% endif %}
+{% endblock %}

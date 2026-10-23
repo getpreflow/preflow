@@ -1,0 +1,22 @@
+{% extends '@members/_card.twig' %}
+
+{% block card %}
+{% if used|default(false) %}
+<h1>{{ t('members.confirm.used_title') }}</h1>
+<p>{{ t('members.confirm.used') }}</p>
+<p><a class="btn btn-primary" href="{{ base }}/login">{{ t('members.confirm.login') }}</a> <a class="btn btn-ghost" href="{{ base }}/register">{{ t('members.confirm.register') }}</a></p>
+{% else %}
+<h1>{{ t('members.confirm.title') }}</h1>
+<p>{{ t('members.confirm.text') }}</p>
+<form id="confirm-form" method="post" action="{{ base }}/confirm">
+  {{ csrf_field() }}
+  <input type="hidden" name="token" value="{{ token }}">
+  <button class="btn btn-primary" type="submit">{{ t('members.confirm.button') }}</button>
+</form>
+{% apply js %}
+// The link was opened by a person (a mail scanner only fetches it): confirm without a second click.
+var form = document.getElementById('confirm-form');
+if (form) { form.submit(); }
+{% endapply %}
+{% endif %}
+{% endblock %}
