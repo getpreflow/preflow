@@ -142,4 +142,23 @@ final class TypeRegistryTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->registry->define(['key' => 'ext', 'table' => 'ext', 'fields' => []]);
     }
+
+    public function test_extends_file_is_not_a_standalone_type(): void
+    {
+        // A site file with "extends": true only patches an extension's type (Folio merges it).
+        $this->writeSchema('member', ['key' => 'member', 'extends' => true, 'fields' => ['company' => ['type' => 'string']]]);
+
+        $this->assertFalse($this->registry->has('member'));
+        $def = $this->registry->define(['key' => 'member', 'table' => 'member', 'fields' => ['email' => ['type' => 'string']]]);
+        $this->assertSame($def, $this->registry->get('member'));
+    }
+
+    public function test_extends_file_without_definition_is_unknown(): void
+    {
+        $this->writeSchema('member', ['key' => 'member', 'extends' => true, 'fields' => []]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Unknown type: member');
+        $this->registry->get('member');
+    }
 }

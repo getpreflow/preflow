@@ -17,6 +17,7 @@ use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Extension\Customization\Customizations;
 use Preflow\Folio\Extension\ExtensionRegistry;
+use Preflow\Folio\Extension\ModelExtension;
 use Preflow\Folio\Extension\Settings\ExtensionSettings;
 use Preflow\Folio\Extension\Screen\ScreenRegistry;
 use Preflow\Folio\Http\AdminAuthMiddleware;
@@ -87,13 +88,23 @@ final class FolioServiceProvider extends ServiceProvider
         if ($extensionTypes !== [] && $dataManager !== null && $dataManager->getTypeRegistry() === null) {
             throw new \Preflow\Folio\Extension\ExtensionException("Extension models and settings need the models directory {$modelsPath} (data.models_path); create it.");
         }
+        // Site model files with "extends": true add fields to these types (ModelExtension).
+        $patches = ModelExtension::patches($modelsPath);
         foreach ($extensionTypes as [$schema, $section, $what]) {
+            if (isset($patches[$schema['key']])) {
+                $schema = ModelExtension::merge($schema, $patches[$schema['key']]);
+                unset($patches[$schema['key']]);
+            }
             try {
                 $types->define($schema);
                 $catalog->add($schema, $section);
             } catch (\RuntimeException $e) {
                 throw new \Preflow\Folio\Extension\ExtensionException("{$what} \"{$schema['key']}\": {$e->getMessage()}", 0, $e);
             }
+        }
+        if ($patches !== []) {
+            $key = array_key_first($patches);
+            throw new \Preflow\Folio\Content\FrontendConfigException("Model \"{$key}\" extends an extension type, but no enabled extension defines it");
         }
         // Blocks: component blocks from app/Components, data-only blocks from
         // app/Blocks, plus classes listed in config/folio.php 'blocks'. Cached

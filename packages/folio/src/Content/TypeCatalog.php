@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
+use Preflow\Folio\Extension\ModelExtension;
 use Preflow\Folio\Extension\Screen\ScreenRegistry;
 
 final class TypeCatalog
@@ -61,6 +62,9 @@ final class TypeCatalog
             $data = json_decode((string) file_get_contents($file), true);
             if (!is_array($data) || !isset($data['key']) || !is_string($data['key'])) {
                 continue; // skip malformed / incomplete definitions
+            }
+            if (ModelExtension::isPatch($data)) {
+                continue; // adds to an extension's type, listed through add() once merged
             }
             $listings[] = $this->listing($data, 'content');
         }

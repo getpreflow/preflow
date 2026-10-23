@@ -9,6 +9,9 @@ final class TypeRegistry
     /** @var array<string, TypeDefinition> */
     private array $cache = [];
 
+    /** @var array<string, bool> per type with a model file: whether the file defines it on its own */
+    private array $files = [];
+
     public function __construct(
         private readonly string $modelsPath,
         private readonly ?Locales $locales = null,
@@ -24,7 +27,25 @@ final class TypeRegistry
 
     public function has(string $type): bool
     {
-        return isset($this->cache[$type]) || file_exists($this->modelsPath . '/' . $type . '.json');
+        return isset($this->cache[$type]) || $this->hasFile($type);
+    }
+
+    /**
+     * A model file that is a type of its own. One with "extends": true only patches a type an
+     * extension defines at runtime (Folio merges it in before define()), so it is not one.
+     */
+    private function hasFile(string $type): bool
+    {
+        if (isset($this->files[$type])) {
+            return $this->files[$type];
+        }
+        $path = $this->modelsPath . '/' . $type . '.json';
+        if (!is_file($path)) {
+            return false; // not remembered: the file may still be written
+        }
+        $schema = json_decode((string) file_get_contents($path), true);
+
+        return $this->files[$type] = !(is_array($schema) && ($schema['extends'] ?? false) === true);
     }
 
     /**
@@ -46,7 +67,7 @@ final class TypeRegistry
     private function load(string $type): TypeDefinition
     {
         $path = $this->modelsPath . '/' . $type . '.json';
-        if (!file_exists($path)) {
+        if (!$this->hasFile($type)) {
             throw new \RuntimeException("Unknown type: {$type}. No schema at {$path}");
         }
 
