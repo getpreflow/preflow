@@ -251,17 +251,23 @@ final class TokensTest extends DataTestCase
         $children = [];
         for ($i = 0; $i < 4; $i++) {
             $pid = pcntl_fork();
+            if ($pid === -1) {
+                $this->fail('pcntl_fork() failed');
+            }
             if ($pid === 0) {
-                $dm = new DataManager(['default' => new MysqlDriver(MysqlTestDatabase::reconnect())]);
-                $slow = function (): int {
-                    usleep(200_000); // between reading the row and deleting it
+                try {
+                    $dm = new DataManager(['default' => new MysqlDriver(MysqlTestDatabase::reconnect())]);
+                    $slow = function (): int {
+                        usleep(200_000); // between reading the row and deleting it
 
-                    return $this->now;
-                };
-                $result = (new Tokens($dm, 'default', $slow))->consume($token, 'confirm');
-                file_put_contents("{$results}/{$i}.json", json_encode($result));
-                // No shutdown: PHPUnit's handlers and the inherited connection belong to the parent.
-                posix_kill(posix_getpid(), SIGKILL);
+                        return $this->now;
+                    };
+                    $result = (new Tokens($dm, 'default', $slow))->consume($token, 'confirm');
+                    file_put_contents("{$results}/{$i}.json", json_encode($result));
+                } finally {
+                    // Even after a throw: no shutdown, PHPUnit's handlers and the inherited connection belong to the parent.
+                    posix_kill(posix_getpid(), SIGKILL);
+                }
             }
             $children[] = $pid;
         }
@@ -336,10 +342,16 @@ final class TokensTest extends DataTestCase
         $h = new Tokens($this->dataManager(), 'json', function () use (&$child, $token, $slow, $lockDir, $resultFile): int {
             // Inside H's critical section: B starts and waits for the lock.
             $child = pcntl_fork();
+            if ($child === -1) {
+                $this->fail('pcntl_fork() failed');
+            }
             if ($child === 0) {
-                $result = (new Tokens($this->dataManager(), 'json', $slow, $lockDir))->consume($token, 'confirm');
-                file_put_contents($resultFile, json_encode($result));
-                posix_kill(posix_getpid(), SIGKILL);
+                try {
+                    $result = (new Tokens($this->dataManager(), 'json', $slow, $lockDir))->consume($token, 'confirm');
+                    file_put_contents($resultFile, json_encode($result));
+                } finally {
+                    posix_kill(posix_getpid(), SIGKILL);
+                }
             }
             usleep(200_000);
 

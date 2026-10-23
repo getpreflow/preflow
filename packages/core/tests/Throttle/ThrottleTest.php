@@ -280,14 +280,20 @@ final class ThrottleTest extends DataTestCase
         $children = [];
         for ($i = 0; $i < 4; $i++) {
             $pid = pcntl_fork();
+            if ($pid === -1) {
+                $this->fail('pcntl_fork() failed');
+            }
             if ($pid === 0) {
-                $dm = new DataManager(['default' => new MysqlDriver(MysqlTestDatabase::reconnect())]);
-                $t = new Throttle($dm, 'secret', 'default', fn (): int => $this->now);
-                for ($n = 0; $n < 25; $n++) {
-                    $t->hit('login', 'c1', 60);
+                try {
+                    $dm = new DataManager(['default' => new MysqlDriver(MysqlTestDatabase::reconnect())]);
+                    $t = new Throttle($dm, 'secret', 'default', fn (): int => $this->now);
+                    for ($n = 0; $n < 25; $n++) {
+                        $t->hit('login', 'c1', 60);
+                    }
+                } finally {
+                    // Even after a throw: no shutdown, PHPUnit's handlers and the inherited connection belong to the parent.
+                    posix_kill(posix_getpid(), SIGKILL);
                 }
-                // No shutdown: PHPUnit's handlers and the inherited connection belong to the parent.
-                posix_kill(posix_getpid(), SIGKILL);
             }
             $children[] = $pid;
         }
