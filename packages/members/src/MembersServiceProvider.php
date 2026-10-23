@@ -20,7 +20,7 @@ use Preflow\View\TemplateEngineInterface;
 
 /**
  * Binds the members services: MembersConfig (config/members.php; a missing file means the
- * defaults), Members, Links, MemberMailer and the configured Admission, and adds the
+ * defaults), Members, Links, LinkValidity, MemberMailer and the configured Admission, and adds the
  * package copy (lang/{locale}/members.php) under the site's own. When the Folio
  * extension "members" is enabled, boot checks that rbac (the member roles) is enabled too
  * and that the admission class is one.
@@ -37,6 +37,10 @@ final class MembersServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $c->get(PasswordHasherInterface::class),
         ));
+        $container->singleton(LinkValidity::class, static fn (Container $c): LinkValidity => new LinkValidity(
+            $c->get(Translator::class),
+            $c->get(MembersConfig::class),
+        ));
         $container->singleton(Links::class, static fn (Container $c): Links => self::links($c));
         $container->singleton(MemberMailer::class, static fn (Container $c): MemberMailer => new MemberMailer(
             $c->get(Notifier::class),
@@ -46,6 +50,7 @@ final class MembersServiceProvider extends ServiceProvider
             $c->get(Locales::class),
             $c->get(MembersConfig::class),
             $c->get(Admission::class),
+            $c->get(LinkValidity::class),
             self::from($c),
         ));
         $container->singleton(Admission::class, static function (Container $c): Admission {

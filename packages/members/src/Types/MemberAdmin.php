@@ -176,12 +176,13 @@ final class MemberAdmin
 
     /**
      * The default message in the member's language, with the placeholders filled in: the
-     * owner's text from Members settings, else the lang files' (mail.{mail}.body), which a
-     * site overrides with its own lang/{locale}/members.php.
+     * owner's text from Members settings stored for $lang itself, else the lang files'
+     * (mail.{mail}.body in $lang), which a site overrides with its own lang/{locale}/members.php.
      */
     private function text(string $setting, string $mail, string $lang, string $name, string $loginUrl = ''): string
     {
-        $text = $this->settings->get('members', $setting, $lang);
+        // exact: a text stored for another locale only would put the wrong language into the mail.
+        $text = $this->settings->get('members', $setting, $lang, exact: true);
         if (!is_string($text) || trim($text) === '') {
             $text = $this->translator->get('members.mail.' . $mail . '.body', [], $lang);
         }

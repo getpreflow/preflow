@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DynamicRecord;
 use Preflow\I18n\Translator;
+use Preflow\Members\LinkValidity;
 use Preflow\Members\MemberMailer;
 use Preflow\Members\Members;
 use Preflow\Members\MemberState;
@@ -33,7 +34,7 @@ final class MemberMailTest extends TestCase
     {
         return [
             'en' => ['en', 'Confirm your email address', 'Hi Ada,', 'https://site.test/members/confirm/tok123', 'The link works for 24 hours.'],
-            'de' => ['de', 'Bestätige deine E-Mail-Adresse', 'Hallo Ada,', 'https://site.test/de/members/confirm/tok123', 'Der Link gilt 24 Stunden.'],
+            'de' => ['de', 'Bestätigen Sie Ihre E-Mail-Adresse', 'Guten Tag Ada', 'https://site.test/de/members/confirm/tok123', 'Der Link gilt 24 Stunden.'],
             'fr' => ['fr', 'Confirmez votre adresse e-mail', 'Bonjour Ada,', 'https://site.test/fr/members/confirm/tok123', 'Le lien est valable 24 heures.'],
         ];
     }
@@ -63,7 +64,7 @@ final class MemberMailTest extends TestCase
     {
         return [
             'en' => ['en', 'Your account', 'Log in: https://site.test/members/login', 'Forgot your password? https://site.test/members/reset/rtok'],
-            'de' => ['de', 'Dein Konto', 'Anmelden: https://site.test/de/members/login', 'Passwort vergessen? https://site.test/de/members/reset/rtok'],
+            'de' => ['de', 'Ihr Konto', 'Anmelden: https://site.test/de/members/login', 'Passwort vergessen? https://site.test/de/members/reset/rtok'],
             'fr' => ['fr', 'Votre compte', 'Se connecter : https://site.test/fr/members/login', 'Mot de passe oublié ? https://site.test/fr/members/reset/rtok'],
         ];
     }
@@ -89,7 +90,7 @@ final class MemberMailTest extends TestCase
     {
         return [
             'en' => ['en', 'Reset your password', 'https://site.test/members/reset/ptok'],
-            'de' => ['de', 'Setze dein Passwort zurück', 'https://site.test/de/members/reset/ptok'],
+            'de' => ['de', 'Setzen Sie Ihr Passwort zurück', 'https://site.test/de/members/reset/ptok'],
             'fr' => ['fr', 'Réinitialisez votre mot de passe', 'https://site.test/fr/members/reset/ptok'],
         ];
     }
@@ -156,7 +157,7 @@ final class MemberMailTest extends TestCase
     {
         return [
             'en' => ['en', 'Your account is ready', 'About your registration'],
-            'de' => ['de', 'Dein Konto ist bereit', 'Zu deiner Registrierung'],
+            'de' => ['de', 'Ihr Konto ist bereit', 'Zu Ihrer Registrierung'],
             'fr' => ['fr', 'Votre compte est prêt', 'À propos de votre inscription'],
         ];
     }
@@ -191,6 +192,49 @@ final class MemberMailTest extends TestCase
         $mailer->declined($m, 'Sorry.');
     }
 
+    /** @return array<string, array{string, int, int, string, string, string, string}> */
+    public static function validityCases(): array
+    {
+        return [
+            'en' => ['en', 3600, 7200, 'The link works for one hour.', 'The link works for 2 hours.', 'The reset link works for 2 hours.', 'one hour'],
+            'de' => ['de', 3600, 1800, 'Der Link gilt eine Stunde.', 'Der Link gilt 30 Minuten.', 'Der Link zum Zurücksetzen gilt 30 Minuten.', 'eine Stunde'],
+            'fr' => ['fr', 172800, 60, 'Le lien est valable 48 heures.', 'Le lien est valable une minute.', 'Le lien de réinitialisation est valable une minute.', '48 heures'],
+        ];
+    }
+
+    #[DataProvider('validityCases')]
+    public function test_link_validity_follows_the_configured_ttls(string $lang, int $confirmTtl, int $resetTtl, string $confirmLine, string $resetLine, string $existingLine, string $confirmValidity): void
+    {
+        $this->site(members: "['confirm_ttl' => {$confirmTtl}, 'reset_ttl' => {$resetTtl}]");
+        $m = $this->member('ada@example.com', $lang);
+        $mailer = $this->mailer();
+
+        $mailer->confirmLater($m, 'c');
+        $mailer->resetLater($m, 'r');
+        $mailer->existingLater($m, 'e');
+        $this->flush();
+
+        [$confirm, $reset, $existing] = $this->mails();
+        $this->assertStringContainsString($confirmLine, $confirm->text);
+        $this->assertStringContainsString($resetLine, $reset->text);
+        $this->assertStringContainsString($existingLine, $existing->text);
+        $this->assertSame($confirmValidity, $this->container()->get(LinkValidity::class)->confirm($lang));
+    }
+
+    public function test_link_validity_formats_hours_and_minutes(): void
+    {
+        $this->site();
+        $validity = $this->container()->get(LinkValidity::class);
+
+        $this->assertSame('24 hours', $validity->confirm('en'), 'the default confirm_ttl');
+        $this->assertSame('one hour', $validity->reset('en'), 'the default reset_ttl');
+        $this->assertSame('24 Stunden', $validity->confirm('de'));
+        $this->assertSame('une heure', $validity->reset('fr'));
+        $this->assertSame('90 minutes', $validity->format(5400, 'en'), 'not whole hours: minutes');
+        $this->assertSame('eine Minute', $validity->format(20, 'de'), 'at least one minute');
+        $this->assertSame('24 hours', $validity->confirm('xx'), 'an unknown locale: the fallback');
+    }
+
     public function test_an_unknown_member_language_gets_the_site_default(): void
     {
         $this->site(['de', 'en']);
@@ -200,7 +244,7 @@ final class MemberMailTest extends TestCase
         $this->flush();
 
         $mail = $this->onlyMail();
-        $this->assertSame('Setze dein Passwort zurück', $mail->subject);
+        $this->assertSame('Setzen Sie Ihr Passwort zurück', $mail->subject);
         $this->assertStringContainsString('https://site.test/members/reset/ptok', $mail->text);
     }
 
@@ -215,7 +259,7 @@ final class MemberMailTest extends TestCase
 
         $mail = $this->onlyMail();
         $this->assertSame('Bitte bestätigen', $mail->subject);
-        $this->assertStringStartsWith('Hallo Ada,', $mail->text, 'the body is still the package copy');
+        $this->assertStringStartsWith('Guten Tag Ada', $mail->text, 'the body is still the package copy');
     }
 
     public function test_from_name_and_the_channel_address(): void
@@ -264,7 +308,7 @@ final class MemberMailTest extends TestCase
         $this->flush();
 
         $html = (string) $this->onlyMail()->html;
-        $this->assertStringContainsString('<h1>SITE Bestätige deine E-Mail-Adresse</h1>', $html);
+        $this->assertStringContainsString('<h1>SITE Bestätigen Sie Ihre E-Mail-Adresse</h1>', $html);
         $this->assertStringContainsString('href="https://site.test/de/members/confirm/tok"', $html);
     }
 

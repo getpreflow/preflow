@@ -30,7 +30,7 @@ return [
     'inbox' => [
         'title' => 'Consultez votre boîte de réception',
         'text' => 'Un lien est en route vers :email. Cliquez dessus pour confirmer votre adresse.',
-        'hint' => 'Le lien est valable 24 heures. Rien reçu ? Regardez dans votre dossier de courrier indésirable.',
+        'hint' => 'Le lien est valable :validity. Rien reçu ? Regardez dans votre dossier de courrier indésirable.',
     ],
     'confirm' => [
         'title' => 'Confirmez votre e-mail',
@@ -93,19 +93,24 @@ return [
             'confirm' => 'Veuillez confirmer que vous comprenez que cette action supprime votre compte.',
         ],
     ],
+    // Durée de validité d'un lien ({validity} / :validity), d'après confirm_ttl et reset_ttl.
+    'validity' => [
+        'hours' => '{1} une heure|[2,*] :count heures',
+        'minutes' => '{1} une minute|[2,*] :count minutes',
+    ],
     // Objet et texte de chaque e-mail (voir lang/en/members.php).
     'mail' => [
         'confirm' => [
             'subject' => 'Confirmez votre adresse e-mail',
-            'body' => "Bonjour {name},\n\nVeuillez confirmer votre adresse e-mail : {link}\n\nLe lien est valable 24 heures. Si vous ne vous êtes pas inscrit, ignorez ce message.",
+            'body' => "Bonjour {name},\n\nVeuillez confirmer votre adresse e-mail : {link}\n\nLe lien est valable {validity}. Si vous ne vous êtes pas inscrit, ignorez ce message.",
         ],
         'existing' => [
             'subject' => 'Votre compte',
-            'body' => "Bonjour {name},\n\nQuelqu'un (vous, espérons-le) a tenté de s'inscrire avec cette adresse, mais vous avez déjà un compte.\n\nSe connecter : {login_url}\nMot de passe oublié ? {reset_url}",
+            'body' => "Bonjour {name},\n\nQuelqu'un (vous, espérons-le) a tenté de s'inscrire avec cette adresse, mais vous avez déjà un compte.\n\nSe connecter : {login_url}\nMot de passe oublié ? {reset_url}\nLe lien de réinitialisation est valable {validity}.",
         ],
         'reset' => [
             'subject' => 'Réinitialisez votre mot de passe',
-            'body' => "Bonjour {name},\n\nChoisissez un nouveau mot de passe ici : {link}\n\nLe lien est valable une heure. Si vous n'avez rien demandé, ignorez ce message.",
+            'body' => "Bonjour {name},\n\nChoisissez un nouveau mot de passe ici : {link}\n\nLe lien est valable {validity}. Si vous n'avez rien demandé, ignorez ce message.",
         ],
         'notice' => [
             'subject' => '{name} attend une validation',

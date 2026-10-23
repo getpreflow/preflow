@@ -105,12 +105,14 @@ with an int key is shown without a label. The keys of
   nothing changes. Declining ends the member's remembered sessions.
 - Settings → Members settings: `registration_open`, `notice_email`, `accept_message`,
   `decline_message` (translatable; `{name}` and `{login_url}` are filled in). Left empty,
-  the panel takes `mail.accepted.body` / `mail.declined.body` of the lang files.
+  the panel takes `mail.accepted.body` / `mail.declined.body` of the lang files. A text stored
+  only for another locale is not used (the member gets the lang default in their language).
 
 ## Copy and mails
 
 The words of the member pages and mails are in `lang/{en,de,fr}/members.php`. A site changes
-single keys in its own `lang/<locale>/members.php`; the rest stays the package's:
+single keys in its own `lang/<locale>/members.php`; the rest stays the package's. German is
+in the formal "Sie" form; a site that says "du" overrides the German keys.
 
 ```php
 // lang/de/members.php
@@ -122,7 +124,10 @@ return ['mail' => ['confirm' => ['subject' => 'Bitte bestätige deine Adresse']]
   (a `TransportException` aborts the decision).
 - Each mail is in the member's language (the site default when the site lacks it); the owner's
   notice is in the site default locale. Mail bodies use `{name}`, `{link}`, `{login_url}`,
-  `{reset_url}`, `{email}`, `{details}`, `{folio_url}`.
+  `{reset_url}`, `{validity}`, `{email}`, `{details}`, `{folio_url}`.
+- `{validity}` (and `:validity` in `inbox.hint`) is how long the link works, from `confirm_ttl` /
+  `reset_ttl`: `LinkValidity::confirm($locale)` / `reset($locale)` give "24 hours", "eine Stunde"
+  (lang keys `validity.hours` / `validity.minutes`, plural forms).
 - The HTML part renders `mail.layout` (default the neutral `@members/mail/layout.twig`) with
   `lang`, `subject`, `accent` and `paragraphs` (escaped text, URLs linked in the accent colour).
 - The sender is `mail.from_name` with the address of `config/notify.php` `channels.email.from`;

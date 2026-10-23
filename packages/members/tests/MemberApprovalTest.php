@@ -92,11 +92,11 @@ final class MemberApprovalTest extends TestCase
         $html = $this->admin('/folio/member/' . $m->getId() . '/edit');
 
         $accept = Dom::first($html, '//form[contains(@action, "/_action/accept")]//textarea[@name="message"]')?->textContent ?? '';
-        $this->assertStringContainsString("Hallo Ada Lovelace,\n\ndein Konto ist bereit.", $accept);
+        $this->assertStringContainsString("Guten Tag Ada Lovelace\n\nIhr Konto ist bereit.", $accept);
         $this->assertStringContainsString('https://site.test/de/members/login', $accept);
         $this->assertStringNotContainsString('{name}', $accept);
         $decline = Dom::first($html, '//form[contains(@action, "/_action/decline")]//textarea[@name="message"]')?->textContent ?? '';
-        $this->assertStringContainsString('Hallo Ada Lovelace,', $decline);
+        $this->assertStringContainsString('Guten Tag Ada Lovelace', $decline);
         $this->assertStringContainsString('Accept and send', $html);
         $this->assertStringContainsString('Decline and send', $html);
         $this->assertStringContainsString('Sent in German.', $html);
@@ -127,7 +127,7 @@ final class MemberApprovalTest extends TestCase
         $accept = Dom::first($html, '//form[contains(@action, "/_action/accept")]//textarea[@name="message"]')?->textContent ?? '';
         $this->assertSame('Servus Ada Lovelace, hier: https://site.test/de/members/login', $accept);
         $decline = Dom::first($html, '//form[contains(@action, "/_action/decline")]//textarea[@name="message"]')?->textContent ?? '';
-        $this->assertStringContainsString("Hallo Ada Lovelace,\n\nvielen Dank für dein Interesse.", $decline, 'the package copy for keys the site leaves alone');
+        $this->assertStringContainsString("Guten Tag Ada Lovelace\n\nVielen Dank für Ihr Interesse.", $decline, 'the package copy for keys the site leaves alone');
     }
 
     #[RunInSeparateProcess]
@@ -143,6 +143,26 @@ final class MemberApprovalTest extends TestCase
 
         $accept = Dom::first($html, '//form[contains(@action, "/_action/accept")]//textarea[@name="message"]')?->textContent ?? '';
         $this->assertSame('Gespeichert für Ada Lovelace', $accept);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_message_stored_only_in_another_locale_gives_way_to_the_lang_default(): void
+    {
+        $this->removeScaffold();
+        $this->scaffold(locales: ['en', 'de', 'fr']);
+        $this->migrateAndApply();
+        $this->flow = $this->app();
+        $m = $this->makeMember('ada@example.com', 'pending', 'fr');
+        $this->signIn();
+        $saved = $this->postFrom('/folio/members_settings?locale=en', '/folio/members_settings/members_settings?locale=en', [
+            'registration_open' => '1', 'accept_message' => 'Stored in English for {name}',
+        ]);
+        $this->assertSame(302, $saved->getStatusCode());
+        $html = $this->admin('/folio/member/' . $m->getId() . '/edit');
+
+        $accept = Dom::first($html, '//form[contains(@action, "/_action/accept")]//textarea[@name="message"]')?->textContent ?? '';
+        $this->assertStringStartsWith("Bonjour Ada Lovelace,\n\nVotre compte est prêt.", $accept);
+        $this->assertStringNotContainsString('Stored in English', $accept);
     }
 
     #[RunInSeparateProcess]

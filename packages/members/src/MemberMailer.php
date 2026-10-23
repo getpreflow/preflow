@@ -33,6 +33,7 @@ final class MemberMailer
         private readonly Locales $locales,
         private readonly MembersConfig $config,
         private readonly Admission $admission,
+        private readonly LinkValidity $validity,
         private readonly ?string $from = null,
     ) {}
 
@@ -43,6 +44,7 @@ final class MemberMailer
         $this->notifier->sendLater($this->build('confirm', $lang, (string) $m->get('email'), [
             'name' => (string) $m->get('name'),
             'link' => $this->links->url($lang, '/confirm/' . $token),
+            'validity' => $this->validity->confirm($lang),
         ]), $onFailure);
     }
 
@@ -58,6 +60,7 @@ final class MemberMailer
             'name' => (string) $m->get('name'),
             'login_url' => $this->links->url($lang, '/login'),
             'reset_url' => $this->links->url($lang, '/reset/' . $resetToken),
+            'validity' => $this->validity->reset($lang),
         ]), $onFailure);
     }
 
@@ -68,6 +71,7 @@ final class MemberMailer
         $this->notifier->sendLater($this->build('reset', $lang, (string) $m->get('email'), [
             'name' => (string) $m->get('name'),
             'link' => $this->links->url($lang, '/reset/' . $token),
+            'validity' => $this->validity->reset($lang),
         ]), $onFailure);
     }
 
@@ -121,7 +125,7 @@ final class MemberMailer
         );
     }
 
-    /** @param array<string, string> $vars {name} {link} {login_url} {reset_url} {email} {details} {folio_url} */
+    /** @param array<string, string> $vars {name} {link} {login_url} {reset_url} {validity} {email} {details} {folio_url} */
     private function copy(string $mail, string $part, string $lang, array $vars): string
     {
         $map = [];

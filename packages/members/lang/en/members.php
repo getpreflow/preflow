@@ -30,7 +30,7 @@ return [
     'inbox' => [
         'title' => 'Check your inbox',
         'text' => 'A link is on its way to :email. Click it to confirm your address.',
-        'hint' => 'The link works for 24 hours. Nothing there? Look in your spam folder.',
+        'hint' => 'The link works for :validity. Nothing there? Look in your spam folder.',
     ],
     'confirm' => [
         'title' => 'Confirm your email',
@@ -93,21 +93,26 @@ return [
             'confirm' => 'Please confirm that you understand this deletes your account.',
         ],
     ],
+    // How long a link works ({validity} / :validity), from confirm_ttl and reset_ttl.
+    'validity' => [
+        'hours' => '{1} one hour|[2,*] :count hours',
+        'minutes' => '{1} one minute|[2,*] :count minutes',
+    ],
     // Subject and body of each mail. accepted/declined: the body is the Decision panel's default
     // message (used when Members settings leave it empty); the owner edits it before sending.
     // notice goes to the owner in the site's default locale; {details} are the admission's lines.
     'mail' => [
         'confirm' => [
             'subject' => 'Confirm your email address',
-            'body' => "Hi {name},\n\nplease confirm your email address: {link}\n\nThe link works for 24 hours. If you didn't sign up, ignore this mail.",
+            'body' => "Hi {name},\n\nplease confirm your email address: {link}\n\nThe link works for {validity}. If you didn't sign up, ignore this mail.",
         ],
         'existing' => [
             'subject' => 'Your account',
-            'body' => "Hi {name},\n\nsomeone (hopefully you) tried to register with this address, but you already have an account.\n\nLog in: {login_url}\nForgot your password? {reset_url}",
+            'body' => "Hi {name},\n\nsomeone (hopefully you) tried to register with this address, but you already have an account.\n\nLog in: {login_url}\nForgot your password? {reset_url}\nThe reset link works for {validity}.",
         ],
         'reset' => [
             'subject' => 'Reset your password',
-            'body' => "Hi {name},\n\nset a new password here: {link}\n\nThe link works for one hour. If you didn't ask for this, ignore this mail.",
+            'body' => "Hi {name},\n\nset a new password here: {link}\n\nThe link works for {validity}. If you didn't ask for this, ignore this mail.",
         ],
         'notice' => [
             'subject' => '{name} is waiting for approval',
