@@ -203,6 +203,10 @@ final class Publisher
     {
         $revisions = [];
         foreach ($this->dm->queryIn(ShadowTypes::revisions($def))->where('record_id', $id)->get()->items() as $row) {
+            // record_id is a value column, which MySQL compares case- and accent-insensitively: keep exact matches only.
+            if ((string) $row->get('record_id') !== $id) {
+                continue;
+            }
             $data = json_decode((string) $row->get('data'), true);
             $changed = json_decode((string) $row->get('changed'), true);
             $revisions[] = new Revision(

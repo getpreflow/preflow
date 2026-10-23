@@ -109,6 +109,16 @@ final class MysqlAppTest extends TestCase
         }
     }
 
+    public function test_revisions_of_ids_differing_in_case_stay_apart(): void
+    {
+        $this->assertRevisionsStayApart('A', 'a');
+    }
+
+    public function test_revisions_of_ids_differing_in_accent_stay_apart(): void
+    {
+        $this->assertRevisionsStayApart('a', 'ä');
+    }
+
     public function test_large_text_field_round_trip(): void
     {
         $this->migrateStep();
@@ -182,6 +192,30 @@ final class MysqlAppTest extends TestCase
     }
 
     /** @return list<string> */
+    private function assertRevisionsStayApart(string $first, string $second): void
+    {
+        $this->migrateStep();
+        $a = $this->working('post', $first, ['title' => ['en' => "T {$first}"], 'slug' => ['en' => "s-{$first}"]]);
+        $b = $this->working('post', $second, ['title' => ['en' => "T {$second}"], 'slug' => ['en' => "s-{$second}"]]);
+
+        // The twin gets 3 publishes, the first record 22 (past the 20 kept).
+        for ($i = 1; $i <= 3; $i++) {
+            $this->publisher()->publish($b, null);
+        }
+        for ($i = 1; $i <= 22; $i++) {
+            $this->publisher()->publish($a, null);
+        }
+
+        $mine = $this->publisher()->revisions('post', $first);
+        $theirs = $this->publisher()->revisions('post', $second);
+        $this->assertCount(20, $mine, $first);
+        $this->assertCount(3, $theirs, $second);
+        $this->assertSame([3, 2, 1], array_map(static fn ($r) => $r->seq, $theirs), $second);
+        $this->assertSame(22, $mine[0]->seq, $first);
+        $this->assertSame("T {$second}", $theirs[0]->data['title']['en'] ?? null);
+        $this->assertSame("T {$first}", $mine[0]->data['title']['en'] ?? null);
+    }
+
     private function migrateStep(): array
     {
         return ($this->app()->container()->get(MigrationRegistry::class)->steps()['folio.tables'] ?? throw new \RuntimeException('step not registered'))();
