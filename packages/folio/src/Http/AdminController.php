@@ -522,6 +522,11 @@ final class AdminController
             } else {
                 $value = LocaleValue::default($raw, $locales);
             }
+            // What an empty field means, as the type's customization words it (#[FieldPlaceholder]).
+            if (($own = $this->customizations?->placeholder($type, $name, $locale)) !== null) {
+                $placeholder = $own;
+                $fallsBack = false;
+            }
 
             $fieldErrors = $errors[$name] ?? [];
             if ($locale !== $locales->default) {
@@ -672,7 +677,7 @@ final class AdminController
     /** @return array{panels: list<array<string, mixed>>, actions: list<array<string, mixed>>, columns: list<array<string, mixed>>, hooks: array<string, list<\Closure>>} */
     private function customized(string $type): array
     {
-        return $this->customizations?->forType($type) ?? ['panels' => [], 'actions' => [], 'columns' => [], 'hooks' => []];
+        return $this->customizations?->forType($type) ?? ['panels' => [], 'actions' => [], 'columns' => [], 'hooks' => [], 'placeholders' => []];
     }
 
     private static function flash(ServerRequestInterface $request, string $type, string $message): void

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Extension\Customization;
 
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Extension\AfterDelete;
 use Preflow\Folio\Extension\AfterSave;
@@ -13,6 +14,7 @@ use Preflow\Folio\Extension\BeforeDelete;
 use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Extension\ExtensionRegistry;
+use Preflow\Folio\Extension\FieldPlaceholder;
 use Preflow\Folio\Extension\FormPanel;
 use Preflow\Folio\Extension\ListColumn;
 use Preflow\Folio\Extension\NavBadge;
@@ -29,10 +31,10 @@ final class Customizations
     /** Hook attributes, the names runHooks() takes. */
     public const array HOOKS = [BeforeSave::class, AfterSave::class, BeforeDelete::class, AfterDelete::class];
 
-    private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, ListColumn::class, NavBadge::class, ...self::HOOKS];
+    private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, ListColumn::class, NavBadge::class, FieldPlaceholder::class, ...self::HOOKS];
 
     /**
-     * @param array<string, array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>}> $types
+     * @param array<string, array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}> $types
      */
     /** @var array<string, ?int> */
     private array $badgeCounts = [];
@@ -41,8 +43,11 @@ final class Customizations
         private readonly array $types,
     ) {}
 
-    /** @param \Closure(class-string): object $make builds a customization class (the container) */
-    public static function fromExtensions(ExtensionRegistry $extensions, TypeCatalog $catalog, \Closure $make): self
+    /**
+     * @param \Closure(class-string): object $make builds a customization class (the container)
+     * @param ?TypeRegistry $registry when given, a #[FieldPlaceholder] must name a field of the type
+     */
+    public static function fromExtensions(ExtensionRegistry $extensions, TypeCatalog $catalog, \Closure $make, ?TypeRegistry $registry = null): self
     {
         $types = [];
         $actionOwners = [];
@@ -60,7 +65,7 @@ final class Customizations
                 if (!$catalog->has($key)) {
                     throw new ExtensionException("Type customization {$class}: #[FolioType('{$key}')] names no content type \"{$key}\".");
                 }
-                $types[$key] ??= ['panels' => [], 'actions' => [], 'columns' => [], 'badges' => [], 'hooks' => []];
+                $types[$key] ??= ['panels' => [], 'actions' => [], 'columns' => [], 'badges' => [], 'hooks' => [], 'placeholders' => []];
 
                 $badgeMethod = null;
                 $built = new \stdClass(); // one instance per class, shared by its methods' closures
@@ -109,6 +114,14 @@ final class Customizations
                             ];
                         } elseif ($meta instanceof ListColumn) {
                             $types[$key]['columns'][] = ['label' => $meta->label, 'position' => $meta->position, 'callable' => $call];
+                        } elseif ($meta instanceof FieldPlaceholder) {
+                            if ($registry !== null && !isset($registry->get($key)->fields[$meta->field])) {
+                                throw new ExtensionException("#[FieldPlaceholder] on {$where}: type \"{$key}\" has no field \"{$meta->field}\".");
+                            }
+                            if (isset($types[$key]['placeholders'][$meta->field])) {
+                                throw new ExtensionException("#[FieldPlaceholder] on {$where}: field \"{$meta->field}\" of type \"{$key}\" already has one.");
+                            }
+                            $types[$key]['placeholders'][$meta->field] = $call;
                         } elseif ($meta instanceof NavBadge) {
                             if ($badgeMethod !== null) {
                                 throw new ExtensionException("{$class} has more than one #[NavBadge]: {$badgeMethod} and {$name}.");
@@ -130,11 +143,20 @@ final class Customizations
     }
 
     /**
-     * @return array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>}
+     * @return array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}
      */
     public function forType(string $key): array
     {
-        return $this->types[$key] ?? ['panels' => [], 'actions' => [], 'columns' => [], 'badges' => [], 'hooks' => []];
+        return $this->types[$key] ?? ['panels' => [], 'actions' => [], 'columns' => [], 'badges' => [], 'hooks' => [], 'placeholders' => []];
+    }
+
+    /** The #[FieldPlaceholder] text of a field in $locale, or null (none declared, or the method gives none). */
+    public function placeholder(string $type, string $field, string $locale): ?string
+    {
+        $call = $this->types[$type]['placeholders'][$field] ?? null;
+        $text = $call === null ? null : $call($locale);
+
+        return is_string($text) && $text !== '' ? $text : null;
     }
 
     /**

@@ -179,6 +179,41 @@ final class CustomizationTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_field_placeholder_shows_what_an_empty_field_means_in_the_edited_locale(): void
+    {
+        $this->crm();
+        $this->as('admin');
+        $this->seed('contact', 'c1', ['name' => 'Ada']);
+
+        $en = (string) $this->send('GET', '/folio/contact/c1/edit')->getBody();
+        $this->assertStringContainsString('name="status"', $en);
+        $this->assertMatchesRegularExpression('~<input[^>]*name="status"[^>]*placeholder="Standard: new &lt;lead&gt;"~', $en);
+        $this->assertDoesNotMatchRegularExpression('~<input[^>]*name="name"[^>]*placeholder=~', $en, 'only the field it names');
+        $this->assertMatchesRegularExpression('~<input[^>]*name="status"[^>]*placeholder="Standard: neu"~', (string) $this->send('GET', '/folio/contact/c1/edit?locale=de')->getBody());
+        $this->assertMatchesRegularExpression('~<input[^>]*name="status"[^>]*placeholder="Standard: new &lt;lead&gt;"~', (string) $this->send('GET', '/folio/contact/new')->getBody(), 'on create too');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_field_placeholder_for_an_unknown_field_throws(): void
+    {
+        $this->crm();
+        $this->write('app/Folio/Crm/Types/NoteAdmin.php', <<<'PHP'
+            <?php
+            namespace App\Folio\Crm\Types;
+            #[\Preflow\Folio\Extension\Attributes\FolioType('note')]
+            final class NoteAdmin
+            {
+                #[\Preflow\Folio\Extension\FieldPlaceholder('nothing')]
+                public function standard(string $locale): ?string { return null; }
+            }
+            PHP);
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessage('#[FieldPlaceholder] on App\\Folio\\Crm\\Types\\NoteAdmin::standard: type "note" has no field "nothing".');
+        $this->app();
+    }
+
+    #[RunInSeparateProcess]
     public function test_before_save_can_change_record_before_validation(): void
     {
         $this->crm();
@@ -373,6 +408,12 @@ final class CustomizationTest extends TestCase
                     $this->dm->saveType($record, false);
 
                     return null;
+                }
+
+                #[\Preflow\Folio\Extension\FieldPlaceholder('status')]
+                public function statusStandard(string $locale): ?string
+                {
+                    return $locale === 'de' ? 'Standard: neu' : 'Standard: new <lead>';
                 }
 
                 #[\Preflow\Folio\Extension\ListColumn('Badge')]

@@ -452,6 +452,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(ExtensionRegistry::class),
             $c->get(TypeCatalog::class),
             static fn (string $class): object => $c->get($class),
+            $c->get(TypeRegistry::class),
         ));
         $container->bind(\Preflow\Folio\Extension\Screen\ScreenDispatcher::class, fn (Container $c) => new \Preflow\Folio\Extension\Screen\ScreenDispatcher(
             $c,
