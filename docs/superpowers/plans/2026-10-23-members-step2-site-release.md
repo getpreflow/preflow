@@ -15,7 +15,7 @@ Changes from this review are made on the branch before step 2.
 
 ## 2. Merge the site branch
 
-- [ ] `feat/members-step2` merged into `main` of smart-stack.works (tests green: `vendor/bin/phpunit`).
+- [x] `feat/members-step2` merged into `main` of smart-stack.works (tests green: `vendor/bin/phpunit`). Done 2026-10-23, locally (fast-forward to 25c4232, 199 tests OK); not pushed, not deployed.
 
 ## 3. Server environment
 
