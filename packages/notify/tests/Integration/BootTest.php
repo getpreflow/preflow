@@ -77,6 +77,46 @@ final class BootTest extends TestCase
         $this->assertSame('sdk', $sent->transport);
     }
 
+    public function test_kernel_request_flushes_deferred_mail_after_handling(): void
+    {
+        $this->writeNotifyConfig([
+            'transports' => ['memory' => ['driver' => 'memory']],
+            'channels' => ['email' => ['transport' => 'memory']],
+        ]);
+        $app = Application::create($this->dir);
+        $app->boot();
+        $container = $app->container();
+        $app->addMiddleware(new class($container) implements \Psr\Http\Server\MiddlewareInterface {
+            public function __construct(private \Preflow\Core\Container\Container $c) {}
+
+            public function process(\Psr\Http\Message\ServerRequestInterface $r, \Psr\Http\Server\RequestHandlerInterface $h): \Psr\Http\Message\ResponseInterface
+            {
+                $this->c->get(Notifier::class)->sendLater(new Email('a@b.test', 'S', 'T'));
+
+                return new \Nyholm\Psr7\Response(200, [], 'ok');
+            }
+        });
+
+        $response = $app->handle(new \Nyholm\Psr7\ServerRequest('GET', '/'));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertCount(1, $container->get(TransportFactory::class)->get('memory')->sent());
+    }
+
+    public function test_handle_without_notify_config_still_works(): void
+    {
+        $app = Application::create($this->dir);
+        $app->boot();
+        $app->addMiddleware(new class implements \Psr\Http\Server\MiddlewareInterface {
+            public function process(\Psr\Http\Message\ServerRequestInterface $r, \Psr\Http\Server\RequestHandlerInterface $h): \Psr\Http\Message\ResponseInterface
+            {
+                return new \Nyholm\Psr7\Response(200, [], 'ok');
+            }
+        });
+
+        $this->assertSame(200, $app->handle(new \Nyholm\Psr7\ServerRequest('GET', '/'))->getStatusCode());
+    }
+
     /** @param array<string, mixed> $config */
     private function writeNotifyConfig(array $config): void
     {

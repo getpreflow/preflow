@@ -95,6 +95,37 @@ $container->get(TransportFactory::class)->extend(
 Then set `'texts' => ['driver' => 'acme-sms', 'key' => getenv('ACME_KEY') ?: '']` in
 `transports`.
 
+## Sending after the response
+
+Sending takes an SMTP round trip. On account flows (forgot password, registration, resend
+confirmation) that makes "an account exists" answer measurably slower than "no account",
+which leaks which addresses are registered. Queue those mails instead:
+
+```php
+$notifier->sendLater(
+    new Email(to: $user->email, subject: 'Reset your password', text: $text),
+    onFailure: fn (\Throwable $e) => $this->audit->warn('reset mail failed'),
+);
+```
+
+`sendLater()` only queues. Core sends the queue once the response has gone out:
+`Application::run()` emits the response, calls `fastcgi_finish_request()` when it exists
+(PHP-FPM, so the client is released), then calls `flushDeferred()`. Plain
+`register_shutdown_function` was not used: it would run after the script ends, outside the
+application's control, and could not be flushed deterministically in the CLI and in tests.
+
+- Order is FIFO; every message is isolated, one failure does not stop the others.
+- A deferred failure never throws into the request. It calls `$onFailure(\Throwable)` when
+  given; otherwise it logs a generic line (no addresses) through a PSR `LoggerInterface`
+  bound in the container, else `error_log()`.
+- `flushDeferred()` returns the number sent.
+- **CLI and tests:** `Application::handle()` flushes the queue itself before returning
+  (only `run()` postpones it until after emitting), so in-process requests and CLI commands
+  never lose mail.
+- Without `config/notify.php` there is no Notifier and nothing happens.
+- `'defer' => false` in `config/notify.php` (default `true`) makes `sendLater()` send at
+  once, a failure going to `$onFailure`/the log. Handy to debug; tests rarely need it.
+
 ## Errors
 
 Every failure is a `Preflow\Notify\TransportException`. Provider errors are wrapped, and

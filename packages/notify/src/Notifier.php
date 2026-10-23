@@ -13,10 +13,84 @@ final class Notifier
     /**
      * @param array<string, array{transport?: string, from?: string|null}> $channels
      */
+    /** @var list<array{Message, ?\Closure}> */
+    private array $deferred = [];
+
+    /**
+     * @param \Psr\Log\LoggerInterface|null $logger receives deferred failures that have no callback
+     * @param bool $defer false makes sendLater() send at once (tests, debugging)
+     */
     public function __construct(
         private readonly TransportFactory $transports,
         private readonly array $channels,
+        private readonly ?\Psr\Log\LoggerInterface $logger = null,
+        private readonly bool $defer = true,
     ) {}
+
+    /**
+     * Queue a message; it goes out when flushDeferred() runs (core does that after the
+     * response is sent). A failure never throws: it goes to $onFailure, else to the
+     * logger, else to error_log (without addresses).
+     *
+     * @param \Closure(\Throwable): void|null $onFailure
+     */
+    public function sendLater(Message $message, ?\Closure $onFailure = null): void
+    {
+        if (!$this->defer) {
+            $this->deliver($message, $onFailure);
+
+            return;
+        }
+
+        $this->deferred[] = [$message, $onFailure];
+    }
+
+    /** Sends the queue in FIFO order, each message isolated. Returns how many were sent. */
+    public function flushDeferred(): int
+    {
+        $sent = 0;
+        while ($this->deferred !== []) {
+            [$message, $onFailure] = array_shift($this->deferred);
+            if ($this->deliver($message, $onFailure)) {
+                $sent++;
+            }
+        }
+
+        return $sent;
+    }
+
+    private function deliver(Message $message, ?\Closure $onFailure): bool
+    {
+        try {
+            $this->send($message);
+
+            return true;
+        } catch (\Throwable $e) {
+            $this->reportFailure($e, $onFailure);
+
+            return false;
+        }
+    }
+
+    private function reportFailure(\Throwable $e, ?\Closure $onFailure): void
+    {
+        try {
+            if ($onFailure !== null) {
+                $onFailure($e);
+
+                return;
+            }
+            // Generic on purpose: exception messages can carry addresses or DSNs.
+            $text = 'Deferred notification failed (' . $e::class . ').';
+            if ($this->logger !== null) {
+                $this->logger->error($text);
+            } else {
+                error_log($text);
+            }
+        } catch (\Throwable) {
+            // A broken failure handler must not break the others or the request.
+        }
+    }
 
     /** @throws TransportException */
     public function send(Message $message): SentMessage

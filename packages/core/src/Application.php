@@ -238,7 +238,23 @@ final class Application
             );
         }
 
+        // In-process callers (CLI, tests) have no later emit step: send deferred
+        // notifications now. run() flushes after the response has gone out instead.
+        if (!$this->emitting) {
+            $this->flushDeferredNotifications();
+        }
+
         return $response;
+    }
+
+    private bool $emitting = false;
+
+    private ?\Preflow\Notify\Notifier $notifier = null;
+
+    private function flushDeferredNotifications(): void
+    {
+        // Set only when config/notify.php exists, so this is a no-op without it.
+        $this->notifier?->flushDeferred();
     }
 
     /**
@@ -252,8 +268,20 @@ final class Application
             $creator = new \Nyholm\Psr7Server\ServerRequestCreator($factory, $factory, $factory, $factory);
             $request = $creator->fromGlobals();
 
-            $response = $this->handle($request);
+            $this->emitting = true;
+            try {
+                $response = $this->handle($request);
+            } finally {
+                $this->emitting = false;
+            }
             (new Emitter())->emit($response);
+
+            // The client has its response; deferred mail (sendLater) goes out now so
+            // the SMTP round trip cannot show in the response time.
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            }
+            $this->flushDeferredNotifications();
         } else {
             throw new \RuntimeException('Install nyholm/psr7 and nyholm/psr7-server to use run().');
         }
@@ -767,7 +795,14 @@ final class Application
         $this->container->instance(\Preflow\Notify\TransportFactory::class, $factory);
         $this->container->instance(
             \Preflow\Notify\Notifier::class,
-            new \Preflow\Notify\Notifier($factory, (array) ($notifyConfig['channels'] ?? [])),
+            $this->notifier = new \Preflow\Notify\Notifier(
+                $factory,
+                (array) ($notifyConfig['channels'] ?? []),
+                $this->container->has(\Psr\Log\LoggerInterface::class)
+                    ? $this->container->get(\Psr\Log\LoggerInterface::class)
+                    : null,
+                (bool) ($notifyConfig['defer'] ?? true),
+            ),
         );
     }
 
