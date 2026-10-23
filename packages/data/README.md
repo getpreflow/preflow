@@ -1,6 +1,6 @@
 # preflow/data
 
-Multi-storage data layer for Preflow. Supports JSON files and SQLite out of the box; different models can use different backends simultaneously.
+Multi-storage data layer for Preflow. Supports JSON files, SQLite and MySQL/MariaDB; different models can use different backends simultaneously.
 
 ## Installation
 
@@ -8,7 +8,7 @@ Multi-storage data layer for Preflow. Supports JSON files and SQLite out of the 
 composer require preflow/data
 ```
 
-Requires PHP 8.4+, `ext-pdo`, `ext-pdo_sqlite`.
+Requires PHP 8.4+, `ext-pdo`, and `ext-pdo_sqlite` or `ext-pdo_mysql` for the SQL storage you use.
 
 ## What it does
 
@@ -69,6 +69,7 @@ All methods return `$this` for chaining except the terminal methods.
 |---|---|
 | `JsonFileDriver` | One `.json` file per record at `{basePath}/{table}/{id}.json` |
 | `SqliteDriver` | PDO-based SQLite via `PdoDriver` + `QueryCompiler` |
+| `MysqlDriver` | PDO-based MySQL / MariaDB via `PdoDriver` + `QueryCompiler` (see [MySQL and MariaDB](#mysql-and-mariadb)) |
 
 ### Migrations
 
@@ -84,12 +85,12 @@ abstract class Migration
 
 `Table` builder: `uuid`, `string`, `text`, `integer`, `boolean`, `json`, `timestamps`, `nullable()`, `primary()`, `index()`.
 
-**Schema introspection** (SQLite only for now; other drivers throw a `LogicException`):
+**Schema introspection** (SQLite and MySQL/MariaDB; any other PDO driver throws a `LogicException`):
 
 ```php
 $schema->hasTable('post');                 // bool
 $schema->columns('post');                  // ['id', 'title', ...] in table order
-$schema->addColumn('post', 'subtitle');    // nullable column, type TEXT by default
+$schema->addColumn('post', 'subtitle');    // nullable column; type TEXT on SQLite, LONGTEXT on MySQL
 ```
 
 `addColumn()` is what lets a re-runnable step add what a newer model needs without a
@@ -168,6 +169,104 @@ $taken = $dm->execute(
 One conditional statement decides by its affected rows, so concurrent requests cannot both
 take the last seat. A package writing its own SQL for both SQLite and MySQL asks the driver
 for `PdoDriver::dialect()` (`quoteIdentifier()`, `MysqlDialect`).
+
+## MySQL and MariaDB
+
+`preflow migrate`, `Schema` introspection and Folio's table sync run on MySQL 8 and MariaDB 10.6+
+exactly as on SQLite; a schema grammar picked from the PDO driver name writes the SQL. SQLite
+output is unchanged (same DDL, no new pending migrations for existing sites). Any other PDO
+driver throws `No schema grammar for PDO driver "<name>".`
+
+**Config** (`config/data.php`). `host`, `port`, `database`, `username` and `password` fall back to
+the `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` and `DB_PASS` environment variables:
+
+```php
+return [
+    'default' => 'mysql',
+    'drivers' => [
+        'mysql' => [
+            'host'     => '127.0.0.1',     // or DB_HOST
+            'port'     => 3306,            // or DB_PORT
+            'database' => 'myapp',         // or DB_NAME
+            'username' => 'myapp',         // or DB_USER
+            'password' => '',              // or DB_PASS
+        ],
+        'json' => ['path' => 'storage/data'],
+    ],
+    'aliases' => ['codes' => 'default', 'throttle' => 'default'],
+];
+```
+
+`default` names the driver for models without a `storage`; `aliases` map purpose names to a
+configured driver (see Aliases below). `preflow migrate` migrates the site's SQL storage; with
+several SQL drivers pass `--storage`.
+
+**Column types.** SQLite stays TEXT/INTEGER; MySQL gets sized types:
+
+| `Table` method | SQLite | MySQL |
+|---|---|---|
+| `uuid()` | TEXT | VARCHAR(64) |
+| `string($n = 255)` | TEXT | VARCHAR($n) |
+| `text()` | TEXT | TEXT |
+| `json()` | TEXT | LONGTEXT (not `JSON`: MySQL's type rewrites key order and spacing) |
+| `integer()` | INTEGER | BIGINT |
+| `boolean()` | INTEGER | TINYINT(1) |
+| `timestamps()` | TEXT, nullable | VARCHAR(32), nullable |
+| `addColumn()` default | TEXT | LONGTEXT |
+
+Folio's synced tables use `id VARCHAR(191) PRIMARY KEY` and nullable `LONGTEXT` for every other
+column, so a field holding 100 KB of blocks JSON fits. `preflow_migrations` is
+`migration VARCHAR(191) PRIMARY KEY, ran_at VARCHAR(32) NOT NULL`.
+
+**TEXT columns can't be indexed.** `$t->text('body')->index()` throws a `LogicException`
+(`Cannot index TEXT column "posts.body" on MySQL: use string() for indexed columns.`); use
+`string()` for anything indexed or unique. SQLite does not care, so a migration that indexes
+`text()` passes there and fails on MySQL.
+
+**Charset and collation.** Tables are created `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+COLLATE=utf8mb4_unicode_ci` (MariaDB 10.6 has no `utf8mb4_0900_*`), identifiers in backticks.
+**Known difference from SQLite:** `utf8mb4_unicode_ci` compares case- and accent-insensitively, so
+string values (ids included) that differ only in case or accents (`Abc` and `abc`, `e` and `é`)
+are equal in `WHERE`, and collide in a primary or unique key on MySQL while SQLite keeps them
+apart. Generated ids are lowercase hex, so they are not affected; custom ids and unique
+slugs/emails are.
+
+**Connection.** `createMysqlDriver` (and `MysqlDriver` itself, for a hand-made `PDO`) sets:
+
+- `PDO::ATTR_ERRMODE => ERRMODE_EXCEPTION`, so failures throw instead of returning false.
+- `MYSQL_ATTR_FOUND_ROWS => true`: an `UPDATE` that matches a row but changes nothing still
+  counts as 1 affected row, as on SQLite, so rowCount-based code (codes, tokens, throttle) behaves
+  the same.
+- Session `sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'`:
+  too-long values are an error, not silently cut, and the result does not depend on the server's
+  default mode. No `ANSI_QUOTES`, since identifiers use backticks.
+- `utf8mb4` for the connection.
+
+The upsert keeps `VALUES(col)` because MariaDB has no row-alias syntax.
+
+**Choosing storage.** Storage is chosen per type: `"storage"` in a model's JSON, or
+`#[Entity(storage: '...')]` on a class. Aliases map purposes (`codes`, `auth`, `throttle`) to a
+driver. Moving a type to another storage means: change its storage, `preflow migrate`, then
+`folio:export` and `folio:import`. Two limits today:
+
+- `config/data.php` selects the driver class by its key (`sqlite`, `mysql`, `json`), so there is
+  one connection per driver kind; two MySQL databases at once are not possible yet (aliases only
+  add names).
+- There are no SQL joins across storages; relations between types on different storages resolve
+  by id.
+
+PostgreSQL would need a driver, a dialect and a schema grammar (`Grammars::for` refuses unknown
+PDO drivers today).
+
+**Running the MySQL tests.** They run when `MYSQL_HOST` and `MYSQL_DATABASE` are set (plus
+`MYSQL_USER`, `MYSQL_PASS`) and are skipped otherwise, so `vendor/bin/phpunit` stays green without
+a server. Put the values in a gitignored `.env.mysql-test` at the repo root and run:
+
+```bash
+composer test:mysql     # sources .env.mysql-test, runs phpunit --group mysql
+```
+
+The tests share one database and drop the tables they create.
 
 ## Aliases
 

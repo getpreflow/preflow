@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-04-16 (v0.12.0)
+> Last updated: 2026-10-23 (v0.25.0)
 
 ## Current State
 
-**v0.12.0** — 668 tests, 14 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.25.0** — 2116 tests, 14 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -79,6 +79,15 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 ---
 
 ## Completed
+
+### v0.25.0
+
+- **MySQL / MariaDB as first-class SQL storage:** `preflow migrate`, `Schema` introspection (`hasTable`, `columns`, `addColumn`) and Folio's `folio.tables` step run on MySQL 8 and MariaDB 10.6+; a `SchemaGrammar` picked from the PDO driver (`SqliteGrammar` byte for byte as before, `MysqlGrammar`) replaces the SQLite-only SQL, any other driver throws `No schema grammar for PDO driver`
+- **MySQL DDL:** `uuid` VARCHAR(64), `string($n)` VARCHAR($n), `json` LONGTEXT, `integer` BIGINT, `boolean` TINYINT(1), `timestamps` VARCHAR(32); tables `InnoDB utf8mb4 utf8mb4_unicode_ci`; Folio tables use `VARCHAR(191)` ids and `LONGTEXT` columns; indexing a TEXT column throws a `LogicException` (use `string()`)
+- **Connection:** exception error mode, `FOUND_ROWS` (an unchanged-row `UPDATE` counts as 1, as on SQLite) and a strict session `sql_mode`, also for a hand-made `PDO` passed to `MysqlDriver`
+- **Known difference:** `utf8mb4_unicode_ci` is case- and accent-insensitive, so custom ids and unique values differing only in case collide on MySQL; generated ids (lowercase hex) are unaffected
+- **Tests:** `Preflow\Testing\MysqlTestDatabase` and `composer test:mysql` (reads the gitignored `.env.mysql-test`); MySQL tests skip without `MYSQL_*` env. SQLite behaviour and DDL unchanged, no new migrations for existing sites
+- Constraints: `preflow/folio` and `preflow/devtools` require `preflow/data` `^0.25 || @dev`
 
 ### v0.24.1
 
