@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-23 (v0.25.0)
+> Last updated: 2026-10-23 (v0.25.1)
 
 ## Current State
 
-**v0.25.0** — 2128 tests, 14 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.25.1** — 2130 tests, 14 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -79,6 +79,10 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 ---
 
 ## Completed
+
+### v0.25.1
+
+- **Folio revisions on MySQL match their record exactly:** ids differing only by case or accents (`A`/`a`, `a`/`ä`) no longer share each other's revisions, number them together or prune each other's past `keepRevisions`; SQLite and JSON were not affected
 
 ### v0.25.0
 
