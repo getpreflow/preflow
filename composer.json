@@ -36,6 +36,9 @@
         "symfony/mailer": "^7.3 || ^8.0",
         "symfony/notifier": "^7.3 || ^8.0"
     },
+    "scripts": {
+        "test:mysql": "bin/test-mysql"
+    },
     "repositories": [
         {
             "type": "path",

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Tests\Driver;
 
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Driver\MysqlDriver;
+use Preflow\Testing\MysqlTestDatabase;
 
 final class MysqlDriverTest extends TestCase
 {
@@ -26,19 +28,10 @@ final class MysqlDriverTest extends TestCase
         $this->assertTrue(is_subclass_of(MysqlDriver::class, \Preflow\Data\Driver\PdoDriver::class));
     }
 
+    #[Group('mysql')]
     public function test_mysql_integration(): void
     {
-        $host = getenv('MYSQL_HOST') ?: false;
-        $db = getenv('MYSQL_DATABASE') ?: false;
-        if (!$host || !$db) {
-            $this->markTestSkipped('MySQL not configured (set MYSQL_HOST, MYSQL_DATABASE, MYSQL_USER, MYSQL_PASS)');
-        }
-
-        $pdo = new \PDO(
-            sprintf('mysql:host=%s;dbname=%s;charset=utf8mb4', $host, $db),
-            getenv('MYSQL_USER') ?: 'root',
-            getenv('MYSQL_PASS') ?: '',
-        );
+        $pdo = MysqlTestDatabase::pdo();
 
         $pdo->exec('CREATE TABLE IF NOT EXISTS test_mysql_driver (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255), body TEXT)');
 
