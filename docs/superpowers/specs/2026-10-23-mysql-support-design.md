@@ -63,6 +63,10 @@ calls below are mine.
 
   Tables are created `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   (MariaDB 10.6 has no `utf8mb4_0900_*`). Identifiers are backtick-quoted.
+- **Ids exact, values ci** (decided after the final review, departing from the line above for
+  keys): `uuid()` columns, primary `string()` columns, the Folio record id and
+  `preflow_migrations.migration` get `COLLATE utf8mb4_bin`; value columns keep
+  `utf8mb4_unicode_ci`.
 - **Indexing a TEXT column on MySQL is an error** at `Schema::create()` ("index a string()
   column, MySQL can't index TEXT"), not a silent prefix index.
 - **Introspection on MySQL** uses `information_schema` scoped to `DATABASE()`: `hasTable`,

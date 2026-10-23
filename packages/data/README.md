@@ -172,10 +172,10 @@ for `PdoDriver::dialect()` (`quoteIdentifier()`, `MysqlDialect`).
 
 ## MySQL and MariaDB
 
-`preflow migrate`, `Schema` introspection and Folio's table sync run on MySQL 8 and MariaDB 10.6+
-exactly as on SQLite; a schema grammar picked from the PDO driver name writes the SQL. SQLite
-output is unchanged (same DDL, no new pending migrations for existing sites). Any other PDO
-driver throws `No schema grammar for PDO driver "<name>".`
+`preflow migrate`, `Schema` introspection and Folio's table sync run on MariaDB 10.6+ (tested;
+MySQL 8 expected to work, not yet tested) exactly as on SQLite; a schema grammar picked from the
+PDO driver name writes the SQL. SQLite output is unchanged (same DDL, no new pending migrations
+for existing sites). Any other PDO driver throws `No schema grammar for PDO driver "<name>".`
 
 **Config** (`config/data.php`). `host`, `port`, `database`, `username` and `password` fall back to
 the `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` and `DB_PASS` environment variables:
@@ -205,8 +205,8 @@ several SQL drivers pass `--storage`.
 
 | `Table` method | SQLite | MySQL |
 |---|---|---|
-| `uuid()` | TEXT | VARCHAR(64) |
-| `string($n = 255)` | TEXT | VARCHAR($n) |
+| `uuid()` | TEXT | VARCHAR(64) COLLATE utf8mb4_bin |
+| `string($n = 255)` | TEXT | VARCHAR($n) (`COLLATE utf8mb4_bin` when `primary()`) |
 | `text()` | TEXT | TEXT |
 | `json()` | TEXT | LONGTEXT (not `JSON`: MySQL's type rewrites key order and spacing) |
 | `integer()` | INTEGER | BIGINT |
@@ -214,9 +214,14 @@ several SQL drivers pass `--storage`.
 | `timestamps()` | TEXT, nullable | VARCHAR(32), nullable |
 | `addColumn()` default | TEXT | LONGTEXT |
 
-Folio's synced tables use `id VARCHAR(191) PRIMARY KEY` and nullable `LONGTEXT` for every other
-column, so a field holding 100 KB of blocks JSON fits. `preflow_migrations` is
-`migration VARCHAR(191) PRIMARY KEY, ran_at VARCHAR(32) NOT NULL`.
+Folio's synced tables use `id VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY` and nullable
+`LONGTEXT` for every other column, so a field holding 100 KB of blocks JSON fits.
+`preflow_migrations` is `migration VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, ran_at VARCHAR(32) NOT NULL`.
+
+**64-character names.** MySQL caps table and index names at 64 characters. The index name is
+`idx_{table}_{column}` and Folio adds `{table}__published` and `{table}__revisions`, so long
+table names can cross it; the grammar throws a `LogicException` naming the identifier instead of
+sending SQL MySQL would refuse. SQLite has no such limit.
 
 **TEXT columns can't be indexed.** `$t->text('body')->index()` throws a `LogicException`
 (`Cannot index TEXT column "posts.body" on MySQL: use string() for indexed columns.`); use
@@ -225,22 +230,28 @@ column, so a field holding 100 KB of blocks JSON fits. `preflow_migrations` is
 
 **Charset and collation.** Tables are created `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci` (MariaDB 10.6 has no `utf8mb4_0900_*`), identifiers in backticks.
-**Known difference from SQLite:** `utf8mb4_unicode_ci` compares case- and accent-insensitively, so
-string values (ids included) that differ only in case or accents (`Abc` and `abc`, `e` and `é`)
-are equal in `WHERE`, and collide in a primary or unique key on MySQL while SQLite keeps them
-apart. Generated ids are lowercase hex, so they are not affected; custom ids and unique
-slugs/emails are.
+Ids and keys (`uuid()` columns, primary `string()` columns, Folio record ids,
+migration names) are `utf8mb4_bin`, so they compare exactly, as on SQLite and JSON: `A`, `a` and
+`ä` are three records. **Known difference from SQLite:** value columns stay
+`utf8mb4_unicode_ci`, which compares case-, accent- and trailing-space-insensitively, so values
+that differ only in case, accents or trailing spaces (`Abc` and `abc`, `cafe` and `café`) are
+equal in `WHERE` and collide in a unique index on MySQL while SQLite keeps them apart. Slugs are
+values: on MySQL a page with slug `cafe` can shadow one with `café`. (`utf8mb4_bin` pads too, so
+an id with a trailing space still equals the one without.)
 
-**Connection.** `createMysqlDriver` (and `MysqlDriver` itself, for a hand-made `PDO`) sets:
+**Connection.** `createMysqlDriver` builds the `PDO` with `MysqlDriver::connectionOptions()`, and
+`MysqlDriver` sets the session; together they give:
 
 - `PDO::ATTR_ERRMODE => ERRMODE_EXCEPTION`, so failures throw instead of returning false.
-- `MYSQL_ATTR_FOUND_ROWS => true`: an `UPDATE` that matches a row but changes nothing still
+- `Pdo\Mysql::ATTR_FOUND_ROWS => true`: an `UPDATE` that matches a row but changes nothing still
   counts as 1 affected row, as on SQLite, so rowCount-based code (codes, tokens, throttle) behaves
-  the same.
+  the same. This can only be set when the connection is opened: when you build the `PDO`
+  yourself, pass `MysqlDriver::connectionOptions()` as its options.
 - Session `sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'`:
   too-long values are an error, not silently cut, and the result does not depend on the server's
   default mode. No `ANSI_QUOTES`, since identifiers use backticks.
 - `utf8mb4` for the connection.
+- PHP booleans are written as `1`/`0` (strict mode refuses `''` for `false` in a `TINYINT(1)`).
 
 The upsert keeps `VALUES(col)` because MariaDB has no row-alias syntax.
 

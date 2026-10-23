@@ -20,8 +20,8 @@ use Preflow\Folio\Publishing\ShadowTypes;
  * shadows of publishing types, the asset table when it is SQL-stored, and
  * Folio's own internal tables it is given (the extension install state).
  * On SQLite the id is TEXT PRIMARY KEY and every other column nullable TEXT;
- * on MySQL the id is VARCHAR(191) PRIMARY KEY and every other column nullable
- * LONGTEXT (the grammar's createRecordTable). Missing
+ * on MySQL the id is VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY (ids compare
+ * exactly) and every other column nullable LONGTEXT (the grammar's createRecordTable). Missing
  * tables and columns are added; nothing is ever dropped or altered.
  * JSON-stored types are left alone.
  */
