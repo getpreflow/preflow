@@ -142,18 +142,22 @@ category IDs 6–35 (27–33 furniture, shown in kg; 34/35 products).
    1280×960 on #444, no EXIF orientation, errors swallowed (`getError` commented out). On a new
    object the id is still null when images are saved (`_lib/uploads//`).
 
-   Likely causes of "it did not work, no explanation", in order:
+   Likely causes of "it did not work, no explanation", in order (the first two reproduced in
+   the reference copy, step 0):
    - A modern phone photo is 3–8 MB: the 2 MB check clears the input. The red hint sits under
-     the input, easily missed, and nothing else happens.
+     the input, easily missed, the upload button stays disabled, and nothing else happens.
    - iPhone HEIC (`image/heic`) is not on the allow-list: input cleared, same.
    - Several images together exceed 16 MB: PHP discards the *entire* POST. The page reloads
-     with an empty form and no message.
+     with an empty form and no message. (Less likely since the 2 MB check: six images stay
+     ≤ 12 MB, unless a browser reports a wrong size or JS fails to run.)
    - A large JPEG exhausts GD memory or times out mid-request: a blank or error page.
    - Company proxies and browsers that block CDN scripts (SweetAlert2, jsdelivr) or strip large
      multipart bodies.
-4. Saving mails "new object awaiting approval" to info@. The owner never gets a confirmation.
-   Admins approve by setting `state`. But an owner's later save sets `state = 1`: edits publish
-   themselves.
+4. Saving mails "Ein neues Objekt wurde erfasst" to info@. The owner never gets a confirmation.
+   Admins could approve by setting `state`, but an owner's save sets `state = 1`: in the
+   reference copy a brand-new object was public ("Online") right after its first image upload,
+   so there is no moderation in practice. The ticked AGB box is not stored (`agbAccepted` NULL)
+   and the creation date is 0.
 5. Password reset mails a new 8-character `rand()` password in clear text.
 
 ### Admin today ("containr")
@@ -243,7 +247,7 @@ Each step ends deployable and is verified in the browser with screenshots.
 
 | # | Step | Where | Done when |
 |---|---|---|---|
-| 0 | **Reference instance** of the old site locally on the backup (MariaDB import, PHP 8.2, local test company account), and a screenshot baseline of every visitor and account screen in de/fr | local | Old flows can be walked through locally; baseline screenshots saved |
+| 0 | **Reference instance** of the old site locally on the backup (MariaDB import, local test company account), and a screenshot baseline of every visitor and account screen in de/fr | local | **Done 2026-10-23:** `~/Sites/gbits/holzobjekte-ref` at https://holzref.dev.smyr (PHP 8.5, deprecations hidden; mail spooled locally, never sent), test company + test admin, 30 public + 16 account + 13 admin screenshots in `baseline/`, findings in `REFERENCE.md` |
 | 1 | **MySQL in the framework:** migrations on MySQL (dialect quoting, key lengths for utf8mb4, introspection for `migrate:check`), Folio SQL storage + `TableSync` on MySQL, throttle/codes upserts on MySQL, test suite against a MySQL service | framework → v0.25 | Full suite green on SQLite *and* MySQL; the guard from v0.24.1 removed |
 | 2 | **Members package:** lift smart-stack's members (registration, e-mail confirmation, login, remember-me, reset, account page, mails, prune) into a framework package with the site-specific parts (book codes, screening, approval) as options; smart-stack.works switches to it | framework → v0.26, smart-stack | smart-stack.works runs on the package unchanged for its members |
 | 3 | **Folio staff roles:** staff accounts as a Folio user type on SQL, roles super admin / content admin, per-section and per-type permissions, staff management for super admins only, the delegation rule (nobody grants more than they have) | framework → v0.27 | Two roles enforced in the admin UI and on every admin route |
