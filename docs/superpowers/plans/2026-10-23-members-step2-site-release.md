@@ -31,9 +31,9 @@ Done 2026-10-23 by the owner (MAIL_DSN copied from smeyer.me's shared/.env, a ba
 
 Before the deploy, **in live Folio**. The Members extension, its settings and the codes extension have been live since release 6 (Preflow 0.20); this deploy only adds the registration form and the toolbox.
 
-- [ ] Settings, Members: switch **registration open off**, so the new form stays closed until the smoke test (step 8). Fill in the notice email and the screening texts. The accept and decline messages and the welcome note arrive with this deploy; fill them in step 6.
-- [ ] Library, Codes: issue the book code (purpose `members.book`).
-- [ ] Settings, Roles: check the member roles (pending, member, rejected).
+- [x] Settings, Members: switch **registration open off**, so the new form stays closed until the smoke test (step 8). Fill in the notice email and the screening texts. The accept and decline messages and the welcome note arrive with this deploy; fill them in step 6.
+- [x] Library, Codes: issue the book code (purpose `members.book`).
+- [x] Settings, Roles: check the member roles (pending, member, rejected).
 
 ## 4. Deploy
 
