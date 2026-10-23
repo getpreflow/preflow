@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Auth;
 
 /**
- * Tries its providers in order; the first one that finds a user wins. Lets a guard move from one
+ * Tries its providers in order; the first one that finds a user wins.
+ * A provider that claims the credentials (ClaimsCredentials) decides alone, even when it finds nobody. Lets a guard move from one
  * user source to another (config users to Folio records) without a window where nobody can sign in.
  */
 final class ChainUserProvider implements UserProviderInterface
@@ -34,6 +35,9 @@ final class ChainUserProvider implements UserProviderInterface
     public function findByCredentials(array $credentials): ?Authenticatable
     {
         foreach ($this->providers as $provider) {
+            if ($provider instanceof ClaimsCredentials && $provider->claims($credentials)) {
+                return $provider->findByCredentials($credentials); // it decides, even for a disabled user
+            }
             $user = $provider->findByCredentials($credentials);
             if ($user !== null) {
                 return $user;

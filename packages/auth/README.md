@@ -51,7 +51,10 @@ return [
 
     // A chain tries the named providers in order, first hit wins (no lock-out while moving
     // from .env users to records). It must come after the providers it names; a guard
-    // uses it as `'provider' => 'chain'`.
+    // uses it as `'provider' => 'chain'`. Once a staff record exists for an e-mail, that record
+    // decides: disabled means locked out, and the config password for that e-mail no longer works
+    // (a provider implementing ClaimsCredentials, like RecordUserProvider, stops the chain for
+    // credentials it knows).
     //   'staff'  => ['class' => RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
     //   'config' => ['class' => ConfigUserProvider::class, 'users' => [...]],
     //   'chain'  => ['class' => ChainUserProvider::class, 'providers' => ['staff', 'config']],

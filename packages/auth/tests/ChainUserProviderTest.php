@@ -6,7 +6,15 @@ namespace Preflow\Auth\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\ChainUserProvider;
+use Preflow\Auth\Authenticatable;
+use Preflow\Auth\ClaimsCredentials;
 use Preflow\Auth\ConfigUserProvider;
+use Preflow\Auth\LazyUserProvider;
+use Preflow\Auth\NativePasswordHasher;
+use Preflow\Auth\SessionGuard;
+use Preflow\Auth\Tests\Fixtures\TestUser;
+use Preflow\Auth\UserProviderInterface;
+use Preflow\Auth\UserProviderUnavailable;
 
 final class ChainUserProviderTest extends TestCase
 {
@@ -36,5 +44,76 @@ final class ChainUserProviderTest extends TestCase
         $this->assertNull($this->chain()->findById('nobody'));
         $this->assertNull($this->chain()->findByCredentials(['email' => 'nobody']));
         $this->assertNull((new ChainUserProvider([]))->findById('x'));
+    }
+
+    /** A record-like provider: knows $email, resolves its user only when $active. */
+    private function records(string $email, string $hash, bool $active): UserProviderInterface
+    {
+        return new class($email, $hash, $active) implements UserProviderInterface, ClaimsCredentials {
+            public function __construct(private string $email, private string $hash, private bool $active) {}
+
+            public function claims(array $credentials): bool
+            {
+                return ($credentials['email'] ?? null) === $this->email;
+            }
+
+            public function findById(string $id): ?Authenticatable
+            {
+                return null;
+            }
+
+            public function findByCredentials(array $credentials): ?Authenticatable
+            {
+                return $this->claims($credentials) && $this->active ? new TestUser('r1', $this->email, $this->hash) : null;
+            }
+        };
+    }
+
+    private function configUser(string $email, string $hash): ConfigUserProvider
+    {
+        return new ConfigUserProvider([['email' => $email, 'password_hash' => $hash]]);
+    }
+
+    public function test_an_inactive_record_blocks_the_config_user_with_the_same_email(): void
+    {
+        $hasher = new NativePasswordHasher();
+        $chain = new ChainUserProvider([
+            $this->records('a@x.test', $hasher->hash('record-pw'), false),
+            $this->configUser('a@x.test', $hasher->hash('config-pw')),
+        ]);
+
+        $this->assertNull($chain->findByCredentials(['email' => 'a@x.test']));
+        $this->assertFalse((new SessionGuard($chain, $hasher))->validate(['email' => 'a@x.test', 'password' => 'config-pw']));
+        $this->assertSame('b@x.test', (new ChainUserProvider([$this->records('a@x.test', 'h', false), $this->configUser('b@x.test', 'h')]))
+            ->findByCredentials(['email' => 'b@x.test'])?->getAuthId(), 'other e-mails still fall through');
+    }
+
+    public function test_the_record_decides_for_its_email_so_the_config_password_does_not_work(): void
+    {
+        $hasher = new NativePasswordHasher();
+        $guard = new SessionGuard(new ChainUserProvider([
+            $this->records('a@x.test', $hasher->hash('record-pw'), true),
+            $this->configUser('a@x.test', $hasher->hash('config-pw')),
+        ]), $hasher);
+
+        $this->assertFalse($guard->validate(['email' => 'a@x.test', 'password' => 'config-pw']));
+        $this->assertTrue($guard->validate(['email' => 'a@x.test', 'password' => 'record-pw']));
+    }
+
+    public function test_an_unavailable_lazy_member_claims_nothing(): void
+    {
+        $lazy = new LazyUserProvider('staff', 'Missing', static fn (): object => throw new UserProviderUnavailable('gone'));
+        $lazy->bootResolve();
+        $chain = new ChainUserProvider([$lazy, $this->configUser('a@x.test', 'h')]);
+
+        $this->assertSame('a@x.test', $chain->findByCredentials(['email' => 'a@x.test'])?->getAuthId());
+    }
+
+    public function test_a_lazy_member_passes_the_claim_through(): void
+    {
+        $lazy = new LazyUserProvider('staff', 'X', fn (): object => $this->records('a@x.test', 'h', false));
+        $chain = new ChainUserProvider([$lazy, $this->configUser('a@x.test', 'h')]);
+
+        $this->assertNull($chain->findByCredentials(['email' => 'a@x.test']));
     }
 }

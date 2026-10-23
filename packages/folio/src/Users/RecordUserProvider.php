@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Users;
 
 use Preflow\Auth\Authenticatable;
+use Preflow\Auth\ClaimsCredentials;
 use Preflow\Auth\UserProviderInterface;
 use Preflow\Auth\UserProviderUnavailable;
 use Preflow\Data\DataManager;
@@ -19,7 +20,7 @@ use Preflow\Folio\Content\TypeCatalog;
  * '' or empty never resolves, by id or credentials (so a signed-in user is out on the next request).
  * Without the key every record resolves.
  */
-final class RecordUserProvider implements UserProviderInterface
+final class RecordUserProvider implements UserProviderInterface, ClaimsCredentials
 {
     private readonly string $type;
     private readonly string $emailField;
@@ -59,21 +60,35 @@ final class RecordUserProvider implements UserProviderInterface
 
     public function findByCredentials(array $credentials): ?Authenticatable
     {
+        $exact = $this->exact($credentials);
+
+        return count($exact) === 1 && $this->isActive($exact[0]) ? $this->user($exact[0]) : null;
+    }
+
+    /** True when a record has this e-mail, active or not: a chain then leaves the decision to this provider. */
+    public function claims(array $credentials): bool
+    {
+        return $this->exact($credentials) !== [];
+    }
+
+    /** @return list<\Preflow\Data\DynamicRecord> records whose e-mail is exactly the (lowercased) one given */
+    private function exact(array $credentials): array
+    {
         $email = $credentials['email'] ?? null;
         if (!is_string($email) || trim($email) === '') {
-            return null;
+            return [];
         }
         $email = mb_strtolower(trim($email));
         // The database may compare loosely (MySQL collations ignore case and accents): only the exact
         // stored value counts, and a look-alike or duplicate never picks an account.
         $exact = [];
         foreach ($this->dm->queryType($this->type)->where($this->emailField, $email)->get() as $record) {
-            if ($record->get($this->emailField) === $email && $this->isActive($record)) {
+            if ($record->get($this->emailField) === $email) {
                 $exact[] = $record;
             }
         }
 
-        return count($exact) === 1 ? $this->user($exact[0]) : null;
+        return $exact;
     }
 
     private function isActive(\Preflow\Data\DynamicRecord $record): bool

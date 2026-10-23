@@ -142,6 +142,16 @@ final class RecordUserProviderTest extends TestCase
         }
     }
 
+    public function test_a_record_claims_its_email_even_when_inactive(): void
+    {
+        $this->memberActive('off', 'off@example.com', false);
+        $provider = $this->provider(['type' => 'member', 'active' => 'active']);
+
+        $this->assertTrue($provider->claims(['email' => ' Off@Example.com ']));
+        $this->assertFalse($provider->claims(['email' => 'other@example.com']));
+        $this->assertFalse($provider->claims([]));
+    }
+
     public function test_without_the_active_key_an_inactive_record_still_resolves(): void
     {
         $this->memberActive('off', 'off@example.com', false);

@@ -8,7 +8,7 @@ namespace Preflow\Auth;
  * A user provider built on first use. Providers that need services other packages register
  * (Folio's type catalog) cannot be built while auth boots, before the service providers.
  */
-final class LazyUserProvider implements UserProviderInterface
+final class LazyUserProvider implements UserProviderInterface, ClaimsCredentials
 {
     private ?UserProviderInterface $provider = null;
 
@@ -59,6 +59,16 @@ final class LazyUserProvider implements UserProviderInterface
     public function findByCredentials(array $credentials): ?Authenticatable
     {
         return $this->unavailable ? null : $this->resolve()->findByCredentials($credentials);
+    }
+
+    public function claims(array $credentials): bool
+    {
+        if ($this->unavailable) {
+            return false;
+        }
+        $provider = $this->resolve();
+
+        return $provider instanceof ClaimsCredentials && $provider->claims($credentials);
     }
 
     private function check(object $provider): UserProviderInterface
