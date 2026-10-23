@@ -177,7 +177,6 @@ final class DeferredTest extends TestCase
             }
         };
         $resolved = null;
-        $n = $this->notifier('bad', null);
         $n = new Notifier($this->factory, ['email' => ['transport' => 'bad']], function () use (&$resolved) { return $resolved; });
         $n->sendLater($this->mail('a@x.test'));
         $resolved = $logger; // bound after the notifier was built

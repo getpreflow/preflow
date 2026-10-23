@@ -203,6 +203,67 @@ final class BootTest extends TestCase
         };
     }
 
+    public function test_failing_emitter_does_not_release_the_client_but_still_flushes(): void
+    {
+        $this->writeNotifyConfig([
+            'transports' => ['memory' => ['driver' => 'memory']],
+            'channels' => ['email' => ['transport' => 'memory']],
+        ]);
+        $app = Application::create($this->dir);
+        $app->boot();
+        $container = $app->container();
+        $app->addMiddleware($this->queueingMiddleware($container, false));
+        $finished = false;
+        $app->emitUsing(
+            function () { throw new \RuntimeException('emit failed'); },
+            function () use (&$finished) { $finished = true; },
+        );
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/';
+
+        try {
+            $app->run();
+            $this->fail('exception expected');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('emit failed', $e->getMessage());
+        }
+
+        $this->assertFalse($finished);
+        $this->assertCount(1, $container->get(TransportFactory::class)->get('memory')->sent());
+    }
+
+    public function test_pipeline_error_then_failing_emit_does_not_release_the_client(): void
+    {
+        $this->writeNotifyConfig([
+            'transports' => ['memory' => ['driver' => 'memory']],
+            'channels' => ['email' => ['transport' => 'memory']],
+        ]);
+        $app = Application::create($this->dir);
+        $app->boot();
+        $container = $app->container();
+        $app->addMiddleware($this->queueingMiddleware($container, false));
+        $finished = false;
+        $app->emitUsing(fn () => null, function () use (&$finished) { $finished = true; });
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/';
+        // A handle() failure: the router/kernel cannot be reached once the pipeline throws.
+        $app->addMiddleware(new class implements \Psr\Http\Server\MiddlewareInterface {
+            public function process(\Psr\Http\Message\ServerRequestInterface $r, \Psr\Http\Server\RequestHandlerInterface $h): \Psr\Http\Message\ResponseInterface
+            {
+                throw new \LogicException('no');
+            }
+        });
+        $app->emitUsing(function () { throw new \LogicException('emit after handle'); }, function () use (&$finished) { $finished = true; });
+
+        $this->expectException(\Throwable::class);
+        try {
+            $app->run();
+        } finally {
+            $this->assertFalse($finished);
+            $this->assertCount(1, $container->get(TransportFactory::class)->get('memory')->sent());
+        }
+    }
+
     /** @param array<string, mixed> $config */
     private function writeNotifyConfig(array $config): void
     {

@@ -266,6 +266,8 @@ final class Application
     /**
      * Replace how run() emits the response and releases the client (tests).
      *
+     * @internal
+     *
      * @param \Closure(ResponseInterface): void $emit
      * @param \Closure(): void|null $finish
      */
@@ -300,7 +302,7 @@ final class Application
             fastcgi_finish_request();
         } elseif (function_exists('litespeed_finish_request')) {
             litespeed_finish_request();
-        } elseif (!in_array(PHP_SAPI, ['cli', 'phpdbg'], true)) {
+        } elseif (!in_array(PHP_SAPI, ['cli', 'phpdbg', 'embed'], true)) {
             while (ob_get_level() > 0 && @ob_end_flush()) {
             }
             flush();
@@ -319,16 +321,24 @@ final class Application
             $request = $creator->fromGlobals();
 
             $this->emitting = true;
+            $responseSent = false;
             try {
                 $response = $this->handle($request);
                 ($this->emitter ?? static fn (ResponseInterface $r) => (new Emitter())->emit($r))($response);
-                // The client has its response; deferred mail (sendLater) goes out now so
-                // the SMTP round trip cannot show in the response time. In a finally so an
-                // exception (or an error page) never drops what was queued.
+                $responseSent = true;
             } finally {
                 $this->emitting = false;
-                $this->finishResponse();
-                $this->flushDeferredNotifications();
+                // Release the client only when a response went out; after a failure
+                // the error output must still reach it. The queue is flushed either way,
+                // and a flush error never masks the original exception.
+                try {
+                    if ($responseSent) {
+                        $this->finishResponse();
+                    }
+                    $this->flushDeferredNotifications();
+                } catch (\Throwable) {
+                    error_log('Deferred notifications could not be flushed.');
+                }
             }
         } else {
             throw new \RuntimeException('Install nyholm/psr7 and nyholm/psr7-server to use run().');

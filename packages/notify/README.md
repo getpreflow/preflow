@@ -131,7 +131,7 @@ and cannot be flushed deterministically in the CLI and in tests.
   (only `run()` postpones it until after emitting), so in-process requests and tests never
   lose mail. A CLI command that does not go through `handle()`/`run()` must call
   `$notifier->flushDeferred()` itself.
-- A single flush sends at most `Notifier::FLUSH_LIMIT` (100) messages, so an `onFailure`
+- The cap applies per `flushDeferred()` call: it sends at most `Notifier::FLUSH_LIMIT` (100) messages and logs what is left, so an `onFailure`
   that keeps re-queuing cannot loop forever. If `onFailure` throws, a generic line is logged.
 - The logger is looked up in the container when a failure happens, so one bound by a
   provider is used. `defer` is read as a boolean (`"false"`, `0` and `off` count as false).
