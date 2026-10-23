@@ -9,6 +9,7 @@
         "preflow/auth": "^0.26 || @dev",
         "preflow/core": "^0.25 || @dev",
         "preflow/data": "^0.25 || @dev",
+        "preflow/devtools": "^0.20 || @dev",
         "preflow/folio": "^0.26 || @dev",
         "preflow/i18n": "^0.26 || @dev",
         "preflow/notify": "^0.25 || @dev",
@@ -32,6 +33,9 @@
     "extra": {
         "folio": {
             "extension": "Preflow\\Members\\Extension"
+        },
+        "preflow": {
+            "commands": ["Preflow\\Members\\Console\\PruneMembersCommand"]
         }
     }
 }

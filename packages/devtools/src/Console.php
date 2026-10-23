@@ -29,7 +29,29 @@ final class Console
         $this->register(new Command\AuthUserCommand());
         $this->register(new Command\NotifyTestCommand());
 
-        $this->registerAppCommands(($basePath ?? (getcwd() ?: '.')) . '/config/commands.php', $stderr ?? STDERR);
+        $basePath ??= getcwd() ?: '.';
+        $this->registerPackageCommands($basePath . '/vendor/composer/installed.json', $stderr ?? STDERR);
+        $this->registerAppCommands($basePath . '/config/commands.php', $stderr ?? STDERR);
+    }
+
+    /**
+     * Commands installed packages bring: extra.preflow.commands in their composer.json lists
+     * command classes (constructed without arguments), so a site needs no config/commands.php
+     * line for them. The app's own list is registered after and wins on a name clash.
+     *
+     * @param resource $stderr
+     */
+    private function registerPackageCommands(string $installed, mixed $stderr): void
+    {
+        if (!is_file($installed)) {
+            return;
+        }
+        $data = json_decode((string) file_get_contents($installed), true);
+        $packages = is_array($data) ? ($data['packages'] ?? $data) : [];
+        foreach (is_array($packages) ? $packages : [] as $package) {
+            $classes = is_array($package) ? ($package['extra']['preflow']['commands'] ?? []) : [];
+            $this->registerClasses(is_array($classes) ? $classes : [], 'package ' . (is_array($package) ? (string) ($package['name'] ?? '?') : '?'), $stderr);
+        }
     }
 
     /**
@@ -50,15 +72,24 @@ final class Console
             fwrite($stderr, 'Warning: config/commands.php failed to load (' . $e->getMessage() . "); its commands are unavailable.\n");
             return;
         }
-        foreach (is_array($classes) ? $classes : [] as $class) {
+        $this->registerClasses(is_array($classes) ? $classes : [], 'config/commands.php', $stderr);
+    }
+
+    /**
+     * @param array<mixed> $classes
+     * @param resource $stderr
+     */
+    private function registerClasses(array $classes, string $source, mixed $stderr): void
+    {
+        foreach ($classes as $class) {
             if (!is_string($class) || !class_exists($class) || !is_subclass_of($class, Command\CommandInterface::class)) {
-                fwrite($stderr, 'Warning: config/commands.php lists ' . (is_string($class) ? $class : get_debug_type($class)) . ", which is not a command class; skipped.\n");
+                fwrite($stderr, "Warning: {$source} lists " . (is_string($class) ? $class : get_debug_type($class)) . ", which is not a command class; skipped.\n");
                 continue;
             }
             try {
                 $this->register(new $class());
             } catch (\Throwable $e) {
-                fwrite($stderr, "Warning: config/commands.php lists {$class}, which could not be created (" . $e->getMessage() . "); skipped.\n");
+                fwrite($stderr, "Warning: {$source} lists {$class}, which could not be created (" . $e->getMessage() . "); skipped.\n");
             }
         }
     }

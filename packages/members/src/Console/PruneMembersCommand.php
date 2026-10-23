@@ -1,0 +1,103 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Members\Console;
+
+use Preflow\Auth\Remember\RememberMe;
+use Preflow\Auth\Tokens\Tokens;
+use Preflow\Core\Throttle\Throttle;
+use Preflow\Data\DataManager;
+use Preflow\Data\DynamicRecord;
+use Preflow\DevTools\Command\CommandInterface;
+use Preflow\Folio\Console\BootsApplication;
+use Preflow\Members\MemberState;
+use Preflow\Members\Members;
+use Preflow\Members\MembersConfig;
+
+/**
+ * Nightly from cron: unconfirmed accounts go after retention.unconfirmed_days (7) from registration,
+ * declined ones after retention.declined_days (30) from the decision (config/members.php), and
+ * expired tokens, remember rows and throttle hits are pruned. Prints counts only, never an email
+ * or a name. The package lists it in composer.json (extra.preflow.commands), so it needs no setup.
+ */
+final class PruneMembersCommand implements CommandInterface
+{
+    use BootsApplication;
+
+    public function getName(): string { return 'members:prune'; }
+    public function getDescription(): string { return 'Delete stale unconfirmed and declined members, prune expired tokens (run from cron)'; }
+
+    public function execute(array $args): int
+    {
+        $app = $this->app();
+
+        $dir = $app->basePath('storage/locks');
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            fwrite(STDERR, "members:prune — cannot create {$dir}\n");
+            return 1;
+        }
+        $lock = fopen($dir . '/members-prune.lock', 'c');
+        if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
+            return 0; // another run is active
+        }
+
+        try {
+            $c = $app->container();
+            $now = $this->now($args);
+            $config = $c->get(MembersConfig::class);
+            $members = $c->get(Members::class);
+
+            $unconfirmed = $declined = 0;
+            foreach ($c->get(DataManager::class)->queryType(MembersConfig::TYPE)->get() as $m) {
+                if (!$m instanceof DynamicRecord) {
+                    continue;
+                }
+                $state = MemberState::fromRecord($m);
+                if ($state === MemberState::Unconfirmed && $this->expired($m->get('registered_at'), $config->retention('unconfirmed'), $now)
+                    || $state === MemberState::Declined && $this->expired($m->get('decided_at'), $config->retention('declined'), $now)) {
+                    $members->delete($m);
+                    $state === MemberState::Unconfirmed ? $unconfirmed++ : $declined++;
+                }
+            }
+
+            $c->get(Tokens::class)->prune();
+            $c->get(RememberMe::class)->prune();
+            $c->get(Throttle::class)->prune();
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+
+        echo "members:prune — deleted {$unconfirmed} unconfirmed, {$declined} declined; pruned tokens, remember, throttle\n";
+
+        return 0;
+    }
+
+    /** @param list<string> $args --now=<ATOM> overrides the clock (tests) */
+    private function now(array $args): \DateTimeImmutable
+    {
+        foreach ($args as $arg) {
+            if (str_starts_with($arg, '--now=')) {
+                return new \DateTimeImmutable(substr($arg, 6));
+            }
+        }
+
+        return new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+    }
+
+    /** Strictly older than $days; a missing or unreadable date never expires (stored as TEXT, so compared here). */
+    private function expired(mixed $stamp, int $days, \DateTimeImmutable $now): bool
+    {
+        if ($days <= 0 || !is_string($stamp) || $stamp === '') {
+            return false;
+        }
+        try {
+            $at = new \DateTimeImmutable($stamp);
+        } catch (\Exception) {
+            return false;
+        }
+
+        return $at < $now->modify("-{$days} days");
+    }
+}
