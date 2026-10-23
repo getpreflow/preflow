@@ -71,6 +71,29 @@ final class RbacResolverTest extends TestCase
         $this->assertFalse($resolver->allows($editor, 'staff', 'rbac_role.edit', null));
     }
 
+    public function test_patterns_are_the_users_roles_patterns_in_their_population(): void
+    {
+        $resolver = $this->resolver([
+            ['staff', 'editor', ['page.*', 'asset.view']],
+            ['staff', 'helper', ['page.view', 'codes.revoke']],
+            ['members', 'editor', ['tools.*']],
+        ]);
+
+        $this->assertSame(['page.*', 'asset.view', 'page.view', 'codes.revoke'], $resolver->patterns(new TestUser(roles: ['editor', 'helper', 'ghost']), 'staff'));
+        $this->assertSame(['tools.*'], $resolver->patterns(new TestUser(roles: ['editor']), 'members'));
+        $this->assertSame([], $resolver->patterns(new TestUser(roles: []), 'staff'));
+    }
+
+    public function test_patterns_before_install_staff_hold_everything(): void
+    {
+        $resolver = $this->resolver([['staff', 'editor', ['page.*']], ['members', 'member', ['tools.*']]], installed: false);
+
+        $this->logged(function () use ($resolver): void {
+            $this->assertSame(['*'], $resolver->patterns(new TestUser(roles: ['editor']), 'staff'));
+            $this->assertSame(['tools.*'], $resolver->patterns(new TestUser(roles: ['member']), 'members'));
+        }, 'not installed');
+    }
+
     public function test_member_role_pattern_grants_only_members_population(): void
     {
         $resolver = $this->resolver([

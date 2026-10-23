@@ -119,6 +119,18 @@ final class AccessTest extends TestCase
         $this->assertSame('members', $access->populationOf('other'));
     }
 
+    public function test_population_of_the_signed_in_user(): void
+    {
+        $access = $this->access(populations: ['folio' => 'staff']);
+        $this->assertNull($access->population(), 'nobody signed in');
+
+        $this->auth->setUser(new TestUser(), 'folio');
+        $this->assertSame('staff', $access->population());
+        $this->auth->setUser(new TestUser(), 'site');
+        $this->assertSame('members', $access->population());
+        $this->assertNull((new Access(null, $this->registry, false, []))->population(), 'no auth configured');
+    }
+
     public function test_without_auth_configured_everything_is_allowed(): void
     {
         $this->assertTrue((new Access(null, $this->registry, true, []))->can('anything.at.all'));

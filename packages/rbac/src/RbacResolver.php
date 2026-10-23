@@ -57,6 +57,27 @@ final class RbacResolver implements PermissionResolver
         return false;
     }
 
+    /**
+     * Every pattern the user's roles in their population grant, in role order, each once;
+     * ["*"] for staff until the extension is installed here (as allows() answers then).
+     *
+     * @return list<string>
+     */
+    public function patterns(Authenticatable $user, string $population): array
+    {
+        if ($population === 'staff' && !($this->installed ??= $this->state->installedVersion('rbac') !== null)) {
+            $this->logOnce('bootstrap', 'preflow/rbac: the rbac extension is not installed here yet, so staff may do everything; run folio:extensions:apply');
+            return ['*'];
+        }
+        $defined = $this->store->rolesFor($population);
+        $patterns = [];
+        foreach (RoleList::normalize($user->getRoles()) as $role) {
+            array_push($patterns, ...($defined[$role] ?? []));
+        }
+
+        return array_values(array_unique($patterns));
+    }
+
     private function logOnce(string $key, string $message): void
     {
         if (isset($this->logged[$key])) {

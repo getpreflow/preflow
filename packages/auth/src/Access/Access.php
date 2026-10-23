@@ -58,6 +58,14 @@ final class Access
         return isset($this->staffGuards[$guard]) ? 'staff' : 'members';
     }
 
+    /** The population ('staff'|'members') of the user signed in for this request; null when nobody is, or no auth is configured. */
+    public function population(): ?string
+    {
+        $guard = $this->auth?->guardName();
+
+        return $this->auth?->user() === null || $guard === null ? null : $this->populationOf($guard);
+    }
+
     public function can(string $permission, ?object $subject = null): bool
     {
         $early = $this->earlyAnswer($permission);

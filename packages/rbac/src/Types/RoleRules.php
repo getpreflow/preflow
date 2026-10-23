@@ -12,16 +12,21 @@ use Preflow\Folio\Extension\Attributes\FolioType;
 use Preflow\Folio\Extension\BeforeDelete;
 use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\Customization\Refused;
+use Preflow\Rbac\Messages;
+use Preflow\Rbac\PermissionCoverage;
 use Preflow\Rbac\RoleList;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationResult;
 
 /**
- * Role names are unique per population, and nobody locks roles editing away: a save or
- * delete is refused when, on the roles as they would be afterwards, the signed-in user's
- * own staff roles together no longer grant both rbac_role.view (the list and edit form)
- * and rbac_role.edit, or the staff roles together grant them no more. A changed name or
- * population counts as losing the role.
+ * Role names are unique per population. Delegation (PermissionCoverage): the signed-in
+ * user saves or deletes only a role whose stored patterns they cover (no touching a role
+ * above them), and adds only patterns they cover; the uncovered ones are named in the
+ * error. Without a signed-in user (CLI) delegation does not apply. Nobody locks roles
+ * editing away either: a save or delete is refused when, on the roles as they would be
+ * afterwards, the signed-in user's own staff roles together no longer grant both
+ * rbac_role.view (the list and edit form) and rbac_role.edit, or the staff roles together
+ * grant them no more. A changed name or population counts as losing the role.
  */
 #[FolioType('rbac_role')]
 final class RoleRules
@@ -34,6 +39,8 @@ final class RoleRules
     public function __construct(
         private readonly DataManager $dm,
         private readonly AuthManager $auth,
+        private readonly PermissionCoverage $coverage,
+        private readonly Messages $messages,
     ) {}
 
     #[BeforeSave]
@@ -48,6 +55,10 @@ final class RoleRules
             }
         }
 
+        if (($message = $this->delegation($roles[$id]['permissions'] ?? [], $role['permissions'])) !== null) {
+            throw new ValidationException(new ValidationResult(['permissions' => [$message]]));
+        }
+
         $roles[$id] = $role;
         if (($message = $this->lockout($roles)) !== null) {
             throw new ValidationException(new ValidationResult(['permissions' => [$message]]));
@@ -58,10 +69,31 @@ final class RoleRules
     public function beforeDelete(DynamicRecord $record): void
     {
         $roles = $this->roles();
-        unset($roles[(string) $record->getId()]);
+        $id = (string) $record->getId();
+        if (($message = $this->delegation($roles[$id]['permissions'] ?? self::role($record)['permissions'], [])) !== null) {
+            throw new Refused($message);
+        }
+        unset($roles[$id]);
         if (($message = $this->lockout($roles)) !== null) {
             throw new Refused($message);
         }
+    }
+
+    /**
+     * The refusal when the signed-in user doesn't cover the role as stored, or a pattern added to it.
+     *
+     * @param list<string> $before the stored patterns ([] for a new role)
+     * @param list<string> $after the patterns afterwards ([] on delete)
+     */
+    private function delegation(array $before, array $after): ?string
+    {
+        $held = $this->coverage->held();
+        if ($held === null) {
+            return null;
+        }
+        $uncovered = PermissionCoverage::uncovered($held, [...$before, ...array_diff($after, $before)]);
+
+        return $uncovered === [] ? null : $this->messages->get('delegation.grant', ['patterns' => implode(', ', $uncovered)]);
     }
 
     /** @param array<string, array{name: string, population: string, permissions: list<string>}> $roles the roles afterwards */

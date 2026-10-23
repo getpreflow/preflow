@@ -2,6 +2,7 @@
  * The rbac_permissions editor (preflow/rbac): what "Everything" or an "All" already grants is
  * shown checked and locked (disabled, so it is not posted on its own). Unlocking restores
  * the box's own state. Without this script every box stays usable; the server accepts any mix.
+ * What the editor can't grant (data-rbac-denied) stays disabled whatever else changes.
  */
 (function () {
     'use strict';
@@ -14,7 +15,7 @@
             box.checked = box.dataset.rbacWas === '1';
             delete box.dataset.rbacWas;
         }
-        box.disabled = locked;
+        box.disabled = locked || box.hasAttribute('data-rbac-denied');
     }
 
     function apply(field) {

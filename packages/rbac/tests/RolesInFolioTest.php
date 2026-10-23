@@ -119,18 +119,22 @@ final class RolesInFolioTest extends TestCase
         ];
     }
 
-    /** @param array<string, mixed> $model */
+    /**
+     * Staff role fields boot: assigning them is governed by delegation (the staff type's own rules).
+     *
+     * @param array<string, mixed> $model
+     */
     #[RunInSeparateProcess]
     #[\PHPUnit\Framework\Attributes\DataProvider('staffRoleFields')]
-    public function test_rbac_roles_for_staff_population_throws(array $model, string $field): void
+    public function test_rbac_roles_for_staff_population_boots(array $model, string $field): void
     {
         $this->write('config/models/team.json', (string) json_encode(['key' => 'team', 'table' => 'team', 'storage' => 'json', 'id_field' => 'uuid'] + $model));
-        try {
-            $this->app();
-            $this->fail('an rbac_roles field for the staff population booted');
-        } catch (\Preflow\Folio\Extension\ExtensionException $e) {
-            $this->assertSame("Field {$field}: Assigning staff roles through Folio has no delegation rule yet; staff logins come from config/auth.php.", $e->getMessage());
-        }
+        $this->install();
+        $this->as('admin');
+
+        [, $name] = explode('.', $field);
+        $form = (string) $this->send('GET', '/folio/team/new')->getBody();
+        $this->assertStringContainsString('<input type="checkbox" name="' . $name . '[]" value="admin"> Administrator', $form);
     }
 
     #[RunInSeparateProcess]

@@ -54,9 +54,18 @@ A user type gives its users roles with an `rbac_roles` field:
 The field lists the roles of the type's `users` population; a `"population"` on the field
 names another one. The value is a list of role names.
 
-Only member populations are supported for now: an `rbac_roles` field whose population is
-`staff` is an error at boot ("Assigning staff roles through Folio has no delegation rule
-yet; staff logins come from config/auth.php."). Staff roles are given in `config/auth.php`.
+## Delegation
+
+Nobody grants permissions they don't hold. A held pattern covers what it matches: `*`
+everything, `x.*` the pattern `x.*` and every name or pattern below `x.`, a name itself.
+When a user is signed in, a role save or delete is refused unless their own roles cover
+every pattern the role has now (no touching a role above you) and every pattern the save
+adds ("You can't grant permissions you don't have: {patterns}", in the site's language
+from `lang/{locale}/rbac.php`). The same rule holds for member roles. The permissions
+editor shows what you can't grant disabled ("You can't grant this"); the server check is
+the authority. Without a signed-in user (the CLI: `folio:extensions:apply`, imports)
+delegation does not apply. `Preflow\Rbac\PermissionCoverage` has the check
+(`covers()`, `coversAll()`, `uncovered()`, and `held()` for the signed-in user).
 
 ## Lock-out protection
 
