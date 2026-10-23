@@ -78,7 +78,7 @@ final class TypeCatalogTest extends TestCase
 
     private function model(array $extra): void
     {
-        file_put_contents($this->dir . '/member.json', json_encode(['key' => 'member', 'table' => 'member', 'fields' => []] + $extra));
+        file_put_contents($this->dir . '/member.json', json_encode($extra + ['key' => 'member', 'table' => 'member', 'fields' => []]));
     }
 
     public function test_user_type_defaults_to_no_transfer(): void
@@ -217,6 +217,28 @@ final class TypeCatalogTest extends TestCase
         $this->expectExceptionMessageMatches('/Type "member".*' . preg_quote($names, '/') . '/');
 
         (new TypeCatalog($this->dir))->all();
+    }
+
+    public function test_list_column_naming_hidden_field_throws(): void
+    {
+        $this->model([
+            'fields' => ['name' => ['type' => 'string'], 'secret' => ['type' => 'string', 'hidden' => true]],
+            'list' => ['columns' => ['name', 'secret']],
+        ]);
+        $this->expectException(FrontendConfigException::class);
+        $this->expectExceptionMessageMatches('/Type "member".*"secret".*hidden/');
+
+        (new TypeCatalog($this->dir))->all();
+    }
+
+    public function test_list_columns_with_visible_fields_accepted(): void
+    {
+        $this->model([
+            'fields' => ['name' => ['type' => 'string'], 'secret' => ['type' => 'string', 'hidden' => true]],
+            'list' => ['columns' => ['name']],
+        ]);
+
+        $this->assertSame(['columns' => ['name']], (new TypeCatalog($this->dir))->get('member')->list);
     }
 
     public function test_reserved_type_key_throws(): void

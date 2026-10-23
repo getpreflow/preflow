@@ -107,6 +107,12 @@ final class TypeCatalog
                 }
             }
         }
+        $fields = is_array($data['fields'] ?? null) ? $data['fields'] : [];
+        foreach ((array) ($data['list']['columns'] ?? []) as $column) {
+            if (is_string($column) && is_array($fields[$column] ?? null) && ($fields[$column]['hidden'] ?? false) === true) {
+                throw new FrontendConfigException("Type \"{$key}\": list column \"{$column}\" names a hidden field; remove it from \"list.columns\" or unhide the field");
+            }
+        }
         $section = $data['section'] ?? $section;
         if (!is_string($section) || preg_match('/^[a-z][a-z0-9_-]*$/', $section) !== 1) {
             throw new FrontendConfigException("Type \"{$key}\": \"section\" must be a lowercase name (a-z, 0-9, _ and -, starting with a letter)");
