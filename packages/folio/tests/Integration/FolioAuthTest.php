@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Tests\Integration;
 
 use Nyholm\Psr7\Factory\Psr17Factory;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 
@@ -37,9 +38,7 @@ final class FolioAuthTest extends TestCase
         return $app;
     }
 
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_unauthenticated_admin_redirects_to_login(): void
     {
         $res = $this->app()->handle((new Psr17Factory())->createServerRequest('GET', '/folio'));
@@ -47,9 +46,7 @@ final class FolioAuthTest extends TestCase
         $this->assertSame('/folio/login', $res->getHeaderLine('Location'));
     }
 
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_login_page_is_public_and_has_csrf_field(): void
     {
         $res = $this->app()->handle((new Psr17Factory())->createServerRequest('GET', '/folio/login'));
@@ -59,9 +56,7 @@ final class FolioAuthTest extends TestCase
         $this->assertStringContainsString('name="email"', $body);
     }
 
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_login_page_has_a_brand_scene_and_an_intact_form(): void
     {
         $body = (string) $this->app()->handle((new Psr17Factory())->createServerRequest('GET', '/folio/login'))->getBody();
@@ -75,18 +70,14 @@ final class FolioAuthTest extends TestCase
         }
     }
 
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_assets_are_public_while_unauthenticated(): void
     {
         $res = $this->app()->handle((new Psr17Factory())->createServerRequest('GET', '/folio/_assets/admin.css'));
         $this->assertSame(200, $res->getStatusCode());
     }
 
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_login_then_reach_dashboard_then_logout(): void
     {
         $app = $this->app();
