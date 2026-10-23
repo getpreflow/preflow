@@ -30,8 +30,8 @@ final class Extension extends \Preflow\Folio\Extension\Extension
             'notice_email' => ['type' => 'string', 'label' => 'Notify about waiting members', 'help' => 'Address that gets a mail when someone waits for approval'],
             // No default here: left empty, the panel takes lang/{locale}/members.php mail.accepted.body /
             // mail.declined.body, so a site words them in its own lang files (see MemberAdmin).
-            'accept_message' => ['type' => 'text', 'label' => 'Accept message', 'translatable' => true, 'help' => 'Pre-filled in the Decision panel; empty means the standard text. {name} and {login_url} are filled in.'],
-            'decline_message' => ['type' => 'text', 'label' => 'Decline message', 'translatable' => true, 'help' => 'Pre-filled in the Decision panel; empty means the standard text. {name} is filled in.'],
+            'accept_message' => ['type' => 'text', 'label' => 'Accept message', 'translatable' => true, 'help' => 'Pre-filled in the Decision panel; empty means the standard text shown in the field. {name} and {login_url} are filled in.'],
+            'decline_message' => ['type' => 'text', 'label' => 'Decline message', 'translatable' => true, 'help' => 'Pre-filled in the Decision panel; empty means the standard text shown in the field. {name} is filled in.'],
         ];
     }
 

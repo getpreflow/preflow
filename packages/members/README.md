@@ -168,7 +168,8 @@ with `"extends": true`).
 ## Overriding templates
 
 The pages are `@members/{register,confirm,login,forgot,reset,resend,check-inbox,thanks,closed,account}.twig`
-plus the shared `_card.twig`, all extending the configured `layout`. A site overrides one by
+plus the shared `_card.twig`, all extending the configured `layout`. `@members/decision.twig` is
+the Decision panel in Folio (a fragment in the admin, not a page). A site overrides one by
 putting a file of the same name in `resources/members/` (searched before the package; a new
 directory needs a fresh request to be picked up).
 
@@ -219,8 +220,10 @@ and `fr`. Without `config/i18n.php` the pages run in a single locale with no pre
   nothing changes. Declining ends the member's remembered sessions.
 - Settings → Members settings: `registration_open`, `notice_email`, `accept_message`,
   `decline_message` (translatable; `{name}` and `{login_url}` are filled in). Left empty,
-  the panel takes `mail.accepted.body` / `mail.declined.body` of the lang files. A text stored
-  only for another locale is not used (the member gets the lang default in their language).
+  the panel takes `mail.accepted.body` / `mail.declined.body` of the lang files; the settings
+  form shows that standard text, in the language being edited, as the field's placeholder. A
+  text stored only for another locale is not used (the member gets the lang default in their
+  language).
 
 ## Copy and mails
 

@@ -177,6 +177,33 @@ final class MembersGroundworkTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_settings_show_the_standard_texts_as_placeholders_in_the_edited_locale(): void
+    {
+        $this->write('lang/de/members.php', "<?php\nreturn ['mail' => ['declined' => ['body' => 'Hallo {name}, leider nein.']]];\n");
+        $this->migrateAndApply();
+        $this->signIn();
+        $en = require dirname(__DIR__) . '/lang/en/members.php';
+        $de = require dirname(__DIR__) . '/lang/de/members.php';
+
+        foreach (['' => [$en['mail']['accepted']['body'], $en['mail']['declined']['body']], '?locale=de' => [$de['mail']['accepted']['body'], 'Hallo {name}, leider nein.']] as $query => [$accept, $decline]) {
+            $html = $this->admin('/folio/members_settings' . $query);
+            $this->assertSame($accept, Dom::first($html, '//textarea[@name="accept_message"]')?->getAttribute('placeholder'), 'accept ' . $query);
+            $this->assertSame($decline, Dom::first($html, '//textarea[@name="decline_message"]')?->getAttribute('placeholder'), 'decline ' . $query . ' (the site\'s own wording)');
+            $this->assertSame('', trim((string) Dom::first($html, '//textarea[@name="accept_message"]')?->textContent), 'the field itself stays empty');
+        }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_boots_with_the_settings_part_switched_off(): void
+    {
+        $this->write('config/folio/extensions.json', '{"enabled": {"members": {"disabled_parts": ["settings"]}, "rbac": {"disabled_parts": []}}}');
+        $this->migrateAndApply();
+        $this->signIn();
+
+        $this->assertStringNotContainsString('Members settings', $this->admin('/folio'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_member_list_hides_password_hash(): void
     {
         $this->migrateAndApply();
