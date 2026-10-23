@@ -40,6 +40,13 @@ interface Admission
     public function afterConfirm(DynamicRecord $member): Decision;
 
     /**
+     * A line for the member right after the confirmation (asked after afterConfirm()), or null:
+     * shown on the thanks page when the owner decides, or flashed as "members.notice" to the
+     * landing when the member is accepted.
+     */
+    public function confirmNotice(DynamicRecord $member): ?string;
+
+    /**
      * What the owner should know about the member, for the Decision panel ({@see PANEL}) or
      * the notice mail ({@see NOTICE}); the two may differ (a short "code: yes" in the panel,
      * the member's own words in the mail).

@@ -53,6 +53,8 @@ php preflow folio:extensions:apply
 - A password change or reset ends the member's other sessions: the member type's
   `auth_epoch` field is the session epoch the guard checks on every request (provider key
   `epoch`, default `auth_epoch`), and the remember rows are revoked.
+- The members provider must keep the default epoch field `auth_epoch` (leave `epoch` out):
+  the package writes that field.
 
 ## Configuration
 
@@ -108,7 +110,9 @@ default locale without a prefix):
   Sign-in, reset and an accepted confirmation go to `landing`.
 - After a confirmation `Decision::Accept` makes a member, signs them in (remembered) and
   redirects to `landing`; `Decision::Pending` gives the `pending` role, shows the thanks page
-  and mails the owner (Members settings `notice_email`, when set).
+  and mails the owner (Members settings `notice_email`, when set). The admission's
+  `confirmNotice()` (when not null) is shown on that thanks page, or, for an accepted
+  member, flashed as `members.notice` for the landing to show.
 - A sign-in's `next` is kept only when it is a member page (`{path}` in any locale);
   anything else lands on `landing`.
 - Every form needs the CSRF token (`csrf_field()` in the templates); every page is
@@ -132,9 +136,14 @@ interface Admission
     public function validate(array $input, ServerRequestInterface $request): array;   // field => message
     public function recordValues(array $input): array;                                // stored on the member
     public function afterConfirm(DynamicRecord $member): Decision;                    // Accept or Pending
+    public function confirmNotice(DynamicRecord $member): ?string;                   // a line after confirming, or null
     public function details(DynamicRecord $member, string $for): array;              // label => value
 }
 ```
+
+`validate()` is asked only when the form's own fields (name, email, password, consent) are
+valid, so a costly or throttled check (a code lookup) never runs for a post that fails anyway;
+its errors then show with the form.
 
 `details($member, Admission::PANEL)` appear in the Decision panel (`Registered … · label: value`),
 `details($member, Admission::NOTICE)` in the owner's notice mail, one paragraph each; an entry

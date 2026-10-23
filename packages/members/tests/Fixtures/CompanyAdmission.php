@@ -12,8 +12,13 @@ use Psr\Http\Message\ServerRequestInterface;
 /** A site rule for the tests: a company is required at registration and stored on the member; the owner decides. */
 final class CompanyAdmission implements Admission
 {
+    /** How often validate() ran (a stateful check, like a throttled code lookup, must not run for nothing). */
+    public static int $validations = 0;
+
     public function validate(array $input, ServerRequestInterface $request): array
     {
+        self::$validations++;
+
         return trim((string) ($input['company'] ?? '')) === '' ? ['company' => 'Please name your company.'] : [];
     }
 
@@ -25,6 +30,11 @@ final class CompanyAdmission implements Admission
     public function afterConfirm(DynamicRecord $member): Decision
     {
         return Decision::Pending;
+    }
+
+    public function confirmNotice(DynamicRecord $member): ?string
+    {
+        return null;
     }
 
     public function details(DynamicRecord $member, string $for): array

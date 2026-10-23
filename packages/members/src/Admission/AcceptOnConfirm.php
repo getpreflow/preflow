@@ -25,6 +25,11 @@ final class AcceptOnConfirm implements Admission
         return Decision::Accept;
     }
 
+    public function confirmNotice(DynamicRecord $member): ?string
+    {
+        return null;
+    }
+
     public function details(DynamicRecord $member, string $for): array
     {
         return [];

@@ -25,6 +25,11 @@ final class OwnerApproval implements Admission
         return Decision::Pending;
     }
 
+    public function confirmNotice(DynamicRecord $member): ?string
+    {
+        return null;
+    }
+
     public function details(DynamicRecord $member, string $for): array
     {
         return [];

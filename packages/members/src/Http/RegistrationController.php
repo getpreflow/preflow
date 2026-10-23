@@ -93,7 +93,10 @@ final class RegistrationController
         if (!$input['consent']) {
             $errors['consent'] = 'consent';
         }
-        $errors += $this->admission->validate($input, $request);
+        // The admission only sees an otherwise valid post: its check may cost (a throttled code lookup).
+        if ($errors === []) {
+            $errors = $this->admission->validate($input, $request);
+        }
         if ($errors !== []) {
             return $this->page($request, $errors, $input, 422);
         }
@@ -146,9 +149,15 @@ final class RegistrationController
         }
         $this->members->confirm($member);
 
-        if ($this->admission->afterConfirm($member) === Decision::Accept) {
+        $decision = $this->admission->afterConfirm($member);
+        $notice = $this->admission->confirmNotice($member);
+        if ($decision === Decision::Accept) {
             $this->members->decide($member, 'member');
             $this->auth->guard(MembersConfig::GUARD)->login(new RecordUser($member), $request, remember: true);
+            // After the login, which starts a fresh session id: the landing (the site's page) shows it.
+            if ($notice !== null && $notice !== '') {
+                Input::flashSet($request, Input::NOTICE, $notice);
+            }
 
             return $this->view->redirect($this->landing($request));
         }
@@ -156,7 +165,7 @@ final class RegistrationController
         $this->members->decide($member, 'pending');
         $this->tellOwner($member);
 
-        return $this->show('thanks', $request);
+        return $this->show('thanks', $request, $notice !== null && $notice !== '' ? ['notice' => $notice] : []);
     }
 
     /**

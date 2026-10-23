@@ -11,6 +11,7 @@ use Preflow\Data\DataManager;
 use Preflow\Members\Admission\AcceptOnConfirm;
 use Preflow\Members\Members;
 use Preflow\Members\Tests\Fixtures\CompanyAdmission;
+use Preflow\Members\Tests\Fixtures\NoticeAdmission;
 use Preflow\Members\Tests\Support\Dom;
 use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Notify\Notifier;
@@ -116,7 +117,7 @@ final class MemberRegistrationTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_the_admissions_errors_join_the_form_and_its_values_are_stored(): void
+    public function test_the_admission_checks_an_otherwise_valid_post_and_its_values_are_stored(): void
     {
         $this->removeScaffold();
         $this->flowSite(['admission' => CompanyAdmission::class], files: [
@@ -127,18 +128,58 @@ final class MemberRegistrationTest extends TestCase
 TWIG,
         ]);
 
-        $missing = $this->register(['name' => '', 'company' => ' ']);
-        $html = (string) $missing->getBody();
-        $this->assertSame(422, $missing->getStatusCode());
-        $this->assertSame('Please name your company.', Dom::text($html, '//p[@class="company-error"]'), 'shown with the form\'s own errors');
+        $base = $this->register(['name' => '', 'company' => ' ']);
+        $html = (string) $base->getBody();
+        $this->assertSame(422, $base->getStatusCode());
         $this->assertStringContainsString('Please enter your name.', $html);
-        $this->assertNull($this->flow->container()->get(Members::class)->findByEmail('ada@example.com'));
+        $this->assertNull(Dom::first($html, '//p[@class="company-error"]'), 'the base fields first: the admission is not asked yet');
+        $this->assertSame(0, CompanyAdmission::$validations);
+        $this->assertSame('Holz AG', Dom::first((string) $this->register(['name' => '', 'company' => 'Holz AG'])->getBody(), '//input[@name="company"]')?->getAttribute('value'), 'the admission\'s input is kept');
+        $this->assertSame(0, CompanyAdmission::$validations);
 
-        $kept = (string) $this->register(['name' => '', 'company' => 'Holz AG'])->getBody();
-        $this->assertSame('Holz AG', Dom::first($kept, '//input[@name="company"]')?->getAttribute('value'), 'the admission\'s input is kept');
+        $missing = $this->register(['company' => ' ']);
+        $this->assertSame(422, $missing->getStatusCode());
+        $this->assertSame('Please name your company.', Dom::text((string) $missing->getBody(), '//p[@class="company-error"]'), 'on an otherwise valid post');
+        $this->assertSame(1, CompanyAdmission::$validations);
+        $this->assertNull($this->flow->container()->get(Members::class)->findByEmail('ada@example.com'));
 
         $this->assertSame(200, $this->register(['company' => ' Holz AG '])->getStatusCode());
         $this->assertSame('Holz AG', $this->member('ada@example.com')->get('company'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_admissions_confirm_notice_is_shown_on_the_thanks_page(): void
+    {
+        $this->removeScaffold();
+        $this->flowSite(['admission' => NoticeAdmission::class]);
+        $this->register();
+
+        $html = html_entity_decode((string) $this->post('/members/confirm', ['token' => $this->linkToken(0, 'confirm')])->getBody(), ENT_QUOTES);
+
+        $this->assertStringContainsString('Thanks for your interest', $html);
+        $this->assertStringContainsString('Your code no longer works for ada@example.com.', $html);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_admissions_confirm_notice_goes_to_the_landing_as_a_flash_when_accepted(): void
+    {
+        $this->removeScaffold();
+        $this->flowSite(['admission' => NoticeAdmission::class]);
+        $this->register(['email' => 'accept@example.com']);
+
+        $response = $this->post('/members/confirm', ['token' => $this->linkToken(0, 'confirm')]);
+
+        $this->assertSame('/members', $response->getHeaderLine('Location'));
+        $this->assertSame('Your code no longer works for accept@example.com.', $_SESSION['_flash']['current']['members.notice'] ?? null, 'the landing reads it');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_without_a_confirm_notice_the_thanks_page_shows_none(): void
+    {
+        $this->register();
+        $html = (string) $this->post('/members/confirm', ['token' => $this->linkToken(0, 'confirm')])->getBody();
+
+        $this->assertNull(Dom::first($html, '//*[@role="status"]'));
     }
 
     #[RunInSeparateProcess]
