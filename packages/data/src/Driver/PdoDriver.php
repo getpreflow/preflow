@@ -29,10 +29,22 @@ abstract class PdoDriver implements StorageDriver
         return $this->dialect;
     }
 
+    /**
+     * Values as this connection's execute() binds them (all as strings). The
+     * default leaves them alone, so SQLite stores exactly what it did before.
+     *
+     * @param array<int|string, mixed> $bindings
+     * @return array<int|string, mixed>
+     */
+    protected function prepareBindings(array $bindings): array
+    {
+        return $bindings;
+    }
+
     protected function executeWithLogging(\PDOStatement $stmt, string $sql, array $bindings = []): void
     {
         $start = hrtime(true);
-        $stmt->execute($bindings);
+        $stmt->execute($this->prepareBindings($bindings));
         if ($this->collector !== null) {
             $durationMs = (hrtime(true) - $start) / 1_000_000;
             $this->collector->logQuery($sql, $bindings, $durationMs);

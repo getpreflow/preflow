@@ -33,4 +33,10 @@ final class MysqlDriver extends PdoDriver
         $dialect = new MysqlDialect();
         parent::__construct($pdo, $dialect, new QueryCompiler($dialect), $collector);
     }
+
+    /** PDO sends false as '', which strict mode refuses for a TINYINT(1): bools go as 1/0. */
+    protected function prepareBindings(array $bindings): array
+    {
+        return array_map(static fn (mixed $v): mixed => is_bool($v) ? (int) $v : $v, $bindings);
+    }
 }
