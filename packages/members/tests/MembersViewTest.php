@@ -224,6 +224,17 @@ TWIG);
         $this->assertSame('Please enter your name.', Dom::text($site, '//p[contains(@class,"field-error")]'));
     }
 
+    public function test_the_privacy_link_comes_from_the_config_in_the_page_locale(): void
+    {
+        $this->site("['privacy_url' => ['en' => '/privacy', 'de' => '/de/datenschutz']]");
+
+        foreach (['en' => '/privacy', 'de' => '/de/datenschutz', 'fr' => '/privacy'] as $locale => $href) {
+            $link = Dom::first($this->html('register', ['open' => true], $locale), '//label[@for="f-consent"]//a');
+            $this->assertSame($href, $link?->getAttribute('href'), $locale);
+        }
+        $this->assertSame('/elsewhere', Dom::first($this->html('register', ['open' => true, 'privacy_url' => '/elsewhere']), '//label[@for="f-consent"]//a')?->getAttribute('href'), 'a page\'s own value wins');
+    }
+
     public function test_the_check_inbox_hint_shows_the_configured_validity_in_the_page_language(): void
     {
         $this->site("['confirm_ttl' => 7200]");

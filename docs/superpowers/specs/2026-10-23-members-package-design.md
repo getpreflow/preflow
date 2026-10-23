@@ -64,6 +64,8 @@ in smart-stack's app code (~1,500 generic lines, ~2,400 lines of tests).
 - `admission`: class name implementing `Preflow\Members\Admission\Admission`; shipped:
   `AcceptOnConfirm` and `OwnerApproval` (default `OwnerApproval`).
 - `throttle`, `password_min`, `confirm_ttl`, `reset_ttl`, `retention` — today's keys and values.
+- `privacy_url`: the register consent's privacy link, one URL or locale => URL (default `''`, no link).
+- `path` may not be `''` or `/` (boot error).
 
 ### Admission hook
 ```php

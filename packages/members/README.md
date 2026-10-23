@@ -73,8 +73,14 @@ return [
     'confirm_ttl' => 86400,
     'reset_ttl' => 3600,
     'retention' => ['unconfirmed_days' => 7, 'declined_days' => 30],
+    'privacy_url' => '',                        // the consent's privacy link: one URL or ['en' => '/privacy', 'de' => '/de/datenschutz']
 ];
 ```
+
+- `path` must be below the site root (`''` or `'/'` is a boot error): the member pages own
+  everything under it.
+- `privacy_url` as a map: a locale without an entry gets the default locale's; empty means the
+  consent reads without a link.
 
 Fixed names (stored data depends on them; `MembersConfig` lists them as constants): type
 and table `member`, guard `members`, permissions `members.access` and `members.decide`,
@@ -175,13 +181,15 @@ To change only a part of a page, extend the original through `@members-package` 
 
 {% block admission_fields %}
   <label for="f-code">{{ t('members.code.label') }}</label>
-  <input id="f-code" name="code" value="{{ old('code') }}">
+  <input id="f-code" name="code" value="{{ old.code|default('') }}">
 {% endblock %}
 ```
 
 `register.twig` has the blocks `intro`, `admission_fields` (the admission rule's own fields),
-`extra_fields` (fields you added to the member type) and `consent_text`; pass `privacy_url`
-or override `consent_text` for the privacy link. The mail layout (`mail.layout`) is a template
+`extra_fields` (fields you added to the member type) and `consent_text`; set `privacy_url` in
+`config/members.php` for the privacy link, or override `consent_text` (e.g. for a link a Folio
+setting chooses). The posted values are in `old` (`old.code`), the errors in `errors`
+(`errors.code`). The mail layout (`mail.layout`) is a template
 too. Words are changed in the lang files (see Copy and mails), not in templates.
 
 ## Cron

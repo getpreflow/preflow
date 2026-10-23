@@ -40,6 +40,8 @@ final class MembersConfig
         'confirm_ttl' => 86400,
         'reset_ttl' => 3600,
         'retention' => ['unconfirmed_days' => 7, 'declined_days' => 30],
+        // the consent's privacy link: one URL, or locale => URL; '' = the consent without a link
+        'privacy_url' => '',
     ];
 
     /** @var array<string, mixed> */
@@ -51,6 +53,10 @@ final class MembersConfig
         $merged = $config + self::DEFAULTS;
         foreach (['mail', 'throttle', 'retention'] as $group) {
             $merged[$group] = (is_array($config[$group] ?? null) ? $config[$group] : []) + self::DEFAULTS[$group];
+        }
+        // The member pages own everything below the path: at the site root they would shadow the site's pages.
+        if (!is_string($merged['path']) || trim($merged['path'], '/') === '') {
+            throw new \InvalidArgumentException('config/members.php path must be a page below the site root, like "/members"; "' . (is_string($merged['path']) ? $merged['path'] : get_debug_type($merged['path'])) . '" is not.');
         }
         $this->config = $merged;
     }
@@ -87,6 +93,20 @@ final class MembersConfig
         $register = $this->config['register'];
 
         return is_string($register) && $register !== '' ? $register : $this->path() . '/register';
+    }
+
+    /**
+     * The privacy page the register form's consent links, in $locale: the one URL, or the
+     * locale's entry of the map (else $default's); '' when there is none.
+     */
+    public function privacyUrl(string $locale, string $default): string
+    {
+        $url = $this->config['privacy_url'];
+        if (is_array($url)) {
+            $url = $url[$locale] ?? $url[$default] ?? '';
+        }
+
+        return is_string($url) ? $url : '';
     }
 
     /** The page layout the member templates extend. */

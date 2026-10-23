@@ -98,6 +98,30 @@ final class MembersConfigTest extends TestCase
         $this->assertSame('/tools', (new MembersConfig(['path' => '/tools', 'register' => '/tools']))->register());
     }
 
+    public function test_privacy_url_is_one_url_or_one_per_locale(): void
+    {
+        $this->assertSame('', (new MembersConfig([]))->privacyUrl('en', 'en'), 'none by default');
+        $this->assertSame('/privacy', (new MembersConfig(['privacy_url' => '/privacy']))->privacyUrl('de', 'en'), 'one URL for every locale');
+        $map = new MembersConfig(['privacy_url' => ['en' => '/privacy', 'de' => '/de/datenschutz']]);
+        $this->assertSame('/de/datenschutz', $map->privacyUrl('de', 'en'));
+        $this->assertSame('/privacy', $map->privacyUrl('fr', 'en'), 'a locale without one gets the default locale\'s');
+        $this->assertSame('', (new MembersConfig(['privacy_url' => ['de' => '/de/datenschutz']]))->privacyUrl('fr', 'en'));
+    }
+
+    /** @return array<string, array{mixed}> */
+    public static function rootPaths(): array
+    {
+        return ['empty' => [''], 'slash' => ['/'], 'slashes' => ['//'], 'null' => [null]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('rootPaths')]
+    public function test_a_path_at_the_site_root_is_refused(mixed $path): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('config/members.php path');
+        new MembersConfig(['path' => $path]);
+    }
+
     public function test_provider_reads_config_members_php(): void
     {
         $this->scaffold();

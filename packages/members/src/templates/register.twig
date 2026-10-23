@@ -45,7 +45,7 @@
       <div class="field{{ errors.consent is defined ? ' field--error' : '' }}">
         <label class="members-check" for="f-consent">
           <input id="f-consent" name="consent" type="checkbox" value="1" required{{ old.consent|default(false) ? ' checked' : '' }}>
-          {# The privacy page is the site's: pass privacy_url, or override this block. #}
+          {# The privacy page is the site's: config/members.php privacy_url, or override this block. #}
           {% block consent_text %}
           {% set link = privacy_url|default('') ? '<a href="' ~ privacy_url|e('html_attr') ~ '" target="_blank" rel="noopener">' ~ t('members.form.privacy') ~ '</a>' : t('members.form.privacy') %}
           <span>{{ t('members.form.consent')|replace({':link': link})|raw }}</span>
