@@ -48,13 +48,16 @@ Content is data, so it goes through pull, a local edit, export and a server impo
 
 The import replaces the live **Members settings** (`folio_settings_members`) and the **rbac roles** (`rbac_role`) with the local copies. It does not touch member records or the `auth_*` tables. For later content updates: pull first, and do not edit those settings on live between the pull and the import.
 
-- [ ] Pull: `php preflow folio:pull production --dry-run`, then `php preflow folio:pull production` (locally, as before) (writes a backup first).
-- [ ] Local edit, on the `tools` page: replace the `coming_soon` block with `members_intro`.
-- [ ] Local edit, on the privacy page: replace the blocks (EN and DE) with the text of the new `PrivacyText` (the Cookies and Contact & email blocks change, a Members area block is added).
-- [ ] Look at both pages locally (`/tools`, `/de/tools`, `/privacy`, `/de/privacy`).
-- [ ] Export locally: `php preflow folio:export content.tar.gz`.
-- [ ] Copy it to the server and run `cd ~/public_html/smart-stack.works/current && /usr/local/bin/php84 preflow folio:import content.tar.gz --dry-run`. Read the output: the Members settings and `rbac_role` come back unchanged (they round-trip from the pull; registration open is still off), and no member record or `auth_*` table appears (member data is personal data and never part of an export).
-- [ ] Run the same command without `--dry-run`. It writes a backup first.
+- [x] Pull: `php preflow folio:pull production --dry-run`, then `php preflow folio:pull production` (locally, as before) (writes a backup first).
+- [x] Local edit, on the `tools` page: replace the `coming_soon` block with `members_intro`.
+- [x] Local edit, on the privacy page: replace the blocks (EN and DE) with the text of the new `PrivacyText` (the Cookies and Contact & email blocks change, a Members area block is added).
+- [x] Look at both pages locally (`/tools`, `/de/tools`, `/privacy`, `/de/privacy`).
+- [x] Export locally: `php preflow folio:export content.tar.gz`.
+- [x] Copy it to the server and run `cd ~/public_html/smart-stack.works/current && /usr/local/bin/php84 preflow folio:import content.tar.gz --dry-run`. Read the output: the Members settings and `rbac_role` come back unchanged (they round-trip from the pull; registration open is still off), and no member record or `auth_*` table appears (member data is personal data and never part of an export).
+- [x] Run the same command without `--dry-run`. It writes a backup first.
+
+Done 2026-10-23: imported as two changed pages (tools, privacy), settings and roles unchanged. The server backup landed in `releases/7/storage/backups/import-20261023-120945.tar.gz`, inside the release, so it goes when release 7 is pruned.
+
 
 ## 6. Settings and the book code
 
