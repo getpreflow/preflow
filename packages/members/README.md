@@ -196,7 +196,9 @@ too. Words are changed in the lang files (see Copy and mails), not in templates.
 ## Cron
 
 Run `members:prune` nightly (the package registers the command through
-`extra.preflow.commands`, `preflow list` shows it):
+`extra.preflow.commands`, `preflow list` shows it). That needs preflow/devtools 0.26; with an
+older devtools only the command is missing, the member pages and Folio work (the package
+conflicts with auth, data, folio and i18n before 0.26, not with devtools):
 
 ```
 17 3 * * * cd /path/to/site/current && php preflow members:prune

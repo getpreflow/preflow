@@ -44,4 +44,12 @@ final class MysqlTestDatabaseTest extends TestCase
         $this->assertSame(1, $stmt->rowCount());
         MysqlTestDatabase::dropAllTables($pdo);
     }
+
+    /** "^0.25 || @dev" matches any version (@dev is anything): only "conflict" keeps out a data release without MysqlTestDatabase's API. */
+    public function test_composer_conflicts_with_data_before_0_25(): void
+    {
+        $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
+
+        $this->assertSame(['preflow/data' => '<0.25'], $composer['conflict'] ?? null);
+    }
 }
