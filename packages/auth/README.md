@@ -47,6 +47,14 @@ return [
 
     // Any other provider class is built from the container with its entry as `config`,
     // e.g. Preflow\Folio\Users\RecordUserProvider (members stored as a Folio type).
+    // `'active' => 'active'` there names a boolean field: a record with it off never resolves.
+
+    // A chain tries the named providers in order, first hit wins (no lock-out while moving
+    // from .env users to records). It must come after the providers it names; a guard
+    // uses it as `'provider' => 'chain'`.
+    //   'staff'  => ['class' => RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
+    //   'config' => ['class' => ConfigUserProvider::class, 'users' => [...]],
+    //   'chain'  => ['class' => ChainUserProvider::class, 'providers' => ['staff', 'config']],
 
     'password_hasher' => Preflow\Auth\NativePasswordHasher::class,
 

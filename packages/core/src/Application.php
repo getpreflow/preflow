@@ -1000,6 +1000,9 @@ final class Application
         $providers = [];
         foreach ($authConfig['providers'] ?? [] as $name => $providerConfig) {
             $providerClass = $providerConfig['class'];
+            if ($providerClass === \Preflow\Auth\ChainUserProvider::class) {
+                continue; // built below, once the providers it names exist
+            }
             $modelClass = $providerConfig['model'] ?? null;
 
             if ($providerClass === \Preflow\Auth\DataManagerUserProvider::class
@@ -1027,6 +1030,21 @@ final class Application
                 $this->lazyUserProviders[] = $provider;
                 $providers[$name] = $provider;
             }
+        }
+
+        // Chains, after the providers they name (a chain may name an earlier chain).
+        foreach ($authConfig['providers'] ?? [] as $name => $providerConfig) {
+            if (($providerConfig['class'] ?? null) !== \Preflow\Auth\ChainUserProvider::class) {
+                continue;
+            }
+            $members = [];
+            foreach ((array) ($providerConfig['providers'] ?? []) as $member) {
+                if (!isset($providers[$member])) {
+                    throw new \RuntimeException("Provider \"{$name}\" (chain) names \"{$member}\", which is not a provider defined before it or is unavailable.");
+                }
+                $members[] = $providers[$member];
+            }
+            $providers[$name] = new \Preflow\Auth\ChainUserProvider($members);
         }
 
         // Guards. Each session guard keeps its own key (the default guard the classic

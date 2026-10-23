@@ -15,7 +15,9 @@ use Preflow\Folio\Content\TypeCatalog;
  * Config: ['class' => self::class, 'type' => 'member', 'email' => 'email',
  * 'password' => 'password_hash', 'roles' => 'roles', 'epoch' => 'auth_epoch'] (the field names shown
  * are the defaults). The epoch field ends a user's other sessions when it changes (RecordUser); a
- * type without it never does.
+ * type without it never does. Optional 'active' => '<field>': a record whose field is false, 0, '0',
+ * '' or empty never resolves, by id or credentials (so a signed-in user is out on the next request).
+ * Without the key every record resolves.
  */
 final class RecordUserProvider implements UserProviderInterface
 {
@@ -24,6 +26,7 @@ final class RecordUserProvider implements UserProviderInterface
     private readonly string $passwordField;
     private readonly string $rolesField;
     private readonly string $epochField;
+    private readonly ?string $activeField;
 
     /** @param array<string, mixed> $config */
     public function __construct(
@@ -43,13 +46,15 @@ final class RecordUserProvider implements UserProviderInterface
         $this->passwordField = (string) ($config['password'] ?? 'password_hash');
         $this->rolesField = (string) ($config['roles'] ?? 'roles');
         $this->epochField = (string) ($config['epoch'] ?? 'auth_epoch');
+        $active = $config['active'] ?? null;
+        $this->activeField = is_string($active) && $active !== '' ? $active : null;
     }
 
     public function findById(string $id): ?Authenticatable
     {
         $record = $this->dm->findType($this->type, $id);
 
-        return $record === null ? null : $this->user($record);
+        return $record === null || !$this->isActive($record) ? null : $this->user($record);
     }
 
     public function findByCredentials(array $credentials): ?Authenticatable
@@ -63,12 +68,22 @@ final class RecordUserProvider implements UserProviderInterface
         // stored value counts, and a look-alike or duplicate never picks an account.
         $exact = [];
         foreach ($this->dm->queryType($this->type)->where($this->emailField, $email)->get() as $record) {
-            if ($record->get($this->emailField) === $email) {
+            if ($record->get($this->emailField) === $email && $this->isActive($record)) {
                 $exact[] = $record;
             }
         }
 
         return count($exact) === 1 ? $this->user($exact[0]) : null;
+    }
+
+    private function isActive(\Preflow\Data\DynamicRecord $record): bool
+    {
+        if ($this->activeField === null) {
+            return true;
+        }
+        $value = $record->get($this->activeField);
+
+        return !in_array($value, [null, false, 0, '0', '', 'false'], true);
     }
 
     private function user(\Preflow\Data\DynamicRecord $record): RecordUser

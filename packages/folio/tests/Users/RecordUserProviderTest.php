@@ -34,7 +34,7 @@ final class RecordUserProviderTest extends TestCase
 
     private const MEMBER = [
         'key' => 'member', 'table' => 'member', 'storage' => 'sqlite', 'id_field' => 'uuid', 'users' => 'members',
-        'fields' => ['email' => ['type' => 'string'], 'password_hash' => ['type' => 'string'], 'roles' => ['type' => 'string']],
+        'fields' => ['email' => ['type' => 'string'], 'password_hash' => ['type' => 'string'], 'roles' => ['type' => 'string'], 'active' => ['type' => 'boolean']],
     ];
 
     private bool $mysql = false;
@@ -118,6 +118,36 @@ final class RecordUserProviderTest extends TestCase
         $this->assertSame('hash-m1', $user->getPasswordHash());
         $this->assertSame('ada@example.com', $user->record()->get('email'));
         $this->assertNull($this->provider()->findById('nope'));
+    }
+
+    private function memberActive(string $id, string $email, mixed $active): void
+    {
+        $this->dm->saveType(new DynamicRecord($this->dm->getTypeRegistry()->get('member'), [
+            'uuid' => $id, 'email' => $email, 'password_hash' => 'hash-' . $id, 'roles' => '[]', 'active' => $active,
+        ]), false);
+    }
+
+    public function test_an_inactive_record_never_resolves_by_id_or_credentials(): void
+    {
+        $this->memberActive('on', 'on@example.com', true);
+        $this->memberActive('off', 'off@example.com', false);
+        $this->memberActive('zero', 'zero@example.com', 0);
+        $provider = $this->provider(['type' => 'member', 'active' => 'active']);
+
+        $this->assertSame('on', $provider->findById('on')?->getAuthId());
+        $this->assertSame('on', $provider->findByCredentials(['email' => 'on@example.com'])?->getAuthId());
+        foreach (['off', 'zero'] as $id) {
+            $this->assertNull($provider->findById($id), $id);
+            $this->assertNull($provider->findByCredentials(['email' => $id . '@example.com']), $id);
+        }
+    }
+
+    public function test_without_the_active_key_an_inactive_record_still_resolves(): void
+    {
+        $this->memberActive('off', 'off@example.com', false);
+
+        $this->assertSame('off', $this->provider()->findById('off')?->getAuthId());
+        $this->assertSame('off', $this->provider()->findByCredentials(['email' => 'off@example.com'])?->getAuthId());
     }
 
     public function test_the_session_epoch_comes_from_the_auth_epoch_field_and_is_0_without_one(): void

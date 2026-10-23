@@ -74,6 +74,37 @@ final class BootAuthProvidersTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_chain_provider_tries_named_providers_in_order(): void
+    {
+        file_put_contents($this->dir . '/config/auth.php', "<?php\nreturn " . var_export([
+            'default_guard' => 'session',
+            'guards' => ['session' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'chain']],
+            'providers' => [
+                'first' => ['class' => ConfigEntryUserProvider::class, 'ids' => ['m1']],
+                'config' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [['email' => 'a@b.c', 'password_hash' => 'x', 'roles' => []]]],
+                'chain' => ['class' => \Preflow\Auth\ChainUserProvider::class, 'providers' => ['first', 'config']],
+            ],
+            'session' => ['cookie' => 'providers_test', 'secure' => false],
+        ], true) . ";\n");
+        $app = Application::create($this->dir);
+        $app->boot();
+        $provider = $app->container()->get(UserProviderInterface::class);
+
+        $this->assertInstanceOf(\Preflow\Auth\ChainUserProvider::class, $provider);
+        $this->assertSame('m1', $provider->findById('m1')?->getAuthId());
+        $this->assertSame('a@b.c', $provider->findById('a@b.c')?->getAuthId());
+        $this->assertNull($provider->findById('nobody'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_chain_naming_an_unknown_provider_throws(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('"ghost"');
+        $this->boot(['class' => \Preflow\Auth\ChainUserProvider::class, 'providers' => ['ghost']]);
+    }
+
+    #[RunInSeparateProcess]
     public function test_provider_class_not_a_provider_throws(): void
     {
         $this->expectException(\RuntimeException::class);
