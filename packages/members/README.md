@@ -135,7 +135,7 @@ interface Admission
 {
     public function validate(array $input, ServerRequestInterface $request): array;   // field => message
     public function recordValues(array $input): array;                                // stored on the member
-    public function afterConfirm(DynamicRecord $member): Decision;                    // Accept or Pending
+    public function afterConfirm(DynamicRecord $member, ServerRequestInterface $request): Decision; // Accept or Pending
     public function confirmNotice(DynamicRecord $member): ?string;                   // a line after confirming, or null
     public function details(DynamicRecord $member, string $for): array;              // label => value
 }
@@ -154,6 +154,10 @@ with an int key is shown without a label. The keys of
 ```json
 { "key": "member", "extends": true, "fields": { "company": { "type": "string" } } }
 ```
+
+Site fields come after the package's in the edit form; `"after": "name"` on a field puts it
+right after that field instead. The same works for the Members settings (`members_settings.json`
+with `"extends": true`).
 
 ## In Folio
 

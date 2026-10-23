@@ -149,7 +149,7 @@ final class RegistrationController
         }
         $this->members->confirm($member);
 
-        $decision = $this->admission->afterConfirm($member);
+        $decision = $this->admission->afterConfirm($member, $request);
         $notice = $this->admission->confirmNotice($member);
         if ($decision === Decision::Accept) {
             $this->members->decide($member, 'member');

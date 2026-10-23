@@ -22,7 +22,7 @@ final class ListedAdmission implements Admission
         return [];
     }
 
-    public function afterConfirm(DynamicRecord $member): Decision
+    public function afterConfirm(DynamicRecord $member, ServerRequestInterface $request): Decision
     {
         return Decision::Pending;
     }

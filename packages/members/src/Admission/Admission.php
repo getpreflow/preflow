@@ -36,8 +36,11 @@ interface Admission
      */
     public function recordValues(array $input): array;
 
-    /** After the e-mail is confirmed: Decision::Accept (member now, signed in) or Decision::Pending (owner decides). */
-    public function afterConfirm(DynamicRecord $member): Decision;
+    /**
+     * After the e-mail is confirmed: Decision::Accept (member now, signed in) or Decision::Pending
+     * (owner decides). $request is the confirming request (e.g. to throttle a code redeem per client).
+     */
+    public function afterConfirm(DynamicRecord $member, ServerRequestInterface $request): Decision;
 
     /**
      * A line for the member right after the confirmation (asked after afterConfirm()), or null:

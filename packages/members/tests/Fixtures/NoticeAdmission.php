@@ -12,6 +12,9 @@ use Psr\Http\Message\ServerRequestInterface;
 /** A site rule for the tests: "accept@…" is accepted, everyone else waits; both get a confirm notice. */
 final class NoticeAdmission implements Admission
 {
+    /** The request afterConfirm() was given (the tests run in separate processes). */
+    public static ?ServerRequestInterface $confirmRequest = null;
+
     public function validate(array $input, ServerRequestInterface $request): array
     {
         return [];
@@ -22,8 +25,10 @@ final class NoticeAdmission implements Admission
         return [];
     }
 
-    public function afterConfirm(DynamicRecord $member): Decision
+    public function afterConfirm(DynamicRecord $member, ServerRequestInterface $request): Decision
     {
+        self::$confirmRequest = $request;
+
         return str_starts_with((string) $member->get('email'), 'accept@') ? Decision::Accept : Decision::Pending;
     }
 

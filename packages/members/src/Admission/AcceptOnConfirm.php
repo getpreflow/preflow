@@ -20,7 +20,7 @@ final class AcceptOnConfirm implements Admission
         return [];
     }
 
-    public function afterConfirm(DynamicRecord $member): Decision
+    public function afterConfirm(DynamicRecord $member, ServerRequestInterface $request): Decision
     {
         return Decision::Accept;
     }

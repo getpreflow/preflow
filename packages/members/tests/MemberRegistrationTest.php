@@ -161,6 +161,19 @@ TWIG,
     }
 
     #[RunInSeparateProcess]
+    public function test_the_admission_decides_with_the_confirm_request(): void
+    {
+        // A rule may need the request at confirm time (a code redeemed and throttled per client).
+        $this->removeScaffold();
+        $this->flowSite(['admission' => NoticeAdmission::class]);
+        $this->register();
+        $this->post('/members/confirm', ['token' => $this->linkToken(0, 'confirm')]);
+
+        $this->assertSame('/members/confirm', NoticeAdmission::$confirmRequest?->getUri()->getPath());
+        $this->assertSame($this->remoteAddr, NoticeAdmission::$confirmRequest?->getServerParams()['REMOTE_ADDR'] ?? null);
+    }
+
+    #[RunInSeparateProcess]
     public function test_the_admissions_confirm_notice_goes_to_the_landing_as_a_flash_when_accepted(): void
     {
         $this->removeScaffold();

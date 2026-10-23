@@ -27,7 +27,7 @@ final class CompanyAdmission implements Admission
         return ['company' => trim((string) ($input['company'] ?? ''))];
     }
 
-    public function afterConfirm(DynamicRecord $member): Decision
+    public function afterConfirm(DynamicRecord $member, ServerRequestInterface $request): Decision
     {
         return Decision::Pending;
     }
