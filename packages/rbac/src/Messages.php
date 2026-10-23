@@ -13,7 +13,9 @@ use Preflow\I18n\Translator;
 /**
  * The rbac strings (lang/{locale}/rbac.php, a site's lang/{locale}/rbac.php laid over them
  * key by key) through the app's translator; an app without one (no lang/ and no
- * config/i18n.php) gets a translator of its own here, in the default content locale.
+ * config/i18n.php) gets a translator of its own here. Folio's admin is English-only and
+ * the translator's locale is the content locale, so get() answers in English by default;
+ * de and fr are there for a caller that asks for them.
  */
 final class Messages
 {
@@ -33,8 +35,8 @@ final class Messages
     }
 
     /** @param array<string, string|int> $params */
-    public function get(string $key, array $params = []): string
+    public function get(string $key, array $params = [], string $locale = 'en'): string
     {
-        return $this->translator->get('rbac.' . $key, $params);
+        return $this->translator->get('rbac.' . $key, $params, $locale);
     }
 }

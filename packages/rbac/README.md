@@ -60,11 +60,13 @@ Nobody grants permissions they don't hold. A held pattern covers what it matches
 everything, `x.*` the pattern `x.*` and every name or pattern below `x.`, a name itself.
 When a user is signed in, a role save or delete is refused unless their own roles cover
 every pattern the role has now (no touching a role above you) and every pattern the save
-adds ("You can't grant permissions you don't have: {patterns}", in the site's language
-from `lang/{locale}/rbac.php`). The same rule holds for member roles. The permissions
-editor shows what you can't grant disabled ("You can't grant this"); the server check is
-the authority. Without a signed-in user (the CLI: `folio:extensions:apply`, imports)
-delegation does not apply. `Preflow\Rbac\PermissionCoverage` has the check
+adds ("You can't grant permissions you don't have: {patterns}"; in English like the rest
+of Folio's admin, a site's `lang/en/rbac.php` changes single keys). The same rule holds
+for member roles. The permissions editor shows what you can't grant disabled ("You can't
+grant this"); the server check is the authority. Without a signed-in user (the CLI:
+`folio:extensions:apply`, imports) delegation does not apply. `folio:import` and
+`folio:pull` write roles without the delegation check too: they need server access, like
+the CLI. `Preflow\Rbac\PermissionCoverage` has the check
 (`covers()`, `coversAll()`, `uncovered()`, and `held()` for the signed-in user).
 
 ## Lock-out protection
