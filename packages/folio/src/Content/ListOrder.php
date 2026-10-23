@@ -28,7 +28,10 @@ final class ListOrder
         $sort = (string) ($listConfig['sort'] ?? '');
         if ($sort !== '') {
             $desc = str_starts_with($sort, '-');
-            $query = $query->orderBy(ltrim($sort, '-'), $desc ? SortDirection::Desc : SortDirection::Asc);
+            $field = ltrim($sort, '-');
+            // Number fields compare as numbers: SQL-stored types keep them in TEXT columns too.
+            $numeric = ($def->fields[$field]->type ?? null) === 'number';
+            $query = $query->orderBy($field, $desc ? SortDirection::Desc : SortDirection::Asc, $numeric);
         }
 
         return $query;
