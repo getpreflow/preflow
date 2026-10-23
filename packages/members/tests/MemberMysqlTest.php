@@ -50,5 +50,9 @@ final class MemberMysqlTest extends TestCase
         $row = MysqlTestDatabase::pdo()->query('SELECT email, roles FROM member')->fetch(\PDO::FETCH_ASSOC);
         $this->assertSame('ada@example.com', $row['email']);
         $this->assertSame(['member'], json_decode((string) $row['roles'], true));
+
+        $members->setPassword($stored, 'a brand new password');
+        $this->assertSame('1', (string) $members->find((string) $stored->getId())?->get('auth_epoch'), 'the session epoch moves on');
+        $this->assertSame('1', (string) MysqlTestDatabase::pdo()->query('SELECT auth_epoch FROM member')->fetchColumn());
     }
 }

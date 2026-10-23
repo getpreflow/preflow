@@ -53,6 +53,12 @@
         "roles": {
             "type": "rbac_roles",
             "readonly": true
+        },
+        "auth_epoch": {
+            "type": "string",
+            "hidden": true,
+            "readonly": true,
+            "default": "0"
         }
     }
 }

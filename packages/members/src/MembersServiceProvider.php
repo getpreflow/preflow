@@ -18,6 +18,10 @@ use Preflow\I18n\Translator;
 use Preflow\I18n\TranslationExtensionProvider;
 use Preflow\View\AssetCollector;
 use Preflow\Members\Admission\Admission;
+use Preflow\Members\Http\MembersRoutes;
+use Preflow\Members\Http\SafeNext;
+use Preflow\Core\Routing\RouterInterface;
+use Preflow\Routing\Router;
 use Preflow\Notify\Notifier;
 use Preflow\View\TemplateEngineInterface;
 
@@ -27,7 +31,7 @@ use Preflow\View\TemplateEngineInterface;
  * package copy (lang/{locale}/members.php) under the site's own. A site's resources/members/ is
  * put in front of the package templates (@members) when it exists. When the Folio
  * extension "members" is enabled, boot checks that rbac (the member roles) is enabled too
- * and that the admission class is one.
+ * and that the admission class is one, and adds the member pages' routes under the members path.
  */
 final class MembersServiceProvider extends ServiceProvider
 {
@@ -47,6 +51,7 @@ final class MembersServiceProvider extends ServiceProvider
             $c->get(MembersConfig::class),
         ));
         $container->singleton(Links::class, static fn (Container $c): Links => self::links($c));
+        $container->singleton(SafeNext::class, static fn (Container $c): SafeNext => new SafeNext($c->get(MembersConfig::class), $c->get(Links::class)));
         $container->singleton(MemberMailer::class, static fn (Container $c): MemberMailer => new MemberMailer(
             $c->get(Notifier::class),
             $c->get(TemplateEngineInterface::class),
@@ -89,6 +94,19 @@ final class MembersServiceProvider extends ServiceProvider
             throw new \RuntimeException('The members extension needs the rbac extension for the member roles: run preflow folio:extensions:enable rbac.');
         }
         $container->get(Admission::class);
+        self::routes($container);
+    }
+
+    /** The member pages' routes (Http\MembersRoutes) under the members path. */
+    private static function routes(Container $c): void
+    {
+        if (!$c->has(RouterInterface::class)) {
+            return;
+        }
+        $router = $c->get(RouterInterface::class);
+        if ($router instanceof Router) {
+            $router->getCollection()->addMany(MembersRoutes::entries($c->get(MembersConfig::class)->path()));
+        }
     }
 
     private static function links(Container $c): Links

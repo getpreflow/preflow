@@ -14,7 +14,7 @@ final class Members
     private const string TYPE = MembersConfig::TYPE;
 
     /** Fields register() fills itself; $extra must not set them. */
-    private const array OWN_FIELDS = ['uuid', 'email', 'name', 'password_hash', 'language', 'roles', 'registered_at', 'email_confirmed_at', 'decided_at'];
+    private const array OWN_FIELDS = ['uuid', 'email', 'name', 'password_hash', 'language', 'roles', 'registered_at', 'email_confirmed_at', 'decided_at', 'auth_epoch'];
 
     private readonly \Closure $now;
 
@@ -83,6 +83,7 @@ final class Members
             'registered_at' => $this->stamp(),
             'email_confirmed_at' => '',
             'decided_at' => '',
+            'auth_epoch' => '0',
         ] + $extra);
         $this->dm->saveType($record, false);
 
@@ -105,9 +106,15 @@ final class Members
         $this->save($m);
     }
 
+    /**
+     * A new password ends the member's other sessions: the session epoch (auth_epoch, which the
+     * members guard compares at every request) moves on. Sign the current request in again
+     * afterwards, and revoke the remember rows (RememberMe::revokeAll()).
+     */
     public function setPassword(DynamicRecord $m, string $password): void
     {
         $m->set('password_hash', $this->hasher->hash($password));
+        $m->set('auth_epoch', (string) ((int) $m->get('auth_epoch') + 1));
         $this->save($m);
     }
 

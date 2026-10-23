@@ -36,7 +36,7 @@ final class MembersView
 
     /**
      * Template variables every page gets (a page's own $vars win): locale, alternates, viewer,
-     * layout, base (the member pages' URL: locale prefix and path), landing, password_min,
+     * layout, base (the member pages' URL: locale prefix and path), landing, register (the register link), password_min,
      * validity.confirm / validity.reset, and empty defaults for the form state (notice, error,
      * errors, old, ...), so a template never trips over an unset variable in debug mode.
      *
@@ -58,6 +58,7 @@ final class MembersView
             'layout' => $this->config->layout(),
             'base' => $this->links->local($locale),
             'landing' => $this->links->localize($locale, $this->config->landing()),
+            'register' => $this->links->localize($locale, $this->config->register()),
             'password_min' => $this->config->passwordMin(),
             'validity' => ['confirm' => $this->validity->confirm($locale), 'reset' => $this->validity->reset($locale)],
             'notice' => '', 'error' => '', 'errors' => [], 'old' => [], 'old_email' => '', 'next' => '',

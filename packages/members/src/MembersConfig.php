@@ -19,12 +19,18 @@ final class MembersConfig
     public const string DECIDE = 'members.decide';
     public const string CONFIRM_PURPOSE = 'members.confirm';
     public const string RESET_PURPOSE = 'members.reset';
+    /** Throttle purposes (rows in the throttle table): sign-in, registration, forgot password, resend the confirmation. */
+    public const string THROTTLE_LOGIN = 'members.login';
+    public const string THROTTLE_REGISTER = 'members.register';
+    public const string THROTTLE_FORGOT = 'members.forgot';
+    public const string THROTTLE_RESEND = 'members.resend';
     /** The storage alias of the member type; without it the type lives on "default". */
     public const string STORAGE = 'members';
 
     private const array DEFAULTS = [
         'path' => '/members',
         'landing' => null,
+        'register' => null,
         'layout' => '@folio/frontend/_site.twig',
         'mail' => ['from_name' => null, 'layout' => '@members/mail/layout.twig', 'accent' => '#d42a34'],
         'admission' => OwnerApproval::class,
@@ -69,6 +75,18 @@ final class MembersConfig
         $landing = $this->config['landing'];
 
         return is_string($landing) && $landing !== '' ? $landing : $this->path();
+    }
+
+    /**
+     * Where the pages link for registering; {path}/register (the package's page) unless set.
+     * A site whose members home shows the form itself sets it to that page; the form still
+     * posts to {path}/register.
+     */
+    public function register(): string
+    {
+        $register = $this->config['register'];
+
+        return is_string($register) && $register !== '' ? $register : $this->path() . '/register';
     }
 
     /** The page layout the member templates extend. */

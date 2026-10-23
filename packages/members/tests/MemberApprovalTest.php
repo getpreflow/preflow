@@ -379,6 +379,7 @@ final class MemberApprovalTest extends TestCase
     public function test_saving_the_form_keeps_the_readonly_dates(): void
     {
         $m = $this->makeMember('ada@example.com', 'member');
+        $this->flow->container()->get(Members::class)->setPassword($m, 'a brand new password'); // epoch 1
         $before = [(string) $this->reload($m)->get('registered_at'), (string) $this->reload($m)->get('email_confirmed_at'), (string) $this->reload($m)->get('decided_at')];
         $this->signIn();
 
@@ -388,6 +389,8 @@ final class MemberApprovalTest extends TestCase
         $after = $this->reload($m);
         $this->assertSame('Ada L', $after->get('name'));
         $this->assertSame($before, [(string) $after->get('registered_at'), (string) $after->get('email_confirmed_at'), (string) $after->get('decided_at')]);
+        $this->assertSame('1', (string) $after->get('auth_epoch'), 'the hidden session epoch is kept');
+        $this->assertStringNotContainsString('auth_epoch', $this->admin('/folio/member/' . $m->getId() . '/edit'), 'and not shown');
     }
 
     #[RunInSeparateProcess]

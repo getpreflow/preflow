@@ -36,8 +36,9 @@ trait MembersScaffold
      * @param array<string, string> $aliases config/data.php aliases
      * @param list<string> $locales config/i18n.php available (the first is the default)
      * @param 'sqlite'|'mysql' $sql the SQL driver the aliases point to
+     * @param list<string> $sessionPaths config/auth.php session.paths (where a session and its cookie exist)
      */
-    private function scaffold(array $aliases = ['members' => 'sqlite', 'auth' => 'sqlite', 'throttle' => 'sqlite'], array $locales = ['en', 'de'], string $sql = 'sqlite'): void
+    private function scaffold(array $aliases = ['members' => 'sqlite', 'auth' => 'sqlite', 'throttle' => 'sqlite'], array $locales = ['en', 'de'], string $sql = 'sqlite', array $sessionPaths = ['/folio', '/members']): void
     {
         putenv('APP_DEBUG=1');
         $this->dir = sys_get_temp_dir() . '/members_' . bin2hex(random_bytes(4));
@@ -67,7 +68,7 @@ trait MembersScaffold
                     'type' => 'member', 'email' => 'email', 'password' => 'password_hash', 'roles' => 'roles',
                 ],
             ],
-            'session' => ['cookie' => 'members_app_test', 'path' => '/', 'paths' => ['/folio', '/members'], 'secure' => false],
+            'session' => ['cookie' => 'members_app_test', 'path' => '/', 'paths' => $sessionPaths, 'secure' => false],
         ], true) . ";\n");
         $drivers = ['json' => ['driver' => \Preflow\Data\Driver\JsonFileDriver::class, 'path' => $this->dir . '/storage/data']];
         $drivers[$sql] = $sql === 'mysql' ? MysqlTestDatabase::dataConfig() : ['path' => $this->dir . '/storage/site.sqlite'];

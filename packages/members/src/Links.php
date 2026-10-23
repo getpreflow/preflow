@@ -49,6 +49,12 @@ final class Links
         return ($this->prefixed && $locale !== $this->locales->default ? '/' . $locale : '') . $path;
     }
 
+    /** @return list<string> the site's locales, in the order config/i18n.php lists them */
+    public function locales(): array
+    {
+        return array_values($this->locales->available);
+    }
+
     /** The member's edit page in Folio. */
     public function folioMember(string $id): string
     {

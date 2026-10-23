@@ -85,6 +85,17 @@ final class MembersConfigTest extends TestCase
         $this->assertSame('members.decide', MembersConfig::DECIDE);
         $this->assertSame('members.confirm', MembersConfig::CONFIRM_PURPOSE);
         $this->assertSame('members.reset', MembersConfig::RESET_PURPOSE);
+        $this->assertSame('members.login', MembersConfig::THROTTLE_LOGIN);
+        $this->assertSame('members.register', MembersConfig::THROTTLE_REGISTER);
+        $this->assertSame('members.forgot', MembersConfig::THROTTLE_FORGOT);
+        $this->assertSame('members.resend', MembersConfig::THROTTLE_RESEND);
+    }
+
+    public function test_register_defaults_to_the_package_page_under_the_path(): void
+    {
+        $this->assertSame('/members/register', (new MembersConfig([]))->register());
+        $this->assertSame('/konto/register', (new MembersConfig(['path' => '/konto']))->register());
+        $this->assertSame('/tools', (new MembersConfig(['path' => '/tools', 'register' => '/tools']))->register());
     }
 
     public function test_provider_reads_config_members_php(): void

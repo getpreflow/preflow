@@ -43,7 +43,16 @@ php preflow folio:extensions:apply
           'type' => 'member', 'email' => 'email', 'password' => 'password_hash', 'roles' => 'roles',
       ],
   ],
+  // Sessions (and their cookie) only where they are needed: Folio and the member pages.
+  'session' => ['cookie' => 'site_session', 'paths' => ['/folio', '/members']],
   ```
+
+- The session `paths` must cover the members `path` (`/members` above); public pages then
+  get no session and no cookie. Locale prefixes are stripped first, so `/de/members/login`
+  counts as `/members/login`.
+- A password change or reset ends the member's other sessions: the member type's
+  `auth_epoch` field is the session epoch the guard checks on every request (provider key
+  `epoch`, default `auth_epoch`), and the remember rows are revoked.
 
 ## Configuration
 
@@ -53,6 +62,7 @@ php preflow folio:extensions:apply
 return [
     'path' => '/members',                       // base path of the member pages
     'landing' => null,                          // where sign-in lands; null = path
+    'register' => null,                         // where the pages link for registering; null = path/register
     'layout' => '@folio/frontend/_site.twig',   // the layout the member pages extend
     'mail' => ['from_name' => null, 'layout' => '@members/mail/layout.twig', 'accent' => '#d42a34'],
     'admission' => Preflow\Members\Admission\OwnerApproval::class,
@@ -66,10 +76,49 @@ return [
 
 Fixed names (stored data depends on them; `MembersConfig` lists them as constants): type
 and table `member`, guard `members`, permissions `members.access` and `members.decide`,
-token purposes `members.confirm` and `members.reset`.
+roles `pending`, `member` and `rejected`, token purposes `members.confirm` and
+`members.reset`, throttle purposes `members.login`, `members.register`, `members.forgot` and
+`members.resend`.
 
 Links in mails use `app.url` and the locale prefixes of `config/i18n.php` (the default
 locale at the root): `https://site.test/de/members/login`.
+
+## Pages and routes
+
+The provider registers these routes under `path` (in every locale: `/de/members/login`, the
+default locale without a prefix):
+
+| Method | Path | Page |
+|---|---|---|
+| GET, POST | `{path}/register` | register form; POST registers (same answer for known addresses) |
+| GET | `{path}/confirm/{token}` | the confirm form (a mail scanner's GET uses nothing) |
+| POST | `{path}/confirm` | confirms; then the admission decides |
+| GET, POST | `{path}/login` | sign in (30-day remember cookie) |
+| POST | `{path}/logout` | sign out, to `{path}` |
+| GET, POST | `{path}/forgot` | ask for a reset link |
+| GET | `{path}/reset/{token}` | the new-password form |
+| POST | `{path}/reset` | sets the password, signs in, to `landing` |
+| GET, POST | `{path}/resend` | POST sends the confirm link again; GET goes to the login |
+| GET | `{path}/account` | the member's account page |
+| POST | `{path}/account/password` | change the password |
+| POST | `{path}/account/delete` | delete the account, to `register` |
+
+- **The members home (`GET {path}`) is the site's own page** (a toolbox, "my objects"); the
+  package only sends people there: after sign-out, and staff who open the account page.
+  Sign-in, reset and an accepted confirmation go to `landing`.
+- After a confirmation `Decision::Accept` makes a member, signs them in (remembered) and
+  redirects to `landing`; `Decision::Pending` gives the `pending` role, shows the thanks page
+  and mails the owner (Members settings `notice_email`, when set).
+- A sign-in's `next` is kept only when it is a member page (`{path}` in any locale);
+  anything else lands on `landing`.
+- Every form needs the CSRF token (`csrf_field()` in the templates); every page is
+  `private, no-store`.
+- Flash notices: `members.notice` (e.g. "Your account is deleted.") is shown by the package
+  pages of the register controller; a site whose `register` is its own page reads it there.
+  `members.account` is the account page's own.
+- Throttles (`throttle` config): sign-in per client and per address, registration per
+  client, forgot per client and per address, resend per address (over the limit the page
+  stays the same, only the mail is skipped).
 
 ## Admission
 
