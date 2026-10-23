@@ -14,8 +14,10 @@ env:
   GIT_COMMITTER_NAME: "Preflow Bot"
   GIT_COMMITTER_EMAIL: "bot@getpreflow.dev"
 
+# One group per ref: a queued tag split must never be dropped because a later
+# push to main joined the same group (GitHub keeps only one pending run per group).
 concurrency:
-  group: monorepo-split
+  group: monorepo-split-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
