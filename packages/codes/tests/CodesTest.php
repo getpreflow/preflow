@@ -284,13 +284,14 @@ final class CodesTest extends TestCase
         $codes = $this->codes();
         $codes->issue('members.book', [], 'BOOKCODE');
         $id = (string) $codes->redeem('BOOKCODE', 'members.book', 'member-7', 'client-hash')->codeId;
+        $this->now = $this->now->modify('+1 second'); // same-second order is by id, not insertion
         $codes->redeem('BOOKCODE', 'members.book');
 
         $redemptions = $codes->redemptions($id);
         $this->assertCount(2, $redemptions);
         $this->assertSame(['id', 'redeemer', 'redeemed_at'], array_keys($redemptions[0]));
         $this->assertSame('member-7', $redemptions[0]['redeemer']);
-        $this->assertSame($this->now->getTimestamp(), $redemptions[0]['redeemed_at']);
+        $this->assertSame($this->now->modify('-1 second')->getTimestamp(), $redemptions[0]['redeemed_at']);
         $this->assertNull($redemptions[1]['redeemer']);
 
         $pdo = $this->app()->container()->get(DataManager::class)->driver('codes')->pdo();

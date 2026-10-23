@@ -282,13 +282,19 @@ final class Codes
         $this->dm->saveType($record, false);
     }
 
-    /** @return list<array{id: string, redeemer: ?string, redeemed_at: int}> oldest first */
+    /**
+     * Oldest first. Redemptions in the same second are ordered by id, not by insertion: ids are
+     * random and no storage promises insertion order (MySQL returns ties in any order).
+     *
+     * @return list<array{id: string, redeemer: ?string, redeemed_at: int}>
+     */
     public function redemptions(string $codeId): array
     {
         $rows = [];
         $query = $this->dm->queryIn($this->redemptionType())
             ->where('code_id', '=', $codeId)
-            ->orderBy('redeemed_at', SortDirection::Asc, numeric: true);
+            ->orderBy('redeemed_at', SortDirection::Asc, numeric: true)
+            ->orderBy('id', SortDirection::Asc);
         foreach ($query->get()->items() as $record) {
             $redeemer = $record->get('redeemer');
             $rows[] = [
