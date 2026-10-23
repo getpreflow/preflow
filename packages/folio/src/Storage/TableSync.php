@@ -6,6 +6,7 @@ namespace Preflow\Folio\Storage;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\PdoDriver;
+use Preflow\Data\Migration\Grammar\Grammars;
 use Preflow\Data\Migration\Schema;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
@@ -18,7 +19,9 @@ use Preflow\Folio\Publishing\ShadowTypes;
  * step of `preflow migrate`): the type's table, the published and revision
  * shadows of publishing types, the asset table when it is SQL-stored, and
  * Folio's own internal tables it is given (the extension install state).
- * The id is TEXT PRIMARY KEY, every other column nullable TEXT. Missing
+ * On SQLite the id is TEXT PRIMARY KEY and every other column nullable TEXT;
+ * on MySQL the id is VARCHAR(191) PRIMARY KEY and every other column nullable
+ * LONGTEXT (the grammar's createRecordTable). Missing
  * tables and columns are added; nothing is ever dropped or altered.
  * JSON-stored types are left alone.
  */
@@ -44,9 +47,6 @@ final class TableSync
             $driver = $this->dm->driver($def->storage);
             if (!$driver instanceof PdoDriver) {
                 continue;
-            }
-            if ($driver->pdo()->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'sqlite') {
-                throw new \LogicException('Folio table sync supports SQLite only for now');
             }
             array_push($lines, ...$this->syncTable($driver->pdo(), $def));
         }
@@ -82,8 +82,7 @@ final class TableSync
         $columns = array_values(array_diff($columns, [$def->idField]));
 
         if (!$schema->hasTable($def->table)) {
-            $sql = array_map(static fn (string $c): string => "\"{$c}\" TEXT", $columns);
-            $pdo->exec("CREATE TABLE \"{$def->table}\" (\"{$def->idField}\" TEXT PRIMARY KEY, " . implode(', ', $sql) . ')');
+            $pdo->exec(Grammars::for($pdo)->createRecordTable($def->table, $def->idField, $columns));
 
             return ["created table {$def->table}"];
         }

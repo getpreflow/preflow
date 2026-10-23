@@ -9,6 +9,7 @@ use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Publishing\Publisher;
+use Preflow\Testing\MysqlTestDatabase;
 use Psr\Http\Message\ResponseInterface;
 
 /**
@@ -19,7 +20,7 @@ trait PublishingScaffold
 {
     private string $dir;
 
-    /** The storage the scaffold's models use: 'json' or 'sqlite' (tables via TableSync). */
+    /** The storage the scaffold's models use: 'json', 'sqlite' or 'mysql' (tables via TableSync). */
     private string $storage = 'json';
 
     private function scaffoldPublishing(string $storage = 'json'): void
@@ -30,12 +31,14 @@ trait PublishingScaffold
 
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key'];\n");
         $sqlite = $storage === 'sqlite' ? "'sqlite' => ['path' => __DIR__ . '/../storage/app.sqlite']," : '';
+        $mysql = $storage === 'mysql' ? "'mysql' => " . var_export(MysqlTestDatabase::dataConfig(), true) . ',' : '';
         $this->write('config/data.php', <<<PHP
             <?php
             return [
                 'drivers' => [
                     'json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data'],
                     {$sqlite}
+                    {$mysql}
                 ],
                 'default' => 'json',
                 'models_path' => __DIR__ . '/models',
@@ -80,7 +83,10 @@ trait PublishingScaffold
     private function removeScaffold(): void
     {
         putenv('APP_DEBUG');
-        if (!is_dir($this->dir)) {
+        if ($this->storage === 'mysql') {
+            MysqlTestDatabase::dropAllTables(MysqlTestDatabase::pdo());
+        }
+        if (!isset($this->dir) || !is_dir($this->dir)) {
             return;
         }
         $rii = new \RecursiveIteratorIterator(

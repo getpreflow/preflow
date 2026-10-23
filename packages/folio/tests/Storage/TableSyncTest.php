@@ -124,20 +124,6 @@ final class TableSyncTest extends TestCase
         $this->assertContains('path', (new Schema($this->pdo))->columns('folio_assets'));
     }
 
-    public function test_mysql_is_refused(): void
-    {
-        $this->model('post', ['fields' => ['title' => ['type' => 'string']]]);
-        $mysql = $this->getMockBuilder(\Preflow\Data\Driver\PdoDriver::class)->disableOriginalConstructor()->onlyMethods(['pdo'])->getMock();
-        $pdo = $this->createStub(\PDO::class);
-        $pdo->method('getAttribute')->willReturn('mysql');
-        $mysql->method('pdo')->willReturn($pdo);
-        $dm = new DataManager(['sqlite' => $mysql], 'sqlite', new TypeRegistry($this->dir . '/models'));
-
-        $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('Folio table sync supports SQLite only for now');
-        (new TableSync(new TypeCatalog($this->dir . '/models'), new TypeRegistry($this->dir . '/models'), $dm))->sync();
-    }
-
     /** @return list<string> */
     private function sync(): array
     {
