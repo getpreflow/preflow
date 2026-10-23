@@ -8,3 +8,4 @@ composer.lock
 .worktrees/
 .superpowers
 .claude/settings.local.json
+.env.mysql-test
