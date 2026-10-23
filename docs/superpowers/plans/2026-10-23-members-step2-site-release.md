@@ -21,9 +21,11 @@ Approved by the owner on 2026-10-23, as built (including the full-name greeting 
 
 The owner edits `shared/.env` on the server (`~/public_html/smart-stack.works/shared/.env`):
 
-- [ ] `MAIL_DSN` (the hosting's mail server, as for smeyer.me)
-- [ ] `MAIL_FROM=hi@smeyer.me`
-- [ ] `APP_URL=https://smart-stack.works` (mail links are built from it, never from the request Host)
+- [x] `MAIL_DSN` (the hosting's mail server, as for smeyer.me)
+- [x] `MAIL_FROM=hi@smeyer.me`
+- [x] `APP_URL=https://smart-stack.works` (mail links are built from it, never from the request Host)
+
+Done 2026-10-23 by the owner (MAIL_DSN copied from smeyer.me's shared/.env, a backup of the old file next to it).
 
 `storage/private-media` is already a shared dir in `deploy.php`; the first deploy creates it. Nothing to do.
 
