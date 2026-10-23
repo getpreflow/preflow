@@ -27,17 +27,16 @@ The owner edits `shared/.env` on the server (`~/public_html/smart-stack.works/sh
 
 `storage/private-media` is already a shared dir in `deploy.php`; the first deploy creates it. Nothing to do.
 
-Before the deploy, locally (the content import in step 5 replaces the live **Members settings** and the **rbac roles** with the local copies, so what is local now is what goes live):
+Before the deploy, **in live Folio**. The Members extension, its settings and the codes extension have been live since release 6 (Preflow 0.20); this deploy only adds the registration form and the toolbox.
 
-- [ ] Fill the Members settings locally: notice email, screening question and help, accept and decline messages, welcome note, the German texts. Set **registration open to off**, so that registration stays closed until the book code exists (step 6). A deployed site with registration open and no book code would let readers register before the owner can answer them.
-- [ ] Check the rbac roles locally (Folio, Roles): they are replaced on live too.
-- [ ] If the book code can be issued on live before the deploy, issue it first (Library, Codes, purpose `members.book`); otherwise do it in step 6.
-- [ ] `symfony/mailer` is installed: after the deploy, on the server, `cd ~/public_html/smart-stack.works/current && /usr/local/bin/php84 composer show symfony/mailer` (or `ls vendor/symfony/mailer`) lists it. Without it every mail fails: readers who register are removed again after the response and no decision can be saved.
+- [ ] Settings, Members: switch **registration open off**, so the new form stays closed until the smoke test (step 8). Fill in the notice email and the screening texts. The accept and decline messages and the welcome note arrive with this deploy; fill them in step 6.
+- [ ] Library, Codes: issue the book code (purpose `members.book`).
+- [ ] Settings, Roles: check the member roles (pending, member, rejected).
 
 ## 4. Deploy
 
-- [ ] Deploy with Deployer. It runs `migrate` and `folio:extensions:apply` (creates the member tables and applies the Members extension). Registration is open by default after this deploy, so do step 5 straight away, in the same sitting: its import brings the closed registration live.
-- [ ] `symfony/mailer` is installed on the server: `cd ~/public_html/smart-stack.works/current && /usr/local/bin/php84 /usr/local/bin/composer show symfony/mailer` (or `ls vendor/symfony/mailer`).
+- [ ] Deploy with Deployer. It runs `migrate` and `folio:extensions:apply` (adds the member fields and the auth tables, applies Members 1.1.0). Registration stays closed (step 3), so there is no hurry.
+- [ ] `symfony/mailer` is installed on the server (without it every mail fails: readers who register are removed again after the response and no decision can be saved): `cd ~/public_html/smart-stack.works/current && /usr/local/bin/php84 /usr/local/bin/composer show symfony/mailer` (or `ls vendor/symfony/mailer`).
 - [ ] **Web SAPI probe** (owner; the mails go out after the response only where the web SAPI can release the client). Put a temporary PHP file in the document root containing `<?php var_dump(PHP_SAPI, function_exists('litespeed_finish_request'), function_exists('fastcgi_finish_request'));`, open it in a browser, then delete it. The CLI equivalent proves nothing about the web. At least one function must be `true`; if both are `false` the after-response send is best effort only and response times can still tell an address apart. (Same step as in `docs/superpowers/plans/2026-10-23-release-0.24-checklist.md`, step 4.)
 - [ ] Check that `shared/storage/private-media` exists and the site answers.
 
@@ -52,16 +51,15 @@ The import replaces the live **Members settings** (`folio_settings_members`) and
 - [ ] Local edit, on the privacy page: replace the blocks (EN and DE) with the text of the new `PrivacyText` (the Cookies and Contact & email blocks change, a Members area block is added).
 - [ ] Look at both pages locally (`/tools`, `/de/tools`, `/privacy`, `/de/privacy`).
 - [ ] Export locally: `php preflow folio:export content.tar.gz`.
-- [ ] Copy it to the server and run `cd ~/public_html/smart-stack.works/current && /usr/local/bin/php84 preflow folio:import content.tar.gz --dry-run`. Read the output: the Members settings show as replaced (registration open is off), the `rbac_role` diff is empty or expected, and no member record or `auth_*` table appears (member data is personal data and never part of an export).
+- [ ] Copy it to the server and run `cd ~/public_html/smart-stack.works/current && /usr/local/bin/php84 preflow folio:import content.tar.gz --dry-run`. Read the output: the Members settings and `rbac_role` come back unchanged (they round-trip from the pull; registration open is still off), and no member record or `auth_*` table appears (member data is personal data and never part of an export).
 - [ ] Run the same command without `--dry-run`. It writes a backup first.
 
 ## 6. Settings and the book code
 
 The owner, in Folio on live:
 
-- [ ] Settings, Members: check what the import brought (notice email, texts, screening question).
-- [ ] Library, Codes: issue the book code with the purpose `members.book` (if not done before the deploy).
-- [ ] Settings, Members: switch **registration open** on, now that the book code exists.
+- [ ] Settings, Members: fill in the accept and decline messages and the welcome note (EN and DE); check the notice email and the screening texts.
+- [ ] Registration stays **off** until the smoke test (step 8) has passed.
 - [ ] Resources: add the first resources (optional for the release, the toolbox is empty without them).
 
 ## 7. Cron
@@ -76,7 +74,7 @@ The owner, in Folio on live:
 
 ## 8. Smoke test on live
 
-With a test address the owner controls:
+With a test address the owner controls. Switch **registration open** on for the test; the form is live for everyone from then on, so leave it on only if everything passes.
 
 - [ ] `/tools` shows the entry page (not "coming soon"). A public page such as `/` sends no `Set-Cookie`.
 - [ ] Register. The confirmation mail arrives from hi@smeyer.me, the link works (GET shows the page, the form posts, the account is confirmed).
