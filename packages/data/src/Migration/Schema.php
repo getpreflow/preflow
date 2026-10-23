@@ -32,10 +32,13 @@ final class Schema
             }
         }
 
-        $this->pdo->exec($this->grammar->createTable($builder->getName(), $builder->columns()));
+        // Built first too: the grammar may refuse a name (MySQL's 64-character limit).
+        $create = $this->grammar->createTable($builder->getName(), $builder->columns());
+        $indexes = array_map(fn (string $column): string => $this->grammar->createIndex($table, $column), $builder->getIndexes());
 
-        foreach ($builder->getIndexes() as $column) {
-            $this->pdo->exec($this->grammar->createIndex($table, $column));
+        $this->pdo->exec($create);
+        foreach ($indexes as $sql) {
+            $this->pdo->exec($sql);
         }
     }
 

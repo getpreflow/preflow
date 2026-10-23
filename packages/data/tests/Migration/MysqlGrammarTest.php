@@ -70,6 +70,34 @@ final class MysqlGrammarTest extends TestCase
         );
     }
 
+    public function test_identifier_at_64_characters_passes(): void
+    {
+        $name = str_repeat('t', 64);
+
+        $this->assertSame("DROP TABLE IF EXISTS `{$name}`", (new MysqlGrammar())->dropTable($name));
+    }
+
+    public function test_index_name_over_64_characters_throws(): void
+    {
+        $table = str_repeat('t', 40);
+        $column = str_repeat('c', 20);
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage("Identifier \"idx_{$table}_{$column}\" is 65 characters; MySQL allows at most 64.");
+
+        (new MysqlGrammar())->createIndex($table, $column);
+    }
+
+    public function test_shadow_table_name_over_64_characters_throws(): void
+    {
+        $table = str_repeat('p', 54) . '__published';
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage("Identifier \"{$table}\" is 65 characters; MySQL allows at most 64.");
+
+        (new MysqlGrammar())->createRecordTable($table, 'uuid', ['title']);
+    }
+
     public function test_only_bounded_kinds_can_be_indexed(): void
     {
         $g = new MysqlGrammar();

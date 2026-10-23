@@ -16,8 +16,17 @@ final class MysqlGrammar implements SchemaGrammar
 
     private const EXACT = ' COLLATE utf8mb4_bin';
 
+    /**
+     * MySQL caps table, column and index names at 64 characters; idx_{table}_{column} and
+     * Folio's {table}__published / __revisions can cross it, so fail naming the identifier.
+     */
     public function quote(string $identifier): string
     {
+        $length = mb_strlen($identifier);
+        if ($length > 64) {
+            throw new \LogicException("Identifier \"{$identifier}\" is {$length} characters; MySQL allows at most 64.");
+        }
+
         return '`' . str_replace('`', '``', $identifier) . '`';
     }
 
