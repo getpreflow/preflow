@@ -122,14 +122,18 @@ final class ExtensionRegistry
     }
 
     /**
-     * Model JSON schemas of the enabled model parts, by extension name then key.
+     * Model JSON schemas of the enabled model parts, by extension name then key; with $extension,
+     * that extension's only.
      *
      * @return list<array<string, mixed>>
      */
-    public function enabledModels(): array
+    public function enabledModels(?string $extension = null): array
     {
         $schemas = [];
         foreach ($this->enabled() as $definition) {
+            if ($extension !== null && $definition->name !== $extension) {
+                continue;
+            }
             foreach ($definition->parts as $part) {
                 if ($part['kind'] === 'model' && $this->partEnabled($definition->name, $part['id'])) {
                     $schemas[] = self::model($definition->folder . '/models/' . substr($part['id'], 6) . '.json');

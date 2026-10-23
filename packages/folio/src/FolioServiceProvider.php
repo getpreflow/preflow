@@ -79,7 +79,13 @@ final class FolioServiceProvider extends ServiceProvider
         $container->instance(ExtensionRegistry::class, $extensions);
         // Models go under Content unless their JSON names a "section"; their settings forms
         // (Extension::settings()) are singleton types under Settings.
-        $extensionTypes = array_map(static fn (array $schema): array => [$schema, 'content', 'Extension model'], $extensions->enabledModels());
+        // Each extension may adjust its models first (prepareModel: storage, options from config).
+        $extensionTypes = [];
+        foreach ($extensions->enabled() as $definition) {
+            foreach ($extensions->enabledModels($definition->name) as $schema) {
+                $extensionTypes[] = [$container->get($definition->class)->prepareModel($schema, $container), 'content', 'Extension model'];
+            }
+        }
         foreach ($extensions->enabled() as $definition) {
             if ($extensions->partEnabled($definition->name, 'settings')) {
                 $extensionTypes[] = [ExtensionSettings::schema($definition, $container->get($definition->class)->settings()), 'settings', 'Extension settings type'];

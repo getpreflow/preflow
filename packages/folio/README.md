@@ -718,6 +718,11 @@ The folder's other parts are found by their attributes: `Screens/*` (`#[FolioScr
 `templates/` (Twig, namespace `@{name}`, e.g. `@demo/overview.twig`). A part is named
 `screen:{path}`, `type:{key}`, `model:{key}` or `settings`.
 
+`prepareModel(array $schema, Container $c): array` sees each of the extension's model
+schemas at boot, before a site's `"extends": true` file is merged, for what the JSON can't
+know: a storage alias that falls back to `default` when the site has not configured it, or
+select options from the site's locales.
+
 **Enabling.** Nothing runs until `config/folio/extensions.json`, which is committed,
 lists it:
 

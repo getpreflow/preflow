@@ -22,6 +22,19 @@ abstract class Extension
     }
 
     /**
+     * One of the extension's model schemas (models/*.json) at boot, before a site's "extends"
+     * file is merged: an extension adjusts what JSON can't know, such as a storage alias with
+     * a fallback or select options from the site's locales.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    public function prepareModel(array $schema, Container $c): array
+    {
+        return $schema;
+    }
+
+    /**
      * The extension's settings form, in the model JSON "fields" format; a field may carry a
      * "default", and an "env" field names an environment variable. Non-empty: Folio edits it
      * under Settings as the singleton type "{name}_settings" (read with ExtensionSettings).

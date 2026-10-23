@@ -181,6 +181,41 @@ final class ModelExtensionTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_extension_prepares_its_model_at_boot_before_site_patches(): void
+    {
+        // prepareModel(): the extension picks a storage and options from the site's config at boot.
+        $this->write('app/Folio/Members/Extension.php', <<<'PHP'
+            <?php
+            namespace App\Folio\Members;
+            #[\Preflow\Folio\Extension\Attributes\FolioExtension(name: 'members', label: 'Members')]
+            final class Extension extends \Preflow\Folio\Extension\Extension
+            {
+                public function prepareModel(array $schema, \Preflow\Core\Container\Container $c): array
+                {
+                    $drivers = $c->get(\Preflow\Data\DataManager::class)->driverNames();
+                    $schema['storage'] = in_array('members', $drivers, true) ? 'members' : 'default';
+                    $schema['fields']['name']['label'] = 'Locales: ' . implode(',', $c->get(\Preflow\Data\Locales::class)->available);
+
+                    return $schema;
+                }
+            }
+            PHP);
+        $this->write('app/Folio/Members/models/member.json', (string) json_encode(['storage' => 'members'] + self::MEMBER));
+        $this->write('config/folio/extensions.json', '{"enabled": {"members": {"disabled_parts": []}}}');
+        $this->write('config/models/member.json', (string) json_encode([
+            'key' => 'member',
+            'extends' => true,
+            'fields' => ['company' => ['type' => 'string']],
+        ]));
+
+        $def = $this->app()->container()->get(DataManager::class)->getTypeRegistry()->get('member');
+
+        $this->assertSame('default', $def->storage);
+        $this->assertSame('Locales: en,de', $def->fields['name']->label);
+        $this->assertSame(['email', 'name', 'company'], array_keys($def->fields));
+    }
+
+    #[RunInSeparateProcess]
     public function test_site_file_without_extends_keeps_the_duplicate_error(): void
     {
         $this->members();
