@@ -96,9 +96,10 @@ final class FolioServiceProvider extends ServiceProvider
         }
         // Site model files with "extends": true add fields to these types (ModelExtension).
         $patches = ModelExtension::patches($modelsPath);
+        $patchFiles = $patches === [] ? [] : ModelExtension::files($modelsPath);
         foreach ($extensionTypes as [$schema, $section, $what]) {
             if (isset($patches[$schema['key']])) {
-                $schema = ModelExtension::merge($schema, $patches[$schema['key']]);
+                $schema = ModelExtension::merge($schema, $patches[$schema['key']], $patchFiles[$schema['key']] ?? '');
                 unset($patches[$schema['key']]);
             }
             try {

@@ -18,6 +18,9 @@ final class ModelExtension
     /** Options a patch may repeat but not change. */
     private const array LOCKED = ['storage', 'table', 'users', 'id_field', 'key'];
 
+    /** What a patch adds or replaces (list: only its "columns"). */
+    private const array PATCHABLE = ['extends', 'fields', 'list'];
+
     /** Whether a decoded model file is a patch rather than a type. */
     public static function isPatch(mixed $schema): bool
     {
@@ -127,25 +130,42 @@ final class ModelExtension
 
     /**
      * The extension's schema with the site's fields appended (or each placed "after" a field it names) and its list columns, when given, in place of the extension's.
+     * A patch holds only key, extends, fields and list.columns, and may repeat the locked options
+     * unchanged; anything else is an error, so a key the merge would drop never goes unnoticed.
      *
      * @param array<string, mixed> $extensionSchema
      * @param array<string, mixed> $siteSchema
+     * @param string $file the site file, named in the errors
      * @return array<string, mixed>
      */
-    public static function merge(array $extensionSchema, array $siteSchema): array
+    public static function merge(array $extensionSchema, array $siteSchema, string $file = ''): array
     {
         $key = (string) ($extensionSchema['key'] ?? '');
+        $fail = static fn (string $what): FrontendConfigException => new FrontendConfigException(
+            "Model \"{$key}\" extends the extension type: {$what}" . ($file !== '' ? " ({$file})" : ''),
+        );
         foreach (self::LOCKED as $option) {
             if (array_key_exists($option, $siteSchema) && $siteSchema[$option] !== ($extensionSchema[$option] ?? null)) {
-                throw new FrontendConfigException("Model \"{$key}\" extends the extension type: \"{$option}\" can't be changed");
+                throw $fail("\"{$option}\" can't be changed");
             }
+        }
+        $unknown = array_diff(array_keys($siteSchema), [...self::LOCKED, ...self::PATCHABLE]);
+        if (array_key_exists('fields', $siteSchema) && !is_array($siteSchema['fields'])) {
+            $unknown[] = 'fields';
+        }
+        if (array_key_exists('list', $siteSchema)) {
+            $unknown = [...$unknown, ...(is_array($siteSchema['list']) ? array_map(static fn (int|string $k): string => 'list.' . $k, array_keys(array_diff_key($siteSchema['list'], ['columns' => true]))) : ['list'])];
+        }
+        if ($unknown !== []) {
+            $named = implode(', ', array_map(static fn (int|string $k): string => '"' . $k . '"', $unknown));
+            throw $fail("{$named} can't be set in an extends file (only key, extends, fields, list.columns and unchanged " . implode(', ', array_diff(self::LOCKED, ['key'])) . ')');
         }
 
         $merged = $extensionSchema;
         $fields = is_array($extensionSchema['fields'] ?? null) ? $extensionSchema['fields'] : [];
         foreach (is_array($siteSchema['fields'] ?? null) ? $siteSchema['fields'] : [] as $name => $field) {
             if (array_key_exists($name, $fields)) {
-                throw new FrontendConfigException("Model \"{$key}\" extends the extension type: field \"{$name}\" is already defined by the extension");
+                throw $fail("field \"{$name}\" is already defined by the extension");
             }
             // "after": placement in the field order (the edit form's), not field config.
             $after = is_array($field) ? ($field['after'] ?? null) : null;
@@ -156,7 +176,7 @@ final class ModelExtension
             unset($field['after']);
             $position = is_string($after) ? array_search($after, array_keys($fields), true) : false;
             if ($position === false) {
-                throw new FrontendConfigException("Model \"{$key}\" extends the extension type: field \"{$name}\" goes \"after\" \"" . (is_string($after) ? $after : get_debug_type($after)) . '", which the type does not have (yet)');
+                throw $fail("field \"{$name}\" goes \"after\" \"" . (is_string($after) ? $after : get_debug_type($after)) . '", which the type does not have (yet)');
             }
             $fields = array_slice($fields, 0, $position + 1, true) + [$name => $field] + array_slice($fields, $position + 1, null, true);
         }

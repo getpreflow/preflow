@@ -934,7 +934,8 @@ without forking it: a model file in `config/models/` whose key is that type and 
 - `list.columns`, when given, replace the extension's columns; its other `list` options stay.
 - `storage`, `table`, `users`, `id_field` and `key` are locked: repeating the extension's value
   is fine, a different one is a boot error naming the option. So is redefining a field the
-  extension defines. Other keys of the file (`label`, `icon`...) are ignored.
+  extension defines. Any other key (`label`, `icon`, `section`, a `list` option other than
+  `columns`...) is a boot error too, as the merge would drop it; each error names the file.
 - The patch is never a type of its own; `folio.tables` (`preflow migrate`) adds the new
   columns. A patch no enabled extension type takes is a boot error that names the file and,
   when the extension is switched off, the command that enables it.

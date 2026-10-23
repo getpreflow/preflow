@@ -143,6 +143,26 @@ final class ModelExtensionTest extends TestCase
         ModelExtension::merge(self::MEMBER, ['key' => 'member', 'extends' => true, $option => $value]);
     }
 
+    /** @return iterable<string, array{array<string, mixed>, string}> */
+    public static function unknownOptions(): iterable
+    {
+        yield 'label' => [['label' => 'Clients'], '"label"'];
+        yield 'section' => [['section' => 'Content'], '"section"'];
+        yield 'list option' => [['list' => ['columns' => ['email'], 'orderable' => true]], '"list.orderable"'];
+        yield 'list not a map' => [['list' => 'email'], '"list"'];
+        yield 'fields not a map' => [['fields' => 'company'], '"fields"'];
+    }
+
+    /** @param array<string, mixed> $option */
+    #[DataProvider('unknownOptions')]
+    public function test_merge_refuses_anything_but_fields_and_list_columns(array $option, string $named): void
+    {
+        $this->expectException(FrontendConfigException::class);
+        $this->expectExceptionMessage("Model \"member\" extends the extension type: {$named} can't be set in an extends file (only key, extends, fields, list.columns and unchanged storage, table, users, id_field) (config/models/member.json)");
+
+        ModelExtension::merge(self::MEMBER, ['key' => 'member', 'extends' => true] + $option, 'config/models/member.json');
+    }
+
     public function test_merge_refuses_a_field_the_extension_defines(): void
     {
         $this->expectException(FrontendConfigException::class);
@@ -258,7 +278,19 @@ final class ModelExtensionTest extends TestCase
         $this->write('config/models/member.json', (string) json_encode(['key' => 'member', 'extends' => true, 'fields' => ['email' => ['type' => 'text']]]));
 
         $this->expectException(FrontendConfigException::class);
-        $this->expectExceptionMessage('Model "member" extends the extension type: field "email" is already defined by the extension');
+        $this->expectExceptionMessageMatches('~^Model "member" extends the extension type: field "email" is already defined by the extension \\(/.+/config/models/member\\.json\\)$~');
+        $this->app();
+    }
+
+    #[RunInSeparateProcess]
+    public function test_site_file_with_an_unknown_key_fails_at_boot_naming_the_file(): void
+    {
+        $this->members();
+        $this->write('config/models/member.json', (string) json_encode(['key' => 'member', 'extends' => true, 'label' => 'Clients', 'fields' => ['company' => ['type' => 'string']]]));
+
+        $this->expectException(FrontendConfigException::class);
+        $this->expectExceptionMessage('Model "member" extends the extension type: "label" can\'t be set in an extends file');
+        $this->expectExceptionMessage('/config/models/member.json)');
         $this->app();
     }
 
