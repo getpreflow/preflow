@@ -22,7 +22,8 @@ use Preflow\Validation\ValidationResult;
  * stored lowercased and unique; a new account starts active, with epoch "0" and created_at.
  * Delegation (PermissionCoverage), with a signed-in user: an account whose stored roles they
  * don't fully cover is not theirs to change or delete (viewing stays a matter of
- * permissions), and each role added or removed must be covered. Lock-out, always (CLI too):
+ * permissions), and each role added or removed must be covered. Always (CLI too): a role is
+ * added only by the name of a defined staff role, and the lock-out:
  * no save or delete may take the last active manager (StaffManagers) away. A crafted POST
  * gets the same answers as the form; the roles field only disables what is refused here.
  * Other write paths (record actions, the import command) call beforeSave() themselves.
@@ -63,6 +64,13 @@ final class StaffRules
         $roles = (new RoleStore($this->dm))->rolesFor('staff');
         $before = $stored !== null ? StaffManagers::account($stored) : ['active' => false, 'roles' => []];
         $after = StaffManagers::account($record);
+        // A role is added only by a name a staff role has now: an undefined name would grant
+        // whatever a role created under it later gets, past every delegation check. Names
+        // already stored may stay.
+        $unknown = array_values(array_filter(array_diff($after['roles'], $before['roles']), static fn (string $name): bool => !isset($roles[$name])));
+        if ($unknown !== []) {
+            throw self::invalid('roles', $this->messages->get('delegation.unknown', ['names' => implode(', ', $unknown)]));
+        }
         if (($message = $this->delegation($before['roles'], $after['roles'], $roles)) !== null) {
             throw self::invalid('roles', $message);
         }

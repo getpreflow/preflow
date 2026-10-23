@@ -144,6 +144,36 @@ final class StaffAccountsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_adding_an_undefined_role_name_refused(): void
+    {
+        $this->setupAccounts();
+        $this->as('ed');
+
+        // Squatting a name no staff role has (yet): it would grant whatever a role of that name gets later.
+        $res = $this->saveAccount('s-ed', 'ed', ['editor', 'owner']);
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('Unknown role: owner.', self::text($res));
+        $this->assertSame(['editor'], $this->rolesOf('s-ed'));
+
+        // A member role's name is not a staff role either.
+        $this->role('r-m', 'members', 'club', []);
+        $this->assertSame(422, $this->saveAccount('s-help', 'help', ['helper', 'club'])->getStatusCode());
+
+        // Nor the name of a role that was deleted.
+        $this->container()->get(DataManager::class)->deleteType('rbac_role', 'r-helper');
+        $this->assertNull($this->stored('rbac_role', 'r-helper'));
+        $res = $this->saveAccount('s-none', 'none', ['helper']);
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('Unknown role: helper.', self::text($res));
+        $this->assertSame([], $this->rolesOf('s-none'));
+
+        // A stored name that is no longer defined may stay on an unrelated edit.
+        $this->assertSame(302, $this->saveAccount('s-help', 'help', ['helper'], ['name' => 'Still Help'])->getStatusCode());
+        $this->assertSame(['helper'], $this->rolesOf('s-help'));
+        $this->assertSame('Still Help', $this->stored('staff', 's-help')?->get('name'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_editing_an_account_above_you_refused(): void
     {
         $this->setupAccounts(twoManagers: true);
@@ -270,6 +300,15 @@ final class StaffAccountsTest extends TestCase
         $this->assertSame('0', $new->get('auth_epoch'));
         $this->assertSame('code@site.test', $new->get('email'));
         $this->assertNotEmpty($new->get('created_at'));
+
+        try {
+            $squat = $this->stored('staff', 's-none');
+            $squat->set('roles', ['owner']);
+            $rules->beforeSave($squat);
+            $this->fail('undefined role accepted without a signed-in user');
+        } catch (ValidationException $e) {
+            $this->assertSame(['Unknown role: owner.'], $e->errors()['roles'] ?? null);
+        }
 
         try {
             $twin = DynamicRecord::fromArray($dm->getTypeRegistry()->get('staff'), ['uuid' => 's-twin', 'email' => 'boss@SITE.test']);

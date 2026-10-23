@@ -85,7 +85,8 @@ roles they don't fully cover can't be changed or deleted by them ("You can't cha
 account with roles you can't grant."; viewing stays a matter of `staff.view`), and every
 role added or removed must be covered ("You can't grant permissions you don't have:
 {patterns}"). The roles checkboxes show what you can't grant disabled. Always (the CLI
-too), no account save or delete, and no role save or delete, may leave no active
+too), a role is added only by the name of a defined staff role ("Unknown role: {names}.";
+a stored name no longer defined may stay), so nobody squats a name a role gets later; and no account save or delete, and no role save or delete, may leave no active
 *manager*: an account whose roles grant `staff.edit` and `rbac_role.edit` ("At least one
 account must keep the right to manage staff and roles."). That covers disabling, demoting
 and deleting the last one, yourself included. A site whose staff are all config users has

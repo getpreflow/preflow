@@ -25,6 +25,7 @@ final class LangTest extends TestCase
         $this->assertSame("You can't grant permissions you don't have: *, page.*", $en->get('delegation.grant', ['patterns' => '*, page.*']));
         $this->assertSame("You can't change an account with roles you can't grant.", $en->get('delegation.account'));
         $this->assertSame('At least one account must keep the right to manage staff and roles.', $en->get('delegation.last'));
+        $this->assertSame('Unknown role: owner, boss.', $en->get('delegation.unknown', ['names' => 'owner, boss']));
     }
 
     public function test_every_locale_has_every_key(): void
