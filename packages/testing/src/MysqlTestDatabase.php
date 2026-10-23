@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Testing;
 
 use PHPUnit\Framework\SkippedWithMessageException;
+use Preflow\Data\Driver\MysqlDriver;
 
 /**
  * One shared MySQL connection for tests, configured from MYSQL_* env vars.
@@ -13,8 +14,6 @@ use PHPUnit\Framework\SkippedWithMessageException;
 final class MysqlTestDatabase
 {
     private const SKIP_MESSAGE = 'MySQL not configured (set MYSQL_HOST, MYSQL_DATABASE, MYSQL_USER, MYSQL_PASS)';
-
-    private const SQL_MODE = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
 
     private static ?\PDO $pdo = null;
 
@@ -81,12 +80,9 @@ final class MysqlTestDatabase
             sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', $c['host'], $c['port'], $c['database']),
             $c['username'],
             $c['password'],
-            [
-                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-                \Pdo\Mysql::ATTR_FOUND_ROWS => true,
-            ],
+            MysqlDriver::connectionOptions(),
         );
-        $pdo->exec("SET SESSION sql_mode = '" . self::SQL_MODE . "'");
+        $pdo->exec("SET SESSION sql_mode = '" . MysqlDriver::SQL_MODE . "'");
 
         return $pdo;
     }

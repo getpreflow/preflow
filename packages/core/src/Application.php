@@ -502,6 +502,7 @@ final class Application
             $dsn,
             $config['username'] ?? getenv('DB_USER') ?: 'root',
             $config['password'] ?? getenv('DB_PASS') ?: '',
+            \Preflow\Data\Driver\MysqlDriver::connectionOptions(),
         );
         $this->container->instance(\PDO::class, $pdo);
         return new \Preflow\Data\Driver\MysqlDriver($pdo, $collector);
