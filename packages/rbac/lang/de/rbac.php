@@ -15,6 +15,7 @@ return [
         'mail_failed' => 'Die Mail konnte nicht gesendet werden. Prüfen Sie die Mail-Einrichtung (config/notify.php).',
         'no_sign_in' => 'Teamkonten können sich auf dieser Website noch nicht anmelden: Der Standard-Guard in config/auth.php hat keinen Provider für Teamkonten.',
         'no_app_url' => 'Setzen Sie app.url, um Anmeldelinks zu senden.',
+        'config_email' => 'Diese E-Mail-Adresse gehört einem konfigurierten Admin.',
         'has_password' => 'Dieses Konto hat bereits ein Passwort. Senden Sie stattdessen einen Link zum Zurücksetzen.',
         'inactive' => 'Dieses Konto ist deaktiviert. Aktivieren Sie es zuerst.',
         'reset_sent' => 'Link zum Zurücksetzen an :email gesendet.',

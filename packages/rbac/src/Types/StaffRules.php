@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Preflow\Rbac\Types;
 
+use Preflow\Auth\UserProviderInterface;
+use Preflow\Core\Container\Container;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Extension\Customization\Refused;
+use Preflow\Rbac\ConfigUsers;
 use Preflow\Rbac\Messages;
 use Preflow\Rbac\PermissionCoverage;
 use Preflow\Rbac\RoleStore;
@@ -16,7 +19,8 @@ use Preflow\Validation\ValidationResult;
 
 /**
  * Staff accounts (models/staff.json, the opt-in part "model:staff"). Every save: the e-mail
- * stored lowercased and unique; a new account starts active, with epoch "0" and created_at.
+ * stored lowercased and unique (and, with a signed-in user, a new or changed one not a config
+ * user's of the default guard); a new account starts active, with epoch "0" and created_at.
  * Delegation (PermissionCoverage), with a signed-in user: an account whose stored roles they
  * don't fully cover is not theirs to change or delete (viewing stays a matter of
  * permissions), and each role added or removed must be covered. Always (CLI too): a role is
@@ -32,6 +36,7 @@ final class StaffRules
         private readonly DataManager $dm,
         private readonly PermissionCoverage $coverage,
         private readonly Messages $messages,
+        private readonly Container $container,
     ) {}
 
     public function beforeSave(DynamicRecord $record): void
@@ -43,6 +48,13 @@ final class StaffRules
         $record->set('email', $email);
         if ($email !== '' && $this->emailTaken($email, $id)) {
             throw self::invalid('email', 'Another account already uses this email address.');
+        }
+        // In the admin, a new or changed address may not be a config user's: the record would then
+        // decide that sign-in (a disabled one locks the config login out). The import (no
+        // signed-in user) moves exactly those addresses.
+        if ($email !== '' && $email !== ($stored === null ? null : mb_strtolower(trim((string) $stored->get('email'))))
+            && $this->coverage->held() !== null && $this->configEmail($email)) {
+            throw self::invalid('email', $this->messages->get('staff.config_email'));
         }
         if ($stored === null) {
             // A new account can sign in (the field default; code may leave it out), from epoch "0".
@@ -119,6 +131,18 @@ final class StaffRules
         $uncovered = PermissionCoverage::uncovered($held, StaffManagers::patterns(array_values($changed), $roles));
 
         return $uncovered === [] ? null : $this->messages->get('delegation.grant', ['patterns' => implode(', ', $uncovered)]);
+    }
+
+    /** Whether a config user of the default guard has this e-mail. */
+    private function configEmail(string $email): bool
+    {
+        try {
+            $users = $this->container->get(UserProviderInterface::class);
+        } catch (\Throwable) { // no config/auth.php: nothing bound
+            return false;
+        }
+
+        return ConfigUsers::hasEmail($users, $email);
     }
 
     private function emailTaken(string $email, string $exceptId): bool

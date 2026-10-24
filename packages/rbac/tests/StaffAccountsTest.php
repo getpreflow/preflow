@@ -266,6 +266,27 @@ final class StaffAccountsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_an_email_of_a_configured_admin_is_refused_in_the_admin(): void
+    {
+        $this->setupAccounts();
+        $this->as('ed');
+        $refusal = 'This e-mail address belongs to a configured admin.';
+
+        $res = $this->send('POST', '/folio/staff', ['email' => ' Admin@Site.test ', 'name' => 'Takeover', 'roles' => [''], 'active' => '0']);
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString($refusal, self::text($res));
+        $res = $this->send('POST', '/folio/staff/s-help', ['email' => 'admin@site.test', 'name' => 'Help', 'roles' => ['', 'helper'], 'active' => '1']);
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString($refusal, self::text($res));
+        $this->assertSame('help@site.test', $this->container()->get(DataManager::class)->findType('staff', 's-help')?->get('email'));
+
+        // An imported account (its e-mail was the config admin's from the start) stays editable.
+        $this->account('s-imported', 'admin', ['helper']);
+        $res = $this->send('POST', '/folio/staff/s-imported', ['email' => 'admin@site.test', 'name' => 'Imported', 'roles' => ['', 'helper'], 'active' => '1']);
+        $this->assertSame(302, $res->getStatusCode(), self::text($res));
+    }
+
+    #[RunInSeparateProcess]
     public function test_roles_field_disables_what_the_editor_cant_grant(): void
     {
         $this->setupAccounts(twoManagers: true);

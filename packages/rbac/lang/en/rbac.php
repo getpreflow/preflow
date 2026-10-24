@@ -15,6 +15,7 @@ return [
         'mail_failed' => 'The mail could not be sent. Check the mail setup (config/notify.php).',
         'no_sign_in' => "Staff accounts can't sign in on this site yet: the default guard in config/auth.php has no staff record provider.",
         'no_app_url' => 'Set app.url to send sign-in links.',
+        'config_email' => 'This e-mail address belongs to a configured admin.',
         'has_password' => 'This account already has a password. Send a reset link instead.',
         'inactive' => 'This account is disabled. Enable it first.',
         'reset_sent' => 'Reset link sent to :email.',

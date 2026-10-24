@@ -98,7 +98,9 @@ Staff accounts are records, managed in Folio by staff who may. The part `model:s
   when the site has one, else `default`. It is a user type (population `staff`), so it is
   never exported.
 - **Fields.**
-  - `email`: stored trimmed and lowercased, unique.
+  - `email`: stored trimmed and lowercased, unique. In the admin, a new or changed address
+    can't be one of a config user of the default guard ("This e-mail address belongs to a
+    configured admin."): the record would take over that sign-in. The import moves those.
   - `name`
   - `password_hash`: hidden.
   - `roles`: `rbac_roles`, population staff.

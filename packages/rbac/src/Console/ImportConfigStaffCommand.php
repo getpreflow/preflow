@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace Preflow\Rbac\Console;
 
-use Preflow\Auth\ChainUserProvider;
-use Preflow\Auth\ConfigUserProvider;
-use Preflow\Auth\LazyUserProvider;
 use Preflow\Auth\UserProviderInterface;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\DevTools\Command\CommandInterface;
 use Preflow\Folio\Console\BootsApplication;
+use Preflow\Rbac\ConfigUsers;
 use Preflow\Rbac\RoleList;
 use Preflow\Rbac\RoleStore;
 use Preflow\Rbac\StaffManagers;
@@ -45,7 +43,7 @@ final class ImportConfigStaffCommand implements CommandInterface
 
         $users = [];
         try {
-            self::collect($c->get(UserProviderInterface::class), $users);
+            $users = ConfigUsers::of($c->get(UserProviderInterface::class));
         } catch (\Throwable) { // no config/auth.php: nothing bound
         }
         if ($users === []) {
@@ -103,24 +101,5 @@ final class ImportConfigStaffCommand implements CommandInterface
         echo "folio:staff:import-config — created {$created}, skipped {$skipped}" . ($failed > 0 ? ", failed {$failed}" : '') . "\n";
 
         return $failed > 0 ? 1 : 0;
-    }
-
-    /**
-     * The entries of every ConfigUserProvider in the provider (a chain's members, built lazy ones).
-     *
-     * @param list<array<string, mixed>> $found
-     */
-    private static function collect(?UserProviderInterface $provider, array &$found): void
-    {
-        if ($provider instanceof LazyUserProvider) {
-            $provider = $provider->inner();
-        }
-        if ($provider instanceof ConfigUserProvider) {
-            array_push($found, ...$provider->entries());
-        } elseif ($provider instanceof ChainUserProvider) {
-            foreach ($provider->providers() as $member) {
-                self::collect($member, $found);
-            }
-        }
     }
 }

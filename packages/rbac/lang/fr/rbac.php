@@ -15,6 +15,7 @@ return [
         'mail_failed' => "L'e-mail n'a pas pu être envoyé. Vérifiez la configuration des e-mails (config/notify.php).",
         'no_sign_in' => "Les comptes de l'équipe ne peuvent pas encore se connecter sur ce site : le guard par défaut de config/auth.php n'a pas de fournisseur pour ces comptes.",
         'no_app_url' => "Définissez app.url pour envoyer des liens de connexion.",
+        'config_email' => "Cette adresse e-mail appartient à un administrateur configuré.",
         'has_password' => 'Ce compte a déjà un mot de passe. Envoyez plutôt un lien de réinitialisation.',
         'inactive' => "Ce compte est désactivé. Activez-le d'abord.",
         'reset_sent' => 'Lien de réinitialisation envoyé à :email.',
