@@ -244,4 +244,10 @@ final class JsonFileDriverTest extends TestCase
         $driver = $this->driver;
         $this->checkCountEqualsRowsWithLimit($driver);
     }
+
+    public function test_or_group_or_where_chain_is_grouped_before_groups_are_anded(): void
+    {
+        $driver = $this->driver;
+        $this->checkOrWhereChainIsGroupedBeforeGroupsAreAnded($driver);
+    }
 }

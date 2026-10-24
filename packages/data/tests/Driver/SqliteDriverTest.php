@@ -269,4 +269,11 @@ final class SqliteDriverTest extends TestCase
         $driver = $this->driver;
         $this->checkCountEqualsRowsWithLimit($driver);
     }
+
+    public function test_or_group_or_where_chain_is_grouped_before_groups_are_anded(): void
+    {
+        $this->pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, title TEXT, tags TEXT)');
+        $driver = $this->driver;
+        $this->checkOrWhereChainIsGroupedBeforeGroupsAreAnded($driver);
+    }
 }

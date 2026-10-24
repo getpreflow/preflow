@@ -143,7 +143,7 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
         $this->assertSame(
-            'SELECT * FROM "posts" WHERE "status" = ? AND ("title" LIKE ? ESCAPE \'!\' OR "id" IN (?,?) OR "kind" = ?)',
+            'SELECT * FROM "posts" WHERE ("status" = ?) AND ("title" LIKE ? ESCAPE \'!\' OR "id" IN (?,?) OR "kind" = ?)',
             $sql,
         );
         $this->assertSame(['live', '%50!%!_!!%', 'a', 'b', 'x'], $bindings);
@@ -209,5 +209,17 @@ final class QueryCompilerTest extends TestCase
 
         $this->assertSame('SELECT * FROM "posts" WHERE (0 = 1)', $sql);
         $this->assertSame([], $bindings);
+    }
+
+    public function test_or_where_chain_is_parenthesized_before_groups_in_select_and_count(): void
+    {
+        $q = (new Query())->where('a', 1)->orWhere('b', 2)
+            ->whereAny([['field' => 'c', 'operator' => '=', 'value' => 3]]);
+
+        [$sql] = $this->compiler->compile('posts', $q);
+        [$countSql] = $this->compiler->compileCount('posts', $q);
+
+        $this->assertSame('SELECT * FROM "posts" WHERE ("a" = ? OR "b" = ?) AND ("c" = ?)', $sql);
+        $this->assertSame('SELECT COUNT(*) as total FROM "posts" WHERE ("a" = ? OR "b" = ?) AND ("c" = ?)', $countSql);
     }
 }

@@ -18,21 +18,9 @@ class QueryCompiler
         $bindings = [];
         $sql = 'SELECT * FROM ' . $this->dialect->quoteIdentifier($table);
 
-        $whereSql = $this->compileWheres($query, $bindings);
-        $conditions = [];
+        $whereSql = $this->compileConditions($query, $bindings);
         if ($whereSql !== '') {
-            $conditions[] = $whereSql;
-        }
-        $searchSql = $this->compileSearch($query, $bindings);
-        if ($searchSql !== '') {
-            $conditions[] = $searchSql;
-        }
-        $anySql = $this->compileAnyGroups($query, $bindings);
-        if ($anySql !== '') {
-            $conditions[] = $anySql;
-        }
-        if ($conditions !== []) {
-            $sql .= ' WHERE ' . implode(' AND ', $conditions);
+            $sql .= ' WHERE ' . $whereSql;
         }
 
         $orderSql = $this->compileOrderBy($query);
@@ -59,21 +47,9 @@ class QueryCompiler
         $bindings = [];
         $sql = 'SELECT COUNT(*) as total FROM ' . $this->dialect->quoteIdentifier($table);
 
-        $whereSql = $this->compileWheres($query, $bindings);
-        $conditions = [];
+        $whereSql = $this->compileConditions($query, $bindings);
         if ($whereSql !== '') {
-            $conditions[] = $whereSql;
-        }
-        $searchSql = $this->compileSearch($query, $bindings);
-        if ($searchSql !== '') {
-            $conditions[] = $searchSql;
-        }
-        $anySql = $this->compileAnyGroups($query, $bindings);
-        if ($anySql !== '') {
-            $conditions[] = $anySql;
-        }
-        if ($conditions !== []) {
-            $sql .= ' WHERE ' . implode(' AND ', $conditions);
+            $sql .= ' WHERE ' . $whereSql;
         }
 
         return [$sql, $bindings];
@@ -103,6 +79,34 @@ class QueryCompiler
         }
 
         return implode(' ', $parts);
+    }
+
+    /**
+     * The where chain, search and OR-groups, AND'd. The where chain may contain
+     * orWhere() ORs, so it is parenthesized whenever something is AND'd to it.
+     *
+     * @param array<int, mixed> $bindings
+     */
+    private function compileConditions(Query $query, array &$bindings): string
+    {
+        $whereSql = $this->compileWheres($query, $bindings);
+        $others = [];
+        $searchSql = $this->compileSearch($query, $bindings);
+        if ($searchSql !== '') {
+            $others[] = $searchSql;
+        }
+        $anySql = $this->compileAnyGroups($query, $bindings);
+        if ($anySql !== '') {
+            $others[] = $anySql;
+        }
+        if ($whereSql === '') {
+            return implode(' AND ', $others);
+        }
+        if ($others === []) {
+            return $whereSql;
+        }
+
+        return '(' . $whereSql . ') AND ' . implode(' AND ', $others);
     }
 
     /**

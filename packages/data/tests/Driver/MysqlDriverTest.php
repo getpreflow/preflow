@@ -93,129 +93,65 @@ final class MysqlDriverTest extends TestCase
         }
     }
 
-        #[Group('mysql')]
-public function test_or_group_contains_is_case_insensitive(): void
+    /** Runs a check against a fresh `items` table and always drops it again. */
+    private function withItemsTable(callable $check): void
     {
         $pdo = MysqlTestDatabase::pdo();
         MysqlTestDatabase::dropAllTables($pdo);
         $pdo->exec('CREATE TABLE items (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255), tags TEXT) CHARACTER SET utf8mb4');
-        $driver = new MysqlDriver($pdo);
+
         try {
-            try {
-            $this->checkContainsIsCaseInsensitive($driver);
-        } finally {
-            MysqlTestDatabase::dropAllTables($pdo);
-        }
+            $check(new MysqlDriver($pdo));
         } finally {
             MysqlTestDatabase::dropAllTables($pdo);
         }
     }
 
-        #[Group('mysql')]
-public function test_or_group_contains_takes_special_chars_literally(): void
+    #[Group('mysql')]
+    public function test_or_group_contains_is_case_insensitive(): void
     {
-        $pdo = MysqlTestDatabase::pdo();
-        MysqlTestDatabase::dropAllTables($pdo);
-        $pdo->exec('CREATE TABLE items (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255), tags TEXT) CHARACTER SET utf8mb4');
-        $driver = new MysqlDriver($pdo);
-        try {
-            try {
-            $this->checkContainsTakesSpecialCharsLiterally($driver);
-        } finally {
-            MysqlTestDatabase::dropAllTables($pdo);
-        }
-        } finally {
-            MysqlTestDatabase::dropAllTables($pdo);
-        }
+        $this->withItemsTable(fn (MysqlDriver $driver) => $this->checkContainsIsCaseInsensitive($driver));
     }
 
-        #[Group('mysql')]
-public function test_or_group_contains_finds_umlauts(): void
+    #[Group('mysql')]
+    public function test_or_group_contains_takes_special_chars_literally(): void
     {
-        $pdo = MysqlTestDatabase::pdo();
-        MysqlTestDatabase::dropAllTables($pdo);
-        $pdo->exec('CREATE TABLE items (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255), tags TEXT) CHARACTER SET utf8mb4');
-        $driver = new MysqlDriver($pdo);
-        try {
-            try {
-            $this->checkContainsFindsUmlauts($driver);
-        } finally {
-            MysqlTestDatabase::dropAllTables($pdo);
-        }
-        } finally {
-            MysqlTestDatabase::dropAllTables($pdo);
-        }
+        $this->withItemsTable(fn (MysqlDriver $driver) => $this->checkContainsTakesSpecialCharsLiterally($driver));
     }
 
-        #[Group('mysql')]
-public function test_or_group_in_matches_listed_values_and_empty_matches_nothing(): void
+    #[Group('mysql')]
+    public function test_or_group_contains_finds_umlauts(): void
     {
-        $pdo = MysqlTestDatabase::pdo();
-        MysqlTestDatabase::dropAllTables($pdo);
-        $pdo->exec('CREATE TABLE items (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255), tags TEXT) CHARACTER SET utf8mb4');
-        $driver = new MysqlDriver($pdo);
-        try {
-            try {
-            $this->checkIn($driver);
-        } finally {
-            MysqlTestDatabase::dropAllTables($pdo);
-        }
-        } finally {
-            MysqlTestDatabase::dropAllTables($pdo);
-        }
+        $this->withItemsTable(fn (MysqlDriver $driver) => $this->checkContainsFindsUmlauts($driver));
     }
 
-        #[Group('mysql')]
-public function test_or_group_has_reads_json_arrays_single_ids_empty_and_invalid_json(): void
+    #[Group('mysql')]
+    public function test_or_group_in_matches_listed_values_and_empty_matches_nothing(): void
     {
-        $pdo = MysqlTestDatabase::pdo();
-        MysqlTestDatabase::dropAllTables($pdo);
-        $pdo->exec('CREATE TABLE items (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255), tags TEXT) CHARACTER SET utf8mb4');
-        $driver = new MysqlDriver($pdo);
-        try {
-            try {
-            $this->checkHas($driver);
-        } finally {
-            MysqlTestDatabase::dropAllTables($pdo);
-        }
-        } finally {
-            MysqlTestDatabase::dropAllTables($pdo);
-        }
+        $this->withItemsTable(fn (MysqlDriver $driver) => $this->checkIn($driver));
     }
 
-        #[Group('mysql')]
-public function test_or_group_or_group_inside_and_two_groups_are_anded(): void
+    #[Group('mysql')]
+    public function test_or_group_has_reads_json_arrays_single_ids_empty_and_invalid_json(): void
     {
-        $pdo = MysqlTestDatabase::pdo();
-        MysqlTestDatabase::dropAllTables($pdo);
-        $pdo->exec('CREATE TABLE items (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255), tags TEXT) CHARACTER SET utf8mb4');
-        $driver = new MysqlDriver($pdo);
-        try {
-            try {
-            $this->checkOrWithinAndAcrossGroups($driver);
-        } finally {
-            MysqlTestDatabase::dropAllTables($pdo);
-        }
-        } finally {
-            MysqlTestDatabase::dropAllTables($pdo);
-        }
+        $this->withItemsTable(fn (MysqlDriver $driver) => $this->checkHas($driver));
     }
 
-        #[Group('mysql')]
-public function test_or_group_count_equals_rows_ignoring_limit(): void
+    #[Group('mysql')]
+    public function test_or_group_or_group_inside_and_two_groups_are_anded(): void
     {
-        $pdo = MysqlTestDatabase::pdo();
-        MysqlTestDatabase::dropAllTables($pdo);
-        $pdo->exec('CREATE TABLE items (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255), tags TEXT) CHARACTER SET utf8mb4');
-        $driver = new MysqlDriver($pdo);
-        try {
-            try {
-            $this->checkCountEqualsRowsWithLimit($driver);
-        } finally {
-            MysqlTestDatabase::dropAllTables($pdo);
-        }
-        } finally {
-            MysqlTestDatabase::dropAllTables($pdo);
-        }
+        $this->withItemsTable(fn (MysqlDriver $driver) => $this->checkOrWithinAndAcrossGroups($driver));
+    }
+
+    #[Group('mysql')]
+    public function test_or_group_count_equals_rows_ignoring_limit(): void
+    {
+        $this->withItemsTable(fn (MysqlDriver $driver) => $this->checkCountEqualsRowsWithLimit($driver));
+    }
+
+    #[Group('mysql')]
+    public function test_or_group_or_where_chain_is_grouped_before_groups_are_anded(): void
+    {
+        $this->withItemsTable(fn (MysqlDriver $driver) => $this->checkOrWhereChainIsGroupedBeforeGroupsAreAnded($driver));
     }
 }

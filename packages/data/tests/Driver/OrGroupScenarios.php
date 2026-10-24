@@ -106,4 +106,14 @@ trait OrGroupScenarios
         $this->assertCount(2, $r->items());
         $this->assertSame(3, $r->total());
     }
+
+    private function checkOrWhereChainIsGroupedBeforeGroupsAreAnded(StorageDriver $d): void
+    {
+        $this->seedGroupRows($d, [['1', 'x', 'k'], ['2', 'y', 'k'], ['3', 'x', 'z'], ['4', 'y', 'z']]);
+        $q = (new Query())
+            ->where('title', 'x')->orWhere('title', 'y')
+            ->whereAny([['field' => 'tags', 'operator' => '=', 'value' => 'k']]);
+        $this->assertSame(['1', '2'], $this->groupIds($d, $q));
+        $this->assertSame(2, $d->findMany('items', $q)->total());
+    }
 }
