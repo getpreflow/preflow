@@ -178,7 +178,12 @@ logic copied three times, junk message files, a nested `uploads/uploads/` (512 e
 ## Decisions (my calls unless marked "Steffen")
 
 - **New repo** `~/Sites/gbits/holz-objekte.org` (GitHub `smeyerme/holz-objekte.org`), Preflow +
-  Folio like smart-stack.works, local vhost `holzobjekte`, PHP 8.4.
+  Folio like smart-stack.works, PHP 8.4. **Local (Steffen):** https://holz-objekte.dev.smyr, vhost
+  `~/Sites/vhosts/holz-objekte.dev.smyr.conf` → `~/Sites/gbits/holz-objekte.org/public` (the old
+  vhost to the Yii checkout is kept as `.bak-yii`; the old site stays at holzref.dev.smyr).
+  **`app.url` (Steffen):** `https://holz-objekte.dev.smyr` in the local `.env`,
+  `https://holz-objekte.org` in production. The folder holds only a placeholder
+  `public/index.html` until step 4 creates the repo.
 - **Deploy** with Deployer to giantbits.com, path `~/public_html/holz-objekte.org` (the old
   `holzobjekte.org` folder stays untouched until cutover). A stage subdomain first; at cutover
   Steffen repoints the document root to `…/current/public` (as for smart-stack.works).
