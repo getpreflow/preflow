@@ -50,7 +50,7 @@ return [
     // `'active' => 'active'` there names a boolean field: a record with it off never resolves.
 
     // A chain tries the named providers in order, first hit wins (no lock-out while moving
-    // from .env users to records). It must come after the providers it names; a guard
+    // from .env users to records; see "User providers" below). A guard
     // uses it as `'provider' => 'chain'`. Once a staff record exists for an e-mail, that record
     // decides: disabled means locked out, and the config password for that e-mail no longer works
     // (a provider implementing ClaimsCredentials, like RecordUserProvider, stops the chain for
@@ -135,6 +135,26 @@ $dm->save($token);
 
 // Return $plain to the user (only shown once)
 ```
+
+### User providers
+
+- `ConfigUserProvider`: users from `config/auth.php` (`users`, usually one admin from `.env`).
+  `entries()` returns the configured entries (the staff import reads them).
+- `DataManagerUserProvider`: an entity class (`model`).
+- `RecordUserProvider` (preflow/folio): users stored as a Folio type (`type`). With
+  `'active' => 'active'` it reads that boolean field. A record whose field is off (`false`, `0`, `'0'`,
+  `''`, `'false'` or null) never resolves, by id or by credentials. Its sessions end on the next request.
+  Without the key nothing changes.
+- **`ChainUserProvider`** (`'providers' => ['staff', 'config']`): tries the named providers in order,
+  and the first hit wins. This lets a site move from an `.env` admin to staff records without a
+  lock-out window. Chains are built after the other providers, so they may name lazy providers and
+  earlier chains. A name that isn't defined throws at boot. `providers()` returns the members.
+- **`ClaimsCredentials`** (`claims(array $credentials): bool`), an optional interface: a provider that
+  claims the credentials decides for them. The chain returns that provider's answer, even when it is
+  null, and does not try the next one. `RecordUserProvider` claims every e-mail it holds a record for,
+  active or not. So once a staff record exists for an address, the record decides: a disabled record
+  is locked out, and the config password for that address no longer works. A `LazyUserProvider`
+  passes the claim through (false while it is unavailable); `inner()` returns the built provider or null.
 
 ### Remember me
 

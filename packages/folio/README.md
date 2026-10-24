@@ -135,6 +135,58 @@ return ['staff' => [
 ]];
 ```
 
+**The own account page** (`{prefix}/_account`) asks no permission
+(`FolioPermissionMiddleware::SIGNED_IN`): every signed-in record user may open it, an account
+without roles too. Any other admin handler without a rule is refused (fail closed).
+
+### Staff login
+
+The login page has the same options for every site:
+
+- **Remember me.** The checkbox appears when the default guard has `remember` configured
+  (see preflow/auth). A config-only site gets it too once it configures one.
+
+The rest applies only when the default guard has **record users**: a `RecordUserProvider`,
+directly or in a `ChainUserProvider`. A site whose staff are config users only keeps its
+login exactly as before: the same page, no throttle, no forgot link, and no new routes.
+
+- **Throttle.** Sign-in is throttled (`folio.login`, 10 attempts per 15 minutes, counted per
+  client and per e-mail). Over the limit the page answers 429. Every refusal reads "Invalid
+  email or password.": an unknown address, a wrong password, a disabled account and a config
+  user alike. An unknown address costs a hash, like a known one. A record's sign-in stamps
+  `last_login_at`.
+- **Forgot password** (`{prefix}/forgot`, `folio.forgot`, 5 per hour). The answer is the
+  same for every address. A mail goes only to an active record account.
+- **Set password** (`GET {prefix}/password/{token}` shows the form, `POST {prefix}/password`
+  consumes the token). It is throttled (`folio.password`). The minimum length is
+  `config/folio.php` `password_min` (default 10). A used, expired or unknown link gets the
+  same 410. Setting a password signs the account in, bumps its epoch, and revokes its
+  remember-me logins and other links.
+- **Mails** (invite and reset) are plain text, queued with preflow/notify after the
+  response, in the site's default content locale (`folio.mail.*` in
+  `lang/{en,de,fr}/folio.php`). The link is built from `app.url`. Staff mode needs
+  `config/notify.php` and `APP_KEY`.
+
+`Preflow\Folio\Users\StaffPasswords` (a container service) is the API for packages that
+manage the accounts (preflow/rbac). It works for any record user type of the default guard:
+
+- `invite()`: a link valid for 7 days, voiding earlier invites.
+- `sendReset()`: a link valid for 1 hour.
+- `consume()`
+- `setPassword()`
+- `verify()`
+- `revokeLinks()`
+- `forgetDevices()`
+- `account()`
+- `stampLogin()`
+
+Records are saved without hooks or revisions.
+
+**Revision authors.** Revisions store who saved them: the e-mail for a config user, the
+record id for a record user. `Preflow\Folio\Users\AuthorNames` shows an id as the account's
+name (else its e-mail), a disabled account included. It shows an e-mail or an unknown value
+as stored. Without record users nothing changes.
+
 ## Overriding a core admin action
 
 Shadow a single core action without forking by adding a class under
@@ -300,7 +352,10 @@ Any field also takes:
   A read-only field is not validated on save (not its `validate` rules, its type's rules or
   `required`): the editor can't change it, so checking it would only block the save.
 
-Both apply on create too: such a field starts empty unless a `#[BeforeSave]` hook sets it.
+- `"default": <value>`: the value a new-record form starts with (a singleton's form before
+  its first save, too). A boolean `"default": true` shows checked on the create form.
+
+`hidden` and `readonly` apply on create too: such a field starts empty unless a `#[BeforeSave]` hook sets it.
 
 The admin display (read-only fields and list cells) is the field type's `renderAdmin()` when
 it implements `Preflow\Folio\Field\DisplaysInAdmin`, otherwise its frontend output. A custom

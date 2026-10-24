@@ -56,65 +56,170 @@ names another one. The value is a list of role names.
 
 ## Delegation
 
-Nobody grants permissions they don't hold. A held pattern covers what it matches: `*`
-everything, `x.*` the pattern `x.*` and every name or pattern below `x.`, a name itself.
-When a user is signed in, a role save or delete is refused unless their own roles cover
-every pattern the role has now (no touching a role above you) and every pattern the save
-adds ("You can't grant permissions you don't have: {patterns}"; in English like the rest
-of Folio's admin, a site's `lang/en/rbac.php` changes single keys). The same rule holds
-for member roles. The permissions editor shows what you can't grant disabled ("You can't
-grant this"); the server check is the authority. Without a signed-in user (the CLI:
-`folio:extensions:apply`, imports) delegation does not apply. `folio:import` and
-`folio:pull` write roles without the delegation check too: they need server access, like
-the CLI. `Preflow\Rbac\PermissionCoverage` has the check
-(`covers()`, `coversAll()`, `uncovered()`, and `held()` for the signed-in user).
+Nobody grants permissions they don't hold. Coverage follows how permissions match:
+
+- `*` covers everything.
+- `x.*` covers the pattern `x.*` and every name or pattern below `x.` (`x.view`, `x.y.z`,
+  `x.y.*`). It does **not** cover a bare `x`, just as `x.*` doesn't grant a permission named `x`.
+- A name covers only itself.
+
+When a user is signed in:
+
+- **Roles.** A role save or delete is refused unless the user's own roles cover every
+  pattern the role has now, so nobody touches a role above them. Every pattern the save adds
+  must be covered as well ("You can't grant permissions you don't have: {patterns}"). A
+  stored pattern that is no longer declared counts as part of the role, so only `*` can edit
+  such a role. The same rule holds for member roles.
+- **Accounts.** An account holding a role the editor doesn't fully cover can't be changed,
+  disabled, reset or deleted by them ("You can't change an account with roles you can't
+  grant."). Viewing it is still a matter of `staff.view`. Every role added to or removed
+  from an account must be covered.
+- The permissions editor and the roles checkboxes show what you can't grant as disabled ("You
+  can't grant this"). The server check is the authority; a crafted POST gets the same
+  refusal.
+
+The messages are in English, like the rest of Folio's admin. A site's `lang/en/rbac.php`
+changes single keys; de and fr are in `lang/`. Without a signed-in user (the CLI:
+`folio:extensions:apply`, the staff import) delegation does not apply.
+`Preflow\Rbac\PermissionCoverage` has the check: `covers()`, `coversAll()`, `uncovered()`,
+and `held()` for the signed-in user (null when nobody is signed in).
 
 ## Staff accounts
 
-The opt-in part `model:staff` (list it under the extension's `enabled_parts`) gives staff
-accounts as records: type and table `staff` under Settings, on the storage alias `staff`
-when the site has one, else `default`, never exported (a user type). Fields: email (stored
-lowercased, unique), name, password_hash (hidden), roles (`rbac_roles`, population staff),
-active (default true), auth_epoch (hidden), last_login_at and created_at (read-only). A new
-account is stored active, with epoch `"0"` and its created_at. Sign them in with a
-`RecordUserProvider` (`'type' => 'staff', 'active' => 'active'`), usually first in a
-`ChainUserProvider` before the config users (see preflow/auth).
+Staff accounts are records, managed in Folio by staff who may. The part `model:staff` is
+**opt-in**: enabling rbac doesn't add it. A site lists it under the extension's
+`enabled_parts` in `config/folio/extensions.json` and runs `folio:extensions:apply`:
 
-`Types/StaffRules` applies delegation to accounts: with a signed-in user, an account whose
-roles they don't fully cover can't be changed or deleted by them ("You can't change an
-account with roles you can't grant."; viewing stays a matter of `staff.view`), and every
-role added or removed must be covered ("You can't grant permissions you don't have:
-{patterns}"). The roles checkboxes show what you can't grant disabled. Always (the CLI
-too), a role is added only by the name of a defined staff role ("Unknown role: {names}.";
-a stored name no longer defined may stay), so nobody squats a name a role gets later; and no account save or delete, and no role save or delete, may leave no active
-*manager*: an account whose roles grant `staff.edit` and `rbac_role.edit` ("At least one
-account must keep the right to manage staff and roles."). That covers disabling, demoting
-and deleting the last one, yourself included. A site whose staff are all config users has
-no manager to keep. `Types/StaffAdmin` runs these rules on the form's save and delete and
-on its record actions; other write paths call `StaffRules::beforeSave()` themselves.
+```json
+{"enabled": {"rbac": {"disabled_parts": [], "enabled_parts": ["model:staff"]}}}
+```
+
+- **Type.** Type and table `staff`, shown under Settings. It uses the storage alias `staff`
+  when the site has one, else `default`. It is a user type (population `staff`), so it is
+  never exported.
+- **Fields.**
+  - `email`: stored trimmed and lowercased, unique.
+  - `name`
+  - `password_hash`: hidden.
+  - `roles`: `rbac_roles`, population staff.
+  - `active`: default true.
+  - `auth_epoch`: hidden, `"0"` for a new account.
+  - `last_login_at` and `created_at`: read-only.
+- **Sign-in.** Staff sign in through a `RecordUserProvider` (`'type' => 'staff', 'active' =>
+  'active'`). While a config admin remains, put it first in a `ChainUserProvider`, before the
+  config users (see preflow/auth and the migration below). A disabled account never signs in,
+  and its open sessions end on the next request.
+- **Role names.** A role is added to an account only by the name of a defined staff role
+  ("Unknown role: {names}."), so nobody squats a name that a role gets later. A stored name
+  that is no longer defined may stay. This applies on every path, the CLI included.
+
+### Two roles: super admin and content admin
+
+There is no negation, so a narrower role lists what it gets. New types, including the
+settings of an extension enabled later, stay hidden from it until granted.
+
+- `super_admin`: `*`.
+- `content_admin`: `folio.dashboard`, `page.*`, `{type}.*` for each content type,
+  `assets.*`, and the permissions of the moderation screens (e.g. `members.decide`). It does
+  not get `staff.*`, `rbac_role.*`, any `*_settings.*` or `folio.extensions`.
+
+A content admin can't edit a super admin's account or role, and can't grant what they don't
+hold. `tests/TwoRolesTest.php` checks both roles on every admin route and screen.
+
+### No lock-out
+
+Every save and delete of an account or a role, the CLI included, must leave at least one
+active **manager** ("At least one account must keep the right to manage staff and roles.").
+A manager is an active staff account whose roles grant `staff.edit` and `rbac_role.edit`.
+
+- Only the last active manager is protected. Disabling, demoting or deleting them is
+  refused, and so is a role edit that takes either permission away from them. Removing your
+  own manager role is refused only if you are that last one; while another active manager
+  remains, a manager may step down.
+- The protection starts once a manager exists. Before that (the config admin era,
+  bootstrapping) creating accounts isn't blocked. Config users never count as managers; the
+  import makes the first manager.
 
 ### Account lifecycle
 
-`Types/StaffAdmin` adds an **Account** panel to the staff form and its record actions, all
-with the permission `staff.edit` and each checked by `StaffRules` on the record as it would
-be saved (a crafted POST to an account above you, or disabling the last manager, gets the
-same refusal as the form, shown as a flash):
+`Types/StaffAdmin` adds an **Account** panel to the staff form, with record actions. They
+need the permission `staff.edit`. Each one is checked by `StaffRules` on the record as it
+would be saved. A crafted POST to an account above you, or disabling the last manager, gets
+the same refusal as the form, shown as a flash.
 
-- **Invite.** A new account is stored without a password (it can't sign in) and gets an
-  invitation mail once stored (Folio's `StaffPasswords::invite()`: a set-password link valid
-  7 days, sent after the response). A mail that can't be queued keeps the account and says so;
-  "Send invitation" stays on the panel while no password is set.
-- **Send reset link.** A set-password link valid one hour.
-- **Disable / Enable.** Disabling (the action, or unticking Active in the form) bumps
-  `auth_epoch` (live sessions end), forgets the account's remember-me logins and voids its
-  invite and reset links; enabling changes nothing else.
+- **Invite.**
+  - A new account is stored without a password, so it can't sign in.
+  - Once it is stored, it gets an invitation mail (Folio's `StaffPasswords::invite()`): a
+    set-password link valid for 7 days, sent after the response.
+  - If the mail can't be queued, the account is kept and the flash says so.
+  - "Send invitation" stays on the panel while no password is set.
+- **Send reset link.** A set-password link valid for one hour.
+- **Disable / Enable.** Disabling, by the action or by unticking Active in the form:
+  - bumps `auth_epoch`, so live sessions end;
+  - forgets the account's remember-me logins;
+  - voids its invite and reset links.
 
-Mails need `config/notify.php` and the default guard's staff `RecordUserProvider`. Every
-signed-in staff account changes its own password at `{folio}/_account` (the user menu links
-there; the current password is asked for, throttled with `folio.password`), which also signs
-out its other sessions. The action messages are `rbac.staff.*` in `lang/{en,de,fr}/rbac.php`.
+  Enabling changes nothing else, so old cookies and links stay dead.
+- **Own account.** Every signed-in staff account has its own page at `{prefix}/_account`
+  (the user menu links there). It needs no permission: an account without roles may open it.
+  - Changing the password asks for the current one and is throttled (`folio.password`).
+  - It signs out the account's other sessions.
+  - It changes nothing but the password.
 
-## Lock-out protection
+Mails need `config/notify.php`; the throttles need `APP_KEY`. The action messages are `rbac.staff.*` in
+`lang/{en,de,fr}/rbac.php`.
+
+### Moving a config admin to staff
+
+`php preflow folio:staff:import-config` creates a staff record for each config user of the
+default guard's provider (directly, or inside a chain).
+
+- The e-mail is lowercased. The password hash moves as is, so the old password keeps
+  working.
+- `name` is the e-mail, `active` is true, the epoch is `"0"`.
+- Roles are mapped by name to the staff roles that exist (`admin`, `*`, comes from the
+  install). An unknown name is skipped with a warning.
+- The rules above apply. An e-mail that already has a record is skipped, so the command is
+  safe to repeat. It never prints a hash.
+
+For an existing site with an `.env` admin:
+
+1. In `config/auth.php`, point the guard at a chain: staff records first, then the config
+   users:
+
+   ```php
+   'providers' => [
+       'staff'  => ['class' => Preflow\Folio\Users\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
+       'config' => ['class' => Preflow\Auth\ConfigUserProvider::class, 'users' => [/* the .env admin */]],
+       'chain'  => ['class' => Preflow\Auth\ChainUserProvider::class, 'providers' => ['staff', 'config']],
+   ],
+   'guards' => ['session' => ['class' => Preflow\Auth\SessionGuard::class, 'provider' => 'chain', 'population' => 'staff']],
+   ```
+
+   While the staff type isn't enabled yet, the chain resolves the config user as before.
+2. Enable `model:staff` (`enabled_parts`) and run `php preflow folio:extensions:apply`.
+3. Run `php preflow folio:staff:import-config`.
+4. Sign in with the old password. The record now decides for that e-mail; the config entry no
+   longer answers it.
+5. Later, remove the config user (and the chain, pointing the guard at `staff`) and the
+   `FOLIO_ADMIN_*` values in `.env`.
+
+Revisions store the author's id from then on. Folio shows the account's name for an id and
+the stored e-mail for older revisions.
+
+### Limits
+
+- `folio:import` and `folio:pull` write roles without the delegation check. They need
+  server access, like the CLI. (Staff accounts are a user type and never travel.)
+- There is no lock around the last-manager check. Two managers demoting each other at the
+  same moment can leave none. Recover with a config user in the chain or the CLI.
+- Editing a role you cover also changes every account holding it, including accounts above
+  you that also hold that role. Removing a pattern from it can demote them.
+- Disable and Enable save the record directly. They skip other extensions' save hooks, and
+  they write no revision.
+- An opt-in part listed under both `disabled_parts` and `enabled_parts` is off.
+
+## Keeping the right to edit roles
 
 A save or delete of a role is refused when, on the roles as they would be afterwards:
 

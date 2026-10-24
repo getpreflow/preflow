@@ -30,8 +30,11 @@ two super admins (everything, including staff, roles, settings, extensions) and 
    patterns the editor's own permissions cover; a role may only be assigned to (or removed from) a
    staff account if the editor covers every pattern of that role; an account holding roles the
    editor can't grant can't be edited by them (except viewing).
-3. No lock-out: nobody can disable, demote or delete the last account that can manage staff and
-   roles, or themselves out of that ability.
+3. No lock-out: nobody can disable, demote or delete the last active account that can manage
+   staff and roles. Only that last one is protected: while another active manager remains, a
+   manager may drop their own manager role. The protection starts once a manager exists (config
+   users never count). *(Corrected 2026-10-24, Rulings 7/8; the first draft also refused stepping
+   down while other managers remain.)*
 4. Account lifecycle: invite by mail (set-password link), "forgot password" on the Folio login,
    reset by an admin (mail), disable/enable (ends sessions), password change by the user. Folio
    login gets a throttle and optional remember-me.
@@ -71,15 +74,16 @@ login for record users. "Forgot password" page and reset page on the Folio login
 
 ### Delegation (preflow/rbac)
 - `PermissionCoverage::covers(list<string> $held, string $pattern): bool` — `*` covers all, `x.*`
-  covers `x` and `x.anything`, exact covers exact; a pattern is grantable iff covered by some held
+  covers `x.*` and `x.anything` but not a bare `x` (as `Pattern::matches`; corrected 2026-10-24,
+  Ruling 3), exact covers exact; a pattern is grantable iff covered by some held
   pattern. Also `coversAll(held, patterns)`.
 - `RoleRules` (BeforeSave on `rbac_role`): adding a pattern the editor doesn't cover → field error
   "You can't grant permissions you don't have: {patterns}". Removing patterns is allowed only if the
   editor covers the whole role (you can't edit a role above you). Existing lock-out rules stay.
 - `StaffRules` (BeforeSave/BeforeDelete on `staff`): adding or removing a role requires covering
   that role; editing any field of an account whose roles the editor doesn't fully cover is refused;
-  an editor can't remove their own last staff-managing role; the last account holding
-  `staff.edit` + `rbac_role.edit` can't be disabled, demoted or deleted.
+  the last active account holding `staff.edit` + `rbac_role.edit` can't be disabled, demoted or
+  deleted, by others or by itself (Ruling 7: only the last one; Ruling 8: once one exists).
 - The UI mirrors it: the permissions matrix disables what you can't grant; the roles checkboxes
   disable roles you don't cover. Server-side is the authority.
 - The `rbac_roles`-on-staff refusal in `RbacServiceProvider` goes.
