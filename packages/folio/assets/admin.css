@@ -1328,6 +1328,21 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
 }
 .folio-chip:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--c-focus-ring); }
 .folio-chip[hidden] { display: none; }
+.folio-chip-remove { border: 0; background: none; color: inherit; cursor: pointer; padding: 0 2px; font: inherit; line-height: 1; }
+.folio-chip-remove:hover { color: var(--c-danger); }
+.folio-relation-remote .folio-chips { margin-bottom: 10px; }
+.folio-relation-results {
+    list-style: none; margin: 4px 0 0; padding: 4px; max-width: 360px; max-height: 260px; overflow-y: auto;
+    background: var(--c-surface-raised); border: 1px solid var(--c-border-strong); border-radius: 8px;
+}
+.folio-relation-results[hidden] { display: none; }
+.folio-relation-result {
+    display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit;
+    font: inherit; padding: 6px 8px; border-radius: 6px; cursor: pointer;
+}
+.folio-relation-result:hover, .folio-relation-result:focus-visible { background: var(--c-row-hover); }
+.folio-relation-more { color: var(--c-text-muted); }
+.folio-relation-empty { padding: 6px 8px; color: var(--c-text-muted); }
 .folio-relation-multi.has-error .folio-chip { border-color: var(--c-danger); }
 
 .folio-preview-frame {

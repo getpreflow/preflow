@@ -30,7 +30,7 @@
                                 {% elseif filter.kind == 'relation-search' %}
                                     <label class="folio-filter-label" for="folio-filter-{{ filter.name }}">{{ filter.label }}</label>
                                     {# Too many records to list: data-folio-list-relation is the hook for a remote search. #}
-                                    <input type="text" id="folio-filter-{{ filter.name }}" name="f[{{ filter.name }}]" placeholder="Record id" autocomplete="off" data-folio-list-relation="{{ filter.target }}">
+                                    <input type="text" id="folio-filter-{{ filter.name }}" name="f[{{ filter.name }}]" placeholder="Record id" autocomplete="off" data-folio-list-relation="{{ filter.target }}" data-folio-relation-url="{{ prefix }}/_relation/{{ filter.target }}">
                                 {% else %}
                                     <label class="folio-filter-label" for="folio-filter-{{ filter.name }}">{{ filter.label }}</label>
                                     <select id="folio-filter-{{ filter.name }}" name="f[{{ filter.name }}]">

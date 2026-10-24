@@ -20,6 +20,15 @@ final class RelationFieldType implements FieldType
     /** A multi relation shows a filter input above this many options. */
     private const FILTER_THRESHOLD = 12;
 
+    /** Up to this many target records the picker lists them all; above, it searches. */
+    public const INLINE_LIMIT = 200;
+
+    /** Results per page of the search endpoint. */
+    public const PAGE_SIZE = 20;
+
+    /** Upper bound for the requested page, so (page - 1) * PAGE_SIZE can never overflow an int. */
+    private const MAX_PAGE = 100000;
+
     public function __construct(
         private readonly DataManager $dm,
         private readonly TypeRegistry $registry,
@@ -27,6 +36,8 @@ final class RelationFieldType implements FieldType
         private readonly ?\Preflow\Folio\Content\LiveContent $live = null,
         /** @var (\Closure(string): bool)|null permission check; null allows everything */
         private readonly ?\Closure $can = null,
+        /** The admin prefix: the large-target picker searches {prefix}/_relation/{type}. Null keeps every picker inline. */
+        private readonly ?string $prefix = null,
     ) {}
 
     public function key(): string
@@ -42,6 +53,10 @@ final class RelationFieldType implements FieldType
         $label = $ctx->label ?? ucfirst(str_replace('_', ' ', $name));
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
         $hasError = $ctx->errors !== [];
+
+        if ($this->isLarge($cfg)) {
+            return $this->renderRemote($ctx, $cfg, $selected, $label, $hasError);
+        }
 
         $options = $this->options($cfg);
         if ($this->can !== null && $cfg['to'] !== '' && !($this->can)($cfg['to'] . '.view')) {
@@ -93,6 +108,131 @@ final class RelationFieldType implements FieldType
         $html .= $cfg['multiple'] ? '</fieldset>' : '</div>';
 
         return $html;
+    }
+
+    /**
+     * The large-target editor: only the linked records (labels loaded in one query) as removable
+     * chips with hidden inputs under the usual input names, plus a search box that the admin script
+     * wires to the endpoint. Without script the linked records still submit unchanged.
+     *
+     * @param array{to: string, multiple: bool, labelField: ?string, orderBy: ?string} $cfg
+     * @param string[] $selected
+     */
+    private function renderRemote(FieldContext $ctx, array $cfg, array $selected, string $label, bool $hasError): string
+    {
+        $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+        $name = $ctx->name;
+        $multiple = $cfg['multiple'];
+        $inputName = $multiple ? $name . '[]' : $name;
+        $labels = $this->labelsFor($cfg, $selected);
+        $canSearch = $this->can === null || ($this->can)($cfg['to'] . '.view');
+
+        $query = [];
+        if ($cfg['labelField'] !== null) {
+            $query['label'] = $cfg['labelField'];
+        }
+        if ($cfg['orderBy'] !== null) {
+            $query['order'] = $cfg['orderBy'];
+        }
+        $url = $this->prefix . '/_relation/' . rawurlencode($cfg['to']) . ($query !== [] ? '?' . http_build_query($query) : '');
+
+        $class = 'form-group folio-relation folio-relation-remote' . ($multiple ? ' folio-relation-multi' : '') . ($hasError ? ' has-error' : '');
+        $required = $ctx->required ? ' <span class="form-required">*</span>' : '';
+        $html = '<fieldset class="' . $class . '" data-folio-relation-remote data-folio-relation-name="' . $e($inputName) . '"'
+            . ($multiple ? ' data-folio-relation-multiple' : '') . '>' . "\n";
+        $html .= '  <legend>' . $e($label) . $required . '</legend>' . "\n";
+        $html .= '  <div class="folio-chips" data-folio-relation-selected>' . "\n";
+        if (!$multiple && $selected === []) {
+            $html .= '    <input type="hidden" name="' . $e($inputName) . '" value="">' . "\n";
+        }
+        foreach ($selected as $id) {
+            $text = $labels[$id] ?? $id;
+            $html .= '    <span class="folio-chip" data-folio-relation-item><span class="folio-chip-label">' . $e($text) . '</span>'
+                . '<input type="hidden" name="' . $e($inputName) . '" value="' . $e($id) . '">'
+                . '<button type="button" class="folio-chip-remove" data-folio-relation-remove aria-label="' . $e('Remove ' . $text) . '">×</button></span>' . "\n";
+        }
+        $html .= '  </div>' . "\n";
+        if ($canSearch) {
+            $html .= '  <input type="search" class="folio-relation-filter" data-folio-relation-search data-folio-relation-url="' . $e($url) . '"'
+                . ' placeholder="Search…" aria-label="' . $e('Search ' . $label) . '" autocomplete="off">' . "\n";
+            $html .= '  <ul class="folio-relation-results" data-folio-relation-results hidden></ul>' . "\n";
+        }
+        if ($ctx->help !== null && $ctx->help !== '') {
+            $html .= '  <small class="form-help">' . $e($ctx->help) . '</small>' . "\n";
+        }
+        if ($hasError) {
+            $html .= '  <div class="form-error">' . $e((string) ($ctx->errors[0] ?? '')) . '</div>' . "\n";
+        }
+
+        return $html . '</fieldset>';
+    }
+
+    /**
+     * One page of the search endpoint: loose search over the target (a blank term lists all), in the
+     * picker's order. Labels follow the picker's rule (labelField, else the first string field).
+     *
+     * @return array{items: list<array{id: string, label: string}>, more: bool}
+     */
+    public function page(string $to, ?string $labelField, ?string $orderBy, string $term, int $page): array
+    {
+        if ($to === '' || !$this->registry->has($to)) {
+            return ['items' => [], 'more' => false];
+        }
+        $def = $this->registry->get($to);
+        $cfg = [
+            'to' => $to,
+            'multiple' => false,
+            'labelField' => $labelField !== null && isset($def->fields[$labelField]) ? $labelField : null,
+            'orderBy' => $orderBy !== null && isset($def->fields[$orderBy]) ? $orderBy : null,
+        ];
+        $query = $this->dm->queryType($to);
+        if ($cfg['orderBy'] !== null) {
+            $query->orderBy($cfg['orderBy'], numeric: $def->fields[$cfg['orderBy']]->type === 'number');
+        }
+        $query->searchLoose($term);
+        $result = $query->paginate(self::PAGE_SIZE, min(max(1, $page), self::MAX_PAGE));
+
+        $items = [];
+        foreach ($result->items as $record) {
+            $id = $record->getId();
+            if ($id !== null) {
+                $items[] = ['id' => (string) $id, 'label' => $this->labelFor($record, $cfg)];
+            }
+        }
+
+        return ['items' => $items, 'more' => $result->hasMore];
+    }
+
+    /** More target records than the picker lists inline (counted with a limit, never loading them all). */
+    private function isLarge(array $cfg): bool
+    {
+        if ($this->prefix === null || $cfg['to'] === '' || !$this->registry->has($cfg['to'])) {
+            return false;
+        }
+
+        return count($this->dm->queryType($cfg['to'])->limit(self::INLINE_LIMIT + 1)->get()->items()) > self::INLINE_LIMIT;
+    }
+
+    /**
+     * @param array{to: string, multiple: bool, labelField: ?string, orderBy: ?string} $cfg
+     * @param string[] $ids
+     * @return array<string, string> id => label
+     */
+    private function labelsFor(array $cfg, array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $idField = $this->registry->get($cfg['to'])->idField;
+        $out = [];
+        foreach ($this->dm->queryType($cfg['to'])->whereAny([['field' => $idField, 'operator' => 'IN', 'value' => $ids]])->get()->items() as $record) {
+            $id = $record->getId();
+            if ($id !== null) {
+                $out[(string) $id] = $this->labelFor($record, $cfg);
+            }
+        }
+
+        return $out;
     }
 
     public function normalizeInput(mixed $raw, array $config): mixed

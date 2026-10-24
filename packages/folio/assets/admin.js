@@ -1108,6 +1108,196 @@
         });
     }
 
+    // Relation search (large targets). The editor renders [data-folio-relation-remote] with the linked
+    // records as chips + hidden inputs and a [data-folio-relation-search] box; the list's relation
+    // filter is a [data-folio-list-relation] text input. Both query {prefix}/_relation/{type}
+    // ({items: [{id, label}], more}) as the user types. Delegated, so swapped partials keep working.
+    var relationSeq = 0;
+
+    function relationUrl(box, q, page) {
+        var base = box.getAttribute('data-folio-relation-url') || '';
+        return base + (base.indexOf('?') === -1 ? '?' : '&') + 'q=' + encodeURIComponent(q) + '&page=' + page;
+    }
+
+    // The filter input submits an id, not the typed text: its name moves to a hidden input.
+    function prepareRelationBox(box) {
+        if (!box.hasAttribute('data-folio-list-relation') || box._folioRelationHidden) { return; }
+        var name = box.getAttribute('name');
+        var hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        if (name) { hidden.name = name; box.removeAttribute('name'); }
+        hidden.value = box.value;
+        box.parentNode.insertBefore(hidden, box.nextSibling);
+        box._folioRelationHidden = hidden;
+    }
+
+    function relationResults(box) {
+        if (box._folioRelationList) { return box._folioRelationList; }
+        var list = box.parentNode.querySelector('[data-folio-relation-results]');
+        if (!list) {
+            list = document.createElement('ul');
+            list.className = 'folio-relation-results';
+            list.setAttribute('data-folio-relation-results', '');
+            list.hidden = true;
+            var anchor = box._folioRelationHidden || box;
+            anchor.parentNode.insertBefore(list, anchor.nextSibling);
+        }
+        box._folioRelationList = list;
+        return list;
+    }
+
+    function relationFetch(box, q, page, append) {
+        var seq = ++relationSeq;
+        box._folioRelationSeq = seq;
+        fetch(relationUrl(box, q, page), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('relation search failed')); })
+            .then(function (data) {
+                if (box._folioRelationSeq !== seq) { return; }
+                var list = relationResults(box);
+                var more = list.querySelector('[data-folio-relation-more]');
+                if (more) { more.parentNode.removeChild(more); }
+                if (!append) { list.innerHTML = ''; }
+                (data.items || []).forEach(function (item) {
+                    var li = document.createElement('li');
+                    var b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'folio-relation-result';
+                    b.setAttribute('data-folio-relation-pick', '');
+                    b.setAttribute('data-id', item.id);
+                    b.textContent = item.label;
+                    li.appendChild(b);
+                    list.appendChild(li);
+                });
+                if (!append && !(data.items || []).length) {
+                    var empty = document.createElement('li');
+                    empty.className = 'folio-relation-empty';
+                    empty.textContent = 'No matches';
+                    list.appendChild(empty);
+                }
+                if (data.more) {
+                    var li2 = document.createElement('li');
+                    var mb = document.createElement('button');
+                    mb.type = 'button';
+                    mb.className = 'folio-relation-result folio-relation-more';
+                    mb.setAttribute('data-folio-relation-more', '');
+                    mb.setAttribute('data-page', String(page + 1));
+                    mb.textContent = 'More…';
+                    li2.appendChild(mb);
+                    list.appendChild(li2);
+                }
+                list.hidden = false;
+            })
+            .catch(function () {});
+    }
+
+    function onRelationSearchInput(e) {
+        var box = e.target.closest ? e.target.closest('[data-folio-relation-search], [data-folio-list-relation]') : null;
+        if (!box) { return; }
+        prepareRelationBox(box);
+        if (box._folioRelationHidden && box.value.trim() === '') { box._folioRelationHidden.value = ''; }
+        clearTimeout(box._folioRelationTimer);
+        box._folioRelationTimer = setTimeout(function () { relationFetch(box, box.value.trim(), 1, false); }, 300);
+    }
+
+    function onRelationFocusIn(e) {
+        var box = e.target.closest ? e.target.closest('[data-folio-list-relation]') : null;
+        if (box) { prepareRelationBox(box); }
+    }
+
+    function onRelationKeydown(e) {
+        var box = e.target.closest ? e.target.closest('[data-folio-relation-search], [data-folio-list-relation]') : null;
+        if (!box) { return; }
+        if (e.key === 'Enter') { e.preventDefault(); }
+        if (e.key === 'Escape') { relationResults(box).hidden = true; }
+    }
+
+    function addRelationItem(field, id, text) {
+        var name = field.getAttribute('data-folio-relation-name') || '';
+        var holder = field.querySelector('[data-folio-relation-selected]');
+        if (!holder) { return; }
+        if (!field.hasAttribute('data-folio-relation-multiple')) {
+            holder.innerHTML = '';
+        } else {
+            var dup = Array.prototype.some.call(holder.querySelectorAll('input[type="hidden"]'), function (i) { return i.value === id; });
+            if (dup) { return; }
+        }
+        var chip = document.createElement('span');
+        chip.className = 'folio-chip';
+        chip.setAttribute('data-folio-relation-item', '');
+        var label = document.createElement('span');
+        label.className = 'folio-chip-label';
+        label.textContent = text;
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = id;
+        var remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'folio-chip-remove';
+        remove.setAttribute('data-folio-relation-remove', '');
+        remove.setAttribute('aria-label', 'Remove ' + text);
+        remove.textContent = '×';
+        chip.appendChild(label);
+        chip.appendChild(input);
+        chip.appendChild(remove);
+        holder.appendChild(chip);
+    }
+
+    function onRelationClick(e) {
+        var t = e.target.closest ? e.target : null;
+        if (!t) { return; }
+        var remove = t.closest('[data-folio-relation-remove]');
+        if (remove) {
+            var field = remove.closest('[data-folio-relation-remote]');
+            var chip = remove.closest('[data-folio-relation-item]');
+            if (chip && chip.parentNode) { chip.parentNode.removeChild(chip); }
+            if (field && !field.hasAttribute('data-folio-relation-multiple')) {
+                var holder = field.querySelector('[data-folio-relation-selected]');
+                if (holder && !holder.querySelector('input')) {
+                    var blank = document.createElement('input');
+                    blank.type = 'hidden';
+                    blank.name = field.getAttribute('data-folio-relation-name') || '';
+                    blank.value = '';
+                    holder.appendChild(blank);
+                }
+            }
+            return;
+        }
+        var more = t.closest('[data-folio-relation-more]');
+        if (more) {
+            var scope = more.closest('[data-folio-relation-remote]') || more.closest('.folio-filter-field') || more.parentNode.parentNode.parentNode;
+            var moreBox = scope.querySelector('[data-folio-relation-search], [data-folio-list-relation]');
+            if (moreBox) {
+                relationFetch(moreBox, moreBox.value.trim(), parseInt(more.getAttribute('data-page') || '2', 10), true);
+            }
+            return;
+        }
+        var pick = t.closest('[data-folio-relation-pick]');
+        if (pick) {
+            var list = pick.closest('[data-folio-relation-results]');
+            var id = pick.getAttribute('data-id') || '';
+            var text = pick.textContent || id;
+            var remote = pick.closest('[data-folio-relation-remote]');
+            if (remote) {
+                addRelationItem(remote, id, text);
+                var search = remote.querySelector('[data-folio-relation-search]');
+                if (search) { search.value = ''; }
+            } else {
+                var fb = list.parentNode.querySelector('[data-folio-list-relation]');
+                if (fb && fb._folioRelationHidden) {
+                    fb._folioRelationHidden.value = id;
+                    fb.value = text;
+                }
+            }
+            list.hidden = true;
+            list.innerHTML = '';
+            return;
+        }
+        document.querySelectorAll('[data-folio-relation-results]').forEach(function (l) {
+            if (!l.parentNode.contains(t)) { l.hidden = true; }
+        });
+    }
+
     // Admin lists: the search narrows as you type. The results region is fetched with ?_partial=1
     // and swapped; replaceState keeps the view in the URL, so back from a record returns to it.
     // Filters (the "+ Filter" menu, chips), sorting and paging stay plain links and GET submits.
@@ -1201,6 +1391,10 @@
         document.addEventListener('keydown', onKeydown);
         initTabs(document);
         initRelationFilter(document);
+        document.addEventListener('input', onRelationSearchInput);
+        document.addEventListener('focusin', onRelationFocusIn);
+        document.addEventListener('keydown', onRelationKeydown);
+        document.addEventListener('click', onRelationClick);
         initSplit();
         initUnsavedGuard();
     }

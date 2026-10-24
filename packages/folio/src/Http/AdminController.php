@@ -226,6 +226,34 @@ final class AdminController
         return new Response(200, ['Content-Type' => 'application/json; charset=UTF-8'], (string) $payload);
     }
 
+    /**
+     * Search endpoint of the relation picker and the list's relation filter: one page of the target
+     * type's records as {items: [{id, label}], more}. "label" and "order" name fields of the target
+     * (the relation's labelField / orderBy); unknown names are ignored.
+     */
+    public function relationOptions(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = (string) $request->getAttribute('type', '');
+        if (!$this->catalog->has($type)) {
+            return new Response(404, [], 'Unknown type');
+        }
+
+        $params = $request->getQueryParams();
+        $text = static fn (string $key): ?string => is_string($params[$key] ?? null) && $params[$key] !== '' ? $params[$key] : null;
+        $page = is_scalar($params['page'] ?? null) ? (int) $params['page'] : 1;
+
+        $picker = $this->fieldTypes->has('relation') ? $this->fieldTypes->get('relation') : null;
+        if (!$picker instanceof \Preflow\Folio\Field\Types\RelationFieldType) {
+            $picker = new \Preflow\Folio\Field\Types\RelationFieldType($this->dm, $this->registry);
+        }
+        $payload = json_encode(
+            $picker->page($type, $text('label'), $text('order'), $text('q') ?? '', $page),
+            JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
+
+        return new Response(200, ['Content-Type' => 'application/json; charset=UTF-8'], $payload);
+    }
+
     public function createForm(ServerRequestInterface $request): ResponseInterface
     {
         $type = (string) $request->getAttribute('type', '');

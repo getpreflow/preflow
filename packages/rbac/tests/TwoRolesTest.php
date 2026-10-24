@@ -110,6 +110,7 @@ final class TwoRolesTest extends TestCase
             $row('POST /folio/{type}', "/folio/{$type}", $new, 302);
             $row('GET /folio/{type}/{id}/edit', "/folio/{$type}/{$id}/edit", [], 200);
             $row('GET /folio/{type}/{id}/label', "/folio/{$type}/{$id}/label", [], 200);
+            $row('GET /folio/_relation/{type}', "/folio/_relation/{$type}", [], 200);
             $row('POST /folio/{type}/{id}/preview', "/folio/{$type}/{$id}/preview", $update, 200);
             $row('POST /folio/{type}/{id}/unpublish', "/folio/{$type}/{$id}/unpublish", [], 404);
             $row('POST /folio/{type}/{id}/discard', "/folio/{$type}/{$id}/discard", [], 404);

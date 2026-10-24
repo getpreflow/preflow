@@ -57,6 +57,7 @@ final class FolioRoutes
             ['POST', $prefix . '/assets/{id}/delete',  'destroy', self::ASSETS],
             ['GET',  $prefix . '/extensions',          'index', self::EXTENSIONS],
             ['POST', $prefix . '/extensions/{name}',   'toggle', self::EXTENSIONS],
+            ['GET',  $prefix . '/_relation/{type}',    'relationOptions'], // before the generic {type} routes
             ['GET',  $prefix . '/{type}',              'list'],
             ['GET',  $prefix . '/{type}/new',          'createForm'],
             ['POST', $prefix . '/{type}/preview',      'preview', self::PREVIEW],

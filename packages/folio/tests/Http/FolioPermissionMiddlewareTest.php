@@ -36,6 +36,7 @@ final class FolioPermissionMiddlewareTest extends TestCase
         yield ['Preflow\\Folio\\Http\\AdminController@list', '{type}.view'];
         yield ['Preflow\\Folio\\Http\\AdminController@editForm', '{type}.view'];
         yield ['Preflow\\Folio\\Http\\AdminController@recordLabel', '{type}.view'];
+        yield ['Preflow\\Folio\\Http\\AdminController@relationOptions', '{type}.view'];
         yield ['Preflow\\Folio\\Http\\AdminController@createForm', '{type}.create'];
         yield ['Preflow\\Folio\\Http\\AdminController@store', '{type}.create'];
         yield ['Preflow\\Folio\\Http\\AdminController@update', '{type}.edit'];

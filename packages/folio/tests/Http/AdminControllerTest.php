@@ -450,4 +450,89 @@ final class AdminControllerTest extends TestCase
         $this->assertSame('Tom & Jerry', $context['rows'][0]['cells']['title']);
         $this->assertSame('Tom &amp; <mark>Jerry</mark>', $context['rows'][0]['marked']['title']);
     }
+
+    private function relationController(): AdminController
+    {
+        $fieldTypes = $this->fieldTypeRegistry();
+        $fieldTypes->register(new \Preflow\Folio\Field\Types\RelationFieldType($this->dm, $this->registry, prefix: '/folio'));
+
+        return new AdminController(
+            new TypeCatalog($this->base . '/m'),
+            $this->registry,
+            $this->dm,
+            $this->engine(),
+            new ActionResolver(new Container(), 'Preflow\\Folio\\Tests\\Overrides\\'),
+            $fieldTypes,
+            '/folio',
+            new RecordLabeler(),
+            new FrontendResolver($this->dm, 'page'),
+        );
+    }
+
+    private function seedPages(int $n): void
+    {
+        for ($i = 1; $i <= $n; $i++) {
+            $this->dm->saveType(\Preflow\Data\DynamicRecord::fromArray($this->registry->get('page'), [
+                'uuid' => 'p' . $i, 'title' => sprintf('Game %03d', $i), 'slug' => 's' . $i,
+            ]));
+        }
+    }
+
+    private function relationRequest(string $type, string $query = ''): \Psr\Http\Message\ServerRequestInterface
+    {
+        return (new Psr17Factory())->createServerRequest('GET', '/folio/_relation/' . $type . ($query !== '' ? '?' . $query : ''))
+            ->withAttribute('type', $type)
+            ->withQueryParams($query === '' ? [] : (function () use ($query) { parse_str($query, $q); return $q; })());
+    }
+
+    public function test_relation_options_returns_the_first_page_as_json(): void
+    {
+        $this->seedPages(45);
+        $res = $this->relationController()->relationOptions($this->relationRequest('page'));
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringStartsWith('application/json', $res->getHeaderLine('Content-Type'));
+        $data = json_decode((string) $res->getBody(), true);
+        $this->assertSame(['items', 'more'], array_keys($data));
+        $this->assertCount(20, $data['items']);
+        $this->assertTrue($data['more']);
+        $this->assertSame('Game 001', $data['items'][0]['label']);
+        $this->assertSame('p1', $data['items'][0]['id']);
+    }
+
+    public function test_relation_options_searches_and_pages(): void
+    {
+        $this->seedPages(45);
+        $c = $this->relationController();
+        $hit = json_decode((string) $c->relationOptions($this->relationRequest('page', 'q=game+04'))->getBody(), true);
+        $this->assertCount(7, $hit['items']);
+        $this->assertFalse($hit['more']);
+        $p3 = json_decode((string) $c->relationOptions($this->relationRequest('page', 'page=3'))->getBody(), true);
+        $this->assertCount(5, $p3['items']);
+        $this->assertFalse($p3['more']);
+    }
+
+    public function test_relation_options_clamps_a_crafted_page(): void
+    {
+        $this->seedPages(3);
+        $c = $this->relationController();
+        foreach (['page=-5', 'page=99999999999999999999', 'page=abc', 'page[]=1'] as $q) {
+            $res = $c->relationOptions($this->relationRequest('page', $q));
+            $this->assertSame(200, $res->getStatusCode(), $q);
+        }
+        $first = json_decode((string) $c->relationOptions($this->relationRequest('page', 'page=-5'))->getBody(), true);
+        $this->assertCount(3, $first['items']);
+    }
+
+    public function test_relation_options_unknown_type_404(): void
+    {
+        $this->assertSame(404, $this->relationController()->relationOptions($this->relationRequest('ghost'))->getStatusCode());
+    }
+
+    public function test_relation_options_ignores_an_unknown_label_field(): void
+    {
+        $this->seedPages(2);
+        $res = $this->relationController()->relationOptions($this->relationRequest('page', 'label=nope&order=nope'));
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertSame('Game 001', json_decode((string) $res->getBody(), true)['items'][0]['label']);
+    }
 }

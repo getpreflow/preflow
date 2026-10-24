@@ -168,4 +168,106 @@ final class RelationFieldTypeTest extends TestCase
         $out = $this->type()->renderFrontend('someid', ['relation' => ['to' => 'ghost', 'multiple' => false]]);
         $this->assertSame('', $out);
     }
+
+    private function seed(int $n): void
+    {
+        for ($i = 3; $i <= $n; $i++) {
+            $this->dm->saveType(DynamicRecord::fromArray($this->registry->get('author'), ['uuid' => 'a' . $i, 'name' => sprintf('Person %03d', $i)]));
+        }
+    }
+
+    private function remoteType(): RelationFieldType
+    {
+        return new RelationFieldType($this->dm, $this->registry, prefix: '/folio');
+    }
+
+    public function test_inline_limit_is_200(): void
+    {
+        $this->assertSame(200, RelationFieldType::INLINE_LIMIT);
+    }
+
+    public function test_at_the_limit_the_markup_is_unchanged(): void
+    {
+        $this->seed(200);
+        $html = $this->remoteType()->renderEditor(new FieldContext(name: 'writer', value: 'a1', config: $this->singleConfig()));
+        $this->assertStringContainsString('<select name="writer"', $html);
+        $this->assertStringNotContainsString('data-folio-relation-remote', $html);
+    }
+
+    public function test_above_the_limit_single_renders_selected_only_with_search(): void
+    {
+        $this->seed(201);
+        $html = $this->remoteType()->renderEditor(new FieldContext(name: 'writer', label: 'Writer', value: 'a2', config: $this->singleConfig()));
+        $this->assertStringNotContainsString('<select', $html);
+        $this->assertStringContainsString('data-folio-relation-remote', $html);
+        $this->assertStringContainsString('data-folio-relation-url="/folio/_relation/author"', $html);
+        $this->assertStringContainsString('<input type="hidden" name="writer" value="a2">', $html);
+        $this->assertStringContainsString('Bob', $html);
+        $this->assertStringNotContainsString('Person 100', $html);
+        $this->assertStringNotContainsString('Ann', $html);
+    }
+
+    public function test_above_the_limit_single_without_selection_still_submits_empty(): void
+    {
+        $this->seed(201);
+        $html = $this->remoteType()->renderEditor(new FieldContext(name: 'writer', value: '', config: $this->singleConfig()));
+        $this->assertStringContainsString('<input type="hidden" name="writer" value="">', $html);
+    }
+
+    public function test_above_the_limit_multiple_renders_selected_chips_with_array_inputs(): void
+    {
+        $this->seed(201);
+        $html = $this->remoteType()->renderEditor(new FieldContext(
+            name: 'writers', label: 'Writers', value: ['a1', 'a2'],
+            config: ['relation' => ['to' => 'author', 'multiple' => true]],
+        ));
+        $this->assertStringNotContainsString('type="checkbox"', $html);
+        $this->assertStringContainsString('<input type="hidden" name="writers[]" value="a1">', $html);
+        $this->assertStringContainsString('<input type="hidden" name="writers[]" value="a2">', $html);
+        $this->assertStringContainsString('Ann', $html);
+        $this->assertStringContainsString('Bob', $html);
+        $this->assertStringNotContainsString('Person 150', $html);
+        $this->assertStringContainsString('data-folio-relation-search', $html);
+    }
+
+    public function test_remote_url_carries_label_and_order_config(): void
+    {
+        $this->seed(201);
+        $html = $this->remoteType()->renderEditor(new FieldContext(
+            name: 'writer', config: ['relation' => ['to' => 'author', 'labelField' => 'name', 'orderBy' => 'name']],
+        ));
+        $this->assertStringContainsString('data-folio-relation-url="/folio/_relation/author?label=name&amp;order=name"', $html);
+    }
+
+    public function test_without_a_prefix_a_large_target_stays_inline(): void
+    {
+        $this->seed(201);
+        $html = $this->type()->renderEditor(new FieldContext(name: 'writer', config: $this->singleConfig()));
+        $this->assertStringContainsString('<select name="writer"', $html);
+    }
+
+    public function test_page_searches_loosely_and_pages_by_twenty(): void
+    {
+        $this->seed(45);
+        $t = $this->remoteType();
+        $all = $t->page('author', null, null, '', 1);
+        $this->assertCount(20, $all['items']);
+        $this->assertTrue($all['more']);
+        $this->assertSame(['id', 'label'], array_keys($all['items'][0]));
+        $last = $t->page('author', null, null, '', 3);
+        $this->assertCount(5, $last['items']);
+        $this->assertFalse($last['more']);
+        $hit = $t->page('author', null, null, 'person 04', 1);
+        $this->assertSame(['Person 004', 'Person 040', 'Person 041', 'Person 042', 'Person 043', 'Person 044', 'Person 045'], array_column($hit['items'], 'label'));
+        $this->assertSame([], $t->page('author', null, null, 'nobody', 1)['items']);
+    }
+
+    public function test_page_orders_by_an_existing_field_and_clamps_the_page(): void
+    {
+        $this->seed(5);
+        $t = $this->remoteType();
+        $this->assertSame(['Ann', 'Bob', 'Person 003', 'Person 004', 'Person 005'], array_column($t->page('author', null, 'name', '', 1)['items'], 'label'));
+        $this->assertSame([], $t->page('author', null, null, '', 999999999999)['items']);
+        $this->assertCount(5, $t->page('author', null, null, '', -4)['items']);
+    }
 }
