@@ -18,12 +18,21 @@ interface Dialect
     public function localizedColumn(string $quotedColumn, string $locale, bool $isDefault): string;
 
     /**
-     * SQL true when the column holds any of $count ids, stored as one id string
-     * or a JSON array of ids (anything else, invalid JSON included, holds none).
-     * Binds the $count ids, then the same ids through jsonArrayBinding().
+     * SQL true when the column equals any of the ids (a non-empty list). Appends its bindings,
+     * as few as the dialect allows: their number must not grow with the ids where avoidable.
+     *
+     * @param non-empty-list<string|int> $ids
+     * @param array<int, mixed> $bindings
      */
-    public function jsonArrayHasAny(string $quotedColumn, int $count): string;
+    public function inList(string $quotedColumn, array $ids, array &$bindings): string;
 
-    /** The binding for one id in the part of jsonArrayHasAny() that looks inside the JSON array. */
-    public function jsonArrayBinding(string $id): string;
+    /**
+     * SQL true when the column holds any of the ids (a non-empty list), stored as one id string
+     * or a JSON array of ids (anything else, invalid JSON included, holds none). Appends its
+     * bindings.
+     *
+     * @param non-empty-list<string> $ids
+     * @param array<int, mixed> $bindings
+     */
+    public function jsonArrayHasAny(string $quotedColumn, array $ids, array &$bindings): string;
 }

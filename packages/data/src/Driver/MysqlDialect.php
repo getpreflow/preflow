@@ -58,19 +58,25 @@ final class MysqlDialect implements Dialect
             . " THEN JSON_UNQUOTE(JSON_EXTRACT({$quotedColumn}, '$.\"{$locale}\"')) ELSE {$plain} END)";
     }
 
-    public function jsonArrayHasAny(string $quotedColumn, int $count): string
+    public function inList(string $quotedColumn, array $ids, array &$bindings): string
     {
-        $in = '(' . implode(',', array_fill(0, $count, '?')) . ')';
-        $parts = ["{$quotedColumn} IN {$in}"];
-        for ($i = 0; $i < $count; $i++) {
-            $parts[] = "(CASE WHEN JSON_VALID({$quotedColumn}) THEN JSON_CONTAINS({$quotedColumn}, ?) ELSE 0 END)";
-        }
+        array_push($bindings, ...array_values($ids));
 
-        return '(' . implode(' OR ', $parts) . ')';
+        return "{$quotedColumn} IN (" . implode(',', array_fill(0, count($ids), '?')) . ')';
     }
 
-    public function jsonArrayBinding(string $id): string
+    /**
+     * One IN list for the plain id and one for the array's members, read with JSON_TABLE
+     * (MariaDB 10.6+, MySQL 8): 2 bindings per id.
+     */
+    public function jsonArrayHasAny(string $quotedColumn, array $ids, array &$bindings): string
     {
-        return json_encode($id, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $ids = array_values($ids);
+        $in = '(' . implode(',', array_fill(0, count($ids), '?')) . ')';
+        array_push($bindings, ...$ids, ...$ids);
+
+        return "({$quotedColumn} IN {$in} OR EXISTS (SELECT 1 FROM JSON_TABLE("
+            . "CASE WHEN JSON_VALID({$quotedColumn}) THEN {$quotedColumn} ELSE '[]' END, '\$[*]'"
+            . " COLUMNS(v VARCHAR(191) PATH '\$')) AS held WHERE held.v IN {$in}))";
     }
 }

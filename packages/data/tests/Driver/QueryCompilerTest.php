@@ -143,10 +143,10 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
         $this->assertSame(
-            'SELECT * FROM "posts" WHERE ("status" = ?) AND ("title" LIKE ? ESCAPE \'!\' OR "id" IN (?,?) OR "kind" = ?)',
+            'SELECT * FROM "posts" WHERE ("status" = ?) AND ("title" LIKE ? ESCAPE \'!\' OR "id" IN (SELECT value FROM json_each(?)) OR "kind" = ?)',
             $sql,
         );
-        $this->assertSame(['live', '%50!%!_!!%', 'a', 'b', 'x'], $bindings);
+        $this->assertSame(['live', '%50!%!_!!%', '["a","b"]', 'x'], $bindings);
     }
 
     public function test_empty_in_matches_nothing_and_groups_apply_to_count(): void
@@ -170,13 +170,25 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
         $this->assertSame(
-            'SELECT * FROM "posts" WHERE (("tags" IN (?,?) OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid("tags") THEN "tags" ELSE \'[]\' END) WHERE value IN (?,?))))',
+            'SELECT * FROM "posts" WHERE (("tags" IN (SELECT value FROM json_each(?)) OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid("tags") THEN "tags" ELSE \'[]\' END) AS held WHERE held.value IN (SELECT value FROM json_each(?)))))',
             $sql,
         );
-        $this->assertSame(['a', 'b', 'a', 'b'], $bindings);
+        $this->assertSame(['["a","b"]', '["a","b"]'], $bindings);
     }
 
-    public function test_mysql_has_uses_json_contains_per_id(): void
+    public function test_sqlite_in_and_has_bind_a_fixed_number_of_values_however_many_ids(): void
+    {
+        $ids = array_map(static fn (int $i): string => 'id' . $i, range(1, 5000));
+        $q = (new Query())
+            ->whereAny([['field' => 'id', 'operator' => 'IN', 'value' => $ids]])
+            ->whereAny([['field' => 'tags', 'operator' => 'HAS', 'value' => $ids]]);
+
+        [, $bindings] = $this->compiler->compile('posts', $q);
+
+        $this->assertCount(3, $bindings);
+    }
+
+    public function test_mysql_has_uses_one_in_list_and_json_table(): void
     {
         $compiler = new QueryCompiler(new \Preflow\Data\Driver\MysqlDialect());
         $q = (new Query())->whereAny([['field' => 'tags', 'operator' => 'HAS', 'value' => ['a', 'b']]]);
@@ -184,10 +196,10 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $compiler->compile('posts', $q);
 
         $this->assertSame(
-            'SELECT * FROM `posts` WHERE ((`tags` IN (?,?) OR (CASE WHEN JSON_VALID(`tags`) THEN JSON_CONTAINS(`tags`, ?) ELSE 0 END) OR (CASE WHEN JSON_VALID(`tags`) THEN JSON_CONTAINS(`tags`, ?) ELSE 0 END)))',
+            'SELECT * FROM `posts` WHERE ((`tags` IN (?,?) OR EXISTS (SELECT 1 FROM JSON_TABLE(CASE WHEN JSON_VALID(`tags`) THEN `tags` ELSE \'[]\' END, \'$[*]\' COLUMNS(v VARCHAR(191) PATH \'$\')) AS held WHERE held.v IN (?,?))))',
             $sql,
         );
-        $this->assertSame(['a', 'b', '"a"', '"b"'], $bindings);
+        $this->assertSame(['a', 'b', 'a', 'b'], $bindings);
     }
 
     public function test_any_group_on_translatable_column_uses_localization(): void

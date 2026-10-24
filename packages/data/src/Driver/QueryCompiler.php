@@ -146,17 +146,14 @@ class QueryCompiler
                 if ($ids === []) {
                     return '0 = 1';
                 }
-                array_push($bindings, ...$ids);
-                return "{$column} IN (" . implode(',', array_fill(0, count($ids), '?')) . ')';
+                return $this->dialect->inList($column, $ids, $bindings);
             case 'HAS':
                 // An empty id is no id: it must not match a column holding ''.
                 $ids = array_values(array_filter(array_map('strval', (array) $value), fn (string $id) => $id !== ''));
                 if ($ids === []) {
                     return '0 = 1';
                 }
-                array_push($bindings, ...$ids);
-                array_push($bindings, ...array_map($this->dialect->jsonArrayBinding(...), $ids));
-                return $this->dialect->jsonArrayHasAny($column, count($ids));
+                return $this->dialect->jsonArrayHasAny($column, $ids, $bindings);
             default:
                 $bindings[] = $value;
                 return "{$column} = ?";

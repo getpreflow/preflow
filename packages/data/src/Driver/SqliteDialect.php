@@ -48,16 +48,28 @@ final class SqliteDialect implements Dialect
             . " THEN json_extract({$quotedColumn}, '$.\"{$locale}\"') ELSE {$plain} END)";
     }
 
-    public function jsonArrayHasAny(string $quotedColumn, int $count): string
+    /** One binding however many ids: the ids as a JSON array, read back with json_each(). */
+    public function inList(string $quotedColumn, array $ids, array &$bindings): string
     {
-        $in = '(' . implode(',', array_fill(0, $count, '?')) . ')';
+        $bindings[] = self::jsonList($ids);
 
-        return "({$quotedColumn} IN {$in} OR EXISTS (SELECT 1 FROM json_each("
-            . "CASE WHEN json_valid({$quotedColumn}) THEN {$quotedColumn} ELSE '[]' END) WHERE value IN {$in}))";
+        return "{$quotedColumn} IN (SELECT value FROM json_each(?))";
     }
 
-    public function jsonArrayBinding(string $id): string
+    /** Two bindings however many ids (the same JSON array twice). */
+    public function jsonArrayHasAny(string $quotedColumn, array $ids, array &$bindings): string
     {
-        return $id;
+        $list = self::jsonList($ids);
+        array_push($bindings, $list, $list);
+
+        return "({$quotedColumn} IN (SELECT value FROM json_each(?)) OR EXISTS (SELECT 1 FROM json_each("
+            . "CASE WHEN json_valid({$quotedColumn}) THEN {$quotedColumn} ELSE '[]' END) AS held"
+            . " WHERE held.value IN (SELECT value FROM json_each(?))))";
+    }
+
+    /** @param list<string|int> $ids */
+    private static function jsonList(array $ids): string
+    {
+        return json_encode(array_values($ids), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 }

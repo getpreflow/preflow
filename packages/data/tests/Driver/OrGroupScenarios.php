@@ -63,6 +63,7 @@ trait OrGroupScenarios
         $in = fn (array $v) => $this->groupIds($d, (new Query())->whereAny([['field' => 'title', 'operator' => 'IN', 'value' => $v]]));
         $this->assertSame(['1', '3'], $in(['a', 'c', 'zzz']));
         $this->assertSame([], $in([]));
+        $this->assertSame(['2'], $in([...array_map(static fn (int $i): string => 'n' . $i, range(1, 3000)), 'b']), 'a long id list');
     }
 
     private function checkHas(StorageDriver $d): void
@@ -79,6 +80,8 @@ trait OrGroupScenarios
         $this->assertSame([], $has(['x']), 'invalid JSON rows never error');
         $this->assertSame([], $has([]));
         $this->assertSame([], $has(['zzz']));
+        $many = array_map(static fn (int $i): string => 'n' . $i, range(1, 3000));
+        $this->assertSame(['1', '2', '5'], $has([...$many, 'c', 'a']), 'a long id list');
     }
 
     private function checkOrWithinAndAcrossGroups(StorageDriver $d): void

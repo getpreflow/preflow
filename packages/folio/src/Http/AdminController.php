@@ -296,7 +296,7 @@ final class AdminController
             $picker = new \Preflow\Folio\Field\Types\RelationFieldType($this->dm, $this->registry);
         }
         $payload = json_encode(
-            $picker->page($type, $text('label'), $text('order'), $text('q') ?? '', $page),
+            $picker->page($type, $text('label'), $text('order'), mb_substr($text('q') ?? '', 0, 200), $page),
             JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
         );
 

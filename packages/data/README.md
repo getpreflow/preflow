@@ -347,15 +347,23 @@ literally. Unlike `search()`, which keeps using exactly the `searchable: true` f
 - By default it searches every text-kind field (`string`, `text`, plus kinds registered with
   `fieldKinds()->text()`) and every relation field, *unless* the field declares
   `"searchable": false` (or `#[Field(searchable: false)]` on a typed model, where only
-  `string` properties count). A field without a `searchable` key is included.
-- `fields:` restricts the search to the named fields; names the type does not have are dropped.
-  A type with nothing searchable matches no record.
+  `string` properties count). A field without a `searchable` key is included — except a
+  hidden one (`"hidden": true`), which is searched only when it says `"searchable": true`.
+  Mark secrets (password hashes, tokens) `"searchable": false` as well.
+- `fields:` restricts the search to the named fields; names the type does not have are dropped,
+  and so are `searchable: false` fields and hidden fields without `searchable: true` — naming a
+  field never makes it searchable. A type with nothing searchable matches no record.
 - A relation field is searched one level deep: the word is matched against the target's
-  `labelField` (or its first `string` field) and its text fields, and the records pointing at
-  a matching target match. Relations are not followed further.
-- Each word and relation contributes at most `QueryBuilder::RELATION_MATCH_LIMIT` (1000)
-  target ids; a word matching more targets than that finds the pointing records of the first
-  1000 only.
+  `labelField` (or its first `string` field that is not hidden) and its text fields, by the
+  same rules (hidden fields left out), and the records pointing at a matching target match.
+  Relations are not followed further.
+- A word matching more than `QueryBuilder::RELATION_MATCH_LIMIT` (1000) records of a related
+  type is too unspecific for that relation: the relation does not count for that word (it can
+  still match the type's own fields or other relations). All words of a query together bind at
+  most `QueryBuilder::RELATION_ID_BUDGET` (10000) related ids; a relation that would go over
+  it does not count for that word either.
+- Repeated words count once; words after the first `QueryBuilder::MAX_LOOSE_WORDS` (32) are
+  ignored.
 - Relations are resolved when `get()` runs, so `locale()` applies to translatable fields on
   both sides. They need a `DataManager`; a builder made without one searches the type's own
   fields only.
@@ -366,7 +374,10 @@ literally. Unlike `search()`, which keeps using exactly the `searchable: true` f
 reads one cache file per type (`json-{type}.json`) instead of every record file. The cache is
 checked on every query against a signature of the type's directory (file count, newest mtime,
 total size, directory mtime), so records changed outside the driver are noticed; writes and
-deletes through the driver drop the type's cache. A cache that cannot be written only costs
+deletes through the driver drop the type's cache and write a new generation
+(`json-{type}.gen`, kept by `clearCache()`). The generation is part of the signature and is read
+before the records, so a reader that read records before a write can never leave a cache that
+is used after it; a cache is not written when the signature moved while the records were read. A cache that cannot be written only costs
 speed. Core's `Application` passes `storage/cache/data`.
 
 ```php

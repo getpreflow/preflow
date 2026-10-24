@@ -190,6 +190,42 @@ final class SearchLooseTest extends TestCase
         $this->assertSame([], $this->ids($dm->queryType('game')->searchLoose('hidden-word', ['title', 'notes'])));
     }
 
+    public function test_a_word_matching_more_related_records_than_the_limit_skips_that_relation(): void
+    {
+        $dm = $this->dm('sqlite', 'sqlite');
+        $designer = $dm->getTypeRegistry()->get('designer');
+        for ($i = 1; $i <= QueryBuilder::RELATION_MATCH_LIMIT + 1; $i++) {
+            $dm->saveType(DynamicRecord::fromArray($designer, ['uuid' => 'm' . $i, 'name' => 'Mass ' . $i]), validate: false);
+        }
+        $dm->saveType(DynamicRecord::fromArray($dm->getTypeRegistry()->get('game'), ['uuid' => 'g4', 'title' => ['en' => 'Crowd'], 'designer' => '["m1"]', 'publisher' => 'm1001']), validate: false);
+
+        // Not an arbitrary subset of the matches: the relation does not count for this word.
+        $this->assertSame([], $this->ids($dm->queryType('game')->searchLoose('mass')));
+        $this->assertSame([], $this->ids($dm->queryType('game')->searchLoose('crowd mass')));
+        $this->assertSame(['g4'], $this->ids($dm->queryType('game')->searchLoose('crowd 1001')), 'a narrower word still goes through the relation');
+    }
+
+    public function test_words_beyond_the_limit_are_ignored(): void
+    {
+        $dm = $this->dm('sqlite', 'sqlite');
+        $this->assertSame(['g1'], $this->ids($dm->queryType('game')->searchLoose('zoo ' . str_repeat('night ', 100))), 'repeats count once');
+
+        // MAX_LOOSE_WORDS distinct words that all match "Night at the Zoo" (or its designer, Uwe Rosenberg), then one that matches nothing.
+        $words = ['night'];
+        foreach (['night', 'the', 'zoo', 'rosenberg'] as $part) {
+            for ($len = 1; $len <= strlen($part); $len++) {
+                for ($at = 0; $at + $len <= strlen($part); $at++) {
+                    $words[] = substr($part, $at, $len);
+                }
+            }
+        }
+        $words = array_slice(array_values(array_unique($words)), 0, QueryBuilder::MAX_LOOSE_WORDS);
+        $this->assertCount(QueryBuilder::MAX_LOOSE_WORDS, $words);
+        $this->assertSame(['g1'], $this->ids($dm->queryType('game')->searchLoose(implode(' ', $words) . ' nomatch')));
+        $this->assertSame([], $this->ids($dm->queryType('game')->searchLoose('nomatch ' . implode(' ', $words))));
+        $this->assertCount(0, $dm->queryType('game')->searchLoose(implode(' ', range(1, 50000)))->get()->items(), 'no SQL error for a huge term');
+    }
+
     #[DataProvider('storages')]
     public function test_translatable_field_matches_in_requested_locale(string $g, string $d): void
     {

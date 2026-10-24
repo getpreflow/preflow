@@ -12,8 +12,22 @@ final class QueryBuilder
     private Query $query;
     private ?TypeDefinition $typeDef = null;
 
-    /** Most target ids one relation contributes to one search word. */
+    /**
+     * Most target ids one relation contributes to one search word. A word that matches more
+     * records of the related type is too unspecific for that relation: the relation does not
+     * count for that word (rather than an arbitrary subset of its matches).
+     */
     public const RELATION_MATCH_LIMIT = 1000;
+
+    /**
+     * Most related ids all loose searches of one query bind together. A relation whose matches
+     * would go over it does not count for that word, as above. Keeps a query's bindings (up to
+     * two per id on MySQL) well under the drivers' limits (SQLite 32766, MySQL 65535).
+     */
+    public const RELATION_ID_BUDGET = 10000;
+
+    /** Words of one loose search beyond this many are ignored (each binds once per text field). */
+    public const MAX_LOOSE_WORDS = 32;
 
     /** @var list<array{words: list<string>, fields: ?list<string>}> resolved at get() */
     private array $looseSearches = [];
@@ -95,6 +109,10 @@ final class QueryBuilder
      * (AND), a word matches as a case-insensitive substring of any text field
      * or, one level deep, of the label or text fields of a related record.
      *
+     * Repeated words count once, words after the first MAX_LOOSE_WORDS are ignored. A word
+     * matching more than RELATION_MATCH_LIMIT records of a related type does not match through
+     * that relation (nor once the query's RELATION_ID_BUDGET is spent).
+     *
      * Only fields the type (or model) really has are used. Fields that say
      * "searchable": false are never searched, and neither are hidden fields
      * ("hidden": true in their config) unless they say "searchable": true —
@@ -111,7 +129,7 @@ final class QueryBuilder
         if ($words === false || $words === []) {
             return $this;
         }
-        $this->looseSearches[] = ['words' => array_values($words), 'fields' => $fields === null ? null : array_values($fields)];
+        $this->looseSearches[] = ['words' => array_slice(array_values(array_unique($words)), 0, self::MAX_LOOSE_WORDS), 'fields' => $fields === null ? null : array_values($fields)];
 
         return $this;
     }
@@ -171,6 +189,7 @@ final class QueryBuilder
         $searches = $this->looseSearches;
         $this->looseSearches = [];
 
+        $budget = self::RELATION_ID_BUDGET;
         foreach ($searches as $search) {
             $fields = $this->looseFields($search['fields']);
             foreach ($search['words'] as $word) {
@@ -180,6 +199,10 @@ final class QueryBuilder
                 }
                 foreach ($fields['relations'] as $relation) {
                     $ids = $this->relatedIds($relation, $word);
+                    if ($ids === null || count($ids) > $budget) {
+                        continue; // too many matches: this relation does not count for this word
+                    }
+                    $budget -= count($ids);
                     $conditions[] = [
                         'field' => $relation->field,
                         'operator' => $relation->multiple ? 'HAS' : 'IN',
@@ -196,8 +219,8 @@ final class QueryBuilder
         }
     }
 
-    /** @return list<string> ids of target records the word matches */
-    private function relatedIds(Relation $relation, string $word): array
+    /** @return list<string>|null ids of target records the word matches; null: more than RELATION_MATCH_LIMIT */
+    private function relatedIds(Relation $relation, string $word): ?array
     {
         $dm = $this->dataManager;
         $registry = $dm?->getTypeRegistry();
@@ -236,7 +259,7 @@ final class QueryBuilder
             return [];
         }
 
-        $builder = $dm->queryIn($target)->whereAny($conditions)->limit(self::RELATION_MATCH_LIMIT);
+        $builder = $dm->queryIn($target)->whereAny($conditions)->limit(self::RELATION_MATCH_LIMIT + 1);
         if ($this->locale !== null) {
             $builder->locale($this->locale);
         }
@@ -248,7 +271,7 @@ final class QueryBuilder
             }
         }
 
-        return $ids;
+        return count($ids) > self::RELATION_MATCH_LIMIT ? null : $ids;
     }
 
     /**
