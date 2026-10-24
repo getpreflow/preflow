@@ -146,6 +146,13 @@ final readonly class ListQuery
         } else {
             ListOrder::apply($qb, $this->def, $this->listConfig);
         }
+        // The id as the last order: rows that tie (or a list without any order) keep one position, so
+        // LIMIT / OFFSET pages and the export's chunks never repeat or skip a record. An orderable
+        // list (position, then id) and a sort on the id already end on it.
+        $orders = (fn (): array => $this->query->getOrderBy())->call($qb);
+        if ($orders === [] || $orders[array_key_last($orders)]['field'] !== $this->def->idField) {
+            $qb->orderBy($this->def->idField);
+        }
 
         return $qb->limit(self::PER_PAGE)->offset(($this->page - 1) * self::PER_PAGE);
     }

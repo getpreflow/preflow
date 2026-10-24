@@ -202,4 +202,37 @@ final class ListExportTest extends TestCase
 
         $this->assertSame(['Pear'], $titles);
     }
+
+    public function test_chunks_over_tied_sort_keys_repeat_and_skip_nothing_on_sqlite(): void
+    {
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('CREATE TABLE ticket (uuid TEXT PRIMARY KEY, status TEXT)');
+        $total = ListExport::CHUNK * 2 + 37;
+        $insert = $pdo->prepare('INSERT INTO ticket VALUES (?, ?)');
+        $pdo->beginTransaction();
+        for ($i = 0; $i < $total; $i++) {
+            $insert->execute([sprintf('t%05d', $i), $i % 7 === 0 ? 'open' : 'done']); // two values, hundreds of ties
+        }
+        $pdo->commit();
+        file_put_contents($this->base . '/m/ticket.json', json_encode([
+            'key' => 'ticket', 'table' => 'ticket', 'storage' => 'sqlite', 'id_field' => 'uuid',
+            'fields' => ['status' => ['type' => 'string']],
+        ]));
+        $registry = new TypeRegistry($this->base . '/m');
+        $dm = new DataManager(['sqlite' => new \Preflow\Data\Driver\SqliteDriver($pdo)], 'sqlite', $registry, new ValidatorFactory(new RuleFactory()));
+        $request = (new Psr17Factory())->createServerRequest('GET', '/folio/ticket')->withQueryParams(['sort' => 'status']);
+        $query = ListQuery::fromRequest($request, $registry->get('ticket'), ['columns' => ['status']], 'en');
+        $types = new FieldTypeRegistry();
+        $types->register(new StringFieldType());
+        $export = new ListExport($dm, $types, new RelationLabels($dm, new RecordLabeler()));
+
+        $ids = [];
+        foreach ($export->records('ticket', $query) as $record) {
+            $ids[] = (string) $record->getId();
+        }
+
+        $this->assertCount($total, $ids);
+        $this->assertCount($total, array_unique($ids)); // every id exactly once
+    }
 }

@@ -197,4 +197,23 @@ final class ListQueryTest extends TestCase
         $this->assertSame('-num', $lq->query()['sort']);
         $this->assertSame([], $this->lq([])->query());
     }
+
+    /** @return list<string> */
+    private function orderFields(ListQuery $lq, string $type = 'item'): array
+    {
+        $qb = $lq->apply($this->dm->queryType($type));
+        $query = (fn () => $this->query)->call($qb);
+
+        return array_map(static fn (array $o): string => $o['field'], $query->getOrderBy());
+    }
+
+    public function test_the_id_is_always_the_last_order(): void
+    {
+        $this->assertSame(['uuid'], $this->orderFields($this->lq([])));
+        $this->assertSame(['kind', 'uuid'], $this->orderFields($this->lq(['sort' => '-kind'])));
+        $this->assertSame(['title', 'uuid'], $this->orderFields($this->lq([], 'item', ['columns' => ['title'], 'sort' => 'title'])));
+        // Orderable lists already end on the id; it is not added twice.
+        $this->assertSame(['_order', 'uuid'], $this->orderFields($this->lq([], 'slide', ['orderable' => true])));
+        $this->assertSame(['uuid'], $this->orderFields($this->lq(['sort' => 'uuid'], 'item', ['columns' => ['uuid']])));
+    }
 }
