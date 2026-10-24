@@ -6,7 +6,7 @@ namespace Preflow\Data\Attributes;
 final class Field
 {
     public function __construct(
-        public readonly bool $searchable = false,
+        public readonly ?bool $searchable = null,
         public readonly bool $translatable = false,
         public readonly ?string $transform = null,
     ) {}

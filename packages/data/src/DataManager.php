@@ -19,9 +19,59 @@ final class DataManager
         private readonly ?ValidatorFactory $validatorFactory = null,
     ) {}
 
+    private ?FieldKinds $fieldKinds = null;
+
     public function getTypeRegistry(): ?TypeRegistry
     {
         return $this->typeRegistry;
+    }
+
+    public function fieldKinds(): FieldKinds
+    {
+        return $this->fieldKinds ??= new FieldKinds();
+    }
+
+    /**
+     * The relations a type declares.
+     *
+     * @return list<Relation>
+     */
+    public function relationsOf(string $type): array
+    {
+        if ($this->typeRegistry === null) {
+            return [];
+        }
+        $relations = [];
+        foreach ($this->typeRegistry->get($type)->fields as $field) {
+            $relation = Relation::fromField($type, $field, $this->fieldKinds());
+            if ($relation !== null) {
+                $relations[] = $relation;
+            }
+        }
+
+        return $relations;
+    }
+
+    /**
+     * Every relation, across all types, that points at the given type.
+     *
+     * @return list<Relation>
+     */
+    public function relationsTo(string $target): array
+    {
+        if ($this->typeRegistry === null) {
+            return [];
+        }
+        $found = [];
+        foreach ($this->typeRegistry->keys() as $type) {
+            foreach ($this->relationsOf($type) as $relation) {
+                if ($relation->target === $target) {
+                    $found[] = $relation;
+                }
+            }
+        }
+
+        return $found;
     }
 
     /**

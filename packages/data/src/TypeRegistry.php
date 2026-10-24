@@ -25,6 +25,26 @@ final class TypeRegistry
         return $this->cache[$type];
     }
 
+    /**
+     * Every type: model files that are types of their own, plus runtime definitions. Sorted.
+     *
+     * @return list<string>
+     */
+    public function keys(): array
+    {
+        $keys = array_keys($this->cache);
+        foreach (glob($this->modelsPath . '/*.json') ?: [] as $path) {
+            $type = basename($path, '.json');
+            if ($this->hasFile($type)) {
+                $keys[] = $type;
+            }
+        }
+        $keys = array_values(array_unique($keys));
+        sort($keys);
+
+        return $keys;
+    }
+
     public function has(string $type): bool
     {
         return isset($this->cache[$type]) || $this->hasFile($type);
@@ -82,7 +102,7 @@ final class TypeRegistry
 
         foreach ($schema['fields'] ?? [] as $name => $fieldDef) {
             $fieldType = $fieldDef['type'] ?? 'string';
-            $searchable = $fieldDef['searchable'] ?? false;
+            $searchable = isset($fieldDef['searchable']) ? (bool) $fieldDef['searchable'] : null;
             $transform = $fieldDef['transform'] ?? null;
             $validate = $fieldDef['validate'] ?? [];
             $label = $fieldDef['label'] ?? null;

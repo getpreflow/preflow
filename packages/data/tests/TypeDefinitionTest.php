@@ -60,7 +60,7 @@ final class TypeDefinitionTest extends TestCase
         $field = new TypeFieldDefinition(name: 'title');
         $this->assertSame('title', $field->name);
         $this->assertSame('string', $field->type);
-        $this->assertFalse($field->searchable);
+        $this->assertNull($field->searchable);
         $this->assertNull($field->transform);
     }
 }

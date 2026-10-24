@@ -13,7 +13,7 @@ final readonly class TypeFieldDefinition
     public function __construct(
         public string $name,
         public string $type = 'string',
-        public bool $searchable = false,
+        public ?bool $searchable = null,
         public ?string $transform = null,
         public array $validate = [],
         public ?string $label = null,

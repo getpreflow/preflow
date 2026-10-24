@@ -161,4 +161,33 @@ final class TypeRegistryTest extends TestCase
         $this->expectExceptionMessage('Unknown type: member');
         $this->registry->get('member');
     }
+
+    public function test_keys_lists_files_and_defined_types_without_extends_files(): void
+    {
+        $this->writeSchema('zebra', ['key' => 'zebra', 'table' => 'z', 'fields' => []]);
+        $this->writeSchema('patch', ['key' => 'patch', 'extends' => true, 'fields' => []]);
+        $this->registry->define(['key' => 'alpha', 'table' => 'a', 'fields' => []]);
+
+        $this->assertSame(['alpha', 'zebra'], $this->registry->keys());
+    }
+
+    public function test_searchable_is_null_when_unset_false_or_true_when_said(): void
+    {
+        $this->writeSchema('thing', [
+            'key' => 'thing',
+            'table' => 'things',
+            'fields' => [
+                'a' => ['type' => 'string'],
+                'b' => ['type' => 'string', 'searchable' => false],
+                'c' => ['type' => 'string', 'searchable' => true],
+            ],
+        ]);
+
+        $fields = $this->registry->get('thing')->fields;
+
+        $this->assertNull($fields['a']->searchable);
+        $this->assertFalse($fields['b']->searchable);
+        $this->assertTrue($fields['c']->searchable);
+        $this->assertSame(['c'], $this->registry->get('thing')->searchableFields);
+    }
 }
