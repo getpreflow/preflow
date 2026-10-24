@@ -44,9 +44,6 @@ final class AdminController
     /** System key holding the manual position of a record in an orderable list. */
     private const ORDER = '_order';
 
-    /** Field types shown as list columns by default. */
-    private const LIST_TYPES = ['string', 'number', 'int', 'integer', 'float', 'select', 'boolean', 'date'];
-
     public function __construct(
         private readonly TypeCatalog $catalog,
         private readonly TypeRegistry $registry,
@@ -1039,21 +1036,7 @@ final class AdminController
      */
     private function listColumns(TypeDefinition $typeDef, array $listConfig): array
     {
-        $names = array_values(array_filter(
-            (array) ($listConfig['columns'] ?? []),
-            static fn ($name) => is_string($name) && isset($typeDef->fields[$name]),
-        ));
-
-        if ($names === []) {
-            foreach ($typeDef->fields as $name => $fieldDef) {
-                if ($name !== $typeDef->idField && in_array($fieldDef->type, self::LIST_TYPES, true) && ($fieldDef->config['hidden'] ?? false) !== true) {
-                    $names[] = $name;
-                }
-                if (count($names) === 3) {
-                    break;
-                }
-            }
-        }
+        $names = \Preflow\Folio\Content\ListQuery::columns($typeDef, $listConfig);
 
         $renderer = new \Preflow\Form\FieldRenderer();
         $columns = [];

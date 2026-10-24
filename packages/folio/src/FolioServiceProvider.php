@@ -550,6 +550,7 @@ final class FolioServiceProvider extends ServiceProvider
     {
         $app = $container->get(Application::class);
         $screens = $container->get(ScreenRegistry::class);
+        $this->registerFieldKinds($container, $app);
         $customizations = $container->get(Customizations::class);
         // Set here, not in the AdminNav factory: Customizations validate extensions and resolve only now.
         $container->get(\Preflow\Folio\Http\AdminNav::class)->setBadges(static fn (string $type): ?int => $customizations->navBadge($type));
@@ -976,6 +977,25 @@ final class FolioServiceProvider extends ServiceProvider
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Tells the data package which field types hold searchable text (the SearchableText marker,
+     * extension types included) and which are relations. Only when the app has a DataManager.
+     */
+    private function registerFieldKinds(Container $container, Application $app): void
+    {
+        $dm = $this->dataManager($container, $app);
+        if ($dm === null) {
+            return;
+        }
+        $kinds = $dm->fieldKinds();
+        foreach ($container->get(FieldTypeRegistry::class)->all() as $key => $type) {
+            if ($type instanceof \Preflow\Folio\Field\SearchableText) {
+                $kinds->text($key);
+            }
+        }
+        $kinds->relation('relation');
     }
 
     /** The app's DataManager (core builds it from config/data.php), or null without one. */

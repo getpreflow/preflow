@@ -12,7 +12,7 @@ use Preflow\Folio\Field\FieldContext;
  * Adds an in: rule automatically. A stored value that is no longer an option
  * stays visible (and selected) so editing never silently drops it.
  */
-final class SelectFieldType extends AbstractScalarFieldType
+final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\SearchableText
 {
     public function key(): string
     {

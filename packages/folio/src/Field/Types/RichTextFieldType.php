@@ -15,7 +15,7 @@ use Symfony\Component\HtmlSanitizer\HtmlSanitizerInterface;
  * always safe. Trix self-initializes from the `<trix-editor input="ID">` element
  * bound to the hidden input — no custom admin JS required.
  */
-final class RichTextFieldType implements FieldType
+final class RichTextFieldType implements FieldType, \Preflow\Folio\Field\SearchableText
 {
     public function __construct(
         private readonly HtmlSanitizerInterface $sanitizer,

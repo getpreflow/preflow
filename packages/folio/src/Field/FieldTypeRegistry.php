@@ -22,6 +22,12 @@ final class FieldTypeRegistry
         $this->aliases[$from] = $to;
     }
 
+    /** @return array<string, FieldType> by key */
+    public function all(): array
+    {
+        return $this->types;
+    }
+
     public function has(string $key): bool
     {
         $key = $this->aliases[$key] ?? $key;

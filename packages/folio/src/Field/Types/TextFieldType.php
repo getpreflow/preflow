@@ -6,7 +6,7 @@ namespace Preflow\Folio\Field\Types;
 
 use Preflow\Folio\Field\FieldContext;
 
-final class TextFieldType extends AbstractScalarFieldType
+final class TextFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\SearchableText
 {
     public function key(): string
     {
