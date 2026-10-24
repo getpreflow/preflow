@@ -16,6 +16,9 @@ env:
 
 # One group per ref: a queued tag split must never be dropped because a later
 # push to main joined the same group (GitHub keeps only one pending run per group).
+# Runs of different refs never write the same remote ref: main runs push the branch,
+# tag runs push only the tag (a tag run pushing main too raced the main run of the
+# same commit: "cannot lock ref 'refs/heads/main'", v0.27.0).
 concurrency:
   group: monorepo-split-${{ github.ref }}
   cancel-in-progress: false
@@ -65,24 +68,23 @@ jobs:
           chmod +x splitsh-lite
           sudo mv splitsh-lite /usr/local/bin/
 
-      - name: Split and push branch
+      - name: Configure split remote
         env:
           SPLIT_TOKEN: ${{ secrets.SPLIT_TOKEN }}
         run: |
           # Remove the default GITHUB_TOKEN extraheader so our PAT is used
           git config --unset-all http.https://github.com/.extraheader || true
+          git remote add split "https://x-access-token:${SPLIT_TOKEN}@github.com/getpreflow/${{ matrix.package.remote }}.git"
 
+      - name: Split and push branch
+        if: github.ref_type != 'tag'
+        run: |
           # Generate the split SHA for this package
           SHA=$(splitsh-lite --prefix=${{ matrix.package.local }} --target=refs/heads/split-branch)
-
-          # Push to the split repo using PAT
-          git remote add split "https://x-access-token:${SPLIT_TOKEN}@github.com/getpreflow/${{ matrix.package.remote }}.git"
           git push split ${SHA}:refs/heads/main -f
 
       - name: Split and push tag
         if: github.ref_type == 'tag'
-        env:
-          SPLIT_TOKEN: ${{ secrets.SPLIT_TOKEN }}
         run: |
           SHA=$(splitsh-lite --prefix=${{ matrix.package.local }} --target=refs/tags/${{ github.ref_name }})
           git push split ${SHA}:refs/tags/${{ github.ref_name }} -f
