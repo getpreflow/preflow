@@ -279,6 +279,133 @@ composer test:mysql     # sources .env.mysql-test, runs phpunit --group mysql
 
 The tests share one database and drop the tables they create.
 
+## Relations and `onDelete`
+
+A dynamic type declares a relation on a field of a relation kind (`relation` by default;
+`$dm->fieldKinds()->relation('mytype')` registers more, `->text('mytype')` registers extra
+free-text kinds). The pointer is stored as today: an id string, or a JSON array string when
+`multiple` is true.
+
+```json
+"designer": {
+  "type": "relation",
+  "relation": { "to": "designer", "multiple": true, "onDelete": "restrict", "labelField": "name" }
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `to` | Target type. A field without it is no relation. |
+| `multiple` | Several targets (JSON array) instead of one. Default `false`. |
+| `onDelete` | What deleting a *target* does to the pointing records (see [Delete plans](#delete-plans)): `detach` (default) removes the id from the pointer, `cascade` deletes the pointing record too, `restrict` refuses the delete. Any other value throws `InvalidArgumentException`. |
+| `labelField` | The target field shown and searched as its label. |
+
+```php
+$dm->relationsOf('game');       // list<Relation>: what 'game' declares
+$dm->relationsTo('designer');   // list<Relation>: every relation, across all types, pointing at 'designer'
+$dm->getTypeRegistry()->keys(); // every type key, sorted
+```
+
+Relations work across storages: a SQL type may point at a JSON type and back.
+
+## `whereAny` operators
+
+`whereAny()` takes a list of conditions of which at least one must hold (an OR-group).
+Several calls are AND-ed with each other and with `where()`.
+
+```php
+$dm->queryIn($typeDef)->whereAny([
+    ['field' => 'title',    'operator' => 'CONTAINS', 'value' => 'wood'],
+    ['field' => 'designer', 'operator' => 'IN',       'value' => ['a1', 'b2']],
+    ['field' => 'tags',     'operator' => 'HAS',      'value' => ['x']],
+])->get();
+```
+
+| Operator | Matches when |
+|---|---|
+| `=` | The field equals the value. |
+| `CONTAINS` | The field contains the value as a substring, case-insensitively. `%`, `_` and the escape character match literally. |
+| `IN` | The field equals one of the listed values. An empty list matches nothing. |
+| `HAS` | The field, an id string or a JSON array string, holds at least one of the listed ids. |
+
+Driver differences: SQLite's `LIKE` folds case for ASCII letters only (umlauts and other
+non-ASCII letters match case-sensitively); the JSON driver folds with `mb_stripos` and
+compares full Unicode. On MySQL/MariaDB `CONTAINS` and `IN` follow the column's collation,
+so a case- or accent-insensitive collation matches more than the other drivers do.
+
+## `searchLoose`
+
+```php
+$dm->queryIn($typeDef)->searchLoose('wood table')->get();
+$dm->queryIn($typeDef)->searchLoose('wood', fields: ['title', 'designer'])->get();
+```
+
+The term is split on whitespace. Every word must match (AND); a word matches when it is a
+case-insensitive substring of at least one field (OR). `%`, `_` and quotes in the term match
+literally. Unlike `search()`, which keeps using exactly the `searchable: true` fields:
+
+- By default it searches every text-kind field (`string`, `text`, plus kinds registered with
+  `fieldKinds()->text()`) and every relation field, *unless* the field declares
+  `"searchable": false` (or `#[Field(searchable: false)]` on a typed model, where only
+  `string` properties count). A field without a `searchable` key is included.
+- `fields:` restricts the search to the named fields; names the type does not have are dropped.
+  A type with nothing searchable matches no record.
+- A relation field is searched one level deep: the word is matched against the target's
+  `labelField` (or its first `string` field) and its text fields, and the records pointing at
+  a matching target match. Relations are not followed further.
+- Each word and relation contributes at most `QueryBuilder::RELATION_MATCH_LIMIT` (1000)
+  target ids; a word matching more targets than that finds the pointing records of the first
+  1000 only.
+- Relations are resolved when `get()` runs, so `locale()` applies to translatable fields on
+  both sides. They need a `DataManager`; a builder made without one searches the type's own
+  fields only.
+
+## JSON storage cache
+
+`JsonFileDriver` takes an optional second argument, a cache directory. With it, a query
+reads one cache file per type (`json-{type}.json`) instead of every record file. The cache is
+checked on every query against a signature of the type's directory (file count, newest mtime,
+total size, directory mtime), so records changed outside the driver are noticed; writes and
+deletes through the driver drop the type's cache. A cache that cannot be written only costs
+speed. Core's `Application` passes `storage/cache/data`.
+
+```php
+$driver = new JsonFileDriver($basePath, cacheDir: $cacheDir);
+$driver->clearCache('game');   // one type
+$driver->clearCache();         // all types
+```
+
+Without a cache directory the driver behaves as before.
+
+## Delete plans
+
+`deletePlan()` computes what deleting records would do across the declared relations, without
+changing anything; `executeDeletePlan()` carries it out.
+
+```php
+$plan = $dm->deletePlan('designer', [$id]);
+$plan->deletes();      // ['designer' => [...ids], 'game' => [...ids]]  roots plus cascaded records
+$plan->detaches();     // [['type' => 'game', 'id' => '7', 'field' => 'designer', 'remove' => ['3']], ...]
+$plan->restrictions(); // ['game' => 2]  records still pointing at a deleted one
+$plan->restricted();   // true when any restriction blocks the delete
+$plan->counts();       // ['deleted' => [...], 'detached' => [...], 'restricted' => [...]] for a confirmation
+$dm->executeDeletePlan($plan);
+```
+
+- `cascade` follows recursively; `detach` loads the pointing record, removes the id and saves
+  it without validation; `restrict` blocks the whole plan. A restricted plan is refused with a
+  `RuntimeException` before anything changes.
+- The optional third argument, `fn (TypeDefinition $t): array`, names extra definitions that
+  hold copies of a type's records (for example a published shadow table). They count toward
+  restrictions only.
+- **The plan is a snapshot.** Records added or changed between `deletePlan()` and
+  `executeDeletePlan()` are not part of it; plan and execute close together, and plan again
+  if the user confirms later.
+- **Transactions.** SQL writes run in one transaction per PDO connection, committed at the end
+  and rolled back on any error (a transaction the caller already opened is left to the caller).
+  **JSON-file writes cannot be rolled back**: if a later step fails, the JSON changes made
+  before it stay, and so does a SQL/JSON mix that fails halfway on the JSON side.
+
 ## Aliases
 
 `config/data.php` may map purpose names to configured drivers, so a package can store on its
