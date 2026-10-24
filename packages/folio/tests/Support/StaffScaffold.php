@@ -34,14 +34,15 @@ trait StaffScaffold
      * @param array<string, mixed> $folio  config/folio.php
      * @param string|null          $locale config/i18n.php default (null: no i18n config)
      * @param 'sqlite'|'mysql'     $sql    where staff, tokens, remember rows and throttle live
+     * @param string|null          $url    app.url (null: not set)
      */
-    private function staffSite(array $guard = ['remember' => ['cookie' => 'folio_remember', 'days' => 30, 'path' => '/folio']], array $folio = [], ?string $locale = null, string $sql = 'sqlite'): void
+    private function staffSite(array $guard = ['remember' => ['cookie' => 'folio_remember', 'days' => 30, 'path' => '/folio']], array $folio = [], ?string $locale = null, string $sql = 'sqlite', ?string $url = 'https://site.test'): void
     {
         putenv('APP_DEBUG=1');
         $this->dir = sys_get_temp_dir() . '/folio_staff_' . bin2hex(random_bytes(4));
         @mkdir($this->dir . '/storage/data', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log');
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Staff Site', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-staff-test-key', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn " . var_export(['name' => 'Staff Site', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-staff-test-key'] + ($url === null ? [] : ['url' => $url]), true) . ";\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");
         $this->write('config/folio.php', "<?php\nreturn " . var_export(['path' => '/folio'] + $folio, true) . ";\n");
         $this->write('config/auth.php', "<?php\nreturn " . var_export([

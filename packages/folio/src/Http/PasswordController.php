@@ -61,6 +61,8 @@ final class PasswordController
         if ($account !== null) {
             try {
                 $this->passwords->sendReset($account); // queued: the answer goes out first
+            } catch (\Preflow\Folio\Users\MissingAppUrl) { // the answer must not differ
+                error_log('folio: app.url is not set, so no reset link was sent for account ' . $account->getType()->key . ':' . $account->getId());
             } catch (\Throwable) { // no mail set up (config/notify.php): the answer must not differ
                 error_log('folio: reset mail could not be queued for account ' . $account->getType()->key . ':' . $account->getId());
             }

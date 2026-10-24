@@ -34,6 +34,7 @@ final class StaffPasswords
      * @param list<RecordUserProvider> $providers the default guard's record providers
      * @param \Closure(): StaffMailer $mailer       built on the first mail
      * @param string $passwordUrl                  absolute URL of the set-password page; the token is appended after "/"
+     *                                             ('' when app.url is unset: invite and reset throw MissingAppUrl)
      */
     public function __construct(
         private readonly Tokens $tokens,
@@ -53,17 +54,33 @@ final class StaffPasswords
         return $this->providers !== [];
     }
 
-    /** Mails a set-password link valid for 7 days; earlier invite links of the account stop working. */
+    /** Whether links can be mailed: app.url is set (without it a link would point nowhere). */
+    public function canMail(): bool
+    {
+        return $this->passwordUrl !== '';
+    }
+
+    /**
+     * Mails a set-password link valid for 7 days; earlier invite links of the account stop working.
+     *
+     * @throws MissingAppUrl when app.url is unset (nothing is issued or revoked)
+     */
     public function invite(DynamicRecord $user): void
     {
+        $this->requireUrl();
         $subject = $this->subject($user);
         $this->tokens->revokeAll(self::INVITE, $subject);
         $this->mail('invite', $user, $this->tokens->issue(self::INVITE, $subject, self::INVITE_TTL));
     }
 
-    /** Mails a set-password link valid for one hour. */
+    /**
+     * Mails a set-password link valid for one hour.
+     *
+     * @throws MissingAppUrl when app.url is unset (nothing is issued)
+     */
     public function sendReset(DynamicRecord $user): void
     {
+        $this->requireUrl();
         $this->mail('reset', $user, $this->tokens->issue(self::RESET, $this->subject($user), self::RESET_TTL));
     }
 
@@ -193,6 +210,13 @@ final class StaffPasswords
         $to = (string) $user->get($fields['email']);
         $name = isset($user->getType()->fields['name']) ? trim((string) $user->get('name')) : '';
         ($this->builtMailer ??= ($this->mailer)())->sendLater($mail, $to, $name !== '' ? $name : $to, $this->passwordUrl . '/' . $token, $this->subject($user));
+    }
+
+    private function requireUrl(): void
+    {
+        if (!$this->canMail()) {
+            throw new MissingAppUrl();
+        }
     }
 
     private function subject(DynamicRecord $user): string

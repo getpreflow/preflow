@@ -14,6 +14,7 @@ return [
         'invite_failed' => 'Das Konto ist gespeichert, aber es wurde keine Einladung gesendet. Prüfen Sie die Mail-Einrichtung (config/notify.php) und verwenden Sie dann «Einladung senden».',
         'mail_failed' => 'Die Mail konnte nicht gesendet werden. Prüfen Sie die Mail-Einrichtung (config/notify.php).',
         'no_sign_in' => 'Teamkonten können sich auf dieser Website noch nicht anmelden: Der Standard-Guard in config/auth.php hat keinen Provider für Teamkonten.',
+        'no_app_url' => 'Setzen Sie app.url, um Anmeldelinks zu senden.',
         'has_password' => 'Dieses Konto hat bereits ein Passwort. Senden Sie stattdessen einen Link zum Zurücksetzen.',
         'inactive' => 'Dieses Konto ist deaktiviert. Aktivieren Sie es zuerst.',
         'reset_sent' => 'Link zum Zurücksetzen an :email gesendet.',

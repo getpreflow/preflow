@@ -253,6 +253,8 @@ final class StaffAdmin
             $mail === 'invite' ? $passwords->invite($staff) : $passwords->sendReset($staff);
         } catch (\InvalidArgumentException) { // staff isn't a user type of the default guard
             return $this->messages->get('staff.no_sign_in');
+        } catch (\Preflow\Folio\Users\MissingAppUrl) { // a link would point nowhere
+            return $this->messages->get('staff.no_app_url');
         } catch (\Throwable $e) {
             error_log("rbac: {$mail} mail not queued for staff:{$staff->getId()}: {$e->getMessage()}");
 

@@ -42,7 +42,7 @@ final class StaffLifecycleTest extends TestCase
         $this->removeScaffold();
     }
 
-    private function lifecycleSite(bool $twoManagers = false, bool $mail = true): void
+    private function lifecycleSite(bool $twoManagers = false, bool $mail = true, bool $url = true): void
     {
         $this->write('config/folio/extensions.json', '{"enabled": {"rbac": {"disabled_parts": [], "enabled_parts": ["model:staff"]}}}');
         $hash = password_hash('secret', PASSWORD_DEFAULT);
@@ -61,7 +61,7 @@ final class StaffLifecycleTest extends TestCase
             ],
             'session' => ['cookie' => 'rbac_lifecycle_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key'" . ($url ? ", 'url' => 'https://site.test'" : '') . "];\n");
         if ($mail) {
             $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'folio@site.test']]];\n");
         }
@@ -367,6 +367,21 @@ final class StaffLifecycleTest extends TestCase
         $this->assertTrue(\Preflow\Rbac\StaffManagers::active($stored?->get('active')));
         $this->assertSame('Renamed', $stored?->get('name'), 'the stale copy did not write back');
         $this->assertSame('4', (string) $stored?->get('auth_epoch'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_without_app_url_no_sign_in_link_is_sent_and_the_flash_says_why(): void
+    {
+        $this->lifecycleSite(url: false);
+        $this->as('ed');
+
+        $this->action('s-help', 'reset');
+        $this->assertStringContainsString('Set app.url to send sign-in links.', $this->flash('s-help'));
+        $res = $this->send('POST', '/folio/staff', ['email' => 'new@site.test', 'name' => 'Newbie', 'roles' => [''], 'active' => '1']);
+        $this->assertSame(302, $res->getStatusCode(), self::text($res));
+        $this->assertStringContainsString('Set app.url to send sign-in links.', self::text($this->send('GET', '/folio/staff')));
+        $this->flush();
+        $this->assertSame([], $this->mails(), 'no http://localhost link goes out');
     }
 
     #[RunInSeparateProcess]

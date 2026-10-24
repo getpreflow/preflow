@@ -511,6 +511,25 @@ final class FolioStaffLoginTest extends TestCase
         $this->assertNotSame('', (string) $stored->get('last_login_at'), 'stamped all the same');
     }
 
+    #[RunInSeparateProcess]
+    public function test_without_app_url_forgot_mails_no_link_logs_why_and_answers_alike(): void
+    {
+        $this->removeSite();
+        $this->staffSite(url: null);
+        $this->makeStaff();
+
+        $known = $this->post('/folio/forgot', ['email' => 'ada@site.test']);
+        $unknown = $this->post('/folio/forgot', ['email' => 'nobody@site.test']);
+
+        $this->assertSame(200, $known->getStatusCode());
+        $this->assertSame($this->stable((string) $unknown->getBody()), $this->stable((string) $known->getBody()), 'the generic answer');
+        $this->assertSame([], $this->mails(), 'no http://localhost link goes out');
+        $log = (string) @file_get_contents($this->dir . '/error.log');
+        $this->assertSame(1, substr_count($log, 'folio: app.url is not set'), $log);
+        $this->expectException(\Preflow\Folio\Users\MissingAppUrl::class);
+        $this->flow->container()->get(StaffPasswords::class)->invite($this->staff('ada@site.test'));
+    }
+
     private function makeStaffTableWithoutStamp(): void
     {
         $this->dm()->execute('CREATE TABLE "staff" ("uuid" TEXT PRIMARY KEY, "email" TEXT, "name" TEXT, "password_hash" TEXT, "roles" TEXT, "active" INTEGER, "auth_epoch" TEXT)', [], 'sqlite');

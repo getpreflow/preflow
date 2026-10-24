@@ -515,7 +515,7 @@ final class FolioServiceProvider extends ServiceProvider
     {
         $app = $c->get(Application::class);
         $url = $app->config()->get('app.url');
-        $base = rtrim(is_string($url) && $url !== '' ? $url : 'http://localhost', '/');
+        $base = is_string($url) ? rtrim(trim($url), '/') : ''; // unset: no links are mailed (StaffPasswords::canMail)
         $auth = $c->get(\Preflow\Auth\AuthManager::class);
 
         return new \Preflow\Folio\Users\StaffPasswords(
@@ -542,7 +542,7 @@ final class FolioServiceProvider extends ServiceProvider
                 );
             },
             $auth->defaultGuardName(),
-            $base . $prefix . '/password',
+            $base === '' ? '' : $base . $prefix . '/password',
         );
     }
 

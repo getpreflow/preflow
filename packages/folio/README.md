@@ -165,8 +165,9 @@ login exactly as before: the same page, no throttle, no forgot link, and no new 
   remember-me logins and other links.
 - **Mails** (invite and reset) are plain text, queued with preflow/notify after the
   response, in the site's default content locale (`folio.mail.*` in
-  `lang/{en,de,fr}/folio.php`). The link is built from `app.url`. Staff mode needs
-  `config/notify.php` and `APP_KEY`.
+  `lang/{en,de,fr}/folio.php`). The link is built from `app.url`. Without it no link is
+  mailed: forgot logs it and answers as always, rbac's actions say "Set app.url to send
+  sign-in links.". Staff mode needs `config/notify.php`, `APP_KEY` and `app.url`.
 
 `Preflow\Folio\Users\StaffPasswords` (a container service) is the API for packages that
 manage the accounts (preflow/rbac). It works for any record user type of the default guard:
