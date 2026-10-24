@@ -174,7 +174,7 @@ final class CustomizationTest extends TestCase
 
         $body = (string) $this->send('GET', '/folio/contact')->getBody();
         // Sorted by position: Domain (10) before Badge (100), after the type's columns.
-        $this->assertMatchesRegularExpression('#<th>Status</th><th>Domain</th><th>Badge</th>#', $body);
+        $this->assertMatchesRegularExpression('#<th[^>]*>(<a[^>]*>)?Status\b.*?</th><th>Domain</th><th>Badge</th>#s', $body);
         $this->assertStringContainsString('<td>&lt;b&gt;example&lt;/b&gt;.org</td><td>VIP</td>', $body);
     }
 

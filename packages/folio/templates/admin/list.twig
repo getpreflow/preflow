@@ -1,53 +1,53 @@
 {% extends "@folio/admin/_layout.twig" %}
 {% block title %}Folio — {{ label }}{% endblock %}
 {% block page_title %}{{ label }}{% endblock %}
-{% set may = {create: can(type ~ '.create'), edit: can(type ~ '.edit'), delete: can(type ~ '.delete')} %}
 {% block actions %}
-    {% if may.create %}<a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>New</a>{% endif %}
+    {% if can(type ~ '.create') %}<a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>New</a>{% endif %}
 {% endblock %}
 {% block content %}
-    {% if rows is empty %}
-        <div class="folio-empty">
-            <svg class="folio-icon folio-empty-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-file"></use></svg>
-            <p>No {{ label|lower }} yet.</p>
-            {% if may.create %}<a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new">Create one</a>{% endif %}
-        </div>
-    {% else %}
-        <div class="folio-table-wrap">
-        <table class="folio-table">
-            <thead><tr>{% for name, heading in columns %}<th>{{ heading }}</th>{% endfor %}{% for heading in extra_columns|default([]) %}<th>{{ heading }}</th>{% endfor %}{% if multilingual|default(false) %}<th>Languages</th>{% endif %}{% if publishing|default(false) %}<th>Publishing</th>{% endif %}<th><span class="folio-sr">Actions</span></th></tr></thead>
-            <tbody>
-            {% for row in rows %}
-                {% set first = loop.first %}
-                {% set last = loop.last %}
-                <tr>
-                    {% for name, heading in columns %}<td>{% if loop.first %}<a class="folio-row-link" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">{{ row.cells[name] ?: '(untitled)' }}</a>{% else %}{{ row.cells[name] }}{% endif %}</td>{% endfor %}{% for cell in row.extra|default([]) %}<td>{% if cell is iterable %}<span class="folio-badge{% if cell.tone %} is-{{ cell.tone }}{% endif %}">{{ cell.label }}</span>{% else %}{{ cell }}{% endif %}</td>{% endfor %}
-                    {% if multilingual|default(false) %}<td>{% for badge in row.languages %}<span class="folio-badge{% if 'missing' in badge %} is-incomplete{% endif %}">{{ badge }}</span> {% endfor %}</td>{% endif %}
-                    {% if publishing|default(false) %}<td><span class="folio-badge is-{{ row.state.value }}">{{ row.state.label() }}</span></td>{% endif %}
-                    <td>
-                        <div class="folio-row-actions">
-                            {% if orderable and may.edit %}
-                                {% for direction, text in {'up': 'Move up', 'down': 'Move down'} %}
-                                    <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/move">
-                                        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                                        <input type="hidden" name="direction" value="{{ direction }}">
-                                        <button type="submit" class="btn btn-ghost btn-icon" aria-label="{{ text }}" title="{{ text }}"{% if (direction == 'up' and first) or (direction == 'down' and last) %} disabled{% endif %}><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-{{ direction }}"></use></svg></button>
-                                    </form>
-                                {% endfor %}
-                            {% endif %}
-                            {% if may.edit %}<a class="btn btn-secondary btn-sm" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">Edit</a>{% endif %}
-                            {% if may.delete %}
-                            <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/delete" data-confirm="Delete this record?">
-                                <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                                <button type="submit" class="btn btn-ghost btn-icon" data-tone="danger" aria-label="Delete" title="Delete"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-trash"></use></svg></button>
-                            </form>
-                            {% endif %}
-                        </div>
-                    </td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-        </div>
+    {% if has_records %}
+        {# One GET form: works without JS; with JS the search narrows as you type (admin.js). #}
+        <form class="folio-list-toolbar" method="get" action="{{ list.base }}" role="search" data-folio-list-form>
+            <label class="folio-list-search">
+                <span class="folio-sr">Search {{ label|lower }}</span>
+                <svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-search"></use></svg>
+                <input type="search" name="q" value="{{ list.q }}" placeholder="Search…" autocomplete="off" data-folio-list-search>
+            </label>
+            {% for input in list.hidden %}<input type="hidden" name="{{ input.name }}" value="{{ input.value }}">{% endfor %}
+            {% if list.filters is not empty %}
+                <details class="folio-filter-menu">
+                    <summary class="btn btn-secondary btn-sm">+ Filter</summary>
+                    <div class="folio-filter-panel">
+                        {% for filter in list.filters %}
+                            <div class="folio-filter-field">
+                                {% if filter.kind == 'date' %}
+                                    <span class="folio-filter-label">{{ filter.label }}</span>
+                                    <span class="folio-filter-range">
+                                        <input type="date" name="f[{{ filter.name }}][from]" aria-label="{{ filter.label }} from">
+                                        <span aria-hidden="true">–</span>
+                                        <input type="date" name="f[{{ filter.name }}][to]" aria-label="{{ filter.label }} until">
+                                    </span>
+                                {% elseif filter.kind == 'relation-search' %}
+                                    <label class="folio-filter-label" for="folio-filter-{{ filter.name }}">{{ filter.label }}</label>
+                                    {# Too many records to list: data-folio-list-relation is the hook for a remote search. #}
+                                    <input type="text" id="folio-filter-{{ filter.name }}" name="f[{{ filter.name }}]" placeholder="Record id" autocomplete="off" data-folio-list-relation="{{ filter.target }}">
+                                {% else %}
+                                    <label class="folio-filter-label" for="folio-filter-{{ filter.name }}">{{ filter.label }}</label>
+                                    <select id="folio-filter-{{ filter.name }}" name="f[{{ filter.name }}]">
+                                        <option value="">Any</option>
+                                        {% for value, text in filter.options %}<option value="{{ value }}">{{ text }}</option>{% endfor %}
+                                    </select>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                        <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+                    </div>
+                </details>
+            {% endif %}
+            <button type="submit" class="btn btn-secondary btn-sm folio-list-submit" data-folio-list-submit>Search</button>
+        </form>
     {% endif %}
+    <div class="folio-list-results" data-folio-list-results>
+        {% include '@folio/admin/_list_results.twig' %}
+    </div>
 {% endblock %}

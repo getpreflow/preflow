@@ -10,7 +10,11 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\LocaleValue;
 use Preflow\Data\TypeRegistry;
 use Preflow\Data\TypeDefinition;
+use Preflow\Folio\Content\Highlighter;
+use Preflow\Folio\Content\ListQuery;
+use Preflow\Folio\Content\ListView;
 use Preflow\Folio\Content\RecordLabeler;
+use Preflow\Folio\Content\RelationLabels;
 use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Publishing\PublishState;
@@ -119,19 +123,35 @@ final class AdminController
 
         $multilingual = $typeDef->translatableFields() !== [];
         $states = $this->publishes($type) ? $this->publisher->states($type) : null;
+
+        $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default);
+        $result = $query->fetch($this->dm->queryType($type));
+        $records = array_values($result->items);
+        $relations = new RelationLabels($this->dm, $this->labeler);
+        // Relation columns (only when "list.columns" names them): the page's labels in one query per target.
+        $relationColumns = array_values(array_filter(array_keys($columns), static fn (string $name) => $typeDef->fields[$name]->type === 'relation'));
+        $relationLabels = $relationColumns === [] ? [] : $relations->forRecords($typeDef, $relationColumns, $records);
+
         $rows = [];
-        foreach ($this->listQuery($type, $typeDef, $listConfig)->get()->items() as $record) {
+        foreach ($records as $record) {
             $localized = $record->localized($typeDef->locales->default);
             $cells = [];
             foreach ($columns as $name => $label) {
                 $fieldDef = $typeDef->fields[$name];
-                $html = self::adminDisplay(
-                    $this->fieldTypes->get($fieldDef->type),
-                    $this->fieldTypes->get($fieldDef->type)->fromStorage($localized->get($name)),
-                    $fieldDef->config,
-                );
-                // Plain text: list cells never render field HTML (e.g. rich text) raw.
-                $cells[$name] = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                if (isset($relationLabels[$name])) {
+                    $ids = RelationLabels::ids($localized->get($name));
+                    $text = implode(', ', array_filter(array_map(static fn (string $id) => $relationLabels[$name][$id] ?? null, $ids), static fn (?string $l) => $l !== null));
+                } else {
+                    $html = self::adminDisplay(
+                        $this->fieldTypes->get($fieldDef->type),
+                        $this->fieldTypes->get($fieldDef->type)->fromStorage($localized->get($name)),
+                        $fieldDef->config,
+                    );
+                    // Plain text: list cells never render field HTML (e.g. rich text) raw.
+                    $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                }
+                // Escaped HTML with the search words marked; empty stays empty (the template's "(untitled)").
+                $cells[$name] = $text === '' ? '' : Highlighter::html($text, $query->q);
             }
             $rows[] = [
                 'id' => $record->getId(),
@@ -147,9 +167,23 @@ final class AdminController
             ];
         }
 
-        $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
+        $list = ListView::build(
+            $query,
+            $typeDef,
+            $listConfig,
+            $columns,
+            $result,
+            $this->prefix . '/' . $type,
+            $relations,
+            fn (string $target): bool => $this->can($target . '.view'),
+        );
+        // "No … yet" only when the type has no records at all; a search without hits says so instead.
+        $hasRecords = $rows !== [] || ($list['filtered'] && $this->dm->queryType($type)->limit(1)->get()->items() !== []);
 
-        return $this->html($this->engine->render('@folio/admin/list.twig', [
+        $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
+        $partial = ($request->getQueryParams()['_partial'] ?? null) === '1';
+
+        return $this->html($this->engine->render($partial ? '@folio/admin/_list_results.twig' : '@folio/admin/list.twig', [
             'prefix' => $this->prefix,
             'type' => $type,
             'label' => $this->labelFor($type),
@@ -157,7 +191,10 @@ final class AdminController
             'columns' => $columns,
             'extra_columns' => array_column($extraColumns, 'label'),
             'rows' => $rows,
-            'orderable' => $orderable,
+            'list' => $list,
+            'has_records' => $hasRecords,
+            // Manual positions only mean something in the list's own order, unfiltered.
+            'orderable' => $orderable && !$list['sorted'] && !$list['filtered'],
             'multilingual' => $multilingual,
             'publishing' => $states !== null,
             'csrf' => $csrf,
@@ -402,7 +439,10 @@ final class AdminController
             $this->syncOrder($type, $b);
         }
 
-        return new Response(302, ['Location' => $this->prefix . '/' . $type]);
+        // Back to the page the move was made on.
+        $page = (int) (((array) $request->getParsedBody())['page'] ?? 1);
+
+        return new Response(302, ['Location' => $this->prefix . '/' . $type . ($page > 1 ? '?page=' . $page : '')]);
     }
 
     public function destroy(ServerRequestInterface $request): ResponseInterface

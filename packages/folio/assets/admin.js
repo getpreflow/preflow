@@ -1108,7 +1108,73 @@
         });
     }
 
+    // Admin lists: the search narrows as you type. The results region is fetched with ?_partial=1
+    // and swapped; replaceState keeps the view in the URL, so back from a record returns to it.
+    // Filters (the "+ Filter" menu, chips), sorting and paging stay plain links and GET submits.
+    function listParams(form) {
+        var params = new URLSearchParams();
+        new FormData(form).forEach(function (value, name) {
+            if (typeof value === 'string' && value !== '') { params.append(name, value); }
+        });
+        return params;
+    }
+
+    function initList(form) {
+        if (form.hasAttribute('data-folio-list-ready')) { return; }
+        form.setAttribute('data-folio-list-ready', '');
+        var input = form.querySelector('[data-folio-list-search]');
+        var results = document.querySelector('[data-folio-list-results]');
+        var submit = form.querySelector('[data-folio-list-submit]');
+        var action = form.getAttribute('action') || window.location.pathname;
+        var timer = null;
+        var pending = null;
+
+        // A plain submit (the filter menu's Apply) leaves empty fields out of the URL.
+        form.addEventListener('submit', function () {
+            form.querySelectorAll('input[name], select[name]').forEach(function (el) {
+                if (el.value === '') { el.disabled = true; }
+            });
+        });
+        window.addEventListener('pageshow', function () {
+            form.querySelectorAll('[disabled]').forEach(function (el) { el.disabled = false; });
+        });
+
+        if (!input || !results || !window.fetch || !window.AbortController) { return; }
+        if (submit) { submit.hidden = true; }
+
+        function run() {
+            clearTimeout(timer);
+            var params = listParams(form);
+            var query = params.toString();
+            var url = action + (query ? '?' + query : '');
+            params.set('_partial', '1');
+            if (pending) { pending.abort(); }
+            pending = new AbortController();
+            fetch(action + '?' + params.toString(), { credentials: 'same-origin', signal: pending.signal })
+                .then(function (res) {
+                    if (!res.ok) { throw new Error('HTTP ' + res.status); }
+                    return res.text();
+                })
+                .then(function (html) {
+                    results.innerHTML = html;
+                    history.replaceState(history.state, '', url);
+                })
+                .catch(function (e) {
+                    if (e.name !== 'AbortError') { window.location.href = url; }
+                });
+        }
+
+        input.addEventListener('input', function () {
+            clearTimeout(timer);
+            timer = setTimeout(run, 300);
+        });
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); run(); }
+        });
+    }
+
     function boot() {
+        document.querySelectorAll('[data-folio-list-form]').forEach(initList);
         document.addEventListener('submit', onSubmitConfirm);
         document.addEventListener('click', onBlockClick);
         document.addEventListener('pointerdown', onHandlePointerDown);

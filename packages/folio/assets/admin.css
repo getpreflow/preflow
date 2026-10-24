@@ -425,6 +425,62 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
 .folio-empty p { margin: 0; }
 .folio-empty-icon { width: 32px; height: 32px; color: var(--c-text-subtle); }
 
+/* ---- list: search, filter chips, sort, pager ---- */
+.folio-list-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+.folio-list-search { position: relative; flex: 1; min-width: 12rem; max-width: 26rem; }
+.folio-list-search .folio-icon {
+  position: absolute; left: 10px; top: 50%; width: 15px; height: 15px;
+  transform: translateY(-50%); color: var(--c-text-subtle); pointer-events: none;
+}
+.folio-list-toolbar input, .folio-list-toolbar select {
+  min-height: var(--h-button-sm);
+  padding: 4px 9px;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--c-text);
+  background: var(--c-input);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+}
+.folio-list-search input { width: 100%; min-height: var(--h-control); padding-left: 32px; }
+.folio-list-toolbar :is(input, select):focus { outline: none; border-color: var(--c-accent); box-shadow: 0 0 0 3px var(--c-focus-ring); }
+.folio-list-submit[hidden] { display: none; }
+.folio-filter-menu { position: relative; }
+.folio-filter-menu summary { list-style: none; }
+.folio-filter-menu summary::-webkit-details-marker { display: none; }
+.folio-filter-menu[open] summary { background: var(--c-row-hover); }
+.folio-filter-panel {
+  position: absolute; z-index: 20; top: calc(100% + 6px); left: 0;
+  display: grid; gap: 12px; min-width: 16rem; padding: 14px;
+  border: 1px solid var(--c-border); border-radius: var(--r);
+  background: var(--c-surface-raised); box-shadow: var(--shadow-lg);
+}
+.folio-filter-field { display: grid; gap: 5px; }
+.folio-filter-label { font-size: 12.5px; font-weight: 560; color: var(--c-text-muted); }
+.folio-filter-range { display: flex; align-items: center; gap: 6px; color: var(--c-text-subtle); }
+.folio-filter-panel .btn { justify-self: start; }
+.folio-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.folio-filter-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  min-height: 26px; padding: 0 4px 0 10px;
+  border: 1px solid color-mix(in srgb, var(--c-accent) 35%, transparent);
+  border-radius: 999px;
+  background: var(--c-accent-soft); color: var(--c-accent-text);
+  font-size: 12.5px; font-weight: 540;
+}
+.folio-filter-chip a { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: inherit; }
+.folio-filter-chip a:hover { background: color-mix(in srgb, var(--c-accent) 18%, transparent); }
+.folio-filter-chip .folio-icon { width: 12px; height: 12px; }
+.folio-table thead th[aria-sort] { color: var(--c-text); }
+.folio-sort { color: inherit; }
+.folio-sort:hover { color: var(--c-text); }
+.folio-sort-mark { font-size: 9px; }
+.folio-table mark { background: var(--c-warning-soft); color: inherit; border-radius: 2px; padding: 0; }
+.folio-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--c-text-muted); }
+.folio-pager-links { display: flex; align-items: center; gap: 2px; }
+.folio-pager-links .btn { min-width: 28px; padding: 0 8px; }
+.folio-pager-gap { padding: 0 4px; color: var(--c-text-subtle); }
+
 /* ---- form controls (preflow/form hooks and Folio's own) ---- */
 .folio-form { width: 100%; }
 /* Wraps the fields so a read-only form can disable them all; adds no box of its own. */

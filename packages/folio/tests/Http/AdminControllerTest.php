@@ -353,4 +353,46 @@ final class AdminControllerTest extends TestCase
         $this->assertStringContainsString('"columns":{"email":"Email","uses":"Times used","note":"Note"}', $body);
         $this->assertStringNotContainsString('s3cret', $body);
     }
+
+    public function test_list_renders_fifty_rows_and_a_pager(): void
+    {
+        for ($i = 1; $i <= 51; $i++) {
+            $this->dm->saveType(\Preflow\Data\DynamicRecord::fromArray($this->registry->get('page'), ['uuid' => sprintf('p%02d', $i), 'title' => "T{$i}", 'slug' => "s{$i}"]), validate: false);
+        }
+
+        $body = (string) $this->controllerWith($this->capturingEngine())->list(
+            (new Psr17Factory())->createServerRequest('GET', '/folio/page')->withAttribute('type', 'page'),
+        )->getBody();
+
+        $this->assertStringStartsWith('@folio/admin/list.twig|', $body);
+        $context = json_decode(substr($body, strlen('@folio/admin/list.twig|')), true);
+        $this->assertCount(50, $context['rows']);
+        $this->assertSame(51, $context['list']['total']);
+        $this->assertSame(2, $context['list']['last_page']);
+        $this->assertSame('/folio/page?page=2', $context['list']['next']);
+    }
+
+    public function test_list_search_narrows(): void
+    {
+        foreach (['Alpha' => 'a', 'Beta' => 'b'] as $title => $slug) {
+            $this->dm->saveType(\Preflow\Data\DynamicRecord::fromArray($this->registry->get('page'), ['uuid' => $slug, 'title' => $title, 'slug' => $slug]), validate: false);
+        }
+
+        $body = (string) $this->controllerWith($this->capturingEngine())->list(
+            (new Psr17Factory())->createServerRequest('GET', '/folio/page?q=alp')->withQueryParams(['q' => 'alp'])->withAttribute('type', 'page'),
+        )->getBody();
+
+        $context = json_decode(substr($body, strlen('@folio/admin/list.twig|')), true);
+        $this->assertSame(['a'], array_column($context['rows'], 'id'));
+        $this->assertSame('<mark>Alp</mark>ha', $context['rows'][0]['cells']['title']);
+    }
+
+    public function test_list_partial_renders_only_the_results_template(): void
+    {
+        $body = (string) $this->controllerWith($this->capturingEngine())->list(
+            (new Psr17Factory())->createServerRequest('GET', '/folio/page?_partial=1')->withQueryParams(['_partial' => '1'])->withAttribute('type', 'page'),
+        )->getBody();
+
+        $this->assertStringStartsWith('@folio/admin/_list_results.twig|', $body);
+    }
 }

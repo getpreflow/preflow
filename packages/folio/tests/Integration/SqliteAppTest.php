@@ -66,6 +66,35 @@ final class SqliteAppTest extends TestCase
         $this->assertSame('7', $this->publisher()->snapshot('post', 'a')?->get('_order'));
     }
 
+    public function test_list_filters_sorts_and_labels_relations_on_sqlite(): void
+    {
+        $this->writeModel('maker', ['label' => 'Makers', 'fields' => ['name' => ['type' => 'string']]]);
+        $this->writeModel('game', [
+            'label' => 'Games',
+            'fields' => [
+                'title' => ['type' => 'string', 'searchable' => true],
+                'status' => ['type' => 'select', 'options' => ['soon' => 'Coming soon', 'out' => 'Available']],
+                'maker' => ['type' => 'relation', 'relation' => ['to' => 'maker']],
+            ],
+            'list' => ['columns' => ['title', 'maker', 'status'], 'filters' => ['status', 'maker']],
+        ]);
+        $this->migrateStep();
+        $this->working('maker', 'm1', ['name' => 'Acme & Co']);
+        $this->working('game', 'g1', ['title' => 'Night Zoo', 'status' => 'soon', 'maker' => 'm1']);
+        $this->working('game', 'g2', ['title' => 'Arctic Night', 'status' => 'soon', 'maker' => 'm1']);
+        $this->working('game', 'g3', ['title' => 'Night Out', 'status' => 'out', 'maker' => 'm1']);
+
+        $res = $this->get('/folio/game?q=night&f%5Bstatus%5D=soon&sort=-title');
+        $body = (string) $res->getBody();
+
+        $this->assertSame(200, $res->getStatusCode(), $body);
+        $this->assertStringNotContainsString('Night</mark> Out', $body);
+        $this->assertLessThan(strpos($body, 'Arctic'), strpos($body, '<mark>Night</mark> Zoo')); // -title: Night Zoo first
+        $this->assertStringContainsString('Status: Coming soon', $body);
+        $this->assertStringContainsString('<td>Acme &amp; Co</td>', $body);
+        $this->assertStringContainsString('1–2 of 2', $body);
+    }
+
     /** @return list<string> */
     private function migrateStep(): array
     {

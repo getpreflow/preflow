@@ -202,4 +202,15 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('function showToast(', $js);
         $this->assertStringContainsString('xhr.status === 403', $js);              // autosave says "no access", not "offline"
     }
+
+    public function test_list_search_swaps_results_without_reload(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString('[data-folio-list-search]', $js);   // the search input
+        $this->assertStringContainsString('[data-folio-list-results]', $js);  // the swapped region
+        $this->assertStringContainsString("'_partial', '1'", $js);            // results-only response
+        $this->assertStringContainsString('history.replaceState', $js);       // the URL keeps the view
+        $this->assertStringContainsString('300', $js);                        // debounce
+        $this->assertStringContainsString('AbortController', $js);            // stale responses never win
+    }
 }

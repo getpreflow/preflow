@@ -697,7 +697,7 @@ final class FolioAppTest extends TestCase
 
         $body = (string) $this->get('/folio/item')->getBody();
 
-        $this->assertMatchesRegularExpression('#<th[^>]*>Title</th>\s*<th[^>]*>Featured</th>#', $body);
+        $this->assertMatchesRegularExpression('#<th[^>]*>(<a[^>]*>)?Title\b.*?</th>\s*<th[^>]*>(<a[^>]*>)?Featured\b#s', $body);
         $this->assertStringContainsString('<td>Yes</td>', $body);
         $this->assertStringNotContainsString('<th>Note</th>', $body);
     }
@@ -710,7 +710,7 @@ final class FolioAppTest extends TestCase
         $body = (string) $this->get('/folio/item')->getBody();
 
         // first three plain fields, no hardcoded page columns
-        $this->assertMatchesRegularExpression('#<th>Title</th><th>Featured</th><th>Note</th>#', $body);
+        $this->assertMatchesRegularExpression('#<th[^>]*>(<a[^>]*>)?Title\b.*?</th><th[^>]*>(<a[^>]*>)?Featured\b.*?</th><th[^>]*>(<a[^>]*>)?Note\b#s', $body);
         $this->assertStringNotContainsString('<th>Slug</th>', $body);
         $this->assertStringContainsString('<td>No</td>', $body);
     }
@@ -1603,6 +1603,176 @@ final class FolioAppTest extends TestCase
         ]))->getBody();
         $this->assertStringContainsString('data-folio-field="title"', $body);
         $this->assertStringContainsString('data-folio-field="body"', $body);
+    }
+
+    public function test_list_pages_fifty_rows_at_a_time(): void
+    {
+        $this->writeGameType();
+        $titles = [];
+        for ($i = 1; $i <= 51; $i++) {
+            $titles[] = sprintf('Game %02d', $i);
+        }
+        $this->seedGames(array_map(static fn (string $t) => ['title' => $t], $titles));
+
+        $first = (string) $this->get('/folio/game?sort=title')->getBody();
+        $this->assertSame(50, substr_count($first, 'class="folio-row-link"'));
+        $this->assertStringContainsString('1–50 of 51', $first);
+        $this->assertStringContainsString('href="/folio/game?sort=title&amp;page=2"', $first);
+        $this->assertStringNotContainsString('Game 51', $first);
+
+        $second = (string) $this->get('/folio/game?sort=title&page=2')->getBody();
+        $this->assertSame(1, substr_count($second, 'class="folio-row-link"'));
+        $this->assertStringContainsString('51–51 of 51', $second);
+        $this->assertStringContainsString('Game 51', $second);
+    }
+
+    public function test_list_search_narrows_and_highlights(): void
+    {
+        $this->writeGameType();
+        $this->seedGames([['title' => 'Night at the Zoo'], ['title' => 'Day trip'], ['title' => 'Tom & <b>Jerry</b>']]);
+
+        $body = (string) $this->get('/folio/game?q=night+zo')->getBody();
+        $this->assertStringContainsString('<mark>Night</mark> at the <mark>Zo</mark>o', $body);
+        $this->assertStringNotContainsString('Day trip', $body);
+        $this->assertStringContainsString('value="night zo"', $body); // the search box keeps the term
+
+        $escaped = (string) $this->get('/folio/game?q=jerry')->getBody();
+        $this->assertStringContainsString('Tom &amp; &lt;b&gt;<mark>Jerry</mark>&lt;/b&gt;', $escaped);
+        $this->assertStringNotContainsString('<b>Jerry', $escaped);
+    }
+
+    public function test_list_filter_shows_a_removable_chip(): void
+    {
+        $this->writeGameType();
+        $this->seedGames([['title' => 'Soon one', 'status' => 'soon'], ['title' => 'Out one', 'status' => 'out']]);
+
+        $body = (string) $this->get('/folio/game?q=one&f%5Bstatus%5D=soon')->getBody();
+
+        $this->assertStringContainsString('Soon <mark>one</mark>', $body);
+        $this->assertStringNotContainsString('Out <mark>one', $body);
+        $this->assertMatchesRegularExpression('#class="folio-filter-chip"[^>]*>\s*<span>Status: Coming soon</span>#', $body);
+        $this->assertStringContainsString('href="/folio/game?q=one" aria-label="Remove filter Status"', $body);
+        $this->assertStringContainsString('<input type="hidden" name="f[status]" value="soon">', $body);
+        // The menu offers the filters not yet in use.
+        $this->assertStringContainsString('name="f[designer]"', $body);
+        $this->assertStringNotContainsString('id="folio-filter-status"', $body);
+    }
+
+    public function test_list_relation_column_shows_labels_and_filters(): void
+    {
+        $this->writeGameType();
+        $dm = $this->dm();
+        $author = $dm->getTypeRegistry()->get('author');
+        $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($author, ['uuid' => 'a1', 'name' => 'Ada <Lovelace>']), validate: false);
+        $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($author, ['uuid' => 'a2', 'name' => 'Bob']), validate: false);
+        $this->seedGames([['title' => 'First', 'designer' => 'a1'], ['title' => 'Second', 'designer' => 'a2']]);
+
+        $body = (string) $this->get('/folio/game')->getBody();
+        $this->assertStringContainsString('<td>Ada &lt;Lovelace&gt;</td>', $body);
+        $this->assertStringContainsString('<option value="a1">Ada &lt;Lovelace&gt;</option>', $body); // ≤ 200 targets: a select
+
+        $filtered = (string) $this->get('/folio/game?f%5Bdesigner%5D=a2')->getBody();
+        $this->assertStringContainsString('Designer: Bob', $filtered);
+        $this->assertStringNotContainsString('First', $filtered);
+    }
+
+    public function test_list_sorts_by_header(): void
+    {
+        $this->writeGameType();
+        $this->seedGames([['title' => 'Beta'], ['title' => 'Alpha'], ['title' => 'Gamma']]);
+
+        $asc = (string) $this->get('/folio/game?sort=title')->getBody();
+        $this->assertLessThan(strpos($asc, 'Beta'), strpos($asc, 'Alpha'));
+        $this->assertMatchesRegularExpression('#<th aria-sort="ascending"><a class="folio-sort" href="/folio/game\?sort=-title">Title#', $asc);
+
+        $desc = (string) $this->get('/folio/game?sort=-title')->getBody();
+        $this->assertLessThan(strpos($desc, 'Beta'), strpos($desc, 'Gamma'));
+        $this->assertStringContainsString('aria-sort="descending"', $desc);
+    }
+
+    public function test_list_without_matches_offers_to_clear(): void
+    {
+        $this->writeGameType();
+        $this->seedGames([['title' => 'Alpha']]);
+
+        $body = (string) $this->get('/folio/game?q=zzz&sort=-title')->getBody();
+
+        $this->assertStringContainsString('No matches', $body);
+        $this->assertStringContainsString('href="/folio/game?sort=-title">Clear search and filters</a>', $body);
+        $this->assertStringNotContainsString('No games yet', $body);
+        $this->assertStringContainsString('data-folio-list-search', $body); // the search box stays
+    }
+
+    public function test_empty_list_has_no_search_box(): void
+    {
+        $this->writeGameType();
+
+        $body = (string) $this->get('/folio/game?q=x')->getBody();
+
+        $this->assertStringContainsString('No games yet', $body);
+        $this->assertStringNotContainsString('data-folio-list-search', $body);
+    }
+
+    public function test_list_partial_renders_only_the_results(): void
+    {
+        $this->writeGameType();
+        $this->seedGames([['title' => 'Night'], ['title' => 'Day']]);
+
+        $body = (string) $this->get('/folio/game?q=night&_partial=1')->getBody();
+
+        $this->assertStringNotContainsString('<html', $body);
+        $this->assertStringNotContainsString('data-folio-list-search', $body);
+        $this->assertStringContainsString('<mark>Night</mark>', $body);
+        $this->assertStringNotContainsString('>Day<', $body);
+        $this->assertStringNotContainsString('_partial', $body); // links never carry the flag
+    }
+
+    public function test_list_hides_move_buttons_while_sorted_or_searched(): void
+    {
+        $this->writeItemType(['orderable' => true, 'columns' => ['title']]);
+        $this->postItem(['title' => 'A item']);
+        $this->postItem(['title' => 'B item']);
+
+        $this->assertStringContainsString('aria-label="Move up"', (string) $this->get('/folio/item')->getBody());
+        $this->assertStringNotContainsString('aria-label="Move up"', (string) $this->get('/folio/item?sort=title')->getBody());
+        $this->assertStringNotContainsString('aria-label="Move up"', (string) $this->get('/folio/item?q=item')->getBody());
+    }
+
+    public function test_move_returns_to_the_page_it_was_made_on(): void
+    {
+        $this->writeItemType(['orderable' => true]);
+        $this->postItem(['title' => 'A item']);
+        $this->postItem(['title' => 'B item']);
+        $id = $this->itemId('B item');
+
+        $res = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/item/' . $id . '/move')
+            ->withParsedBody(['direction' => 'up', 'page' => '2']));
+
+        $this->assertSame('/folio/item?page=2', $res->getHeaderLine('Location'));
+    }
+
+    /** A "game" type: searchable title, a status select and a designer relation, both list filters. */
+    private function writeGameType(): void
+    {
+        file_put_contents($this->dir . '/config/models/game.json', json_encode([
+            'key' => 'game', 'table' => 'game', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Games',
+            'fields' => [
+                'title' => ['type' => 'string', 'searchable' => true, 'validate' => ['required']],
+                'status' => ['type' => 'select', 'options' => ['soon' => 'Coming soon', 'out' => 'Available']],
+                'designer' => ['type' => 'relation', 'relation' => ['to' => 'author']],
+            ],
+            'list' => ['columns' => ['title', 'designer', 'status'], 'filters' => ['status', 'designer']],
+        ]));
+    }
+
+    /** @param list<array<string, string>> $games */
+    private function seedGames(array $games): void
+    {
+        $dm = $this->dm();
+        $def = $dm->getTypeRegistry()->get('game');
+        foreach ($games as $i => $game) {
+            $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => sprintf('g%03d', $i)] + $game), validate: false);
+        }
     }
 
     private function app(): Application
