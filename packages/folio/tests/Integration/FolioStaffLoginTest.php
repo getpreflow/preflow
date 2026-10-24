@@ -450,6 +450,61 @@ final class FolioStaffLoginTest extends TestCase
         $this->assertStringNotContainsString('/folio/_account', $this->html('/folio'));
     }
 
+    #[RunInSeparateProcess]
+    public function test_a_password_change_racing_a_disable_keeps_the_account_disabled(): void
+    {
+        $ada = $this->makeStaff(); // read before the disable, as a request that started earlier holds it
+        $disabled = $this->staff('ada@site.test');
+        $disabled->set('active', false);
+        $disabled->set('auth_epoch', '1');
+        $this->dm()->saveType($disabled, false);
+
+        $saved = $this->flow->container()->get(StaffPasswords::class)->setPassword($ada, 'a brand new password');
+
+        $this->assertFalse($saved, 'refused: the account is inactive now');
+        $stored = $this->staff('ada@site.test');
+        $this->assertFalse((bool) $stored->get('active'), 'stays disabled');
+        $this->assertSame('1', (string) $stored->get('auth_epoch'));
+        $this->assertTrue(password_verify(self::PASSWORD, (string) $stored->get('password_hash')), 'the password is unchanged');
+        $this->assertSame('/folio/login', $this->post('/folio/login', ['email' => 'ada@site.test', 'password' => 'a brand new password'])->getHeaderLine('Location'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_new_password_is_saved_on_the_record_as_stored_now(): void
+    {
+        $ada = $this->makeStaff();
+        $changed = $this->staff('ada@site.test');
+        $changed->set('roles', 'editor');
+        $this->dm()->saveType($changed, false);
+
+        $this->assertTrue($this->flow->container()->get(StaffPasswords::class)->setPassword($ada, 'a brand new password'));
+
+        $stored = $this->staff('ada@site.test');
+        $this->assertSame('editor', $stored->get('roles'), 'the stale copy did not write its roles back');
+        $this->assertSame('1', (string) $stored->get('auth_epoch'));
+        $this->assertTrue(password_verify('a brand new password', (string) $stored->get('password_hash')));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_last_login_stamp_does_not_write_back_a_removed_role(): void
+    {
+        $this->makeStaff();
+        $passwords = $this->flow->container()->get(StaffPasswords::class);
+        $user = $passwords->account($this->staff('ada@site.test')); // read at sign-in
+        $this->assertNotNull($user);
+        $demoted = $this->staff('ada@site.test');
+        $demoted->set('roles', '');
+        $demoted->set('active', false);
+        $this->dm()->saveType($demoted, false);
+
+        $passwords->stampLogin($user);
+
+        $stored = $this->staff('ada@site.test');
+        $this->assertSame('', (string) $stored->get('roles'), 'the role stays removed');
+        $this->assertFalse((bool) $stored->get('active'), 'the account stays disabled');
+        $this->assertNotSame('', (string) $stored->get('last_login_at'), 'stamped all the same');
+    }
+
     private function makeStaffTableWithoutStamp(): void
     {
         $this->dm()->execute('CREATE TABLE "staff" ("uuid" TEXT PRIMARY KEY, "email" TEXT, "name" TEXT, "password_hash" TEXT, "roles" TEXT, "active" INTEGER, "auth_epoch" TEXT)', [], 'sqlite');

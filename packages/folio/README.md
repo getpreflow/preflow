@@ -173,12 +173,13 @@ manage the accounts (preflow/rbac). It works for any record user type of the def
 - `invite()`: a link valid for 7 days, voiding earlier invites.
 - `sendReset()`: a link valid for 1 hour.
 - `consume()`
-- `setPassword()`
+- `setPassword()`: saves on the record as stored now (only the password and epoch); false,
+  with nothing saved, when the account is disabled or gone meanwhile.
 - `verify()`
 - `revokeLinks()`
 - `forgetDevices()`
 - `account()`
-- `stampLogin()`
+- `stampLogin()`: only `last_login_at`, on the record as stored now.
 
 Records are saved without hooks or revisions.
 

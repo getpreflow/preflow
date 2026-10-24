@@ -104,19 +104,32 @@ final class StaffPasswords
         return null;
     }
 
-    /** Hashes and saves the password, bumps the epoch, revokes the account's remember-me rows and links. */
-    public function setPassword(DynamicRecord $user, string $password): void
+    /**
+     * Hashes and saves the password, bumps the epoch, revokes the account's remember-me rows and
+     * links. Saved on the record as stored now (read again after the hash), with only the password
+     * and epoch changed: a stale copy must not write back a Disable or a role change made meanwhile.
+     * False, with nothing saved, when the account no longer resolves (disabled or gone).
+     */
+    public function setPassword(DynamicRecord $user, string $password): bool
     {
         $provider = $this->require($user);
         $fields = $provider->fields();
-        $user->set($fields['password'], $this->hasher->hash($password));
-        if (isset($user->getType()->fields[$fields['epoch']])) {
-            $user->set($fields['epoch'], (string) ((int) $user->get($fields['epoch']) + 1));
+        $hash = $this->hasher->hash($password);
+        $fresh = $provider->findById((string) $user->getId());
+        if (!$fresh instanceof RecordUser) {
+            return false;
         }
-        $this->dm->saveType($user, false);
+        $record = $fresh->record();
+        $record->set($fields['password'], $hash);
+        if (isset($record->getType()->fields[$fields['epoch']])) {
+            $record->set($fields['epoch'], (string) ((int) $record->get($fields['epoch']) + 1));
+        }
+        $this->dm->saveType($record, false);
 
-        $this->forgetDevices($user);
-        $this->revokeLinks($user);
+        $this->forgetDevices($record);
+        $this->revokeLinks($record);
+
+        return true;
     }
 
     /** Voids the account's invite and reset links (a disabled account's links must not work once it is enabled again). */
@@ -161,6 +174,12 @@ final class StaffPasswords
             return;
         }
         try {
+            // On the record as stored now, only the stamp: the copy read at sign-in must not write
+            // back a role removed or a Disable made meanwhile.
+            $record = $this->dm->findType($record->getType()->key, (string) $record->getId());
+            if ($record === null) {
+                return; // deleted meanwhile: nothing to stamp
+            }
             $record->set($field, (new \DateTimeImmutable())->format(DATE_ATOM));
             $this->dm->saveType($record, false);
         } catch (\Throwable) {

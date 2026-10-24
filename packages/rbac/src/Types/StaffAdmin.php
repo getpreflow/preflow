@@ -165,6 +165,10 @@ final class StaffAdmin
     #[RecordAction(name: 'disable', label: 'Disable', permission: self::PERMISSION, toolbar: false)]
     public function disable(DynamicRecord $staff, ServerRequestInterface $request): ResponseInterface
     {
+        $staff = $this->fresh($staff);
+        if ($staff === null) {
+            return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], 'Not found'); // deleted meanwhile
+        }
         $staff->set('active', false);
         if (($refused = $this->refused($staff)) !== null) {
             return $this->back($request, $staff, 'error', $refused);
@@ -179,6 +183,10 @@ final class StaffAdmin
     #[RecordAction(name: 'enable', label: 'Enable', permission: self::PERMISSION, toolbar: false)]
     public function enable(DynamicRecord $staff, ServerRequestInterface $request): ResponseInterface
     {
+        $staff = $this->fresh($staff);
+        if ($staff === null) {
+            return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], 'Not found'); // deleted meanwhile
+        }
         $staff->set('active', true);
         if (($refused = $this->refused($staff)) !== null) {
             return $this->back($request, $staff, 'error', $refused);
@@ -186,6 +194,16 @@ final class StaffAdmin
         $this->dm->saveType($staff, false);
 
         return $this->back($request, $staff, 'success', $this->messages->get('staff.enabled'));
+    }
+
+    /**
+     * The account as stored now: Disable and Enable change only `active` (and the epoch) of it, so a
+     * copy read earlier in the request doesn't write back a role removed or a password changed
+     * meanwhile. Null when the account was deleted meanwhile.
+     */
+    private function fresh(DynamicRecord $staff): ?DynamicRecord
+    {
+        return $this->dm->findType(StaffManagers::TYPE, (string) $staff->getId());
     }
 
     /** A new epoch ends the account's live sessions (for good: enabling it again doesn't bring them back). */

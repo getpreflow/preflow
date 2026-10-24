@@ -338,6 +338,38 @@ final class StaffLifecycleTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_disable_and_enable_change_only_active_and_the_epoch_of_the_record_as_stored_now(): void
+    {
+        $this->lifecycleSite();
+        $admin = $this->container()->get(\Preflow\Rbac\Types\StaffAdmin::class);
+        $request = (new Psr17Factory())->createServerRequest('POST', '/folio/staff/s-help/_action/disable');
+        $stale = $this->stored('staff', 's-help'); // read when the action's request began
+        $meanwhile = $this->stored('staff', 's-help');
+        $meanwhile->set('roles', []); // a role removed by another request
+        $meanwhile->set('auth_epoch', '3'); // and a password changed
+        $this->container()->get(DataManager::class)->saveType($meanwhile, false);
+
+        $admin->disable($stale, $request);
+
+        $stored = $this->stored('staff', 's-help');
+        $this->assertFalse(\Preflow\Rbac\StaffManagers::active($stored?->get('active')));
+        $this->assertSame([], \Preflow\Rbac\StaffManagers::account($stored)['roles'], 'the removed role stays removed');
+        $this->assertSame('4', (string) $stored?->get('auth_epoch'), 'the epoch goes up from the stored one');
+
+        $stale = $this->stored('staff', 's-help');
+        $meanwhile = $this->stored('staff', 's-help');
+        $meanwhile->set('name', 'Renamed');
+        $this->container()->get(DataManager::class)->saveType($meanwhile, false);
+
+        $admin->enable($stale, $request);
+
+        $stored = $this->stored('staff', 's-help');
+        $this->assertTrue(\Preflow\Rbac\StaffManagers::active($stored?->get('active')));
+        $this->assertSame('Renamed', $stored?->get('name'), 'the stale copy did not write back');
+        $this->assertSame('4', (string) $stored?->get('auth_epoch'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_every_action_on_an_account_above_you_is_refused(): void
     {
         $this->lifecycleSite(twoManagers: true);

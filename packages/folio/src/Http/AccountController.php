@@ -73,7 +73,9 @@ final class AccountController
         }
 
         // Only the password: the record as stored, nothing from the form but the new password.
-        $this->passwords->setPassword($record, $password);
+        if (!$this->passwords->setPassword($record, $password)) {
+            return self::notFound(); // disabled meanwhile: as if the account were gone
+        }
         $fresh = $this->passwords->account($record);
         if ($fresh !== null) {
             $this->auth->guard()->login($fresh, $request);

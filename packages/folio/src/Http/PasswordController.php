@@ -99,7 +99,9 @@ final class PasswordController
             return $this->expiredPage();
         }
         // The new password ends the account's other sessions; this browser signs in afresh.
-        $this->passwords->setPassword($account, $password);
+        if (!$this->passwords->setPassword($account, $password)) {
+            return $this->expiredPage(); // disabled since the link was used up: the same answer
+        }
         $user = $this->passwords->account($account);
         if ($user === null) {
             return $this->expiredPage();
