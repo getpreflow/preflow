@@ -1,4 +1,5 @@
-{# The swappable part of a list: chips, table and pager. Rendered alone for ?_partial=1 (admin.js). #}
+{# The swappable part of a list: chips, table and pager. Rendered alone for ?_partial=1 (admin.js).
+   row.cells: plain text (escape it); row.marked: the same text as escaped HTML with search matches in <mark>. #}
 {% set may = {create: can(type ~ '.create'), edit: can(type ~ '.edit'), delete: can(type ~ '.delete')} %}
 {% set icons = folio_asset('icons.svg') %}
 {% if list.chips is not empty %}
@@ -38,7 +39,7 @@
             {% set up_disabled = loop.first and list.page == 1 %}
             {% set down_disabled = loop.last and list.page == list.last_page %}
             <tr>
-                {% for name, heading in columns %}<td>{% if loop.first %}<a class="folio-row-link" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">{{ (row.cells[name] ?: '(untitled)')|raw }}</a>{% else %}{{ row.cells[name]|raw }}{% endif %}</td>{% endfor %}{% for cell in row.extra|default([]) %}<td>{% if cell is iterable %}<span class="folio-badge{% if cell.tone %} is-{{ cell.tone }}{% endif %}">{{ cell.label }}</span>{% else %}{{ cell }}{% endif %}</td>{% endfor %}
+                {% for name, heading in columns %}<td>{% if loop.first %}<a class="folio-row-link" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">{% if row.marked[name] != '' %}{{ row.marked[name]|raw }}{% else %}(untitled){% endif %}</a>{% else %}{{ row.marked[name]|raw }}{% endif %}</td>{% endfor %}{% for cell in row.extra|default([]) %}<td>{% if cell is iterable %}<span class="folio-badge{% if cell.tone %} is-{{ cell.tone }}{% endif %}">{{ cell.label }}</span>{% else %}{{ cell }}{% endif %}</td>{% endfor %}
                 {% if multilingual|default(false) %}<td>{% for badge in row.languages %}<span class="folio-badge{% if 'missing' in badge %} is-incomplete{% endif %}">{{ badge }}</span> {% endfor %}</td>{% endif %}
                 {% if publishing|default(false) %}<td><span class="folio-badge is-{{ row.state.value }}">{{ row.state.label() }}</span></td>{% endif %}
                 <td>

@@ -23,6 +23,8 @@ final class ListView
      * @param array<string, mixed>  $listConfig the type's "list" block
      * @param array<string, string> $columns    field => header label
      * @param \Closure(string): bool $canView   may the admin view records of this type (relation filters)
+     * @param bool                   $withFilterMenu false: leave the "+ Filter" entries out (and their option queries),
+     *                                               for renders that never show the menu (the results partial)
      * @return array<string, mixed>
      */
     public static function build(
@@ -34,6 +36,7 @@ final class ListView
         string $base,
         RelationLabels $relations,
         \Closure $canView,
+        bool $withFilterMenu = true,
     ): array {
         $params = $query->query();
         unset($params['page']);
@@ -67,6 +70,9 @@ final class ListView
                     'name' => $label,
                     'remove' => $href($without),
                 ];
+                continue;
+            }
+            if (!$withFilterMenu) {
                 continue;
             }
 

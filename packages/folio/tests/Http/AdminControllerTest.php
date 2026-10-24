@@ -384,7 +384,8 @@ final class AdminControllerTest extends TestCase
 
         $context = json_decode(substr($body, strlen('@folio/admin/list.twig|')), true);
         $this->assertSame(['a'], array_column($context['rows'], 'id'));
-        $this->assertSame('<mark>Alp</mark>ha', $context['rows'][0]['cells']['title']);
+        $this->assertSame('Alpha', $context['rows'][0]['cells']['title']);
+        $this->assertSame('<mark>Alp</mark>ha', $context['rows'][0]['marked']['title']);
     }
 
     public function test_list_partial_renders_only_the_results_template(): void
@@ -394,5 +395,59 @@ final class AdminControllerTest extends TestCase
         )->getBody();
 
         $this->assertStringStartsWith('@folio/admin/_list_results.twig|', $body);
+    }
+
+    public function test_partial_render_does_not_load_relation_filter_options(): void
+    {
+        file_put_contents($this->base . '/m/tag.json', json_encode([
+            'key' => 'tag', 'table' => 'tag', 'storage' => 'json', 'id_field' => 'uuid', 'fields' => ['name' => ['type' => 'string']],
+        ]));
+        file_put_contents($this->base . '/m/post.json', json_encode([
+            'key' => 'post', 'table' => 'post', 'storage' => 'json', 'id_field' => 'uuid',
+            'fields' => ['title' => ['type' => 'string'], 'tag' => ['type' => 'relation', 'relation' => ['to' => 'tag']]],
+            'list' => ['filters' => ['tag']],
+        ]));
+        $calls = new \ArrayObject();
+        $inner = new JsonFileDriver($this->base . '/s');
+        $driver = new class ($inner, $calls) implements \Preflow\Data\StorageDriver {
+            public function __construct(private \Preflow\Data\StorageDriver $inner, private \ArrayObject $calls) {}
+            public function findOne(string $type, string|int $id, string $idField = 'uuid'): ?array { return $this->inner->findOne($type, $id, $idField); }
+            public function findMany(string $type, \Preflow\Data\Query $query): \Preflow\Data\ResultSet
+            {
+                $this->calls[$type] = ($this->calls[$type] ?? 0) + 1;
+
+                return $this->inner->findMany($type, $query);
+            }
+            public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void { $this->inner->save($type, $id, $data, $idField); }
+            public function delete(string $type, string|int $id, string $idField = 'uuid'): void { $this->inner->delete($type, $id, $idField); }
+            public function exists(string $type, string|int $id, string $idField = 'uuid'): bool { return $this->inner->exists($type, $id, $idField); }
+            public function lastInsertId(): string|int { return $this->inner->lastInsertId(); }
+            public function rawQuery(string $sql, array $bindings = []): array { return $this->inner->rawQuery($sql, $bindings); }
+        };
+        $this->registry = new TypeRegistry($this->base . '/m');
+        $this->dm = new DataManager(['json' => $driver], 'json', $this->registry, new ValidatorFactory(new RuleFactory()));
+        $this->dm->saveType(\Preflow\Data\DynamicRecord::fromArray($this->registry->get('post'), ['uuid' => 'p1', 'title' => 'Hello']), validate: false);
+        $request = static fn (array $q) => (new Psr17Factory())->createServerRequest('GET', '/folio/post')->withQueryParams($q)->withAttribute('type', 'post');
+
+        $calls->exchangeArray([]);
+        $this->controllerWith($this->capturingEngine())->list($request(['sort' => 'title', '_partial' => '1'])); // no q: search itself looks into relation targets
+        $this->assertArrayNotHasKey('tag', $calls->getArrayCopy());
+
+        $calls->exchangeArray([]);
+        $this->controllerWith($this->capturingEngine())->list($request(['sort' => 'title']));
+        $this->assertSame(1, $calls['tag'] ?? 0); // the full page lists the filter's options
+    }
+
+    public function test_list_cells_stay_plain_text_and_marked_html_is_separate(): void
+    {
+        $this->dm->saveType(\Preflow\Data\DynamicRecord::fromArray($this->registry->get('page'), ['uuid' => 'a', 'title' => 'Tom & Jerry', 'slug' => 'a']), validate: false);
+
+        $body = (string) $this->controllerWith($this->capturingEngine())->list(
+            (new Psr17Factory())->createServerRequest('GET', '/folio/page')->withQueryParams(['q' => 'jerry'])->withAttribute('type', 'page'),
+        )->getBody();
+
+        $context = json_decode(substr($body, strlen('@folio/admin/list.twig|')), true);
+        $this->assertSame('Tom & Jerry', $context['rows'][0]['cells']['title']);
+        $this->assertSame('Tom &amp; <mark>Jerry</mark>', $context['rows'][0]['marked']['title']);
     }
 }

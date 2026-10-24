@@ -136,6 +136,7 @@ final class AdminController
         foreach ($records as $record) {
             $localized = $record->localized($typeDef->locales->default);
             $cells = [];
+            $marked = [];
             foreach ($columns as $name => $label) {
                 $fieldDef = $typeDef->fields[$name];
                 if (isset($relationLabels[$name])) {
@@ -150,12 +151,14 @@ final class AdminController
                     // Plain text: list cells never render field HTML (e.g. rich text) raw.
                     $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
                 }
-                // Escaped HTML with the search words marked; empty stays empty (the template's "(untitled)").
-                $cells[$name] = $text === '' ? '' : Highlighter::html($text, $query->q);
+                // cells: plain text (Twig escapes it); marked: escaped HTML with the search words in <mark>.
+                $cells[$name] = $text;
+                $marked[$name] = $text === '' ? '' : Highlighter::html($text, $query->q);
             }
             $rows[] = [
                 'id' => $record->getId(),
                 'cells' => $cells,
+                'marked' => $marked,
                 // Extension columns (#[ListColumn]): plain text, or a Badge; both escaped by the template.
                 'extra' => array_map(static function (array $column) use ($record): string|array {
                     $value = ($column['callable'])($record);
@@ -167,6 +170,7 @@ final class AdminController
             ];
         }
 
+        $partial = ($request->getQueryParams()['_partial'] ?? null) === '1';
         $list = ListView::build(
             $query,
             $typeDef,
@@ -176,12 +180,12 @@ final class AdminController
             $this->prefix . '/' . $type,
             $relations,
             fn (string $target): bool => $this->can($target . '.view'),
+            withFilterMenu: !$partial, // the partial (each keystroke) never shows the menu: skip its option queries
         );
         // "No … yet" only when the type has no records at all; a search without hits says so instead.
         $hasRecords = $rows !== [] || ($list['filtered'] && $this->dm->queryType($type)->limit(1)->get()->items() !== []);
 
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
-        $partial = ($request->getQueryParams()['_partial'] ?? null) === '1';
 
         return $this->html($this->engine->render($partial ? '@folio/admin/_list_results.twig' : '@folio/admin/list.twig', [
             'prefix' => $this->prefix,
