@@ -448,4 +448,26 @@ final class RecordDeleterTest extends TestCase
 
         $this->assertSame('["d2"]', $stored['p2']);
     }
+
+    public function test_ids_that_are_unknown_or_of_another_type_are_never_planned(): void
+    {
+        $this->boot();
+        $this->seedWorld();
+        // A dangling pointer to an id that has no record: deleting "ghost" must not "detach" it.
+        $this->seed('page', 'p3', ['title' => 'Dangling', 'designers' => '["ghost","d2"]']);
+
+        $plan = $this->deleter()->plan('designer', ['ghost', 'g1']); // g1 is a game, not a designer
+        $this->assertSame([], array_filter($plan->deletes()));
+        $this->assertSame([], $plan->detaches());
+        $this->assertSame([], $this->deleter()->summary($plan)['lines']);
+
+        $this->deleter()->delete('designer', ['ghost', 'g1']);
+        $this->assertSame([], $this->log);
+        $this->assertSame('["ghost","d2"]', $this->stored('page', 'p3')['designers']);
+        $this->assertNotNull($this->stored('game', 'g1'));
+
+        // Known ids among unknown ones are planned (once, however often they are posted).
+        $mixed = $this->deleter()->plan('designer', ['ghost', 'd2', 'd2']);
+        $this->assertSame(['d2'], $mixed->deletes()['designer'] ?? null);
+    }
 }

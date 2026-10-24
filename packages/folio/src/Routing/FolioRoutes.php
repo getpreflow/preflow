@@ -61,6 +61,8 @@ final class FolioRoutes
             ['GET',  $prefix . '/{type}',              'list'],
             ['GET',  $prefix . '/{type}/new',          'createForm'],
             ['POST', $prefix . '/{type}/_delete-plan', 'deletePlan'], // before {type}/{id}
+            ['POST', $prefix . '/{type}/_bulk/delete', 'bulkDelete'], // before _bulk/{name} and {type}/{id}/delete
+            ['POST', $prefix . '/{type}/_bulk/{name}', 'bulkAction'], // before the {type}/{id}/… routes
             ['POST', $prefix . '/{type}/preview',      'preview', self::PREVIEW],
             ['POST', $prefix . '/{type}',              'store'],
             ['GET',  $prefix . '/{type}/{id}/edit',    'editForm'],

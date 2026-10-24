@@ -36,7 +36,11 @@ final class CustomizationTest extends TestCase
                 'name' => ['type' => 'string', 'validate' => ['required']],
                 'email' => ['type' => 'string'],
                 'status' => ['type' => 'string'],
+                'stage' => ['type' => 'select', 'options' => ['lead' => 'Lead', 'customer' => 'Customer']],
+                'vip' => ['type' => 'boolean'],
             ],
+            // name (a string) and email (not select/boolean) are no bulk fields: ignored.
+            'list' => ['bulk' => ['stage', 'vip', 'name']],
         ]);
         $hash = password_hash('secret', PASSWORD_DEFAULT);
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
@@ -46,6 +50,8 @@ final class CustomizationTest extends TestCase
                 ['email' => 'admin@site.test', 'password_hash' => $hash, 'roles' => ['admin']],
                 ['email' => 'editor@site.test', 'password_hash' => $hash, 'roles' => ['editor']],
                 ['email' => 'approver@site.test', 'password_hash' => $hash, 'roles' => ['approver']],
+                ['email' => 'viewer@site.test', 'password_hash' => $hash, 'roles' => ['viewer']],
+                ['email' => 'remover@site.test', 'password_hash' => $hash, 'roles' => ['remover']],
             ]]],
             'session' => ['cookie' => 'folio_custom_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
@@ -53,6 +59,8 @@ final class CustomizationTest extends TestCase
             'admin' => ['*'],
             'editor' => ['folio.dashboard', 'contact.view', 'contact.edit'],
             'approver' => ['folio.dashboard', 'contact.view', 'crm.approve'],
+            'viewer' => ['folio.dashboard', 'contact.view'],
+            'remover' => ['folio.dashboard', 'contact.view', 'contact.delete'],
         ]], true) . ";\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Roles\\RolesServiceProvider::class];\n");
 
@@ -359,6 +367,257 @@ final class CustomizationTest extends TestCase
         $this->assertSame([], \App\Folio\Crm\Log::$entries);
     }
 
+    #[RunInSeparateProcess]
+    public function test_bulk_set_field_saves_each_record_and_reports_the_ones_that_fail(): void
+    {
+        $this->crm();
+        $this->as('admin');
+        $this->seed('contact', 'c1', ['name' => 'Ada', 'email' => 'ada@x.org', 'stage' => 'lead']);
+        $this->seed('contact', 'c2', ['name' => 'Bob', 'email' => 'bob@x.org', 'stage' => 'lead']);
+        $this->seed('contact', 'c3', ['name' => 'Cy', 'email' => '', 'stage' => 'lead']);
+
+        $res = $this->send('POST', '/folio/contact/_bulk/set-stage', [
+            'ids' => ['c1', 'c2', 'c3', 'nope'], 'value' => 'customer', '_query' => 'q=x&sort=-name&page=2&bogus=1',
+        ]);
+        $this->assertSame(302, $res->getStatusCode());
+        // Back to the same view: only the list's own parameters, re-read and rebuilt.
+        $this->assertSame('/folio/contact?q=x&sort=-name&page=2', $res->getHeaderLine('Location'));
+        $this->assertSame('customer', $this->stored('contact', 'c1')?->get('stage'));
+        $this->assertSame('customer', $this->stored('contact', 'c2')?->get('stage'));
+        $this->assertSame('lead', $this->stored('contact', 'c3')?->get('stage'), 'refused by its BeforeSave');
+        // The form's save path: BeforeSave (lower-cases the email), then AfterSave, per saved record.
+        $this->assertSame(['before:contact:Ada', 'after:contact:stored=Ada', 'before:contact:Bob', 'after:contact:stored=Bob'], \App\Folio\Crm\Log::$entries);
+
+        $list = (string) $this->send('GET', '/folio/contact')->getBody();
+        $this->assertStringContainsString('<div class="folio-alert folio-alert-error" role="alert">Set Stage: done (2). 1 failed: Cy — Customers need an email.</div>', $list);
+
+        $this->send('POST', '/folio/contact/_bulk/set-vip', ['ids' => ['c1'], 'value' => '1']);
+        $this->assertTrue((new \Preflow\Folio\Field\Types\BooleanFieldType())->fromStorage($this->stored('contact', 'c1')?->get('vip')));
+        $this->assertStringContainsString('<div class="folio-alert folio-alert-success" role="status">Set Vip: done (1)</div>', (string) $this->send('GET', '/folio/contact')->getBody());
+
+        // Only the select's options, '1'/'0' for a boolean; only bulk fields that are select or boolean.
+        $this->assertSame(422, $this->send('POST', '/folio/contact/_bulk/set-stage', ['ids' => ['c1'], 'value' => 'boss'])->getStatusCode());
+        $this->assertSame(422, $this->send('POST', '/folio/contact/_bulk/set-stage', ['ids' => ['c1']])->getStatusCode());
+        $this->assertSame(422, $this->send('POST', '/folio/contact/_bulk/set-vip', ['ids' => ['c1'], 'value' => 'yes'])->getStatusCode());
+        $this->assertSame(404, $this->send('POST', '/folio/contact/_bulk/set-name', ['ids' => ['c1'], 'value' => 'x'])->getStatusCode());
+        $this->assertSame(404, $this->send('POST', '/folio/contact/_bulk/set-email', ['ids' => ['c1'], 'value' => 'x'])->getStatusCode());
+        $this->assertSame(404, $this->send('POST', '/folio/contact/_bulk/unknown', ['ids' => ['c1']])->getStatusCode());
+        $this->assertSame(404, $this->send('POST', '/folio/ghost/_bulk/delete', ['ids' => ['c1']])->getStatusCode());
+        $this->assertSame('customer', $this->stored('contact', 'c1')?->get('stage'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_bulk_set_field_on_a_publishing_type_changes_the_working_copy(): void
+    {
+        $this->writeModel('note', [
+            'label' => 'Notes',
+            'publishing' => true,
+            'fields' => [
+                'name' => ['type' => 'string', 'validate' => ['required']],
+                'mood' => ['type' => 'select', 'options' => ['calm', 'busy']],
+            ],
+            'list' => ['bulk' => ['mood']],
+        ]);
+        $this->crm();
+        $this->as('admin');
+        $this->seed('note', 'n1', ['name' => 'First', 'mood' => 'calm']);
+        $this->send('POST', '/folio/note/n1', ['name' => 'First', 'mood' => 'calm', '_action' => 'publish']);
+        \App\Folio\Crm\Log::$entries = [];
+
+        $this->assertSame(302, $this->send('POST', '/folio/note/_bulk/set-mood', ['ids' => ['n1'], 'value' => 'busy'])->getStatusCode());
+
+        $this->assertSame('busy', $this->stored('note', 'n1')?->get('mood'));
+        $this->assertSame('First (checked) (checked)', $this->stored('note', 'n1')?->get('name'));
+        $this->assertSame('calm', $this->session->container()->get(\Preflow\Folio\Publishing\Publisher::class)->snapshot('note', 'n1')?->get('mood'));
+        $this->assertSame(['note-after:First (checked) (checked)'], \App\Folio\Crm\Log::$entries);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_bulk_extension_action_receives_the_records(): void
+    {
+        $this->crm();
+        $this->as('admin');
+        $this->seed('contact', 'c1', ['name' => 'Ada', 'status' => 'new']);
+        $this->seed('contact', 'c2', ['name' => 'Bob', 'status' => 'new']);
+        $this->seed('note', 'n1', ['name' => 'A note']);
+
+        $res = $this->send('POST', '/folio/contact/_bulk/tag', ['ids' => ['c2', 'n1', 'c1', 'nope', 'c2']]);
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame('/folio/contact', $res->getHeaderLine('Location'));
+        // Records of this type only, each once, in the order posted.
+        $this->assertSame(['tag:c2', 'tag:c1'], \App\Folio\Crm\Log::$entries);
+        $this->assertSame('tagged', $this->stored('contact', 'c1')?->get('status'));
+        $this->assertStringContainsString('<div class="folio-alert folio-alert-success" role="status">Tag: done (2)</div>', (string) $this->send('GET', '/folio/contact')->getBody());
+
+        // Nothing (left) to act on, or too many ids.
+        $this->assertSame(422, $this->send('POST', '/folio/contact/_bulk/tag', ['ids' => ['nope']])->getStatusCode());
+        $this->assertSame(422, $this->send('POST', '/folio/contact/_bulk/tag', [])->getStatusCode());
+        $many = array_map(static fn (int $i): string => 'x' . $i, range(1, 501));
+        $this->assertSame(422, $this->send('POST', '/folio/contact/_bulk/tag', ['ids' => $many])->getStatusCode());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_bulk_delete_goes_through_the_delete_plan(): void
+    {
+        $this->crm();
+        $this->as('admin');
+        $this->seed('contact', 'c1', ['name' => 'Ada', 'status' => 'locked']);
+        $this->seed('contact', 'c2', ['name' => 'Bob']);
+        $this->seed('contact', 'c3', ['name' => 'Cy']);
+
+        // One BeforeDelete refuses: nothing is deleted, the reason is shown.
+        $res = $this->send('POST', '/folio/contact/_bulk/delete', ['ids' => ['c1', 'c2'], '_query' => 'q=b']);
+        $this->assertSame('/folio/contact?q=b', $res->getHeaderLine('Location'));
+        $this->assertNotNull($this->stored('contact', 'c2'));
+        $this->assertStringContainsString('<div class="folio-alert folio-alert-error" role="alert">Locked contacts stay.</div>', (string) $this->send('GET', '/folio/contact')->getBody());
+
+        $this->send('POST', '/folio/contact/_bulk/delete', ['ids' => ['c2', 'c3', 'nope']]);
+        $this->assertNull($this->stored('contact', 'c2'));
+        $this->assertNull($this->stored('contact', 'c3'));
+        $this->assertSame(['deleted:c2', 'deleted:c3'], \App\Folio\Crm\Log::$entries);
+        $this->assertStringContainsString('<div class="folio-alert folio-alert-success" role="status">Delete: done (2)</div>', (string) $this->send('GET', '/folio/contact')->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_bulk_permissions(): void
+    {
+        $this->crm();
+        $this->seedAs('editor'); // contact.edit, not contact.delete or crm.approve
+        $this->assertSame(403, $this->send('POST', '/folio/contact/_bulk/tag', ['ids' => ['c1']])->getStatusCode());
+        $this->assertSame(403, $this->send('POST', '/folio/contact/_bulk/delete', ['ids' => ['c1']])->getStatusCode());
+        $this->assertSame(302, $this->send('POST', '/folio/contact/_bulk/set-stage', ['ids' => ['c1'], 'value' => 'customer'])->getStatusCode());
+        $this->assertNotNull($this->stored('contact', 'c1'));
+        $this->assertSame('new', $this->stored('contact', 'c1')?->get('status'));
+
+        $this->seedAs('approver'); // crm.approve, not contact.edit
+        $this->assertSame(403, $this->send('POST', '/folio/contact/_bulk/tag', ['ids' => ['c1']])->getStatusCode());
+        $this->assertSame(403, $this->send('POST', '/folio/contact/_bulk/set-stage', ['ids' => ['c1'], 'value' => 'lead'])->getStatusCode());
+        $this->assertSame('customer', $this->stored('contact', 'c1')?->get('stage'));
+
+        $this->seedAs('remover'); // contact.delete only
+        $this->assertSame(403, $this->send('POST', '/folio/contact/_bulk/set-stage', ['ids' => ['c1'], 'value' => 'lead'])->getStatusCode());
+        $this->assertSame(302, $this->send('POST', '/folio/contact/_bulk/delete', ['ids' => ['c1']])->getStatusCode());
+        $this->assertNull($this->stored('contact', 'c1'));
+
+        // CSRF like every POST.
+        $this->seedAs('admin');
+        $res = $this->session->handle((new Psr17Factory())->createServerRequest('POST', '/folio/contact/_bulk/delete')->withParsedBody(['ids' => ['c1']]));
+        $this->assertSame(403, $res->getStatusCode());
+        $this->assertNotNull($this->stored('contact', 'c1'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_list_shows_the_tick_column_and_the_bulk_bar_for_what_the_user_may_do(): void
+    {
+        $this->crm();
+        $this->seedAs('admin');
+        $body = (string) $this->send('GET', '/folio/contact?q=ad')->getBody();
+        $bar = substr($body, (int) strpos($body, 'data-folio-bulk'));
+        $this->assertStringContainsString('<form class="folio-bulk-bar" id="folio-bulk" method="post" data-folio-bulk>', $body);
+        $this->assertStringContainsString('<input type="hidden" name="_query" value="q=ad">', $bar);
+        $this->assertStringContainsString('<span class="folio-bulk-count" data-folio-bulk-count>With selected:</span>', $bar);
+        $this->assertMatchesRegularExpression('#<summary class="btn btn-sm">Set Stage ▾</summary>#', $bar);
+        $this->assertStringContainsString('<button type="submit" class="btn btn-sm" formaction="/folio/contact/_bulk/set-stage" name="value" value="customer">Customer</button>', $bar);
+        $this->assertStringContainsString('formaction="/folio/contact/_bulk/set-vip" name="value" value="0">No</button>', $bar);
+        $this->assertStringNotContainsString('set-name', $bar);
+        $this->assertStringContainsString('<button type="submit" class="btn btn-sm" formaction="/folio/contact/_bulk/tag" data-confirm="Tag these contacts?">Tag</button>', $bar);
+        $this->assertStringContainsString('formaction="/folio/contact/_bulk/delete" data-delete-plan="/folio/contact/_delete-plan" data-confirm="Delete the selected records?">Delete</button>', $bar);
+        $this->assertStringContainsString('<button type="reset" class="btn btn-sm folio-bulk-clear" data-folio-bulk-clear>Clear</button>', $bar);
+        $this->assertStringContainsString('<input type="checkbox" data-folio-bulk-all aria-label="Select all on this page" hidden>', $body);
+        $this->assertStringContainsString('<input type="checkbox" name="ids[]" value="c1" form="folio-bulk" data-folio-bulk-item aria-label="Select Ada">', $body);
+
+        // The partial (search as you type) carries the bar too, so a swap starts a fresh selection.
+        $partial = (string) $this->send('GET', '/folio/contact?q=ad&_partial=1')->getBody();
+        $this->assertStringContainsString('data-folio-bulk>', $partial);
+        $this->assertStringContainsString('value="c1" form="folio-bulk"', $partial);
+
+        // Editor: set fields only (no delete, no Tag without crm.approve).
+        $this->seedAs('editor');
+        $editor = (string) $this->send('GET', '/folio/contact')->getBody();
+        $this->assertStringContainsString('_bulk/set-stage', $editor);
+        $this->assertStringNotContainsString('_bulk/tag', $editor);
+        $this->assertStringNotContainsString('formaction="/folio/contact/_bulk/delete"', $editor);
+
+        // Remover: delete only. Viewer: no tick column, no bar.
+        $this->seedAs('remover');
+        $remover = (string) $this->send('GET', '/folio/contact')->getBody();
+        $this->assertStringContainsString('formaction="/folio/contact/_bulk/delete"', $remover);
+        $this->assertStringNotContainsString('_bulk/set-', $remover);
+        $this->seedAs('viewer');
+        $viewer = (string) $this->send('GET', '/folio/contact')->getBody();
+        $this->assertStringNotContainsString('data-folio-bulk', $viewer);
+        $this->assertStringNotContainsString('name="ids[]"', $viewer);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_duplicate_bulk_action_name_throws(): void
+    {
+        $this->crm();
+        $this->write('app/Folio/Zed/Extension.php', <<<'PHP'
+            <?php
+            namespace App\Folio\Zed;
+            #[\Preflow\Folio\Extension\Attributes\FolioExtension(name: 'zed', label: 'Zed')]
+            final class Extension extends \Preflow\Folio\Extension\Extension {}
+            PHP);
+        $this->write('app/Folio/Zed/Types/MoreContact.php', <<<'PHP'
+            <?php
+            namespace App\Folio\Zed\Types;
+            #[\Preflow\Folio\Extension\Attributes\FolioType('contact')]
+            final class MoreContact
+            {
+                #[\Preflow\Folio\Extension\BulkAction('tag', 'Tag again', 'crm.approve')]
+                public function again(array $records): null { return null; }
+            }
+            PHP);
+        $this->write('config/folio/extensions.json', '{"enabled": {"crm": {"disabled_parts": []}, "zed": {"disabled_parts": []}}}');
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessage('Bulk action "tag" of type "contact" is declared by both App\\Folio\\Crm\\Types\\ContactAdmin::tag and App\\Folio\\Zed\\Types\\MoreContact::again.');
+        $this->app();
+    }
+
+    /** @return array<string, array{string, string, string}> */
+    public static function badBulkActions(): array
+    {
+        return [
+            'delete is Folio\'s' => ['delete', 'crm.approve', 'is reserved'],
+            'export is Folio\'s' => ['export', 'crm.approve', 'is reserved'],
+            'set-… is Folio\'s' => ['set-stage', 'crm.approve', 'is reserved'],
+            'bad name' => ['Bad Name', 'crm.approve', 'must match'],
+            'bad permission' => ['ok', 'nodot', 'permission "nodot"'],
+        ];
+    }
+
+    #[RunInSeparateProcess]
+    #[\PHPUnit\Framework\Attributes\DataProvider('badBulkActions')]
+    public function test_bulk_action_names_and_permissions_are_validated(string $name, string $permission, string $message): void
+    {
+        $this->crm();
+        $this->write('app/Folio/Crm/Types/NoteAdmin.php', <<<PHP
+            <?php
+            namespace App\\Folio\\Crm\\Types;
+            #[\\Preflow\\Folio\\Extension\\Attributes\\FolioType('note')]
+            final class NoteAdmin
+            {
+                #[\\Preflow\\Folio\\Extension\\BulkAction('{$name}', 'X', '{$permission}')]
+                public function x(array \$records): null { return null; }
+            }
+            PHP);
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessage($message);
+        $this->app();
+    }
+
+    /** Sign in as $role with c1 (Ada, new, lead) stored. */
+    private function seedAs(string $role): void
+    {
+        $this->as($role);
+        if ($this->stored('contact', 'c1') === null) {
+            $this->seed('contact', 'c1', ['name' => 'Ada', 'email' => 'ada@x.org', 'status' => 'new', 'stage' => 'lead']);
+        }
+    }
+
     /** The "crm" extension: ContactAdmin (contact) and NoteAdmin (note), logging to Log::$entries. */
     private function crm(array $disabled = []): void
     {
@@ -410,6 +669,19 @@ final class CustomizationTest extends TestCase
                     return null;
                 }
 
+                /** @param list<DynamicRecord> $records */
+                #[\Preflow\Folio\Extension\BulkAction('tag', 'Tag', 'crm.approve', confirm: 'Tag these contacts?')]
+                public function tag(array $records, \Psr\Http\Message\ServerRequestInterface $request): null
+                {
+                    foreach ($records as $record) {
+                        Log::$entries[] = 'tag:' . $record->getId();
+                        $record->set('status', 'tagged');
+                        $this->dm->saveType($record, false);
+                    }
+
+                    return null;
+                }
+
                 #[\Preflow\Folio\Extension\FieldPlaceholder('status')]
                 public function statusStandard(string $locale): ?string
                 {
@@ -437,6 +709,9 @@ final class CustomizationTest extends TestCase
                     $record->set('email', strtolower((string) $record->get('email')));
                     if ($record->get('status') === 'blocked') {
                         throw new \Preflow\Validation\ValidationException(new \Preflow\Validation\ValidationResult(['status' => ['Blocked contacts cannot be saved.']]));
+                    }
+                    if ($record->get('stage') === 'customer' && (string) $record->get('email') === '') {
+                        throw new \Preflow\Validation\ValidationException(new \Preflow\Validation\ValidationResult(['email' => ['Customers need an email.']]));
                     }
                     Log::$entries[] = 'before:contact:' . $record->get('name');
                 }

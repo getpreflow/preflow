@@ -197,7 +197,7 @@ final class ListView
      * @param array<string, mixed> $config
      * @return array<string, string>
      */
-    private static function selectOptions(array $config): array
+    public static function selectOptions(array $config): array
     {
         $raw = (array) ($config['options'] ?? []);
         $out = [];

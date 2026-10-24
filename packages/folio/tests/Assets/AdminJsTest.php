@@ -235,5 +235,22 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('data-delete-plan="{{ prefix }}/{{ type }}/_delete-plan" data-delete-id="{{ row.id }}"', $list);
         $this->assertStringContainsString('data-confirm="Delete this record?"', $list); // the no-JS / failure fallback
     }
+
+    public function test_bulk_bar_follows_the_ticked_rows(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString('[data-folio-bulk-item]', $js);              // a row's tick box
+        $this->assertStringContainsString('[data-folio-bulk-all]', $js);               // select all on the page
+        $this->assertStringContainsString("' selected'", $js);                         // "3 selected"
+        $this->assertStringContainsString('bar.hidden = n === 0', $js);                // the bar shows with a tick
+        $this->assertStringContainsString('initBulk(results)', $js);                   // a swapped region starts unticked
+        $this->assertStringContainsString("document.addEventListener('change', onBulkChange)", $js);
+        $this->assertStringContainsString("document.addEventListener('reset', onBulkReset)", $js); // Clear
+        // Buttons of the bar carry their own confirm / delete plan; the plan posts the ticked ids.
+        $this->assertStringContainsString('e.submitter', $js);
+        $this->assertStringContainsString('f.requestSubmit(src)', $js);
+        $this->assertStringContainsString("el.name === 'ids[]' && el.checked", $js);
+        $this->assertStringNotContainsString('.style.', substr($js, (int) strpos($js, 'function bulkUpdate')), 'no inline styles (CSP)');
+    }
 }
 

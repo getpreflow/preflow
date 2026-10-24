@@ -228,7 +228,7 @@ final class MembersGroundworkTest extends TestCase
         $list = $this->admin('/folio/member');
         $form = $this->admin('/folio/member/m-1/edit');
 
-        $headings = array_map(static fn (\DOMElement $th): string => trim($th->textContent), Dom::all($list, '//table//thead//th'));
+        $headings = array_map(static fn (\DOMElement $th): string => trim($th->textContent), Dom::all($list, '//table//thead//th[not(contains(@class, "folio-bulk-cell"))]'));
         $this->assertSame(['Email', 'Name', 'Registered At'], array_slice($headings, 0, 3));
         $this->assertNotContains('Password Hash', $headings);
         $this->assertStringNotContainsString('HASH-NEVER-SHOWN', $list);

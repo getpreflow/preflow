@@ -665,11 +665,20 @@
     }
 
     // Confirmation for destructive forms: <form data-confirm="…"> (replaces inline
-    // onsubmit handlers, which the strict CSP blocks).
+    // onsubmit handlers, which the strict CSP blocks). In a form with several buttons
+    // (the list's bulk bar) the clicked button may carry its own data-confirm / data-delete-plan.
+    function confirmSource(e) {
+        var s = e.submitter;
+        if (s && s.hasAttribute && (s.hasAttribute('data-confirm') || s.hasAttribute('data-delete-plan'))) { return s; }
+        return e.target;
+    }
+
     function onSubmitConfirm(e) {
         var f = e.target;
-        if (f && f.hasAttribute && f.hasAttribute('data-delete-plan')) { return; } // onDeletePlanSubmit asks
-        if (f && f.getAttribute && f.hasAttribute('data-confirm') && !window.confirm(f.getAttribute('data-confirm'))) {
+        if (!f || !f.hasAttribute) { return; }
+        var src = confirmSource(e);
+        if (src.hasAttribute('data-delete-plan')) { return; } // onDeletePlanSubmit asks
+        if (src.hasAttribute('data-confirm') && !window.confirm(src.getAttribute('data-confirm'))) {
             e.preventDefault();
         }
     }
@@ -678,18 +687,37 @@
     // delete would also do ("Also deletes 12 games.") and confirm that; a restricted plan
     // only shows why. The server plans again when the form is submitted. If the summary
     // can't be fetched, the form's generic data-confirm text is asked instead.
+    // The bulk bar's Delete button carries data-delete-plan itself: the plan is asked for
+    // the ticked ids[], and the button is submitted again once confirmed.
     function onDeletePlanSubmit(e) {
         var f = e.target;
-        if (!f || !f.hasAttribute || !f.hasAttribute('data-delete-plan')) { return; }
+        if (!f || !f.hasAttribute) { return; }
+        if (f.hasAttribute('data-delete-confirmed')) { f.removeAttribute('data-delete-confirmed'); return; }
+        var src = confirmSource(e);
+        if (!src.hasAttribute('data-delete-plan')) { return; }
         e.preventDefault();
-        if (f.getAttribute('data-delete-busy') === '1') { return; }
+        var ids = src === f
+            ? [f.getAttribute('data-delete-id') || '']
+            : Array.prototype.filter.call(f.elements, function (el) { return el.name === 'ids[]' && el.checked; })
+                .map(function (el) { return el.value; });
+        if (!ids.length || f.getAttribute('data-delete-busy') === '1') { return; }
         f.setAttribute('data-delete-busy', '1');
         var body = new URLSearchParams();
         var token = f.querySelector('input[name="_csrf_token"]');
         if (token) { body.append('_csrf_token', token.value); }
-        body.append('ids[]', f.getAttribute('data-delete-id') || '');
-        var send = function () { HTMLFormElement.prototype.submit.call(f); };
-        fetch(f.getAttribute('data-delete-plan'), {
+        ids.forEach(function (id) { body.append('ids[]', id); });
+        var send = function () {
+            if (src === f) {
+                HTMLFormElement.prototype.submit.call(f);
+            } else if (f.requestSubmit) {
+                f.setAttribute('data-delete-confirmed', '1');
+                f.requestSubmit(src);
+            } else {
+                f.setAttribute('action', src.getAttribute('formaction') || f.getAttribute('action') || '');
+                HTMLFormElement.prototype.submit.call(f);
+            }
+        };
+        fetch(src.getAttribute('data-delete-plan'), {
             method: 'POST',
             body: body,
             credentials: 'same-origin',
@@ -705,7 +733,7 @@
                 }
             })
             .catch(function () {
-                if (window.confirm(f.getAttribute('data-confirm') || 'Delete this record?')) { send(); }
+                if (window.confirm(src.getAttribute('data-confirm') || 'Delete this record?')) { send(); }
             })
             .then(function () { f.removeAttribute('data-delete-busy'); });
     }
@@ -1394,6 +1422,7 @@
                 })
                 .then(function (html) {
                     results.innerHTML = html;
+                    initBulk(results);
                     history.replaceState(history.state, '', url);
                 })
                 .catch(function (e) {
@@ -1410,10 +1439,66 @@
         });
     }
 
+    // Bulk bar (<form data-folio-bulk>, at the top of the results region): the rows' tick boxes
+    // ([data-folio-bulk-item], form="{bar id}") show it with "N selected"; [data-folio-bulk-all]
+    // ticks the page. Without JS the bar simply stays visible. The boxes live in the swapped
+    // region, so a new search, filter or page starts with nothing ticked.
+    function bulkItems(bar) {
+        return Array.prototype.filter.call(document.querySelectorAll('[data-folio-bulk-item]'), function (c) {
+            return c.getAttribute('form') === bar.id;
+        });
+    }
+
+    function bulkUpdate(bar) {
+        var items = bulkItems(bar);
+        var n = items.filter(function (c) { return c.checked; }).length;
+        bar.hidden = n === 0;
+        var count = bar.querySelector('[data-folio-bulk-count]');
+        if (count) { count.textContent = n + ' selected'; }
+        var all = document.querySelector('[data-folio-bulk-all]');
+        if (all) {
+            all.checked = n > 0 && n === items.length;
+            all.indeterminate = n > 0 && n < items.length;
+        }
+    }
+
+    function initBulk(scope) {
+        scope.querySelectorAll('[data-folio-bulk]').forEach(function (bar) {
+            var all = document.querySelector('[data-folio-bulk-all]');
+            if (all) { all.hidden = false; }
+            bulkUpdate(bar);
+        });
+    }
+
+    function onBulkChange(e) {
+        var t = e.target;
+        if (!t || !t.matches) { return; }
+        var bar = document.querySelector('[data-folio-bulk]');
+        if (!bar) { return; }
+        if (t.matches('[data-folio-bulk-all]')) {
+            bulkItems(bar).forEach(function (c) { c.checked = t.checked; });
+        } else if (!t.matches('[data-folio-bulk-item]')) {
+            return;
+        }
+        bulkUpdate(bar);
+    }
+
+    // "Clear" is a reset button: it unticks the rows (form-associated) with or without JS.
+    function onBulkReset(e) {
+        var bar = e.target;
+        if (!bar || !bar.hasAttribute || !bar.hasAttribute('data-folio-bulk')) { return; }
+        setTimeout(function () { bulkUpdate(bar); }, 0);
+    }
+
     function boot() {
         document.querySelectorAll('[data-folio-list-form]').forEach(initList);
         document.addEventListener('submit', onSubmitConfirm);
         document.addEventListener('submit', onDeletePlanSubmit);
+        initBulk(document);
+        document.addEventListener('change', onBulkChange);
+        document.addEventListener('reset', onBulkReset);
+        // Back/forward may restore ticked boxes: show the bar for them.
+        window.addEventListener('pageshow', function () { initBulk(document); });
         document.addEventListener('click', onBlockClick);
         document.addEventListener('pointerdown', onHandlePointerDown);
         document.addEventListener('pointerup', onPointerUp);

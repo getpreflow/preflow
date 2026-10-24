@@ -73,13 +73,14 @@ final class MemberApprovalTest extends TestCase
         $this->signIn();
         $html = $this->admin('/folio/member');
 
-        $headings = array_map(static fn (\DOMElement $th): string => trim($th->textContent), Dom::all($html, '//table//thead//th'));
+        // The list's own columns (not the bulk tick column).
+        $headings = array_map(static fn (\DOMElement $th): string => trim($th->textContent), Dom::all($html, '//table//thead//th[not(contains(@class, "folio-bulk-cell"))]'));
         $col = array_search('State', $headings, true);
         $this->assertNotFalse($col, 'a State column');
         $states = [];
         foreach (Dom::all($html, '//table//tbody//tr') as $row) {
-            $cells = $row->getElementsByTagName('td');
-            $states[trim($cells->item(0)?->textContent ?? '')] = trim($cells->item((int) $col)?->textContent ?? '');
+            $cells = array_values(array_filter(iterator_to_array($row->getElementsByTagName('td')), static fn (\DOMElement $td): bool => !str_contains($td->getAttribute('class'), 'folio-bulk-cell')));
+            $states[trim(($cells[0] ?? null)?->textContent ?? '')] = trim(($cells[(int) $col] ?? null)?->textContent ?? '');
         }
         $this->assertSame(['a@example.com' => 'Unconfirmed', 'b@example.com' => 'Waiting', 'c@example.com' => 'Member', 'd@example.com' => 'Declined'], $states);
     }

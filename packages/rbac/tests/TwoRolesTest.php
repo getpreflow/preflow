@@ -97,6 +97,7 @@ final class TwoRolesTest extends TestCase
                 'GET /folio/{type}/new' => 404, 'POST /folio/{type}' => 404,
                 'GET /folio/{type}/{id}/edit' => 404, 'GET /folio/{type}/{id}/label' => 404,
                 'POST /folio/{type}/_delete-plan' => 404,
+                'POST /folio/{type}/_bulk/delete' => 404, 'POST /folio/{type}/_bulk/{name}' => 404,
             ]],
         ];
         foreach ($types as $kind => [$type, $id, $new, $update, $deletable, $differs]) {
@@ -113,6 +114,9 @@ final class TwoRolesTest extends TestCase
             $row('GET /folio/{type}/{id}/label', "/folio/{$type}/{$id}/label", [], 200);
             $row('GET /folio/_relation/{type}', "/folio/_relation/{$type}", [], 200);
             $row('POST /folio/{type}/_delete-plan', "/folio/{$type}/_delete-plan", ['ids' => [$id]], 200);
+            // Past the permission check: no record with that id (422), no bulk action of that name (404).
+            $row('POST /folio/{type}/_bulk/delete', "/folio/{$type}/_bulk/delete", ['ids' => ['missing']], 422);
+            $row('POST /folio/{type}/_bulk/{name}', "/folio/{$type}/_bulk/nothing", ['ids' => ['missing']], 404);
             $row('POST /folio/{type}/{id}/preview', "/folio/{$type}/{$id}/preview", $update, 200);
             $row('POST /folio/{type}/{id}/unpublish', "/folio/{$type}/{$id}/unpublish", [], 404);
             $row('POST /folio/{type}/{id}/discard', "/folio/{$type}/{$id}/discard", [], 404);

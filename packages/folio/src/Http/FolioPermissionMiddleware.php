@@ -44,6 +44,8 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'AdminController@recordAction' => '{type}.edit', // then the action's own permission (in the controller)
         'AdminController@destroy' => '{type}.delete',
         'AdminController@deletePlan' => '{type}.delete',
+        'AdminController@bulkDelete' => '{type}.delete',
+        'AdminController@bulkAction' => '{type}.edit', // set-{field}; an extension's action then asks its own permission (in the controller)
         'PublishingController@autosave' => '{type}.edit',
         'PublishingController@discard' => '{type}.edit',
         'PublishingController@restore' => '{type}.edit',

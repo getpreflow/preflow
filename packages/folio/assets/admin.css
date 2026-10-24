@@ -481,6 +481,39 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
 .folio-pager-links .btn { min-width: 28px; padding: 0 8px; }
 .folio-pager-gap { padding: 0 4px; color: var(--c-text-subtle); }
 
+/* Bulk bar: shown above the table while rows are ticked (admin.js toggles [hidden]; without JS it stays). */
+.folio-bulk-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 0 0 10px; padding: 7px 10px;
+  border-radius: var(--r-sm);
+  background: var(--c-text); color: var(--c-surface);
+  font-size: 13px;
+}
+.folio-bulk-bar[hidden] { display: none; }
+.folio-bulk-count { font-weight: 600; margin-right: 4px; }
+.folio-bulk-bar .btn {
+  background: color-mix(in srgb, var(--c-surface) 12%, transparent);
+  border-color: color-mix(in srgb, var(--c-surface) 28%, transparent);
+  color: inherit;
+}
+.folio-bulk-bar .btn:hover { background: color-mix(in srgb, var(--c-surface) 22%, transparent); color: inherit; }
+.folio-bulk-bar .btn[data-tone="danger"] { color: color-mix(in srgb, var(--c-danger) 45%, var(--c-surface)); }
+.folio-bulk-bar .folio-bulk-clear { margin-left: auto; background: transparent; border-color: transparent; opacity: .75; }
+.folio-bulk-menu { position: relative; }
+.folio-bulk-menu summary { list-style: none; }
+.folio-bulk-menu summary::-webkit-details-marker { display: none; }
+.folio-bulk-options {
+  position: absolute; z-index: 20; top: calc(100% + 6px); left: 0;
+  display: grid; gap: 4px; min-width: 10rem; padding: 6px;
+  border: 1px solid var(--c-border); border-radius: var(--r);
+  background: var(--c-surface-raised); color: var(--c-text); box-shadow: var(--shadow-lg);
+}
+.folio-bulk-bar .folio-bulk-options .btn { justify-content: flex-start; background: transparent; border-color: transparent; color: var(--c-text); }
+.folio-bulk-bar .folio-bulk-options .btn:hover { background: var(--c-row-hover); }
+.folio-table .folio-bulk-cell { width: 1%; padding-right: 0; }
+.folio-bulk-cell input[hidden] { display: none; }
+.folio-table tr:has([data-folio-bulk-item]:checked) td { background: var(--c-accent-soft); }
+
 /* ---- form controls (preflow/form hooks and Folio's own) ---- */
 .folio-form { width: 100%; }
 /* Wraps the fields so a read-only form can disable them all; adds no box of its own. */

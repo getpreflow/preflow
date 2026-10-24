@@ -201,6 +201,9 @@ final class AdminController
             'multilingual' => $multilingual,
             'publishing' => $states !== null,
             'csrf' => $csrf,
+            'bulk' => $this->bulkBar($type, $typeDef, $listConfig),
+            // The view to return to after a bulk action (search, filters, sort, page).
+            'list_query' => http_build_query($query->query(), '', '&', PHP_QUERY_RFC3986),
         ]));
     }
 
@@ -513,10 +516,9 @@ final class AdminController
         if (!$this->catalog->has($type) || $this->isSingleton($type)) {
             return new Response(404, [], 'Unknown type');
         }
-        $ids = ((array) $request->getParsedBody())['ids'] ?? null;
-        $ids = is_array($ids) ? array_values(array_filter($ids, static fn (mixed $id): bool => is_string($id) && $id !== '')) : [];
-        if ($ids === []) {
-            return new Response(422, [], 'No records');
+        $ids = self::postedIds($request);
+        if ($ids === null || $ids === []) {
+            return new Response(422, [], $ids === null ? 'Too many records' : 'No records');
         }
 
         $deleter = $this->deleter();
@@ -533,6 +535,236 @@ final class AdminController
             $this->publisher,
             $this->customizations !== null ? $this->customizations->runHooks(...) : null,
         );
+    }
+
+    /**
+     * Bulk delete (POST {type}/_bulk/delete, ids[]; the route asks {type}.delete): through the
+     * delete plan, all or nothing. Back to the list's view with "Delete: done (N)" or the reason.
+     */
+    public function bulkDelete(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = (string) $request->getAttribute('type', '');
+        if (!$this->catalog->has($type) || $this->isSingleton($type)) {
+            return new Response(404, [], 'Unknown type');
+        }
+        if (($records = $this->postedRecords($request, $type)) instanceof ResponseInterface) {
+            return $records;
+        }
+
+        try {
+            $this->deleter()->delete($type, array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $records));
+            self::flash($request, 'success', 'Delete: done (' . count($records) . ')');
+        } catch (Refused $e) {
+            self::flash($request, 'error', $e->getMessage());
+        }
+
+        return new Response(302, ['Location' => $this->bulkReturn($request, $type)]);
+    }
+
+    /**
+     * Any other bulk action (POST {type}/_bulk/{name}, ids[]; the route asks {type}.edit):
+     * "set-{field}" for a select or boolean field the model's "list.bulk" names (value: one of
+     * its options, '1'/'0' for a boolean), saved per record on the form's save path; a failing
+     * record is reported, the others are saved. Else the type's #[BulkAction] of that name,
+     * for those with its permission. Ids of other types or without a record are ignored.
+     */
+    public function bulkAction(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = (string) $request->getAttribute('type', '');
+        $name = (string) $request->getAttribute('name', '');
+        if (!$this->catalog->has($type) || $this->isSingleton($type)) {
+            return new Response(404, [], 'Unknown type');
+        }
+        $typeDef = $this->registry->get($type);
+
+        if (str_starts_with($name, 'set-')) {
+            $field = $this->bulkFields($type, $typeDef)[substr($name, 4)] ?? null;
+            if ($field === null) {
+                return new Response(404, [], 'Unknown action');
+            }
+            $value = ((array) $request->getParsedBody())['value'] ?? null;
+            if (!is_string($value) || !isset($field['options'][$value])) {
+                return new Response(422, [], 'Not a value of ' . $field['label']);
+            }
+            if (($records = $this->postedRecords($request, $type)) instanceof ResponseInterface) {
+                return $records;
+            }
+
+            return $this->bulkSet($request, $type, $field, $value, $records);
+        }
+
+        $action = $this->customizations?->bulkAction($type, $name);
+        if ($action === null) {
+            return new Response(404, [], 'Unknown action');
+        }
+        if (!$this->can($action['permission'])) {
+            return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog);
+        }
+        if (($records = $this->postedRecords($request, $type)) instanceof ResponseInterface) {
+            return $records;
+        }
+
+        $response = ($action['callable'])($records, $request);
+        if ($response instanceof ResponseInterface) {
+            return $response;
+        }
+        if ($response !== null) {
+            throw new \Preflow\Folio\Extension\ExtensionException("Bulk action \"{$action['name']}\" of type \"{$type}\" must return a response or null, not " . get_debug_type($response) . '.');
+        }
+        self::flash($request, 'success', $action['label'] . ': done (' . count($records) . ')');
+
+        return new Response(302, ['Location' => $this->bulkReturn($request, $type)]);
+    }
+
+    /**
+     * @param array{name: string, label: string, options: array<string, string>} $field
+     * @param list<DynamicRecord> $records
+     */
+    private function bulkSet(ServerRequestInterface $request, string $type, array $field, string $value, array $records): ResponseInterface
+    {
+        $fieldDef = $this->registry->get($type)->fields[$field['name']];
+        $fieldType = $this->fieldTypes->get($fieldDef->type);
+        $stored = $fieldType->toStorage($fieldType->normalizeInput($value, $fieldDef->config));
+
+        $done = 0;
+        $failed = [];
+        foreach ($records as $record) {
+            $record->set($field['name'], $stored);
+            try {
+                $this->saveChanged($record);
+                $done++;
+            } catch (ValidationException $e) {
+                $messages = [];
+                $errors = $e->errors();
+                array_walk_recursive($errors, static function (mixed $m) use (&$messages): void {
+                    $messages[] = (string) $m;
+                });
+                $failed[] = $this->labeler->label($record) . ' — ' . implode(' ', $messages);
+            }
+        }
+
+        $message = 'Set ' . $field['label'] . ': done (' . $done . ')';
+        if ($failed !== []) {
+            self::flash($request, 'error', $message . '. ' . count($failed) . ' failed: ' . implode('; ', $failed));
+        } else {
+            self::flash($request, 'success', $message);
+        }
+
+        return new Response(302, ['Location' => $this->bulkReturn($request, $type)]);
+    }
+
+    /**
+     * The type's "set" bulk fields: those "list.bulk" names that are select or boolean
+     * fields (not translatable), with the values they may be set to.
+     *
+     * @return array<string, array{name: string, label: string, options: array<string, string>}>
+     */
+    private function bulkFields(string $type, TypeDefinition $typeDef): array
+    {
+        $fields = [];
+        foreach ((array) ($this->catalog->get($type)?->list['bulk'] ?? []) as $name) {
+            $fieldDef = is_string($name) ? ($typeDef->fields[$name] ?? null) : null;
+            if ($fieldDef === null || !in_array($fieldDef->type, ['select', 'boolean'], true) || $fieldDef->translatable
+                || $name === $typeDef->idField || ($fieldDef->config['readonly'] ?? false) === true) {
+                continue;
+            }
+            $fields[$name] = [
+                'name' => $name,
+                'label' => $fieldDef->label ?? (new \Preflow\Form\FieldRenderer())->humanize($name),
+                'options' => $fieldDef->type === 'select' ? ListView::selectOptions($fieldDef->config) : ['1' => 'Yes', '0' => 'No'],
+            ];
+        }
+
+        return $fields;
+    }
+
+    /**
+     * The list's bulk bar: set fields and extension actions for those who may edit, delete
+     * for those who may delete; null when none is left (no tick column either).
+     *
+     * @param array<string, mixed> $listConfig
+     * @return array{fields: list<array{label: string, url: string, options: array<string, string>}>, actions: list<array{label: string, url: string, confirm: ?string}>, delete: ?array{url: string, plan: string}}|null
+     */
+    private function bulkBar(string $type, TypeDefinition $typeDef, array $listConfig): ?array
+    {
+        $base = $this->prefix . '/' . $type . '/_bulk/';
+        $fields = [];
+        $actions = [];
+        if ($this->can($type . '.edit')) {
+            foreach ($this->bulkFields($type, $typeDef) as $name => $field) {
+                $fields[] = ['label' => $field['label'], 'url' => $base . 'set-' . $name, 'options' => $field['options']];
+            }
+            foreach ($this->customizations?->bulkActions($type) ?? [] as $action) {
+                if ($this->can($action['permission'])) {
+                    $actions[] = ['label' => $action['label'], 'url' => $base . $action['name'], 'confirm' => $action['confirm']];
+                }
+            }
+        }
+        $delete = $this->can($type . '.delete') ? ['url' => $base . 'delete', 'plan' => $this->prefix . '/' . $type . '/_delete-plan'] : null;
+
+        return $fields === [] && $actions === [] && $delete === null ? null : ['fields' => $fields, 'actions' => $actions, 'delete' => $delete];
+    }
+
+    /**
+     * The posted ids[] (strings, each once); null when there are more than RecordDeleter::MAX_IDS.
+     *
+     * @return list<string>|null
+     */
+    private static function postedIds(ServerRequestInterface $request): ?array
+    {
+        $ids = ((array) $request->getParsedBody())['ids'] ?? null;
+        $ids = is_array($ids) ? array_values(array_unique(array_filter($ids, static fn (mixed $id): bool => is_string($id) && $id !== ''))) : [];
+
+        return count($ids) > RecordDeleter::MAX_IDS ? null : $ids;
+    }
+
+    /**
+     * The stored records of $type the posted ids[] name, in the order posted (one query);
+     * a 422 when there are none or too many ids.
+     *
+     * @return list<DynamicRecord>|ResponseInterface
+     */
+    private function postedRecords(ServerRequestInterface $request, string $type): array|ResponseInterface
+    {
+        $ids = self::postedIds($request);
+        if ($ids === null) {
+            return new Response(422, [], 'Too many records');
+        }
+        $found = [];
+        if ($ids !== []) {
+            $idField = $this->registry->get($type)->idField;
+            foreach ($this->dm->queryType($type)->whereAny([['field' => $idField, 'operator' => 'IN', 'value' => $ids]])->get()->items() as $record) {
+                $found[(string) $record->getId()] = $record;
+            }
+        }
+        $records = [];
+        foreach ($ids as $id) {
+            if (isset($found[$id])) {
+                $records[] = $found[$id];
+            }
+        }
+
+        return $records === [] ? new Response(422, [], 'No records') : $records;
+    }
+
+    /**
+     * The list URL to return to: the posted "_query" read as list parameters only (search,
+     * filters, sort, page) and rebuilt, so nothing but the list's own view is ever followed.
+     */
+    private function bulkReturn(ServerRequestInterface $request, string $type): string
+    {
+        $raw = ((array) $request->getParsedBody())['_query'] ?? '';
+        $params = [];
+        parse_str(is_string($raw) ? ltrim($raw, '?') : '', $params);
+        $typeDef = $this->registry->get($type);
+        $query = ListQuery::fromRequest(
+            $request->withQueryParams($params),
+            $typeDef,
+            $this->catalog->get($type)?->list ?? [],
+            $typeDef->locales->default,
+        )->query();
+
+        return $this->prefix . '/' . $type . ($query === [] ? '' : '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986));
     }
 
     /**
@@ -774,7 +1006,7 @@ final class AdminController
     /** @return array{panels: list<array<string, mixed>>, actions: list<array<string, mixed>>, columns: list<array<string, mixed>>, hooks: array<string, list<\Closure>>} */
     private function customized(string $type): array
     {
-        return $this->customizations?->forType($type) ?? ['panels' => [], 'actions' => [], 'columns' => [], 'hooks' => [], 'placeholders' => []];
+        return $this->customizations?->forType($type) ?? ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'hooks' => [], 'placeholders' => []];
     }
 
     private static function flash(ServerRequestInterface $request, string $type, string $message): void
@@ -843,6 +1075,41 @@ final class AdminController
         $this->customizations?->runHooks(AfterSave::class, $record);
     }
 
+    /**
+     * The form's save path for a record changed without the form (a bulk set): #[BeforeSave];
+     * publishing types save the working copy (schedule as the form handles it), other types
+     * validate fully and save; then #[AfterSave].
+     *
+     * @throws ValidationException from a BeforeSave hook or validation (nothing saved)
+     */
+    private function saveChanged(DynamicRecord $record): void
+    {
+        $this->customizations?->runHooks(BeforeSave::class, $record);
+        $type = $record->getType()->key;
+        if ($this->publishes($type)) {
+            $this->applySchedule($record, $type, []);
+            $this->publisher->saveDraft($record, null);
+            $this->customizations?->runHooks(AfterSave::class, $record);
+        } else {
+            $this->saveWithBlocks($record->getType(), $record);
+        }
+    }
+
+    /**
+     * "Publish at" schedules a publish: only for those who may publish. A save by anyone
+     * else cancels a pending schedule, so their changes never go live unreviewed.
+     *
+     * @param array<string, mixed> $body the posted form ("_publish_at", when it has one)
+     */
+    private function applySchedule(DynamicRecord $record, string $type, array $body): void
+    {
+        if (!$this->can($type . '.publish')) {
+            $record->set('_publish_at', '');
+        } elseif (array_key_exists('_publish_at', $body)) {
+            $record->set('_publish_at', self::publishAt($body['_publish_at']));
+        }
+    }
+
     /** Publishing through the form without the right to: refused before anything (uploads included) is written. */
     private function refusePublish(ServerRequestInterface $request, string $type): ?ResponseInterface
     {
@@ -873,13 +1140,7 @@ final class AdminController
     private function savePublishing(ServerRequestInterface $request, DynamicRecord $record, string $type, string $action, string $heading, string $csrf, string $locale, string $editUrl, string $layout = '@folio/admin/_layout.twig'): ?ResponseInterface
     {
         $body = (array) $request->getParsedBody();
-        // "Publish at" schedules a publish: only for those who may publish. A save by
-        // anyone else cancels a pending schedule, so their changes never go live unreviewed.
-        if (!$this->can($type . '.publish')) {
-            $record->set('_publish_at', '');
-        } elseif (array_key_exists('_publish_at', $body)) {
-            $record->set('_publish_at', self::publishAt($body['_publish_at']));
-        }
+        $this->applySchedule($record, $type, $body);
         $loaded = is_string($body['_version'] ?? null) && ctype_digit($body['_version']) ? (int) $body['_version'] : null;
 
         try {

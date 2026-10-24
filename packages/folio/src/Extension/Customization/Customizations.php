@@ -12,6 +12,7 @@ use Preflow\Folio\Extension\AfterSave;
 use Preflow\Folio\Extension\Attributes\FolioType;
 use Preflow\Folio\Extension\BeforeDelete;
 use Preflow\Folio\Extension\BeforeSave;
+use Preflow\Folio\Extension\BulkAction;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Extension\ExtensionRegistry;
 use Preflow\Folio\Extension\FieldPlaceholder;
@@ -31,10 +32,17 @@ final class Customizations
     /** Hook attributes, the names runHooks() takes. */
     public const array HOOKS = [BeforeSave::class, AfterSave::class, BeforeDelete::class, AfterDelete::class];
 
-    private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, ListColumn::class, NavBadge::class, FieldPlaceholder::class, ...self::HOOKS];
+    /** Action names and name prefixes of Folio's own bulk actions (delete, set-{field}, export). */
+    private const array RESERVED_BULK = ['delete', 'export', 'set-'];
+
+    private const string NAME_PATTERN = '/^[a-z][a-z0-9_-]*$/';
+
+    private const string PERMISSION_PATTERN = '/^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)+$/';
+
+    private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, BulkAction::class, ListColumn::class, NavBadge::class, FieldPlaceholder::class, ...self::HOOKS];
 
     /**
-     * @param array<string, array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}> $types
+     * @param array<string, array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}> $types
      */
     /** @var array<string, ?int> */
     private array $badgeCounts = [];
@@ -51,6 +59,7 @@ final class Customizations
     {
         $types = [];
         $actionOwners = [];
+        $bulkOwners = [];
         foreach ($extensions->enabled() as $definition) {
             foreach ($definition->parts as $part) {
                 if ($part['kind'] !== 'type' || !isset($part['class']) || !$extensions->partEnabled($definition->name, $part['id'])) {
@@ -69,7 +78,7 @@ final class Customizations
                 if (!$catalog->has($key)) {
                     throw new ExtensionException("Type customization {$class}: #[FolioType('{$key}')] names no content type \"{$key}\".");
                 }
-                $types[$key] ??= ['panels' => [], 'actions' => [], 'columns' => [], 'badges' => [], 'hooks' => [], 'placeholders' => []];
+                $types[$key] ??= ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'hooks' => [], 'placeholders' => []];
 
                 $badgeMethod = null;
                 $built = new \stdClass(); // one instance per class, shared by its methods' closures
@@ -96,12 +105,7 @@ final class Customizations
                             }
                             $types[$key]['panels'][] = ['label' => $meta->label, 'position' => $meta->position, 'callable' => $call];
                         } elseif ($meta instanceof RecordAction) {
-                            if (preg_match('/^[a-z][a-z0-9_-]*$/', $meta->name) !== 1) {
-                                throw new ExtensionException("#[RecordAction] on {$where}: name \"{$meta->name}\" must match /^[a-z][a-z0-9_-]*$/.");
-                            }
-                            if (preg_match('/^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)+$/', $meta->permission) !== 1) {
-                                throw new ExtensionException("#[RecordAction] on {$where}: permission \"{$meta->permission}\" must match /^[a-z][a-z0-9_-]*(\\.[a-z0-9_-]+)+$/ (e.g. \"members.approve\").");
-                            }
+                            self::checkAction('RecordAction', $where, $meta->name, $meta->permission);
                             if (isset($actionOwners[$key][$meta->name])) {
                                 throw new ExtensionException("Record action \"{$meta->name}\" of type \"{$key}\" is declared by both {$actionOwners[$key][$meta->name]} and {$where}.");
                             }
@@ -113,6 +117,25 @@ final class Customizations
                                 'icon' => $meta->icon,
                                 'confirm' => $meta->confirm,
                                 'toolbar' => $meta->toolbar,
+                                'group' => $definition->label,
+                                'callable' => $call,
+                            ];
+                        } elseif ($meta instanceof BulkAction) {
+                            self::checkAction('BulkAction', $where, $meta->name, $meta->permission);
+                            foreach (self::RESERVED_BULK as $reserved) {
+                                if ($meta->name === $reserved || (str_ends_with($reserved, '-') && str_starts_with($meta->name, $reserved))) {
+                                    throw new ExtensionException("#[BulkAction] on {$where}: name \"{$meta->name}\" is reserved for Folio's own bulk actions (delete, export, set-{field}).");
+                                }
+                            }
+                            if (isset($bulkOwners[$key][$meta->name])) {
+                                throw new ExtensionException("Bulk action \"{$meta->name}\" of type \"{$key}\" is declared by both {$bulkOwners[$key][$meta->name]} and {$where}.");
+                            }
+                            $bulkOwners[$key][$meta->name] = $where;
+                            $types[$key]['bulk'][] = [
+                                'name' => $meta->name,
+                                'label' => $meta->label,
+                                'permission' => $meta->permission,
+                                'confirm' => $meta->confirm,
                                 'group' => $definition->label,
                                 'callable' => $call,
                             ];
@@ -147,11 +170,11 @@ final class Customizations
     }
 
     /**
-     * @return array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}
+     * @return array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}
      */
     public function forType(string $key): array
     {
-        return $this->types[$key] ?? ['panels' => [], 'actions' => [], 'columns' => [], 'badges' => [], 'hooks' => [], 'placeholders' => []];
+        return $this->types[$key] ?? ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'hooks' => [], 'placeholders' => []];
     }
 
     /** The #[FieldPlaceholder] text of a field in $locale, or null (none declared, or the method gives none). */
@@ -209,17 +232,49 @@ final class Customizations
         return null;
     }
 
-    /** @return array<string, array{label: string, group: string}> the record actions' permissions (first declaring action wins) */
+    /**
+     * The type's #[BulkAction]s, in extension order.
+     *
+     * @return list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>
+     */
+    public function bulkActions(string $type): array
+    {
+        return $this->types[$type]['bulk'] ?? [];
+    }
+
+    /** @return array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}|null */
+    public function bulkAction(string $type, string $name): ?array
+    {
+        foreach ($this->bulkActions($type) as $action) {
+            if ($action['name'] === $name) {
+                return $action;
+            }
+        }
+
+        return null;
+    }
+
+    /** @return array<string, array{label: string, group: string}> the record and bulk actions' permissions (first declaring action wins) */
     public function permissions(): array
     {
         $permissions = [];
         foreach ($this->types as $type) {
-            foreach ($type['actions'] as $action) {
+            foreach ([...$type['actions'], ...$type['bulk']] as $action) {
                 $permissions[$action['permission']] ??= ['label' => $action['label'], 'group' => $action['group']];
             }
         }
 
         return $permissions;
+    }
+
+    private static function checkAction(string $attribute, string $where, string $name, string $permission): void
+    {
+        if (preg_match(self::NAME_PATTERN, $name) !== 1) {
+            throw new ExtensionException("#[{$attribute}] on {$where}: name \"{$name}\" must match /^[a-z][a-z0-9_-]*$/.");
+        }
+        if (preg_match(self::PERMISSION_PATTERN, $permission) !== 1) {
+            throw new ExtensionException("#[{$attribute}] on {$where}: permission \"{$permission}\" must match /^[a-z][a-z0-9_-]*(\\.[a-z0-9_-]+)+$/ (e.g. \"members.approve\").");
+        }
     }
 
     private static function instance(?\ReflectionAttribute $attribute, string $where): ?object

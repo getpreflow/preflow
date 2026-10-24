@@ -674,4 +674,60 @@ final class AdminControllerTest extends TestCase
         $this->assertSame(422, $this->controller()->deletePlan($this->planRequest('page', 'p1'))->getStatusCode());
         $this->assertSame(422, $this->controller()->deletePlan($this->planRequest('page', [['nested']]))->getStatusCode());
     }
+
+    public function test_delete_plan_ignores_unknown_ids_and_caps_the_count(): void
+    {
+        $this->relatedWorld();
+        // A dangling pointer to "ghost": planning "ghost" must not count it as a link to drop.
+        $this->dm->saveType(\Preflow\Data\DynamicRecord::fromArray($this->registry->get('tag'), ['uuid' => 't3', 'pages' => '["ghost"]']), false);
+
+        $data = json_decode((string) $this->controller()->deletePlan($this->planRequest('page', ['ghost', 't1']))->getBody(), true);
+        $this->assertSame([], $data['lines']);
+        $this->assertSame("This can't be undone.", $data['confirm']);
+
+        $many = array_map(static fn (int $i): string => 'p' . $i, range(1, \Preflow\Folio\Content\RecordDeleter::MAX_IDS + 1));
+        $this->assertSame(422, $this->controller()->deletePlan($this->planRequest('page', $many))->getStatusCode());
+    }
+
+    /** @param array<string, mixed> $body */
+    private function bulkRequest(string $type, string $name, array $body, ?\Preflow\Core\Http\Session\SessionInterface $session = null): \Psr\Http\Message\ServerRequestInterface
+    {
+        $req = (new Psr17Factory())->createServerRequest('POST', "/folio/{$type}/_bulk/{$name}")
+            ->withAttribute('type', $type)
+            ->withAttribute('name', $name)
+            ->withParsedBody($body);
+
+        return $session === null ? $req : $req->withAttribute(\Preflow\Core\Http\Session\SessionInterface::class, $session);
+    }
+
+    public function test_bulk_delete_deletes_the_ticked_records_and_returns_to_the_view(): void
+    {
+        $this->relatedWorld();
+        $session = $this->session();
+
+        $res = $this->controller()->bulkDelete($this->bulkRequest('page', 'delete', ['ids' => ['p1', 'p2', 'ghost'], '_query' => '?q=one&page=3&evil=https://x.test'], $session));
+
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame('/folio/page?q=one&page=3', $res->getHeaderLine('Location'));
+        $this->assertNull($this->dm->findType('page', 'p1'));
+        $this->assertNull($this->dm->findType('page', 'p2'));
+        $this->assertSame('[]', $this->dm->findType('tag', 't1')?->get('pages'));
+        $this->assertSame('Delete: done (2)', $session->flashes['success'] ?? null);
+    }
+
+    public function test_bulk_routes_refuse_unknown_types_names_and_id_lists(): void
+    {
+        $this->relatedWorld();
+        $c = $this->controller();
+
+        $this->assertSame(404, $c->bulkDelete($this->bulkRequest('ghost', 'delete', ['ids' => ['p1']]))->getStatusCode());
+        $this->assertSame(404, $c->bulkDelete($this->bulkRequest('site', 'delete', ['ids' => ['site']]))->getStatusCode());
+        $this->assertSame(404, $c->bulkAction($this->bulkRequest('page', 'nothing', ['ids' => ['p1']]))->getStatusCode());
+        $this->assertSame(404, $c->bulkAction($this->bulkRequest('page', 'set-title', ['ids' => ['p1'], 'value' => 'x']))->getStatusCode()); // not in list.bulk
+        $this->assertSame(422, $c->bulkDelete($this->bulkRequest('page', 'delete', ['ids' => ['ghost']]))->getStatusCode());
+        $this->assertSame(422, $c->bulkDelete($this->bulkRequest('page', 'delete', []))->getStatusCode());
+        $many = array_map(static fn (int $i): string => 'p' . $i, range(1, \Preflow\Folio\Content\RecordDeleter::MAX_IDS + 1));
+        $this->assertSame(422, $c->bulkDelete($this->bulkRequest('page', 'delete', ['ids' => $many]))->getStatusCode());
+        $this->assertNotNull($this->dm->findType('page', 'p1'));
+    }
 }

@@ -1,5 +1,7 @@
-{# The swappable part of a list: chips, table and pager. Rendered alone for ?_partial=1 (admin.js).
-   row.cells: plain text (escape it); row.marked: the same text as escaped HTML with search matches in <mark>. #}
+{# The swappable part of a list: chips, bulk bar, table and pager. Rendered alone for ?_partial=1 (admin.js).
+   row.cells: plain text (escape it); row.marked: the same text as escaped HTML with search matches in <mark>.
+   bulk (null: no tick column, no bar): the bar's actions for this user; the rows' tick boxes belong to its
+   form (form="folio-bulk"), so a swap of this region starts a fresh selection. #}
 {% set may = {create: can(type ~ '.create'), edit: can(type ~ '.edit'), delete: can(type ~ '.delete')} %}
 {% set icons = folio_asset('icons.svg') %}
 {% if list.chips is not empty %}
@@ -25,9 +27,30 @@
         <a href="{{ list.clear }}">Clear search and filters</a>
     </div>
 {% else %}
+    {% set first_column = columns|keys|first %}
+    {% if bulk|default(null) %}
+        {# Each button posts the ticked ids[] to its own formaction. Without JS the bar stays visible. #}
+        <form class="folio-bulk-bar" id="folio-bulk" method="post" data-folio-bulk>
+            <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+            <input type="hidden" name="_query" value="{{ list_query|default('') }}">
+            <span class="folio-bulk-count" data-folio-bulk-count>With selected:</span>
+            {% for field in bulk.fields %}
+                <details class="folio-bulk-menu">
+                    <summary class="btn btn-sm">Set {{ field.label }} ▾</summary>
+                    <div class="folio-bulk-options">
+                        {% for value, text in field.options %}<button type="submit" class="btn btn-sm" formaction="{{ field.url }}" name="value" value="{{ value }}">{{ text }}</button>{% endfor %}
+                    </div>
+                </details>
+            {% endfor %}
+            {% for action in bulk.actions %}<button type="submit" class="btn btn-sm" formaction="{{ action.url }}"{% if action.confirm %} data-confirm="{{ action.confirm }}"{% endif %}>{{ action.label }}</button>{% endfor %}
+            {% if bulk.delete %}<button type="submit" class="btn btn-sm" data-tone="danger" formaction="{{ bulk.delete.url }}" data-delete-plan="{{ bulk.delete.plan }}" data-confirm="Delete the selected records?">Delete</button>{% endif %}
+            <button type="reset" class="btn btn-sm folio-bulk-clear" data-folio-bulk-clear>Clear</button>
+        </form>
+    {% endif %}
     <div class="folio-table-wrap">
     <table class="folio-table">
         <thead><tr>
+            {%- if bulk|default(null) %}<th class="folio-bulk-cell"><input type="checkbox" data-folio-bulk-all aria-label="Select all on this page" hidden></th>{% endif -%}
             {%- for name, header in list.headers -%}
                 <th{% if header.dir %} aria-sort="{{ header.dir == 'asc' ? 'ascending' : 'descending' }}"{% endif %}>
                     {%- if header.href %}<a class="folio-sort" href="{{ header.href }}">{{ header.label }}{% if header.dir %} <span class="folio-sort-mark" aria-hidden="true">{{ header.dir == 'asc' ? '▲' : '▼' }}</span>{% endif %}</a>{% else %}{{ header.label }}{% endif -%}
@@ -39,6 +62,7 @@
             {% set up_disabled = loop.first and list.page == 1 %}
             {% set down_disabled = loop.last and list.page == list.last_page %}
             <tr>
+                {% if bulk|default(null) %}<td class="folio-bulk-cell"><input type="checkbox" name="ids[]" value="{{ row.id }}" form="folio-bulk" data-folio-bulk-item aria-label="Select {{ row.cells[first_column]|default('') ?: '(untitled)' }}"></td>{% endif %}
                 {% for name, heading in columns %}<td>{% if loop.first %}<a class="folio-row-link" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">{% if row.marked[name] != '' %}{{ row.marked[name]|raw }}{% else %}(untitled){% endif %}</a>{% else %}{{ row.marked[name]|raw }}{% endif %}</td>{% endfor %}{% for cell in row.extra|default([]) %}<td>{% if cell is iterable %}<span class="folio-badge{% if cell.tone %} is-{{ cell.tone }}{% endif %}">{{ cell.label }}</span>{% else %}{{ cell }}{% endif %}</td>{% endfor %}
                 {% if multilingual|default(false) %}<td>{% for badge in row.languages %}<span class="folio-badge{% if 'missing' in badge %} is-incomplete{% endif %}">{{ badge }}</span> {% endfor %}</td>{% endif %}
                 {% if publishing|default(false) %}<td><span class="folio-badge is-{{ row.state.value }}">{{ row.state.label() }}</span></td>{% endif %}

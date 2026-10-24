@@ -36,6 +36,9 @@ use Preflow\Validation\ValidationException;
  */
 final class RecordDeleter
 {
+    /** The most ids one request may name (a list page holds 50). */
+    public const int MAX_IDS = 500;
+
     /**
      * @param (\Closure(class-string, DynamicRecord): void)|null $hooks runs a type's hooks
      *        (Customizations::runHooks); null: no hooks
@@ -50,12 +53,35 @@ final class RecordDeleter
     /**
      * What deleting these records would do. Publishing types count links in their
      * published snapshot too (restrict only), once the snapshot table exists.
+     * Only ids of stored records of $type are planned: unknown ids, ids of other types
+     * and repeats are ignored (a dangling pointer to an unknown id is never "detached").
      *
      * @param list<string> $ids
      */
     public function plan(string $type, array $ids): DeletePlan
     {
-        return $this->dm->deletePlan($type, $ids, fn (TypeDefinition $def): array => $this->copies($def));
+        return $this->dm->deletePlan($type, $this->existing($type, $ids), fn (TypeDefinition $def): array => $this->copies($def));
+    }
+
+    /**
+     * The given ids that name stored records of $type, in the given order, each once (one query).
+     *
+     * @param list<string> $ids
+     * @return list<string>
+     */
+    private function existing(string $type, array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter($ids, static fn (mixed $id): bool => is_string($id) && $id !== '')));
+        if ($ids === []) {
+            return [];
+        }
+        $found = [];
+        $idField = $this->dm->getTypeRegistry()->get($type)->idField;
+        foreach ($this->dm->queryType($type)->whereAny([['field' => $idField, 'operator' => 'IN', 'value' => $ids]])->get()->items() as $record) {
+            $found[(string) $record->getId()] = true;
+        }
+
+        return array_values(array_filter($ids, static fn (string $id): bool => isset($found[$id])));
     }
 
     /**
