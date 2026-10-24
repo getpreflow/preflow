@@ -96,4 +96,21 @@ final class QueryTest extends TestCase
         $this->assertNull($q->getSearchTerm());
         $this->assertSame([], $q->getSearchFields());
     }
+
+    public function test_where_any_collects_groups(): void
+    {
+        $c = [['field' => 'a', 'operator' => 'CONTAINS', 'value' => 'x'], ['field' => 'b', 'operator' => '=', 'value' => 1]];
+        $q = (new Query())->whereAny($c)->whereAny([$c[0]]);
+
+        $this->assertSame([$c, [$c[0]]], $q->getAnyGroups());
+        $this->assertSame([], (new Query())->getAnyGroups());
+    }
+
+    public function test_where_any_ignores_empty_groups_and_rejects_unknown_operators(): void
+    {
+        $this->assertSame([], (new Query())->whereAny([])->getAnyGroups());
+
+        $this->expectException(\InvalidArgumentException::class);
+        (new Query())->whereAny([['field' => 'a', 'operator' => 'DROP', 'value' => 1]]);
+    }
 }

@@ -131,4 +131,83 @@ final class QueryCompilerTest extends TestCase
 
         $this->assertStringContainsString('`users`', $sql);
     }
+
+    public function test_any_group_compiles_contains_in_and_equals(): void
+    {
+        $q = (new Query())->where('status', 'live')->whereAny([
+            ['field' => 'title', 'operator' => 'CONTAINS', 'value' => '50%_!'],
+            ['field' => 'id', 'operator' => 'IN', 'value' => ['a', 'b']],
+            ['field' => 'kind', 'operator' => '=', 'value' => 'x'],
+        ]);
+
+        [$sql, $bindings] = $this->compiler->compile('posts', $q);
+
+        $this->assertSame(
+            'SELECT * FROM "posts" WHERE "status" = ? AND ("title" LIKE ? ESCAPE \'!\' OR "id" IN (?,?) OR "kind" = ?)',
+            $sql,
+        );
+        $this->assertSame(['live', '%50!%!_!!%', 'a', 'b', 'x'], $bindings);
+    }
+
+    public function test_empty_in_matches_nothing_and_groups_apply_to_count(): void
+    {
+        $q = (new Query())->whereAny([['field' => 'id', 'operator' => 'IN', 'value' => []]])
+            ->whereAny([['field' => 'title', 'operator' => 'CONTAINS', 'value' => 'a']]);
+
+        [$sql, $bindings] = $this->compiler->compileCount('posts', $q);
+
+        $this->assertSame(
+            'SELECT COUNT(*) as total FROM "posts" WHERE (0 = 1) AND ("title" LIKE ? ESCAPE \'!\')',
+            $sql,
+        );
+        $this->assertSame(['%a%'], $bindings);
+    }
+
+    public function test_sqlite_has_checks_plain_id_and_json_array(): void
+    {
+        $q = (new Query())->whereAny([['field' => 'tags', 'operator' => 'HAS', 'value' => ['a', 'b']]]);
+
+        [$sql, $bindings] = $this->compiler->compile('posts', $q);
+
+        $this->assertSame(
+            'SELECT * FROM "posts" WHERE (("tags" IN (?,?) OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid("tags") THEN "tags" ELSE \'[]\' END) WHERE value IN (?,?))))',
+            $sql,
+        );
+        $this->assertSame(['a', 'b', 'a', 'b'], $bindings);
+    }
+
+    public function test_mysql_has_uses_json_contains_per_id(): void
+    {
+        $compiler = new QueryCompiler(new \Preflow\Data\Driver\MysqlDialect());
+        $q = (new Query())->whereAny([['field' => 'tags', 'operator' => 'HAS', 'value' => ['a', 'b']]]);
+
+        [$sql, $bindings] = $compiler->compile('posts', $q);
+
+        $this->assertSame(
+            'SELECT * FROM `posts` WHERE ((`tags` IN (?,?) OR (CASE WHEN JSON_VALID(`tags`) THEN JSON_CONTAINS(`tags`, ?) ELSE 0 END) OR (CASE WHEN JSON_VALID(`tags`) THEN JSON_CONTAINS(`tags`, ?) ELSE 0 END)))',
+            $sql,
+        );
+        $this->assertSame(['a', 'b', '"a"', '"b"'], $bindings);
+    }
+
+    public function test_any_group_on_translatable_column_uses_localization(): void
+    {
+        $q = (new Query())->whereAny([['field' => 'title', 'operator' => 'CONTAINS', 'value' => 'x']]);
+        $q->localize(['title'], 'de', 'en');
+
+        [$sql] = $this->compiler->compile('posts', $q);
+
+        $this->assertStringContainsString("json_extract(\"title\", '$.\"de\"')", $sql);
+        $this->assertStringContainsString("LIKE ? ESCAPE '!'", $sql);
+    }
+
+    public function test_empty_has_matches_nothing(): void
+    {
+        $q = (new Query())->whereAny([['field' => 'tags', 'operator' => 'HAS', 'value' => []]]);
+
+        [$sql, $bindings] = $this->compiler->compile('posts', $q);
+
+        $this->assertSame('SELECT * FROM "posts" WHERE (0 = 1)', $sql);
+        $this->assertSame([], $bindings);
+    }
 }

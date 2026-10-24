@@ -47,4 +47,17 @@ final class SqliteDialect implements Dialect
         return "(CASE WHEN json_valid({$quotedColumn}) AND json_type({$quotedColumn}) = 'object'"
             . " THEN json_extract({$quotedColumn}, '$.\"{$locale}\"') ELSE {$plain} END)";
     }
+
+    public function jsonArrayHasAny(string $quotedColumn, int $count): string
+    {
+        $in = '(' . implode(',', array_fill(0, $count, '?')) . ')';
+
+        return "({$quotedColumn} IN {$in} OR EXISTS (SELECT 1 FROM json_each("
+            . "CASE WHEN json_valid({$quotedColumn}) THEN {$quotedColumn} ELSE '[]' END) WHERE value IN {$in}))";
+    }
+
+    public function jsonArrayBinding(string $id): string
+    {
+        return $id;
+    }
 }

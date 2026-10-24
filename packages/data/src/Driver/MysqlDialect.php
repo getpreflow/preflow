@@ -57,4 +57,20 @@ final class MysqlDialect implements Dialect
         return "(CASE WHEN JSON_VALID({$quotedColumn}) AND JSON_TYPE({$quotedColumn}) = 'OBJECT'"
             . " THEN JSON_UNQUOTE(JSON_EXTRACT({$quotedColumn}, '$.\"{$locale}\"')) ELSE {$plain} END)";
     }
+
+    public function jsonArrayHasAny(string $quotedColumn, int $count): string
+    {
+        $in = '(' . implode(',', array_fill(0, $count, '?')) . ')';
+        $parts = ["{$quotedColumn} IN {$in}"];
+        for ($i = 0; $i < $count; $i++) {
+            $parts[] = "(CASE WHEN JSON_VALID({$quotedColumn}) THEN JSON_CONTAINS({$quotedColumn}, ?) ELSE 0 END)";
+        }
+
+        return '(' . implode(' OR ', $parts) . ')';
+    }
+
+    public function jsonArrayBinding(string $id): string
+    {
+        return json_encode($id, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
 }

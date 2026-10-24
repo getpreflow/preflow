@@ -41,6 +41,13 @@ final class QueryBuilder
         return $this;
     }
 
+    /** @param list<array{field: string, operator: string, value: mixed}> $conditions OR'd; see Query::whereAny() */
+    public function whereAny(array $conditions): self
+    {
+        $this->query->whereAny($conditions);
+        return $this;
+    }
+
     public function orWhere(string $field, mixed $operator, mixed $value = null): self
     {
         $this->query->orWhere($field, $operator, $value);

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Tests\Driver;
 
+require_once __DIR__ . '/OrGroupScenarios.php';
+
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\Query;
@@ -11,6 +13,8 @@ use Preflow\Data\SortDirection;
 
 final class SqliteDriverTest extends TestCase
 {
+    use OrGroupScenarios;
+
     private \PDO $pdo;
     private SqliteDriver $driver;
 
@@ -215,5 +219,54 @@ final class SqliteDriverTest extends TestCase
 
         $this->expectException(\LogicException::class);
         $dm->execute('DELETE FROM posts', [], 'json');
+    }
+
+    public function test_or_group_contains_is_case_insensitive(): void
+    {
+        $this->pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, title TEXT, tags TEXT)');
+        $driver = $this->driver;
+        $this->checkContainsIsCaseInsensitive($driver);
+    }
+
+    public function test_or_group_contains_takes_special_chars_literally(): void
+    {
+        $this->pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, title TEXT, tags TEXT)');
+        $driver = $this->driver;
+        $this->checkContainsTakesSpecialCharsLiterally($driver);
+    }
+
+    public function test_or_group_contains_finds_umlauts(): void
+    {
+        $this->pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, title TEXT, tags TEXT)');
+        $driver = $this->driver;
+        $this->checkContainsFindsUmlauts($driver);
+    }
+
+    public function test_or_group_in_matches_listed_values_and_empty_matches_nothing(): void
+    {
+        $this->pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, title TEXT, tags TEXT)');
+        $driver = $this->driver;
+        $this->checkIn($driver);
+    }
+
+    public function test_or_group_has_reads_json_arrays_single_ids_empty_and_invalid_json(): void
+    {
+        $this->pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, title TEXT, tags TEXT)');
+        $driver = $this->driver;
+        $this->checkHas($driver);
+    }
+
+    public function test_or_group_or_group_inside_and_two_groups_are_anded(): void
+    {
+        $this->pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, title TEXT, tags TEXT)');
+        $driver = $this->driver;
+        $this->checkOrWithinAndAcrossGroups($driver);
+    }
+
+    public function test_or_group_count_equals_rows_ignoring_limit(): void
+    {
+        $this->pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, title TEXT, tags TEXT)');
+        $driver = $this->driver;
+        $this->checkCountEqualsRowsWithLimit($driver);
     }
 }

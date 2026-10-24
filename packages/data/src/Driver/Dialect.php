@@ -16,4 +16,14 @@ interface Dialect
      * plain stored value.
      */
     public function localizedColumn(string $quotedColumn, string $locale, bool $isDefault): string;
+
+    /**
+     * SQL true when the column holds any of $count ids, stored as one id string
+     * or a JSON array of ids (anything else, invalid JSON included, holds none).
+     * Binds the $count ids, then the same ids through jsonArrayBinding().
+     */
+    public function jsonArrayHasAny(string $quotedColumn, int $count): string;
+
+    /** The binding for one id in the part of jsonArrayHasAny() that looks inside the JSON array. */
+    public function jsonArrayBinding(string $id): string;
 }

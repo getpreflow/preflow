@@ -19,13 +19,20 @@ class QueryCompiler
         $sql = 'SELECT * FROM ' . $this->dialect->quoteIdentifier($table);
 
         $whereSql = $this->compileWheres($query, $bindings);
+        $conditions = [];
         if ($whereSql !== '') {
-            $sql .= ' WHERE ' . $whereSql;
+            $conditions[] = $whereSql;
         }
-
         $searchSql = $this->compileSearch($query, $bindings);
         if ($searchSql !== '') {
-            $sql .= ($whereSql !== '' ? ' AND ' : ' WHERE ') . $searchSql;
+            $conditions[] = $searchSql;
+        }
+        $anySql = $this->compileAnyGroups($query, $bindings);
+        if ($anySql !== '') {
+            $conditions[] = $anySql;
+        }
+        if ($conditions !== []) {
+            $sql .= ' WHERE ' . implode(' AND ', $conditions);
         }
 
         $orderSql = $this->compileOrderBy($query);
@@ -53,13 +60,20 @@ class QueryCompiler
         $sql = 'SELECT COUNT(*) as total FROM ' . $this->dialect->quoteIdentifier($table);
 
         $whereSql = $this->compileWheres($query, $bindings);
+        $conditions = [];
         if ($whereSql !== '') {
-            $sql .= ' WHERE ' . $whereSql;
+            $conditions[] = $whereSql;
         }
-
         $searchSql = $this->compileSearch($query, $bindings);
         if ($searchSql !== '') {
-            $sql .= ($whereSql !== '' ? ' AND ' : ' WHERE ') . $searchSql;
+            $conditions[] = $searchSql;
+        }
+        $anySql = $this->compileAnyGroups($query, $bindings);
+        if ($anySql !== '') {
+            $conditions[] = $anySql;
+        }
+        if ($conditions !== []) {
+            $sql .= ' WHERE ' . implode(' AND ', $conditions);
         }
 
         return [$sql, $bindings];
@@ -89,6 +103,60 @@ class QueryCompiler
         }
 
         return implode(' ', $parts);
+    }
+
+    /**
+     * Each group is "(a OR b OR …)"; groups are AND'd.
+     *
+     * @param array<int, mixed> $bindings
+     */
+    private function compileAnyGroups(Query $query, array &$bindings): string
+    {
+        $groups = [];
+        foreach ($query->getAnyGroups() as $group) {
+            $parts = [];
+            foreach ($group as $condition) {
+                $parts[] = $this->compileAnyCondition($condition, $query, $bindings);
+            }
+            $groups[] = '(' . implode(' OR ', $parts) . ')';
+        }
+
+        return implode(' AND ', $groups);
+    }
+
+    /**
+     * @param array{field: string, operator: string, value: mixed} $condition
+     * @param array<int, mixed> $bindings
+     */
+    private function compileAnyCondition(array $condition, Query $query, array &$bindings): string
+    {
+        $column = $this->column($condition['field'], $query);
+        $value = $condition['value'];
+
+        switch ($condition['operator']) {
+            case 'CONTAINS':
+                $bindings[] = '%' . strtr((string) $value, ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
+                return "{$column} LIKE ? ESCAPE '!'";
+            case 'IN':
+                $ids = array_values((array) $value);
+                if ($ids === []) {
+                    return '0 = 1';
+                }
+                array_push($bindings, ...$ids);
+                return "{$column} IN (" . implode(',', array_fill(0, count($ids), '?')) . ')';
+            case 'HAS':
+                // An empty id is no id: it must not match a column holding ''.
+                $ids = array_values(array_filter(array_map('strval', (array) $value), fn (string $id) => $id !== ''));
+                if ($ids === []) {
+                    return '0 = 1';
+                }
+                array_push($bindings, ...$ids);
+                array_push($bindings, ...array_map($this->dialect->jsonArrayBinding(...), $ids));
+                return $this->dialect->jsonArrayHasAny($column, count($ids));
+            default:
+                $bindings[] = $value;
+                return "{$column} = ?";
+        }
     }
 
     /**

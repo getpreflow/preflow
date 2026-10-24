@@ -52,6 +52,44 @@ final class Query
         return $this;
     }
 
+    /** @var list<list<array{field: string, operator: string, value: mixed}>> */
+    private array $anyGroups = [];
+
+    private const ANY_OPERATORS = ['=', 'CONTAINS', 'IN', 'HAS'];
+
+    /**
+     * One group of conditions of which at least one must hold (OR). Every group
+     * is AND'd with the other wheres and groups.
+     *
+     * Operators: "=", "CONTAINS" (case-insensitive substring), "IN" (value is a
+     * list; empty matches nothing) and "HAS" (the column holds a JSON array of
+     * ids or one id; true if any given id is in it; empty list matches nothing).
+     *
+     * @param list<array{field: string, operator: string, value: mixed}> $conditions
+     */
+    public function whereAny(array $conditions): self
+    {
+        $group = [];
+        foreach ($conditions as $condition) {
+            $operator = strtoupper((string) ($condition['operator'] ?? ''));
+            if (!in_array($operator, self::ANY_OPERATORS, true)) {
+                throw new \InvalidArgumentException(sprintf('Unsupported operator "%s" in whereAny().', $condition['operator'] ?? ''));
+            }
+            if (in_array($operator, ['IN', 'HAS'], true) && !is_array($condition['value'] ?? null)) {
+                throw new \InvalidArgumentException(sprintf('Operator %s in whereAny() needs a list value.', $operator));
+            }
+            $group[] = ['field' => (string) $condition['field'], 'operator' => $operator, 'value' => $condition['value'] ?? null];
+        }
+        if ($group !== []) {
+            $this->anyGroups[] = $group;
+        }
+
+        return $this;
+    }
+
+    /** @return list<list<array{field: string, operator: string, value: mixed}>> */
+    public function getAnyGroups(): array { return $this->anyGroups; }
+
     /**
      * @param bool $numeric compare as numbers even where the column stores text
      *                      (SQL TEXT columns otherwise sort "10" before "2")

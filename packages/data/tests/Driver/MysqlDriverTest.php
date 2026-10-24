@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Tests\Driver;
 
+require_once __DIR__ . '/OrGroupScenarios.php';
+
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Driver\MysqlDriver;
@@ -14,6 +16,8 @@ use Preflow\Testing\MysqlTestDatabase;
 
 final class MysqlDriverTest extends TestCase
 {
+    use OrGroupScenarios;
+
     public function test_mysql_driver_uses_mysql_dialect(): void
     {
         $ref = new \ReflectionClass(MysqlDriver::class);
@@ -84,6 +88,132 @@ final class MysqlDriverTest extends TestCase
             $this->expectException(\RuntimeException::class);
             $this->expectExceptionMessage('Table notes has no column subtitle; run `preflow migrate`.');
             (new MysqlDriver($pdo))->save('notes', 'n1', ['title' => 'T', 'subtitle' => 'S']);
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+    }
+
+        #[Group('mysql')]
+public function test_or_group_contains_is_case_insensitive(): void
+    {
+        $pdo = MysqlTestDatabase::pdo();
+        MysqlTestDatabase::dropAllTables($pdo);
+        $pdo->exec('CREATE TABLE items (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255), tags TEXT) CHARACTER SET utf8mb4');
+        $driver = new MysqlDriver($pdo);
+        try {
+            try {
+            $this->checkContainsIsCaseInsensitive($driver);
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+    }
+
+        #[Group('mysql')]
+public function test_or_group_contains_takes_special_chars_literally(): void
+    {
+        $pdo = MysqlTestDatabase::pdo();
+        MysqlTestDatabase::dropAllTables($pdo);
+        $pdo->exec('CREATE TABLE items (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255), tags TEXT) CHARACTER SET utf8mb4');
+        $driver = new MysqlDriver($pdo);
+        try {
+            try {
+            $this->checkContainsTakesSpecialCharsLiterally($driver);
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+    }
+
+        #[Group('mysql')]
+public function test_or_group_contains_finds_umlauts(): void
+    {
+        $pdo = MysqlTestDatabase::pdo();
+        MysqlTestDatabase::dropAllTables($pdo);
+        $pdo->exec('CREATE TABLE items (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255), tags TEXT) CHARACTER SET utf8mb4');
+        $driver = new MysqlDriver($pdo);
+        try {
+            try {
+            $this->checkContainsFindsUmlauts($driver);
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+    }
+
+        #[Group('mysql')]
+public function test_or_group_in_matches_listed_values_and_empty_matches_nothing(): void
+    {
+        $pdo = MysqlTestDatabase::pdo();
+        MysqlTestDatabase::dropAllTables($pdo);
+        $pdo->exec('CREATE TABLE items (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255), tags TEXT) CHARACTER SET utf8mb4');
+        $driver = new MysqlDriver($pdo);
+        try {
+            try {
+            $this->checkIn($driver);
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+    }
+
+        #[Group('mysql')]
+public function test_or_group_has_reads_json_arrays_single_ids_empty_and_invalid_json(): void
+    {
+        $pdo = MysqlTestDatabase::pdo();
+        MysqlTestDatabase::dropAllTables($pdo);
+        $pdo->exec('CREATE TABLE items (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255), tags TEXT) CHARACTER SET utf8mb4');
+        $driver = new MysqlDriver($pdo);
+        try {
+            try {
+            $this->checkHas($driver);
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+    }
+
+        #[Group('mysql')]
+public function test_or_group_or_group_inside_and_two_groups_are_anded(): void
+    {
+        $pdo = MysqlTestDatabase::pdo();
+        MysqlTestDatabase::dropAllTables($pdo);
+        $pdo->exec('CREATE TABLE items (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255), tags TEXT) CHARACTER SET utf8mb4');
+        $driver = new MysqlDriver($pdo);
+        try {
+            try {
+            $this->checkOrWithinAndAcrossGroups($driver);
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+    }
+
+        #[Group('mysql')]
+public function test_or_group_count_equals_rows_ignoring_limit(): void
+    {
+        $pdo = MysqlTestDatabase::pdo();
+        MysqlTestDatabase::dropAllTables($pdo);
+        $pdo->exec('CREATE TABLE items (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255), tags TEXT) CHARACTER SET utf8mb4');
+        $driver = new MysqlDriver($pdo);
+        try {
+            try {
+            $this->checkCountEqualsRowsWithLimit($driver);
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
         } finally {
             MysqlTestDatabase::dropAllTables($pdo);
         }

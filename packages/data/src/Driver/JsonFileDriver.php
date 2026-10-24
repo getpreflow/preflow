@@ -52,6 +52,7 @@ final class JsonFileDriver implements StorageDriver
 
         // Apply where conditions
         $items = $this->applyWheres($items, $query->getWheres(), $query);
+        $items = $this->applyAnyGroups($items, $query);
 
         // Apply ordering
         $items = $this->applyOrderBy($items, $query->getOrderBy(), $query);
@@ -191,6 +192,58 @@ final class JsonFileDriver implements StorageDriver
             'LIKE' => $this->matchLike((string)($fieldValue ?? ''), (string)$condValue),
             default => false,
         };
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $items
+     * @return array<int, array<string, mixed>>
+     */
+    private function applyAnyGroups(array $items, Query $query): array
+    {
+        foreach ($query->getAnyGroups() as $group) {
+            $items = array_values(array_filter($items, function (array $item) use ($group, $query) {
+                foreach ($group as $condition) {
+                    if ($this->matchesAny($this->value($item, $condition['field'], $query), $condition)) {
+                        return true;
+                    }
+                }
+                return false;
+            }));
+        }
+
+        return $items;
+    }
+
+    /** @param array{field: string, operator: string, value: mixed} $condition */
+    private function matchesAny(mixed $fieldValue, array $condition): bool
+    {
+        $value = $condition['value'];
+
+        return match ($condition['operator']) {
+            'CONTAINS' => is_scalar($fieldValue) && mb_stripos((string) $fieldValue, (string) $value) !== false,
+            'IN' => in_array($fieldValue, (array) $value, false) && $fieldValue !== null,
+            'HAS' => $this->holdsAny($fieldValue, array_map('strval', (array) $value)),
+            default => $fieldValue === $value,
+        };
+    }
+
+    /** @param list<string> $ids */
+    private function holdsAny(mixed $stored, array $ids): bool
+    {
+        if ($ids === [] || $stored === null || $stored === '') {
+            return false;
+        }
+        if (is_array($stored)) {
+            $held = array_map('strval', array_filter($stored, 'is_scalar'));
+        } else {
+            $held = [(string) $stored];
+            $decoded = is_string($stored) ? json_decode($stored, true) : null;
+            if (is_array($decoded)) {
+                $held = array_map('strval', array_filter($decoded, 'is_scalar'));
+            }
+        }
+
+        return array_intersect($ids, $held) !== [];
     }
 
     private function matchLike(string $value, string $pattern): bool
