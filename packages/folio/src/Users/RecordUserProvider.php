@@ -51,6 +51,18 @@ final class RecordUserProvider implements UserProviderInterface, ClaimsCredentia
         $this->activeField = is_string($active) && $active !== '' ? $active : null;
     }
 
+    /** The user type's key. */
+    public function type(): string
+    {
+        return $this->type;
+    }
+
+    /** @return array{email: string, password: string, roles: string, epoch: string} the field names of the record's parts */
+    public function fields(): array
+    {
+        return ['email' => $this->emailField, 'password' => $this->passwordField, 'roles' => $this->rolesField, 'epoch' => $this->epochField];
+    }
+
     public function findById(string $id): ?Authenticatable
     {
         $record = $this->dm->findType($this->type, $id);

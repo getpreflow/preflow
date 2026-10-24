@@ -17,11 +17,15 @@ final class FolioRoutes
     private const EXTENSIONS = 'Preflow\\Folio\\Http\\ExtensionsController';
     private const WORKING_MW = 'Preflow\\Folio\\Http\\WorkingCopyMiddleware';
     private const AUTH = 'Preflow\\Folio\\Http\\AuthController';
+    private const PASSWORDS = 'Preflow\\Folio\\Http\\PasswordController';
     private const AUTH_MW = 'Preflow\\Folio\\Http\\AdminAuthMiddleware';
     private const PERMISSION_MW = 'Preflow\\Folio\\Http\\FolioPermissionMiddleware';
 
-    /** @return RouteEntry[] */
-    public static function admin(string $prefix, bool $authEnabled = false): array
+    /**
+     * @param bool $passwords the forgot-password and set-password pages (record users behind the default guard)
+     * @return RouteEntry[]
+     */
+    public static function admin(string $prefix, bool $authEnabled = false, bool $passwords = false): array
     {
         $prefix = '/' . trim($prefix, '/');
 
@@ -32,6 +36,12 @@ final class FolioRoutes
             $defs[] = ['GET',  $prefix . '/login',  'loginForm', self::AUTH];
             $defs[] = ['POST', $prefix . '/login',  'login',     self::AUTH];
             $defs[] = ['POST', $prefix . '/logout', 'logout',    self::AUTH];
+            if ($passwords) {
+                $defs[] = ['GET',  $prefix . '/forgot',           'forgotForm',   self::PASSWORDS];
+                $defs[] = ['POST', $prefix . '/forgot',           'forgot',       self::PASSWORDS];
+                $defs[] = ['GET',  $prefix . '/password/{token}', 'passwordForm', self::PASSWORDS];
+                $defs[] = ['POST', $prefix . '/password',         'password',     self::PASSWORDS];
+            }
         }
         $defs = array_merge($defs, [
             ['GET',  $prefix . '/_blocks/{key}/new',   'newBlock', self::BLOCKS],
@@ -67,7 +77,7 @@ final class FolioRoutes
             [$method, $pattern, $action] = $def;
             $handlerClass = $def[3] ?? self::ADMIN;
             // Signed-in staff, then the route's permission (FolioPermissionMiddleware::rule).
-            $middleware = ($authEnabled && $handlerClass !== self::AUTH) ? [self::AUTH_MW, self::PERMISSION_MW] : [];
+            $middleware = ($authEnabled && $handlerClass !== self::AUTH && $handlerClass !== self::PASSWORDS) ? [self::AUTH_MW, self::PERMISSION_MW] : [];
             $middleware[] = self::WORKING_MW; // the admin shows drafts of referenced records
             $c = PatternCompiler::compile($pattern);
             $entries[] = new RouteEntry(

@@ -20,6 +20,12 @@ final class ChainUserProvider implements UserProviderInterface
         $this->providers = [...$providers];
     }
 
+    /** @return list<UserProviderInterface> the members, in lookup order */
+    public function providers(): array
+    {
+        return $this->providers;
+    }
+
     public function findById(string $id): ?Authenticatable
     {
         foreach ($this->providers as $provider) {

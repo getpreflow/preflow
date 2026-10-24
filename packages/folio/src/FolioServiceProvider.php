@@ -460,12 +460,80 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TemplateEngineInterface::class),
             $prefix,
         ));
-        $container->bind(AuthController::class, fn (Container $c) => new AuthController(
+        $container->bind(AuthController::class, function (Container $c) use ($prefix): AuthController {
+            // Record users behind the guard: the throttled login with remember-me and the password pages.
+            $passwords = self::recordProviders($c) !== [] ? $c->get(\Preflow\Folio\Users\StaffPasswords::class) : null;
+
+            return new AuthController(
+                $c->get(\Preflow\Auth\AuthManager::class),
+                $c->get(\Preflow\Auth\UserProviderInterface::class),
+                $c->get(TemplateEngineInterface::class),
+                $prefix,
+                $passwords,
+                $passwords === null ? null : $c->get(\Preflow\Core\Throttle\Throttle::class),
+                $passwords === null ? null : $c->get(\Preflow\Auth\PasswordHasherInterface::class),
+            );
+        });
+        $container->singleton(\Preflow\Folio\Users\StaffPasswords::class, fn (Container $c) => self::staffPasswords($c, $prefix));
+        $container->bind(\Preflow\Folio\Http\PasswordController::class, fn (Container $c) => new \Preflow\Folio\Http\PasswordController(
+            $c->get(\Preflow\Folio\Users\StaffPasswords::class),
+            $c->get(\Preflow\Core\Throttle\Throttle::class),
             $c->get(\Preflow\Auth\AuthManager::class),
-            $c->get(\Preflow\Auth\UserProviderInterface::class),
             $c->get(TemplateEngineInterface::class),
             $prefix,
+            max(1, (int) ($this->folioConfig($app)['password_min'] ?? 10)),
         ));
+    }
+
+    /**
+     * The record providers (Folio user types) behind the default guard; none without auth.
+     *
+     * @return list<\Preflow\Folio\Users\RecordUserProvider>
+     */
+    private static function recordProviders(Container $c): array
+    {
+        try {
+            $users = $c->get(\Preflow\Auth\UserProviderInterface::class);
+        } catch (\Throwable) { // no config/auth.php: nothing bound
+            return [];
+        }
+
+        return \Preflow\Folio\Users\RecordProviders::of($users);
+    }
+
+    private static function staffPasswords(Container $c, string $prefix): \Preflow\Folio\Users\StaffPasswords
+    {
+        $app = $c->get(Application::class);
+        $url = $app->config()->get('app.url');
+        $base = rtrim(is_string($url) && $url !== '' ? $url : 'http://localhost', '/');
+        $auth = $c->get(\Preflow\Auth\AuthManager::class);
+
+        return new \Preflow\Folio\Users\StaffPasswords(
+            $c->get(\Preflow\Auth\Tokens\Tokens::class),
+            $c->has(\Preflow\Auth\Remember\RememberMe::class) ? $c->get(\Preflow\Auth\Remember\RememberMe::class) : null,
+            $c->get(\Preflow\Auth\PasswordHasherInterface::class),
+            $c->get(DataManager::class),
+            $c->get(\Preflow\Auth\UserProviderInterface::class),
+            self::recordProviders($c),
+            static function () use ($c, $app): \Preflow\Folio\Users\StaffMailer {
+                $locale = $c->get(\Preflow\Data\Locales::class)->default;
+                try {
+                    $translator = $c->get(\Preflow\I18n\Translator::class);
+                } catch (\Throwable) { // the app has no translator (no lang/, no config/i18n.php): one for the mails
+                    $translator = new \Preflow\I18n\Translator($app->basePath('lang'), $locale, $locale);
+                }
+                $translator->addDefaults('folio', dirname(__DIR__) . '/lang');
+
+                return new \Preflow\Folio\Users\StaffMailer(
+                    $c->get(\Preflow\Notify\Notifier::class),
+                    $translator,
+                    $locale,
+                    (string) $app->config()->get('app.name', 'Folio'),
+                );
+            },
+            $auth->defaultGuardName(),
+            $base . $prefix . '/password',
+        );
     }
 
     public function boot(Container $container): void
@@ -663,7 +731,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $authEnabled = file_exists($app->basePath('config/auth.php'));
                 // Screens first: their routes must win over the admin's {type} routes.
                 $collection->addMany($screens->routes($this->prefix($app), $authEnabled));
-                $collection->addMany(FolioRoutes::admin($this->prefix($app), $authEnabled));
+                $collection->addMany(FolioRoutes::admin($this->prefix($app), $authEnabled, $authEnabled && self::recordProviders($container) !== []));
                 $assets = self::privateAssetsConfig((array) ($this->folioConfig($app)['assets'] ?? []), $app);
                 $collection->add(FolioRoutes::privateAssets((string) $assets['private_url']));
                 $collection->add(FolioRoutes::media(is_string($assets['url'] ?? null) ? $assets['url'] : '/media'));

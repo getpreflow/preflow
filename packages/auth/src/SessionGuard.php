@@ -172,7 +172,8 @@ final class SessionGuard implements GuardInterface
         return $this->sessionKey . ':epoch';
     }
 
-    private function remembers(): bool
+    /** Whether this guard has a remember-me cookie configured (a login form offers the checkbox then). */
+    public function remembers(): bool
     {
         return $this->rememberMe !== null && $this->remember !== [];
     }

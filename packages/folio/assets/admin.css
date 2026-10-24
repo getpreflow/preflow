@@ -1055,6 +1055,14 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
 .folio-auth-lead { margin: 6px 0 24px; color: var(--c-text-muted); font-size: 14px; }
 .folio-auth-card .form-group { margin-bottom: 16px; }
 .folio-auth-card .btn-primary { width: 100%; min-height: 40px; margin-top: 8px; font-size: 14px; }
+.folio-auth-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 0 12px; font-size: 13px; }
+.folio-auth-check { display: inline-flex; align-items: center; gap: 8px; color: var(--c-text-muted); cursor: pointer; }
+.folio-auth-card input[type="checkbox"] { display: inline-block; width: 16px; height: 16px; min-height: 0; padding: 0; box-shadow: none; }
+.folio-auth-link { margin-left: auto; color: var(--c-accent); font-size: 13px; text-decoration: none; }
+.folio-auth-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+.folio-auth-back { margin: 18px 0 0; text-align: center; font-size: 13px; }
+/* Forgot / set-password cards: as wide as the sign-in card, whatever their text. */
+.folio-auth-card.folio-auth-card-fixed { width: min(328px, calc(100vw - 48px)); }
 .folio-auth-foot { margin: 0; font-size: 12.5px; color: var(--c-text-subtle); }
 .folio-auth-foot a { color: var(--c-text-muted); text-decoration: underline; text-underline-offset: 2px; }
 

@@ -70,6 +70,58 @@ final class FolioAuthTest extends TestCase
         }
     }
 
+    /**
+     * Characterisation: a site whose users come from config/auth.php only (no record users, no
+     * remember-me) gets the login page byte for byte as before the staff accounts (CSRF token,
+     * CSP nonce, asset version and the debug toolbar are the parts that differ per request or build).
+     */
+    #[RunInSeparateProcess]
+    public function test_login_page_of_a_config_user_site_is_unchanged(): void
+    {
+        $body = (string) $this->app()->handle((new Psr17Factory())->createServerRequest('GET', '/folio/login'))->getBody();
+        $body = (string) preg_replace(
+            ['~name="_csrf_token" value="[^"]*"~', '~nonce="[^"]*"~', '~(admin\.css)\?v=[^"]*~', '~<div id="preflow-debug-toolbar">.*(?=</body>)~s'],
+            ['name="_csrf_token" value=""', 'nonce=""', '$1?v=', ''],
+            $body,
+        );
+        // Recorded from the login page before the staff accounts (v0.26).
+        $this->assertSame((string) file_get_contents(dirname(__DIR__) . '/Fixtures/login-config-site.html'), $body);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_config_user_site_has_no_password_pages(): void
+    {
+        $app = $this->app();
+        $f = new Psr17Factory();
+
+        // As before: /folio/forgot is an admin URL (a type list) behind the login, /folio/password/x matches nothing.
+        $forgot = $app->handle($f->createServerRequest('GET', '/folio/forgot'));
+        $this->assertSame(302, $forgot->getStatusCode());
+        $this->assertSame('/folio/login', $forgot->getHeaderLine('Location'));
+        $this->assertSame(404, $app->handle($f->createServerRequest('GET', '/folio/password/some-token'))->getStatusCode());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_config_user_site_with_remember_me_offers_it_without_password_pages(): void
+    {
+        $auth = require $this->dir . '/config/auth.php';
+        $auth['guards']['session']['remember'] = ['cookie' => 'folio_remember', 'path' => '/folio'];
+        file_put_contents($this->dir . '/config/auth.php', "<?php\nreturn " . var_export($auth, true) . ";\n");
+        $app = $this->app();
+        $f = new Psr17Factory();
+
+        $page = (string) $app->handle($f->createServerRequest('GET', '/folio/login'))->getBody();
+        $this->assertStringContainsString('name="remember" value="1"', $page);
+        $this->assertStringNotContainsString('/folio/forgot', $page, 'no record users: no forgot link');
+        preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
+        $login = $app->handle($f->createServerRequest('POST', '/folio/login')->withParsedBody([
+            '_csrf_token' => $m[1] ?? '', 'email' => 'admin@site.test', 'password' => 'secret', 'remember' => '1',
+        ]));
+
+        $this->assertSame('/folio', $login->getHeaderLine('Location'));
+        $this->assertMatchesRegularExpression('~^folio_remember=[^;]+; Max-Age=~', implode("\n", $login->getHeader('Set-Cookie')));
+    }
+
     #[RunInSeparateProcess]
     public function test_assets_are_public_while_unauthenticated(): void
     {

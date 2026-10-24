@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title>Folio — Sign in</title>
+    <script nonce="">
+    (function () {
+        try {
+            var t = localStorage.getItem('folio-theme');
+            if (t === 'light' || t === 'dark') {
+                document.documentElement.setAttribute('data-theme', t);
+            }
+        } catch (e) {}
+    })();
+    </script>
+    <link rel="stylesheet" href="/folio/_assets/admin.css?v=">
+</head>
+<body>
+<div class="folio-auth">
+    <aside class="folio-auth-art" aria-hidden="true">
+        <svg class="folio-auth-pattern" viewBox="0 0 640 960" preserveAspectRatio="xMidYMid slice" focusable="false">
+<defs><symbol id="fg-caret" viewBox="0 0 24 24"><path d="M5 16l7-9 7 9"/></symbol>
+<symbol id="fg-pilcrow" viewBox="0 0 24 24"><path d="M11 4h7M15.5 4v16M11 4v16M11 4a4 4 0 0 0 0 8"/></symbol>
+<symbol id="fg-brace" viewBox="0 0 24 24"><path d="M9 4C6.5 4 6 5.5 6 7.5S5.5 12 3.5 12C5.5 12 6 13 6 15.5S6.5 20 9 20M15 4c2.5 0 3 1.5 3 3.5s.5 4.5 2.5 4.5c-2 0-2.5 1-2.5 3.5S17.5 20 15 20"/></symbol>
+<symbol id="fg-block" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="3"/><path d="M7 10.5h7M7 13.5h4"/></symbol>
+<symbol id="fg-cursor" viewBox="0 0 24 24"><path d="M9 4h6M12 4v16M9 20h6"/></symbol>
+<symbol id="fg-squiggle" viewBox="0 0 24 24"><path d="M2 13c2-3 4-3 6 0s4 3 6 0 4-3 6 0"/></symbol>
+<symbol id="fg-plus" viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></symbol>
+<symbol id="fg-ring" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5.5"/></symbol>
+<symbol id="fg-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.4" class="fg-fill"/></symbol></defs>
+<g class="folio-auth-drift">
+<use href="#fg-pilcrow" class="pc-3" width="24" height="24" transform="translate(27 64) rotate(-40) scale(1.6) translate(-12 -12)"/>
+<use href="#fg-pilcrow" class="pc-1" width="24" height="24" transform="translate(191 34) rotate(25) scale(2.6) translate(-12 -12)"/>
+<use href="#fg-caret" class="pc-6" width="24" height="24" transform="translate(271 23) rotate(-20) scale(1.9) translate(-12 -12)"/>
+<use href="#fg-plus" class="pc-1" width="24" height="24" transform="translate(407 59) rotate(-30) scale(1.9) translate(-12 -12)"/>
+<use href="#fg-dot" class="pc-5" width="24" height="24" transform="translate(452 48) rotate(-20) scale(1.8) translate(-12 -12)"/>
+<use href="#fg-block" class="pc-1" width="24" height="24" transform="translate(562 59) rotate(0) scale(2.2) translate(-12 -12)"/>
+<use href="#fg-block" class="pc-4" width="24" height="24" transform="translate(20 130) rotate(35) scale(3.0) translate(-12 -12)"/>
+<use href="#fg-squiggle" class="pc-2" width="24" height="24" transform="translate(157 189) rotate(8) scale(1.9) translate(-12 -12)"/>
+<use href="#fg-dot" class="pc-6" width="24" height="24" transform="translate(247 165) rotate(35) scale(1.8) translate(-12 -12)"/>
+<use href="#fg-dot" class="pc-3" width="24" height="24" transform="translate(382 131) rotate(25) scale(1.4) translate(-12 -12)"/>
+<use href="#fg-block" class="pc-5" width="24" height="24" transform="translate(479 129) rotate(-20) scale(3.0) translate(-12 -12)"/>
+<use href="#fg-squiggle" class="pc-5" width="24" height="24" transform="translate(611 149) rotate(45) scale(2.6) translate(-12 -12)"/>
+<use href="#fg-cursor" class="pc-1" width="24" height="24" transform="translate(21 239) rotate(35) scale(1.6) translate(-12 -12)"/>
+<use href="#fg-block" class="pc-6" width="24" height="24" transform="translate(146 272) rotate(35) scale(2.2) translate(-12 -12)"/>
+<use href="#fg-ring" class="pc-5" width="24" height="24" transform="translate(279 234) rotate(15) scale(1.9) translate(-12 -12)"/>
+<use href="#fg-plus" class="pc-2" width="24" height="24" transform="translate(558 250) rotate(35) scale(1.6) translate(-12 -12)"/>
+<use href="#fg-plus" class="pc-6" width="24" height="24" transform="translate(57 399) rotate(-40) scale(2.2) translate(-12 -12)"/>
+<use href="#fg-block" class="pc-2" width="24" height="24" transform="translate(149 399) rotate(-12) scale(1.6) translate(-12 -12)"/>
+<use href="#fg-caret" class="pc-3" width="24" height="24" transform="translate(279 340) rotate(-12) scale(2.2) translate(-12 -12)"/>
+<use href="#fg-brace" class="pc-6" width="24" height="24" transform="translate(470 378) rotate(-40) scale(3.0) translate(-12 -12)"/>
+<use href="#fg-block" class="pc-4" width="24" height="24" transform="translate(553 401) rotate(-40) scale(2.6) translate(-12 -12)"/>
+<use href="#fg-caret" class="pc-2" width="24" height="24" transform="translate(23 489) rotate(0) scale(1.6) translate(-12 -12)"/>
+<use href="#fg-pilcrow" class="pc-2" width="24" height="24" transform="translate(130 487) rotate(-30) scale(3.0) translate(-12 -12)"/>
+<use href="#fg-pilcrow" class="pc-4" width="24" height="24" transform="translate(301 488) rotate(0) scale(3.0) translate(-12 -12)"/>
+<use href="#fg-pilcrow" class="pc-4" width="24" height="24" transform="translate(468 471) rotate(-20) scale(2.6) translate(-12 -12)"/>
+<use href="#fg-squiggle" class="pc-4" width="24" height="24" transform="translate(572 456) rotate(15) scale(2.2) translate(-12 -12)"/>
+<use href="#fg-dot" class="pc-6" width="24" height="24" transform="translate(28 554) rotate(15) scale(1.4) translate(-12 -12)"/>
+<use href="#fg-block" class="pc-5" width="24" height="24" transform="translate(124 589) rotate(-20) scale(2.2) translate(-12 -12)"/>
+<use href="#fg-dot" class="pc-6" width="24" height="24" transform="translate(241 605) rotate(-40) scale(1.8) translate(-12 -12)"/>
+<use href="#fg-block" class="pc-6" width="24" height="24" transform="translate(397 620) rotate(0) scale(2.6) translate(-12 -12)"/>
+<use href="#fg-squiggle" class="pc-3" width="24" height="24" transform="translate(457 586) rotate(-30) scale(1.6) translate(-12 -12)"/>
+<use href="#fg-squiggle" class="pc-3" width="24" height="24" transform="translate(563 594) rotate(35) scale(2.2) translate(-12 -12)"/>
+<use href="#fg-caret" class="pc-6" width="24" height="24" transform="translate(254 692) rotate(-30) scale(2.6) translate(-12 -12)"/>
+<use href="#fg-pilcrow" class="pc-4" width="24" height="24" transform="translate(384 716) rotate(25) scale(1.9) translate(-12 -12)"/>
+<use href="#fg-pilcrow" class="pc-4" width="24" height="24" transform="translate(475 703) rotate(25) scale(2.6) translate(-12 -12)"/>
+<use href="#fg-brace" class="pc-5" width="24" height="24" transform="translate(555 670) rotate(-30) scale(1.9) translate(-12 -12)"/>
+<use href="#fg-caret" class="pc-2" width="24" height="24" transform="translate(77 776) rotate(35) scale(2.2) translate(-12 -12)"/>
+<use href="#fg-squiggle" class="pc-6" width="24" height="24" transform="translate(132 767) rotate(-20) scale(3.0) translate(-12 -12)"/>
+<use href="#fg-block" class="pc-2" width="24" height="24" transform="translate(262 825) rotate(-30) scale(2.2) translate(-12 -12)"/>
+<use href="#fg-cursor" class="pc-2" width="24" height="24" transform="translate(354 806) rotate(-40) scale(2.6) translate(-12 -12)"/>
+<use href="#fg-dot" class="pc-5" width="24" height="24" transform="translate(617 811) rotate(25) scale(1.4) translate(-12 -12)"/>
+<use href="#fg-brace" class="pc-2" width="24" height="24" transform="translate(54 932) rotate(45) scale(1.6) translate(-12 -12)"/>
+<use href="#fg-dot" class="pc-6" width="24" height="24" transform="translate(158 922) rotate(-30) scale(1.8) translate(-12 -12)"/>
+<use href="#fg-pilcrow" class="pc-2" width="24" height="24" transform="translate(271 926) rotate(-40) scale(1.6) translate(-12 -12)"/>
+<use href="#fg-ring" class="pc-1" width="24" height="24" transform="translate(339 879) rotate(-40) scale(1.6) translate(-12 -12)"/>
+<use href="#fg-dot" class="pc-4" width="24" height="24" transform="translate(489 907) rotate(0) scale(1.8) translate(-12 -12)"/>
+<use href="#fg-block" class="pc-5" width="24" height="24" transform="translate(610 907) rotate(-40) scale(2.2) translate(-12 -12)"/>
+</g></svg>
+        <div class="folio-auth-hello">
+            <svg class="folio-logo folio-logo--xl" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+    <path class="folio-logo-page" d="M9 3h10.5L26 9.5V26a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z"/>
+    <path class="folio-logo-fold" d="M19.5 3v4.5a2 2 0 0 0 2 2H26Z"/>
+    <path class="folio-logo-f" d="M11.5 12v10M11.5 12h7.5M11.5 16.8h5.2"/>
+</svg>
+            <p class="folio-auth-word">Folio</p>
+            <p class="folio-auth-line">Every word in its place<span class="folio-auth-caret"></span></p>
+        </div>
+    </aside>
+    <main class="folio-auth-main">
+        <form class="folio-auth-card" method="post" action="/folio/login">
+            <input type="hidden" name="_csrf_token" value="">
+            <div class="folio-brand folio-auth-brand"><svg class="folio-logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+    <path class="folio-logo-page" d="M9 3h10.5L26 9.5V26a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z"/>
+    <path class="folio-logo-fold" d="M19.5 3v4.5a2 2 0 0 0 2 2H26Z"/>
+    <path class="folio-logo-f" d="M11.5 12v10M11.5 12h7.5M11.5 16.8h5.2"/>
+</svg>
+<span class="folio-brand-name">Folio</span></div>
+            <h1 class="folio-auth-title">Sign in</h1>
+            <p class="folio-auth-lead">Welcome back. Your pages are waiting.</p>
+                        <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" name="email" id="email" autocomplete="username" required autofocus>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" name="password" id="password" autocomplete="current-password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Sign in</button>
+        </form>
+        <p class="folio-auth-foot">Folio, the content side of <a href="https://preflow.dev" rel="noopener">Preflow</a></p>
+    </main>
+</div>
+</body>
+</html>

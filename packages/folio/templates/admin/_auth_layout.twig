@@ -1,0 +1,37 @@
+{# The sign-in scene around a card: the forgot-password and set-password pages (the login page has its own copy). #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title>Folio — {% block title %}{% endblock %}</title>
+    <script nonce="{{ csp_nonce() }}">
+    (function () {
+        try {
+            var t = localStorage.getItem('folio-theme');
+            if (t === 'light' || t === 'dark') {
+                document.documentElement.setAttribute('data-theme', t);
+            }
+        } catch (e) {}
+    })();
+    </script>
+    <link rel="stylesheet" href="{{ folio_asset('admin.css') }}">
+</head>
+<body>
+<div class="folio-auth">
+    <aside class="folio-auth-art" aria-hidden="true">
+        {% include '@folio/admin/_auth_pattern.twig' %}
+        <div class="folio-auth-hello">
+            {% include '@folio/admin/_logo.twig' with {size: 'xl'} %}
+            <p class="folio-auth-word">Folio</p>
+            <p class="folio-auth-line">Every word in its place<span class="folio-auth-caret"></span></p>
+        </div>
+    </aside>
+    <main class="folio-auth-main">
+        {% block card %}{% endblock %}
+        <p class="folio-auth-foot">Folio, the content side of <a href="https://preflow.dev" rel="noopener">Preflow</a></p>
+    </main>
+</div>
+</body>
+</html>

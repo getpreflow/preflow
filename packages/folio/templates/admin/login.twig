@@ -44,6 +44,16 @@
                 <label for="password">Password</label>
                 <input type="password" name="password" id="password" autocomplete="current-password" required>
             </div>
+{% if remember_offered|default(false) or forgot_url|default('') %}
+            <div class="folio-auth-row">
+{% if remember_offered|default(false) %}
+                <label class="folio-auth-check"><input type="checkbox" name="remember" value="1"> Keep me signed in</label>
+{% endif %}
+{% if forgot_url|default('') %}
+                <a class="folio-auth-link" href="{{ forgot_url }}">Forgot password?</a>
+{% endif %}
+            </div>
+{% endif %}
             <button type="submit" class="btn btn-primary">Sign in</button>
         </form>
         <p class="folio-auth-foot">Folio, the content side of <a href="https://preflow.dev" rel="noopener">Preflow</a></p>

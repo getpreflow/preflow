@@ -14,6 +14,8 @@ final class LazyUserProvider implements UserProviderInterface, ClaimsCredentials
 
     private bool $unavailable = false;
 
+    private ?UserProviderUnavailable $failure = null;
+
     /** @param \Closure(): object $factory builds the provider; the result is checked on resolve */
     public function __construct(
         private readonly string $name,
@@ -25,20 +27,31 @@ final class LazyUserProvider implements UserProviderInterface, ClaimsCredentials
      * Build the provider during boot. One whose user source is gone (UserProviderUnavailable: Folio's
      * user type after its extension was disabled) then resolves nobody instead of breaking every
      * request; the failure is returned for logging. Any other setup error, and a class that is not a
-     * provider, still throws.
+     * provider, still throws. Builds once: a later call returns the first outcome.
      */
     public function bootResolve(): ?UserProviderUnavailable
     {
+        if ($this->provider !== null || $this->unavailable) {
+            return $this->failure;
+        }
         try {
             $built = ($this->factory)();
         } catch (UserProviderUnavailable $e) {
             $this->unavailable = true;
 
-            return $e;
+            return $this->failure = $e;
         }
         $this->provider = $this->check($built);
 
         return null;
+    }
+
+    /** The built provider (built now if need be), or null when its user source is unavailable. */
+    public function inner(): ?UserProviderInterface
+    {
+        $this->bootResolve();
+
+        return $this->provider;
     }
 
     /** Build the provider once (a class that is not a provider throws here). */

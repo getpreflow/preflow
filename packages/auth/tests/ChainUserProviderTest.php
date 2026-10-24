@@ -116,4 +116,40 @@ final class ChainUserProviderTest extends TestCase
 
         $this->assertNull($chain->findByCredentials(['email' => 'a@x.test']));
     }
+
+    public function test_the_chain_lists_its_members_in_order(): void
+    {
+        $a = $this->configUser('a@x.test', 'h');
+        $b = $this->configUser('b@x.test', 'h');
+
+        $this->assertSame([$a, $b], (new ChainUserProvider([$a, $b]))->providers());
+    }
+
+    public function test_a_lazy_provider_is_built_once_and_an_unavailable_one_is_none(): void
+    {
+        $built = 0;
+        $lazy = new LazyUserProvider('staff', 'X', function () use (&$built): object {
+            $built++;
+
+            return $this->configUser('a@x.test', 'h');
+        });
+        $this->assertSame($lazy->inner(), $lazy->inner());
+        $this->assertNull($lazy->bootResolve(), 'boot after a first use: nothing to report');
+        $this->assertSame(1, $built);
+
+        $gone = new UserProviderUnavailable('gone');
+        $missing = new LazyUserProvider('staff', 'Missing', static fn (): object => throw $gone);
+        $this->assertNull($missing->inner());
+        $this->assertSame($gone, $missing->bootResolve(), 'the boot still reports the failure');
+    }
+
+    public function test_a_session_guard_tells_whether_it_remembers(): void
+    {
+        $provider = $this->configUser('a@x.test', 'h');
+        $remember = new \Preflow\Auth\Remember\RememberMe(new \Preflow\Data\DataManager(['default' => new \Preflow\Data\Driver\SqliteDriver(new \PDO('sqlite::memory:'))], 'default'));
+
+        $this->assertFalse((new SessionGuard($provider, new NativePasswordHasher()))->remembers());
+        $this->assertFalse((new SessionGuard($provider, new NativePasswordHasher(), rememberMe: $remember))->remembers(), 'no cookie config');
+        $this->assertTrue((new SessionGuard($provider, new NativePasswordHasher(), rememberMe: $remember, remember: ['cookie' => 'r']))->remembers());
+    }
 }
