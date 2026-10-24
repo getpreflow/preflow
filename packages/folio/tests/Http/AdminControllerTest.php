@@ -535,4 +535,143 @@ final class AdminControllerTest extends TestCase
         $this->assertSame(200, $res->getStatusCode());
         $this->assertSame('Game 001', json_decode((string) $res->getBody(), true)['items'][0]['label']);
     }
+
+    /**
+     * Pages plus "tag" (pages: multiple relation, detach) and "lock" (page: restrict).
+     * Registry and data manager are rebuilt so they see the extra models.
+     */
+    private function relatedWorld(): void
+    {
+        file_put_contents($this->base . '/m/tag.json', json_encode([
+            'key' => 'tag', 'table' => 'tag', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Tags',
+            'fields' => ['pages' => ['type' => 'relation', 'relation' => ['to' => 'page', 'multiple' => true]]],
+        ]));
+        file_put_contents($this->base . '/m/lock.json', json_encode([
+            'key' => 'lock', 'table' => 'lock', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Locks',
+            'fields' => ['page' => ['type' => 'relation', 'relation' => ['to' => 'page', 'onDelete' => 'restrict']]],
+        ]));
+        file_put_contents($this->base . '/m/site.json', json_encode([
+            'key' => 'site', 'table' => 'site', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Site', 'singleton' => true,
+            'fields' => ['tagline' => ['type' => 'string']],
+        ]));
+        $this->registry = new TypeRegistry($this->base . '/m');
+        $this->dm = new DataManager(
+            ['json' => new JsonFileDriver($this->base . '/s')],
+            'json',
+            $this->registry,
+            new ValidatorFactory(new RuleFactory()),
+        );
+        $this->seedPages(2);
+        $this->dm->saveType(\Preflow\Data\DynamicRecord::fromArray($this->registry->get('tag'), ['uuid' => 't1', 'pages' => '["p1","p2"]']), false);
+        $this->dm->saveType(\Preflow\Data\DynamicRecord::fromArray($this->registry->get('tag'), ['uuid' => 't2', 'pages' => '["p1"]']), false);
+    }
+
+    /** A session that records flashes. */
+    private function session(): \Preflow\Core\Http\Session\SessionInterface
+    {
+        return new class implements \Preflow\Core\Http\Session\SessionInterface {
+            /** @var array<string, mixed> */
+            public array $flashes = [];
+            public function start(): void {}
+            public function getId(): string { return 'test'; }
+            public function regenerate(): void {}
+            public function invalidate(): void {}
+            public function get(string $key, mixed $default = null): mixed { return $default; }
+            public function set(string $key, mixed $value): void {}
+            public function has(string $key): bool { return false; }
+            public function remove(string $key): void {}
+            public function flash(string $key, mixed $value): void { $this->flashes[$key] = $value; }
+            public function getFlash(string $key, mixed $default = null): mixed { return $this->flashes[$key] ?? $default; }
+            public function isStarted(): bool { return true; }
+            public function ageFlash(): void {}
+            public function close(): void {}
+        };
+    }
+
+    private function destroyRequest(string $type, string $id, ?\Preflow\Core\Http\Session\SessionInterface $session = null): \Psr\Http\Message\ServerRequestInterface
+    {
+        $req = (new Psr17Factory())->createServerRequest('POST', "/folio/{$type}/{$id}/delete")
+            ->withAttribute('type', $type)
+            ->withAttribute('id', $id);
+
+        return $session === null ? $req : $req->withAttribute(\Preflow\Core\Http\Session\SessionInterface::class, $session);
+    }
+
+    /** @param list<string>|string|null $ids */
+    private function planRequest(string $type, array|string|null $ids): \Psr\Http\Message\ServerRequestInterface
+    {
+        return (new Psr17Factory())->createServerRequest('POST', "/folio/{$type}/_delete-plan")
+            ->withAttribute('type', $type)
+            ->withParsedBody($ids === null ? [] : ['ids' => $ids]);
+    }
+
+    public function test_destroy_deletes_detaches_and_redirects_to_the_list(): void
+    {
+        $this->relatedWorld();
+        $session = $this->session();
+
+        $res = $this->controller()->destroy($this->destroyRequest('page', 'p1', $session));
+
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame('/folio/page', $res->getHeaderLine('Location'));
+        $this->assertNull($this->dm->findType('page', 'p1'));
+        $this->assertSame('["p2"]', $this->dm->findType('tag', 't1')?->get('pages'));
+        $this->assertSame('[]', $this->dm->findType('tag', 't2')?->get('pages'));
+        $this->assertSame([], $session->flashes);
+    }
+
+    public function test_destroy_of_a_restricted_record_flashes_the_reason_and_keeps_it(): void
+    {
+        $this->relatedWorld();
+        $this->dm->saveType(\Preflow\Data\DynamicRecord::fromArray($this->registry->get('lock'), ['uuid' => 'l1', 'page' => 'p1']), false);
+        $session = $this->session();
+
+        $res = $this->controller()->destroy($this->destroyRequest('page', 'p1', $session));
+
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame('/folio/page', $res->getHeaderLine('Location'));
+        $this->assertSame("Can't delete: 1 lock still points here.", $session->flashes['error'] ?? null);
+        $this->assertNotNull($this->dm->findType('page', 'p1'));
+        $this->assertSame('["p1","p2"]', $this->dm->findType('tag', 't1')?->get('pages'));
+    }
+
+    public function test_delete_plan_returns_the_confirmation_as_json(): void
+    {
+        $this->relatedWorld();
+
+        $res = $this->controller()->deletePlan($this->planRequest('page', ['p1']));
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringStartsWith('application/json', $res->getHeaderLine('Content-Type'));
+        $this->assertSame([
+            'restricted' => false,
+            'lines' => ['2 tags lose a link.'],
+            'confirm' => "This can't be undone.\n2 tags lose a link.",
+        ], json_decode((string) $res->getBody(), true));
+        $this->assertNotNull($this->dm->findType('page', 'p1')); // only a summary
+    }
+
+    public function test_delete_plan_of_a_restricted_record(): void
+    {
+        $this->relatedWorld();
+        $this->dm->saveType(\Preflow\Data\DynamicRecord::fromArray($this->registry->get('lock'), ['uuid' => 'l1', 'page' => 'p2']), false);
+        $this->dm->saveType(\Preflow\Data\DynamicRecord::fromArray($this->registry->get('lock'), ['uuid' => 'l2', 'page' => 'p2']), false);
+
+        $data = json_decode((string) $this->controller()->deletePlan($this->planRequest('page', ['p1', 'p2']))->getBody(), true);
+
+        $this->assertTrue($data['restricted']);
+        $this->assertSame(["Can't delete: 2 locks still point here."], $data['lines']);
+        $this->assertSame("Can't delete: 2 locks still point here.", $data['confirm']);
+    }
+
+    public function test_delete_plan_refuses_unknown_types_singletons_and_missing_ids(): void
+    {
+        $this->relatedWorld();
+
+        $this->assertSame(404, $this->controller()->deletePlan($this->planRequest('ghost', ['x']))->getStatusCode());
+        $this->assertSame(404, $this->controller()->deletePlan($this->planRequest('site', ['site']))->getStatusCode());
+        $this->assertSame(422, $this->controller()->deletePlan($this->planRequest('page', null))->getStatusCode());
+        $this->assertSame(422, $this->controller()->deletePlan($this->planRequest('page', 'p1'))->getStatusCode());
+        $this->assertSame(422, $this->controller()->deletePlan($this->planRequest('page', [['nested']]))->getStatusCode());
+    }
 }

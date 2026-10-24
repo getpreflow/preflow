@@ -450,4 +450,26 @@ final class PublishingAppTest extends TestCase
 
         $this->assertStringContainsString('Shown', (string) $this->get('/hello')->getBody());
     }
+
+    public function test_destroy_detaches_the_working_copy_only_and_the_live_page_skips_the_gone_record(): void
+    {
+        $this->publisher()->publish($this->working('post', 'p2', ['title' => ['en' => 'Second'], 'slug' => ['en' => 'second']]), null);
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'First'], 'slug' => ['en' => 'first'], 'related' => 'p2']), null);
+
+        $plan = json_decode((string) $this->post('/folio/post/_delete-plan', ['ids' => ['p2']])->getBody(), true);
+        $this->assertSame("This can't be undone.\n1 post loses a link.", $plan['confirm']);
+
+        $this->assertSame(302, $this->post('/folio/post/p2/delete')->getStatusCode());
+
+        $this->assertNull($this->dm()->findType('post', 'p2'));
+        $this->assertNull($this->publisher()->snapshot('post', 'p2'));
+        $this->assertSame('', $this->stored('post', 'p1')->get('related'));
+        $this->assertSame('p2', $this->publisher()->snapshot('post', 'p1')?->get('related')); // until the next publish
+
+        $live = $this->get('/first');
+        $this->assertSame(200, $live->getStatusCode());
+        $this->assertStringContainsString('First', (string) $live->getBody());
+        $this->assertStringNotContainsString('Second', (string) $live->getBody());
+    }
 }
+

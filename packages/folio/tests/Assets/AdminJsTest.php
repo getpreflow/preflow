@@ -220,4 +220,20 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString("input.dispatchEvent(new Event('change', { bubbles: true }))", $js);
         $this->assertStringContainsString("chipHolder.dispatchEvent(new Event('change', { bubbles: true }))", $js);
     }
+
+    public function test_delete_forms_confirm_the_delete_plan(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString("hasAttribute('data-delete-plan')", $js);      // the form opts in
+        $this->assertStringContainsString("body.append('ids[]'", $js);                     // posts the ids
+        $this->assertStringContainsString("body.append('_csrf_token'", $js);               // with the form's token
+        $this->assertStringContainsString('window.alert(plan.confirm)', $js);              // restricted: only the reason
+        $this->assertStringContainsString('window.confirm(plan.confirm)', $js);            // else the summary
+        $this->assertStringContainsString("document.addEventListener('submit', onDeletePlanSubmit)", $js);
+
+        $list = (string) file_get_contents(dirname(__DIR__, 2) . '/templates/admin/_list_results.twig');
+        $this->assertStringContainsString('data-delete-plan="{{ prefix }}/{{ type }}/_delete-plan" data-delete-id="{{ row.id }}"', $list);
+        $this->assertStringContainsString('data-confirm="Delete this record?"', $list); // the no-JS / failure fallback
+    }
 }
+

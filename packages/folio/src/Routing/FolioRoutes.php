@@ -60,6 +60,7 @@ final class FolioRoutes
             ['GET',  $prefix . '/_relation/{type}',    'relationOptions'], // before the generic {type} routes
             ['GET',  $prefix . '/{type}',              'list'],
             ['GET',  $prefix . '/{type}/new',          'createForm'],
+            ['POST', $prefix . '/{type}/_delete-plan', 'deletePlan'], // before {type}/{id}
             ['POST', $prefix . '/{type}/preview',      'preview', self::PREVIEW],
             ['POST', $prefix . '/{type}',              'store'],
             ['GET',  $prefix . '/{type}/{id}/edit',    'editForm'],

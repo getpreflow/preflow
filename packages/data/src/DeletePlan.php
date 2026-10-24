@@ -80,4 +80,16 @@ final readonly class DeletePlan
             'restricted' => $this->restrictions,
         ];
     }
+
+    /**
+     * A stored relation value with $remove taken out, as a detach writes it: a
+     * multiple relation stays a JSON array string in its order, a single id becomes ''.
+     * For executors that save detached records themselves.
+     *
+     * @param list<string> $remove
+     */
+    public static function valueWithout(mixed $value, array $remove): mixed
+    {
+        return DeletePlanner::without($value, $remove);
+    }
 }

@@ -117,6 +117,15 @@ final class DeletePlanTest extends TestCase
         }
     }
 
+    public function test_value_without_matches_what_the_executor_writes(): void
+    {
+        $this->assertSame('["b","c"]', DeletePlan::valueWithout('["a","b","c"]', ['a']));
+        $this->assertSame('[]', DeletePlan::valueWithout(['a'], ['a']));
+        $this->assertSame('', DeletePlan::valueWithout('a', ['a']));
+        $this->assertSame('b', DeletePlan::valueWithout('b', ['a']));
+        $this->assertSame('[ "b" ]', DeletePlan::valueWithout('[ "b" ]', ['a'])); // untouched text
+    }
+
     private function shadow(string $key): TypeDefinition
     {
         $def = $this->registry->get($key);

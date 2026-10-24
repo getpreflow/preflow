@@ -42,6 +42,7 @@ final class FolioPermissionMiddlewareTest extends TestCase
         yield ['Preflow\\Folio\\Http\\AdminController@update', '{type}.edit'];
         yield ['Preflow\\Folio\\Http\\AdminController@reorder', '{type}.edit'];
         yield ['Preflow\\Folio\\Http\\AdminController@destroy', '{type}.delete'];
+        yield ['Preflow\\Folio\\Http\\AdminController@deletePlan', '{type}.delete'];
         yield ['Preflow\\Folio\\Http\\PublishingController@autosave', '{type}.edit'];
         yield ['Preflow\\Folio\\Http\\PublishingController@discard', '{type}.edit'];
         yield ['Preflow\\Folio\\Http\\PublishingController@restore', '{type}.edit'];

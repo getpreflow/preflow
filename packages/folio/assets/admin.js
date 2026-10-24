@@ -668,9 +668,46 @@
     // onsubmit handlers, which the strict CSP blocks).
     function onSubmitConfirm(e) {
         var f = e.target;
+        if (f && f.hasAttribute && f.hasAttribute('data-delete-plan')) { return; } // onDeletePlanSubmit asks
         if (f && f.getAttribute && f.hasAttribute('data-confirm') && !window.confirm(f.getAttribute('data-confirm'))) {
             e.preventDefault();
         }
+    }
+
+    // Delete forms with data-delete-plan="{url}" data-delete-id="{id}": fetch what the
+    // delete would also do ("Also deletes 12 games.") and confirm that; a restricted plan
+    // only shows why. The server plans again when the form is submitted. If the summary
+    // can't be fetched, the form's generic data-confirm text is asked instead.
+    function onDeletePlanSubmit(e) {
+        var f = e.target;
+        if (!f || !f.hasAttribute || !f.hasAttribute('data-delete-plan')) { return; }
+        e.preventDefault();
+        if (f.getAttribute('data-delete-busy') === '1') { return; }
+        f.setAttribute('data-delete-busy', '1');
+        var body = new URLSearchParams();
+        var token = f.querySelector('input[name="_csrf_token"]');
+        if (token) { body.append('_csrf_token', token.value); }
+        body.append('ids[]', f.getAttribute('data-delete-id') || '');
+        var send = function () { HTMLFormElement.prototype.submit.call(f); };
+        fetch(f.getAttribute('data-delete-plan'), {
+            method: 'POST',
+            body: body,
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' }
+        })
+            .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('plan ' + r.status)); })
+            .then(function (plan) {
+                if (!plan || typeof plan.confirm !== 'string') { throw new Error('plan shape'); }
+                if (plan.restricted) {
+                    window.alert(plan.confirm);
+                } else if (window.confirm(plan.confirm)) {
+                    send();
+                }
+            })
+            .catch(function () {
+                if (window.confirm(f.getAttribute('data-confirm') || 'Delete this record?')) { send(); }
+            })
+            .then(function () { f.removeAttribute('data-delete-busy'); });
     }
 
     // ---- Blocks editor -------------------------------------------------
@@ -1376,6 +1413,7 @@
     function boot() {
         document.querySelectorAll('[data-folio-list-form]').forEach(initList);
         document.addEventListener('submit', onSubmitConfirm);
+        document.addEventListener('submit', onDeletePlanSubmit);
         document.addEventListener('click', onBlockClick);
         document.addEventListener('pointerdown', onHandlePointerDown);
         document.addEventListener('pointerup', onPointerUp);

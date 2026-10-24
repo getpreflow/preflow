@@ -56,7 +56,7 @@
                         {% endif %}
                         {% if may.edit %}<a class="btn btn-secondary btn-sm" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">Edit</a>{% endif %}
                         {% if may.delete %}
-                        <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/delete" data-confirm="Delete this record?">
+                        <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/delete" data-confirm="Delete this record?" data-delete-plan="{{ prefix }}/{{ type }}/_delete-plan" data-delete-id="{{ row.id }}">
                             <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                             <button type="submit" class="btn btn-ghost btn-icon" data-tone="danger" aria-label="Delete" title="Delete"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-trash"></use></svg></button>
                         </form>

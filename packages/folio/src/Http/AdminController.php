@@ -13,6 +13,7 @@ use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\Highlighter;
 use Preflow\Folio\Content\ListQuery;
 use Preflow\Folio\Content\ListView;
+use Preflow\Folio\Content\RecordDeleter;
 use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\RelationLabels;
 use Preflow\Folio\Content\DraftRecordFactory;
@@ -22,10 +23,8 @@ use Preflow\Folio\Publishing\Publisher;
 use Preflow\Folio\Publishing\VersionConflict;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
-use Preflow\Folio\Extension\AfterDelete;
 use Preflow\Folio\Extension\AfterSave;
 use Preflow\Folio\Extension\Badge;
-use Preflow\Folio\Extension\BeforeDelete;
 use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\Customization\Customizations;
 use Preflow\Folio\Extension\Customization\Refused;
@@ -493,20 +492,47 @@ final class AdminController
             return new Response(404, [], 'Not found');
         }
 
+        // Through the delete plan: cascades, detaches and restrictions of declared relations;
+        // a restriction or any hook's refusal leaves everything in place.
         try {
-            $this->customizations?->runHooks(BeforeDelete::class, $record);
+            $this->deleter()->delete($type, [$id]);
         } catch (Refused $e) {
             self::flash($request, 'error', $e->getMessage());
-
-            return new Response(302, ['Location' => $this->prefix . '/' . $type]);
         }
-        $this->dm->deleteType($type, $id);
-        if ($this->publishes($type)) {
-            $this->publisher->forget($type, $id);
-        }
-        $this->customizations?->runHooks(AfterDelete::class, $record);
 
         return new Response(302, ['Location' => $this->prefix . '/' . $type]);
+    }
+
+    /**
+     * What deleting the posted ids[] would do, for the confirmation dialog:
+     * {restricted, lines, confirm}. Only a summary: the delete computes its own plan.
+     */
+    public function deletePlan(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = (string) $request->getAttribute('type', '');
+        if (!$this->catalog->has($type) || $this->isSingleton($type)) {
+            return new Response(404, [], 'Unknown type');
+        }
+        $ids = ((array) $request->getParsedBody())['ids'] ?? null;
+        $ids = is_array($ids) ? array_values(array_filter($ids, static fn (mixed $id): bool => is_string($id) && $id !== '')) : [];
+        if ($ids === []) {
+            return new Response(422, [], 'No records');
+        }
+
+        $deleter = $this->deleter();
+        $payload = json_encode($deleter->summary($deleter->plan($type, $ids)), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+
+        return new Response(200, ['Content-Type' => 'application/json; charset=UTF-8'], $payload);
+    }
+
+    private function deleter(): RecordDeleter
+    {
+        return new RecordDeleter(
+            $this->dm,
+            $this->catalog,
+            $this->publisher,
+            $this->customizations !== null ? $this->customizations->runHooks(...) : null,
+        );
     }
 
     /**

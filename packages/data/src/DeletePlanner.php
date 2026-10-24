@@ -234,11 +234,11 @@ final class DeletePlanner
     /**
      * The stored value with $remove taken out: a list keeps its order and stays a
      * JSON array string (as RelationFieldType::toStorage writes it); a single id
-     * becomes ''.
+     * becomes ''. Public for DeletePlan::valueWithout().
      *
      * @param list<string> $remove
      */
-    private static function without(mixed $value, array $remove): mixed
+    public static function without(mixed $value, array $remove): mixed
     {
         $isList = is_array($value)
             || (is_string($value) && str_starts_with(ltrim($value), '[') && is_array(json_decode($value, true)));
