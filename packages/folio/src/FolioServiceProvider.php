@@ -339,6 +339,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
             $c->get(\Preflow\Auth\Access\Access::class),
             $c->get(Customizations::class),
+            new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c)),
         ));
         $container->bind(\Preflow\Folio\Http\PublishingController::class, fn (Container $c) => new \Preflow\Folio\Http\PublishingController(
             $c->get(TypeCatalog::class),

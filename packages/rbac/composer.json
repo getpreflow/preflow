@@ -8,6 +8,7 @@
         "preflow/auth": "^0.20 || @dev",
         "preflow/core": "^0.20 || @dev",
         "preflow/data": "^0.20 || @dev",
+        "preflow/devtools": "^0.26 || @dev",
         "preflow/folio": "^0.20 || @dev",
         "preflow/i18n": "^0.26 || @dev"
     },
@@ -28,6 +29,9 @@
     "extra": {
         "folio": {
             "extension": "Preflow\\Rbac\\Extension"
+        },
+        "preflow": {
+            "commands": ["Preflow\\Rbac\\Console\\ImportConfigStaffCommand"]
         }
     }
 }

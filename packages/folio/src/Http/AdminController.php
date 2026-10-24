@@ -63,6 +63,7 @@ final class AdminController
         private readonly ?\Preflow\Folio\Publishing\PreviewLinks $previewLinks = null,
         private readonly ?\Preflow\Auth\Access\Access $access = null,
         private readonly ?Customizations $customizations = null,
+        private readonly ?\Preflow\Folio\Users\AuthorNames $authors = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
         $this->validator = $validator ?? new RecordValidator($fieldTypes, $dm);
@@ -893,7 +894,7 @@ final class AdminController
             );
             $rows[] = [
                 'date' => $revision->createdAt,
-                'by' => $revision->createdBy,
+                'by' => $this->authors?->label($revision->createdBy) ?? $revision->createdBy,
                 'changed' => $labels,
                 'restore_url' => $this->prefix . '/' . $type . '/' . rawurlencode($id) . '/revisions/' . rawurlencode($revision->id) . '/restore',
             ];

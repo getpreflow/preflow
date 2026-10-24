@@ -20,6 +20,17 @@ final class ConfigUserProvider implements UserProviderInterface
         $this->users = array_values($users);
     }
 
+    /**
+     * The configured users as written (email, password_hash, roles) — for moving them into
+     * records (folio:staff:import-config); sign-in goes through findByCredentials.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function entries(): array
+    {
+        return $this->users;
+    }
+
     public function findById(string $id): ?Authenticatable
     {
         foreach ($this->users as $user) {
