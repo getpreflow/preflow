@@ -397,6 +397,14 @@ final class FolioServiceProvider extends ServiceProvider
             dirname(__DIR__) . '/assets',
             $c->get(\Preflow\Folio\Http\AdminAssets::class),
         ));
+        // Enabled extensions' assets/ files at {prefix}/_assets/x/{extension}/… (public).
+        $container->singleton(\Preflow\Folio\Extension\ExtensionAssets::class, fn (Container $c) => new \Preflow\Folio\Extension\ExtensionAssets(
+            $c->get(ExtensionRegistry::class),
+            $this->prefix($app),
+        ));
+        $container->bind(\Preflow\Folio\Http\ExtensionAssetController::class, fn (Container $c) => new \Preflow\Folio\Http\ExtensionAssetController(
+            $c->get(\Preflow\Folio\Extension\ExtensionAssets::class),
+        ));
         $container->singleton(\Preflow\Folio\Content\Singletons::class, fn (Container $c) => new \Preflow\Folio\Content\Singletons(
             $c->get(DataManager::class),
             $c->get(TypeCatalog::class),
@@ -595,6 +603,12 @@ final class FolioServiceProvider extends ServiceProvider
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_asset',
                 callable: fn (string $file): string => $assetUrls($file),
+                isSafe: false,
+            ));
+            // folio_extension_asset('shop', 'shop.css') -> {prefix}/_assets/x/shop/shop.css?v=…; throws when not served.
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_extension_asset',
+                callable: fn (string $extension, string $path): string => $container->get(\Preflow\Folio\Extension\ExtensionAssets::class)->url($extension, $path),
                 isSafe: false,
             ));
 

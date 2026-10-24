@@ -21,6 +21,7 @@ final class FolioRoutes
     private const ACCOUNT = 'Preflow\\Folio\\Http\\AccountController';
     private const AUTH_MW = 'Preflow\\Folio\\Http\\AdminAuthMiddleware';
     private const PERMISSION_MW = 'Preflow\\Folio\\Http\\FolioPermissionMiddleware';
+    private const EXTENSION_ASSETS = 'Preflow\\Folio\\Http\\ExtensionAssetController';
 
     /**
      * @param bool $passwords the forgot-password and set-password pages and the own account page (record users behind the default guard)
@@ -57,6 +58,8 @@ final class FolioRoutes
             ['POST', $prefix . '/assets/{id}/delete',  'destroy', self::ASSETS],
             ['GET',  $prefix . '/extensions',          'index', self::EXTENSIONS],
             ['POST', $prefix . '/extensions/{name}',   'toggle', self::EXTENSIONS],
+            // Enabled extensions' assets/ files (public, like _assets/{file}); before the generic {type} routes.
+            ['GET',  $prefix . '/_assets/x/{extension}/{...path}', 'serve', self::EXTENSION_ASSETS],
             ['GET',  $prefix . '/_relation/{type}',    'relationOptions'], // before the generic {type} routes
             ['GET',  $prefix . '/{type}',              'list'],
             ['GET',  $prefix . '/{type}/new',          'createForm'],
@@ -86,8 +89,12 @@ final class FolioRoutes
             [$method, $pattern, $action] = $def;
             $handlerClass = $def[3] ?? self::ADMIN;
             // Signed-in staff, then the route's permission (FolioPermissionMiddleware::rule).
-            $middleware = ($authEnabled && $handlerClass !== self::AUTH && $handlerClass !== self::PASSWORDS) ? [self::AUTH_MW, self::PERMISSION_MW] : [];
-            $middleware[] = self::WORKING_MW; // the admin shows drafts of referenced records
+            if ($handlerClass === self::EXTENSION_ASSETS) {
+                $middleware = []; // public static files: no login, no drafts
+            } else {
+                $middleware = ($authEnabled && $handlerClass !== self::AUTH && $handlerClass !== self::PASSWORDS) ? [self::AUTH_MW, self::PERMISSION_MW] : [];
+                $middleware[] = self::WORKING_MW; // the admin shows drafts of referenced records
+            }
             $c = PatternCompiler::compile($pattern);
             $entries[] = new RouteEntry(
                 pattern: $pattern,

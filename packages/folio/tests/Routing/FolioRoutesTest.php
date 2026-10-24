@@ -57,6 +57,25 @@ final class FolioRoutesTest extends TestCase
         $this->assertSame('/folio', $entries[0]->pattern);
     }
 
+    public function test_admin_includes_public_extension_asset_route_before_type_routes(): void
+    {
+        foreach ([false, true] as $auth) {
+            $entries = FolioRoutes::admin('/folio', $auth);
+            $patterns = array_map(fn ($e) => $e->pattern, $entries);
+            $index = array_search('/folio/_assets/x/{extension}/{...path}', $patterns, true);
+
+            $this->assertIsInt($index, 'extension asset route should be registered');
+            $match = $entries[$index];
+            $this->assertSame('GET', $match->method);
+            $this->assertSame('Preflow\\Folio\\Http\\ExtensionAssetController@serve', $match->handler);
+            $this->assertSame(['extension', 'path'], $match->paramNames);
+            $this->assertSame([], $match->middleware, 'public, like _assets/{file}');
+            $this->assertLessThan(array_search('/folio/{type}', $patterns, true), $index);
+            $this->assertSame(1, preg_match($match->regex, '/folio/_assets/x/shop/vendor/lib/lib.js', $m));
+            $this->assertSame(['shop', 'vendor/lib/lib.js'], [$m['extension'], $m['path']]);
+        }
+    }
+
     public function test_frontend_is_lowest_priority_catch_all(): void
     {
         $entry = FolioRoutes::frontend();
