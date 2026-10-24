@@ -22,8 +22,9 @@ use Psr\Http\Message\ServerRequestInterface;
  * Folio admin login/logout through the default session guard (post-Redirect-Get flow).
  *
  * With record users behind the guard ($passwords enabled) the login is throttled per client and
- * per e-mail (purpose folio.login), an unknown address costs a hash like a wrong password, a
- * record's sign-in is stamped (last_login_at) and the page links to "forgot password". Every
+ * per e-mail (purpose folio.login), an unknown address or an account without a password costs a
+ * hash like a wrong password, a record's sign-in is stamped (last_login_at) and the page links to
+ * "forgot password". Every
  * refusal answers alike. The page offers remember-me whenever the guard has it configured. A site
  * with config users only and no remember-me keeps the plain login, page and all.
  */
@@ -101,8 +102,10 @@ final class AuthController
         }
 
         $user = $email === '' ? null : $this->users->findByCredentials(['email' => $email]);
-        if ($user === null) {
-            $this->hasher->hash($password); // an unknown address costs a hash too, so the answer takes as long as a wrong password
+        if ($user === null || $user->getPasswordHash() === '') {
+            // An unknown address (or an invited account without a password yet) costs a hash too,
+            // so the answer takes as long as a wrong password.
+            $this->hasher->hash($password);
             $ok = false;
         } else {
             $ok = $this->hasher->verify($password, $user->getPasswordHash());

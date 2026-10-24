@@ -153,6 +153,9 @@ final class FolioStaffLoginTest extends TestCase
         $this->assertSame([1, 0], [$spy->hashes, $spy->verifies], 'unknown: one hash');
         $this->post('/folio/login', ['email' => 'ada@site.test', 'password' => 'whatever it is']);
         $this->assertSame([1, 1], [$spy->hashes, $spy->verifies], 'known: one verify');
+        $this->makeStaff('invited@site.test', password: null);
+        $this->assertSame('/folio/login', $this->post('/folio/login', ['email' => 'invited@site.test', 'password' => ''])->getHeaderLine('Location'));
+        $this->assertSame([2, 1], [$spy->hashes, $spy->verifies], 'no password yet: one hash, as for an unknown address');
     }
 
     #[RunInSeparateProcess]
