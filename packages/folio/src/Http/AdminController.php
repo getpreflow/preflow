@@ -13,6 +13,8 @@ use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\Highlighter;
 use Preflow\Folio\Content\ListQuery;
 use Preflow\Folio\Content\ListView;
+use Preflow\Folio\Content\ListCells;
+use Preflow\Folio\Content\ListExport;
 use Preflow\Folio\Content\RecordDeleter;
 use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\RelationLabels;
@@ -64,6 +66,7 @@ final class AdminController
         private readonly ?\Preflow\Auth\Access\Access $access = null,
         private readonly ?Customizations $customizations = null,
         private readonly ?\Preflow\Folio\Users\AuthorNames $authors = null,
+        private ?ListExport $export = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
         $this->validator = $validator ?? new RecordValidator($fieldTypes, $dm);
@@ -133,23 +136,10 @@ final class AdminController
 
         $rows = [];
         foreach ($records as $record) {
-            $localized = $record->localized($typeDef->locales->default);
             $cells = [];
             $marked = [];
             foreach ($columns as $name => $label) {
-                $fieldDef = $typeDef->fields[$name];
-                if (isset($relationLabels[$name])) {
-                    $ids = RelationLabels::ids($localized->get($name));
-                    $text = implode(', ', array_filter(array_map(static fn (string $id) => $relationLabels[$name][$id] ?? null, $ids), static fn (?string $l) => $l !== null));
-                } else {
-                    $html = self::adminDisplay(
-                        $this->fieldTypes->get($fieldDef->type),
-                        $this->fieldTypes->get($fieldDef->type)->fromStorage($localized->get($name)),
-                        $fieldDef->config,
-                    );
-                    // Plain text: list cells never render field HTML (e.g. rich text) raw.
-                    $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-                }
+                $text = ListCells::text($this->fieldTypes, $typeDef, $name, $record, $relationLabels);
                 // cells: plain text (Twig escapes it); marked: escaped HTML with the search words in <mark>.
                 $cells[$name] = $text;
                 $marked[$name] = $text === '' ? '' : Highlighter::html($text, $query->q);
@@ -202,9 +192,65 @@ final class AdminController
             'publishing' => $states !== null,
             'csrf' => $csrf,
             'bulk' => $this->bulkBar($type, $typeDef, $listConfig),
+            // The Export button (header: the whole filtered list; bulk bar: the ticked rows), only with OpenSpout installed.
+            'export_url' => $this->exporter()->available() ? $this->prefix . '/' . $type . '/_export' : null,
             // The view to return to after a bulk action (search, filters, sort, page).
             'list_query' => http_build_query($query->query(), '', '&', PHP_QUERY_RFC3986),
         ]));
+    }
+
+    /**
+     * The list as an .xlsx download (GET {type}/_export, the list's own search / filters / sort, optional
+     * ids[]): the ticked records, else everything the list matches, not just its page. The file is
+     * written to a temp file that is unlinked as soon as it is open for streaming.
+     */
+    public function export(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = (string) $request->getAttribute('type', '');
+        if (!$this->catalog->has($type) || $this->isSingleton($type) || !$this->exporter()->available()) {
+            return new Response(404, [], 'Unknown type');
+        }
+        $typeDef = $this->registry->get($type);
+        $listConfig = $this->catalog->get($type)?->list ?? [];
+        $columns = $this->listColumns($typeDef, $listConfig);
+        $exporter = $this->exporter();
+
+        $params = $request->getQueryParams();
+        if (array_key_exists('ids', $params)) {
+            $records = $this->recordsByIds($type, self::idList($params['ids']));
+            if ($records instanceof ResponseInterface) {
+                return $records;
+            }
+        } else {
+            $records = $exporter->records($type, ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default));
+        }
+
+        $path = tempnam(sys_get_temp_dir(), 'folio-export-');
+        if ($path === false) {
+            return new Response(500, [], 'Export failed');
+        }
+        try {
+            $exporter->write($typeDef, $columns, $records, $path);
+            $handle = fopen($path, 'rb');
+            if ($handle === false) {
+                return new Response(500, [], 'Export failed');
+            }
+            $size = (int) filesize($path);
+        } finally {
+            @unlink($path); // an open handle keeps reading on
+        }
+
+        return new Response(200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . (preg_replace('/[^A-Za-z0-9_-]+/', '-', $type) ?: 'export') . '-' . date('Y-m-d') . '.xlsx"',
+            'Content-Length' => (string) $size,
+            'Cache-Control' => 'no-store',
+        ], \Nyholm\Psr7\Stream::create($handle));
+    }
+
+    private function exporter(): ListExport
+    {
+        return $this->export ??= new ListExport($this->dm, $this->fieldTypes, new RelationLabels($this->dm, $this->labeler));
     }
 
     public function recordLabel(ServerRequestInterface $request): ResponseInterface
@@ -712,7 +758,16 @@ final class AdminController
      */
     private static function postedIds(ServerRequestInterface $request): ?array
     {
-        $ids = ((array) $request->getParsedBody())['ids'] ?? null;
+        return self::idList(((array) $request->getParsedBody())['ids'] ?? null);
+    }
+
+    /**
+     * An ids[] value as a list of strings, each once; null when there are more than RecordDeleter::MAX_IDS.
+     *
+     * @return list<string>|null
+     */
+    private static function idList(mixed $ids): ?array
+    {
         $ids = is_array($ids) ? array_values(array_unique(array_filter($ids, static fn (mixed $id): bool => is_string($id) && $id !== ''))) : [];
 
         return count($ids) > RecordDeleter::MAX_IDS ? null : $ids;
@@ -726,7 +781,18 @@ final class AdminController
      */
     private function postedRecords(ServerRequestInterface $request, string $type): array|ResponseInterface
     {
-        $ids = self::postedIds($request);
+        return $this->recordsByIds($type, self::postedIds($request));
+    }
+
+    /**
+     * The stored records of $type for these ids, in the order given (one query); a 422 when
+     * there are none or too many ids. Ids that name no record are dropped.
+     *
+     * @param list<string>|null $ids null: too many
+     * @return list<DynamicRecord>|ResponseInterface
+     */
+    private function recordsByIds(string $type, ?array $ids): array|ResponseInterface
+    {
         if ($ids === null) {
             return new Response(422, [], 'Too many records');
         }
@@ -1345,7 +1411,7 @@ final class AdminController
     /** The field type's admin display (list cells, read-only fields): renderAdmin() when it has one, else renderFrontend(). */
     private static function adminDisplay(\Preflow\Folio\Field\FieldType $type, mixed $value, array $config): string
     {
-        return $type instanceof \Preflow\Folio\Field\DisplaysInAdmin ? $type->renderAdmin($value, $config) : $type->renderFrontend($value, $config);
+        return ListCells::display($type, $value, $config);
     }
 
     /**

@@ -23,6 +23,9 @@
     "require-dev": {
         "phpunit/phpunit": "^11.0"
     },
+    "suggest": {
+        "openspout/openspout": "^4 — Excel export of admin lists (the Export button shows once it is installed)"
+    },
     "conflict": {
         "preflow/auth": "<0.27",
         "preflow/core": "<0.27",

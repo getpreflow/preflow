@@ -524,6 +524,9 @@ final class CustomizationTest extends TestCase
         $this->assertStringContainsString('formaction="/folio/contact/_bulk/delete" data-delete-plan="/folio/contact/_delete-plan" data-confirm="Delete the selected records?">Delete</button>', $bar);
         $this->assertStringContainsString('<button type="reset" class="btn btn-sm folio-bulk-clear" data-folio-bulk-clear>Clear</button>', $bar);
         $this->assertStringContainsString('<input type="checkbox" data-folio-bulk-all aria-label="Select all on this page" hidden>', $body);
+        // Export: the header link takes the whole filtered list, the bar's button the ticked rows (JS adds the ids).
+        $this->assertStringContainsString('<a class="btn btn-secondary" href="/folio/contact/_export?q=ad" data-folio-export-all="/folio/contact/_export">Export</a>', $body);
+        $this->assertStringContainsString('<button type="button" class="btn btn-sm" data-folio-export="/folio/contact/_export?q=ad" hidden>Export</button>', $bar);
         $this->assertStringContainsString('<input type="checkbox" name="ids[]" value="c1" form="folio-bulk" data-folio-bulk-item aria-label="Select Ada">', $body);
 
         // The partial (search as you type) carries the bar too, so a swap starts a fresh selection.

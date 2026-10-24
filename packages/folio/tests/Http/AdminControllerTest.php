@@ -730,4 +730,114 @@ final class AdminControllerTest extends TestCase
         $this->assertSame(422, $c->bulkDelete($this->bulkRequest('page', 'delete', ['ids' => $many]))->getStatusCode());
         $this->assertNotNull($this->dm->findType('page', 'p1'));
     }
+
+    private function exportController(?bool $available = null, ?TemplateEngineInterface $engine = null): AdminController
+    {
+        $fieldTypes = $this->fieldTypeRegistry();
+
+        return new AdminController(
+            new TypeCatalog($this->base . '/m'),
+            $this->registry,
+            $this->dm,
+            $engine ?? $this->engine(),
+            new ActionResolver(new Container(), 'Preflow\\Folio\\Tests\\Overrides\\'),
+            $fieldTypes,
+            '/folio',
+            new RecordLabeler(),
+            new FrontendResolver($this->dm, 'page'),
+            export: new \Preflow\Folio\Content\ListExport($this->dm, $fieldTypes, new \Preflow\Folio\Content\RelationLabels($this->dm, new RecordLabeler()), $available),
+        );
+    }
+
+    /** @param array<string, mixed> $query */
+    private function exportRequest(string $type, array $query = []): \Psr\Http\Message\ServerRequestInterface
+    {
+        return (new Psr17Factory())->createServerRequest('GET', "/folio/{$type}/_export")
+            ->withAttribute('type', $type)
+            ->withQueryParams($query);
+    }
+
+    /** @return list<list<mixed>> the rows of the downloaded workbook */
+    private function workbook(\Psr\Http\Message\ResponseInterface $res): array
+    {
+        $file = $this->base . '/download.xlsx';
+        file_put_contents($file, (string) $res->getBody());
+        $reader = new \OpenSpout\Reader\XLSX\Reader();
+        $reader->open($file);
+        $rows = [];
+        foreach ($reader->getSheetIterator() as $sheet) {
+            foreach ($sheet->getRowIterator() as $row) {
+                $rows[] = $row->toArray();
+            }
+        }
+        $reader->close();
+
+        return $rows;
+    }
+
+    public function test_export_downloads_the_whole_filtered_and_sorted_list(): void
+    {
+        $this->seedPages(60); // more than a page of 50
+
+        $res = $this->exportController()->export($this->exportRequest('page', ['sort' => '-title', 'page' => '2']));
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertSame('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $res->getHeaderLine('Content-Type'));
+        $this->assertSame('attachment; filename="page-' . date('Y-m-d') . '.xlsx"', $res->getHeaderLine('Content-Disposition'));
+        $rows = $this->workbook($res);
+        $this->assertCount(61, $rows);
+        $this->assertSame(['Title', 'Slug', 'Status'], $rows[0]);
+        $this->assertSame('Game 060', $rows[1][0]);
+        $this->assertSame('Game 001', $rows[60][0]);
+
+        $found = $this->workbook($this->exportController()->export($this->exportRequest('page', ['q' => 'Game 05'])));
+        $this->assertCount(12, $found); // header + Game 005 and 050..059 (every word is a substring)
+    }
+
+    public function test_export_of_ticked_ids_holds_only_those_records_that_exist(): void
+    {
+        $this->seedPages(5);
+
+        $rows = $this->workbook($this->exportController()->export($this->exportRequest('page', ['ids' => ['p3', 'ghost', 'p1', 'p3']])));
+
+        $this->assertSame([['Title', 'Slug', 'Status'], ['Game 003', 's3', ''], ['Game 001', 's1', '']], array_map(static fn (array $r) => array_slice(array_pad($r, 3, ''), 0, 3), $rows));
+    }
+
+    public function test_export_refuses_unknown_types_unavailable_export_and_bad_id_lists(): void
+    {
+        $this->seedPages(2);
+        $c = $this->exportController();
+
+        $this->assertSame(404, $c->export($this->exportRequest('ghost'))->getStatusCode());
+        $this->assertSame(404, $this->exportController(false)->export($this->exportRequest('page'))->getStatusCode());
+        $this->assertSame(422, $c->export($this->exportRequest('page', ['ids' => ['ghost']]))->getStatusCode());
+        $this->assertSame(422, $c->export($this->exportRequest('page', ['ids' => []]))->getStatusCode());
+        $this->assertSame(422, $c->export($this->exportRequest('page', ['ids' => 'p1']))->getStatusCode());
+        $many = array_map(static fn (int $i): string => 'p' . $i, range(1, \Preflow\Folio\Content\RecordDeleter::MAX_IDS + 1));
+        $this->assertSame(422, $c->export($this->exportRequest('page', ['ids' => $many]))->getStatusCode());
+    }
+
+    public function test_export_leaves_no_temp_file_behind(): void
+    {
+        $this->seedPages(2);
+        $before = glob(sys_get_temp_dir() . '/folio-export-*') ?: [];
+
+        $res = $this->exportController()->export($this->exportRequest('page'));
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertNotSame('', (string) $res->getBody());
+
+        $this->assertSame($before, glob(sys_get_temp_dir() . '/folio-export-*') ?: []);
+    }
+
+    public function test_list_offers_export_only_when_it_is_available(): void
+    {
+        $this->seedPages(2);
+        $request = (new Psr17Factory())->createServerRequest('GET', '/folio/page')->withAttribute('type', 'page');
+
+        $on = (string) $this->exportController(true, $this->capturingEngine())->list($request)->getBody();
+        $off = (string) $this->exportController(false, $this->capturingEngine())->list($request)->getBody();
+
+        $this->assertStringContainsString('"export_url":"/folio/page/_export"', $on);
+        $this->assertStringContainsString('"export_url":null', $off);
+    }
 }

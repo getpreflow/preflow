@@ -1466,6 +1466,7 @@
         scope.querySelectorAll('[data-folio-bulk]').forEach(function (bar) {
             var all = document.querySelector('[data-folio-bulk-all]');
             if (all) { all.hidden = false; }
+            bar.querySelectorAll('[data-folio-export]').forEach(function (b) { b.hidden = false; });
             bulkUpdate(bar);
         });
     }
@@ -1483,6 +1484,25 @@
         bulkUpdate(bar);
     }
 
+    // Export in the bulk bar: a GET download of the ticked rows (ids[]) in the list's current view.
+    function onBulkExport(e) {
+        var all = e.target && e.target.closest ? e.target.closest('[data-folio-export-all]') : null;
+        if (all) {
+            // The header link: the view as the live search left it in the address bar.
+            all.href = all.getAttribute('data-folio-export-all') + window.location.search;
+            return;
+        }
+        var t = e.target && e.target.closest ? e.target.closest('[data-folio-export]') : null;
+        var bar = document.querySelector('[data-folio-bulk]');
+        if (!t || !bar) { return; }
+        var ids = bulkItems(bar).filter(function (c) { return c.checked; }).map(function (c) {
+            return 'ids%5B%5D=' + encodeURIComponent(c.value);
+        });
+        if (ids.length === 0) { return; }
+        var url = t.getAttribute('data-folio-export');
+        window.location.href = url + (url.indexOf('?') === -1 ? '?' : '&') + ids.join('&');
+    }
+
     // "Clear" is a reset button: it unticks the rows (form-associated) with or without JS.
     function onBulkReset(e) {
         var bar = e.target;
@@ -1497,6 +1517,7 @@
         initBulk(document);
         document.addEventListener('change', onBulkChange);
         document.addEventListener('reset', onBulkReset);
+        document.addEventListener('click', onBulkExport);
         // Back/forward may restore ticked boxes: show the bar for them.
         window.addEventListener('pageshow', function () { initBulk(document); });
         document.addEventListener('click', onBlockClick);

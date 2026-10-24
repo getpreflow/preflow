@@ -37,6 +37,7 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'AdminController@editForm' => '{type}.view',
         'AdminController@recordLabel' => '{type}.view',
         'AdminController@relationOptions' => '{type}.view',
+        'AdminController@export' => '{type}.view',
         'AdminController@createForm' => '{type}.create',
         'AdminController@store' => '{type}.create',
         'AdminController@update' => '{type}.edit',

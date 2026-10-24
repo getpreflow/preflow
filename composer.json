@@ -13,6 +13,7 @@
         "illuminate/filesystem": "^12.56",
         "illuminate/view": "^12.56",
         "nyholm/psr7-server": "^1.1",
+        "openspout/openspout": "^4",
         "phpunit/phpunit": "^11.0",
         "preflow/auth": "@dev",
         "preflow/blade": "@dev",

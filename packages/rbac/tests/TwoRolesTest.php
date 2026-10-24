@@ -96,6 +96,7 @@ final class TwoRolesTest extends TestCase
             'settings' => ['moderation_settings', 'moderation_settings', ['welcome' => 'Hi'], ['welcome' => 'Hi'], null, $none + [
                 'GET /folio/{type}/new' => 404, 'POST /folio/{type}' => 404,
                 'GET /folio/{type}/{id}/edit' => 404, 'GET /folio/{type}/{id}/label' => 404,
+                'GET /folio/{type}/_export' => 404,
                 'POST /folio/{type}/_delete-plan' => 404,
                 'POST /folio/{type}/_bulk/delete' => 404, 'POST /folio/{type}/_bulk/{name}' => 404,
             ]],
@@ -110,6 +111,7 @@ final class TwoRolesTest extends TestCase
             $row('GET /folio/{type}/new', "/folio/{$type}/new", [], 200);
             $row('POST /folio/{type}/preview', "/folio/{$type}/preview", $new, 200);
             $row('POST /folio/{type}', "/folio/{$type}", $new, 302);
+            $row('GET /folio/{type}/_export', "/folio/{$type}/_export", [], 200);
             $row('GET /folio/{type}/{id}/edit', "/folio/{$type}/{$id}/edit", [], 200);
             $row('GET /folio/{type}/{id}/label', "/folio/{$type}/{$id}/label", [], 200);
             $row('GET /folio/_relation/{type}', "/folio/_relation/{$type}", [], 200);
