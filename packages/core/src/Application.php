@@ -383,6 +383,7 @@ final class Application
                 'mysql' => $this->createMysqlDriver($driverConfig, $collector),
                 'json' => new \Preflow\Data\Driver\JsonFileDriver(
                     $driverConfig['path'] ?? $this->basePath('storage/data'),
+                    cacheDir: $this->basePath('storage/cache/data'),
                 ),
                 default => null,
             };

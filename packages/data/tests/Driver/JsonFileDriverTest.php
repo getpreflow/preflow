@@ -250,4 +250,93 @@ final class JsonFileDriverTest extends TestCase
         $driver = $this->driver;
         $this->checkOrWhereChainIsGroupedBeforeGroupsAreAnded($driver);
     }
+
+    private function cached(): array
+    {
+        $cacheDir = $this->dataDir . '-cache';
+        return [new JsonFileDriver($this->dataDir, $cacheDir), $cacheDir];
+    }
+
+    public function test_cache_second_query_reads_the_cache(): void
+    {
+        [$driver, $cacheDir] = $this->cached();
+        $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'Original']);
+        $this->assertSame('Original', $driver->findMany('post', new Query())->items()[0]['title']);
+        $this->assertFileExists($cacheDir . '/json-post.json');
+
+        $cache = file_get_contents($cacheDir . '/json-post.json');
+        file_put_contents($cacheDir . '/json-post.json', str_replace('Original', 'FromCache', $cache));
+
+        $this->assertSame('FromCache', $driver->findMany('post', new Query())->items()[0]['title']);
+        $this->deleteDir($cacheDir);
+    }
+
+    public function test_cache_shows_save_and_delete(): void
+    {
+        [$driver, $cacheDir] = $this->cached();
+        $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A']);
+        $this->assertCount(1, $driver->findMany('post', new Query())->items());
+
+        $driver->save('post', 'p2', ['uuid' => 'p2', 'title' => 'B']);
+        $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A2']);
+        $titles = array_column($driver->findMany('post', new Query())->items(), 'title');
+        sort($titles);
+        $this->assertSame(['A2', 'B'], $titles);
+
+        $driver->delete('post', 'p1');
+        $this->assertSame(['B'], array_column($driver->findMany('post', new Query())->items(), 'title'));
+        $this->deleteDir($cacheDir);
+    }
+
+    public function test_cache_sees_files_added_removed_and_rewritten_outside_the_driver(): void
+    {
+        [$driver, $cacheDir] = $this->cached();
+        $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A']);
+        $driver->findMany('post', new Query());
+
+        file_put_contents($this->dataDir . '/post/p2.json', '{"uuid":"p2","title":"B"}');
+        $this->assertCount(2, $driver->findMany('post', new Query())->items());
+
+        $same = '{"uuid":"p1","title":"Z"}';
+        file_put_contents($this->dataDir . '/post/p1.json', $same);
+        touch($this->dataDir . '/post/p1.json', time() + 10);
+        $titles = array_column($driver->findMany('post', new Query())->items(), 'title');
+        sort($titles);
+        $this->assertSame(['B', 'Z'], $titles);
+
+        unlink($this->dataDir . '/post/p2.json');
+        $this->assertSame(['Z'], array_column($driver->findMany('post', new Query())->items(), 'title'));
+        $this->deleteDir($cacheDir);
+    }
+
+    public function test_cache_clear_cache_and_corrupt_cache(): void
+    {
+        [$driver, $cacheDir] = $this->cached();
+        $driver->save('post', 'p1', ['uuid' => 'p1']);
+        $driver->save('page', 'g1', ['uuid' => 'g1']);
+        $driver->findMany('post', new Query());
+        $driver->findMany('page', new Query());
+
+        $driver->clearCache('post');
+        $this->assertFileDoesNotExist($cacheDir . '/json-post.json');
+        $this->assertFileExists($cacheDir . '/json-page.json');
+        $driver->clearCache();
+        $this->assertFileDoesNotExist($cacheDir . '/json-page.json');
+
+        $driver->findMany('post', new Query());
+        file_put_contents($cacheDir . '/json-post.json', '{not json');
+        $this->assertCount(1, $driver->findMany('post', new Query())->items());
+        $this->assertSame($cacheDir, $driver->cacheDir());
+        $this->deleteDir($cacheDir);
+    }
+
+    public function test_without_cache_dir_no_files_are_written(): void
+    {
+        $this->driver->save('post', 'p1', ['uuid' => 'p1']);
+        $this->driver->findMany('post', new Query());
+        $this->driver->clearCache();
+
+        $this->assertNull($this->driver->cacheDir());
+        $this->assertSame(['post'], array_values(array_diff(scandir($this->dataDir), ['.', '..'])));
+    }
 }

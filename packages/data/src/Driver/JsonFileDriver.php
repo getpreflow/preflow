@@ -15,7 +15,110 @@ final class JsonFileDriver implements StorageDriver
 {
     public function __construct(
         private readonly string $basePath,
+        private readonly ?string $cacheDir = null,
     ) {}
+
+    public function cacheDir(): ?string
+    {
+        return $this->cacheDir;
+    }
+
+    /** Drop the query cache of one type, or of every type. */
+    public function clearCache(?string $type = null): void
+    {
+        if ($this->cacheDir === null) {
+            return;
+        }
+
+        $files = $type !== null ? [$this->cacheFile($type)] : (glob($this->cacheDir . '/json-*.json') ?: []);
+        foreach ($files as $file) {
+            @unlink($file);
+        }
+    }
+
+    private function cacheFile(string $type): string
+    {
+        return $this->cacheDir . '/json-' . $type . '.json';
+    }
+
+    /**
+     * Record count, newest mtime and total size of the record files, plus the
+     * directory's mtime: moves when files are added, removed or rewritten
+     * outside this driver.
+     *
+     * @param list<string> $files
+     * @return array{int, int, int, int}
+     */
+    private function signature(string $dir, array $files): array
+    {
+        clearstatcache();
+        $newest = 0;
+        $size = 0;
+        foreach ($files as $file) {
+            $newest = max($newest, (int) @filemtime($file));
+            $size += (int) @filesize($file);
+        }
+
+        return [count($files), $newest, $size, (int) @filemtime($dir)];
+    }
+
+    /** @return list<array<string, mixed>> every record of the type, with `_id` */
+    private function loadRecords(string $type, string $dir): array
+    {
+        $files = glob($dir . '/*.json') ?: [];
+
+        if ($this->cacheDir === null) {
+            return $this->readRecords($files);
+        }
+
+        $signature = $this->signature($dir, $files);
+        $cacheFile = $this->cacheFile($type);
+
+        $raw = @file_get_contents($cacheFile);
+        if ($raw !== false) {
+            $cached = json_decode($raw, true);
+            if (is_array($cached) && ($cached['signature'] ?? null) === $signature && is_array($cached['records'] ?? null)) {
+                return $cached['records'];
+            }
+        }
+
+        $records = $this->readRecords($files);
+        $this->writeCache($cacheFile, ['signature' => $signature, 'records' => $records]);
+
+        return $records;
+    }
+
+    /**
+     * @param list<string> $files
+     * @return list<array<string, mixed>>
+     */
+    private function readRecords(array $files): array
+    {
+        $items = [];
+        foreach ($files as $file) {
+            $data = json_decode(file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+            $data['_id'] = basename($file, '.json');
+            $items[] = $data;
+        }
+
+        return $items;
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function writeCache(string $cacheFile, array $payload): void
+    {
+        try {
+            if (!is_dir($this->cacheDir) && !@mkdir($this->cacheDir, 0755, true) && !is_dir($this->cacheDir)) {
+                return;
+            }
+            $tmp = $cacheFile . '.tmp-' . bin2hex(random_bytes(4));
+            if (@file_put_contents($tmp, json_encode($payload, JSON_THROW_ON_ERROR), LOCK_EX) === false || !@rename($tmp, $cacheFile)) {
+                @unlink($tmp);
+            }
+        } catch (\Throwable) {
+            // A cache that cannot be written only costs speed.
+        }
+    }
 
     public function findOne(string $type, string|int $id, string $idField = 'uuid'): ?array
     {
@@ -37,13 +140,7 @@ final class JsonFileDriver implements StorageDriver
             return new ResultSet([]);
         }
 
-        $items = [];
-        foreach (glob($dir . '/*.json') as $file) {
-            $content = file_get_contents($file);
-            $data = json_decode($content, true, 512, JSON_THROW_ON_ERROR);
-            $data['_id'] = basename($file, '.json');
-            $items[] = $data;
-        }
+        $items = $this->loadRecords($type, $dir);
 
         // Apply search
         if ($query->getSearchTerm() !== null) {
@@ -91,6 +188,8 @@ final class JsonFileDriver implements StorageDriver
             @unlink($tmp);
             throw new \RuntimeException("Could not write {$path}.");
         }
+
+        $this->clearCache($type);
     }
 
     public function delete(string $type, string|int $id, string $idField = 'uuid'): void
@@ -100,6 +199,8 @@ final class JsonFileDriver implements StorageDriver
         if (file_exists($path)) {
             unlink($path);
         }
+
+        $this->clearCache($type);
     }
 
     public function exists(string $type, string|int $id, string $idField = 'uuid'): bool
