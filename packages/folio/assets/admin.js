@@ -1194,7 +1194,12 @@
         var box = e.target.closest ? e.target.closest('[data-folio-relation-search], [data-folio-list-relation]') : null;
         if (!box) { return; }
         prepareRelationBox(box);
-        if (box._folioRelationHidden && box.value.trim() === '') { box._folioRelationHidden.value = ''; }
+        // The filter submits what is typed (a record id works) until a result is picked; typing over
+        // a picked label drops the picked id.
+        if (box._folioRelationHidden && box.value !== box._folioRelationPicked) {
+            box._folioRelationPicked = undefined;
+            box._folioRelationHidden.value = box.value.trim();
+        }
         clearTimeout(box._folioRelationTimer);
         box._folioRelationTimer = setTimeout(function () { relationFetch(box, box.value.trim(), 1, false); }, 300);
     }
@@ -1241,6 +1246,8 @@
         chip.appendChild(input);
         chip.appendChild(remove);
         holder.appendChild(chip);
+        // Code-made changes fire no events: autosave, live preview and the unsaved-changes guard listen for change.
+        input.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     function onRelationClick(e) {
@@ -1250,6 +1257,7 @@
         if (remove) {
             var field = remove.closest('[data-folio-relation-remote]');
             var chip = remove.closest('[data-folio-relation-item]');
+            var chipHolder = chip ? chip.parentNode : null;
             if (chip && chip.parentNode) { chip.parentNode.removeChild(chip); }
             if (field && !field.hasAttribute('data-folio-relation-multiple')) {
                 var holder = field.querySelector('[data-folio-relation-selected]');
@@ -1261,6 +1269,7 @@
                     holder.appendChild(blank);
                 }
             }
+            if (chipHolder) { chipHolder.dispatchEvent(new Event('change', { bubbles: true })); }
             return;
         }
         var more = t.closest('[data-folio-relation-more]');
@@ -1287,6 +1296,7 @@
                 if (fb && fb._folioRelationHidden) {
                     fb._folioRelationHidden.value = id;
                     fb.value = text;
+                    fb._folioRelationPicked = text;
                 }
             }
             list.hidden = true;

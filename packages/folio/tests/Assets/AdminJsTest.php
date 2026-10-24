@@ -213,4 +213,11 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('300', $js);                        // debounce
         $this->assertStringContainsString('AbortController', $js);            // stale responses never win
     }
+
+    public function test_relation_picker_announces_pick_and_remove_as_change(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString("input.dispatchEvent(new Event('change', { bubbles: true }))", $js);
+        $this->assertStringContainsString("chipHolder.dispatchEvent(new Event('change', { bubbles: true }))", $js);
+    }
 }
