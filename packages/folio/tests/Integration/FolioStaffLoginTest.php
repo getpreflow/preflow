@@ -59,6 +59,34 @@ final class FolioStaffLoginTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_config_era_sessions_and_remember_cookies_end_once_the_record_exists(): void
+    {
+        $login = $this->post('/folio/login', ['email' => self::CONFIG_EMAIL, 'password' => self::PASSWORD, 'remember' => '1']);
+        $cookie = (string) preg_replace('~^folio_remember=([^;]+);.*$~', '$1', (string) $this->cookie($login, 'folio_remember'));
+        $this->assertNotSame('', $cookie);
+        $this->assertSame(200, $this->send('GET', '/folio')->getStatusCode(), 'the config user is signed in');
+
+        // The import: the config admin becomes a record, which is then disabled.
+        $this->makeStaff(self::CONFIG_EMAIL, active: false);
+
+        $this->assertSame(302, $this->send('GET', '/folio')->getStatusCode(), 'the config-era session ends');
+        $this->useSession([]);
+        $this->assertSame(302, $this->send('GET', '/folio', cookies: ['folio_remember' => $cookie])->getStatusCode(), 'the config-era remember cookie ends');
+        $this->assertSame('/folio/login', $this->post('/folio/login', ['email' => self::CONFIG_EMAIL, 'password' => self::PASSWORD])->getHeaderLine('Location'), 'the disabled record decides');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_after_the_import_the_person_signs_in_again_as_the_record(): void
+    {
+        $this->post('/folio/login', ['email' => self::CONFIG_EMAIL, 'password' => self::PASSWORD]);
+        $this->makeStaff(self::CONFIG_EMAIL);
+
+        $this->assertSame(302, $this->send('GET', '/folio')->getStatusCode(), 'signed out, active record or not');
+        $this->assertSame('/folio', $this->post('/folio/login', ['email' => self::CONFIG_EMAIL, 'password' => self::PASSWORD])->getHeaderLine('Location'));
+        $this->assertSame(200, $this->send('GET', '/folio/_account')->getStatusCode(), 'the record, not the config user (which has no account page)');
+    }
+
+    #[RunInSeparateProcess]
     public function test_remember_me_is_offered_and_sets_the_cookie(): void
     {
         $this->makeStaff();

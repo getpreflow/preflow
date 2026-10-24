@@ -199,8 +199,9 @@ For an existing site with an `.env` admin:
    While the staff type isn't enabled yet, the chain resolves the config user as before.
 2. Enable `model:staff` (`enabled_parts`) and run `php preflow folio:extensions:apply`.
 3. Run `php preflow folio:staff:import-config`.
-4. Sign in with the old password. The record now decides for that e-mail; the config entry no
-   longer answers it.
+4. Sign in again with the old password. Once the record exists, it decides for that e-mail:
+   the config entry no longer answers it, and the config-era sessions and remember-me cookies
+   end on their next request (from now on, disabling or demoting the record takes effect).
 5. Later, remove the config user (and the chain, pointing the guard at `staff`) and the
    `FOLIO_ADMIN_*` values in `.env`.
 

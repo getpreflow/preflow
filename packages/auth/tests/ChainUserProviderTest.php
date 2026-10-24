@@ -100,6 +100,19 @@ final class ChainUserProviderTest extends TestCase
         $this->assertTrue($guard->validate(['email' => 'a@x.test', 'password' => 'record-pw']));
     }
 
+    public function test_an_id_that_is_an_email_a_record_claims_is_not_rescued_by_the_config_user(): void
+    {
+        // A session or remember-me row from before the import holds the config user's id (the e-mail).
+        $chain = new ChainUserProvider([
+            $this->records('a@x.test', 'h', true),
+            $this->configUser('a@x.test', 'h'),
+        ]);
+
+        $this->assertNull($chain->findById('a@x.test'), 'the record decides for its e-mail, by id too');
+        $this->assertSame('b@x.test', (new ChainUserProvider([$this->records('a@x.test', 'h', true), $this->configUser('b@x.test', 'h')]))
+            ->findById('b@x.test')?->getAuthId(), 'other ids still fall through');
+    }
+
     public function test_an_unavailable_lazy_member_claims_nothing(): void
     {
         $lazy = new LazyUserProvider('staff', 'Missing', static fn (): object => throw new UserProviderUnavailable('gone'));

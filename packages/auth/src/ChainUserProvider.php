@@ -6,8 +6,10 @@ namespace Preflow\Auth;
 
 /**
  * Tries its providers in order; the first one that finds a user wins.
- * A provider that claims the credentials (ClaimsCredentials) decides alone, even when it finds nobody. Lets a guard move from one
- * user source to another (config users to Folio records) without a window where nobody can sign in.
+ * A provider that claims the credentials (ClaimsCredentials) decides alone, even when it finds nobody,
+ * and by id too when the id is an e-mail it claims (a config user's id from before an import). Lets
+ * a guard move from one user source to another (config users to Folio records) without a window
+ * where nobody can sign in, and without config-era sessions outliving the move.
  */
 final class ChainUserProvider implements UserProviderInterface
 {
@@ -32,6 +34,11 @@ final class ChainUserProvider implements UserProviderInterface
             $user = $provider->findById($id);
             if ($user !== null) {
                 return $user;
+            }
+            // An id that is an e-mail this provider claims (a session or remember-me row from before
+            // the user moved to it) is not rescued by a later provider: it ends there.
+            if ($provider instanceof ClaimsCredentials && $provider->claims(['email' => $id])) {
+                return null;
             }
         }
 
