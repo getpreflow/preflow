@@ -11,6 +11,10 @@ interface Guarded
     /**
      * Authorize the given action. Throw an exception if unauthorized.
      *
+     * Called for every endpoint request, including a plain re-render
+     * ($action === 'render'); a component that may render publicly lets
+     * 'render' through.
+     *
      * @throws \Preflow\Core\Exceptions\ForbiddenHttpException
      */
     public function authorize(string $action, ServerRequestInterface $request): void;

@@ -268,6 +268,27 @@ final class ComponentEndpointTest extends TestCase
         $this->endpoint->handle($request);
     }
 
+    public function test_guarded_component_render_is_authorized(): void
+    {
+        $token = $this->tokenService->encode(GuardedComponent::class, [], 'render');
+
+        $request = $this->createRequest('GET', '/--component/render', ['token' => $token]);
+
+        $this->expectException(ForbiddenHttpException::class);
+        $this->endpoint->handle($request);
+    }
+
+    public function test_guarded_component_render_passes_its_guard(): void
+    {
+        $token = $this->tokenService->encode(GuardedComponent::class, [], 'render');
+
+        $request = $this->createRequest('GET', '/--component/render', ['token' => $token], headers: [
+            'X-Admin' => 'true',
+        ]);
+
+        $this->assertSame(200, $this->endpoint->handle($request)->getStatusCode());
+    }
+
     public function test_response_includes_driver_headers(): void
     {
         $token = $this->tokenService->encode(EndpointTestComponent::class, [], 'refresh');

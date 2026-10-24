@@ -42,6 +42,17 @@ final class HtmxAssetsTest extends TestCase
         $this->assertStringContainsString('HX-Nonce', $head);
     }
 
+    public function test_surviving_swapped_styles_get_the_page_nonce(): void
+    {
+        $collector = new AssetCollector(new NonceGenerator());
+        (new HtmxAssets($collector, 'always'))->require();
+        $head = $collector->renderHead();
+
+        // htmx re-stamps swapped scripts itself, but not styles: the guard does it for
+        // the tags that carried the response's nonce.
+        $this->assertStringContainsString('htmx.config.inlineStyleNonce', $head);
+    }
+
     public function test_never_mode_adds_nothing(): void
     {
         $collector = new AssetCollector(new NonceGenerator());

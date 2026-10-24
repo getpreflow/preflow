@@ -60,10 +60,12 @@ final class HtmxAssets
     }
 
     /**
-     * htmx re-stamps every <script>/<style> it swaps in with the page nonce
+     * htmx re-stamps every <script> it swaps in with the page nonce
      * (inlineScriptNonce), which would let an injected script run as trusted.
      * Before a swap, drop every script/style whose nonce is not the one the
-     * server announced for that response in the HX-Nonce header.
+     * server announced for that response in the HX-Nonce header. htmx does not
+     * re-stamp <style>, so the guard gives the surviving ones (the server's own)
+     * the page nonce, or the page's CSP would block the fragment's CSS.
      */
     private const NONCE_GUARD = <<<'JS'
 document.addEventListener('htmx:beforeSwap', function (e) {
@@ -73,11 +75,13 @@ document.addEventListener('htmx:beforeSwap', function (e) {
     var isDocument = /<html[\s>]/i.test(html);
     var root = isDocument ? new DOMParser().parseFromString(html, 'text/html') : document.createElement('template');
     if (!isDocument) { root.innerHTML = html; }
-    var scope = isDocument ? root : root.content, removed = false;
+    var scope = isDocument ? root : root.content, changed = false;
+    var pageNonce = window.htmx && htmx.config.inlineStyleNonce;
     scope.querySelectorAll('script, style').forEach(function (el) {
-        if (!nonce || el.getAttribute('nonce') !== nonce) { el.parentNode.removeChild(el); removed = true; }
+        if (!nonce || el.getAttribute('nonce') !== nonce) { el.parentNode.removeChild(el); changed = true; }
+        else if (el.tagName === 'STYLE' && pageNonce && pageNonce !== nonce) { el.setAttribute('nonce', pageNonce); changed = true; }
     });
-    if (removed) {
+    if (changed) {
         d.serverResponse = isDocument ? '<!DOCTYPE html>' + root.documentElement.outerHTML : root.innerHTML;
     }
 });

@@ -64,8 +64,8 @@ final class ComponentEndpoint
             );
         }
 
-        // Layer 4: Component-level guards
-        if ($component instanceof Guarded && $payload->action !== 'render') {
+        // Layer 4: Component-level guards, for actions and plain renders alike
+        if ($component instanceof Guarded) {
             $component->authorize($payload->action, $request);
         }
 
