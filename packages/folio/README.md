@@ -151,10 +151,11 @@ directly or in a `ChainUserProvider`. A site whose staff are config users only k
 login exactly as before: the same page, no throttle, no forgot link, and no new routes.
 
 - **Throttle.** Sign-in is throttled (`folio.login`, 10 attempts per 15 minutes, counted per
-  client and per e-mail). Over the limit the page answers 429. Every refusal reads "Invalid
-  email or password.": an unknown address, a wrong password, a disabled account and a config
-  user alike. An unknown address costs a hash, like a known one. A record's sign-in stamps
-  `last_login_at`.
+  client and per e-mail; a sign-in clears the e-mail's count, not the client's). Over the
+  limit the page answers 429. Every refusal reads "Invalid email or password.": an unknown
+  address, a wrong password, a disabled account and a config user alike. An unknown address,
+  or an invited account without a password yet, costs a hash, like a known one. A record's
+  sign-in stamps `last_login_at`.
 - **Forgot password** (`{prefix}/forgot`, `folio.forgot`, 5 per hour). The answer is the
   same for every address. A mail goes only to an active record account.
 - **Set password** (`GET {prefix}/password/{token}` shows the form, `POST {prefix}/password`

@@ -176,20 +176,23 @@ final class FolioStaffLoginTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_login_is_throttled_per_client_and_a_success_clears_it(): void
+    public function test_login_is_throttled_per_client_and_a_success_clears_only_its_address(): void
     {
         $this->makeStaff();
         for ($i = 1; $i <= 9; $i++) {
-            $this->post('/folio/login', ['email' => "x{$i}@site.test", 'password' => 'nope nope nope']);
+            $this->post('/folio/login', ['email' => 'ada@site.test', 'password' => 'nope nope nope']);
         }
         $this->assertSame('/folio', $this->post('/folio/login', ['email' => 'ada@site.test', 'password' => self::PASSWORD])->getHeaderLine('Location'));
         $this->post('/folio/logout', []);
         $this->useSession([]);
+
+        $this->remoteAddr = '198.51.100.99';
         for ($i = 1; $i <= 9; $i++) {
-            $this->post('/folio/login', ['email' => "y{$i}@site.test", 'password' => 'nope nope nope']);
+            $this->assertSame(302, $this->post('/folio/login', ['email' => 'ada@site.test', 'password' => 'nope nope nope'])->getStatusCode(), "the success cleared the address count, try {$i}");
         }
-        $this->assertSame(302, $this->post('/folio/login', ['email' => 'z@site.test', 'password' => 'nope nope nope'])->getStatusCode(), 'the success cleared the client count');
-        $this->assertSame(429, $this->post('/folio/login', ['email' => 'z2@site.test', 'password' => 'nope nope nope'])->getStatusCode());
+        $this->remoteAddr = '203.0.113.7';
+        $this->assertSame(302, $this->post('/folio/login', ['email' => 'z@site.test', 'password' => 'nope nope nope'])->getStatusCode(), 'the client\'s tenth');
+        $this->assertSame(429, $this->post('/folio/login', ['email' => 'z2@site.test', 'password' => 'nope nope nope'])->getStatusCode(), 'the success did not clear the client count');
     }
 
     #[RunInSeparateProcess]

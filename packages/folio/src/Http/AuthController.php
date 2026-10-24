@@ -118,7 +118,7 @@ final class AuthController
         }
 
         $this->signIn($user, $request, $remember);
-        $this->throttle->clear(self::THROTTLE_LOGIN, $client);
+        // Only the address's count: a client that guesses many addresses keeps its count after one success.
         $this->throttle->clear(self::THROTTLE_LOGIN, $key);
         if ($user instanceof RecordUser) {
             $this->passwords->stampLogin($user);
