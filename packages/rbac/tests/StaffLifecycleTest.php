@@ -385,6 +385,25 @@ final class StaffLifecycleTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_removing_a_role_ends_its_access_on_the_next_request_of_a_live_session(): void
+    {
+        $this->lifecycleSite();
+        $this->account('s-both', 'both', ['editor', 'helper']);
+        $this->signIn('both@site.test');
+        $this->assertSame(200, $this->get('/folio/staff')->getStatusCode(), 'editor: may manage staff');
+        $this->assertSame(200, $this->get('/folio/page/new')->getStatusCode(), 'editor: may create pages');
+        $both = $this->useSession([]);
+
+        $this->as('boss');
+        $res = $this->send('POST', '/folio/staff/s-both', ['email' => 'both@site.test', 'name' => 'Both', 'roles' => ['', 'helper'], 'active' => '1']);
+        $this->assertSame(302, $res->getStatusCode(), self::text($res));
+
+        $this->useSession($both);
+        $this->assertSame(403, $this->get('/folio/staff')->getStatusCode(), 'the editor role is gone for the live session');
+        $this->assertSame(403, $this->get('/folio/page/new')->getStatusCode(), 'page.create went with it');
+    }
+
+    #[RunInSeparateProcess]
     public function test_every_action_on_an_account_above_you_is_refused(): void
     {
         $this->lifecycleSite(twoManagers: true);
