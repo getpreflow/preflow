@@ -75,6 +75,36 @@ final class DataManager
     }
 
     /**
+     * What deleting these records would do across declared relations, without doing it:
+     * records deleted (roots plus "cascade" relations, recursively), records detached
+     * ("detach" relations) and records that block the delete ("restrict" relations).
+     *
+     * @param list<string> $ids
+     * @param (\Closure(TypeDefinition): list<TypeDefinition>)|null $copies extra definitions
+     *        holding copies of a type's records (e.g. a published shadow table), queried with
+     *        the type's relation fields; they count toward restrictions only
+     */
+    public function deletePlan(string $type, array $ids, ?\Closure $copies = null): DeletePlan
+    {
+        return (new DeletePlanner($this, $this->requireTypeRegistry()))->plan($type, $ids, $copies);
+    }
+
+    /**
+     * Carry out a delete plan: detaches (load, remove ids, save without validation),
+     * then deletes. A restricted plan is refused with a \RuntimeException before
+     * anything changes.
+     *
+     * SQL writes run in one transaction per PDO connection involved, committed at the
+     * end and rolled back on any error (a transaction already open on a connection is
+     * left to its owner). JSON-file writes cannot be rolled back: if a later step fails,
+     * JSON changes made before it stay.
+     */
+    public function executeDeletePlan(DeletePlan $plan): void
+    {
+        (new DeletePlanner($this, $this->requireTypeRegistry()))->execute($plan);
+    }
+
+    /**
      * Find a single model by ID.
      *
      * @template T of Model
