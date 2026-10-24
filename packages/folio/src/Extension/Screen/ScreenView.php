@@ -14,10 +14,14 @@ use Preflow\View\TemplateEngineInterface;
  */
 final readonly class ScreenView
 {
-    /** @param array<string, mixed> $data */
+    /**
+     * @param array<string, mixed> $data
+     * @param list<string> $assets asset entries after the screen attribute's (see PageAssets)
+     */
     public function __construct(
         public string $template,
         public array $data = [],
+        public array $assets = [],
     ) {}
 
     /**

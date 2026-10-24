@@ -469,6 +469,12 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(ScreenRegistry::class),
             $c->get(TemplateEngineInterface::class),
             $prefix,
+            $c->get(\Preflow\Folio\Extension\Screen\PageAssets::class),
+        ));
+        $container->singleton(\Preflow\Folio\Extension\Screen\PageAssets::class, fn (Container $c) => new \Preflow\Folio\Extension\Screen\PageAssets(
+            $c->get(\Preflow\Folio\Extension\ExtensionAssets::class),
+            $c->get(\Preflow\Folio\Http\AdminAssets::class),
+            $c->get(\Preflow\Folio\Http\AdminAssetUrls::class),
         ));
         $container->bind(AuthController::class, function (Container $c) use ($prefix): AuthController {
             // Record users behind the guard: the throttled login with remember-me and the password pages.

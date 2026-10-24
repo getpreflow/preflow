@@ -18,7 +18,7 @@
     })();
     </script>
     <link rel="stylesheet" href="{{ folio_asset('admin.css') }}">
-    {% if 'htmx.js' in editor_assets|default([]) %}
+    {% if 'htmx.js' in editor_assets|default([]) or (page_assets|default(null)).htmx|default(false) %}
     {# htmx inserts its own indicator styles (needs the nonce); swapped admin fragments never run scripts. #}
     <meta name="htmx-config" content='{"inlineStyleNonce":"{{ csp_nonce() }}","allowScriptTags":false}'>
     {% endif %}
@@ -29,6 +29,17 @@
         {%- elseif a ends with '.js' and a != 'admin.js' %}<script src="{{ folio_asset(a) }}" defer></script>
         {%- endif %}
     {% endfor %}
+    {% if extension_assets_base|default(null) %}
+    <meta name="folio-extension-assets" content="{{ extension_assets_base }}">
+    {% endif %}
+    {% if page_assets|default(null) %}
+        {%- for href in page_assets.styles %}<link rel="stylesheet" href="{{ href }}">
+        {% endfor -%}
+        {%- for src in page_assets.scripts %}<script src="{{ src }}" defer nonce="{{ csp_nonce() }}"></script>
+        {% endfor -%}
+        {%- for src in page_assets.modules %}<script type="module" src="{{ src }}" nonce="{{ csp_nonce() }}"></script>
+        {% endfor -%}
+    {% endif %}
 </head>
 <body>
 {% set icons = folio_asset('icons.svg') %}

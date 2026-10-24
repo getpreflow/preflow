@@ -29,6 +29,7 @@ final class ScreenDispatcher implements MiddlewareInterface
         private readonly ScreenRegistry $screens,
         private readonly TemplateEngineInterface $engine,
         private readonly string $prefix,
+        private readonly ?PageAssets $assets = null,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -48,11 +49,16 @@ final class ScreenDispatcher implements MiddlewareInterface
             return $result;
         }
         if ($result instanceof ScreenView) {
+            $owner = "Screen {$class}::{$method}";
+            $page = $this->assets?->resolve($screen['extension'], [...$screen['assets'], ...$result->assets], $owner);
+
             return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $result->render($this->engine, [
                 'prefix' => $this->prefix,
+                'page_assets' => $page,
+                'extension_assets_base' => $this->assets?->base($screen['extension']),
                 'csrf' => $request->getAttribute(CsrfToken::class)?->getValue() ?? '',
                 'screen' => ['label' => $screen['label'], 'path' => $screen['path']],
-            ], "Screen {$class}::{$method}"));
+            ], $owner));
         }
         if (is_string($result) || $result instanceof \Stringable) {
             return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], (string) $result);

@@ -29,7 +29,7 @@ final class ScreenRegistry
     private const string WORKING_MW = 'Preflow\\Folio\\Http\\WorkingCopyMiddleware';
 
     /**
-     * @param array<class-string, array{extension: string, meta: FolioScreen, permission: string, actions: list<array{method: string, path: string, action: string}>}> $screens by class
+     * @param array<class-string, array{extension: string, meta: FolioScreen, permission: string, assets: list<string>, actions: list<array{method: string, path: string, action: string}>}> $screens by class
      */
     private function __construct(
         private readonly array $screens,
@@ -71,7 +71,7 @@ final class ScreenRegistry
         return new self($screens);
     }
 
-    /** @return list<array{class: class-string, extension: string, path: string, label: string, icon: string, section: string, order: int, permission: string}> */
+    /** @return list<array{class: class-string, extension: string, path: string, label: string, icon: string, section: string, order: int, permission: string, assets: list<string>}> */
     public function all(): array
     {
         $all = [];
@@ -82,7 +82,7 @@ final class ScreenRegistry
         return $all;
     }
 
-    /** @return array{class: class-string, extension: string, path: string, label: string, icon: string, section: string, order: int, permission: string}|null */
+    /** @return array{class: class-string, extension: string, path: string, label: string, icon: string, section: string, order: int, permission: string, assets: list<string>}|null */
     public function get(string $class): ?array
     {
         $screen = $this->screens[$class] ?? null;
@@ -100,6 +100,7 @@ final class ScreenRegistry
             'section' => $meta->section,
             'order' => $meta->order,
             'permission' => $screen['permission'],
+            'assets' => $meta->assets,
         ];
     }
 
@@ -179,6 +180,12 @@ final class ScreenRegistry
         }
         if (preg_match('/^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)+$/', $meta->permission) !== 1) {
             throw new ExtensionException("Screen {$class}: permission \"{$meta->permission}\" must match /^[a-z][a-z0-9_-]*(\\.[a-z0-9_-]+)+$/ (e.g. \"members.approve\").");
+        }
+
+        foreach ($meta->assets as $asset) {
+            if (!is_string($asset) || $asset === '') {
+                throw new ExtensionException("Screen {$class}: assets must be non-empty strings.");
+            }
         }
 
         $actions = [];

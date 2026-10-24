@@ -224,6 +224,114 @@ final class ScreenTest extends TestCase
         $this->write('config/folio/extensions.json', (string) json_encode(['enabled' => ['members' => ['disabled_parts' => $disabled]]]));
     }
 
+    #[RunInSeparateProcess]
+    public function test_screen_prints_its_declared_assets_in_the_head(): void
+    {
+        $this->assetsx(['page.css', '@folio/htmx.js'], ['page.js', 'page.css', 'mod.mjs']);
+        $this->as('admin');
+
+        $body = (string) $this->send('GET', '/folio/assetsx')->getBody();
+        $head = substr($body, 0, (int) strpos($body, '</head>'));
+
+        $this->assertMatchesRegularExpression('#<link rel="stylesheet" href="/folio/_assets/x/assetsx/page\.css\?v=[0-9a-f]{12}">#', $head);
+        $this->assertSame(1, substr_count($head, '/folio/_assets/x/assetsx/page.css'));
+        $this->assertMatchesRegularExpression('#<script src="/folio/_assets/x/assetsx/page\.js\?v=[0-9a-f]{12}" defer nonce="[^"]+"></script>#', $head);
+        $this->assertMatchesRegularExpression('#<script src="/folio/_assets/htmx\.js\?v=[0-9a-f]{12}" defer nonce="[^"]+"></script>#', $head);
+        $this->assertMatchesRegularExpression('#<script type="module" src="/folio/_assets/x/assetsx/mod\.mjs\?v=[0-9a-f]{12}" nonce="[^"]+"></script>#', $head);
+        $this->assertSame(1, substr_count($head, 'name="htmx-config"'));
+        $this->assertStringContainsString('<meta name="folio-extension-assets" content="/folio/_assets/x/assetsx/">', $head);
+        // attribute entries first
+        $this->assertLessThan(strpos($head, 'page.js'), strpos($head, 'htmx.js'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_screen_without_htmx_has_no_htmx_meta(): void
+    {
+        $this->assetsx(['page.css'], []);
+        $this->as('admin');
+
+        $body = (string) $this->send('GET', '/folio/assetsx')->getBody();
+
+        $this->assertStringNotContainsString('htmx-config', $body);
+        $this->assertStringContainsString('folio-extension-assets', $body);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_folio_page_without_screen_assets_keeps_its_head(): void
+    {
+        $this->members();
+        $this->as('admin');
+
+        $head = substr($b = (string) $this->send('GET', '/folio')->getBody(), 0, (int) strpos($b, '</head>'));
+
+        $this->assertStringNotContainsString('folio-extension-assets', $head);
+        $this->assertStringNotContainsString('type="module"', $head);
+        $this->assertSame(1, preg_match_all('#<script[^>]*\bnonce=#', $head), 'only the theme script carries a nonce');
+        $this->assertMatchesRegularExpression('#<link rel="stylesheet" href="/folio/_assets/admin\.css\?v=[0-9a-f]{12}">\s*<script src="/folio/_assets/admin\.js\?v=[0-9a-f]{12}" defer></script>\s*</head>#', $body = $head . '</head>');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_screen_naming_a_deleted_asset_fails_naming_the_screen(): void
+    {
+        $this->assetsx(['gone.css'], []);
+        $this->as('admin');
+
+        $res = $this->send('GET', '/folio/assetsx');
+
+        $this->assertSame(500, $res->getStatusCode());
+        $this->assertStringContainsString('lists asset', html_entity_decode((string) $res->getBody()));
+        $this->assertStringContainsString('gone.css', (string) $res->getBody());
+        $this->assertStringContainsString('Assetsx', (string) $res->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_screen_assets_must_be_non_empty_strings_at_boot(): void
+    {
+        $this->assetsx([''], []);
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessage('assets must be non-empty strings');
+
+        $this->app();
+    }
+
+    /**
+     * An enabled extension "assetsx" with a screen listing $attr assets, rendering a view listing $view,
+     * and an assets/ folder with page.css, page.js and mod.mjs.
+     *
+     * @param list<string> $attr
+     * @param list<string> $view
+     */
+    private function assetsx(array $attr, array $view): void
+    {
+        $this->write('app/Folio/Assetsx/Extension.php', <<<'PHP'
+            <?php
+            namespace App\Folio\Assetsx;
+            #[\Preflow\Folio\Extension\Attributes\FolioExtension(name: 'assetsx', label: 'Assetsx')]
+            final class Extension extends \Preflow\Folio\Extension\Extension {}
+            PHP);
+        $a = var_export($attr, true);
+        $v = var_export($view, true);
+        $this->write('app/Folio/Assetsx/Screens/Page.php', <<<PHP
+            <?php
+            namespace App\\Folio\\Assetsx\\Screens;
+            #[\\Preflow\\Folio\\Extension\\Attributes\\FolioScreen('assetsx', 'Assetsx', permission: 'assetsx.view', assets: {$a})]
+            final class Page
+            {
+                #[\\Preflow\\Routing\\Attributes\\Get('/')]
+                public function index(): \\Preflow\\Folio\\Extension\\Screen\\ScreenView
+                {
+                    return new \\Preflow\\Folio\\Extension\\Screen\\ScreenView('@assetsx/page.twig', [], {$v});
+                }
+            }
+            PHP);
+        $this->write('app/Folio/Assetsx/templates/page.twig', "{% extends '@folio/admin/_layout.twig' %}{% block content %}assetsx{% endblock %}");
+        $this->write('app/Folio/Assetsx/assets/page.css', '.assetsx {}');
+        $this->write('app/Folio/Assetsx/assets/page.js', 'window.assetsx = 1;');
+        $this->write('app/Folio/Assetsx/assets/mod.mjs', 'export {};');
+        $this->write('config/folio/extensions.json', (string) json_encode(['enabled' => ['assetsx' => new \stdClass()]]));
+    }
+
     /** An enabled extension "clash" whose one screen has this path and permission (GET / and GET /{type}). */
     private function clash(string $path, string $permission = 'clash.view'): void
     {
