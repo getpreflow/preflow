@@ -277,7 +277,8 @@ final class AdminController
     /**
      * Search endpoint of the relation picker and the list's relation filter: one page of the target
      * type's records as {items: [{id, label}], more}. "label" and "order" name fields of the target
-     * (the relation's labelField / orderBy); unknown names are ignored.
+     * (the relation's labelField / orderBy); only names a relation to the target declares are used,
+     * never a hidden field, and anything else is ignored. Hidden fields are not searched either.
      */
     public function relationOptions(ServerRequestInterface $request): ResponseInterface
     {

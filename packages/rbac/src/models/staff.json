@@ -33,7 +33,8 @@
         },
         "password_hash": {
             "type": "string",
-            "hidden": true
+            "hidden": true,
+            "searchable": false
         },
         "roles": {
             "type": "rbac_roles",
@@ -48,6 +49,7 @@
         "auth_epoch": {
             "type": "string",
             "hidden": true,
+            "searchable": false,
             "readonly": true,
             "default": "0"
         },

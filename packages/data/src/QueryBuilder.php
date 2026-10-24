@@ -95,10 +95,15 @@ final class QueryBuilder
      * (AND), a word matches as a case-insensitive substring of any text field
      * or, one level deep, of the label or text fields of a related record.
      *
-     * Only fields the type (or model) really has are used. Relations need a
-     * DataManager and are resolved when get() runs, so locale() applies.
+     * Only fields the type (or model) really has are used. Fields that say
+     * "searchable": false are never searched, and neither are hidden fields
+     * ("hidden": true in their config) unless they say "searchable": true —
+     * also when $fields names them, and also as the label or text fields of a
+     * related type. Relations need a DataManager and are resolved when get()
+     * runs, so locale() applies.
      *
-     * @param list<string>|null $fields restrict to these fields; unknown names are dropped
+     * @param list<string>|null $fields restrict to these fields; unknown, hidden and
+     *        "searchable": false names are dropped
      */
     public function searchLoose(string $term, ?array $fields = null): self
     {
@@ -124,7 +129,7 @@ final class QueryBuilder
                 $relationFields[$relation->field] = $relation;
             }
             foreach ($this->typeDef->fields as $name => $def) {
-                if ($requested !== null ? !in_array($name, $requested, true) : $def->searchable === false) {
+                if (!self::looselySearchable($def) || ($requested !== null && !in_array($name, $requested, true))) {
                     continue;
                 }
                 if (isset($relationFields[$name])) {
@@ -135,7 +140,7 @@ final class QueryBuilder
             }
         } elseif ($this->meta !== null) {
             foreach ($this->meta->fields as $name => $attr) {
-                if ($requested !== null ? !in_array($name, $requested, true) : $attr->searchable === false) {
+                if ($attr->searchable === false || ($requested !== null && !in_array($name, $requested, true))) {
                     continue;
                 }
                 $type = (new \ReflectionProperty($this->meta->modelClass, $name))->getType();
@@ -146,6 +151,19 @@ final class QueryBuilder
         }
 
         return ['text' => $text, 'relations' => $relations];
+    }
+
+    /**
+     * Whether loose search may look at a type field: not when it says "searchable": false,
+     * and not when it is hidden unless it says "searchable": true.
+     */
+    private static function looselySearchable(TypeFieldDefinition $def): bool
+    {
+        if ($def->searchable !== null) {
+            return $def->searchable;
+        }
+
+        return ($def->config['hidden'] ?? false) !== true;
     }
 
     private function applyLooseSearches(): void
@@ -189,19 +207,24 @@ final class QueryBuilder
         $target = $registry->get($relation->target);
         $kinds = $dm->fieldKinds();
 
+        // The label field (declared, else the first string field) and the text fields; hidden
+        // ones only where they say "searchable": true.
         $names = [];
-        if ($relation->labelField !== null && isset($target->fields[$relation->labelField])) {
-            $names[] = $relation->labelField;
+        $label = $relation->labelField !== null ? ($target->fields[$relation->labelField] ?? null) : null;
+        if ($label !== null) {
+            if ($label->searchable === true || ($label->config['hidden'] ?? false) !== true) {
+                $names[] = $label->name;
+            }
         } else {
             foreach ($target->fields as $name => $def) {
-                if ($def->type === 'string') {
+                if ($def->type === 'string' && self::looselySearchable($def)) {
                     $names[] = $name;
                     break;
                 }
             }
         }
         foreach ($target->fields as $name => $def) {
-            if ($def->searchable !== false && $kinds->isText($def->type)) {
+            if (self::looselySearchable($def) && $kinds->isText($def->type)) {
                 $names[] = $name;
             }
         }

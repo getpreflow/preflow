@@ -32,9 +32,10 @@ final class ListQueryTest extends TestCase
         mkdir($this->base . '/s', 0777, true);
         $models = [
             'tag' => ['key' => 'tag', 'table' => 'tag', 'storage' => 'json', 'id_field' => 'uuid',
-                'fields' => ['name' => ['type' => 'string']]],
+                'fields' => ['pin' => ['type' => 'string', 'hidden' => true], 'name' => ['type' => 'string']]],
             'item' => ['key' => 'item', 'table' => 'item', 'storage' => 'json', 'id_field' => 'uuid',
                 'fields' => [
+                    'secret' => ['type' => 'string', 'hidden' => true],
                     'title' => ['type' => 'string'],
                     'kind' => ['type' => 'select', 'options' => ['a' => 'A', 'b' => 'B']],
                     'done' => ['type' => 'boolean'],
@@ -44,19 +45,26 @@ final class ListQueryTest extends TestCase
                     'tags' => ['type' => 'relation', 'relation' => ['to' => 'tag', 'multiple' => true]],
                     'owner' => ['type' => 'relation', 'relation' => ['to' => 'tag']],
                 ]],
+            'task' => ['key' => 'task', 'table' => 'task', 'storage' => 'json', 'id_field' => 'uuid',
+                'fields' => ['title' => ['type' => 'string'], 'assignee' => ['type' => 'relation', 'relation' => ['to' => 'staff']]]],
             'slide' => ['key' => 'slide', 'table' => 'slide', 'storage' => 'json', 'id_field' => 'uuid',
                 'fields' => ['title' => ['type' => 'string']]],
         ];
+        // The real staff model (password hash and auth epoch are hidden), kept in JSON here.
+        $models['staff'] = ['storage' => 'json'] + (array) json_decode((string) file_get_contents(__DIR__ . '/../../../rbac/src/models/staff.json'), true);
+        $models['staff']['storage'] = 'json';
         foreach ($models as $k => $m) {
             file_put_contents($this->base . "/m/$k.json", json_encode($m));
         }
         $this->registry = new TypeRegistry($this->base . '/m');
         $this->dm = new DataManager(['json' => new JsonFileDriver($this->base . '/s')], 'json', $this->registry, new ValidatorFactory(new RuleFactory()));
 
-        $this->save('tag', ['uuid' => 't1', 'name' => 'red']);
+        $this->save('tag', ['uuid' => 't1', 'name' => 'red', 'pin' => 'tagpin-red']);
         $this->save('tag', ['uuid' => 't2', 'name' => 'blue']);
+        $this->save('staff', ['uuid' => 'u1', 'email' => 'ada@example.org', 'name' => 'Ada', 'password_hash' => '$2y$10$abcdefghijklmnopqrstuv', 'auth_epoch' => '7731']);
+        $this->save('task', ['uuid' => 'k1', 'title' => 'Ship', 'assignee' => 'u1']);
         $rows = [
-            ['uuid' => 'i1', 'title' => 'Alpha', 'kind' => 'a', 'done' => true, 'due' => '2026-01-10', 'num' => '9', 'notes' => 'zzz', 'tags' => json_encode(['t1']), 'owner' => 't1'],
+            ['uuid' => 'i1', 'secret' => 'secret-alpha', 'title' => 'Alpha', 'kind' => 'a', 'done' => true, 'due' => '2026-01-10', 'num' => '9', 'notes' => 'zzz', 'tags' => json_encode(['t1']), 'owner' => 't1'],
             ['uuid' => 'i2', 'title' => 'Beta', 'kind' => 'b', 'done' => false, 'due' => '2026-03-05T10:00', 'num' => '10', 'notes' => '', 'tags' => json_encode(['t1', 't2']), 'owner' => 't2'],
             ['uuid' => 'i3', 'title' => 'Gamma', 'kind' => 'a', 'done' => true, 'due' => '2026-06-01', 'num' => '2', 'notes' => '', 'tags' => json_encode(['t2']), 'owner' => ''],
         ];
@@ -102,6 +110,17 @@ final class ListQueryTest extends TestCase
     public function test_loose_search(): void
     {
         $this->assertSame(['i1'], $this->ids($this->lq(['q' => 'alp'])));
+    }
+
+    public function test_loose_search_skips_hidden_fields_here_and_through_relations(): void
+    {
+        $this->assertSame([], $this->ids($this->lq(['q' => 'secret-alpha'])));
+        $this->assertSame([], $this->ids($this->lq(['q' => 'tagpin'])), 'hidden field of a related type');
+        $this->assertSame(['k1'], $this->ids($this->lq(['q' => 'ada'], 'task', []), 'task'));
+        foreach (['$2y$10', 'abcdefghij', '7731'] as $q) {
+            $this->assertSame([], $this->ids($this->lq(['q' => $q], 'task', []), 'task'), $q);
+            $this->assertSame([], $this->ids($this->lq(['q' => $q], 'staff', ['columns' => ['email']]), 'staff'), $q);
+        }
     }
 
     public function test_select_filter(): void

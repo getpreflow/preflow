@@ -25,13 +25,29 @@ final class RelationFieldTypeTest extends TestCase
         mkdir($this->base . '/s', 0777, true);
         file_put_contents($this->base . '/m/author.json', json_encode([
             'key' => 'author', 'table' => 'author', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Authors',
-            'fields' => ['name' => ['type' => 'string', 'validate' => ['required']]],
+            'fields' => [
+                'name' => ['type' => 'string', 'validate' => ['required']],
+                'nick' => ['type' => 'string'],
+                'email' => ['type' => 'string'],
+                'secret' => ['type' => 'string', 'hidden' => true],
+            ],
+        ]));
+        // The relations to "author" declare which labelField / orderBy the search endpoint may use.
+        file_put_contents($this->base . '/m/book.json', json_encode([
+            'key' => 'book', 'table' => 'book', 'storage' => 'json', 'id_field' => 'uuid',
+            'fields' => [
+                'title' => ['type' => 'string'],
+                'writer' => ['type' => 'relation', 'relation' => ['to' => 'author', 'labelField' => 'nick', 'orderBy' => 'name']],
+                'ghost' => ['type' => 'relation', 'relation' => ['to' => 'author', 'labelField' => 'secret', 'orderBy' => 'secret']],
+            ],
         ]));
         $this->registry = new TypeRegistry($this->base . '/m');
         $this->dm = new DataManager(['json' => new JsonFileDriver($this->base . '/s')], 'json', $this->registry);
 
-        foreach (['a1' => 'Ann', 'a2' => 'Bob'] as $id => $name) {
-            $this->dm->saveType(DynamicRecord::fromArray($this->registry->get('author'), ['uuid' => $id, 'name' => $name]));
+        foreach (['a1' => ['Ann', 'Zed', 'zz-hash'], 'a2' => ['Bob', 'Amy', 'aa-hash']] as $id => [$name, $nick, $secret]) {
+            $this->dm->saveType(DynamicRecord::fromArray($this->registry->get('author'), [
+                'uuid' => $id, 'name' => $name, 'nick' => $nick, 'email' => strtolower($name) . '@example.org', 'secret' => $secret,
+            ]));
         }
     }
 
@@ -269,5 +285,59 @@ final class RelationFieldTypeTest extends TestCase
         $this->assertSame(['Ann', 'Bob', 'Person 003', 'Person 004', 'Person 005'], array_column($t->page('author', null, 'name', '', 1)['items'], 'label'));
         $this->assertSame([], $t->page('author', null, null, '', 999999999999)['items']);
         $this->assertCount(5, $t->page('author', null, null, '', -4)['items']);
+    }
+
+    public function test_page_refuses_a_hidden_field_as_label_or_order(): void
+    {
+        $t = $this->remoteType();
+        // "secret" is hidden: even a declared relation naming it does not make it usable.
+        $byLabel = $t->page('author', 'secret', null, '', 1)['items'];
+        $this->assertSame(['Ann', 'Bob'], array_column($byLabel, 'label'));
+        $this->assertStringNotContainsString('hash', (string) json_encode($byLabel));
+        // Ordered by the hash, Bob ("aa-hash") would come first.
+        $this->assertSame(['Ann', 'Bob'], array_column($t->page('author', null, 'secret', '', 1)['items'], 'label'));
+    }
+
+    public function test_page_refuses_an_existing_field_no_relation_declares(): void
+    {
+        $t = $this->remoteType();
+        $this->assertSame(['Ann', 'Bob'], array_column($t->page('author', 'email', null, '', 1)['items'], 'label'));
+        // Ordered by nick (undeclared as orderBy), Bob ("Amy") would come first.
+        $this->assertSame(['Ann', 'Bob'], array_column($t->page('author', null, 'nick', '', 1)['items'], 'label'));
+    }
+
+    public function test_page_accepts_a_declared_label_field_and_order(): void
+    {
+        $t = $this->remoteType();
+        $this->assertSame(['Zed', 'Amy'], array_column($t->page('author', 'nick', 'name', '', 1)['items'], 'label'));
+    }
+
+    public function test_page_search_does_not_match_a_hidden_field(): void
+    {
+        $this->assertSame([], $this->remoteType()->page('author', null, null, 'zz-hash', 1)['items']);
+        $this->assertSame([], $this->remoteType()->page('author', null, null, 'hash', 1)['items']);
+    }
+
+    public function test_page_order_ends_in_the_id(): void
+    {
+        // SQLite returns rows in insertion order without an ORDER BY: insert "b" before "a".
+        file_put_contents($this->base . '/m/person.json', json_encode([
+            'key' => 'person', 'table' => 'person', 'storage' => 'sqlite', 'id_field' => 'uuid',
+            'fields' => ['name' => ['type' => 'string']],
+        ]));
+        file_put_contents($this->base . '/m/team.json', json_encode([
+            'key' => 'team', 'table' => 'team', 'storage' => 'json', 'id_field' => 'uuid',
+            'fields' => ['lead' => ['type' => 'relation', 'relation' => ['to' => 'person', 'orderBy' => 'name']]],
+        ]));
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('CREATE TABLE person (uuid TEXT PRIMARY KEY, name TEXT)');
+        $pdo->exec("INSERT INTO person VALUES ('p3', 'Same'), ('p1', 'Same'), ('p2', 'Same'), ('p0', 'Aaa')");
+        $registry = new TypeRegistry($this->base . '/m');
+        $dm = new DataManager(['json' => new JsonFileDriver($this->base . '/s'), 'sqlite' => new \Preflow\Data\Driver\SqliteDriver($pdo)], 'json', $registry);
+        $t = new RelationFieldType($dm, $registry, prefix: '/folio');
+
+        $this->assertSame(['p0', 'p1', 'p2', 'p3'], array_column($t->page('person', null, 'name', '', 1)['items'], 'id'));
+        $this->assertSame(['p0', 'p1', 'p2', 'p3'], array_column($t->page('person', null, null, '', 1)['items'], 'id'));
     }
 }

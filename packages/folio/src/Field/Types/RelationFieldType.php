@@ -169,7 +169,12 @@ final class RelationFieldType implements FieldType
 
     /**
      * One page of the search endpoint: loose search over the target (a blank term lists all), in the
-     * picker's order. Labels follow the picker's rule (labelField, else the first string field).
+     * picker's order, then by id. Labels follow the picker's rule (labelField, else the first string
+     * field that is not hidden).
+     *
+     * $labelField and $orderBy come from the request, so they are only used when a relation field
+     * pointing at $to declares that very labelField / orderBy, and never when the field is hidden;
+     * anything else is ignored (no hidden value can be read or sorted on through here).
      *
      * @return array{items: list<array{id: string, label: string}>, more: bool}
      */
@@ -179,16 +184,18 @@ final class RelationFieldType implements FieldType
             return ['items' => [], 'more' => false];
         }
         $def = $this->registry->get($to);
+        $declared = $this->declaredFor($to);
         $cfg = [
             'to' => $to,
             'multiple' => false,
-            'labelField' => $labelField !== null && isset($def->fields[$labelField]) ? $labelField : null,
-            'orderBy' => $orderBy !== null && isset($def->fields[$orderBy]) ? $orderBy : null,
+            'labelField' => $labelField !== null && in_array($labelField, $declared['labelField'], true) ? $labelField : null,
+            'orderBy' => $orderBy !== null && in_array($orderBy, $declared['orderBy'], true) ? $orderBy : null,
         ];
         $query = $this->dm->queryType($to);
         if ($cfg['orderBy'] !== null) {
             $query->orderBy($cfg['orderBy'], numeric: $def->fields[$cfg['orderBy']]->type === 'number');
         }
+        $query->orderBy($def->idField); // a stable order: no record repeats or goes missing across pages
         $query->searchLoose($term);
         $result = $query->paginate(self::PAGE_SIZE, min(max(1, $page), self::MAX_PAGE));
 
@@ -201,6 +208,34 @@ final class RelationFieldType implements FieldType
         }
 
         return ['items' => $items, 'more' => $result->hasMore];
+    }
+
+    /**
+     * The labelField / orderBy values relation fields pointing at $to declare, limited to existing
+     * fields of $to that are not hidden.
+     *
+     * @return array{labelField: list<string>, orderBy: list<string>}
+     */
+    private function declaredFor(string $to): array
+    {
+        $target = $this->registry->get($to);
+        $out = ['labelField' => [], 'orderBy' => []];
+        foreach ($this->dm->relationsTo($to) as $relation) {
+            $config = $this->registry->get($relation->type)->fields[$relation->field]->config['relation'] ?? [];
+            foreach (['labelField', 'orderBy'] as $key) {
+                $name = is_array($config) ? ($config[$key] ?? null) : null;
+                if (is_string($name) && isset($target->fields[$name]) && !self::hidden($target->fields[$name])) {
+                    $out[$key][] = $name;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    private static function hidden(\Preflow\Data\TypeFieldDefinition $field): bool
+    {
+        return ($field->config['hidden'] ?? false) === true;
     }
 
     /** More target records than the picker lists inline (counted with a limit, never loading them all). */
@@ -342,7 +377,8 @@ final class RelationFieldType implements FieldType
     private function labelFor(DynamicRecord $record, array $cfg): string
     {
         $localized = $record->localized($this->contentLocale?->get() ?? $record->getType()->locales->default);
-        if ($cfg['labelField'] !== null) {
+        $labelDef = $cfg['labelField'] !== null && $this->registry->has($cfg['to']) ? ($this->registry->get($cfg['to'])->fields[$cfg['labelField']] ?? null) : null;
+        if ($labelDef !== null && !self::hidden($labelDef)) {
             $v = $localized->get($cfg['labelField']);
             if (is_string($v) && $v !== '') {
                 return $v;
@@ -364,7 +400,7 @@ final class RelationFieldType implements FieldType
             return null;
         }
         foreach ($this->registry->get($type)->fields as $name => $def) {
-            if ($def->type === 'string') {
+            if ($def->type === 'string' && !self::hidden($def)) {
                 return $name;
             }
         }

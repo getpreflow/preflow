@@ -25,7 +25,8 @@
         },
         "password_hash": {
             "type": "string",
-            "hidden": true
+            "hidden": true,
+            "searchable": false
         },
         "name": {
             "type": "string"
@@ -57,6 +58,7 @@
         "auth_epoch": {
             "type": "string",
             "hidden": true,
+            "searchable": false,
             "readonly": true,
             "default": "0"
         }

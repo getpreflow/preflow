@@ -39,6 +39,7 @@ final class ListExportTest extends TestCase
                 'fields' => ['name' => ['type' => 'string']]],
             'item' => ['key' => 'item', 'table' => 'item', 'storage' => 'json', 'id_field' => 'uuid',
                 'fields' => [
+                    'pin' => ['type' => 'string', 'hidden' => true],
                     'title' => ['type' => 'string', 'label' => 'Title'],
                     'qty' => ['type' => 'number', 'label' => 'Quantity'],
                     'due' => ['type' => 'date'],
@@ -138,6 +139,24 @@ final class ListExportTest extends TestCase
         $this->assertStringContainsString('s="1"', $this->part($path, 'xl/worksheets/sheet1.xml')); // used by the first row
         $this->assertSame('Alpha', $rows[1]->toArray()[0]);
         $this->assertSame('Beta', $rows[2]->toArray()[0]);
+    }
+
+    public function test_default_columns_leave_hidden_fields_out_of_the_file(): void
+    {
+        $this->save('item', ['uuid' => 'i1', 'pin' => 'pin-secret', 'title' => 'Beta', 'qty' => '3', 'due' => '2026-10-24']);
+        $def = $this->registry->get('item');
+        $columns = [];
+        foreach (ListQuery::columns($def, []) as $name) {
+            $columns[$name] = $def->fields[$name]->label ?? ucfirst($name);
+        }
+        $this->assertArrayNotHasKey('pin', $columns);
+        $export = $this->export();
+        $path = $this->base . '/out.xlsx';
+
+        $export->write($def, $columns, $export->records('item', $this->query([])), $path);
+
+        $this->assertSame(['Title', 'Quantity', 'Due'], $this->read($path)[0]->toArray());
+        $this->assertStringNotContainsString('pin-secret', $this->part($path, 'xl/worksheets/sheet1.xml') . $this->part($path, 'xl/sharedStrings.xml'));
     }
 
     public function test_numbers_and_dates_are_typed_and_relations_are_labels(): void

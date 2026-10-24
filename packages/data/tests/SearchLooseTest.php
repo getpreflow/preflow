@@ -65,14 +65,17 @@ final class SearchLooseTest extends TestCase
             'publisher' => ['type' => 'relation', 'relation' => ['to' => 'designer']],
         ]);
         $this->model('designer', $designerStorage, [
+            // First string field, but hidden: never the fallback label a relation search matches on.
+            'pin' => ['type' => 'string', 'hidden' => true],
             'name' => ['type' => 'string'],
             'bio' => ['type' => 'text'],
+            'badge' => ['type' => 'string', 'hidden' => true, 'searchable' => true],
         ]);
 
         $pdo = new \PDO('sqlite::memory:');
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $pdo->exec('CREATE TABLE game (uuid TEXT PRIMARY KEY, title TEXT, notes TEXT, stars INTEGER, designer TEXT, publisher TEXT, _locales TEXT)');
-        $pdo->exec('CREATE TABLE designer (uuid TEXT PRIMARY KEY, name TEXT, bio TEXT)');
+        $pdo->exec('CREATE TABLE designer (uuid TEXT PRIMARY KEY, pin TEXT, name TEXT, bio TEXT, badge TEXT)');
         $pdo->exec('CREATE TABLE loose_notes (uuid TEXT PRIMARY KEY, title TEXT, secret TEXT, stars INTEGER)');
 
         $registry = new TypeRegistry($this->dir . '/models', new Locales(['en', 'de'], 'en'));
@@ -83,8 +86,8 @@ final class SearchLooseTest extends TestCase
         );
 
         foreach ([
-            ['uuid' => 'd1', 'name' => 'Vital Lacerda', 'bio' => 'Portuguese'],
-            ['uuid' => 'd2', 'name' => 'Uwe Rosenberg', 'bio' => 'Farmer'],
+            ['uuid' => 'd1', 'pin' => 'pin-lacerda', 'name' => 'Vital Lacerda', 'bio' => 'Portuguese', 'badge' => 'badge-one'],
+            ['uuid' => 'd2', 'pin' => 'pin-rosenberg', 'name' => 'Uwe Rosenberg', 'bio' => 'Farmer', 'badge' => ''],
         ] as $row) {
             $dm->saveType(DynamicRecord::fromArray($registry->get('designer'), $row), validate: false);
         }
@@ -162,6 +165,32 @@ final class SearchLooseTest extends TestCase
     }
 
     #[DataProvider('storages')]
+    public function test_hidden_field_is_not_searched_unless_searchable_true(string $g, string $d): void
+    {
+        $dm = $this->dm($g, $d);
+
+        $this->assertSame([], $this->ids($dm->queryType('designer')->searchLoose('pin-lacerda')));
+        $this->assertSame([], $this->ids($dm->queryType('designer')->searchLoose('pin')));
+        $this->assertSame([], $this->ids($dm->queryType('game')->searchLoose('pin-lacerda')), 'not through a relation either');
+        $this->assertSame([], $this->ids($dm->queryType('game')->searchLoose('pin')));
+        // hidden but "searchable": true opts back in, here and through relations
+        $this->assertSame(['d1'], $this->ids($dm->queryType('designer')->searchLoose('badge-one')));
+        $this->assertSame(['g2', 'g3'], $this->ids($dm->queryType('game')->searchLoose('badge-one')));
+    }
+
+    #[DataProvider('storages')]
+    public function test_explicit_fields_drop_hidden_and_searchable_false_fields(string $g, string $d): void
+    {
+        $dm = $this->dm($g, $d);
+
+        $this->assertSame([], $this->ids($dm->queryType('designer')->searchLoose('pin-lacerda', ['pin'])));
+        $this->assertSame([], $this->ids($dm->queryType('designer')->searchLoose('pin-lacerda', ['name', 'pin'])));
+        $this->assertSame(['d1'], $this->ids($dm->queryType('designer')->searchLoose('badge-one', ['badge'])));
+        $this->assertSame([], $this->ids($dm->queryType('game')->searchLoose('hidden-word', ['notes'])));
+        $this->assertSame([], $this->ids($dm->queryType('game')->searchLoose('hidden-word', ['title', 'notes'])));
+    }
+
+    #[DataProvider('storages')]
     public function test_translatable_field_matches_in_requested_locale(string $g, string $d): void
     {
         $dm = $this->dm($g, $d);
@@ -223,6 +252,9 @@ final class SearchLooseTest extends TestCase
         $this->assertCount(0, $dm->query(LooseNote::class)->searchLoose('xyzzy')->get()->items());
         $this->assertCount(0, $dm->query(LooseNote::class)->searchLoose('5')->get()->items());
         $this->assertCount(0, $dm->query(LooseNote::class)->searchLoose('hello', ['secret'])->get()->items());
+        // Naming a searchable:false field explicitly does not search it.
+        $this->assertCount(0, $dm->query(LooseNote::class)->searchLoose('xyzzy', ['secret'])->get()->items());
+        $this->assertCount(0, $dm->query(LooseNote::class)->searchLoose('xyzzy', ['title', 'secret'])->get()->items());
     }
 
     /** @param array<string, array<string, mixed>> $fields */
