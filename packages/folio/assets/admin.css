@@ -17,6 +17,7 @@
   --h-control: 36px;
   --h-button: 34px;
   --h-button-sm: 28px;
+  --h-list-head: 42px;
 
   --c-bg: light-dark(#f6f6f4, #141413);
   --c-sidebar-bg: light-dark(#fbfbfa, #181816);
@@ -45,6 +46,10 @@
   --c-success: light-dark(#047857, #34d399);
   --c-success-soft: light-dark(#e6f4ee, #17322a);
   --c-neutral-soft: light-dark(#eeeeea, #2b2b28);
+  /* A strong inverted surface (the list's bulk bar): dark with light text in both themes. */
+  --c-inverse: light-dark(#262622, #3a3a35);
+  --c-inverse-fg: light-dark(#f6f6f4, #f4f4f0);
+  --c-inverse-danger: light-dark(#ffb4ab, #ffb4ab);
 
   --c-focus-ring: light-dark(rgb(4 120 87 / .28), rgb(52 211 153 / .38));
   --c-overlay: light-dark(rgb(24 24 20 / .42), rgb(0 0 0 / .62));
@@ -390,6 +395,7 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
   box-shadow: var(--shadow-sm);
 }
 .folio-table { width: 100%; border-collapse: collapse; }
+.folio-table thead tr { height: var(--h-list-head); }
 .folio-table thead th {
   text-align: left;
   font-size: 11.5px;
@@ -472,32 +478,51 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
 .folio-filter-chip a:hover { background: color-mix(in srgb, var(--c-accent) 18%, transparent); }
 .folio-filter-chip .folio-icon { width: 12px; height: 12px; }
 .folio-table thead th[aria-sort] { color: var(--c-text); }
-.folio-sort { color: inherit; }
-.folio-sort:hover { color: var(--c-text); }
+/* Every sortable header shows a faint ↕ (is-idle) that firms up on hover/focus; the active one ▲/▼. */
+.folio-sort { display: inline-flex; align-items: center; gap: 5px; color: inherit; cursor: pointer; }
+.folio-sort:hover, .folio-sort:focus-visible { color: var(--c-text); }
 .folio-sort-mark { font-size: 9px; }
+/* The idle mark is drawn here, not in the markup, so a header's text stays its label. */
+.folio-sort-mark.is-idle::before { content: "↕"; }
+.folio-sort-mark.is-idle { font-size: 11px; opacity: .4; transition: opacity .1s; }
+.folio-sort:hover .folio-sort-mark.is-idle, .folio-sort:focus-visible .folio-sort-mark.is-idle { opacity: 1; color: var(--c-accent-text); }
 .folio-table mark { background: var(--c-warning-soft); color: inherit; border-radius: 2px; padding: 0; }
 .folio-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--c-text-muted); }
 .folio-pager-links { display: flex; align-items: center; gap: 2px; }
 .folio-pager-links .btn { min-width: 28px; padding: 0 8px; }
 .folio-pager-gap { padding: 0 4px; color: var(--c-text-subtle); }
 
-/* Bulk bar: shown above the table while rows are ticked (admin.js toggles [hidden]; without JS it stays). */
+/* Bulk bar: shown while rows are ticked (admin.js toggles [hidden]). Without JS it stays, above the table;
+   with JS (is-overlay) it lies over the header row, so showing or hiding it moves nothing. The header's
+   select-all box is lifted above it; the bar's content starts right of that box. */
+.folio-table-frame { position: relative; }
 .folio-bulk-bar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-  margin: 0 0 10px; padding: 7px 10px;
+  margin: 0 0 10px; padding: 6px 10px;
   border-radius: var(--r-sm);
-  background: var(--c-text); color: var(--c-surface);
+  background: var(--c-inverse); color: var(--c-inverse-fg);
+  box-shadow: var(--shadow-md);
   font-size: 13px;
 }
+.folio-bulk-bar.is-overlay {
+  position: absolute; z-index: 2; top: 0; left: 0; right: 0;
+  box-sizing: border-box;
+  min-height: calc(var(--h-list-head) + 1px);
+  margin: 0; padding: 6px 10px 6px 44px;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+.folio-table thead .folio-bulk-cell input { position: relative; z-index: 3; accent-color: var(--c-accent); }
 .folio-bulk-bar[hidden] { display: none; }
 .folio-bulk-count { font-weight: 600; margin-right: 4px; }
 .folio-bulk-bar .btn {
-  background: color-mix(in srgb, var(--c-surface) 12%, transparent);
-  border-color: color-mix(in srgb, var(--c-surface) 28%, transparent);
-  color: inherit;
+  background: color-mix(in srgb, var(--c-inverse-fg) 12%, transparent);
+  border-color: color-mix(in srgb, var(--c-inverse-fg) 28%, transparent);
+  color: var(--c-inverse-fg);
 }
-.folio-bulk-bar .btn:hover { background: color-mix(in srgb, var(--c-surface) 22%, transparent); color: inherit; }
-.folio-bulk-bar .btn[data-tone="danger"] { color: color-mix(in srgb, var(--c-danger) 45%, var(--c-surface)); }
+.folio-bulk-bar .btn:hover { background: color-mix(in srgb, var(--c-inverse-fg) 22%, transparent); color: var(--c-inverse-fg); }
+.folio-bulk-bar .btn:focus-visible { box-shadow: 0 0 0 2px var(--c-inverse-fg); }
+.folio-bulk-bar .btn[data-tone="danger"], .folio-bulk-bar .btn[data-tone="danger"]:hover { color: var(--c-inverse-danger); }
+.folio-bulk-bar .btn[data-tone="danger"]:hover { background: color-mix(in srgb, var(--c-inverse-danger) 18%, transparent); }
 .folio-bulk-bar .folio-bulk-clear { margin-left: auto; background: transparent; border-color: transparent; opacity: .75; }
 .folio-bulk-menu { position: relative; }
 .folio-bulk-menu summary { list-style: none; }
@@ -509,7 +534,8 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
   background: var(--c-surface-raised); color: var(--c-text); box-shadow: var(--shadow-lg);
 }
 .folio-bulk-bar .folio-bulk-options .btn { justify-content: flex-start; background: transparent; border-color: transparent; color: var(--c-text); }
-.folio-bulk-bar .folio-bulk-options .btn:hover { background: var(--c-row-hover); }
+.folio-bulk-bar .folio-bulk-options .btn:hover { background: var(--c-row-hover); color: var(--c-text); }
+.folio-bulk-bar .folio-bulk-options .btn:focus-visible { box-shadow: 0 0 0 3px var(--c-focus-ring); }
 .folio-table .folio-bulk-cell { width: 1%; padding-right: 0; }
 .folio-bulk-cell input[hidden] { display: none; }
 .folio-table tr:has([data-folio-bulk-item]:checked) td { background: var(--c-accent-soft); }

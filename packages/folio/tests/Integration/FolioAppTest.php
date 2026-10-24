@@ -1684,6 +1684,12 @@ final class FolioAppTest extends TestCase
         $asc = (string) $this->get('/folio/game?sort=title')->getBody();
         $this->assertLessThan(strpos($asc, 'Beta'), strpos($asc, 'Alpha'));
         $this->assertMatchesRegularExpression('#<th aria-sort="ascending"><a class="folio-sort" href="/folio/game\?sort=-title">Title#', $asc);
+        $this->assertStringContainsString('Title <span class="folio-sort-mark" aria-hidden="true">▲</span></a>', $asc);
+        // Every other sortable header shows a faint ↕; a relation column is no link and has no mark.
+        $this->assertStringContainsString('<a class="folio-sort" href="/folio/game?sort=status">Status <span class="folio-sort-mark is-idle" aria-hidden="true"></span></a>', $asc);
+        $this->assertMatchesRegularExpression('#<th>Designer</th>#', $asc);
+        // The bar and the table share a frame, so the bar can lie over the header row.
+        $this->assertStringContainsString('<div class="folio-table-frame">', $asc);
 
         $desc = (string) $this->get('/folio/game?sort=-title')->getBody();
         $this->assertLessThan(strpos($desc, 'Beta'), strpos($desc, 'Gamma'));

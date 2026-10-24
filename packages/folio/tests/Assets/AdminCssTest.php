@@ -57,4 +57,29 @@ final class AdminCssTest extends TestCase
             $this->assertStringContainsString($sel, $css);
         }
     }
+
+    public function test_list_bulk_bar_overlays_the_header_on_an_inverse_surface(): void
+    {
+        $css = $this->css();
+        // With JS the bar lies over the header row of the frame, so nothing below moves.
+        $this->assertStringContainsString('.folio-table-frame { position: relative; }', $css);
+        $this->assertMatchesRegularExpression('/\.folio-bulk-bar\.is-overlay \{[^}]*position: absolute;/', $css);
+        $this->assertStringContainsString('min-height: calc(var(--h-list-head) + 1px);', $css);
+        $this->assertStringContainsString('.folio-table thead tr { height: var(--h-list-head); }', $css);
+        // The header's select-all box stays clickable above the bar.
+        $this->assertMatchesRegularExpression('/\.folio-table thead \.folio-bulk-cell input \{[^}]*z-index: 3;/', $css);
+        // A dark bar with light text in both themes (one light-dark() token set).
+        $this->assertMatchesRegularExpression('/--c-inverse: light-dark\(/', $css);
+        $this->assertStringContainsString('background: var(--c-inverse); color: var(--c-inverse-fg);', $css);
+        $this->assertStringContainsString('color: var(--c-inverse-danger);', $css);
+    }
+
+    public function test_sortable_headers_show_an_idle_mark(): void
+    {
+        $css = $this->css();
+        $this->assertStringContainsString('.folio-sort-mark.is-idle', $css);
+        $this->assertStringContainsString('.folio-sort-mark.is-idle::before { content: "↕"; }', $css); // not in the header's text
+        $this->assertStringContainsString('.folio-sort:hover .folio-sort-mark.is-idle, .folio-sort:focus-visible .folio-sort-mark.is-idle', $css);
+        $this->assertMatchesRegularExpression('/\.folio-sort \{[^}]*cursor: pointer;/', $css);
+    }
 }

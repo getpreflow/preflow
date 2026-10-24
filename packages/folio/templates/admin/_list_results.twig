@@ -28,8 +28,11 @@
     </div>
 {% else %}
     {% set first_column = columns|keys|first %}
+    {# The frame holds the bar and the table: with JS the bar lies over the header row (is-overlay),
+       so showing or hiding it never moves the rows; the header's select-all stays on top of it. #}
+    <div class="folio-table-frame">
     {% if bulk|default(null) %}
-        {# Each button posts the ticked ids[] to its own formaction. Without JS the bar stays visible. #}
+        {# Each button posts the ticked ids[] to its own formaction. Without JS the bar stays visible above the table. #}
         <form class="folio-bulk-bar" id="folio-bulk" method="post" data-folio-bulk>
             <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
             <input type="hidden" name="_query" value="{{ list_query|default('') }}">
@@ -55,7 +58,7 @@
             {%- if bulk|default(null) %}<th class="folio-bulk-cell"><input type="checkbox" data-folio-bulk-all aria-label="Select all on this page" hidden></th>{% endif -%}
             {%- for name, header in list.headers -%}
                 <th{% if header.dir %} aria-sort="{{ header.dir == 'asc' ? 'ascending' : 'descending' }}"{% endif %}>
-                    {%- if header.href %}<a class="folio-sort" href="{{ header.href }}">{{ header.label }}{% if header.dir %} <span class="folio-sort-mark" aria-hidden="true">{{ header.dir == 'asc' ? '▲' : '▼' }}</span>{% endif %}</a>{% else %}{{ header.label }}{% endif -%}
+                    {%- if header.href %}<a class="folio-sort" href="{{ header.href }}">{{ header.label }} {% if header.dir %}<span class="folio-sort-mark" aria-hidden="true">{{ header.dir == 'asc' ? '▲' : '▼' }}</span>{% else %}<span class="folio-sort-mark is-idle" aria-hidden="true"></span>{% endif %}</a>{% else %}{{ header.label }}{% endif -%}
                 </th>
             {%- endfor -%}
             {%- for heading in extra_columns|default([]) %}<th>{{ heading }}</th>{% endfor %}{% if multilingual|default(false) %}<th>Languages</th>{% endif %}{% if publishing|default(false) %}<th>Publishing</th>{% endif %}<th><span class="folio-sr">Actions</span></th></tr></thead>
@@ -93,6 +96,7 @@
         {% endfor %}
         </tbody>
     </table>
+    </div>
     </div>
     <nav class="folio-pager" aria-label="Pages">
         <span class="folio-pager-count">{{ list.from }}–{{ list.to }} of {{ list.total }}</span>

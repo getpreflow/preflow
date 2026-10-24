@@ -435,6 +435,8 @@ written as a formula. Without OpenSpout there is no button and the URL is a 404.
 - `storage/cache/data` (the JSON query cache) must be writable and git-ignored.
 - Mark secret fields of your own types (`hidden`) `"searchable": false` too; hidden fields are
   no longer searched by default, and Folio's own `password_hash` / `auth_epoch` fields say so.
+- A field with `"hidden": true` listed in `list.filters` now makes the site fail at boot
+  (`FrontendConfigException`), as one in `list.columns` does: remove it there or unhide the field.
 
 ### Sidebar
 

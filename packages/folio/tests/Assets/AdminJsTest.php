@@ -243,6 +243,7 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('[data-folio-bulk-all]', $js);               // select all on the page
         $this->assertStringContainsString("' selected'", $js);                         // "3 selected"
         $this->assertStringContainsString('bar.hidden = n === 0', $js);                // the bar shows with a tick
+        $this->assertStringContainsString("bar.classList.add('is-overlay')", $js);       // with JS it lies over the header row
         $this->assertStringContainsString('initBulk(results)', $js);                   // a swapped region starts unticked
         $this->assertStringContainsString("document.addEventListener('change', onBulkChange)", $js);
         $this->assertStringContainsString("document.addEventListener('reset', onBulkReset)", $js); // Clear

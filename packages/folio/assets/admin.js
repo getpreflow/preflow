@@ -1439,9 +1439,9 @@
         });
     }
 
-    // Bulk bar (<form data-folio-bulk>, at the top of the results region): the rows' tick boxes
+    // Bulk bar (<form data-folio-bulk>, over the table's header row): the rows' tick boxes
     // ([data-folio-bulk-item], form="{bar id}") show it with "N selected"; [data-folio-bulk-all]
-    // ticks the page. Without JS the bar simply stays visible. The boxes live in the swapped
+    // ticks the page. Without JS the bar simply stays visible above the table. The boxes live in the swapped
     // region, so a new search, filter or page starts with nothing ticked.
     function bulkItems(bar) {
         return Array.prototype.filter.call(document.querySelectorAll('[data-folio-bulk-item]'), function (c) {
@@ -1466,6 +1466,8 @@
         scope.querySelectorAll('[data-folio-bulk]').forEach(function (bar) {
             var all = document.querySelector('[data-folio-bulk-all]');
             if (all) { all.hidden = false; }
+            // With JS the bar lies over the table's header row (admin.css): ticking a row moves nothing.
+            bar.classList.add('is-overlay');
             bar.querySelectorAll('[data-folio-export]').forEach(function (b) { b.hidden = false; });
             bulkUpdate(bar);
         });
