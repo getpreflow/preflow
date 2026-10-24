@@ -84,7 +84,7 @@ final class ListView
             } elseif ($field->type === 'relation') {
                 $options = $relations->options($target, RelationLabels::labelField($def, $name));
                 if ($options === null) {
-                    $filter['kind'] = 'relation-search'; // too many to list: Task 9 searches remotely
+                    $filter['kind'] = 'relation-search'; // too many to list: searched through {prefix}/_relation/{type}
                 } else {
                     $filter['options'] = $options;
                 }

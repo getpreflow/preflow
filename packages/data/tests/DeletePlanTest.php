@@ -43,6 +43,13 @@ final class DeletePlanTest extends TestCase
         'contract' => [
             'author' => ['type' => 'relation', 'relation' => ['to' => 'author', 'onDelete' => 'restrict']],
         ],
+        'citation' => [
+            'chapter' => ['type' => 'relation', 'relation' => ['to' => 'chapter', 'onDelete' => 'restrict']],
+        ],
+        'review' => [
+            'book' => ['type' => 'relation', 'relation' => ['to' => 'book', 'onDelete' => 'cascade']],
+            'chapters' => ['type' => 'relation', 'relation' => ['to' => 'chapter', 'multiple' => true]],
+        ],
         'ping' => [
             'pong' => ['type' => 'relation', 'relation' => ['to' => 'pong', 'onDelete' => 'cascade']],
         ],
@@ -81,6 +88,7 @@ final class DeletePlanTest extends TestCase
             'author' => $targetStorage, 'chapter' => $targetStorage,
             'book' => $pointerStorage, 'note' => $pointerStorage, 'contract' => $pointerStorage,
             'ping' => $pointerStorage, 'pong' => $targetStorage,
+            'citation' => $pointerStorage, 'review' => $pointerStorage,
         ];
 
         $this->pdo = new \PDO('sqlite::memory:');
@@ -264,6 +272,61 @@ final class DeletePlanTest extends TestCase
         $this->assertSame(['a1', 'a2'], $this->ids($dm, 'author'));
         $this->assertSame('["a1"]', $dm->findType('book', 'b1')->get('authors'));
         $this->assertSame('a1', $dm->findType('book', 'b1')->get('editor'));
+    }
+
+    #[DataProvider('storages')]
+    public function test_a_restrict_reached_only_through_a_cascade_blocks_the_whole_plan(string $p, string $t): void
+    {
+        $dm = $this->dm($p, $t);
+        $this->seed($dm, 'author', [['uuid' => 'a1', 'name' => 'A']]);
+        $this->seed($dm, 'book', [['uuid' => 'b1', 'title' => 'One', 'authors' => '["a1"]']]);
+        $this->seed($dm, 'chapter', [['uuid' => 'c1', 'title' => '1', 'book' => 'b1'], ['uuid' => 'c2', 'title' => '2', 'book' => 'b1']]);
+        $this->seed($dm, 'note', [['uuid' => 'n1', 'text' => 'x', 'chapter' => 'c2']]);
+        $this->seed($dm, 'citation', [['uuid' => 'x1', 'chapter' => 'c1']]);
+
+        // Nothing points at the book with "restrict"; a chapter it cascades to is cited.
+        $plan = $dm->deletePlan('book', ['b1']);
+        $this->assertSame(['citation' => 1], $plan->restrictions());
+        $this->assertTrue($plan->restricted());
+
+        try {
+            $dm->executeDeletePlan($plan);
+            $this->fail('A restricted plan must be refused');
+        } catch (\RuntimeException) {
+        }
+
+        $this->assertSame(['b1'], $this->ids($dm, 'book'));
+        $this->assertSame(['c1', 'c2'], $this->ids($dm, 'chapter'));
+        $this->assertSame(['n1'], $this->ids($dm, 'note'));
+        $this->assertSame(['x1'], $this->ids($dm, 'citation'));
+    }
+
+    #[DataProvider('storages')]
+    public function test_a_record_reached_by_cascade_and_detach_is_deleted_not_detached(string $p, string $t): void
+    {
+        $dm = $this->dm($p, $t);
+        $this->seed($dm, 'book', [['uuid' => 'b1', 'title' => 'One'], ['uuid' => 'b2', 'title' => 'Two']]);
+        $this->seed($dm, 'chapter', [['uuid' => 'c1', 'title' => '1', 'book' => 'b1'], ['uuid' => 'c3', 'title' => '3', 'book' => 'b2']]);
+        $this->seed($dm, 'review', [
+            // cascades with b1, and would lose c1 by "detach"
+            ['uuid' => 'r1', 'book' => 'b1', 'chapters' => '["c1","c3"]'],
+            // only detached
+            ['uuid' => 'r2', 'book' => 'b2', 'chapters' => '["c1","c3"]'],
+        ]);
+
+        $plan = $dm->deletePlan('book', ['b1']);
+
+        $deletes = $plan->deletes();
+        sort($deletes['review']);
+        $this->assertSame(['r1'], $deletes['review']);
+        $this->assertSame([['type' => 'review', 'id' => 'r2', 'field' => 'chapters', 'remove' => ['c1']]], $plan->detaches());
+        $this->assertSame(['review' => 1], $plan->counts()['detached']);
+
+        $dm->executeDeletePlan($plan);
+
+        $this->assertSame(['r2'], $this->ids($dm, 'review'), 'r1 is gone, not saved back by a detach');
+        $this->assertNull($dm->findType('review', 'r1'));
+        $this->assertSame('["c3"]', $dm->findType('review', 'r2')->get('chapters'));
     }
 
     public function test_only_a_copy_restricts(): void

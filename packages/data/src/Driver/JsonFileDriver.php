@@ -366,7 +366,7 @@ final class JsonFileDriver implements StorageDriver
 
         return match ($condition['operator']) {
             'CONTAINS' => is_scalar($fieldValue) && mb_stripos((string) $fieldValue, (string) $value) !== false,
-            'IN' => in_array($fieldValue, (array) $value, false) && $fieldValue !== null,
+            'IN' => is_scalar($fieldValue) && in_array((string) $fieldValue, array_map('strval', array_filter((array) $value, 'is_scalar')), true),
             'HAS' => $this->holdsAny($fieldValue, array_map('strval', (array) $value)),
             default => $fieldValue === $value,
         };

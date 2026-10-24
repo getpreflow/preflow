@@ -59,9 +59,11 @@ trait OrGroupScenarios
 
     private function checkIn(StorageDriver $d): void
     {
-        $this->seedGroupRows($d, [['1', 'a', ''], ['2', 'b', ''], ['3', 'c', '']]);
+        $this->seedGroupRows($d, [['1', 'a', ''], ['2', 'b', ''], ['3', 'c', ''], ['4', '10', '']]);
         $in = fn (array $v) => $this->groupIds($d, (new Query())->whereAny([['field' => 'title', 'operator' => 'IN', 'value' => $v]]));
         $this->assertSame(['1', '3'], $in(['a', 'c', 'zzz']));
+        $this->assertSame([], $in(['1e1', '010']), 'compared as strings, not as numbers');
+        $this->assertSame(['4'], $in(['10']));
         $this->assertSame([], $in([]));
         $this->assertSame(['2'], $in([...array_map(static fn (int $i): string => 'n' . $i, range(1, 3000)), 'b']), 'a long id list');
     }

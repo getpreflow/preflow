@@ -334,7 +334,7 @@ available for every type that has a route.
 
 Every list has a search box (all words must match, each in any text field or, one level deep,
 in the label and text fields of a related record; a field with `"searchable": false` is left
-out), sortable headers for the plain columns (not relations), highlighted matches and paging
+out, and so is a hidden field unless it says `"searchable": true`), sortable headers for the plain columns (not relations), highlighted matches and paging
 by 50. The view lives in the URL, so it can be bookmarked and shared:
 
 | Parameter | Meaning |
@@ -353,6 +353,16 @@ the cell as plain text (escape it) and `row.marked[column]` is the same text as 
 escaped HTML with the search matches in `<mark>` (print it with `|raw`). Use `list.headers`
 for the sort links, `list.chips`, `list.clear`, `bulk` (null without any bulk action: no tick
 column) and `export_url`. With the tick column the cell positions shift by one.
+`row.extra` holds the cells of extension `#[ListColumn]`s, in their order after the type's
+own columns (headings in `extra_columns`): each is plain text (escape it) or a badge
+`{label, tone}` (see Type customizations).
+
+At most 500 rows can be ticked for one bulk action or export (`RecordDeleter::MAX_IDS`): a
+request with more `ids[]` is refused with a 422 and changes nothing.
+
+The relation picker's search endpoint (`GET {prefix}/_relation/{type}?q=&label=&order=&page=`)
+only uses a `label` / `order` field that a relation to that type declares as its `labelField` /
+`orderBy`, and never a hidden field; it pages in the declared order, then by id.
 
 #### Deleting: `onDelete` and the summary
 
@@ -412,6 +422,19 @@ an **Export** button: `GET {prefix}/{type}/_export` downloads an `.xlsx` of the 
 and sorted list (not just the page), streamed in chunks of 500, or of the ticked rows when
 `ids[]` are given. Columns are the list's own; numbers and dates are typed cells, text is never
 written as a formula. Without OpenSpout there is no button and the URL is a 404.
+
+#### Upgrading to 0.29 — notes for site owners
+
+- Lists without `list.sort` or `orderable` now end in record-id order (on SQLite this replaces
+  insertion order). Add `list.sort` where the order matters.
+- The default `onDelete` is `detach`: deleting a record now rewrites every record pointing at
+  it (types with publishing get unpublished working-copy changes, and `#[BeforeSave]` /
+  `#[AfterSave]` hooks run). Declare `onDelete` explicitly where that matters.
+- The list markup gained a tick column (`td.folio-bulk-cell`, an empty `th`) and sortable
+  headers: site tests that read list columns by position need updating.
+- `storage/cache/data` (the JSON query cache) must be writable and git-ignored.
+- Mark secret fields of your own types (`hidden`) `"searchable": false` too; hidden fields are
+  no longer searched by default, and Folio's own `password_hash` / `auth_epoch` fields say so.
 
 ### Sidebar
 
