@@ -430,6 +430,36 @@ final class CustomizationTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_bulk_ids_with_a_path_never_reach_another_types_records(): void
+    {
+        $this->crm();
+        $this->as('editor');
+        $this->seed('contact', 'c1', ['name' => 'Ada', 'stage' => 'lead']);
+        $data = $this->dir . '/storage/data';
+        @mkdir($data . '/staff', 0777, true);
+        $staff = json_encode(['uuid' => 's1', 'name' => 'Root', 'stage' => 'lead', 'password_hash' => '$2y$10$secrethashsecrethash']);
+        file_put_contents($data . '/staff/s1.json', $staff);
+        $contacts = static fn (): array => array_values(array_diff(scandir($data . '/contact') ?: [], ['.', '..']));
+        $before = $contacts();
+        \App\Folio\Crm\Log::$entries = [];
+
+        $unsafe = ['../staff/s1', '..\\staff\\s1', "s1\0", '..', "\xFF"];
+        foreach ($unsafe as $id) {
+            $this->assertSame(422, $this->send('POST', '/folio/contact/_bulk/set-stage', ['ids' => [$id], 'value' => 'customer'])->getStatusCode(), $id);
+        }
+        $this->as('admin'); // the "tag" bulk action asks crm.approve
+        foreach ($unsafe as $id) {
+            $this->assertSame(422, $this->send('POST', '/folio/contact/_bulk/tag', ['ids' => [$id]])->getStatusCode(), $id);
+        }
+        $this->assertSame(422, $this->send('POST', '/folio/contact/_delete-plan', ['ids' => ['../staff/s1']])->getStatusCode());
+
+        $this->assertSame($staff, file_get_contents($data . '/staff/s1.json'), 'the staff record is untouched');
+        $this->assertSame($before, $contacts(), 'no foreign record is written into the contact folder');
+        $this->assertSame([], \App\Folio\Crm\Log::$entries, 'the bulk action never received a foreign record');
+        $this->assertSame('lead', $this->stored('contact', 'c1')?->get('stage'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_bulk_set_field_on_a_publishing_type_changes_the_working_copy(): void
     {
         $this->writeModel('note', [

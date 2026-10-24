@@ -16,6 +16,7 @@ use Preflow\Folio\Content\ListView;
 use Preflow\Folio\Content\ListCells;
 use Preflow\Folio\Content\ListExport;
 use Preflow\Folio\Content\RecordDeleter;
+use Preflow\Folio\Content\RecordId;
 use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\RelationLabels;
 use Preflow\Folio\Content\DraftRecordFactory;
@@ -763,13 +764,14 @@ final class AdminController
     }
 
     /**
-     * An ids[] value as a list of strings, each once; null when there are more than RecordDeleter::MAX_IDS.
+     * An ids[] value as a list of strings, each once, without ids that are not usable
+     * (RecordId::usable: a path or invalid UTF-8); null when there are more than RecordDeleter::MAX_IDS.
      *
      * @return list<string>|null
      */
     private static function idList(mixed $ids): ?array
     {
-        $ids = is_array($ids) ? array_values(array_unique(array_filter($ids, static fn (mixed $id): bool => is_string($id) && $id !== ''))) : [];
+        $ids = is_array($ids) ? array_values(array_unique(array_filter($ids, static fn (mixed $id): bool => is_string($id) && RecordId::usable($id)))) : [];
 
         return count($ids) > RecordDeleter::MAX_IDS ? null : $ids;
     }

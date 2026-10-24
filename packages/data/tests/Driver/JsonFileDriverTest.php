@@ -381,4 +381,73 @@ final class JsonFileDriverTest extends TestCase
         $this->assertNull($this->driver->cacheDir());
         $this->assertSame(['post'], array_values(array_diff(scandir($this->dataDir), ['.', '..'])));
     }
+
+    /** @return array<string, array{string}> */
+    public static function unsafeIds(): array
+    {
+        return [
+            'parent dir' => ['../staff/s1'],
+            'slash' => ['a/b'],
+            'backslash' => ['a\\b'],
+            'nul' => ["a\0b"],
+            'dot dot' => ['..'],
+            'dot' => ['.'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('unsafeIds')]
+    public function test_unsafe_ids_never_reach_a_file_path(string $id): void
+    {
+        $this->driver->save('staff', 's1', ['uuid' => 's1', 'password_hash' => 'h']);
+        $this->driver->save('post', 'p1', ['uuid' => 'p1']);
+        $staffFile = $this->dataDir . '/staff/s1.json';
+        $before = file_get_contents($staffFile);
+
+        $this->assertNull($this->driver->findOne('post', $id));
+        $this->assertFalse($this->driver->exists('post', $id));
+
+        try {
+            $this->driver->save('post', $id, ['uuid' => $id, 'title' => 'x']);
+            $this->fail('save accepted an unsafe id');
+        } catch (\InvalidArgumentException) {
+        }
+        try {
+            $this->driver->delete('post', $id);
+            $this->fail('delete accepted an unsafe id');
+        } catch (\InvalidArgumentException) {
+        }
+
+        $this->assertSame($before, file_get_contents($staffFile));
+        $this->assertSame(['p1.json'], array_values(array_diff(scandir($this->dataDir . '/post'), ['.', '..'])));
+        $this->assertSame(['s1.json'], array_values(array_diff(scandir($this->dataDir . '/staff'), ['.', '..'])));
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('unsafeIds')]
+    public function test_unsafe_types_never_reach_a_file_path(string $type): void
+    {
+        $this->driver->save('staff', 's1', ['uuid' => 's1', 'password_hash' => 'h']);
+
+        $this->assertNull($this->driver->findOne($type, 's1'));
+        $this->assertFalse($this->driver->exists($type, 's1'));
+        $this->assertSame([], $this->driver->findMany($type, new Query())->items());
+        $this->expectException(\InvalidArgumentException::class);
+        $this->driver->save($type, 's1', ['uuid' => 's1']);
+    }
+
+    public function test_a_type_with_a_path_in_it_reads_nothing(): void
+    {
+        $this->driver->save('staff', 's1', ['uuid' => 's1', 'password_hash' => 'h']);
+        $this->driver->save('post', 'p1', ['uuid' => 'p1']);
+
+        $this->assertNull($this->driver->findOne('post/../staff', 's1'));
+        $this->assertSame([], $this->driver->findMany('post/../staff', new Query())->items());
+    }
+
+    public function test_ids_with_dots_inside_stay_usable(): void
+    {
+        $this->driver->save('post', 'v1.2', ['uuid' => 'v1.2']);
+
+        $this->assertSame(['uuid' => 'v1.2'], $this->driver->findOne('post', 'v1.2'));
+        $this->assertTrue($this->driver->exists('post', 'v1.2'));
+    }
 }

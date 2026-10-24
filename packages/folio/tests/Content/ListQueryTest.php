@@ -140,6 +140,34 @@ final class ListQueryTest extends TestCase
         $this->assertSame(['i2'], $this->ids($this->lq(['f' => ['owner' => 't2']])));
     }
 
+    public function test_relation_filter_drops_ids_with_a_path_or_bad_utf8(): void
+    {
+        $unsafe = ['../staff/u1', 'a/b', 'a\\b', "t1\0", '..', "\xFF", "t\xC3"];
+        $this->assertSame([], $this->lq(['f' => ['owner' => $unsafe, 'tags' => $unsafe]])->query());
+        $this->assertSame(['f' => ['tags' => ['t1']]], $this->lq(['f' => ['tags' => ["\xFF", 't1']]])->query());
+        $this->assertSame(['f' => ['tags' => ['t.1', 'ü']]], $this->lq(['f' => ['tags' => ['t.1', 'ü']]])->query());
+    }
+
+    public function test_malformed_utf8_relation_filter_is_no_error_on_sqlite(): void
+    {
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('CREATE TABLE sq_item (uuid TEXT PRIMARY KEY, title TEXT, owner TEXT, tags TEXT)');
+        file_put_contents($this->base . '/m/sq_item.json', json_encode(['key' => 'sq_item', 'table' => 'sq_item', 'storage' => 'sqlite', 'id_field' => 'uuid', 'fields' => [
+            'title' => ['type' => 'string'],
+            'owner' => ['type' => 'relation', 'relation' => ['to' => 'tag']],
+            'tags' => ['type' => 'relation', 'relation' => ['to' => 'tag', 'multiple' => true]],
+        ]]));
+        $registry = new TypeRegistry($this->base . '/m');
+        $dm = new DataManager(['sqlite' => new \Preflow\Data\Driver\SqliteDriver($pdo), 'json' => new JsonFileDriver($this->base . '/s')], 'json', $registry, new ValidatorFactory(new RuleFactory()));
+        $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($registry->get('sq_item'), ['uuid' => 'q1', 'title' => 'Q', 'owner' => 't1', 'tags' => json_encode(['t1'])]), false);
+
+        $req = (new Psr17Factory())->createServerRequest('GET', '/folio/sq_item')->withQueryParams(['f' => ['owner' => ["\xFF"], 'tags' => ["\xFF", 't1']]]);
+        $lq = ListQuery::fromRequest($req, $registry->get('sq_item'), ['filters' => ['owner', 'tags']], 'en');
+
+        $this->assertSame(['q1'], array_map(static fn ($r) => $r->get('uuid'), iterator_to_array($lq->apply($dm->queryType('sq_item'))->get())));
+    }
+
     public function test_date_range_filter(): void
     {
         $this->assertSame(['i2'], $this->ids($this->lq(['f' => ['due' => ['from' => '2026-02-01', 'to' => '2026-03-05']]])));

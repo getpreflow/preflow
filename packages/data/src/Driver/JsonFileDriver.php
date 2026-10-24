@@ -30,6 +30,9 @@ final class JsonFileDriver implements StorageDriver
             return;
         }
 
+        if ($type !== null && !self::safeName($type)) {
+            return;
+        }
         $files = $type !== null ? [$this->cacheFile($type)] : (glob($this->cacheDir . '/json-*.json') ?: []);
         foreach ($files as $file) {
             @unlink($file);
@@ -164,6 +167,9 @@ final class JsonFileDriver implements StorageDriver
 
     public function findOne(string $type, string|int $id, string $idField = 'uuid'): ?array
     {
+        if (!self::safeName($type) || !self::safeName((string) $id)) {
+            return null;
+        }
         $path = $this->filePath($type, $id);
 
         if (!file_exists($path)) {
@@ -176,6 +182,9 @@ final class JsonFileDriver implements StorageDriver
 
     public function findMany(string $type, Query $query): ResultSet
     {
+        if (!self::safeName($type)) {
+            return new ResultSet([]);
+        }
         $dir = $this->typeDir($type);
 
         if (!is_dir($dir)) {
@@ -214,6 +223,7 @@ final class JsonFileDriver implements StorageDriver
 
     public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void
     {
+        self::assertSafe($type, $id);
         $dir = $this->typeDir($type);
 
         if (!is_dir($dir)) {
@@ -237,6 +247,7 @@ final class JsonFileDriver implements StorageDriver
 
     public function delete(string $type, string|int $id, string $idField = 'uuid'): void
     {
+        self::assertSafe($type, $id);
         $path = $this->filePath($type, $id);
 
         if (file_exists($path)) {
@@ -249,7 +260,7 @@ final class JsonFileDriver implements StorageDriver
 
     public function exists(string $type, string|int $id, string $idField = 'uuid'): bool
     {
-        return file_exists($this->filePath($type, $id));
+        return self::safeName($type) && self::safeName((string) $id) && file_exists($this->filePath($type, $id));
     }
 
     public function lastInsertId(): string|int
@@ -260,6 +271,25 @@ final class JsonFileDriver implements StorageDriver
     public function rawQuery(string $sql, array $bindings = []): array
     {
         throw new \RuntimeException('Raw SQL queries are not supported by the JSON file driver.');
+    }
+
+    /**
+     * A type or id that can be one segment of a file path: not "." or "..",
+     * and without "/", "\\" or NUL. Anything else would leave the type's folder.
+     */
+    private static function safeName(string $name): bool
+    {
+        return $name !== '.' && $name !== '..' && strpbrk($name, "/\\\0") === false;
+    }
+
+    private static function assertSafe(string $type, string|int $id): void
+    {
+        if (!self::safeName($type)) {
+            throw new \InvalidArgumentException('Not a usable JSON storage type: ' . json_encode($type, JSON_INVALID_UTF8_SUBSTITUTE));
+        }
+        if (!self::safeName((string) $id)) {
+            throw new \InvalidArgumentException('Not a usable JSON record id: ' . json_encode((string) $id, JSON_INVALID_UTF8_SUBSTITUTE));
+        }
     }
 
     private function typeDir(string $type): string

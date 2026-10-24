@@ -224,7 +224,7 @@ final readonly class ListQuery
         if (self::isRelation($type)) {
             $ids = array_values(array_filter(
                 array_map(static fn ($v) => is_string($v) || is_int($v) ? (string) $v : '', (array) $raw),
-                static fn (string $v) => $v !== '' && strlen($v) <= 128,
+                static fn (string $v) => strlen($v) <= 128 && RecordId::usable($v),
             ));
 
             return $ids === [] ? null : $ids;

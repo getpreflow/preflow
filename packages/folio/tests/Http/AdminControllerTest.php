@@ -803,6 +803,20 @@ final class AdminControllerTest extends TestCase
         $this->assertSame([['Title', 'Slug', 'Status'], ['Game 003', 's3', ''], ['Game 001', 's1', '']], array_map(static fn (array $r) => array_slice(array_pad($r, 3, ''), 0, 3), $rows));
     }
 
+    public function test_export_drops_ticked_ids_with_a_path_or_bad_utf8(): void
+    {
+        $this->seedPages(2);
+        @mkdir($this->base . '/s/secret', 0777, true);
+        file_put_contents($this->base . '/s/secret/x1.json', json_encode(['uuid' => 'x1', 'title' => 'Leaked']));
+        $c = $this->exportController();
+
+        foreach (['../secret/x1', 'a/b', 'a\\b', "p1\0", '..', "\xFF"] as $id) {
+            $this->assertSame(422, $c->export($this->exportRequest('page', ['ids' => [$id]]))->getStatusCode(), $id);
+        }
+        $rows = $this->workbook($c->export($this->exportRequest('page', ['ids' => ['../secret/x1', "\xFF", 'p2']])));
+        $this->assertSame([['Title', 'Slug', 'Status'], ['Game 002', 's2', '']], array_map(static fn (array $r) => array_slice(array_pad($r, 3, ''), 0, 3), $rows));
+    }
+
     public function test_export_refuses_unknown_types_unavailable_export_and_bad_id_lists(): void
     {
         $this->seedPages(2);
