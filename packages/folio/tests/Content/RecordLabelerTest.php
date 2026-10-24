@@ -63,4 +63,15 @@ final class RecordLabelerTest extends TestCase
         $rec = DynamicRecord::fromArray($reg->get('thing'), ['uuid' => 't3', 'count' => 5]);
         $this->assertSame('t3', (new RecordLabeler())->label($rec));
     }
+
+    public function test_skips_a_hidden_string_field(): void
+    {
+        $reg = $this->reg(['pin' => ['type' => 'string', 'hidden' => true], 'name' => ['type' => 'string']]);
+        $rec = DynamicRecord::fromArray($reg->get('thing'), ['uuid' => 't5', 'pin' => 'secret-pin', 'name' => 'Visible']);
+        $this->assertSame('Visible', (new RecordLabeler())->label($rec));
+
+        $reg = $this->reg(['pin' => ['type' => 'string', 'hidden' => true], 'count' => ['type' => 'number']]);
+        $rec = DynamicRecord::fromArray($reg->get('thing'), ['uuid' => 't6', 'pin' => 'secret-pin']);
+        $this->assertSame('t6', (new RecordLabeler())->label($rec));
+    }
 }

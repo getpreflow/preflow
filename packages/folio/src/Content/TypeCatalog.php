@@ -117,6 +117,11 @@ final class TypeCatalog
                 throw new FrontendConfigException("Type \"{$key}\": list column \"{$column}\" names a hidden field; remove it from \"list.columns\" or unhide the field");
             }
         }
+        foreach ((array) ($data['list']['filters'] ?? []) as $filter) {
+            if (is_string($filter) && is_array($fields[$filter] ?? null) && ($fields[$filter]['hidden'] ?? false) === true) {
+                throw new FrontendConfigException("Type \"{$key}\": list filter \"{$filter}\" names a hidden field; remove it from \"list.filters\" or unhide the field");
+            }
+        }
         $section = $data['section'] ?? $section;
         if (!is_string($section) || preg_match('/^[a-z][a-z0-9_-]*$/', $section) !== 1) {
             throw new FrontendConfigException("Type \"{$key}\": \"section\" must be a lowercase name (a-z, 0-9, _ and -, starting with a letter)");

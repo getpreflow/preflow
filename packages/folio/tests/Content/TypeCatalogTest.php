@@ -231,6 +231,18 @@ final class TypeCatalogTest extends TestCase
         (new TypeCatalog($this->dir))->all();
     }
 
+    public function test_list_filter_naming_hidden_field_throws(): void
+    {
+        $this->model([
+            'fields' => ['name' => ['type' => 'string'], 'level' => ['type' => 'select', 'options' => ['a', 'b'], 'hidden' => true]],
+            'list' => ['columns' => ['name'], 'filters' => ['level']],
+        ]);
+        $this->expectException(FrontendConfigException::class);
+        $this->expectExceptionMessageMatches('/Type "member".*filter "level".*hidden/');
+
+        (new TypeCatalog($this->dir))->all();
+    }
+
     public function test_list_columns_with_visible_fields_accepted(): void
     {
         $this->model([
