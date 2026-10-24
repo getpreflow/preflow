@@ -41,15 +41,53 @@ final class JsonFileDriver implements StorageDriver
         return $this->cacheDir . '/json-' . $type . '.json';
     }
 
+    /** The type's generation file: rewritten by every save / delete, kept by clearCache(). */
+    private function generationFile(string $type): string
+    {
+        return $this->cacheDir . '/json-' . $type . '.gen';
+    }
+
+    /** The type's current generation ('0' before its first save or delete through a driver). */
+    private function generation(string $type): string
+    {
+        $raw = @file_get_contents($this->generationFile($type));
+
+        return $raw === false || $raw === '' ? '0' : $raw;
+    }
+
     /**
-     * Record count, newest mtime and total size of the record files, plus the
-     * directory's mtime: moves when files are added, removed or rewritten
-     * outside this driver.
+     * Move the type's generation on (a fresh random value, written atomically): a cache built
+     * from records read before this write carries the old generation and is never used again,
+     * however its write races with this one.
+     */
+    private function bumpGeneration(string $type): void
+    {
+        if ($this->cacheDir === null) {
+            return;
+        }
+        try {
+            if (!is_dir($this->cacheDir) && !@mkdir($this->cacheDir, 0755, true) && !is_dir($this->cacheDir)) {
+                return;
+            }
+            $file = $this->generationFile($type);
+            $tmp = $file . '.tmp-' . bin2hex(random_bytes(4));
+            if (@file_put_contents($tmp, bin2hex(random_bytes(8)), LOCK_EX) === false || !@rename($tmp, $file)) {
+                @unlink($tmp);
+            }
+        } catch (\Throwable) {
+            // Without a generation file the signature and clearCache() still apply.
+        }
+    }
+
+    /**
+     * The type's generation, record count, newest mtime and total size of the record files,
+     * plus the directory's mtime: moves on every save / delete through a driver and when files
+     * are added, removed or rewritten outside it.
      *
      * @param list<string> $files
-     * @return array{int, int, int, int}
+     * @return array{string, int, int, int, int}
      */
-    private function signature(string $dir, array $files): array
+    private function signature(string $generation, string $dir, array $files): array
     {
         clearstatcache();
         $newest = 0;
@@ -59,19 +97,20 @@ final class JsonFileDriver implements StorageDriver
             $size += (int) @filesize($file);
         }
 
-        return [count($files), $newest, $size, (int) @filemtime($dir)];
+        return [$generation, count($files), $newest, $size, (int) @filemtime($dir)];
     }
 
     /** @return list<array<string, mixed>> every record of the type, with `_id` */
     private function loadRecords(string $type, string $dir): array
     {
-        $files = glob($dir . '/*.json') ?: [];
-
         if ($this->cacheDir === null) {
-            return $this->readRecords($files);
+            return $this->readRecords(glob($dir . '/*.json') ?: []);
         }
 
-        $signature = $this->signature($dir, $files);
+        // The generation is read before the records: a save after this point moves it on.
+        $generation = $this->generation($type);
+        $files = glob($dir . '/*.json') ?: [];
+        $signature = $this->signature($generation, $dir, $files);
         $cacheFile = $this->cacheFile($type);
 
         $raw = @file_get_contents($cacheFile);
@@ -83,7 +122,10 @@ final class JsonFileDriver implements StorageDriver
         }
 
         $records = $this->readRecords($files);
-        $this->writeCache($cacheFile, ['signature' => $signature, 'records' => $records]);
+        // Changed while reading: use what was read, but do not cache it.
+        if ($this->signature($this->generation($type), $dir, glob($dir . '/*.json') ?: []) === $signature) {
+            $this->writeCache($cacheFile, ['signature' => $signature, 'records' => $records]);
+        }
 
         return $records;
     }
@@ -189,6 +231,7 @@ final class JsonFileDriver implements StorageDriver
             throw new \RuntimeException("Could not write {$path}.");
         }
 
+        $this->bumpGeneration($type);
         $this->clearCache($type);
     }
 
@@ -200,6 +243,7 @@ final class JsonFileDriver implements StorageDriver
             unlink($path);
         }
 
+        $this->bumpGeneration($type);
         $this->clearCache($type);
     }
 

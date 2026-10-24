@@ -407,6 +407,29 @@ final class CustomizationTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_bulk_set_and_bulk_actions_change_freshly_read_records(): void
+    {
+        $this->crm();
+        $this->as('admin');
+        $this->seed('contact', 'c1', ['name' => 'Ada', 'email' => 'ada@x.org', 'status' => 'new', 'stage' => 'lead']);
+        $this->send('GET', '/folio/contact'); // builds the query cache
+        $cacheFile = $this->dir . '/storage/cache/data/json-contact.json';
+        $this->assertFileExists($cacheFile);
+        // A query cache that lags behind the record file (as left by a racing reader).
+        file_put_contents($cacheFile, str_replace('"Ada"', '"Stale"', (string) file_get_contents($cacheFile)));
+
+        $this->assertSame(302, $this->send('POST', '/folio/contact/_bulk/set-stage', ['ids' => ['c1'], 'value' => 'customer'])->getStatusCode());
+        $this->assertSame('customer', $this->stored('contact', 'c1')?->get('stage'));
+        $this->assertSame('Ada', $this->stored('contact', 'c1')?->get('name'), 'saved from the record file, not the cache');
+
+        $this->send('GET', '/folio/contact');
+        file_put_contents($cacheFile, str_replace('"Ada"', '"Stale"', (string) file_get_contents($cacheFile)));
+        $this->assertSame(302, $this->send('POST', '/folio/contact/_bulk/tag', ['ids' => ['c1']])->getStatusCode());
+        $this->assertSame('tagged', $this->stored('contact', 'c1')?->get('status'));
+        $this->assertSame('Ada', $this->stored('contact', 'c1')?->get('name'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_bulk_set_field_on_a_publishing_type_changes_the_working_copy(): void
     {
         $this->writeModel('note', [

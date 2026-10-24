@@ -775,30 +775,39 @@ final class AdminController
     }
 
     /**
-     * The stored records of $type the posted ids[] name, in the order posted (one query);
+     * The stored records of $type the posted ids[] name, in the order posted, each read
+     * directly (never from a query cache: bulk paths change and save whole records);
      * a 422 when there are none or too many ids.
      *
      * @return list<DynamicRecord>|ResponseInterface
      */
     private function postedRecords(ServerRequestInterface $request, string $type): array|ResponseInterface
     {
-        return $this->recordsByIds($type, self::postedIds($request));
+        return $this->recordsByIds($type, self::postedIds($request), fresh: true);
     }
 
     /**
-     * The stored records of $type for these ids, in the order given (one query); a 422 when
-     * there are none or too many ids. Ids that name no record are dropped.
+     * The stored records of $type for these ids, in the order given (one query, or with
+     * $fresh one direct read per id); a 422 when there are none or too many ids. Ids that
+     * name no record are dropped.
      *
      * @param list<string>|null $ids null: too many
      * @return list<DynamicRecord>|ResponseInterface
      */
-    private function recordsByIds(string $type, ?array $ids): array|ResponseInterface
+    private function recordsByIds(string $type, ?array $ids, bool $fresh = false): array|ResponseInterface
     {
         if ($ids === null) {
             return new Response(422, [], 'Too many records');
         }
         $found = [];
-        if ($ids !== []) {
+        if ($fresh) {
+            foreach ($ids as $id) {
+                $record = $this->dm->findType($type, $id);
+                if ($record !== null) {
+                    $found[$id] = $record;
+                }
+            }
+        } elseif ($ids !== []) {
             $idField = $this->registry->get($type)->idField;
             foreach ($this->dm->queryType($type)->whereAny([['field' => $idField, 'operator' => 'IN', 'value' => $ids]])->get()->items() as $record) {
                 $found[(string) $record->getId()] = $record;

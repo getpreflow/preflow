@@ -309,6 +309,48 @@ final class JsonFileDriverTest extends TestCase
         $this->deleteDir($cacheDir);
     }
 
+    public function test_cache_written_by_a_reader_that_started_before_a_save_is_ignored(): void
+    {
+        [$driver, $cacheDir] = $this->cached();
+        $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A']);
+        $driver->findMany('post', new Query());
+        $stale = (string) file_get_contents($cacheDir . '/json-post.json');
+        $file = $this->dataDir . '/post/p1.json';
+        $dir = $this->dataDir . '/post';
+        clearstatcache();
+        [$fileTime, $dirTime] = [filemtime($file), filemtime($dir)];
+
+        // A same-size save within the same second (forced here) ...
+        $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'B']);
+        touch($file, $fileTime);
+        touch($dir, $dirTime);
+        // ... and a reader that read the records before it writes its cache after the save's clearCache().
+        file_put_contents($cacheDir . '/json-post.json', $stale);
+
+        $this->assertSame('B', $driver->findMany('post', new Query())->items()[0]['title']);
+        $this->deleteDir($cacheDir);
+    }
+
+    public function test_cache_generation_moves_on_save_and_delete_only(): void
+    {
+        [$driver, $cacheDir] = $this->cached();
+        $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A']);
+        $first = (string) file_get_contents($cacheDir . '/json-post.gen');
+        $driver->findMany('post', new Query());
+        $this->assertSame($first, file_get_contents($cacheDir . '/json-post.gen'));
+
+        $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'B']);
+        $second = (string) file_get_contents($cacheDir . '/json-post.gen');
+        $this->assertNotSame($first, $second);
+        $driver->delete('post', 'p1');
+        $this->assertNotSame($second, file_get_contents($cacheDir . '/json-post.gen'));
+        $this->assertSame([], glob($cacheDir . '/*.tmp-*'));
+
+        $driver->clearCache();
+        $this->assertFileExists($cacheDir . '/json-post.gen', 'clearing the cache keeps the generation');
+        $this->deleteDir($cacheDir);
+    }
+
     public function test_cache_clear_cache_and_corrupt_cache(): void
     {
         [$driver, $cacheDir] = $this->cached();
