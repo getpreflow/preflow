@@ -357,6 +357,8 @@ Any field also takes:
 
 - `"default": <value>`: the value a new-record form starts with (a singleton's form before
   its first save, too). A boolean `"default": true` shows checked on the create form.
+  Since 0.27 this holds for every type, so a site whose models declare defaults now sees them
+  prefilled on create forms (before, a create form started empty).
 
 `hidden` and `readonly` apply on create too: such a field starts empty unless a `#[BeforeSave]` hook sets it.
 
