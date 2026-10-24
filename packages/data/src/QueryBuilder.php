@@ -12,6 +12,12 @@ final class QueryBuilder
     private Query $query;
     private ?TypeDefinition $typeDef = null;
 
+    /** Most target ids one relation contributes to one search word. */
+    public const RELATION_MATCH_LIMIT = 1000;
+
+    /** @var list<array{words: list<string>, fields: ?list<string>}> resolved at get() */
+    private array $looseSearches = [];
+
     /**
      * @param class-string<T>|null $modelClass
      */
@@ -19,6 +25,7 @@ final class QueryBuilder
         private readonly StorageDriver $driver,
         private readonly ?ModelMetadata $meta,
         private readonly ?string $modelClass,
+        private readonly ?DataManager $dataManager = null,
     ) {
         $this->query = new Query();
     }
@@ -26,9 +33,9 @@ final class QueryBuilder
     /**
      * Create a QueryBuilder for a dynamic type (no typed model class).
      */
-    public static function forType(StorageDriver $driver, TypeDefinition $typeDef): self
+    public static function forType(StorageDriver $driver, TypeDefinition $typeDef, ?DataManager $dm = null): self
     {
-        $builder = new self($driver, null, null);
+        $builder = new self($driver, null, null, $dm);
         $builder->typeDef = $typeDef;
         return $builder;
     }
@@ -84,10 +91,143 @@ final class QueryBuilder
     }
 
     /**
-     * Execute the query and return a ResultSet of model instances.
+     * Loose search: the term is split on whitespace, every word must match
+     * (AND), a word matches as a case-insensitive substring of any text field
+     * or, one level deep, of the label or text fields of a related record.
      *
-     * @return ResultSet<T>
+     * Only fields the type (or model) really has are used. Relations need a
+     * DataManager and are resolved when get() runs, so locale() applies.
+     *
+     * @param list<string>|null $fields restrict to these fields; unknown names are dropped
      */
+    public function searchLoose(string $term, ?array $fields = null): self
+    {
+        $words = preg_split('/\s+/u', trim($term), -1, PREG_SPLIT_NO_EMPTY);
+        if ($words === false || $words === []) {
+            return $this;
+        }
+        $this->looseSearches[] = ['words' => array_values($words), 'fields' => $fields === null ? null : array_values($fields)];
+
+        return $this;
+    }
+
+    /** @return array{text: list<string>, relations: list<Relation>} */
+    private function looseFields(?array $requested): array
+    {
+        $kinds = $this->dataManager?->fieldKinds() ?? new FieldKinds();
+        $text = [];
+        $relations = [];
+
+        if ($this->typeDef !== null) {
+            $relationFields = [];
+            foreach ($this->dataManager?->relationsOf($this->typeDef->key) ?? [] as $relation) {
+                $relationFields[$relation->field] = $relation;
+            }
+            foreach ($this->typeDef->fields as $name => $def) {
+                if ($requested !== null ? !in_array($name, $requested, true) : $def->searchable === false) {
+                    continue;
+                }
+                if (isset($relationFields[$name])) {
+                    $relations[] = $relationFields[$name];
+                } elseif ($kinds->isText($def->type)) {
+                    $text[] = $name;
+                }
+            }
+        } elseif ($this->meta !== null) {
+            foreach ($this->meta->fields as $name => $attr) {
+                if ($requested !== null ? !in_array($name, $requested, true) : $attr->searchable === false) {
+                    continue;
+                }
+                $type = (new \ReflectionProperty($this->meta->modelClass, $name))->getType();
+                if ($type instanceof \ReflectionNamedType && $type->getName() === 'string') {
+                    $text[] = $name;
+                }
+            }
+        }
+
+        return ['text' => $text, 'relations' => $relations];
+    }
+
+    private function applyLooseSearches(): void
+    {
+        $searches = $this->looseSearches;
+        $this->looseSearches = [];
+
+        foreach ($searches as $search) {
+            $fields = $this->looseFields($search['fields']);
+            foreach ($search['words'] as $word) {
+                $conditions = [];
+                foreach ($fields['text'] as $name) {
+                    $conditions[] = ['field' => $name, 'operator' => 'CONTAINS', 'value' => $word];
+                }
+                foreach ($fields['relations'] as $relation) {
+                    $ids = $this->relatedIds($relation, $word);
+                    $conditions[] = [
+                        'field' => $relation->field,
+                        'operator' => $relation->multiple ? 'HAS' : 'IN',
+                        'value' => $ids,
+                    ];
+                }
+                if ($conditions === []) {
+                    // nothing searchable: no record can match
+                    $this->query->whereAny([['field' => $this->typeDef?->idField ?? $this->meta?->idField ?? 'uuid', 'operator' => 'IN', 'value' => []]]);
+                    continue;
+                }
+                $this->query->whereAny($conditions);
+            }
+        }
+    }
+
+    /** @return list<string> ids of target records the word matches */
+    private function relatedIds(Relation $relation, string $word): array
+    {
+        $dm = $this->dataManager;
+        $registry = $dm?->getTypeRegistry();
+        if ($dm === null || $registry === null || !$registry->has($relation->target)) {
+            return [];
+        }
+        $target = $registry->get($relation->target);
+        $kinds = $dm->fieldKinds();
+
+        $names = [];
+        if ($relation->labelField !== null && isset($target->fields[$relation->labelField])) {
+            $names[] = $relation->labelField;
+        } else {
+            foreach ($target->fields as $name => $def) {
+                if ($def->type === 'string') {
+                    $names[] = $name;
+                    break;
+                }
+            }
+        }
+        foreach ($target->fields as $name => $def) {
+            if ($def->searchable !== false && $kinds->isText($def->type)) {
+                $names[] = $name;
+            }
+        }
+        $conditions = array_map(
+            static fn (string $name) => ['field' => $name, 'operator' => 'CONTAINS', 'value' => $word],
+            array_values(array_unique($names)),
+        );
+        if ($conditions === []) {
+            return [];
+        }
+
+        $builder = $dm->queryIn($target)->whereAny($conditions)->limit(self::RELATION_MATCH_LIMIT);
+        if ($this->locale !== null) {
+            $builder->locale($this->locale);
+        }
+        $ids = [];
+        foreach ($builder->get()->items() as $record) {
+            $id = $record->getId();
+            if ($id !== null) {
+                $ids[] = (string) $id;
+            }
+        }
+
+        return $ids;
+    }
+
     /**
      * Match translatable fields against their value in this locale (default:
      * the type's default locale).
@@ -104,8 +244,14 @@ final class QueryBuilder
         return $this;
     }
 
+    /**
+     * Execute the query and return a ResultSet of model instances.
+     *
+     * @return ResultSet<T>
+     */
     public function get(): ResultSet
     {
+        $this->applyLooseSearches();
         $translatable = $this->typeDef?->translatableFields() ?? [];
         if ($translatable !== []) {
             $default = $this->typeDef->locales->default;

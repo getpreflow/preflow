@@ -110,7 +110,7 @@ final class DataManager
         $meta = ModelMetadata::for($modelClass);
         $driver = $this->resolveDriver($meta->storage);
 
-        return new QueryBuilder($driver, $meta, $modelClass);
+        return new QueryBuilder($driver, $meta, $modelClass, $this);
     }
 
     /**
@@ -269,7 +269,7 @@ final class DataManager
 
     public function queryIn(TypeDefinition $typeDef): QueryBuilder
     {
-        return QueryBuilder::forType($this->resolveDriver($typeDef->storage), $typeDef);
+        return QueryBuilder::forType($this->resolveDriver($typeDef->storage), $typeDef, $this);
     }
 
     /**
