@@ -82,6 +82,8 @@ final class MemberApprovalTest extends TestCase
             $cells = array_values(array_filter(iterator_to_array($row->getElementsByTagName('td')), static fn (\DOMElement $td): bool => !str_contains($td->getAttribute('class'), 'folio-bulk-cell')));
             $states[trim(($cells[0] ?? null)?->textContent ?? '')] = trim(($cells[(int) $col] ?? null)?->textContent ?? '');
         }
+        // Rows without a list sort end in the record id (random), so compare by e-mail, not by row order.
+        ksort($states);
         $this->assertSame(['a@example.com' => 'Unconfirmed', 'b@example.com' => 'Waiting', 'c@example.com' => 'Member', 'd@example.com' => 'Declined'], $states);
     }
 

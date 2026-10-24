@@ -309,14 +309,109 @@ available for every type that has a route.
 ### `list`: the admin list
 
 ```json
-"list": { "columns": ["title", "status"], "sort": "-title", "orderable": false }
+"list": {
+    "columns": ["title", "author", "status"],
+    "filters": ["status", "author", "published_at"],
+    "bulk": ["status"],
+    "sort": "-title",
+    "orderable": false
+}
 ```
 
 - `columns`: the fields shown. The default is the first three
-  string/number/select/boolean/date fields that are not hidden.
-- `sort`: the default order. A `-` prefix means descending.
+  string/number/select/boolean/date fields that are not hidden. A `relation` field can be
+  listed too: its cell shows the linked records' labels.
+- `filters`: fields offered under "+ Filter": `select`, `boolean`, `date` (a from/until range)
+  and `relation` fields. Active filters show as removable chips. A relation filter lists the
+  target's records as a select, or searches them remotely when there are more than 200. Other
+  field types and unknown names are ignored.
+- `bulk`: `select` and `boolean` fields (not translatable, not read-only) that the bulk bar
+  can set on the ticked rows ("Set Status"). Needs the type's edit permission.
+- `sort`: the default order. A `-` prefix means descending. Without `orderable`, ties and
+  unsorted lists end in the record id, so pages stay stable.
 - `orderable: true`: up/down buttons that store a manual position in the record's
   `_order` key. New records go to the end.
+
+Every list has a search box (all words must match, each in any text field or, one level deep,
+in the label and text fields of a related record; a field with `"searchable": false` is left
+out), sortable headers for the plain columns (not relations), highlighted matches and paging
+by 50. The view lives in the URL, so it can be bookmarked and shared:
+
+| Parameter | Meaning |
+|---|---|
+| `q` | Search words (at most 200 characters). |
+| `f[field]` | A filter from `list.filters`: a value, `f[field][from]` / `f[field][to]` for dates (`YYYY-MM-DD`), `f[field][]` ids for relations. |
+| `sort` | A shown column, `-` prefix for descending. |
+| `page` | 1-based page number, clamped to a sane range. |
+| `_partial=1` | Only the results region, which the live search swaps in. |
+
+Unknown fields, malformed values and out-of-range pages are dropped, never an error.
+
+**Overriding `@folio/admin/list.twig`:** the page extends the layout and includes
+`@folio/admin/_list_results.twig` for the swappable region. In a row, `row.cells[column]` is
+the cell as plain text (escape it) and `row.marked[column]` is the same text as already
+escaped HTML with the search matches in `<mark>` (print it with `|raw`). Use `list.headers`
+for the sort links, `list.chips`, `list.clear`, `bulk` (null without any bulk action: no tick
+column) and `export_url`. With the tick column the cell positions shift by one.
+
+#### Deleting: `onDelete` and the summary
+
+A relation field can say what deleting its target does to the records that point at it:
+
+```json
+"author": { "type": "relation", "relation": { "to": "author", "onDelete": "restrict" } }
+```
+
+- `detach` (default): the link is removed from the pointing records.
+- `cascade`: the pointing records are deleted too (recursively).
+- `restrict`: the target can't be deleted while records point at it.
+
+Deleting, single or bulk, goes through a delete plan, record by record on Folio's own save and
+delete paths (so `#[BeforeDelete]`, `#[BeforeSave]` and the after hooks run for cascaded and
+detached records). Before the confirmation the admin asks `POST {prefix}/{type}/_delete-plan`
+and shows the summary: "This can't be undone." plus a line per type, such as "Also deletes 3
+posts." or "2 posts lose a link."; for a restricted plan it shows the refusal ("Can't delete: 2
+posts still point here.") instead. The summary is only information: the delete computes its own
+plan. If any hook refuses, nothing is deleted. SQL writes run in one transaction per
+connection; JSON-file writes can't be rolled back.
+
+#### Bulk actions
+
+The bulk bar appears when a row can be ticked: set fields from `list.bulk`, extension actions
+and delete (each only for those who may use it).
+
+```php
+use Preflow\Folio\Extension\BulkAction;
+
+#[FolioType('note')]
+final class NoteTweaks
+{
+    #[BulkAction('archive', 'Archive', 'notes.archive', confirm: 'Archive the selected notes?')]
+    public function archive(array $records, ServerRequestInterface $request): ?ResponseInterface
+    {
+        foreach ($records as $record) { /* ... */ }
+
+        return null;
+    }
+}
+```
+
+`#[BulkAction(name, label, permission, confirm: null)]` on a `#[FolioType]` method, signature
+`fn(list<DynamicRecord> $records, ServerRequestInterface $request): ?ResponseInterface`. It is
+posted to `{prefix}/{type}/_bulk/{name}` with the ticked `ids[]`. It needs the permission and the
+type's edit permission; the records are the ticked ones of this type that exist, in the order
+posted. Returning `null` redirects back to the same list view with "{label}: done (N)"; a
+response (a download, say) is sent as is; anything else is an error. The names `delete`,
+`export` and `set-…` are Folio's own. Bulk delete needs the type's delete permission and is
+all or nothing.
+
+#### Excel export
+
+With `openspout/openspout` (`^4`) installed (`composer require openspout/openspout`), lists get
+an **Export** button: `GET {prefix}/{type}/_export` downloads an `.xlsx` of the whole filtered
+and sorted list (not just the page), streamed in chunks of 500, or of the ticked rows when
+`ids[]` are given. Columns are the list's own; numbers and dates are typed cells, text is never
+written as a formula. Without OpenSpout there is no button and the URL is a 404.
 
 ### Sidebar
 
@@ -459,7 +554,11 @@ final class Hero extends BlockComponent
 - **relation:** references to records of one type. `"relation": {"to": "author", "multiple": true}`
   shows checkbox chips (a filter input above 12 options; they post `name[]`, as the old multi-select
   did); `"labelField"` picks the chip label, `"orderBy": "<field>"` sorts the options (default:
-  stored order). A single relation stays a select.
+  stored order). A single relation stays a select. Above 200 records of the target the picker
+  switches to remote mode: a search box above the chosen items, fed by
+  `GET {prefix}/_relation/{type}?q=…&page=…` (`{items: [{id, label}], more}`), instead of
+  listing every record. See [`onDelete`](#deleting-ondelete-and-the-summary) for what deleting a
+  target does.
 
 ## Singletons
 
