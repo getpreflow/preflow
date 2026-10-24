@@ -9,8 +9,9 @@ use PHPUnit\Framework\TestCase;
 /**
  * "^0.27 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing Folio with a release that lacks the APIs it calls: auth 0.27 (chain
- * provider, ClaimsCredentials, SessionGuard::remembers()), data 0.26, i18n 0.26
- * (Translator::addDefaults), notify 0.24 (Notifier::sendLater).
+ * provider, ClaimsCredentials, SessionGuard::remembers()), core 0.27 (builds the chain from
+ * config/auth.php, which RecordProviders and StaffPasswords look into), data 0.26, i18n 0.26
+ * (Translator::addDefaults), notify 0.25 (Notifier::sendLater; the bound its require names).
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -19,8 +20,12 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/auth' => '<0.27', 'preflow/data' => '<0.26', 'preflow/i18n' => '<0.26', 'preflow/notify' => '<0.24'],
+            ['preflow/auth' => '<0.27', 'preflow/core' => '<0.27', 'preflow/data' => '<0.26', 'preflow/i18n' => '<0.26', 'preflow/notify' => '<0.25'],
             $composer['conflict'] ?? null,
         );
+        // Each conflict matches its require's lower bound.
+        foreach ($composer['conflict'] as $package => $below) {
+            $this->assertSame('^' . substr($below, 1) . ' || @dev', $composer['require'][$package] ?? null, $package);
+        }
     }
 }
