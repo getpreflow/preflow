@@ -170,6 +170,16 @@ final class ListQueryTest extends TestCase
         $this->assertCount(3, $result->items);
     }
 
+    public function test_huge_page_does_not_overflow(): void
+    {
+        foreach (['99999999999999999999', '1e30'] as $page) {
+            $lq = $this->lq(['page' => $page]);
+            $result = $lq->fetch($this->dm->queryType('item'));
+            $this->assertSame(1, $result->currentPage, $page);
+            $this->assertCount(3, $result->items);
+        }
+    }
+
     public function test_orderable_type_keeps_manual_order_until_sorted(): void
     {
         $config = ['orderable' => true, 'columns' => ['title']];

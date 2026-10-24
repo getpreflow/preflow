@@ -23,6 +23,9 @@ final readonly class ListQuery
     /** Field types the admin list shows when "list.columns" is not set. */
     public const array LIST_TYPES = ['string', 'number', 'int', 'integer', 'float', 'select', 'boolean', 'date'];
 
+    /** Upper bound for the requested page, so (page - 1) * PER_PAGE can never overflow an int. */
+    private const int MAX_PAGE = 1_000_000;
+
     private const array NUMERIC_TYPES = ['number', 'int', 'integer', 'float'];
 
     /**
@@ -101,7 +104,7 @@ final readonly class ListQuery
             }
         }
 
-        $page = is_scalar($params['page'] ?? null) ? max(1, (int) $params['page']) : 1;
+        $page = is_scalar($params['page'] ?? null) ? min(max(1, (int) $params['page']), self::MAX_PAGE) : 1;
 
         return new self($q, $filters, $sort, $desc, $page, $def, $listConfig, $locale);
     }
