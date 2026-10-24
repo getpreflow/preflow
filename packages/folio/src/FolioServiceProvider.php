@@ -475,6 +475,15 @@ final class FolioServiceProvider extends ServiceProvider
             );
         });
         $container->singleton(\Preflow\Folio\Users\StaffPasswords::class, fn (Container $c) => self::staffPasswords($c, $prefix));
+        $container->bind(\Preflow\Folio\Http\AccountController::class, fn (Container $c) => new \Preflow\Folio\Http\AccountController(
+            $c->get(\Preflow\Folio\Users\StaffPasswords::class),
+            $c->get(\Preflow\Core\Throttle\Throttle::class),
+            $c->get(\Preflow\Auth\AuthManager::class),
+            $c->get(TemplateEngineInterface::class),
+            $c->get(TypeCatalog::class),
+            $prefix,
+            max(1, (int) ($this->folioConfig($app)['password_min'] ?? 10)),
+        ));
         $container->bind(\Preflow\Folio\Http\PasswordController::class, fn (Container $c) => new \Preflow\Folio\Http\PasswordController(
             $c->get(\Preflow\Folio\Users\StaffPasswords::class),
             $c->get(\Preflow\Core\Throttle\Throttle::class),
@@ -703,6 +712,20 @@ final class FolioServiceProvider extends ServiceProvider
                     return $out . '<link rel="alternate" hreflang="x-default" href="' . $e((string) ($default['href'] ?? $default['url'])) . '">' . "\n";
                 },
                 isSafe: true,
+            ));
+
+            // The user menu's link to the own account page: only for a record user of the default guard.
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_account_url',
+                callable: function () use ($container, $app): ?string {
+                    if (!file_exists($app->basePath('config/auth.php')) || self::recordProviders($container) === []) {
+                        return null;
+                    }
+
+                    return $container->get(\Preflow\Auth\AuthManager::class)->user() instanceof \Preflow\Folio\Users\RecordUser
+                        ? '/' . trim($this->prefix($app), '/') . '/_account'
+                        : null;
+                },
             ));
 
             if (file_exists($app->basePath('config/auth.php'))) {

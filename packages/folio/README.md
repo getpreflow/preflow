@@ -1035,6 +1035,13 @@ user type, for a `SessionGuard` in `config/auth.php`:
 - Its `auth_epoch` field (provider key `epoch`; `"0"` when the type has none) is the
   session epoch (`Preflow\Auth\HasSessionEpoch`): when it changes, the user's other
   sessions are signed out.
+- When the default guard has record users (directly or in a `ChainUserProvider`), a
+  signed-in record user has an own account page at `{prefix}/_account` (linked from the user
+  menu, no permission needed; a config user has none): it changes the password only, asks
+  for the current one, is throttled (`folio.password`, 10 per 15 minutes per account) and
+  signs out the account's other sessions, remember-me logins and invite/reset links
+  (`StaffPasswords::setPassword()`). `StaffPasswords` also offers `revokeLinks()`,
+  `forgetDevices()` and `verify()` for packages that manage the accounts (preflow/rbac).
 
 ## SQL storage
 

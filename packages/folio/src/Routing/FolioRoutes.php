@@ -18,11 +18,12 @@ final class FolioRoutes
     private const WORKING_MW = 'Preflow\\Folio\\Http\\WorkingCopyMiddleware';
     private const AUTH = 'Preflow\\Folio\\Http\\AuthController';
     private const PASSWORDS = 'Preflow\\Folio\\Http\\PasswordController';
+    private const ACCOUNT = 'Preflow\\Folio\\Http\\AccountController';
     private const AUTH_MW = 'Preflow\\Folio\\Http\\AdminAuthMiddleware';
     private const PERMISSION_MW = 'Preflow\\Folio\\Http\\FolioPermissionMiddleware';
 
     /**
-     * @param bool $passwords the forgot-password and set-password pages (record users behind the default guard)
+     * @param bool $passwords the forgot-password and set-password pages and the own account page (record users behind the default guard)
      * @return RouteEntry[]
      */
     public static function admin(string $prefix, bool $authEnabled = false, bool $passwords = false): array
@@ -41,6 +42,9 @@ final class FolioRoutes
                 $defs[] = ['POST', $prefix . '/forgot',           'forgot',       self::PASSWORDS];
                 $defs[] = ['GET',  $prefix . '/password/{token}', 'passwordForm', self::PASSWORDS];
                 $defs[] = ['POST', $prefix . '/password',         'password',     self::PASSWORDS];
+                // The signed-in account's own page (signed in, no permission): before {type}, which it would match.
+                $defs[] = ['GET',  $prefix . '/_account',          'show',     self::ACCOUNT];
+                $defs[] = ['POST', $prefix . '/_account/password', 'password', self::ACCOUNT];
             }
         }
         $defs = array_merge($defs, [

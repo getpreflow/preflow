@@ -90,7 +90,29 @@ a stored name no longer defined may stay), so nobody squats a name a role gets l
 *manager*: an account whose roles grant `staff.edit` and `rbac_role.edit` ("At least one
 account must keep the right to manage staff and roles."). That covers disabling, demoting
 and deleting the last one, yourself included. A site whose staff are all config users has
-no manager to keep. Other write paths call `StaffRules::beforeSave()` themselves.
+no manager to keep. `Types/StaffAdmin` runs these rules on the form's save and delete and
+on its record actions; other write paths call `StaffRules::beforeSave()` themselves.
+
+### Account lifecycle
+
+`Types/StaffAdmin` adds an **Account** panel to the staff form and its record actions, all
+with the permission `staff.edit` and each checked by `StaffRules` on the record as it would
+be saved (a crafted POST to an account above you, or disabling the last manager, gets the
+same refusal as the form, shown as a flash):
+
+- **Invite.** A new account is stored without a password (it can't sign in) and gets an
+  invitation mail once stored (Folio's `StaffPasswords::invite()`: a set-password link valid
+  7 days, sent after the response). A mail that can't be queued keeps the account and says so;
+  "Send invitation" stays on the panel while no password is set.
+- **Send reset link.** A set-password link valid one hour.
+- **Disable / Enable.** Disabling (the action, or unticking Active in the form) bumps
+  `auth_epoch` (live sessions end), forgets the account's remember-me logins and voids its
+  invite and reset links; enabling changes nothing else.
+
+Mails need `config/notify.php` and the default guard's staff `RecordUserProvider`. Every
+signed-in staff account changes its own password at `{folio}/_account` (the user menu links
+there; the current password is asked for, throttled with `folio.password`), which also signs
+out its other sessions. The action messages are `rbac.staff.*` in `lang/{en,de,fr}/rbac.php`.
 
 ## Lock-out protection
 

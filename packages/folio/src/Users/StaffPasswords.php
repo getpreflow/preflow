@@ -115,10 +115,34 @@ final class StaffPasswords
         }
         $this->dm->saveType($user, false);
 
-        $id = (string) $user->getId();
-        $this->remember?->revokeAll($this->guard, $id);
+        $this->forgetDevices($user);
+        $this->revokeLinks($user);
+    }
+
+    /** Voids the account's invite and reset links (a disabled account's links must not work once it is enabled again). */
+    public function revokeLinks(DynamicRecord $user): void
+    {
         $this->tokens->revokeAll(self::INVITE, $this->subject($user));
         $this->tokens->revokeAll(self::RESET, $this->subject($user));
+    }
+
+    /** Ends the account's remember-me logins for the default guard. */
+    public function forgetDevices(DynamicRecord $user): void
+    {
+        $this->remember?->revokeAll($this->guard, (string) $user->getId());
+    }
+
+    /** Whether $password is the account's current one (an account without a password has none). */
+    public function verify(DynamicRecord $user, string $password): bool
+    {
+        $hash = (string) $user->get($this->require($user)->fields()['password']);
+        if ($hash === '') {
+            $this->hasher->hash($password); // the same cost as a real check
+
+            return false;
+        }
+
+        return $this->hasher->verify($password, $hash);
     }
 
     /** The account as the guard signs it in (read afresh, so its epoch is the saved one); null when it is inactive. */

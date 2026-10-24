@@ -19,12 +19,16 @@ use Psr\Http\Server\RequestHandlerInterface;
  * Every admin route asks one permission, by handler. "{type}" is the route's
  * type; "*.edit|create" means edit or create on any type (block editor
  * fragments have no type). Extension screens ask the permission their
- * #[FolioScreen] declares; any other handler is refused.
+ * #[FolioScreen] declares; SIGNED_IN asks none (the own account page);
+ * any other handler is refused.
  * Runs after AdminAuthMiddleware, so the user is known.
  */
 final class FolioPermissionMiddleware implements MiddlewareInterface
 {
     private const string NS = 'Preflow\\Folio\\Http\\';
+
+    /** A rule that asks no permission: any signed-in user (their own account page). */
+    public const string SIGNED_IN = '(signed in)';
 
     /** @var array<string, string> short handler => permission */
     private const array RULES = [
@@ -54,6 +58,8 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'ExtensionsController@toggle' => 'folio.extensions',
         'BlockEditorController@newBlock' => '*.edit|create',
         'BlockEditorController@duplicate' => '*.edit|create',
+        'AccountController@show' => self::SIGNED_IN,
+        'AccountController@password' => self::SIGNED_IN,
     ];
 
     public function __construct(
@@ -81,6 +87,10 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         }
         if ($rule === null) {
             return $this->forbidden($request); // fail closed: an unmapped admin route is never open
+        }
+
+        if ($rule === self::SIGNED_IN) {
+            return $handler->handle($request);
         }
 
         // Block fragments belong to a form being filled in: creating counts as much as editing.

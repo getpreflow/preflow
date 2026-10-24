@@ -1,0 +1,36 @@
+{% extends '@folio/admin/_layout.twig' %}
+{% block title %}Folio — Your account{% endblock %}
+{% block page_title %}Your account{% endblock %}
+{% block content %}
+    <div class="folio-account">
+        <section class="folio-panel folio-account-who">
+            <span class="folio-avatar folio-account-avatar" aria-hidden="true">{{ (name ?: email)|first|upper }}</span>
+            <div>
+                {% if name %}<p class="folio-account-name">{{ name }}</p>{% endif %}
+                <p class="folio-help">{{ email }}</p>
+            </div>
+        </section>
+        <section class="folio-panel">
+            <h2 class="folio-panel-title">Change password</h2>
+            <form class="folio-panel-body" method="post" action="{{ password_action }}">
+                {{ csrf_field()|raw }}
+                <p class="folio-help">Use at least {{ password_min }} characters. Your other sessions and remembered devices are signed out.</p>
+                {% if error %}<div class="folio-alert folio-alert-error" role="alert">{{ error }}</div>{% endif %}
+                <input type="email" name="username" value="{{ email }}" autocomplete="username" hidden>
+                <div class="form-group">
+                    <label for="current">Current password</label>
+                    <input type="password" name="current" id="current" autocomplete="current-password" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">New password</label>
+                    <input type="password" name="password" id="password" autocomplete="new-password" minlength="{{ password_min }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="repeat">Repeat the new password</label>
+                    <input type="password" name="repeat" id="repeat" autocomplete="new-password" minlength="{{ password_min }}" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Change password</button>
+            </form>
+        </section>
+    </div>
+{% endblock %}

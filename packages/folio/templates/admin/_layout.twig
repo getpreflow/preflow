@@ -59,9 +59,9 @@
             </div>
             {% if folio_auth_enabled|default(false) and auth_check() %}
                 {% set email = auth_user().email %}
-                <div class="folio-user">
+                <div class="folio-user">{% set account_url = folio_account_url() %}{% if account_url %}<a class="folio-user-link" href="{{ account_url }}" title="Your account">{% endif %}
                     <span class="folio-avatar" aria-hidden="true">{{ email|first|upper }}</span>
-                    <span class="folio-user-email" title="{{ email }}">{{ email }}</span>
+                    <span class="folio-user-email" title="{{ email }}">{{ email }}</span>{% if account_url %}</a>{% endif %}
                     <form method="post" action="{{ prefix }}/logout" class="folio-logout">{{ csrf_field()|raw }}
                         <button type="submit" class="btn btn-ghost btn-icon" title="Log out">
                             <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-logout"></use></svg><span class="folio-sr">Log out</span>

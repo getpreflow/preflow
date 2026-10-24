@@ -35,6 +35,11 @@ final class LangTest extends TestCase
             $strings = (require dirname(__DIR__) . "/lang/{$locale}/rbac.php")['delegation'];
             $this->assertSame($keys, array_keys($strings), $locale);
             $this->assertStringContainsString(':patterns', $strings['grant'], $locale);
+            $staff = (require dirname(__DIR__) . "/lang/{$locale}/rbac.php")['staff'];
+            $this->assertSame(array_keys((require dirname(__DIR__) . '/lang/en/rbac.php')['staff']), array_keys($staff), $locale);
+            foreach (['invited', 'reset_sent'] as $key) {
+                $this->assertStringContainsString(':email', $staff[$key], "{$locale} {$key}");
+            }
         }
         $this->assertSame('Sie können keine Berechtigungen vergeben, die Sie selbst nicht haben: *', $this->messages('de')->get('delegation.grant', ['patterns' => '*'], 'de'));
         // Folio's admin is English: without a locale, English whatever the translator's locale.

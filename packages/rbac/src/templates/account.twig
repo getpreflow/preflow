@@ -1,0 +1,42 @@
+{# The Account panel of a staff account (side column): its state, then what those who may change it can do. #}
+<p>
+    <span class="folio-badge{{ active ? ' is-published' : ' is-draft' }}">{{ active ? 'Active' : 'Disabled' }}</span>
+    {% if invited %}<span class="folio-badge is-changed">No password yet</span>{% endif %}
+</p>
+<p class="folio-help">
+    {%- if not active -%}
+        Can't sign in. Its sessions and links ended when it was disabled.
+    {%- elseif invited -%}
+        Can't sign in until the invitation link is used to set a password.
+    {%- else -%}
+        Signs in with a password of its own.
+    {%- endif -%}
+</p>
+{% if may_act %}
+    <div class="folio-form-buttons">
+        {% if active and invited %}
+            <form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/invite">
+                <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                <button type="submit" class="btn btn-secondary">Send invitation</button>
+            </form>
+        {% elseif active %}
+            <form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/reset">
+                <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                <button type="submit" class="btn btn-secondary">Send reset link</button>
+            </form>
+        {% endif %}
+        {% if active %}
+            <form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/disable" data-confirm="Disable {{ record.email }}? Its sessions and links end at once.">
+                <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                <button type="submit" class="btn btn-ghost">Disable</button>
+            </form>
+        {% else %}
+            <form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/enable">
+                <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                <button type="submit" class="btn btn-secondary">Enable</button>
+            </form>
+        {% endif %}
+    </div>
+{% elseif above %}
+    <p class="folio-help">{{ above_message }}</p>
+{% endif %}

@@ -390,6 +390,38 @@ final class FolioStaffLoginTest extends TestCase
         $this->assertStringContainsString('folio: last sign-in not saved for account staff:', (string) @file_get_contents($this->dir . '/error.log'));
     }
 
+    #[RunInSeparateProcess]
+    public function test_the_own_account_page_changes_only_the_password(): void
+    {
+        $ada = $this->makeStaff();
+        $id = (string) $ada->getId();
+        $this->post('/folio/login', ['email' => 'ada@site.test', 'password' => self::PASSWORD]);
+        $remember = $this->flow->container()->get(RememberMe::class)->issue('session', $id);
+        $invite = $this->flow->container()->get(Tokens::class)->issue(StaffPasswords::INVITE, 'staff:' . $id, 3600);
+
+        $page = $this->html('/folio/_account');
+        $this->assertStringContainsString('ada@site.test', $page);
+        $this->assertStringContainsString('href="/folio/_account"', $page, 'the user menu links here');
+        $this->assertSame(422, $this->post('/folio/_account/password', ['current' => 'nope', 'password' => 'a brand new password', 'repeat' => 'a brand new password'])->getStatusCode());
+
+        $response = $this->post('/folio/_account/password', ['current' => self::PASSWORD, 'password' => 'a brand new password', 'repeat' => 'a brand new password', 'email' => 'eve@site.test', 'roles' => 'root']);
+
+        $this->assertSame('/folio/_account', $response->getHeaderLine('Location'));
+        $stored = $this->staff('ada@site.test');
+        $this->assertSame('admin', $stored->get('roles'));
+        $this->assertSame('1', (string) $stored->get('auth_epoch'));
+        $this->assertNull($this->flow->container()->get(RememberMe::class)->resolve('session', $remember));
+        $this->assertNull($this->flow->container()->get(Tokens::class)->consume($invite, StaffPasswords::INVITE));
+        $this->assertSame(200, $this->send('GET', '/folio/_account')->getStatusCode(), 'still signed in');
+
+        // The config user has no account page.
+        $this->post('/folio/logout', []);
+        $this->useSession([]);
+        $this->post('/folio/login', ['email' => self::CONFIG_EMAIL, 'password' => self::PASSWORD]);
+        $this->assertSame(404, $this->send('GET', '/folio/_account')->getStatusCode());
+        $this->assertStringNotContainsString('/folio/_account', $this->html('/folio'));
+    }
+
     private function makeStaffTableWithoutStamp(): void
     {
         $this->dm()->execute('CREATE TABLE "staff" ("uuid" TEXT PRIMARY KEY, "email" TEXT, "name" TEXT, "password_hash" TEXT, "roles" TEXT, "active" INTEGER, "auth_epoch" TEXT)', [], 'sqlite');

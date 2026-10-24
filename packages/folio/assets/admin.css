@@ -241,6 +241,27 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
   color: var(--c-text-muted);
 }
 .folio-logout { margin: 0; display: flex; }
+.folio-user-link {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border-radius: var(--r-sm);
+  color: inherit;
+  text-decoration: none;
+}
+.folio-user-link:hover .folio-user-email,
+.folio-user-link:focus-visible .folio-user-email { color: var(--c-text); text-decoration: underline; }
+
+/* ---- own account page ---- */
+.folio-account { display: grid; gap: 16px; max-width: 520px; }
+.folio-account-who { display: flex; align-items: center; gap: 14px; }
+.folio-account-who p { margin: 0; }
+.folio-account-avatar { width: 40px; height: 40px; font-size: 16px; }
+.folio-account-name { font-weight: 620; }
+.folio-account .folio-panel-body > .folio-help { margin: 0 0 16px; }
+.folio-account .form-group { margin-bottom: 16px; }
 
 /* ---- topbar + content ---- */
 .folio-main { display: flex; flex-direction: column; min-width: 0; }

@@ -6,9 +6,6 @@ namespace Preflow\Rbac\Types;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Folio\Extension\Attributes\FolioType;
-use Preflow\Folio\Extension\BeforeDelete;
-use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\Customization\Refused;
 use Preflow\Rbac\Messages;
 use Preflow\Rbac\PermissionCoverage;
@@ -26,9 +23,9 @@ use Preflow\Validation\ValidationResult;
  * added only by the name of a defined staff role, and the lock-out:
  * no save or delete may take the last active manager (StaffManagers) away. A crafted POST
  * gets the same answers as the form; the roles field only disables what is refused here.
- * Other write paths (record actions, the import command) call beforeSave() themselves.
+ * Every write path runs it: the form's save and delete (StaffAdmin's hooks), the record
+ * actions (StaffAdmin, on the changed record) and the import command.
  */
-#[FolioType('staff')]
 final class StaffRules
 {
     public function __construct(
@@ -37,7 +34,6 @@ final class StaffRules
         private readonly Messages $messages,
     ) {}
 
-    #[BeforeSave]
     public function beforeSave(DynamicRecord $record): void
     {
         $id = (string) $record->getId();
@@ -84,7 +80,6 @@ final class StaffRules
         }
     }
 
-    #[BeforeDelete]
     public function beforeDelete(DynamicRecord $record): void
     {
         $id = (string) $record->getId();
