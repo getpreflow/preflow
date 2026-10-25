@@ -39,6 +39,11 @@ return [
 - Transports are created on first send, so an empty or broken DSN never breaks boot. It
   fails, with a clear message, when something is sent.
 - A channel's `from` is used when a message doesn't set its own.
+- Any transport takes `redirect_to` (an address, a comma-separated string or a list): every
+  email it sends then goes only there, for stage and test installations. Cc and Bcc are
+  dropped; the subject starts with `[→ original recipients]` and the body with a line naming
+  To, Cc and Bcc. SMS passes through unchanged. Example: `'redirect_to' => getenv('MAIL_REDIRECT_TO') ?: ''`
+  (empty means off).
 
 ## Drivers
 

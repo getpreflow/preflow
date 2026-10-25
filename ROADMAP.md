@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-25 (v0.31.0)
+> Last updated: 2026-10-25 (v0.32.0)
 
 ## Current State
 
-**v0.31.0** — 2947 tests, 21 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.32.0** — 2953 tests, 21 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -79,6 +79,11 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 ---
 
 ## Completed
+
+### v0.32.0
+
+- **Mail redirect (preflow/notify):** any transport takes `redirect_to` (address, comma-separated string or list); every email then goes only there (`RedirectTransport`): Cc/Bcc dropped, subject prefixed `[→ original To]`, a first body line (text and HTML) names To, Cc and Bcc. SMS passes through. For stage installations, e.g. `'redirect_to' => getenv('MAIL_REDIRECT_TO') ?: ''`
+- No new package, no constraint change
 
 ### v0.31.0
 

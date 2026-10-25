@@ -10,6 +10,7 @@ use Preflow\Notify\Transport\FailoverTransport;
 use Preflow\Notify\Transport\InMemoryTransport;
 use Preflow\Notify\Transport\LogTransport;
 use Preflow\Notify\Transport\NullTransport;
+use Preflow\Notify\Transport\RedirectTransport;
 
 /**
  * Builds transports by name from the 'transports' section of config/notify.php.
@@ -116,7 +117,17 @@ final class TransportFactory
 
         $this->resolving[$name] = true;
         try {
-            return $this->resolved[$name] = ($this->drivers[$driver])($config, $name, $this);
+            $transport = ($this->drivers[$driver])($config, $name, $this);
+
+            // Any transport can send all email to fixed addresses instead (stage installations).
+            $redirect = $config['redirect_to'] ?? [];
+            $redirect = is_string($redirect) ? explode(',', $redirect) : (array) $redirect;
+            $redirect = array_values(array_filter(array_map(fn ($a) => trim((string) $a), $redirect), fn ($a) => $a !== ''));
+            if ($redirect !== []) {
+                $transport = new RedirectTransport($transport, $redirect);
+            }
+
+            return $this->resolved[$name] = $transport;
         } finally {
             unset($this->resolving[$name]);
         }
