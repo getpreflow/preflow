@@ -7,6 +7,8 @@ namespace Preflow\Media;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
+use Preflow\Data\QueryBuilder;
+use Preflow\Data\SortDirection;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Media\Image\Orientation;
@@ -92,12 +94,12 @@ final class MediaLibrary
             return $this->definition;
         }
         $fields = [];
-        foreach (['path', 'original_name', 'mime', 'size', 'width', 'height', 'duration', 'alt', 'title', 'focal_x', 'focal_y', 'poster', 'variants', 'created_at', 'created_by', 'version', 'versions', 'preview', 'color', 'palette', 'text_color', 'note'] as $name) {
+        foreach (Asset::TEXT_COLUMNS as $name) {
             $fields[$name] = new TypeFieldDefinition($name, 'string', translatable: $name === 'alt');
         }
         $fields['private'] = new TypeFieldDefinition('private', 'boolean'); // missing on older records: public
-        // Extra field values: a map, stored as JSON text like the other maps.
-        $fields['extra'] = new TypeFieldDefinition('extra', 'string');
+        // The site's extra fields (config/media.php "fields"): a column each, so the table step adds them and queries filter on them.
+        $fields += $this->extraFields();
 
         return $this->definition = new TypeDefinition(
             key: '_asset',
@@ -107,6 +109,76 @@ final class MediaLibrary
             idField: 'uuid',
             locales: $this->locales,
         );
+    }
+
+    /**
+     * The extra fields as type fields, from config "fields" (model field shape). A name of an asset's own key never gets here (boot error).
+     *
+     * @return array<string, TypeFieldDefinition>
+     */
+    private function extraFields(): array
+    {
+        $fields = [];
+        foreach ((array) ($this->config['fields'] ?? []) as $name => $schema) {
+            if (!is_string($name) || !is_array($schema) || in_array($name, Asset::RESERVED, true)) {
+                continue;
+            }
+            $fields[$name] = new TypeFieldDefinition(
+                name: $name,
+                type: is_string($schema['type'] ?? null) ? $schema['type'] : 'string',
+                searchable: isset($schema['searchable']) ? (bool) $schema['searchable'] : null,
+                validate: array_values(array_filter((array) ($schema['validate'] ?? []), 'is_string')),
+                label: is_string($schema['label'] ?? null) ? $schema['label'] : null,
+                help: is_string($schema['help'] ?? null) ? $schema['help'] : null,
+                config: array_diff_key($schema, array_flip(['type', 'searchable', 'transform', 'validate', 'label', 'help', 'translatable'])),
+            );
+        }
+
+        return $fields;
+    }
+
+    /**
+     * A value for an extra field in the shape its type stores: a boolean, a list of ids for a multiple
+     * relation, one of the options for a select (else empty), else text.
+     */
+    private static function extraValue(TypeFieldDefinition $field, mixed $value): mixed
+    {
+        if ($field->type === 'boolean') {
+            return in_array($value, [true, 1, '1', 'on', 'true'], true);
+        }
+        if ($field->type === 'relation') {
+            $ids = array_values(array_unique(array_filter(
+                array_map(static fn ($id) => is_string($id) || is_int($id) ? trim((string) $id) : '', is_array($value) ? $value : [$value]),
+                static fn (string $id) => $id !== '',
+            )));
+            if (($field->config['relation']['multiple'] ?? false) === true) {
+                return $ids;
+            }
+
+            return $ids[0] ?? '';
+        }
+        if ($field->type === 'select') {
+            $options = $field->config['options'] ?? null;
+            $allowed = is_array($options) ? array_map('strval', array_is_list($options) ? $options : array_keys($options)) : null;
+            $value = is_scalar($value) ? (string) $value : '';
+
+            return $allowed === null || in_array($value, $allowed, true) ? $value : '';
+        }
+        if (in_array($field->type, ['number', 'int', 'integer', 'float'], true)) {
+            return is_numeric($value) ? $value + 0 : '';
+        }
+
+        return is_scalar($value) ? trim((string) $value) : '';
+    }
+
+    /**
+     * The extra values a new asset starts with (false, no ids, empty text).
+     *
+     * @return array<string, mixed>
+     */
+    private function extraDefaults(): array
+    {
+        return array_map(static fn (TypeFieldDefinition $f) => self::extraValue($f, null), $this->extraFields());
     }
 
     /**
@@ -186,8 +258,86 @@ final class MediaLibrary
     }
 
     /**
+     * One page of assets, newest first. $kind is image, video or document (null: all); $search
+     * matches every word in the original name, title or alt text (default locale). $filters
+     * compare by equality on the extra fields declared in config "filters" (others are ignored):
+     * a select or boolean field by value, a relation field by id (a list: any of them), a
+     * multiple relation as "contains the id". A page past the end gives the last page.
+     *
+     * @param array<string, mixed> $filters field name => value
+     */
+    public function query(?string $kind = null, string $search = '', array $filters = [], int $page = 1, int $perPage = 50): AssetPage
+    {
+        $def = $this->definition();
+        $qb = $this->dm->queryIn($def)->locale($this->locales->default);
+
+        if ($kind !== null && $kind !== '') {
+            $qb->whereAny([['field' => 'mime', 'operator' => 'IN', 'value' => array_keys(array_filter(
+                self::EXTENSIONS,
+                static fn (string $ext, string $mime) => Asset::kindOf($mime) === $kind,
+                ARRAY_FILTER_USE_BOTH,
+            ))]]);
+        }
+        if (trim($search) !== '') {
+            $qb->searchLoose(mb_substr(trim($search), 0, 200), ['original_name', 'title', 'alt']);
+        }
+        foreach ((array) ($this->config['filters'] ?? []) as $name) {
+            if (is_string($name) && isset($def->fields[$name]) && array_key_exists($name, $filters)) {
+                $this->applyFilter($qb, $def->fields[$name], $filters[$name]);
+            }
+        }
+        $qb->orderBy('created_at', SortDirection::Desc)->orderBy($def->idField, SortDirection::Desc);
+
+        $perPage = max(1, $perPage);
+        $result = $qb->paginate($perPage, max(1, $page));
+        if ($result->currentPage > $result->lastPage) {
+            $result = $qb->paginate($perPage, $result->lastPage);
+        }
+
+        return new AssetPage(
+            array_map(Asset::fromRecord(...), array_values($result->items)),
+            $result->total,
+            $result->currentPage,
+            $perPage,
+        );
+    }
+
+    /** One declared filter on the query; a value that cannot be used (empty, wrong shape) adds nothing. */
+    private function applyFilter(QueryBuilder $qb, TypeFieldDefinition $field, mixed $value): void
+    {
+        if ($field->type === 'boolean') {
+            $bool = match (true) {
+                $value === true || $value === 1 || $value === '1' => true,
+                $value === false || $value === 0 || $value === '0' => false,
+                default => null,
+            };
+            if ($bool !== null) {
+                $qb->where($field->name, '=', $bool);
+            }
+
+            return;
+        }
+        $values = array_values(array_filter(
+            array_map(static fn ($v) => is_string($v) || is_int($v) ? (string) $v : '', is_array($value) ? $value : [$value]),
+            static fn (string $v) => $v !== '' && strlen($v) <= 255,
+        ));
+        if ($values === []) {
+            return;
+        }
+        if ($field->type === 'relation') {
+            $multiple = ($field->config['relation']['multiple'] ?? false) === true;
+            $qb->whereAny([['field' => $field->name, 'operator' => $multiple ? 'HAS' : 'IN', 'value' => $values]]);
+        } elseif (count($values) === 1) {
+            $qb->where($field->name, '=', $values[0]);
+        } else {
+            $qb->whereAny([['field' => $field->name, 'operator' => 'IN', 'value' => $values]]);
+        }
+    }
+
+    /**
      * Edit metadata: alt (merged per locale), title, focal_x/focal_y (0–100),
-     * poster (an image asset id; anything else clears it).
+     * poster (an image asset id; anything else clears it) and the configured extra
+     * fields (a value that does not fit its field is cleared; other keys are ignored).
      *
      * @param array<string, mixed> $meta
      */
@@ -216,6 +366,11 @@ final class MediaLibrary
         if (array_key_exists('poster', $meta)) {
             $poster = is_string($meta['poster']) && $meta['poster'] !== $id ? $this->find($meta['poster']) : null;
             $data['poster'] = $poster !== null && $poster->kind() === 'image' ? $poster->id : '';
+        }
+        foreach ($this->extraFields() as $name => $field) {
+            if (array_key_exists($name, $meta)) {
+                $data[$name] = self::extraValue($field, $meta[$name]);
+            }
         }
 
         return $this->save($data);
@@ -825,6 +980,7 @@ final class MediaLibrary
             createdAt: $now->format(DATE_ATOM),
             createdBy: $by,
             private: $private,
+            extra: $this->extraDefaults(),
         );
         // The record first: if variant generation dies (time or memory limit), the
         // file is still a usable asset whose variants can be made later.

@@ -142,9 +142,16 @@ final class QueryBuilder
         $relations = [];
 
         if ($this->typeDef !== null) {
+            // From the definition being queried, not the registry: a code-defined type (the media
+            // library's) is in no registry.
             $relationFields = [];
-            foreach ($this->dataManager?->relationsOf($this->typeDef->key) ?? [] as $relation) {
-                $relationFields[$relation->field] = $relation;
+            if ($this->dataManager !== null) {
+                foreach ($this->typeDef->fields as $def) {
+                    $relation = Relation::fromField($this->typeDef->key, $def, $kinds);
+                    if ($relation !== null) {
+                        $relationFields[$relation->field] = $relation;
+                    }
+                }
             }
             foreach ($this->typeDef->fields as $name => $def) {
                 if (!self::looselySearchable($def) || ($requested !== null && !in_array($name, $requested, true))) {

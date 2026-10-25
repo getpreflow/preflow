@@ -15,6 +15,9 @@ final class AssetDataTest extends TestCase
 {
     use MediaFixtures;
 
+    /** Extra fields: each is a column of its own. */
+    private const array FIELDS = ['tags' => ['type' => 'relation', 'relation' => ['to' => 'tag', 'multiple' => true]], 'rating' => ['type' => 'number']];
+
     protected function setUp(): void
     {
         $this->makeAssetRoot();
@@ -28,7 +31,7 @@ final class AssetDataTest extends TestCase
     /** @param array<string, mixed> $data */
     private function record(array $data): DynamicRecord
     {
-        return DynamicRecord::fromArray($this->library()->definition(), $data);
+        return DynamicRecord::fromArray($this->library(['fields' => self::FIELDS])->definition(), $data);
     }
 
     public function test_a_record_without_the_new_keys_reads_as_version_one(): void
@@ -41,7 +44,7 @@ final class AssetDataTest extends TestCase
         $this->assertNull($asset->color);
         $this->assertSame([], $asset->palette);
         $this->assertNull($asset->textColor);
-        $this->assertSame([], $asset->extra);
+        $this->assertSame(['tags' => [], 'rating' => ''], $asset->extra);
         $this->assertNull($asset->note);
     }
 
@@ -60,6 +63,9 @@ final class AssetDataTest extends TestCase
         $data = $asset->toData();
         $this->assertSame(2, $data['version']);
         $this->assertSame('#112233', $data['color']);
+        $this->assertSame(['x'], $data['tags']); // an extra field is a column of its own
+        $this->assertSame(4, $data['rating']);
+        $this->assertArrayNotHasKey('extra', $data);
 
         $back = Asset::fromRecord($this->record($data));
         $this->assertSame(2, $back->version);
@@ -74,21 +80,22 @@ final class AssetDataTest extends TestCase
 
     public function test_new_values_survive_json_text_storage(): void
     {
-        $lib = $this->library();
+        $lib = $this->library(['fields' => self::FIELDS]);
         $asset = $lib->upload($this->upload($this->png(10, 10), 'a.png'), null);
         $data = $asset->toData();
         $data['version'] = 3;
         $data['versions'] = json_encode([(new AssetVersion(1, 'p', 'image/png', 1, null, null, [], 'now', null))->toArray()]);
         $data['preview'] = json_encode((new Preview('p.png', 4, 5))->toArray());
         $data['palette'] = json_encode(['#000000']);
-        $data['extra'] = json_encode(['a' => 1]);
+        $data['tags'] = json_encode(['t1', 't2']);
+        $data['rating'] = '7';
 
         $back = Asset::fromRecord($this->record($data));
         $this->assertSame(3, $back->version);
         $this->assertCount(1, $back->versions);
         $this->assertSame(4, $back->preview?->width);
         $this->assertSame(['#000000'], $back->palette);
-        $this->assertSame(['a' => 1], $back->extra);
+        $this->assertSame(['tags' => ['t1', 't2'], 'rating' => '7'], $back->extra);
     }
 
     public function test_malformed_version_and_preview_data_is_ignored(): void

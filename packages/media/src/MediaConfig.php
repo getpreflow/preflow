@@ -20,7 +20,11 @@ final readonly class MediaConfig
     private const string MEDIA = 'config/media.php';
     private const string FOLIO = 'config/folio.php assets';
 
-    /** @param list<int>|null $widths */
+    /**
+     * @param list<int>|null                      $widths
+     * @param array<string, array<string, mixed>> $fields
+     * @param list<string>                        $filters
+     */
     public function __construct(
         public string $dir,
         public string $url = '/media',
@@ -36,6 +40,10 @@ final readonly class MediaConfig
         private string $source = self::MEDIA,
         /** Earlier files of replaced assets ({versions_dir}/{id}/v{n}.{ext}); a shared deploy dir, like private_dir. */
         public ?string $versionsDir = null,
+        /** Extra asset fields by name, in the shape of model fields. */
+        public array $fields = [],
+        /** Names of the select, relation and boolean extra fields a UI offers as filters. */
+        public array $filters = [],
     ) {}
 
     public static function fromApp(Application $app, ?DebugCollector $debug = null): self
@@ -52,6 +60,8 @@ final readonly class MediaConfig
                 $debug?->logDeprecation(self::DEPRECATION);
             }
         }
+
+        $fields = self::fields($values['fields'] ?? null, $source);
 
         $config = new self(
             dir: is_string($values['dir'] ?? null) ? $values['dir'] : $app->basePath('public/media'),
@@ -71,6 +81,8 @@ final readonly class MediaConfig
             versionsDir: array_key_exists('versions_dir', $values)
                 ? (is_string($values['versions_dir']) && $values['versions_dir'] !== '' ? $values['versions_dir'] : null)
                 : $app->basePath('storage/media-versions'),
+            fields: $fields,
+            filters: self::filters($values['filters'] ?? null, $fields),
         );
         $config->checkOutsideServed($app, 'private_dir', $config->privateDir);
         $config->checkOutsideServed($app, 'versions_dir', $config->versionsDir);
@@ -104,7 +116,54 @@ final readonly class MediaConfig
             'private_dir' => $this->privateDir,
             'private_url' => $this->privateUrl,
             'versions_dir' => $this->versionsDir,
+            'fields' => $this->fields,
+            'filters' => $this->filters,
         ];
+    }
+
+    /**
+     * The extra fields. Each becomes a column of the asset type, so its name must be a plain column
+     * name that is none of the asset's own keys.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private static function fields(mixed $fields, string $source): array
+    {
+        if (!is_array($fields)) {
+            return [];
+        }
+        $reserved = array_map('strtolower', Asset::RESERVED);
+        $out = [];
+        foreach ($fields as $name => $definition) {
+            $name = (string) $name;
+            if (preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $name) !== 1) {
+                throw new \RuntimeException("Extra asset field \"{$name}\" in {$source} is not a usable name (letters, digits and underscores, starting with a letter).");
+            }
+            if (in_array(strtolower($name), $reserved, true)) {
+                throw new \RuntimeException("Extra asset field \"{$name}\" in {$source} is the name of an asset key; choose another name.");
+            }
+            $out[$name] = is_array($definition) ? $definition : ['type' => is_string($definition) ? $definition : 'string'];
+        }
+
+        return $out;
+    }
+
+    /**
+     * The filters: names of declared select, relation or boolean fields (anything else is dropped).
+     *
+     * @param array<string, array<string, mixed>> $fields
+     * @return list<string>
+     */
+    private static function filters(mixed $filters, array $fields): array
+    {
+        $out = [];
+        foreach (is_array($filters) ? $filters : [] as $name) {
+            if (is_string($name) && in_array($fields[$name]['type'] ?? null, ['select', 'relation', 'boolean'], true) && !in_array($name, $out, true)) {
+                $out[] = $name;
+            }
+        }
+
+        return $out;
     }
 
     /** A directory of gated files (private_dir, versions_dir) must not be served by the web server. */

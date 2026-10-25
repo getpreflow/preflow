@@ -5,15 +5,22 @@ declare(strict_types=1);
 namespace Preflow\Media;
 
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\TypeDefinition;
 
 final readonly class Asset
 {
+    /** The asset's own columns that hold text (JSON text for lists and maps). */
+    public const array TEXT_COLUMNS = ['path', 'original_name', 'mime', 'size', 'width', 'height', 'duration', 'alt', 'title', 'focal_x', 'focal_y', 'poster', 'variants', 'created_at', 'created_by', 'version', 'versions', 'preview', 'color', 'palette', 'text_color', 'note'];
+
+    /** Every key of the asset's own record: an extra field may not use one of these names. */
+    public const array RESERVED = [...self::TEXT_COLUMNS, 'private', 'uuid'];
+
     /**
      * @param array<string, string> $alt      alt text per locale
      * @param list<Variant>         $variants
      * @param list<AssetVersion>    $versions earlier files, kept when the asset was replaced
      * @param list<string>          $palette  5-8 hex colours, most significant first
-     * @param array<string, mixed>  $extra    values of the configured extra fields
+     * @param array<string, mixed>  $extra    values of the configured extra fields (each is a column of its own), by field name
      */
     public function __construct(
         public string $id,
@@ -120,7 +127,7 @@ final readonly class Asset
             color: self::text($data['color'] ?? null),
             palette: $palette,
             textColor: self::text($data['text_color'] ?? null),
-            extra: self::decode($data['extra'] ?? []),
+            extra: self::extraFrom($record->getType(), $data),
             note: self::text($data['note'] ?? null),
         );
     }
@@ -152,9 +159,38 @@ final readonly class Asset
             'color' => $this->color ?? '',
             'palette' => $this->palette,
             'text_color' => $this->textColor ?? '',
-            'extra' => $this->extra,
             'note' => $this->note ?? '',
-        ];
+        ] + array_diff_key($this->extra, array_flip(self::RESERVED));
+    }
+
+    /**
+     * The values of the type's extra fields (every field that is not one of the asset's own keys),
+     * in the shape of their type: a boolean, a list of ids for a multiple relation, else text.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private static function extraFrom(TypeDefinition $type, array $data): array
+    {
+        $extra = [];
+        foreach ($type->fields as $name => $field) {
+            if (in_array($name, self::RESERVED, true)) {
+                continue;
+            }
+            $value = $data[$name] ?? null;
+            if ($field->type === 'boolean') {
+                $extra[$name] = in_array($value, [true, 1, '1'], true);
+            } elseif ($field->type === 'relation' && ($field->config['relation']['multiple'] ?? false) === true) {
+                $extra[$name] = array_values(array_filter(
+                    array_map(static fn ($id) => is_string($id) || is_int($id) ? (string) $id : '', is_string($value) && $value !== '' && !str_starts_with($value, '[') ? [$value] : self::decode($value)),
+                    static fn (string $id) => $id !== '',
+                ));
+            } else {
+                $extra[$name] = is_scalar($value) ? $value : '';
+            }
+        }
+
+        return $extra;
     }
 
     private static function text(mixed $value): ?string
