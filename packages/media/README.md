@@ -43,8 +43,9 @@ $library->delete($id); // refuses a used asset: AssetInUseException lists the us
 
 - `delete()` refuses an asset that is used anywhere (see usage sources) and throws
   `Preflow\Media\Usage\AssetInUseException`.
-- `discard($id)` removes an asset created in the same request, e.g. when the record that
-  should reference it fails validation. It works only for such an asset.
+- `discard($id)` is intended only for an asset created in this request that nothing references
+  yet, e.g. when the record that should reference it fails validation. It bypasses the usage
+  check, so do not use it for anything else.
 
 ## Config
 
