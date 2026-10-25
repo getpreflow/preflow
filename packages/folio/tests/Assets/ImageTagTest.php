@@ -9,8 +9,8 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\Locales;
 use Preflow\Folio\Assets\AssetLibrary;
 use Preflow\Folio\Assets\ImageTag;
-use Preflow\Folio\Assets\Image\GdBackend;
-use Preflow\Folio\Assets\VariantGenerator;
+use Preflow\Media\Image\GdBackend;
+use Preflow\Media\Image\VariantGenerator;
 use Preflow\Folio\Content\ContentLocale;
 use Preflow\Folio\Tests\Support\AssetFixtures;
 use Preflow\View\AssetCollector;
@@ -183,6 +183,6 @@ final class ImageTagTest extends TestCase
 
     private function tag(array $presets = []): ImageTag
     {
-        return new ImageTag($this->lib, $this->locale, $presets, $this->css, '/folio/_uploads', \Preflow\Folio\Assets\ImageWidths::fromConfig($presets, [480, 768]));
+        return new ImageTag($this->lib, $this->locale, $presets, $this->css, '/folio/_uploads', \Preflow\Media\Image\ImageWidths::fromConfig($presets, [480, 768]));
     }
 }

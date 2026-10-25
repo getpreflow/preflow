@@ -9,6 +9,11 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
+use Preflow\Media\Asset;
+use Preflow\Media\AssetUploadException;
+use Preflow\Media\Image\Orientation;
+use Preflow\Media\Image\VariantGenerator;
+use Preflow\Media\Variant;
 use Psr\Http\Message\UploadedFileInterface;
 
 /**
@@ -402,7 +407,7 @@ final class AssetLibrary
             $size = @getimagesize($file);
             if (is_array($size)) {
                 [$width, $height] = [(int) $size[0], (int) $size[1]];
-                if (Image\Orientation::swapsAxes(Image\Orientation::of($file))) {
+                if (Orientation::swapsAxes(Orientation::of($file))) {
                     [$width, $height] = [$height, $width]; // stored as displayed
                 }
             }

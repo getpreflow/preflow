@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Assets;
+namespace Preflow\Media;
 
 /** A generated, resized copy of an image asset, stored next to the original. */
 final readonly class Variant

@@ -2,9 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Assets;
+namespace Preflow\Media\Image;
 
-use Preflow\Folio\Assets\Image\ImageBackend;
+use Preflow\Media\Asset;
+use Preflow\Media\Variant;
 
 /**
  * Eager responsive variants, written next to the original as

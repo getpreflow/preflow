@@ -67,6 +67,9 @@
         <testsuite name="Codes">
             <directory>packages/codes/tests</directory>
         </testsuite>
+        <testsuite name="Media">
+            <directory>packages/media/tests</directory>
+        </testsuite>
         <testsuite name="Members">
             <directory>packages/members/tests</directory>
         </testsuite>
@@ -87,6 +90,7 @@
             <directory>packages/roles/src</directory>
             <directory>packages/rbac/src</directory>
             <directory>packages/codes/src</directory>
+            <directory>packages/media/src</directory>
             <directory>packages/members/src</directory>
             <directory>packages/twig/src</directory>
             <directory>packages/blade/src</directory>

@@ -6,9 +6,9 @@ namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
 use Preflow\Data\Locales;
-use Preflow\Folio\Assets\Asset;
+use Preflow\Media\Asset;
 use Preflow\Folio\Assets\AssetLibrary;
-use Preflow\Folio\Assets\AssetUploadException;
+use Preflow\Media\AssetUploadException;
 use Preflow\Folio\Assets\AssetUsage;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\View\TemplateEngineInterface;

@@ -10,7 +10,7 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Http\Session\SessionInterface;
-use Preflow\Folio\Assets\Asset;
+use Preflow\Media\Asset;
 use Preflow\Folio\Assets\AssetLibrary;
 use Preflow\Folio\Assets\ImageTag;
 use Preflow\Folio\Field\FieldTypeRegistry;

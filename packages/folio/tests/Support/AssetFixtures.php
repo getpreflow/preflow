@@ -9,7 +9,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\Locales;
 use Preflow\Folio\Assets\AssetLibrary;
-use Preflow\Folio\Assets\VariantGenerator;
+use Preflow\Media\Image\VariantGenerator;
 use Psr\Http\Message\UploadedFileInterface;
 
 /** A temp asset library (JSON storage, en/de) and real image bytes made with GD. */

@@ -14,7 +14,7 @@ use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\Locales;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Assets\AssetLibrary;
-use Preflow\Folio\Assets\AssetUploadException;
+use Preflow\Media\AssetUploadException;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Storage\TableSync;
 use Preflow\Folio\Tests\Support\AssetFixtures;

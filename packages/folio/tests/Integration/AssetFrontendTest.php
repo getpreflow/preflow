@@ -67,4 +67,38 @@ final class AssetFrontendTest extends TestCase
         $this->assertSame(404, $this->get('/media/notes.txt')->getStatusCode());
         $this->assertSame(404, $this->get('/media/' . substr($variant, 0, -9) . '-700.webp')->getStatusCode());
     }
+
+    public function test_rendered_html_is_byte_identical_to_the_fixture(): void
+    {
+        function_exists('imageavif') || $this->markTestSkipped('The fixture holds AVIF sources.');
+        $this->write('config/image.php', "<?php\nreturn ['presets' => ['card' => ['widths' => [480, 960], 'step' => 160, 'sizes' => '(min-width: 800px) 50vw, 100vw']]];\n");
+        $this->write('resources/folio/frontend/post.twig', '<html><head><title>t</title></head><body>{{ folio_image(record.cover, "card", {priority: true}) }}</body></html>');
+        $library = $this->app()->container()->get(AssetLibrary::class);
+        $image = imagecreatetruecolor(1000, 600);
+        ob_start();
+        imagepng($image);
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $bytes = (string) ob_get_clean();
+        $asset = $library->upload($f->createUploadedFile($f->createStream($bytes), strlen($bytes), UPLOAD_ERR_OK, 'a.png'), null);
+        $library->update($asset->id, ['focal_x' => 30, 'focal_y' => 70]);
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 'hello'], 'cover' => $asset->id]), null);
+
+        $body = (string) $this->get('/hello')->getBody();
+
+        // The page also carries the htmx runtime and the debug toolbar (both with per-request nonces),
+        // so the fixture holds the image's own output: the focal CSS, the preload link and the <picture>.
+        preg_match('#<style nonce="[^"]+">\.folio-focal.*?</style>#s', $body, $css);
+        preg_match('#<link rel="preload" as="image"[^>]*>#', $body, $preload);
+        preg_match('#<picture>.*?</picture>#s', $body, $picture);
+        $body = implode("\n", [$css[0] ?? '', $preload[0] ?? '', $picture[0] ?? '']) . "\n";
+
+        // Only run-specific values are normalised: the CSP nonce, the asset id and its Y/m storage path.
+        $body = (string) preg_replace('/nonce="[^"]+"/', 'nonce="NONCE"', $body);
+        $body = str_replace($asset->path, 'YYYY/MM/ASSET.png', $body);
+        $base = substr($asset->path, 0, (int) strrpos($asset->path, '.'));
+        $body = str_replace($base, 'YYYY/MM/ASSET', $body);
+        $body = str_replace($asset->id, 'ASSET', $body);
+
+        $this->assertStringEqualsFile(dirname(__DIR__) . '/Fixtures/asset-frontend.html', $body);
+    }
 }

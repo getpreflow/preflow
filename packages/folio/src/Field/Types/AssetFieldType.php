@@ -284,7 +284,7 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
     {
         try {
             $asset = $this->library?->upload($file, $by, private: $private);
-        } catch (\Preflow\Folio\Assets\AssetUploadException $e) {
+        } catch (\Preflow\Media\AssetUploadException $e) {
             $this->errors[] = $e->getMessage();
             return null;
         }
@@ -301,7 +301,7 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
     }
 
     /** "accept" as in HTML: MIME wildcards (image/*), MIME types and extensions (.jpg), comma-separated. */
-    private static function accepts(\Preflow\Folio\Assets\Asset $asset, string $accept): bool
+    private static function accepts(\Preflow\Media\Asset $asset, string $accept): bool
     {
         $tokens = array_filter(array_map('trim', explode(',', strtolower($accept))));
         if ($tokens === []) {

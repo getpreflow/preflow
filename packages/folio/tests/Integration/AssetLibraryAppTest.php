@@ -7,7 +7,7 @@ namespace Preflow\Folio\Tests\Integration;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
-use Preflow\Folio\Assets\Asset;
+use Preflow\Media\Asset;
 use Preflow\Folio\Assets\AssetLibrary;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;

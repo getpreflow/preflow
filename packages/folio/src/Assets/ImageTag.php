@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Preflow\Folio\Assets;
 
 use Preflow\Folio\Content\ContentLocale;
+use Preflow\Media\Asset;
+use Preflow\Media\Image\ImageWidths;
+use Preflow\Media\Variant;
 use Preflow\View\AssetCollector;
 use Preflow\View\ResponsiveImage;
 

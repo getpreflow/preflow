@@ -7,7 +7,7 @@ namespace Preflow\Folio\Http;
 use Nyholm\Psr7\Response;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Folio\Assets\AssetLibrary;
-use Preflow\Folio\Assets\ImageWidths;
+use Preflow\Media\Image\ImageWidths;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 

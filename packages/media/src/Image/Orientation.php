@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Assets\Image;
+namespace Preflow\Media\Image;
 
 /** EXIF orientation of JPEGs (phones store photos sideways plus a rotation tag). */
 final class Orientation

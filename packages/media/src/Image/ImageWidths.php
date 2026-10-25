@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Assets;
+namespace Preflow\Media\Image;
 
 /**
  * Which image widths exist, from config/image.php presets:

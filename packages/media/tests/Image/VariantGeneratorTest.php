@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Tests\Assets;
+namespace Preflow\Media\Tests\Image;
 
 use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
-use Preflow\Folio\Assets\Image\GdBackend;
-use Preflow\Folio\Assets\Image\ImageBackends;
-use Preflow\Folio\Assets\Variant;
-use Preflow\Folio\Assets\VariantGenerator;
 use Preflow\Folio\Tests\Support\AssetFixtures;
+use Preflow\Media\Image\GdBackend;
+use Preflow\Media\Image\ImageBackends;
+use Preflow\Media\Image\VariantGenerator;
+use Preflow\Media\Variant;
 
 #[RequiresPhpExtension('gd')]
 #[RequiresFunction('imagewebp')]
@@ -122,7 +122,7 @@ final class VariantGeneratorTest extends TestCase
 
     public function test_failed_generation_keeps_the_asset(): void
     {
-        $exploding = new class implements \Preflow\Folio\Assets\Image\ImageBackend {
+        $exploding = new class implements \Preflow\Media\Image\ImageBackend {
             public function supports(string $format): bool { return true; }
             public function writeVariants(string $src, array $jobs, int $quality): array { throw new \RuntimeException('out of memory'); }
         };

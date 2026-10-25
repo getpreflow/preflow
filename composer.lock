@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "a4dc76ec772367c30475a5229e09dfdf",
+    "content-hash": "fd5f28fbb157efe9cdeb45466116bdb5",
     "packages": [
         {
             "name": "matthiasmullie/minify",
@@ -2392,7 +2392,7 @@
         },
         {
             "name": "preflow/auth",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/auth",
@@ -2429,7 +2429,7 @@
         },
         {
             "name": "preflow/blade",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/blade",
@@ -2467,7 +2467,7 @@
         },
         {
             "name": "preflow/codes",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/codes",
@@ -2509,7 +2509,7 @@
         },
         {
             "name": "preflow/components",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/components",
@@ -2545,7 +2545,7 @@
         },
         {
             "name": "preflow/core",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/core",
@@ -2588,7 +2588,7 @@
         },
         {
             "name": "preflow/data",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/data",
@@ -2626,17 +2626,20 @@
         },
         {
             "name": "preflow/devtools",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/devtools",
-                "reference": "b2960c186065d17e4b846101b0d2a923a27b465b"
+                "reference": "3abda811fcb345bbb974a16bd8a3422e7d26cec7"
             },
             "require": {
                 "php": ">=8.4",
-                "preflow/core": "^0.20 || @dev",
+                "preflow/core": "^0.33 || @dev",
                 "preflow/data": "^0.25 || @dev",
                 "preflow/routing": "^0.1 || @dev"
+            },
+            "conflict": {
+                "preflow/core": "<0.33"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0"
@@ -2666,23 +2669,24 @@
         },
         {
             "name": "preflow/folio",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/folio",
-                "reference": "52bbf9e010dce6513e7bae2fe8b79957fcaade1e"
+                "reference": "1bc6b6603816042bc532e02289da94cab71166d8"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
                 "php": ">=8.4",
                 "preflow/auth": "^0.27 || @dev",
                 "preflow/components": "^0.1 || @dev",
-                "preflow/core": "^0.27 || @dev",
-                "preflow/data": "^0.26 || @dev",
+                "preflow/core": "^0.33 || @dev",
+                "preflow/data": "^0.28 || @dev",
                 "preflow/devtools": "^0.20 || @dev",
                 "preflow/form": "^0.1 || @dev",
                 "preflow/htmx": "^0.1 || @dev",
                 "preflow/i18n": "^0.26 || @dev",
+                "preflow/media": "^0.34 || @dev",
                 "preflow/notify": "^0.25 || @dev",
                 "preflow/routing": "^0.1 || @dev",
                 "preflow/validation": "^0.1 || @dev",
@@ -2691,19 +2695,26 @@
             },
             "conflict": {
                 "preflow/auth": "<0.27",
-                "preflow/core": "<0.27",
-                "preflow/data": "<0.26",
+                "preflow/core": "<0.33",
+                "preflow/data": "<0.28",
                 "preflow/i18n": "<0.26",
+                "preflow/media": "<0.34",
                 "preflow/notify": "<0.25"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0"
             },
+            "suggest": {
+                "openspout/openspout": "^4 — Excel export of admin lists (the Export button shows once it is installed)"
+            },
             "type": "library",
             "autoload": {
                 "psr-4": {
                     "Preflow\\Folio\\": "src/"
-                }
+                },
+                "files": [
+                    "src/legacy-aliases.php"
+                ]
             },
             "autoload-dev": {
                 "psr-4": {
@@ -2721,7 +2732,7 @@
         },
         {
             "name": "preflow/form",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/form",
@@ -2757,7 +2768,7 @@
         },
         {
             "name": "preflow/htmx",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/htmx",
@@ -2794,7 +2805,7 @@
         },
         {
             "name": "preflow/i18n",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/i18n",
@@ -2829,8 +2840,53 @@
             }
         },
         {
+            "name": "preflow/media",
+            "version": "dev-feat/media-package",
+            "dist": {
+                "type": "path",
+                "url": "packages/media",
+                "reference": "9779a389e1759efb60f3da99e75d3445afcb1590"
+            },
+            "require": {
+                "php": ">=8.4",
+                "preflow/core": "^0.34 || @dev",
+                "preflow/data": "^0.34 || @dev",
+                "preflow/view": "^0.34 || @dev"
+            },
+            "conflict": {
+                "preflow/core": "<0.34",
+                "preflow/data": "<0.34",
+                "preflow/view": "<0.34"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^11.0"
+            },
+            "suggest": {
+                "preflow/i18n": "Per-language alt text for assets"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Preflow\\Media\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Preflow\\Media\\Tests\\": "tests/"
+                }
+            },
+            "license": [
+                "MIT"
+            ],
+            "description": "Preflow media — the asset library: uploads, responsive image variants, private files",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
             "name": "preflow/members",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/members",
@@ -2892,7 +2948,7 @@
         },
         {
             "name": "preflow/notify",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/notify",
@@ -2937,7 +2993,7 @@
         },
         {
             "name": "preflow/rbac",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/rbac",
@@ -2994,7 +3050,7 @@
         },
         {
             "name": "preflow/roles",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/roles",
@@ -3031,7 +3087,7 @@
         },
         {
             "name": "preflow/routing",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/routing",
@@ -3066,7 +3122,7 @@
         },
         {
             "name": "preflow/testing",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/testing",
@@ -3110,7 +3166,7 @@
         },
         {
             "name": "preflow/twig",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/twig",
@@ -3151,7 +3207,7 @@
         },
         {
             "name": "preflow/validation",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/validation",
@@ -3186,7 +3242,7 @@
         },
         {
             "name": "preflow/view",
-            "version": "dev-feat/folio-lists",
+            "version": "dev-feat/media-package",
             "dist": {
                 "type": "path",
                 "url": "packages/view",
@@ -6496,6 +6552,7 @@
         "preflow/form": 20,
         "preflow/htmx": 20,
         "preflow/i18n": 20,
+        "preflow/media": 20,
         "preflow/members": 20,
         "preflow/notify": 20,
         "preflow/rbac": 20,

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Assets;
+namespace Preflow\Media;
 
 use Preflow\Data\DynamicRecord;
 

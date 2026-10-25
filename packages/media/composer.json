@@ -1,0 +1,33 @@
+{
+    "name": "preflow/media",
+    "description": "Preflow media — the asset library: uploads, responsive image variants, private files",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "preflow/core": "^0.34 || @dev",
+        "preflow/data": "^0.34 || @dev",
+        "preflow/view": "^0.34 || @dev"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "suggest": {
+        "preflow/i18n": "Per-language alt text for assets"
+    },
+    "conflict": {
+        "preflow/core": "<0.34",
+        "preflow/data": "<0.34",
+        "preflow/view": "<0.34"
+    },
+    "autoload": {
+        "psr-4": {
+            "Preflow\\Media\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Preflow\\Media\\Tests\\": "tests/"
+        }
+    }
+}

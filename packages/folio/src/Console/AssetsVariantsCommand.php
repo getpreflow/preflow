@@ -6,7 +6,7 @@ namespace Preflow\Folio\Console;
 
 use Preflow\DevTools\Command\CommandInterface;
 use Preflow\Folio\Assets\AssetLibrary;
-use Preflow\Folio\Assets\Image\ImageBackends;
+use Preflow\Media\Image\ImageBackends;
 
 /**
  * Rebuild image variants, e.g. after changing the configured widths:
@@ -36,7 +36,7 @@ final class AssetsVariantsCommand implements CommandInterface
         $app = $this->app();
         $library = $app->container()->get(AssetLibrary::class);
         $all = in_array('--all', $args, true);
-        $allowed = $app->container()->get(\Preflow\Folio\Assets\ImageWidths::class)->allowed();
+        $allowed = $app->container()->get(\Preflow\Media\Image\ImageWidths::class)->allowed();
         $assets = $id !== null ? array_filter([$library->find($id)]) : $library->all();
         $count = 0;
         $made = 0;

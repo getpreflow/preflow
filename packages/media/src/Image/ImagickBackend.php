@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Assets\Image;
+namespace Preflow\Media\Image;
 
 final class ImagickBackend implements ImageBackend
 {

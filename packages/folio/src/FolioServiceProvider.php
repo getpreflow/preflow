@@ -144,7 +144,7 @@ final class FolioServiceProvider extends ServiceProvider
         // Private assets: a directory outside public/, served only through the gated private URL.
         $assetsConfig = self::privateAssetsConfig((array) ($folioCfg['assets'] ?? []), $app);
         // Eager widths (made at upload) and the on-demand allow-list, from config/image.php presets.
-        $container->singleton(\Preflow\Folio\Assets\ImageWidths::class, fn () => \Preflow\Folio\Assets\ImageWidths::fromConfig(
+        $container->singleton(\Preflow\Media\Image\ImageWidths::class, fn () => \Preflow\Media\Image\ImageWidths::fromConfig(
             (array) $app->config()->get('image.presets', []),
             is_array($assetsConfig['widths'] ?? null) ? $assetsConfig['widths'] : null,
         ));
@@ -153,10 +153,10 @@ final class FolioServiceProvider extends ServiceProvider
             $locales ?? \Preflow\Data\Locales::single('en'),
             (string) ($assetsConfig['dir'] ?? $app->basePath('public/media')),
             (string) ($assetsConfig['url'] ?? '/media'),
-            $assetsConfig + ['warm_widths' => $c->get(\Preflow\Folio\Assets\ImageWidths::class)->allowed()],
-            new \Preflow\Folio\Assets\VariantGenerator(
-                \Preflow\Folio\Assets\Image\ImageBackends::detect(),
-                $c->get(\Preflow\Folio\Assets\ImageWidths::class)->eager(),
+            $assetsConfig + ['warm_widths' => $c->get(\Preflow\Media\Image\ImageWidths::class)->allowed()],
+            new \Preflow\Media\Image\VariantGenerator(
+                \Preflow\Media\Image\ImageBackends::detect(),
+                $c->get(\Preflow\Media\Image\ImageWidths::class)->eager(),
                 (int) ($assetsConfig['quality'] ?? 75),
             ),
         ));
@@ -204,7 +204,7 @@ final class FolioServiceProvider extends ServiceProvider
         ));
         $container->bind(\Preflow\Folio\Http\MediaVariantController::class, fn (Container $c) => new \Preflow\Folio\Http\MediaVariantController(
             $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
-            $c->get(\Preflow\Folio\Assets\ImageWidths::class),
+            $c->get(\Preflow\Media\Image\ImageWidths::class),
         ));
         $container->singleton(\Preflow\Folio\Assets\AssetReferences::class, fn (Container $c) => new \Preflow\Folio\Assets\AssetReferences(
             $c->get(BlockRegistry::class),
@@ -231,7 +231,7 @@ final class FolioServiceProvider extends ServiceProvider
             (array) $app->config()->get('image.presets', []),
             $c->get(\Preflow\View\AssetCollector::class),
             rtrim($prefix, '/') . '/_uploads',
-            $c->get(\Preflow\Folio\Assets\ImageWidths::class),
+            $c->get(\Preflow\Media\Image\ImageWidths::class),
         ));
 
         // Request-scoped: public renders read published snapshots, admin routes switch it to working copies.

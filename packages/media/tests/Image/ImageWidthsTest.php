@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Tests\Assets;
+namespace Preflow\Media\Tests\Image;
 
 use PHPUnit\Framework\TestCase;
-use Preflow\Folio\Assets\ImageWidths;
+use Preflow\Media\Image\ImageWidths;
 
 final class ImageWidthsTest extends TestCase
 {

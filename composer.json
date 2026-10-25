@@ -18,6 +18,7 @@
         "preflow/auth": "@dev",
         "preflow/blade": "@dev",
         "preflow/codes": "@dev",
+        "preflow/media": "@dev",
         "preflow/components": "@dev",
         "preflow/core": "@dev",
         "preflow/data": "@dev",
@@ -139,6 +140,11 @@
         },
         {
             "type": "path",
+            "url": "packages/media",
+            "options": { "symlink": true }
+        },
+        {
+            "type": "path",
             "url": "packages/members",
             "options": { "symlink": true }
         }
@@ -153,6 +159,7 @@
             "Preflow\\Codes\\Tests\\": "packages/codes/tests/",
             "Preflow\\Folio\\Tests\\": "packages/folio/tests/",
             "Preflow\\Form\\Tests\\": "packages/form/tests/",
+            "Preflow\\Media\\Tests\\": "packages/media/tests/",
             "Preflow\\Members\\Tests\\": "packages/members/tests/",
             "Preflow\\Notify\\Tests\\": "packages/notify/tests/",
             "Preflow\\Rbac\\Tests\\": "packages/rbac/tests/",

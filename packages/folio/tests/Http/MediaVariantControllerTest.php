@@ -8,11 +8,11 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Exceptions\NotFoundHttpException;
-use Preflow\Folio\Assets\Asset;
+use Preflow\Media\Asset;
 use Preflow\Folio\Assets\AssetLibrary;
-use Preflow\Folio\Assets\Image\GdBackend;
-use Preflow\Folio\Assets\ImageWidths;
-use Preflow\Folio\Assets\VariantGenerator;
+use Preflow\Media\Image\GdBackend;
+use Preflow\Media\Image\ImageWidths;
+use Preflow\Media\Image\VariantGenerator;
 use Preflow\Folio\Http\MediaVariantController;
 use Preflow\Folio\Tests\Support\AssetFixtures;
 
@@ -168,7 +168,7 @@ final class MediaVariantControllerTest extends TestCase
     public function test_failed_encode_redirects_to_the_nearest_existing_variant(): void
     {
         $asset = $this->asset();
-        $failing = new class implements \Preflow\Folio\Assets\Image\ImageBackend {
+        $failing = new class implements \Preflow\Media\Image\ImageBackend {
             public function supports(string $format): bool { return true; }
             public function writeVariants(string $src, array $jobs, int $quality): array { return array_fill(0, count($jobs), false); }
         };
