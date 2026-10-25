@@ -229,15 +229,11 @@ final class FolioServiceProvider extends ServiceProvider
             $prefix,
         ));
 
-        $container->bind(\Preflow\Folio\Http\PrivateAssetController::class, fn (Container $c) => new \Preflow\Folio\Http\PrivateAssetController(
-            $c->get(\Preflow\Media\MediaLibrary::class),
+        // The media core's private files: Folio's rules (permission, login page) instead of its deny-all default.
+        $container->singleton(\Preflow\Media\Access\PrivateFileAccess::class, fn (Container $c) => new \Preflow\Folio\Media\FolioPrivateFileAccess(
             $c->get(\Preflow\Folio\Content\FrontendGate::class),
             $assetsConfig['private_permission'],
             $assetsConfig['private_login'],
-        ));
-        $container->bind(\Preflow\Folio\Http\MediaVariantController::class, fn (Container $c) => new \Preflow\Folio\Http\MediaVariantController(
-            $c->get(\Preflow\Media\MediaLibrary::class),
-            $c->get(\Preflow\Media\Image\ImageWidths::class),
         ));
         $container->bind(\Preflow\Folio\Http\AssetLibraryController::class, fn (Container $c) => new \Preflow\Folio\Http\AssetLibraryController(
             $c->get(\Preflow\Media\MediaLibrary::class),
@@ -728,6 +724,7 @@ final class FolioServiceProvider extends ServiceProvider
                 isSafe: true,
             ));
 
+            // Deprecated names of media_image()/media_url(): the same ImageTag, so a page using both adds its CSS and preload once.
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_image',
                 callable: fn (mixed $value, ?string $preset = null, array $options = []): string => $container->get(\Preflow\Media\ImageTag::class)->render($value, $preset, $options),
@@ -799,6 +796,7 @@ final class FolioServiceProvider extends ServiceProvider
         }
 
         // 2. Routes: admin under the configured prefix, then the frontend catch-all LAST.
+        // The media core's (private files, variants) are already in: it boots before Folio.
         if ($container->has(RouterInterface::class)) {
             $router = $container->get(RouterInterface::class);
             if ($router instanceof Router) {
@@ -807,9 +805,6 @@ final class FolioServiceProvider extends ServiceProvider
                 // Screens first: their routes must win over the admin's {type} routes.
                 $collection->addMany($screens->routes($this->prefix($app), $authEnabled));
                 $collection->addMany(FolioRoutes::admin($this->prefix($app), $authEnabled, $authEnabled && self::recordProviders($container) !== []));
-                $media = $container->get(\Preflow\Media\MediaConfig::class);
-                $collection->add(FolioRoutes::privateAssets($media->privateUrl));
-                $collection->add(FolioRoutes::media($media->url));
                 $collection->add(FolioRoutes::frontend());
             }
         }

@@ -12,19 +12,30 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Locales;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Schema\RecordTableSync;
+use Preflow\Core\Routing\RouterInterface;
+use Preflow\Media\Access\DenyAllPrivateFileAccess;
+use Preflow\Media\Access\PrivateFileAccess;
+use Preflow\Media\Http\PrivateFileController;
+use Preflow\Media\Http\VariantController;
 use Preflow\Media\Image\ImageBackends;
 use Preflow\Media\Image\ImageWidths;
 use Preflow\Media\Image\VariantGenerator;
 use Preflow\Media\Usage\AssetUsage;
+use Preflow\Media\Routing\MediaRoutes;
 use Preflow\Media\Usage\PosterReferences;
+use Preflow\Routing\Router;
 use Preflow\View\AssetCollector;
+use Preflow\View\TemplateEngineInterface;
+use Preflow\View\TemplateFunctionDefinition;
 
 /**
  * The media core's services: config (read and checked now, so a bad private_dir
  * fails at boot), the library with its usage sources, the image tag and the
  * locale it renders alt text in. With SQL storage, `preflow migrate` creates the
- * asset table (the media.table step). Listed in config/providers.php by a site
- * without Folio; Folio registers it itself.
+ * asset table (the media.table step). At boot it adds its routes (private files,
+ * missing variants) and the template functions media_image() and media_url().
+ * Private files are refused until something binds PrivateFileAccess (Folio does).
+ * Listed in config/providers.php by a site without Folio; Folio registers it itself.
  */
 final class MediaServiceProvider extends ServiceProvider
 {
@@ -69,11 +80,50 @@ final class MediaServiceProvider extends ServiceProvider
             $c->get(ImageWidths::class),
         ));
 
+        // Nobody downloads a private file until Folio or the site binds its own rules.
+        if (!$container->bound(PrivateFileAccess::class)) {
+            $container->singleton(PrivateFileAccess::class, fn () => new DenyAllPrivateFileAccess());
+        }
+        $container->bind(VariantController::class, fn (Container $c) => new VariantController(
+            $c->get(MediaLibrary::class),
+            $c->get(ImageWidths::class),
+        ));
+        $container->bind(PrivateFileController::class, fn (Container $c) => new PrivateFileController(
+            $c->get(MediaLibrary::class),
+            $c->get(PrivateFileAccess::class),
+        ));
+
         if ($config->storage !== 'json') {
             $container->get(MigrationRegistry::class)->afterMigrate(
                 'media.table',
                 static fn (): array => (new RecordTableSync($container->get(DataManager::class)))->sync($container->get(MediaLibrary::class)->definition()),
             );
+        }
+    }
+
+    public function boot(Container $container): void
+    {
+        if ($container->has(TemplateEngineInterface::class)) {
+            $engine = $container->get(TemplateEngineInterface::class);
+            // media_image(id, preset?, options?): the <img>/<picture> (or a link for a document); the ImageTag service's output.
+            $engine->addFunction(new TemplateFunctionDefinition(
+                name: 'media_image',
+                callable: fn (mixed $value, ?string $preset = null, array $options = []): string => $container->get(ImageTag::class)->render($value, $preset, $options),
+                isSafe: true,
+            ));
+            // media_url(id): an asset's URL ('' without one), e.g. a PDF download link.
+            $engine->addFunction(new TemplateFunctionDefinition(
+                name: 'media_url',
+                callable: fn (mixed $value = null): string => $container->get(ImageTag::class)->url($value),
+            ));
+        }
+
+        // After the app's routes; on a Folio site before Folio's (Folio registers media first, so media boots first).
+        if ($container->has(RouterInterface::class)) {
+            $router = $container->get(RouterInterface::class);
+            if ($router instanceof Router) {
+                MediaRoutes::register($router->getCollection(), $container->get(MediaConfig::class));
+            }
         }
     }
 

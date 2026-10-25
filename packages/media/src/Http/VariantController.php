@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Http;
+namespace Preflow\Media\Http;
 
 use Nyholm\Psr7\Response;
 use Preflow\Core\Exceptions\NotFoundHttpException;
@@ -17,7 +17,7 @@ use Psr\Http\Message\ServerRequestInterface;
  * next to the original and returned; from then on the web server serves the
  * file. Anything else under the media URL is a 404 that writes nothing.
  */
-final class MediaVariantController
+final class VariantController
 {
     private const string VARIANT = '#^(\d{4}/\d{2}/([a-f0-9]{32}))-([1-9]\d{0,4})\.(avif|webp)$#';
 

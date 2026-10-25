@@ -11,8 +11,8 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Media\Asset;
-use Preflow\Media\MediaLibrary;
 use Preflow\Media\ImageTag;
+use Preflow\Media\MediaLibrary;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\HandlesUpload;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
@@ -24,6 +24,8 @@ use Psr\Http\Message\UploadedFileInterface;
  * assets.private_dir (outside public/), and only {private_url}/{id} serves them,
  * to signed-in users with assets.private_permission ("members.access" here).
  * Staff: admin ("*") and editor (no members.access); members: member and guest.
+ * Folio's part: the field, the picker and its access rules (FolioPrivateFileAccess). The
+ * serving itself (headers, streaming, 404s) is the media core's: PrivateFilesTest there.
  */
 #[RequiresPhpExtension('gd')]
 #[RequiresPhpExtension('fileinfo')]
@@ -198,30 +200,6 @@ final class PrivateAssetsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_private_asset_not_under_public_media(): void
-    {
-        $img = $this->uploadPrivate($this->file($this->png(), 'Chart.png'));
-        $pdf = $this->uploadPrivate($this->file($this->pdf(), 'Guide.pdf'));
-        $base = substr($img->path, 0, (int) strrpos($img->path, '.'));
-
-        // Nothing under the public media URL serves or makes it.
-        $this->assertSame(404, $this->fetch('/media/' . $img->path)->getStatusCode());
-        $this->assertSame(404, $this->fetch('/media/' . $base . '-480.webp')->getStatusCode());
-        $this->assertSame([], $this->filesUnder($this->dir . '/public'));
-
-        // The only URL is the gated route: library, folio_asset_url, folio_image, admin thumbnails.
-        $this->assertSame('/tools/files/' . $img->id, $this->lib()->url($img));
-        $this->assertSame('/tools/files/' . $img->id, $this->lib()->thumbnailUrl($img));
-        $tag = $this->app()->container()->get(ImageTag::class);
-        $this->assertSame('/tools/files/' . $pdf->id, $tag->url($pdf->id));
-        $html = $tag->render($img->id, null, ['priority' => true]);
-        $this->assertStringContainsString('src="/tools/files/' . $img->id . '"', $html);
-        $this->assertStringNotContainsString('srcset', $html);
-        $this->assertStringNotContainsString('/media/', $html);
-        $this->assertStringContainsString('href="/tools/files/' . $pdf->id . '"', $tag->render($pdf->id));
-    }
-
-    #[RunInSeparateProcess]
     public function test_private_url_requires_permission(): void
     {
         $pdf = $this->uploadPrivate($this->file($this->pdf(), 'Guide.pdf'));
@@ -243,6 +221,19 @@ final class PrivateAssetsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_private_url_is_403_without_auth(): void
+    {
+        // A site whose Folio has no auth configured: nobody passes (FrontendGate fails closed).
+        unlink($this->dir . '/config/auth.php');
+        $pdf = $this->lib()->upload($this->file($this->pdf(), 'Guide.pdf'), null, true);
+
+        $out = $this->fetch('/tools/files/' . $pdf->id);
+        $this->assertSame(403, $out->getStatusCode());
+        $this->assertSame('private, no-store', $out->getHeaderLine('Cache-Control'));
+        $this->assertStringNotContainsString('%PDF', (string) $out->getBody());
+    }
+
+    #[RunInSeparateProcess]
     public function test_private_url_redirects_to_configured_login(): void
     {
         $this->folioConfig(['private_login' => '/tools/login']);
@@ -252,52 +243,6 @@ final class PrivateAssetsTest extends TestCase
         $this->assertSame(302, $res->getStatusCode());
         $this->assertSame('/tools/login?next=' . rawurlencode('/tools/files/' . $pdf->id), $res->getHeaderLine('Location'));
         $this->assertSame('private, no-store', $res->getHeaderLine('Cache-Control'));
-    }
-
-    #[RunInSeparateProcess]
-    public function test_member_downloads_pdf_as_attachment_no_store(): void
-    {
-        $pdf = $this->uploadPrivate($this->file($this->pdf(), 'Members Guide.pdf'));
-        $img = $this->uploadPrivate($this->file($this->png(40, 30), 'Chart.png'));
-        $this->signIn('_auth_user_id.members', 'member@site.test');
-
-        $res = $this->fetch('/tools/files/' . $pdf->id);
-        $this->assertSame(200, $res->getStatusCode());
-        $this->assertSame($this->pdf(), (string) $res->getBody());
-        $this->assertSame('application/pdf', $res->getHeaderLine('Content-Type'));
-        $this->assertSame('private, no-store', $res->getHeaderLine('Cache-Control'));
-        $this->assertStringStartsWith('attachment; filename="Members Guide.pdf"', $res->getHeaderLine('Content-Disposition'));
-        $this->assertSame('nosniff', $res->getHeaderLine('X-Content-Type-Options'));
-
-        $image = $this->fetch('/tools/files/' . $img->id);
-        $this->assertSame(200, $image->getStatusCode());
-        $this->assertSame('image/png', $image->getHeaderLine('Content-Type'));
-        $this->assertStringStartsWith('inline', $image->getHeaderLine('Content-Disposition'));
-        $this->assertSame('private, no-store', $image->getHeaderLine('Cache-Control'));
-    }
-
-    #[RunInSeparateProcess]
-    public function test_traversal_rejected(): void
-    {
-        $pdf = $this->uploadPrivate($this->file($this->pdf(), 'Guide.pdf'));
-        $public = $this->lib()->upload($this->file($this->png(40, 30), 'Open.png'), null);
-        $this->signIn('_auth_user_id.members', 'member@site.test');
-
-        // A record whose path points outside the private dir.
-        $data = $pdf->toData();
-        $data['path'] = '../../config/app.php';
-        $this->dm()->saveType(\Preflow\Data\DynamicRecord::fromArray($this->lib()->definition(), $data), false);
-
-        $escaped = $this->fetch('/tools/files/' . $pdf->id);
-        $this->assertSame(404, $escaped->getStatusCode());
-        $this->assertStringNotContainsString('folio-integration-test-key', (string) $escaped->getBody());
-        $this->assertSame('private, no-store', $escaped->getHeaderLine('Cache-Control'));
-
-        $this->assertNotSame(200, $this->fetch('/tools/files/..%2F..%2Fconfig%2Fapp.php')->getStatusCode());
-        $this->assertNotSame(200, $this->fetch('/tools/files/../../config/app.php')->getStatusCode());
-        $this->assertSame(404, $this->fetch('/tools/files/' . str_repeat('0', 32))->getStatusCode());
-        // A public asset is not served by the private route.
-        $this->assertSame(404, $this->fetch('/tools/files/' . $public->id)->getStatusCode());
     }
 
     #[RunInSeparateProcess]
@@ -385,17 +330,6 @@ final class PrivateAssetsTest extends TestCase
         $this->assertSame('', $value);
         $this->assertSame(['Guide.pdf: private files need the asset library; it was not stored.'], $field->drainErrors());
         $this->assertSame([], $this->filesUnder($uploads));
-    }
-
-    #[RunInSeparateProcess]
-    public function test_private_download_is_streamed_from_disk(): void
-    {
-        $pdf = $this->uploadPrivate($this->file($this->pdf(), 'Guide.pdf'));
-        $this->signIn('_auth_user_id.members', 'member@site.test');
-
-        $body = $this->fetch('/tools/files/' . $pdf->id)->getBody();
-        $this->assertSame(realpath($this->dir . '/storage/private-media/' . $pdf->path), $body->getMetadata('uri'));
-        $this->assertSame($this->pdf(), (string) $body);
     }
 
     #[RunInSeparateProcess]

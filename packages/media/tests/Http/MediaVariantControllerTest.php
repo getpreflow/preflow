@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Tests\Http;
+namespace Preflow\Media\Tests\Http;
 
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RequiresFunction;
@@ -13,13 +13,13 @@ use Preflow\Media\MediaLibrary;
 use Preflow\Media\Image\GdBackend;
 use Preflow\Media\Image\ImageWidths;
 use Preflow\Media\Image\VariantGenerator;
-use Preflow\Folio\Http\MediaVariantController;
-use Preflow\Folio\Tests\Support\AssetFixtures;
+use Preflow\Media\Http\VariantController;
+use Preflow\Media\Tests\Support\MediaFixtures;
 
 #[RequiresFunction('imagewebp')]
 final class MediaVariantControllerTest extends TestCase
 {
-    use AssetFixtures;
+    use MediaFixtures;
 
     private MediaLibrary $lib;
     private ImageWidths $widths;
@@ -40,7 +40,7 @@ final class MediaVariantControllerTest extends TestCase
     {
         $request = (new Psr17Factory())->createServerRequest('GET', '/media/' . $path)->withAttribute('path', $path);
 
-        return (new MediaVariantController($this->lib, $this->widths))->serve($request);
+        return (new VariantController($this->lib, $this->widths))->serve($request);
     }
 
     private function asset(int $width = 1000, int $height = 600): Asset

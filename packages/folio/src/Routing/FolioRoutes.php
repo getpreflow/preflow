@@ -146,50 +146,6 @@ final class FolioRoutes
         return $entries;
     }
 
-    /**
-     * Missing image variants under the media URL (made on first request). Placed
-     * before the frontend catch-all; existing files never reach PHP.
-     */
-    public static function media(string $url): RouteEntry
-    {
-        $pattern = rtrim($url, '/') . '/{...path}';
-        $c = PatternCompiler::compile($pattern);
-
-        return new RouteEntry(
-            pattern: $pattern,
-            handler: 'Preflow\\Folio\\Http\\MediaVariantController@serve',
-            method: 'GET',
-            mode: RouteMode::Action,
-            middleware: [],
-            paramNames: $c['paramNames'],
-            regex: $c['regex'],
-            isCatchAll: $c['isCatchAll'],
-        );
-    }
-
-    /**
-     * Private assets at {url}/{id} (PrivateAssetController checks the permission).
-     * Only a 32-hex id matches, so other pages under the URL still reach the
-     * frontend; placed before the frontend catch-all. It needs the session:
-     * session.paths must include the URL's prefix.
-     */
-    public static function privateAssets(string $url): RouteEntry
-    {
-        $pattern = rtrim($url, '/') . '/{id}';
-        $c = PatternCompiler::compile($pattern);
-
-        return new RouteEntry(
-            pattern: $pattern,
-            handler: 'Preflow\\Folio\\Http\\PrivateAssetController@serve',
-            method: 'GET',
-            mode: RouteMode::Action,
-            middleware: [],
-            paramNames: $c['paramNames'],
-            regex: '#^' . preg_quote(rtrim($url, '/'), '#') . '/(?P<id>[a-f0-9]{32})$#',
-            isCatchAll: $c['isCatchAll'],
-        );
-    }
-
     public static function frontend(): RouteEntry
     {
         $c = PatternCompiler::compile('/{...path}');

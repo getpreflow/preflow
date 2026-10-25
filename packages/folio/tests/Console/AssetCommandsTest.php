@@ -34,26 +34,7 @@ final class AssetCommandsTest extends TestCase
         $this->assertContains(AssetsImportCommand::class, FolioCommands::all());
     }
 
-    public function test_variants_command_regenerates(): void
-    {
-        $f = new Psr17Factory();
-        $png = $this->png();
-        $asset = $this->lib()->upload($f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'a.png'), null);
-        $this->assertNotSame([], $asset->variants);
-        foreach ($asset->variants as $v) {
-            unlink($this->dir . '/public/media/' . $v->path);
-        }
-
-        [$code, $out] = $this->runCommand(new AssetsVariantsCommand(fn () => $this->app()));
-
-        $this->assertSame(0, $code);
-        $this->assertStringContainsString('Regenerated variants of 1 image', $out);
-        foreach ($this->lib()->find($asset->id)->variants as $v) {
-            $this->assertFileExists($this->dir . '/public/media/' . $v->path);
-        }
-    }
-
-    public function test_variants_all_also_makes_step_widths(): void
+    public function test_deprecated_variants_command_prints_the_note_and_delegates(): void
     {
         $this->write('config/image.php', "<?php\nreturn ['presets' => ['card' => ['widths' => [480, 960], 'step' => 160]]];\n");
         $f = new Psr17Factory();
@@ -65,9 +46,11 @@ final class AssetCommandsTest extends TestCase
         [$code, $out] = $this->runCommand(new AssetsVariantsCommand(fn () => $this->app()), ['--all']);
 
         $this->assertSame(0, $code);
-        $this->assertFileExists($base . '-640.webp');
-        $this->assertFileExists($base . '-800.webp');
+        $this->assertSame('folio:assets:variants', (new AssetsVariantsCommand())->getName());
+        $this->assertStringStartsWith('Note: "folio:assets:variants" is deprecated; use "media:variants".' . "\n", $out);
+        $this->assertStringContainsString('Regenerated variants of 1 image', $out);
         $this->assertStringContainsString('step-width', $out);
+        $this->assertFileExists($base . '-640.webp');
     }
 
     public function test_import_rewrites_working_snapshot_and_revision(): void
