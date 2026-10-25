@@ -53,6 +53,11 @@ class ConcreteImplementation implements SomeInterface
     ) {}
 }
 
+#[\Preflow\Core\Container\Attributes\Singleton]
+class SharedService
+{
+}
+
 final class ContainerTest extends TestCase
 {
     public function test_resolves_class_with_no_dependencies(): void
@@ -221,5 +226,46 @@ final class ContainerTest extends TestCase
         $this->assertTrue($container->bound('a'));
         $this->assertTrue($container->bound('b'));
         $this->assertFalse($container->bound(\stdClass::class)); // has() would say true: autowirable
+    }
+
+    public function test_rebinding_a_resolved_singleton_wins(): void
+    {
+        $container = new Container();
+        $container->singleton(SomeInterface::class, fn () => new ConcreteImplementation('first'));
+        $this->assertSame('first', $container->get(SomeInterface::class)->value);
+
+        $container->singleton(SomeInterface::class, fn () => new ConcreteImplementation('second'));
+
+        $this->assertSame('second', $container->get(SomeInterface::class)->value);
+        $this->assertSame($container->get(SomeInterface::class), $container->get(SomeInterface::class));
+    }
+
+    public function test_bind_drops_a_resolved_singleton(): void
+    {
+        $container = new Container();
+        $container->singleton(SomeInterface::class, fn () => new ConcreteImplementation('first'));
+        $container->get(SomeInterface::class);
+
+        $container->bind(SomeInterface::class, fn () => new ConcreteImplementation('second'));
+
+        $this->assertSame('second', $container->get(SomeInterface::class)->value);
+    }
+
+    public function test_singleton_attribute_shares_an_autowired_class(): void
+    {
+        $container = new Container();
+
+        $this->assertSame($container->get(SharedService::class), $container->get(SharedService::class));
+        $this->assertFalse($container->bound(SharedService::class));
+        $this->assertNotSame($container->get(SimpleService::class), $container->get(SimpleService::class));
+    }
+
+    public function test_singleton_attribute_shares_a_class_resolved_as_a_dependency(): void
+    {
+        $container = new Container();
+        $first = $container->get(SharedService::class);
+        $container->bind('consumer', fn (Container $c) => $c->get(SharedService::class));
+
+        $this->assertSame($first, $container->get('consumer'));
     }
 }

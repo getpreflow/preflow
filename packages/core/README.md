@@ -32,8 +32,12 @@ Requires PHP 8.4+.
 // Bind an interface to a concrete class (transient)
 $container->bind(CacheInterface::class, RedisCache::class);
 
-// Bind as singleton
+// Bind as singleton (binding it again later replaces an instance already resolved)
 $container->singleton(LoggerInterface::class, FileLogger::class);
+
+// Or mark a class: shared from its first autowired get(), whoever asks first
+#[\Preflow\Core\Container\Attributes\Singleton]
+final class Registry {}
 
 // Register a pre-built instance
 $container->instance(Config::class, $config);

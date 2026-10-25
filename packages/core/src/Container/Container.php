@@ -22,6 +22,9 @@ final class Container implements ContainerInterface
     /** @var array<string, object> */
     private array $instances = [];
 
+    /** @var array<string, bool> whether a class carries #[Singleton], by class */
+    private array $sharedClasses = [];
+
     /** @var array<string, true> */
     private array $resolving = [];
 
@@ -43,7 +46,7 @@ final class Container implements ContainerInterface
 
         $result = $this->resolve($id);
 
-        if (isset($this->singletonKeys[$id])) {
+        if (isset($this->singletonKeys[$id]) || (!isset($this->bindings[$id]) && $this->isSharedClass($id))) {
             $this->singletons[$id] = $result;
         }
 
@@ -65,8 +68,10 @@ final class Container implements ContainerInterface
         return isset($this->instances[$id]) || isset($this->bindings[$id]);
     }
 
+    /** A new binding wins: an instance already resolved from an earlier singleton binding is dropped. */
     public function bind(string $abstract, string|callable $concrete): void
     {
+        unset($this->singletons[$abstract]);
         if (is_string($concrete)) {
             $this->bindings[$abstract] = fn () => $this->resolve($concrete);
         } else {
@@ -74,9 +79,11 @@ final class Container implements ContainerInterface
         }
     }
 
+    /** Shared from first resolution; re-binding drops an instance already resolved, so the last binding wins. */
     public function singleton(string $abstract, string|callable|null $concrete = null): void
     {
         $this->singletonKeys[$abstract] = true;
+        unset($this->singletons[$abstract]);
 
         if ($concrete !== null) {
             $this->bind($abstract, $concrete);
@@ -98,6 +105,13 @@ final class Container implements ContainerInterface
         }
 
         return $this->build($abstract, $parameters);
+    }
+
+    /** A class marked #[Singleton] is shared when autowired. */
+    private function isSharedClass(string $id): bool
+    {
+        return $this->sharedClasses[$id] ??= class_exists($id)
+            && (new \ReflectionClass($id))->getAttributes(Attributes\Singleton::class) !== [];
     }
 
     private function resolve(string $abstract): mixed
