@@ -79,6 +79,9 @@ final class TwoRolesTest extends TestCase
             ['POST /folio/assets/{id}/delete', '/folio/assets/missing/delete', [], [404, 404, 403]],
             ['GET /folio/extensions', '/folio/extensions', [], [200, 403, 403]],
             ['POST /folio/extensions/{name}', '/folio/extensions/nothing', [], [404, 403, 403]],
+            ['GET /folio/cache', '/folio/cache', [], [200, 403, 403]],
+            ['POST /folio/cache/clear', '/folio/cache/clear', ['key' => 'nothing'], [404, 403, 403]],
+            ['POST /folio/cache/opcache-reset', '/folio/cache/opcache-reset', [], [302, 403, 403]],
             ['GET /folio/queue', '/folio/queue', [], [200, 200, 403]],
             ['POST /folio/queue/{id}/approve', '/folio/queue/m1/approve', [], [302, 302, 403]],
         ];
@@ -281,7 +284,7 @@ final class TwoRolesTest extends TestCase
         $this->as($account);
 
         $expected = [
-            'super' => ['/folio', '/folio/page', '/folio/member', '/folio/team', '/folio/assets', '/folio/rbac_role', '/folio/staff', '/folio/moderation_settings', '/folio/queue', '/folio/extensions'],
+            'super' => ['/folio', '/folio/page', '/folio/member', '/folio/team', '/folio/assets', '/folio/rbac_role', '/folio/staff', '/folio/moderation_settings', '/folio/queue', '/folio/extensions', '/folio/cache'],
             'content' => ['/folio', '/folio/page', '/folio/member', '/folio/team', '/folio/assets', '/folio/queue'],
             'plain' => [],
         ][$account];

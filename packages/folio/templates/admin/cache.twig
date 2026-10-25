@@ -1,0 +1,55 @@
+{% extends "@folio/admin/_layout.twig" %}
+{% block title %}Folio — Cache{% endblock %}
+{% block page_title %}Cache{% endblock %}
+{% block content %}
+    <div class="folio-notice" role="status"><p>Every cache rebuilds itself on the next request. Clearing one is safe; the first page after it is slower.</p></div>
+    <div class="folio-list-toolbar">
+        <form method="post" action="{{ prefix }}/cache/clear">
+            <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+            <input type="hidden" name="all" value="1">
+            <button type="submit" class="btn btn-secondary btn-sm">Clear all</button>
+        </form>
+    </div>
+    <div class="folio-table-wrap">
+    <table class="folio-table">
+        <thead><tr><th>Cache</th><th>Files</th><th>Size</th><th><span class="folio-sr">Actions</span></th></tr></thead>
+        <tbody>
+        {% for cache in caches %}
+            <tr>
+                <td><strong>{{ cache.label }}</strong> <code>{{ cache.key }}</code>{% if cache.note %}<br>{{ cache.note }}{% endif %}</td>
+                <td>{{ cache.entries }}</td>
+                <td>{{ cache.size }}</td>
+                <td><div class="folio-row-actions">
+                    <form method="post" action="{{ prefix }}/cache/clear">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+                        <input type="hidden" name="key" value="{{ cache.key }}">
+                        <button type="submit" class="btn btn-ghost btn-sm">Clear</button>
+                    </form>
+                </div></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <section class="folio-cache-opcache">
+        <div class="folio-list-toolbar">
+            <h2>OPcache</h2>
+            {% if opcache %}
+            <form method="post" action="{{ prefix }}/cache/opcache-reset">
+                <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+                <button type="submit" class="btn btn-secondary btn-sm">Reset OPcache</button>
+            </form>
+            {% endif %}
+        </div>
+        {% if opcache %}
+            <div class="folio-table-wrap">
+            <table class="folio-table">
+                <thead><tr><th>Memory used</th><th>Memory free</th><th>Scripts</th><th>Hit rate</th></tr></thead>
+                <tbody><tr><td>{{ opcache.memory_used }}</td><td>{{ opcache.memory_free }}</td><td>{{ opcache.scripts }}</td><td>{{ opcache.hit_rate }}%</td></tr></tbody>
+            </table>
+            </div>
+        {% else %}
+            <div class="folio-notice" role="status"><p>OPcache is off for the web server's PHP.</p></div>
+        {% endif %}
+    </section>
+{% endblock %}

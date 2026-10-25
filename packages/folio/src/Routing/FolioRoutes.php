@@ -15,6 +15,7 @@ final class FolioRoutes
     private const PUBLISHING = 'Preflow\\Folio\\Http\\PublishingController';
     private const ASSETS = 'Preflow\\Folio\\Http\\AssetLibraryController';
     private const EXTENSIONS = 'Preflow\\Folio\\Http\\ExtensionsController';
+    private const CACHE = 'Preflow\\Folio\\Http\\CacheController';
     private const WORKING_MW = 'Preflow\\Folio\\Http\\WorkingCopyMiddleware';
     private const AUTH = 'Preflow\\Folio\\Http\\AuthController';
     private const PASSWORDS = 'Preflow\\Folio\\Http\\PasswordController';
@@ -58,6 +59,9 @@ final class FolioRoutes
             ['POST', $prefix . '/assets/{id}/delete',  'destroy', self::ASSETS],
             ['GET',  $prefix . '/extensions',          'index', self::EXTENSIONS],
             ['POST', $prefix . '/extensions/{name}',   'toggle', self::EXTENSIONS],
+            ['GET',  $prefix . '/cache',               'index', self::CACHE],
+            ['POST', $prefix . '/cache/clear',         'clear', self::CACHE],
+            ['POST', $prefix . '/cache/opcache-reset', 'opcacheReset', self::CACHE],
             // Enabled extensions' assets/ files (public, like _assets/{file}); before the generic {type} routes.
             ['GET',  $prefix . '/_assets/x/{extension}/{...path}', 'serve', self::EXTENSION_ASSETS],
             ['GET',  $prefix . '/_relation/{type}',    'relationOptions'], // before the generic {type} routes

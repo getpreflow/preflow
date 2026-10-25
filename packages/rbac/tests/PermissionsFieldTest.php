@@ -36,6 +36,7 @@ final class PermissionsFieldTest extends TestCase
         $registry = new PermissionRegistry();
         $registry->declare('folio.dashboard', 'Dashboard', 'Folio');
         $registry->declare('folio.extensions', 'Extensions', 'Folio');
+        $registry->declare('folio.cache', 'Cache', 'Folio');
         foreach (['rbac_role' => 'Roles', 'member' => 'Members', 'post' => 'Posts', 'page' => 'Pages', 'site' => 'Site', 'members_settings' => 'Members'] as $type => $label) {
             $registry->declarePattern($type . '.*');
             foreach (self::VERBS as $action => $verb) {
@@ -122,7 +123,8 @@ final class PermissionsFieldTest extends TestCase
         $this->assertMatchesRegularExpression(
             '#<span class="rbac-group-label">Folio</span></div><div class="rbac-chips">'
             . '<label class="rbac-chip" title="folio\.dashboard"><input type="checkbox" name="permissions\[\]" value="folio\.dashboard"><span>Dashboard</span></label>'
-            . '<label class="rbac-chip" title="folio\.extensions"><input type="checkbox" name="permissions\[\]" value="folio\.extensions"><span>Extensions</span></label></div></div>#',
+            . '<label class="rbac-chip" title="folio\.extensions"><input type="checkbox" name="permissions\[\]" value="folio\.extensions"><span>Extensions</span></label>'
+            . '<label class="rbac-chip" title="folio\.cache"><input type="checkbox" name="permissions\[\]" value="folio\.cache"><span>Cache</span></label></div></div>#',
             $html,
         );
         // A declared group pattern is the group header's own "All" checkbox.

@@ -1502,6 +1502,10 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
 .folio-panel-title { margin: 0 0 8px; font-size: 14px; font-weight: 620; }
 .folio-panel-body { font-size: 13.5px; }
 
+/* ---- Settings → Cache ---- */
+.folio-cache-opcache { margin-top: 28px; }
+.folio-cache-opcache h2 { margin: 0; font-size: 15px; font-weight: 620; }
+
 /* ---- side panels and tabs ---- */
 /* Narrow: the side panels stack right under the form fields. From 1280px they sit in a sticky
    right-hand column; below that the field column would drop under ~600px and wrap the rich-text toolbar. */

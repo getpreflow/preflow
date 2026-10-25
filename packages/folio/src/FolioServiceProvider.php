@@ -132,6 +132,11 @@ final class FolioServiceProvider extends ServiceProvider
             );
         });
 
+        // Both caches rebuild themselves on the next request; Settings → Cache and cache:clear list them.
+        $caches = $container->get(\Preflow\Core\Cache\CacheRegistry::class);
+        $caches->register(new \Preflow\Core\Cache\FileCache('folio.extensions', 'Folio extensions', $app->basePath('storage/cache/folio-extensions.cache')));
+        $caches->register(new \Preflow\Core\Cache\FileCache('folio.blocks', 'Folio blocks', $app->basePath('storage/cache/folio-blocks.cache')));
+
         // One request-scoped content locale shared by the frontend, preview and field types.
         $container->instance(ContentLocale::class, new ContentLocale($locales ?? \Preflow\Data\Locales::single('en')));
 
@@ -182,6 +187,13 @@ final class FolioServiceProvider extends ServiceProvider
             $prefix,
             // Toggling on the screen: development by default; elsewhere the committed file is the source.
             (bool) ($folioCfg['extensions']['allow_admin_changes'] ?? $app->config()->get('app.debug', false)),
+        ));
+
+        $container->bind(\Preflow\Folio\Http\CacheController::class, fn (Container $c) => new \Preflow\Folio\Http\CacheController(
+            $c->get(\Preflow\Core\Cache\CacheRegistry::class),
+            $c->get(\Preflow\Core\Cache\OpcacheStatus::class),
+            $c->get(TemplateEngineInterface::class),
+            $prefix,
         ));
 
         $container->bind(\Preflow\Folio\Http\PrivateAssetController::class, fn (Container $c) => new \Preflow\Folio\Http\PrivateAssetController(
@@ -576,6 +588,8 @@ final class FolioServiceProvider extends ServiceProvider
         if ($container->get(ExtensionRegistry::class)->all() !== []) {
             $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', 'Extensions', rtrim($this->prefix($app), '/') . '/extensions', 'ui-settings', 'folio.extensions', 900);
         }
+        // Settings → Cache, on every site (Folio registers its own caches).
+        $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', 'Cache', rtrim($this->prefix($app), '/') . '/cache', 'ui-settings', 'folio.cache', 950);
         // Extension screens in the sidebar (filtered by their permission).
         foreach ($screens->all() as $screen) {
             $container->get(\Preflow\Folio\Http\AdminNav::class)->add(
@@ -839,6 +853,7 @@ final class FolioServiceProvider extends ServiceProvider
         $registry = $access->registry();
         $registry->declare('folio.dashboard', 'Dashboard', 'Folio');
         $registry->declare('folio.extensions', 'Extensions', 'Folio');
+        $registry->declare('folio.cache', 'Cache', 'Folio');
         foreach ($container->get(TypeCatalog::class)->all() as $listing) {
             $registry->declarePattern($listing->key . '.*');
             foreach (['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'] as $action => $verb) {

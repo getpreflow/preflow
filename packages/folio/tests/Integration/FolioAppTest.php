@@ -232,8 +232,9 @@ final class FolioAppTest extends TestCase
             ['Notes', '/folio/note'],
             ['Pages', '/folio/page'],
             ['Assets', '/folio/assets'],
+            ['Cache', '/folio/cache'], // Settings → Cache is always there
         ], $items);
-        $this->assertSame(['Content', 'Library'], $labels[1]);
+        $this->assertSame(['Content', 'Library', 'Settings'], $labels[1]);
         $this->assertSame(1, substr_count($nav[0], 'class="active" aria-current="page"'));
         $this->assertMatchesRegularExpression('#<a href="/folio" class="active"#', $nav[0]);
 

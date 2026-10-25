@@ -183,6 +183,7 @@ final class DelegationTest extends TestCase
         $this->assertMatchesRegularExpression($denied('member.view'), $form);
         $this->assertMatchesRegularExpression($denied('member.*'), $form);
         $this->assertMatchesRegularExpression($denied('folio.extensions'), $form);
+        $this->assertMatchesRegularExpression($denied('folio.cache'), $form);
         foreach (['page.view', 'page.*', 'rbac_role.edit', 'folio.dashboard'] as $covered) {
             $this->assertDoesNotMatchRegularExpression($denied($covered), $form);
             $this->assertMatchesRegularExpression('#<input type="checkbox"[^>]* value="' . preg_quote($covered, '#') . '"#', $form);
