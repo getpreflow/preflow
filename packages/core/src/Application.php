@@ -6,6 +6,8 @@ namespace Preflow\Core;
 
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Preflow\Core\Cache\CacheRegistry;
+use Preflow\Core\Cache\DirectoryCache;
 use Preflow\Core\Config\Config;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
@@ -50,6 +52,7 @@ final class Application
         $this->container->instance(Config::class, $config);
         $this->container->instance(Container::class, $this->container);
         $this->container->instance(MiddlewarePipeline::class, $this->pipeline);
+        $this->container->instance(CacheRegistry::class, new CacheRegistry());
     }
 
     /**
@@ -387,6 +390,15 @@ final class Application
                 ),
                 default => null,
             };
+
+            if ($name === 'json') {
+                $this->container->get(CacheRegistry::class)->register(new DirectoryCache(
+                    'data.json',
+                    'JSON storage query cache',
+                    $this->basePath('storage/cache/data'),
+                    pattern: 'json-*.json',
+                ));
+            }
         }
 
         $drivers = array_filter($drivers);
@@ -586,14 +598,30 @@ final class Application
                 )
                 : null,
             'blade' => class_exists(\Preflow\Blade\BladeEngine::class)
-                ? new \Preflow\Blade\BladeEngine(
-                    templateDirs: $templateDirs,
-                    assetCollector: $assets,
-                    debug: $debug->isDebug(),
-                )
+                ? $this->createBladeEngine($templateDirs, $assets, $debug)
                 : null,
             default => throw new \RuntimeException("Unknown template engine: {$name}. Supported: twig, blade"),
         };
+    }
+
+    private function createBladeEngine(array $templateDirs, \Preflow\View\AssetCollector $assets, DebugLevel $debug): \Preflow\Blade\BladeEngine
+    {
+        // BladeEngine's own default, passed explicitly so the registry lists the same folder.
+        $cachePath = sys_get_temp_dir() . '/preflow_blade_cache';
+
+        $this->container->get(CacheRegistry::class)->register(new DirectoryCache(
+            'blade',
+            'Compiled Blade templates',
+            $cachePath,
+            note: 'shared temp folder',
+        ));
+
+        return new \Preflow\Blade\BladeEngine(
+            templateDirs: $templateDirs,
+            assetCollector: $assets,
+            debug: $debug->isDebug(),
+            cachePath: $cachePath,
+        );
     }
 
     private function bootValidation(): void
