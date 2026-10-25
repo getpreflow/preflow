@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Storage;
 
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
-use Preflow\Data\Migration\Grammar\Grammars;
-use Preflow\Data\Migration\Schema;
+use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\TypeCatalog;
@@ -30,6 +28,8 @@ final class TableSync
     /** System keys Folio writes besides a type's fields. */
     private const array SYSTEM = ['_locales', '_order', ...Publisher::META];
 
+    private readonly RecordTableSync $records;
+
     /** @param list<TypeDefinition> $internal */
     public function __construct(
         private readonly TypeCatalog $catalog,
@@ -37,18 +37,16 @@ final class TableSync
         private readonly DataManager $dm,
         private readonly ?TypeDefinition $assets = null,
         private readonly array $internal = [],
-    ) {}
+    ) {
+        $this->records = new RecordTableSync($dm);
+    }
 
     /** @return list<string> the changes made, one line each */
     public function sync(): array
     {
         $lines = [];
         foreach ($this->definitions() as $def) {
-            $driver = $this->dm->driver($def->storage);
-            if (!$driver instanceof PdoDriver) {
-                continue;
-            }
-            array_push($lines, ...$this->syncTable($driver->pdo(), $def));
+            array_push($lines, ...$this->records->sync($def, self::SYSTEM));
         }
 
         return $lines;
@@ -72,30 +70,5 @@ final class TableSync
         array_push($defs, ...$this->internal);
 
         return $defs;
-    }
-
-    /** @return list<string> */
-    private function syncTable(\PDO $pdo, TypeDefinition $def): array
-    {
-        $schema = new Schema($pdo);
-        $columns = array_values(array_unique([...array_keys($def->fields), ...self::SYSTEM]));
-        $columns = array_values(array_diff($columns, [$def->idField]));
-
-        if (!$schema->hasTable($def->table)) {
-            $pdo->exec(Grammars::for($pdo)->createRecordTable($def->table, $def->idField, $columns));
-
-            return ["created table {$def->table}"];
-        }
-
-        $lines = [];
-        $existing = $schema->columns($def->table);
-        foreach ($columns as $column) {
-            if (!in_array($column, $existing, true)) {
-                $schema->addColumn($def->table, $column);
-                $lines[] = "added column {$def->table}.{$column}";
-            }
-        }
-
-        return $lines;
     }
 }
