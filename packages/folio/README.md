@@ -698,152 +698,71 @@ returns working copies, drafts included.
 
 ## Asset library
 
-Uploads go into a shared media library at `{prefix}/assets`. Files are written to
-`public/media/Y/m/{id}.{ext}` and served by the web server directly, with no PHP
-involved. Their metadata (alt text per language, title, focal point, video poster)
-are records of an internal type, stored in the `folio_assets` table.
+The library itself (uploads, variants, private files, usage sources, `media_image()`) is the
+`preflow/media` package: see its [README](../media/README.md). Folio adds the UI, installs the
+package and binds its rules to the package's hooks. Files and records are stored as before:
+`public/media/Y/m/{id}.{ext}`, the `folio_assets` table, `storage/private-media`, `/media/…`
+and `/files/{id}`.
 
-**Library screen:**
+**Library screen** at `{prefix}/assets`:
 - grid and list views;
 - search by name, title or alt text, and filters by kind (images, videos, documents);
 - multi-file upload;
 - a details panel for alt text, title and focal point (click the image to set it), and
   a poster image for videos;
 - **usage:** the records that use the asset, including published versions that still
-  show it. Deleting a used asset is refused.
+  show it. Deleting a used asset is refused (by the media core).
 
 **Asset fields** store asset ids. The editor shows the selection with **Choose**, which
 opens the library as a picker in the drawer, and **Upload**, a plain file input that adds
 the file to the library on save, so it works without JavaScript. A field's `accept`
-(`image/*`, `video/*` or `.pdf,.zip`) limits what an upload may be.
+(`image/*`, `video/*` or `.pdf,.zip`) limits what an upload may be. An asset field in a
+type's default template renders with `media_image()`.
 
-**Files in templates:** `{{ folio_asset_url(record.whitepaper) }}` gives an asset's public
-URL (`''` without one), for download links and custom markup. It accepts what an asset
-field stores: a library id, a legacy upload path, or a list (its first item).
-
-**Images in templates:**
-
-```twig
-{{ folio_image(record.cover, 'hero', {sizes: '(min-width: 60rem) 50vw, 100vw', class: 'cover'}) }}
-```
-
-- It emits `<picture>` with AVIF and WebP `srcset`s, and an `<img>` with `width`,
-  `height`, `loading` and the alt text in the page's language.
-- Options and presets are those of `responsive_image()`: `config/image.php`
-  `presets` (`widths`, `sizes`, `loading`, `class`, `attrs`), plus two of Folio's own:
-  - `step: 160` adds widths every 160 px between the preset's smallest and largest
-    width, so browsers can pick close to the size they display. Those widths are made
-    on first request (see below).
-  - `priority: true` is for the page's key image (a hero or portrait). It sets
-    `fetchpriority="high"` and `loading="eager"` and adds one
-    `<link rel="preload" as="image" imagesrcset imagesizes>` to the head per image. A
-    call can override it: `folio_image(img, 'hero', {priority: false})`. The link is
-    added while the image renders. A layout that prints `{{ head() }}` before the body
-    has already written its head by then, so the link is missing there. Leave the head
-    to the app's automatic injection (the default) to keep it.
-- The focal point becomes classes (`folio-focal folio-fx-30 folio-fy-70`), never an
-  inline style. Their CSS is added to the page with the CSP nonce. It only shows when
-  your CSS crops the image, e.g. `object-fit: cover`.
-- Asset fields in a type's default template render the same way.
-
-**Variants** are made on upload with GD or Imagick: every configured width the image
-can fill, plus its own width when it is narrower than the largest configured width. Each
-is made as WebP, and as AVIF where supported. Phone photos are turned upright using their
-EXIF orientation. Images above `max_pixels` (30 megapixels by default) keep only the
-original: decoding them could exceed a shared host's memory limit. The
-widths come from `assets.widths`, else from all preset widths in `config/image.php`. GIF
-and SVG files are served as they are, and without GD or Imagick no variants are made.
-After changing widths, run `php preflow folio:assets:variants`.
-
-**Step widths on first request.** The listed `widths` are made on upload. Step widths
-are made the first time a browser asks for one:
-- the missing file reaches the front controller, and Folio makes it, writes it next to
-  the original and returns it;
-- from then on the web server serves it as a static file;
-- only widths a preset defines, never wider than the original and in formats the backend
-  supports, are made. Anything else under the media URL is a 404 that writes nothing;
-- concurrent first requests wait on a per-file lock, so a variant is encoded once.
-
-`php preflow folio:assets:variants --all` makes the step widths in advance as well, and
-`warm_on_upload` makes them during each upload. Use one of them on shared hosting, so a
-page full of new images doesn't start many encodes at once on its first view. If an
-encode fails, the browser is redirected (uncached) to the closest existing size, never
-shown a broken image. The media URL belongs to the library: a page under `/media/…`
-is not routed.
-
-**Config** (`config/folio.php`):
+**Config.** Library settings (directory, widths, quality, private directory, …) live in
+`config/media.php`. Folio reads two private-file settings from `config/folio.php`:
 
 ```php
 'assets' => [
-    'dir' => __DIR__ . '/../public/media', // default
-    'url' => '/media',
-    'storage' => 'json',                  // a data driver name
-    'max_bytes' => 20 * 1024 * 1024,
-    'max_pixels' => 30_000_000,          // larger images get no variants
-    'warm_on_upload' => false,           // true: make the step widths during the upload too
-    'allow_svg' => false,
-    'widths' => [480, 768, 1024, 1600],   // default: the config/image.php preset widths
-    'quality' => 75,
-    'private_dir' => __DIR__ . '/../storage/private-media', // default; never under public/
-    'private_url' => '/files',                // default
     'private_permission' => 'folio.dashboard', // default
     'private_login' => null,                  // optional: '/tools/login'
 ],
 ```
 
-**Private assets.** An asset field with `"private": true` stores its uploads in
-`private_dir`, outside `public/`:
+- Folio binds the media core's `PrivateFileAccess`: only a signed-in user with
+  `private_permission` (staff with `*` pass) gets a private file. It fails closed like the
+  frontend gate: without auth configured, nobody does.
+- Anyone else gets a 403, or with `private_login` a redirect to `login?next={the file's URL}`.
+- A site's own `PrivateFileAccess` must be bound by a provider listed after Folio's in
+  `config/providers.php`.
+
+For a members area (with `private_url` set in `config/media.php`):
+
+```php
+// config/media.php
+'private_url' => '/tools/files',
+// config/folio.php
+'assets' => ['private_permission' => 'members.access', 'private_login' => '/tools/login'],
+```
+
+A private asset field (`"private": true`) only takes private assets, and a public field only
+public ones; its picker lists just those, and choosing the other kind is a field error.
+Without the asset library, a private field refuses uploads. Export and pull carry the private
+files with their asset records (archive root `private-media/`); an archive from before private
+assets has no such root, and importing it leaves local private files alone.
 
 ```json
 "pdf": { "type": "asset", "asset": { "accept": "application/pdf", "private": true } }
 ```
 
-- Private files get no variants, and nothing under the media URL serves them.
-- A private field only takes private assets, and a public field only public ones. Its
-  picker lists just those, and its uploads match. Choosing the other kind is refused with
-  a field error, so a public file never ends up in a private field. Without the asset
-  library, a private field refuses uploads.
-- Their only URL is `{private_url}/{id}`, e.g. `/files/3f…e1`. `folio_asset_url()`,
-  `folio_image()` (a plain `<img>`, no srcset) and the admin thumbnails all use it.
-- The route serves the file only to a signed-in user with `private_permission`; staff
-  with `*` pass. It fails closed like the frontend gate.
-- Anyone else gets a 403, or with `private_login` a redirect to
-  `login?next={the file's URL}`.
-- Files are sent with `Cache-Control: private, no-store` and their stored type. Images
-  are `inline`; everything else, SVG included, is an `attachment` with the original
-  file name.
-- The route needs the session, so the private URL's prefix (`/files`, or `/tools` for
-  `/tools/files`) must be covered twice: by `session.paths` in config/auth.php, and by the
-  session cookie's path (`session.path`). A cookie with path `/folio` is never sent to
-  `/files`, staff count as signed out there, and they get a 403 on their own private files,
-  admin thumbnails included.
-- `assets.private_dir` (default `storage/private-media`) lies inside each release. A deployment
-  must list it as a shared dir (Deployer `shared_dirs`) and git-ignore it, or the private
-  files vanish on the next deploy.
-- A `private_dir` inside `public/` or the media directory is refused at boot.
-- Export and pull carry the private files with their asset records (archive root
-  `private-media/`). An archive from before private assets has no such root, and
-  importing it leaves local private files alone.
-
-For a members area:
-
-```php
-'assets' => ['private_url' => '/tools/files', 'private_permission' => 'members.access', 'private_login' => '/tools/login'],
-```
-
-**Allowed files:**
-- The type is sniffed from the file's content, never taken from the client's file name,
-  and the stored extension follows the sniffed type. So a `shell.php` renamed to `.jpg`
-  cannot land in the public directory.
-- Allowed: JPEG, PNG, GIF, WebP, AVIF, MP4, WebM, QuickTime (`.mov`), PDF, plain
-  text, CSV, ZIP, and Word, Excel and PowerPoint files (`.doc`, `.docx`, `.xlsx`, `.pptx`).
-- A refused upload in a field (wrong type, too large, not matching the field's `accept`)
-  shows as a field error, and the record is not saved.
-- **SVG is refused** unless `allow_svg` is set: an SVG served from your own domain can
-  run scripts.
+A refused upload in a field (wrong type, too large, not matching `accept`) shows as a field
+error, and the record is not saved.
 
 A content type keyed `assets` keeps working on the site, but its admin list is
 hidden behind the library at `{prefix}/assets`. Rename the type to edit it.
+
+**Usage.** Folio registers its record source with the media core; `AssetReferences` (the
+scanner it uses) stays in Folio and is not deprecated.
 
 **Older uploads:** paths stored before the library existed keep rendering through
 `{prefix}/_uploads`. `php preflow folio:assets:import [--dry-run]` moves them into the
@@ -853,14 +772,6 @@ library:
 - it lists files that are missing;
 - running it again changes nothing.
 
-**SQL storage:** create `folio_assets` with:
-- `uuid` (primary key);
-- `path`, `original_name`, `mime`, `title`, `poster`, `created_at` and `created_by`
-  (TEXT);
-- `size`, `width`, `height`, `focal_x`, `focal_y` and `private` (INTEGER);
-- `duration` (REAL);
-- `alt` and `variants` (TEXT, JSON).
-
 **Dev server:** the PHP built-in server must serve `public/` as its document root for
 `/media` files:
 
@@ -869,6 +780,21 @@ php -S 127.0.0.1:8000 -t public public/index.php
 ```
 
 `public/index.php` should `return false` for existing files under `cli-server`.
+
+**Deprecated in 0.34 (removed in a later release):**
+
+| Old | New |
+|---|---|
+| `Preflow\Folio\Assets\Asset`, `Variant`, `AssetUploadException`, `ImageTag`, `ImageWidths`, `VariantGenerator`, `Image\*` | `Preflow\Media\…` (`Image\*` under `Preflow\Media\Image\`) |
+| `Preflow\Folio\Assets\AssetLibrary` | `Preflow\Media\MediaLibrary` |
+| `folio_image()` | `media_image()` |
+| `folio_asset_url()` | `media_url()` |
+| `config/folio.php` `assets` (library settings) | `config/media.php` (`private_permission` and `private_login` stay in `folio.php`) |
+| `php preflow folio:assets:variants` | `php preflow media:variants` |
+
+The old class names are aliases from `packages/folio/src/legacy-aliases.php`; the old
+template functions and command still work. `config/folio.php` `assets` is read only when
+`config/media.php` is missing, and never merged with it.
 
 ## Extensions
 
@@ -1472,7 +1398,7 @@ Shipped:
 - blocks and singletons;
 - drafts and publishing (autosave, conflicts, revisions, scheduled publishing, share
   links);
-- the asset library (variants, `folio_image()`, picker, usage, legacy import);
+- the asset library (variants, `media_image()`, picker, usage, legacy import);
 - click-to-edit in the live preview;
 - `folio:pull` (live content to local);
 - permissions on every admin action (`can()`, with `preflow/roles` or `preflow/rbac` for roles).

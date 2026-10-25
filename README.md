@@ -36,6 +36,7 @@ Open `http://localhost:8080` — you'll see a working component with a counter.
 | [`preflow/htmx`](packages/htmx) | Hypermedia driver, HTMX implementation, signed component tokens |
 | [`preflow/i18n`](packages/i18n) | Translations, pluralization, locale detection middleware |
 | [`preflow/testing`](packages/testing) | Test utilities for components, routes, data |
+| [`preflow/media`](packages/media) | Asset library: uploads, WebP/AVIF variants, private files, `media_image()` |
 | [`preflow/devtools`](packages/devtools) | CLI commands (serve, migrate, make:component, etc.) |
 | [`preflow/skeleton`](packages/skeleton) | Project starter template |
 

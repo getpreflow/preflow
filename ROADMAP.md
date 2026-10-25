@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-25 (v0.33.0)
+> Last updated: 2026-10-25 (v0.34.0)
 
 ## Current State
 
-**v0.33.0** — 2993 tests, 21 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.34.0** — 3066 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -86,6 +86,14 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 ---
 
 ## Completed
+
+### v0.34.0
+
+- **New package `preflow/media`:** the asset library moved out of Folio into a core of its own: `MediaLibrary`, `Asset`, `Variant`, `ImageTag`, image backends and variant generation, usage sources (`AssetUsage`, `AssetReferenceSource`; the core registers `PosterReferences`, Folio its record source), `MediaServiceProvider` with `config/media.php`, the routes for step-width variants and private files, `media_image()`/`media_url()` and `media:variants`. Requires core, data, view, routing and nyholm/psr7; suggests i18n. Folio is the UI adapter: library screen, asset field, and its `PrivateFileAccess` (permission/login from `config/folio.php` `assets.private_permission` / `assets.private_login`); without a binding the core denies private files with a 403
+- **Core:** `MediaLibrary::delete()` refuses used assets (`AssetInUseException`), `discard()` for an asset created in the same request; with SQL storage `preflow migrate` creates the asset table (`media.table`), no Folio needed. `Container::registerProvider()` ignores a second registration of the same provider class, `hasProvider()` and `bound()` added, `DebugCollector::logDeprecation()`
+- **Deprecated for one release (aliases):** `Preflow\Folio\Assets\…` class names (now `Preflow\Media\…`, `AssetLibrary` is `MediaLibrary`), `folio_image()`/`folio_asset_url()`, `config/folio.php` `assets` (fallback when `config/media.php` is missing, never merged), `folio:assets:variants`. `AssetReferences` stays in Folio
+- Storage and output unchanged: `folio_assets` table, `public/media`, `storage/private-media`, `/media/…`, `/files/{id}`, frontend HTML byte-identical
+- Constraints: media requires core/data/view `^0.34`; folio requires `preflow/media ^0.34` and conflicts with `<0.34`
 
 ### v0.33.0
 
