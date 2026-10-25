@@ -21,6 +21,8 @@ use Preflow\Media\Image\ColorManagement;
 use Preflow\Media\Image\ImageBackends;
 use Preflow\Media\Image\ImageWidths;
 use Preflow\Media\Image\VariantGenerator;
+use Preflow\Media\Preview\PdfPreviewRenderer;
+use Preflow\Media\Preview\PreviewRenderers;
 use Preflow\Media\Usage\AssetUsage;
 use Preflow\Media\Usage\LazyReferenceSource;
 use Preflow\Media\Routing\MediaRoutes;
@@ -35,7 +37,9 @@ use Preflow\View\TemplateFunctionDefinition;
  * fails at boot), the library with its usage sources, the image tag and the
  * locale it renders alt text in. With SQL storage, `preflow migrate` creates the
  * asset table (the media.table step). At boot it adds its routes (private files,
- * missing variants) and the template functions media_image() and media_url().
+ * missing variants) and the template functions media_image(), media_url() and
+ * media_preview_url(). PDF previews come from Ghostscript (PdfPreviewRenderer), as the
+ * fallback of the shared PreviewRenderers, so a site's own renderer wins.
  * Private files are refused until something binds PrivateFileAccess (Folio does).
  * Listed in config/providers.php by a site without Folio; Folio registers it itself.
  */
@@ -61,14 +65,17 @@ final class MediaServiceProvider extends ServiceProvider
             new LazyReferenceSource(PosterReferences::NAME, static fn (): PosterReferences => $container->get(PosterReferences::class)),
             last: true,
         );
+        $colors = new ColorManagement($config->colorProfileCmyk);
+        $container->get(PreviewRenderers::class)->register(new PdfPreviewRenderer($colors, $config->ghostscript), fallback: true);
         $container->singleton(MediaLibrary::class, fn (Container $c) => new MediaLibrary(
             $c->get(DataManager::class),
             self::locales($c),
             $config->dir,
             $config->url,
             $config->toArray() + ['warm_widths' => $c->get(ImageWidths::class)->allowed()],
-            new VariantGenerator(ImageBackends::detect(), $c->get(ImageWidths::class)->eager(), $config->quality, new ColorManagement($config->colorProfileCmyk)),
+            new VariantGenerator(ImageBackends::detect(), $c->get(ImageWidths::class)->eager(), $config->quality, $colors),
             usage: $c->get(AssetUsage::class),
+            previews: $c->get(PreviewRenderers::class),
         ));
         $container->singleton(LocaleProvider::class, fn (Container $c) => new ConfigLocaleProvider(
             static fn (): ?string => self::translatorLocale($c),
@@ -118,6 +125,11 @@ final class MediaServiceProvider extends ServiceProvider
             $engine->addFunction(new TemplateFunctionDefinition(
                 name: 'media_url',
                 callable: fn (mixed $value = null): string => $container->get(ImageTag::class)->url($value),
+            ));
+            // media_preview_url(id): a document's preview URL ('' without one; a private asset's is gated).
+            $engine->addFunction(new TemplateFunctionDefinition(
+                name: 'media_preview_url',
+                callable: fn (mixed $value = null): string => $container->get(ImageTag::class)->previewUrl($value),
             ));
         }
 

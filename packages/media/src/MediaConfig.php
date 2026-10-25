@@ -46,6 +46,8 @@ final readonly class MediaConfig
         public array $filters = [],
         /** The ICC profile for CMYK images without one; null: the shipped FOGRA39 (ColorManagement::DEFAULT_CMYK_PROFILE). */
         public ?string $colorProfileCmyk = null,
+        /** Ghostscript for PDF previews; null: "gs" on PATH or in the usual places. Not found: no previews. */
+        public ?string $ghostscript = null,
     ) {}
 
     public static function fromApp(Application $app, ?DebugCollector $debug = null): self
@@ -86,6 +88,7 @@ final readonly class MediaConfig
             fields: $fields,
             filters: self::filters($values['filters'] ?? null, $fields, $source, $debug),
             colorProfileCmyk: is_string($values['color_profile_cmyk'] ?? null) && $values['color_profile_cmyk'] !== '' ? $values['color_profile_cmyk'] : null,
+            ghostscript: is_string($values['ghostscript'] ?? null) && $values['ghostscript'] !== '' ? $values['ghostscript'] : null,
         );
         if ($config->colorProfileCmyk !== null && (!is_file($config->colorProfileCmyk) || !is_readable($config->colorProfileCmyk))) {
             throw new \RuntimeException("{$config->key('color_profile_cmyk')} ({$config->colorProfileCmyk}) is not a readable file.");
@@ -125,6 +128,7 @@ final readonly class MediaConfig
             'fields' => $this->fields,
             'filters' => $this->filters,
             'color_profile_cmyk' => $this->colorProfileCmyk,
+            'ghostscript' => $this->ghostscript,
         ];
     }
 

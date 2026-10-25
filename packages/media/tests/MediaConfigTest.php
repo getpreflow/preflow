@@ -151,6 +151,18 @@ final class MediaConfigTest extends TestCase
         $this->assertSame($this->dir . '/storage/media-versions', $config->toArray()['versions_dir']);
         $this->assertNull($config->colorProfileCmyk);
         $this->assertNull($config->toArray()['color_profile_cmyk']);
+        $this->assertNull($config->ghostscript);
+        $this->assertNull($config->toArray()['ghostscript']);
+    }
+
+    public function test_ghostscript(): void
+    {
+        $this->write('media.php', ['ghostscript' => '/opt/gs/bin/gs']);
+
+        $config = MediaConfig::fromApp(Application::create($this->dir));
+
+        $this->assertSame('/opt/gs/bin/gs', $config->ghostscript);
+        $this->assertSame('/opt/gs/bin/gs', $config->toArray()['ghostscript']);
     }
 
     public function test_color_profile_cmyk(): void

@@ -21,6 +21,9 @@ use Psr\Http\Message\ServerRequestInterface;
  * {private_url}/{id}/v/{n}: an earlier file of any asset (public or private), with
  * the same gate and headers, confined to the versions directory. Version files are
  * always private: the gate is asked with the asset marked private.
+ *
+ * {private_url}/{id}/preview: a private document's preview (a PNG in the private dir),
+ * with the same gate and headers. A public asset's preview is under the media URL: 404.
  */
 final class PrivateFileController
 {
@@ -65,6 +68,21 @@ final class PrivateFileController
         $name = is_string($version?->meta['original_name'] ?? null) ? $version->meta['original_name'] : '';
 
         return $this->send($this->library->versionFile($id, $number), $this->library->versionsDir(), $version?->mime ?? '', $name);
+    }
+
+    public function servePreview(ServerRequestInterface $request): ResponseInterface
+    {
+        $id = (string) $request->getAttribute('id', '');
+        $asset = $this->library->find($id);
+        $refused = $this->access->decide($request, $asset ?? self::placeholder($id));
+        if ($refused !== null) {
+            return $refused;
+        }
+
+        $file = $asset !== null && $asset->private ? $this->library->previewFile($asset) : null;
+        $name = $asset !== null ? pathinfo($asset->originalName, PATHINFO_FILENAME) . '-preview.png' : '';
+
+        return $this->send($file, $this->library->privateDir(), $file !== null ? 'image/png' : '', $name);
     }
 
     /** The file, if it is inside $dir (realpath), else a 404; never cached. */

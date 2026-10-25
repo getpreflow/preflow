@@ -39,6 +39,12 @@ final class ColorManagement
         $this->cmykProfile = $cmykProfile ?? self::DEFAULT_CMYK_PROFILE;
     }
 
+    /** The profile assigned to CMYK without one (the default or config color_profile_cmyk). */
+    public function cmykProfile(): string
+    {
+        return $this->cmykProfile;
+    }
+
     /** Whether Imagick with lcms is present, so sources can be converted. */
     public function available(): bool
     {

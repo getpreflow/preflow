@@ -13,6 +13,7 @@ use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Media\Image\Orientation;
 use Preflow\Media\Image\VariantGenerator;
+use Preflow\Media\Preview\PreviewRenderers;
 use Preflow\Media\Usage\AssetInUseException;
 use Preflow\Media\Usage\AssetUsage;
 use Psr\Http\Message\UploadedFileInterface;
@@ -32,6 +33,11 @@ use Psr\Http\Message\UploadedFileInterface;
  * gets a versioned name ({id}-v{n}.{ext}), the old one is kept as a version in config
  * "versions_dir" ({versions_dir}/{id}/v{n}.{ext}, never served by the web server;
  * only the gated {private_url}/{id}/v/{n}). Restore is a replace from a version.
+ *
+ * A document a preview renderer supports (a PDF) gets a preview of its first page
+ * on upload, replace and restore: {stem}-preview.png beside its file, in the private
+ * dir for a private asset (served only at the gated {private_url}/{id}/preview).
+ * A public document's variants are its preview's ({stem}-preview-{w}.{fmt}).
  *
  * Deleting refuses an asset that a registered usage source still reports
  * (AssetInUseException), so every UI gets the rule.
@@ -67,6 +73,9 @@ final class MediaLibrary
     /** The note on an image that needs colour management where it is missing. */
     public const string NOTE_NEEDS_IMAGICK = 'needs Imagick for colour-accurate variants';
 
+    /** A preview's long side in pixels (less when max_pixels would not allow a square of it). */
+    public const int PREVIEW_LONG_SIDE = 1600;
+
     /** What a version keeps of the asset besides its file, and what a restore brings back. */
     private const array SNAPSHOT = ['focal_x', 'focal_y'];
 
@@ -87,6 +96,7 @@ final class MediaLibrary
         private readonly ?VariantGenerator $variants = null,
         ?\Closure $now = null,
         private readonly ?AssetUsage $usage = null,
+        private readonly ?PreviewRenderers $previews = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
     }
@@ -736,9 +746,11 @@ final class MediaLibrary
         $work = function () use ($asset): void {
             $current = $this->find($asset->id) ?? $asset; // a replace may have run while we waited
             $this->removeFiles($current);
-            // Leftovers of earlier files ({id}-v2-480.webp, … made on demand during a replace): only this id's names.
-            if (!$current->private && preg_match('#^\d{4}/\d{2}$#', dirname($current->path)) === 1) {
-                foreach (glob($this->absolute(dirname($current->path)) . '/' . $current->id . '-*') ?: [] as $file) {
+            // Leftovers of earlier files ({id}-v2-480.webp made on demand during a replace, a preview
+            // whose record was never saved), in the media or private dir: only this id's names.
+            $base = $current->private ? $this->privateDir() : rtrim($this->dir, '/');
+            if ($base !== null && preg_match('#^\d{4}/\d{2}$#', dirname($current->path)) === 1) {
+                foreach (glob($base . '/' . dirname($current->path) . '/' . $current->id . '-*') ?: [] as $file) {
                     if (is_file($file)) {
                         unlink($file);
                     }
@@ -764,6 +776,10 @@ final class MediaLibrary
         }
         if (!$asset->private) {
             $this->variants?->remove($asset, $this->dir);
+            $preview = $this->previewAsset($asset);
+            if ($preview !== null) {
+                $this->variants?->remove($preview, $this->dir); // also the preview's variants made on demand
+            }
         }
     }
 
@@ -929,11 +945,18 @@ final class MediaLibrary
         return rtrim($this->dir, '/') . '/' . ltrim($relativePath, '/');
     }
 
-    /** A small preview URL: the 480 (else smallest) WebP variant, else the original image; null for other files. */
+    /**
+     * A small preview URL: the 480 (else smallest) WebP variant, else the original image; for a
+     * document its preview's (a private one: the gated preview URL); null for other files.
+     */
     public function thumbnailUrl(Asset $asset): ?string
     {
         if ($asset->kind() !== 'image') {
-            return null;
+            $preview = $this->previewAsset($asset);
+            if ($preview === null || $asset->private) {
+                return $this->previewUrl($asset);
+            }
+            $asset = $preview;
         }
         if ($asset->private) {
             return $this->url($asset); // gated: staff need the private permission (or "*") to see it
@@ -942,6 +965,43 @@ final class MediaLibrary
         usort($webp, static fn (Variant $a, Variant $b) => [$a->width !== 480, $a->width] <=> [$b->width !== 480, $b->width]);
 
         return $this->url(($webp[0] ?? null)?->path ?? $asset->path);
+    }
+
+    /**
+     * A document's preview as an image asset: the preview's path, type and size, and the
+     * asset's variants (a document's variants are its preview's). Null without a preview,
+     * or when the recorded one is not the current file's ({stem}-preview.png).
+     */
+    public function previewAsset(Asset $asset): ?Asset
+    {
+        $preview = $asset->preview;
+        $stem = substr($asset->path, 0, (int) strrpos($asset->path, '.'));
+        if ($preview === null || $asset->kind() === 'image' || $stem === '' || $preview->path !== $stem . '-preview.png') {
+            return null;
+        }
+
+        return new Asset(...[...get_object_vars($asset), 'path' => $preview->path, 'mime' => 'image/png', 'width' => $preview->width, 'height' => $preview->height]);
+    }
+
+    /** The preview's URL: under the media URL, or the gated {private_url}/{id}/preview of a private asset; null without one. */
+    public function previewUrl(Asset $asset): ?string
+    {
+        $preview = $this->previewAsset($asset);
+        if ($preview === null) {
+            return null;
+        }
+
+        return $asset->private
+            ? rtrim((string) ($this->config['private_url'] ?? '/files'), '/') . '/' . $asset->id . '/preview'
+            : $this->url($preview->path);
+    }
+
+    /** The preview's file on disk (unchecked, as file()); null without a preview. */
+    public function previewFile(Asset $asset): ?string
+    {
+        $preview = $this->previewAsset($asset);
+
+        return $preview === null ? null : $this->fileAt($asset, $preview->path);
     }
 
     /** True for the id of an existing asset (never for a path). */
@@ -1000,17 +1060,22 @@ final class MediaLibrary
     /**
      * The hook for everything derived from the asset's current file, run once the
      * record points at the complete file: after an upload, a replace and a restore.
-     * Today it makes the variants of a public image; later the preview and colours.
-     * Returns the asset as saved.
+     * It makes a document's preview, then the variants of a public image or of a
+     * public document's preview. Returns the asset as saved.
      */
     private function afterFileChange(Asset $asset): Asset
     {
+        $asset = $this->makePreview($asset);
         if ($asset->private) {
             return $asset; // no variants: they would be public files
         }
+        $source = $asset->kind() === 'image' ? $asset : $this->previewAsset($asset);
+        if ($source === null) {
+            return $asset;
+        }
         $data = $asset->toData();
-        $data['variants'] = array_map(static fn (Variant $v) => $v->toArray(), $this->generateVariants($asset));
-        if ($this->lacksColorManagement($asset)) {
+        $data['variants'] = array_map(static fn (Variant $v) => $v->toArray(), $this->generateVariants($source));
+        if ($this->lacksColorManagement($source)) {
             // Never shown in wrong colours: the original only, and the reason on the asset.
             $data['note'] = self::NOTE_NEEDS_IMAGICK;
         } elseif ($data['variants'] === []) {
@@ -1020,10 +1085,50 @@ final class MediaLibrary
         // Optional: make the step widths now, so a page full of new images does not
         // start many encodes at once on its first view (assets.warm_on_upload).
         if (($this->config['warm_on_upload'] ?? false) === true && is_array($this->config['warm_widths'] ?? null)) {
-            $this->warm($asset, array_values(array_map('intval', $this->config['warm_widths'])));
+            $this->warm($this->previewAsset($asset) ?? $asset, array_values(array_map('intval', $this->config['warm_widths'])));
         }
 
         return $asset;
+    }
+
+    /**
+     * A document's preview from the renderer for its type, stored beside its file as
+     * {stem}-preview.png. The renderer only ever gets the asset's own path. Any failure
+     * (no renderer, a broken or encrypted file, the time limit) leaves the asset without
+     * a preview; the upload stands.
+     */
+    private function makePreview(Asset $asset): Asset
+    {
+        $renderer = $asset->kind() === 'image' ? null : $this->previews?->for($asset->mime);
+        $file = $renderer !== null ? $this->file($asset) : null;
+        if ($renderer === null || $file === null || !is_file($file)) {
+            return $asset;
+        }
+        $longSide = min(self::PREVIEW_LONG_SIDE, (int) floor(sqrt(max(1, (int) ($this->config['max_pixels'] ?? self::DEFAULT_MAX_PIXELS)))));
+        try {
+            $tmp = $renderer->render($file, $longSide);
+        } catch (\Throwable $e) {
+            error_log("preflow/media: no preview of asset {$asset->id}: " . $e::class . ': ' . $e->getMessage());
+
+            return $asset;
+        }
+        if ($tmp === null) {
+            return $asset;
+        }
+        try {
+            $size = @getimagesize($tmp);
+            $path = substr($asset->path, 0, (int) strrpos($asset->path, '.')) . '-preview.png';
+            $dest = $this->fileAt($asset, $path);
+            if (!is_array($size) || $size[2] !== IMAGETYPE_PNG || $dest === null || !self::writeAtomically($dest, null, $tmp)) {
+                return $asset;
+            }
+        } finally {
+            @unlink($tmp);
+        }
+        $data = $asset->toData();
+        $data['preview'] = (new Preview($path, (int) $size[0], (int) $size[1]))->toArray();
+
+        return $this->save($data);
     }
 
     /**
