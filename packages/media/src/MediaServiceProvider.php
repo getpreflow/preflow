@@ -38,8 +38,8 @@ use Preflow\View\TemplateFunctionDefinition;
  * locale it renders alt text in. With SQL storage, `preflow migrate` creates the
  * asset table (the media.table step). At boot it adds its routes (private files,
  * missing variants) and the template functions media_image(), media_url() and
- * media_preview_url(). PDF previews come from Ghostscript (PdfPreviewRenderer), as the
- * fallback of the shared PreviewRenderers, so a site's own renderer wins.
+ * media_preview_url(). PDF previews come from Ghostscript or pdftocairo (PdfPreviewRenderer),
+ * as the fallback of the shared PreviewRenderers, so a site's own renderer wins.
  * Private files are refused until something binds PrivateFileAccess (Folio does).
  * Listed in config/providers.php by a site without Folio; Folio registers it itself.
  */
@@ -66,7 +66,7 @@ final class MediaServiceProvider extends ServiceProvider
             last: true,
         );
         $colors = new ColorManagement($config->colorProfileCmyk);
-        $container->get(PreviewRenderers::class)->register(new PdfPreviewRenderer($colors, $config->ghostscript), fallback: true);
+        $container->get(PreviewRenderers::class)->register(new PdfPreviewRenderer($colors, $config->ghostscript, pdftocairo: $config->pdftocairo), fallback: true);
         $container->singleton(MediaLibrary::class, fn (Container $c) => new MediaLibrary(
             $c->get(DataManager::class),
             self::locales($c),

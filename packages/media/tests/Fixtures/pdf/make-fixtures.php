@@ -19,6 +19,8 @@ $here = __DIR__;
 $icc = dirname(__DIR__, 3) . '/resources/icc';
 $cmykProfile = $icc . '/FOGRA39L_coated.icc';
 $srgbProfile = $icc . '/sRGB.icc';
+// colord's SNAP TR002 newsprint (CC0): an output intent far from the default FOGRA39.
+$newsprintProfile = $here . '/SNAP_TR002_newsprint.icc';
 
 const COLUMNS = 4;
 const ROWS = 2;
@@ -107,15 +109,17 @@ file_put_contents($here . '/rgb.pdf', pdf([
     stream(patches($rgbFills, 600, 400)),
 ]));
 
-// CMYK for print, 400 × 200 pt: DeviceCMYK patches and a PDF/X output intent carrying FOGRA39L.
-file_put_contents($here . '/cmyk-print.pdf', pdf([
+// CMYK for print, 400 × 200 pt: DeviceCMYK patches and a PDF/X output intent carrying the profile.
+$print = static fn (string $profile, string $condition, string $info): string => pdf([
     '<< /Type /Catalog /Pages 2 0 R /OutputIntents [5 0 R] >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
     '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 200] /TrimBox [0 0 400 200] /Contents 4 0 R /Resources << >> >>',
     stream(patches($cmykFills, 400, 200)),
-    '<< /Type /OutputIntent /S /GTS_PDFX /OutputConditionIdentifier (FOGRA39) /Info (Coated FOGRA39) /RegistryName (http://www.color.org) /DestOutputProfile 6 0 R >>',
-    stream((string) file_get_contents($cmykProfile), '/N 4'),
-]));
+    "<< /Type /OutputIntent /S /GTS_PDFX /OutputConditionIdentifier ({$condition}) /Info ({$info}) /RegistryName (http://www.color.org) /DestOutputProfile 6 0 R >>",
+    stream((string) file_get_contents($profile), '/N 4'),
+]);
+file_put_contents($here . '/cmyk-print.pdf', $print($cmykProfile, 'FOGRA39', 'Coated FOGRA39'));
+file_put_contents($here . '/cmyk-newsprint.pdf', $print($newsprintProfile, 'SNAP TR002', 'Newsprint SNAP TR002'));
 
 // Broken: a PDF header, then the file stops in the middle of an object.
 file_put_contents($here . '/broken.pdf', "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R\n2 0 obj << /Kids [3 0");
@@ -123,12 +127,16 @@ file_put_contents($here . '/broken.pdf', "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /
 // Encrypted with a user password: the first page cannot be read without it.
 run(['gs', '-q', '-dNOPAUSE', '-dBATCH', '-dSAFER', '-sDEVICE=pdfwrite', '-sOwnerPassword=owner-secret', '-sUserPassword=user-secret', '-dEncryptionR=3', '-dKeyLength=128', '-dPermissions=-4', '-o', $here . '/encrypted.pdf', $here . '/rgb.pdf']);
 
-// References: each CMYK patch converted by the CLI, from FOGRA39L into sRGB.
-$references = [];
-foreach ($cmyk as $c) {
-    $out = run(['magick', '-size', '1x1', 'xc:' . vsprintf('cmyk(%d%%,%d%%,%d%%,%d%%)', $c), '-profile', $cmykProfile, '-intent', 'relative', '-black-point-compensation', '-profile', $srgbProfile, '-depth', '16', '-format', '%[fx:r*255],%[fx:g*255],%[fx:b*255]', 'info:']);
-    $references[] = array_map(static fn (string $v): int => max(0, min(255, (int) round((float) $v))), explode(',', trim($out)));
-}
+// References: each CMYK patch converted by the CLI, from the output intent's profile into sRGB.
+$references = static function (string $profile) use ($cmyk, $srgbProfile): array {
+    $values = [];
+    foreach ($cmyk as $c) {
+        $out = run(['magick', '-size', '1x1', 'xc:' . vsprintf('cmyk(%d%%,%d%%,%d%%,%d%%)', $c), '-profile', $profile, '-intent', 'relative', '-black-point-compensation', '-profile', $srgbProfile, '-depth', '16', '-format', '%[fx:r*255],%[fx:g*255],%[fx:b*255]', 'info:']);
+        $values[] = array_map(static fn (string $v): int => max(0, min(255, (int) round((float) $v))), explode(',', trim($out)));
+    }
+
+    return $values;
+};
 $centres = [];
 for ($r = 0; $r < ROWS; $r++) {
     for ($c = 0; $c < COLUMNS; $c++) {
@@ -137,11 +145,14 @@ for ($r = 0; $r < ROWS; $r++) {
 }
 
 file_put_contents($here . '/references.json', json_encode([
-    'about' => 'cmyk-print.pdf: its CMYK patches in sRGB (0-255), converted by the ImageMagick CLI from FOGRA39L with relative colorimetric intent and black-point compensation. Made by make-fixtures.php.',
+    'about' => 'The CMYK patches of each print PDF in sRGB (0-255), converted by the ImageMagick CLI from its output intent profile with relative colorimetric intent and black-point compensation. Made by make-fixtures.php.',
     'columns' => COLUMNS,
     'rows' => ROWS,
     'centres' => $centres,
     'cmyk' => $cmyk,
-    'srgb' => $references,
+    'files' => [
+        'cmyk-print.pdf' => ['intent' => 'FOGRA39L_coated', 'srgb' => $references($cmykProfile)],
+        'cmyk-newsprint.pdf' => ['intent' => 'SNAP_TR002_newsprint', 'srgb' => $references($newsprintProfile)],
+    ],
 ], JSON_PRETTY_PRINT) . "\n");
 echo "Wrote the PDF fixtures and references.json in {$here}\n";

@@ -880,7 +880,7 @@ final class MediaLibrary
     /** Replace an image's variants (e.g. after the configured widths changed). */
     public function regenerate(Asset $asset): Asset
     {
-        if ($this->variants === null || $asset->private) {
+        if ($this->variants === null || $asset->private || $asset->kind() !== 'image') {
             return $asset;
         }
         $this->variants->remove($asset, $this->dir);
@@ -892,6 +892,43 @@ final class MediaLibrary
         }
 
         return $this->save($data);
+    }
+
+    /**
+     * Make a document's preview (and a public one's preview variants) again from its
+     * current file, e.g. for documents uploaded before previews existed (media:previews).
+     * The old preview goes first. Without a renderer for the type, or for an image, the
+     * asset is returned as it is; a render that fails leaves it without a preview.
+     */
+    public function remakePreview(Asset $asset): Asset
+    {
+        if ($asset->kind() === 'image' || $this->previews?->for($asset->mime) === null) {
+            return $asset;
+        }
+        $work = function () use ($asset): Asset {
+            $current = $this->find($asset->id) ?? $asset; // a replace may have run while we waited
+            $files = [$current->preview !== null ? $this->fileAt($current, $current->preview->path) : null];
+            if (!$current->private) {
+                $files = [...$files, ...array_map(fn (Variant $v) => $this->absolute($v->path), $current->variants)];
+                $preview = $this->previewAsset($current);
+                if ($preview !== null) {
+                    $this->variants?->remove($preview, $this->dir);
+                }
+            }
+            $data = $current->toData();
+            $data['preview'] = [];
+            $data['variants'] = [];
+            $saved = $this->save($data); // first: the record never points at a removed preview
+            foreach ($files as $file) {
+                if ($file !== null && is_file($file)) {
+                    unlink($file);
+                }
+            }
+
+            return $this->afterFileChange($saved);
+        };
+
+        return $this->versionsDir() !== null ? $this->locked($asset->id, $work, required: false) : $work();
     }
 
     /** The URL of an asset (a private one: only the gated {private_url}/{id}) or of a path under the media URL. */

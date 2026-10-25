@@ -57,9 +57,19 @@ final class PdfPreviewTest extends TestCase
 
     private function requireGhostscript(): void
     {
-        if (PdfPreviewRenderer::findGhostscript() === null) {
-            $this->markTestSkipped('No Ghostscript (gs) on this machine.');
+        if ((new PdfPreviewRenderer())->engine() === null) {
+            $this->markTestSkipped('No PDF renderer (Ghostscript or pdftocairo) on this machine.');
         }
+    }
+
+    /** An executable shell script standing in for gs: --version prints $version, anything else runs $body. */
+    private function stubGs(string $version, string $body): string
+    {
+        $stub = $this->assetRoot . '/gs-' . bin2hex(random_bytes(3));
+        file_put_contents($stub, "#!/bin/sh\nif [ \"\$1\" = \"--version\" ]; then echo x >> {$stub}.version-calls; echo {$version}; exit 0; fi\n{$body}\n");
+        chmod($stub, 0755);
+
+        return $stub;
     }
 
     private function renderers(?PreviewRenderer $renderer = null): PreviewRenderers
@@ -142,12 +152,23 @@ final class PdfPreviewTest extends TestCase
         $this->assertSame('/media/' . $asset->path, $library->url($asset)); // the PDF stays the PDF
     }
 
-    #[RequiresPhpExtension('imagick')]
-    public function test_a_cmyk_print_pdf_matches_its_reference_patches(): void
+    /** @return iterable<string, array{string}> */
+    public static function printPdfs(): iterable
     {
-        $this->requireGhostscript();
-        $asset = $this->lib()->upload($this->upload($this->pdf('cmyk-print.pdf'), 'print.pdf'), null);
+        yield 'FOGRA39 intent (the default profile)' => ['cmyk-print.pdf'];
+        yield 'newsprint intent (not the default)' => ['cmyk-newsprint.pdf'];
+    }
+
+    #[DataProvider('printPdfs')]
+    #[RequiresPhpExtension('imagick')]
+    public function test_a_cmyk_print_pdf_matches_its_reference_patches(string $name): void
+    {
+        if ((new PdfPreviewRenderer())->engine() !== PdfPreviewRenderer::GHOSTSCRIPT) {
+            $this->markTestSkipped('Needs Ghostscript ' . PdfPreviewRenderer::GHOSTSCRIPT_FLOOR . ' or later (pdftocairo ignores the output intent).');
+        }
+        $asset = $this->lib()->upload($this->upload($this->pdf($name), 'print.pdf'), null);
         $reference = json_decode($this->pdf('references.json'), true, flags: JSON_THROW_ON_ERROR);
+        $expected = $reference['files'][$name]['srgb'];
 
         $this->assertNotNull($asset->preview);
         $this->assertSame([1600, 800], [$asset->preview->width, $asset->preview->height]);
@@ -155,7 +176,7 @@ final class PdfPreviewTest extends TestCase
         foreach ($reference['centres'] as $i => [$x, $y]) {
             $pixel = $image->getImagePixelColor((int) ($x * 1600), (int) ($y * 800))->getColor();
             $actual = [$pixel['r'], $pixel['g'], $pixel['b']];
-            $this->assertLessThan(3.0, self::deltaE2000($reference['srgb'][$i], $actual), sprintf('patch %d: expected rgb(%s), got rgb(%s)', $i, implode(',', $reference['srgb'][$i]), implode(',', $actual)));
+            $this->assertLessThan(3.0, self::deltaE2000($expected[$i], $actual), sprintf('patch %d: expected rgb(%s), got rgb(%s)', $i, implode(',', $expected[$i]), implode(',', $actual)));
         }
     }
 
@@ -185,10 +206,8 @@ final class PdfPreviewTest extends TestCase
     public function test_rendering_is_aborted_at_the_time_limit(): void
     {
         $this->assertSame(30, PdfPreviewRenderer::TIME_LIMIT);
-        // A Ghostscript that never finishes.
-        $stub = $this->assetRoot . '/slow-gs';
-        file_put_contents($stub, "#!/bin/sh\nexec sleep 20\n");
-        chmod($stub, 0755);
+        // A (safe) Ghostscript that never finishes.
+        $stub = $this->stubGs('10.08.0', 'exec sleep 20');
         $library = $this->lib($this->renderers(new PdfPreviewRenderer(new ColorManagement(), $stub, timeLimit: 1)));
         $started = microtime(true);
 
@@ -201,6 +220,8 @@ final class PdfPreviewTest extends TestCase
 
     public function test_a_renderer_that_throws_leaves_the_upload_alone(): void
     {
+        $log = $this->assetRoot . '/error.log';
+        $previous = ini_set('error_log', $log);
         $library = $this->lib($this->renderers(new class implements PreviewRenderer {
             public function supports(string $mime): bool
             {
@@ -213,24 +234,85 @@ final class PdfPreviewTest extends TestCase
             }
         }));
 
-        $asset = $library->upload($this->upload($this->pdf('rgb.pdf'), 'a.pdf'), null);
+        try {
+            $asset = $library->upload($this->upload($this->pdf('rgb.pdf'), 'a.pdf'), null);
+        } finally {
+            ini_set('error_log', (string) $previous);
+        }
 
         $this->assertNull($asset->preview);
         $this->assertFileExists($library->file($asset));
+        $this->assertStringContainsString("preflow/media: no preview of asset {$asset->id}: RuntimeException: boom", (string) file_get_contents($log));
     }
 
-    public function test_without_ghostscript_there_is_no_renderer(): void
+    public function test_without_ghostscript_or_pdftocairo_there_is_no_renderer(): void
     {
-        $renderer = new PdfPreviewRenderer(new ColorManagement(), $this->assetRoot . '/no-such-gs');
+        $renderer = new PdfPreviewRenderer(new ColorManagement(), $this->assetRoot . '/no-such-gs', pdftocairo: $this->assetRoot . '/no-such-pdftocairo');
         $this->assertFalse($renderer->supports('application/pdf'));
+        $this->assertNull($renderer->engine());
         $asset = $this->lib($this->renderers($renderer))->upload($this->upload($this->pdf('rgb.pdf'), 'a.pdf'), null);
 
         $this->assertNull($asset->preview);
     }
 
+    public function test_a_ghostscript_below_the_floor_is_never_run_and_pdftocairo_renders(): void
+    {
+        $cairo = PdfPreviewRenderer::findBinary('pdftocairo');
+        if ($cairo === null) {
+            $this->markTestSkipped('No pdftocairo on this machine.');
+        }
+        $marker = $this->assetRoot . '/old-gs-ran';
+        $old = $this->stubGs('9.27', "touch {$marker}; exit 1");
+        $renderer = new PdfPreviewRenderer(new ColorManagement(), $old);
+        $this->assertSame('9.27', PdfPreviewRenderer::ghostscriptVersion($old));
+        $this->assertSame(PdfPreviewRenderer::PDFTOCAIRO, $renderer->engine());
+
+        $asset = $this->lib($this->renderers($renderer))->upload($this->upload($this->pdf('rgb.pdf'), 'a.pdf'), null);
+
+        $this->assertSame([1600, 1067], [$asset->preview?->width, $asset->preview?->height]);
+        $this->assertFileDoesNotExist($marker);
+        if (class_exists(\Imagick::class)) {
+            $this->assertSame([], (new \Imagick($this->assetRoot . '/media/' . $asset->preview->path))->getImageProfiles('icc'));
+        }
+        // The version is read once per process.
+        PdfPreviewRenderer::ghostscriptVersion($old);
+        (new PdfPreviewRenderer(new ColorManagement(), $old))->engine();
+        $this->assertSame(1, count(file($old . '.version-calls') ?: []));
+    }
+
+    public function test_a_ghostscript_below_the_floor_without_pdftocairo_makes_no_preview(): void
+    {
+        $marker = $this->assetRoot . '/old-gs-ran';
+        $renderer = new PdfPreviewRenderer(new ColorManagement(), $this->stubGs('9.27', "touch {$marker}; exit 1"), pdftocairo: $this->assetRoot . '/no-such-pdftocairo');
+
+        $asset = $this->lib($this->renderers($renderer))->upload($this->upload($this->pdf('rgb.pdf'), 'a.pdf'), null);
+
+        $this->assertNull($renderer->engine());
+        $this->assertNull($asset->preview);
+        $this->assertFileDoesNotExist($marker);
+    }
+
+    public function test_a_ghostscript_from_the_floor_on_is_used(): void
+    {
+        $gs = PdfPreviewRenderer::findBinary('gs');
+        if ($gs === null || version_compare((string) PdfPreviewRenderer::ghostscriptVersion($gs), PdfPreviewRenderer::GHOSTSCRIPT_FLOOR, '<')) {
+            $this->markTestSkipped('Needs Ghostscript ' . PdfPreviewRenderer::GHOSTSCRIPT_FLOOR . ' or later.');
+        }
+        $marker = $this->assetRoot . '/gs-ran';
+        $stub = $this->stubGs('10.08.0', "touch {$marker}; exec " . escapeshellarg($gs) . ' "$@"');
+        $renderer = new PdfPreviewRenderer(new ColorManagement(), $stub, pdftocairo: $this->assetRoot . '/no-such-pdftocairo');
+        $this->assertSame(PdfPreviewRenderer::GHOSTSCRIPT, $renderer->engine());
+
+        $asset = $this->lib($this->renderers($renderer))->upload($this->upload($this->pdf('rgb.pdf'), 'a.pdf'), null);
+
+        $this->assertFileExists($marker);
+        $this->assertSame([1600, 1067], [$asset->preview?->width, $asset->preview?->height]);
+        $this->assertSame('10.03.1', PdfPreviewRenderer::GHOSTSCRIPT_FLOOR);
+    }
+
     public function test_the_registry_asks_site_renderers_before_the_fallback(): void
     {
-        $pdf = new PdfPreviewRenderer(new ColorManagement(), $this->assetRoot . '/no-such-gs');
+        $pdf = new PdfPreviewRenderer(new ColorManagement(), $this->assetRoot . '/no-such-gs', pdftocairo: $this->assetRoot . '/no-such-pdftocairo');
         $site = new class implements PreviewRenderer {
             public function supports(string $mime): bool
             {
@@ -321,6 +403,20 @@ final class PdfPreviewTest extends TestCase
 
         $library->delete($asset->id);
         $this->assertSame([], $this->filesUnder($this->assetRoot . '/media'));
+    }
+
+    public function test_regenerate_leaves_a_document_alone(): void
+    {
+        $this->requireGhostscript();
+        $library = $this->lib();
+        $asset = $library->upload($this->upload($this->pdf('rgb.pdf'), 'a.pdf'), null);
+        $this->assertNotSame([], $asset->variants);
+
+        $this->assertEquals($asset, $library->regenerate($asset));
+        $this->assertEquals($asset, $library->find($asset->id));
+        foreach ($asset->variants as $variant) {
+            $this->assertFileExists($this->assetRoot . '/media/' . $variant->path);
+        }
     }
 
     public function test_a_private_replace_removes_the_old_private_preview(): void
