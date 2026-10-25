@@ -27,6 +27,8 @@ final class ColorRules
 
     /**
      * The asset's colours, rgb as "r,g,b" (no spaces, for rgba(var(…), a)); null when it has none.
+     * The palette holds 1-8 colours that occur in the image, most significant first: fewer
+     * than 5 for an image with fewer distinct colours (a flat one has just its colour).
      *
      * @return ?array{color: string, rgb: string, palette: list<string>, palette_rgb: list<string>, text: string}
      */

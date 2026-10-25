@@ -48,13 +48,16 @@ final class ColorsCommandTest extends TestCase
         return $this->media()->find($asset->id);
     }
 
-    /** @return array{0: int, 1: string} */
+    /** @return array{0: int, 1: string, 2: string} exit code, stdout, stderr */
     private function runCommand(array $args): array
     {
+        $stderr = fopen('php://memory', 'w+');
         ob_start();
-        $code = (new ColorsCommand(fn () => $this->mediaApp()))->execute($args);
+        $code = (new ColorsCommand(fn () => $this->mediaApp(), $stderr))->execute($args);
+        $out = (string) ob_get_clean();
+        rewind($stderr);
 
-        return [$code, (string) ob_get_clean()];
+        return [$code, $out, (string) stream_get_contents($stderr)];
     }
 
     public function test_the_package_lists_the_command(): void
@@ -81,7 +84,7 @@ final class ColorsCommandTest extends TestCase
         $this->assertSame('#ffffff', $this->media()->find($blue->id)?->textColor);
         $this->assertSame('#ffc107', $this->media()->find($amber->id)?->color);
         $this->assertSame('#000000', $this->media()->find($amber->id)?->textColor);
-        $this->assertGreaterThanOrEqual(5, count($this->media()->find($amber->id)?->palette ?? []));
+        $this->assertSame(['#ffc107'], $this->media()->find($amber->id)?->palette);
         $this->assertEquals($done, $this->media()->find($done->id));
     }
 
@@ -98,6 +101,18 @@ final class ColorsCommandTest extends TestCase
         $this->assertNull($this->media()->find($other->id)?->color);
     }
 
+    public function test_id_of_an_unknown_asset_or_one_without_an_image_fails(): void
+    {
+        $text = $this->media()->upload((new Psr17Factory())->createUploadedFile((new Psr17Factory())->createStream('plain text'), 10, UPLOAD_ERR_OK, 'a.txt'), null);
+        $unknown = str_repeat('0', 32);
+
+        [$code, $out, $err] = $this->runCommand(['--id=' . $unknown]);
+        $this->assertSame([1, '', "Asset {$unknown} not found.\n"], [$code, $out, $err]);
+
+        [$code, $out, $err] = $this->runCommand(['--id=' . $text->id]);
+        $this->assertSame([1, '', "Asset {$text->id} has no image to read colours from.\n"], [$code, $out, $err]);
+    }
+
     public function test_without_options_it_says_how_to_use_it(): void
     {
         [$code, $out] = $this->runCommand([]);
@@ -110,9 +125,15 @@ final class ColorsCommandTest extends TestCase
     {
         $asset = $this->withColors($this->image([25, 118, 210], 'a.png'));
         file_put_contents($this->dir . '/public/media/' . $asset->path, 'broken');
+        $log = $this->dir . '/error.log';
+        $previous = ini_set('error_log', $log);
+        try {
+            [$code, $out] = $this->runCommand(['--all']);
+        } finally {
+            ini_set('error_log', (string) $previous);
+        }
 
-        [$code, $out] = $this->runCommand(['--all']);
-
+        $this->assertStringContainsString("preflow/media: no colours of asset {$asset->id}", (string) @file_get_contents($log));
         $this->assertSame(0, $code);
         $this->assertSame("Extracted the colours of 0 assets.\n1 asset could not be read (unreadable, or it needs Imagick for its colour profile).\n", $out);
     }

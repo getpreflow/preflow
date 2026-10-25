@@ -7,15 +7,15 @@ namespace Preflow\Media\Color;
 use Preflow\Media\Image\ColorManagement;
 
 /**
- * An image's colours as people see them: the dominant colour, a palette of 5-8
- * colours (most significant first) and the text colour (#ffffff or #000000, whichever
+ * An image's colours as people see them: the dominant colour, a palette of up to 8
+ * colours that occur in the image (most significant first; fewer than 5 when the image
+ * has fewer distinct colours, never made up) and the text colour (#ffffff or #000000, whichever
  * has the higher WCAG contrast on the dominant one).
  *
  * Read from a copy of at most 200 px: Imagick quantises it to 16 colours, or, without
  * Imagick, a GD histogram of 4096 bins does. Both are then merged into clusters of
  * similar colours (CIELAB distance), ranked by how many pixels they cover. Mostly
- * transparent pixels do not count. An image with fewer than five distinct colours gets
- * tints and shades of its own to fill the palette.
+ * transparent pixels do not count.
  */
 final class ColorExtractor
 {
@@ -26,13 +26,8 @@ final class ColorExtractor
 
     private const int MAX_PALETTE = 8;
 
-    private const int MIN_PALETTE = 5;
-
     /** Colours closer than this (CIE76 ΔE) are one cluster. */
     private const float MERGE = 12.0;
-
-    /** Fill colours closer than this to one in the palette are left out. */
-    private const float DISTINCT = 3.0;
 
     private readonly bool $imagick;
 
@@ -189,8 +184,7 @@ final class ColorExtractor
     }
 
     /**
-     * Counted colours merged into clusters, most pixels first; then the palette filled
-     * up to five.
+     * Counted colours merged into clusters, most pixels first.
      *
      * @param list<array{float, float, float, int}> $points
      * @return ?array{color: string, palette: list<string>, text: string} null without points
@@ -229,41 +223,8 @@ final class ColorExtractor
                 break;
             }
         }
-        $palette = self::filled($palette);
 
         return ['color' => $palette[0], 'palette' => $palette, 'text' => self::textColor($palette[0])];
-    }
-
-    /**
-     * Fewer than five colours: tints and shades of them (mixed with white and with
-     * black), the most significant colour's first, leaving out near duplicates.
-     *
-     * @param non-empty-list<string> $palette
-     * @return list<string>
-     */
-    private static function filled(array $palette): array
-    {
-        $base = $palette;
-        foreach ([0.5, 0.25, 0.75, 0.125, 0.875] as $amount) {
-            foreach ($base as $hex) {
-                foreach ([[255, 255, 255], [0, 0, 0]] as $with) {
-                    if (count($palette) >= self::MIN_PALETTE) {
-                        return $palette;
-                    }
-                    $rgb = self::rgb($hex);
-                    $mix = self::hex(array_map(static fn (int $c, int $w) => $c + ($w - $c) * $amount, $rgb, $with));
-                    $lab = self::lab(self::rgb($mix));
-                    foreach ($palette as $existing) {
-                        if (self::distance(self::lab(self::rgb($existing)), $lab) < self::DISTINCT) {
-                            continue 2;
-                        }
-                    }
-                    $palette[] = $mix;
-                }
-            }
-        }
-
-        return $palette;
     }
 
     /** @param array<int|float> $rgb */

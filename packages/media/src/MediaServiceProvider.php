@@ -135,6 +135,7 @@ final class MediaServiceProvider extends ServiceProvider
                 callable: fn (mixed $value = null): string => $container->get(ImageTag::class)->previewUrl($value),
             ));
             // media_colors(id): {color, rgb: 'r,g,b', palette, palette_rgb, text}, or null without colours.
+            // The palette has 1-8 colours of the image, most significant first (fewer than 5 for a plain image).
             $engine->addFunction(new TemplateFunctionDefinition(
                 name: 'media_colors',
                 callable: fn (mixed $value = null): ?array => $container->get(ImageTag::class)->colors($value),

@@ -17,9 +17,13 @@ use Preflow\Media\MediaLibrary;
  */
 final class ColorsCommand implements CommandInterface
 {
-    /** @param (\Closure(): Application)|null $appFactory returns a booted application (tests) */
+    /**
+     * @param (\Closure(): Application)|null $appFactory returns a booted application (tests)
+     * @param resource|null                  $stderr     error stream (default STDERR)
+     */
     public function __construct(
         private readonly ?\Closure $appFactory = null,
+        private readonly mixed $stderr = null,
     ) {}
 
     public function getName(): string { return 'media:colors'; }
@@ -41,10 +45,23 @@ final class ColorsCommand implements CommandInterface
 
         $library = $this->app()->container()->get(MediaLibrary::class);
         $assets = $id !== null ? array_filter([$library->find($id)]) : $library->all();
+        if ($id !== null && $assets === []) {
+            fwrite($this->stderr ?? STDERR, "Asset {$id} not found.\n");
+
+            return 1;
+        }
         $made = 0;
         $failed = 0;
         foreach ($assets as $asset) {
-            if (($id === null && $asset->color !== null) || ($asset->kind() !== 'image' && $asset->preview === null) || $asset->mime === 'image/svg+xml') {
+            if (($asset->kind() !== 'image' && $asset->preview === null) || $asset->mime === 'image/svg+xml') {
+                if ($id !== null) {
+                    fwrite($this->stderr ?? STDERR, "Asset {$id} has no image to read colours from.\n");
+
+                    return 1;
+                }
+                continue;
+            }
+            if ($id === null && $asset->color !== null) {
                 continue;
             }
             $library->extractColors($asset) !== null ? $made++ : $failed++;

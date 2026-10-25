@@ -74,6 +74,7 @@ final class ImageTag
 
     /**
      * An asset value's colours (see ColorRules::data()); null without an asset or colours.
+     * The palette has 1-8 entries, possibly fewer than 5 (only colours in the image).
      *
      * @return ?array{color: string, rgb: string, palette: list<string>, palette_rgb: list<string>, text: string}
      */

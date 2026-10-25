@@ -72,6 +72,36 @@ final class ColorExtractorTest extends TestCase
         $this->assertLessThan($limit, self::deltaE2000($expected, self::rgb($hex)), "{$hex} is too far from rgb(" . implode(',', $expected) . ')');
     }
 
+    /** 1-8 entries, each one of the two blocks' colours (nothing made up). */
+    private function assertOnlyImageColours(array $palette, float $limit): void
+    {
+        $this->assertGreaterThanOrEqual(1, count($palette));
+        $this->assertLessThanOrEqual(8, count($palette));
+        foreach ($palette as $hex) {
+            $nearest = min(self::deltaE2000(self::BLUE, self::rgb($hex)), self::deltaE2000(self::AMBER, self::rgb($hex)));
+            $this->assertLessThan($limit, $nearest, "{$hex} is not in the image");
+        }
+    }
+
+    /** Photo-like: hues across, light to dark down. */
+    private function gradient(): string
+    {
+        $image = imagecreatetruecolor(600, 400);
+        for ($x = 0; $x < 600; $x++) {
+            $h = $x / 600 * 6;
+            $f = $h - floor($h);
+            [$r, $g, $b] = [[1, $f, 0], [1 - $f, 1, 0], [0, 1, $f], [0, 1 - $f, 1], [$f, 0, 1], [1, 0, 1 - $f]][(int) $h];
+            for ($y = 0; $y < 400; $y += 4) {
+                $l = 1 - $y / 400 * 0.8;
+                imagefilledrectangle($image, $x, $y, $x, $y + 3, (int) imagecolorallocate($image, (int) ($r * 255 * $l), (int) ($g * 255 * $l), (int) ($b * 255 * $l)));
+            }
+        }
+        ob_start();
+        imagepng($image);
+
+        return (string) ob_get_clean();
+    }
+
     private function library(array $config = [], ?ColorExtractor $colors = null, ?PreviewRenderers $previews = null): MediaLibrary
     {
         $dm = new DataManager(drivers: ['json' => new JsonFileDriver($this->assetRoot . '/store')], defaultDriver: 'json');
@@ -87,8 +117,7 @@ final class ColorExtractorTest extends TestCase
         $this->assertNear(self::BLUE, $colors['color'], 5);
         $this->assertNear(self::BLUE, $colors['palette'][0], 5);
         $this->assertNear(self::AMBER, $colors['palette'][1], 5);
-        $this->assertGreaterThanOrEqual(5, count($colors['palette']));
-        $this->assertLessThanOrEqual(8, count($colors['palette']));
+        $this->assertOnlyImageColours($colors['palette'], 5);
         $this->assertSame(count($colors['palette']), count(array_unique($colors['palette'])));
         $this->assertSame('#ffffff', $colors['text']);
     }
@@ -100,8 +129,7 @@ final class ColorExtractorTest extends TestCase
         $this->assertNear(self::BLUE, $colors['color'], 8);
         $this->assertNear(self::BLUE, $colors['palette'][0], 8);
         $this->assertNear(self::AMBER, $colors['palette'][1], 8);
-        $this->assertGreaterThanOrEqual(5, count($colors['palette']));
-        $this->assertLessThanOrEqual(8, count($colors['palette']));
+        $this->assertOnlyImageColours($colors['palette'], 8);
         $this->assertSame('#ffffff', $colors['text']);
     }
 
@@ -124,15 +152,28 @@ final class ColorExtractorTest extends TestCase
         $this->assertSame('#ffffff', ColorExtractor::textColor('#000000'));
     }
 
-    public function test_a_flat_image_still_gets_five_palette_colours(): void
+    public function test_a_flat_image_has_a_palette_of_its_one_colour(): void
     {
-        foreach (['#ffffff' => [255, 255, 255], '#000000' => [0, 0, 0], '#1e78c8' => [30, 120, 200]] as $hex => $rgb) {
-            $colors = (new ColorExtractor(new ColorManagement(), imagick: false))->extract($this->file($this->blocks($rgb, $rgb)));
+        foreach (extension_loaded('imagick') ? [true, false] : [false] as $imagick) {
+            foreach (['#ffffff' => [255, 255, 255], '#000000' => [0, 0, 0], '#1e78c8' => [30, 120, 200]] as $hex => $rgb) {
+                $colors = (new ColorExtractor(new ColorManagement(), imagick: $imagick))->extract($this->file($this->blocks($rgb, $rgb)));
 
-            $this->assertSame($hex, $colors['color']);
-            $this->assertSame($hex, $colors['palette'][0]);
-            $this->assertGreaterThanOrEqual(5, count($colors['palette']), $hex);
-            $this->assertSame(count($colors['palette']), count(array_unique($colors['palette'])), $hex);
+                $this->assertSame($hex, $colors['color']);
+                $this->assertSame([$hex], $colors['palette']);
+            }
+        }
+    }
+
+    public function test_a_photo_like_image_gets_five_to_eight_colours(): void
+    {
+        $file = $this->file($this->gradient());
+
+        foreach (extension_loaded('imagick') ? [true, false] : [false] as $imagick) {
+            $palette = (new ColorExtractor(new ColorManagement(), imagick: $imagick))->extract($file)['palette'];
+
+            $this->assertGreaterThanOrEqual(5, count($palette), implode(' ', $palette));
+            $this->assertLessThanOrEqual(8, count($palette));
+            $this->assertSame(count($palette), count(array_unique($palette)));
         }
     }
 
@@ -205,7 +246,7 @@ final class ColorExtractorTest extends TestCase
 
         $this->assertNear(self::BLUE, (string) $asset->color, 8);
         $this->assertSame('#ffffff', $asset->textColor);
-        $this->assertGreaterThanOrEqual(5, count($asset->palette));
+        $this->assertSame($asset->color, $asset->palette[0]);
         $this->assertEquals($asset, $media->find($asset->id));
 
         $replaced = $media->replace($asset->id, $this->upload($this->blocks(self::AMBER, self::BLUE, 0.8, 'jpeg'), 'b.jpg'), null);
@@ -229,8 +270,15 @@ final class ColorExtractorTest extends TestCase
     public function test_an_undecodable_image_uploads_without_colours(): void
     {
         $bytes = substr($this->blocks(self::BLUE, self::AMBER), 0, 200); // a PNG header, then nothing
+        $log = $this->assetRoot . '/error.log';
+        $previous = ini_set('error_log', $log);
+        try {
+            $asset = $this->library()->upload($this->upload($bytes, 'broken.png'), null);
+        } finally {
+            ini_set('error_log', (string) $previous);
+        }
 
-        $asset = $this->library()->upload($this->upload($bytes, 'broken.png'), null);
+        $this->assertStringContainsString("preflow/media: no colours of asset {$asset->id}: RuntimeException", (string) @file_get_contents($log));
 
         $this->assertSame('image/png', $asset->mime);
         $this->assertNull($asset->color);
