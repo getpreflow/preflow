@@ -44,6 +44,8 @@ final readonly class MediaConfig
         public array $fields = [],
         /** Names of the select, relation and boolean extra fields a UI offers as filters. */
         public array $filters = [],
+        /** The ICC profile for CMYK images without one; null: the shipped FOGRA39 (ColorManagement::DEFAULT_CMYK_PROFILE). */
+        public ?string $colorProfileCmyk = null,
     ) {}
 
     public static function fromApp(Application $app, ?DebugCollector $debug = null): self
@@ -83,7 +85,11 @@ final readonly class MediaConfig
                 : $app->basePath('storage/media-versions'),
             fields: $fields,
             filters: self::filters($values['filters'] ?? null, $fields, $source, $debug),
+            colorProfileCmyk: is_string($values['color_profile_cmyk'] ?? null) && $values['color_profile_cmyk'] !== '' ? $values['color_profile_cmyk'] : null,
         );
+        if ($config->colorProfileCmyk !== null && (!is_file($config->colorProfileCmyk) || !is_readable($config->colorProfileCmyk))) {
+            throw new \RuntimeException("{$config->key('color_profile_cmyk')} ({$config->colorProfileCmyk}) is not a readable file.");
+        }
         $config->checkOutsideServed($app, 'private_dir', $config->privateDir);
         $config->checkOutsideServed($app, 'versions_dir', $config->versionsDir);
 
@@ -118,6 +124,7 @@ final readonly class MediaConfig
             'versions_dir' => $this->versionsDir,
             'fields' => $this->fields,
             'filters' => $this->filters,
+            'color_profile_cmyk' => $this->colorProfileCmyk,
         ];
     }
 
@@ -179,10 +186,15 @@ final readonly class MediaConfig
         foreach ([$app->basePath('public'), $this->dir] as $served) {
             $served = self::normalizePath($served);
             if ($gated === $served || str_starts_with($gated, $served . '/') || str_starts_with($served, $gated . '/')) {
-                $key = $this->source === self::MEDIA ? self::MEDIA . ' ' . $name : self::FOLIO . '.' . $name;
-                throw new \RuntimeException("{$key} ({$dir}) must be outside public/ and the media directory.");
+                throw new \RuntimeException("{$this->key($name)} ({$dir}) must be outside public/ and the media directory.");
             }
         }
+    }
+
+    /** A setting as an error message names it: "config/media.php name" or "config/folio.php assets.name". */
+    private function key(string $name): string
+    {
+        return $this->source === self::MEDIA ? self::MEDIA . ' ' . $name : self::FOLIO . '.' . $name;
     }
 
     /** @return array<string, mixed>|null */

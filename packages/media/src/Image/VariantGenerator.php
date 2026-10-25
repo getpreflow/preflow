@@ -11,7 +11,9 @@ use Preflow\Media\Variant;
  * Eager responsive variants, written next to the original as
  * {id}-{width}.{webp|avif}: every configured width below the original plus the
  * original width, in WebP and (when supported) AVIF. Without a backend nothing
- * is generated and images are served as uploaded.
+ * is generated and images are served as uploaded. A source that needs colour
+ * management (CMYK, a profile other than sRGB) is made by Imagick in sRGB, and
+ * gets no variants where that is missing; all others use the backend as given.
  */
 final class VariantGenerator
 {
@@ -23,12 +25,17 @@ final class VariantGenerator
         private readonly ?ImageBackend $backend,
         private readonly array $widths,
         private readonly int $quality = 75,
+        private readonly ColorManagement $color = new ColorManagement(),
     ) {}
 
     /** @return list<Variant> paths relative to $dir */
     public function generate(string $dir, string $relativeSource, string $mime, int $originalWidth): array
     {
-        if ($this->backend === null || !in_array($mime, self::SOURCE_TYPES, true) || $originalWidth < 1) {
+        if (!in_array($mime, self::SOURCE_TYPES, true) || $originalWidth < 1) {
+            return [];
+        }
+        $backend = $this->backendFor(rtrim($dir, '/') . '/' . $relativeSource);
+        if ($backend === null) {
             return [];
         }
 
@@ -46,7 +53,7 @@ final class VariantGenerator
         $base = preg_replace('/\.[a-z0-9]+$/', '', $relativeSource);
         $jobs = [];
         foreach (['avif', 'webp'] as $format) {
-            if ($this->backend->supports($format)) {
+            if ($backend->supports($format)) {
                 foreach ($widths as $width) {
                     $jobs[] = ['dest' => rtrim($dir, '/') . '/' . "{$base}-{$width}.{$format}", 'width' => $width, 'format' => $format, 'path' => "{$base}-{$width}.{$format}"];
                 }
@@ -56,7 +63,7 @@ final class VariantGenerator
             return [];
         }
 
-        $results = $this->backend->writeVariants(
+        $results = $backend->writeVariants(
             rtrim($dir, '/') . '/' . $relativeSource,
             array_map(static fn (array $j) => ['dest' => $j['dest'], 'width' => $j['width'], 'format' => $j['format']], $jobs),
             $this->quality,
@@ -87,10 +94,14 @@ final class VariantGenerator
         if (!$this->supports($mime, $format) || $width < 1) {
             return null;
         }
+        $backend = $this->backendFor(rtrim($dir, '/') . '/' . $relativeSource);
+        if ($backend === null || !$backend->supports($format)) {
+            return null;
+        }
         $rel = preg_replace('/\.[a-z0-9]+$/', '', $relativeSource) . "-{$width}.{$format}";
         $dest = rtrim($dir, '/') . '/' . $rel;
         $tmp = $dest . '.tmp-' . bin2hex(random_bytes(4)) . '.' . $format;
-        $ok = ($this->backend->writeVariants(rtrim($dir, '/') . '/' . $relativeSource, [['dest' => $tmp, 'width' => $width, 'format' => $format]], $this->quality)[0] ?? false) === true;
+        $ok = ($backend->writeVariants(rtrim($dir, '/') . '/' . $relativeSource, [['dest' => $tmp, 'width' => $width, 'format' => $format]], $this->quality)[0] ?? false) === true;
         if (!$ok || !@rename($tmp, $dest)) {
             @unlink($tmp);
 
@@ -98,6 +109,25 @@ final class VariantGenerator
         }
 
         return $rel;
+    }
+
+    /** True when the source needs colour management and this site cannot do it (no Imagick with lcms). */
+    public function lacksColorManagement(string $source, string $mime): bool
+    {
+        return in_array($mime, self::SOURCE_TYPES, true) && !$this->color->available() && $this->color->needsConversion($source);
+    }
+
+    /** The backend for this source: Imagick converting to sRGB when it needs colour management, else the given one. */
+    private function backendFor(string $source): ?ImageBackend
+    {
+        if ($this->backend === null) {
+            return null;
+        }
+        if (!$this->color->needsConversion($source)) {
+            return $this->backend;
+        }
+
+        return $this->color->available() ? new ImagickBackend($this->color) : null;
     }
 
     /** Every variant file of the asset: the recorded ones and those made on demand. */

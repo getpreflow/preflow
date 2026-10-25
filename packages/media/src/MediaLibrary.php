@@ -64,6 +64,9 @@ final class MediaLibrary
 
     public const string ID_PATTERN = '/^[a-f0-9]{32}$/';
 
+    /** The note on an image that needs colour management where it is missing. */
+    public const string NOTE_NEEDS_IMAGICK = 'needs Imagick for colour-accurate variants';
+
     /** What a version keeps of the asset besides its file, and what a restore brings back. */
     private const array SNAPSHOT = ['focal_x', 'focal_y'];
 
@@ -867,6 +870,10 @@ final class MediaLibrary
         $this->variants->remove($asset, $this->dir);
         $data = $asset->toData();
         $data['variants'] = array_map(static fn (Variant $v) => $v->toArray(), $this->generateVariants($asset));
+        $lacks = $this->lacksColorManagement($asset);
+        if ($lacks || $asset->note === self::NOTE_NEEDS_IMAGICK) {
+            $data['note'] = $lacks ? self::NOTE_NEEDS_IMAGICK : '';
+        }
 
         return $this->save($data);
     }
@@ -1003,7 +1010,10 @@ final class MediaLibrary
         }
         $data = $asset->toData();
         $data['variants'] = array_map(static fn (Variant $v) => $v->toArray(), $this->generateVariants($asset));
-        if ($data['variants'] === []) {
+        if ($this->lacksColorManagement($asset)) {
+            // Never shown in wrong colours: the original only, and the reason on the asset.
+            $data['note'] = self::NOTE_NEEDS_IMAGICK;
+        } elseif ($data['variants'] === []) {
             return $asset;
         }
         $asset = $this->save($data);
@@ -1072,6 +1082,12 @@ final class MediaLibrary
             $this->variants->remove($asset, $this->dir); // no half-written files without a record
             return [];
         }
+    }
+
+    /** A CMYK or wide-gamut image on a site without Imagick (with lcms): no variants rather than wrong colours. */
+    private function lacksColorManagement(Asset $asset): bool
+    {
+        return $this->variants !== null && !$asset->private && $this->variants->lacksColorManagement($this->absolute($asset->path), $asset->mime);
     }
 
     /** @param array<string, mixed> $data */

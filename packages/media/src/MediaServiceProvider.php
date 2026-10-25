@@ -17,6 +17,7 @@ use Preflow\Media\Access\DenyAllPrivateFileAccess;
 use Preflow\Media\Access\PrivateFileAccess;
 use Preflow\Media\Http\PrivateFileController;
 use Preflow\Media\Http\VariantController;
+use Preflow\Media\Image\ColorManagement;
 use Preflow\Media\Image\ImageBackends;
 use Preflow\Media\Image\ImageWidths;
 use Preflow\Media\Image\VariantGenerator;
@@ -66,7 +67,7 @@ final class MediaServiceProvider extends ServiceProvider
             $config->dir,
             $config->url,
             $config->toArray() + ['warm_widths' => $c->get(ImageWidths::class)->allowed()],
-            new VariantGenerator(ImageBackends::detect(), $c->get(ImageWidths::class)->eager(), $config->quality),
+            new VariantGenerator(ImageBackends::detect(), $c->get(ImageWidths::class)->eager(), $config->quality, new ColorManagement($config->colorProfileCmyk)),
             usage: $c->get(AssetUsage::class),
         ));
         $container->singleton(LocaleProvider::class, fn (Container $c) => new ConfigLocaleProvider(
