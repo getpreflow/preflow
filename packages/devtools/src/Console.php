@@ -24,6 +24,7 @@ final class Console
         $this->register(new Command\MakeMigrationCommand());
         $this->register(new Command\RoutesListCommand());
         $this->register(new Command\CacheClearCommand());
+        $this->register(new Command\CacheListCommand());
         $this->register(new Command\SeedCommand());
         $this->register(new Command\KeyGenerateCommand());
         $this->register(new Command\AuthUserCommand());

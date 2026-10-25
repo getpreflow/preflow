@@ -106,13 +106,28 @@ php preflow routes:list
 # ──────────────────────────────────────────────────────────────────────
 ```
 
-### `cache:clear` — clear framework caches
+### `cache:list` — list registered caches
 
-Deletes all files under `storage/cache/` recursively.
+Shows every cache registered with the core cache registry: key, label,
+number of entries and size.
 
 ```
-php preflow cache:clear
-# Cleared 14 cached file(s).
+php preflow cache:list
+# Key         Label            Entries  Size
+# data.json   JSON data cache  12       3.1 KB
+```
+
+### `cache:clear [KEY]` — clear framework caches
+
+`cache:clear <key>` clears one registered cache; `cache:clear --all` clears
+every registered cache. An unknown key exits with 1 and lists the known keys.
+Files outside the registered caches are never deleted. The bare form
+(`cache:clear` without arguments) still clears all caches but prints a note;
+it will require `--all` in a later release.
+
+```
+php preflow cache:clear --all
+# Cleared data.json: 12 file(s), 3.1 KB.
 ```
 
 ### `auth:user [PREFIX]` — set a login in `.env`
