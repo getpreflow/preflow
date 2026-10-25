@@ -108,7 +108,7 @@ final class TransferCommandsTest extends TestCase
         $this->assertFileDoesNotExist($this->dir . '/storage/data/post/p2.json');
         $backups = glob($this->dir . '/storage/backups/import-*.tar.gz');
         $this->assertCount(1, $backups);
-        $this->assertStringContainsString('cache:clear', $this->text($this->out));
+        $this->assertStringContainsString('php preflow cache:clear --all', $this->text($this->out));
 
         $this->assertSame(0, $this->import([$backups[0]])); // the backup restores the pre-import state
         $this->assertFileExists($this->dir . '/storage/data/post/p2.json');

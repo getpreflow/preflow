@@ -83,10 +83,12 @@ final class CacheController
     /** POST {prefix}/cache/opcache-reset */
     public function opcacheReset(ServerRequestInterface $request): ResponseInterface
     {
-        if ($this->opcache->enabled() && $this->opcache->reset()) {
+        if (!$this->opcache->enabled()) {
+            self::flash($request, 'error', 'OPcache is off.');
+        } elseif ($this->opcache->reset()) {
             self::flash($request, 'success', 'OPcache reset.');
         } else {
-            self::flash($request, 'error', 'OPcache is off.');
+            self::flash($request, 'error', 'OPcache reset failed.');
         }
 
         return $this->back();

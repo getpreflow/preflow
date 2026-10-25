@@ -85,7 +85,7 @@ final class ImportCommand extends TransferCommand implements CommandInterface
 
                 return 1;
             }
-            $cmd->say('Done. Run "php preflow cache:clear" if pages look stale.');
+            $cmd->say('Done. Run "php preflow cache:clear --all" if pages look stale.');
 
             return 0;
         } finally {

@@ -159,7 +159,11 @@ final class CacheScreenTest extends TestCase
 
         $this->session->container()->instance(OpcacheStatus::class, $this->opcache(false));
         $this->send('POST', '/folio/cache/opcache-reset');
-        $this->assertStringContainsString('OPcache is off.', (string) $this->send('GET', '/folio/cache')->getBody());
+        $this->assertStringContainsString('<div class="folio-alert folio-alert-error" role="alert">OPcache is off.</div>', (string) $this->send('GET', '/folio/cache')->getBody());
+
+        $this->session->container()->instance(OpcacheStatus::class, $this->opcache(true, resets: false));
+        $this->send('POST', '/folio/cache/opcache-reset');
+        $this->assertStringContainsString('<div class="folio-alert folio-alert-error" role="alert">OPcache reset failed.</div>', (string) $this->send('GET', '/folio/cache')->getBody());
     }
 
     #[RunInSeparateProcess]
@@ -202,10 +206,10 @@ final class CacheScreenTest extends TestCase
         return $app->handle((new Psr17Factory())->createServerRequest($method, $uri));
     }
 
-    private function opcache(bool $enabled): OpcacheStatus
+    private function opcache(bool $enabled, bool $resets = true): OpcacheStatus
     {
-        return new class ($enabled) extends OpcacheStatus {
-            public function __construct(private readonly bool $on) {}
+        return new class ($enabled, $resets) extends OpcacheStatus {
+            public function __construct(private readonly bool $on, private readonly bool $resets) {}
 
             public function enabled(): bool
             {
@@ -219,7 +223,7 @@ final class CacheScreenTest extends TestCase
 
             public function reset(): bool
             {
-                return $this->on;
+                return $this->on && $this->resets;
             }
         };
     }
