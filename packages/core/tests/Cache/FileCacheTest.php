@@ -46,4 +46,16 @@ final class FileCacheTest extends TestCase
         $this->assertSame(0, $cache->stats()->bytes);
         $this->assertSame(0, $cache->clear()->entries);
     }
+
+    public function test_clearing_a_php_file_counts_it_and_emits_no_warning(): void
+    {
+        file_put_contents($this->dir . '/routes.php', '<?php return [];');
+        $cache = new FileCache('routes', 'Route table', $this->dir . '/routes.php');
+
+        $cleared = $cache->clear();
+
+        $this->assertSame(1, $cleared->entries);
+        $this->assertSame(16, $cleared->bytes);
+        $this->assertFileDoesNotExist($this->dir . '/routes.php');
+    }
 }

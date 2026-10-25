@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Preflow\Core\Cache;
 
 /**
- * A folder of cache files. The folder itself and dotfiles (.gitkeep) stay;
- * symlinks are never followed or counted, clear() only unlinks them.
+ * A folder of cache files. The folder itself stays, and so does every file whose
+ * name starts with a dot (.gitkeep); dot-named subfolders are still walked.
+ * Symlinks are never followed or counted, clear() only unlinks them.
  * $pattern is an fnmatch() pattern on file basenames, applied at every depth.
  */
 final class DirectoryCache implements CacheSource
@@ -38,7 +39,7 @@ final class DirectoryCache implements CacheSource
                 continue;
             }
             $entries++;
-            $bytes += $file->getSize();
+            $bytes += (int) @filesize($file->getPathname());
         }
 
         return new CacheStats($entries, $bytes, $this->note);
@@ -50,8 +51,11 @@ final class DirectoryCache implements CacheSource
         $bytes = 0;
         foreach ($this->files() as $file) {
             $isLink = $file->isLink();
-            $size = $isLink ? 0 : $file->getSize();
+            $size = $isLink ? 0 : (int) @filesize($file->getPathname());
             if (@unlink($file->getPathname()) && !$isLink) {
+                if (str_ends_with($file->getFilename(), '.php') && function_exists('opcache_invalidate')) {
+                    @opcache_invalidate($file->getPathname(), true);
+                }
                 $entries++;
                 $bytes += $size;
             }

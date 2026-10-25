@@ -41,6 +41,14 @@ final class FileCache implements CacheSource
 
         $bytes = (int) filesize($this->file);
 
-        return @unlink($this->file) ? new CacheCleared(1, $bytes) : new CacheCleared(0, 0);
+        if (!@unlink($this->file)) {
+            return new CacheCleared(0, 0);
+        }
+
+        if (str_ends_with($this->file, '.php') && function_exists('opcache_invalidate')) {
+            @opcache_invalidate($this->file, true);
+        }
+
+        return new CacheCleared(1, $bytes);
     }
 }

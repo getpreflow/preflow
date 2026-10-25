@@ -101,4 +101,17 @@ final class DirectoryCacheTest extends TestCase
         $this->assertSame('k', $cache->key());
         $this->assertSame('Label', $cache->label());
     }
+
+    public function test_clearing_php_files_counts_them_and_emits_no_warning(): void
+    {
+        file_put_contents($this->root . '/cache/compiled.php', '<?php return 1;');
+        file_put_contents($this->root . '/cache/sub/other.php', '<?php return 2;');
+        $cache = new DirectoryCache('k', 'Label', $this->root . '/cache');
+
+        $cleared = $cache->clear();
+
+        $this->assertSame(2, $cleared->entries);
+        $this->assertSame(30, $cleared->bytes);
+        $this->assertFileDoesNotExist($this->root . '/cache/compiled.php');
+    }
 }
