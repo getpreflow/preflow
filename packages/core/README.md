@@ -319,10 +319,12 @@ anything.
 ### Caches
 
 The application keeps a `CacheRegistry` in the container. The framework registers its own
-caches (`data.json` for the JSON driver's query cache, `blade` for compiled Blade templates);
-register yours in a provider so tooling can list and clear them:
+caches: `data.json` (the JSON driver's query cache, when the JSON driver is in use) and
+`blade` (compiled Blade templates in `storage/cache/blade`, when the Blade engine is in use).
+Register yours in a provider so tooling can list and clear them:
 
 ```php
+use Preflow\Core\Application;
 use Preflow\Core\Cache\CacheRegistry;
 use Preflow\Core\Cache\DirectoryCache;
 use Preflow\Core\Cache\FileCache;
@@ -331,22 +333,23 @@ final class SiteCacheProvider extends ServiceProvider
 {
     public function register(Container $container): void
     {
+        $app = $container->get(Application::class);
         $caches = $container->get(CacheRegistry::class);
 
-        // A folder of cache files; the folder and dotfiles stay, symlinks are never followed.
-        // `pattern` is an fnmatch() pattern on file names.
-        $caches->register(new DirectoryCache('site.thumbs', 'Thumbnails', $basePath . '/storage/cache/thumbs'));
+        // A folder of cache files; the folder and dotfiles stay, symlinks inside it are never
+        // followed. `pattern` is an fnmatch() pattern on file names.
+        $caches->register(new DirectoryCache('site.thumbs', 'Thumbnails', $app->basePath('storage/cache/thumbs')));
 
-        // Twig compiles into the folder you give it, so register that same folder.
-        $twigCache = $basePath . '/storage/cache/twig';
-        new TwigEngine(/* ... */ cachePath: $twigCache);
-        $caches->register(new DirectoryCache('twig', 'Compiled Twig templates', $twigCache));
-
-        // A single file, such as a compiled route table.
-        $caches->register(new FileCache('routes', 'Route table', $basePath . '/storage/cache/routes.php'));
+        // A single file.
+        $caches->register(new FileCache('site.sitemap', 'Sitemap', $app->basePath('storage/cache/sitemap.xml')));
     }
 }
 ```
+
+If you bind your own Twig engine or router with a cache path, register that same path like
+this (`DirectoryCache('twig', …)` for compiled templates, `FileCache('routes', …)` for a route
+table). A `DirectoryCache` folder must be an absolute path other than `/`; anything else
+throws an `InvalidArgumentException`. Subfolders that can't be read are skipped.
 
 Keys must be unique; a duplicate throws a `LogicException`. Implement `CacheSource` for
 anything else (`key()`, `label()`, `stats()`, `clear()`). `OpcacheStatus` reports and resets

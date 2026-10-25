@@ -89,10 +89,10 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 
 ### v0.33.0
 
-- **Cache registry (preflow/core):** `Preflow\Core\Cache\CacheRegistry` with `CacheSource` (key, label, `stats()`, `clear()`), `DirectoryCache`, `FileCache`, `OpcacheStatus`; core registers `data.json` and `blade`, a site registers its own. Clearing a PHP cache file also invalidates OPcache
-- **`cache:list` and `cache:clear <key>… | --all` (preflow/devtools):** the bare `cache:clear` is deprecated (prints a note) and no longer empties `storage/cache` blindly
+- **Cache registry (preflow/core):** `Preflow\Core\Cache\CacheRegistry` with `CacheSource` (key, label, `stats()`, `clear()`), `DirectoryCache`, `FileCache`, `OpcacheStatus`; core registers `data.json` (when the JSON driver is in use) and `blade` (when the Blade engine is in use), a site registers its own. Clearing a PHP cache file also invalidates OPcache. Blade now compiles into `storage/cache/blade` instead of the system temp folder
+- **`cache:list` and `cache:clear <key>… | --all` (preflow/devtools):** the bare `cache:clear` is deprecated (prints a note) and no longer empties `storage/cache` blindly; both commands boot the application (exit 1 when the boot fails), unknown `--` options exit 1
 - **Settings → Cache (preflow/folio):** `{prefix}/cache`, permission `folio.cache`, a row per cache with Clear, Clear all, OPcache status with Reset; registers `folio.extensions` and `folio.blocks`
-- No new package. Constraints: folio needs `preflow/core ^0.33`, devtools conflicts with `preflow/core <0.33`
+- No new package. Constraints: folio needs `preflow/core ^0.33`, devtools requires `preflow/core ^0.33` and conflicts with `<0.33`
 
 ### v0.32.0
 

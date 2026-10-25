@@ -177,7 +177,8 @@ php preflow migrate         # Run pending migrations
 php preflow db:seed         # Seed demo data
 php preflow key:generate    # Generate APP_KEY
 php preflow routes:list     # List all routes
-php preflow cache:clear     # Clear cache
+php preflow cache:list      # List registered caches
+php preflow cache:clear --all  # Clear every registered cache
 ```
 
 ## Web Server

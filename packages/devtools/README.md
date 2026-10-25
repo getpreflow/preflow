@@ -113,8 +113,8 @@ number of entries and size.
 
 ```
 php preflow cache:list
-# Key         Label            Entries  Size
-# data.json   JSON data cache  12       3.1 KB
+# Key        Label                     Entries  Size
+# data.json  JSON storage query cache  12       3.1 KB
 ```
 
 ### `cache:clear [KEY]` — clear framework caches
@@ -123,7 +123,12 @@ php preflow cache:list
 every registered cache. An unknown key exits with 1 and lists the known keys.
 Files outside the registered caches are never deleted. The bare form
 (`cache:clear` without arguments) still clears all caches but prints a note;
-it will require `--all` in a later release.
+it will require `--all` in a later release. An unknown option (anything starting
+with `--` other than `--all`) exits with 1 and clears nothing.
+
+`cache:list` and `cache:clear` boot the application to read the registry, so
+they need what the app needs to boot (`.env`, config, a reachable database for
+SQL drivers). When the boot fails they print the error and exit with 1.
 
 ```
 php preflow cache:clear --all

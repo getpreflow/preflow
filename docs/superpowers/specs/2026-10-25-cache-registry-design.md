@@ -91,9 +91,10 @@ What the code does today (checked against v0.32.0):
 - `Application` builds `TwigEngine` **without** a cache path, so Twig compiles in memory and
   `twig` registers nothing out of the box. Twig registers only when a site gives it a cache path.
   Turning on a Twig cache in production is not part of this work.
-- `BladeEngine` without a cache path falls back to `sys_get_temp_dir()/preflow_blade_cache`.
-  That folder is shared by every site on the machine, so `blade` registers it labelled
-  "(shared temp folder)" in `CacheStats::$note`. A per-site Blade path is not part of this work either.
+- `BladeEngine` without a cache path falls back to `sys_get_temp_dir()/preflow_blade_cache`,
+  a folder shared by every site on the machine. Ruling at the final review: `Application`
+  now passes the per-site `storage/cache/blade` as the Blade cache path and registers that
+  folder as `blade` (no note). The `BladeEngine` default itself is unchanged.
 - Nothing in core passes `cachePath` to `Router`/`RouteCompiler` today, so `routes` registers
   only when a site wires a route cache.
 - The JSON cache (`storage/cache/data`, set in `Application`) and Folio's two registry files

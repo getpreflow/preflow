@@ -1272,11 +1272,12 @@ $settings->get('demo', 'greeting', 'de', exact: true); // only de's own value or
 *Settings → Cache* (`{prefix}/cache`, permission `folio.cache`; staff with `*` have it) lists
 every cache registered with `Preflow\Core\Cache\CacheRegistry` as a table row: label,
 entries, size and a **Clear** button, plus **Clear all**. Folio registers `folio.extensions`
-and `folio.blocks`; core registers `data.json` and `blade`. A site registers its own:
+and `folio.blocks`; core registers `data.json` (when the JSON driver is in use) and `blade`
+(when the Blade engine is in use). A site registers its own:
 
 ```php
 $app->container()->get(\Preflow\Core\Cache\CacheRegistry::class)
-    ->register(new \Preflow\Core\Cache\DirectoryCache('images', 'Resized images', $root . '/storage/cache/images'));
+    ->register(new \Preflow\Core\Cache\DirectoryCache('images', 'Resized images', $app->basePath('storage/cache/images')));
 ```
 
 An OPcache table shows the status (memory, scripts, hit rate) with **Reset OPcache**. OPcache

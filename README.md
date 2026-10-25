@@ -180,7 +180,8 @@ php preflow make:model Name      # Scaffold model
 php preflow make:controller Name # Scaffold controller
 php preflow make:migration name  # Create migration
 php preflow routes:list          # List routes
-php preflow cache:clear          # Clear caches
+php preflow cache:list           # List registered caches
+php preflow cache:clear --all    # Clear every registered cache
 ```
 
 ## Upgrading: security headers and CSP
