@@ -26,6 +26,11 @@ use Psr\Http\Message\UploadedFileInterface;
  * without variants; their only URL is {private_url}/{id}, which a gated
  * controller serves.
  *
+ * Replacing keeps the asset (id, alt, focal point, …) and swaps its file: the new one
+ * gets a versioned name ({id}-v{n}.{ext}), the old one is kept as a version in config
+ * "versions_dir" ({versions_dir}/{id}/v{n}.{ext}, never served by the web server;
+ * only the gated {private_url}/{id}/v/{n}). Restore is a replace from a version.
+ *
  * Deleting refuses an asset that a registered usage source still reports
  * (AssetInUseException), so every UI gets the rule.
  */
@@ -56,6 +61,9 @@ final class MediaLibrary
     private const int DEFAULT_MAX_PIXELS = 30_000_000;
 
     public const string ID_PATTERN = '/^[a-f0-9]{32}$/';
+
+    /** What a version keeps of the asset besides its file, and what a restore brings back. */
+    private const array SNAPSHOT = ['focal_x', 'focal_y'];
 
     private ?TypeDefinition $definition = null;
 
@@ -216,26 +224,363 @@ final class MediaLibrary
         }
     }
 
+    /**
+     * Swap the asset's file and keep the old one as a version. Everything else stays
+     * (alt, title, focal point, poster, extra fields, private flag); what derives from
+     * the file is made again. The new file must be the same kind (image, video,
+     * document) and passes the upload checks. A string is the absolute path of a file
+     * on disk (importers), which stays where it is.
+     *
+     * The order keeps the record on a complete file at every step: write the new file,
+     * copy the old one into the versions dir, save the record, then delete the old file
+     * and its variants and make the new derived files. A per-asset lock serialises
+     * replaces, restores, version deletes and prunes of one asset.
+     *
+     * @throws AssetUploadException (nothing changed)
+     * @throws \InvalidArgumentException for an unknown asset
+     */
+    public function replace(string $id, UploadedFileInterface|string $file, ?string $by): Asset
+    {
+        if (is_string($file)) {
+            $name = basename($file);
+            if (!is_file($file) || !is_readable($file)) {
+                throw new AssetUploadException("{$name}: the file does not exist.");
+            }
+            $this->checkSize($name, (int) filesize($file));
+            $bytes = (string) file_get_contents($file);
+        } else {
+            $name = (string) ($file->getClientFilename() ?? 'upload');
+            if ($file->getError() !== UPLOAD_ERR_OK) {
+                throw new AssetUploadException("{$name}: the upload failed (error {$file->getError()}).");
+            }
+            $this->checkSize($name, (int) ($file->getSize() ?? 0));
+            $stream = $file->getStream();
+            if ($stream->isSeekable()) {
+                $stream->rewind();
+            }
+            $bytes = $stream->getContents();
+        }
+        $this->requireVersionsDir($id, $name);
+
+        return $this->locked($id, fn (): Asset => $this->swapFile($id, $bytes, $name, $by, []));
+    }
+
+    /** @return list<AssetVersion> the asset's earlier files, newest first ([] for an unknown asset) */
+    public function versions(string $id): array
+    {
+        $versions = $this->find($id)?->versions ?? [];
+        usort($versions, static fn (AssetVersion $a, AssetVersion $b) => $b->number <=> $a->number);
+
+        return $versions;
+    }
+
+    /**
+     * Make an earlier file current again: a replace from that version's file, so the
+     * current file becomes a version too. The version's snapshot (focal point) comes
+     * back; alt texts and title stay as they are now. The restored version is kept.
+     *
+     * @throws AssetUploadException when the version's file is gone (nothing changed)
+     */
+    public function restore(string $id, int $version, ?string $by): Asset
+    {
+        $this->requireVersionsDir($id, "Version {$version}");
+
+        return $this->locked($id, function () use ($id, $version, $by): Asset {
+            $asset = $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
+            $old = self::versionOf($asset, $version) ?? throw new \InvalidArgumentException("Asset {$id} has no version {$version}.");
+            $file = $this->versionFile($id, $version);
+            if ($file === null) {
+                throw new AssetUploadException("Version {$version} of {$asset->label()}: the file is missing.");
+            }
+            $name = is_string($old->meta['original_name'] ?? null) && $old->meta['original_name'] !== '' ? $old->meta['original_name'] : basename($file);
+
+            return $this->swapFile($id, (string) file_get_contents($file), $name, $by, $old->meta);
+        });
+    }
+
+    /** Delete one earlier file (an unknown asset or version: nothing happens). Its number is never used again. */
+    public function deleteVersion(string $id, int $version): void
+    {
+        $asset = $this->find($id);
+        if ($asset === null || self::versionOf($asset, $version) === null || $this->versionsDir() === null) {
+            return;
+        }
+        $this->locked($id, fn (): int => $this->dropVersions($id, static fn (Asset $a): array => [$version]));
+    }
+
+    /** The absolute path of an earlier file; null for an unknown asset, version or a missing file. */
+    public function versionFile(string $id, int $version): ?string
+    {
+        $asset = $this->find($id);
+        $dir = $this->versionsDir();
+        $entry = $asset !== null ? self::versionOf($asset, $version) : null;
+        // Only the name a replace writes: a record cannot point anywhere else.
+        if ($entry === null || $dir === null || preg_match('#^' . $id . '/v' . $version . '\.[a-z0-9]+$#', $entry->path) !== 1) {
+            return null;
+        }
+        $file = $dir . '/' . $entry->path;
+
+        return is_file($file) ? $file : null;
+    }
+
+    /**
+     * Delete earlier files beyond the $keep newest; with $olderThanDays only those
+     * replaced more than that many days ago. The current file is never touched.
+     * Returns how many were deleted.
+     */
+    public function prune(string $id, int $keep, ?int $olderThanDays = null): int
+    {
+        $doomed = function (Asset $asset) use ($keep, $olderThanDays): array {
+            $versions = $asset->versions;
+            usort($versions, static fn (AssetVersion $a, AssetVersion $b) => $b->number <=> $a->number);
+            $cutoff = $olderThanDays !== null ? ($this->now)()->modify('-' . max(0, $olderThanDays) . ' days') : null;
+            $numbers = [];
+            foreach (array_slice($versions, max(0, $keep)) as $v) {
+                $at = $cutoff !== null ? (\DateTimeImmutable::createFromFormat(DATE_ATOM, $v->createdAt) ?: null) : null;
+                if ($cutoff === null || ($at !== null && $at < $cutoff)) { // an unreadable date is kept
+                    $numbers[] = $v->number;
+                }
+            }
+
+            return $numbers;
+        };
+        $asset = $this->find($id);
+        // Checked before locking, so pruning a library does not make a lock per asset.
+        if ($asset === null || $doomed($asset) === [] || $this->versionsDir() === null) {
+            return 0;
+        }
+
+        return $this->locked($id, fn (): int => $this->dropVersions($id, $doomed));
+    }
+
+    /**
+     * With the lock held: write the new file, keep the old one as a version, save,
+     * then remove the old file's leftovers and make the new derived files.
+     *
+     * @param array<string, mixed> $restore a version's meta snapshot to bring back ([] for a plain replace)
+     * @throws AssetUploadException
+     */
+    private function swapFile(string $id, string $bytes, string $name, ?string $by, array $restore): Asset
+    {
+        $asset = $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
+        [$mime, $ext] = $this->sniff($bytes, $name);
+        if (Asset::kindOf($mime) !== $asset->kind()) {
+            throw new AssetUploadException("{$name}: a {$asset->kind()} can only be replaced by another {$asset->kind()}.");
+        }
+        $base = $asset->private ? $this->privateDir() : rtrim($this->dir, '/');
+        if ($base === null) {
+            throw new AssetUploadException("{$name}: no private directory is configured (assets.private_dir).");
+        }
+
+        // Numbers only grow: above the current one and every kept (or deleted) version.
+        $number = max([$asset->version, ...array_map(static fn (AssetVersion $v) => $v->number, $asset->versions)]) + 1;
+        $yearMonth = dirname($asset->path);
+        $path = $this->versionedPath($id, $ext, $number, preg_match('#^\d{4}/\d{2}$#', $yearMonth) === 1 ? $yearMonth : ($this->now)()->format('Y/m'));
+        $target = $base . '/' . $path;
+        if (!is_dir(dirname($target)) && !@mkdir(dirname($target), 0775, true) && !is_dir(dirname($target))) {
+            throw new AssetUploadException('The media directory is not writable.');
+        }
+        self::writeAtomically($target, $bytes) || throw new AssetUploadException("{$name}: the file could not be written to the media directory.");
+
+        // The old file is copied, not moved: until the record is saved it still points there.
+        $versions = $asset->versions;
+        $kept = null;
+        $old = $this->file($asset);
+        if ($old !== null && is_file($old)) {
+            $rel = $id . '/v' . $asset->version . '.' . pathinfo($asset->path, PATHINFO_EXTENSION);
+            $kept = $this->versionsDir() . '/' . $rel;
+            if (!self::writeAtomically($kept, null, $old)) {
+                @unlink($target);
+                throw new AssetUploadException("{$name}: the current file could not be kept as a version (versions_dir).");
+            }
+            $snapshot = ['original_name' => $asset->originalName];
+            foreach (self::SNAPSHOT as $key) {
+                $snapshot[$key] = $asset->toData()[$key];
+            }
+            array_unshift($versions, new AssetVersion($asset->version, $rel, $asset->mime, $asset->size, $asset->width, $asset->height, $snapshot, ($this->now)()->format(DATE_ATOM), $by));
+        } // else the file was already lost: there is nothing to keep, the new one fixes the asset
+
+        [$width, $height] = self::dimensions($target, $mime);
+        $data = [
+            'path' => $path,
+            'original_name' => mb_substr(basename(str_replace('\\', '/', $name)), 0, 255),
+            'mime' => $mime,
+            'size' => strlen($bytes),
+            'width' => $width,
+            'height' => $height,
+            'duration' => null,
+            'version' => $number,
+            'versions' => array_map(static fn (AssetVersion $v) => $v->toArray(), $versions),
+            'variants' => [],
+            'preview' => [],
+            'color' => '',
+            'palette' => [],
+            'text_color' => '',
+            'note' => '',
+        ] + $asset->toData();
+        foreach (self::SNAPSHOT as $key) {
+            if (array_key_exists($key, $restore) && is_numeric($restore[$key])) {
+                $data[$key] = max(0, min(100, (int) $restore[$key]));
+            }
+        }
+        try {
+            $saved = $this->save($data);
+        } catch (\Throwable $e) {
+            @unlink($target);
+            if ($kept !== null) {
+                @unlink($kept);
+            }
+            throw $e;
+        }
+
+        // The record points at the new file: the old one (now a version), its variants and preview go.
+        $this->removeFiles($asset);
+        try {
+            return $this->afterFileChange($saved);
+        } catch (\Throwable) {
+            return $this->find($id) ?? $saved; // the replace stands; derived files can be made later
+        }
+    }
+
+    /**
+     * With the lock held: remove the versions $pick returns from the record, then
+     * delete their files. Returns how many were removed.
+     *
+     * @param \Closure(Asset): list<int> $pick version numbers
+     */
+    private function dropVersions(string $id, \Closure $pick): int
+    {
+        $asset = $this->find($id);
+        if ($asset === null) {
+            return 0;
+        }
+        $numbers = $pick($asset);
+        $gone = array_values(array_filter($asset->versions, static fn (AssetVersion $v) => in_array($v->number, $numbers, true)));
+        if ($gone === []) {
+            return 0;
+        }
+        $files = array_filter(array_map(fn (AssetVersion $v) => $this->versionFile($id, $v->number), $gone));
+        $data = $asset->toData();
+        $data['versions'] = array_values(array_map(
+            static fn (AssetVersion $v) => $v->toArray(),
+            array_filter($asset->versions, static fn (AssetVersion $v) => !in_array($v->number, $numbers, true)),
+        ));
+        $this->save($data); // first: the record never lists a missing file
+        foreach ($files as $file) {
+            @unlink($file);
+        }
+
+        return count($gone);
+    }
+
+    private static function versionOf(Asset $asset, int $number): ?AssetVersion
+    {
+        foreach ($asset->versions as $v) {
+            if ($v->number === $number) {
+                return $v;
+            }
+        }
+
+        return null;
+    }
+
+    /** @throws AssetUploadException without a versions dir: a replace would lose the old file */
+    private function requireVersionsDir(string $id, string $name): void
+    {
+        $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
+        if ($this->versionsDir() === null) {
+            throw new AssetUploadException("{$name}: no versions directory is configured (versions_dir), so the current file could not be kept.");
+        }
+    }
+
+    /**
+     * Run $work holding the asset's lock ({versions_dir}/{id}/.lock), so replaces,
+     * restores, version deletes, prunes and the delete of one asset run one after
+     * another, each on the record the previous one saved.
+     *
+     * @template T
+     * @param \Closure(): T $work
+     * @param bool $required false: without a writable versions dir, run unlocked (a delete still works)
+     * @return T
+     */
+    private function locked(string $id, \Closure $work, bool $required = true): mixed
+    {
+        $folder = $this->versionsDir() . '/' . $id;
+        $lock = is_dir($folder) || @mkdir($folder, 0775, true) || is_dir($folder) ? @fopen($folder . '/.lock', 'c') : false;
+        if ($lock === false) {
+            if (!$required) {
+                return $work();
+            }
+            throw new AssetUploadException('The versions directory is not writable (versions_dir).');
+        }
+        try {
+            flock($lock, LOCK_EX);
+
+            return $work();
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    private function removeVersionsFolder(string $id): void
+    {
+        $dir = $this->versionsDir();
+        if ($dir === null || !is_dir($dir . '/' . $id)) {
+            return;
+        }
+        foreach (scandir($dir . '/' . $id) ?: [] as $entry) {
+            if ($entry !== '.' && $entry !== '..' && is_file($dir . '/' . $id . '/' . $entry)) {
+                unlink($dir . '/' . $id . '/' . $entry);
+            }
+        }
+        @rmdir($dir . '/' . $id);
+    }
+
+    /** Write $bytes (or copy $from) to a temp file and rename it into place, so the name never holds half a file. */
+    private static function writeAtomically(string $dest, ?string $bytes, ?string $from = null): bool
+    {
+        if (!is_dir(dirname($dest)) && !@mkdir(dirname($dest), 0775, true) && !is_dir(dirname($dest))) {
+            return false;
+        }
+        $tmp = $dest . '.tmp-' . bin2hex(random_bytes(4));
+        $ok = $from !== null ? @copy($from, $tmp) : @file_put_contents($tmp, (string) $bytes) === strlen((string) $bytes);
+        if (!$ok || !@rename($tmp, $dest)) {
+            @unlink($tmp);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /** The record, its file (with variants and preview) and every version. */
     private function remove(Asset $asset): void
     {
-        $id = $asset->id;
-        if ($asset->private) {
-            $file = $this->file($asset);
+        $work = function () use ($asset): void {
+            $current = $this->find($asset->id) ?? $asset; // a replace may have run while we waited
+            $this->removeFiles($current);
+            $this->dm->deleteIn($this->definition(), $asset->id);
+            $this->removeVersionsFolder($asset->id);
+        };
+        $this->versionsDir() !== null ? $this->locked($asset->id, $work, required: false) : $work();
+    }
+
+    /** The asset's current file, its variants (also those made on demand) and its preview. */
+    private function removeFiles(Asset $asset): void
+    {
+        $files = [$this->file($asset), $asset->preview !== null ? $this->fileAt($asset, $asset->preview->path) : null];
+        if (!$asset->private) {
+            $files = [...$files, ...array_map(fn (Variant $v) => $this->absolute($v->path), $asset->variants)];
+        }
+        foreach ($files as $file) {
             if ($file !== null && is_file($file)) {
                 unlink($file);
             }
-            $this->dm->deleteIn($this->definition(), $id);
-
-            return;
         }
-        foreach ([$asset->path, ...array_map(static fn (Variant $v) => $v->path, $asset->variants)] as $path) {
-            $file = $this->absolute($path);
-            if (is_file($file)) {
-                unlink($file);
-            }
+        if (!$asset->private) {
+            $this->variants?->remove($asset, $this->dir);
         }
-        $this->variants?->remove($asset, $this->dir); // also those made on demand
-        $this->dm->deleteIn($this->definition(), $id);
     }
 
     /**
@@ -369,12 +714,26 @@ final class MediaLibrary
     /** The asset's file on disk (unchecked; the private route confines it with realpath); null for a private asset without a private dir. */
     public function file(Asset $asset): ?string
     {
+        return $this->fileAt($asset, $asset->path);
+    }
+
+    /** A path relative to where the asset's files live: the media dir, or the private dir for a private asset. */
+    private function fileAt(Asset $asset, string $relativePath): ?string
+    {
         if (!$asset->private) {
-            return $this->absolute($asset->path);
+            return $this->absolute($relativePath);
         }
         $dir = $this->privateDir();
 
-        return $dir === null ? null : $dir . '/' . ltrim($asset->path, '/');
+        return $dir === null ? null : $dir . '/' . ltrim($relativePath, '/');
+    }
+
+    /** The versions directory (config "versions_dir"); null when none is configured, and then nothing can be replaced. */
+    public function versionsDir(): ?string
+    {
+        $dir = $this->config['versions_dir'] ?? null;
+
+        return is_string($dir) && $dir !== '' ? rtrim($dir, '/') : null;
     }
 
     public function absolute(string $relativePath): string
@@ -406,14 +765,7 @@ final class MediaLibrary
     /** @throws AssetUploadException */
     private function store(string $bytes, string $name, ?string $by, bool $private = false): Asset
     {
-        $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($bytes) ?: 'application/octet-stream';
-        if ($mime === 'image/svg+xml' && ($this->config['allow_svg'] ?? false) !== true) {
-            throw new AssetUploadException('SVG uploads are disabled.');
-        }
-        $ext = self::EXTENSIONS[$mime] ?? null;
-        if ($ext === null) {
-            throw new AssetUploadException("{$name}: files of type {$mime} are not allowed.");
-        }
+        [$mime, $ext] = $this->sniff($bytes, $name);
 
         $now = ($this->now)();
         $id = bin2hex(random_bytes(16));
@@ -430,16 +782,7 @@ final class MediaLibrary
             throw new AssetUploadException("{$name}: the file could not be written to the media directory.");
         }
 
-        $width = $height = null;
-        if (str_starts_with($mime, 'image/') && $mime !== 'image/svg+xml') {
-            $size = @getimagesize($file);
-            if (is_array($size)) {
-                [$width, $height] = [(int) $size[0], (int) $size[1]];
-                if (Orientation::swapsAxes(Orientation::of($file))) {
-                    [$width, $height] = [$height, $width]; // stored as displayed
-                }
-            }
-        }
+        [$width, $height] = self::dimensions($file, $mime);
 
         $asset = new Asset(
             id: $id,
@@ -462,8 +805,18 @@ final class MediaLibrary
         );
         // The record first: if variant generation dies (time or memory limit), the
         // file is still a usable asset whose variants can be made later.
-        $asset = $this->save($asset->toData());
-        if ($private) {
+        return $this->afterFileChange($this->save($asset->toData()));
+    }
+
+    /**
+     * The hook for everything derived from the asset's current file, run once the
+     * record points at the complete file: after an upload, a replace and a restore.
+     * Today it makes the variants of a public image; later the preview and colours.
+     * Returns the asset as saved.
+     */
+    private function afterFileChange(Asset $asset): Asset
+    {
+        if ($asset->private) {
             return $asset; // no variants: they would be public files
         }
         $data = $asset->toData();
@@ -479,6 +832,41 @@ final class MediaLibrary
         }
 
         return $asset;
+    }
+
+    /**
+     * The sniffed MIME type and the extension it is stored with (never the client's).
+     *
+     * @return array{0: string, 1: string}
+     * @throws AssetUploadException for a type that is not allowed
+     */
+    private function sniff(string $bytes, string $name): array
+    {
+        $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($bytes) ?: 'application/octet-stream';
+        if ($mime === 'image/svg+xml' && ($this->config['allow_svg'] ?? false) !== true) {
+            throw new AssetUploadException('SVG uploads are disabled.');
+        }
+        $ext = self::EXTENSIONS[$mime] ?? null;
+        if ($ext === null) {
+            throw new AssetUploadException("{$name}: files of type {$mime} are not allowed.");
+        }
+
+        return [$mime, $ext];
+    }
+
+    /** @return array{0: ?int, 1: ?int} an image's width and height as displayed (EXIF orientation applied) */
+    private static function dimensions(string $file, string $mime): array
+    {
+        if (!str_starts_with($mime, 'image/') || $mime === 'image/svg+xml') {
+            return [null, null];
+        }
+        $size = @getimagesize($file);
+        if (!is_array($size)) {
+            return [null, null];
+        }
+        [$width, $height] = [(int) $size[0], (int) $size[1]];
+
+        return Orientation::swapsAxes(Orientation::of($file)) ? [$height, $width] : [$width, $height];
     }
 
     /** The relative path of an asset's file: Y/m/{id}.{ext} for version 1, Y/m/{id}-v{n}.{ext} after that. */
@@ -499,6 +887,7 @@ final class MediaLibrary
         try {
             return $this->variants->generate($this->dir, $asset->path, $asset->mime, $asset->width);
         } catch (\Throwable) {
+            $this->variants->remove($asset, $this->dir); // no half-written files without a record
             return [];
         }
     }

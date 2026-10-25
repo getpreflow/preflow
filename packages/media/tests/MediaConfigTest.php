@@ -52,6 +52,7 @@ final class MediaConfigTest extends TestCase
             'quality' => 60,
             'private_dir' => $this->dir . '/storage/secret',
             'private_url' => '/secret',
+            'versions_dir' => $this->dir . '/storage/old',
         ];
     }
 
@@ -68,6 +69,7 @@ final class MediaConfigTest extends TestCase
         $this->assertSame(60, $config->quality);
         $this->assertSame($this->dir . '/storage/secret', $config->privateDir);
         $this->assertSame('/secret', $config->privateUrl);
+        $this->assertSame($this->dir . '/storage/old', $config->versionsDir);
     }
 
     public function test_media_php_only(): void
@@ -145,6 +147,8 @@ final class MediaConfigTest extends TestCase
         $this->assertSame(75, $config->quality);
         $this->assertSame($this->dir . '/storage/private-media', $config->privateDir);
         $this->assertSame('/files', $config->privateUrl);
+        $this->assertSame($this->dir . '/storage/media-versions', $config->versionsDir);
+        $this->assertSame($this->dir . '/storage/media-versions', $config->toArray()['versions_dir']);
     }
 
     public function test_private_dir_under_public_is_refused_naming_the_source(): void
@@ -162,6 +166,24 @@ final class MediaConfigTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('config/folio.php assets');
+        MediaConfig::fromApp(Application::create($this->dir));
+    }
+
+    public function test_versions_dir_under_public_is_refused_naming_the_source(): void
+    {
+        $this->write('media.php', ['versions_dir' => $this->dir . '/public/old']);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('config/media.php versions_dir');
+        MediaConfig::fromApp(Application::create($this->dir));
+    }
+
+    public function test_versions_dir_inside_the_media_dir_is_refused(): void
+    {
+        $this->write('media.php', ['dir' => $this->dir . '/web/media', 'versions_dir' => $this->dir . '/web/media/old']);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('versions_dir');
         MediaConfig::fromApp(Application::create($this->dir));
     }
 }

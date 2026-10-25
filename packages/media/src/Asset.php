@@ -47,9 +47,15 @@ final readonly class Asset
 
     public function kind(): string
     {
+        return self::kindOf($this->mime);
+    }
+
+    /** "image", "video" or "document" for a MIME type. */
+    public static function kindOf(string $mime): string
+    {
         return match (true) {
-            str_starts_with($this->mime, 'image/') => 'image',
-            str_starts_with($this->mime, 'video/') => 'video',
+            str_starts_with($mime, 'image/') => 'image',
+            str_starts_with($mime, 'video/') => 'video',
             default => 'document',
         };
     }

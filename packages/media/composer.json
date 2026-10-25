@@ -37,7 +37,8 @@
     "extra": {
         "preflow": {
             "commands": [
-                "Preflow\\Media\\Console\\VariantsCommand"
+                "Preflow\\Media\\Console\\VariantsCommand",
+                "Preflow\\Media\\Console\\VersionsPruneCommand"
             ]
         }
     }

@@ -201,7 +201,7 @@ final class AssetLibraryTest extends TestCase
     {
         mkdir($this->assetRoot . '/models');
         $dm = new DataManager(drivers: [$storage => $driver], defaultDriver: $storage, typeRegistry: new TypeRegistry($this->assetRoot . '/models'));
-        $library = new MediaLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', ['storage' => $storage]);
+        $library = new MediaLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', ['storage' => $storage, 'versions_dir' => $this->assetRoot . '/versions']);
         $lines = (new RecordTableSync($dm))->sync($library->definition());
         $this->assertSame(['created table folio_assets'], $lines);
 
@@ -215,6 +215,12 @@ final class AssetLibraryTest extends TestCase
         $updated = $library->update($asset->id, ['alt' => ['en' => 'Sea', 'de' => 'Meer'], 'focal_x' => 30]);
         $this->assertSame(['en' => 'Sea', 'de' => 'Meer'], $library->find($asset->id)?->alt);
         $this->assertSame(30, $updated->focalX);
+
+        // A replace stores the version list as JSON text and reads it back.
+        $library->replace($asset->id, $this->upload($this->png(20, 10), 'b.png'), null);
+        $replaced = $library->replace($asset->id, $this->upload($this->png(30, 10), 'c.png'), null);
+        $this->assertEquals($replaced, $library->find($asset->id));
+        $this->assertSame([2, 1], array_map(static fn ($v) => $v->number, $library->versions($asset->id)));
 
         $library->delete($asset->id);
         $this->assertNull($library->find($asset->id));

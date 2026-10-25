@@ -11,7 +11,7 @@ use Preflow\Media\Tests\Support\MediaApp;
 use Preflow\Routing\RouteCollection;
 use Preflow\Routing\Router;
 
-/** The media core's own routes: the private-file route, then the variant route; added once per collection. */
+/** The media core's own routes: the private-file route, the version-file route, then the variant route; added once per collection. */
 final class MediaRoutesTest extends TestCase
 {
     use MediaApp;
@@ -36,6 +36,7 @@ final class MediaRoutesTest extends TestCase
 
         $this->assertSame([
             ['/tools/files/{id}', 'Preflow\\Media\\Http\\PrivateFileController@serve', 'GET', ['id'], '#^/tools/files/(?P<id>[a-f0-9]{32})$#', false, []],
+            ['/tools/files/{id}/v/{n}', 'Preflow\\Media\\Http\\PrivateFileController@serveVersion', 'GET', ['id', 'n'], '#^/tools/files/(?P<id>[a-f0-9]{32})/v/(?P<n>[1-9][0-9]{0,5})$#', false, []],
             ['/media/{...path}', 'Preflow\\Media\\Http\\VariantController@serve', 'GET', ['path'], '#^/media/(?P<path>.+)$#', true, []],
         ], array_map(static fn ($e) => [$e->pattern, $e->handler, $e->method, $e->paramNames, $e->regex, $e->isCatchAll, $e->middleware], $routes->all()));
     }
@@ -46,7 +47,7 @@ final class MediaRoutesTest extends TestCase
         $this->assertInstanceOf(Router::class, $router);
         $handlers = array_map(static fn ($e) => $e->handler, $router->getCollection()->all());
 
-        $this->assertSame(['Preflow\\Media\\Http\\PrivateFileController@serve', 'Preflow\\Media\\Http\\VariantController@serve'], $handlers);
+        $this->assertSame(['Preflow\\Media\\Http\\PrivateFileController@serve', 'Preflow\\Media\\Http\\PrivateFileController@serveVersion', 'Preflow\\Media\\Http\\VariantController@serve'], $handlers);
     }
 
     public function test_core_alone_denies_private_files(): void

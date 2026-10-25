@@ -10,8 +10,8 @@ use Preflow\Core\Debug\DebugCollector;
 /**
  * The media settings: config/media.php, or (deprecated) config/folio.php
  * "assets" when media.php is missing. The two are never merged. A private_dir
- * inside public/ or the media directory is refused: those files would be
- * served without the gate.
+ * or versions_dir inside public/ or the media directory is refused: those files
+ * would be served without the gate.
  */
 final readonly class MediaConfig
 {
@@ -34,6 +34,8 @@ final readonly class MediaConfig
         public ?string $privateDir = null,
         public string $privateUrl = '/files',
         private string $source = self::MEDIA,
+        /** Earlier files of replaced assets ({versions_dir}/{id}/v{n}.{ext}); a shared deploy dir, like private_dir. */
+        public ?string $versionsDir = null,
     ) {}
 
     public static function fromApp(Application $app, ?DebugCollector $debug = null): self
@@ -66,8 +68,12 @@ final readonly class MediaConfig
                 : $app->basePath('storage/private-media'),
             privateUrl: is_string($values['private_url'] ?? null) ? $values['private_url'] : '/files',
             source: $source,
+            versionsDir: array_key_exists('versions_dir', $values)
+                ? (is_string($values['versions_dir']) && $values['versions_dir'] !== '' ? $values['versions_dir'] : null)
+                : $app->basePath('storage/media-versions'),
         );
-        $config->checkPrivateDir($app);
+        $config->checkOutsideServed($app, 'private_dir', $config->privateDir);
+        $config->checkOutsideServed($app, 'versions_dir', $config->versionsDir);
 
         return $config;
     }
@@ -97,20 +103,22 @@ final readonly class MediaConfig
             'quality' => $this->quality,
             'private_dir' => $this->privateDir,
             'private_url' => $this->privateUrl,
+            'versions_dir' => $this->versionsDir,
         ];
     }
 
-    private function checkPrivateDir(Application $app): void
+    /** A directory of gated files (private_dir, versions_dir) must not be served by the web server. */
+    private function checkOutsideServed(Application $app, string $name, ?string $dir): void
     {
-        if ($this->privateDir === null) {
+        if ($dir === null) {
             return;
         }
-        $private = self::normalizePath($this->privateDir);
+        $gated = self::normalizePath($dir);
         foreach ([$app->basePath('public'), $this->dir] as $served) {
             $served = self::normalizePath($served);
-            if ($private === $served || str_starts_with($private, $served . '/') || str_starts_with($served, $private . '/')) {
-                $key = $this->source === self::MEDIA ? self::MEDIA . ' private_dir' : self::FOLIO . '.private_dir';
-                throw new \RuntimeException("{$key} ({$this->privateDir}) must be outside public/ and the media directory.");
+            if ($gated === $served || str_starts_with($gated, $served . '/') || str_starts_with($served, $gated . '/')) {
+                $key = $this->source === self::MEDIA ? self::MEDIA . ' ' . $name : self::FOLIO . '.' . $name;
+                throw new \RuntimeException("{$key} ({$dir}) must be outside public/ and the media directory.");
             }
         }
     }

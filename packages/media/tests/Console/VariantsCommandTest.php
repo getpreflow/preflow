@@ -30,7 +30,7 @@ final class VariantsCommandTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__, 2) . '/composer.json'), true);
 
-        $this->assertSame([VariantsCommand::class], $composer['extra']['preflow']['commands'] ?? null);
+        $this->assertContains(VariantsCommand::class, $composer['extra']['preflow']['commands'] ?? []);
         $this->assertSame('media:variants', (new VariantsCommand())->getName());
     }
 
