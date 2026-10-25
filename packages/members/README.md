@@ -216,7 +216,8 @@ and `fr`. Without `config/i18n.php` the pages run in a single locale with no pre
 
 ## In Folio
 
-- Members (sidebar section Members) with a waiting badge and a State column.
+- Members (sidebar section Members) with a waiting badge and a State column, newest first,
+  filterable by Registered, Email confirmed and Decided dates (from/until).
 - The Decision panel offers Accept from Waiting or Declined and Decline from Waiting or
   Member; the server refuses anything else. The mail goes out first; when it fails,
   nothing changes. Declining ends the member's remembered sessions.

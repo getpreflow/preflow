@@ -90,7 +90,8 @@ when one is configured (an optional alias), otherwise in the default storage.
 ## Admin
 
 *Library → Codes* lists the codes with a *Redemptions* column: the number of redemptions, or
-`revoked` / `expired`.
+`revoked` / `expired`. The list filters by *Expires at* (from/until) and *Form* (readable /
+random).
 
 - **Create:** the admin creates readable codes only, for purposes with `readable: true`.
   The code is normalised (upper case, no spaces or dashes) and must be 4–64 characters

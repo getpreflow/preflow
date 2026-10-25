@@ -1,6 +1,6 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-25 (v0.34.0)
+> Last updated: 2026-10-25 (v0.34.1)
 
 ## Current State
 
@@ -86,6 +86,11 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 ---
 
 ## Completed
+
+### v0.34.1
+
+- **List defaults for package types:** Members are listed newest first (`registered_at`) and filter by registered, email-confirmed and decided dates; Codes filter by expiry and form. A site's `extends` file can only change their columns, so the defaults live in the packages
+- No constraint change
 
 ### v0.34.0
 

@@ -243,6 +243,28 @@ final class MembersGroundworkTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_member_list_newest_first_with_date_filters(): void
+    {
+        $this->migrateAndApply();
+        foreach (['m-1' => '2026-09-01 10:00', 'm-2' => '2026-10-20 10:00', 'm-3' => '2026-10-05 10:00'] as $id => $at) {
+            $this->saveRecord('member', ['uuid' => $id, 'email' => $id . '@site.test', 'name' => $id, 'registered_at' => $at, 'roles' => ['member']]);
+        }
+        $this->signIn();
+
+        $list = $this->admin('/folio/member');
+        $emails = static fn (string $html): array => array_values(array_filter(
+            array_map(static fn (\DOMElement $td): string => trim($td->textContent), Dom::all($html, '//table//tbody//tr/td[not(contains(@class, "folio-bulk-cell"))][1]')),
+        ));
+        $this->assertSame(['m-2@site.test', 'm-3@site.test', 'm-1@site.test'], $emails($list));
+        foreach (['registered_at', 'email_confirmed_at', 'decided_at'] as $field) {
+            $this->assertStringContainsString('name="f[' . $field . '][from]"', $list, $field);
+        }
+
+        $october = $this->admin('/folio/member?f[registered_at][from]=2026-10-01');
+        $this->assertSame(['m-2@site.test', 'm-3@site.test'], $emails($october));
+    }
+
+    #[RunInSeparateProcess]
     public function test_member_roles_and_language_are_readonly(): void
     {
         $this->migrateAndApply();

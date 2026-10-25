@@ -184,6 +184,23 @@ final class CodesInFolioTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_code_list_filters_by_expiry_and_form(): void
+    {
+        $this->app();
+        $this->login();
+        $this->assertSame(302, $this->send('POST', '/folio/code', $this->create())->getStatusCode());
+
+        $page = (string) $this->send('GET', '/folio/code')->getBody();
+        $this->assertStringContainsString('name="f[expires_at][from]"', $page);
+        $this->assertStringContainsString('name="f[form]"', $page);
+
+        // Only the table body: the debug toolbar's query log also shows the code.
+        $rows = fn (string $uri): string => preg_match('#<tbody.*?</tbody>#s', (string) $this->send('GET', $uri)->getBody(), $m) === 1 ? $m[0] : '';
+        $this->assertStringContainsString('SMARTSTACK2026', $rows('/folio/code?f[form]=readable'));
+        $this->assertStringNotContainsString('SMARTSTACK2026', $rows('/folio/code?f[form]=random'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_create_readable_code_in_admin(): void
     {
         $this->app();
