@@ -131,6 +131,37 @@ final class FolioRecordReferencesTest extends TestCase
         $this->assertEquals([new AssetUsageEntry('clip.txt', '/folio/assets/' . $video->id, 'media', 'as poster')], $core->usagesOf($poster->id));
     }
 
+    public function test_types_without_asset_or_blocks_fields_are_not_read(): void
+    {
+        file_put_contents($this->assetRoot . '/models/tag.json', json_encode([
+            'key' => 'tag', 'table' => 'tag', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Tags',
+            'fields' => ['title' => ['type' => 'string'], 'note' => ['type' => 'text']],
+        ]));
+        $registry = new TypeRegistry($this->assetRoot . '/models');
+        $json = new JsonFileDriver($this->assetRoot . '/store');
+        $reads = [];
+        $counting = new class ($json, $reads) implements \Preflow\Data\StorageDriver {
+            /** @param list<string> $reads */
+            public function __construct(private readonly JsonFileDriver $inner, private array &$reads) {}
+            public function findOne(string $type, string|int $id, string $idField = 'uuid'): ?array { $this->reads[] = $type; return $this->inner->findOne($type, $id, $idField); }
+            public function findMany(string $type, \Preflow\Data\Query $query): \Preflow\Data\ResultSet { $this->reads[] = $type; return $this->inner->findMany($type, $query); }
+            public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void { $this->inner->save($type, $id, $data, $idField); }
+            public function delete(string $type, string|int $id, string $idField = 'uuid'): void { $this->inner->delete($type, $id, $idField); }
+            public function exists(string $type, string|int $id, string $idField = 'uuid'): bool { return $this->inner->exists($type, $id, $idField); }
+            public function lastInsertId(): string|int { return $this->inner->lastInsertId(); }
+            public function rawQuery(string $sql, array $bindings = []): array { return $this->inner->rawQuery($sql, $bindings); }
+        };
+        $dm = new DataManager(drivers: ['json' => $counting], defaultDriver: 'json', typeRegistry: $registry);
+        $dm->saveType(DynamicRecord::fromArray($registry->get('page'), ['uuid' => 'p1', 'title' => 'About', 'cover' => 'a1']), false);
+        $dm->saveType(DynamicRecord::fromArray($registry->get('tag'), ['uuid' => 't1', 'title' => 'a1']), false);
+
+        $usage = (new FolioRecordReferences($this->references(), $dm, new TypeCatalog($this->assetRoot . '/models'), $registry, '/folio'))->usagesOf('a1');
+
+        $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio')], $usage);
+        $this->assertContains('page', $reads);
+        $this->assertNotContains('tag', $reads);
+    }
+
     /** @return array<string, mixed> */
     private function pageData(): array
     {
