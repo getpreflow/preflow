@@ -8,6 +8,8 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
+use Preflow\Core\Container\Container;
+use Preflow\Core\Container\ServiceProvider;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Media\MediaLibrary;
@@ -63,6 +65,35 @@ final class PosterReferencesTest extends TestCase
         $library->delete($video->id); // nothing uses the video
         $library->delete($poster->id); // and now nothing uses the poster
         $this->assertSame([], $library->all());
+    }
+
+    public function test_a_source_registered_by_a_provider_listed_before_media_is_kept(): void
+    {
+        $app = Application::create($this->dir);
+        $site = new AssetUsageEntry('Home page', '/admin/page/1', 'site');
+        // A site provider that asks for the usage registry before media has registered at all.
+        $app->registerProvider(new class ($site) extends ServiceProvider {
+            public function __construct(private readonly AssetUsageEntry $entry) {}
+
+            public function register(Container $container): void
+            {
+                $container->get(AssetUsage::class)->register(AssetUsageTest::source('site', ['*' => [$this->entry]], everything: true));
+            }
+        });
+        $app->registerProvider(new MediaServiceProvider());
+        $c = $app->container();
+        $c->instance(DataManager::class, new DataManager(drivers: ['json' => new JsonFileDriver($this->dir . '/store')], defaultDriver: 'json'));
+        $library = $c->get(MediaLibrary::class);
+        $asset = $library->upload($this->upload($this->png(), 'a.png'), null);
+
+        $this->assertSame(['site', 'media'], $c->get(AssetUsage::class)->sourceNames());
+        try {
+            $library->delete($asset->id);
+            $this->fail('delete() should refuse an asset the site source reports');
+        } catch (AssetInUseException $e) {
+            $this->assertEquals([$site], $e->usages);
+        }
+        $this->assertNotNull($library->find($asset->id));
     }
 
     private function png(): string

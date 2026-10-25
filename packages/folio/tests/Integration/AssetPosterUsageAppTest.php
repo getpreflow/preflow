@@ -47,6 +47,21 @@ final class AssetPosterUsageAppTest extends TestCase
         $this->assertNotNull($this->app()->container()->get(MediaLibrary::class)->find($poster->id));
     }
 
+    public function test_record_rows_list_before_poster_rows(): void
+    {
+        $lib = $this->app()->container()->get(MediaLibrary::class);
+        $poster = $lib->upload($this->file($this->png(), 'poster.png'), null);
+        $video = $lib->upload($this->file("notes\n", 'clip.txt'), null);
+        $lib->update($video->id, ['poster' => $poster->id]);
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello'], 'cover' => $poster->id]);
+
+        $panel = (string) $this->get('/folio/assets/' . $poster->id)->getBody();
+
+        $this->assertStringContainsString('<p>Used in 2 records:</p>', $panel);
+        $this->assertStringContainsString('<ul><li><a href="/folio/post/p1/edit">Hello</a></li>'
+            . '<li><a href="/folio/assets/' . $video->id . '">clip.txt</a> (as poster)</li></ul>', $panel);
+    }
+
     private function file(string $bytes, string $name): UploadedFileInterface
     {
         $f = new Psr17Factory();

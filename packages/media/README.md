@@ -68,8 +68,8 @@ return [
 ```
 
 - Without `config/media.php`, an existing `config/folio.php` `assets` block is read instead
-  (deprecated, logged to the debug collector). The two are never merged: a present
-  `media.php` wins entirely.
+  (deprecated, logged to the debug collector and listed in the devtools debug toolbar). The
+  two are never merged: a present `media.php` wins entirely.
 - Who may download private files is not a media setting; see Private files.
 - A `private_dir` inside `public/` or the media directory is refused at boot.
 
@@ -124,11 +124,14 @@ advance (use one on shared hosting). If an encode fails, the browser is redirect
 ## Usage sources
 
 An asset counts as used where a registered source reports it. `AssetUsage` asks every
-source; `MediaLibrary::delete()` refuses while any reports a use.
+source in registration order; `MediaLibrary::delete()` refuses while any reports a use.
+There is one `AssetUsage` per container (`#[Singleton]`), whichever provider asks for it
+first.
 
-- The core registers `PosterReferences`: an asset used as another asset's poster.
-- Folio registers its record source (working copies, published versions, revisions, nested
-  blocks). `Preflow\Folio\Assets\AssetReferences` stays in Folio.
+- The core registers `PosterReferences` as the last source (`register($source, last: true)`),
+  so poster uses list after record uses: an asset used as another asset's poster.
+- Folio registers its record source (working copies and published versions, nested blocks
+  included). `Preflow\Folio\Assets\AssetReferences` stays in Folio.
 - **If you store asset references, register a source**, or deleting an asset used there is
   not blocked:
 
@@ -143,11 +146,18 @@ final class OrderReferences implements AssetReferenceSource
     public function usagesOf(string $assetId): array { /* scan or ask an index */ }
 }
 
+// in your provider's boot()
 $container->get(AssetUsage::class)->register(new OrderReferences());
 ```
 
+Register sources in your provider's `boot()`: every provider has registered by then, so the
+order of `config/providers.php` does not matter. (A source registered in `register()` is
+kept too, also before `MediaServiceProvider`.) To build the source only when an asset is
+checked, wrap it: `new LazyReferenceSource('orders', fn () => $container->get(OrderReferences::class))`.
+
 A source may scan its data on request or keep an index up to date on save; the interface
-does not care.
+does not care. It is asked on every delete, so keep it cheap: Folio's skips types without
+asset or blocks fields and, on SQL storage, reads only rows whose columns contain the id.
 
 ## Private files
 
@@ -179,10 +189,11 @@ ZIP, and Word, Excel and PowerPoint files. SVG is refused unless `allow_svg` is 
 
 ## SQL storage
 
-`preflow migrate` creates the table (`media.table`). By hand: `uuid` (primary key); `path`,
-`original_name`, `mime`, `title`, `poster`, `created_at`, `created_by` (TEXT); `size`,
-`width`, `height`, `focal_x`, `focal_y`, `private` (INTEGER); `duration` (REAL); `alt`,
-`variants` (TEXT, JSON).
+`preflow migrate` creates the table (`media.table`), as `RecordTableSync` makes any record
+table: `uuid` as the primary key and every other field as a nullable text column (TEXT on
+SQLite, LONGTEXT on MySQL): `path`, `original_name`, `mime`, `title`, `poster`,
+`created_at`, `created_by`, `size`, `width`, `height`, `focal_x`, `focal_y`, `private`,
+`duration`, `alt` and `variants` (JSON). Columns it adds later are text too.
 
 ## Use without Folio
 

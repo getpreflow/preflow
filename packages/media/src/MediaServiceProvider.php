@@ -21,6 +21,7 @@ use Preflow\Media\Image\ImageBackends;
 use Preflow\Media\Image\ImageWidths;
 use Preflow\Media\Image\VariantGenerator;
 use Preflow\Media\Usage\AssetUsage;
+use Preflow\Media\Usage\LazyReferenceSource;
 use Preflow\Media\Routing\MediaRoutes;
 use Preflow\Media\Usage\PosterReferences;
 use Preflow\Routing\Router;
@@ -50,14 +51,15 @@ final class MediaServiceProvider extends ServiceProvider
             (array) $app->config()->get('image.presets', []),
             $config->widths,
         ));
-        // Usage sources: the library's own poster references first; Folio and sites register theirs.
+        // Usage sources: Folio and sites register theirs on the shared AssetUsage (one per
+        // container, also when a provider listed before this one asked for it first); the
+        // library's own poster references are asked last, so poster rows follow record rows.
+        // Resolved per check: Folio re-binds PosterReferences to link to its library screen.
         $container->singleton(PosterReferences::class, fn (Container $c) => new PosterReferences(static fn (): MediaLibrary => $c->get(MediaLibrary::class)));
-        $container->singleton(AssetUsage::class, function (Container $c): AssetUsage {
-            $usage = new AssetUsage();
-            $usage->register($c->get(PosterReferences::class));
-
-            return $usage;
-        });
+        $container->get(AssetUsage::class)->register(
+            new LazyReferenceSource(PosterReferences::NAME, static fn (): PosterReferences => $container->get(PosterReferences::class)),
+            last: true,
+        );
         $container->singleton(MediaLibrary::class, fn (Container $c) => new MediaLibrary(
             $c->get(DataManager::class),
             self::locales($c),
