@@ -1032,6 +1032,9 @@ final class Overview
   enabled extension). A missing file, an unknown `@folio/` name or a disabled extension
   throws an `ExtensionException` naming the screen method or panel, so a file deleted after
   a deploy fails loudly instead of printing a dead tag.
+- **htmx and modules:** use `@folio/htmx.js` rather than shipping your own htmx (only it
+  gets the `htmx-config` nonce meta). ES modules must be named `.mjs`: a `.js` file with
+  `import` loads as a classic script and fails.
 - **Tags:** `.css` becomes `<link rel="stylesheet">` in the `<head>`; `.js` becomes
   `<script src defer nonce>`; `.mjs` becomes `<script type="module" nonce>`. Other served
   types (`map`, `svg`, `png`, `webp`, `woff2`, `json`) are not added to the page: load them
@@ -1040,8 +1043,11 @@ final class Overview
 - **File rules:** only `css`, `js`, `mjs`, `map`, `svg`, `png`, `webp`, `woff2` and `json`,
   with a lower-case extension. Each path segment matches `[A-Za-z0-9._-]` and does not start
   with a dot. Anything else, a path leaving `assets/`, or a symlink pointing outside it is a
-  404. Responses carry the right `Content-Type`, `X-Content-Type-Options: nosniff` and
-  `Cache-Control: public, max-age=31536000, immutable`.
+  404. Responses carry the right `Content-Type` and `X-Content-Type-Options: nosniff`.
+- **Caching:** `Cache-Control: public, max-age=31536000, immutable` only when the request's
+  `?v=` is the file's current hash. Any other request (no `?v=`, a stale one, or a lazy
+  `import './x.mjs'`, CSS `url()` or `sourceMappingURL`) gets `Cache-Control: no-cache` and an
+  `ETag`, and a matching `If-None-Match` is answered with 304, so edits show up at once.
 - **No PHP in `assets/`:** extension discovery scans every `.php` file under an extension
   folder, `assets/` included, so a PHP file there is loaded as a class candidate. Keep PHP
   out of that folder (it is never served either way).
@@ -1049,22 +1055,42 @@ final class Overview
   inline scripts, inline styles or `on*=` attributes in your templates.
 - `folio_extension_asset('demo', 'logo.svg')` in Twig returns the versioned URL of a file
   (for an `<img>` or a preload link) and throws when it is not served.
+- Edit-form panels (a `ScreenView` from a `#[FormPanel]`) get no `folio-extension-assets`
+  meta: use `folio_extension_asset()` there. A site that overrides the admin layout
+  (`@folio/admin/_layout.twig`) must print `page_assets` itself.
 - Every extension screen page has `<meta name="folio-extension-assets" content="{prefix}/_assets/x/{extension}/">`
   in its head: the base URL for scripts that load more files at run time.
 
 ```js
 // assets/demo.mjs: load Mermaid only when a diagram is on the page
 const base = document.querySelector('meta[name="folio-extension-assets"]').content;
+const nonce = document.querySelector('meta[name="csp-nonce"]')?.content;
 const diagrams = document.querySelectorAll('.demo-diagram');
 if (diagrams.length > 0) {
-    const { default: mermaid } = await import(base + 'vendor/mermaid.esm.min.mjs');
+    const { default: mermaid } = await import(base + 'vendor/mermaid/mermaid.esm.min.mjs');
     mermaid.initialize({ startOnLoad: false });
-    await mermaid.run({ nodes: diagrams });
+    let n = 0;
+    for (const el of diagrams) {
+        const { svg } = await mermaid.render('demo-diagram-' + n++, el.textContent);
+        const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+        // Mermaid's SVG carries a <style> element; the strict CSP needs the page nonce on it.
+        doc.querySelectorAll('style').forEach((style) => style.setAttribute('nonce', nonce));
+        el.replaceChildren(document.importNode(doc.documentElement, true));
+    }
 }
 ```
 
-The extension ships `assets/vendor/mermaid.esm.min.mjs` itself. Files imported at run time
-are not versioned: change the file name when you update them.
+Copy Mermaid's whole `dist/` folder, `chunks/` included, to `assets/vendor/mermaid/`: the ESM
+entry `mermaid.esm.min.mjs` imports many chunk files, so shipping the entry alone 404s. (Or
+list the single-file `mermaid.min.js` as a classic script and use the `mermaid` global.)
+Files imported at run time are not versioned (they revalidate on every load); change the
+file name when you update them if you want long caching.
+
+Mermaid writes inline `style` attributes and a `<style>` element into its SVG, and the
+admin's strict `style-src` (nonce, no `unsafe-inline`) blocks both. The example stamps the
+page nonce on the `<style>` element; inline `style` attributes can stay blocked, so check
+the diagram in the browser (console, CSP violations) and prefer Mermaid themes that style
+through the `<style>` element.
 
 `editor_assets` (the template variable behind a field type's `assets()`) is internal to
 Folio's own pages; extensions use the options above.

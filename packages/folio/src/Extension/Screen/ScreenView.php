@@ -25,7 +25,7 @@ final readonly class ScreenView
     ) {}
 
     /**
-     * The template with Folio's variables and the view's data over them; a missing
+     * The template with the view's data and Folio's variables over it (Folio's win); a missing
      * template is an ExtensionException naming $owner (the screen or panel method).
      *
      * @param array<string, mixed> $defaults
@@ -36,6 +36,6 @@ final readonly class ScreenView
             throw new ExtensionException("{$owner} renders \"{$this->template}\", which does not exist.");
         }
 
-        return $engine->render($this->template, array_merge($defaults, $this->data));
+        return $engine->render($this->template, array_merge($this->data, $defaults));
     }
 }

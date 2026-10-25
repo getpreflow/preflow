@@ -245,6 +245,25 @@ final class ScreenTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_view_data_cannot_replace_folios_page_assets_or_base(): void
+    {
+        $this->assetsx(['page.css'], []);
+        $this->write('app/Folio/Assetsx/templates/page.twig', "{% extends '@folio/admin/_layout.twig' %}{% block content %}assetsx{% endblock %}");
+        $this->write('app/Folio/Assetsx/Screens/Page.php', str_replace(
+            "ScreenView('@assetsx/page.twig', [],",
+            "ScreenView('@assetsx/page.twig', ['page_assets' => null, 'extension_assets_base' => '/evil/'],",
+            (string) file_get_contents($this->dir . '/app/Folio/Assetsx/Screens/Page.php'),
+        ));
+        $this->as('admin');
+
+        $body = (string) $this->send('GET', '/folio/assetsx')->getBody();
+
+        $this->assertStringContainsString('/folio/_assets/x/assetsx/page.css', $body);
+        $this->assertStringContainsString('content="/folio/_assets/x/assetsx/"', $body);
+        $this->assertStringNotContainsString('/evil/', $body);
+    }
+
+    #[RunInSeparateProcess]
     public function test_screen_without_htmx_has_no_htmx_meta(): void
     {
         $this->assetsx(['page.css'], []);

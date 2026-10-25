@@ -97,10 +97,11 @@ final class PageAssets
 
     private function extensionUrl(string $extension, string $path, string $owner, string $entry): string
     {
-        if ($this->ext->path($extension, $path) === null) {
+        $real = $this->ext->path($extension, $path);
+        if ($real === null) {
             throw new ExtensionException("{$owner} lists asset \"{$entry}\", but \"{$path}\" is not a served file in the assets/ folder of enabled extension \"{$extension}\".");
         }
 
-        return $this->ext->url($extension, $path);
+        return $this->ext->base($extension) . $path . '?v=' . ExtensionAssets::hash($real);
     }
 }

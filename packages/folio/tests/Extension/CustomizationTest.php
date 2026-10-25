@@ -38,6 +38,7 @@ final class CustomizationTest extends TestCase
                 'status' => ['type' => 'string'],
                 'stage' => ['type' => 'select', 'options' => ['lead' => 'Lead', 'customer' => 'Customer']],
                 'vip' => ['type' => 'boolean'],
+                'bio' => ['type' => 'richtext'],
             ],
             // name (a string) and email (not select/boolean) are no bulk fields: ignored.
             'list' => ['bulk' => ['stage', 'vip', 'name']],
@@ -138,6 +139,19 @@ final class CustomizationTest extends TestCase
         $this->assertSame(1, substr_count($head, '/folio/_assets/x/crm/panel.js'));
         $this->assertSame(1, preg_match_all('#<link rel="stylesheet" href="/folio/_assets/x/crm/panel\.css\?v=[0-9a-f]{12}">#', $head));
         $this->assertStringNotContainsString('folio-extension-assets', $head);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_panel_trix_is_not_printed_twice_on_a_form_with_a_richtext_field(): void
+    {
+        $this->assetPanels('contact', 'ContactAdmin', ['rich' => ['@folio/trix']]);
+        $this->as('admin');
+        $this->seed('contact', 'c1', ['name' => 'Ada']);
+
+        $head = $this->headOf((string) $this->send('GET', '/folio/contact/c1/edit')->getBody());
+
+        $this->assertSame(1, substr_count($head, '/folio/_assets/trix.css'));
+        $this->assertSame(1, substr_count($head, '/folio/_assets/trix.js'));
     }
 
     #[RunInSeparateProcess]

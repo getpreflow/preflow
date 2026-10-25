@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - URL: `{prefix}/_assets/x/{extension}/{path}`; `path` may contain subfolders.
-- Served only for enabled extensions, only real paths inside `{ExtensionDefinition::$folder}/assets`, only types `css`, `js`, `mjs`, `map`, `svg`, `png`, `webp`, `woff2`, `json`; headers `Content-Type` (correct per type), `X-Content-Type-Options: nosniff`, `Cache-Control: public, max-age=31536000, immutable`; everything else 404.
+- Served only for enabled extensions, only real paths inside `{ExtensionDefinition::$folder}/assets`, only types `css`, `js`, `mjs`, `map`, `svg`, `png`, `webp`, `woff2`, `json`; headers `Content-Type` (correct per type), `X-Content-Type-Options: nosniff`, `Cache-Control: public, max-age=31536000, immutable` only for a `?v=` matching the current hash (otherwise `no-cache` + `ETag`, 304 on `If-None-Match`); everything else 404.
 - Versioned URLs `?v=` + first 12 hex of `hash_file('xxh3', …)`, as `AdminAssetUrls` does.
 - Entries: `'file.js'` (own extension), `'@folio/<name>'` (Folio's `AdminAssets` allowlist; `@folio/trix` = `trix.css` + `trix.js`), `'@<extension>/<path>'` (another enabled extension). Missing file / unknown name → `ExtensionException` naming the owner (screen method or panel).
 - Tags: `.css` → `<link rel="stylesheet">` in `<head>`; `.js` → `<script src defer nonce>`; `.mjs` → `<script type="module" nonce>`; other types not auto-included. `@folio/htmx.js` also emits the existing `htmx-config` meta. Order kept, duplicates dropped, attribute-level entries first.
