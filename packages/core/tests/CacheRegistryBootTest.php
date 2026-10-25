@@ -39,13 +39,31 @@ final class CacheRegistryBootTest extends TestCase
     #[RunInSeparateProcess]
     public function test_blade_registers_its_compiled_templates(): void
     {
-        $app = Application::create($this->app('blade'));
+        $dir = $this->app('blade');
+        $app = Application::create($dir);
         $app->boot();
 
         $source = $app->container()->get(CacheRegistry::class)->get('blade');
 
         $this->assertNotNull($source);
-        $this->assertSame('shared temp folder', $source->stats()->note);
+        $this->assertNull($source->stats()->note);
+        // Blade compiles into the app's own storage/cache/blade, and the registry lists that folder.
+        $this->assertDirectoryExists($dir . '/storage/cache/blade');
+        file_put_contents($dir . '/storage/cache/blade/compiled.php', '<?php');
+        $this->assertSame(1, $source->stats()->entries);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_relative_base_path_still_boots_with_json_and_blade_caches(): void
+    {
+        $dir = $this->app('blade');
+        chdir(dirname($dir));
+        $app = Application::create(basename($dir));
+        $app->boot();
+
+        $registry = $app->container()->get(CacheRegistry::class);
+        $this->assertNotNull($registry->get('data.json'));
+        $this->assertNotNull($registry->get('blade'));
     }
 
     #[RunInSeparateProcess]

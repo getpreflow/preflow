@@ -7,8 +7,11 @@ namespace Preflow\Core\Cache;
 /**
  * A folder of cache files. The folder itself stays, and so does every file whose
  * name starts with a dot (.gitkeep); dot-named subfolders are still walked.
- * Symlinks are never followed or counted, clear() only unlinks them.
+ * Symlinks inside the folder are never followed or counted, clear() only unlinks
+ * them; the folder itself may be a symlink (a Deployer shared dir, say).
+ * Subfolders that cannot be read are skipped.
  * $pattern is an fnmatch() pattern on file basenames, applied at every depth.
+ * The folder must be an absolute path other than the filesystem root.
  */
 final class DirectoryCache implements CacheSource
 {
@@ -18,7 +21,13 @@ final class DirectoryCache implements CacheSource
         private readonly string $dir,
         private readonly ?string $pattern = null,
         private readonly ?string $note = null,
-    ) {}
+    ) {
+        if ($dir === '' || $dir[0] !== '/' || rtrim($dir, '/') === '' || realpath($dir) === '/') {
+            throw new \InvalidArgumentException(
+                "Cache folder for '{$key}' must be an absolute path other than the filesystem root, got '{$dir}'.",
+            );
+        }
+    }
 
     public function key(): string
     {
@@ -66,6 +75,7 @@ final class DirectoryCache implements CacheSource
             $iterator = new \RecursiveIteratorIterator(
                 new \RecursiveDirectoryIterator($this->dir, \FilesystemIterator::SKIP_DOTS),
                 \RecursiveIteratorIterator::CHILD_FIRST,
+                \RecursiveIteratorIterator::CATCH_GET_CHILD,
             );
             foreach ($iterator as $item) {
                 if (!$item->isLink() && $item->isDir()) {
@@ -86,6 +96,8 @@ final class DirectoryCache implements CacheSource
 
         $iterator = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($this->dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::LEAVES_ONLY,
+            \RecursiveIteratorIterator::CATCH_GET_CHILD,
         );
         foreach ($iterator as $file) {
             $name = $file->getFilename();

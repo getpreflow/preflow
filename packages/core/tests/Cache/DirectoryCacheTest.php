@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Tests\Cache;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Cache\DirectoryCache;
 
@@ -19,6 +20,9 @@ final class DirectoryCacheTest extends TestCase
 
     protected function tearDown(): void
     {
+        if (is_dir($this->root . '/cache/locked')) {
+            @chmod($this->root . '/cache/locked', 0777);
+        }
         exec('rm -rf ' . escapeshellarg($this->root));
     }
 
@@ -95,9 +99,9 @@ final class DirectoryCacheTest extends TestCase
 
     public function test_the_note_is_passed_to_the_stats(): void
     {
-        $cache = new DirectoryCache('k', 'Label', $this->root . '/cache', note: 'shared temp folder');
+        $cache = new DirectoryCache('k', 'Label', $this->root . '/cache', note: 'some note');
 
-        $this->assertSame('shared temp folder', $cache->stats()->note);
+        $this->assertSame('some note', $cache->stats()->note);
         $this->assertSame('k', $cache->key());
         $this->assertSame('Label', $cache->label());
     }
@@ -113,5 +117,65 @@ final class DirectoryCacheTest extends TestCase
         $this->assertSame(2, $cleared->entries);
         $this->assertSame(30, $cleared->bytes);
         $this->assertFileDoesNotExist($this->root . '/cache/compiled.php');
+    }
+
+    /** @return array<string, array{string}> */
+    public static function unsafeRoots(): array
+    {
+        return [
+            'empty' => [''],
+            'relative' => ['relative/dir'],
+            'filesystem root' => ['/'],
+            'double slash' => ['//'],
+            'resolves to root' => ['/.'],
+        ];
+    }
+
+    #[DataProvider('unsafeRoots')]
+    public function test_an_empty_relative_or_filesystem_root_folder_is_refused(string $dir): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new DirectoryCache('k', 'Label', $dir);
+    }
+
+    public function test_a_symlinked_root_is_cleared_through_but_symlinks_inside_it_are_not_followed(): void
+    {
+        file_put_contents($this->root . '/cache/a.txt', 'abc');
+        mkdir($this->root . '/outside');
+        file_put_contents($this->root . '/outside/x.txt', 'keep');
+        symlink($this->root . '/outside', $this->root . '/cache/link');
+        symlink($this->root . '/cache', $this->root . '/shared');
+        $cache = new DirectoryCache('k', 'Label', $this->root . '/shared');
+
+        $this->assertSame(1, $cache->stats()->entries);
+
+        $cleared = $cache->clear();
+
+        $this->assertSame(1, $cleared->entries);
+        $this->assertFileDoesNotExist($this->root . '/cache/a.txt');
+        $this->assertTrue(is_link($this->root . '/shared'));
+        $this->assertFileExists($this->root . '/outside/x.txt');
+    }
+
+    public function test_an_unreadable_subfolder_is_skipped_not_thrown(): void
+    {
+        if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
+            $this->markTestSkipped('root can read a chmod 000 folder');
+        }
+        file_put_contents($this->root . '/cache/a.txt', 'abc');
+        mkdir($this->root . '/cache/locked');
+        file_put_contents($this->root . '/cache/locked/hidden.txt', 'secret');
+        chmod($this->root . '/cache/locked', 0);
+        $cache = new DirectoryCache('k', 'Label', $this->root . '/cache');
+
+        $this->assertSame(1, $cache->stats()->entries);
+
+        $cleared = $cache->clear();
+
+        $this->assertSame(1, $cleared->entries);
+        $this->assertFileDoesNotExist($this->root . '/cache/a.txt');
+        chmod($this->root . '/cache/locked', 0777);
+        $this->assertFileExists($this->root . '/cache/locked/hidden.txt');
     }
 }

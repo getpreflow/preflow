@@ -30,7 +30,7 @@ final class FileCache implements CacheSource
             return new CacheStats(0, 0, $this->note);
         }
 
-        return new CacheStats(1, (int) filesize($this->file), $this->note);
+        return new CacheStats(1, (int) @filesize($this->file), $this->note);
     }
 
     public function clear(): CacheCleared
@@ -39,7 +39,7 @@ final class FileCache implements CacheSource
             return new CacheCleared(0, 0);
         }
 
-        $bytes = (int) filesize($this->file);
+        $bytes = (int) @filesize($this->file);
 
         if (!@unlink($this->file)) {
             return new CacheCleared(0, 0);

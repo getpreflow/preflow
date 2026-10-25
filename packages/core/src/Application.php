@@ -83,6 +83,14 @@ final class Application
         return new self(new Config($config), $basePath);
     }
 
+    /** basePath($sub), anchored at the working directory when the base path is relative. */
+    private function absolutePath(string $sub): string
+    {
+        $path = $this->basePath($sub);
+
+        return str_starts_with($path, '/') ? $path : (getcwd() ?: '') . '/' . $path;
+    }
+
     public function container(): Container
     {
         return $this->container;
@@ -395,7 +403,7 @@ final class Application
                 $this->container->get(CacheRegistry::class)->register(new DirectoryCache(
                     'data.json',
                     'JSON storage query cache',
-                    $this->basePath('storage/cache/data'),
+                    $this->absolutePath('storage/cache/data'),
                     pattern: 'json-*.json',
                 ));
             }
@@ -606,14 +614,13 @@ final class Application
 
     private function createBladeEngine(array $templateDirs, \Preflow\View\AssetCollector $assets, DebugLevel $debug): \Preflow\Blade\BladeEngine
     {
-        // BladeEngine's own default, passed explicitly so the registry lists the same folder.
-        $cachePath = sys_get_temp_dir() . '/preflow_blade_cache';
+        // Passed explicitly so the engine and the registry use the same folder.
+        $cachePath = $this->absolutePath('storage/cache/blade');
 
         $this->container->get(CacheRegistry::class)->register(new DirectoryCache(
             'blade',
             'Compiled Blade templates',
             $cachePath,
-            note: 'shared temp folder',
         ));
 
         return new \Preflow\Blade\BladeEngine(
