@@ -20,6 +20,7 @@ Requires PHP 8.4+.
 | `ErrorHandler` | Dev (rich HTML) / prod (minimal) error pages |
 | `Kernel` | Dual-mode (Component/Action) request dispatcher |
 | `Application` | Bootstrap entry point |
+| `CsrfMiddleware` | CSRF check, with an `ExpiredSessionHandler` hook for expired sessions |
 | HTTP exceptions | `NotFoundHttpException`, `ForbiddenHttpException`, `UnauthorizedHttpException` |
 | Route contracts | `Route`, `RouteMode`, `RouterInterface` |
 
@@ -259,6 +260,61 @@ the container with its config entry as `config`. It is built lazily (`LazyUserPr
 resolved at the end of `boot()`, after the service providers, so it may use services they
 register (e.g. Folio's type catalog). A class that is not a `UserProviderInterface` throws at
 boot.
+
+### CSRF
+
+`CsrfMiddleware` runs when a session exists (`config/auth.php` `session`). Every `POST`, `PUT`,
+`PATCH` and `DELETE` must carry the session's token, as the `_csrf_token` form field
+(`csrf_field()`) or the `X-CSRF-Token` header; `GET`, `HEAD`, `OPTIONS` and `/--component/`
+are not checked. A failure is a 403, in one of two kinds:
+
+- **`ForbiddenHttpException('CSRF token mismatch.')`:** no token, or a wrong one while the
+  session holds a token (a forged request, a stale tab of the same session).
+- **`Preflow\Core\Http\Csrf\CsrfSessionExpiredException`** (extends `ForbiddenHttpException`,
+  message `CSRF token mismatch: session expired.`): the session held no token before this
+  request but the request carried one. Typically the session ended while a form was open, and
+  the new session (a remember cookie may already have signed the visitor in again) cannot
+  match the old token. Existing catches of `ForbiddenHttpException` still catch it.
+
+Site middleware runs inside the CSRF check, so it cannot catch either. To answer the expired
+case before the app runs (keep what was typed, send the visitor to the sign-in), bind a
+`Preflow\Core\Http\Csrf\ExpiredSessionHandler` in a service provider. It gets the request
+(with the new session as the `SessionInterface` attribute and its fresh `CsrfToken`) and
+returns a response to send instead of the 403, or `null` for the 403. It is called for the
+expired case only, never for a mismatch on a live session, a missing token, safe methods or
+exempt paths.
+
+```php
+use Preflow\Core\Http\Csrf\ExpiredSessionHandler;
+use Preflow\Core\Http\Session\SessionInterface;
+
+final class KeepDraftOnExpiry implements ExpiredSessionHandler
+{
+    public function handle(ServerRequestInterface $request): ?ResponseInterface
+    {
+        $path = $request->getUri()->getPath();
+        if (!preg_match('#^/account/posts/\d+/edit$#D', $path)
+            || $request->getHeaderLine('Sec-Fetch-Site') !== 'same-origin') {
+            return null; // the plain 403
+        }
+        // Keep the values to PREFILL the form after sign-in; never save them from here.
+        $request->getAttribute(SessionInterface::class)
+            ->set('draft:' . $path, (array) $request->getParsedBody());
+
+        return new Response(303, ['Location' => '/login?next=' . rawurlencode($path)]);
+    }
+}
+
+// in a ServiceProvider::register()
+$container->singleton(ExpiredSessionHandler::class, KeepDraftOnExpiry::class);
+```
+
+**Security rule:** the request is not verified; nobody can say who sent it. Never apply posted
+data from an expired-session request (no save, no state change, no mail). At most keep it in
+the new session to prefill the form after the visitor signs in again, and let them submit it
+once more with a valid token. Limit the handler to your own forms' paths and same-origin
+requests (`Sec-Fetch-Site`, else `Origin`), and drop `_csrf_token` and secrets before keeping
+anything.
 
 ### HTTP exceptions
 

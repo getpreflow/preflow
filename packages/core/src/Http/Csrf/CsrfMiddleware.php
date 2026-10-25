@@ -17,7 +17,14 @@ final class CsrfMiddleware implements MiddlewareInterface
     private const FORM_FIELD = '_csrf_token';
     private const HEADER_NAME = 'X-CSRF-Token';
 
-    public function __construct(private readonly array $exempt = ['/--component/']) {}
+    /**
+     * @param list<string> $exempt path prefixes without a check
+     * @param ?ExpiredSessionHandler $expiredSessionHandler answers a POST whose session expired
+     */
+    public function __construct(
+        private readonly array $exempt = ['/--component/'],
+        private readonly ?ExpiredSessionHandler $expiredSessionHandler = null,
+    ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
@@ -27,6 +34,8 @@ final class CsrfMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
+        // Before generate(): a session without a token is new (the one the form came from is gone).
+        $sessionHadToken = CsrfToken::fromSession($session) !== null;
         $token = CsrfToken::generate($session);
         $request = $request->withAttribute(CsrfToken::class, $token);
 
@@ -41,6 +50,13 @@ final class CsrfMiddleware implements MiddlewareInterface
         $submitted = $this->extractSubmittedToken($request);
 
         if ($submitted === null || !hash_equals($token->getValue(), $submitted)) {
+            if (!$sessionHadToken && $submitted !== null && $submitted !== '') {
+                $response = $this->expiredSessionHandler?->handle($request);
+                if ($response !== null) {
+                    return $response;
+                }
+                throw new CsrfSessionExpiredException();
+            }
             throw new ForbiddenHttpException('CSRF token mismatch.');
         }
 

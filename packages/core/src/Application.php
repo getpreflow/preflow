@@ -954,7 +954,11 @@ final class Application
             return;
         }
 
-        $this->addMiddleware(new \Preflow\Core\Http\Csrf\CsrfMiddleware());
+        // A site's ExpiredSessionHandler is bound by its providers, which run after this:
+        // the middleware looks it up when a POST's session turns out to have expired.
+        $this->addMiddleware(new \Preflow\Core\Http\Csrf\CsrfMiddleware(
+            expiredSessionHandler: new \Preflow\Core\Http\Csrf\ContainerExpiredSessionHandler($this->container),
+        ));
     }
 
     /** Build the config-named user providers now that all services exist: a bad class fails during boot. */
