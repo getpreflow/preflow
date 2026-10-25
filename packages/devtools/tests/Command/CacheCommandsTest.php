@@ -126,6 +126,16 @@ final class CacheCommandsTest extends TestCase
         $this->assertFileDoesNotExist($this->dir . '/storage/cache/two.txt');
     }
 
+    public function test_clear_rejects_an_unknown_option_and_clears_nothing(): void
+    {
+        [$code, $out] = $this->exec(new CacheClearCommand($this->factory()), ['--dry-run']);
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('Unknown option: --dry-run', $out);
+        $this->assertFileExists($this->dir . '/storage/cache/one.txt');
+        $this->assertFileExists($this->dir . '/storage/cache/two.txt');
+    }
+
     public function test_clear_without_args_prints_note_and_keeps_unregistered_files(): void
     {
         [$code, $out] = $this->exec(new CacheClearCommand($this->factory()));

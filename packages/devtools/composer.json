@@ -5,7 +5,7 @@
     "license": "MIT",
     "require": {
         "php": ">=8.4",
-        "preflow/core": "^0.20 || @dev",
+        "preflow/core": "^0.33 || @dev",
         "preflow/routing": "^0.1 || @dev",
         "preflow/data": "^0.25 || @dev"
     },

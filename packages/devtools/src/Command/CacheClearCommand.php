@@ -22,6 +22,13 @@ final class CacheClearCommand implements CommandInterface
 
     public function execute(array $args): int
     {
+        foreach ($args as $arg) {
+            if (str_starts_with($arg, '--') && $arg !== '--all') {
+                echo "Unknown option: {$arg} (cache:clear <key> or cache:clear --all)\n";
+                return 1;
+            }
+        }
+
         $all = in_array('--all', $args, true);
         $keys = array_values(array_filter($args, static fn (string $a): bool => !str_starts_with($a, '--')));
 
