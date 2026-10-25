@@ -71,6 +71,33 @@ final class FolioRecordReferencesTest extends TestCase
         $this->assertSame(['_uid' => 'ffffffffffffffff', '_block' => 'gone', 'cover' => 'kept'], $mapped['sections'][1]);
     }
 
+    public function test_collects_ids_in_a_json_locale_map_string(): void
+    {
+        $data = ['cover' => '{"de":"d1","fr":"f1"}', 'gallery' => '{"de":["g1","g2"],"fr":"g3"}'];
+
+        $this->assertSame(['d1', 'f1', 'g1', 'g2', 'g3'], $this->references()->collect($this->registry->get('page'), $data));
+    }
+
+    public function test_map_rewrites_a_json_locale_map_and_keeps_the_object_shape(): void
+    {
+        $data = ['cover' => '{"de":"d1","fr":"f1"}', 'gallery' => '{"de":["g1","g2"],"fr":"g/3"}', 'title' => '{"x":"y"}'];
+
+        $mapped = $this->references()->map($this->registry->get('page'), $data, static fn (string $v): string => strtoupper($v));
+
+        $this->assertSame('{"de":"D1","fr":"F1"}', $mapped['cover']);
+        $this->assertSame('{"de":["G1","G2"],"fr":"G/3"}', $mapped['gallery']);
+        $this->assertSame('{"x":"y"}', $mapped['title']); // not an asset field
+    }
+
+    public function test_empty_and_invalid_json_maps_stay_as_they_are(): void
+    {
+        $def = $this->registry->get('page');
+        $mapped = $this->references()->map($def, ['cover' => '{}', 'gallery' => '{not json'], static fn (string $v): string => 'X');
+
+        $this->assertSame('{}', $mapped['cover']);
+        $this->assertSame('{not json', $mapped['gallery']); // invalid JSON stays untouched
+    }
+
     public function test_usage_includes_published_snapshots(): void
     {
         $library = $this->library();

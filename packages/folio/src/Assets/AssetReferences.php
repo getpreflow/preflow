@@ -85,7 +85,12 @@ final class AssetReferences
         return $json ? json_encode($blocks, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : $blocks;
     }
 
-    /** A path/id, a JSON list of them, a PHP list, or a locale map of those. */
+    /**
+     * A path/id, a JSON list of them, a JSON object (the locale map SQL storage
+     * keeps for a translatable field, values being ids or lists), a PHP list or
+     * array, or a locale map of those. JSON text stays JSON text of the same
+     * shape; invalid JSON is left untouched.
+     */
     private static function mapValue(mixed $value, \Closure $fn): mixed
     {
         if (is_string($value)) {
@@ -93,6 +98,12 @@ final class AssetReferences
                 $list = json_decode($value, true);
                 return is_array($list)
                     ? json_encode(array_map(static fn ($v) => self::mapValue($v, $fn), $list), JSON_UNESCAPED_SLASHES)
+                    : $value;
+            }
+            if (str_starts_with($value, '{')) {
+                $map = json_decode($value, true);
+                return is_array($map)
+                    ? ($map === [] ? $value : json_encode(array_map(static fn ($v) => self::mapValue($v, $fn), $map), JSON_UNESCAPED_SLASHES))
                     : $value;
             }
             return $value === '' ? $value : $fn($value);
