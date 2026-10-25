@@ -1001,6 +1001,74 @@ final class Overview
 - The sidebar is data: `folio_nav()` in Twig, `Preflow\Folio\Http\AdminNav` in PHP
   (`add()` for your own items). Session flashes for the layout come from `folio_flashes()`.
 
+### Screen assets
+
+An extension ships its own CSS, JS and other files in an `assets/` folder next to its
+`Extension.php` (`app/Folio/Demo/assets/`, or the package's extension folder). Folio serves
+them without login at `{prefix}/_assets/x/{extension}/{path}`, for enabled extensions only
+(a disabled or unknown extension, or any other path, is a 404). The URL Folio prints carries
+`?v=` and the first 12 hex digits of the file's hash, so a changed file gets a new URL.
+
+```php
+#[FolioScreen('demo', 'Demo overview', permission: 'demo.view', assets: ['demo.css', '@folio/htmx.js'])]
+final class Overview
+{
+    #[Get('/')]
+    public function index(): ScreenView
+    {
+        // listed after the attribute's assets; a file named in both is included once
+        return new ScreenView('@demo/overview.twig', [], assets: ['demo.mjs']);
+    }
+}
+```
+
+- **Where to list them:** `assets:` on `#[FolioScreen]` (every page of the screen) and on
+  `ScreenView` (the one page). A `ScreenView` returned by a `#[FormPanel]` method adds its
+  `assets` to the record's edit form. Attribute entries come first, order is kept and
+  duplicates are dropped.
+- **Entries:** `'file.js'` (own extension; the path may have subfolders, `'vendor/lib.js'`),
+  `'@folio/htmx.js'` or `'@folio/trix'` (Folio's own files; these two are all `@folio/`
+  offers; `trix` is `trix.css` plus `trix.js`), `'@other/file.css'` (the file of another
+  enabled extension). A missing file, an unknown `@folio/` name or a disabled extension
+  throws an `ExtensionException` naming the screen method or panel, so a file deleted after
+  a deploy fails loudly instead of printing a dead tag.
+- **Tags:** `.css` becomes `<link rel="stylesheet">` in the `<head>`; `.js` becomes
+  `<script src defer nonce>`; `.mjs` becomes `<script type="module" nonce>`. Other served
+  types (`map`, `svg`, `png`, `webp`, `woff2`, `json`) are not added to the page: load them
+  from your JS. `@folio/htmx.js` also adds the `htmx-config` meta Folio's own htmx pages use
+  (nonce for htmx's indicator styles, `allowScriptTags` off).
+- **File rules:** only `css`, `js`, `mjs`, `map`, `svg`, `png`, `webp`, `woff2` and `json`,
+  with a lower-case extension. Each path segment matches `[A-Za-z0-9._-]` and does not start
+  with a dot. Anything else, a path leaving `assets/`, or a symlink pointing outside it is a
+  404. Responses carry the right `Content-Type`, `X-Content-Type-Options: nosniff` and
+  `Cache-Control: public, max-age=31536000, immutable`.
+- **No PHP in `assets/`:** extension discovery scans every `.php` file under an extension
+  folder, `assets/` included, so a PHP file there is loaded as a class candidate. Keep PHP
+  out of that folder (it is never served either way).
+- **Strict CSP:** pages run under the nonce CSP. Folio's tags carry the nonce; do not add
+  inline scripts, inline styles or `on*=` attributes in your templates.
+- `folio_extension_asset('demo', 'logo.svg')` in Twig returns the versioned URL of a file
+  (for an `<img>` or a preload link) and throws when it is not served.
+- Every extension screen page has `<meta name="folio-extension-assets" content="{prefix}/_assets/x/{extension}/">`
+  in its head: the base URL for scripts that load more files at run time.
+
+```js
+// assets/demo.mjs: load Mermaid only when a diagram is on the page
+const base = document.querySelector('meta[name="folio-extension-assets"]').content;
+const diagrams = document.querySelectorAll('.demo-diagram');
+if (diagrams.length > 0) {
+    const { default: mermaid } = await import(base + 'vendor/mermaid.esm.min.mjs');
+    mermaid.initialize({ startOnLoad: false });
+    await mermaid.run({ nodes: diagrams });
+}
+```
+
+The extension ships `assets/vendor/mermaid.esm.min.mjs` itself. Files imported at run time
+are not versioned: change the file name when you update them.
+
+`editor_assets` (the template variable behind a field type's `assets()`) is internal to
+Folio's own pages; extensions use the options above.
+
 ### Type customizations
 
 A class with `#[FolioType('note')]` customizes the admin of an existing type (an unknown
