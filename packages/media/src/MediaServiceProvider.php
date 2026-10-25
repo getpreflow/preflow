@@ -16,6 +16,7 @@ use Preflow\Media\Image\ImageBackends;
 use Preflow\Media\Image\ImageWidths;
 use Preflow\Media\Image\VariantGenerator;
 use Preflow\Media\Usage\AssetUsage;
+use Preflow\Media\Usage\PosterReferences;
 use Preflow\View\AssetCollector;
 
 /**
@@ -38,7 +39,14 @@ final class MediaServiceProvider extends ServiceProvider
             (array) $app->config()->get('image.presets', []),
             $config->widths,
         ));
-        $container->singleton(AssetUsage::class, fn () => new AssetUsage());
+        // Usage sources: the library's own poster references first; Folio and sites register theirs.
+        $container->singleton(PosterReferences::class, fn (Container $c) => new PosterReferences(static fn (): MediaLibrary => $c->get(MediaLibrary::class)));
+        $container->singleton(AssetUsage::class, function (Container $c): AssetUsage {
+            $usage = new AssetUsage();
+            $usage->register($c->get(PosterReferences::class));
+
+            return $usage;
+        });
         $container->singleton(MediaLibrary::class, fn (Container $c) => new MediaLibrary(
             $c->get(DataManager::class),
             self::locales($c),

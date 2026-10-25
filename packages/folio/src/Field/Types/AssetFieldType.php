@@ -292,7 +292,7 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
             return null;
         }
         if (!self::accepts($asset, $accept)) {
-            $this->library?->delete($asset->id);
+            $this->library?->discard($asset->id); // just created: nothing references it yet
             $this->errors[] = ($file->getClientFilename() ?? 'upload') . ': this field only accepts ' . trim($accept) . '.';
             return null;
         }

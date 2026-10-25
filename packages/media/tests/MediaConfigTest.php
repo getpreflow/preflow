@@ -116,6 +116,20 @@ final class MediaConfigTest extends TestCase
         $this->assertSame([], $debug->getDeprecations());
     }
 
+    public function test_without_either_file_the_defaults_are_media_php_and_nothing_is_deprecated(): void
+    {
+        $this->write('folio.php', ['prefix' => '/folio']); // a folio.php without an "assets" block
+        $debug = new DebugCollector();
+
+        $config = MediaConfig::fromApp(Application::create($this->dir), $debug);
+
+        $this->assertSame('config/media.php', $config->source());
+        $this->assertSame([], $debug->getDeprecations());
+        unlink($this->dir . '/config/folio.php');
+        $this->assertSame('config/media.php', MediaConfig::fromApp(Application::create($this->dir), $debug)->source());
+        $this->assertSame([], $debug->getDeprecations());
+    }
+
     public function test_defaults(): void
     {
         $config = MediaConfig::fromApp(Application::create($this->dir));

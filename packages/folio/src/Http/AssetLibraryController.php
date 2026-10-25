@@ -14,6 +14,7 @@ use Preflow\Media\MediaLibrary;
 use Preflow\Media\Usage\AssetInUseException;
 use Preflow\Media\Usage\AssetUsage;
 use Preflow\Media\Usage\AssetUsageEntry;
+use Preflow\Media\Usage\PosterReferences;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -194,8 +195,8 @@ final class AssetLibraryController
 
     /**
      * A usage entry as the panel template's row: where it is ("working",
-     * "published" or "poster", from Folio's notes; other sources' entries
-     * count as working copies).
+     * "published" from Folio's note, "poster" from the core's poster source;
+     * other sources' entries count as working copies).
      *
      * @return array{label: string, url: string, where: string, source: string, note: ?string}
      */
@@ -206,7 +207,7 @@ final class AssetLibraryController
             'url' => $entry->url ?? '',
             'where' => match ($entry->note) {
                 FolioRecordReferences::PUBLISHED => 'published',
-                FolioRecordReferences::POSTER => 'poster',
+                PosterReferences::NOTE => 'poster',
                 default => 'working',
             },
             'source' => $entry->source,

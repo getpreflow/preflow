@@ -10,7 +10,9 @@
         "preflow/view": "^0.34 || @dev"
     },
     "require-dev": {
-        "phpunit/phpunit": "^11.0"
+        "phpunit/phpunit": "^11.0",
+        "nyholm/psr7": "^1.8",
+        "preflow/devtools": "^0.34 || @dev"
     },
     "suggest": {
         "preflow/i18n": "Per-language alt text for assets"

@@ -125,6 +125,31 @@ final class AssetFieldLibraryTest extends TestCase
         $this->assertSame([], $field->drainErrors());
     }
 
+    public function test_a_refused_upload_is_discarded_without_asking_usage_sources(): void
+    {
+        // A source that reports every asset as used: delete() would refuse, discard() must not ask.
+        $usage = new \Preflow\Media\Usage\AssetUsage();
+        $usage->register(new class implements \Preflow\Media\Usage\AssetReferenceSource {
+            public function name(): string
+            {
+                return 'everything';
+            }
+
+            public function usagesOf(string $assetId): array
+            {
+                return [new \Preflow\Media\Usage\AssetUsageEntry('Everywhere', null, 'everything')];
+            }
+        });
+        $this->lib = $this->library(usage: $usage);
+
+        $field = $this->field();
+        $field->resolve(null, null, [$this->upload("notes\n", 'notes.txt')], self::SINGLE, true, null);
+
+        $this->assertSame(['notes.txt: this field only accepts image/*.'], $field->drainErrors());
+        $this->assertSame([], $this->lib->all());
+        $this->assertSame([], glob($this->assetRoot . '/media/*/*/*') ?: []);
+    }
+
     public function test_no_files_are_written_without_write_uploads(): void
     {
         $this->assertSame('', $this->field()->resolve(null, null, [$this->upload($this->png(5, 5), 'a.png')], self::SINGLE, false, null));

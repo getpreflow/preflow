@@ -41,10 +41,12 @@ final readonly class MediaConfig
         $values = self::read($app->basePath('config/media.php'));
         $source = self::MEDIA;
         if ($values === null) {
+            // Only an existing "assets" block is the (deprecated) source; without one, the defaults are media.php's.
             $folio = self::read($app->basePath('config/folio.php'));
-            $values = is_array($folio['assets'] ?? null) ? $folio['assets'] : [];
-            $source = self::FOLIO;
-            if (isset($folio['assets'])) {
+            $values = [];
+            if (is_array($folio['assets'] ?? null)) {
+                $values = $folio['assets'];
+                $source = self::FOLIO;
                 $debug?->logDeprecation(self::DEPRECATION);
             }
         }

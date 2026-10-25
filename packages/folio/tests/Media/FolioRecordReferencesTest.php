@@ -12,7 +12,6 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Assets\AssetReferences;
 use Preflow\Folio\Media\FolioRecordReferences;
-use Preflow\Media\MediaLibrary;
 use Preflow\Media\Usage\AssetInUseException;
 use Preflow\Media\Usage\AssetUsage;
 use Preflow\Media\Usage\AssetUsageEntry;
@@ -80,7 +79,7 @@ final class FolioRecordReferencesTest extends TestCase
         $this->dm->saveType(DynamicRecord::fromArray($def, ['uuid' => 'p1', 'title' => 'About', 'cover' => '']), false);
         $this->dm->saveType(DynamicRecord::fromArray(ShadowTypes::published($def), ['uuid' => 'p1', 'title' => 'About', 'cover' => $asset->id]), false);
 
-        $usage = $this->usage($library)->usagesOf($asset->id);
+        $usage = $this->usage()->usagesOf($asset->id);
 
         $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio', 'published version')], $usage);
     }
@@ -89,7 +88,7 @@ final class FolioRecordReferencesTest extends TestCase
     {
         $usage = new AssetUsage();
         $library = $this->library(usage: $usage);
-        $usage->register($this->usage($library));
+        $usage->register($this->usage());
         $asset = $library->upload($this->upload($this->png(10, 10), 'a.png'), null);
         $def = $this->registry->get('page');
         $this->dm->saveType(DynamicRecord::fromArray($def, ['uuid' => 'p1', 'title' => 'About', 'cover' => '']), false);
@@ -113,7 +112,7 @@ final class FolioRecordReferencesTest extends TestCase
             $this->dm->saveType(DynamicRecord::fromArray($d, ['uuid' => 'p1', 'title' => 'About', 'cover' => $asset->id]), false);
         }
 
-        $usage = $this->usage($library)->usagesOf($asset->id);
+        $usage = $this->usage()->usagesOf($asset->id);
 
         $this->assertCount(1, $usage);
         $this->assertNull($usage[0]->note); // the working copy
@@ -126,9 +125,10 @@ final class FolioRecordReferencesTest extends TestCase
         $video = $library->upload($this->upload("notes\n", 'clip.txt'), null);
         $library->update($video->id, ['poster' => $poster->id]);
 
-        $usage = $this->usage($library)->usagesOf($poster->id);
-
-        $this->assertEquals([new AssetUsageEntry('clip.txt', '/folio/assets/' . $video->id, 'folio', 'as poster')], $usage);
+        // Poster use is the media core's own source (PosterReferences); Folio's records do not report it twice.
+        $this->assertSame([], $this->usage()->usagesOf($poster->id));
+        $core = new \Preflow\Media\Usage\PosterReferences(static fn () => $library, static fn ($a) => '/folio/assets/' . $a->id);
+        $this->assertEquals([new AssetUsageEntry('clip.txt', '/folio/assets/' . $video->id, 'media', 'as poster')], $core->usagesOf($poster->id));
     }
 
     /** @return array<string, mixed> */
@@ -153,8 +153,8 @@ final class FolioRecordReferencesTest extends TestCase
         return new AssetReferences(new BlockRegistry([HeroBlock::class, LinkBlock::class, TradeoffNoteBlock::class]));
     }
 
-    private function usage(MediaLibrary $library): FolioRecordReferences
+    private function usage(): FolioRecordReferences
     {
-        return new FolioRecordReferences($this->references(), $this->dm, new TypeCatalog($this->assetRoot . '/models'), $this->registry, $library, '/folio');
+        return new FolioRecordReferences($this->references(), $this->dm, new TypeCatalog($this->assetRoot . '/models'), $this->registry, '/folio');
     }
 }

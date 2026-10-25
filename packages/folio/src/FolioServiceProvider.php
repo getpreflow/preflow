@@ -173,8 +173,12 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $c->get(TypeCatalog::class),
             $c->get(TypeRegistry::class),
-            $c->get(\Preflow\Media\MediaLibrary::class),
             $prefix,
+        ));
+        // The core's poster usages link to the poster's video on the library screen.
+        $container->singleton(\Preflow\Media\Usage\PosterReferences::class, fn (Container $c) => new \Preflow\Media\Usage\PosterReferences(
+            static fn (): \Preflow\Media\MediaLibrary => $c->get(\Preflow\Media\MediaLibrary::class),
+            static fn (\Preflow\Media\Asset $asset): string => $prefix . '/assets/' . $asset->id,
         ));
         // Built on first use: the block registry and the library are not needed at boot.
         $container->get(\Preflow\Media\Usage\AssetUsage::class)->register(new class ($container) implements \Preflow\Media\Usage\AssetReferenceSource {

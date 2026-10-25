@@ -199,6 +199,24 @@ final class MediaLibrary
         if ($usages !== []) {
             throw new AssetInUseException($id, $usages);
         }
+        $this->remove($asset);
+    }
+
+    /**
+     * Delete without asking the usage sources. Only for an asset created in this
+     * request that nothing can reference yet (an upload a field then refuses).
+     */
+    public function discard(string $id): void
+    {
+        $asset = $this->find($id);
+        if ($asset !== null) {
+            $this->remove($asset);
+        }
+    }
+
+    private function remove(Asset $asset): void
+    {
+        $id = $asset->id;
         if ($asset->private) {
             $file = $this->file($asset);
             if ($file !== null && is_file($file)) {

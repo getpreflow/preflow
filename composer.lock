@@ -2845,7 +2845,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/media",
-                "reference": "9779a389e1759efb60f3da99e75d3445afcb1590"
+                "reference": "4e5d08f09a1edc217ee96f66be116839e3896117"
             },
             "require": {
                 "php": ">=8.4",
@@ -2859,7 +2859,9 @@
                 "preflow/view": "<0.34"
             },
             "require-dev": {
-                "phpunit/phpunit": "^11.0"
+                "nyholm/psr7": "^1.8",
+                "phpunit/phpunit": "^11.0",
+                "preflow/devtools": "^0.34 || @dev"
             },
             "suggest": {
                 "preflow/i18n": "Per-language alt text for assets"
