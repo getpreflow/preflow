@@ -115,6 +115,29 @@ final class MediaLibrary
      */
     public function upload(UploadedFileInterface $file, ?string $by, bool $private = false): Asset
     {
+        [$bytes, $name] = $this->readUpload($file);
+
+        return $this->store($bytes, $name, $by, $private);
+    }
+
+    /**
+     * Copy a file on disk into the library (the source stays where it is).
+     *
+     * @throws AssetUploadException
+     */
+    public function importFile(string $absPath, string $originalName, ?string $by): Asset
+    {
+        return $this->store($this->readFile($absPath, $originalName), $originalName, $by);
+    }
+
+    /**
+     * An upload's bytes and client file name, after the upload and size checks.
+     *
+     * @return array{0: string, 1: string}
+     * @throws AssetUploadException
+     */
+    private function readUpload(UploadedFileInterface $file): array
+    {
         $name = (string) ($file->getClientFilename() ?? 'upload');
         if ($file->getError() !== UPLOAD_ERR_OK) {
             throw new AssetUploadException("{$name}: the upload failed (error {$file->getError()}).");
@@ -125,22 +148,22 @@ final class MediaLibrary
             $stream->rewind();
         }
 
-        return $this->store($stream->getContents(), $name, $by, $private);
+        return [$stream->getContents(), $name];
     }
 
     /**
-     * Copy a file on disk into the library (the source stays where it is).
+     * A file on disk's bytes, after the existence and size checks.
      *
      * @throws AssetUploadException
      */
-    public function importFile(string $absPath, string $originalName, ?string $by): Asset
+    private function readFile(string $path, string $name): string
     {
-        if (!is_file($absPath) || !is_readable($absPath)) {
-            throw new AssetUploadException("{$originalName}: the file does not exist.");
+        if (!is_file($path) || !is_readable($path)) {
+            throw new AssetUploadException("{$name}: the file does not exist.");
         }
-        $this->checkSize($originalName, (int) filesize($absPath));
+        $this->checkSize($name, (int) filesize($path));
 
-        return $this->store((string) file_get_contents($absPath), $originalName, $by);
+        return (string) file_get_contents($path);
     }
 
     public function find(string $id): ?Asset
@@ -241,25 +264,7 @@ final class MediaLibrary
      */
     public function replace(string $id, UploadedFileInterface|string $file, ?string $by): Asset
     {
-        if (is_string($file)) {
-            $name = basename($file);
-            if (!is_file($file) || !is_readable($file)) {
-                throw new AssetUploadException("{$name}: the file does not exist.");
-            }
-            $this->checkSize($name, (int) filesize($file));
-            $bytes = (string) file_get_contents($file);
-        } else {
-            $name = (string) ($file->getClientFilename() ?? 'upload');
-            if ($file->getError() !== UPLOAD_ERR_OK) {
-                throw new AssetUploadException("{$name}: the upload failed (error {$file->getError()}).");
-            }
-            $this->checkSize($name, (int) ($file->getSize() ?? 0));
-            $stream = $file->getStream();
-            if ($stream->isSeekable()) {
-                $stream->rewind();
-            }
-            $bytes = $stream->getContents();
-        }
+        [$bytes, $name] = is_string($file) ? [$this->readFile($file, basename($file)), basename($file)] : $this->readUpload($file);
         $this->requireVersionsDir($id, $name);
 
         return $this->locked($id, fn (): Asset => $this->swapFile($id, $bytes, $name, $by, []));
@@ -437,8 +442,16 @@ final class MediaLibrary
         $this->removeFiles($asset);
         try {
             return $this->afterFileChange($saved);
-        } catch (\Throwable) {
-            return $this->find($id) ?? $saved; // the replace stands; derived files can be made later
+        } catch (\Throwable $e) {
+            // The replace stands (derived files can be made later), but the failure is logged and shown on the asset.
+            error_log("preflow/media: after replacing asset {$id}: " . $e::class . ': ' . $e->getMessage());
+            $data = ($this->find($id) ?? $saved)->toData();
+            $data['note'] = mb_substr('Variants could not be made after the replace: ' . $e::class . ': ' . $e->getMessage(), 0, 255);
+            try {
+                return $this->save($data);
+            } catch (\Throwable) {
+                return $this->find($id) ?? $saved;
+            }
         }
     }
 
@@ -513,9 +526,11 @@ final class MediaLibrary
             }
             throw new AssetUploadException('The versions directory is not writable (versions_dir).');
         }
+        if (!flock($lock, LOCK_EX)) {
+            fclose($lock);
+            throw new AssetUploadException("The lock of asset {$id} could not be taken (versions_dir); nothing was changed.");
+        }
         try {
-            flock($lock, LOCK_EX);
-
             return $work();
         } finally {
             flock($lock, LOCK_UN);
@@ -560,6 +575,14 @@ final class MediaLibrary
         $work = function () use ($asset): void {
             $current = $this->find($asset->id) ?? $asset; // a replace may have run while we waited
             $this->removeFiles($current);
+            // Leftovers of earlier files ({id}-v2-480.webp, … made on demand during a replace): only this id's names.
+            if (!$current->private && preg_match('#^\d{4}/\d{2}$#', dirname($current->path)) === 1) {
+                foreach (glob($this->absolute(dirname($current->path)) . '/' . $current->id . '-*') ?: [] as $file) {
+                    if (is_file($file)) {
+                        unlink($file);
+                    }
+                }
+            }
             $this->dm->deleteIn($this->definition(), $asset->id);
             $this->removeVersionsFolder($asset->id);
         };

@@ -29,10 +29,17 @@ final class VersionsPruneCommand implements CommandInterface
     {
         $keep = $olderThan = $id = null;
         foreach ($args as $arg) {
-            if (preg_match('/^--keep=(\d+)$/', $arg, $m) === 1) {
-                $keep = (int) $m[1];
-            } elseif (preg_match('/^--older-than=(\d+)$/', $arg, $m) === 1) {
-                $olderThan = (int) $m[1];
+            if (str_starts_with($arg, '--keep=') || str_starts_with($arg, '--older-than=')) {
+                [$option, $value] = explode('=', $arg, 2);
+                if (preg_match('/^\d+$/', $value) !== 1) {
+                    echo "{$option} needs a whole number of 0 or more, not \"{$value}\".\n";
+                    return 1;
+                }
+                if ($option === '--keep') {
+                    $keep = (int) $value;
+                } else {
+                    $olderThan = (int) $value;
+                }
             } elseif (str_starts_with($arg, '--id=')) {
                 $id = substr($arg, 5);
             }

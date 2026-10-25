@@ -86,6 +86,15 @@ final class VersionFileTest extends TestCase
         $this->assertNotSame(200, $this->fetch('/files/' . $id . '/v/..%2F..%2Fconfig')->getStatusCode());
     }
 
+    public function test_the_gate_sees_versions_of_a_public_asset_as_private(): void
+    {
+        $this->scaffoldMediaApp([MediaServiceProvider::class, AllowPublicAssetsOnly::class]);
+        [$id, ] = $this->replacedAsset();
+        $this->assertFalse($this->media()->find($id)->private);
+
+        $this->assertSame(403, $this->fetch('/files/' . $id . '/v/1')->getStatusCode());
+    }
+
     public function test_version_files_are_never_under_the_media_url(): void
     {
         $this->scaffoldMediaApp([MediaServiceProvider::class, AllowPrivateFiles::class]);
@@ -110,5 +119,19 @@ final class VersionFileTest extends TestCase
 
         $this->assertSame(404, $res->getStatusCode());
         $this->assertStringNotContainsString('media-integration-test-key', (string) $res->getBody());
+    }
+}
+
+/** A careless site rule: anything not private may be downloaded. */
+final class AllowPublicAssetsOnly extends \Preflow\Core\Container\ServiceProvider
+{
+    public function register(\Preflow\Core\Container\Container $container): void
+    {
+        $container->instance(\Preflow\Media\Access\PrivateFileAccess::class, new class implements \Preflow\Media\Access\PrivateFileAccess {
+            public function decide(\Psr\Http\Message\ServerRequestInterface $request, \Preflow\Media\Asset $asset): ?\Psr\Http\Message\ResponseInterface
+            {
+                return $asset->private ? new \Nyholm\Psr7\Response(403) : null;
+            }
+        });
     }
 }

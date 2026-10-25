@@ -279,6 +279,101 @@ final class ReplaceTest extends TestCase
         )));
     }
 
+    public function test_a_failing_hook_keeps_the_replace_and_notes_the_error(): void
+    {
+        $backend = new class implements ImageBackend {
+            public function supports(string $format): bool
+            {
+                return $format === 'webp';
+            }
+
+            public function writeVariants(string $src, array $jobs, int $quality): array
+            {
+                if (str_contains($jobs[0]['dest'], '.tmp-')) {
+                    throw new \RuntimeException('Encoder crashed'); // the warm-up (one variant on demand) dies
+                }
+                foreach ($jobs as $job) {
+                    file_put_contents($job['dest'], 'x');
+                }
+
+                return array_fill(0, count($jobs), true);
+            }
+        };
+        $library = $this->library(
+            ['versions_dir' => $this->assetRoot . '/versions', 'warm_on_upload' => true, 'warm_widths' => [240]],
+            new VariantGenerator($backend, [480], 75),
+        );
+        $asset = $library->upload($this->upload($this->png(100, 50), 'a.png'), null); // too narrow to warm 240
+        $log = ini_set('error_log', $this->assetRoot . '/php.log');
+
+        try {
+            $new = $library->replace($asset->id, $this->upload($this->png(500, 400), 'b.png'), null);
+        } finally {
+            ini_set('error_log', (string) $log);
+        }
+
+        $this->assertSame(2, $new->version);
+        $this->assertFileExists($library->absolute($new->path));
+        $this->assertFileExists($library->versionFile($asset->id, 1));
+        $this->assertSame('Variants could not be made after the replace: RuntimeException: Encoder crashed', $new->note);
+        $this->assertEquals($new, $library->find($asset->id));
+        $this->assertStringContainsString('Encoder crashed', (string) file_get_contents($this->assetRoot . '/php.log'));
+    }
+
+    public function test_restore_with_a_missing_version_file_is_refused(): void
+    {
+        $library = $this->lib();
+        $asset = $library->upload($this->upload($this->png(10, 10), 'a.png'), null);
+        $current = $library->replace($asset->id, $this->upload($this->png(11, 10), 'b.png'), null);
+        unlink($library->versionFile($asset->id, 1));
+
+        try {
+            $library->restore($asset->id, 1, null);
+            $this->fail('A missing version file cannot be restored.');
+        } catch (AssetUploadException) {
+        }
+
+        $this->assertEquals($current, $library->find($asset->id));
+        $this->assertFileExists($library->absolute($current->path));
+    }
+
+    public function test_a_failing_copy_into_the_versions_dir_changes_nothing(): void
+    {
+        $library = $this->lib();
+        $asset = $library->upload($this->upload($this->png(10, 10), 'a.png'), null);
+        mkdir($this->assetRoot . '/versions/' . $asset->id . '/v1.png', 0777, true); // the copy cannot be renamed into place
+
+        try {
+            $library->replace($asset->id, $this->upload($this->png(11, 10), 'b.png'), null);
+            $this->fail('The replace must fail when the old file cannot be kept.');
+        } catch (AssetUploadException) {
+        }
+
+        $this->assertEquals($asset, $library->find($asset->id));
+        $this->assertFileExists($library->absolute($asset->path));
+        $this->assertFileDoesNotExist($library->absolute(substr($asset->path, 0, -4) . '-v2.png'));
+        $this->assertSame([], array_filter($this->filesUnder($this->assetRoot . '/versions'), static fn ($f) => str_contains($f, '.tmp-')));
+    }
+
+    public function test_delete_removes_leftover_variants_of_earlier_files(): void
+    {
+        $library = $this->lib();
+        $asset = $library->upload($this->upload($this->png(600, 400), 'a.png'), null);
+        $other = $library->upload($this->upload($this->png(600, 400), 'b.png'), null);
+        $new = $library->replace($asset->id, $this->upload($this->png(500, 400), 'c.png'), null);
+        $stray = $library->absolute(dirname($new->path) . '/' . $asset->id . '-480.webp'); // made on demand for the old file mid-replace
+        file_put_contents($stray, 'x');
+
+        $library->delete($asset->id);
+
+        $this->assertFileDoesNotExist($stray);
+        $this->assertSame([], array_filter($this->filesUnder($this->assetRoot . '/media'), static fn ($f) => str_contains($f, $asset->id)));
+        $this->assertFileExists($library->absolute($other->path));
+        foreach ($other->variants as $v) {
+            $this->assertFileExists($library->absolute($v->path));
+        }
+    }
+
     public function test_without_a_versions_dir_replace_is_refused(): void
     {
         $library = $this->library([], null);

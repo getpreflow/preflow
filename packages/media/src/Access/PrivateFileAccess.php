@@ -15,9 +15,8 @@ use Psr\Http\Message\ServerRequestInterface;
  * file, so a refused visitor learns nothing about which ids exist: then $asset is the
  * stored asset if there is one, else a placeholder carrying only the requested id.
  *
- * Also asked for {private_url}/{id}/v/{n}, an earlier file of an asset. Those are never
- * public, even when the asset is: $asset is then the asset (private or not), so a rule
- * must not allow a request just because $asset->private is false.
+ * Also asked for {private_url}/{id}/v/{n}, an earlier file of an asset. Those are always
+ * private, even when the asset is public: $asset is then the asset with private = true.
  *
  * The core binds DenyAllPrivateFileAccess; Folio, or a site's own provider, binds its rules.
  */

@@ -85,6 +85,18 @@ final class VersionsPruneCommandTest extends TestCase
         $this->assertSame([1], $this->numbers($a));
     }
 
+    public function test_an_unreadable_number_is_an_error(): void
+    {
+        $a = $this->assetWithVersions(1);
+
+        foreach (['--keep=abc', '--older-than=-3', '--keep='] as $arg) {
+            [$code, $out] = $this->runCommand([$arg]);
+            $this->assertSame(1, $code, $arg);
+            $this->assertStringContainsString('whole number', $out);
+        }
+        $this->assertSame([1], $this->numbers($a));
+    }
+
     private function assetWithVersions(int $count): string
     {
         $f = new Psr17Factory();

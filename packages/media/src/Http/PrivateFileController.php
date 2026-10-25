@@ -19,7 +19,8 @@ use Psr\Http\Message\ServerRequestInterface;
  * images are inline, everything else (SVG too) an attachment with its original name.
  *
  * {private_url}/{id}/v/{n}: an earlier file of any asset (public or private), with
- * the same gate and headers, confined to the versions directory.
+ * the same gate and headers, confined to the versions directory. Version files are
+ * always private: the gate is asked with the asset marked private.
  */
 final class PrivateFileController
 {
@@ -50,7 +51,9 @@ final class PrivateFileController
         $id = (string) $request->getAttribute('id', '');
         $number = (int) $request->getAttribute('n', '0');
         $asset = $this->library->find($id);
-        $refused = $this->access->decide($request, $asset ?? self::placeholder($id));
+        // Earlier files are always private, also of a public asset: the gate sees it as private.
+        $gated = $asset !== null ? new Asset(...[...get_object_vars($asset), 'private' => true]) : self::placeholder($id);
+        $refused = $this->access->decide($request, $gated);
         if ($refused !== null) {
             return $refused;
         }
