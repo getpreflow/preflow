@@ -12,7 +12,8 @@ use Psr\Http\Message\ServerRequestInterface;
 /**
  * Serves an enabled extension's assets/ files at {prefix}/_assets/x/{extension}/{...path}
  * (public, like _assets/{file}); ExtensionAssets decides what is served, everything else
- * is a 404. URLs are content-hash versioned, so responses cache immutably.
+ * is a 404. Responses cache immutably only for a request whose ?v= is the file's current
+ * hash; any other request revalidates (no-cache + ETag, 304 on a match).
  */
 final class ExtensionAssetController
 {
@@ -31,14 +32,21 @@ final class ExtensionAssetController
             return new Response(404, [], 'Not found');
         }
 
-        return new Response(
-            200,
-            [
-                'Content-Type' => $type,
-                'X-Content-Type-Options' => 'nosniff',
-                'Cache-Control' => 'public, max-age=31536000, immutable',
-            ],
-            $body,
-        );
+        $hash = ExtensionAssets::hash($real);
+        $headers = ['X-Content-Type-Options' => 'nosniff'];
+        if (($request->getQueryParams()['v'] ?? null) === $hash) {
+            $headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+        } else {
+            $headers['Cache-Control'] = 'no-cache';
+            $headers['ETag'] = '"' . $hash . '"';
+            foreach (explode(',', $request->getHeaderLine('If-None-Match')) as $candidate) {
+                $candidate = trim($candidate);
+                if ($candidate === '*' || $candidate === '"' . $hash . '"' || $candidate === 'W/"' . $hash . '"') {
+                    return new Response(304, $headers);
+                }
+            }
+        }
+
+        return new Response(200, ['Content-Type' => $type] + $headers, $body);
     }
 }

@@ -28,17 +28,31 @@ final class ExtensionAssetControllerTest extends TestCase
         $this->removeAssetsSite();
     }
 
-    private function get(string $extension, string $path): ResponseInterface
+    /** @param array<string, string> $query @param array<string, string> $headers */
+    private function get(string $extension, string $path, array $query = [], array $headers = []): ResponseInterface
     {
-        return $this->controller->serve((new Psr17Factory())
+        $request = (new Psr17Factory())
             ->createServerRequest('GET', '/folio/_assets/x/' . $extension . '/' . $path)
+            ->withQueryParams($query)
             ->withAttribute('extension', $extension)
-            ->withAttribute('path', $path));
+            ->withAttribute('path', $path);
+        foreach ($headers as $name => $value) {
+            $request = $request->withHeader($name, $value);
+        }
+
+        return $this->controller->serve($request);
+    }
+
+    private function hash(string $extension, string $path): string
+    {
+        $real = (new ExtensionAssets($this->assetsSite(), '/folio'))->path($extension, $path);
+
+        return substr(hash_file('xxh3', $real), 0, 12);
     }
 
     public function test_serves_a_root_file_with_type_nosniff_and_immutable_cache(): void
     {
-        $res = $this->get('shop', 'shop.css');
+        $res = $this->get('shop', 'shop.css', ['v' => $this->hash('shop', 'shop.css')]);
 
         $this->assertSame(200, $res->getStatusCode());
         $this->assertSame('text/css; charset=UTF-8', $res->getHeaderLine('Content-Type'));
@@ -49,13 +63,51 @@ final class ExtensionAssetControllerTest extends TestCase
 
     public function test_serves_a_file_in_a_subfolder(): void
     {
-        $res = $this->get('shop', 'vendor/lib/lib.js');
+        $res = $this->get('shop', 'vendor/lib/lib.js', ['v' => $this->hash('shop', 'vendor/lib/lib.js')]);
 
         $this->assertSame(200, $res->getStatusCode());
         $this->assertSame('text/javascript; charset=UTF-8', $res->getHeaderLine('Content-Type'));
         $this->assertSame('nosniff', $res->getHeaderLine('X-Content-Type-Options'));
         $this->assertSame('public, max-age=31536000, immutable', $res->getHeaderLine('Cache-Control'));
         $this->assertSame("window.shopLib = { version: 1 };\n", (string) $res->getBody());
+    }
+
+    public function test_unversioned_request_revalidates_with_an_etag(): void
+    {
+        $res = $this->get('shop', 'shop.css');
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertSame('no-cache', $res->getHeaderLine('Cache-Control'));
+        $this->assertSame('"' . $this->hash('shop', 'shop.css') . '"', $res->getHeaderLine('ETag'));
+    }
+
+    public function test_stale_version_is_not_cached_immutably(): void
+    {
+        $res = $this->get('shop', 'shop.css', ['v' => 'abcdef123456']);
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertSame('no-cache', $res->getHeaderLine('Cache-Control'));
+        $this->assertSame('"' . $this->hash('shop', 'shop.css') . '"', $res->getHeaderLine('ETag'));
+    }
+
+    public function test_matching_if_none_match_answers_304_without_a_body(): void
+    {
+        $etag = '"' . $this->hash('shop', 'shop.css') . '"';
+
+        $res = $this->get('shop', 'shop.css', [], ['If-None-Match' => $etag]);
+
+        $this->assertSame(304, $res->getStatusCode());
+        $this->assertSame('', (string) $res->getBody());
+        $this->assertSame('no-cache', $res->getHeaderLine('Cache-Control'));
+        $this->assertSame($etag, $res->getHeaderLine('ETag'));
+    }
+
+    public function test_mismatching_if_none_match_serves_the_file(): void
+    {
+        $res = $this->get('shop', 'shop.css', [], ['If-None-Match' => '"000000000000"']);
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertSame(".shop-orders { display: grid; }\n", (string) $res->getBody());
     }
 
     /** @return array<string, array{string, string}> */

@@ -75,7 +75,13 @@ final class ExtensionAssets
             ));
         }
 
-        return $this->base($extension) . $path . '?v=' . substr(hash_file('xxh3', $real), 0, 12);
+        return $this->base($extension) . $path . '?v=' . self::hash($real);
+    }
+
+    /** First 12 hex of the file's xxh3: the "?v=" value and the ETag. */
+    public static function hash(string $realPath): string
+    {
+        return substr(hash_file('xxh3', $realPath), 0, 12);
     }
 
     /** {prefix}/_assets/x/{extension}/ */
