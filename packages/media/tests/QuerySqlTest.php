@@ -66,7 +66,14 @@ final class QuerySqlTest extends TestCase
             'fields' => ExtraFieldsTest::fields(),
             'filters' => ['usage_type', 'game', 'featured'],
         ]);
-        (new RecordTableSync($dm))->sync($lib->definition());
+
+        // An asset from before the fields existed: the columns are added later and hold NULL for it.
+        $plain = new MediaLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', ['storage' => $storage, 'versions_dir' => $this->assetRoot . '/versions']);
+        (new RecordTableSync($dm))->sync($plain->definition());
+        $old = $plain->upload($this->upload($this->png(40, 30), 'old.png'), null);
+        $this->assertSame(['added column folio_assets.usage_type', 'added column folio_assets.game', 'added column folio_assets.featured'], (new RecordTableSync($dm))->sync($lib->definition()));
+        $this->assertSame([$old->id], array_map(static fn ($x) => $x->id, $lib->query(filters: ['featured' => false])->items));
+        $this->assertSame([], $lib->query(filters: ['featured' => true])->items);
 
         $a = $lib->upload($this->upload($this->png(40, 30), 'a.png'), null);
         $b = $lib->upload($this->upload($this->png(40, 30), 'b.png'), null);
@@ -82,20 +89,21 @@ final class QuerySqlTest extends TestCase
             return $list;
         };
 
-        $this->assertSame($sorted([$a->id, $b->id, $c->id]), $sorted($ids($lib->query()->items)));
+        $this->assertSame($sorted([$old->id, $a->id, $b->id, $c->id]), $sorted($ids($lib->query()->items)));
         $this->assertSame([$a->id], $ids($lib->query(filters: ['usage_type' => 'cover'])->items));
         $this->assertSame($sorted([$a->id, $b->id]), $sorted($ids($lib->query(filters: ['game' => 'g1'])->items)));
         $this->assertSame([$b->id], $ids($lib->query(filters: ['game' => 'g2'])->items));
         $this->assertSame([$a->id], $ids($lib->query(filters: ['featured' => true])->items));
         $this->assertSame([$c->id], $ids($lib->query(kind: 'document')->items));
-        $this->assertSame($sorted([$a->id, $b->id]), $sorted($ids($lib->query(kind: 'image')->items)));
+        $this->assertSame($sorted([$old->id, $a->id, $b->id]), $sorted($ids($lib->query(kind: 'image')->items)));
         $this->assertSame([$a->id], $ids($lib->query(search: 'red barn')->items));
         $this->assertSame([$c->id], $ids($lib->query(search: 'rules')->items));
         $this->assertSame([], $ids($lib->query(filters: ['nonsense' => 'x', 'game' => 'g9'])->items));
 
         $second = $lib->query(page: 2, perPage: 2);
-        $this->assertSame(3, $second->total);
-        $this->assertCount(1, $second->items);
+        $this->assertSame(4, $second->total);
+        $this->assertCount(2, $second->items);
+        $this->assertSame($sorted([$old->id, $b->id, $c->id]), $sorted($ids($lib->query(filters: ['featured' => false])->items)));
 
         // Extra values survive a replace and a restore.
         $lib->replace($a->id, $this->upload($this->png(20, 10), 'a2.png'), null);

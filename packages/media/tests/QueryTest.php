@@ -191,4 +191,18 @@ final class QueryTest extends TestCase
         $this->assertSame(['d'], $this->keys($lib->query(search: 'rules')));
         $this->assertSame(['a', 'b'], $this->keys($lib->query(filters: ['game' => 'g1'])));
     }
+
+    public function test_a_boolean_false_filter_includes_assets_from_before_the_field_existed(): void
+    {
+        // Same storage, first without the fields: this asset has no featured value at all.
+        $old = $this->library()->upload($this->upload($this->png(40, 30), 'old.png'), null);
+
+        $false = array_map(static fn (Asset $a) => $a->id, $this->lib->query(filters: ['featured' => false])->items);
+        $true = array_map(static fn (Asset $a) => $a->id, $this->lib->query(filters: ['featured' => true])->items);
+
+        $this->assertContains($old->id, $false);
+        $this->assertNotContains($old->id, $true);
+        $this->assertNotContains($this->assets['c']->id, $false);
+        $this->assertCount(5, $this->lib->query()->items);
+    }
 }

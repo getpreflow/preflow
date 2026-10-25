@@ -82,7 +82,7 @@ final readonly class MediaConfig
                 ? (is_string($values['versions_dir']) && $values['versions_dir'] !== '' ? $values['versions_dir'] : null)
                 : $app->basePath('storage/media-versions'),
             fields: $fields,
-            filters: self::filters($values['filters'] ?? null, $fields),
+            filters: self::filters($values['filters'] ?? null, $fields, $source, $debug),
         );
         $config->checkOutsideServed($app, 'private_dir', $config->privateDir);
         $config->checkOutsideServed($app, 'versions_dir', $config->versionsDir);
@@ -154,12 +154,15 @@ final readonly class MediaConfig
      * @param array<string, array<string, mixed>> $fields
      * @return list<string>
      */
-    private static function filters(mixed $filters, array $fields): array
+    private static function filters(mixed $filters, array $fields, string $source, ?DebugCollector $debug): array
     {
         $out = [];
         foreach (is_array($filters) ? $filters : [] as $name) {
             if (is_string($name) && in_array($fields[$name]['type'] ?? null, ['select', 'relation', 'boolean'], true) && !in_array($name, $out, true)) {
                 $out[] = $name;
+            } elseif (!in_array($name, $out, true)) {
+                $message = sprintf('%s "filters" entry %s is not a declared select, relation or boolean field and is ignored', $source, is_string($name) ? "\"{$name}\"" : get_debug_type($name));
+                $debug !== null ? $debug->logDeprecation($message) : error_log('preflow/media: ' . $message);
             }
         }
 

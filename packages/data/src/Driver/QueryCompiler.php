@@ -155,6 +155,9 @@ class QueryCompiler
                 }
                 return $this->dialect->jsonArrayHasAny($column, $ids, $bindings);
             default:
+                if ($value === null) {
+                    return "{$column} IS NULL"; // a null value matches missing columns, as on the JSON driver
+                }
                 $bindings[] = $value;
                 return "{$column} = ?";
         }

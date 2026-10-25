@@ -143,19 +143,24 @@ final class ExtraFieldsTest extends TestCase
 
     public function test_config_reads_fields_and_filters(): void
     {
-        $config = MediaConfig::fromApp($this->configDir("['fields' => " . var_export(self::fields(), true) . ", 'filters' => ['usage_type', 'game', 'featured', 'nope', 'path']]"));
+        $debug = new \Preflow\Core\Debug\DebugCollector();
+        $config = MediaConfig::fromApp($this->configDir("['fields' => " . var_export(self::fields(), true) . ", 'filters' => ['usage_type', 'game', 'featured', 'nope', 'path']]"), $debug);
 
         $this->assertSame(self::fields(), $config->fields);
         $this->assertSame(['usage_type', 'game', 'featured'], $config->filters); // only declared select/relation/boolean fields
         $this->assertSame($config->fields, $config->toArray()['fields']);
         $this->assertSame($config->filters, $config->toArray()['filters']);
+        $this->assertCount(2, $debug->getDeprecations()); // "nope" and "path" are reported, not dropped silently
+        $this->assertStringContainsString('"nope"', $debug->getDeprecations()[0]);
     }
 
     public function test_a_filter_on_a_text_field_is_dropped(): void
     {
-        $config = MediaConfig::fromApp($this->configDir("['fields' => ['note2' => ['type' => 'string']], 'filters' => ['note2']]"));
+        $debug = new \Preflow\Core\Debug\DebugCollector();
+        $config = MediaConfig::fromApp($this->configDir("['fields' => ['note2' => ['type' => 'string']], 'filters' => ['note2']]"), $debug);
 
         $this->assertSame([], $config->filters);
+        $this->assertCount(1, $debug->getDeprecations());
     }
 
     public function test_a_field_named_like_an_asset_key_is_a_boot_error(): void

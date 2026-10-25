@@ -61,7 +61,7 @@ final class Query
      * One group of conditions of which at least one must hold (OR). Every group
      * is AND'd with the other wheres and groups.
      *
-     * Operators: "=", "CONTAINS" (case-insensitive substring), "IN" (value is a
+     * Operators: "=" (a null value matches a missing or NULL field), "CONTAINS" (case-insensitive substring), "IN" (value is a
      * list; empty matches nothing) and "HAS" (the column holds a JSON array of
      * ids or one id; true if any given id is in it; empty list matches nothing).
      *

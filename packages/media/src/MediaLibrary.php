@@ -311,8 +311,11 @@ final class MediaLibrary
                 $value === false || $value === 0 || $value === '0' => false,
                 default => null,
             };
-            if ($bool !== null) {
-                $qb->where($field->name, '=', $bool);
+            if ($bool === true) {
+                $qb->where($field->name, '=', true);
+            } elseif ($bool === false) {
+                // Not set includes assets from before the field existed (no value stored).
+                $qb->whereAny([['field' => $field->name, 'operator' => '=', 'value' => false], ['field' => $field->name, 'operator' => '=', 'value' => null]]);
             }
 
             return;
