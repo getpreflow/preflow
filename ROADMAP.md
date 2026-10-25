@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-25 (v0.32.0)
+> Last updated: 2026-10-25 (v0.33.0)
 
 ## Current State
 
-**v0.32.0** — 2953 tests, 21 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.33.0** — 2993 tests, 21 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -86,6 +86,13 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 ---
 
 ## Completed
+
+### v0.33.0
+
+- **Cache registry (preflow/core):** `Preflow\Core\Cache\CacheRegistry` with `CacheSource` (key, label, `stats()`, `clear()`), `DirectoryCache`, `FileCache`, `OpcacheStatus`; core registers `data.json` and `blade`, a site registers its own. Clearing a PHP cache file also invalidates OPcache
+- **`cache:list` and `cache:clear <key>… | --all` (preflow/devtools):** the bare `cache:clear` is deprecated (prints a note) and no longer empties `storage/cache` blindly
+- **Settings → Cache (preflow/folio):** `{prefix}/cache`, permission `folio.cache`, a row per cache with Clear, Clear all, OPcache status with Reset; registers `folio.extensions` and `folio.blocks`
+- No new package. Constraints: folio needs `preflow/core ^0.33`, devtools conflicts with `preflow/core <0.33`
 
 ### v0.32.0
 

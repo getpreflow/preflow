@@ -14,7 +14,7 @@ compiled Twig/Blade templates, the compiled routes file, the JSON storage cache
 (`storage/cache/data`), Folio's extension and block registries
 (`storage/cache/folio-*.cache`), site caches (BG Genius: images, flows), and OPcache.
 The only shared tool is `cache:clear` (devtools), which deletes everything under
-`storage/cache` blindly. BG Genius has a Settings panel with one card per cache (count, size,
+`storage/cache` blindly. BG Genius has a Settings panel with one row per cache (count, size,
 clear) plus OPcache stats; Folio has nothing like it. The owner wants one mechanism every
 cache plugs into, usable from the command line and from the web, with a Folio screen like
 BG Genius's.
@@ -24,7 +24,7 @@ BG Genius's.
 - One registry. Anything that keeps a cache registers it once: a key, a label, how to measure
   it, how to clear it. Packages register their own caches; a site registers its own.
 - CLI: list caches with size, clear one, clear all.
-- Folio: a Cache screen in Settings with a card per cache (label, entries, size, clear) and
+- Folio: a Cache screen in Settings with a table row per cache (label, entries, size, clear) and
   "Clear all", plus OPcache status and reset.
 - Clearing is always safe: every registered cache rebuilds itself on next use.
 
@@ -121,9 +121,9 @@ scripts, hit rate) and `reset()`, used by the Folio screen only.
 
 ### Folio screen
 
-- `Settings → Cache` at `{prefix}/cache`, permission `cache.manage` (declared; staff with `*`
+- `Settings → Cache` at `{prefix}/cache`, permission `folio.cache` (declared; staff with `*`
   have it).
-- One card per registered cache: label, entries, size (human-readable), a Clear button.
+- One table row per registered cache: label, entries, size (human-readable), a Clear button.
   "Clear all" at the top. An OPcache card: enabled, memory used/free, cached scripts, hit rate,
   "Reset OPcache".
 - POST actions with CSRF; after an action a flash names what was cleared ("Compiled Twig
@@ -145,7 +145,7 @@ Labels are English strings for now, like the rest of Folio's interface. The road
 - Each package registration appears when the package is booted with its cache configured,
   and not otherwise (e.g. Twig without a cache path registers nothing).
 - CLI: list output, clear one, clear unknown (exit 1), `--all`, no-arg deprecation note.
-- Folio screen: permission, cards render, clear one/all, OPcache card when enabled and a
+- Folio screen: permission, rows render, clear one/all, OPcache card when enabled and a
   plain "OPcache is off" when not, CSRF required.
 
 ## Size

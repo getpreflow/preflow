@@ -1267,6 +1267,23 @@ $settings->get('demo', 'greeting', 'de', exact: true); // only de's own value or
 - **Secrets stay out of settings.** A field of `'type' => 'env', 'env' => 'MAIL_PASSWORD'`
   stores nothing and shows only "set" or "not set"; `get()` reads the environment variable.
 
+## Cache screen
+
+*Settings → Cache* (`{prefix}/cache`, permission `folio.cache`; staff with `*` have it) lists
+every cache registered with `Preflow\Core\Cache\CacheRegistry` as a table row: label,
+entries, size and a **Clear** button, plus **Clear all**. Folio registers `folio.extensions`
+and `folio.blocks`; core registers `data.json` and `blade`. A site registers its own:
+
+```php
+$app->container()->get(\Preflow\Core\Cache\CacheRegistry::class)
+    ->register(new \Preflow\Core\Cache\DirectoryCache('images', 'Resized images', $root . '/storage/cache/images'));
+```
+
+An OPcache table shows the status (memory, scripts, hit rate) with **Reset OPcache**. OPcache
+is per SAPI: the web request resets the web pool's cache; the CLI cannot see it, so the
+button is a web-only action. The same registry backs `cache:list` and
+`cache:clear <key>… | --all` (devtools).
+
 ## User types and transfer
 
 A type can hold the site's own users or members:
