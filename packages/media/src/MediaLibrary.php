@@ -11,6 +11,7 @@ use Preflow\Data\QueryBuilder;
 use Preflow\Data\SortDirection;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
+use Preflow\Media\Color\ColorExtractor;
 use Preflow\Media\Image\Orientation;
 use Preflow\Media\Image\VariantGenerator;
 use Preflow\Media\Preview\PreviewRenderers;
@@ -38,6 +39,10 @@ use Psr\Http\Message\UploadedFileInterface;
  * on upload, replace and restore: {stem}-preview.png beside its file, in the private
  * dir for a private asset (served only at the gated {private_url}/{id}/preview).
  * A public document's variants are its preview's ({stem}-preview-{w}.{fmt}).
+ *
+ * With a colour extractor, an image's colours (dominant colour, palette, text colour)
+ * are read on upload, replace and restore from the image as people see it (sRGB),
+ * a document's from its preview. A failure leaves the asset without colours.
  *
  * Deleting refuses an asset that a registered usage source still reports
  * (AssetInUseException), so every UI gets the rule.
@@ -97,6 +102,7 @@ final class MediaLibrary
         ?\Closure $now = null,
         private readonly ?AssetUsage $usage = null,
         private readonly ?PreviewRenderers $previews = null,
+        private readonly ?ColorExtractor $colors = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
     }
@@ -918,6 +924,9 @@ final class MediaLibrary
             $data = $current->toData();
             $data['preview'] = [];
             $data['variants'] = [];
+            $data['color'] = '';
+            $data['palette'] = [];
+            $data['text_color'] = '';
             $saved = $this->save($data); // first: the record never points at a removed preview
             foreach ($files as $file) {
                 if ($file !== null && is_file($file)) {
@@ -1097,12 +1106,12 @@ final class MediaLibrary
     /**
      * The hook for everything derived from the asset's current file, run once the
      * record points at the complete file: after an upload, a replace and a restore.
-     * It makes a document's preview, then the variants of a public image or of a
-     * public document's preview. Returns the asset as saved.
+     * It makes a document's preview, reads the colours, then makes the variants of a
+     * public image or of a public document's preview. Returns the asset as saved.
      */
     private function afterFileChange(Asset $asset): Asset
     {
-        $asset = $this->makePreview($asset);
+        $asset = $this->readColors($this->makePreview($asset));
         if ($asset->private) {
             return $asset; // no variants: they would be public files
         }
@@ -1126,6 +1135,72 @@ final class MediaLibrary
         }
 
         return $asset;
+    }
+
+    /**
+     * Read an asset's colours again from its current file (a document's from its
+     * preview), e.g. for assets uploaded before colours existed (media:colors). Null,
+     * with the asset unchanged, when they cannot be read (no extractor, not an image,
+     * no preview, an unreadable file, or a colour profile that needs Imagick).
+     */
+    public function extractColors(Asset $asset): ?Asset
+    {
+        $work = function () use ($asset): ?Asset {
+            $current = $this->find($asset->id) ?? $asset; // a replace may have run while we waited
+            $colors = $this->colorsOf($current);
+
+            return $colors !== null ? $this->withColors($current, $colors) : null;
+        };
+
+        return $this->versionsDir() !== null ? $this->locked($asset->id, $work, required: false) : $work();
+    }
+
+    /** The colours read and saved on the asset; any failure leaves it as it is (the upload stands). */
+    private function readColors(Asset $asset): Asset
+    {
+        $colors = $this->colorsOf($asset);
+
+        return $colors !== null ? $this->withColors($asset, $colors) : $asset;
+    }
+
+    /**
+     * The colours of an image's file or a document's preview; null without them. A
+     * failure is logged.
+     *
+     * @return ?array{color: string, palette: list<string>, text: string}
+     */
+    private function colorsOf(Asset $asset): ?array
+    {
+        if ($this->colors === null) {
+            return null;
+        }
+        $source = $asset->kind() === 'image' ? $asset : $this->previewAsset($asset);
+        if ($source === null || $source->mime === 'image/svg+xml' || $source->width === null || $source->height === null
+            || $source->width * $source->height > (int) ($this->config['max_pixels'] ?? self::DEFAULT_MAX_PIXELS)) {
+            return null;
+        }
+        $file = $source === $asset ? $this->file($asset) : $this->previewFile($asset);
+        if ($file === null || !is_file($file)) {
+            return null;
+        }
+        try {
+            return $this->colors->fromFile($file);
+        } catch (\Throwable $e) {
+            error_log("preflow/media: no colours of asset {$asset->id}: " . $e::class . ': ' . $e->getMessage());
+
+            return null;
+        }
+    }
+
+    /** @param array{color: string, palette: list<string>, text: string} $colors */
+    private function withColors(Asset $asset, array $colors): Asset
+    {
+        $data = $asset->toData();
+        $data['color'] = $colors['color'];
+        $data['palette'] = $colors['palette'];
+        $data['text_color'] = $colors['text'];
+
+        return $this->save($data);
     }
 
     /**

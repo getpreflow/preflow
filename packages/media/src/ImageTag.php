@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Media;
 
+use Preflow\Media\Color\ColorRules;
 use Preflow\Media\Image\ImageWidths;
 use Preflow\View\AssetCollector;
 use Preflow\View\ResponsiveImage;
@@ -19,10 +20,16 @@ use Preflow\View\ResponsiveImage;
  * A document with a poster (an image asset) renders the poster; one with a preview
  * renders the preview like an image (with the preview's variants when public; the
  * gated preview URL when private). The document's alt text is used, else the poster's.
+ *
+ * Colours (ColorRules): colors() returns an asset's colours as data, colorClass() a
+ * class carrying them as CSS variables, its rule in the nonce'd head style; the option
+ * placeholder: true puts the dominant colour behind the <img> while it loads.
  */
 final class ImageTag
 {
     private const string LEGACY_PATH = '#^\d{4}/\d{2}/[a-f0-9]{32}\.[a-z0-9]{1,8}$#';
+
+    private ?ColorRules $colorRules = null;
 
     /**
      * @param array<string, array<string, mixed>> $presets config/image.php "presets"
@@ -63,6 +70,26 @@ final class ImageTag
         $asset = $value !== null ? $this->library->find($value) : null;
 
         return $asset !== null ? ($this->library->previewUrl($asset) ?? '') : '';
+    }
+
+    /**
+     * An asset value's colours (see ColorRules::data()); null without an asset or colours.
+     *
+     * @return ?array{color: string, rgb: string, palette: list<string>, palette_rgb: list<string>, text: string}
+     */
+    public function colors(mixed $value): ?array
+    {
+        $asset = $this->asset($value);
+
+        return $asset !== null ? ColorRules::data($asset) : null;
+    }
+
+    /** An asset value's colour class (its rule added once to the page's head style); '' without colours. */
+    public function colorClass(mixed $value): string
+    {
+        $asset = $this->asset($value);
+
+        return $asset !== null ? $this->colorRules()->classFor($asset) : '';
     }
 
     /** @param array<string, mixed> $options */
@@ -117,6 +144,10 @@ final class ImageTag
         }
 
         $classes = array_filter([trim((string) $opts['class']), ...$this->focalClasses($asset)]);
+        if (($opts['placeholder'] ?? false) === true && ($colorClass = $this->colorRules()->classFor($asset)) !== '') {
+            // Behind the image while it loads: the dominant colour as the <img>'s background.
+            $classes = [...$classes, $colorClass, $this->colorRules()->placeholder()];
+        }
         $alt = is_string($options['alt'] ?? null) ? $options['alt'] : $alt;
 
         $img = '<img src="' . self::e($src) . '"';
@@ -188,6 +219,19 @@ final class ImageTag
         $this->css->addCss($rules, 'folio-focal');
 
         return ['folio-focal', "folio-fx-{$x}", "folio-fy-{$y}"];
+    }
+
+    private function colorRules(): ColorRules
+    {
+        return $this->colorRules ??= new ColorRules($this->css);
+    }
+
+    /** The library asset of a value (not a legacy path); null when there is none. */
+    private function asset(mixed $value): ?Asset
+    {
+        $value = self::first($value);
+
+        return $value !== null && preg_match(self::LEGACY_PATH, $value) !== 1 ? $this->library->find($value) : null;
     }
 
     /** An id or path from a stored value: a string, a JSON list, or a PHP list. */
