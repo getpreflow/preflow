@@ -39,6 +39,13 @@ The distinction between component props (encoded in token) and action params (PO
 
 ## Medium Term
 
+### Folio Admin in Other Languages
+
+Asked for 2026-10-25 (holz-objekte.org is the first site whose staff need the Folio interface in German/French). Today `packages/folio/lang/{de,en,fr}/folio.php` covers only the staff mails; screens, lists, forms, field types and messages are English strings in templates and PHP. Wanted:
+- every Folio UI string behind translation keys, English as the fallback; the admin language per staff user (or site default), independent of the content locales
+- the same mechanism for packages (members, rbac, …) and for user-land Folio extensions: an extension ships its own `lang/` folder that is discovered with it, a site's `lang/` can override any key, missing keys fall back to English, never break a screen
+- a check command listing keys missing per locale, so adding a language is filling a file
+
 ### Database Relations
 
 Simple eager loading for related models:
