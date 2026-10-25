@@ -35,8 +35,10 @@
     {% if page_assets|default(null) %}
         {%- for href in page_assets.styles %}<link rel="stylesheet" href="{{ href }}">
         {% endfor -%}
-        {%- for src in page_assets.scripts %}<script src="{{ src }}" defer nonce="{{ csp_nonce() }}"></script>
-        {% endfor -%}
+        {%- set editor_urls = [] %}
+        {%- for a in editor_assets|default([]) %}{% set editor_urls = editor_urls|merge([folio_asset(a)]) %}{% endfor %}
+        {%- for src in page_assets.scripts %}{% if src not in editor_urls %}<script src="{{ src }}" defer nonce="{{ csp_nonce() }}"></script>
+        {% endif %}{% endfor -%}
         {%- for src in page_assets.modules %}<script type="module" src="{{ src }}" nonce="{{ csp_nonce() }}"></script>
         {% endfor -%}
     {% endif %}

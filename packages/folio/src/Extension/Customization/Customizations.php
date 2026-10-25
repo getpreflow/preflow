@@ -42,7 +42,7 @@ final class Customizations
     private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, BulkAction::class, ListColumn::class, NavBadge::class, FieldPlaceholder::class, ...self::HOOKS];
 
     /**
-     * @param array<string, array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}> $types
+     * @param array<string, array{panels: list<array{label: string, position: string, extension: string, owner: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}> $types
      */
     /** @var array<string, ?int> */
     private array $badgeCounts = [];
@@ -103,7 +103,7 @@ final class Customizations
                             if (!in_array($meta->position, ['before', 'after', 'side'], true)) {
                                 throw new ExtensionException("#[FormPanel] on {$where}: position must be \"before\", \"after\" or \"side\", not \"{$meta->position}\".");
                             }
-                            $types[$key]['panels'][] = ['label' => $meta->label, 'position' => $meta->position, 'callable' => $call];
+                            $types[$key]['panels'][] = ['label' => $meta->label, 'position' => $meta->position, 'extension' => $definition->name, 'owner' => $where, 'callable' => $call];
                         } elseif ($meta instanceof RecordAction) {
                             self::checkAction('RecordAction', $where, $meta->name, $meta->permission);
                             if (isset($actionOwners[$key][$meta->name])) {
@@ -140,7 +140,7 @@ final class Customizations
                                 'callable' => $call,
                             ];
                         } elseif ($meta instanceof ListColumn) {
-                            $types[$key]['columns'][] = ['label' => $meta->label, 'position' => $meta->position, 'callable' => $call];
+                            $types[$key]['columns'][] = ['label' => $meta->label, 'position' => $meta->position, 'extension' => $definition->name, 'owner' => $where, 'callable' => $call];
                         } elseif ($meta instanceof FieldPlaceholder) {
                             if ($registry !== null && !isset($registry->get($key)->fields[$meta->field])) {
                                 throw new ExtensionException("#[FieldPlaceholder] on {$where}: type \"{$key}\" has no field \"{$meta->field}\".");
@@ -170,7 +170,7 @@ final class Customizations
     }
 
     /**
-     * @return array{panels: list<array{label: string, position: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}
+     * @return array{panels: list<array{label: string, position: string, extension: string, owner: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}
      */
     public function forType(string $key): array
     {

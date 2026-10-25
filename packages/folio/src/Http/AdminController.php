@@ -68,6 +68,7 @@ final class AdminController
         private readonly ?Customizations $customizations = null,
         private readonly ?\Preflow\Folio\Users\AuthorNames $authors = null,
         private ?ListExport $export = null,
+        private readonly ?\Preflow\Folio\Extension\Screen\PageAssets $pageAssets = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
         $this->validator = $validator ?? new RecordValidator($fieldTypes, $dm);
@@ -1000,7 +1001,7 @@ final class AdminController
         }
 
         $isNew = strtok($action, '?') === $this->prefix . '/' . $type;
-        [$panels, $recordActions] = $this->recordExtras($type, $typeDef, $values, $isNew, $csrf);
+        [$panels, $recordActions, $panelAssets] = $this->recordExtras($type, $typeDef, $values, $isNew, $csrf);
         $html = $this->engine->render('@folio/admin/form.twig', [
             'prefix' => $this->prefix,
             'type' => $type,
@@ -1034,6 +1035,7 @@ final class AdminController
             'reload_url' => $reloadUrl,
             'panels' => $panels,
             'record_actions' => $recordActions,
+            'page_assets' => $panelAssets,
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
@@ -1044,7 +1046,9 @@ final class AdminController
      * those the user may run: the action's permission and {type}.edit) of a stored record's edit form; none on create.
      *
      * @param array<string, mixed> $values
-     * @return array{list<array{label: string, position: string, html: string}>, list<array{label: string, url: string, icon: ?string, confirm: ?string}>}
+     * The third element is the panels' merged assets (PageAssets shape; null when none list any).
+     *
+     * @return array{list<array{label: string, position: string, html: string}>, list<array{label: string, url: string, icon: ?string, confirm: ?string}>, ?array{styles: list<string>, scripts: list<string>, modules: list<string>, htmx: bool}}
      */
     private function recordExtras(string $type, TypeDefinition $typeDef, array $values, bool $isNew, string $csrf): array
     {
@@ -1052,12 +1056,21 @@ final class AdminController
         $id = $values[$typeDef->idField] ?? null;
         if ($isNew || ($custom['panels'] === [] && $custom['actions'] === []) || !is_string($id) || $id === ''
             || ($record = $this->dm->findType($type, $id)) === null) {
-            return [[], []];
+            return [[], [], null];
         }
 
         $panels = [];
+        $assets = null;
         foreach ($custom['panels'] as $panel) {
             $result = ($panel['callable'])($record);
+            if ($result instanceof ScreenView && $result->assets !== [] && $this->pageAssets !== null) {
+                $own = $this->pageAssets->resolve($panel['extension'], $result->assets, $panel['owner']);
+                $assets ??= ['styles' => [], 'scripts' => [], 'modules' => [], 'htmx' => false];
+                foreach (['styles', 'scripts', 'modules'] as $kind) {
+                    $assets[$kind] = array_values(array_unique([...$assets[$kind], ...$own[$kind]]));
+                }
+                $assets['htmx'] = $assets['htmx'] || $own['htmx'];
+            }
             $panels[] = [
                 'label' => $panel['label'],
                 'position' => $panel['position'],
@@ -1078,7 +1091,7 @@ final class AdminController
             }
         }
 
-        return [$panels, $actions];
+        return [$panels, $actions, $assets];
     }
 
     /** @return array{panels: list<array<string, mixed>>, actions: list<array<string, mixed>>, columns: list<array<string, mixed>>, hooks: array<string, list<\Closure>>} */

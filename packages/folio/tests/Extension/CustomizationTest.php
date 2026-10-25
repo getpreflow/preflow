@@ -105,6 +105,85 @@ final class CustomizationTest extends TestCase
         $this->assertStringNotContainsString('/_action/', $create);
     }
 
+    /** A crm panel class for $type whose methods return ScreenViews listing the given assets (name => entries). */
+    private function assetPanels(string $type, string $class, array $panels): void
+    {
+        $this->crm();
+        $this->write('app/Folio/Crm/assets/panel.js', 'console.log(1);');
+        $this->write('app/Folio/Crm/assets/panel.css', 'a{}');
+        $methods = '';
+        foreach ($panels as $name => $entries) {
+            $list = var_export($entries, true);
+            $methods .= "#[\\Preflow\\Folio\\Extension\\FormPanel('{$name}')]\n"
+                . "public function {$name}(\\Preflow\\Data\\DynamicRecord \$record): \\Preflow\\Folio\\Extension\\Screen\\ScreenView { return new \\Preflow\\Folio\\Extension\\Screen\\ScreenView('@crm/card.twig', [], {$list}); }\n";
+        }
+        $this->write("app/Folio/Crm/Types/{$class}.php", "<?php\nnamespace App\\Folio\\Crm\\Types;\n#[\\Preflow\\Folio\\Extension\\Attributes\\FolioType('{$type}')]\nfinal class {$class}\n{\n{$methods}}\n");
+    }
+
+    private function headOf(string $html): string
+    {
+        return substr($html, 0, (int) strpos($html, '</head>'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_panel_assets_print_once_in_the_form_head(): void
+    {
+        $this->assetPanels('contact', 'ContactAdmin', ['first' => ['panel.js', 'panel.css'], 'second' => ['panel.js']]);
+        $this->as('admin');
+        $this->seed('contact', 'c1', ['name' => 'Ada']);
+
+        $head = $this->headOf((string) $this->send('GET', '/folio/contact/c1/edit')->getBody());
+
+        $this->assertSame(1, preg_match_all('#<script src="/folio/_assets/x/crm/panel\.js\?v=[0-9a-f]{12}" defer nonce="[^"]+"></script>#', $head));
+        $this->assertSame(1, substr_count($head, '/folio/_assets/x/crm/panel.js'));
+        $this->assertSame(1, preg_match_all('#<link rel="stylesheet" href="/folio/_assets/x/crm/panel\.css\?v=[0-9a-f]{12}">#', $head));
+        $this->assertStringNotContainsString('folio-extension-assets', $head);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_panel_htmx_is_not_printed_twice_on_a_publishing_type(): void
+    {
+        $this->assetPanels('note', 'NoteAdmin', ['live' => ['@folio/htmx.js', 'panel.js']]);
+        $this->as('admin');
+        $this->seed('note', 'n1', ['name' => 'Hi']);
+
+        $head = $this->headOf((string) $this->send('GET', '/folio/note/n1/edit')->getBody());
+
+        $this->assertSame(1, substr_count($head, '/folio/_assets/htmx.js'));
+        $this->assertSame(1, substr_count($head, 'name="htmx-config"'));
+        $this->assertSame(1, substr_count($head, '/folio/_assets/x/crm/panel.js'));
+        // Folio's own editor assets stay first.
+        $this->assertLessThan(strpos($head, '/x/crm/panel.js'), strpos($head, '/folio/_assets/htmx.js'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_missing_panel_asset_names_the_panel_method(): void
+    {
+        $this->assetPanels('contact', 'ContactAdmin', ['broken' => ['gone.js']]);
+        $this->as('admin');
+        $this->seed('contact', 'c1', ['name' => 'Ada']);
+
+        $res = $this->send('GET', '/folio/contact/c1/edit');
+
+        $this->assertSame(500, $res->getStatusCode());
+        $body = html_entity_decode((string) $res->getBody());
+        $this->assertStringContainsString('gone.js', $body);
+        $this->assertStringContainsString('ContactAdmin::broken', $body);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_forms_without_panel_assets_are_unchanged(): void
+    {
+        $this->crm();
+        $this->as('admin');
+        $this->seed('contact', 'c1', ['name' => 'Ada']);
+
+        foreach (['/folio/contact/c1/edit', '/folio/contact/new'] as $url) {
+            $head = $this->headOf((string) $this->send('GET', $url)->getBody());
+            $this->assertStringNotContainsString('/_assets/x/', $head);
+        }
+    }
+
     #[RunInSeparateProcess]
     public function test_record_action_runs_and_redirects_with_flash(): void
     {
