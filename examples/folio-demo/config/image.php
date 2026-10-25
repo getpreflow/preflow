@@ -1,6 +1,6 @@
 <?php
 
-// Responsive image presets, used by responsive_image() and folio_image().
+// Responsive image presets, used by responsive_image() and media_image().
 // Their widths also decide which variants the asset library generates.
 return [
     'presets' => [

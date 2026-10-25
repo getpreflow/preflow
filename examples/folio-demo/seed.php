@@ -21,7 +21,7 @@ use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
-use Preflow\Folio\Assets\AssetLibrary;
+use Preflow\Media\MediaLibrary;
 use Preflow\Folio\Publishing\Publisher;
 
 $base = isset($argv[1]) ? rtrim($argv[1], '/') : __DIR__;
@@ -72,7 +72,7 @@ if (function_exists('imagecreatetruecolor')) {
     imagefilledellipse($img, 1440, 300, 260, 260, (int) imagecolorallocate($img, 250, 214, 120));
     $tmp = tempnam(sys_get_temp_dir(), 'folio-demo') . '.png';
     imagepng($img, $tmp);
-    $library = $app->container()->get(AssetLibrary::class);
+    $library = $app->container()->get(MediaLibrary::class);
     $asset = $library->importFile($tmp, 'demo-hero.png', 'seed');
     $library->update($asset->id, ['alt' => ['en' => 'An evening sky over a calm sea', 'de' => 'Ein Abendhimmel über ruhiger See'], 'focal_x' => 75, 'focal_y' => 35]);
     unlink($tmp);
