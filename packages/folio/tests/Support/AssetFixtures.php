@@ -8,8 +8,9 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\Locales;
-use Preflow\Folio\Assets\AssetLibrary;
 use Preflow\Media\Image\VariantGenerator;
+use Preflow\Media\MediaLibrary;
+use Preflow\Media\Usage\AssetUsage;
 use Psr\Http\Message\UploadedFileInterface;
 
 /** A temp asset library (JSON storage, en/de) and real image bytes made with GD. */
@@ -39,11 +40,11 @@ trait AssetFixtures
     }
 
     /** @param array<string, mixed> $config */
-    private function library(array $config = [], ?VariantGenerator $variants = null): AssetLibrary
+    private function library(array $config = [], ?VariantGenerator $variants = null, ?AssetUsage $usage = null): MediaLibrary
     {
         $dm = new DataManager(drivers: ['json' => new JsonFileDriver($this->assetRoot . '/store')], defaultDriver: 'json');
 
-        return new AssetLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', $config, $variants);
+        return new MediaLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', $config, $variants, usage: $usage);
     }
 
     private function png(int $width = 1200, int $height = 800): string

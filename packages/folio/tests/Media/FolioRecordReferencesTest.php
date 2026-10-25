@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Tests\Assets;
+namespace Preflow\Folio\Tests\Media;
 
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
@@ -11,7 +11,11 @@ use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Assets\AssetReferences;
-use Preflow\Folio\Assets\AssetUsage;
+use Preflow\Folio\Media\FolioRecordReferences;
+use Preflow\Media\MediaLibrary;
+use Preflow\Media\Usage\AssetInUseException;
+use Preflow\Media\Usage\AssetUsage;
+use Preflow\Media\Usage\AssetUsageEntry;
 use Preflow\Folio\Block\BlockRegistry;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Publishing\ShadowTypes;
@@ -21,7 +25,7 @@ use Preflow\Folio\Tests\Fixtures\Blocks\TradeoffNoteBlock;
 use Preflow\Folio\Tests\Support\AssetFixtures;
 
 #[RequiresPhpExtension('gd')]
-final class AssetUsageTest extends TestCase
+final class FolioRecordReferencesTest extends TestCase
 {
     use AssetFixtures;
 
@@ -76,10 +80,28 @@ final class AssetUsageTest extends TestCase
         $this->dm->saveType(DynamicRecord::fromArray($def, ['uuid' => 'p1', 'title' => 'About', 'cover' => '']), false);
         $this->dm->saveType(DynamicRecord::fromArray(ShadowTypes::published($def), ['uuid' => 'p1', 'title' => 'About', 'cover' => $asset->id]), false);
 
-        $usage = $this->usage($library)->of($asset->id);
+        $usage = $this->usage($library)->usagesOf($asset->id);
 
-        $this->assertCount(1, $usage);
-        $this->assertSame(['type' => 'page', 'id' => 'p1', 'label' => 'About', 'url' => '/folio/page/p1/edit', 'where' => 'published'], $usage[0]);
+        $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio', 'published version')], $usage);
+    }
+
+    public function test_asset_used_only_in_a_published_version_cannot_be_deleted(): void
+    {
+        $usage = new AssetUsage();
+        $library = $this->library(usage: $usage);
+        $usage->register($this->usage($library));
+        $asset = $library->upload($this->upload($this->png(10, 10), 'a.png'), null);
+        $def = $this->registry->get('page');
+        $this->dm->saveType(DynamicRecord::fromArray($def, ['uuid' => 'p1', 'title' => 'About', 'cover' => '']), false);
+        $this->dm->saveType(DynamicRecord::fromArray(ShadowTypes::published($def), ['uuid' => 'p1', 'title' => 'About', 'cover' => $asset->id]), false);
+
+        try {
+            $library->delete($asset->id);
+            $this->fail('delete() should refuse an asset a published version uses');
+        } catch (AssetInUseException $e) {
+            $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio', 'published version')], $e->usages);
+        }
+        $this->assertNotNull($library->find($asset->id));
     }
 
     public function test_usage_counts_a_record_once(): void
@@ -91,10 +113,10 @@ final class AssetUsageTest extends TestCase
             $this->dm->saveType(DynamicRecord::fromArray($d, ['uuid' => 'p1', 'title' => 'About', 'cover' => $asset->id]), false);
         }
 
-        $usage = $this->usage($library)->of($asset->id);
+        $usage = $this->usage($library)->usagesOf($asset->id);
 
         $this->assertCount(1, $usage);
-        $this->assertSame('working', $usage[0]['where']);
+        $this->assertNull($usage[0]->note); // the working copy
     }
 
     public function test_poster_usage(): void
@@ -104,9 +126,9 @@ final class AssetUsageTest extends TestCase
         $video = $library->upload($this->upload("notes\n", 'clip.txt'), null);
         $library->update($video->id, ['poster' => $poster->id]);
 
-        $usage = $this->usage($library)->of($poster->id);
+        $usage = $this->usage($library)->usagesOf($poster->id);
 
-        $this->assertSame([['type' => '_asset', 'id' => $video->id, 'label' => 'clip.txt', 'url' => '/folio/assets/' . $video->id, 'where' => 'poster']], $usage);
+        $this->assertEquals([new AssetUsageEntry('clip.txt', '/folio/assets/' . $video->id, 'folio', 'as poster')], $usage);
     }
 
     /** @return array<string, mixed> */
@@ -131,8 +153,8 @@ final class AssetUsageTest extends TestCase
         return new AssetReferences(new BlockRegistry([HeroBlock::class, LinkBlock::class, TradeoffNoteBlock::class]));
     }
 
-    private function usage(\Preflow\Folio\Assets\AssetLibrary $library): AssetUsage
+    private function usage(MediaLibrary $library): FolioRecordReferences
     {
-        return new AssetUsage($this->references(), $this->dm, new TypeCatalog($this->assetRoot . '/models'), $this->registry, $library, '/folio');
+        return new FolioRecordReferences($this->references(), $this->dm, new TypeCatalog($this->assetRoot . '/models'), $this->registry, $library, '/folio');
     }
 }

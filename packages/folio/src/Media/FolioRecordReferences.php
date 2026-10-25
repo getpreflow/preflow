@@ -2,32 +2,46 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Assets;
+namespace Preflow\Folio\Media;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Assets\AssetReferences;
 use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Publishing\ShadowTypes;
+use Preflow\Media\MediaLibrary;
+use Preflow\Media\Usage\AssetReferenceSource;
+use Preflow\Media\Usage\AssetUsageEntry;
 
 /**
- * Where an asset is used: working copies of every type, published snapshots
- * (a live page may still show an asset the draft already dropped) and assets
- * using it as a video poster. Each record is listed once.
+ * Folio's records as a usage source: working copies of every type, published
+ * snapshots (a live page may still show an asset the draft already dropped,
+ * note "published version") and assets using it as a video poster (note "as
+ * poster"). Each record is listed once.
  */
-final class AssetUsage
+final class FolioRecordReferences implements AssetReferenceSource
 {
+    public const string NAME = 'folio';
+    public const string PUBLISHED = 'published version';
+    public const string POSTER = 'as poster';
+
     public function __construct(
         private readonly AssetReferences $references,
         private readonly DataManager $dm,
         private readonly TypeCatalog $catalog,
         private readonly TypeRegistry $registry,
-        private readonly AssetLibrary $library,
+        private readonly MediaLibrary $library,
         private readonly string $prefix,
     ) {}
 
-    /** @return list<array{type: string, id: string, label: string, url: string, where: string}> */
-    public function of(string $assetId): array
+    public function name(): string
+    {
+        return self::NAME;
+    }
+
+    /** @return list<AssetUsageEntry> */
+    public function usagesOf(string $assetId): array
     {
         $usage = [];
         $labeler = new RecordLabeler();
@@ -43,28 +57,21 @@ final class AssetUsage
                     if (isset($usage[$key]) || !in_array($assetId, $this->references->collect($def, $record->toArray()), true)) {
                         continue;
                     }
-                    $usage[$key] = [
-                        'type' => $listing->key,
-                        'id' => (string) $record->getId(),
-                        'label' => $labeler->label($record),
-                        'url' => $listing->singleton
+                    $usage[$key] = new AssetUsageEntry(
+                        $labeler->label($record),
+                        $listing->singleton
                             ? $this->prefix . '/' . $listing->key
                             : $this->prefix . '/' . $listing->key . '/' . rawurlencode((string) $record->getId()) . '/edit',
-                        'where' => $where,
-                    ];
+                        self::NAME,
+                        $where === 'published' ? self::PUBLISHED : null,
+                    );
                 }
             }
         }
 
         foreach ($this->library->all() as $asset) {
             if ($asset->posterId === $assetId) {
-                $usage['_asset/' . $asset->id] = [
-                    'type' => '_asset',
-                    'id' => $asset->id,
-                    'label' => $asset->label(),
-                    'url' => $this->prefix . '/assets/' . $asset->id,
-                    'where' => 'poster',
-                ];
+                $usage['_asset/' . $asset->id] = new AssetUsageEntry($asset->label(), $this->prefix . '/assets/' . $asset->id, self::NAME, self::POSTER);
             }
         }
 

@@ -38,4 +38,39 @@ final class FolioServiceProviderTest extends TestCase
         $last = end($patterns);
         $this->assertSame('GET /{...path}', $last);
     }
+
+    /** @return iterable<string, array{list<class-string>}> */
+    public static function providerOrders(): iterable
+    {
+        yield 'media first' => [[\Preflow\Media\MediaServiceProvider::class, FolioServiceProvider::class]];
+        yield 'folio first' => [[FolioServiceProvider::class, \Preflow\Media\MediaServiceProvider::class]];
+        yield 'folio only' => [[FolioServiceProvider::class]];
+    }
+
+    /** @param list<class-string> $providers */
+    #[\PHPUnit\Framework\Attributes\DataProvider('providerOrders')]
+    public function test_media_is_registered_once_and_folio_binds_its_hooks(array $providers): void
+    {
+        $app = Application::create(['app' => ['debug' => true]]);
+        foreach ($providers as $class) {
+            $app->registerProvider(new $class());
+        }
+        $c = $app->container();
+
+        $this->assertTrue($c->hasProvider(\Preflow\Media\MediaServiceProvider::class));
+        $this->assertInstanceOf(\Preflow\Folio\Media\ContentLocaleProvider::class, $c->get(\Preflow\Media\LocaleProvider::class));
+        $this->assertSame(['folio'], $c->get(\Preflow\Media\Usage\AssetUsage::class)->sourceNames());
+    }
+
+    public function test_old_class_names_resolve_to_the_media_services(): void
+    {
+        $app = Application::create(['app' => ['debug' => true]]);
+        $app->registerProvider(new FolioServiceProvider());
+        $c = $app->container();
+        $c->instance(\Preflow\Data\DataManager::class, new \Preflow\Data\DataManager(drivers: ['json' => new \Preflow\Data\Driver\JsonFileDriver(sys_get_temp_dir() . '/folio_alias_' . bin2hex(random_bytes(4)))], defaultDriver: 'json'));
+
+        $this->assertSame($c->get(\Preflow\Media\MediaLibrary::class), $c->get('Preflow\\Folio\\Assets\\AssetLibrary'));
+        $this->assertSame($c->get(\Preflow\Media\ImageTag::class), $c->get('Preflow\\Folio\\Assets\\ImageTag'));
+        $this->assertSame($c->get(\Preflow\Media\Image\ImageWidths::class), $c->get('Preflow\\Folio\\Assets\\ImageWidths'));
+    }
 }

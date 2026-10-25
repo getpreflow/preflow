@@ -211,4 +211,15 @@ final class ContainerTest extends TestCase
         $this->assertInstanceOf(ServiceWithInterface::class, $result);
         $this->assertInstanceOf(ConcreteImplementation::class, $result->dep);
     }
+
+    public function test_bound_is_true_only_for_bindings_and_instances(): void
+    {
+        $container = new Container();
+        $container->bind('a', fn () => new \stdClass());
+        $container->instance('b', new \stdClass());
+
+        $this->assertTrue($container->bound('a'));
+        $this->assertTrue($container->bound('b'));
+        $this->assertFalse($container->bound(\stdClass::class)); // has() would say true: autowirable
+    }
 }

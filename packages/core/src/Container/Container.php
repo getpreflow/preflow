@@ -28,6 +28,9 @@ final class Container implements ContainerInterface
     /** @var ServiceProvider[] */
     private array $providers = [];
 
+    /** @var array<class-string, true> */
+    private array $providerClasses = [];
+
     public function get(string $id): mixed
     {
         if (isset($this->instances[$id])) {
@@ -54,6 +57,12 @@ final class Container implements ContainerInterface
         }
 
         return class_exists($id);
+    }
+
+    /** Whether something is bound or set for the id (unlike has(), which is also true for any autowirable class). */
+    public function bound(string $id): bool
+    {
+        return isset($this->instances[$id]) || isset($this->bindings[$id]);
     }
 
     public function bind(string $abstract, string|callable $concrete): void
@@ -213,10 +222,25 @@ final class Container implements ContainerInterface
         return $value;
     }
 
+    /**
+     * Registers a provider once per class: a second instance of an already
+     * registered class is ignored, so a package can register a provider it
+     * depends on (Folio registers media) whether or not the app lists it too.
+     */
     public function registerProvider(ServiceProvider $provider): void
     {
+        if ($this->hasProvider($provider::class)) {
+            return;
+        }
+        $this->providerClasses[$provider::class] = true;
         $provider->register($this);
         $this->providers[] = $provider;
+    }
+
+    /** @param class-string<ServiceProvider> $class */
+    public function hasProvider(string $class): bool
+    {
+        return isset($this->providerClasses[$class]);
     }
 
     public function bootProviders(): void

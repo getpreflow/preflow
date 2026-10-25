@@ -6,7 +6,7 @@ namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
 use Preflow\Core\Exceptions\NotFoundHttpException;
-use Preflow\Folio\Assets\AssetLibrary;
+use Preflow\Media\MediaLibrary;
 use Preflow\Media\Image\ImageWidths;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -22,7 +22,7 @@ final class MediaVariantController
     private const string VARIANT = '#^(\d{4}/\d{2}/([a-f0-9]{32}))-([1-9]\d{0,4})\.(avif|webp)$#';
 
     public function __construct(
-        private readonly AssetLibrary $library,
+        private readonly MediaLibrary $library,
         private readonly ImageWidths $widths,
     ) {}
 

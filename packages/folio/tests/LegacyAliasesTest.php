@@ -15,6 +15,8 @@ final class LegacyAliasesTest extends TestCase
         foreach (['Asset', 'Variant', 'AssetUploadException'] as $name) {
             yield $name => ["Preflow\\Folio\\Assets\\$name", "Preflow\\Media\\$name"];
         }
+        yield 'AssetLibrary' => ['Preflow\\Folio\\Assets\\AssetLibrary', 'Preflow\\Media\\MediaLibrary'];
+        yield 'ImageTag' => ['Preflow\\Folio\\Assets\\ImageTag', 'Preflow\\Media\\ImageTag'];
         foreach (['VariantGenerator', 'ImageWidths'] as $name) {
             yield $name => ["Preflow\\Folio\\Assets\\$name", "Preflow\\Media\\Image\\$name"];
         }

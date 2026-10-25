@@ -11,8 +11,8 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Media\Asset;
-use Preflow\Folio\Assets\AssetLibrary;
-use Preflow\Folio\Assets\ImageTag;
+use Preflow\Media\MediaLibrary;
+use Preflow\Media\ImageTag;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\HandlesUpload;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
@@ -109,9 +109,9 @@ final class PrivateAssetsTest extends TestCase
         return $this->session;
     }
 
-    private function lib(): AssetLibrary
+    private function lib(): MediaLibrary
     {
-        return $this->app()->container()->get(AssetLibrary::class);
+        return $this->app()->container()->get(MediaLibrary::class);
     }
 
     private function signIn(string $key, string $email): void

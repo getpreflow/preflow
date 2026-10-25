@@ -15,8 +15,9 @@ use Preflow\Folio\Publishing\ShadowTypes;
 /**
  * Tables of SQL-stored Folio types, from their model JSON (the `folio.tables`
  * step of `preflow migrate`): the type's table, the published and revision
- * shadows of publishing types, the asset table when it is SQL-stored, and
- * Folio's own internal tables it is given (the extension install state).
+ * shadows of publishing types, and Folio's own internal tables it is given
+ * (the extension install state). The asset table is preflow/media's own
+ * media.table step.
  * On SQLite the id is TEXT PRIMARY KEY and every other column nullable TEXT;
  * on MySQL the id is VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY (ids compare
  * exactly) and every other column nullable LONGTEXT (the grammar's createRecordTable). Missing
@@ -35,7 +36,6 @@ final class TableSync
         private readonly TypeCatalog $catalog,
         private readonly TypeRegistry $registry,
         private readonly DataManager $dm,
-        private readonly ?TypeDefinition $assets = null,
         private readonly array $internal = [],
     ) {
         $this->records = new RecordTableSync($dm);
@@ -63,9 +63,6 @@ final class TableSync
                 $defs[] = ShadowTypes::published($def);
                 $defs[] = ShadowTypes::revisions($def);
             }
-        }
-        if ($this->assets !== null) {
-            $defs[] = $this->assets;
         }
         array_push($defs, ...$this->internal);
 

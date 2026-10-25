@@ -90,4 +90,13 @@ final class DebugCollectorTest extends TestCase
         $this->assertNull($this->collector->getRoute());
         $this->assertSame(0.0, $this->collector->getQueryTime());
     }
+
+    public function test_deprecations_are_logged_once_each(): void
+    {
+        $this->collector->logDeprecation('old config');
+        $this->collector->logDeprecation('old config');
+        $this->collector->logDeprecation('old name');
+
+        $this->assertSame(['old config', 'old name'], $this->collector->getDeprecations());
+    }
 }

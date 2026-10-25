@@ -2,18 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Assets;
+namespace Preflow\Media;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
-use Preflow\Media\Asset;
-use Preflow\Media\AssetUploadException;
 use Preflow\Media\Image\Orientation;
 use Preflow\Media\Image\VariantGenerator;
-use Preflow\Media\Variant;
+use Preflow\Media\Usage\AssetInUseException;
+use Preflow\Media\Usage\AssetUsage;
 use Psr\Http\Message\UploadedFileInterface;
 
 /**
@@ -23,11 +22,14 @@ use Psr\Http\Message\UploadedFileInterface;
  * sniffed MIME type, never the client's file name, and only allowed types are
  * stored, so nothing executable can land in the public directory.
  *
- * Private assets (an asset field with "private": true) live in
- * config "private_dir", outside the public directory, without variants; their
- * only URL is {private_url}/{id}, which PrivateAssetController gates.
+ * Private assets live in config "private_dir", outside the public directory,
+ * without variants; their only URL is {private_url}/{id}, which a gated
+ * controller serves.
+ *
+ * Deleting refuses an asset that a registered usage source still reports
+ * (AssetInUseException), so every UI gets the rule.
  */
-final class AssetLibrary
+final class MediaLibrary
 {
     /** Allowed MIME types and the extension each is stored with. */
     private const array EXTENSIONS = [
@@ -61,7 +63,7 @@ final class AssetLibrary
     private readonly \Closure $now;
 
     /**
-     * @param array<string, mixed> $config config/folio.php "assets" (storage, max_bytes, allow_svg, private_dir, private_url, …)
+     * @param array<string, mixed> $config MediaConfig::toArray() (storage, max_bytes, allow_svg, private_dir, private_url, …)
      */
     public function __construct(
         private readonly DataManager $dm,
@@ -71,6 +73,7 @@ final class AssetLibrary
         private readonly array $config = [],
         private readonly ?VariantGenerator $variants = null,
         ?\Closure $now = null,
+        private readonly ?AssetUsage $usage = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
     }
@@ -185,11 +188,16 @@ final class AssetLibrary
         return $this->save($data);
     }
 
+    /** @throws AssetInUseException while a usage source reports the asset (nothing is deleted) */
     public function delete(string $id): void
     {
         $asset = $this->find($id);
         if ($asset === null) {
             return;
+        }
+        $usages = $this->usage?->of($id) ?? [];
+        if ($usages !== []) {
+            throw new AssetInUseException($id, $usages);
         }
         if ($asset->private) {
             $file = $this->file($asset);
@@ -284,7 +292,7 @@ final class AssetLibrary
 
     /**
      * Make every allowed variant the image can fill, in advance
-     * (folio:assets:variants --all). Returns how many were new.
+     * (media:variants --all). Returns how many were new.
      *
      * @param list<int> $allowed
      */

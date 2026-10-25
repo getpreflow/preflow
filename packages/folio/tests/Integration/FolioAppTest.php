@@ -389,7 +389,7 @@ final class FolioAppTest extends TestCase
         $record = $app->container()->get(\Preflow\Data\DataManager::class)->queryType('page')->where('slug', 'a')->first();
         $cover = (string) $record->get('cover');
         $this->assertMatchesRegularExpression('/^[a-f0-9]{32}$/', $cover);
-        $asset = $app->container()->get(\Preflow\Folio\Assets\AssetLibrary::class)->find($cover);
+        $asset = $app->container()->get(\Preflow\Media\MediaLibrary::class)->find($cover);
         $this->assertSame('pic.png', $asset?->originalName);
         $this->assertFileExists($this->dir . '/public/media/' . $asset->path);
     }

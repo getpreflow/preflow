@@ -7,9 +7,10 @@ namespace Preflow\Folio\Transfer;
 use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeDefinition;
-use Preflow\Folio\Assets\AssetLibrary;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Publishing\ShadowTypes;
+use Preflow\Media\MediaConfig;
+use Preflow\Media\MediaLibrary;
 
 /**
  * Everything Folio owns at runtime: its types' tables (with the published and
@@ -45,21 +46,20 @@ final class ContentSet
                 }
             }
         }
-        $assets = $c->get(AssetLibrary::class)->definition();
+        $assets = $c->get(MediaLibrary::class)->definition();
         $tables[$assets->table] = $assets;
         ksort($tables);
 
         $cfg = is_file($app->basePath('config/folio.php')) ? (require $app->basePath('config/folio.php')) : [];
         $cfg = is_array($cfg) ? $cfg : [];
-        $media = $cfg['assets']['dir'] ?? $app->basePath('public/media');
+        $media = $c->get(MediaConfig::class);
         $uploads = $cfg['uploads_path'] ?? $app->basePath('storage/uploads');
-        $private = $cfg['assets']['private_dir'] ?? $app->basePath('storage/private-media');
 
         return new self(
             $tables,
-            is_string($media) ? rtrim($media, '/') : null,
+            rtrim($media->dir, '/'),
             is_string($uploads) ? rtrim($uploads, '/') : null,
-            is_string($private) ? rtrim($private, '/') : null,
+            $media->privateDir !== null ? rtrim($media->privateDir, '/') : null,
         );
     }
 

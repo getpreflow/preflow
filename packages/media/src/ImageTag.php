@@ -2,19 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Assets;
+namespace Preflow\Media;
 
-use Preflow\Folio\Content\ContentLocale;
-use Preflow\Media\Asset;
 use Preflow\Media\Image\ImageWidths;
-use Preflow\Media\Variant;
 use Preflow\View\AssetCollector;
 use Preflow\View\ResponsiveImage;
 
 /**
  * {{ folio_image(value, 'preset', {sizes: …}) }}: <picture> with AVIF/WebP
  * srcsets from the asset's variants, an <img> with explicit width/height, alt
- * text in the page's language and the focal point as classes (CSP forbids
+ * text in the current language (LocaleProvider) and the focal point as classes (CSP forbids
  * inline styles). Options are ResponsiveImage's, merged with config/image.php
  * presets. Legacy upload paths render as a plain <img>; documents as a link.
  * Private assets have no variants: their gated URL, without a srcset.
@@ -23,10 +20,13 @@ final class ImageTag
 {
     private const string LEGACY_PATH = '#^\d{4}/\d{2}/[a-f0-9]{32}\.[a-z0-9]{1,8}$#';
 
-    /** @param array<string, array<string, mixed>> $presets config/image.php "presets" */
+    /**
+     * @param array<string, array<string, mixed>> $presets config/image.php "presets"
+     * @param string $legacyUrlPrefix where legacy upload paths (Y/m/{id}.{ext}) are served
+     */
     public function __construct(
-        private readonly AssetLibrary $library,
-        private readonly ContentLocale $locale,
+        private readonly MediaLibrary $library,
+        private readonly LocaleProvider $locale,
         private readonly array $presets,
         private readonly AssetCollector $css,
         private readonly string $legacyUrlPrefix,
@@ -94,7 +94,7 @@ final class ImageTag
         }
 
         $classes = array_filter([trim((string) $opts['class']), ...$this->focalClasses($asset)]);
-        $alt = is_string($options['alt'] ?? null) ? $options['alt'] : $asset->altFor($this->locale->get(), $this->locale->locales()->default);
+        $alt = is_string($options['alt'] ?? null) ? $options['alt'] : $asset->altFor($this->locale->current(), $this->locale->default());
 
         $img = '<img src="' . self::e($this->library->url($asset)) . '"';
         if ($asset->width !== null && $asset->height !== null) {

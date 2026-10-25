@@ -53,6 +53,10 @@ final class FolioServiceProvider extends ServiceProvider
 {
     public function register(Container $container): void
     {
+        // The media core first (once, also when the app lists it): Folio adapts its services below.
+        if (!$container->hasProvider(\Preflow\Media\MediaServiceProvider::class)) {
+            $container->registerProvider(new \Preflow\Media\MediaServiceProvider());
+        }
         $app = $container->get(Application::class);
         $modelsPath = $this->modelsPath($app);
         $prefix = $this->prefix($app);
@@ -140,35 +144,60 @@ final class FolioServiceProvider extends ServiceProvider
         // One request-scoped content locale shared by the frontend, preview and field types.
         $container->instance(ContentLocale::class, new ContentLocale($locales ?? \Preflow\Data\Locales::single('en')));
 
-        // Media library: files in a public, web-server-served directory (no PHP on delivery).
-        // Private assets: a directory outside public/, served only through the gated private URL.
-        $assetsConfig = self::privateAssetsConfig((array) ($folioCfg['assets'] ?? []), $app);
-        // Eager widths (made at upload) and the on-demand allow-list, from config/image.php presets.
-        $container->singleton(\Preflow\Media\Image\ImageWidths::class, fn () => \Preflow\Media\Image\ImageWidths::fromConfig(
+        // Media library (preflow/media): its config, library, usage, locale and image tag. Folio adapts it:
+        // its content locale, its records as a usage source, the legacy upload URL and the old class names.
+        $assetsConfig = self::privateAccessConfig((array) ($folioCfg['assets'] ?? []));
+        $container->singleton(\Preflow\Media\LocaleProvider::class, fn (Container $c) => new \Preflow\Folio\Media\ContentLocaleProvider(
+            $c->get(ContentLocale::class),
+        ));
+        $container->singleton(\Preflow\Media\ImageTag::class, fn (Container $c) => new \Preflow\Media\ImageTag(
+            $c->get(\Preflow\Media\MediaLibrary::class),
+            $c->get(\Preflow\Media\LocaleProvider::class),
             (array) $app->config()->get('image.presets', []),
-            is_array($assetsConfig['widths'] ?? null) ? $assetsConfig['widths'] : null,
+            $c->get(\Preflow\View\AssetCollector::class),
+            rtrim($prefix, '/') . '/_uploads',
+            $c->get(\Preflow\Media\Image\ImageWidths::class),
         ));
-        $container->singleton(\Preflow\Folio\Assets\AssetLibrary::class, fn (Container $c) => new \Preflow\Folio\Assets\AssetLibrary(
+        foreach ([
+            'Preflow\\Folio\\Assets\\AssetLibrary' => \Preflow\Media\MediaLibrary::class,
+            'Preflow\\Folio\\Assets\\ImageTag' => \Preflow\Media\ImageTag::class,
+            'Preflow\\Folio\\Assets\\ImageWidths' => \Preflow\Media\Image\ImageWidths::class,
+        ] as $old => $new) {
+            $container->bind($old, static fn (Container $c) => $c->get($new)); // deprecated names, the same services
+        }
+        $container->singleton(\Preflow\Folio\Assets\AssetReferences::class, fn (Container $c) => new \Preflow\Folio\Assets\AssetReferences(
+            $c->get(BlockRegistry::class),
+        ));
+        $container->singleton(\Preflow\Folio\Media\FolioRecordReferences::class, fn (Container $c) => new \Preflow\Folio\Media\FolioRecordReferences(
+            $c->get(\Preflow\Folio\Assets\AssetReferences::class),
             $c->get(DataManager::class),
-            $locales ?? \Preflow\Data\Locales::single('en'),
-            (string) ($assetsConfig['dir'] ?? $app->basePath('public/media')),
-            (string) ($assetsConfig['url'] ?? '/media'),
-            $assetsConfig + ['warm_widths' => $c->get(\Preflow\Media\Image\ImageWidths::class)->allowed()],
-            new \Preflow\Media\Image\VariantGenerator(
-                \Preflow\Media\Image\ImageBackends::detect(),
-                $c->get(\Preflow\Media\Image\ImageWidths::class)->eager(),
-                (int) ($assetsConfig['quality'] ?? 75),
-            ),
+            $c->get(TypeCatalog::class),
+            $c->get(TypeRegistry::class),
+            $c->get(\Preflow\Media\MediaLibrary::class),
+            $prefix,
         ));
+        // Built on first use: the block registry and the library are not needed at boot.
+        $container->get(\Preflow\Media\Usage\AssetUsage::class)->register(new class ($container) implements \Preflow\Media\Usage\AssetReferenceSource {
+            public function __construct(private readonly Container $container) {}
+
+            public function name(): string
+            {
+                return \Preflow\Folio\Media\FolioRecordReferences::NAME;
+            }
+
+            public function usagesOf(string $assetId): array
+            {
+                return $this->container->get(\Preflow\Folio\Media\FolioRecordReferences::class)->usagesOf($assetId);
+            }
+        });
 
         // `preflow migrate` creates the tables of SQL-stored types from their model JSON
-        // (the asset table too when config/folio.php names its storage).
+        // (the asset table is the media package's own media.table step).
         // With extensions, the install state's table too (folio:extensions:apply runs the same sync).
         $container->bind(\Preflow\Folio\Storage\TableSync::class, fn (Container $c) => new \Preflow\Folio\Storage\TableSync(
             $c->get(TypeCatalog::class),
             $c->get(TypeRegistry::class),
             $c->get(DataManager::class),
-            isset($assetsConfig['storage']) ? $c->get(\Preflow\Folio\Assets\AssetLibrary::class)->definition() : null,
             $extensions->all() !== [] ? [$c->get(\Preflow\Folio\Extension\ExtensionState::class)->definition()] : [],
         ));
         $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
@@ -197,41 +226,22 @@ final class FolioServiceProvider extends ServiceProvider
         ));
 
         $container->bind(\Preflow\Folio\Http\PrivateAssetController::class, fn (Container $c) => new \Preflow\Folio\Http\PrivateAssetController(
-            $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
+            $c->get(\Preflow\Media\MediaLibrary::class),
             $c->get(\Preflow\Folio\Content\FrontendGate::class),
-            (string) $assetsConfig['private_permission'],
-            is_string($assetsConfig['private_login'] ?? null) && $assetsConfig['private_login'] !== '' ? $assetsConfig['private_login'] : null,
+            $assetsConfig['private_permission'],
+            $assetsConfig['private_login'],
         ));
         $container->bind(\Preflow\Folio\Http\MediaVariantController::class, fn (Container $c) => new \Preflow\Folio\Http\MediaVariantController(
-            $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
+            $c->get(\Preflow\Media\MediaLibrary::class),
             $c->get(\Preflow\Media\Image\ImageWidths::class),
         ));
-        $container->singleton(\Preflow\Folio\Assets\AssetReferences::class, fn (Container $c) => new \Preflow\Folio\Assets\AssetReferences(
-            $c->get(BlockRegistry::class),
-        ));
-        $container->bind(\Preflow\Folio\Assets\AssetUsage::class, fn (Container $c) => new \Preflow\Folio\Assets\AssetUsage(
-            $c->get(\Preflow\Folio\Assets\AssetReferences::class),
-            $c->get(DataManager::class),
-            $c->get(TypeCatalog::class),
-            $c->get(TypeRegistry::class),
-            $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
-            $prefix,
-        ));
         $container->bind(\Preflow\Folio\Http\AssetLibraryController::class, fn (Container $c) => new \Preflow\Folio\Http\AssetLibraryController(
-            $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
-            $c->get(\Preflow\Folio\Assets\AssetUsage::class),
+            $c->get(\Preflow\Media\MediaLibrary::class),
+            $c->get(\Preflow\Media\Usage\AssetUsage::class),
             $c->get(TemplateEngineInterface::class),
             $c->get(TypeCatalog::class),
             $locales ?? \Preflow\Data\Locales::single('en'),
             $prefix,
-        ));
-        $container->singleton(\Preflow\Folio\Assets\ImageTag::class, fn (Container $c) => new \Preflow\Folio\Assets\ImageTag(
-            $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
-            $c->get(ContentLocale::class),
-            (array) $app->config()->get('image.presets', []),
-            $c->get(\Preflow\View\AssetCollector::class),
-            rtrim($prefix, '/') . '/_uploads',
-            $c->get(\Preflow\Media\Image\ImageWidths::class),
         ));
 
         // Request-scoped: public renders read published snapshots, admin routes switch it to working copies.
@@ -289,8 +299,8 @@ final class FolioServiceProvider extends ServiceProvider
             $registry->register(new AssetFieldType(
                 $uploadsDir,
                 $uploadUrlPrefix,
-                $c->get(\Preflow\Folio\Assets\ImageTag::class),
-                $c->get(\Preflow\Folio\Assets\AssetLibrary::class),
+                $c->get(\Preflow\Media\ImageTag::class),
+                $c->get(\Preflow\Media\MediaLibrary::class),
                 $prefix,
                 $can,
             ));
@@ -716,13 +726,13 @@ final class FolioServiceProvider extends ServiceProvider
 
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_image',
-                callable: fn (mixed $value, ?string $preset = null, array $options = []): string => $container->get(\Preflow\Folio\Assets\ImageTag::class)->render($value, $preset, $options),
+                callable: fn (mixed $value, ?string $preset = null, array $options = []): string => $container->get(\Preflow\Media\ImageTag::class)->render($value, $preset, $options),
                 isSafe: true,
             ));
             // folio_asset_url(id): an asset's public URL ('' without one), e.g. a PDF download link.
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_asset_url',
-                callable: fn (mixed $value = null): string => $container->get(\Preflow\Folio\Assets\ImageTag::class)->url($value),
+                callable: fn (mixed $value = null): string => $container->get(\Preflow\Media\ImageTag::class)->url($value),
             ));
 
             // Public URLs and hreflang alternates of a (raw, stored) record.
@@ -793,52 +803,28 @@ final class FolioServiceProvider extends ServiceProvider
                 // Screens first: their routes must win over the admin's {type} routes.
                 $collection->addMany($screens->routes($this->prefix($app), $authEnabled));
                 $collection->addMany(FolioRoutes::admin($this->prefix($app), $authEnabled, $authEnabled && self::recordProviders($container) !== []));
-                $assets = self::privateAssetsConfig((array) ($this->folioConfig($app)['assets'] ?? []), $app);
-                $collection->add(FolioRoutes::privateAssets((string) $assets['private_url']));
-                $collection->add(FolioRoutes::media(is_string($assets['url'] ?? null) ? $assets['url'] : '/media'));
+                $media = $container->get(\Preflow\Media\MediaConfig::class);
+                $collection->add(FolioRoutes::privateAssets($media->privateUrl));
+                $collection->add(FolioRoutes::media($media->url));
                 $collection->add(FolioRoutes::frontend());
             }
         }
     }
 
     /**
-     * config/folio.php "assets" with the private-asset defaults (private_dir
-     * storage/private-media, private_url /files, private_permission
-     * folio.dashboard). A private_dir inside public/ or the media directory is
-     * refused: those files would be served without the gate.
+     * Folio's private-file access rules, from config/folio.php "assets" whether or not
+     * config/media.php exists: private_permission (default folio.dashboard) and
+     * private_login. The media settings themselves are MediaConfig's.
      *
      * @param array<string, mixed> $assets
-     * @return array<string, mixed>
+     * @return array{private_permission: string, private_login: ?string}
      */
-    private static function privateAssetsConfig(array $assets, Application $app): array
+    private static function privateAccessConfig(array $assets): array
     {
-        $assets += [
-            'private_dir' => $app->basePath('storage/private-media'),
-            'private_url' => '/files',
-            'private_permission' => 'folio.dashboard',
+        return [
+            'private_permission' => is_string($assets['private_permission'] ?? null) ? $assets['private_permission'] : 'folio.dashboard',
+            'private_login' => is_string($assets['private_login'] ?? null) && $assets['private_login'] !== '' ? $assets['private_login'] : null,
         ];
-        $private = self::normalizePath((string) $assets['private_dir']);
-        foreach ([$app->basePath('public'), (string) ($assets['dir'] ?? $app->basePath('public/media'))] as $served) {
-            $served = self::normalizePath($served);
-            if ($private === $served || str_starts_with($private, $served . '/') || str_starts_with($served, $private . '/')) {
-                throw new \RuntimeException("config/folio.php assets.private_dir ({$assets['private_dir']}) must be outside public/ and the media directory.");
-            }
-        }
-
-        return $assets;
-    }
-
-    /** An absolute path, symlinks resolved up to its deepest existing ancestor. */
-    private static function normalizePath(string $path): string
-    {
-        $path = rtrim($path, '/');
-        $suffix = '';
-        while ($path !== '' && $path !== '/' && $path !== '.' && realpath($path) === false) {
-            $suffix = '/' . basename($path) . $suffix;
-            $path = dirname($path);
-        }
-
-        return rtrim((string) realpath($path === '' ? '/' : $path), '/') . $suffix;
     }
 
     /**

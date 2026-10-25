@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Console;
 
 use Preflow\DevTools\Command\CommandInterface;
-use Preflow\Folio\Assets\AssetLibrary;
+use Preflow\Media\MediaLibrary;
 use Preflow\Media\Image\ImageBackends;
 
 /**
@@ -34,7 +34,7 @@ final class AssetsVariantsCommand implements CommandInterface
         }
 
         $app = $this->app();
-        $library = $app->container()->get(AssetLibrary::class);
+        $library = $app->container()->get(MediaLibrary::class);
         $all = in_array('--all', $args, true);
         $allowed = $app->container()->get(\Preflow\Media\Image\ImageWidths::class)->allowed();
         $assets = $id !== null ? array_filter([$library->find($id)]) : $library->all();

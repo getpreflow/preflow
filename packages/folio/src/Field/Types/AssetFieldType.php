@@ -28,8 +28,8 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
     public function __construct(
         private readonly string $uploadsDir,
         private readonly string $uploadUrlPrefix,
-        private readonly ?\Preflow\Folio\Assets\ImageTag $images = null,
-        private readonly ?\Preflow\Folio\Assets\AssetLibrary $library = null,
+        private readonly ?\Preflow\Media\ImageTag $images = null,
+        private readonly ?\Preflow\Media\MediaLibrary $library = null,
         private readonly string $adminPrefix = '/folio',
         /** @var (\Closure(string): bool)|null permission check; null allows everything */
         private readonly ?\Closure $can = null,

@@ -7,7 +7,7 @@ namespace Preflow\Folio\Tests\Console;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\TestCase;
-use Preflow\Folio\Assets\AssetLibrary;
+use Preflow\Media\MediaLibrary;
 use Preflow\Folio\Console\AssetsImportCommand;
 use Preflow\Folio\Console\AssetsVariantsCommand;
 use Preflow\Folio\Console\FolioCommands;
@@ -133,9 +133,9 @@ final class AssetCommandsTest extends TestCase
         return $path;
     }
 
-    private function lib(): AssetLibrary
+    private function lib(): MediaLibrary
     {
-        return $this->app()->container()->get(AssetLibrary::class);
+        return $this->app()->container()->get(MediaLibrary::class);
     }
 
     private function png(): string

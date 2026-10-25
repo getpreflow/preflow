@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Tests\Assets;
+namespace Preflow\Media\Tests;
 
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
@@ -13,18 +13,17 @@ use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\Locales;
 use Preflow\Data\TypeRegistry;
-use Preflow\Folio\Assets\AssetLibrary;
+use Preflow\Media\MediaLibrary;
 use Preflow\Media\AssetUploadException;
-use Preflow\Folio\Content\TypeCatalog;
-use Preflow\Folio\Storage\TableSync;
-use Preflow\Folio\Tests\Support\AssetFixtures;
+use Preflow\Data\Schema\RecordTableSync;
+use Preflow\Media\Tests\Support\MediaFixtures;
 use Preflow\Testing\MysqlTestDatabase;
 
 #[RequiresPhpExtension('gd')]
 #[RequiresPhpExtension('fileinfo')]
 final class AssetLibraryTest extends TestCase
 {
-    use AssetFixtures;
+    use MediaFixtures;
 
     protected function setUp(): void
     {
@@ -168,7 +167,7 @@ final class AssetLibraryTest extends TestCase
     public function test_all_is_newest_first(): void
     {
         $now = 1000;
-        $library = new \Preflow\Folio\Assets\AssetLibrary(
+        $library = new MediaLibrary(
             new \Preflow\Data\DataManager(drivers: ['json' => new \Preflow\Data\Driver\JsonFileDriver($this->assetRoot . '/store')], defaultDriver: 'json'),
             new \Preflow\Data\Locales(['en'], 'en'),
             $this->assetRoot . '/media',
@@ -197,13 +196,13 @@ final class AssetLibraryTest extends TestCase
         $this->assertSqlIndexRoundTrip('mysql', new MysqlDriver($pdo));
     }
 
-    /** The asset index on a SQL storage (config assets.storage), its table made by TableSync. */
+    /** The asset index on a SQL storage (config storage), its table made by RecordTableSync (the media.table step). */
     private function assertSqlIndexRoundTrip(string $storage, PdoDriver $driver): void
     {
         mkdir($this->assetRoot . '/models');
         $dm = new DataManager(drivers: [$storage => $driver], defaultDriver: $storage, typeRegistry: new TypeRegistry($this->assetRoot . '/models'));
-        $library = new AssetLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', ['storage' => $storage]);
-        $lines = (new TableSync(new TypeCatalog($this->assetRoot . '/models'), $dm->getTypeRegistry(), $dm, $library->definition()))->sync();
+        $library = new MediaLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', ['storage' => $storage]);
+        $lines = (new RecordTableSync($dm))->sync($library->definition());
         $this->assertSame(['created table folio_assets'], $lines);
 
         $asset = $library->upload($this->upload($this->png(), 'Sea View.PNG', 'image/png'), 'u@x');

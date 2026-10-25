@@ -11,6 +11,8 @@ final class DebugCollector
     private array $components = [];
     private ?array $route = null;
     private array $assets = ['css_count' => 0, 'js_count' => 0, 'css_bytes' => 0, 'js_bytes' => 0];
+    /** @var list<string> */
+    private array $deprecations = [];
 
     public function __construct()
     {
@@ -37,6 +39,16 @@ final class DebugCollector
         $this->assets = ['css_count' => $cssCount, 'js_count' => $jsCount, 'css_bytes' => $cssBytes, 'js_bytes' => $jsBytes];
     }
 
+    /** A deprecated setting or name in use; each message is kept once. */
+    public function logDeprecation(string $message): void
+    {
+        if (!in_array($message, $this->deprecations, true)) {
+            $this->deprecations[] = $message;
+        }
+    }
+
+    /** @return list<string> */
+    public function getDeprecations(): array { return $this->deprecations; }
     public function getQueries(): array { return $this->queries; }
     public function getComponents(): array { return $this->components; }
     public function getRoute(): ?array { return $this->route; }

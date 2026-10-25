@@ -2673,15 +2673,15 @@
             "dist": {
                 "type": "path",
                 "url": "packages/folio",
-                "reference": "1bc6b6603816042bc532e02289da94cab71166d8"
+                "reference": "e25e3a5ca005acdf965cd7070bb0f75a2df11c4a"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
                 "php": ">=8.4",
                 "preflow/auth": "^0.27 || @dev",
                 "preflow/components": "^0.1 || @dev",
-                "preflow/core": "^0.33 || @dev",
-                "preflow/data": "^0.28 || @dev",
+                "preflow/core": "^0.34 || @dev",
+                "preflow/data": "^0.34 || @dev",
                 "preflow/devtools": "^0.20 || @dev",
                 "preflow/form": "^0.1 || @dev",
                 "preflow/htmx": "^0.1 || @dev",
@@ -2695,8 +2695,8 @@
             },
             "conflict": {
                 "preflow/auth": "<0.27",
-                "preflow/core": "<0.33",
-                "preflow/data": "<0.28",
+                "preflow/core": "<0.34",
+                "preflow/data": "<0.34",
                 "preflow/i18n": "<0.26",
                 "preflow/media": "<0.34",
                 "preflow/notify": "<0.25"

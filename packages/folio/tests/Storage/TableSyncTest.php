@@ -114,14 +114,12 @@ final class TableSyncTest extends TestCase
         $dm->saveType(DynamicRecord::fromArray($dm->getTypeRegistry()->get('post'), ['uuid' => 'p1', 'title' => 'T', 'subtitle' => 'S']), false);
     }
 
-    public function test_asset_table_when_its_storage_is_sql(): void
+    public function test_asset_table_is_left_to_the_media_package(): void
     {
-        $assets = new \Preflow\Data\TypeDefinition('_asset', 'folio_assets', 'sqlite', ['path' => new \Preflow\Data\TypeFieldDefinition('path', 'string')]);
+        $lines = $this->sync();
 
-        $lines = $this->tableSync($assets)->sync();
-
-        $this->assertSame(['created table folio_assets'], $lines);
-        $this->assertContains('path', (new Schema($this->pdo))->columns('folio_assets'));
+        $this->assertNotContains('created table folio_assets', $lines);
+        $this->assertFalse((new Schema($this->pdo))->hasTable('folio_assets')); // preflow/media's media.table step makes it
     }
 
     /** @return list<string> */
@@ -130,12 +128,12 @@ final class TableSyncTest extends TestCase
         return $this->tableSync()->sync();
     }
 
-    private function tableSync(?\Preflow\Data\TypeDefinition $assets = null): TableSync
+    private function tableSync(): TableSync
     {
         // Fresh catalog and registry each time: model files change between runs.
         $dm = $this->dm();
 
-        return new TableSync(new TypeCatalog($this->dir . '/models'), $dm->getTypeRegistry(), $dm, $assets);
+        return new TableSync(new TypeCatalog($this->dir . '/models'), $dm->getTypeRegistry(), $dm);
     }
 
     private function dm(): DataManager

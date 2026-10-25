@@ -2,34 +2,33 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Tests\Assets;
+namespace Preflow\Media\Tests;
 
 use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\TestCase;
-use Preflow\Data\Locales;
-use Preflow\Folio\Assets\AssetLibrary;
-use Preflow\Folio\Assets\ImageTag;
+use Preflow\Media\MediaLibrary;
+use Preflow\Media\ImageTag;
 use Preflow\Media\Image\GdBackend;
 use Preflow\Media\Image\VariantGenerator;
-use Preflow\Folio\Content\ContentLocale;
-use Preflow\Folio\Tests\Support\AssetFixtures;
+use Preflow\Media\Tests\Support\FixedLocale;
+use Preflow\Media\Tests\Support\MediaFixtures;
 use Preflow\View\AssetCollector;
 use Preflow\View\NonceGenerator;
 
 #[RequiresFunction('imagewebp')]
 final class ImageTagTest extends TestCase
 {
-    use AssetFixtures;
+    use MediaFixtures;
 
-    private AssetLibrary $lib;
-    private ContentLocale $locale;
+    private MediaLibrary $lib;
+    private FixedLocale $locale;
     private AssetCollector $css;
 
     protected function setUp(): void
     {
         $this->makeAssetRoot();
         $this->lib = $this->library([], new VariantGenerator(new GdBackend(), [480, 768], 75));
-        $this->locale = new ContentLocale(new Locales(['en', 'de'], 'en'));
+        $this->locale = new FixedLocale('en');
         $this->css = new AssetCollector(new NonceGenerator());
     }
 
@@ -55,7 +54,7 @@ final class ImageTagTest extends TestCase
         }
     }
 
-    public function test_alt_follows_content_locale(): void
+    public function test_alt_follows_the_locale_provider(): void
     {
         $asset = $this->lib->upload($this->upload($this->png(100, 50), 'a.png'), null);
         $this->lib->update($asset->id, ['alt' => ['en' => 'Sea', 'de' => 'Meer']]);

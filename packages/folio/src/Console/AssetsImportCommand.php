@@ -9,7 +9,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
 use Preflow\DevTools\Command\CommandInterface;
-use Preflow\Folio\Assets\AssetLibrary;
+use Preflow\Media\MediaLibrary;
 use Preflow\Folio\Assets\AssetReferences;
 use Preflow\Media\AssetUploadException;
 use Preflow\Folio\Content\TypeCatalog;
@@ -38,7 +38,7 @@ final class AssetsImportCommand implements CommandInterface
         $dm = $c->get(DataManager::class);
         $registry = $c->get(TypeRegistry::class);
         $references = $c->get(AssetReferences::class);
-        $library = $c->get(AssetLibrary::class);
+        $library = $c->get(MediaLibrary::class);
         $field = $c->get(FieldTypeRegistry::class)->get('asset');
         if (!$field instanceof AssetFieldType) {
             echo "The asset field type is replaced by the app; nothing to import.\n";

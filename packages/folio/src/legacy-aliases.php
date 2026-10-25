@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * The asset value classes and image backends moved to preflow/media. The old names keep working
+ * The asset library, image tag, value classes and image backends moved to preflow/media. The old names keep working
  * for one release; use the Preflow\Media names. Loaded by Composer ("autoload.files").
  */
 
@@ -11,6 +11,8 @@ $aliases = [
     'Preflow\Folio\Assets\Asset' => 'Preflow\Media\Asset',
     'Preflow\Folio\Assets\Variant' => 'Preflow\Media\Variant',
     'Preflow\Folio\Assets\AssetUploadException' => 'Preflow\Media\AssetUploadException',
+    'Preflow\Folio\Assets\AssetLibrary' => 'Preflow\Media\MediaLibrary',
+    'Preflow\Folio\Assets\ImageTag' => 'Preflow\Media\ImageTag',
     'Preflow\Folio\Assets\VariantGenerator' => 'Preflow\Media\Image\VariantGenerator',
     'Preflow\Folio\Assets\ImageWidths' => 'Preflow\Media\Image\ImageWidths',
     'Preflow\Folio\Assets\Image\ImageBackend' => 'Preflow\Media\Image\ImageBackend',

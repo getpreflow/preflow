@@ -9,7 +9,7 @@ use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Media\Asset;
-use Preflow\Folio\Assets\AssetLibrary;
+use Preflow\Media\MediaLibrary;
 use Preflow\Media\Image\GdBackend;
 use Preflow\Media\Image\ImageWidths;
 use Preflow\Media\Image\VariantGenerator;
@@ -21,7 +21,7 @@ final class MediaVariantControllerTest extends TestCase
 {
     use AssetFixtures;
 
-    private AssetLibrary $lib;
+    private MediaLibrary $lib;
     private ImageWidths $widths;
 
     protected function setUp(): void

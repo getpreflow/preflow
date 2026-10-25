@@ -6,7 +6,7 @@ namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\Stream;
-use Preflow\Folio\Assets\AssetLibrary;
+use Preflow\Media\MediaLibrary;
 use Preflow\Folio\Content\FrontendGate;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -23,7 +23,7 @@ final class PrivateAssetController
     private const string NO_STORE = 'private, no-store';
 
     public function __construct(
-        private readonly AssetLibrary $library,
+        private readonly MediaLibrary $library,
         private readonly FrontendGate $gate,
         private readonly string $permission,
         private readonly ?string $login = null,

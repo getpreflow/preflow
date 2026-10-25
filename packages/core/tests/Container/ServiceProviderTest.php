@@ -43,6 +43,22 @@ class ProviderWithBoot extends ServiceProvider
     }
 }
 
+class CountingProvider extends ServiceProvider
+{
+    public static int $registered = 0;
+    public static int $booted = 0;
+
+    public function register(Container $container): void
+    {
+        self::$registered++;
+    }
+
+    public function boot(Container $container): void
+    {
+        self::$booted++;
+    }
+}
+
 final class ServiceProviderTest extends TestCase
 {
     public function test_provider_registers_bindings(): void
@@ -88,5 +104,20 @@ final class ServiceProviderTest extends TestCase
         $container->bootProviders();
 
         $this->assertTrue($provider->booted);
+    }
+
+    public function test_a_provider_class_registers_and_boots_once(): void
+    {
+        CountingProvider::$registered = CountingProvider::$booted = 0;
+        $container = new Container();
+
+        $this->assertFalse($container->hasProvider(CountingProvider::class));
+        $container->registerProvider(new CountingProvider());
+        $container->registerProvider(new CountingProvider());
+        $container->bootProviders();
+
+        $this->assertTrue($container->hasProvider(CountingProvider::class));
+        $this->assertSame(1, CountingProvider::$registered);
+        $this->assertSame(1, CountingProvider::$booted);
     }
 }

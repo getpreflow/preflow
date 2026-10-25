@@ -6,7 +6,7 @@ namespace Preflow\Folio\Tests\Field;
 
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
-use Preflow\Folio\Assets\AssetLibrary;
+use Preflow\Media\MediaLibrary;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\Types\AssetFieldType;
 use Preflow\Folio\Tests\Support\AssetFixtures;
@@ -20,7 +20,7 @@ final class AssetFieldLibraryTest extends TestCase
     private const array SINGLE = ['asset' => ['multiple' => false, 'accept' => 'image/*']];
     private const array MULTIPLE = ['asset' => ['multiple' => true]];
 
-    private AssetLibrary $lib;
+    private MediaLibrary $lib;
 
     protected function setUp(): void
     {

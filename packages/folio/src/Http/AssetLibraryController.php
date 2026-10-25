@@ -7,10 +7,13 @@ namespace Preflow\Folio\Http;
 use Nyholm\Psr7\Response;
 use Preflow\Data\Locales;
 use Preflow\Media\Asset;
-use Preflow\Folio\Assets\AssetLibrary;
 use Preflow\Media\AssetUploadException;
-use Preflow\Folio\Assets\AssetUsage;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Media\FolioRecordReferences;
+use Preflow\Media\MediaLibrary;
+use Preflow\Media\Usage\AssetInUseException;
+use Preflow\Media\Usage\AssetUsage;
+use Preflow\Media\Usage\AssetUsageEntry;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -19,7 +22,7 @@ use Psr\Http\Message\UploadedFileInterface;
 /**
  * {prefix}/assets: the media library. Grid/list, search, kind filter,
  * multi-file upload, a metadata panel (alt per language, title, focal point,
- * video poster) with usage, and delete (refused while used). With ?picker=1
+ * video poster) with usage, and delete (the library refuses it while used). With ?picker=1
  * it renders in the drawer layout and each asset gets a "Select" button.
  */
 final class AssetLibraryController
@@ -27,7 +30,7 @@ final class AssetLibraryController
     private const int PER_PAGE = 48;
 
     public function __construct(
-        private readonly AssetLibrary $library,
+        private readonly MediaLibrary $library,
         private readonly AssetUsage $usage,
         private readonly TemplateEngineInterface $engine,
         private readonly TypeCatalog $catalog,
@@ -108,12 +111,12 @@ final class AssetLibraryController
         if ($asset === null) {
             return new Response(404, [], 'Not found');
         }
-        $usage = $this->usage->of($asset->id);
-        if ($usage !== []) {
-            $n = count($usage);
-            return $this->renderPanel($request, $asset, null, 'Used in ' . $n . ' record' . ($n === 1 ? '' : 's') . ' — remove it there first.', 409, $usage);
+        try {
+            $this->library->delete($asset->id);
+        } catch (AssetInUseException $e) {
+            $n = count($e->usages);
+            return $this->renderPanel($request, $asset, null, 'Used in ' . $n . ' record' . ($n === 1 ? '' : 's') . ' — remove it there first.', 409, $e->usages);
         }
-        $this->library->delete($asset->id);
 
         return new Response(302, ['Location' => $this->prefix . '/assets']);
     }
@@ -164,7 +167,7 @@ final class AssetLibraryController
         ]), $status);
     }
 
-    /** @param list<array<string, string>> $usage */
+    /** @param list<AssetUsageEntry>|null $usage */
     private function renderPanel(ServerRequestInterface $request, Asset $asset, ?string $notice, ?string $error = null, int $status = 200, ?array $usage = null): ResponseInterface
     {
         $posters = $asset->kind() === 'video'
@@ -179,7 +182,7 @@ final class AssetLibraryController
             'raw' => $asset,
             'locales' => $this->locales->available,
             'posters' => array_map(fn (Asset $a) => $this->item($a), $posters),
-            'usage' => $usage ?? $this->usage->of($asset->id),
+            'usage' => array_map(self::usageRow(...), $usage ?? $this->usage->of($asset->id)),
             'notice' => $notice,
             'error' => $error,
             'csrf' => self::csrf($request),
@@ -187,6 +190,28 @@ final class AssetLibraryController
         $template = $request->getHeaderLine('HX-Request') === 'true' ? '@folio/admin/assets/panel.twig' : '@folio/admin/assets/panel_page.twig';
 
         return $this->html($this->engine->render($template, $context), $status);
+    }
+
+    /**
+     * A usage entry as the panel template's row: where it is ("working",
+     * "published" or "poster", from Folio's notes; other sources' entries
+     * count as working copies).
+     *
+     * @return array{label: string, url: string, where: string, source: string, note: ?string}
+     */
+    private static function usageRow(AssetUsageEntry $entry): array
+    {
+        return [
+            'label' => $entry->label,
+            'url' => $entry->url ?? '',
+            'where' => match ($entry->note) {
+                FolioRecordReferences::PUBLISHED => 'published',
+                FolioRecordReferences::POSTER => 'poster',
+                default => 'working',
+            },
+            'source' => $entry->source,
+            'note' => $entry->note,
+        ];
     }
 
     /** @return array<string, mixed> */

@@ -5,8 +5,8 @@
     "license": "MIT",
     "require": {
         "php": ">=8.4",
-        "preflow/core": "^0.33 || @dev",
-        "preflow/data": "^0.28 || @dev",
+        "preflow/core": "^0.34 || @dev",
+        "preflow/data": "^0.34 || @dev",
         "preflow/view": "^0.1 || @dev",
         "preflow/routing": "^0.1 || @dev",
         "preflow/form": "^0.1 || @dev",
@@ -29,8 +29,8 @@
     },
     "conflict": {
         "preflow/auth": "<0.27",
-        "preflow/core": "<0.33",
-        "preflow/data": "<0.28",
+        "preflow/core": "<0.34",
+        "preflow/data": "<0.34",
         "preflow/i18n": "<0.26",
         "preflow/media": "<0.34",
         "preflow/notify": "<0.25"

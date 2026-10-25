@@ -7,7 +7,7 @@ namespace Preflow\Media\Tests\Image;
 use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
-use Preflow\Folio\Tests\Support\AssetFixtures;
+use Preflow\Media\Tests\Support\MediaFixtures;
 use Preflow\Media\Image\GdBackend;
 use Preflow\Media\Image\ImageBackends;
 use Preflow\Media\Image\VariantGenerator;
@@ -17,7 +17,7 @@ use Preflow\Media\Variant;
 #[RequiresFunction('imagewebp')]
 final class VariantGeneratorTest extends TestCase
 {
-    use AssetFixtures;
+    use MediaFixtures;
 
     protected function setUp(): void
     {
