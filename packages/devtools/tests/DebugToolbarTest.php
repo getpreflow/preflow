@@ -133,4 +133,25 @@ final class DebugToolbarTest extends TestCase
 
         $this->assertStringContainsString('0 issues', (new DebugToolbar())->render(new DebugCollector(), 'n0nce', $page));
     }
+
+    public function test_shows_deprecations(): void
+    {
+        $collector = new DebugCollector();
+        $collector->logDeprecation('config/folio.php "assets" is deprecated; move it to config/media.php');
+        $collector->logDeprecation('folio_image() is <deprecated>');
+
+        $html = (new DebugToolbar())->render($collector);
+
+        $this->assertStringContainsString('<span class="pdt-slow">2 deprecations</span>', $html);
+        $this->assertStringContainsString('<div class="pdt-section-title">Deprecations</div>', $html);
+        $this->assertStringContainsString('<div class="pdt-row">config/folio.php &quot;assets&quot; is deprecated; move it to config/media.php</div>', $html);
+        $this->assertStringContainsString('folio_image() is &lt;deprecated&gt;', $html);
+    }
+
+    public function test_no_deprecations_adds_nothing(): void
+    {
+        $html = (new DebugToolbar())->render(new DebugCollector());
+
+        $this->assertStringNotContainsString('deprecation', strtolower($html));
+    }
 }

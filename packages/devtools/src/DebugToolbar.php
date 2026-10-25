@@ -128,6 +128,10 @@ final class DebugToolbar
         $totalTime = number_format($collector->getTotalTime(), 1);
 
         $sep = '<span class="pdt-separator">|</span>';
+        $deprecationCount = count($collector->getDeprecations());
+        $deprecations = $deprecationCount > 0
+            ? "{$sep}\n<span class=\"pdt-slow\">{$deprecationCount} deprecation" . ($deprecationCount === 1 ? '' : 's') . "</span>\n"
+            : '';
 
         return <<<HTML
         <div class="pdt-bar">
@@ -140,7 +144,7 @@ final class DebugToolbar
         <span>{$assets['css_count']} CSS / {$assets['js_count']} JS</span>
         {$sep}
         <span>{$totalTime}ms</span>
-        <span class="pdt-toggle">&#9650; expand</span>
+        {$deprecations}<span class="pdt-toggle">&#9650; expand</span>
         </div>
         HTML;
     }
@@ -153,10 +157,11 @@ final class DebugToolbar
         $assets = $this->renderAssetsSection($collector);
         $route = $this->renderRouteSection($collector);
         $csp = $this->renderCspSection($cspIssues);
+        $deprecations = $this->renderDeprecationsSection($collector);
 
         return <<<HTML
         <div class="pdt-panel">
-        {$components}
+        {$deprecations}{$components}
         {$queries}
         {$assets}
         {$route}
@@ -188,6 +193,26 @@ final class DebugToolbar
         <div class="pdt-section-title">CSP ({$count} issues) — blocked when debug is off; add nonce="{{ csp_nonce() }}" or move inline handlers/styles to JS/CSS</div>
         {$rows}
         </div>
+        HTML;
+    }
+
+    /** Deprecated config or names the request used (e.g. a leftover config/folio.php "assets"); nothing when there are none. */
+    private function renderDeprecationsSection(DebugCollector $collector): string
+    {
+        $rows = '';
+        foreach ($collector->getDeprecations() as $message) {
+            $rows .= '<div class="pdt-row">' . htmlspecialchars($message, ENT_QUOTES, 'UTF-8') . '</div>';
+        }
+        if ($rows === '') {
+            return '';
+        }
+
+        return <<<HTML
+        <div class="pdt-section">
+        <div class="pdt-section-title">Deprecations</div>
+        {$rows}
+        </div>
+
         HTML;
     }
 
