@@ -117,6 +117,34 @@ final class MediaVariantControllerTest extends TestCase
         $this->assertSame($before, $this->mediaFiles());
     }
 
+    public function test_versioned_names_follow_the_current_path_stem(): void
+    {
+        $asset = $this->asset();
+        $old = $this->base($asset);
+        $new = $old . '-v3';
+        rename($this->file($old . '.png'), $this->file($new . '.png'));
+        $save = new \ReflectionMethod($this->lib, 'save');
+        $save->invoke($this->lib, [...$asset->toData(), 'path' => $new . '.png', 'version' => 3]);
+
+        $res = $this->serve($new . '-480.webp');
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertFileExists($this->file($new . '-480.webp'));
+
+        foreach ([
+            $old . '-v2-480.webp',   // not the current version
+            $old . '-480.webp',      // the previous stem
+            $old . '-v0-480.webp',
+            $old . '-v01-480.webp',
+            $old . '-v1-480.webp',
+        ] as $path) {
+            try {
+                $this->serve($path);
+                $this->fail("expected a 404 for {$path}");
+            } catch (NotFoundHttpException) {
+            }
+        }
+    }
+
     public function test_width_above_the_original_is_404(): void
     {
         $asset = $this->asset(500, 300);

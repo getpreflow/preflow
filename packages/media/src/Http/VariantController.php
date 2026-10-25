@@ -12,14 +12,14 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * A missing image variant under the media URL ({Y}/{m}/{id}-{width}.{avif|webp})
+ * A missing image variant under the media URL ({Y}/{m}/{id}[-v{n}]-{width}.{avif|webp})
  * reaches PHP once: if the width is one the presets allow, it is made, written
  * next to the original and returned; from then on the web server serves the
  * file. Anything else under the media URL is a 404 that writes nothing.
  */
 final class VariantController
 {
-    private const string VARIANT = '#^(\d{4}/\d{2}/([a-f0-9]{32}))-([1-9]\d{0,4})\.(avif|webp)$#';
+    private const string VARIANT = '#^(\d{4}/\d{2}/([a-f0-9]{32})(?:-v([2-9]|[1-9]\d{1,4}))?)-([1-9]\d{0,4})\.(avif|webp)$#';
 
     public function __construct(
         private readonly MediaLibrary $library,
@@ -32,7 +32,7 @@ final class VariantController
         if (preg_match(self::VARIANT, $path, $m) !== 1) {
             throw new NotFoundHttpException('Not found');
         }
-        [, $base, $id, $width, $format] = $m;
+        [, $base, $id, , $width, $format] = $m;
         $asset = $this->library->find($id);
         if ($asset === null || substr($asset->path, 0, (int) strrpos($asset->path, '.')) !== $base) {
             throw new NotFoundHttpException('Not found');

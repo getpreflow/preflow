@@ -11,6 +11,9 @@ final readonly class Asset
     /**
      * @param array<string, string> $alt      alt text per locale
      * @param list<Variant>         $variants
+     * @param list<AssetVersion>    $versions earlier files, kept when the asset was replaced
+     * @param list<string>          $palette  5-8 hex colours, most significant first
+     * @param array<string, mixed>  $extra    values of the configured extra fields
      */
     public function __construct(
         public string $id,
@@ -31,6 +34,15 @@ final readonly class Asset
         public ?string $createdBy,
         /** Stored in assets.private_dir and served only through the gated private URL. */
         public bool $private = false,
+        /** The number of the current file; 1 keeps the plain file names. */
+        public int $version = 1,
+        public array $versions = [],
+        public ?Preview $preview = null,
+        public ?string $color = null,
+        public array $palette = [],
+        public ?string $textColor = null,
+        public array $extra = [],
+        public ?string $note = null,
     ) {}
 
     public function kind(): string
@@ -67,6 +79,15 @@ final readonly class Asset
             }
         }
 
+        $versions = [];
+        foreach (self::decode($data['versions'] ?? []) as $v) {
+            $version = is_array($v) ? AssetVersion::fromArray($v) : null;
+            if ($version !== null) {
+                $versions[] = $version;
+            }
+        }
+        $palette = array_values(array_filter(self::decode($data['palette'] ?? []), static fn ($c) => is_string($c) && $c !== ''));
+
         return new self(
             id: (string) $record->getId(),
             path: (string) ($data['path'] ?? ''),
@@ -86,6 +107,15 @@ final readonly class Asset
             createdBy: is_string($data['created_by'] ?? null) && $data['created_by'] !== '' ? $data['created_by'] : null,
             // Records stored before the flag existed are public.
             private: in_array($data['private'] ?? null, [true, 1, '1'], true),
+            // Records stored before versions existed have only their first file.
+            version: isset($data['version']) && is_numeric($data['version']) && (int) $data['version'] >= 1 ? (int) $data['version'] : 1,
+            versions: $versions,
+            preview: Preview::fromArray(self::decode($data['preview'] ?? [])),
+            color: self::text($data['color'] ?? null),
+            palette: $palette,
+            textColor: self::text($data['text_color'] ?? null),
+            extra: self::decode($data['extra'] ?? []),
+            note: self::text($data['note'] ?? null),
         );
     }
 
@@ -110,7 +140,20 @@ final readonly class Asset
             'created_at' => $this->createdAt,
             'created_by' => $this->createdBy ?? '',
             'private' => $this->private ? 1 : 0,
+            'version' => $this->version,
+            'versions' => array_map(static fn (AssetVersion $v) => $v->toArray(), $this->versions),
+            'preview' => $this->preview?->toArray() ?? [],
+            'color' => $this->color ?? '',
+            'palette' => $this->palette,
+            'text_color' => $this->textColor ?? '',
+            'extra' => $this->extra,
+            'note' => $this->note ?? '',
         ];
+    }
+
+    private static function text(mixed $value): ?string
+    {
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     /** @return array<mixed> */

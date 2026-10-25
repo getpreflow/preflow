@@ -84,10 +84,12 @@ final class MediaLibrary
             return $this->definition;
         }
         $fields = [];
-        foreach (['path', 'original_name', 'mime', 'size', 'width', 'height', 'duration', 'alt', 'title', 'focal_x', 'focal_y', 'poster', 'variants', 'created_at', 'created_by'] as $name) {
+        foreach (['path', 'original_name', 'mime', 'size', 'width', 'height', 'duration', 'alt', 'title', 'focal_x', 'focal_y', 'poster', 'variants', 'created_at', 'created_by', 'version', 'versions', 'preview', 'color', 'palette', 'text_color', 'note'] as $name) {
             $fields[$name] = new TypeFieldDefinition($name, 'string', translatable: $name === 'alt');
         }
         $fields['private'] = new TypeFieldDefinition('private', 'boolean'); // missing on older records: public
+        // Extra field values: a map, stored as JSON text like the other maps.
+        $fields['extra'] = new TypeFieldDefinition('extra', 'string');
 
         return $this->definition = new TypeDefinition(
             key: '_asset',
@@ -477,6 +479,12 @@ final class MediaLibrary
         }
 
         return $asset;
+    }
+
+    /** The relative path of an asset's file: Y/m/{id}.{ext} for version 1, Y/m/{id}-v{n}.{ext} after that. */
+    public function versionedPath(string $id, string $ext, int $version, string $yearMonth): string
+    {
+        return $yearMonth . '/' . $id . ($version > 1 ? '-v' . $version : '') . '.' . $ext;
     }
 
     /** @return list<Variant> */
