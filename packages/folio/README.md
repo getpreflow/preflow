@@ -970,7 +970,8 @@ final class Overview
 ```
 
 - `FolioScreen(path, label, icon, section, order, permission)`: the permission is
-  required. `section` is `settings` by default; a new name adds a sidebar section after
+  required. The `label` may be a translation key (`'site.screens.queue'`): the sidebar item
+  and `screen.label` then follow each staff member's admin language; plain text stays as written. `section` is `settings` by default; a new name adds a sidebar section after
   the built-in ones.
 - A method returns a `ScreenView(template, data)` (rendered in the admin layout with
   `prefix`, `csrf` and `screen` added to your data), a string, or any PSR-7 response.
@@ -1527,13 +1528,18 @@ Or keep the plain English string and add keys to `lang/{locale}/site.php`:
 | type label / singular | `site.types.{type}.label` / `site.types.{type}.singular` |
 | field label / help | `site.fields.{type}.{field}.label` / `site.fields.{type}.{field}.help` |
 | select option | `site.options.{type}.{field}.{value}` |
-| sidebar section | `site.sections.{section}` |
+| sidebar section (also a section only a screen names) | `site.sections.{section}` |
+| extension screen label | `site.screens.{name}` (`#[FolioScreen('queue', 'site.screens.queue')]`) |
 | empty list sentence | `site.types.{type}.empty` (optional) |
 
 A key wins over the map, the map over the plain string. They show in the sidebar, the
 dashboard, list headers, filters, chips, bulk menus, the Excel header row, the editor and the
 roles screen; public pages are unchanged. `label_singular` gives "1 Seite" in the delete
 summary; without it English guesses and other languages use the label.
+
+A project's own extension (in `app/Folio`, no `translations:` group) uses `site.*` keys for its
+attribute labels too: `#[ListColumn('site.columns.kind')]`, `#[FormPanel('site.panels.check')]`,
+`#[RecordAction(label: 'site.actions.go')]`.
 
 **Extensions.** An extension that ships texts declares its group in its package's
 `composer.json` (see [`preflow/i18n`](../i18n/README.md#package-translations)) and names it on

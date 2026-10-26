@@ -9,6 +9,7 @@ use Preflow\Core\Container\Container;
 use Preflow\Core\Http\Csrf\CsrfToken;
 use Preflow\Core\Routing\Route;
 use Preflow\Folio\Extension\ExtensionException;
+use Preflow\Folio\FolioText;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -57,7 +58,7 @@ final class ScreenDispatcher implements MiddlewareInterface
                 'page_assets' => $page,
                 'extension_assets_base' => $this->assets?->base($screen['extension']),
                 'csrf' => $request->getAttribute(CsrfToken::class)?->getValue() ?? '',
-                'screen' => ['label' => $screen['label'], 'path' => $screen['path']],
+                'screen' => ['label' => FolioText::label($screen['label']), 'path' => $screen['path']],
             ], $owner));
         }
         if (is_string($result) || $result instanceof \Stringable) {

@@ -9,6 +9,8 @@ namespace Preflow\Folio\Extension\Attributes;
  * carry #[Get]/#[Post] with paths relative to the screen ('/', '/{id}/approve').
  * The permission is required (it has a null default only so it can follow the optional
  * arguments; ScreenRegistry refuses a screen without one).
+ * The label is shown as written or, when it is a translation key and the translator has a text
+ * for it, in the staff member's language: 'site.screens.queue' from the site's lang/{locale}/site.php.
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final class FolioScreen

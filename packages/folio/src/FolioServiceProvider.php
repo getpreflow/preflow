@@ -868,7 +868,7 @@ final class FolioServiceProvider extends ServiceProvider
         foreach ($screens->all() as $screen) {
             $container->get(\Preflow\Folio\Http\AdminNav::class)->add(
                 $screen['section'],
-                $screen['label'],
+                static fn (): string => \Preflow\Folio\FolioText::label($screen['label']),
                 rtrim($this->prefix($app), '/') . '/' . $screen['path'],
                 $screen['icon'],
                 $screen['permission'],
