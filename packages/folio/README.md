@@ -1483,11 +1483,29 @@ language; *Reset* brings the delivered one back.
   lists it) and travel with `folio:export` / `folio:import` / `folio:pull`.
 - A site's own `lang/{locale}/folio.php` (or `rbac.php`, …) changes single keys for every
   request, in version control; an override on the screen wins over it.
-- Overrides apply on admin requests only. Staff mails sent from a console command or a queue
+- Overrides apply on admin requests only, except editable site groups (below). Staff mails sent from a console command or a queue
   worker (outside an admin request) use the delivered texts and the site's `lang/` files.
 - A site or package that sets its own `TranslationOverrides` on the translator keeps it: Folio
   only fills an empty override layer (`NoTranslationOverrides`), and the Translations screen's
   texts then don't apply.
+
+**Editable site texts.** A site's own text groups that staff should change themselves (a
+mail's subject, a notice on a page) are listed in `config/folio.php`:
+
+```php
+'translations' => ['editable' => ['review-mail']],
+```
+
+The screen offers each listed group besides the admin groups, in every language of
+`config/i18n.php` (not the admin's languages), with the note that the texts appear on the
+website and in mails. Its overrides apply on every request (`Translator::alwaysOverride()`):
+public pages, mails in the recipient's language (`t($key, $params, 'fr')`) and console or
+queue mails. Plain text as above, and an override keeps exactly the `:placeholders` of the
+delivered text (the language's, else English): dropping `:link` or adding an unknown `:foo`
+is refused. The keys are those of `lang/{locale}/{group}.php` in every site language. An
+entry that is not a group name, `site` (the model labels stay admin-only) or an `admin` group
+(`folio`, `rbac`, …) is skipped with a line `folio: translations.editable: …` in the error
+log; boot goes on, and every group not listed renders exactly as before.
 
 **Model labels.** A model file's `label`, `label_singular`, a field's `label` and `help` and a
 select option's label can be a plain string or a map per language:

@@ -317,6 +317,22 @@ final class TranslatorLayersTest extends TestCase
         $this->assertSame('Over', $t->get('folio.x'));
     }
 
+    /** A package that registers the group as admin later (it boots after Folio) ends it. */
+    public function test_a_group_declared_admin_later_stops_being_always_overridden(): void
+    {
+        foreach (['addDefaultsIfMissing', 'setScopes'] as $how) {
+            $t = new Translator($this->tmp() . '/lang', 'en', 'en');
+            $t->setOverrides(self::overrides(['en' => ['codes.x' => 'Over']]));
+            $t->alwaysOverride('codes');
+            $how === 'setScopes' ? $t->setScopes(['codes' => 'admin']) : $t->addDefaultsIfMissing('codes', $this->tmp() . '/codes-lang', 'admin');
+
+            $this->assertSame([], $t->alwaysOverridden(), $how);
+            $this->assertSame('codes.x', $t->get('codes.x'), $how . ': admin-only again');
+            $t->useOverrides(true);
+            $this->assertSame('Over', $t->get('codes.x'), $how);
+        }
+    }
+
     public function test_is_overridable_and_the_list(): void
     {
         $t = new Translator($this->tmp() . '/lang', 'en', 'en');

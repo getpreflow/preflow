@@ -462,6 +462,9 @@ return [
         'no_markup' => 'Plain text only: <, >, ", ` and HTML entities (&…;) are not allowed.',
         'too_long' => 'At most :max characters.',
         'not_editable' => 'This text cannot be changed here.',
+        'site_texts' => 'These texts appear on the website and in mails, in every language of the website.',
+        'placeholder_missing' => 'Keep the placeholder :placeholder: it is filled in when the text is used.',
+        'placeholder_unknown' => 'The placeholder :placeholder is not filled in here.',
         'empty' => 'No texts match.',
     ],
     'locale' => [

@@ -442,6 +442,9 @@ return [
         'no_markup' => 'Texte brut uniquement : <, >, ", ` et les entités HTML (&…;) ne sont pas autorisés.',
         'too_long' => ':max caractères au maximum.',
         'not_editable' => 'Ce texte ne peut pas être modifié ici.',
+        'site_texts' => 'Ces textes apparaissent sur le site et dans les e-mails, dans chaque langue du site.',
+        'placeholder_missing' => 'Garde l’espace réservé :placeholder : il est rempli quand le texte est utilisé.',
+        'placeholder_unknown' => 'L’espace réservé :placeholder n’est pas rempli ici.',
         'empty' => 'Aucun texte ne correspond.',
     ],
     'locale' => [

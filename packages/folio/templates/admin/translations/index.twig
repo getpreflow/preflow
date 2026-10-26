@@ -23,6 +23,9 @@
         </label>
         <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.common.search') }}</button>
     </form>
+    {% if site_texts %}
+        <p class="folio-help">{{ t('folio.translations.site_texts') }}</p>
+    {% endif %}
     {% if rows is empty %}
         <p class="folio-help">{{ t('folio.translations.empty') }}</p>
     {% else %}

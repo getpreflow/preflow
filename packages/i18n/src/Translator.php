@@ -116,6 +116,7 @@ final class Translator
         }
         $this->addDefaults($group, $langPath);
         $this->scopes[$group] ??= $scope;
+        $this->keepAdminGroupsAdminOnly();
     }
 
     /**
@@ -127,6 +128,17 @@ final class Translator
     public function setScopes(array $scopes): void
     {
         $this->scopes = array_replace($this->scopes, $scopes);
+        $this->keepAdminGroupsAdminOnly();
+    }
+
+    /** A group declared "admin" after alwaysOverride() (its package registered later) is no longer always overridden. */
+    private function keepAdminGroupsAdminOnly(): void
+    {
+        foreach (array_keys($this->alwaysOverridden) as $group) {
+            if (($this->scopes[$group] ?? null) === 'admin') {
+                unset($this->alwaysOverridden[$group]);
+            }
+        }
     }
 
     public function scope(string $group): ?string
@@ -159,7 +171,8 @@ final class Translator
     /**
      * The group's overrides apply on every request, whether useOverrides() is on or off: texts
      * of a site group that staff edit and that public pages or mails render. Not for an admin
-     * group (those stay admin-only). Calling it again changes nothing.
+     * group (those stay admin-only), also not when the group is declared "admin" later. Calling
+     * it again changes nothing.
      *
      * @throws \InvalidArgumentException for an empty group or a group of scope "admin"
      */

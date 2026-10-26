@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Translations;
 
+use Preflow\Data\Locales;
 use Preflow\I18n\DerivedKeys;
 use Preflow\I18n\Labels;
 use Preflow\I18n\Translator;
@@ -11,7 +12,9 @@ use Preflow\I18n\Translator;
 /**
  * The texts Settings → Translations offers: every key of an `admin` scope group, and the site's
  * own model labels (group "site": site.types.*, site.fields.*, site.options.*, site.sections.*,
- * which the translator takes overrides for). Never a public group's, never Folio's
+ * which the translator takes overrides for), and the site's editable groups (config/folio.php
+ * translations.editable: texts of public pages and mails, in every language of the site, their
+ * overrides keeping the delivered text's placeholders). Never another public group's, never Folio's
  * configuration values (folio.format.*: date patterns, separators, noun case), never a key
  * whose delivered English text has markup, never a key a record id can't carry.
  */
@@ -29,10 +32,67 @@ final class EditableTexts
     public function __construct(
         private readonly Translator $translator,
         private readonly ?DerivedKeys $derivedKeys = null,
+        private readonly ?Locales $siteLocales = null,
     ) {}
 
+    /** A placeholder in a text: ":name". */
+    private const string PLACEHOLDER = '/:([A-Za-z_][A-Za-z0-9_]*)/';
+
+    /** Whether the group is one of the site's editable groups (its overrides apply on every request). */
+    public function isEditableGroup(string $group): bool
+    {
+        return in_array($group, $this->translator->alwaysOverridden(), true);
+    }
+
     /**
-     * The groups offered: admin-scope groups, sorted, then "site".
+     * The languages the screen offers for a group: every language of the site for an editable
+     * group (two-letter codes, as overrides are stored), else the interface languages given.
+     *
+     * @param list<string> $interface
+     * @return list<string>
+     */
+    public function locales(string $group, array $interface): array
+    {
+        if (!$this->isEditableGroup($group)) {
+            return $interface;
+        }
+
+        return array_values(array_filter(
+            ($this->siteLocales ?? Locales::single('en'))->available,
+            StoredOverrides::validLocale(...),
+        ));
+    }
+
+    /**
+     * The placeholder names (without the colon) of the key's delivered text in the locale, else
+     * of its English text, sorted.
+     *
+     * @return list<string>
+     */
+    public function placeholders(string $key, string $locale): array
+    {
+        $group = (string) strstr($key, '.', true);
+        $text = $this->rows($group, $locale)[$key]['delivered'] ?? $this->rows($group, 'en')[$key]['delivered'] ?? null;
+
+        return self::placeholdersIn($text ?? '');
+    }
+
+    /**
+     * The placeholder names in a text, unique, sorted.
+     *
+     * @return list<string>
+     */
+    public static function placeholdersIn(string $text): array
+    {
+        preg_match_all(self::PLACEHOLDER, $text, $m);
+        $names = array_values(array_unique($m[1]));
+        sort($names);
+
+        return $names;
+    }
+
+    /**
+     * The groups offered: admin-scope groups, sorted, then "site", then the editable groups, sorted.
      *
      * @return list<string>
      */
@@ -43,6 +103,11 @@ final class EditableTexts
             fn (string $group): bool => $this->translator->scope($group) === 'admin',
         ));
         $groups[] = self::SITE;
+        foreach ($this->translator->alwaysOverridden() as $group) {
+            if (!in_array($group, $groups, true)) {
+                $groups[] = $group;
+            }
+        }
 
         return $groups;
     }
@@ -69,10 +134,30 @@ final class EditableTexts
         if ($group !== self::SITE) {
             array_push($keys, ...array_keys($packageEn), ...array_keys($siteEn), ...array_keys($package), ...array_keys($site));
         }
+        $editableGroup = $this->isEditableGroup($group);
+        if ($editableGroup) { // every key of every site language
+            foreach ($this->locales($group, []) as $other) {
+                array_push($keys, ...array_keys($this->translator->packageEntries($group, $other)), ...array_keys($this->translator->siteEntries($group, $other)));
+            }
+        }
         $rows = [];
         foreach (array_unique($keys) as $key) {
             $key = (string) $key;
             if (!$this->offered($key)) {
+                continue;
+            }
+            if ($editableGroup) {
+                $delivered = $package[$key] ?? $site[$key] ?? null;
+                $english = $packageEn[$key] ?? $siteEn[$key] ?? null;
+                $siteText = isset($package[$key]) ? ($site[$key] ?? null) : null;
+                if (self::markup($english) || self::markup($delivered) || self::markup($siteText)) {
+                    continue;
+                }
+                $rows[$key] = [
+                    'key' => $key,
+                    'delivered' => $delivered,
+                    'site' => $siteText !== null && $siteText !== $delivered ? $siteText : null,
+                ];
                 continue;
             }
             $model = $derived[$key] ?? null;
@@ -93,12 +178,19 @@ final class EditableTexts
         return $rows;
     }
 
-    /** Whether the screen offers the key in this locale (and so may store an override for it). */
+    /**
+     * Whether the screen offers the key in this locale (and so may store an override for it).
+     * For an editable group the locale must be one of the site's; the interface languages of
+     * the other groups are the caller's check (locales()).
+     */
     public function editable(string $key, string $locale): bool
     {
         $group = strstr($key, '.', true);
+        if ($group === false || ($this->isEditableGroup($group) && !in_array($locale, $this->locales($group, []), true))) {
+            return false;
+        }
 
-        return $group !== false && isset($this->rows($group, $locale)[$key]);
+        return isset($this->rows($group, $locale)[$key]);
     }
 
     /** A text an override may not hold: markup. */

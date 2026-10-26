@@ -124,7 +124,8 @@ A site group that staff edit but public pages or mails render (Folio fills these
 `Translator::alwaysOverride('review-mail')`: its overrides apply on every request, with
 `useOverrides()` on or off, in the asked locale (`get($key, $params, 'fr')`). A locale's own
 file still wins over a fallback locale's override. An `admin` group throws
-`InvalidArgumentException`; `alwaysOverridden()` lists the groups, sorted.
+`InvalidArgumentException`, and a group declared `admin` later (`setScopes()`,
+`addDefaultsIfMissing()`) drops out; `alwaysOverridden()` lists the groups, sorted.
 
 `Translator::isOverridable($key)` tells whether a key can take one.
 `packageEntries($group, $locale)` and `siteEntries($group, $locale)` list each layer on its

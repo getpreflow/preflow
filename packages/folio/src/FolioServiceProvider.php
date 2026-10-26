@@ -279,6 +279,7 @@ final class FolioServiceProvider extends ServiceProvider
             new \Preflow\Folio\Translations\EditableTexts(
                 self::translator($c, $app),
                 $c->bound(\Preflow\I18n\DerivedKeys::class) ? $c->get(\Preflow\I18n\DerivedKeys::class) : null,
+                $locales ?? \Preflow\Data\Locales::single('en'),
             ),
             $c->get(\Preflow\Folio\Http\InterfaceLocales::class),
             $c->get(TemplateEngineInterface::class),
@@ -737,13 +738,25 @@ final class FolioServiceProvider extends ServiceProvider
      * The admins' overrides (Settings → Translations) as the translator's override layer. They
      * apply on admin requests only (AdminLocaleMiddleware turns them on): to admin groups and
      * to the site's own model labels, which are admin-only texts in the scope-less "site" group.
-     * Only when the layer is still empty (NoTranslationOverrides): a site or package that set
-     * its own TranslationOverrides keeps them.
+     * The site's editable groups (config/folio.php translations.editable) take them on every
+     * request, public pages and mails included. Only when the layer is still empty
+     * (NoTranslationOverrides): a site or package that set its own TranslationOverrides keeps them.
      */
     private static function useOverrides(\Preflow\I18n\Translator $translator, Container $c): void
     {
         foreach (['types', 'fields', 'options', 'sections'] as $area) {
             $translator->overridable(\Preflow\Folio\Translations\EditableTexts::SITE . '.' . $area . '.');
+        }
+        self::$editableApplied ??= new \WeakMap();
+        if (!isset(self::$editableApplied[$translator])) { // once per translator: one log line per bad entry
+            self::$editableApplied[$translator] = true;
+            foreach (self::editableGroups($c->get(Application::class)) as $group) {
+                if ($translator->scope($group) === 'admin') {
+                    error_log('folio: translations.editable: "' . $group . '" is an admin group; its overrides stay admin-only, skipped');
+                    continue;
+                }
+                $translator->alwaysOverride($group);
+            }
         }
         if (!$translator->overrides() instanceof \Preflow\I18n\NoTranslationOverrides) {
             return;
@@ -759,6 +772,36 @@ final class FolioServiceProvider extends ServiceProvider
                 return ($this->store ??= $this->container->get(\Preflow\Folio\Translations\StoredOverrides::class))->get($locale, $key);
             }
         });
+    }
+
+    /** @var \WeakMap<\Preflow\I18n\Translator, true>|null translators useOverrides() gave the editable groups */
+    private static ?\WeakMap $editableApplied = null;
+
+    /**
+     * config/folio.php translations.editable: the site's own groups staff edit on the
+     * Translations screen. An entry that isn't a group name, or is "site" (its model labels stay
+     * admin-only), is skipped with a line in the error log; boot goes on.
+     *
+     * @return list<string>
+     */
+    private static function editableGroups(Application $app): array
+    {
+        $path = $app->basePath('config/folio.php');
+        $cfg = is_file($path) ? require $path : [];
+        $list = is_array($cfg) ? ($cfg['translations']['editable'] ?? []) : [];
+        $groups = [];
+        foreach (is_array($list) ? $list : [$list] as $entry) {
+            $name = is_scalar($entry) ? (string) $entry : get_debug_type($entry);
+            if (!is_string($entry) || preg_match('/^[a-z0-9_-]+$/i', $entry) !== 1) {
+                error_log('folio: translations.editable: "' . $name . '" is not a group name, skipped');
+            } elseif ($entry === \Preflow\Folio\Translations\EditableTexts::SITE) {
+                error_log('folio: translations.editable: "site" holds the model labels, which stay admin-only, skipped');
+            } elseif (!in_array($entry, $groups, true)) {
+                $groups[] = $entry;
+            }
+        }
+
+        return $groups;
     }
 
     /**

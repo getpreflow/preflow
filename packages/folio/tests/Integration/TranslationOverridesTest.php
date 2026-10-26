@@ -356,6 +356,168 @@ final class TranslationOverridesTest extends TestCase
         $this->assertStringNotContainsString('<img', $html);
     }
 
+    /**
+     * A site with config/i18n.php (de, fr, it), lang/{de,fr,it}/review-mail.php and the group
+     * listed as staff-editable in config/folio.php.
+     *
+     * @param list<string> $editable
+     */
+    private function editableSite(array $editable = ['review-mail']): void
+    {
+        $this->write('config/i18n.php', "<?php\nreturn " . var_export([
+            'default' => 'de', 'available' => ['de', 'fr', 'it'], 'fallback' => 'de', 'url_strategy' => 'prefix', 'cookie' => false,
+        ], true) . ";\n");
+        $texts = [
+            'de' => ['Ihr Objekt ist online', 'Ansehen: :link'],
+            'fr' => ['Votre objet est publié', 'Voir : :link'],
+            'it' => ['Il tuo oggetto è online', 'Vedi: :link'],
+        ];
+        foreach ($texts as $locale => [$subject, $body]) {
+            $this->write('lang/' . $locale . '/review-mail.php', "<?php\nreturn " . var_export(['approved' => ['subject' => $subject, 'body' => $body]], true) . ";\n");
+        }
+        $this->write('config/folio.php', "<?php\nreturn " . var_export(['path' => '/folio', 'translations' => ['editable' => $editable]], true) . ";\n");
+        $this->write('app/pages/hello.twig', "{{ t('review-mail.approved.subject') }}|{{ t('folio.common.save') }}|{{ t('site.types.page.label') }}");
+        $this->flow = $this->app();
+    }
+
+    /** The values the language select offers. @return list<string> */
+    private function offeredLocales(string $uri): array
+    {
+        preg_match('~<select id="folio-translations-locale"[^>]*>(.*?)</select>~s', $this->html($uri), $select);
+        preg_match_all('~<option value="([^"]+)"~', $select[1] ?? '', $m);
+
+        return $m[1];
+    }
+
+    #[RunInSeparateProcess]
+    public function test_an_editable_group_is_listed_in_every_site_language(): void
+    {
+        $this->editableSite();
+        $this->people();
+        $this->signIn('ada@site.test');
+
+        $screen = $this->html('/folio/translations?group=review-mail&locale=it');
+        $this->assertStringContainsString('Il tuo oggetto è online', $screen, "the it file's text");
+        $this->assertStringContainsString('review-mail.approved.body', $screen);
+        $this->assertStringContainsString('Diese Texte erscheinen auf der Website und in Mails, in jeder Sprache der Website.', $screen, 'the site_texts note');
+        $this->assertMatchesRegularExpression('~<option value="review-mail"[^>]*>~', $screen, 'offered as a group');
+        $this->assertSame(['de', 'fr', 'it'], $this->offeredLocales('/folio/translations?group=review-mail&locale=it'));
+
+        $folio = $this->offeredLocales('/folio/translations?group=folio');
+        $this->assertContains('en', $folio, 'the interface languages');
+        $this->assertNotContains('it', $folio);
+        $this->assertStringNotContainsString('Diese Texte erscheinen auf der Website', $this->html('/folio/translations?group=folio'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_an_editable_override_must_keep_the_placeholders(): void
+    {
+        $this->editableSite();
+        $this->people();
+        $this->signIn('ada@site.test');
+
+        $missing = $this->post('/folio/translations', ['locale' => 'de', 'key' => 'review-mail.approved.body', 'text' => 'Schau es dir an']);
+        $this->assertSame(422, $missing->getStatusCode());
+        $this->assertStringContainsString(':link', (string) $missing->getBody());
+        $this->assertSame([], $this->overrides()->all('de'), 'nothing stored');
+
+        $this->assertSame(302, $this->post('/folio/translations', ['locale' => 'de', 'key' => 'review-mail.approved.body', 'text' => 'Hier ansehen: :link'])->getStatusCode());
+        $this->assertSame(['review-mail.approved.body' => 'Hier ansehen: :link'], $this->overrides()->all('de'));
+
+        $unknown = $this->post('/folio/translations', ['locale' => 'de', 'key' => 'review-mail.approved.body', 'text' => 'Hier ansehen: :link :foo']);
+        $this->assertSame(422, $unknown->getStatusCode());
+        $this->assertStringContainsString(':foo', (string) $unknown->getBody());
+        $this->assertSame(['review-mail.approved.body' => 'Hier ansehen: :link'], $this->overrides()->all('de'), 'unchanged');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_an_editable_override_reaches_a_public_page_and_a_mail(): void
+    {
+        $this->editableSite();
+        $this->people();
+        $this->signIn('ada@site.test');
+        $this->assertSame('Votre objet est publié|Enregistrer|site.types.page.label', (string) $this->send('GET', '/fr/hello')->getBody());
+        $before = (string) $this->send('GET', '/hello')->getBody();
+
+        $this->assertSame(302, $this->post('/folio/translations', ['locale' => 'fr', 'key' => 'review-mail.approved.subject', 'text' => 'Votre objet est en ligne'])->getStatusCode());
+        $this->assertSame(302, $this->post('/folio/translations', ['locale' => 'de', 'key' => 'folio.common.save', 'text' => 'Sichern'])->getStatusCode());
+        $this->assertSame(302, $this->post('/folio/translations', ['locale' => 'fr', 'key' => 'folio.common.save', 'text' => 'Garder'])->getStatusCode());
+
+        $this->assertSame('Votre objet est en ligne|Enregistrer|site.types.page.label', (string) $this->send('GET', '/fr/hello')->getBody(), 'the public page takes the editable override, never Folio\'s');
+        $this->assertSame($before, (string) $this->send('GET', '/hello')->getBody(), 'German: byte-identical');
+        $this->assertStringContainsString('>Sichern</button>', $this->html('/folio/_account'), 'the admin still takes Folio\'s override');
+
+        // A mail in French, rendered during an admin request by a German user.
+        $translator = $this->flow->container()->get(Translator::class);
+        $translator->setLocale('de');
+        $translator->useOverrides(true); // as on an admin request (AdminLocaleMiddleware)
+        $this->assertSame('Votre objet est en ligne', $translator->get('review-mail.approved.subject', [], 'fr'));
+        $this->assertSame('Ihr Objekt ist online', $translator->get('review-mail.approved.subject'));
+        $translator->useOverrides(false);
+        $this->assertSame('Votre objet est en ligne', $translator->get('review-mail.approved.subject', [], 'fr'), 'and outside one (a queue worker)');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_an_editable_override_is_plain_text_like_any_other(): void
+    {
+        $this->editableSite();
+        $this->people();
+        $this->signIn('ada@site.test');
+
+        $this->assertSame(422, $this->post('/folio/translations', ['locale' => 'de', 'key' => 'review-mail.approved.subject', 'text' => '<b>x</b>'])->getStatusCode());
+        $this->assertSame(422, $this->post('/folio/translations', ['locale' => 'de', 'key' => 'review-mail.approved.body', 'text' => '<b>x</b> :link'])->getStatusCode());
+        $this->assertSame([], $this->overrides()->all('de'), 'nothing stored');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_an_admin_group_or_site_listed_as_editable_is_skipped(): void
+    {
+        @unlink($this->dir . '/error.log');
+        $this->editableSite(['folio', 'site', '../x', 'review-mail']);
+        $translator = $this->flow->container()->get(Translator::class);
+        $this->assertSame(['review-mail'], $translator->alwaysOverridden());
+        $this->people();
+        $this->signIn('ada@site.test');
+
+        $screen = $this->html('/folio/translations?group=folio&locale=de');
+        $this->assertSame(1, substr_count($screen, '<option value="folio"'));
+        $this->assertSame(1, substr_count($screen, '<option value="site"'));
+        $this->assertSame(1, substr_count($screen, '<option value="review-mail"'));
+        $this->assertStringNotContainsString('../x', $screen);
+        $this->assertSame(['de', 'en', 'fr'], array_values(array_intersect(['de', 'en', 'fr', 'it'], $this->offeredLocales('/folio/translations?group=site&locale=de'))), 'site is not a site-text group');
+        $this->assertNotContains('it', $this->offeredLocales('/folio/translations?group=site&locale=de'));
+
+        $log = (string) @file_get_contents($this->dir . '/error.log');
+        $this->assertSame(3, substr_count($log, 'folio: translations.editable:'), $log);
+        foreach (['"folio"', '"site"', '"../x"'] as $entry) {
+            $this->assertStringContainsString($entry, $log);
+        }
+
+        $before = (string) $this->send('GET', '/hello')->getBody();
+        $this->assertSame('Ihr Objekt ist online|Speichern|site.types.page.label', $before);
+        $this->overrides()->set('de', 'folio.common.save', 'Changed save', null);
+        $this->overrides()->set('de', 'site.types.page.label', 'Changed pages', null);
+        $this->html('/folio');
+        $this->assertSame($before, (string) $this->send('GET', '/hello')->getBody(), 'byte-identical');
+        $this->assertFalse($translator->usesOverrides());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_locale_outside_the_group_is_refused(): void
+    {
+        $this->editableSite();
+        $this->people();
+        $this->signIn('ada@site.test');
+
+        $this->assertSame(422, $this->post('/folio/translations', ['locale' => 'it', 'key' => 'folio.common.save', 'text' => 'Salva'])->getStatusCode());
+        $this->assertSame(422, $this->post('/folio/translations', ['locale' => 'es', 'key' => 'review-mail.approved.subject', 'text' => 'Su objeto'])->getStatusCode());
+        $this->assertSame(422, $this->post('/folio/translations', ['locale' => 'en', 'key' => 'review-mail.approved.subject', 'text' => 'Your object'])->getStatusCode(), 'en is not a site language here');
+        $this->assertSame([], $this->overrides()->all('it'));
+        $this->assertSame([], $this->overrides()->all('es'));
+        $this->assertSame([], $this->overrides()->all('en'));
+        $this->assertSame(302, $this->post('/folio/translations', ['locale' => 'it', 'key' => 'review-mail.approved.subject', 'text' => 'Il tuo oggetto è pubblicato'])->getStatusCode());
+    }
+
     private function expectStoreRefuses(\Closure $call): void
     {
         try {

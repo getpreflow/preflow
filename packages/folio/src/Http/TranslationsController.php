@@ -9,6 +9,7 @@ use Preflow\Auth\Authenticatable;
 use Preflow\Folio\FolioText;
 use Preflow\Folio\Translations\EditableTexts;
 use Preflow\Folio\Translations\StoredOverrides;
+use Preflow\I18n\LocaleNames;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -16,7 +17,9 @@ use Psr\Http\Message\ServerRequestInterface;
 /**
  * {prefix}/translations (Settings → Translations, permission translations.edit): the interface
  * texts of a group in one language, 50 a page, searchable over keys and texts, each with its
- * override field. An override is plain text and wins on admin requests only (StoredOverrides).
+ * override field. An override is plain text and wins on admin requests only (StoredOverrides),
+ * except for the site's editable groups: offered in every language of the site, their overrides
+ * apply on every request and keep the delivered text's placeholders.
  */
 final class TranslationsController
 {
@@ -38,7 +41,10 @@ final class TranslationsController
         $group = is_string($query['group'] ?? null) && in_array($query['group'], $groups, true)
             ? $query['group']
             : (in_array('folio', $groups, true) ? 'folio' : $groups[0]);
-        $locale = is_string($query['locale'] ?? null) && $this->locales->offers($query['locale']) ? $query['locale'] : $this->locales->current();
+        $offered = $this->texts->locales($group, $this->locales->all());
+        $locale = is_string($query['locale'] ?? null) && in_array($query['locale'], $offered, true)
+            ? $query['locale']
+            : (in_array($this->locales->current(), $offered, true) ? $this->locales->current() : ($offered[0] ?? $this->locales->current()));
         $q = is_string($query['q'] ?? null) ? trim($query['q']) : '';
 
         $overrides = $this->overrides->all($locale);
@@ -63,7 +69,8 @@ final class TranslationsController
             'prefix' => $this->prefix,
             'groups' => $groups,
             'site_group' => EditableTexts::SITE,
-            'locales' => array_intersect_key($this->locales->names(), array_flip($this->locales->all())),
+            'locales' => array_combine($offered, array_map(LocaleNames::native(...), $offered)),
+            'site_texts' => $this->texts->isEditableGroup($group),
             'view' => $view,
             'page' => $page,
             'rows' => array_slice($rows, ($page - 1) * self::PER_PAGE, self::PER_PAGE),
@@ -100,7 +107,8 @@ final class TranslationsController
         $body = (array) $request->getParsedBody();
         $locale = is_string($body['locale'] ?? null) ? $body['locale'] : '';
         $key = is_string($body['key'] ?? null) ? $body['key'] : '';
-        if (!$this->locales->offers($locale)) {
+        $group = (string) strstr($key, '.', true);
+        if (!in_array($locale, $this->texts->locales($group, $this->locales->all()), true)) {
             return self::refuse(FolioText::get('folio.locale.not_offered'));
         }
         if (!$this->texts->editable($key, $locale)) {
@@ -115,13 +123,24 @@ final class TranslationsController
             if ($text === null) {
                 return self::refuse(FolioText::get('folio.translations.no_markup'));
             }
+            if ($this->texts->isEditableGroup($group)) {
+                // Its texts are filled in by code (a mail's :link): the same placeholders, no more, no less.
+                $needed = $this->texts->placeholders($key, $locale);
+                $used = EditableTexts::placeholdersIn($text);
+                foreach (array_diff($needed, $used) as $name) {
+                    return self::refuse(FolioText::get('folio.translations.placeholder_missing', ['placeholder' => ':' . $name]));
+                }
+                foreach (array_diff($used, $needed) as $name) {
+                    return self::refuse(FolioText::get('folio.translations.placeholder_unknown', ['placeholder' => ':' . $name]));
+                }
+            }
         }
 
         $user = $request->getAttribute(Authenticatable::class);
         $this->overrides->set($locale, $key, $text, $user instanceof Authenticatable ? (string) $user->getAuthId() : null);
         self::flash($request, FolioText::get($text === null ? 'folio.translations.reset_done' : 'folio.translations.saved', ['key' => $key]));
 
-        $group = is_string($body['group'] ?? null) && in_array($body['group'], $this->texts->groups(), true) ? $body['group'] : (string) strstr($key, '.', true);
+        $group = is_string($body['group'] ?? null) && in_array($body['group'], $this->texts->groups(), true) ? $body['group'] : $group;
         $page = (int) ($body['page'] ?? 1);
 
         return new Response(302, ['Location' => $this->url([
