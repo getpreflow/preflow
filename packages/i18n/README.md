@@ -10,7 +10,10 @@ composer require preflow/i18n
 
 ## What it does
 
-- Loads PHP translation files from `lang/{locale}/{group}.php`
+- Loads PHP translation files from `lang/{locale}/{group}.php`, and the groups installed packages
+  declare (`extra.preflow.translations`), with the site's files laid over them key by key
+- Admin overrides (a layer for texts changed in the admin), display labels as plain strings or
+  per-language maps, and a `translations:check` command
 - Resolves dot-notation keys with `:param` replacement and locale fallback
 - ICU-style pluralization with exact, range, and simple two-form rules
 - PSR-15 middleware for locale detection (URL prefix → cookie → Accept-Language)
@@ -60,10 +63,101 @@ $translator->getLocale();                               // "de"
 $translator->get('blog.title', [], 'fr');               // in another locale, the current one unchanged
 ```
 
-A package ships its own strings for a group and registers them with
-`$translator->addDefaults('members', __DIR__ . '/../lang')` (files `lang/{locale}/members.php`).
-The site's `lang/{locale}/members.php` is laid over them key by key, so a site overrides single
-phrases without copying the whole file.
+Parameters are replaced one after the other in the order they are passed. In one text, don't use
+a parameter whose name is the start of another (`:to` next to `:total`): `:to` would also replace
+the start of `:total`.
+
+## Package translations
+
+A package declares its translation groups in its `composer.json`. Preflow reads them from
+Composer's `vendor/composer/installed.json` when the app boots, like `extra.preflow.commands`:
+
+```json
+"extra": { "preflow": { "translations": {
+    "members":       { "path": "lang", "scope": "public" },
+    "members-admin": { "path": "lang", "scope": "admin" },
+    "codes": "lang"
+} } }
+```
+
+- The key is the group: `lang/{locale}/members-admin.php` holds the keys `members-admin.…`.
+- `path` is the folder, relative to the package root. It must stay inside the package.
+- `scope` is `admin` (the admin interface and mails to staff) or `public` (member pages, mails
+  to members, validation on public forms). A plain string is the path with scope `admin`.
+- A bad declaration (unknown scope, missing folder, a path outside the package, a group a second
+  package declares again) is skipped with an `error_log` line. It never breaks the boot.
+
+The declaration replaces the `$translator->addDefaults('group', $path)` call a provider used to
+make. `addDefaultsIfMissing('group', $path, 'admin')` is still there for apps without Composer
+metadata (tests); it does nothing when a declaration already registered the group.
+
+A translator is booted on every site that has `preflow/i18n`, with or without a `lang/` folder,
+so packages always have their texts. The locale middleware is added only when the site has
+`lang/` or `config/i18n.php`, so the frontend of a site without either does not change.
+
+### Which text wins
+
+For each locale in the chain (the asked locale, then the site default, then `en`), the first
+of these that has the key:
+
+1. an admin override (admin requests only, `admin` groups only, see below);
+2. the site's `lang/{locale}/{group}.php`, key by key;
+3. the package's file.
+
+A key found nowhere renders as the key itself; `translations:check` catches it. A site
+changes single phrases of a package by putting only those keys into its own file of the same
+group.
+
+### Admin overrides
+
+`TranslationOverrides` (`get(string $locale, string $key): ?string`) is the layer above the
+site files. `Translator::setOverrides()` sets it, and `useOverrides(true)` turns it on; it is
+off by default. Folio turns it on for the length of an admin request and stores the texts its
+Translations screen saves. An override never reaches a public page:
+
+- only keys of an `admin` group take one, plus keys under prefixes registered with
+  `Translator::overridable('site.types.')` (Folio registers its model-label prefixes);
+- a `public` group never does.
+
+`Translator::isOverridable($key)` tells whether a key can take one.
+`packageEntries($group, $locale)` and `siteEntries($group, $locale)` list each layer on its
+own; `entries()` gives both merged, without overrides.
+
+### Labels from other files
+
+Model files write display texts as a plain string or as a map per language:
+`"label": "Apps"` or `"label": {"en": "Apps", "de": "Anwendungen"}`.
+
+- `Labels::pick($value, $locale, $default)` picks the locale's entry, else the default's, else
+  English, else the first.
+- `Labels::resolve($translator, $key, $value)`: a translation key wins (override, site file,
+  package file, in the translator's current locale); then `pick()`; then the key along the
+  fallback chain; else null.
+
+`DerivedKeys` collects keys that come from such files, with the file's own text, so
+`translations:check` can check them: `$derived->add('Folio model labels', fn () => [key => text])`.
+
+## `preflow translations:check`
+
+```bash
+php preflow translations:check            # every group
+php preflow translations:check --group=folio
+```
+
+The release gate for "no raw keys". It lists:
+
+- per group and language, the keys that exist in English but not in that language (site and
+  package files together). A package group is checked in every language any package delivers;
+  a site group in the languages it has files for;
+- keys used as `t('…')` in package templates and model files and in the site's `app/`,
+  `resources/`, `templates/` and `config/models/`, that exist in no language;
+- derived keys (model labels) of package groups that have no text in a delivered language,
+  neither in a language file nor in the model file's map. A site's own types need none: their
+  plain label is a valid fallback.
+
+It exits 1 when anything is missing, else prints `Translations complete: N group(s), en, de, fr.`
+The command comes with `preflow/i18n` (`extra.preflow.commands`) and needs `preflow/devtools`.
+A site sees it after `composer update` has refreshed `vendor/composer/installed.json`.
 
 ### PluralResolver
 

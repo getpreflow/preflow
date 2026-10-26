@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-26 (v0.36.0 prepared)
+> Last updated: 2026-10-26 (v0.37.0 prepared)
 
 ## Current State
 
-**v0.36.0** (prepared) — 3410 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.37.0** (prepared) — 3573 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -38,13 +38,6 @@ The distinction between component props (encoded in token) and action params (PO
 ---
 
 ## Medium Term
-
-### Folio Admin in Other Languages
-
-Asked for 2026-10-25 (holz-objekte.org is the first site whose staff need the Folio interface in German/French). Today `packages/folio/lang/{de,en,fr}/folio.php` covers only the staff mails; screens, lists, forms, field types and messages are English strings in templates and PHP. Wanted:
-- every Folio UI string behind translation keys, English as the fallback; the admin language per staff user (or site default), independent of the content locales
-- the same mechanism for packages (members, rbac, …) and for user-land Folio extensions: an extension ships its own `lang/` folder that is discovered with it, a site's `lang/` can override any key, missing keys fall back to English, never break a screen
-- a check command listing keys missing per locale, so adding a language is filling a file
 
 ### Performance Benchmarks
 
@@ -101,7 +94,16 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 
 ## Completed
 
-### v0.36.0 (prepared)
+### v0.37.0 (prepared)
+
+- **Folio admin in English, German and French:** every screen, field type, list, message, the JS texts and the staff mails behind translation keys (`folio.*`); each staff user picks the admin language (sidebar switch, account page; table `folio_user_preferences`), default `config/folio.php` `locale`, else `app.locale`; signed-out pages follow the browser; dates and numbers through `folio_date()` / `folio_number()`
+- **Translations screen** (Settings → Translations, permission `translations.edit`): admins change any admin text per language (plain text; table `folio_translation_overrides`, compiled per locale, part of export/import); overrides never reach public pages
+- **Model labels per language:** `label`, `label_singular`, field `label`/`help` and option labels as a map or through `site.types.…` / `site.fields.…` / `site.options.…` / `site.sections.…` keys; extensions name their group with `#[FolioExtension(translations: …)]` and may use keys as attribute labels
+- **i18n:** packages declare groups in `extra.preflow.translations` (scope `admin` or `public`; replaces `addDefaults()` calls); a translator boots on every site; fallback chain user locale → site default → `en`; `TranslationOverrides`, `Labels`, `DerivedKeys`, `AcceptLanguage`, `LocaleNames`; `preflow translations:check`
+- **Packages:** rbac (German now "du"), members (`members-admin` group for its admin texts; public `members` texts unchanged), codes and validation (`Message` objects, opt-in translator) translated
+- Constraints: folio requires data, i18n and validation `^0.37`; members, rbac and codes require folio and i18n `^0.37`; validation requires i18n `^0.37`
+
+### v0.36.0
 
 - **Box presets:** `config/image.php` presets take `height` and `fit` (`cover` cuts the box's ratio around the focal point or a per-format crop, `contain` keeps the whole image, `max` is today's behaviour). Box files `{stem}-{preset}-{key}-{w}.{fmt}` are made on first request (and by `media:variants --all` / `warm_on_upload`); box preset names are validated at boot (`^[a-z][a-z0-9-]*$`, not `edit`, `preview`, `oriented` or `v<digits>`)
 - **Image edits:** `MediaLibrary::rotate()`, `flip()`, `setCrop()`, `setFormatCrop()` for public JPEG, PNG, WebP and AVIF images. The original stays; a sRGB master `{stem}-edit-{key}.{ext}` is rendered and pages deliver it. Coordinates are percent (`CropRect`); a format crop is clamped to the image crop; edits survive replace and come back on restore. New reserved asset fields `rotation`, `flip`, `crop`, `crops`, `master`; `media_original_url()`

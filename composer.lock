@@ -2392,7 +2392,7 @@
         },
         {
             "name": "preflow/auth",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/auth",
@@ -2429,7 +2429,7 @@
         },
         {
             "name": "preflow/blade",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/blade",
@@ -2467,17 +2467,22 @@
         },
         {
             "name": "preflow/codes",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/codes",
-                "reference": "61a4257b28b0d09ba000caaa33f6e692e6d63350"
+                "reference": "ffe491b71a120fe702af144b33df7b6a6edb9e22"
             },
             "require": {
                 "php": ">=8.4",
                 "preflow/core": "^0.20 || @dev",
                 "preflow/data": "^0.21 || @dev",
-                "preflow/folio": "^0.20 || @dev"
+                "preflow/folio": "^0.37 || @dev",
+                "preflow/i18n": "^0.37 || @dev"
+            },
+            "conflict": {
+                "preflow/folio": "<0.37",
+                "preflow/i18n": "<0.37"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0"
@@ -2486,6 +2491,14 @@
             "extra": {
                 "folio": {
                     "extension": "Preflow\\Codes\\Extension"
+                },
+                "preflow": {
+                    "translations": {
+                        "codes": {
+                            "path": "lang",
+                            "scope": "admin"
+                        }
+                    }
                 }
             },
             "autoload": {
@@ -2509,7 +2522,7 @@
         },
         {
             "name": "preflow/components",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/components",
@@ -2545,7 +2558,7 @@
         },
         {
             "name": "preflow/core",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/core",
@@ -2588,7 +2601,7 @@
         },
         {
             "name": "preflow/data",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/data",
@@ -2626,7 +2639,7 @@
         },
         {
             "name": "preflow/devtools",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/devtools",
@@ -2669,11 +2682,11 @@
         },
         {
             "name": "preflow/folio",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/folio",
-                "reference": "e25e3a5ca005acdf965cd7070bb0f75a2df11c4a"
+                "reference": "9b40955d3e1df425e16325717f0b52afd440a066"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
@@ -2681,25 +2694,26 @@
                 "preflow/auth": "^0.27 || @dev",
                 "preflow/components": "^0.1 || @dev",
                 "preflow/core": "^0.34 || @dev",
-                "preflow/data": "^0.34 || @dev",
+                "preflow/data": "^0.37 || @dev",
                 "preflow/devtools": "^0.20 || @dev",
                 "preflow/form": "^0.1 || @dev",
                 "preflow/htmx": "^0.1 || @dev",
-                "preflow/i18n": "^0.26 || @dev",
-                "preflow/media": "^0.34 || @dev",
+                "preflow/i18n": "^0.37 || @dev",
+                "preflow/media": "^0.36 || @dev",
                 "preflow/notify": "^0.25 || @dev",
                 "preflow/routing": "^0.1 || @dev",
-                "preflow/validation": "^0.1 || @dev",
+                "preflow/validation": "^0.37 || @dev",
                 "preflow/view": "^0.1 || @dev",
                 "symfony/html-sanitizer": "^7.0"
             },
             "conflict": {
                 "preflow/auth": "<0.27",
                 "preflow/core": "<0.34",
-                "preflow/data": "<0.34",
-                "preflow/i18n": "<0.26",
-                "preflow/media": "<0.34",
-                "preflow/notify": "<0.25"
+                "preflow/data": "<0.37",
+                "preflow/i18n": "<0.37",
+                "preflow/media": "<0.36",
+                "preflow/notify": "<0.25",
+                "preflow/validation": "<0.37"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0"
@@ -2708,6 +2722,16 @@
                 "openspout/openspout": "^4 — Excel export of admin lists (the Export button shows once it is installed)"
             },
             "type": "library",
+            "extra": {
+                "preflow": {
+                    "translations": {
+                        "folio": {
+                            "path": "lang",
+                            "scope": "admin"
+                        }
+                    }
+                }
+            },
             "autoload": {
                 "psr-4": {
                     "Preflow\\Folio\\": "src/"
@@ -2732,7 +2756,7 @@
         },
         {
             "name": "preflow/form",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/form",
@@ -2768,7 +2792,7 @@
         },
         {
             "name": "preflow/htmx",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/htmx",
@@ -2805,11 +2829,11 @@
         },
         {
             "name": "preflow/i18n",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/i18n",
-                "reference": "4d96e3e5fda17b0e23efddd6582e327d11cf31fb"
+                "reference": "9830a4163ac0ebd9f400edc3d863ca016c3c3ddd"
             },
             "require": {
                 "php": ">=8.4",
@@ -2817,9 +2841,20 @@
             },
             "require-dev": {
                 "nyholm/psr7": "^1.8",
-                "phpunit/phpunit": "^11.0"
+                "phpunit/phpunit": "^11.0",
+                "preflow/devtools": "^0.34 || @dev"
+            },
+            "suggest": {
+                "preflow/devtools": "The translations:check command"
             },
             "type": "library",
+            "extra": {
+                "preflow": {
+                    "commands": [
+                        "Preflow\\I18n\\Console\\TranslationsCheckCommand"
+                    ]
+                }
+            },
             "autoload": {
                 "psr-4": {
                     "Preflow\\I18n\\": "src/"
@@ -2841,23 +2876,23 @@
         },
         {
             "name": "preflow/media",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/media",
-                "reference": "fda25afefb81430656012bb26bc9db038e1dc0da"
+                "reference": "faee858098350144b45229172f69cd8333fa0529"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
                 "php": ">=8.4",
                 "preflow/core": "^0.34 || @dev",
-                "preflow/data": "^0.34 || @dev",
+                "preflow/data": "^0.35 || @dev",
                 "preflow/routing": "^0.1 || @dev",
                 "preflow/view": "^0.34 || @dev"
             },
             "conflict": {
                 "preflow/core": "<0.34",
-                "preflow/data": "<0.34",
+                "preflow/data": "<0.35",
                 "preflow/view": "<0.34"
             },
             "require-dev": {
@@ -2865,14 +2900,17 @@
                 "preflow/devtools": "^0.34 || @dev"
             },
             "suggest": {
-                "preflow/devtools": "The media:variants command",
+                "preflow/devtools": "The media:* commands",
                 "preflow/i18n": "Per-language alt text for assets"
             },
             "type": "library",
             "extra": {
                 "preflow": {
                     "commands": [
-                        "Preflow\\Media\\Console\\VariantsCommand"
+                        "Preflow\\Media\\Console\\ColorsCommand",
+                        "Preflow\\Media\\Console\\PreviewsCommand",
+                        "Preflow\\Media\\Console\\VariantsCommand",
+                        "Preflow\\Media\\Console\\VersionsPruneCommand"
                     ]
                 }
             },
@@ -2897,11 +2935,11 @@
         },
         {
             "name": "preflow/members",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/members",
-                "reference": "2f1a58e509de300a4aa4c0b8040f3fe2c3dafde4"
+                "reference": "84f88a7400c5ca51ca7650cee927126cc0924bc3"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
@@ -2910,8 +2948,8 @@
                 "preflow/core": "^0.25 || @dev",
                 "preflow/data": "^0.26 || @dev",
                 "preflow/devtools": "^0.26 || @dev",
-                "preflow/folio": "^0.26 || @dev",
-                "preflow/i18n": "^0.26 || @dev",
+                "preflow/folio": "^0.37 || @dev",
+                "preflow/i18n": "^0.37 || @dev",
                 "preflow/notify": "^0.25 || @dev",
                 "preflow/rbac": "^0.25 || @dev",
                 "preflow/routing": "^0.25 || @dev",
@@ -2921,8 +2959,8 @@
             "conflict": {
                 "preflow/auth": "<0.26",
                 "preflow/data": "<0.26",
-                "preflow/folio": "<0.26",
-                "preflow/i18n": "<0.26"
+                "preflow/folio": "<0.37",
+                "preflow/i18n": "<0.37"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0"
@@ -2935,7 +2973,17 @@
                 "preflow": {
                     "commands": [
                         "Preflow\\Members\\Console\\PruneMembersCommand"
-                    ]
+                    ],
+                    "translations": {
+                        "members": {
+                            "path": "lang",
+                            "scope": "public"
+                        },
+                        "members-admin": {
+                            "path": "lang",
+                            "scope": "admin"
+                        }
+                    }
                 }
             },
             "autoload": {
@@ -2959,7 +3007,7 @@
         },
         {
             "name": "preflow/notify",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/notify",
@@ -3004,11 +3052,11 @@
         },
         {
             "name": "preflow/rbac",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/rbac",
-                "reference": "1fb5a1ce07f910faa3ab016553b05fe2055fbaa4"
+                "reference": "5833f868d11ca990727928ffb1b9b2f8a548162d"
             },
             "require": {
                 "php": ">=8.4",
@@ -3016,14 +3064,14 @@
                 "preflow/core": "^0.27 || @dev",
                 "preflow/data": "^0.20 || @dev",
                 "preflow/devtools": "^0.26 || @dev",
-                "preflow/folio": "^0.27 || @dev",
-                "preflow/i18n": "^0.26 || @dev"
+                "preflow/folio": "^0.37 || @dev",
+                "preflow/i18n": "^0.37 || @dev"
             },
             "conflict": {
                 "preflow/auth": "<0.27",
                 "preflow/core": "<0.27",
-                "preflow/folio": "<0.27",
-                "preflow/i18n": "<0.26"
+                "preflow/folio": "<0.37",
+                "preflow/i18n": "<0.37"
             },
             "require-dev": {
                 "nyholm/psr7": "^1.8",
@@ -3037,7 +3085,13 @@
                 "preflow": {
                     "commands": [
                         "Preflow\\Rbac\\Console\\ImportConfigStaffCommand"
-                    ]
+                    ],
+                    "translations": {
+                        "rbac": {
+                            "path": "lang",
+                            "scope": "admin"
+                        }
+                    }
                 }
             },
             "autoload": {
@@ -3061,7 +3115,7 @@
         },
         {
             "name": "preflow/roles",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/roles",
@@ -3098,7 +3152,7 @@
         },
         {
             "name": "preflow/routing",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/routing",
@@ -3133,7 +3187,7 @@
         },
         {
             "name": "preflow/testing",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/testing",
@@ -3177,7 +3231,7 @@
         },
         {
             "name": "preflow/twig",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/twig",
@@ -3218,20 +3272,34 @@
         },
         {
             "name": "preflow/validation",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/validation",
-                "reference": "726383609629b590e432b5750953a6c272226767"
+                "reference": "5432893096dc6e1ff0ea9d1d7e78e311b36d3517"
             },
             "require": {
                 "php": ">=8.4",
+                "preflow/i18n": "^0.37 || @dev",
                 "preflow/view": "^0.1 || @dev"
+            },
+            "conflict": {
+                "preflow/i18n": "<0.37"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0"
             },
             "type": "library",
+            "extra": {
+                "preflow": {
+                    "translations": {
+                        "validation": {
+                            "path": "lang",
+                            "scope": "public"
+                        }
+                    }
+                }
+            },
             "autoload": {
                 "psr-4": {
                     "Preflow\\Validation\\": "src/"
@@ -3253,7 +3321,7 @@
         },
         {
             "name": "preflow/view",
-            "version": "dev-feat/media-package",
+            "version": "dev-feat/folio-translations",
             "dist": {
                 "type": "path",
                 "url": "packages/view",

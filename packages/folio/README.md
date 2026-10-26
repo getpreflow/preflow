@@ -116,6 +116,9 @@ Every admin action asks one permission through `can()` (see `preflow/auth`).
 **The dashboard** needs `folio.dashboard`. Without it, login lands on the first
 section the user may view.
 
+**The Translations screen** needs `translations.edit` (an `admin` role with `*` has it).
+Choosing one's own admin language needs no permission.
+
 **Block editor fragments** need `edit` on any type.
 
 The sidebar, dashboard cards, list buttons and form buttons follow the same
@@ -1430,6 +1433,81 @@ must be wide enough for the JSON map. JSON-file storage needs no setup.
 `folio_alternate_links()` emits absolute URLs when the request has a host, which
 search engines require.
 
+## Admin languages
+
+Folio's own screens, the staff mails and the admin parts of rbac, members and codes come in
+English, German and French. Each staff user picks the language of the admin for themselves;
+the content languages (`config/i18n.php`) are separate.
+
+**Choosing the language:**
+- The sidebar has a language switch next to the theme switch, and the account page a
+  *Language* panel. The choice is stored per user (table `folio_user_preferences`; a config
+  user under its address) and applies on every device.
+- Without a choice, the admin uses `config/folio.php` `'locale'`, else `app.locale`, else
+  English when Folio has no texts in that language.
+- The sign-in and password pages follow the browser (`Accept-Language`).
+- Staff mails (invitation, password reset) go out in the recipient's language, else the site's
+  default content language.
+- The languages offered are the ones Folio has texts for: its own `en`, `de`, `fr`, plus any
+  `lang/{locale}/folio.php` a site adds (two-letter codes).
+- Public pages never change with the admin's language: the translator's locale and the
+  overrides are put back after every admin request.
+
+**Changing a text: the Translations screen.** *Settings → Translations*
+(`{prefix}/translations`, permission `translations.edit`) lists the texts of every `admin`
+group (Folio, rbac, members-admin, codes, the extensions' groups) and the site's model labels,
+per language. A changed text replaces the delivered one in the admin for everyone using that
+language; *Reset* brings the delivered one back.
+- Plain text only: `<`, `>`, `"` and `` ` `` are refused, and texts whose English contains markup
+  are not offered. A straight `'` is stored as `’`.
+- Formats (`folio.format.*`) are configuration, not offered.
+- The texts live in the table `folio_translation_overrides` (run `preflow migrate` on SQL
+  storage), are compiled to `storage/cache/folio-translations-{locale}.php` (Settings → Cache
+  lists it) and travel with `folio:export` / `folio:import` / `folio:pull`.
+- A site's own `lang/{locale}/folio.php` (or `rbac.php`, …) changes single keys for every
+  request, in version control; an override on the screen wins over it.
+
+**Model labels.** A model file's `label`, `label_singular`, a field's `label` and `help` and a
+select option's label can be a plain string or a map per language:
+
+```json
+{ "key": "app", "label": {"en": "Apps", "de": "Anwendungen", "fr": "Applications"},
+  "label_singular": {"en": "App", "de": "Anwendung", "fr": "Application"},
+  "fields": { "title": { "type": "string", "label": {"en": "Title", "de": "Titel"} } } }
+```
+
+Or keep the plain English string and add keys to `lang/{locale}/site.php`:
+
+| Text | Key |
+|---|---|
+| type label / singular | `site.types.{type}.label` / `site.types.{type}.singular` |
+| field label / help | `site.fields.{type}.{field}.label` / `site.fields.{type}.{field}.help` |
+| select option | `site.options.{type}.{field}.{value}` |
+| sidebar section | `site.sections.{section}` |
+| empty list sentence | `site.types.{type}.empty` (optional) |
+
+A key wins over the map, the map over the plain string. They show in the sidebar, the
+dashboard, list headers, filters, chips, bulk menus, the Excel header row, the editor and the
+roles screen; public pages are unchanged. `label_singular` gives "1 Seite" in the delete
+summary; without it English guesses and other languages use the label.
+
+**Extensions.** An extension that ships texts declares its group in its package's
+`composer.json` (see [`preflow/i18n`](../i18n/README.md#package-translations)) and names it on
+the extension: `#[FolioExtension(name: 'shop', …, translations: 'shop')]`. Then:
+- its types' labels resolve under `shop.types.…`, `shop.fields.…`, `shop.options.…` (same
+  shapes as above), its settings type too;
+- attribute labels may be keys: `#[ListColumn('shop.list.state')]`,
+  `#[RecordAction(label: 'shop.actions.refund', confirm: 'shop.actions.refund_confirm')]`,
+  `#[FormPanel('shop.panels.orders')]`. Any text with spaces or capitals stays as written;
+- its permissions show as `shop.permissions.{rest}` on the roles screen (for `shop.refund`:
+  `shop.permissions.refund`) and its name as `shop.extension.label`;
+- `translations:check` reports a delivered language missing one of these keys.
+
+In templates, `folio_date(value, 'date'|'datetime')` and `folio_number(value)` format in the
+admin's language (German `26.10.2026`, French `26/10/2026`, English `Oct 26, 2026`); `t()` reads
+any key. **Block labels** (`#[Block(label: …)]`, `#[BlockField(label: …)]`) are shown as
+written: they are not translated yet.
+
 ## Status
 
 Shipped:
@@ -1448,7 +1526,9 @@ Shipped:
 - the asset library (variants, `media_image()`, picker, usage, legacy import);
 - click-to-edit in the live preview;
 - `folio:pull` (live content to local);
-- permissions on every admin action (`can()`, with `preflow/roles` or `preflow/rbac` for roles).
+- permissions on every admin action (`can()`, with `preflow/roles` or `preflow/rbac` for roles);
+- the admin in English, German and French, chosen per user, with a Translations screen for
+  changing texts.
 
 The admin runs under Preflow's strict, nonce-based CSP: no inline handlers or styles.
 Hand-written `<script>`/`<style>` tags in your own templates need

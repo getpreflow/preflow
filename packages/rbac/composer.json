@@ -9,8 +9,8 @@
         "preflow/core": "^0.27 || @dev",
         "preflow/data": "^0.20 || @dev",
         "preflow/devtools": "^0.26 || @dev",
-        "preflow/folio": "^0.27 || @dev",
-        "preflow/i18n": "^0.26 || @dev"
+        "preflow/folio": "^0.37 || @dev",
+        "preflow/i18n": "^0.37 || @dev"
     },
     "require-dev": {
         "phpunit/phpunit": "^11.0",
@@ -19,8 +19,8 @@
     "conflict": {
         "preflow/auth": "<0.27",
         "preflow/core": "<0.27",
-        "preflow/folio": "<0.27",
-        "preflow/i18n": "<0.26"
+        "preflow/folio": "<0.37",
+        "preflow/i18n": "<0.37"
     },
     "autoload": {
         "psr-4": {

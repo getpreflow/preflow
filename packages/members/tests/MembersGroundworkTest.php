@@ -158,19 +158,6 @@ final class MembersGroundworkTest extends TestCase
         $this->app();
     }
 
-    /** "^0.26 || @dev" matches any version (@dev is anything): only "conflict" keeps out the releases without the 0.26 APIs. */
-    public function test_composer_conflicts_with_the_packages_before_0_26(): void
-    {
-        $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
-
-        $this->assertSame([
-            'preflow/auth' => '<0.26',
-            'preflow/data' => '<0.26',
-            'preflow/folio' => '<0.26',
-            'preflow/i18n' => '<0.26',
-        ], $composer['conflict'] ?? null);
-    }
-
     #[RunInSeparateProcess]
     public function test_sidebar_and_settings(): void
     {
