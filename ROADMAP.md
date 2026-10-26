@@ -84,6 +84,64 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 
 ---
 
+## Follow-ups from the holz-objekte.org port
+
+Found while porting holz-objekte.org (2026-10-26). Each has a site-local workaround there, described in its
+`docs/framework-followups.md` with how to remove it once the framework has the feature. Checked against v0.37.0:
+all of these are still open. Already done: the expired-session CSRF handler (0.31) and the copyright hook
+(`#[AfterSave]` on an extension type, no framework change needed).
+
+### Security and data integrity
+
+- **Rehash on sign-in (members, Folio staff login):** after a successful `verify()`, call `needsRehash()` and store a fresh hash (old `$1$` MD5-crypt and low-cost bcrypt hashes are never upgraded today). `needsRehash()` exists in `NativePasswordHasher`; no login calls it
+- **CSRF without a session (core):** `CsrfMiddleware` skips requests without a session, so public POSTs on sites with `session.paths` (like buttons, contact forms) are unprotected. Wanted: a stateless (cookieless) token for chosen paths, or a session started on POST only
+- **Translation params in one pass (i18n):** `Translator::replaceParams` substitutes sequentially (`str_replace` per param), so a value containing `:other` is replaced again; use one `strtr` pass. Also a plain-text variant of `t()` (not html-safe, params unescaped) for values passed to functions that escape themselves (e.g. `media_image(…, {alt: …})`), and make preflow/twig's unused `TranslationExtension::t()` escape like the i18n provider
+- **Saving null clears SQL columns (data):** `PdoDriver::save()` drops null values before the upsert, so `set(field, null)` keeps the old value (sites clear with `''`)
+- **Unique fields and typed columns (data/Folio):** a unique-field rule (validated; upsert by primary key only, so a duplicate can't overwrite another record) and typed columns (numbers stored as numbers, real indexes instead of LONGTEXT prefix indexes)
+- **Compare-and-set draft save and sequences (Folio publishing):** `Publisher::saveDraft()` reads `_version` then writes (not atomic); wanted `UPDATE … WHERE _version = ?` and a sequence / next-number helper for public numbers
+- **Member self-deletion and delete plans (members):** `Members::delete()` (account page, `members:prune`) uses `deleteType()` and ignores relations and Folio's delete plan (`restrict` relations are bypassed, e.g. orders keep a dangling member id). Wanted: delete through the delete plan, or before/after hooks
+- **Private files: session and owners (media/Folio):** private files live at `/files/{id}`, outside Folio's session path, so sites must add `/files` to `session.paths`; serve them under Folio's own path (e.g. `{prefix}/files`) or start the session there. Optional: a per-owner rule (callback or record field) so members can see their own private files
+
+### Media and assets
+
+- **HEIC/HEIF uploads:** accept and convert iPhone photos (Imagick) on upload
+- **`importFile(…, bool $private)`:** only `upload()` can create private assets today
+- **Derived assets:** a `derived_from` link from a copy to its original (e.g. a watermarked image), set by whoever creates the copy. The Folio library then shows an original with its derivatives as one stack: the original as thumbnail, a bubble with the number of derivatives, the derivatives reachable from the stack (owner's wish)
+- **Asset garbage collection:** delete unreferenced assets (filter by owner/origin, minimum age), or release on publish the assets a publish drops; a record's delete in Folio never deletes its assets today
+
+### Folio
+
+- **Types with files and `"transfer": false`:** refused today for types with `asset`, `blocks` or `matrix` fields; wanted: exclude single fields from transfer, or transfer a type's files without its records
+- **`list.filters` (and `list.sort`, `list.bulk`) in an `extends` model file:** only `fields` and `list.columns` are allowed (`ModelExtension::merge`)
+- **Staff mails with the site's mail layout:** `StaffMailer` sends plain text only; a `mail.layout` option like members' (lang, subject, paragraphs, optional action)
+- **Phone layout fixes:** `min-width: 0` on `.folio-form-extras > .folio-panel` and `.folio-side > .folio-panel` (a wide table makes the form page scroll sideways at 390 px); check the list's tab row at 390 px in WebKit (the table itself already has an `overflow-x` wrapper)
+
+### Members
+
+- **Admission supplies the name:** registration requires one posted `name`; let an admission compose it (e.g. `Admission::name($input)`) or let a site drop the `name` field (sites asking for first and last name)
+- **`next` through registration and confirmation:** kept today only on sign-in; carry a checked `next` with the pending account so a checkout can continue after registering
+- **A landing page at `GET /konto`:** confirm and login redirect there, but the package has no page; a configurable template or callback
+- **Primary link to the mail layout:** `MemberMailer` passes only lang, subject, accent and paragraphs; pass `action: {label, url}` for confirm, reset and "existing account" mails
+- **Italian (`it`) texts:** the package ships en, de and fr
+
+### rbac
+
+- **Grant-once role seeding:** `RoleStore::ensure()` never changes an existing role, so later-added permissions never reach seeded roles; an ensure that grants new permissions once and remembers them (an editor's removal stays)
+
+### Routing, core and i18n
+
+- **Route order by specificity:** dynamic routes match in collection order (declaration order, then unsorted `DirectoryIterator` discovery across controllers); a static segment should win over a parameter regardless of controller
+- **`#[Options]` route attribute** (sites subclass `HttpMethod` today)
+- **Controller discovery beyond `app/Controllers`:** configurable directories, or every `#[Route]` class autoloaded under `App\`
+- **JSON query cache follows the data path:** `Application` uses `storage/cache/data` whatever `json.path` is, and cache files are named by type only (tests with a temp `DATA_PATH` write into the project's cache)
+- **Prefix the default locale (i18n):** an option to serve the default locale with its prefix (`/de/…` canonical, `/…` redirecting), for sites whose old URLs carried the default language
+
+### Protected APIs (auth, later)
+
+The base exists (`TokenGuard`, `PersonalAccessToken`, `AuthMiddleware`). Missing: token management in Folio (create, name, list, revoke; shown once; per staff account or member), scopes per token checked per route, a configurable CORS middleware (origins, methods, headers, max-age, preflight answer), per-token rate limits.
+
+---
+
 ## Lower Priority
 
 - **Error page customization** — app-level 404/500 templates
