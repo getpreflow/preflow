@@ -330,6 +330,32 @@ final class TranslationOverridesTest extends TestCase
         $this->assertStringNotContainsString('Mismatch', $account);
     }
 
+    /**
+     * An override may add a placeholder its delivered text doesn't have ("Move up" → "Move :label
+     * up"); where a call passes that parameter, the value is still escaped, also inside an
+     * attribute.
+     */
+    #[RunInSeparateProcess]
+    public function test_a_placeholder_an_override_adds_is_filled_escaped(): void
+    {
+        $this->people();
+        $this->assertStringNotContainsString(':label', $this->flow->container()->get(Translator::class)->get('folio.common.move_up', [], 'en'));
+        $this->overrides()->set('en', 'folio.common.move_up', 'Move :label up', null);
+
+        $translator = $this->flow->container()->get(Translator::class);
+        $translator->setLocale('en');
+        $translator->useOverrides(true); // as on an admin request (AdminLocaleMiddleware)
+        mkdir($this->dir . '/q3', 0777, true);
+        file_put_contents($this->dir . '/q3/aria.twig', '<button aria-label="{{ t(\'folio.common.move_up\', {label: name}) }}">x</button>');
+        $engine = $this->flow->container()->get(\Preflow\View\TemplateEngineInterface::class);
+        $engine->addNamespace('q3', $this->dir . '/q3');
+
+        $html = $engine->render('@q3/aria.twig', ['name' => '"><img src=x>']);
+
+        $this->assertStringContainsString('aria-label="Move &quot;&gt;&lt;img src=x&gt; up"', $html);
+        $this->assertStringNotContainsString('<img', $html);
+    }
+
     private function expectStoreRefuses(\Closure $call): void
     {
         try {
