@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Members;
+namespace Preflow\Folio\Members;
 
 use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
@@ -10,14 +10,17 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Locales;
 use Preflow\Folio\Extension\Attributes\DeclaresPermission;
 use Preflow\Folio\Extension\Attributes\FolioExtension;
+use Preflow\Members\Languages;
+use Preflow\Members\MembersConfig;
 use Preflow\Rbac\RoleStore;
 
 /**
- * Member accounts in Folio: the member type (models/member.json; its admin labels in
- * lang/{locale}/members-admin.php), its roles, the owner's
- * Decision panel (Types/MemberAdmin) and the settings under Settings → Members settings (their
- * labels, the permissions' and the seeded roles' are members-admin keys too).
- * MembersServiceProvider binds the services.
+ * The members admin (preflow/members' accounts in Folio), Folio's built-in extension "members",
+ * there when preflow/members is installed: the member type (models/member.json; its admin labels
+ * in the members package's lang/{locale}/members-admin.php), its roles (rbac, which the admin
+ * needs: FolioMembers checks it at boot), the owner's Decision panel (MemberAdmin) and the
+ * settings under Settings → Members settings (their labels, the permissions' and the seeded
+ * roles' are members-admin keys too), which FolioMembersSettings gives the members core.
  */
 #[FolioExtension(name: 'members', label: 'Members', icon: 'ui-users', version: '1.2.0', translations: 'members-admin')]
 #[DeclaresPermission('members.access', 'Use the members area')] // in the admin: members-admin.permissions.access

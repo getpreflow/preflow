@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Members\Tests;
+namespace Preflow\Folio\Tests\Members;
 
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -14,12 +14,12 @@ use Preflow\Folio\Console\ExportCommand;
 use Preflow\Folio\Console\ExtensionsCheckCommand;
 use Preflow\Folio\Extension\ExtensionState;
 use Preflow\Folio\Transfer\TarReader;
-use Preflow\Members\Extension;
+use Preflow\Folio\Members\Extension;
 use Preflow\Rbac\RbacResolver;
 use Preflow\Rbac\RoleList;
 use Preflow\Rbac\RoleStore;
-use Preflow\Members\Tests\Support\Dom;
-use Preflow\Members\Tests\Support\MembersScaffold;
+use Preflow\Folio\Tests\Members\Support\Dom;
+use Preflow\Folio\Tests\Members\Support\MembersScaffold;
 
 /** The member type on SQLite (or the default storage), its roles and settings, the sidebar, no export. */
 final class MembersGroundworkTest extends TestCase
@@ -182,8 +182,8 @@ final class MembersGroundworkTest extends TestCase
         $this->write('lang/de/members.php', "<?php\nreturn ['mail' => ['declined' => ['body' => 'Hallo {name}, leider nein.']]];\n");
         $this->migrateAndApply();
         $this->signIn();
-        $en = require dirname(__DIR__) . '/lang/en/members.php';
-        $de = require dirname(__DIR__) . '/lang/de/members.php';
+        $en = require dirname(__DIR__, 3) . '/members/lang/en/members.php';
+        $de = require dirname(__DIR__, 3) . '/members/lang/de/members.php';
 
         foreach (['' => [$en['mail']['accepted']['body'], $en['mail']['declined']['body']], '?locale=de' => [$de['mail']['accepted']['body'], 'Hallo {name}, leider nein.']] as $query => [$accept, $decline]) {
             $html = $this->admin('/folio/members_settings' . $query);

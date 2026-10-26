@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Members\Tests;
+namespace Preflow\Folio\Tests\Members;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
@@ -13,9 +13,9 @@ use Preflow\Auth\Remember\RememberMe;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Extension\ExtensionState;
 use Preflow\Members\Members;
-use Preflow\Members\Tests\Fixtures\ListedAdmission;
-use Preflow\Members\Tests\Support\Dom;
-use Preflow\Members\Tests\Support\MembersScaffold;
+use Preflow\Folio\Tests\Members\Fixtures\ListedAdmission;
+use Preflow\Folio\Tests\Members\Support\Dom;
+use Preflow\Folio\Tests\Members\Support\MembersScaffold;
 use Preflow\Notify\Email;
 use Preflow\Notify\Notifier;
 use Preflow\Notify\TransportFactory;

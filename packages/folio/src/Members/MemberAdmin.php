@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Members\Types;
+namespace Preflow\Folio\Members;
 
 use Nyholm\Psr7\Response;
 use Preflow\Auth\Remember\RememberMe;
@@ -17,7 +17,6 @@ use Preflow\Folio\Extension\ListColumn;
 use Preflow\Folio\Extension\NavBadge;
 use Preflow\Folio\Extension\RecordAction;
 use Preflow\Folio\Extension\Screen\ScreenView;
-use Preflow\Folio\Extension\Settings\ExtensionSettings;
 use Preflow\I18n\Translator;
 use Preflow\Members\Admission\Admission;
 use Preflow\Members\Languages;
@@ -25,6 +24,7 @@ use Preflow\Members\Links;
 use Preflow\Members\MemberMailer;
 use Preflow\Members\Members;
 use Preflow\Members\MembersConfig;
+use Preflow\Members\MembersSettings;
 use Preflow\Members\MemberState;
 use Preflow\Notify\TransportException;
 use Preflow\Validation\ValidationException;
@@ -55,7 +55,7 @@ final class MemberAdmin
         private readonly Members $members,
         private readonly MemberMailer $mailer,
         private readonly Links $links,
-        private readonly ExtensionSettings $settings,
+        private readonly MembersSettings $settings,
         private readonly RememberMe $remember,
         private readonly Admission $admission,
         private readonly Locales $locales,
@@ -193,11 +193,8 @@ final class MemberAdmin
      */
     private function text(string $setting, string $mail, string $lang, string $name, string $loginUrl = ''): string
     {
-        // exact: a text stored for another locale only would put the wrong language into the mail.
-        $text = $this->settings->get('members', $setting, $lang, exact: true);
-        if (!is_string($text) || trim($text) === '') {
-            $text = $this->translator->get('members.mail.' . $mail . '.body', [], $lang);
-        }
+        $text = ($setting === 'accept_message' ? $this->settings->acceptMessage($lang) : $this->settings->declineMessage($lang))
+            ?? $this->translator->get('members.mail.' . $mail . '.body', [], $lang);
 
         return strtr($text, ['{name}' => $name, '{login_url}' => $loginUrl]);
     }

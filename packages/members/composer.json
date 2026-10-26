@@ -38,9 +38,6 @@
         }
     },
     "extra": {
-        "folio": {
-            "extension": "Preflow\\Members\\Extension"
-        },
         "preflow": {
             "commands": ["Preflow\\Members\\Console\\PruneMembersCommand"],
             "translations": {

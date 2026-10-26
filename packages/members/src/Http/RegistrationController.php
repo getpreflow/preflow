@@ -10,7 +10,6 @@ use Preflow\Auth\Tokens\Tokens;
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
-use Preflow\Folio\Extension\Settings\ExtensionSettings;
 use Preflow\Auth\Record\RecordUser;
 use Preflow\Members\Admission\Admission;
 use Preflow\Members\Admission\Decision;
@@ -18,6 +17,7 @@ use Preflow\Members\Links;
 use Preflow\Members\MemberMailer;
 use Preflow\Members\Members;
 use Preflow\Members\MembersConfig;
+use Preflow\Members\MembersSettings;
 use Preflow\Members\MembersView;
 use Preflow\Members\MemberState;
 use Preflow\Members\Viewer;
@@ -46,7 +46,7 @@ final class RegistrationController
         private readonly Tokens $tokens,
         private readonly Throttle $throttle,
         private readonly AuthManager $auth,
-        private readonly ExtensionSettings $settings,
+        private readonly MembersSettings $settings,
         private readonly PasswordHasherInterface $hasher,
     ) {}
 
@@ -187,7 +187,7 @@ final class RegistrationController
 
     private function open(ServerRequestInterface $request): bool
     {
-        return $this->settings->get('members', 'registration_open', $this->locale($request)) !== false;
+        return $this->settings->registrationOpen();
     }
 
     /** Someone registered with an address that already has an account: tell the owner of the address, not the visitor. */
@@ -211,8 +211,8 @@ final class RegistrationController
 
     private function tellOwner(DynamicRecord $member): void
     {
-        $to = trim((string) $this->settings->get('members', 'notice_email'));
-        if ($to === '') {
+        $to = $this->settings->noticeEmail();
+        if ($to === null) {
             return;
         }
         $id = (string) $member->getId();

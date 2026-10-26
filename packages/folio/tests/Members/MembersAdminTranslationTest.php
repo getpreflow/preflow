@@ -2,26 +2,22 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Members\Tests;
+namespace Preflow\Folio\Tests\Members;
 
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\I18n\Translator;
 use Preflow\Members\Members;
-use Preflow\Members\Tests\Support\MemberFlows;
+use Preflow\Folio\Tests\Members\Support\MembersScaffold;
 
 /**
  * The members admin in the admin's language: the "members-admin" group (scope admin, German
  * in "du") for the list, the Decision panel, the flashes, the settings form, the permissions
- * and the seeded roles. The public "members" group is untouched: the German registration
- * page is byte for byte the one of v0.36.0 ("Sie").
+ * and the seeded roles. Its files are the members package's (lang/), declared by members.
  */
 final class MembersAdminTranslationTest extends TestCase
 {
-    use MemberFlows;
-
-    /** The registration page and its error page in German, as v0.36.0 renders them (CSRF token blanked). */
-    private const string SNAPSHOT = __DIR__ . '/Fixtures/register-de-v0.36.0.html';
+    use MembersScaffold;
 
     protected function tearDown(): void
     {
@@ -33,7 +29,7 @@ final class MembersAdminTranslationTest extends TestCase
     private static function translator(string $locale): Translator
     {
         $translator = new Translator('/no/such/lang', $locale, 'en');
-        $translator->addDefaults('members-admin', dirname(__DIR__) . '/lang');
+        $translator->addDefaults('members-admin', dirname(__DIR__, 3) . '/members/lang');
 
         return $translator;
     }
@@ -104,27 +100,5 @@ final class MembersAdminTranslationTest extends TestCase
         $this->signIn();
 
         $this->assertStringContainsString('Noch keine Mitglieder.', $this->admin('/folio/member'));
-    }
-
-    #[RunInSeparateProcess]
-    public function test_the_german_registration_page_is_the_one_of_v0_36_0(): void
-    {
-        $this->flowSite();
-
-        $page = $this->send('GET', '/de/members/register');
-        $errors = $this->post('/de/members/register', ['name' => '', 'email' => 'nope', 'password' => 'short']);
-        $this->assertSame(200, $page->getStatusCode());
-        $both = self::stable((string) $page->getBody()) . "\n<!-- errors -->\n" . self::stable((string) $errors->getBody());
-        if (getenv('PREFLOW_WRITE_SNAPSHOT') === '1') {
-            file_put_contents(self::SNAPSHOT, $both);
-        }
-
-        $this->assertStringContainsString('Bitte geben Sie', $both);
-        $this->assertSame((string) file_get_contents(self::SNAPSHOT), $both);
-    }
-
-    private static function stable(string $html): string
-    {
-        return (string) preg_replace(['/(name="_csrf_token" value=")[^"]+/', '/(nonce=")[^"]+/', '/(Nonce":")[^"]+/'], '$1…', $html);
     }
 }

@@ -30,8 +30,8 @@ use Preflow\View\TemplateEngineInterface;
  * defaults), Members, Links, LinkValidity, MemberMailer and the configured Admission, and adds the
  * package copy (lang/{locale}/members.php) under the site's own. A site's resources/members/ is
  * put in front of the package templates (@members) when it exists. When the Folio
- * extension "members" is enabled, boot checks that rbac (the member roles) is enabled too
- * and that the admission class is one, and adds the member pages' routes under the members path.
+ * extension "members" (Folio's members admin) is enabled, boot checks that the admission class
+ * is one and adds the member pages' routes under the members path.
  */
 final class MembersServiceProvider extends ServiceProvider
 {
@@ -93,9 +93,6 @@ final class MembersServiceProvider extends ServiceProvider
         if (!$extensions->isEnabled('members')) {
             return;
         }
-        if (!$extensions->isEnabled('rbac')) {
-            throw new \RuntimeException('The members extension needs the rbac extension for the member roles: run preflow folio:extensions:enable rbac.');
-        }
         $container->get(Admission::class);
         self::routes($container);
     }
@@ -129,9 +126,10 @@ final class MembersServiceProvider extends ServiceProvider
     }
 
     /**
-     * The site's resources/members/ as the first path of @members: the namespace searches its
-     * paths in registration order, and Folio adds the package's own when it boots, after this.
-     * The package's templates are also @members-package/, to extend a page from its override.
+     * The site's resources/members/ as the first path of @members, then the package's own: the
+     * namespace searches its paths in registration order (Folio adds its members admin's
+     * templates when it boots, after these). The package's templates are also
+     * @members-package/, to extend a page from its override.
      */
     private static function siteTemplates(Container $c): void
     {
@@ -143,6 +141,7 @@ final class MembersServiceProvider extends ServiceProvider
         if (is_dir($dir)) {
             $engine->addNamespace('members', $dir);
         }
+        $engine->addNamespace('members', __DIR__ . '/templates');
         // An override that extends the page it replaces cannot name it @members/ (that is itself).
         $engine->addNamespace('members-package', __DIR__ . '/templates');
     }

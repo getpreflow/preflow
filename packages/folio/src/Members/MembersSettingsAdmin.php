@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Members\Types;
+namespace Preflow\Folio\Members;
 
 use Preflow\Folio\Extension\Attributes\FolioType;
 use Preflow\Folio\Extension\FieldPlaceholder;

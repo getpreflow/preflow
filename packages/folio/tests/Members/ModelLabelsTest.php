@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Members\Tests;
+namespace Preflow\Folio\Tests\Members;
 
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -10,8 +10,8 @@ use Preflow\Data\ModelLabelKeys;
 use Preflow\Folio\Extension\Attributes\FolioExtension;
 use Preflow\I18n\TranslationRegistry;
 use Preflow\I18n\Translator;
-use Preflow\Members\Tests\Support\Dom;
-use Preflow\Members\Tests\Support\MembersScaffold;
+use Preflow\Folio\Tests\Members\Support\Dom;
+use Preflow\Folio\Tests\Members\Support\MembersScaffold;
 
 /**
  * The member model's labels (type, sidebar section, fields) are keys of the admin group
@@ -31,7 +31,7 @@ final class ModelLabelsTest extends TestCase
 
     public function test_the_package_declares_the_admin_group_and_the_extension_uses_it(): void
     {
-        $root = dirname(__DIR__);
+        $root = dirname(__DIR__, 3) . '/members';
         $composer = json_decode((string) file_get_contents($root . '/composer.json'), true);
         $installed = sys_get_temp_dir() . '/preflow_installed_' . bin2hex(random_bytes(4)) . '.json';
         file_put_contents($installed, (string) json_encode(['packages' => [[...$composer, 'install-path' => $root]]]));
@@ -43,15 +43,15 @@ final class ModelLabelsTest extends TestCase
 
         $this->assertSame('admin', $registry->scope('members-admin'));
         $this->assertSame('public', $registry->scope('members'));
-        $meta = (new \ReflectionClass(\Preflow\Members\Extension::class))->getAttributes(FolioExtension::class)[0]->newInstance();
+        $meta = (new \ReflectionClass(\Preflow\Folio\Members\Extension::class))->getAttributes(FolioExtension::class)[0]->newInstance();
         $this->assertSame('members-admin', $meta->translations);
     }
 
     public function test_every_label_of_the_model_has_a_text_in_en_de_and_fr(): void
     {
         $translator = new Translator('/no/such/lang', 'en', 'en');
-        $translator->addDefaults('members-admin', dirname(__DIR__) . '/lang');
-        $schema = json_decode((string) file_get_contents(dirname(__DIR__) . '/src/models/member.json'), true);
+        $translator->addDefaults('members-admin', dirname(__DIR__, 3) . '/members/lang');
+        $schema = json_decode((string) file_get_contents(dirname(__DIR__, 2) . '/src/Members/models/member.json'), true);
         $keys = [...array_keys(ModelLabelKeys::derive($schema, 'members-admin')), ModelLabelKeys::section('members-admin', 'members')];
 
         $this->assertNotContains('members-admin.fields.member.password_hash.label', $keys, 'hidden');

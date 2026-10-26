@@ -16,8 +16,8 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * A temp site with Folio, rbac and the members extension enabled (a fake
- * vendor/composer/installed.json lists both packages): staff from config/auth.php (admin),
+ * A temp site with Folio, rbac and the members extension (Folio's members admin) enabled (a
+ * fake vendor/composer/installed.json lists both packages): staff from config/auth.php (admin),
  * the members guard as the package README documents it, members on SQLite (alias "members"),
  * en/de, mail into the in-memory transport.
  */
@@ -88,7 +88,7 @@ trait MembersScaffold
         ]));
         $this->write('vendor/composer/installed.json', (string) json_encode(['packages' => [
             ['name' => 'preflow/rbac', 'extra' => ['folio' => ['extension' => 'Preflow\\Rbac\\Extension']]],
-            ['name' => 'preflow/members', 'extra' => ['folio' => ['extension' => 'Preflow\\Members\\Extension']]],
+            ['name' => 'preflow/members'], // its admin is Folio's built-in extension "members"
         ]]));
         $this->write('config/folio/extensions.json', '{"enabled": {"members": {"disabled_parts": []}, "rbac": {"disabled_parts": []}}}');
         $this->write('app/pages/index.twig', 'HOME');

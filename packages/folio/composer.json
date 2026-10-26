@@ -25,7 +25,8 @@
         "phpunit/phpunit": "^11.0"
     },
     "suggest": {
-        "openspout/openspout": "^4 — Excel export of admin lists (the Export button shows once it is installed)"
+        "openspout/openspout": "^4 — Excel export of admin lists (the Export button shows once it is installed)",
+        "preflow/members": "Member accounts; Folio adds their admin (the built-in extension \"members\", which needs preflow/rbac)"
     },
     "conflict": {
         "preflow/auth": "<0.27",

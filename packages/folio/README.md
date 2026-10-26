@@ -855,7 +855,10 @@ copied from it.
 
 **Where they live.** A project extension is a folder `app/Folio/{Dir}/` with an
 `Extension.php` (class `App\Folio\{Dir}\Extension`). A package names its extension class
-in `composer.json`: `"extra": {"folio": {"extension": "Vendor\\Pkg\\Extension"}}`.
+in `composer.json`: `"extra": {"folio": {"extension": "Vendor\\Pkg\\Extension"}}`. Folio
+carries one itself: the members admin (`members`, in `src/Members/`), there when Composer lists
+`preflow/members`; it needs the `rbac` extension enabled. A project's or package's own extension
+named `members` takes its place.
 
 ```php
 // app/Folio/Demo/Extension.php

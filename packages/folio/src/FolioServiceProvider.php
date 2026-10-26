@@ -99,6 +99,13 @@ final class FolioServiceProvider extends ServiceProvider
             cacheFile: $app->basePath('storage/cache/folio-extensions.cache'),
         );
         $container->instance(ExtensionRegistry::class, $extensions);
+        // The members admin (the built-in extension "members", with preflow/members): the members
+        // core reads the owner's settings from Settings → Members through it.
+        if (class_exists(\Preflow\Members\Members::class)) {
+            $container->singleton(\Preflow\Members\MembersSettings::class, static fn (Container $c): \Preflow\Members\MembersSettings => new \Preflow\Folio\Members\FolioMembersSettings(
+                $c->get(ExtensionSettings::class),
+            ));
+        }
         // Models go under Content unless their JSON names a "section"; their settings forms
         // (Extension::settings()) are singleton types under Settings.
         // Each extension may adjust its models first (prepareModel: storage, options from config).
@@ -798,6 +805,7 @@ final class FolioServiceProvider extends ServiceProvider
         }
 
         $app = $container->get(Application::class);
+        self::requireRbacForMembers($container->get(ExtensionRegistry::class));
         $screens = $container->get(ScreenRegistry::class);
         $this->registerFieldKinds($container, $app);
         $customizations = $container->get(Customizations::class);
@@ -1095,6 +1103,15 @@ final class FolioServiceProvider extends ServiceProvider
 
         if (file_exists($app->basePath('config/auth.php'))) {
             $access->markStaffGuard($container->get(\Preflow\Auth\AuthManager::class)->defaultGuardName());
+        }
+    }
+
+    /** The members admin seeds and shows the member roles, which are rbac's. */
+    private static function requireRbacForMembers(ExtensionRegistry $extensions): void
+    {
+        if ($extensions->isEnabled('members') && $extensions->get('members')->class === \Preflow\Folio\Members\Extension::class
+            && !$extensions->isEnabled('rbac')) {
+            throw new \RuntimeException('The members extension needs the rbac extension for the member roles: run preflow folio:extensions:enable rbac.');
         }
     }
 

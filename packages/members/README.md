@@ -16,8 +16,9 @@ php preflow folio:extensions:apply
 
 - Add `Preflow\Members\MembersServiceProvider` to `config/providers.php` (after
   `FolioServiceProvider` and `RbacServiceProvider`).
-- The member roles (`pending`, `member`, `rejected`) need the `rbac` extension; booting
-  without it is an error. `folio:extensions:apply` creates the roles that are missing and
+- The members admin (the `members` extension: member list, Decision panel, Settings →
+  Members) is Folio's, there once this package is installed. Its member roles (`pending`,
+  `member`, `rejected`) need the `rbac` extension; booting without it is an error. `folio:extensions:apply` creates the roles that are missing and
   never changes one that exists.
 - Members live in the storage alias `members` when `config/data.php` has it, else on
   `default`:
@@ -169,7 +170,7 @@ with `"extends": true`).
 
 The pages are `@members/{register,confirm,login,forgot,reset,resend,check-inbox,thanks,closed,account}.twig`
 plus the shared `_card.twig`, all extending the configured `layout`. `@members/decision.twig` is
-the Decision panel in Folio (a fragment in the admin, not a page). A site overrides one by
+the Decision panel of Folio's members admin (a fragment in the admin, not a page). A site overrides one by
 putting a file of the same name in `resources/members/` (searched before the package; a new
 directory needs a fresh request to be picked up).
 
