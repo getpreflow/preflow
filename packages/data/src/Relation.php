@@ -15,6 +15,7 @@ final readonly class Relation
         public string $target,
         public bool $multiple,
         public OnDelete $onDelete,
+        public OnDelete $onSelfDelete,
         public ?string $labelField,
     ) {}
 
@@ -42,6 +43,9 @@ final readonly class Relation
             ));
         }
 
+        // Own-account deletion: an unset or unknown value follows onDelete.
+        $onSelfDelete = OnDelete::tryFrom((string) ($config['onSelfDelete'] ?? '')) ?? $onDelete;
+
         $labelField = $config['labelField'] ?? null;
 
         return new self(
@@ -50,6 +54,7 @@ final readonly class Relation
             target: $to,
             multiple: (bool) ($config['multiple'] ?? false),
             onDelete: $onDelete,
+            onSelfDelete: $onSelfDelete,
             labelField: is_string($labelField) && $labelField !== '' ? $labelField : null,
         );
     }

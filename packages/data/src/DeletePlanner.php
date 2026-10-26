@@ -25,8 +25,9 @@ final class DeletePlanner
     /**
      * @param list<string> $ids
      * @param (\Closure(TypeDefinition): list<TypeDefinition>)|null $copies
+     * @param DeletedBy $by whose rule applies: onDelete (Staff) or onSelfDelete (Self)
      */
-    public function plan(string $type, array $ids, ?\Closure $copies = null): DeletePlan
+    public function plan(string $type, array $ids, ?\Closure $copies = null, DeletedBy $by = DeletedBy::Staff): DeletePlan
     {
         $this->registry->get($type); // unknown root type is an error
         $roots = $this->unique(array_filter(array_map('strval', $ids), static fn (string $id) => $id !== ''));
@@ -39,7 +40,7 @@ final class DeletePlanner
         while ($queue !== []) {
             [$target, $newIds] = array_shift($queue);
             foreach ($this->dm->relationsTo($target) as $relation) {
-                if ($relation->onDelete !== OnDelete::Cascade) {
+                if (self::rule($relation, $by) !== OnDelete::Cascade) {
                     continue;
                 }
                 $found = [];
@@ -64,13 +65,13 @@ final class DeletePlanner
         foreach ($deletes as $target => $idSet) {
             $targetIds = array_map('strval', array_keys($idSet));
             foreach ($this->dm->relationsTo($target) as $relation) {
-                if ($relation->onDelete === OnDelete::Cascade) {
+                if (self::rule($relation, $by) === OnDelete::Cascade) {
                     continue; // already part of $deletes
                 }
                 $def = $this->registry->get($relation->type);
                 $doomed = $deletes[$relation->type] ?? [];
 
-                if ($relation->onDelete === OnDelete::Restrict) {
+                if (self::rule($relation, $by) === OnDelete::Restrict) {
                     $copyCache[$relation->type] ??= $copies === null ? [] : $copies($def);
                     foreach ([$def, ...$copyCache[$relation->type]] as $source) {
                         foreach ($this->pointers($source, $relation->field, $targetIds) as $id => $_) {
@@ -106,6 +107,11 @@ final class DeletePlanner
             rootType: $type,
             rootIds: $roots,
         );
+    }
+
+    private static function rule(Relation $relation, DeletedBy $by): OnDelete
+    {
+        return $by === DeletedBy::Self ? $relation->onSelfDelete : $relation->onDelete;
     }
 
     /**

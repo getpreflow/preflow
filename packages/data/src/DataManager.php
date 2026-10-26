@@ -83,10 +83,11 @@ final class DataManager
      * @param (\Closure(TypeDefinition): list<TypeDefinition>)|null $copies extra definitions
      *        holding copies of a type's records (e.g. a published shadow table), queried with
      *        the type's relation fields; they count toward restrictions only
+     * @param DeletedBy $by Self applies each relation's onSelfDelete rule instead of onDelete
      */
-    public function deletePlan(string $type, array $ids, ?\Closure $copies = null): DeletePlan
+    public function deletePlan(string $type, array $ids, ?\Closure $copies = null, DeletedBy $by = DeletedBy::Staff): DeletePlan
     {
-        return (new DeletePlanner($this, $this->requireTypeRegistry()))->plan($type, $ids, $copies);
+        return (new DeletePlanner($this, $this->requireTypeRegistry()))->plan($type, $ids, $copies, $by);
     }
 
     /**

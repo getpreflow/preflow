@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Content;
 
 use Preflow\Data\DataManager;
+use Preflow\Data\DeletedBy;
 use Preflow\Data\DeletePlan;
 use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
@@ -65,7 +66,7 @@ final class RecordDeleter
      */
     public function plan(string $type, array $ids): DeletePlan
     {
-        return $this->dm->deletePlan($type, $this->existing($type, $ids), fn (TypeDefinition $def): array => $this->copies($def));
+        return $this->dm->deletePlan($type, $this->existing($type, $ids), fn (TypeDefinition $def): array => $this->copies($def), DeletedBy::Staff);
     }
 
     /**
