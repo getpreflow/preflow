@@ -536,7 +536,7 @@ final class CodesTest extends TestCase
         $this->assertArrayHasKey('page', $summary['tables']);
         $this->assertArrayNotHasKey('code', $summary['tables']);
         $this->assertArrayNotHasKey('code_redemption', $summary['tables']);
-        $this->assertSame(['page'], array_values(array_diff(array_keys($summary['tables']), ['folio_assets'])));
+        $this->assertSame(['page'], array_values(array_diff(array_keys($summary['tables']), ['folio_assets', 'folio_translation_overrides'])));
     }
 
     #[Group('mysql')]

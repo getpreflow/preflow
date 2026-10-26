@@ -38,6 +38,8 @@ final class AdminLocaleMiddleware implements MiddlewareInterface
         private readonly InterfaceLocales $locales,
         private readonly UserPreferences $preferences,
         private readonly ?TemplateEngineInterface $engine = null,
+        /** @var (\Closure(): void)|null run when an admin request starts (not a nested one): the overrides' cache reads afresh */
+        private readonly ?\Closure $onStart = null,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -46,6 +48,9 @@ final class AdminLocaleMiddleware implements MiddlewareInterface
         $previousLocale = $this->translator->getLocale();
         $previousOverrides = $this->translator->usesOverrides();
         $previousCurrent = $this->locales->currentOrNull();
+        if (!$previousOverrides && $this->onStart !== null) {
+            ($this->onStart)();
+        }
 
         $this->enter($locale, true, $locale);
         $previousText = \Preflow\Folio\FolioText::use($this->translator); // Folio's words in PHP (field types, notices)

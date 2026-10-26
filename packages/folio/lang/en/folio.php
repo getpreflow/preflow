@@ -60,6 +60,7 @@ return [
         'assets' => 'Assets',
         'extensions' => 'Extensions',
         'cache' => 'Cache',
+        'translations' => 'Translations',
     ],
     'dashboard' => [
         'title' => 'Dashboard',
@@ -374,6 +375,7 @@ return [
         'blocks' => 'Folio blocks',
         'data_json' => 'JSON storage query cache',
         'blade' => 'Compiled Blade templates',
+        'translations' => 'Folio translations',
     ],
     // Settings → Extensions.
     'extensions' => [
@@ -431,6 +433,25 @@ return [
         'wrong_current' => 'The current password is wrong.',
         'new_too_short' => 'The new password needs at least :min characters.',
         'password_changed' => 'Password changed. Your other sessions are signed out.',
+    ],
+    // Settings → Translations (the admins' overrides of interface texts).
+    'translations' => [
+        'intro' => 'Change the interface texts for one language. A changed text replaces the delivered one in the admin for everyone using that language; Reset brings the delivered text back. Plain text only.',
+        'group' => 'Group',
+        'group_site' => 'Site (model labels)',
+        'search_label' => 'Search keys and texts',
+        'key' => 'Key',
+        'delivered' => 'Delivered text',
+        'site_file' => 'Site file',
+        'override' => 'Changed text',
+        'override_label' => 'Changed text for :key',
+        'changed' => 'Changed',
+        'reset' => 'Reset',
+        'saved' => 'Saved: :key',
+        'reset_done' => ':key shows the delivered text again.',
+        'no_markup' => 'Plain text only: < and > are not allowed.',
+        'not_editable' => 'This text cannot be changed here.',
+        'empty' => 'No texts match.',
     ],
     'locale' => [
         'not_offered' => 'This language is not offered.',

@@ -187,6 +187,38 @@ final class TranslatorLayersTest extends TestCase
         $this->assertSame('admin', $t->scope('late'));
     }
 
+    public function test_overridable_prefixes_of_a_group_without_scope(): void
+    {
+        $t = $this->translator();
+        $this->langFile('lang', 'en', 'site', ['types' => ['app' => ['label' => 'Apps']], 'greeting' => 'Hi']);
+        $t->setOverrides(self::overrides(['en' => [
+            'site.types.app.label' => 'Programs', 'site.greeting' => 'Yo', 'pub.a' => 'Public override',
+        ]]));
+        $t->overridable('site.types.');
+        $t->overridable('pub.');
+
+        $this->assertSame('Apps', $t->get('site.types.app.label'), 'overrides off');
+        $t->useOverrides(true);
+        $this->assertSame('Programs', $t->get('site.types.app.label'), 'under an overridable prefix');
+        $this->assertTrue($t->has('site.types.app.label'));
+        $this->assertSame('Hi', $t->get('site.greeting'), 'other keys of the group keep the files');
+        $this->assertSame('Public site A', $t->get('pub.a'), 'a public group never takes overrides');
+        $this->assertTrue($t->isOverridable('site.types.app.label'));
+        $this->assertTrue($t->isOverridable('adm.a'));
+        $this->assertFalse($t->isOverridable('site.greeting'));
+        $this->assertFalse($t->isOverridable('pub.a'));
+    }
+
+    public function test_package_and_site_entries_one_layer_each(): void
+    {
+        $t = $this->translator();
+
+        $this->assertSame(['adm.a' => 'Package A', 'adm.b' => 'Package B', 'adm.c' => 'Package C'], $t->packageEntries('adm', 'en'));
+        $this->assertSame(['adm.b' => 'Site B', 'adm.c' => 'Site C'], $t->siteEntries('adm', 'en'));
+        $this->assertSame([], $t->packageEntries('adm', 'fr'));
+        $this->assertSame([], $t->siteEntries('nope', 'en'));
+    }
+
     public function test_fallback_locale_is_readable(): void
     {
         $this->assertSame('de', (new Translator($this->tmp(), 'fr', 'de'))->getFallbackLocale());

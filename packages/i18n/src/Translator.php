@@ -8,7 +8,8 @@ namespace Preflow\I18n;
  * Translations by dot key ("group.area.name"). For each locale of the fallback chain (the
  * asked locale, then the fallback locale given to the constructor, then "en") the first
  * layer that has the key wins: an admin override (only when overrides are on and the
- * group's scope is "admin"), then the site's lang/{locale}/{group}.php key by key, then
+ * group's scope is "admin", or the key is under a prefix made overridable()), then the site's
+ * lang/{locale}/{group}.php key by key, then
  * the package's file (addDefaults(), usually through TranslationRegistry). A key found
  * nowhere comes back as the key itself.
  */
@@ -22,6 +23,9 @@ final class Translator
     private TranslationOverrides $overrides;
 
     private bool $overridesOn = false;
+
+    /** @var list<string> key prefixes of groups without a scope that take overrides too (overridable()) */
+    private array $overridablePrefixes = [];
 
     /** @var array<string, array<string, mixed>> Cache: "locale.group" => translations */
     private array $loaded = [];
@@ -131,6 +135,33 @@ final class Translator
         $this->overrides = $overrides;
     }
 
+    /**
+     * Keys under this prefix ("site.types.") take overrides too, although their group has no
+     * scope: admin-only texts in a site's own group (model labels). Never for a public group.
+     */
+    public function overridable(string $prefix): void
+    {
+        if ($prefix !== '' && !in_array($prefix, $this->overridablePrefixes, true)) {
+            $this->overridablePrefixes[] = $prefix;
+        }
+    }
+
+    /** Whether an override would apply to the key (when overrides are on): an admin group's, or under an overridable() prefix of a group without scope. */
+    public function isOverridable(string $key): bool
+    {
+        $scope = $this->scopes[strstr($key, '.', true) ?: $key] ?? null;
+        if ($scope !== null) {
+            return $scope === 'admin';
+        }
+        foreach ($this->overridablePrefixes as $prefix) {
+            if (str_starts_with($key, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** Overrides are off by default; Folio turns them on for admin requests. */
     public function useOverrides(bool $on): void
     {
@@ -198,6 +229,42 @@ final class Translator
         return $entries;
     }
 
+    /**
+     * A group's texts from the packages' files only, in exactly one locale, flattened.
+     *
+     * @return array<string, string>
+     */
+    public function packageEntries(string $group, string $locale): array
+    {
+        return $this->layerEntries($group, $locale, $this->defaults[$group] ?? []);
+    }
+
+    /**
+     * A group's texts from the site's lang/{locale}/{group}.php only, flattened.
+     *
+     * @return array<string, string>
+     */
+    public function siteEntries(string $group, string $locale): array
+    {
+        return $this->layerEntries($group, $locale, [$this->langPath]);
+    }
+
+    /**
+     * @param list<string> $dirs
+     * @return array<string, string>
+     */
+    private function layerEntries(string $group, string $locale, array $dirs): array
+    {
+        $translations = [];
+        foreach ($dirs as $dir) {
+            $translations = array_replace_recursive($translations, self::read($dir . '/' . $locale . '/' . $group . '.php'));
+        }
+        $entries = [];
+        self::flatten($translations, $group, $entries);
+
+        return $entries;
+    }
+
     public function getLocale(): string
     {
         return $this->locale;
@@ -230,7 +297,7 @@ final class Translator
     /** The text in exactly one locale: an override (when it applies), else the files. */
     private function valueIn(string $key, string $locale): ?string
     {
-        if ($this->overridesOn && ($this->scopes[strstr($key, '.', true) ?: $key] ?? null) === 'admin') {
+        if ($this->overridesOn && $this->isOverridable($key)) {
             $override = $this->overrides->get($locale, $key);
             if ($override !== null) {
                 return $override;

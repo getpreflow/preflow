@@ -9,6 +9,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Publishing\ShadowTypes;
+use Preflow\Folio\Translations\StoredOverrides;
 use Preflow\Media\MediaConfig;
 use Preflow\Media\MediaLibrary;
 
@@ -17,7 +18,8 @@ use Preflow\Media\MediaLibrary;
  * revision shadows of publishing types), the asset records, the media
  * directory, the private media directory (its files travel with their asset
  * records, archive root "private-media"), the earlier files of replaced assets
- * (MediaConfig versions_dir, archive root "media-versions") and legacy uploads. Nothing else (code, .env, caches, sessions,
+ * (MediaConfig versions_dir, archive root "media-versions") and legacy uploads, and the
+ * admins' interface text overrides (StoredOverrides). Nothing else (code, .env, caches, sessions,
  * other tables such as user_tokens) is content.
  */
 final class ContentSet
@@ -29,6 +31,8 @@ final class ContentSet
         private readonly ?string $uploadsDir,
         private readonly ?string $privateDir = null,
         private readonly ?string $versionsDir = null,
+        /** @var (\Closure(list<string>): void)|null told the tables an import changed */
+        private readonly ?\Closure $onImport = null,
     ) {}
 
     public static function fromApp(Application $app): self
@@ -50,6 +54,10 @@ final class ContentSet
         }
         $assets = $c->get(MediaLibrary::class)->definition();
         $tables[$assets->table] = $assets;
+        // The admins' text overrides travel with the content (the table is made when missing, so an export always reads it).
+        $overrides = $c->get(StoredOverrides::class);
+        $overrides->ensureTable();
+        $tables[StoredOverrides::TABLE] = $overrides->definition();
         ksort($tables);
 
         $cfg = is_file($app->basePath('config/folio.php')) ? (require $app->basePath('config/folio.php')) : [];
@@ -63,7 +71,25 @@ final class ContentSet
             is_string($uploads) ? rtrim($uploads, '/') : null,
             $media->privateDir !== null ? rtrim($media->privateDir, '/') : null,
             $media->versionsDir !== null ? rtrim($media->versionsDir, '/') : null,
+            // Imported overrides replace the compiled ones.
+            static function (array $tables) use ($overrides): void {
+                if (in_array(StoredOverrides::TABLE, $tables, true)) {
+                    $overrides->forget();
+                }
+            },
         );
+    }
+
+    /**
+     * Called by Importer::apply() with the tables it changed.
+     *
+     * @param list<string> $tables
+     */
+    public function imported(array $tables): void
+    {
+        if ($this->onImport !== null) {
+            ($this->onImport)($tables);
+        }
     }
 
     /** @return array<string, TypeDefinition> */

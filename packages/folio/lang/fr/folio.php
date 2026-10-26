@@ -54,6 +54,7 @@ return [
         'assets' => 'Médias',
         'extensions' => 'Extensions',
         'cache' => 'Cache',
+        'translations' => 'Traductions',
     ],
     'dashboard' => [
         'title' => 'Tableau de bord',
@@ -357,6 +358,7 @@ return [
         'blocks' => 'Blocs Folio',
         'data_json' => 'Cache des requêtes du stockage JSON',
         'blade' => 'Templates Blade compilés',
+        'translations' => 'Traductions de Folio',
     ],
     'extensions' => [
         'changes' => 'Les modifications sont écrites dans config/folio/extensions.json et s’appliquent à la requête suivante. Les étapes d’installation ne s’exécutent pas ici : lancez <code>preflow folio:extensions:apply</code> (les déploiements le font). La désactivation conserve toutes les données.',
@@ -413,6 +415,25 @@ return [
         'wrong_current' => 'Le mot de passe actuel est incorrect.',
         'new_too_short' => 'Le nouveau mot de passe doit comporter au moins :min caractères.',
         'password_changed' => 'Mot de passe changé. Vos autres sessions sont déconnectées.',
+    ],
+    // Settings → Translations (the admins' overrides of interface texts).
+    'translations' => [
+        'intro' => 'Modifiez ici les textes de l’interface pour une langue. Un texte modifié remplace le texte livré dans l’administration pour toutes les personnes qui utilisent cette langue ; « Réinitialiser » rétablit le texte livré. Texte brut uniquement.',
+        'group' => 'Groupe',
+        'group_site' => 'Site (libellés des modèles)',
+        'search_label' => 'Rechercher dans les clés et les textes',
+        'key' => 'Clé',
+        'delivered' => 'Texte livré',
+        'site_file' => 'Fichier du site',
+        'override' => 'Texte modifié',
+        'override_label' => 'Texte modifié pour :key',
+        'changed' => 'Modifié',
+        'reset' => 'Réinitialiser',
+        'saved' => 'Enregistré : :key',
+        'reset_done' => ':key affiche à nouveau le texte livré.',
+        'no_markup' => 'Texte brut uniquement : < et > ne sont pas autorisés.',
+        'not_editable' => 'Ce texte ne peut pas être modifié ici.',
+        'empty' => 'Aucun texte ne correspond.',
     ],
     'locale' => [
         'not_offered' => 'Cette langue n’est pas proposée.',

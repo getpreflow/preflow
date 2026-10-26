@@ -566,6 +566,8 @@ form:has(> .folio-form-actions) { container-type: inline-size; }
 .folio-field select,
 .folio-assets-toolbar input[type="search"],
 .folio-assets-toolbar select,
+.folio-translations input[type="text"],
+.folio-translations textarea,
 .folio-share-url,
 .folio-publish-at input,
 .folio-auth-card input {
@@ -1547,6 +1549,12 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
 /* ---- Settings → Cache ---- */
 .folio-cache-opcache { margin-top: 28px; }
 .folio-cache-opcache h2 { margin: 0; font-size: 15px; font-weight: 620; }
+
+/* ---- Settings → Translations ---- */
+.folio-translations td { vertical-align: top; }
+.folio-translations code { word-break: break-all; }
+.folio-table.folio-translations .folio-row-actions { justify-content: flex-start; flex-wrap: wrap; min-width: 16rem; }
+.folio-translations .folio-row-actions :is(input[type="text"], textarea) { flex: 1 1 14rem; }
 
 /* ---- side panels and tabs ---- */
 /* Narrow: the side panels stack right under the form fields. From 1280px they sit in a sticky

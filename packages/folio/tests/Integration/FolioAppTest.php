@@ -232,7 +232,8 @@ final class FolioAppTest extends TestCase
             ['Notes', '/folio/note'],
             ['Pages', '/folio/page'],
             ['Assets', '/folio/assets'],
-            ['Cache', '/folio/cache'], // Settings → Cache is always there
+            ['Translations', '/folio/translations'], // Settings → Translations and Cache are always there
+            ['Cache', '/folio/cache'],
         ], $items);
         $this->assertSame(['Content', 'Library', 'Settings'], $labels[1]);
         $this->assertSame(1, substr_count($nav[0], 'class="active" aria-current="page"'));

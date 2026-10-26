@@ -146,6 +146,14 @@ final class FolioServiceProvider extends ServiceProvider
         $caches = $container->get(\Preflow\Core\Cache\CacheRegistry::class);
         $caches->register(new \Preflow\Core\Cache\FileCache('folio.extensions', 'Folio extensions', $app->basePath('storage/cache/folio-extensions.cache')));
         $caches->register(new \Preflow\Core\Cache\FileCache('folio.blocks', 'Folio blocks', $app->basePath('storage/cache/folio-blocks.cache')));
+        // Admin text overrides (Settings → Translations), compiled per locale.
+        $overridesCache = new \Preflow\Folio\Translations\OverridesCache($app->basePath('storage/cache'));
+        $container->instance(\Preflow\Folio\Translations\OverridesCache::class, $overridesCache);
+        $caches->register($overridesCache);
+        $container->singleton(\Preflow\Folio\Translations\StoredOverrides::class, fn (Container $c) => new \Preflow\Folio\Translations\StoredOverrides(
+            $c->get(DataManager::class),
+            $c->get(\Preflow\Folio\Translations\OverridesCache::class),
+        ));
 
         // One request-scoped content locale shared by the frontend, preview and field types.
         $container->instance(ContentLocale::class, new ContentLocale($locales ?? \Preflow\Data\Locales::single('en')));
@@ -214,6 +222,8 @@ final class FolioServiceProvider extends ServiceProvider
                 ...($extensions->all() !== [] ? [$c->get(\Preflow\Folio\Extension\ExtensionState::class)->definition()] : []),
                 // With sign-in, the users' own settings (the interface language).
                 ...(file_exists($app->basePath('config/auth.php')) ? [$c->get(\Preflow\Folio\Users\UserPreferences::class)->definition()] : []),
+                // The admins' interface text overrides (Settings → Translations).
+                $c->get(\Preflow\Folio\Translations\StoredOverrides::class)->definition(),
             ],
         ));
         $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
@@ -234,6 +244,16 @@ final class FolioServiceProvider extends ServiceProvider
             (bool) ($folioCfg['extensions']['allow_admin_changes'] ?? $app->config()->get('app.debug', false)),
         ));
 
+        $container->bind(\Preflow\Folio\Http\TranslationsController::class, fn (Container $c) => new \Preflow\Folio\Http\TranslationsController(
+            $c->get(\Preflow\Folio\Translations\StoredOverrides::class),
+            new \Preflow\Folio\Translations\EditableTexts(
+                self::translator($c, $app),
+                $c->bound(\Preflow\I18n\DerivedKeys::class) ? $c->get(\Preflow\I18n\DerivedKeys::class) : null,
+            ),
+            $c->get(\Preflow\Folio\Http\InterfaceLocales::class),
+            $c->get(TemplateEngineInterface::class),
+            $prefix,
+        ));
         $container->bind(\Preflow\Folio\Http\CacheController::class, fn (Container $c) => new \Preflow\Folio\Http\CacheController(
             $c->get(\Preflow\Core\Cache\CacheRegistry::class),
             $c->get(\Preflow\Core\Cache\OpcacheStatus::class),
@@ -500,6 +520,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Http\InterfaceLocales::class),
             $c->get(\Preflow\Folio\Users\UserPreferences::class),
             $c->has(TemplateEngineInterface::class) ? $c->get(TemplateEngineInterface::class) : null,
+            static fn () => $c->get(\Preflow\Folio\Translations\OverridesCache::class)->startRequest(),
         ));
         $container->bind(\Preflow\Folio\Http\LocaleController::class, fn (Container $c) => new \Preflow\Folio\Http\LocaleController(
             $c->get(\Preflow\Folio\Users\UserPreferences::class),
@@ -673,8 +694,32 @@ final class FolioServiceProvider extends ServiceProvider
         // Declared in composer.json (extra.preflow.translations); this covers apps whose
         // Composer metadata doesn't list Folio (test apps, a core before 0.37).
         $translator->addDefaultsIfMissing('folio', dirname(__DIR__) . '/lang', 'admin');
+        self::useOverrides($translator, $c);
 
         return $translator;
+    }
+
+    /**
+     * The admins' overrides (Settings → Translations) as the translator's override layer. They
+     * apply on admin requests only (AdminLocaleMiddleware turns them on): to admin groups and
+     * to the site's own model labels, which are admin-only texts in the scope-less "site" group.
+     */
+    private static function useOverrides(\Preflow\I18n\Translator $translator, Container $c): void
+    {
+        // Built on first use (an admin request): the store needs the DataManager, which a public request never asks for here.
+        $translator->setOverrides(new class ($c) implements \Preflow\I18n\TranslationOverrides {
+            private ?\Preflow\Folio\Translations\StoredOverrides $store = null;
+
+            public function __construct(private readonly Container $container) {}
+
+            public function get(string $locale, string $key): ?string
+            {
+                return ($this->store ??= $this->container->get(\Preflow\Folio\Translations\StoredOverrides::class))->get($locale, $key);
+            }
+        });
+        foreach (['types', 'fields', 'options', 'sections'] as $area) {
+            $translator->overridable(\Preflow\Folio\Translations\EditableTexts::SITE . '.' . $area . '.');
+        }
     }
 
     /**
@@ -717,6 +762,7 @@ final class FolioServiceProvider extends ServiceProvider
         // register Folio before it boots its translator.
         if ($container->bound(\Preflow\I18n\Translator::class)) {
             $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('folio', dirname(__DIR__) . '/lang', 'admin');
+            self::useOverrides($container->get(\Preflow\I18n\Translator::class), $container);
         }
 
         $app = $container->get(Application::class);
@@ -731,6 +777,8 @@ final class FolioServiceProvider extends ServiceProvider
         if ($container->get(ExtensionRegistry::class)->all() !== []) {
             $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.extensions'), rtrim($this->prefix($app), '/') . '/extensions', 'ui-settings', 'folio.extensions', 900);
         }
+        // Settings → Translations, on every site (the admins' overrides of interface texts).
+        $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.translations'), rtrim($this->prefix($app), '/') . '/translations', 'ui-settings', 'translations.edit', 920);
         // Settings → Cache, on every site (Folio registers its own caches).
         $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.cache'), rtrim($this->prefix($app), '/') . '/cache', 'ui-settings', 'folio.cache', 950);
         // Extension screens in the sidebar (filtered by their permission).
@@ -1000,6 +1048,7 @@ final class FolioServiceProvider extends ServiceProvider
         $registry->declare('folio.dashboard', 'Dashboard', 'Folio');
         $registry->declare('folio.extensions', 'Extensions', 'Folio');
         $registry->declare('folio.cache', 'Cache', 'Folio');
+        $registry->declare('translations.edit', 'Translations', 'Folio');
         foreach ($container->get(TypeCatalog::class)->all() as $listing) {
             $registry->declarePattern($listing->key . '.*');
             foreach (['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'] as $action => $verb) {

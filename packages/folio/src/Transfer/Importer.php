@@ -14,8 +14,8 @@ use Preflow\Data\Query;
  */
 final class Importer
 {
-    /** Record ids an archive can carry (file names; no leading dot, so globbing sees them). */
-    public const ID = '/^[A-Za-z0-9_-][A-Za-z0-9._-]*$/';
+    /** Record ids an archive can carry (file names; no leading dot, so globbing sees them; ":" for "{locale}:{key}" of the translation overrides). */
+    public const ID = '/^[A-Za-z0-9_-][A-Za-z0-9._:-]*$/';
 
     public function __construct(
         private readonly ContentSet $set,
@@ -56,7 +56,11 @@ final class Importer
     public function apply(ImportPlan $plan): void
     {
         $tables = $this->set->tables();
+        $changed = [];
         foreach ($plan->tables as $table => $diff) {
+            if ($diff['added'] !== [] || $diff['changed'] !== [] || $diff['removed'] !== []) {
+                $changed[] = (string) $table;
+            }
             $def = $tables[$table];
             $driver = $this->dm->driver($def->storage);
             foreach ([...$diff['added'], ...$diff['changed']] as $id) {
@@ -67,6 +71,7 @@ final class Importer
                 $driver->delete($table, $id, $def->idField);
             }
         }
+        $this->set->imported($changed);
 
         $roots = $this->set->fileRoots();
         foreach ($plan->files as $root => $diff) {
@@ -120,7 +125,7 @@ final class Importer
                 continue;
             }
 
-            if (preg_match('#^data/([A-Za-z0-9_]+)/([A-Za-z0-9_-][A-Za-z0-9._-]*)\.json$#', $name, $m) === 1) {
+            if (preg_match('#^data/([A-Za-z0-9_]+)/([A-Za-z0-9_-][A-Za-z0-9._:-]*)\.json$#', $name, $m) === 1) {
                 if (!array_key_exists($m[1], $manifest['tables'])) {
                     throw new TransferException("Record for a table outside the manifest: {$name}");
                 }

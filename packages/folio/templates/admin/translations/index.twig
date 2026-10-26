@@ -1,0 +1,77 @@
+{% extends "@folio/admin/_layout.twig" %}
+{% block title %}Folio — {{ t('folio.nav.translations') }}{% endblock %}
+{% block page_title %}{{ t('folio.nav.translations') }}{% endblock %}
+{% block content %}
+    <div class="folio-notice" role="status"><p>{{ t('folio.translations.intro') }}</p></div>
+    {# One GET form: group, language and search stay in the URL. #}
+    <form class="folio-list-toolbar" method="get" action="{{ prefix }}/translations" role="search">
+        <label for="folio-translations-group">{{ t('folio.translations.group') }}</label>
+        <select id="folio-translations-group" name="group">
+            {% for g in groups %}
+                <option value="{{ g }}"{% if g == view.group %} selected{% endif %}>{{ g == site_group ? t('folio.translations.group_site') : g }}</option>
+            {% endfor %}
+        </select>
+        <label for="folio-translations-locale">{{ t('folio.layout.language') }}</label>
+        <select id="folio-translations-locale" name="locale">
+            {% for code, name in locales %}
+                <option value="{{ code }}"{% if code == view.locale %} selected{% endif %}>{{ name }}</option>
+            {% endfor %}
+        </select>
+        <label class="folio-list-search">
+            <span class="folio-sr">{{ t('folio.translations.search_label') }}</span>
+            <input type="search" name="q" value="{{ view.q }}" placeholder="{{ t('folio.common.search_placeholder') }}" autocomplete="off">
+        </label>
+        <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.common.search') }}</button>
+    </form>
+    {% if rows is empty %}
+        <p class="folio-help">{{ t('folio.translations.empty') }}</p>
+    {% else %}
+    <div class="folio-table-wrap">
+    <table class="folio-table folio-translations">
+        <thead><tr><th>{{ t('folio.translations.key') }}</th><th>{{ t('folio.translations.delivered') }}</th><th>{{ t('folio.translations.override') }}</th></tr></thead>
+        <tbody>
+        {% for row in rows %}
+            <tr>
+                <td><code>{{ row.key }}</code>{% if row.override is not null %}<br><span class="folio-help">{{ t('folio.translations.changed') }}</span>{% endif %}</td>
+                <td>{{ row.delivered ?? '—' }}{% if row.site is not null %}<br><span class="folio-help">{{ t('folio.translations.site_file') }}: {{ row.site }}</span>{% endif %}</td>
+                <td>
+                    <form method="post" action="{{ prefix }}/translations" class="folio-row-actions">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+                        <input type="hidden" name="locale" value="{{ view.locale }}">
+                        <input type="hidden" name="group" value="{{ view.group }}">
+                        <input type="hidden" name="q" value="{{ view.q }}">
+                        <input type="hidden" name="page" value="{{ page }}">
+                        <input type="hidden" name="key" value="{{ row.key }}">
+                        <label class="folio-sr" for="folio-translation-{{ loop.index }}">{{ t('folio.translations.override_label', {key: row.key}) }}</label>
+                        {% set text = row.override ?? '' %}
+                        {% if text matches '/\\n/' or (row.delivered ?? '')|length > 80 %}
+                            <textarea id="folio-translation-{{ loop.index }}" name="text" rows="3">{{ text }}</textarea>
+                        {% else %}
+                            <input type="text" id="folio-translation-{{ loop.index }}" name="text" value="{{ text }}">
+                        {% endif %}
+                        <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.common.save') }}</button>
+                        {% if row.override is not null %}
+                            <button type="submit" class="btn btn-ghost btn-sm" formaction="{{ prefix }}/translations/reset">{{ t('folio.translations.reset') }}</button>
+                        {% endif %}
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <nav class="folio-pager" aria-label="{{ t('folio.list.pages') }}">
+        <span class="folio-pager-count">{{ t('folio.list.pager', {start: folio_number(pager.from), end: folio_number(pager.to), total: folio_number(pager.total)}) }}</span>
+        {% if pager.last_page > 1 %}
+            <span class="folio-pager-links">
+                {% if pager.prev %}<a class="btn btn-ghost btn-sm" href="{{ pager.prev }}" rel="prev" aria-label="{{ t('folio.list.previous_page') }}">‹</a>{% endif %}
+                {% for p in pager.pages %}
+                    {% if p.current %}<span class="btn btn-ghost btn-sm is-active" aria-current="page">{{ p.n }}</span>
+                    {% else %}<a class="btn btn-ghost btn-sm" href="{{ p.href }}">{{ p.n }}</a>{% endif %}
+                {% endfor %}
+                {% if pager.next %}<a class="btn btn-ghost btn-sm" href="{{ pager.next }}" rel="next" aria-label="{{ t('folio.list.next_page') }}">›</a>{% endif %}
+            </span>
+        {% endif %}
+    </nav>
+    {% endif %}
+{% endblock %}

@@ -54,6 +54,7 @@ return [
         'assets' => 'Medien',
         'extensions' => 'Erweiterungen',
         'cache' => 'Cache',
+        'translations' => 'Übersetzungen',
     ],
     'dashboard' => [
         'title' => 'Übersicht',
@@ -357,6 +358,7 @@ return [
         'blocks' => 'Folio-Blöcke',
         'data_json' => 'Abfrage-Cache des JSON-Speichers',
         'blade' => 'Kompilierte Blade-Templates',
+        'translations' => 'Folio-Übersetzungen',
     ],
     'extensions' => [
         'changes' => 'Änderungen werden in config/folio/extensions.json geschrieben und gelten ab der nächsten Anfrage. Installationsschritte laufen hier nicht: Führe <code>preflow folio:extensions:apply</code> aus (Deploys tun das). Beim Ausschalten bleiben alle Daten erhalten.',
@@ -413,6 +415,25 @@ return [
         'wrong_current' => 'Das aktuelle Passwort ist falsch.',
         'new_too_short' => 'Das neue Passwort braucht mindestens :min Zeichen.',
         'password_changed' => 'Passwort geändert. Deine anderen Sitzungen sind abgemeldet.',
+    ],
+    // Settings → Translations (the admins' overrides of interface texts).
+    'translations' => [
+        'intro' => 'Ändere hier die Texte der Oberfläche für eine Sprache. Ein geänderter Text ersetzt den mitgelieferten im Admin für alle, die diese Sprache nutzen; „Zurücksetzen“ stellt den mitgelieferten Text wieder her. Nur reiner Text.',
+        'group' => 'Gruppe',
+        'group_site' => 'Website (Bezeichnungen der Modelle)',
+        'search_label' => 'Schlüssel und Texte durchsuchen',
+        'key' => 'Schlüssel',
+        'delivered' => 'Mitgelieferter Text',
+        'site_file' => 'Datei der Website',
+        'override' => 'Geänderter Text',
+        'override_label' => 'Geänderter Text für :key',
+        'changed' => 'Geändert',
+        'reset' => 'Zurücksetzen',
+        'saved' => 'Gespeichert: :key',
+        'reset_done' => ':key zeigt wieder den mitgelieferten Text.',
+        'no_markup' => 'Nur reiner Text: < und > sind nicht erlaubt.',
+        'not_editable' => 'Dieser Text lässt sich hier nicht ändern.',
+        'empty' => 'Keine passenden Texte.',
     ],
     'locale' => [
         'not_offered' => 'Diese Sprache wird nicht angeboten.',
