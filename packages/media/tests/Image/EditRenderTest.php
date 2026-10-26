@@ -231,7 +231,7 @@ final class EditRenderTest extends TestCase
         $dir = $this->assetRoot . '/media';
         $stem = $dir . '/' . preg_replace('/\.[a-z0-9]+$/', '', $asset->path);
         $box = $stem . '-cover-thumb-1a2b3c4d-400.webp';
-        $keep = [$stem . '-480.webp', $stem . '-edit-1a2b3c4d.jpg', $stem . '-edit-1a2b3c4d-480.webp', $stem . '-preview-1a2b3c4d-400.webp'];
+        $keep = [$stem . '-v3-cover-thumb-1a2b3c4d-400.webp', $stem . '-edit-9f8e7d6c-cover-thumb-1a2b3c4d-400.webp', $stem . '-480.webp', $stem . '-edit-1a2b3c4d.jpg', $stem . '-edit-1a2b3c4d-480.webp', $stem . '-preview-1a2b3c4d-400.webp'];
         foreach ([$box, ...$keep] as $f) {
             file_put_contents($f, 'x');
         }

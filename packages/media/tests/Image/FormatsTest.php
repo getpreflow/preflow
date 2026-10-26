@@ -22,6 +22,11 @@ final class FormatsTest extends TestCase
         $this->assertSame(['cover-thumb'], array_keys($formats->boxes()));
     }
 
+    public function test_a_name_that_only_looks_like_a_version_is_fine(): void
+    {
+        $this->assertNotNull(Formats::fromConfig(['video-thumb' => ['width' => 200, 'height' => 200, 'fit' => 'cover']])->get('video-thumb'));
+    }
+
     public function test_a_width_only_preset_is_max_and_not_a_box(): void
     {
         $formats = Formats::fromConfig(['step-side' => ['width' => 500]]);
@@ -64,6 +69,9 @@ final class FormatsTest extends TestCase
             'reserved edit' => ['edit', $box],
             'reserved preview' => ['preview', $box],
             'reserved oriented' => ['oriented', $box],
+            'edit prefix' => ['edit-big', $box],
+            'version v2' => ['v2', $box],
+            'version prefix' => ['v2-thumb', $box],
             'uppercase' => ['Cover', $box],
             'underscore' => ['a_b', $box],
         ];

@@ -189,7 +189,8 @@ final class VariantGenerator
         foreach (['avif', 'webp'] as $format) {
             foreach (glob(dirname($base) . '/' . $stem . '*.' . $format) ?: [] as $file) {
                 $rest = substr(basename($file), strlen($stem));
-                if (preg_match('/^([a-z][a-z0-9-]*)-([0-9a-f]{8})-([1-9]\d*)\.(avif|webp)$/', $rest, $m) === 1
+                if (preg_match('/^(edit|preview|oriented)-|^v\d+-/', $rest) !== 1
+                    && preg_match('/^([a-z][a-z0-9-]*)-([0-9a-f]{8})-([1-9]\d*)\.(avif|webp)$/', $rest, $m) === 1
                     && !in_array($m[1], ['edit', 'preview', 'oriented'], true)) {
                     @unlink($file);
                 }

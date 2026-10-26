@@ -36,8 +36,9 @@ final class Formats
                 if ($width < 1 || $height === null) {
                     throw new \InvalidArgumentException('config/image.php: preset "' . $name . '" is a ' . $fit . ' box and needs a positive width and height.');
                 }
-                if (preg_match('/^[a-z][a-z0-9-]*$/', $name) !== 1 || in_array($name, self::RESERVED, true)) {
-                    throw new \InvalidArgumentException('config/image.php: the box preset name "' . $name . '" is not allowed; use lower-case letters, digits and dashes, starting with a letter, and not edit, preview or oriented.');
+                if (preg_match('/^[a-z][a-z0-9-]*$/', $name) !== 1 || in_array($name, self::RESERVED, true)
+                    || preg_match('/^(edit|preview|oriented)-|^v\d+(-|$)/', $name) === 1) {
+                    throw new \InvalidArgumentException('config/image.php: the box preset name "' . $name . '" is not allowed; use lower-case letters, digits and dashes, starting with a letter, and not edit, preview or oriented (nor starting with edit-, preview-, oriented- or v and a number).');
                 }
             }
             $widths = array_values(array_filter(array_map('intval', is_array($preset['widths'] ?? null) ? $preset['widths'] : []), static fn (int $w): bool => $w > 0));
