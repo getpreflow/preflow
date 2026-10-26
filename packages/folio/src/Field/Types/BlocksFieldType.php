@@ -347,11 +347,12 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         foreach ($this->blocks->grouped($allowed) as $group => $definitions) {
             foreach ($definitions as $definition) {
                 // Blocks without a group of their own sit under Folio's "Blocks", in the interface language.
-                $groups[$group === \Preflow\Folio\Block\Block::DEFAULT_GROUP ? \Preflow\Folio\FolioText::get('folio.blocks.group') : $group][] = [
+                // A block's label, group and description may be keys (FolioText::label()).
+                $groups[$group === \Preflow\Folio\Block\Block::DEFAULT_GROUP ? \Preflow\Folio\FolioText::get('folio.blocks.group') : \Preflow\Folio\FolioText::label($group)][] = [
                     'key' => $definition->key,
-                    'label' => $definition->label,
+                    'label' => \Preflow\Folio\FolioText::label($definition->label),
                     'icon' => $definition->icon ?? 'block',
-                    'description' => $definition->description,
+                    'description' => $definition->description !== null ? \Preflow\Folio\FolioText::label($definition->description) : null,
                     'url' => $this->adminPrefix . '/_blocks/' . rawurlencode($definition->key) . '/new?'
                         . http_build_query(['name' => $name, 'locale' => $locale, 'depth' => $depth], '', '&', PHP_QUERY_RFC3986),
                 ];
@@ -388,8 +389,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             if ($type instanceof self) {
                 $fields[] = $type->renderField(
                     $base . '[' . $field . ']',
-                    $def->label ?? ucfirst(str_replace('_', ' ', $field)),
-                    $def->help,
+                    self::fieldLabel($def->label, $field),
+                    $def->help !== null ? \Preflow\Folio\FolioText::label($def->help) : null,
                     $type->fromStorage($raw),
                     $def->config,
                     $errors[$field] ?? [],
@@ -414,8 +415,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
 
             $fields[] = $type->renderEditor(new FieldContext(
                 name: $base . '[' . $field . ']',
-                label: $def->label ?? ucfirst(str_replace('_', ' ', $field)),
-                help: $def->help,
+                label: self::fieldLabel($def->label, $field),
+                help: $def->help !== null ? \Preflow\Folio\FolioText::label($def->help) : null,
                 value: $type->fromStorage($value),
                 errors: $errors[$field] ?? [],
                 config: $def->config,
@@ -429,7 +430,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         return $this->render('@folio/admin/blocks/card.twig', [
             'uid' => $uid,
             'key' => $definition->key,
-            'label' => $definition->label,
+            'label' => \Preflow\Folio\FolioText::label($definition->label),
             'icon' => $definition->icon ?? 'block',
             'summary' => $summary,
             'name' => $namePrefix,
@@ -463,6 +464,12 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         }
 
         return $out;
+    }
+
+    /** A block field's label: its #[BlockField] label (a key or plain text), else the humanized name. */
+    private static function fieldLabel(?string $label, string $field): string
+    {
+        return $label !== null ? \Preflow\Folio\FolioText::label($label) : ucfirst(str_replace('_', ' ', $field));
     }
 
     /** @param array<string, mixed> $context */

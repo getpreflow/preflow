@@ -16,6 +16,7 @@ use Preflow\Folio\Field\Types\StringFieldType;
 use Preflow\Folio\Field\Types\TextFieldType;
 use Preflow\Folio\Tests\Fixtures\Blocks\HeroBlock\HeroBlock;
 use Preflow\Folio\Tests\Fixtures\Blocks\LinkBlock;
+use Preflow\Folio\Tests\Fixtures\Blocks\PromoBlock;
 use Preflow\Folio\Tests\Fixtures\Blocks\TradeoffNoteBlock;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidatorFactory;
@@ -304,5 +305,65 @@ final class BlocksFieldTypeTest extends TestCase
 
         // Duplicates carry their files; only existing uploads in the expected format are accepted.
         $this->assertSame($path, $value[0]['tradeoff'][0]['cover']);
+    }
+
+    public function test_block_labels_given_as_keys_are_shown_in_the_interface_language(): void
+    {
+        $lang = $this->uploads . '/lang';
+        mkdir($lang . '/de', 0777, true);
+        file_put_contents($lang . '/de/site.php', "<?php return ['blocks' => ['groups' => ['marketing' => 'Werbung'], 'promo' => ['label' => 'Aktion', 'description' => 'Ein Angebot hervorheben', 'headline' => 'Schlagzeile', 'headline_help' => 'Kurz und knapp']]];");
+        $translator = new \Preflow\I18n\Translator($lang, 'de', 'en');
+        $translator->addDefaults('folio', dirname(__DIR__, 2) . '/lang');
+        $engine = new class implements \Preflow\View\TemplateEngineInterface {
+            /** @var list<array{0: string, 1: array<string, mixed>}> */
+            public array $calls = [];
+            public function render(string $template, array $context = []): string
+            {
+                $this->calls[] = [$template, $context];
+
+                return '';
+            }
+            public function exists(string $template): bool { return true; }
+            public function addFunction(\Preflow\View\TemplateFunctionDefinition $function): void {}
+            public function addGlobal(string $name, mixed $value): void {}
+            public function getTemplateExtension(): string { return 'twig'; }
+            public function addNamespace(string $namespace, string $path): void {}
+        };
+        $fields = new FieldTypeRegistry();
+        $fields->register(new StringFieldType());
+        $blocks = new BlocksFieldType(new BlockRegistry([PromoBlock::class, LinkBlock::class]), $fields, 4, null, $engine);
+        $fields->register($blocks);
+
+        $previous = \Preflow\Folio\FolioText::use($translator);
+        try {
+            $blocks->renderEditor(new \Preflow\Folio\Field\FieldContext(
+                name: 'body',
+                value: [['_block' => 'promo', '_uid' => self::A, 'headline' => 'Hi'], ['_block' => 'link', '_uid' => self::B, 'url' => '/x']],
+                locale: 'en',
+                locales: Locales::single('en'),
+            ));
+        } finally {
+            \Preflow\Folio\FolioText::use($previous);
+        }
+
+        $cards = [];
+        $field = null;
+        foreach ($engine->calls as [$template, $context]) {
+            if ($template === '@folio/admin/blocks/card.twig') {
+                $cards[$context['key']] = $context;
+            } elseif ($template === '@folio/admin/blocks/field.twig') {
+                $field = $context;
+            }
+        }
+        $this->assertSame('Aktion', $cards['promo']['label']);
+        $this->assertStringContainsString('Schlagzeile', $cards['promo']['fields'][0]);
+        $this->assertStringContainsString('Kurz und knapp', $cards['promo']['fields'][0]);
+        $this->assertStringNotContainsString('site.blocks', $cards['promo']['fields'][0]);
+        $this->assertSame('Link', $cards['link']['label'], 'a plain label stays as written');
+        $this->assertNotNull($field);
+        $this->assertArrayHasKey('Werbung', $field['groups']);
+        $this->assertSame('Aktion', $field['groups']['Werbung'][0]['label']);
+        $this->assertSame('Ein Angebot hervorheben', $field['groups']['Werbung'][0]['description']);
+        $this->assertSame('Link', $field['groups']['Blöcke'][0]['label']);
     }
 }

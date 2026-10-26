@@ -529,6 +529,9 @@ final class Hero extends BlockComponent
 - **Field types:** `#[BlockField]` takes every field type and option that JSON type
   fields take (`label`, `help`, `validate`, `translatable`, `config` for things like
   `options`). `blocks` nests further.
+- **Labels in the admin's language:** `label`, `group` and `description` of `#[Block]` and
+  `label` / `help` of `#[BlockField]` may be translation keys (`'site.blocks.hero.label'`,
+  delivered in `lang/{en,de,fr}/site.php`); plain text is shown as written.
 - **Component blocks** extend `BlockComponent`. Their `#[BlockField]` properties are
   filled from the block's data (already in the page's language) before
   `resolveState()`.
@@ -1506,8 +1509,11 @@ the extension: `#[FolioExtension(name: 'shop', …, translations: 'shop')]`. The
 
 In templates, `folio_date(value, 'date'|'datetime')` and `folio_number(value)` format in the
 admin's language (German `26.10.2026`, French `26/10/2026`, English `Oct 26, 2026`); `t()` reads
-any key. **Block labels** (`#[Block(label: …)]`, `#[BlockField(label: …)]`) are shown as
-written: they are not translated yet.
+any key. **Block labels** may be keys too: `#[Block(label: 'site.blocks.hero.label', group:
+'site.blocks.groups.sections', description: 'site.blocks.hero.description')]` and
+`#[BlockField(label: 'site.blocks.hero.title', help: …)]` are shown in the admin's language
+(block picker, cards, field labels and help, the preview's block label) from
+`lang/{locale}/site.php`; plain text stays as written.
 
 ## Status
 

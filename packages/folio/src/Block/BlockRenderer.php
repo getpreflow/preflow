@@ -87,7 +87,7 @@ final class BlockRenderer
         // Preview: mark the component's own root element (no extra wrapper, so
         // the page's layout and selectors behave exactly as on the public site).
         $component->setRootAttribute('data-folio-block', (string) ($block['_uid'] ?? ''));
-        $component->setRootAttribute('data-folio-label', $definition->label);
+        $component->setRootAttribute('data-folio-label', \Preflow\Folio\FolioText::label($definition->label)); // preview runs in the admin's language
         $this->previewDepth++;
         try {
             return $this->renderer->render($component);
