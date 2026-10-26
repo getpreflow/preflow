@@ -49,6 +49,12 @@
             "searchable": false,
             "readonly": true,
             "default": "0"
+        },
+        "next": {
+            "type": "string",
+            "hidden": true,
+            "searchable": false,
+            "readonly": true
         }
     }
 }

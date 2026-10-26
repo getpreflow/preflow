@@ -8,8 +8,10 @@ use Preflow\Members\Links;
 use Preflow\Members\MembersConfig;
 
 /**
- * Where a sign-in may send the member: only the member pages of this site (under
- * {@see MembersConfig::path()}, in any locale), never another host; else the landing.
+ * Where a sign-in, or a registration once confirmed, may send the member ("next"): the member
+ * pages of this site (under {@see MembersConfig::path()}) and the paths config/members.php
+ * next.allow lists ({@see MembersConfig::nextAllow()}), each in any locale; never another host,
+ * a scheme, a double slash, a backslash or a dot segment, also percent-encoded. Else the landing.
  */
 final class SafeNext
 {
@@ -18,7 +20,7 @@ final class SafeNext
         private readonly Links $links,
     ) {}
 
-    /** $next when it is a member page, else the landing in $locale. */
+    /** $next when it is a member page or an allowed path, else the landing in $locale. */
     public function of(?string $next, string $locale): string
     {
         $home = $this->links->localize($locale, $this->config->landing());
@@ -44,12 +46,15 @@ final class SafeNext
         return preg_match('#^(?:' . $this->bases() . ')(/[A-Za-z0-9._~%/-]*)?(\?[\x21-\x7E]*)?$#D', $next) === 1 ? $next : $home;
     }
 
-    /** The members path in every locale ("/members|/de/members"), as a regex alternation. */
+    /** The members path and the allowed paths in every locale ("/members|/de/members|/games"), as a regex alternation. */
     private function bases(): string
     {
         $bases = [];
         foreach ($this->links->locales() as $locale) {
             $bases[] = preg_quote($this->links->local($locale), '#');
+            foreach ($this->config->nextAllow() as $path) {
+                $bases[] = preg_quote($this->links->localize($locale, rtrim($path, '/')), '#');
+            }
         }
 
         return implode('|', array_unique($bases));

@@ -7,6 +7,7 @@ namespace Preflow\Members;
 use Preflow\Auth\PasswordHasherInterface;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Nyholm\Psr7\ServerRequest;
 
 /** Member records: registration, confirmation, the owner's decision, deletion. */
 final class Members
@@ -14,15 +15,19 @@ final class Members
     private const string TYPE = MembersConfig::TYPE;
 
     /** Fields register() fills itself; $extra must not set them. */
-    private const array OWN_FIELDS = ['uuid', 'email', 'name', 'password_hash', 'language', 'roles', 'registered_at', 'email_confirmed_at', 'decided_at', 'auth_epoch'];
+    private const array OWN_FIELDS = ['uuid', 'email', 'name', 'password_hash', 'language', 'roles', 'registered_at', 'email_confirmed_at', 'decided_at', 'auth_epoch', 'next'];
 
     private readonly \Closure $now;
 
-    /** @param ?\Closure(): \DateTimeImmutable $now UTC clock, injectable for tests */
+    /**
+     * @param ?\Closure(): \DateTimeImmutable $now UTC clock, injectable for tests
+     * @param ?\Closure(): Confirmation $confirmation what follows a proven address (resolved when first needed: the admission may need Members)
+     */
     public function __construct(
         private readonly DataManager $dm,
         private readonly PasswordHasherInterface $hasher,
         ?\Closure $now = null,
+        private readonly ?\Closure $confirmation = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }
@@ -60,10 +65,19 @@ final class Members
      * A new, unconfirmed member without roles. $extra (from Admission::recordValues()) sets
      * further fields of the member type; a key the type lacks is a programming error.
      *
+     * $emailVerified: the calling project has proven the address itself (an invitation mailed to
+     * it, a sign-in elsewhere); Members never assumes so. The member is confirmed at once and the
+     * admission decides as after a confirmation ({@see Confirmation}: a member, or pending with
+     * the owner's notice); no confirmation mail is sent. Sign the member in with {@see SignIn}.
+     * The admission's afterConfirm() gets the current request as PHP sees it ($_SERVER).
+     *
      * @param array<string, mixed> $extra
      */
-    public function register(string $email, string $name, string $password, string $language, array $extra = []): DynamicRecord
+    public function register(string $email, string $name, string $password, string $language, array $extra = [], bool $emailVerified = false): DynamicRecord
     {
+        if ($emailVerified && $this->confirmation === null) {
+            throw new \LogicException('Members::register(emailVerified: true) needs the members services (Members from the container).');
+        }
         $def = ($this->dm->getTypeRegistry() ?? throw new \LogicException('No type registry.'))->get(self::TYPE);
         foreach (array_keys($extra) as $key) {
             if (in_array($key, self::OWN_FIELDS, true)) {
@@ -86,13 +100,41 @@ final class Members
             'auth_epoch' => '0',
         ] + $extra);
         $this->dm->saveType($record, false);
+        if ($emailVerified) {
+            ($this->confirmation)()->confirm($record, self::currentRequest());
+        }
 
         return $record;
+    }
+
+    /** The request PHP is serving, for the admission's afterConfirm() outside a controller. */
+    private static function currentRequest(): ServerRequest
+    {
+        $server = $_SERVER;
+
+        return new ServerRequest(
+            is_string($server['REQUEST_METHOD'] ?? null) ? $server['REQUEST_METHOD'] : 'GET',
+            is_string($server['REQUEST_URI'] ?? null) ? $server['REQUEST_URI'] : '/',
+            [],
+            null,
+            '1.1',
+            $server,
+        );
     }
 
     public function confirm(DynamicRecord $m): void
     {
         $m->set('email_confirmed_at', $this->stamp());
+        $this->save($m);
+    }
+
+    /**
+     * Where to go once the address is confirmed (a checked "next", {@see Http\SafeNext}); ''
+     * clears it. Stored on the member (a hidden field) until the confirmation uses it.
+     */
+    public function setNext(DynamicRecord $m, string $next): void
+    {
+        $m->set('next', $next);
         $this->save($m);
     }
 

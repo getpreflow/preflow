@@ -13,6 +13,7 @@ use Preflow\Data\Locales;
 use Preflow\Auth\Record\RecordUser;
 use Preflow\Members\Admission\Admission;
 use Preflow\Members\Admission\Decision;
+use Preflow\Members\Confirmation;
 use Preflow\Members\Links;
 use Preflow\Members\MemberMailer;
 use Preflow\Members\Members;
@@ -27,12 +28,14 @@ use Psr\Http\Message\ServerRequestInterface;
 /**
  * Registration and the double opt-in. The register answer is the same for a new and a known
  * address (the known one gets a mail instead); after the confirmation the configured
- * Admission decides: a member at once (signed in), or the owner decides.
+ * Admission decides: a member at once (signed in), or the owner decides. A "next" posted with
+ * the registration (and kept by SafeNext) waits on the member until the confirmation, which
+ * goes there once instead of the landing.
  */
 final class RegistrationController
 {
     /** Form fields that never go back into the page or to the admission. */
-    private const array SECRET = ['password', '_csrf_token'];
+    private const array SECRET = ['password', '_csrf_token', 'next'];
 
     public function __construct(
         private readonly MembersView $view,
@@ -48,6 +51,8 @@ final class RegistrationController
         private readonly AuthManager $auth,
         private readonly MembersSettings $settings,
         private readonly PasswordHasherInterface $hasher,
+        private readonly SafeNext $safeNext,
+        private readonly Confirmation $confirmation,
     ) {}
 
     public function form(ServerRequestInterface $request): ResponseInterface
@@ -60,7 +65,7 @@ final class RegistrationController
             return $this->view->redirect($this->links->localize($this->locale($request), $this->config->register()));
         }
 
-        return $this->page($request);
+        return $this->page($request, next: Input::text($request->getQueryParams(), 'next'));
     }
 
     public function register(ServerRequestInterface $request): ResponseInterface
@@ -71,12 +76,13 @@ final class RegistrationController
         $client = $this->throttle->client($request);
         [$max, $window] = $this->config->throttle('register');
         if ($this->throttle->tooMany(MembersConfig::THROTTLE_REGISTER, $client, $max, $window)) {
-            return $this->page($request, ['form' => 'throttled'], [], 429);
+            return $this->page($request, ['form' => 'throttled'], [], 429, Input::text(Input::body($request), 'next'));
         }
         $this->throttle->hit(MembersConfig::THROTTLE_REGISTER, $client, $window);
 
         $body = Input::body($request);
         $password = Input::text($body, 'password');
+        $next = Input::text($body, 'next');
         // The admission's own fields come along as posted; name, email and consent normalised.
         $input = [
             'name' => trim(Input::text($body, 'name')),
@@ -100,7 +106,7 @@ final class RegistrationController
         // Always asked, so its errors show with the form's; told about these, it skips a costly check (a throttled code lookup).
         $errors += $this->admission->validate($input, $request, $errors);
         if ($errors !== []) {
-            return $this->page($request, $errors, $input, 422);
+            return $this->page($request, $errors, $input, 422, $next);
         }
 
         $existing = $this->members->findByEmail($input['email']);
@@ -119,6 +125,10 @@ final class RegistrationController
             $this->locale($request),
             $this->admission->recordValues($input),
         );
+        // Only a next SafeNext keeps is stored; it is checked again when the confirmation follows it.
+        if ($next !== '' && $this->safeNext->of($next, $this->locale($request)) === $next) {
+            $this->members->setNext($member, $next);
+        }
         // Queued: it goes out after the response, so a fresh address answers as fast as a known one. If it cannot
         // be sent, the account is removed again (the visitor can simply register once more); no address is logged.
         $id = (string) $member->getId();
@@ -149,23 +159,22 @@ final class RegistrationController
         if ($member === null || MemberState::fromRecord($member) !== MemberState::Unconfirmed) {
             return $this->show('confirm', $request, ['token' => '', 'used' => true], 410);
         }
-        $this->members->confirm($member);
-
-        $decision = $this->admission->afterConfirm($member, $request);
+        // Followed once: cleared with the confirmation, whatever the admission decides.
+        $next = (string) ($member->get('next') ?? '');
+        if ($next !== '') {
+            $member->set('next', '');
+        }
+        $decision = $this->confirmation->confirm($member, $request);
         $notice = $this->admission->confirmNotice($member);
         if ($decision === Decision::Accept) {
-            $this->members->decide($member, 'member');
             $this->auth->guard(MembersConfig::GUARD)->login(new RecordUser($member), $request, remember: true);
             // After the login, which starts a fresh session id: the landing (the site's page) shows it.
             if ($notice !== null && $notice !== '') {
                 Input::flashSet($request, Input::NOTICE, $notice);
             }
 
-            return $this->view->redirect($this->landing($request));
+            return $this->view->redirect($next !== '' ? $this->safeNext->of($next, $this->locale($request)) : $this->landing($request));
         }
-
-        $this->members->decide($member, 'pending');
-        $this->tellOwner($member);
 
         return $this->show('thanks', $request, $notice !== null && $notice !== '' ? ['notice' => $notice] : []);
     }
@@ -174,9 +183,9 @@ final class RegistrationController
      * @param array<string, string> $errors
      * @param array<string, mixed> $input
      */
-    private function page(ServerRequestInterface $request, array $errors = [], array $input = [], int $status = 200): ResponseInterface
+    private function page(ServerRequestInterface $request, array $errors = [], array $input = [], int $status = 200, string $next = ''): ResponseInterface
     {
-        return $this->show('register', $request, ['open' => $this->open(), 'errors' => $errors, 'old' => $input], $status);
+        return $this->show('register', $request, ['open' => $this->open(), 'errors' => $errors, 'old' => $input, 'next' => $next], $status);
     }
 
     /** A page with the flash notice a previous request left (e.g. after deleting the account). @param array<string, mixed> $vars */
@@ -207,18 +216,6 @@ final class RegistrationController
                 break;
             default: // waiting or declined: no mail, the answer stays the same
         }
-    }
-
-    private function tellOwner(DynamicRecord $member): void
-    {
-        $to = $this->settings->noticeEmail();
-        if ($to === null) {
-            return;
-        }
-        $id = (string) $member->getId();
-        $this->mailer->noticeLater($member, $to, static function () use ($id): void {
-            error_log('members: owner notice failed for member ' . $id);
-        });
     }
 
     private function landing(ServerRequestInterface $request): string

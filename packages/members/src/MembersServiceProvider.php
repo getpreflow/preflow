@@ -7,6 +7,7 @@ namespace Preflow\Members;
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\Access\DefaultResolver;
 use Preflow\Auth\Access\PermissionRegistry;
+use Preflow\Auth\AuthManager;
 use Preflow\Auth\PasswordHasherInterface;
 use Preflow\Core\Application;
 use Preflow\Core\Config\Config;
@@ -29,7 +30,7 @@ use Preflow\View\TemplateEngineInterface;
 
 /**
  * Binds the members services: MembersConfig (config/members.php; a missing file means the
- * defaults), Members, Links, LinkValidity, MemberMailer, the configured Admission and the
+ * defaults), Members, Confirmation, SignIn, Links, LinkValidity, MemberMailer, the configured Admission and the
  * owner's settings (ConfigMembersSettings, unless a package such as Folio's members admin binds
  * its own), and adds the package copy (lang/{locale}/members.php) under the site's own. A site's
  * resources/members/ is put in front of the package templates (@members) when it exists. Boot
@@ -63,7 +64,16 @@ final class MembersServiceProvider extends ServiceProvider
         $container->singleton(Members::class, static fn (Container $c): Members => new Members(
             $c->get(DataManager::class),
             $c->get(PasswordHasherInterface::class),
+            null,
+            static fn (): Confirmation => $c->get(Confirmation::class),
         ));
+        $container->singleton(Confirmation::class, static fn (Container $c): Confirmation => new Confirmation(
+            $c->get(Members::class),
+            $c->get(Admission::class),
+            $c->get(MemberMailer::class),
+            $c->get(MembersSettings::class),
+        ));
+        $container->singleton(SignIn::class, static fn (Container $c): SignIn => new SignIn($c->get(AuthManager::class)));
         $container->singleton(LinkValidity::class, static fn (Container $c): LinkValidity => new LinkValidity(
             $c->get(Translator::class),
             $c->get(MembersConfig::class),

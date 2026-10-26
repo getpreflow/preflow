@@ -14,7 +14,7 @@
     {% if notice %}<p class="members-note" role="status">{{ notice }}</p>{% endif %}
     {% if open %}
     <form class="members-card" method="post" action="{{ base }}/register" novalidate>
-      {{ csrf_field() }}
+      {% if next|default('') %}<input type="hidden" name="next" value="{{ next }}">{% endif %}{{ csrf_field() }}
       {% if errors %}
       <div class="members-errors" role="alert">
         {% if errors.form is defined %}{{ t('members.errors.' ~ errors.form) }}{% else %}{{ t('members.errors.summary') }}{% endif %}

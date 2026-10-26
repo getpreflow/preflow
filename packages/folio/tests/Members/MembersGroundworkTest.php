@@ -126,7 +126,7 @@ final class MembersGroundworkTest extends TestCase
         $this->assertSame('member', $def->table);
         $this->assertSame('members', $def->storage);
         $this->assertSame('uuid', $def->idField);
-        $this->assertSame(['email', 'password_hash', 'name', 'language', 'registered_at', 'email_confirmed_at', 'decided_at', 'roles', 'auth_epoch'], array_keys($def->fields));
+        $this->assertSame(['email', 'password_hash', 'name', 'language', 'registered_at', 'email_confirmed_at', 'decided_at', 'roles', 'auth_epoch', 'next'], array_keys($def->fields));
         $this->assertSame(['en' => 'English', 'de' => 'Deutsch'], $def->fields['language']->config['options']);
     }
 

@@ -82,6 +82,7 @@ return [
     'reset_ttl' => 3600,
     'retention' => ['unconfirmed_days' => 7, 'declined_days' => 30],
     'privacy_url' => '',                        // the consent's privacy link: one URL or ['en' => '/privacy', 'de' => '/de/datenschutz']
+    'next' => ['allow' => []],                  // more places "next" may lead besides the member pages: ['/games/']
     // The owner's settings, without Folio (on a Folio site: Settings → Members):
     'registration_open' => true,
     'notice_email' => null,                     // told about a member waiting for the owner's decision
@@ -132,8 +133,16 @@ default locale without a prefix):
   and mails the owner (Members settings `notice_email`, when set). The admission's
   `confirmNotice()` (when not null) is shown on that thanks page, or, for an accepted
   member, flashed as `members.notice` for the landing to show.
-- A sign-in's `next` is kept only when it is a member page (`{path}` in any locale);
-  anything else lands on `landing`.
+- `next` (where to go afterwards) is kept only when it is a member page (`{path}`) or under a
+  path of `next.allow` (`'/games/'` allows `/games` and `/games/catan`, not `/gamesfoo`), each
+  in any locale; anything else lands on `landing`. A scheme, `//`, a backslash or a dot
+  segment is never kept, percent-encoded neither. An `allow` entry that is no site path is an
+  error.
+- `next` works for sign-in (`?next=` on the login page) and for registration: the register
+  page carries `?next=` as a hidden field (the site's own register page posts a `next` field
+  too), the member keeps it (the hidden member field `next`; run `preflow migrate` once for
+  its column) and an accepted confirmation goes there once instead of `landing`. The
+  confirmation clears it, also when the owner decides.
 - Every form needs the CSRF token (`csrf_field()` in the templates); every page is
   `private, no-store`.
 - Flash notices: `members.notice` (e.g. "Your account is deleted.") is shown by the package
@@ -142,6 +151,23 @@ default locale without a prefix):
 - Throttles (`throttle` config): sign-in per client and per address, registration per
   client, forgot per client and per address, resend per address (over the limit the page
   stays the same, only the mail is skipped).
+
+## Accounts a project creates
+
+A project that has proven the address itself (an invitation mailed to it) creates the
+account confirmed, and may sign it in:
+
+```php
+$member = $container->get(Members::class)->register($email, $name, $password, $locale, emailVerified: true);
+if (MemberState::fromRecord($member) === MemberState::Member) {
+    $container->get(SignIn::class)->in($member, $request); // the members guard, remembered
+}
+```
+
+`emailVerified: true` sends no confirmation mail; the admission decides at once as after a
+confirmation (`AcceptOnConfirm`: a member; `OwnerApproval`: pending, and the owner is told).
+The package never assumes an address is proven: only the caller says so. `SignIn::in()`
+refuses a member who is not admitted (a `LogicException`).
 
 ## Admission
 
