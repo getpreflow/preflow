@@ -94,6 +94,28 @@ final class TypeRegistry
         return $this->parse(json_decode(file_get_contents($path), true, 512, JSON_THROW_ON_ERROR));
     }
 
+    /**
+     * A label or help text as the model file writes it: a string, or a map per language.
+     * Gives the default text (the string; a map's "en" entry, else its first) and the map.
+     *
+     * @return array{0: ?string, 1: array<string, string>}
+     */
+    private static function text(mixed $value): array
+    {
+        if (is_string($value)) {
+            return [$value, []];
+        }
+        if (!is_array($value)) {
+            return [null, []];
+        }
+        $map = array_filter($value, static fn ($text, $locale): bool => is_string($text) && is_string($locale), ARRAY_FILTER_USE_BOTH);
+        if ($map === []) {
+            return [null, []];
+        }
+
+        return [$map['en'] ?? reset($map), $map];
+    }
+
     private function parse(array $schema): TypeDefinition
     {
         $fields = [];
@@ -105,8 +127,8 @@ final class TypeRegistry
             $searchable = isset($fieldDef['searchable']) ? (bool) $fieldDef['searchable'] : null;
             $transform = $fieldDef['transform'] ?? null;
             $validate = $fieldDef['validate'] ?? [];
-            $label = $fieldDef['label'] ?? null;
-            $help = $fieldDef['help'] ?? null;
+            [$label, $labels] = self::text($fieldDef['label'] ?? null);
+            [$help, $helps] = self::text($fieldDef['help'] ?? null);
             $config = array_diff_key($fieldDef, array_flip(
                 ['type', 'searchable', 'transform', 'validate', 'label', 'help', 'translatable'],
             ));
@@ -121,6 +143,8 @@ final class TypeRegistry
                 help: $help,
                 config: $config,
                 translatable: (bool) ($fieldDef['translatable'] ?? false),
+                labels: $labels,
+                helps: $helps,
             );
 
             if ($searchable) {

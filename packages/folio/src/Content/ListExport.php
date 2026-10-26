@@ -32,6 +32,7 @@ final class ListExport
         private readonly FieldTypeRegistry $fieldTypes,
         private readonly RelationLabels $relations,
         private readonly ?bool $available = null,
+        private readonly ?DisplayLabels $labels = null,
     ) {}
 
     public function available(): bool
@@ -120,7 +121,7 @@ final class ListExport
         }
 
         // Text is always a string cell: Cell::fromValue() would turn "=1+1" into a formula.
-        return new StringCell(ListCells::text($this->fieldTypes, $def, $name, $record, $labels), null);
+        return new StringCell(ListCells::text($this->fieldTypes, $def, $name, $record, $labels, $this->labels), null);
     }
 
     /** @return array{\DateTimeImmutable, string}|null the date and its number format; null: not a date this reads */

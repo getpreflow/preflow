@@ -448,6 +448,7 @@ return [
         'datetime' => 'dd/MM/yyyy HH:mm',
         'decimal' => ',',
         'thousands' => "\u{202F}",
+        'type_noun' => '{0} :singular|{1} :singular|[2,*] :plural',
     ],
     'mail' => [
         'invite' => [

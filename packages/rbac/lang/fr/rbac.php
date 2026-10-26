@@ -22,4 +22,30 @@ return [
         'disabled' => 'Compte désactivé. Ses sessions et ses liens ont pris fin.',
         'enabled' => 'Compte activé.',
     ],
+    // types/fields/options : les libellés de models/staff.json et models/rbac_role.json (Preflow\Data\ModelLabelKeys).
+    'types' => [
+        'staff' => ['label' => 'Équipe', 'singular' => 'Membre de l’équipe'],
+        'rbac_role' => ['label' => 'Rôles', 'singular' => 'Rôle'],
+    ],
+    'fields' => [
+        'staff' => [
+            'email' => ['label' => 'Adresse e-mail'],
+            'name' => ['label' => 'Nom'],
+            'roles' => ['label' => 'Rôles'],
+            'active' => ['label' => 'Actif', 'help' => 'Un compte inactif ne peut pas se connecter.'],
+            'last_login_at' => ['label' => 'Dernière connexion'],
+            'created_at' => ['label' => 'Créé le'],
+        ],
+        'rbac_role' => [
+            'name' => ['label' => 'Nom'],
+            'label' => ['label' => 'Libellé'],
+            'population' => ['label' => 'Public'],
+            'permissions' => ['label' => 'Autorisations'],
+        ],
+    ],
+    'options' => [
+        'rbac_role' => [
+            'population' => ['staff' => 'Équipe', 'members' => 'Membres'],
+        ],
+    ],
 ];

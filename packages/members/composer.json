@@ -44,7 +44,8 @@
         "preflow": {
             "commands": ["Preflow\\Members\\Console\\PruneMembersCommand"],
             "translations": {
-                "members": { "path": "lang", "scope": "public" }
+                "members": { "path": "lang", "scope": "public" },
+                "members-admin": { "path": "lang", "scope": "admin" }
             }
         }
     }

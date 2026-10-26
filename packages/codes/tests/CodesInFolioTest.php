@@ -184,6 +184,30 @@ final class CodesInFolioTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_code_screens_show_the_codes_groups_labels_in_the_admins_language(): void
+    {
+        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'locale' => 'de'];\n");
+        $this->app();
+        $this->login();
+        $this->assertSame(302, $this->send('POST', '/folio/code', $this->create())->getStatusCode());
+
+        $list = (string) $this->send('GET', '/folio/code')->getBody();
+        $this->assertStringContainsString('<html lang="de">', $list);
+        $this->assertMatchesRegularExpression('~folio-filter-label[^>]*>Form<~', $list);
+        $this->assertStringContainsString('>Lesbar</option>', $list);
+        $this->assertStringContainsString('>Zufällig</option>', $list);
+        $this->assertMatchesRegularExpression('~folio-filter-label[^>]*>Läuft ab am<~', $list);
+
+        $form = (string) $this->send('GET', '/folio/code/new')->getBody();
+        foreach (['Zweck', 'Bezeichnung', 'Läuft ab am', 'Leer: läuft nie ab.', 'Leer: unbegrenzt.'] as $text) {
+            $this->assertStringContainsString($text, $form);
+        }
+        foreach (['>Purpose<', '>Label<', 'Expires at', 'Empty: never expires.'] as $english) {
+            $this->assertStringNotContainsString($english, $form);
+        }
+    }
+
+    #[RunInSeparateProcess]
     public function test_code_list_filters_by_expiry_and_form(): void
     {
         $this->app();

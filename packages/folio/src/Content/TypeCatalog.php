@@ -37,10 +37,11 @@ final class TypeCatalog
      * A "section" in the schema wins over $section.
      *
      * @param array<string, mixed> $schema same shape as a model JSON file
+     * @param string               $group  the translation group of its labels (an extension's package group; "site" for the site's own)
      */
-    public function add(array $schema, string $section = 'content'): void
+    public function add(array $schema, string $section = 'content', string $group = 'site'): void
     {
-        $listing = $this->listing($schema, $section);
+        $listing = $this->listing($schema, $section, $group);
         if ($this->has($listing->key)) {
             throw new \RuntimeException("Type \"{$listing->key}\" is already in the catalog");
         }
@@ -73,7 +74,7 @@ final class TypeCatalog
     }
 
     /** @param array<string, mixed> $data */
-    private function listing(array $data, string $section): TypeListing
+    private function listing(array $data, string $section, string $group = 'site'): TypeListing
     {
         $key = $data['key'] ?? null;
         if (!is_string($key) || $key === '') {
@@ -82,9 +83,9 @@ final class TypeCatalog
         if (in_array($key, ScreenRegistry::RESERVED, true)) {
             throw new FrontendConfigException("Type \"{$key}\": the key is a path Folio uses itself; choose another");
         }
-        $label = (isset($data['label']) && is_string($data['label']))
-            ? $data['label']
-            : ucfirst($key);
+        $labels = self::text($data, 'label');
+        $singular = self::text($data, 'label_singular');
+        $label = \Preflow\I18n\Labels::pick($labels, 'en', 'en') ?? ucfirst($key);
         $frontend = isset($data['frontend']) && is_array($data['frontend']) ? $data['frontend'] : null;
         $singleton = ($data['singleton'] ?? false) === true;
         $users = null;
@@ -148,7 +149,32 @@ final class TypeCatalog
             $data['order'] ?? 100,
             $data['icon'] ?? '',
             $data['nav'] ?? true,
+            $labels,
+            $singular,
+            $group,
         );
+    }
+
+    /**
+     * A display text of the type ("label", "label_singular"): a string, or a map of language
+     * code => string (other entries dropped); null when absent or of another shape (ignored,
+     * as a non-string label always was).
+     *
+     * @param array<string, mixed> $data
+     * @return string|array<string, string>|null
+     */
+    private static function text(array $data, string $name): string|array|null
+    {
+        $value = $data[$name] ?? null;
+        if (is_string($value)) {
+            return $value;
+        }
+        if (!is_array($value)) {
+            return null;
+        }
+        $map = array_filter($value, static fn ($text, $locale): bool => is_string($text) && is_string($locale), ARRAY_FILTER_USE_BOTH);
+
+        return $map === [] ? null : $map;
     }
 
     public function has(string $key): bool

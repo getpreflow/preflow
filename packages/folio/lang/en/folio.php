@@ -469,6 +469,8 @@ return [
         'datetime' => 'MMM d, yyyy HH:mm',
         'decimal' => '.',
         'thousands' => ',',
+        // A type's label for a count: its singular ("label_singular") or its plural label.
+        'type_noun' => ':singular|:plural',
     ],
     'mail' => [
         'invite' => [

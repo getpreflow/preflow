@@ -13,9 +13,10 @@ use Preflow\Folio\Extension\Extension as FolioExtensionBase;
 /**
  * Roles managed in Folio (models/rbac_role.json); RbacServiceProvider answers can() from them.
  * Staff accounts (models/staff.json, Types/StaffRules) are an opt-in part: a site lists
- * "model:staff" under the extension's "enabled_parts" to get them.
+ * "model:staff" under the extension's "enabled_parts" to get them. The models' labels are
+ * keys of the "rbac" group (lang/{locale}/rbac.php: types, fields, options).
  */
-#[FolioExtension(name: 'rbac', label: 'Roles', icon: 'ui-users', version: '1.1.0')]
+#[FolioExtension(name: 'rbac', label: 'Roles', icon: 'ui-users', version: '1.1.0', translations: 'rbac')]
 final class Extension extends FolioExtensionBase
 {
     /** The staff type on the storage alias "staff" when the site has it, else on "default". */

@@ -19,8 +19,9 @@ final class ListCells
 {
     /**
      * @param array<string, array<string, string>> $relationLabels field => id => label (RelationLabels::forRecords); a field in it is a relation column
+     * @param DisplayLabels|null                   $labels         select options in the interface language (null: the model file's texts)
      */
-    public static function text(FieldTypeRegistry $fieldTypes, TypeDefinition $def, string $name, DynamicRecord $record, array $relationLabels = []): string
+    public static function text(FieldTypeRegistry $fieldTypes, TypeDefinition $def, string $name, DynamicRecord $record, array $relationLabels = [], ?DisplayLabels $labels = null): string
     {
         $localized = $record->localized($def->locales->default);
         if (isset($relationLabels[$name])) {
@@ -32,7 +33,12 @@ final class ListCells
         $fieldDef = $def->fields[$name];
         $type = $fieldTypes->get($fieldDef->type);
 
-        return self::plain(self::display($type, $type->fromStorage($localized->get($name)), $fieldDef->config));
+        $config = $fieldDef->config;
+        if ($labels !== null && $fieldDef->type === 'select' && is_array($config['options'] ?? null)) {
+            $config['options'] = $labels->options($def->key, $name); // option labels in the interface language
+        }
+
+        return self::plain(self::display($type, $type->fromStorage($localized->get($name)), $config));
     }
 
     /** The field type's admin display (list cells, read-only fields): renderAdmin() when it has one, else renderFrontend(). */

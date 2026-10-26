@@ -22,4 +22,30 @@ return [
         'disabled' => 'Konto deaktiviert. Seine Sitzungen und Links sind beendet.',
         'enabled' => 'Konto aktiviert.',
     ],
+    // types/fields/options: die Bezeichnungen aus models/staff.json und models/rbac_role.json (Preflow\Data\ModelLabelKeys).
+    'types' => [
+        'staff' => ['label' => 'Team', 'singular' => 'Teammitglied'],
+        'rbac_role' => ['label' => 'Rollen', 'singular' => 'Rolle'],
+    ],
+    'fields' => [
+        'staff' => [
+            'email' => ['label' => 'E-Mail'],
+            'name' => ['label' => 'Name'],
+            'roles' => ['label' => 'Rollen'],
+            'active' => ['label' => 'Aktiv', 'help' => 'Ein inaktives Konto kann sich nicht anmelden.'],
+            'last_login_at' => ['label' => 'Letzte Anmeldung'],
+            'created_at' => ['label' => 'Erstellt'],
+        ],
+        'rbac_role' => [
+            'name' => ['label' => 'Name'],
+            'label' => ['label' => 'Bezeichnung'],
+            'population' => ['label' => 'Personenkreis'],
+            'permissions' => ['label' => 'Berechtigungen'],
+        ],
+    ],
+    'options' => [
+        'rbac_role' => [
+            'population' => ['staff' => 'Team', 'members' => 'Mitglieder'],
+        ],
+    ],
 ];

@@ -7,6 +7,7 @@ namespace Preflow\I18n\Tests\Console;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\I18n\Console\TranslationsCheckCommand;
+use Preflow\I18n\DerivedKeys;
 use Preflow\I18n\Tests\Support\TempLang;
 
 /** preflow translations:check — the release gate for "no raw keys". */
@@ -31,14 +32,22 @@ final class TranslationsCheckCommandTest extends TestCase
         $this->removeTmp();
     }
 
-    /** @return array{0: int, 1: string} */
-    private function check(array $args = []): array
+    /**
+     * @param array<string, string|array<string, string>|null> $derived keys derived from model files (as Folio registers them)
+     * @return array{0: int, 1: string}
+     */
+    private function check(array $args = [], array $derived = []): array
     {
         $dir = $this->tmp();
         ob_start();
-        $code = (new TranslationsCheckCommand(static function () use ($dir): Application {
+        $code = (new TranslationsCheckCommand(static function () use ($dir, $derived): Application {
             $app = Application::create($dir);
             $app->boot();
+            if ($derived !== []) {
+                $keys = new DerivedKeys();
+                $keys->add('config/models/thing.json', static fn (): array => $derived);
+                $app->container()->instance(DerivedKeys::class, $keys);
+            }
 
             return $app;
         }))->execute($args);
@@ -111,6 +120,41 @@ final class TranslationsCheckCommandTest extends TestCase
         $this->assertSame(1, $this->check()[0]);
         [$code, $out] = $this->check(['--group=g']);
         $this->assertSame(0, $code, $out);
+    }
+
+    public function test_model_labels_of_a_site_type_need_no_key(): void
+    {
+        $this->langFile('vendor/acme/g/lang', 'fr', 'g', ['a' => 'A fr', 'nest' => ['b' => 'B fr']]);
+
+        [$code, $out] = $this->check([], [
+            'site.types.app.label' => 'Apps',
+            'site.fields.app.title.label' => null,
+            'site.options.app.kind.web' => ['en' => 'Web'],
+        ]);
+
+        $this->assertSame(0, $code, $out);
+    }
+
+    public function test_model_labels_of_a_package_group_need_a_key_or_a_map_entry_in_every_delivered_language(): void
+    {
+        $this->langFile('vendor/acme/g/lang', 'en', 'g', ['a' => 'A', 'nest' => ['b' => 'B'], 'types' => ['thing' => ['label' => 'Things']]]);
+        $this->langFile('vendor/acme/g/lang', 'de', 'g', ['a' => 'A de', 'nest' => ['b' => 'B de'], 'types' => ['thing' => ['label' => 'Dinge']]]);
+        $this->langFile('vendor/acme/g/lang', 'fr', 'g', ['a' => 'A fr', 'nest' => ['b' => 'B fr']]);
+
+        [$code, $out] = $this->check([], [
+            'g.types.thing.label' => 'Things',               // de: key; fr: missing (also missing as a file key)
+            'g.fields.thing.size.label' => 'Size',           // missing in de and fr
+            'g.fields.thing.kind.label' => ['en' => 'Kind', 'de' => 'Art', 'fr' => 'Genre'], // the map covers both
+            'g.options.thing.kind.big' => ['de' => 'Groß'],  // fr missing
+        ]);
+
+        $this->assertSame(1, $code);
+        $this->assertMatchesRegularExpression('/Missing in de \(model labels of g, 1\):\n  g\.fields\.thing\.size\.label\n/', $out);
+        $this->assertMatchesRegularExpression('/Missing in fr \(model labels of g, 3\):\n  g\.fields\.thing\.size\.label\n  g\.options\.thing\.kind\.big\n  g\.types\.thing\.label\n/', $out);
+        $this->assertStringNotContainsString('g.fields.thing.kind.label', $out);
+
+        // --group of another group leaves them out.
+        $this->assertStringNotContainsString('model labels', $this->check(['--group=site'], ['g.fields.thing.size.label' => 'Size'])[1]);
     }
 
     public function test_metadata(): void

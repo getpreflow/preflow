@@ -6,6 +6,7 @@ namespace Preflow\Folio\Http;
 
 use Closure;
 use Preflow\Folio\FolioText;
+use Preflow\Folio\Content\DisplayLabels;
 use Preflow\Folio\Content\TypeCatalog;
 
 /**
@@ -26,13 +27,17 @@ final class AdminNav
     /** @var (Closure(string): ?int)|null the count badge of a type key; set at boot (Customizations resolve after the nav is built) */
     private ?Closure $badges = null;
 
+    private readonly DisplayLabels $labels;
+
     /** @param Closure(string): bool $can */
     public function __construct(
         private readonly TypeCatalog $catalog,
         private readonly Closure $can,
         string $prefix,
+        ?DisplayLabels $labels = null,
     ) {
         $this->prefix = rtrim($prefix, '/');
+        $this->labels = $labels ?? new DisplayLabels($catalog);
     }
 
     /**
@@ -69,7 +74,7 @@ final class AdminNav
         foreach ($this->catalog->all() as $listing) {
             if ($listing->nav) {
                 $icon = $listing->icon !== '' ? $listing->icon : ($listing->singleton ? 'ui-settings' : 'ui-file');
-                $add($listing->section, $listing->label, $this->prefix . '/' . $listing->key, $icon, $listing->key . '.view', $listing->order, $listing->key);
+                $add($listing->section, $this->labels->type($listing->key), $this->prefix . '/' . $listing->key, $icon, $listing->key . '.view', $listing->order, $listing->key);
             }
         }
         $add('library', static fn (): string => FolioText::get('folio.nav.assets'), $this->prefix . '/assets', 'ui-library', 'assets.view', 100);
@@ -99,7 +104,7 @@ final class AdminNav
         $sections = [];
         foreach ($visible as $section => $items) {
             $sections[] = [
-                'label' => self::sectionLabel($section),
+                'label' => isset(self::BUILTIN[$section]) ? self::sectionLabel($section) : $this->labels->section($section),
                 'items' => array_map(fn (array $item): array => [
                     'label' => $item['label'] instanceof Closure ? ($item['label'])() : $item['label'],
                     'url' => $item['url'],

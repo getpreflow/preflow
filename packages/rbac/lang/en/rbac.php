@@ -22,4 +22,30 @@ return [
         'disabled' => 'Account disabled. Its sessions and links have ended.',
         'enabled' => 'Account enabled.',
     ],
+    // types/fields/options: the labels of models/staff.json and models/rbac_role.json (Preflow\Data\ModelLabelKeys).
+    'types' => [
+        'staff' => ['label' => 'Staff', 'singular' => 'Staff'],
+        'rbac_role' => ['label' => 'Roles', 'singular' => 'Role'],
+    ],
+    'fields' => [
+        'staff' => [
+            'email' => ['label' => 'Email'],
+            'name' => ['label' => 'Name'],
+            'roles' => ['label' => 'Roles'],
+            'active' => ['label' => 'Active', 'help' => 'An inactive account can\'t sign in.'],
+            'last_login_at' => ['label' => 'Last sign-in'],
+            'created_at' => ['label' => 'Created'],
+        ],
+        'rbac_role' => [
+            'name' => ['label' => 'Name'],
+            'label' => ['label' => 'Label'],
+            'population' => ['label' => 'Population'],
+            'permissions' => ['label' => 'Permissions'],
+        ],
+    ],
+    'options' => [
+        'rbac_role' => [
+            'population' => ['staff' => 'Staff', 'members' => 'Members'],
+        ],
+    ],
 ];

@@ -16,6 +16,9 @@ final readonly class TypeListing
      * @param int                      $order    position within the section ("order"; lower first)
      * @param string                   $icon     sidebar icon ("icon", a ui-* sprite id); empty: ui-settings for singletons, ui-file otherwise
      * @param bool                     $nav      whether the sidebar lists it ("nav")
+     * @param string|array<string, string>|null $labels   "label" as the model file writes it (a string, or a map per language; null: none). $label is its default text
+     * @param string|array<string, string>|null $singular "label_singular" likewise (one record: delete plans, counts)
+     * @param string                   $group    the translation group of its labels: "site" for the site's own types, the package's group for a type an extension ships
      */
     public function __construct(
         public string $key,
@@ -30,5 +33,8 @@ final readonly class TypeListing
         public int $order = 100,
         public string $icon = '',
         public bool $nav = true,
+        public string|array|null $labels = null,
+        public string|array|null $singular = null,
+        public string $group = 'site',
     ) {}
 }

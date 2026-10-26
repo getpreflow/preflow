@@ -11,6 +11,7 @@ final readonly class ExtensionDefinition
      * @param class-string $class
      * @param string       $folder the directory of the extension's Extension.php
      * @param list<array{id: string, kind: string, class?: string, label: string, opt_in?: true}> $parts (opt_in: a model the site switches on itself)
+     * @param string|null  $translations the translation group of its models' labels (#[FolioExtension(translations: …)]); null: "site"
      */
     public function __construct(
         public string $name,
@@ -21,7 +22,14 @@ final readonly class ExtensionDefinition
         public string $class,
         public string $folder,
         public array $parts,
+        public ?string $translations = null,
     ) {}
+
+    /** The translation group of its models' labels (a definition cached before it had one: "site"). */
+    public function labelGroup(): string
+    {
+        return $this->translations ?? 'site';
+    }
 
     public function hasPart(string $id): bool
     {

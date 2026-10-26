@@ -13,6 +13,7 @@ use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\Highlighter;
 use Preflow\Folio\FolioText;
 use Preflow\Folio\Content\ListQuery;
+use Preflow\Folio\Content\DisplayLabels;
 use Preflow\Folio\Content\ListView;
 use Preflow\Folio\Content\ListCells;
 use Preflow\Folio\Content\ListExport;
@@ -47,6 +48,7 @@ final class AdminController
 {
     private readonly DraftRecordFactory $drafts;
     private readonly RecordValidator $validator;
+    private readonly DisplayLabels $labels;
 
     /** System key holding the manual position of a record in an orderable list. */
     private const ORDER = '_order';
@@ -70,7 +72,9 @@ final class AdminController
         private readonly ?\Preflow\Folio\Users\AuthorNames $authors = null,
         private ?ListExport $export = null,
         private readonly ?\Preflow\Folio\Extension\Screen\PageAssets $pageAssets = null,
+        ?DisplayLabels $labels = null,
     ) {
+        $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
         $this->validator = $validator ?? new RecordValidator($fieldTypes, $dm);
     }
@@ -85,7 +89,7 @@ final class AdminController
         foreach ($this->catalog->all() as $listing) {
             $cards[] = [
                 'key' => $listing->key,
-                'label' => $listing->label,
+                'label' => $this->labels->type($listing->key),
                 'count' => count($this->dm->queryType($listing->key)->get()->items()),
             ];
         }
@@ -142,7 +146,7 @@ final class AdminController
             $cells = [];
             $marked = [];
             foreach ($columns as $name => $label) {
-                $text = ListCells::text($this->fieldTypes, $typeDef, $name, $record, $relationLabels);
+                $text = ListCells::text($this->fieldTypes, $typeDef, $name, $record, $relationLabels, $this->labels);
                 // cells: plain text (Twig escapes it); marked: escaped HTML with the search words in <mark>.
                 $cells[$name] = $text;
                 $marked[$name] = $text === '' ? '' : Highlighter::html($text, $query->q);
@@ -173,6 +177,7 @@ final class AdminController
             $relations,
             fn (string $target): bool => $this->can($target . '.view'),
             withFilterMenu: !$partial, // the partial (each keystroke) never shows the menu: skip its option queries
+            labels: $this->labels,
         );
         // "No … yet" only when the type has no records at all; a search without hits says so instead.
         $hasRecords = $rows !== [] || ($list['filtered'] && $this->dm->queryType($type)->limit(1)->get()->items() !== []);
@@ -253,7 +258,7 @@ final class AdminController
 
     private function exporter(): ListExport
     {
-        return $this->export ??= new ListExport($this->dm, $this->fieldTypes, new RelationLabels($this->dm, $this->labeler));
+        return $this->export ??= new ListExport($this->dm, $this->fieldTypes, new RelationLabels($this->dm, $this->labeler), labels: $this->labels);
     }
 
     public function recordLabel(ServerRequestInterface $request): ResponseInterface
@@ -584,6 +589,7 @@ final class AdminController
             $this->catalog,
             $this->publisher,
             $this->customizations !== null ? $this->customizations->runHooks(...) : null,
+            $this->labels,
         );
     }
 
@@ -720,8 +726,8 @@ final class AdminController
             }
             $fields[$name] = [
                 'name' => $name,
-                'label' => $fieldDef->label ?? (new \Preflow\Form\FieldRenderer())->humanize($name),
-                'options' => $fieldDef->type === 'select' ? ListView::selectOptions($fieldDef->config) : ['1' => FolioText::get('folio.common.yes'), '0' => FolioText::get('folio.common.no')],
+                'label' => $this->labels->field($type, $name),
+                'options' => $fieldDef->type === 'select' ? $this->labels->options($type, $name) : ['1' => FolioText::get('folio.common.yes'), '0' => FolioText::get('folio.common.no')],
             ];
         }
 
@@ -899,10 +905,11 @@ final class AdminController
                 $stored = isset($translatable[$name]) ? LocaleValue::pick($values[$name] ?? null, $locales, $locale) : LocaleValue::default($values[$name] ?? null, $locales);
                 $fields[] = [
                     'name' => $name,
-                    'html' => self::readonlyField($name, $fieldDef->label, $fieldDef->help, $this->readonlyDisplay(
+                    'html' => self::readonlyField($name, $this->labels->fieldText($type, $name), $this->labels->help($type, $name), $this->readonlyDisplay(
                         $fieldDef,
                         // nothing stored stays nothing (fromStorage would turn a missing boolean into false)
                         $stored === null || $stored === '' ? $stored : $fieldType->fromStorage($stored),
+                        $this->fieldConfig($type, $name, $fieldDef),
                     )),
                     'translatable' => isset($translatable[$name]),
                     'structured' => false,
@@ -944,11 +951,11 @@ final class AdminController
 
             $ctx = new FieldContext(
                 name: $name,
-                label: $fieldDef->label,
-                help: $fieldDef->help,
+                label: $this->labels->fieldText($type, $name),
+                help: $this->labels->help($type, $name),
                 value: $fieldType->fromStorage($value),
                 errors: $fieldErrors,
-                config: $fieldDef->config,
+                config: $this->fieldConfig($type, $name, $fieldDef),
                 required: in_array('required', $fieldDef->validate, true) && (!$isTranslatable || $locale === $locales->default),
                 placeholder: $placeholder,
                 nestedErrors: self::nestedErrors($errors, $name),
@@ -984,7 +991,7 @@ final class AdminController
             $localeErrors[] = [
                 'language' => self::languageName($code),
                 'url' => ($editUrl ?? $action) . '?locale=' . rawurlencode($code),
-                'field' => $typeDef->fields[$field]->label ?? (new \Preflow\Form\FieldRenderer())->humanize($field),
+                'field' => $this->labels->field($type, $field),
                 'messages' => (array) $messages,
             ];
         }
@@ -1335,9 +1342,7 @@ final class AdminController
         $rows = [];
         foreach ($this->publisher?->revisions($type, $id) ?? [] as $revision) {
             $labels = array_map(
-                fn (string $f): string => isset($typeDef->fields[$f])
-                    ? ($typeDef->fields[$f]->label ?? (new \Preflow\Form\FieldRenderer())->humanize($f))
-                    : $f,
+                fn (string $f): string => isset($typeDef->fields[$f]) ? $this->labels->field($type, $f) : $f,
                 $revision->changed,
             );
             $rows[] = [
@@ -1448,10 +1453,11 @@ final class AdminController
      * comma-separated roles, formatted dates. Rich text keeps its sanitised markup; the rest is escaped plain text.
      * Returns ready HTML.
      */
-    private function readonlyDisplay(\Preflow\Data\TypeFieldDefinition $fieldDef, mixed $value): string
+    /** @param array<string, mixed>|null $config the field's config with its option labels resolved (fieldConfig()) */
+    private function readonlyDisplay(\Preflow\Data\TypeFieldDefinition $fieldDef, mixed $value, ?array $config = null): string
     {
         $type = $this->fieldTypes->get($fieldDef->type);
-        $html = self::adminDisplay($type, $value, $fieldDef->config);
+        $html = self::adminDisplay($type, $value, $config ?? $fieldDef->config);
         if ($fieldDef->type !== 'richtext') {
             $html = htmlspecialchars(html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         }
@@ -1490,15 +1496,28 @@ final class AdminController
      */
     private function listColumns(TypeDefinition $typeDef, array $listConfig): array
     {
-        $names = \Preflow\Folio\Content\ListQuery::columns($typeDef, $listConfig);
-
-        $renderer = new \Preflow\Form\FieldRenderer();
         $columns = [];
-        foreach ($names as $name) {
-            $columns[$name] = $typeDef->fields[$name]->label ?? $renderer->humanize($name);
+        foreach (\Preflow\Folio\Content\ListQuery::columns($typeDef, $listConfig) as $name) {
+            $columns[$name] = $this->labels->field($typeDef->key, $name);
         }
 
         return $columns;
+    }
+
+    /**
+     * A field's config for its editor and display: a select's options with their labels in
+     * the interface language (DisplayLabels::options()); other fields' as they are.
+     *
+     * @return array<string, mixed>
+     */
+    private function fieldConfig(string $type, string $name, \Preflow\Data\TypeFieldDefinition $fieldDef): array
+    {
+        $config = $fieldDef->config;
+        if ($fieldDef->type === 'select' && is_array($config['options'] ?? null)) {
+            $config['options'] = $this->labels->options($type, $name);
+        }
+
+        return $config;
     }
 
     /** @param array<string, mixed> $listConfig */
@@ -1526,12 +1545,7 @@ final class AdminController
 
     private function labelFor(string $type): string
     {
-        foreach ($this->catalog->all() as $listing) {
-            if ($listing->key === $type) {
-                return $listing->label;
-            }
-        }
-        return ucfirst($type);
+        return $this->labels->type($type);
     }
 
     private function html(string $body): ResponseInterface

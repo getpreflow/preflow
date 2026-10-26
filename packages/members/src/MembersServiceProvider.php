@@ -41,6 +41,7 @@ final class MembersServiceProvider extends ServiceProvider
         // Declared in composer.json (extra.preflow.translations); this covers apps whose Composer
         // metadata doesn't list the package (test apps, a core before 0.37).
         self::translator($container)->addDefaultsIfMissing('members', dirname(__DIR__) . '/lang', 'public');
+        self::translator($container)->addDefaultsIfMissing('members-admin', dirname(__DIR__) . '/lang', 'admin');
         $container->singleton(MembersConfig::class, static fn (Container $c): MembersConfig => MembersConfig::fromFile(
             $c->get(Application::class)->basePath('config/members.php'),
         ));

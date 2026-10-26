@@ -567,8 +567,8 @@ final class AssetLibraryController
             $type = $this->fieldTypes->get($field->type);
             $html[] = $type->renderEditor(new FieldContext(
                 name: $name,
-                label: $field->label ?? ucfirst(str_replace('_', ' ', $name)),
-                help: $field->help,
+                label: \Preflow\Folio\Content\DisplayLabels::pick($field->labels ?: $field->label) ?? ucfirst(str_replace('_', ' ', $name)),
+                help: \Preflow\Folio\Content\DisplayLabels::pick($field->helps ?: $field->help),
                 value: $type->fromStorage($asset->extra[$name] ?? null),
                 config: $field->config,
                 required: in_array('required', $field->validate, true),
@@ -616,7 +616,7 @@ final class AssetLibraryController
             if ($field === null) {
                 continue;
             }
-            $label = $field->label ?? ucfirst(str_replace('_', ' ', $name));
+            $label = \Preflow\Folio\Content\DisplayLabels::pick($field->labels ?: $field->label) ?? ucfirst(str_replace('_', ' ', $name));
             $value = $values[$name] ?? '';
             $options = [];
             $html = null;
@@ -624,10 +624,7 @@ final class AssetLibraryController
             if ($field->type === 'boolean') {
                 $options = ['1' => FolioText::get('folio.common.yes'), '0' => FolioText::get('folio.common.no')];
             } elseif ($field->type === 'select') {
-                $raw = is_array($field->config['options'] ?? null) ? $field->config['options'] : [];
-                foreach ($raw as $key => $text) {
-                    $options[array_is_list($raw) ? (string) $text : (string) $key] = (string) $text;
-                }
+                $options = \Preflow\Folio\Content\ListView::selectOptions($field->config);
             } elseif ($field->type === 'relation') {
                 $type = $this->fieldTypes->get('relation');
                 $config = ['relation' => ['multiple' => false] + (is_array($field->config['relation'] ?? null) ? $field->config['relation'] : [])];

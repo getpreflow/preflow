@@ -24,6 +24,11 @@ final class CodesServiceProvider extends ServiceProvider
 {
     public function register(Container $container): void
     {
+        // The admin labels (lang/{locale}/codes.php): declared in composer.json (extra.preflow.translations);
+        // this covers apps whose Composer metadata doesn't list the package (test apps).
+        if ($container->bound(\Preflow\I18n\Translator::class)) {
+            $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('codes', dirname(__DIR__) . '/lang', 'admin');
+        }
         $container->get(MigrationRegistry::class)->addPath(dirname(__DIR__) . '/migrations');
         $container->singleton(Codes::class, static fn (Container $c): Codes => new Codes(
             $c->get(DataManager::class),

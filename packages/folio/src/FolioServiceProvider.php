@@ -84,15 +84,18 @@ final class FolioServiceProvider extends ServiceProvider
         // Models go under Content unless their JSON names a "section"; their settings forms
         // (Extension::settings()) are singleton types under Settings.
         // Each extension may adjust its models first (prepareModel: storage, options from config).
+        // Their labels are translated in the extension's translation group (#[FolioExtension(translations: …)]).
         $extensionTypes = [];
+        $labelSources = [];
         foreach ($extensions->enabled() as $definition) {
             foreach ($extensions->enabledModels($definition->name) as $schema) {
-                $extensionTypes[] = [$container->get($definition->class)->prepareModel($schema, $container), 'content', 'Extension model'];
+                $labelSources[] = ['extension ' . $definition->name . ' model ' . $schema['key'], $schema, $definition->labelGroup()];
+                $extensionTypes[] = [$container->get($definition->class)->prepareModel($schema, $container), 'content', 'Extension model', $definition->labelGroup()];
             }
         }
         foreach ($extensions->enabled() as $definition) {
             if ($extensions->partEnabled($definition->name, 'settings')) {
-                $extensionTypes[] = [ExtensionSettings::schema($definition, $container->get($definition->class)->settings()), 'settings', 'Extension settings type'];
+                $extensionTypes[] = [ExtensionSettings::schema($definition, $container->get($definition->class)->settings()), 'settings', 'Extension settings type', 'site'];
             }
         }
         if ($extensionTypes !== [] && $dataManager !== null && $dataManager->getTypeRegistry() === null) {
@@ -101,14 +104,14 @@ final class FolioServiceProvider extends ServiceProvider
         // Site model files with "extends": true add fields to these types (ModelExtension).
         $patches = ModelExtension::patches($modelsPath);
         $patchFiles = $patches === [] ? [] : ModelExtension::files($modelsPath);
-        foreach ($extensionTypes as [$schema, $section, $what]) {
+        foreach ($extensionTypes as [$schema, $section, $what, $group]) {
             if (isset($patches[$schema['key']])) {
                 $schema = ModelExtension::merge($schema, $patches[$schema['key']], $patchFiles[$schema['key']] ?? '');
                 unset($patches[$schema['key']]);
             }
             try {
                 $types->define($schema);
-                $catalog->add($schema, $section);
+                $catalog->add($schema, $section, $group);
             } catch (\RuntimeException $e) {
                 throw new \Preflow\Folio\Extension\ExtensionException("{$what} \"{$schema['key']}\": {$e->getMessage()}", 0, $e);
             }
@@ -116,6 +119,9 @@ final class FolioServiceProvider extends ServiceProvider
         if ($patches !== []) {
             throw ModelExtension::orphanError((string) array_key_first($patches), $modelsPath, $extensions);
         }
+        $displayLabels = new \Preflow\Folio\Content\DisplayLabels($catalog, $types);
+        $container->instance(\Preflow\Folio\Content\DisplayLabels::class, $displayLabels);
+        $this->registerLabelKeys($container, $modelsPath, $labelSources);
         // Blocks: component blocks from app/Components, data-only blocks from
         // app/Blocks, plus classes listed in config/folio.php 'blocks'. Cached
         // when debug is off (conflicting keys fail at boot either way).
@@ -269,6 +275,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(TypeCatalog::class),
                 static fn (string $permission): bool => $access->can($permission),
                 $prefix,
+                $c->get(\Preflow\Folio\Content\DisplayLabels::class),
             );
         });
         $container->bind(ActionResolver::class, fn (Container $c) => new ActionResolver($c));
@@ -373,6 +380,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(Customizations::class),
             new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c)),
             pageAssets: $c->get(\Preflow\Folio\Extension\Screen\PageAssets::class),
+            labels: $c->get(\Preflow\Folio\Content\DisplayLabels::class),
         ));
         $container->bind(\Preflow\Folio\Http\PublishingController::class, fn (Container $c) => new \Preflow\Folio\Http\PublishingController(
             $c->get(TypeCatalog::class),
@@ -612,6 +620,47 @@ final class FolioServiceProvider extends ServiceProvider
      * The app's translator with Folio's texts. A core before 0.37 boots none without lang/ or
      * config/i18n.php: then one is made and bound here.
      */
+    /**
+     * The keys of the model files' labels for translations:check (preflow/i18n DerivedKeys):
+     * the site's model files in "site", enabled extensions' models (as their files are, before
+     * prepareModel) in the extension's group, plus {group}.sections.{name} for a sidebar
+     * section that isn't Folio's own.
+     *
+     * @param list<array{0: string, 1: array<string, mixed>, 2: string}> $extensionModels what, schema, group
+     */
+    private function registerLabelKeys(Container $container, string $modelsPath, array $extensionModels): void
+    {
+        if (!class_exists(\Preflow\I18n\DerivedKeys::class)) {
+            return;
+        }
+        if (!$container->bound(\Preflow\I18n\DerivedKeys::class)) {
+            $container->instance(\Preflow\I18n\DerivedKeys::class, new \Preflow\I18n\DerivedKeys());
+        }
+        $container->get(\Preflow\I18n\DerivedKeys::class)->add('Folio model labels', static function () use ($modelsPath, $extensionModels): array {
+            $sources = [];
+            foreach (glob($modelsPath . '/*.json') ?: [] as $file) {
+                $schema = json_decode((string) file_get_contents($file), true);
+                if (is_array($schema) && is_string($schema['key'] ?? null) && !ModelExtension::isPatch($schema)) {
+                    $sources[] = [$schema, 'site'];
+                }
+            }
+            foreach ($extensionModels as [, $schema, $group]) {
+                $sources[] = [$schema, $group];
+            }
+            $builtin = \Preflow\Folio\Http\AdminNav::sectionOrder([]);
+            $keys = [];
+            foreach ($sources as [$schema, $group]) {
+                $keys += \Preflow\Data\ModelLabelKeys::derive($schema, $group);
+                $section = $schema['section'] ?? null;
+                if (is_string($section) && !in_array($section, $builtin, true)) {
+                    $keys += [\Preflow\Data\ModelLabelKeys::section($group, $section) => null];
+                }
+            }
+
+            return $keys;
+        });
+    }
+
     private static function translator(Container $c, Application $app): \Preflow\I18n\Translator
     {
         if ($c->bound(\Preflow\I18n\Translator::class)) {

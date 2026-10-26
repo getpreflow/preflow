@@ -214,12 +214,7 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
 
     private function typeLabel(string $key): string
     {
-        foreach ($this->catalog->all() as $listing) {
-            if ($listing->key === $key) {
-                return $listing->label;
-            }
-        }
-        return ucfirst($key);
+        return (new \Preflow\Folio\Content\DisplayLabels($this->catalog))->type($key);
     }
 
     /** @param array{_type:string,id:string,view?:string} $ref */

@@ -25,6 +25,7 @@ final class ListView
      * @param \Closure(string): bool $canView   may the admin view records of this type (relation filters)
      * @param bool                   $withFilterMenu false: leave the "+ Filter" entries out (and their option queries),
      *                                               for renders that never show the menu (the results partial)
+     * @param DisplayLabels|null     $labels filter labels and select options in the interface language (null: the model file's default texts)
      * @return array<string, mixed>
      */
     public static function build(
@@ -37,6 +38,7 @@ final class ListView
         RelationLabels $relations,
         \Closure $canView,
         bool $withFilterMenu = true,
+        ?DisplayLabels $labels = null,
     ): array {
         $params = $query->query();
         unset($params['page']);
@@ -52,7 +54,8 @@ final class ListView
                 continue;
             }
             $field = $def->fields[$name];
-            $label = $field->label ?? (new \Preflow\Form\FieldRenderer())->humanize($name);
+            $label = $labels?->field($def->key, $name) ?? $field->label ?? (new \Preflow\Form\FieldRenderer())->humanize($name);
+            $options = $field->type === 'select' ? ($labels?->options($def->key, $name) ?? self::selectOptions($field->config)) : [];
             $target = (string) ($field->config['relation']['to'] ?? '');
             if ($field->type === 'relation' && ($target === '' || !$canView($target))) {
                 continue;
@@ -66,7 +69,7 @@ final class ListView
                 }
                 $chips[] = [
                     'field' => $name,
-                    'label' => $label . ': ' . self::chipValue($field->type, $field->config, $query->filters[$name], $relations, $target, RelationLabels::labelField($def, $name)),
+                    'label' => $label . ': ' . self::chipValue($field->type, ['options' => $options] + $field->config, $query->filters[$name], $relations, $target, RelationLabels::labelField($def, $name)),
                     'name' => $label,
                     'remove' => $href($without),
                 ];
@@ -78,7 +81,7 @@ final class ListView
 
             $filter = ['name' => $name, 'label' => $label, 'kind' => $field->type, 'options' => [], 'target' => $target];
             if ($field->type === 'select') {
-                $filter['options'] = self::selectOptions($field->config);
+                $filter['options'] = $options;
             } elseif ($field->type === 'boolean') {
                 $filter['options'] = ['1' => \Preflow\Folio\FolioText::get('folio.common.yes'), '0' => \Preflow\Folio\FolioText::get('folio.common.no')];
             } elseif ($field->type === 'relation') {
@@ -212,7 +215,8 @@ final class ListView
         $raw = (array) ($config['options'] ?? []);
         $out = [];
         foreach ($raw as $key => $label) {
-            $out[array_is_list($raw) ? (string) $label : (string) $key] = (string) $label;
+            $text = is_array($label) ? (DisplayLabels::pick($label) ?? '') : (is_scalar($label) ? (string) $label : '');
+            $out[array_is_list($raw) ? $text : (string) $key] = $text;
         }
 
         return $out;

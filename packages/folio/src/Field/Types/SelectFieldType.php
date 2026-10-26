@@ -83,8 +83,10 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
         $raw = (array) ($config['options'] ?? []);
         $out = [];
         foreach ($raw as $key => $label) {
-            $value = array_is_list($raw) ? (string) $label : (string) $key;
-            $out[$value] = (string) $label;
+            // A label may be a map per language: the interface language's entry (English outside the admin).
+            $text = is_array($label) ? (\Preflow\Folio\Content\DisplayLabels::pick($label) ?? '') : (is_scalar($label) ? (string) $label : '');
+            $value = array_is_list($raw) ? $text : (string) $key;
+            $out[$value] = $text;
         }
 
         return $out;

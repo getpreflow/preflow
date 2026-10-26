@@ -36,6 +36,8 @@ use Preflow\Validation\ValidationException;
  */
 final class RecordDeleter
 {
+    private readonly DisplayLabels $labels;
+
     /** The most ids one request may name (a list page holds 50). */
     public const int MAX_IDS = 500;
 
@@ -48,7 +50,10 @@ final class RecordDeleter
         private readonly TypeCatalog $catalog,
         private readonly ?Publisher $publisher = null,
         private readonly ?\Closure $hooks = null,
-    ) {}
+        ?DisplayLabels $labels = null,
+    ) {
+        $this->labels = $labels ?? new DisplayLabels($catalog);
+    }
 
     /**
      * What deleting these records would do. Publishing types count links in their
@@ -301,17 +306,25 @@ final class RecordDeleter
     }
 
     /**
-     * The type's label as a noun for $n records: "games", "1 game" (FolioText::noun(): in lower
-     * case where the language writes nouns so; a label starting with an acronym keeps its case,
-     * "FAQ entries"). The singular is guessed for English only; other languages keep the label.
+     * The type's label as a noun for $n records: "games", "1 game", through folio.format.type_noun
+     * (the language's plural forms) with the singular label ("label_singular", a key) and the
+     * plural one. FolioText::noun(): in lower case where the language writes nouns so; a label
+     * starting with an acronym keeps its case ("FAQ entries"). Without a singular, English
+     * guesses one; other languages use the label.
      */
     private function noun(string $type, int $n): string
     {
-        $label = \Preflow\Folio\FolioText::noun($this->catalog->get($type)?->label ?? ucfirst($type));
-        if ($n !== 1 || \Preflow\Folio\FolioText::locale() !== 'en') {
-            return $label;
-        }
+        $plural = $this->labels->type($type);
+        $singular = $this->labels->singular($type) ?? (\Preflow\Folio\FolioText::locale() === 'en' ? self::guessSingular($plural) : $plural);
 
+        return \Preflow\Folio\FolioText::choice('folio.format.type_noun', $n, [
+            'singular' => \Preflow\Folio\FolioText::noun($singular),
+            'plural' => \Preflow\Folio\FolioText::noun($plural),
+        ]);
+    }
+
+    private static function guessSingular(string $label): string
+    {
         return match (true) {
             (bool) preg_match('/ies$/u', $label) => mb_substr($label, 0, -3) . 'y',
             (bool) preg_match('/(ss|us|is)$/u', $label) => $label,

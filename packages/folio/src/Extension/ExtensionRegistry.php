@@ -239,11 +239,14 @@ final class ExtensionRegistry
             throw new ExtensionException("Extension name \"{$meta->name}\" ({$class}) must match /^[a-z][a-z0-9_]*$/.");
         }
 
+        if ($meta->translations !== null && preg_match('/^[a-z0-9_-]+$/i', $meta->translations) !== 1) {
+            throw new ExtensionException("Extension \"{$meta->name}\" ({$class}): translations \"{$meta->translations}\" is no translation group name (letters, digits, _ and -).");
+        }
         $folder = dirname($path);
         $parts = [];
         foreach (glob($folder . '/models/*.json') ?: [] as $model) {
             $schema = self::model($model);
-            $parts[] = ['id' => 'model:' . $schema['key'], 'kind' => 'model', 'label' => is_string($schema['label'] ?? null) ? $schema['label'] : $schema['key']]
+            $parts[] = ['id' => 'model:' . $schema['key'], 'kind' => 'model', 'label' => (is_string($schema['label'] ?? null) || is_array($schema['label'] ?? null) ? \Preflow\I18n\Labels::pick($schema['label'], 'en', 'en') : null) ?? $schema['key']]
                 + (($schema['opt_in'] ?? false) === true ? ['opt_in' => true] : []);
         }
         foreach (self::partClasses($folder, $reflection->getNamespaceName(), $path) as $partClass) {
@@ -284,6 +287,7 @@ final class ExtensionRegistry
             class: $class,
             folder: $folder,
             parts: $parts,
+            translations: $meta->translations,
         );
     }
 

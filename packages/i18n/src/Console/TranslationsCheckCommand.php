@@ -6,6 +6,7 @@ namespace Preflow\I18n\Console;
 
 use Preflow\Core\Application;
 use Preflow\DevTools\Command\CommandInterface;
+use Preflow\I18n\DerivedKeys;
 use Preflow\I18n\TranslationRegistry;
 use Preflow\I18n\Translator;
 
@@ -15,8 +16,11 @@ use Preflow\I18n\Translator;
  * (site file and package file together; a package group is checked in every language any
  * package delivers, a site-only group in the languages it has files for), and the keys used as t('…') in package
  * templates and model files (of packages declaring translations) and in the site's
- * (app/, resources/, templates/, config/models/) that exist in no language. Exits 1 when
- * anything is missing. The package lists it in composer.json (extra.preflow.commands).
+ * (app/, resources/, templates/, config/models/) that exist in no language. Keys derived
+ * from other files (DerivedKeys: model files' labels, which Folio registers) are checked
+ * for package groups only: each needs a text in every delivered language other than English,
+ * from a language file or the file's own map; a site type's plain label is a valid fallback.
+ * Exits 1 when anything is missing. The package lists it in composer.json (extra.preflow.commands).
  */
 final class TranslationsCheckCommand implements CommandInterface
 {
@@ -85,6 +89,8 @@ final class TranslationsCheckCommand implements CommandInterface
             }
         }
 
+        $problems += $this->derived($container, $translator, $only, $delivered);
+
         $unknown = [];
         foreach ($this->usedKeys($app, $registry, $groups) as $key => $where) {
             if ($only !== null && !str_starts_with($key, $only . '.')) {
@@ -113,6 +119,47 @@ final class TranslationsCheckCommand implements CommandInterface
         }
 
         return 1;
+    }
+
+    /**
+     * Derived keys of package groups missing in a delivered language (no language file text
+     * and no entry in the source's map); prints them per locale and group. The number missing.
+     *
+     * @param list<string> $delivered
+     */
+    private function derived(\Preflow\Core\Container\Container $container, Translator $translator, ?string $only, array $delivered): int
+    {
+        if (!$container->bound(DerivedKeys::class)) {
+            return 0;
+        }
+        $missing = [];
+        foreach ($container->get(DerivedKeys::class)->all() as $key => ['value' => $value]) {
+            $group = strstr($key, '.', true) ?: $key;
+            if (($only !== null && $group !== $only) || $translator->scope($group) === null) {
+                continue; // the site's own texts: the model file's plain text is enough
+            }
+            foreach (array_unique([...$delivered, ...$translator->locales($group)]) as $locale) {
+                if ($locale === 'en' || $translator->has($key, $locale) || (is_array($value) && is_string($value[$locale] ?? null))) {
+                    continue;
+                }
+                $missing[$locale][$group][] = $key;
+            }
+        }
+        ksort($missing);
+        $count = 0;
+        foreach ($missing as $locale => $groups) {
+            ksort($groups);
+            foreach ($groups as $group => $keys) {
+                sort($keys);
+                $count += count($keys);
+                echo "Missing in {$locale} (model labels of {$group}, " . count($keys) . "):\n";
+                foreach ($keys as $key) {
+                    echo "  {$key}\n";
+                }
+            }
+        }
+
+        return $count;
     }
 
     /**
