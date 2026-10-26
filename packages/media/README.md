@@ -46,6 +46,10 @@ $library->delete($id); // refuses a used asset: AssetInUseException lists the us
   `Preflow\Media\Usage\AssetInUseException`.
 - `find($id)`, `all()` and `query()` (below) read assets; `replace()`, `versions()`, `restore()`,
   `deleteVersion()` and `prune()` are in Replace and versions.
+- **Uploads do their work at once.** `upload()` (and a replace or restore) makes the variants,
+  reads the colours and, for a PDF, renders its preview before it returns, in the same request.
+  An image takes as long as its encodes; a PDF can add up to 30 seconds (the render's time
+  limit). There is no queue.
 - `discard($id)` is intended only for an asset created in this request that nothing references
   yet, e.g. when the record that should reference it fails validation. It bypasses the usage
   check, so do not use it for anything else.
@@ -118,10 +122,11 @@ GIF and SVG are served as they are; without GD or Imagick no variants are made.
 After changing widths, run:
 
 ```
-php preflow media:variants [--id=<id>] [--all]
+php preflow media:variants [--id=<id>] [--all] [--limit=<n> [--offset=<n>]]
 ```
 
-(`--all` also makes the step widths.) The command is listed in the package's
+(`--all` also makes the step widths.) `--limit` makes the variants of at most n images (newest
+first) and prints the command that continues, with `--offset`; see Long runs below. The command is listed in the package's
 `extra.preflow.commands`; it needs `preflow/devtools`.
 
 **Step widths on first request.** Listed `widths` are made on upload; step widths when a
@@ -164,8 +169,10 @@ $library->prune($id, keep: 3, olderThanDays: 90);   // returns how many were del
 - `prune($id, $keep, $olderThanDays)` keeps the `$keep` newest earlier files and, with
   `$olderThanDays`, deletes only those replaced longer ago than that. The current file is never
   touched. Nothing is pruned automatically.
-- Replaces, restores, version deletes, prunes and the delete of one asset run one after another
-  (a lock in `{versions_dir}/{id}/.lock`).
+- Replaces, restores, version deletes, prunes, edits (`update()`), re-made variants, previews
+  and colours, and the delete of one asset run one after another, each on the record the one
+  before saved (a lock per asset in `{versions_dir}/.locks/{id}.lock`; the delete removes it).
+  A `media:variants` run that read the asset before a replace never undoes it.
 - **Serving.** Earlier files are never under `public/`. They are sent by the core route
   `{private_url}/{id}/v/{n}` behind `PrivateFileAccess` (see Private files), whether the asset
   is public or private. Without a bound rule that is a 403.
@@ -254,13 +261,22 @@ documents use it.
 - A private asset's preview is private too: `{private_url}/{id}/preview`, behind
   `PrivateFileAccess`.
 - A replace makes the preview again.
+- **Rendering takes time on upload.** It runs in the upload's request: a PDF can add up to 30
+  seconds before the upload returns.
+- **`media_image()` on a PDF** shows its preview (or its poster, if one is set) as a picture
+  once a preview exists; before that, the asset stays a link. A private PDF's preview is the
+  gated one.
+- A page larger than about 8000 pt (also by `/UserUnit`) is fitted into the preview's size in
+  one pass instead of being measured by drawing, so it costs no huge bitmap.
 
 ```
-php preflow media:previews [--id=<id>] [--all]
+php preflow media:previews [--id=<id>] [--all] [--limit=<n>] [--offset=<n>]
 ```
 
 Makes the previews of documents that have none; `--all` (or `--id`) makes them again, for
-example after Ghostscript has been upgraded.
+example after Ghostscript has been upgraded. A preview is rendered to a temp file and only
+then swapped in, so a render that fails or is killed keeps the working preview. `--id` of an
+unknown asset is an error (exit 1).
 
 ## Colours
 
@@ -295,8 +311,9 @@ page and colour set, so there is never an inline style. Use them in your CSS:
 it has loaded.
 
 ```
-php preflow media:colors --all          # every asset without colours
-php preflow media:colors --id=<id>      # that asset again
+php preflow media:colors --all                 # every asset without colours
+php preflow media:colors --all --limit=200     # at most 200 of them, then says how many are left
+php preflow media:colors --id=<id>             # that asset again
 ```
 
 Run `--all` once after upgrading, so existing assets get theirs.
@@ -307,10 +324,28 @@ All are in the package's `extra.preflow.commands` and need `preflow/devtools`.
 
 | Command | Does |
 |---|---|
-| `media:variants [--id=<id>] [--all]` | makes the variants again (`--all` includes step widths) |
+| `media:variants [--id=<id>] [--all] [--limit=N] [--offset=N]` | makes the variants again (`--all` includes step widths) |
 | `media:versions:prune [--keep=N] [--older-than=DAYS] [--id=<id>]` | deletes earlier files of replaced assets |
-| `media:previews [--id=<id>] [--all]` | makes PDF previews |
-| `media:colors --all \| --id=<id>` | reads the colours of images and previews |
+| `media:previews [--id=<id>] [--all] [--limit=N] [--offset=N]` | makes PDF previews |
+| `media:colors --all [--limit=N] [--offset=N] \| --id=<id>` | reads the colours of images and previews |
+
+**Long runs.** A host may end long SSH sessions (some after about 12 minutes). Run
+the backfills in chunks with `--limit=N`: each run does at most N assets and, when some are
+left, prints the command for the next chunk.
+
+- `media:previews` without `--all` and `media:colors --all` resume by themselves: an asset that
+  got its preview or colours drops out of the list, so a stopped run is continued by running
+  the same command again. When some could not be made, the printed command adds `--offset` to
+  skip them.
+- `media:previews --all` and `media:variants` redo every asset, so they continue with the
+  printed `--offset` (the list is newest first; an upload in between shifts it by one, which
+  only makes one asset twice).
+
+```
+php preflow media:colors --all --limit=300      # repeat until nothing is left
+php preflow media:previews --limit=50           # repeat until nothing is left
+php preflow media:variants --all --limit=200    # then: --limit=200 --offset=200, …
+```
 
 ## Usage sources
 
@@ -367,7 +402,10 @@ plain `<img>`, no srcset) use it.
   to allow, or the response to send (403, redirect). It is asked for every request on the
   route, also for an unknown id, so a refused visitor learns nothing about which ids exist.
 - Earlier versions (`{private_url}/{id}/v/{n}`) and private previews (`{private_url}/{id}/preview`)
-  go through the same rule.
+  go through the same rule. For a version the asset is passed as private and the request
+  carries the attribute `PrivateFileAccess::VERSION` (the version number; null on the other
+  routes), so a rule can keep earlier files to fewer people. Folio's does: earlier versions
+  are staff only (`assets.view`); its members' permission never opens them.
 - Files are sent with `Cache-Control: private, no-store`; images inline, everything else as
   an attachment with the original name.
 - The route needs the session: the prefix of `private_url` must be covered by

@@ -716,7 +716,7 @@ and `/files/{id}`.
   of the same kind; the asset keeps its id, alt text, focal point, extra fields and usage, so
   every record that shows it shows the new file. The current file is kept as a version;
 - **earlier versions:** listed newest first with date, size and dimensions. *Open* shows the
-  file (behind the private-file gate), *Restore* (`assets.edit`) makes it current again (the
+  file (behind the private-file gate; staff only, see below), *Restore* (`assets.edit`) makes it current again (the
   current file becomes a version), *Delete* (`assets.delete`) removes it for good. Needs
   `versions_dir` (default `storage/media-versions`, a shared directory in deployments); see the
   media README, and `media:versions:prune` to trim old versions;
@@ -752,9 +752,13 @@ extra fields, colour profile, …) live in
 
 - Folio binds the media core's `PrivateFileAccess`: only a signed-in user with
   `private_permission` (staff with `*` pass), or with `assets.view` (staff who can see the
-  library open what it shows), gets a private file, a private preview or an earlier version of
-  any asset. It fails closed like the frontend gate: without auth configured, nobody does.
-- Anyone else gets a 403, or with `private_login` a redirect to `login?next={the file's URL}`.
+  library open what it shows), gets a private file or a private preview. It fails closed like
+  the frontend gate: without auth configured, nobody does.
+- **Earlier versions are staff only:** `{private_url}/{id}/v/{n}` of any asset, public or
+  private, needs `assets.view`. `private_permission` never opens them, so members see only the
+  current file.
+- Anyone else gets a 403, or with `private_login` a redirect to `login?next={the file's URL}`
+  (not for an earlier version: always a 403).
 - A site's own `PrivateFileAccess` must be bound by a provider listed after Folio's in
   `config/providers.php`.
 
@@ -773,6 +777,8 @@ Without the asset library, a private field refuses uploads. Export and pull carr
 files with their asset records (archive root `private-media/`); an archive from before private
 assets has no such root, and importing it leaves local private files alone. The earlier files
 of replaced assets (`versions_dir`) travel the same way, under the archive root `media-versions/`.
+Importing such an archive into a site without a `versions_dir` skips those files and says so in
+the output (`Note: media-versions/: N earlier files skipped, …`).
 
 ```json
 "pdf": { "type": "asset", "asset": { "accept": "application/pdf", "private": true } }

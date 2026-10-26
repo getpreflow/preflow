@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.34.0** — 3066 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.35.0** (prepared) — 3275 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -106,11 +106,12 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 - **Replace and versions:** `MediaLibrary::replace()` swaps an asset's file and keeps its id, alt, title, focal point, extra fields, usage, private flag and poster. The old file goes to `versions_dir` (`storage/media-versions`, a shared deploy dir) and is served only through `{private_url}/{id}/v/{n}` behind `PrivateFileAccess`. `restore()`, `deleteVersion()`, `prune()` and `media:versions:prune`. Version 1 keeps today's names, version n is `{id}-v{n}.{ext}`
 - **Extra fields and `query()`:** `config/media.php` `fields` and `filters`; `MediaLibrary::query()` pages and filters by kind, search and extra fields (JSON and SQL)
 - **Colour management:** CMYK (default profile FOGRA39L, CC0, `color_profile_cmyk` overrides) and Adobe RGB/other profiles convert to sRGB with Imagick and lcms; without Imagick such images get no variants and a note. sRGB images unchanged
-- **PDF previews:** first page as sRGB PNG with Ghostscript 10.03.1 or newer (follows the CMYK output intent), else Poppler's `pdftocairo`; `media_preview_url()`, `media:previews`; private previews are gated
+- **PDF previews:** first page as sRGB PNG with Ghostscript 10.03.1 or newer (follows the CMYK output intent), else Poppler's `pdftocairo`; made in the upload's request (a PDF can add up to 30 s); `media_image()` on a PDF shows the preview once it exists; `media_preview_url()`, `media:previews`; private previews are gated
+- **Backfills in chunks:** `media:previews`, `media:colors` and `media:variants` take `--limit=N` (and `--offset=N`) and print the command for the next chunk
 - **Colours:** `color`, `palette` (1 to 8 real colours) and `text_color` per image; `media_colors()`, `media_color_class()` (CSS variables `--media-color`, `--media-color-rgb`, `--media-text`, `--media-palette-N`, nonce'd head style), `media_image(…, {placeholder: true})`, `media:colors`
-- **Folio library UI:** replace, versions (open, restore, delete), extra fields and filters, PDF thumbnails, colour swatches with copy; export/import carries `media-versions/`; staff with `assets.view` may open private files, previews and versions
+- **Folio library UI:** replace, versions (open, restore, delete), extra fields and filters, PDF thumbnails, colour swatches with copy; export/import carries `media-versions/` (skipped with a notice where no `versions_dir` is set); staff with `assets.view` may open private files, previews and versions; earlier versions are staff only (members' `private_permission` never opens them, `PrivateFileAccess::VERSION` marks those requests)
 - **Folio frontend:** `hreflang` and canonical URLs use `app.url` (when set and absolute) instead of the request host
-- **Data:** `=` with a null value matches missing or NULL fields on SQL, as on the JSON driver; the query builder reads relations from the queried definition (code-defined types)
+- **Data:** in `whereAny()` groups, `=` with a null value compiles to `IS NULL` on SQL (missing or NULL fields, as on the JSON driver; `where(field, '=', null)` is unchanged); the query builder reads relations from the queried definition (code-defined types)
 - Constraints: media requires data `^0.35`; folio requires media `^0.35`
 
 ### v0.34.1
