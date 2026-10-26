@@ -727,6 +727,15 @@ and `/files/{id}`.
   10.03.1 or newer, or `pdftocairo`; `media:previews` makes them for existing files), and an
   image shows its dominant colour and palette as swatches: click a hex value or *RGB* to copy
   it (`media:colors --all` reads them for existing assets);
+- **edit image** (permission `assets.edit`): the details panel's *Edit image* opens
+  `{prefix}/assets/{id}/edit` for public JPEG, PNG, WebP and AVIF images. It rotates and
+  mirrors, draws the image crop (free or with a ratio, including each box preset's), and
+  lists every box preset (`height` and `fit` in `config/image.php`) with its cut: *Adjust*
+  sets a format crop for a `cover` preset, *Reset* removes it. The original stays
+  untouched; *Download original* is in the panel. The cropper is Cropper.js 1.6.2 (MIT,
+  vendored in the package). A format crop stays inside the image crop; remove the image
+  crop to art-direct outside it. The editing itself is the media core's (`rotate()`,
+  `flip()`, `setCrop()`, `setFormatCrop()`); Folio only adds the screen;
 - **notes:** an image that could not get colour-accurate variants (CMYK without Imagick) shows
   the asset's note in the panel.
 
@@ -737,7 +746,7 @@ the file to the library on save, so it works without JavaScript. A field's `acce
 type's default template renders with `media_image()`.
 
 **Permissions.** `assets.view` (screen and panel), `assets.upload`, `assets.edit` (details,
-extra fields, replace, restore), `assets.delete` (delete an asset or an earlier version).
+extra fields, replace, restore, edit image), `assets.delete` (delete an asset or an earlier version).
 
 **Config.** Library settings (directory, widths, quality, private and versions directory,
 extra fields, colour profile, …) live in

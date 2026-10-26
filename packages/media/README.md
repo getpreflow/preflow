@@ -98,7 +98,8 @@ return [
 
 - `media_image()` emits `<picture>` with AVIF and WebP `srcset`s and an `<img>` with `width`,
   `height`, `loading` and the alt text in the page's language. A document renders as a link.
-- `media_url()` gives an asset's URL (`''` without one). Both accept what an asset field
+- `media_url()` gives an asset's URL (`''` without one; the master for an edited image).
+  `media_original_url()` gives the untouched original. Both accept what an asset field
   stores: a library id, a legacy upload path, or a list (its first item).
 - Options and presets are those of `responsive_image()` (`config/image.php` `presets`:
   `widths`, `sizes`, `loading`, `class`, `attrs`), plus:
@@ -137,6 +138,91 @@ made; anything else under the media URL is a 404 that writes nothing. Concurrent
 requests wait on a per-file lock. `warm_on_upload` or `media:variants --all` make them in
 advance (use one on shared hosting). If an encode fails, the browser is redirected
 (uncached) to the closest existing size. A page under the media URL is not routed.
+
+## Box presets: height and fit
+
+A preset without `height` is a width preset, as before. With `height` it gets a fixed box;
+`fit` says how the image fills it:
+
+```php
+// config/image.php
+'presets' => [
+    'card'  => ['widths' => [400, 800], 'sizes' => '50vw'],                       // width preset (fit: max)
+    'thumb' => ['width' => 400, 'height' => 300, 'fit' => 'cover'],               // cut to 4:3
+    'strip' => ['width' => 1200, 'height' => 300, 'fit' => 'cover', 'widths' => [600, 1200]],
+    'logo'  => ['width' => 300, 'height' => 200, 'fit' => 'contain'],             // whole image inside the box
+],
+```
+
+- `fit: max` (the default) is today's behaviour: the image keeps its shape.
+- `fit: cover` cuts the box's ratio out of the image, centred on the focal point (or on the
+  format crop, see below). `fit: contain` keeps the whole image (or the image crop) and
+  only sets the box's `width`/`height` attributes.
+- A `cover` or `contain` preset needs a positive `width` and `height`. Its `widths` default to
+  1x and 2x of `width`. A box file is never wider than its source region (no upscaling).
+- **Names.** A box preset's name matches `^[a-z][a-z0-9-]*$`. It is not `edit`, `preview` or
+  `oriented`, does not start with `edit-`, `preview-` or `oriented-`, and is not `v<digits>`
+  or `v<digits>-…`. These would collide with the names of other derived files. Anything else is a boot error
+  that names `config/image.php` and the preset. Presets with `fit: max` keep any name.
+- **File names.** `{stem}-{preset}-{key}-{w}.{fmt}`, for example
+  `2026/10/{id}-v3-thumb-1a2b3c4d-400.webp`; for an edited image the stem is the master's:
+  `2026/10/{id}-edit-9f8e7d6c-thumb-1a2b3c4d-400.webp`. The key (8 hex characters) changes
+  with the box, the crop region and the focal point, so an edit gives new URLs and old ones
+  are not cached stale.
+- **Made on first request**, not at upload: the missing file reaches the front controller,
+  which cuts and writes it (like step widths; anything that is not one of the asset's current
+  box files is a 404 that writes nothing). `warm_on_upload` and `media:variants --all`
+  make them in advance. Any edit or focal-point change deletes the asset's box files.
+- Box files are cut from the delivered image (the master of an edited image) and are sRGB and
+  stripped. Private assets get no box variants.
+
+## Editing images
+
+An image can be rotated, mirrored and cropped without touching the uploaded file. The edit
+is data on the asset; the library renders a **master** from the original and pages deliver
+the master. Editing needs a public JPEG, PNG, WebP or AVIF image; private images, GIF and SVG
+are refused (`InvalidArgumentException`).
+
+```php
+use Preflow\Media\CropRect;
+
+$library->isEditable($asset);                       // public JPEG, PNG, WebP or AVIF
+$library->rotate($id, 1);                           // quarter turns clockwise (negative: counter-clockwise)
+$library->flip($id, true);                          // mirror horizontally (false: vertically)
+$library->setCrop($id, CropRect::of(10, 5, 80, 60)); // x, y, width, height in percent; null removes it
+$library->setFormatCrop($id, 'thumb', CropRect::of(0, 0, 50, 50)); // cut for one cover preset; null removes it
+```
+
+Each call returns the saved asset and renders the master straight away.
+
+- **Order.** EXIF upright, then mirror, then rotate clockwise, then the image crop. The result
+  is the master `{stem}-edit-{key}.{jpg|png|webp}` (AVIF originals get a WebP master), with
+  its variants `{stem}-edit-{key}-{w}.{fmt}`. The original file stays as uploaded.
+- **Coordinates.** A `CropRect` is in percent of the *rotated and flipped original* and is
+  clamped to the image. The focal point is in percent of the *delivered image* (the master
+  when edited), so `object-position` keeps its meaning. Rotating or mirroring moves the crop,
+  the format crops and the focal point along; setting the crop moves the focal point with it.
+  A crop of the whole image is stored as no crop.
+- **Format crops** (`setFormatCrop`) art-direct one `cover` preset. They are cut from the
+  master, so a format crop is **clamped to the image crop**: to show an area outside the
+  image crop, remove the image crop first. Rotating or mirroring clears the format crops
+  (mirroring mirrors them). `formatRegion($asset, $preset)` returns the region a preset cuts,
+  in the same coordinates.
+- **What reads what.** `media_url()` and `url()` give the master for an edited image;
+  documents keep their file URL. `media_original_url()` (`$library->originalUrl()`) gives the
+  untouched original (a legacy upload path gives its legacy URL). `deliveryAsset()` is the
+  asset as pages see it.
+- **Colour.** The master is sRGB and stripped. A CMYK or wide-gamut edited image needs
+  Imagick: without it no master is made, the asset's `note` says
+  `needs Imagick for colour-accurate variants` and pages keep the original.
+- **Reserved field names.** New asset fields `rotation` (0 to 3), `flip`, `crop`, `crops`
+  and `master` cannot be used as extra field names. Existing assets read as unedited.
+- **Replace and restore** keep the edits (the crop applies as a percentage to the new
+  file); restoring a version brings back the edits it had. Versions made before 0.36 leave
+  the current edits unchanged.
+- **Custom backends.** `ImageBackend` has a new method, `writeEdited()` (renders the master:
+  upright, mirror, turns, crop, longest side, JPEG/PNG/WebP), and `writeVariants()` jobs may
+  carry a `crop`. A third-party backend must implement `writeEdited()`.
 
 ## Replace and versions
 
@@ -324,7 +410,7 @@ All are in the package's `extra.preflow.commands` and need `preflow/devtools`.
 
 | Command | Does |
 |---|---|
-| `media:variants [--id=<id>] [--all] [--limit=N] [--offset=N]` | makes the variants again (`--all` includes step widths) |
+| `media:variants [--id=<id>] [--all] [--limit=N] [--offset=N]` | makes the variants again (`--all` includes step widths and box variants) |
 | `media:versions:prune [--keep=N] [--older-than=DAYS] [--id=<id>]` | deletes earlier files of replaced assets |
 | `media:previews [--id=<id>] [--all] [--limit=N] [--offset=N]` | makes PDF previews |
 | `media:colors --all [--limit=N] [--offset=N] \| --id=<id>` | reads the colours of images and previews |

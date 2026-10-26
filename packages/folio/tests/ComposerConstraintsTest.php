@@ -13,7 +13,7 @@ use PHPUnit\Framework\TestCase;
  * so media registers once; 0.33's cache registry Settings → Cache lists; since 0.27 it builds
  * the chain from config/auth.php, which RecordProviders and StaffPasswords look into), data 0.34
  * (RecordTableSync; since 0.28 searchLoose, whereAny, deletePlan, relations), i18n 0.26 (Translator::addDefaults),
- * notify 0.25 (Notifier::sendLater; the bound its require names), media 0.34 (the asset
+ * notify 0.25 (Notifier::sendLater; the bound its require names), media 0.36 (box presets, edits and writeEdited; the asset
  * classes Folio's library and field build on).
  */
 final class ComposerConstraintsTest extends TestCase
@@ -23,7 +23,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/auth' => '<0.27', 'preflow/core' => '<0.34', 'preflow/data' => '<0.35', 'preflow/i18n' => '<0.26', 'preflow/media' => '<0.35', 'preflow/notify' => '<0.25'],
+            ['preflow/auth' => '<0.27', 'preflow/core' => '<0.34', 'preflow/data' => '<0.35', 'preflow/i18n' => '<0.26', 'preflow/media' => '<0.36', 'preflow/notify' => '<0.25'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound.

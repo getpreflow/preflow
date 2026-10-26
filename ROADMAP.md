@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-26 (v0.35.0 prepared)
+> Last updated: 2026-10-26 (v0.36.0 prepared)
 
 ## Current State
 
-**v0.35.0** (prepared) — 3275 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.36.0** (prepared) — 3383 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -101,7 +101,15 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 
 ## Completed
 
-### v0.35.0 (prepared)
+### v0.36.0 (prepared)
+
+- **Box presets:** `config/image.php` presets take `height` and `fit` (`cover` cuts the box's ratio around the focal point or a per-format crop, `contain` keeps the whole image, `max` is today's behaviour). Box files `{stem}-{preset}-{key}-{w}.{fmt}` are made on first request (and by `media:variants --all` / `warm_on_upload`); box preset names are validated at boot (`^[a-z][a-z0-9-]*$`, not `edit`, `preview`, `oriented` or `v<digits>`)
+- **Image edits:** `MediaLibrary::rotate()`, `flip()`, `setCrop()`, `setFormatCrop()` for public JPEG, PNG, WebP and AVIF images. The original stays; a sRGB master `{stem}-edit-{key}.{ext}` is rendered and pages deliver it. Coordinates are percent (`CropRect`); a format crop is clamped to the image crop; edits survive replace and come back on restore. New reserved asset fields `rotation`, `flip`, `crop`, `crops`, `master`; `media_original_url()`
+- **Backends:** `ImageBackend::writeEdited()` (third-party backends must implement it); `writeVariants()` jobs may carry a `crop`
+- **Folio:** Edit image screen at `{prefix}/assets/{id}/edit` (`assets.edit`): rotate, mirror, crop with ratios, one cut per box preset; Cropper.js 1.6.2 (MIT) vendored
+- Constraints: folio requires media `^0.36`
+
+### v0.35.0
 
 - **Replace and versions:** `MediaLibrary::replace()` swaps an asset's file and keeps its id, alt, title, focal point, extra fields, usage, private flag and poster. The old file goes to `versions_dir` (`storage/media-versions`, a shared deploy dir) and is served only through `{private_url}/{id}/v/{n}` behind `PrivateFileAccess`. `restore()`, `deleteVersion()`, `prune()` and `media:versions:prune`. Version 1 keeps today's names, version n is `{id}-v{n}.{ext}`
 - **Extra fields and `query()`:** `config/media.php` `fields` and `filters`; `MediaLibrary::query()` pages and filters by kind, search and extra fields (JSON and SQL)
