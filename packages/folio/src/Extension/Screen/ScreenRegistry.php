@@ -9,6 +9,7 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Extension\Attributes\FolioScreen;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Extension\ExtensionRegistry;
+use Preflow\Folio\Extension\NavBadge;
 use Preflow\Folio\Routing\PatternCompiler;
 use Preflow\Routing\Attributes\HttpMethod;
 use Preflow\Routing\RouteEntry;
@@ -30,7 +31,7 @@ final class ScreenRegistry
     private const string WORKING_MW = 'Preflow\\Folio\\Http\\WorkingCopyMiddleware';
 
     /**
-     * @param array<class-string, array{extension: string, meta: FolioScreen, permission: string, assets: list<string>, actions: list<array{method: string, path: string, action: string}>}> $screens by class
+     * @param array<class-string, array{extension: string, meta: FolioScreen, permission: string, assets: list<string>, badge: ?string, actions: list<array{method: string, path: string, action: string}>}> $screens by class
      */
     private function __construct(
         private readonly array $screens,
@@ -72,7 +73,7 @@ final class ScreenRegistry
         return new self($screens);
     }
 
-    /** @return list<array{class: class-string, extension: string, path: string, label: string, icon: string, section: string, order: int, permission: string, assets: list<string>}> */
+    /** @return list<array{class: class-string, extension: string, path: string, label: string, icon: string, section: string, order: int, permission: string, assets: list<string>, badge: ?string}> */
     public function all(): array
     {
         $all = [];
@@ -83,7 +84,7 @@ final class ScreenRegistry
         return $all;
     }
 
-    /** @return array{class: class-string, extension: string, path: string, label: string, icon: string, section: string, order: int, permission: string, assets: list<string>}|null */
+    /** @return array{class: class-string, extension: string, path: string, label: string, icon: string, section: string, order: int, permission: string, assets: list<string>, badge: ?string}|null */
     public function get(string $class): ?array
     {
         $screen = $this->screens[$class] ?? null;
@@ -102,6 +103,7 @@ final class ScreenRegistry
             'order' => $meta->order,
             'permission' => $screen['permission'],
             'assets' => $meta->assets,
+            'badge' => $screen['badge'],
         ];
     }
 
@@ -155,7 +157,7 @@ final class ScreenRegistry
      * The attribute and the #[Get]/#[Post] methods of one screen class (composed here
      * rather than with AttributeRouteScanner, which needs a class-level #[Route]).
      *
-     * @return array{extension: string, meta: FolioScreen, permission: string, actions: list<array{method: string, path: string, action: string}>}
+     * @return array{extension: string, meta: FolioScreen, permission: string, badge: ?string, actions: list<array{method: string, path: string, action: string}>}
      */
     private static function screen(string $extension, string $class): array
     {
@@ -199,10 +201,23 @@ final class ScreenRegistry
                 $actions[] = ['method' => $route->method, 'path' => $route->path, 'action' => $method->getName()];
             }
         }
+        $badge = null;
+        foreach ($reflection->getMethods() as $method) {
+            if ($method->getAttributes(NavBadge::class) === []) {
+                continue;
+            }
+            if (!$method->isPublic() || $method->isStatic()) {
+                throw new ExtensionException("{$class}::{$method->getName()} must be a public, non-static method to carry #[NavBadge].");
+            }
+            if ($badge !== null) {
+                throw new ExtensionException("{$class} has more than one #[NavBadge]: {$badge} and {$method->getName()}.");
+            }
+            $badge = $method->getName();
+        }
         if (!in_array(['GET', '/'], array_map(fn (array $a): array => [$a['method'], $a['path']], $actions), true)) {
             throw new ExtensionException("Screen {$class} needs a #[Get('/')] method (its sidebar item links there).");
         }
 
-        return ['extension' => $extension, 'meta' => $meta, 'permission' => $meta->permission, 'actions' => $actions];
+        return ['extension' => $extension, 'meta' => $meta, 'permission' => $meta->permission, 'badge' => $badge, 'actions' => $actions];
     }
 }

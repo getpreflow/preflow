@@ -975,6 +975,9 @@ final class Overview
 - A method returns a `ScreenView(template, data)` (rendered in the admin layout with
   `prefix`, `csrf` and `screen` added to your data), a string, or any PSR-7 response.
   POSTs need the CSRF token (`_csrf_token`, available as `csrf` in the template).
+- `#[NavBadge]` on one public, non-static method of the screen (`fn(): ?int`, e.g. entries waiting for review)
+  puts a count on its sidebar item. It runs only for a user who may see the screen, at most once per
+  request; `null`, `0`, a non-int or a throw shows no badge. A static or second one is a boot error.
 - A path colliding with a type key or a Folio path (`login`, `logout`, `_assets`,
   `_uploads`, `media`, `extensions`) is a boot error.
 - The sidebar is data: `folio_nav()` in Twig, `Preflow\Folio\Http\AdminNav` in PHP
@@ -1108,7 +1111,7 @@ final class NoteTweaks
 | `#[FormPanel(label, position: 'after')]` | `fn(DynamicRecord): ScreenView\|string` | A panel on the edit form (not on create), `before` or `after` Folio's own extras, or `side`: a sticky column about 340 px wide to the right of the fields from 1280 px (on a previewable type in its plain form view; in split view the panels stack), stacked right under the form fields below that. A string is shown as escaped text, a `ScreenView` as a template fragment (it gets `prefix`, `csrf`, `type`, `id` and `record`). Any other position is a boot error. |
 | `#[RecordAction(name, label, permission, icon, confirm, toolbar: true)]` | `fn(DynamicRecord, ServerRequestInterface): ?ResponseInterface` | A POST button at `{prefix}/{type}/{id}/_action/{name}`; null redirects back to the form with "{label}: done". Needs the permission and the type's edit permission. With `toolbar: false` there is no button in the form header; the action stays routed and permission-checked, for a form inside a `FormPanel` to post to. |
 | `#[ListColumn(label, position: 100)]` | `fn(DynamicRecord): string\|Badge` | A column after the type's own, ordered by position, shown as escaped text, or as a status pill for `new Badge($label, $tone)` (tone `''`, `published`, `draft`, `changed` or `incomplete`; the label is escaped, an unknown tone is shown plain). |
-| `#[NavBadge]` | `fn(): ?int` | A count badge on the type's sidebar item (e.g. waiting members), computed only while the item is visible and at most once per request; `null`, `0` or any non-int return shows none, a callback that throws shows no badge (the admin still renders), several add up, one per class. Keep it cheap: it runs on admin page renders. |
+| `#[NavBadge]` | `fn(): ?int` | A count badge on the type's sidebar item (e.g. waiting members); also on a `#[FolioScreen]` class (see Screens), computed only while the item is visible and at most once per request; `null`, `0` or any non-int return shows none, a callback that throws shows no badge (the admin still renders), several add up, one per class. Keep it cheap: it runs on admin page renders. |
 | `#[FieldPlaceholder(field)]` | `fn(string $locale): ?string` | What the field means while it is empty, as its placeholder in the edit form in the locale being edited (e.g. a standard text from the lang files); it replaces the "falls back to" placeholder of a translatable field. The field must exist on the type (boot error), one per field. |
 | `#[BeforeSave]` | `fn(DynamicRecord): void` | Before validation; may `set()` fields. Throw `Preflow\Validation\ValidationException` to refuse the save: the form is shown again with its errors (422). |
 | `#[AfterSave]` | `fn(DynamicRecord): void` | After the record is stored. |

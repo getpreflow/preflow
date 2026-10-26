@@ -22,10 +22,13 @@ final class AdminNav
 
     private string $prefix;
     private string $path = '';
-    /** @var list<array{section: string, label: string|Closure, url: string, icon: string, permission: ?string, order: int}> */
+    /** @var list<array{section: string, label: string|Closure, url: string, icon: string, permission: ?string, order: int, badge: ?Closure}> */
     private array $added = [];
     /** @var (Closure(string): ?int)|null the count badge of a type key; set at boot (Customizations resolve after the nav is built) */
     private ?Closure $badges = null;
+
+    /** @var array<int, ?int> added items' badge results by closure id (the closures live in $added, so ids are stable) */
+    private array $badgeCounts = [];
 
     private readonly DisplayLabels $labels;
 
@@ -44,10 +47,11 @@ final class AdminNav
      * Adds an item to a section; a new section name sits between Content and Library, in the order first used. A null permission shows it to everyone.
      *
      * @param string|Closure(): string $label a closure is asked when the sidebar renders (a text in the interface language)
+     * @param (Closure(): mixed)|null $badge a count for the item, asked once and only while the item is visible; anything but an int above 0 (or a throw) shows none
      */
-    public function add(string $section, string|Closure $label, string $url, string $icon, ?string $permission, int $order = 100): void
+    public function add(string $section, string|Closure $label, string $url, string $icon, ?string $permission, int $order = 100, ?Closure $badge = null): void
     {
-        $this->added[] = compact('section', 'label', 'url', 'icon', 'permission', 'order');
+        $this->added[] = compact('section', 'label', 'url', 'icon', 'permission', 'order', 'badge');
     }
 
     /** @param Closure(string): ?int $badges a type key's nav badge count; called only for visible items */
@@ -66,8 +70,8 @@ final class AdminNav
     public function sections(): array
     {
         $groups = array_fill_keys(array_keys(self::BUILTIN), []);
-        $add = function (string $section, string|Closure $label, string $url, string $icon, ?string $permission, int $order, ?string $type = null) use (&$groups): void {
-            $groups[$section][] = compact('label', 'url', 'icon', 'permission', 'order', 'type');
+        $add = function (string $section, string|Closure $label, string $url, string $icon, ?string $permission, int $order, ?string $type = null, ?Closure $badge = null) use (&$groups): void {
+            $groups[$section][] = compact('label', 'url', 'icon', 'permission', 'order', 'type', 'badge');
         };
 
         $add('dashboard', static fn (): string => FolioText::get('folio.nav.dashboard'), $this->prefix === '' ? '/' : $this->prefix, 'ui-dashboard', 'folio.dashboard', 100);
@@ -79,7 +83,7 @@ final class AdminNav
         }
         $add('library', static fn (): string => FolioText::get('folio.nav.assets'), $this->prefix . '/assets', 'ui-library', 'assets.view', 100);
         foreach ($this->added as $item) {
-            $add($item['section'], $item['label'], $item['url'], $item['icon'], $item['permission'], $item['order']);
+            $add($item['section'], $item['label'], $item['url'], $item['icon'], $item['permission'], $item['order'], null, $item['badge']);
         }
 
         $ordered = $groups;
@@ -110,12 +114,34 @@ final class AdminNav
                     'url' => $item['url'],
                     'icon' => $item['icon'],
                     'active' => $item['url'] === $active,
-                    'badge' => $item['type'] !== null && $this->badges !== null ? ($this->badges)($item['type']) : null,
+                    'badge' => $this->badge($item),
                 ], $items),
             ];
         }
 
         return $sections;
+    }
+
+    /** @param array{type: ?string, badge: ?Closure} $item */
+    private function badge(array $item): ?int
+    {
+        if ($item['type'] !== null) {
+            return $this->badges !== null ? ($this->badges)($item['type']) : null;
+        }
+        if ($item['badge'] === null) {
+            return null;
+        }
+        $key = spl_object_id($item['badge']);
+        if (!array_key_exists($key, $this->badgeCounts)) {
+            try {
+                $count = ($item['badge'])();
+            } catch (\Throwable) {
+                $count = null;
+            }
+            $this->badgeCounts[$key] = is_int($count) && $count > 0 ? $count : null;
+        }
+
+        return $this->badgeCounts[$key];
     }
 
     /**

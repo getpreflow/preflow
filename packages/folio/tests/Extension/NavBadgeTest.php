@@ -178,6 +178,91 @@ final class NavBadgeTest extends TestCase
         $this->app();
     }
 
+    #[RunInSeparateProcess]
+    public function test_badge_count_shown_on_screen_item(): void
+    {
+        $this->crm(['count' => 3]);
+        $this->queueScreen('return 4;');
+
+        $this->assertStringContainsString('<span>Queue</span><span class="folio-nav-badge" aria-label="4 waiting">4</span>', $this->dashboardAs('admin'));
+    }
+
+    /** @return array<string, array{string}> */
+    public static function noScreenBadge(): array
+    {
+        return ['zero' => ['return 0;'], 'null' => ['return null;'], 'string' => ['return "3";'], 'throw' => ['throw new \\RuntimeException("db down");']];
+    }
+
+    #[RunInSeparateProcess]
+    #[\PHPUnit\Framework\Attributes\DataProvider('noScreenBadge')]
+    public function test_screen_badge_zero_null_non_int_or_throwing_shows_none(string $body): void
+    {
+        $this->crm(['count' => 'null', 'more' => 0]);
+        $this->queueScreen($body);
+
+        $html = $this->dashboardAs('admin');
+        $this->assertStringContainsString('Queue', $html);
+        $this->assertStringNotContainsString('folio-nav-badge"', $html);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_screen_badge_not_called_for_a_user_without_the_permission(): void
+    {
+        $this->crm(['count' => 'null', 'more' => 0]);
+        $marker = $this->dir . '/badge-called';
+        $this->queueScreen('file_put_contents(' . var_export($marker, true) . ', "x"); return 4;');
+
+        $html = $this->dashboardAs('editor');
+        $this->assertStringNotContainsString('Queue', $html);
+        $this->assertFileDoesNotExist($marker);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_static_screen_badge_throws_at_boot(): void
+    {
+        $this->crm(['count' => 'null', 'more' => 0]);
+        $this->queueScreen('return 1;', 'public static function waiting(): mixed');
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessage('App\\Folio\\Crm\\Screens\\Queue::waiting must be a public, non-static method to carry #[NavBadge].');
+        $this->app();
+    }
+
+    #[RunInSeparateProcess]
+    public function test_second_screen_badge_throws_at_boot(): void
+    {
+        $this->crm(['count' => 'null', 'more' => 0]);
+        $this->queueScreen('return 1;', 'public function waiting(): mixed', "#[\\Preflow\\Folio\\Extension\\NavBadge]\n    public function other(): mixed { return 2; }");
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessage('App\\Folio\\Crm\\Screens\\Queue has more than one #[NavBadge]: waiting and other.');
+        $this->app();
+    }
+
+    /** The crm extension's "queue" screen (permission crm.queue); $body is its badge method's body. */
+    private function queueScreen(string $body, string $signature = 'public function waiting(): mixed', string $extra = ''): void
+    {
+        $this->write('app/Folio/Crm/Screens/Queue.php', <<<PHP
+            <?php
+            namespace App\\Folio\\Crm\\Screens;
+            use Preflow\\Folio\\Extension\\Attributes\\FolioScreen;
+            use Preflow\\Routing\\Attributes\\Get;
+            #[FolioScreen('queue', 'Queue', section: 'content', permission: 'crm.queue')]
+            final class Queue
+            {
+                #[Get('/')]
+                public function index(): string { return 'queue'; }
+
+                #[\\Preflow\\Folio\\Extension\\NavBadge]
+                {$signature} { {$body} }
+
+                {$extra}
+            }
+            PHP);
+        $this->enabled['crm'] = ['disabled_parts' => []];
+        $this->write('config/folio/extensions.json', (string) json_encode(['enabled' => $this->enabled]));
+    }
+
     /**
      * The "crm" extension customizing contact with up to two badges. $badges: 'count' => the
      * first badge's return value (int or 'null'), 'more' => an optional second class's.

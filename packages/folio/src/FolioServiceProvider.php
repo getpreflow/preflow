@@ -873,6 +873,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $screen['icon'],
                 $screen['permission'],
                 $screen['order'],
+                $screen['badge'] === null ? null : static fn (): mixed => $container->get($screen['class'])->{$screen['badge']}(),
             );
         }
 
