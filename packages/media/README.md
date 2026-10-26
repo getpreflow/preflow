@@ -162,8 +162,9 @@ A preset without `height` is a width preset, as before. With `height` it gets a 
   1x and 2x of `width`. A box file is never wider than its source region (no upscaling).
 - **Names.** A box preset's name matches `^[a-z][a-z0-9-]*$`. It is not `edit`, `preview` or
   `oriented`, does not start with `edit-`, `preview-` or `oriented-`, and is not `v<digits>`
-  or `v<digits>-…`. These would collide with the names of other derived files. Anything else is a boot error
-  that names `config/image.php` and the preset. Presets with `fit: max` keep any name.
+  or `v<digits>-…`; these would collide with the names of other derived files. Any other name
+  is a boot error that names `config/image.php` and the preset. Presets with `fit: max` keep
+  any name.
 - **File names.** `{stem}-{preset}-{key}-{w}.{fmt}`, for example
   `2026/10/{id}-v3-thumb-1a2b3c4d-400.webp`; for an edited image the stem is the master's:
   `2026/10/{id}-edit-9f8e7d6c-thumb-1a2b3c4d-400.webp`. The key (8 hex characters) changes
@@ -205,21 +206,24 @@ Each call returns the saved asset and renders the master straight away.
   A crop of the whole image is stored as no crop.
 - **Format crops** (`setFormatCrop`) art-direct one `cover` preset. They are cut from the
   master, so a format crop is **clamped to the image crop**: to show an area outside the
-  image crop, remove the image crop first. Rotating or mirroring clears the format crops
-  (mirroring mirrors them). `formatRegion($asset, $preset)` returns the region a preset cuts,
+  image crop, remove the image crop first. Rotating clears the format crops (rotating by
+  whole turns, `rotate($id, 0)` or `4`, changes nothing); mirroring mirrors them. `formatRegion($asset, $preset)` returns the region a preset cuts,
   in the same coordinates.
 - **What reads what.** `media_url()` and `url()` give the master for an edited image;
   documents keep their file URL. `media_original_url()` (`$library->originalUrl()`) gives the
   untouched original (a legacy upload path gives its legacy URL). `deliveryAsset()` is the
   asset as pages see it.
+- **Cropping does not hide the original.** The untouched original stays public at its own URL
+  (`media_original_url()`), cropped-away areas included. Use a private asset for content that
+  must not be public.
 - **Colour.** The master is sRGB and stripped. A CMYK or wide-gamut edited image needs
   Imagick: without it no master is made, the asset's `note` says
   `needs Imagick for colour-accurate variants` and pages keep the original.
 - **Reserved field names.** New asset fields `rotation` (0 to 3), `flip`, `crop`, `crops`
   and `master` cannot be used as extra field names. Existing assets read as unedited.
 - **Replace and restore** keep the edits (the crop applies as a percentage to the new
-  file); restoring a version brings back the edits it had. Versions made before 0.36 leave
-  the current edits unchanged.
+  file); restoring a version brings back the edits it had. Restoring a version made before
+  0.36 keeps the asset's present edits (such a version has none stored).
 - **Custom backends.** `ImageBackend` has a new method, `writeEdited()` (renders the master:
   upright, mirror, turns, crop, longest side, JPEG/PNG/WebP), and `writeVariants()` jobs may
   carry a `crop`. A third-party backend must implement `writeEdited()`.

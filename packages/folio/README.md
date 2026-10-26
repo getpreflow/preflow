@@ -708,11 +708,16 @@ and `/files/{id}`.
 - grid and list views;
 - search by name, title or alt text, and filters by kind (images, videos, documents);
 - multi-file upload;
-- a details panel for alt text, title and focal point (click the image to set it), and
-  a poster image for videos;
+- **asset details on their own page** at `{prefix}/assets/{id}`, with the tabs *Details* and
+  *Edit image* (the second for editable images and `assets.edit`). *Details* has alt text,
+  title and focal point (click the image to set it), and a poster image for videos. The page
+  takes a `back` link to the library view it was opened from (search, filters, page); only
+  a URL under `{prefix}/assets` is accepted, anything else falls back to the library. Since
+  0.36 the request returns the full page also with `HX-Request`, no longer a fragment, so
+  code that loaded the details panel with htmx must link to the page instead;
 - **usage:** the records that use the asset, including published versions that still
   show it. Deleting a used asset is refused (by the media core).
-- **replace** (permission `assets.edit`): the details panel's *File* section takes a new file
+- **replace** (permission `assets.edit`): the details page's *File* section takes a new file
   of the same kind; the asset keeps its id, alt text, focal point, extra fields and usage, so
   every record that shows it shows the new file. The current file is kept as a version;
 - **earlier versions:** listed newest first with date, size and dimensions. *Open* shows the
@@ -720,24 +725,24 @@ and `/files/{id}`.
   current file becomes a version), *Delete* (`assets.delete`) removes it for good. Needs
   `versions_dir` (default `storage/media-versions`, a shared directory in deployments); see the
   media README, and `media:versions:prune` to trim old versions;
-- **extra fields:** the fields declared in `config/media.php` `fields` appear in the panel
-  under title, and the select, relation and boolean ones named in `filters` are filters next
+- **extra fields:** the fields declared in `config/media.php` `fields` appear on the details
+  page under title, and the select, relation and boolean ones named in `filters` are filters next
   to the kind filter;
 - **previews and colours:** a PDF shows its first page as thumbnail (needs Ghostscript
   10.03.1 or newer, or `pdftocairo`; `media:previews` makes them for existing files), and an
   image shows its dominant colour and palette as swatches: click a hex value or *RGB* to copy
   it (`media:colors --all` reads them for existing assets);
-- **edit image** (permission `assets.edit`): the details panel's *Edit image* opens
+- **edit image** (permission `assets.edit`): the details page's *Edit image* tab is
   `{prefix}/assets/{id}/edit` for public JPEG, PNG, WebP and AVIF images. It rotates and
   mirrors, draws the image crop (free or with a ratio, including each box preset's), and
   lists every box preset (`height` and `fit` in `config/image.php`) with its cut: *Adjust*
   sets a format crop for a `cover` preset, *Reset* removes it. The original stays
-  untouched; *Download original* is in the panel. The cropper is Cropper.js 1.6.2 (MIT,
+  untouched; *Download original* is on the *Details* tab. The cropper is Cropper.js 1.6.2 (MIT,
   vendored in the package). A format crop stays inside the image crop; remove the image
   crop to art-direct outside it. The editing itself is the media core's (`rotate()`,
   `flip()`, `setCrop()`, `setFormatCrop()`); Folio only adds the screen;
 - **notes:** an image that could not get colour-accurate variants (CMYK without Imagick) shows
-  the asset's note in the panel.
+  the asset's note on the details page.
 
 **Asset fields** store asset ids. The editor shows the selection with **Choose**, which
 opens the library as a picker in the drawer, and **Upload**, a plain file input that adds
@@ -745,7 +750,7 @@ the file to the library on save, so it works without JavaScript. A field's `acce
 (`image/*`, `video/*` or `.pdf,.zip`) limits what an upload may be. An asset field in a
 type's default template renders with `media_image()`.
 
-**Permissions.** `assets.view` (screen and panel), `assets.upload`, `assets.edit` (details,
+**Permissions.** `assets.view` (library and details page), `assets.upload`, `assets.edit` (details,
 extra fields, replace, restore, edit image), `assets.delete` (delete an asset or an earlier version).
 
 **Config.** Library settings (directory, widths, quality, private and versions directory,

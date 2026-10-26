@@ -106,7 +106,8 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 - **Box presets:** `config/image.php` presets take `height` and `fit` (`cover` cuts the box's ratio around the focal point or a per-format crop, `contain` keeps the whole image, `max` is today's behaviour). Box files `{stem}-{preset}-{key}-{w}.{fmt}` are made on first request (and by `media:variants --all` / `warm_on_upload`); box preset names are validated at boot (`^[a-z][a-z0-9-]*$`, not `edit`, `preview`, `oriented` or `v<digits>`)
 - **Image edits:** `MediaLibrary::rotate()`, `flip()`, `setCrop()`, `setFormatCrop()` for public JPEG, PNG, WebP and AVIF images. The original stays; a sRGB master `{stem}-edit-{key}.{ext}` is rendered and pages deliver it. Coordinates are percent (`CropRect`); a format crop is clamped to the image crop; edits survive replace and come back on restore. New reserved asset fields `rotation`, `flip`, `crop`, `crops`, `master`; `media_original_url()`
 - **Backends:** `ImageBackend::writeEdited()` (third-party backends must implement it); `writeVariants()` jobs may carry a `crop`
-- **Folio:** Edit image screen at `{prefix}/assets/{id}/edit` (`assets.edit`): rotate, mirror, crop with ratios, one cut per box preset; Cropper.js 1.6.2 (MIT) vendored
+- **Folio:** Edit image screen at `{prefix}/assets/{id}/edit` (`assets.edit`): rotate, mirror, crop with ratios, one cut per box preset (its `src` from `BoxPlan::srcWidth()`); Cropper.js 1.6.2 (MIT) vendored
+- **Folio asset details on their own page:** `{prefix}/assets/{id}` with the tabs Details | Edit image and a guarded `back` link to the library view; with `HX-Request` it returns the full page, no longer a fragment (breaks htmx embeds of the panel)
 - Constraints: folio requires media `^0.36`
 
 ### v0.35.0
