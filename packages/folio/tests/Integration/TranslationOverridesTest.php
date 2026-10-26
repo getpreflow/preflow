@@ -430,6 +430,29 @@ final class TranslationOverridesTest extends TestCase
         $this->assertSame(['review-mail.approved.body' => 'Hier ansehen: :link'], $this->overrides()->all('de'), 'unchanged');
     }
 
+    /** A key only in the fallback locale's file: the it row delivers the German text, and its placeholders bind. */
+    #[RunInSeparateProcess]
+    public function test_a_key_only_in_the_fallback_locale_keeps_its_placeholders(): void
+    {
+        $this->editableSite();
+        $this->write('lang/de/review-mail.php', "<?php\nreturn " . var_export(['approved' => ['subject' => 'Ihr Objekt ist online', 'body' => 'Ansehen: :link'], 'reminder' => 'Bitte prüfen: :link'], true) . ";\n");
+        $this->flow = $this->app();
+        $this->people();
+        $this->signIn('ada@site.test');
+
+        $screen = $this->html('/folio/translations?group=review-mail&locale=it&q=reminder');
+        $this->assertStringContainsString('review-mail.reminder', $screen);
+        $this->assertStringContainsString('Bitte prüfen: :link', $screen, 'the German text is what Italian visitors get today');
+
+        $missing = $this->post('/folio/translations', ['locale' => 'it', 'key' => 'review-mail.reminder', 'text' => 'Controlla per favore']);
+        $this->assertSame(422, $missing->getStatusCode());
+        $this->assertStringContainsString('Behalte den Platzhalter :link', (string) $missing->getBody());
+        $this->assertSame([], $this->overrides()->all('it'));
+
+        $this->assertSame(302, $this->post('/folio/translations', ['locale' => 'it', 'key' => 'review-mail.reminder', 'text' => 'Controlla: :link'])->getStatusCode());
+        $this->assertSame(['review-mail.reminder' => 'Controlla: :link'], $this->overrides()->all('it'));
+    }
+
     #[RunInSeparateProcess]
     public function test_an_editable_override_reaches_a_public_page_and_a_mail(): void
     {

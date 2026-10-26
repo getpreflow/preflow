@@ -1501,7 +1501,8 @@ The screen offers each listed group besides the admin groups, in every language 
 website and in mails. Its overrides apply on every request (`Translator::alwaysOverride()`):
 public pages, mails in the recipient's language (`t($key, $params, 'fr')`) and console or
 queue mails. Plain text as above, and an override keeps exactly the `:placeholders` of the
-delivered text (the language's, else English): dropping `:link` or adding an unknown `:foo`
+delivered text (the language's, else the fallback language's, else English: what visitors
+and mails get today, shown as the delivered text): dropping `:link` or adding an unknown `:foo`
 is refused. The keys are those of `lang/{locale}/{group}.php` in every site language. An
 entry that is not a group name, `site` (the model labels stay admin-only) or an `admin` group
 (`folio`, `rbac`, …) is skipped with a line `folio: translations.editable: …` in the error

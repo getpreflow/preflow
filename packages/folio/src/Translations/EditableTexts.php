@@ -64,15 +64,15 @@ final class EditableTexts
     }
 
     /**
-     * The placeholder names (without the colon) of the key's delivered text in the locale, else
-     * of its English text, sorted.
+     * The placeholder names (without the colon) of the key's delivered text in the locale (rows():
+     * the locale's text, else the fallback locale's, else English), sorted.
      *
      * @return list<string>
      */
     public function placeholders(string $key, string $locale): array
     {
         $group = (string) strstr($key, '.', true);
-        $text = $this->rows($group, $locale)[$key]['delivered'] ?? $this->rows($group, 'en')[$key]['delivered'] ?? null;
+        $text = $this->rows($group, $locale)[$key]['delivered'] ?? null;
 
         return self::placeholdersIn($text ?? '');
     }
@@ -139,6 +139,22 @@ final class EditableTexts
             foreach ($this->locales($group, []) as $other) {
                 array_push($keys, ...array_keys($this->translator->packageEntries($group, $other)), ...array_keys($this->translator->siteEntries($group, $other)));
             }
+            // What visitors and mails get today: the locale's text, else the fallback locale's, else
+            // English, the package's text before the site file's at each step.
+            $layers = [];
+            foreach (array_unique([$locale, $this->translator->getFallbackLocale(), 'en']) as $step) {
+                $layers[] = $step === $locale ? $package : $this->translator->packageEntries($group, $step);
+                $layers[] = $step === $locale ? $site : $this->translator->siteEntries($group, $step);
+            }
+            $chain = static function (string $key) use ($layers): ?string {
+                foreach ($layers as $entries) {
+                    if (isset($entries[$key])) {
+                        return $entries[$key];
+                    }
+                }
+
+                return null;
+            };
         }
         $rows = [];
         foreach (array_unique($keys) as $key) {
@@ -147,7 +163,7 @@ final class EditableTexts
                 continue;
             }
             if ($editableGroup) {
-                $delivered = $package[$key] ?? $site[$key] ?? null;
+                $delivered = $chain($key);
                 $english = $packageEn[$key] ?? $siteEn[$key] ?? null;
                 $siteText = isset($package[$key]) ? ($site[$key] ?? null) : null;
                 if (self::markup($english) || self::markup($delivered) || self::markup($siteText)) {
