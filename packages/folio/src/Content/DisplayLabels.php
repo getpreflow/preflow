@@ -20,9 +20,13 @@ use Preflow\I18n\Translator;
  */
 final class DisplayLabels
 {
+    /** Folio's verbs of a type's standard permissions ("{type}.view" …), the declared English label of each. */
+    private const array VERBS = ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete', 'upload' => 'Upload'];
+
     public function __construct(
         private readonly TypeCatalog $catalog,
         private readonly ?TypeRegistry $types = null,
+        private readonly ?\Preflow\Folio\Extension\ExtensionRegistry $extensions = null,
     ) {}
 
     /** The translation group of a type's labels. */
@@ -43,6 +47,89 @@ final class DisplayLabels
     public function singular(string $type): ?string
     {
         return Labels::resolve(self::translator(), ModelLabelKeys::singular($this->group($type), $type), $this->catalog->get($type)?->singular);
+    }
+
+    /**
+     * The list's empty state ("No members yet."): the type's own sentence {group}.types.{type}.empty
+     * when its group has one (a label that doesn't fit Folio's sentence, e.g. German "Team"),
+     * else Folio's sentence around the label.
+     */
+    public function emptyState(string $type): string
+    {
+        $own = Labels::resolve(self::translator(), $this->group($type) . '.types.' . $type . '.empty', null);
+
+        return $own ?? FolioText::get('folio.list.empty', ['label' => FolioText::noun($this->type($type))]);
+    }
+
+    /**
+     * A permission's label on the roles screen. In order: a declared label that is a key
+     * (FolioText::label()); Folio's own permissions (folio.permissions.names.{name}); an
+     * extension's permission ("{extension}.{rest}") as {its group}.permissions.{rest}; a
+     * standard verb ("View") as folio.permissions.verbs.{verb}; else the declared label.
+     */
+    public function permission(string $name, string $declared): string
+    {
+        $translator = self::translator();
+        $label = FolioText::label($declared);
+        if ($label !== $declared) {
+            return $label;
+        }
+        $own = Labels::resolve($translator, 'folio.permissions.names.' . $name, null);
+        if ($own !== null) {
+            return $own;
+        }
+        [$prefix, $rest] = array_pad(explode('.', $name, 2), 2, '');
+        $group = $this->extensionGroup($prefix);
+        if ($group !== null && $rest !== '') {
+            $text = Labels::resolve($translator, $group . '.permissions.' . $rest, null);
+            if ($text !== null) {
+                return $text;
+            }
+        }
+        $verb = substr($name, (int) strrpos($name, '.') + 1);
+        if ((self::VERBS[$verb] ?? null) === $declared) {
+            return FolioText::get('folio.permissions.verbs.' . $verb);
+        }
+
+        return $declared;
+    }
+
+    /**
+     * The heading of a group of permissions on the roles screen, $permission being one of the
+     * group's: Folio's groups (folio.permissions.groups.*), a content type's label, an
+     * extension's {group}.extension.label; else the group as declared.
+     */
+    public function permissionGroup(string $group, string $permission): string
+    {
+        $prefix = explode('.', $permission, 2)[0];
+        if (($group === 'Folio' && in_array($prefix, ['folio', 'translations'], true)) || ($group === 'Assets' && $prefix === 'assets')) {
+            return FolioText::get('folio.permissions.groups.' . strtolower($group));
+        }
+        $listing = $this->catalog->get($prefix);
+        if ($listing !== null && $listing->label === $group) {
+            return $this->type($prefix);
+        }
+        $extension = $this->extensionGroup($prefix);
+        if ($extension !== null && $this->extensions?->get($prefix)->label === $group) {
+            return Labels::resolve(self::translator(), $extension . '.extension.label', null) ?? $group;
+        }
+
+        return $group;
+    }
+
+    /** The translation group of the extension named $name, when it has one of its own. */
+    private function extensionGroup(string $name): ?string
+    {
+        if ($this->extensions === null) {
+            return null;
+        }
+        try {
+            $group = $this->extensions->get($name)->labelGroup();
+        } catch (\Preflow\Folio\Extension\ExtensionException) {
+            return null;
+        }
+
+        return $group === 'site' ? null : $group;
     }
 
     /** A field's label; the humanized field name when nothing gives one. */

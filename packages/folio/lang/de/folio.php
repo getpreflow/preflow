@@ -56,6 +56,14 @@ return [
         'cache' => 'Cache',
         'translations' => 'Übersetzungen',
     ],
+    'permissions' => [
+        'names' => [
+            'folio' => ['dashboard' => 'Übersicht', 'extensions' => 'Erweiterungen', 'cache' => 'Cache'],
+            'translations' => ['edit' => 'Übersetzungen'],
+        ],
+        'verbs' => ['view' => 'Ansehen', 'create' => 'Erstellen', 'edit' => 'Bearbeiten', 'publish' => 'Veröffentlichen', 'delete' => 'Löschen', 'upload' => 'Hochladen'],
+        'groups' => ['folio' => 'Folio', 'assets' => 'Medien'],
+    ],
     'dashboard' => [
         'title' => 'Übersicht',
         'records' => ':count Eintrag|:count Einträge',

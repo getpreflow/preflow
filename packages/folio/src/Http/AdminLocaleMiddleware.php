@@ -17,7 +17,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * Runs an admin request in the user's interface language: the signed-in user's stored choice
  * (UserPreferences), else the default (folio.locale, else app.locale, else English). Signed-out
  * admin pages (sign-in, password) take the browser's language when it is offered. Admin
- * overrides are on for the request.
+ * overrides are on for the request, and the validator factory translates its messages
+ * (a site's own forms, outside admin requests, keep English ones).
  *
  * The translator is shared with the frontend: on the way out, also when the handler throws,
  * the locale and the overrides state are put back as they were, so nothing reaches a later
@@ -40,6 +41,8 @@ final class AdminLocaleMiddleware implements MiddlewareInterface
         private readonly ?TemplateEngineInterface $engine = null,
         /** @var (\Closure(): void)|null run when an admin request starts (not a nested one): the overrides' cache reads afresh */
         private readonly ?\Closure $onStart = null,
+        /** the shared validator factory: Folio's forms validate with the translator, in the interface language */
+        private readonly ?\Preflow\Validation\ValidatorFactory $validators = null,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -54,11 +57,13 @@ final class AdminLocaleMiddleware implements MiddlewareInterface
 
         $this->enter($locale, true, $locale);
         $previousText = \Preflow\Folio\FolioText::use($this->translator); // Folio's words in PHP (field types, notices)
+        $previousValidation = $this->validators?->useTranslator($this->translator);
         try {
             return $handler->handle($request
                 ->withAttribute(self::FRONTEND_LOCALE, $request->getAttribute(self::FRONTEND_LOCALE) ?? $previousLocale)
                 ->withAttribute(self::LOCALE, $locale));
         } finally {
+            $this->validators?->useTranslator($previousValidation);
             \Preflow\Folio\FolioText::use($previousText);
             $this->enter($previousLocale, $previousOverrides, $previousCurrent);
         }

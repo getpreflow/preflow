@@ -4,7 +4,7 @@
 // types/fields/options: the labels of models/code.json (Preflow\Data\ModelLabelKeys).
 return [
     'types' => [
-        'code' => ['label' => 'Codes', 'singular' => 'Code'],
+        'code' => ['label' => 'Codes', 'singular' => 'Code', 'empty' => 'No codes yet.'],
     ],
     'fields' => [
         'code' => [
@@ -23,4 +23,30 @@ return [
             'form' => ['readable' => 'Readable', 'random' => 'Random'],
         ],
     ],
+    // The Redemptions column and panel; :purpose is never shown, the column's states are lower case.
+    'redemptions' => [
+        'title' => 'Redemptions',
+        'none' => 'No redemptions yet.',
+        'by' => 'Redeemed by',
+        'time' => 'Time',
+        'revoked' => 'revoked',
+        'expired' => 'expired',
+    ],
+    'actions' => [
+        'revoke' => 'Revoke',
+        'revoke_confirm' => 'Revoke this code? It stops working at once.',
+    ],
+    // Refusals when a code is saved in Folio.
+    'errors' => [
+        'purpose' => 'Choose a purpose.',
+        'not_readable' => 'This purpose does not allow readable codes; random codes are issued by code.',
+        'format' => 'A readable code needs 4 to 64 letters A-Z and digits (spaces and dashes are ignored).',
+        'taken' => 'A code like this already exists for this purpose.',
+        'max_uses' => 'Max uses must be a whole number (empty: unlimited).',
+    ],
+    // The roles screen: the extension's permission and its heading.
+    'permissions' => [
+        'revoke' => 'Revoke codes',
+    ],
+    'extension' => ['label' => 'Codes'],
 ];

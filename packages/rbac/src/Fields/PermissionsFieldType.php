@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Preflow\Rbac\Fields;
 
 use Preflow\Auth\Access\PermissionRegistry;
+use Preflow\Folio\Content\DisplayLabels;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
 use Preflow\Folio\Http\AdminNav;
+use Preflow\Rbac\Messages;
 use Preflow\Rbac\PermissionCoverage;
 use Preflow\Rbac\RoleList;
 
@@ -22,17 +24,24 @@ use Preflow\Rbac\RoleList;
  * locks what "Everything" or an "All" already grants; without it every box stays usable.
  * Delegation: what the signed-in user doesn't cover (PermissionCoverage) is rendered disabled
  * ("You can't grant this"); RoleRules refuses a save that adds it anyway.
+ * Its words are rbac's (Messages: the admin's language); type, section and permission labels
+ * come from Folio's DisplayLabels, so they read as everywhere else in the admin.
  */
 final class PermissionsFieldType implements FieldType
 {
     private const VERBS = ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'];
-    private const string DENIED = "You can't grant this";
+
+    private readonly Messages $messages;
 
     public function __construct(
         private readonly PermissionRegistry $registry,
         private readonly TypeCatalog $catalog,
         private readonly ?PermissionCoverage $coverage = null,
-    ) {}
+        ?Messages $messages = null,
+        private readonly ?DisplayLabels $labels = null,
+    ) {
+        $this->messages = $messages ?? Messages::english();
+    }
 
     public function key(): string
     {
@@ -42,11 +51,17 @@ final class PermissionsFieldType implements FieldType
     public function renderEditor(FieldContext $ctx): string
     {
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $t = fn (string $key, array $params = []): string => $this->messages->get('matrix.' . $key, $params);
+        $deniedText = $t('denied');
+        $verbs = [];
+        foreach (self::VERBS as $action => $verb) {
+            $verbs[$action] = $this->labels?->permission('*.' . $action, $verb) ?? $verb;
+        }
         $selected = RoleList::normalize($ctx->value);
         $name = $e($ctx->name . '[]');
         $held = $this->coverage?->held();
         $denied = static fn (string $value): string => $held !== null && !PermissionCoverage::covers($held, $value)
-            ? ' disabled data-rbac-denied title="' . $e(self::DENIED) . '"' : '';
+            ? ' disabled data-rbac-denied title="' . $e($deniedText) . '"' : '';
         $input = static fn (string $value, ?string $title = null, string $attrs = '') => '<input type="checkbox" name="' . $name . '" value="' . $e($value) . '"'
             . ($title !== null && $denied($value) === '' ? ' title="' . $e($title) . '"' : '') . $attrs . $denied($value)
             . (in_array($value, $selected, true) ? ' checked' : '') . '>';
@@ -55,14 +70,13 @@ final class PermissionsFieldType implements FieldType
         $html = '<fieldset class="form-group rbac-permissions' . ($ctx->errors !== [] ? ' has-error' : '') . '" data-rbac-permissions>'
             . '<legend class="rbac-legend">' . $e($ctx->label ?? 'Permissions') . '</legend>'
             . '<input type="hidden" name="' . $name . '" value="">' // none checked still posts an empty list
-            . '<label class="rbac-everything"><span class="rbac-everything-text"><span class="rbac-everything-label">Everything</span>'
-            . '<span class="rbac-everything-hint">Grants every permission, now and in future extensions (<code>*</code>)</span></span>'
+            . '<label class="rbac-everything"><span class="rbac-everything-text"><span class="rbac-everything-label">' . $e($t('everything')) . '</span>'
+            . '<span class="rbac-everything-hint">' . str_replace(':pattern', '<code>*</code>', $e($t('everything_hint', ['pattern' => ':pattern']))) . '</span></span>'
             . '<input type="checkbox" class="rbac-switch-input" role="switch" name="' . $name . '" value="*" data-rbac-everything' . $denied('*') . (in_array('*', $selected, true) ? ' checked' : '') . '>'
             . '<span class="rbac-switch" aria-hidden="true"></span></label>';
         $unknown = array_diff($selected, $this->known());
         if ($unknown !== []) {
-            $html .= '<p class="rbac-unknown">Unknown, removed on save: '
-                . implode(', ', array_map(static fn (string $p): string => '<code>' . $e($p) . '</code>', $unknown)) . '</p>';
+            $html .= '<p class="rbac-unknown">' . str_replace(':names', implode(', ', array_map(static fn (string $p): string => '<code>' . $e($p) . '</code>', $unknown)), $e($t('unknown', ['names' => ':names']))) . '</p>';
         }
 
         $html .= '<div class="rbac-rest" data-rbac-rest>';
@@ -71,9 +85,9 @@ final class PermissionsFieldType implements FieldType
             $html .= '<input type="hidden" name="' . $name . '" value="' . $e($kept) . '" data-rbac-kept>';
         }
         if ($sections !== []) {
-            $html .= '<div class="folio-table-wrap"><table class="folio-table rbac-matrix"><thead><tr><th scope="col">Type</th>';
-            foreach ([...self::VERBS, 'All'] as $verb) {
-                $html .= '<th scope="col">' . $verb . '</th>';
+            $html .= '<div class="folio-table-wrap"><table class="folio-table rbac-matrix"><thead><tr><th scope="col">' . $e($t('type')) . '</th>';
+            foreach ([...$verbs, $t('all')] as $verb) {
+                $html .= '<th scope="col">' . $e($verb) . '</th>';
             }
             $html .= '</tr></thead><tbody>';
             foreach ($sections as $section => $rows) {
@@ -81,34 +95,37 @@ final class PermissionsFieldType implements FieldType
                 foreach ($rows as $row) {
                     $label = $e($row['label']);
                     $html .= "\n" . '<tr class="rbac-row" data-rbac-row><th scope="row" title="' . $e($row['key']) . '.*">' . $label . '</th>';
-                    foreach (self::VERBS as $action => $verb) {
+                    foreach ($verbs as $action => $verb) {
                         $permission = $row['key'] . '.' . $action;
                         $html .= '<td class="rbac-cell">' . (in_array($permission, $row['names'], true)
-                            ? $input($permission, $permission, ' aria-label="' . $label . ': ' . $verb . '"')
-                            : '<span class="rbac-none" title="No ' . $action . ' permission for ' . $label . '">–</span>') . '</td>';
+                            ? $input($permission, $permission, ' aria-label="' . $label . ': ' . $e($verb) . '"')
+                            : '<span class="rbac-none" title="' . $e($t('none', ['verb' => $verb === self::VERBS[$action] ? $action : $verb, 'type' => $row['label']])) . '">–</span>') . '</td>';
                     }
                     $html .= '<td class="rbac-cell rbac-cell-all">' . ($row['pattern'] !== null
-                        ? $input($row['pattern'], $row['pattern'], ' aria-label="' . $label . ': All" data-rbac-all')
+                        ? $input($row['pattern'], $row['pattern'], ' aria-label="' . $label . ': ' . $e($t('all')) . '" data-rbac-all')
                         : '<span class="rbac-none">–</span>') . '</td></tr>';
                 }
             }
             $html .= '</tbody></table></div>';
         }
         if ($others !== []) {
-            $html .= "\n" . '<div class="rbac-others"><h3 class="rbac-others-heading">Other permissions</h3>';
+            $html .= "\n" . '<div class="rbac-others"><h3 class="rbac-others-heading">' . $e($t('other')) . '</h3>';
             foreach ($others as $group => $entries) {
-                $html .= "\n" . '<div class="rbac-group" data-rbac-group><div class="rbac-group-head"><span class="rbac-group-label">' . $e($group) . '</span>';
+                $first = (string) (array_key_first($entries['names']) ?? $entries['patterns'][0] ?? '');
+                $heading = $group === 'Other' ? $t('other_group') : ($this->labels?->permissionGroup((string) $group, $first) ?? (string) $group);
+                $html .= "\n" . '<div class="rbac-group" data-rbac-group><div class="rbac-group-head"><span class="rbac-group-label">' . $e($heading) . '</span>';
                 $patterns = $entries['patterns'];
                 $all = array_shift($patterns);
                 if ($all !== null) {
-                    $html .= '<label class="rbac-group-all" title="' . $e($all) . '">' . $input($all, null, ' data-rbac-all') . ' All</label>';
+                    $html .= '<label class="rbac-group-all" title="' . $e($all) . '">' . $input($all, null, ' data-rbac-all') . ' ' . $e($t('all')) . '</label>';
                 }
                 $html .= '</div><div class="rbac-chips">';
                 $chips = [...array_fill_keys($patterns, ''), ...$entries['names']]; // further patterns of the group: chips named as the pattern
                 foreach ($chips as $permission => $chipLabel) {
                     $permission = (string) $permission;
+                    $chipText = $chipLabel !== '' ? ($this->labels?->permission($permission, $chipLabel) ?? $chipLabel) : $permission;
                     $html .= '<label class="rbac-chip" title="' . $e($permission) . '">' . $input($permission)
-                        . '<span>' . $e($chipLabel !== '' ? $chipLabel : $permission) . '</span></label>';
+                        . '<span>' . $e($chipText) . '</span></label>';
                 }
                 $html .= '</div></div>';
             }
@@ -185,7 +202,7 @@ final class PermissionsFieldType implements FieldType
             $inapplicable = [...($listing->singleton ? ['create', 'delete'] : []), ...($listing->publishing ? [] : ['publish'])];
             $names = array_values(array_filter($names, static fn (string $permission): bool => !in_array(substr($permission, strlen($listing->key) + 1), $inapplicable, true)));
             $pattern = in_array($listing->key . '.*', $patterns, true) ? $listing->key . '.*' : null;
-            $bySection[$listing->section][] = ['key' => $listing->key, 'label' => $listing->label, 'names' => $names, 'pattern' => $pattern];
+            $bySection[$listing->section][] = ['key' => $listing->key, 'label' => $this->labels?->type($listing->key) ?? $listing->label, 'names' => $names, 'pattern' => $pattern];
             if ($pattern !== null) {
                 $taken[$pattern] = true;
             }
@@ -193,7 +210,8 @@ final class PermissionsFieldType implements FieldType
         $sections = [];
         foreach (AdminNav::sectionOrder(array_keys($bySection)) as $section) {
             if (isset($bySection[$section])) {
-                $sections[AdminNav::sectionLabel($section)] = $bySection[$section];
+                $builtin = in_array($section, AdminNav::sectionOrder([]), true);
+                $sections[$builtin || $this->labels === null ? AdminNav::sectionLabel($section) : $this->labels->section($section)] = $bySection[$section];
             }
         }
 

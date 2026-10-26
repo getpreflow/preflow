@@ -8,6 +8,7 @@ use Preflow\Data\DataManager;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
+use Preflow\Rbac\Messages;
 use Preflow\Rbac\PermissionCoverage;
 use Preflow\Rbac\RoleList;
 use Preflow\Rbac\RoleStore;
@@ -19,16 +20,20 @@ use Preflow\Rbac\StaffManagers;
  * a stored role no longer defined stays checked under its name, so saving keeps it.
  * On a staff account (StaffRules) a role whose patterns the signed-in user doesn't cover
  * (PermissionCoverage) is disabled ("You can't grant this"); StaffRules refuses it anyway.
+ * A role a package seeded shows its label in the admin's language (Messages::roleLabel()).
  */
 final class RolesFieldType implements FieldType
 {
-    private const string DENIED = "You can't grant this";
+    private readonly Messages $messages;
 
     public function __construct(
         private readonly DataManager $dm,
         private readonly TypeCatalog $catalog,
         private readonly ?PermissionCoverage $coverage = null,
-    ) {}
+        ?Messages $messages = null,
+    ) {
+        $this->messages = $messages ?? Messages::english();
+    }
 
     public function key(): string
     {
@@ -44,7 +49,7 @@ final class RolesFieldType implements FieldType
             : $this->catalog->get((string) ($ctx->record['type'] ?? ''))?->users;
         $roles = $population !== null ? $this->roles($population) : [];
         foreach ($selected as $name) {
-            $roles[$name] ??= $name . ' (not defined)';
+            $roles[$name] ??= $this->messages->get('roles_field.not_defined', ['role' => $name]);
         }
         $name = $e($ctx->name . '[]');
         $held = ($ctx->record['type'] ?? null) === StaffManagers::TYPE ? $this->coverage?->held() : null;
@@ -54,12 +59,12 @@ final class RolesFieldType implements FieldType
             . "\n" . '<input type="hidden" name="' . $name . '" value="">'; // none checked still posts an empty list
         foreach ($roles as $role => $label) {
             $denied = $held !== null && !PermissionCoverage::coversAll($held, $patterns[(string) $role] ?? []);
-            $html .= "\n" . '<label class="form-radio"' . ($denied ? ' title="' . $e(self::DENIED) . '"' : '') . '><input type="checkbox" name="' . $name . '" value="' . $e((string) $role) . '"'
+            $html .= "\n" . '<label class="form-radio"' . ($denied ? ' title="' . $e($this->messages->get('matrix.denied')) . '"' : '') . '><input type="checkbox" name="' . $name . '" value="' . $e((string) $role) . '"'
                 . ($denied ? ' disabled data-rbac-denied' : '')
                 . (in_array((string) $role, $selected, true) ? ' checked' : '') . '> ' . $e($label) . '</label>';
         }
         if ($population === null) {
-            $html .= "\n" . '<div class="form-help">No population: give the type "users" or the field "population".</div>';
+            $html .= "\n" . '<div class="form-help">' . $e($this->messages->get('roles_field.no_population')) . '</div>';
         }
         foreach ($ctx->errors as $error) {
             $html .= "\n" . '<div class="form-error">' . $e((string) $error) . '</div>';
@@ -111,7 +116,7 @@ final class RolesFieldType implements FieldType
             $name = $record->get('name');
             if ($record->get('population') === $population && is_string($name) && trim($name) !== '') {
                 $label = $record->get('label');
-                $roles[trim($name)] = is_string($label) && $label !== '' ? $label : trim($name);
+                $roles[trim($name)] = is_string($label) && $label !== '' ? $this->messages->roleLabel($population, trim($name), $label) : trim($name);
             }
         }
         ksort($roles);

@@ -73,7 +73,7 @@ final class RuleFactoryTest extends TestCase
 
         $ctx = new ValidationContext('status', ['status' => 'draft']);
         $this->assertTrue($rule->validate('draft', $ctx));
-        $this->assertIsString($rule->validate('deleted', $ctx));
+        $this->assertSame('Must be one of: draft, published, archived.', (string) $rule->validate('deleted', $ctx));
     }
 
     public function test_resolves_regex_with_pattern(): void

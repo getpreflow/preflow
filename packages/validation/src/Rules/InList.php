@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Validation\Rules;
 
+use Preflow\Validation\Message;
 use Preflow\Validation\ValidationContext;
 use Preflow\Validation\ValidationRule;
 
@@ -14,14 +15,13 @@ final class InList implements ValidationRule
         private readonly array $values,
     ) {}
 
-    public function validate(mixed $value, ValidationContext $context): true|string
+    public function validate(mixed $value, ValidationContext $context): true|Message
     {
         if ($value === null) {
             return true;
         }
         if (!in_array($value, $this->values, false)) {
-            $list = implode(', ', $this->values);
-            return "Must be one of: {$list}.";
+            return new Message('validation.in', ['values' => implode(', ', $this->values)]);
         }
         return true;
     }

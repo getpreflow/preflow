@@ -4,7 +4,7 @@
 // types/fields/options : les libellés de models/code.json (Preflow\Data\ModelLabelKeys).
 return [
     'types' => [
-        'code' => ['label' => 'Codes', 'singular' => 'Code'],
+        'code' => ['label' => 'Codes', 'singular' => 'Code', 'empty' => 'Aucun code pour l’instant.'],
     ],
     'fields' => [
         'code' => [
@@ -23,4 +23,27 @@ return [
             'form' => ['readable' => 'Lisible', 'random' => 'Aléatoire'],
         ],
     ],
+    'redemptions' => [
+        'title' => 'Échanges',
+        'none' => 'Aucun échange pour l’instant.',
+        'by' => 'Échangé par',
+        'time' => 'Date',
+        'revoked' => 'révoqué',
+        'expired' => 'expiré',
+    ],
+    'actions' => [
+        'revoke' => 'Révoquer',
+        'revoke_confirm' => 'Révoquer ce code ? Il cesse de fonctionner immédiatement.',
+    ],
+    'errors' => [
+        'purpose' => 'Choisissez un usage.',
+        'not_readable' => 'Cet usage n’autorise pas les codes lisibles ; les codes aléatoires sont émis par le code.',
+        'format' => 'Un code lisible compte de 4 à 64 lettres A à Z et chiffres (les espaces et tirets sont ignorés).',
+        'taken' => 'Un code identique existe déjà pour cet usage.',
+        'max_uses' => 'Les utilisations max. doivent être un nombre entier (vide : illimité).',
+    ],
+    'permissions' => [
+        'revoke' => 'Révoquer des codes',
+    ],
+    'extension' => ['label' => 'Codes'],
 ];

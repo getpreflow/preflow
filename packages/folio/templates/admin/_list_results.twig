@@ -17,7 +17,7 @@
 {% if not has_records %}
     <div class="folio-empty">
         <svg class="folio-icon folio-empty-icon" aria-hidden="true"><use href="{{ icons }}#ui-file"></use></svg>
-        <p>{{ t('folio.list.empty', {label: folio_noun(label)}) }}</p>
+        <p>{{ empty_text|default(t('folio.list.empty', {label: folio_noun(label)})) }}</p>
         {% if may.create %}<a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new">{{ t('folio.list.create_one') }}</a>{% endif %}
     </div>
 {% elseif rows is empty %}

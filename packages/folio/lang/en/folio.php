@@ -62,6 +62,16 @@ return [
         'cache' => 'Cache',
         'translations' => 'Translations',
     ],
+    // The roles screen (preflow/rbac's permission matrix): Folio's own permissions, the verbs of a
+    // type's and the asset library's standard permissions, the groups of Folio's permissions.
+    'permissions' => [
+        'names' => [
+            'folio' => ['dashboard' => 'Dashboard', 'extensions' => 'Extensions', 'cache' => 'Cache'],
+            'translations' => ['edit' => 'Translations'],
+        ],
+        'verbs' => ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete', 'upload' => 'Upload'],
+        'groups' => ['folio' => 'Folio', 'assets' => 'Assets'],
+    ],
     'dashboard' => [
         'title' => 'Dashboard',
         'records' => ':count record|:count records',

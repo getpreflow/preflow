@@ -4,9 +4,15 @@ declare(strict_types=1);
 
 namespace Preflow\Validation;
 
+use Preflow\I18n\Translator;
 use Preflow\Validation\Rules\Nullable;
 use Preflow\Validation\Rules\Required;
 
+/**
+ * Validates data against rules. A rule's Message is translated when the validator has a
+ * translator (Folio passes one for its forms); without one it is the English text, so a site's
+ * forms keep their messages until the site passes a translator itself.
+ */
 final class Validator
 {
     /**
@@ -18,6 +24,7 @@ final class Validator
         private readonly array $rules,
         private readonly array $data,
         private readonly mixed $subject = null,
+        private readonly ?Translator $translator = null,
     ) {}
 
     public function validate(): ValidationResult
@@ -72,7 +79,7 @@ final class Validator
             $result = $resolved->validate($value, $context);
 
             if ($result !== true) {
-                $errors[] = $result;
+                $errors[] = $result instanceof Message ? $result->text($this->translator) : $result;
 
                 // Required failure stops the chain — no point checking format of empty value
                 if ($resolved instanceof Required) {

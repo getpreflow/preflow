@@ -10,6 +10,7 @@ use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Data\DataManager;
+use Preflow\Folio\Content\DisplayLabels;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Extension\ExtensionRegistry;
 use Preflow\Folio\Extension\ExtensionState;
@@ -48,13 +49,15 @@ final class RbacServiceProvider extends ServiceProvider
         $container->instance(RbacResolver::class, $resolver);
         $coverage = new PermissionCoverage($access, $resolver);
         $container->instance(PermissionCoverage::class, $coverage);
-        $container->instance(Messages::class, Messages::boot($container));
+        $messages = Messages::boot($container);
+        $container->instance(Messages::class, $messages);
+        $labels = $container->bound(DisplayLabels::class) ? $container->get(DisplayLabels::class) : null;
 
         $fieldTypes = $container->get(FieldTypeRegistry::class);
-        $fieldTypes->register(new PermissionsFieldType($container->get(PermissionRegistry::class), $container->get(TypeCatalog::class), $coverage));
+        $fieldTypes->register(new PermissionsFieldType($container->get(PermissionRegistry::class), $container->get(TypeCatalog::class), $coverage, $messages, $labels));
         $assets = $container->get(AdminAssets::class);
         $assets->add('rbac.css', dirname(__DIR__) . '/assets/rbac.css');
         $assets->add('rbac.js', dirname(__DIR__) . '/assets/rbac.js');
-        $fieldTypes->register(new RolesFieldType($container->get(DataManager::class), $container->get(TypeCatalog::class), $coverage));
+        $fieldTypes->register(new RolesFieldType($container->get(DataManager::class), $container->get(TypeCatalog::class), $coverage, $messages));
     }
 }

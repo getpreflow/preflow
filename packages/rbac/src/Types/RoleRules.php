@@ -36,8 +36,6 @@ final class RoleRules
 {
     /** Seeing the roles list and edit form, and saving them. */
     private const array NEEDED = ['rbac_role.view', 'rbac_role.edit'];
-    private const string OWN = 'You would lose the right to edit roles.';
-    private const string LAST = 'No staff role would be left that may edit roles.';
 
     public function __construct(
         private readonly DataManager $dm,
@@ -54,7 +52,7 @@ final class RoleRules
         $roles = $this->roles();
         foreach ($roles as $otherId => $other) {
             if ($otherId !== $id && $other['name'] === $role['name'] && $other['population'] === $role['population']) {
-                throw new ValidationException(new ValidationResult(['name' => ["A {$role['population']} role named {$role['name']} already exists."]]));
+                throw new ValidationException(new ValidationResult(['name' => [$this->messages->get('delegation.duplicate', ['population' => $role['population'], 'name' => $role['name']])]]));
             }
         }
 
@@ -140,10 +138,10 @@ final class RoleRules
     {
         $user = $this->auth->user();
         if ($user !== null && !self::grants($roles, RoleList::normalize($user->getRoles()))) {
-            return self::OWN;
+            return $this->messages->get('delegation.own');
         }
 
-        return self::grants($roles, null) ? null : self::LAST;
+        return self::grants($roles, null) ? null : $this->messages->get('delegation.last_role');
     }
 
     /**

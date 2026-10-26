@@ -41,9 +41,9 @@ final class LangTest extends TestCase
                 $this->assertStringContainsString(':email', $staff[$key], "{$locale} {$key}");
             }
         }
-        $this->assertSame('Sie können keine Berechtigungen vergeben, die Sie selbst nicht haben: *', $this->messages('de')->get('delegation.grant', ['patterns' => '*'], 'de'));
-        // Folio's admin is English: without a locale, English whatever the translator's locale.
-        $this->assertSame("You can't grant permissions you don't have: *", $this->messages('de')->get('delegation.grant', ['patterns' => '*']));
+        $this->assertSame('Du kannst keine Berechtigungen vergeben, die du selbst nicht hast: *', $this->messages('de')->get('delegation.grant', ['patterns' => '*']));
+        // Without a locale, the translator's (on an admin request, the user's interface language); a locale picks another.
+        $this->assertSame("You can't grant permissions you don't have: *", $this->messages('de')->get('delegation.grant', ['patterns' => '*'], 'en'));
     }
 
     public function test_site_overrides_single_keys(): void

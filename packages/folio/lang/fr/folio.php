@@ -56,6 +56,14 @@ return [
         'cache' => 'Cache',
         'translations' => 'Traductions',
     ],
+    'permissions' => [
+        'names' => [
+            'folio' => ['dashboard' => 'Tableau de bord', 'extensions' => 'Extensions', 'cache' => 'Cache'],
+            'translations' => ['edit' => 'Traductions'],
+        ],
+        'verbs' => ['view' => 'Voir', 'create' => 'Créer', 'edit' => 'Modifier', 'publish' => 'Publier', 'delete' => 'Supprimer', 'upload' => 'Importer'],
+        'groups' => ['folio' => 'Folio', 'assets' => 'Médias'],
+    ],
     'dashboard' => [
         'title' => 'Tableau de bord',
         'records' => '{0} :count entrée|{1} :count entrée|[2,*] :count entrées',

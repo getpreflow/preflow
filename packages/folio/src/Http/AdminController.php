@@ -188,6 +188,7 @@ final class AdminController
             'prefix' => $this->prefix,
             'type' => $type,
             'label' => $this->labelFor($type),
+            'empty_text' => $this->labels->emptyState($type),
             'types' => $this->catalog->all(),
             'columns' => $columns,
             'extra_columns' => array_column($extraColumns, 'label'),

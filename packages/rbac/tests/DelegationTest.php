@@ -81,10 +81,10 @@ final class DelegationTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_message_in_english_on_a_german_site(): void
+    public function test_message_in_the_admins_language_on_a_german_site(): void
     {
-        // The app translator speaks German (content locale), the Folio admin stays English;
-        // the site's lang/en/rbac.php still changes single keys.
+        // The admin speaks its interface language (here the site's: de); the site's
+        // lang/{locale}/rbac.php still changes single keys.
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key', 'locale' => 'de'];\n");
         $this->write('lang/de/rbac.php', "<?php\nreturn ['delegation' => ['grant' => 'Nein: :patterns']];\n");
         $this->write('lang/en/rbac.php', "<?php\nreturn ['delegation' => ['last' => 'Keep one admin.']];\n");
@@ -95,8 +95,8 @@ final class DelegationTest extends TestCase
 
         $res = $this->save('/folio/rbac_role', 'boss', ['*']);
         $this->assertSame(422, $res->getStatusCode());
-        $this->assertStringContainsString("You can't grant permissions you don't have: *", self::text($res));
-        $this->assertSame('Keep one admin.', $this->container()->get(\Preflow\Rbac\Messages::class)->get('delegation.last'));
+        $this->assertStringContainsString('Nein: *', self::text($res));
+        $this->assertSame('Keep one admin.', $this->container()->get(\Preflow\Rbac\Messages::class)->get('delegation.last', [], 'en'));
     }
 
     #[RunInSeparateProcess]

@@ -4,7 +4,7 @@
 // types/fields/options: die Bezeichnungen aus models/code.json (Preflow\Data\ModelLabelKeys).
 return [
     'types' => [
-        'code' => ['label' => 'Codes', 'singular' => 'Code'],
+        'code' => ['label' => 'Codes', 'singular' => 'Code', 'empty' => 'Noch keine Codes.'],
     ],
     'fields' => [
         'code' => [
@@ -23,4 +23,27 @@ return [
             'form' => ['readable' => 'Lesbar', 'random' => 'Zufällig'],
         ],
     ],
+    'redemptions' => [
+        'title' => 'Einlösungen',
+        'none' => 'Noch keine Einlösungen.',
+        'by' => 'Eingelöst von',
+        'time' => 'Zeitpunkt',
+        'revoked' => 'widerrufen',
+        'expired' => 'abgelaufen',
+    ],
+    'actions' => [
+        'revoke' => 'Widerrufen',
+        'revoke_confirm' => 'Diesen Code widerrufen? Er funktioniert sofort nicht mehr.',
+    ],
+    'errors' => [
+        'purpose' => 'Wähle einen Zweck.',
+        'not_readable' => 'Dieser Zweck erlaubt keine lesbaren Codes; zufällige Codes werden per Code ausgegeben.',
+        'format' => 'Ein lesbarer Code braucht 4 bis 64 Buchstaben A–Z und Ziffern (Leerzeichen und Bindestriche werden ignoriert).',
+        'taken' => 'Einen solchen Code gibt es für diesen Zweck bereits.',
+        'max_uses' => '„Höchstens einlösbar“ muss eine ganze Zahl sein (leer: unbegrenzt).',
+    ],
+    'permissions' => [
+        'revoke' => 'Codes widerrufen',
+    ],
+    'extension' => ['label' => 'Codes'],
 ];

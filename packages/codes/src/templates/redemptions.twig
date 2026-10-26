@@ -1,11 +1,11 @@
 {% if redemptions is empty %}
-    <p>No redemptions yet.</p>
+    <p>{{ t('codes.redemptions.none') }}</p>
 {% else %}
     <table class="folio-table">
-        <thead><tr><th>Redeemed by</th><th>Time</th></tr></thead>
+        <thead><tr><th>{{ t('codes.redemptions.by') }}</th><th>{{ t('codes.redemptions.time') }}</th></tr></thead>
         <tbody>
         {% for r in redemptions %}
-            <tr><td>{{ r.redeemer }}</td><td>{{ r.at }}</td></tr>
+            <tr><td>{{ r.redeemer }}</td><td>{{ folio_date(r.at, 'datetime') }}</td></tr>
         {% endfor %}
         </tbody>
     </table>

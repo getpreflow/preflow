@@ -174,7 +174,31 @@ final class Customizations
      */
     public function forType(string $key): array
     {
-        return $this->types[$key] ?? ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'hooks' => [], 'placeholders' => []];
+        $type = $this->types[$key] ?? ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'hooks' => [], 'placeholders' => []];
+        foreach (['panels', 'actions', 'bulk', 'columns'] as $list) {
+            $type[$list] = array_map(self::texts(...), $type[$list]);
+        }
+
+        return $type;
+    }
+
+    /**
+     * An entry with its label and confirm text in the interface language: an attribute may give
+     * a translation key instead of a text (FolioText::label()). Resolved on each read, so
+     * each request gets its user's language.
+     *
+     * @template T of array<string, mixed>
+     * @param T $entry
+     * @return T
+     */
+    private static function texts(array $entry): array
+    {
+        $entry['label'] = \Preflow\Folio\FolioText::label((string) $entry['label']);
+        if (is_string($entry['confirm'] ?? null)) {
+            $entry['confirm'] = \Preflow\Folio\FolioText::label($entry['confirm']);
+        }
+
+        return $entry;
     }
 
     /** The #[FieldPlaceholder] text of a field in $locale, or null (none declared, or the method gives none). */
@@ -225,7 +249,7 @@ final class Customizations
     {
         foreach ($this->types[$type]['actions'] ?? [] as $action) {
             if ($action['name'] === $name) {
-                return $action;
+                return self::texts($action);
             }
         }
 
@@ -239,7 +263,7 @@ final class Customizations
      */
     public function bulkActions(string $type): array
     {
-        return $this->types[$type]['bulk'] ?? [];
+        return array_map(self::texts(...), $this->types[$type]['bulk'] ?? []);
     }
 
     /** @return array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}|null */

@@ -15,11 +15,12 @@ use Preflow\Rbac\RoleStore;
 /**
  * Member accounts in Folio: the member type (models/member.json; its admin labels in
  * lang/{locale}/members-admin.php), its roles, the owner's
- * Decision panel (Types/MemberAdmin) and the settings under Settings → Members settings.
+ * Decision panel (Types/MemberAdmin) and the settings under Settings → Members settings (their
+ * labels, the permissions' and the seeded roles' are members-admin keys too).
  * MembersServiceProvider binds the services.
  */
 #[FolioExtension(name: 'members', label: 'Members', icon: 'ui-users', version: '1.2.0', translations: 'members-admin')]
-#[DeclaresPermission('members.access', 'Use the members area')]
+#[DeclaresPermission('members.access', 'Use the members area')] // in the admin: members-admin.permissions.access
 #[DeclaresPermission('members.decide', 'Accept or decline members')]
 final class Extension extends \Preflow\Folio\Extension\Extension
 {

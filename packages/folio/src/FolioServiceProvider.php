@@ -95,7 +95,12 @@ final class FolioServiceProvider extends ServiceProvider
         }
         foreach ($extensions->enabled() as $definition) {
             if ($extensions->partEnabled($definition->name, 'settings')) {
-                $extensionTypes[] = [ExtensionSettings::schema($definition, $container->get($definition->class)->settings()), 'settings', 'Extension settings type', 'site'];
+                // The settings form's labels are the extension's to deliver: in its group, like its models'.
+                $schema = ExtensionSettings::schema($definition, $container->get($definition->class)->settings());
+                if ($definition->labelGroup() !== 'site') {
+                    $labelSources[] = ['extension ' . $definition->name . ' settings', $schema, $definition->labelGroup()];
+                }
+                $extensionTypes[] = [$schema, 'settings', 'Extension settings type', $definition->labelGroup()];
             }
         }
         if ($extensionTypes !== [] && $dataManager !== null && $dataManager->getTypeRegistry() === null) {
@@ -119,7 +124,7 @@ final class FolioServiceProvider extends ServiceProvider
         if ($patches !== []) {
             throw ModelExtension::orphanError((string) array_key_first($patches), $modelsPath, $extensions);
         }
-        $displayLabels = new \Preflow\Folio\Content\DisplayLabels($catalog, $types);
+        $displayLabels = new \Preflow\Folio\Content\DisplayLabels($catalog, $types, $extensions);
         $container->instance(\Preflow\Folio\Content\DisplayLabels::class, $displayLabels);
         $this->registerLabelKeys($container, $modelsPath, $labelSources);
         // Blocks: component blocks from app/Components, data-only blocks from
@@ -521,6 +526,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Users\UserPreferences::class),
             $c->has(TemplateEngineInterface::class) ? $c->get(TemplateEngineInterface::class) : null,
             static fn () => $c->get(\Preflow\Folio\Translations\OverridesCache::class)->startRequest(),
+            self::validatorFactory($c),
         ));
         $container->bind(\Preflow\Folio\Http\LocaleController::class, fn (Container $c) => new \Preflow\Folio\Http\LocaleController(
             $c->get(\Preflow\Folio\Users\UserPreferences::class),
@@ -644,7 +650,7 @@ final class FolioServiceProvider extends ServiceProvider
     /**
      * The keys of the model files' labels for translations:check (preflow/i18n DerivedKeys):
      * the site's model files in "site", enabled extensions' models (as their files are, before
-     * prepareModel) in the extension's group, plus {group}.sections.{name} for a sidebar
+     * prepareModel) and settings forms in the extension's group, plus {group}.sections.{name} for a sidebar
      * section that isn't Folio's own.
      *
      * @param list<array{0: string, 1: array<string, mixed>, 2: string}> $extensionModels what, schema, group
@@ -694,6 +700,9 @@ final class FolioServiceProvider extends ServiceProvider
         // Declared in composer.json (extra.preflow.translations); this covers apps whose
         // Composer metadata doesn't list Folio (test apps, a core before 0.37).
         $translator->addDefaultsIfMissing('folio', dirname(__DIR__) . '/lang', 'admin');
+        if (class_exists(\Preflow\Validation\Message::class)) { // the messages of Folio's forms (public: site forms may use them too)
+            $translator->addDefaultsIfMissing('validation', \Preflow\Validation\Message::LANG_PATH, 'public');
+        }
         self::useOverrides($translator, $c);
 
         return $translator;

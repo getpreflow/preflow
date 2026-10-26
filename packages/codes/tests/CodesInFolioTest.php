@@ -208,6 +208,47 @@ final class CodesInFolioTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_redemptions_screen_speaks_french(): void
+    {
+        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'locale' => 'fr'];\n");
+        $codes = $this->codes();
+        $codes->issue('members.book', [], 'BOOKCODE1');
+        $codes->issue('members.book', [], 'BOOKCODE2');
+        $codes->issue('members.book', [], 'BOOKCODE3', expiresAt: new \DateTimeImmutable('2020-01-01'));
+        $codes->redeem('BOOKCODE1', 'members.book', 'member-77');
+        $this->login();
+
+        $list = html_entity_decode((string) $this->send('GET', '/folio/code')->getBody(), ENT_QUOTES);
+        $this->assertMatchesRegularExpression('~<th[^>]*>\s*Échanges\s*</th>~', $list);
+        $this->assertMatchesRegularExpression('#BOOKCODE3.*?<td[^>]*>\s*expiré\s*</td>#s', $list);
+
+        $form = html_entity_decode((string) $this->send('GET', '/folio/code/' . $this->idOf('BOOKCODE1') . '/edit')->getBody(), ENT_QUOTES);
+        foreach (['Échanges', 'Échangé par', 'Date', 'member-77', 'Révoquer', 'Révoquer ce code ? Il cesse de fonctionner immédiatement.'] as $text) {
+            $this->assertStringContainsString($text, $form);
+        }
+        $this->assertMatchesRegularExpression('~<td>\d{2}/\d{2}/\d{4} \d{2}:\d{2}</td>~', $form, 'the time in the French pattern');
+        foreach (['Redemptions', 'Redeemed by', '>Time<', '>Revoke<', 'Revoke this code?'] as $english) {
+            $this->assertStringNotContainsString($english, $form);
+        }
+        $none = html_entity_decode((string) $this->send('GET', '/folio/code/' . $this->idOf('BOOKCODE2') . '/edit')->getBody(), ENT_QUOTES);
+        $this->assertStringContainsString('Aucun échange pour l’instant.', $none);
+
+        $refused = html_entity_decode((string) $this->send('POST', '/folio/code', $this->create(['code' => 'ab']))->getBody(), ENT_QUOTES);
+        $this->assertStringContainsString('Un code lisible', $refused);
+        $this->assertStringContainsString('Aucun code pour l’instant.', $this->emptyList());
+    }
+
+    /** The list of an app without codes (French, the same config). */
+    private function emptyList(): string
+    {
+        foreach ($this->dm()->queryType('code')->get()->items() as $record) {
+            $this->dm()->deleteType('code', (string) $record->getId());
+        }
+
+        return html_entity_decode((string) $this->send('GET', '/folio/code')->getBody(), ENT_QUOTES);
+    }
+
+    #[RunInSeparateProcess]
     public function test_code_list_filters_by_expiry_and_form(): void
     {
         $this->app();

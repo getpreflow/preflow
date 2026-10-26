@@ -47,7 +47,7 @@ final class StaffRules
         $email = mb_strtolower(trim((string) $record->get('email')));
         $record->set('email', $email);
         if ($email !== '' && $this->emailTaken($email, $id)) {
-            throw self::invalid('email', 'Another account already uses this email address.');
+            throw self::invalid('email', $this->messages->get('staff.email_taken'));
         }
         // In the admin, a new or changed address may not be a config user's: the record would then
         // decide that sign-in (a disabled one locks the config login out). The import (no
