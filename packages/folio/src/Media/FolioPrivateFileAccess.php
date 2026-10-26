@@ -12,11 +12,13 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * Folio's rules for the media core's private files (private files, their previews and
- * the earlier files of any asset): only a signed-in user with assets.private_permission,
- * or with assets.view, so staff who can see the library open what it shows (FrontendGate,
- * fails closed: nobody without auth configured). Anyone else gets a 403, or goes to
- * assets.private_login with the URL as "next". Both settings come from config/folio.php "assets".
+ * Folio's rules for the media core's private files: a private file and its preview only
+ * for a signed-in user with assets.private_permission, or with assets.view, so staff who
+ * can see the library open what it shows. The earlier files of any asset (a request with
+ * PrivateFileAccess::VERSION) are staff only: assets.view, never the members' permission.
+ * FrontendGate fails closed (nobody without auth configured). Anyone else gets a 403, or
+ * (not for a version) goes to assets.private_login with the URL as "next". Both settings come from
+ * config/folio.php "assets".
  */
 final class FolioPrivateFileAccess implements PrivateFileAccess
 {
@@ -33,10 +35,12 @@ final class FolioPrivateFileAccess implements PrivateFileAccess
 
     public function decide(ServerRequestInterface $request, Asset $asset): ?ResponseInterface
     {
-        if ($this->gate->allows($this->permission) || $this->gate->allows(self::LIBRARY)) {
+        $version = $request->getAttribute(PrivateFileAccess::VERSION) !== null;
+        if ($this->gate->allows(self::LIBRARY) || (!$version && $this->gate->allows($this->permission))) {
             return null;
         }
-        if ($this->login === null) {
+        // private_login is the members' sign-in, which never opens versions: a plain 403 for those.
+        if ($this->login === null || $version) {
             return new Response(403, ['Content-Type' => 'text/plain; charset=UTF-8', 'Cache-Control' => self::NO_STORE], 'Forbidden');
         }
         $next = '/' . ltrim($request->getUri()->getPath(), '/\\');

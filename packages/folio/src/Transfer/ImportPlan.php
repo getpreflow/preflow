@@ -13,11 +13,13 @@ final class ImportPlan
     /**
      * @param array<string, array{added: list<string>, changed: list<string>, removed: list<string>}> $tables
      * @param array<string, array{added: list<string>, changed: list<string>, removed: list<string>}> $files keyed media/uploads
+     * @param list<string> $notices what the import leaves out and why, for the command output
      */
     public function __construct(
         public readonly string $dir,
         public readonly array $tables,
         public readonly array $files,
+        public readonly array $notices = [],
     ) {}
 
     /**

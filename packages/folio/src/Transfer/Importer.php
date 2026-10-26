@@ -33,7 +33,7 @@ final class Importer
         mkdir($dir, 0700, true);
 
         try {
-            $manifest = $this->extract($stream, $dir);
+            [$manifest, $notices] = $this->extract($stream, $dir);
 
             // Only what both the export carried and this import asked for is compared:
             // a data-only export never removes media, and the reverse.
@@ -45,6 +45,7 @@ final class Importer
                 $dir,
                 $withData ? $this->diffTables($dir, $manifest) : [],
                 $withFiles ? $this->diffFiles($dir, $manifest) : [],
+                $notices,
             );
         } catch (\Throwable $e) {
             self::removeDir($dir);
@@ -88,10 +89,16 @@ final class Importer
         }
     }
 
-    /** @return array{tables: array<string, int>} */
+    /**
+     * The manifest and notices for the output: version files are skipped (not refused)
+     * when this site keeps no versions, so a production export still imports locally.
+     *
+     * @return array{0: array{tables: array<string, int>}, 1: list<string>}
+     */
     private function extract($stream, string $dir): array
     {
         $manifest = null;
+        $skippedVersions = 0;
         $tables = $this->set->tables();
         foreach ((new TarReader($stream))->entries() as [$name, $size, $copyTo]) {
             if ($manifest === null) {
@@ -117,6 +124,9 @@ final class Importer
                 if (!array_key_exists($m[1], $manifest['tables'])) {
                     throw new TransferException("Record for a table outside the manifest: {$name}");
                 }
+            } elseif (str_starts_with($name, 'media-versions/') && !isset($this->set->fileRoots()['media-versions'])) {
+                $skippedVersions++;
+                continue; // the reader skips the body
             } elseif (preg_match('#^(media|uploads|private-media|media-versions)/.+$#', $name, $m) !== 1 || !isset($this->set->fileRoots()[$m[1]])) {
                 throw new TransferException("Unexpected archive entry: {$name}");
             } else {
@@ -132,8 +142,11 @@ final class Importer
         if ($manifest === null) {
             throw new TransferException('Empty archive');
         }
+        $notices = $skippedVersions > 0
+            ? ["media-versions/: {$skippedVersions} earlier file" . ($skippedVersions === 1 ? '' : 's') . ' skipped, this site keeps no versions (versions_dir is not set).']
+            : [];
 
-        return $manifest;
+        return [$manifest, $notices];
     }
 
     /** @return array<string, array{added: list<string>, changed: list<string>, removed: list<string>}> */

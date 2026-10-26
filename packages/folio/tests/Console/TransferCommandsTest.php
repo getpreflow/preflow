@@ -97,6 +97,20 @@ final class TransferCommandsTest extends TestCase
         $this->assertMatchesRegularExpression('/post\s+\+1\s+~0\s+-0/', $this->text($this->out));
     }
 
+    public function test_import_into_a_site_without_versions_notes_the_skipped_files(): void
+    {
+        @mkdir($this->dir . '/storage/media-versions/a1', 0777, true);
+        file_put_contents($this->dir . '/storage/media-versions/a1/v1.jpg', 'OLD');
+        $file = $this->dir . '/x.tar';
+        $this->export([$file]);
+        file_put_contents($this->dir . '/config/media.php', "<?php\nreturn ['versions_dir' => ''];\n");
+
+        $this->assertSame(0, $this->import([$file, '--dry-run']));
+
+        $this->assertStringContainsString('Note: media-versions/: 1 earlier file skipped', $this->text($this->out));
+        $this->assertStringNotContainsString('Unexpected archive entry', $this->text($this->err));
+    }
+
     public function test_import_writes_backup_before_applying(): void
     {
         $file = $this->dir . '/x.tar';

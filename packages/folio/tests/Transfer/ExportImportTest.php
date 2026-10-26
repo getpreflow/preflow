@@ -143,6 +143,27 @@ final class ExportImportTest extends TestCase
         $this->assertSame('OLDJPEG', file_get_contents($this->dir . '/storage/media-versions/a1/v1.jpg'));
     }
 
+    public function test_version_files_into_a_site_without_a_versions_dir_are_skipped_with_a_notice(): void
+    {
+        $this->put('storage/media-versions/a1/v1.jpg', 'OLDJPEG');
+        $archive = $this->export();
+        $this->wipe('storage/media-versions');
+        $app = $this->app();
+        $full = ContentSet::fromApp($app);
+        $set = new ContentSet($full->tables(), $full->mediaDir(), $full->uploadsDir(), $this->dir . '/storage/private-media', null);
+        $importer = new Importer($set, $app->container()->get(DataManager::class));
+
+        $plan = $importer->read($archive);
+        try {
+            $this->assertSame(['media-versions/: 1 earlier file skipped, this site keeps no versions (versions_dir is not set).'], $plan->notices);
+            $this->assertSame(['added' => [], 'changed' => [], 'removed' => []], $plan->summary()['media-versions']);
+            $importer->apply($plan);
+        } finally {
+            $plan->cleanup();
+        }
+        $this->assertFileDoesNotExist($this->dir . '/storage/media-versions/a1/v1.jpg');
+    }
+
     /** @return resource an export made while $rel is moved away */
     private function exportWithout(string $rel)
     {

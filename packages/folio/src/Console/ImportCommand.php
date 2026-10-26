@@ -55,6 +55,9 @@ final class ImportCommand extends TransferCommand implements CommandInterface
     public static function applyPlan(TransferCommand $cmd, \Preflow\Core\Application $app, Importer $importer, \Preflow\Folio\Transfer\ImportPlan $plan, bool $dryRun, string $backupPrefix): int
     {
         try {
+            foreach ($plan->notices as $notice) {
+                $cmd->say('Note: ' . $notice);
+            }
             if ($plan->isEmpty()) {
                 $cmd->say('Nothing to change: local content already matches.');
 

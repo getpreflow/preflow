@@ -244,6 +244,30 @@ final class PrivateAssetsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_members_never_open_version_files(): void
+    {
+        $public = $this->lib()->upload($this->file($this->png(40, 20), 'old.png'), null);
+        $this->lib()->replace($public->id, $this->file($this->png(60, 20), 'new.png'), null);
+        $private = $this->uploadPrivate($this->file($this->pdf(), 'Guide.pdf'));
+        $this->lib()->replace($private->id, $this->file($this->pdf() . "%2\n", 'Guide 2.pdf'), null);
+
+        // A member with the private permission opens the current private file, never an earlier one.
+        $this->signIn('_auth_user_id.members', 'member@site.test');
+        $this->assertSame(200, $this->fetch('/tools/files/' . $private->id)->getStatusCode());
+        foreach ([$public->id, $private->id] as $id) {
+            $res = $this->fetch('/tools/files/' . $id . '/v/1');
+            $this->assertSame(403, $res->getStatusCode(), $id);
+            $this->assertSame('private, no-store', $res->getHeaderLine('Cache-Control'));
+        }
+
+        // Staff with assets.view do.
+        $this->signIn('_auth_user_id', 'viewer@site.test');
+        foreach ([$public->id, $private->id] as $id) {
+            $this->assertSame(200, $this->fetch('/tools/files/' . $id . '/v/1')->getStatusCode(), $id);
+        }
+    }
+
+    #[RunInSeparateProcess]
     public function test_private_url_is_403_without_auth(): void
     {
         // A site whose Folio has no auth configured: nobody passes (FrontendGate fails closed).
@@ -266,6 +290,10 @@ final class PrivateAssetsTest extends TestCase
         $this->assertSame(302, $res->getStatusCode());
         $this->assertSame('/tools/login?next=' . rawurlencode('/tools/files/' . $pdf->id), $res->getHeaderLine('Location'));
         $this->assertSame('private, no-store', $res->getHeaderLine('Cache-Control'));
+
+        // The members' sign-in never opens an earlier file: no redirect there.
+        $this->lib()->replace($pdf->id, $this->file($this->pdf() . "%2\n", 'Guide 2.pdf'), null);
+        $this->assertSame(403, $this->fetch('/tools/files/' . $pdf->id . '/v/1')->getStatusCode());
     }
 
     #[RunInSeparateProcess]
