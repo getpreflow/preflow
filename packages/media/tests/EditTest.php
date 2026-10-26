@@ -284,6 +284,19 @@ final class EditTest extends TestCase
         $this->assertSame([], $lib->rotate($asset->id, 1)->crops);
     }
 
+    public function test_rotate_by_whole_turns_changes_nothing(): void
+    {
+        $lib = $this->lib();
+        $asset = $this->uploadQuadrants($lib);
+        $set = $lib->setFormatCrop($asset->id, 'cover-thumb', CropRect::of(0, 0, 50, 50));
+
+        foreach ([0, 4, -4, 8] as $turns) {
+            $same = $lib->rotate($asset->id, $turns);
+            $this->assertEquals($set, $same, "{$turns} quarter turns");
+            $this->assertEquals($set, $lib->find($asset->id), "{$turns} quarter turns, stored");
+        }
+    }
+
     public function test_set_format_crop_keeps_the_master_and_removes_box_files(): void
     {
         $lib = $this->lib();

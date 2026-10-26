@@ -441,6 +441,60 @@ final class BoxPresetTest extends TestCase
         $this->assertSame([200, 200], array_slice((array) getimagesize($this->boxFileVia($lib, $pdf, 'cover-thumb', 200)), 0, 2));
     }
 
+    public function test_a_pdf_previews_box_files_go_on_replace_and_remake(): void
+    {
+        if ((new PdfPreviewRenderer())->engine() === null) {
+            $this->markTestSkipped('No PDF renderer (Ghostscript or pdftocairo) on this machine.');
+        }
+        $renderers = new PreviewRenderers();
+        $renderers->register(new PdfPreviewRenderer(new ColorManagement()));
+        $lib = $this->lib(previews: $renderers);
+        $bytes = (string) file_get_contents(__DIR__ . '/Fixtures/pdf/rgb.pdf');
+        $pdf = $lib->upload($this->upload($bytes, 'a.pdf'), null);
+        $first = $this->boxFileVia($lib, $pdf, 'cover-thumb', 200);
+
+        $replaced = $lib->replace($pdf->id, $this->upload($bytes, 'b.pdf'), null);
+
+        $this->assertFileDoesNotExist($first, 'the replaced preview\'s box file');
+        $second = $this->boxFileVia($lib, $replaced, 'cover-thumb', 200);
+
+        $lib->remakePreview($lib->find($pdf->id));
+
+        $this->assertFileDoesNotExist($second, 'the remade preview\'s old box file');
+    }
+
+    public function test_warm_on_upload_warms_box_files_under_the_current_plan(): void
+    {
+        $lib = $this->lib(['warm_on_upload' => true, 'warm_widths' => [480]]);
+        $asset = $this->uploadQuadrants($lib);
+        $lib->setFormatCrop($asset->id, 'cover-thumb', CropRect::of(0, 0, 50, 50));
+
+        $flipped = $lib->flip($asset->id, true);
+
+        $plan = $lib->boxPlan($flipped, 'cover-thumb');
+        $boxes = array_values(array_filter($this->mediaFiles(), static fn (string $f): bool => str_contains($f, '-cover-thumb-')));
+        $this->assertNotSame([], $boxes);
+        foreach ($boxes as $file) {
+            $this->assertStringStartsWith($plan->base . '-', $file);
+        }
+    }
+
+    public function test_an_edit_above_max_pixels_gets_no_master_and_a_log_line(): void
+    {
+        $lib = $this->lib(['max_pixels' => 1000]);
+        $asset = $this->uploadQuadrants($lib);
+        $log = $this->assetRoot . '/php-error.log';
+        $before = ini_set('error_log', $log);
+        try {
+            $edited = $lib->rotate($asset->id, 1);
+        } finally {
+            ini_set('error_log', (string) $before);
+        }
+
+        $this->assertNull($edited->master);
+        $this->assertStringContainsString("preflow/media: no edited image of asset {$asset->id}: above max_pixels", (string) @file_get_contents($log));
+    }
+
     public function test_warm_makes_the_box_files(): void
     {
         $lib = $this->lib();

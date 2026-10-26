@@ -511,6 +511,9 @@ final class MediaLibrary
     public function rotate(string $id, int $quarterTurns): Asset
     {
         $turns = (($quarterTurns % 4) + 4) % 4;
+        if ($turns === 0) {
+            return $this->editable($id); // whole turns: the image, its crops and files stay as they are
+        }
 
         return $this->edit($id, static function (Asset $asset) use ($turns): array {
             [$x, $y] = Geometry::pointRotated($asset->focalX, $asset->focalY, $turns);
@@ -696,6 +699,9 @@ final class MediaLibrary
             return null;
         }
         $rel = "{$plan->base}-{$width}.{$format}";
+        // The plan was computed without the asset lock: a request racing an edit can write a
+        // file under the old key after removeBoxes() ran. Nothing links it; like a plain
+        // variant made on demand it is an orphan, removed at the next edit or delete.
 
         return $this->madeOnce($rel, fn () => $this->variants?->generateBox($this->dir, $plan->source->path, $plan->source->mime, $plan->crop, $width, $format, $rel));
     }
@@ -1184,6 +1190,7 @@ final class MediaLibrary
             $preview = $this->previewAsset($asset);
             if ($preview !== null) {
                 $this->variants?->remove($preview, $this->dir); // also the preview's variants made on demand
+                $this->variants?->removeBoxes($preview, $this->dir); // and its box files
             }
         }
     }
@@ -1370,6 +1377,7 @@ final class MediaLibrary
             // The record is on the new preview: the old one's variants (also those made on demand) go.
             if (!$current->private && $oldPreview !== null) {
                 $this->variants?->remove($oldPreview, $this->dir);
+                $this->variants?->removeBoxes($oldPreview, $this->dir); // same names for the new preview: they would be stale
             }
             foreach ($old as $file) {
                 if ($file !== null && is_file($file)) {
@@ -1507,7 +1515,12 @@ final class MediaLibrary
      */
     private function renderMaster(Asset $asset): Asset
     {
-        if (!$asset->isEdited() || !$this->isEditable($asset) || $this->variants === null || !$this->withinMaxPixels($asset)) {
+        if (!$asset->isEdited() || !$this->isEditable($asset)) {
+            return $asset;
+        }
+        if ($this->variants === null || !$this->withinMaxPixels($asset)) {
+            error_log("preflow/media: no edited image of asset {$asset->id}: " . ($this->variants === null ? 'no variants backend' : 'above max_pixels'));
+
             return $asset;
         }
         $path = self::stemOf($asset->path) . '-edit-' . Formats::key([$asset->version, $asset->rotation, $asset->mirrored, $asset->crop?->toArray()])
@@ -1688,7 +1701,7 @@ final class MediaLibrary
         // Optional: make the step widths now, so a page full of new images does not
         // start many encodes at once on its first view (assets.warm_on_upload).
         if (($this->config['warm_on_upload'] ?? false) === true && is_array($this->config['warm_widths'] ?? null)) {
-            $this->warm($this->deliveryAsset($asset) ?? $asset, array_values(array_map('intval', $this->config['warm_widths'])));
+            $this->warm($asset, array_values(array_map('intval', $this->config['warm_widths'])));
         }
 
         return $asset;
