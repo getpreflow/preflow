@@ -509,6 +509,78 @@ final class BoxPresetTest extends TestCase
         $this->assertStringContainsString("preflow/media: no edited image of asset {$asset->id}: above max_pixels", (string) @file_get_contents($log));
     }
 
+    public function test_four_quarter_turns_render_as_the_unedited_image(): void
+    {
+        $lib = $this->lib();
+        $asset = $this->uploadQuadrants($lib);
+        $tag = $this->tag($lib);
+        $before = [$tag->render($asset->id), $tag->render($asset->id, 'card'), $tag->render($asset->id, 'cover-thumb'), $tag->render($asset->id, 'fit-box')];
+
+        for ($i = 0; $i < 4; $i++) {
+            $lib->rotate($asset->id, 1);
+        }
+
+        $this->assertFalse($lib->find($asset->id)->isEdited());
+        $this->assertSame($before, [$tag->render($asset->id), $tag->render($asset->id, 'card'), $tag->render($asset->id, 'cover-thumb'), $tag->render($asset->id, 'fit-box')]);
+    }
+
+    public function test_an_exif_turned_jpeg_is_cropped_and_boxed_as_it_is_shown(): void
+    {
+        $lib = $this->lib();
+        // Stored 800x600 (red, green / blue, yellow) with EXIF 6: shown turned clockwise,
+        // 600x800 with blue, red on top and yellow, green below.
+        $im = imagecreatetruecolor(800, 600);
+        foreach ([[0, 0, self::RED], [400, 0, self::GREEN], [0, 300, self::BLUE], [400, 300, self::YELLOW]] as [$x, $y, $c]) {
+            imagefilledrectangle($im, $x, $y, $x + 399, $y + 299, (int) imagecolorallocate($im, ...$c));
+        }
+        ob_start();
+        imagejpeg($im, null, 95);
+        $jpeg = (string) ob_get_clean();
+        $tiff = "MM\x00\x2A\x00\x00\x00\x08" . "\x00\x01" . "\x01\x12\x00\x03\x00\x00\x00\x01" . pack('n', 6) . "\x00\x00" . "\x00\x00\x00\x00";
+        $payload = "Exif\x00\x00" . $tiff;
+        $asset = $lib->upload($this->upload(substr($jpeg, 0, 2) . "\xFF\xE1" . pack('n', strlen($payload) + 2) . $payload . substr($jpeg, 2), 'phone.jpg'), null);
+
+        $cropped = $lib->setCrop($asset->id, CropRect::of(0, 0, 100, 50)); // the top half as shown: blue | red
+
+        $this->assertSame([600, 400], [$cropped->master->width, $cropped->master->height]);
+        $plan = $lib->boxPlan($cropped, 'cover-thumb');
+        $this->assertSame(['x' => 100, 'y' => 0, 'w' => 400, 'h' => 400], $plan->crop); // the middle square
+        $file = $this->boxFileVia($lib, $cropped, 'cover-thumb', 200);
+        $this->assertColor(self::BLUE, $file, 20, 100);
+        $this->assertColor(self::RED, $file, 180, 100);
+    }
+
+    public function test_after_replacing_an_edited_image_every_srcset_url_is_served(): void
+    {
+        $lib = $this->lib();
+        $asset = $this->uploadQuadrants($lib);
+        $lib->rotate($asset->id, 1);
+        $lib->setCrop($asset->id, CropRect::of(10, 10, 80, 80));
+        $tag = $this->tag($lib);
+        foreach (['cover-thumb', 'cover-hero', 'fit-box', 'card'] as $preset) {
+            $tag->render($asset->id, $preset); // pages had the edited image
+        }
+
+        $lib->replace($asset->id, $this->upload($this->quadrants(), 'q2.png'), null);
+
+        $served = 0;
+        foreach (['cover-thumb', 'cover-hero', 'fit-box', 'card'] as $preset) {
+            $html = $tag->render($asset->id, $preset);
+            preg_match_all('/srcset="([^"]+)"/', $html, $m);
+            $this->assertNotSame([], $m[1], $preset);
+            foreach ($m[1] as $srcset) {
+                foreach (explode(',', html_entity_decode($srcset)) as $candidate) {
+                    $url = explode(' ', trim($candidate))[0];
+                    $this->assertStringStartsWith('/media/', $url);
+                    $res = $this->serve($lib, substr($url, strlen('/media/')));
+                    $this->assertSame(200, $res->getStatusCode(), "{$preset}: {$url}");
+                    $served++;
+                }
+            }
+        }
+        $this->assertGreaterThan(8, $served);
+    }
+
     public function test_warm_makes_the_box_files(): void
     {
         $lib = $this->lib();
