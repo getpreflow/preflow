@@ -75,6 +75,9 @@ final class MembersAdminTranslationTest extends TestCase
         foreach (['Entscheidung', 'Annehmen und senden', 'Ablehnen und senden', 'Nachricht an Ada Lovelace', 'Wird auf Deutsch gesendet.', 'Registriert am '] as $text) {
             $this->assertStringContainsString($text, $edit);
         }
+        $shown = (new \DateTimeImmutable((string) $members->find($m->getId())?->get('registered_at')))->setTimezone(new \DateTimeZone(date_default_timezone_get()))->format('d.m.Y H:i');
+        $this->assertStringContainsString('Registriert am ' . $shown, $edit, 'the decision panel writes the date the German way');
+        $this->assertStringContainsString($shown, $list, 'so does the list');
         foreach (['Decision', 'Accept and send', 'Decline and send', 'Message to', 'Sent in', 'Registered ', 'Waiting for approval', 'Members settings'] as $english) {
             $this->assertStringNotContainsString($english, $edit);
         }

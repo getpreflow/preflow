@@ -167,7 +167,7 @@ final class ReadonlyFieldDisplayTest extends TestCase
     {
         $fields = $this->render(['note' => '<b>x</b>', 'joined' => '2026-10-22T23:15:12+00:00']);
         $this->assertStringContainsString('&lt;b&gt;x&lt;/b&gt;', $fields['note']);
-        $this->assertStringContainsString('22 Oct 2026, 23:15', $fields['joined']);
+        $this->assertStringContainsString('Oct 22, 2026 23:15', $fields['joined']);
     }
 
     public function test_readonly_empty_shows_dash(): void
@@ -201,6 +201,24 @@ final class ReadonlyFieldDisplayTest extends TestCase
         $this->controller($engine)->list((new Psr17Factory())->createServerRequest('GET', '/folio/member')->withAttribute('type', 'member'));
 
         $rows = json_decode($engine->context, true)['rows'];
-        $this->assertSame('22 Oct 2026, 23:15', $rows[0]['cells']['joined']);
+        $this->assertSame('Oct 22, 2026 23:15', $rows[0]['cells']['joined']);
+    }
+
+    public function test_list_cell_dates_follow_the_interface_language(): void
+    {
+        $this->dm->saveType(DynamicRecord::fromArray($this->registry->get('member'), ['uuid' => 'm1', 'joined' => '2026-10-26T09:30:00+00:00']), false);
+        foreach (['de' => '26.10.2026 09:30', 'fr' => '26/10/2026 09:30'] as $locale => $expected) {
+            $translator = new \Preflow\I18n\Translator($this->base . '/lang', $locale, 'en');
+            $translator->addDefaults('folio', dirname(__DIR__, 2) . '/lang');
+            $previous = \Preflow\Folio\FolioText::use($translator);
+            try {
+                $engine = $this->engine();
+                $this->controller($engine)->list((new Psr17Factory())->createServerRequest('GET', '/folio/member')->withAttribute('type', 'member'));
+                $rows = json_decode($engine->context, true)['rows'];
+                $this->assertSame($expected, $rows[0]['cells']['joined'], $locale);
+            } finally {
+                \Preflow\Folio\FolioText::use($previous);
+            }
+        }
     }
 }

@@ -95,11 +95,8 @@ final class MemberAdmin
         $lang = $this->lang($m);
         $name = (string) $m->get('name');
         $state = MemberState::fromRecord($m);
+        // The raw value: the panel prints it with folio_date(…, 'datetime'), as Folio's date fields show it.
         $registered = (string) $m->get('registered_at');
-        try { // as Folio's date fields show it (DateFieldType), so the panel and the form read alike
-            $registered = (new \DateTimeImmutable($registered))->setTimezone(new \DateTimeZone(date_default_timezone_get()))->format('j M Y, H:i');
-        } catch (\Exception) {
-        }
 
         return new ScreenView('@members/decision.twig', [
             'state' => $state->value,

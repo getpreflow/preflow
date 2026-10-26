@@ -207,7 +207,7 @@ final class MemberApprovalTest extends TestCase
         $this->flow = $this->app();
         $m = $this->makeMember('ada@example.com', 'pending');
         $this->signIn();
-        $shown = (new \DateTimeImmutable((string) $this->reload($m)->get('registered_at')))->setTimezone(new \DateTimeZone(date_default_timezone_get()))->format('j M Y, H:i');
+        $shown = (new \DateTimeImmutable((string) $this->reload($m)->get('registered_at')))->setTimezone(new \DateTimeZone(date_default_timezone_get()))->format('M j, Y H:i');
 
         $html = html_entity_decode($this->admin('/folio/member/' . $m->getId() . '/edit'), ENT_QUOTES);
 
@@ -441,7 +441,7 @@ final class MemberApprovalTest extends TestCase
     {
         $m = $this->makeMember('ada@example.com', 'pending');
         $this->signIn();
-        $shown = (new \DateTimeImmutable((string) $this->reload($m)->get('registered_at')))->setTimezone(new \DateTimeZone(date_default_timezone_get()))->format('j M Y, H:i');
+        $shown = (new \DateTimeImmutable((string) $this->reload($m)->get('registered_at')))->setTimezone(new \DateTimeZone(date_default_timezone_get()))->format('M j, Y H:i');
 
         $this->assertStringContainsString($shown, $this->admin('/folio/member'));
         $form = $this->admin('/folio/member/' . $m->getId() . '/edit');

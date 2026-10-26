@@ -6,6 +6,7 @@ namespace Preflow\Folio\Field\Types;
 
 use Preflow\Folio\Field\DisplaysInAdmin;
 use Preflow\Folio\Field\FieldContext;
+use Preflow\Folio\Http\AdminFormat;
 
 /**
  * A date ("Y-m-d"), or date and time ("Y-m-d\TH:i") with "time": true.
@@ -40,7 +41,8 @@ final class DateFieldType extends AbstractScalarFieldType implements DisplaysInA
     }
 
     /**
-     * Admin display: "22 Oct 2026", or "22 Oct 2026, 23:15" with "time": true. Reads exactly "Y-m-d", "Y-m-d\TH:i"
+     * Admin display in the interface language (AdminFormat: folio.format.date, or .datetime with
+     * "time": true; "Oct 22, 2026" / "22.10.2026"). Reads exactly "Y-m-d", "Y-m-d\TH:i"
      * and ISO 8601 with an offset (also with seconds; shown in the app timezone). Anything else is shown
      * escaped as it is. The frontend output (renderFrontend) stays the stored string.
      */
@@ -67,7 +69,7 @@ final class DateFieldType extends AbstractScalarFieldType implements DisplaysInA
             }
         }
         if ($date !== false) {
-            $text = $date->format(($config['time'] ?? false) === true ? 'j M Y, H:i' : 'j M Y');
+            $text = (new AdminFormat())->date($date, ($config['time'] ?? false) === true ? 'datetime' : 'date');
         }
 
         return htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');

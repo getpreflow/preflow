@@ -6,6 +6,8 @@ namespace Preflow\Folio\Tests\Field;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Field\Types\DateFieldType;
+use Preflow\Folio\FolioText;
+use Preflow\I18n\Translator;
 
 final class DateFieldTypeTest extends TestCase
 {
@@ -26,11 +28,11 @@ final class DateFieldTypeTest extends TestCase
     {
         $type = new DateFieldType();
 
-        $this->assertSame('22 Oct 2026', $type->renderAdmin('2026-10-22', []));
-        $this->assertSame('22 Oct 2026, 23:15', $type->renderAdmin('2026-10-22T23:15', ['time' => true]));
-        $this->assertSame('22 Oct 2026', $type->renderAdmin('2026-10-22T23:15', []));
+        $this->assertSame('Oct 22, 2026', $type->renderAdmin('2026-10-22', []));
+        $this->assertSame('Oct 22, 2026 23:15', $type->renderAdmin('2026-10-22T23:15', ['time' => true]));
+        $this->assertSame('Oct 22, 2026', $type->renderAdmin('2026-10-22T23:15', []));
         // ISO 8601 with an offset is shown in the app timezone (Zurich is +02:00 in October).
-        $this->assertSame('23 Oct 2026, 01:15', $type->renderAdmin('2026-10-22T23:15:12+00:00', ['time' => true]));
+        $this->assertSame('Oct 23, 2026 01:15', $type->renderAdmin('2026-10-22T23:15:12+00:00', ['time' => true]));
         $this->assertSame('', $type->renderAdmin(null, []));
     }
 
@@ -54,7 +56,23 @@ final class DateFieldTypeTest extends TestCase
         foreach (['tomorrow', 'now', 'next monday', '2026-10-22 23:15', '22.10.2026', '2026-02-30'] as $raw) {
             $this->assertSame($raw, $type->renderAdmin($raw, []), $raw);
         }
-        $this->assertSame('23 Oct 2026, 01:15', $type->renderAdmin('2026-10-22T23:15+00:00', ['time' => true]));
-        $this->assertSame('23 Oct 2026, 01:15', $type->renderAdmin('2026-10-22T23:15:12Z', ['time' => true]));
+        $this->assertSame('Oct 23, 2026 01:15', $type->renderAdmin('2026-10-22T23:15+00:00', ['time' => true]));
+        $this->assertSame('Oct 23, 2026 01:15', $type->renderAdmin('2026-10-22T23:15:12Z', ['time' => true]));
+    }
+
+    public function test_date_display_follows_the_interface_language(): void
+    {
+        $type = new DateFieldType();
+        foreach (['de' => ['22.10.2026', '23.10.2026 01:15'], 'fr' => ['22/10/2026', '23/10/2026 01:15']] as $locale => [$date, $datetime]) {
+            $translator = new Translator(dirname(__DIR__, 2) . '/lang/.none', $locale, 'en');
+            $translator->addDefaults('folio', dirname(__DIR__, 2) . '/lang');
+            $previous = FolioText::use($translator);
+            try {
+                $this->assertSame($date, $type->renderAdmin('2026-10-22', []), $locale);
+                $this->assertSame($datetime, $type->renderAdmin('2026-10-22T23:15:12+00:00', ['time' => true]), $locale);
+            } finally {
+                FolioText::use($previous);
+            }
+        }
     }
 }
