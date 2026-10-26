@@ -96,6 +96,32 @@ final class AssetEditorTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_cut_of_an_image_smaller_than_the_box_links_a_file_that_exists(): void
+    {
+        $this->write('config/image.php', "<?php\nreturn " . var_export(['presets' => [
+            'cover-big' => ['width' => 200, 'height' => 200, 'fit' => 'cover'],
+        ]], true) . ";\n");
+        $this->as('editor');
+        $image = imagecreatetruecolor(150, 150);
+        imagefill($image, 0, 0, (int) imagecolorallocate($image, 255, 0, 0));
+        $file = $this->dir . '/small-' . bin2hex(random_bytes(4)) . '.png';
+        imagepng($image, $file);
+        $asset = $this->lib()->importFile($file, 'small.png', null);
+
+        $body = (string) $this->send('GET', '/folio/assets/' . $asset->id . '/edit')->getBody();
+
+        $plan = $this->lib()->boxPlan($asset, 'cover-big');
+        $this->assertNotNull($plan);
+        $this->assertSame([150], $plan->widths);
+        $cut = $this->lib()->url($plan->base . '-150.webp');
+        $this->assertStringContainsString('src="' . $cut . '"', $body);
+        $this->assertStringNotContainsString($plan->base . '-200.webp', $body);
+        $res = $this->send('GET', $cut);
+        $this->assertSame(200, $res->getStatusCode(), $cut);
+        $this->assertSame('image/webp', $res->getHeaderLine('Content-Type'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_rotate_and_mirror(): void
     {
         $this->as('editor');

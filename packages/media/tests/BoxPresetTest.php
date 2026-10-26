@@ -395,6 +395,20 @@ final class BoxPresetTest extends TestCase
         $this->assertSame([150, 150], array_slice((array) getimagesize($this->boxFileVia($lib, $asset, 'cover-thumb', 150)), 0, 2));
     }
 
+    public function test_the_src_width_is_the_box_width_or_the_nearest_file_width(): void
+    {
+        $lib = $this->lib();
+        $small = $lib->upload($this->upload($this->png(150, 150), 's.png'), null);
+        $plan = $lib->boxPlan($this->uploadQuadrants($lib), 'cover-thumb');
+
+        $this->assertSame(150, $lib->boxPlan($small, 'cover-thumb')->srcWidth());
+        $this->assertSame(200, $plan->srcWidth());
+        $nearest = static fn (array $widths): int => (new BoxPlan($plan->format, $plan->source, $plan->base, 400, 400, $widths, $plan->crop))->srcWidth();
+        $this->assertSame(480, $nearest([480, 960]));
+        $this->assertSame(300, $nearest([300, 500])); // a tie: the smaller
+        $this->assertSame(400, $nearest([]));
+    }
+
     public function test_a_width_preset_on_an_edited_asset_uses_the_master(): void
     {
         $lib = $this->lib();

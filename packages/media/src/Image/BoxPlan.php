@@ -30,4 +30,21 @@ final readonly class BoxPlan
         public array $widths,
         public array $crop,
     ) {}
+
+    /**
+     * The width of the file to use as a plain src: the display width when it is one of
+     * $widths, else the closest of them (the smaller on a tie). An image smaller than the
+     * box, or a preset whose own widths leave out its box width, has no file at $width.
+     */
+    public function srcWidth(): int
+    {
+        $best = $this->widths[0] ?? $this->width;
+        foreach ($this->widths as $w) {
+            if (abs($w - $this->width) < abs($best - $this->width)) {
+                $best = $w;
+            }
+        }
+
+        return $best;
+    }
 }

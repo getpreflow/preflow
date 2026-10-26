@@ -149,7 +149,7 @@ final class ImageTag
         $asset = $this->library->deliveryAsset($asset) ?? $asset; // an edited image: its master
         $plan = $this->plan($record, $asset, $preset);
         if ($plan !== null) {
-            $src = $this->library->url("{$plan->base}-" . self::nearest($plan->widths, $plan->width) . '.webp');
+            $src = $this->library->url("{$plan->base}-{$plan->srcWidth()}.webp");
         }
 
         $opts = array_merge(ResponsiveImage::DEFAULTS, $preset !== null ? (array) ($this->presets[$preset] ?? []) : [], $options);
@@ -255,19 +255,6 @@ final class ImageTag
     private static function hasVariants(Asset $asset, string $format): bool
     {
         return array_filter($asset->variants, static fn (Variant $v) => $v->format === $format) !== [];
-    }
-
-    /** @param list<int> $widths (not empty) @return int the width, else the closest of them (the smaller on a tie) */
-    private static function nearest(array $widths, int $width): int
-    {
-        $best = $widths[0];
-        foreach ($widths as $w) {
-            if (abs($w - $width) < abs($best - $width)) {
-                $best = $w;
-            }
-        }
-
-        return $best;
     }
 
     /**

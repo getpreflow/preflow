@@ -344,7 +344,7 @@ final class AssetLibraryController
             'height' => $format->height,
             'fit' => $format->fit,
             'ratio' => self::ratio((float) $format->ratio()),
-            'cut' => $plan !== null ? $this->library->url($plan->base . '-' . $plan->width . '.webp') : null,
+            'cut' => $plan !== null ? $this->library->url($plan->base . '-' . $plan->srcWidth() . '.webp') : null,
             'cut_width' => $plan?->width,
             'cut_height' => $plan?->height,
             'region' => $region?->toArray(),
