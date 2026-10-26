@@ -205,6 +205,30 @@ final class FolioPermissionsTest extends TestCase
         $this->assertStringNotContainsString('/versions/1/delete"', $panel);
     }
 
+    #[RunInSeparateProcess]
+    public function test_replace_without_the_csrf_token_is_refused(): void
+    {
+        $this->as('admin');
+        $lib = $this->app()->container()->get(\Preflow\Media\MediaLibrary::class);
+        $asset = $lib->importFile($this->pngFile(20, 10), 'old.png', null);
+
+        $f = new Psr17Factory();
+        $png = (string) file_get_contents($this->pngFile(40, 10));
+        $res = $this->session->handle($f->createServerRequest('POST', '/folio/assets/' . $asset->id . '/replace')
+            ->withParsedBody([])
+            ->withUploadedFiles(['file' => $f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'new.png')]));
+
+        $this->assertSame(403, $res->getStatusCode());
+        $this->assertSame([1, 20], [$lib->find($asset->id)?->version, $lib->find($asset->id)?->width]);
+
+        // With the token, the same request replaces.
+        $ok = $this->session->handle($f->createServerRequest('POST', '/folio/assets/' . $asset->id . '/replace')
+            ->withParsedBody(['_csrf_token' => $this->token])
+            ->withUploadedFiles(['file' => $f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'new.png')]));
+        $this->assertSame(302, $ok->getStatusCode());
+        $this->assertSame(2, $lib->find($asset->id)?->version);
+    }
+
     private function pngFile(int $w, int $h): string
     {
         $image = imagecreatetruecolor($w, $h);

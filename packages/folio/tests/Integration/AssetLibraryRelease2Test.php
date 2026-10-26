@@ -11,6 +11,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\Media\Asset;
 use Preflow\Media\MediaLibrary;
+use Preflow\Media\Tests\Support\StoredAssets;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\UploadedFileInterface;
 
@@ -129,6 +130,30 @@ final class AssetLibraryRelease2Test extends TestCase
         $this->assertSame(404, $this->post('/folio/assets/' . str_repeat('a', 32) . '/replace')->getStatusCode());
     }
 
+    public function test_a_failure_in_the_core_is_a_panel_error_not_a_500(): void
+    {
+        $asset = $this->lib()->upload($this->file($this->png(200, 100), 'old.png'), null);
+        $this->lib()->replace($asset->id, $this->file($this->png(300, 150), 'new.png'), null);
+        $records = $this->dir . '/storage/data/folio_assets';
+        $log = ini_set('error_log', $this->dir . '/php-error.log');
+        chmod($records, 0555); // the record can't be saved
+        set_error_handler(static fn (): bool => true); // the driver's own write warning
+        try {
+            $res = $this->post('/folio/assets/' . $asset->id . '/versions/1/delete');
+        } finally {
+            restore_error_handler();
+            chmod($records, 0775);
+            ini_set('error_log', (string) $log);
+        }
+
+        $this->assertSame(422, $res->getStatusCode());
+        $body = (string) $res->getBody();
+        $this->assertStringContainsString('folio-asset-panel', $body);
+        $this->assertStringContainsString('Could not delete version 1. The error was logged.', $body);
+        $this->assertStringContainsString('could not delete version 1 of asset ' . $asset->id, (string) file_get_contents($this->dir . '/php-error.log'));
+        $this->assertSame([1], array_map(static fn ($v) => $v->number, $this->lib()->versions($asset->id)));
+    }
+
     public function test_extra_fields_render_with_folio_field_types_and_save(): void
     {
         $asset = $this->lib()->upload($this->file($this->png(200, 100), 'a.png'), null);
@@ -201,10 +226,7 @@ final class AssetLibraryRelease2Test extends TestCase
     public function test_swatches_copy_hex_values_without_inline_styles(): void
     {
         $asset = $this->lib()->upload($this->file($this->png(200, 100), 'a.png'), null);
-        (new \ReflectionMethod(MediaLibrary::class, 'save'))->invoke($this->lib(), [
-            ...$asset->toData(),
-            'color' => '#1976d2', 'palette' => ['#1976d2', '#ffc107', '#0d47a1'], 'text_color' => '#ffffff',
-        ]);
+        $this->patch($asset, ['color' => '#1976d2', 'palette' => ['#1976d2', '#ffc107', '#0d47a1'], 'text_color' => '#ffffff']);
 
         $panel = (string) $this->get('/folio/assets/' . $asset->id)->getBody();
 
@@ -217,16 +239,22 @@ final class AssetLibraryRelease2Test extends TestCase
 
         // Without colours: no swatches.
         $plain = $this->lib()->upload($this->file($this->png(10, 10), 'b.png'), null);
-        (new \ReflectionMethod(MediaLibrary::class, 'save'))->invoke($this->lib(), [...$plain->toData(), 'color' => '', 'palette' => [], 'text_color' => '']);
+        $this->patch($plain, ['color' => '', 'palette' => [], 'text_color' => '']);
         $this->assertStringNotContainsString('folio-swatches', (string) $this->get('/folio/assets/' . $plain->id)->getBody());
     }
 
     public function test_the_note_shows_in_the_panel(): void
     {
         $asset = $this->lib()->upload($this->file($this->png(200, 100), 'a.png'), null);
-        (new \ReflectionMethod(MediaLibrary::class, 'save'))->invoke($this->lib(), [...$asset->toData(), 'note' => MediaLibrary::NOTE_NEEDS_IMAGICK]);
+        $this->patch($asset, ['note' => MediaLibrary::NOTE_NEEDS_IMAGICK]);
 
         $this->assertStringContainsString('needs Imagick for colour-accurate variants', (string) $this->get('/folio/assets/' . $asset->id)->getBody());
+    }
+
+    /** @param array<string, mixed> $changes */
+    private function patch(Asset $asset, array $changes): Asset
+    {
+        return StoredAssets::patch($this->dm(), $this->lib(), $asset, $changes);
     }
 
     private function lib(): MediaLibrary
@@ -239,13 +267,7 @@ final class AssetLibraryRelease2Test extends TestCase
     {
         $path = substr($pdf->path, 0, (int) strrpos($pdf->path, '.')) . '-preview.png';
         file_put_contents($this->lib()->absolute($path), $this->png(120, 160));
-        (new \ReflectionMethod(MediaLibrary::class, 'save'))->invoke($this->lib(), [
-            ...$pdf->toData(),
-            'variants' => [],
-            'preview' => ['path' => $path, 'width' => 120, 'height' => 160],
-        ]);
-
-        return $this->lib()->find($pdf->id) ?? throw new \RuntimeException('gone');
+        return $this->patch($pdf, ['variants' => [], 'preview' => ['path' => $path, 'width' => 120, 'height' => 160]]);
     }
 
     private function replace(string $id, UploadedFileInterface $file): ResponseInterface

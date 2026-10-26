@@ -125,9 +125,9 @@ final class ExportImportTest extends TestCase
         $archive = $this->export();
 
         $this->wipe('storage/media-versions');
-        $this->assertSame(['a1/v1.jpg'], $this->importer()->read($archive)->files['media-versions']['added']);
-        rewind($archive);
-        $this->import($archive);
+        $summary = $this->import($archive);
+        $this->assertSame(['a1/v1.jpg'], $summary['media-versions']['added']);
+        $this->assertSame(['added' => [], 'changed' => [], 'removed' => []], $summary['private-media']);
         $this->assertSame('OLDJPEG', file_get_contents($this->dir . '/storage/media-versions/a1/v1.jpg'));
         $this->assertFileDoesNotExist($this->dir . '/public/media/a1/v1.jpg');
 

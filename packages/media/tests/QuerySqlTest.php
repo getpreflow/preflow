@@ -99,6 +99,9 @@ final class QuerySqlTest extends TestCase
         $this->assertSame($sorted([$old->id, $a->id, $b->id]), $sorted($ids($lib->query(kind: 'image')->items)));
         $this->assertSame([$a->id], $ids($lib->query(search: 'red barn')->items));
         $this->assertSame([$c->id], $ids($lib->query(search: 'rules')->items));
+        $lib->update($b->id, ['alt' => ['de' => 'Eine blaue Scheune']]);
+        $this->assertSame([$b->id], $ids($lib->query(search: 'Scheune')->items)); // another locale's alt text
+        $this->assertSame([], $ids($lib->query(search: 'red Scheune')->items));
         $this->assertSame([], $ids($lib->query(filters: ['nonsense' => 'x', 'game' => 'g9'])->items));
 
         $second = $lib->query(page: 2, perPage: 2);

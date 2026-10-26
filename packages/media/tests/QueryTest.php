@@ -103,6 +103,16 @@ final class QueryTest extends TestCase
         $this->assertSame(5, $this->lib->query(filters: ['private' => ''])->total);
     }
 
+    public function test_search_matches_alt_text_in_every_locale(): void
+    {
+        $this->lib->update($this->assets['b']->id, ['alt' => ['de' => 'Eine blaue Scheune']]);
+
+        $this->assertSame(['b'], $this->keys($this->lib->query(search: 'SCHEUNE')));
+        $this->assertSame(['b'], $this->keys($this->lib->query(search: 'beta scheune'))); // words may match in different places
+        $this->assertSame([], $this->keys($this->lib->query(search: 'barn scheune')));
+        $this->assertSame(['a'], $this->keys($this->lib->query(search: 'barn')));
+    }
+
     public function test_filters_combine(): void
     {
         $this->assertSame(['a'], $this->keys($this->lib->query(filters: ['usage_type' => 'cover', 'game' => 'g1'])));

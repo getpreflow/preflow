@@ -278,7 +278,7 @@ final class MediaLibrary
 
     /**
      * One page of assets, newest first. $kind is image, video or document (null: all); $search
-     * matches every word in the original name, title or alt text (default locale). $filters
+     * matches every word in the original name, title or alt text (in any locale). $filters
      * compare by equality on the extra fields declared in config "filters" (others are ignored):
      * a select or boolean field by value, a relation field by id (a list: any of them), a
      * multiple relation as "contains the id". The asset's own "private" flag filters the same
@@ -299,9 +299,7 @@ final class MediaLibrary
                 ARRAY_FILTER_USE_BOTH,
             ))]]);
         }
-        if (trim($search) !== '') {
-            $qb->searchLoose(mb_substr(trim($search), 0, 200), ['original_name', 'title', 'alt']);
-        }
+        $this->applySearch($qb, $search);
         foreach ((array) ($this->config['filters'] ?? []) as $name) {
             if (is_string($name) && isset($def->fields[$name]) && array_key_exists($name, $filters)) {
                 $this->applyFilter($qb, $def->fields[$name], $filters[$name]);
@@ -332,6 +330,38 @@ final class MediaLibrary
             $result->currentPage,
             $perPage,
         );
+    }
+
+    /**
+     * Every word must occur in the original name, the title or the alt text of any locale. The
+     * query reads translatable fields in one locale, so the other locales' alt texts are matched
+     * by a pre-query per locale and word, whose ids join that word's alternatives.
+     */
+    private function applySearch(QueryBuilder $qb, string $search): void
+    {
+        $words = preg_split('/\s+/u', trim(mb_substr(trim($search), 0, 200)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $words = array_slice(array_values(array_unique($words)), 0, QueryBuilder::MAX_LOOSE_WORDS);
+        $def = $this->definition();
+        foreach ($words as $word) {
+            $any = [];
+            foreach (['original_name', 'title', 'alt'] as $field) {
+                $any[] = ['field' => $field, 'operator' => 'CONTAINS', 'value' => $word];
+            }
+            foreach ($this->locales->available as $locale) {
+                if ($locale === $this->locales->default) {
+                    continue;
+                }
+                $ids = [];
+                $matches = $this->dm->queryIn($def)->locale($locale)->whereAny([['field' => 'alt', 'operator' => 'CONTAINS', 'value' => $word]])->get();
+                foreach ($matches->items() as $record) {
+                    $ids[] = (string) $record->getId();
+                }
+                if ($ids !== []) {
+                    $any[] = ['field' => $def->idField, 'operator' => 'IN', 'value' => $ids];
+                }
+            }
+            $qb->whereAny($any);
+        }
     }
 
     /** One declared filter on the query; a value that cannot be used (empty, wrong shape) adds nothing. */

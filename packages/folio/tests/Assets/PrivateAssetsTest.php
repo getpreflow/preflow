@@ -51,6 +51,8 @@ final class PrivateAssetsTest extends TestCase
                 'staff' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [
                     ['email' => 'admin@site.test', 'password_hash' => $hash, 'roles' => ['admin']],
                     ['email' => 'editor@site.test', 'password_hash' => $hash, 'roles' => ['editor']],
+                    ['email' => 'writer@site.test', 'password_hash' => $hash, 'roles' => ['writer']],
+                    ['email' => 'viewer@site.test', 'password_hash' => $hash, 'roles' => ['viewer']],
                 ]],
                 'members' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [
                     ['email' => 'member@site.test', 'password_hash' => $hash, 'roles' => ['member']],
@@ -60,7 +62,7 @@ final class PrivateAssetsTest extends TestCase
             'session' => ['cookie' => 'folio_private_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
         $this->write('config/roles.php', "<?php\nreturn " . var_export([
-            'staff' => ['admin' => ['*'], 'editor' => ['folio.dashboard', 'assets.*']],
+            'staff' => ['admin' => ['*'], 'editor' => ['folio.dashboard', 'assets.*'], 'writer' => ['folio.dashboard'], 'viewer' => ['assets.view']],
             'members' => ['member' => ['members.access']],
         ], true) . ";\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Roles\\RolesServiceProvider::class];\n");
@@ -209,15 +211,36 @@ final class PrivateAssetsTest extends TestCase
         $this->assertSame('private, no-store', $out->getHeaderLine('Cache-Control'));
         $this->assertStringNotContainsString('%PDF', (string) $out->getBody());
 
-        // Signed in without the permission: a member without it, and staff without it.
+        // Signed in without the permission: a member without it, and staff without it or assets.view.
         $this->signIn('_auth_user_id.members', 'guest@site.test');
         $this->assertSame(403, $this->fetch('/tools/files/' . $pdf->id)->getStatusCode());
-        $this->signIn('_auth_user_id', 'editor@site.test');
+        $this->signIn('_auth_user_id', 'writer@site.test');
         $this->assertSame(403, $this->fetch('/tools/files/' . $pdf->id)->getStatusCode());
+
+        // Staff who can see the library open what it shows.
+        $this->signIn('_auth_user_id', 'editor@site.test');
+        $this->assertSame(200, $this->fetch('/tools/files/' . $pdf->id)->getStatusCode());
 
         // Staff with "*" pass.
         $this->signIn('_auth_user_id', 'admin@site.test');
         $this->assertSame(200, $this->fetch('/tools/files/' . $pdf->id)->getStatusCode());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_assets_view_opens_version_files(): void
+    {
+        $asset = $this->lib()->upload($this->file($this->png(40, 20), 'old.png'), null);
+        $this->lib()->replace($asset->id, $this->file($this->png(60, 20), 'new.png'), null);
+        $url = '/tools/files/' . $asset->id . '/v/1';
+
+        $this->assertSame(403, $this->fetch($url)->getStatusCode());
+        $this->signIn('_auth_user_id', 'writer@site.test'); // staff without assets.view
+        $this->assertSame(403, $this->fetch($url)->getStatusCode());
+
+        $this->signIn('_auth_user_id', 'viewer@site.test'); // assets.view only
+        $res = $this->fetch($url);
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertSame('private, no-store', $res->getHeaderLine('Cache-Control'));
     }
 
     #[RunInSeparateProcess]

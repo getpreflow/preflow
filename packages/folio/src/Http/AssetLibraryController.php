@@ -160,8 +160,8 @@ final class AssetLibraryController
         }
         try {
             $this->library->replace($asset->id, $file, self::by($request));
-        } catch (AssetUploadException $e) {
-            return $this->renderPanel($request, $asset, null, $e->getMessage(), 422);
+        } catch (\Throwable $e) {
+            return $this->failed($request, $asset, 'replace the file', $e);
         }
 
         return $this->backToPanel($asset, 'done=replaced');
@@ -175,8 +175,8 @@ final class AssetLibraryController
         }
         try {
             $this->library->restore($asset->id, $version->number, self::by($request));
-        } catch (AssetUploadException $e) {
-            return $this->renderPanel($request, $asset, null, $e->getMessage(), 422);
+        } catch (\Throwable $e) {
+            return $this->failed($request, $asset, 'restore version ' . $version->number, $e);
         }
 
         return $this->backToPanel($asset, 'done=restored&version=' . $version->number);
@@ -188,9 +188,28 @@ final class AssetLibraryController
         if ($asset === null || $version === null) {
             return new Response(404, [], 'Not found');
         }
-        $this->library->deleteVersion($asset->id, $version->number);
+        try {
+            $this->library->deleteVersion($asset->id, $version->number);
+        } catch (\Throwable $e) {
+            return $this->failed($request, $asset, 'delete version ' . $version->number, $e);
+        }
 
         return $this->backToPanel($asset, 'done=version-deleted');
+    }
+
+    /**
+     * A failed file change as a panel error, never a 500: an upload error's message as it is
+     * (it names the file and the reason), anything else logged and reported in general words.
+     */
+    private function failed(ServerRequestInterface $request, Asset $asset, string $action, \Throwable $e): ResponseInterface
+    {
+        if ($e instanceof AssetUploadException) {
+            return $this->renderPanel($request, $asset, null, $e->getMessage(), 422);
+        }
+        error_log('folio: could not ' . $action . ' of asset ' . $asset->id . ': ' . $e::class . ': ' . $e->getMessage());
+        $current = $this->library->find($asset->id) ?? $asset;
+
+        return $this->renderPanel($request, $current, null, 'Could not ' . $action . '. The error was logged.', 422);
     }
 
     /** @return array{?Asset, ?AssetVersion} the asset and its version {n} from the route */
@@ -234,6 +253,11 @@ final class AssetLibraryController
         }
 
         $filters = $this->filterValues($params['f'] ?? null);
+        $controls = $this->filterControls($filters);
+        $editorAssets = $picker ? ['admin.js'] : ['admin.js', 'htmx.js'];
+        foreach ($controls as $control) {
+            $editorAssets = [...$editorAssets, ...$control['assets']]; // a remote relation editor's own assets
+        }
 
         $result = $this->library->query($kind === '' ? null : $kind, $q, $filters + ($private === null ? [] : ['private' => $private]), $page, self::PER_PAGE);
         $total = $result->total;
@@ -245,14 +269,14 @@ final class AssetLibraryController
             'types' => $this->catalog->all(),
             'section' => 'assets',
             'layout' => $picker ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig',
-            'editor_assets' => $picker ? ['admin.js'] : ['admin.js', 'htmx.js'],
+            'editor_assets' => array_values(array_unique($editorAssets)),
             'items' => array_map(fn (Asset $a) => $this->item($a), $result->items),
             'total' => $total,
             'page' => $page,
             'pages' => $pages,
             'q' => $q,
             'kind' => $kind,
-            'filters' => $this->filterControls($filters),
+            'filters' => $controls,
             'filtered' => $filters !== [],
             'view' => $view,
             'picker' => $picker,
@@ -378,7 +402,7 @@ final class AssetLibraryController
      * targets (as its field type lists them; a large target searches instead) or yes/no.
      *
      * @param array<string, string> $values
-     * @return list<array{name: string, label: string, value: string, options: array<string, string>, html: ?string}>
+     * @return list<array{name: string, label: string, value: string, options: array<string, string>, html: ?string, assets: list<string>}>
      */
     private function filterControls(array $values): array
     {
@@ -393,6 +417,7 @@ final class AssetLibraryController
             $value = $values[$name] ?? '';
             $options = [];
             $html = null;
+            $assets = [];
             if ($field->type === 'boolean') {
                 $options = ['1' => 'Yes', '0' => 'No'];
             } elseif ($field->type === 'select') {
@@ -406,11 +431,12 @@ final class AssetLibraryController
                 $choices = $type instanceof RelationFieldType ? $type->choices($config) : null;
                 if ($choices === null) {
                     $html = $type->renderEditor(new FieldContext(name: 'f[' . $name . ']', label: $label, value: $value, config: $config, locale: $this->locales->default, locales: $this->locales));
+                    $assets = $type->assets();
                 } else {
                     $options = $choices;
                 }
             }
-            $out[] = ['name' => $name, 'label' => $label, 'value' => $value, 'options' => $options, 'html' => $html];
+            $out[] = ['name' => $name, 'label' => $label, 'value' => $value, 'options' => $options, 'html' => $html, 'assets' => $assets];
         }
 
         return $out;

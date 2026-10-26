@@ -730,8 +730,9 @@ type's default template renders with `media_image()`.
 ```
 
 - Folio binds the media core's `PrivateFileAccess`: only a signed-in user with
-  `private_permission` (staff with `*` pass) gets a private file. It fails closed like the
-  frontend gate: without auth configured, nobody does.
+  `private_permission` (staff with `*` pass), or with `assets.view` (staff who can see the
+  library open what it shows), gets a private file, a private preview or an earlier version of
+  any asset. It fails closed like the frontend gate: without auth configured, nobody does.
 - Anyone else gets a 403, or with `private_login` a redirect to `login?next={the file's URL}`.
 - A site's own `PrivateFileAccess` must be bound by a provider listed after Folio's in
   `config/providers.php`.

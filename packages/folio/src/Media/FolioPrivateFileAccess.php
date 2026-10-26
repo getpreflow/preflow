@@ -12,14 +12,18 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * Folio's rules for the media core's private files: only a signed-in user with
- * assets.private_permission (FrontendGate, fails closed: nobody without auth
- * configured). Anyone else gets a 403, or goes to assets.private_login with the
- * URL as "next". Both settings come from config/folio.php "assets".
+ * Folio's rules for the media core's private files (private files, their previews and
+ * the earlier files of any asset): only a signed-in user with assets.private_permission,
+ * or with assets.view, so staff who can see the library open what it shows (FrontendGate,
+ * fails closed: nobody without auth configured). Anyone else gets a 403, or goes to
+ * assets.private_login with the URL as "next". Both settings come from config/folio.php "assets".
  */
 final class FolioPrivateFileAccess implements PrivateFileAccess
 {
     private const string NO_STORE = 'private, no-store';
+
+    /** Who sees the asset library opens its files too. */
+    private const string LIBRARY = 'assets.view';
 
     public function __construct(
         private readonly FrontendGate $gate,
@@ -29,7 +33,7 @@ final class FolioPrivateFileAccess implements PrivateFileAccess
 
     public function decide(ServerRequestInterface $request, Asset $asset): ?ResponseInterface
     {
-        if ($this->gate->allows($this->permission)) {
+        if ($this->gate->allows($this->permission) || $this->gate->allows(self::LIBRARY)) {
             return null;
         }
         if ($this->login === null) {

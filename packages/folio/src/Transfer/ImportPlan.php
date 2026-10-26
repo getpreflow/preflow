@@ -20,12 +20,22 @@ final class ImportPlan
         public readonly array $files,
     ) {}
 
-    /** @return array{tables: array<string, array{added: list<string>, changed: list<string>, removed: list<string>}>, media: array{added: list<string>, changed: list<string>, removed: list<string>}, uploads: array{added: list<string>, changed: list<string>, removed: list<string>}} */
+    /**
+     * The tables and each file root (media, uploads, private-media, media-versions); a root the plan does not touch is empty.
+     *
+     * @return array{tables: array<string, array{added: list<string>, changed: list<string>, removed: list<string>}>, media: array{added: list<string>, changed: list<string>, removed: list<string>}, uploads: array{added: list<string>, changed: list<string>, removed: list<string>}, private-media: array{added: list<string>, changed: list<string>, removed: list<string>}, media-versions: array{added: list<string>, changed: list<string>, removed: list<string>}}
+     */
     public function summary(): array
     {
         $none = ['added' => [], 'changed' => [], 'removed' => []];
 
-        return ['tables' => $this->tables, 'media' => $this->files['media'] ?? $none, 'uploads' => $this->files['uploads'] ?? $none];
+        return [
+            'tables' => $this->tables,
+            'media' => $this->files['media'] ?? $none,
+            'uploads' => $this->files['uploads'] ?? $none,
+            'private-media' => $this->files['private-media'] ?? $none,
+            'media-versions' => $this->files['media-versions'] ?? $none,
+        ];
     }
 
     public function isEmpty(): bool
