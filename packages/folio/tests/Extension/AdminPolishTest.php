@@ -150,6 +150,7 @@ final class AdminPolishTest extends TestCase
 
         $edit = (string) $this->send('GET', '/folio/member/m1/edit')->getBody();
         $this->assertStringNotContainsString('Maybe', $edit);
+        $this->assertStringNotContainsString('Maybe after', $edit);
         $this->assertStringContainsString('<h2 class="folio-panel-title">Decision</h2>', $edit);
         $this->assertStringContainsString('Plain after', $edit);
     }
@@ -161,7 +162,10 @@ final class AdminPolishTest extends TestCase
         $this->as('admin');
         $this->seed('m1', ['name' => 'Ada', 'state' => 'waiting']);
 
-        $edit = (string) $this->send('GET', '/folio/member/m1/edit')->getBody();
+        $res = $this->send('GET', '/folio/member/m1/edit');
+        $this->assertSame(200, $res->getStatusCode());
+        $edit = (string) $res->getBody();
+        $this->assertStringContainsString('<form', $edit);
         $this->assertStringNotContainsString('has-side', $edit);
         $this->assertStringNotContainsString('<aside class="folio-side"', $edit);
         $this->assertStringNotContainsString('folio-form-extras', $edit);
@@ -176,7 +180,8 @@ final class AdminPolishTest extends TestCase
 
         $edit = (string) $this->send('GET', '/folio/member/m1/edit')->getBody();
         $this->assertStringContainsString('<h2 class="folio-panel-title">Maybe</h2>', $edit);
-        $this->assertStringContainsString('shown', $edit);
+        $this->assertStringContainsString('<h2 class="folio-panel-title">Maybe after</h2><div class="folio-panel-body">shown</div>', $edit);
+        $this->assertStringContainsString('<h2 class="folio-panel-title">Maybe</h2><div class="folio-panel-body">shown</div>', $edit);
     }
 
     #[RunInSeparateProcess]
@@ -273,7 +278,7 @@ final class AdminPolishTest extends TestCase
                 public function __construct(private readonly DataManager $dm) {}
 
                 #[\Preflow\Folio\Extension\FormPanel('Decision', position: 'side')]
-                public function decision(DynamicRecord $record): ScreenView
+                public function decision(DynamicRecord $record): ?ScreenView
                 {
                     return self::ALL_NULL ? null : new ScreenView('@polish/decision.twig');
                 }
