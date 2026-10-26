@@ -1,16 +1,38 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-26 (v0.37.0 prepared)
+> Last updated: 2026-10-26 (v0.37.0 released)
 
 ## Current State
 
-**v0.37.0** (prepared) — 3573 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.37.0** — 3600 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
 ---
 
 ## Next Up
+
+### BG Genius move into Folio — framework work, in this order (owner, 2026-10-26)
+
+BG Genius's Phase 1 is live; lists (0.29), screen assets (0.30), cache (0.33) and media (0.34–0.36) are done.
+What its Phases 3–5 still need from the framework, with the matching follow-ups from the
+holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port" below):
+
+1. **Members split into a core and a Folio adapter**, together with the members follow-ups BG Genius needs:
+   `next` through registration and confirmation (host invitation → register → confirm → into the group), a
+   landing page at `/konto` (base of the member area / host group view), rehash on sign-in (members and Folio
+   staff; migrated BG Genius admin users), member self-deletion through the delete plan or hooks (progress, group
+   memberships, certificates), a primary link (`action`) for the mail layout, the admission composing the name
+2. **Codes:** a redemption hook and email delivery for invitations (builds on 1's `next`)
+3. **Data integrity for the flow editor and games:** compare-and-set draft save (`UPDATE … WHERE _version = ?`),
+   unique fields (game slug, codes) and typed columns, saving null clears an SQL column
+4. **Media for the migration:** derived assets (`derived_from`) shown as stacks in the library (originals with
+   their cropped/rotated or watermarked copies), garbage collection of unreferenced assets, `importFile(…, private)`
+5. **Reporting/export and certificates (PDF)** — its own spec (needed for BG Genius Phase 5)
+
+Useful during BG Genius Phase 3, not blocking: route order by specificity, controller discovery beyond
+`app/Controllers`, CSRF without a session (the public player's feedback and contact forms), staff mails in the
+site's mail layout.
 
 ### Form Package
 
