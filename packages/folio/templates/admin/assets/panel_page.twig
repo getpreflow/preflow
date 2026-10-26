@@ -1,5 +1,9 @@
 {% extends '@folio/admin/_layout.twig' %}
 {% block title %}Folio — {{ asset.label }}{% endblock %}
 {% block page_title %}{{ asset.label }}{% endblock %}
-{% block actions %}<a class="btn btn-secondary" href="{{ prefix }}/assets">All assets</a>{% endblock %}
-{% block content %}{% include '@folio/admin/assets/panel.twig' %}{% endblock %}
+{% block actions %}<a class="btn btn-secondary" href="{{ back }}">← Assets</a>{% endblock %}
+{% block content %}
+{% set tab = 'details' %}
+{% include '@folio/admin/assets/_tabs.twig' %}
+{% include '@folio/admin/assets/panel.twig' %}
+{% endblock %}

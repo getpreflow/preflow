@@ -32,7 +32,7 @@ use Psr\Http\Message\UploadedFileInterface;
 
 /**
  * {prefix}/assets: the media library. Grid/list, search, kind filter, the filters of
- * config/media.php ("filters"), multi-file upload, a metadata panel (alt per language,
+ * config/media.php ("filters"), multi-file upload, an asset page at {prefix}/assets/{id} (Details tab: alt per language,
  * title, focal point, video poster, the extra fields with Folio's field types) with usage,
  * colour swatches, replace and the version list (open, restore, delete), and delete (the
  * library refuses it while used). With ?picker=1 it renders in the drawer layout and each
@@ -137,7 +137,7 @@ final class AssetLibraryController
         }
         $this->library->update($asset->id, $meta);
 
-        return new Response(302, ['Location' => $this->prefix . '/assets/' . $asset->id . '?saved=1']);
+        return $this->backToPanel($request, $asset, 'saved=1');
     }
 
     public function destroy(ServerRequestInterface $request): ResponseInterface
@@ -153,7 +153,7 @@ final class AssetLibraryController
             return $this->renderPanel($request, $asset, null, 'Used in ' . $n . ' record' . ($n === 1 ? '' : 's') . ' — remove it there first.', 409, $e->usages);
         }
 
-        return new Response(302, ['Location' => $this->prefix . '/assets']);
+        return new Response(302, ['Location' => $this->back($request) ?? $this->prefix . '/assets']);
     }
 
     /** A new file for the asset (same kind); the old one becomes a version. Errors show in the panel. */
@@ -173,7 +173,7 @@ final class AssetLibraryController
             return $this->failed($request, $asset, 'replace the file', $e);
         }
 
-        return $this->backToPanel($asset, 'done=replaced');
+        return $this->backToPanel($request, $asset, 'done=replaced');
     }
 
     public function restoreVersion(ServerRequestInterface $request): ResponseInterface
@@ -188,7 +188,7 @@ final class AssetLibraryController
             return $this->failed($request, $asset, 'restore version ' . $version->number, $e);
         }
 
-        return $this->backToPanel($asset, 'done=restored&version=' . $version->number);
+        return $this->backToPanel($request, $asset, 'done=restored&version=' . $version->number);
     }
 
     public function deleteVersion(ServerRequestInterface $request): ResponseInterface
@@ -203,7 +203,7 @@ final class AssetLibraryController
             return $this->failed($request, $asset, 'delete version ' . $version->number, $e);
         }
 
-        return $this->backToPanel($asset, 'done=version-deleted');
+        return $this->backToPanel($request, $asset, 'done=version-deleted');
     }
 
     /** The Edit image screen: the turned and mirrored original in the cropper, and each box preset's cut. */
@@ -248,7 +248,7 @@ final class AssetLibraryController
             return $this->renderEditor($request, $this->library->find($asset->id) ?? $asset, null, 'Could not edit the image. The error was logged.', 422);
         }
 
-        return new Response(302, ['Location' => $this->prefix . '/assets/' . $asset->id . '/edit?done=' . $done]);
+        return new Response(302, ['Location' => $this->prefix . '/assets/' . $asset->id . '/edit?done=' . $done . $this->backQuery($request, '&')]);
     }
 
     /**
@@ -329,7 +329,7 @@ final class AssetLibraryController
             'notice' => $notice,
             'error' => $error,
             'csrf' => self::csrf($request),
-        ]), $status);
+        ] + $this->backContext($request)), $status);
     }
 
     /** @return array<string, mixed> one box preset on the screen: its box, its cut now and (cover) its region */
@@ -391,9 +391,38 @@ final class AssetLibraryController
         return [$asset, null];
     }
 
-    private function backToPanel(Asset $asset, string $query): ResponseInterface
+    private function backToPanel(ServerRequestInterface $request, Asset $asset, string $query): ResponseInterface
     {
-        return new Response(302, ['Location' => $this->prefix . '/assets/' . $asset->id . '?' . $query]);
+        return new Response(302, ['Location' => $this->prefix . '/assets/' . $asset->id . '?' . $query . $this->backQuery($request, '&')]);
+    }
+
+    /**
+     * The library page the details were opened from ("back" in the query, or a form's body): only
+     * a relative {prefix}/assets URL, so it can't send anyone elsewhere (no "//", backslash, scheme
+     * or control character). Null when absent or refused.
+     */
+    private function back(ServerRequestInterface $request): ?string
+    {
+        $body = $request->getParsedBody();
+        $back = $request->getQueryParams()['back'] ?? (is_array($body) ? ($body['back'] ?? null) : null);
+        $root = $this->prefix . '/assets';
+        if (!is_string($back) || !str_starts_with($back, $root)) {
+            return null;
+        }
+        $next = $back[strlen($root)] ?? '';
+        if (($next !== '' && $next !== '?') || preg_match('/[\\\\\x00-\x1f\x7f:]|\/\//', $back) === 1) {
+            return null;
+        }
+
+        return $back;
+    }
+
+    /** "{glue}back=…" for links and redirects that keep the library page; empty without one. */
+    private function backQuery(ServerRequestInterface $request, string $glue): string
+    {
+        $back = $this->back($request);
+
+        return $back === null ? '' : $glue . 'back=' . rawurlencode($back);
     }
 
     /**
@@ -447,8 +476,15 @@ final class AssetLibraryController
             'selected' => $selected,
             'errors' => $errors,
             'csrf' => self::csrf($request),
+            'detail_q' => '?back=' . rawurlencode($this->prefix . '/assets?' . http_build_query(array_filter(['q' => $q, 'kind' => $kind, 'f' => $filters, 'view' => $view, 'page' => (string) $page], static fn ($v) => $v !== '' && $v !== []))),
             'query' => array_filter(['q' => $q, 'kind' => $kind, 'f' => $filters, 'picker' => $picker ? '1' : '', 'multiple' => $picker ? ($multiple ? '1' : '0') : '', 'private' => $private === null ? '' : ($private ? '1' : '0')], static fn ($v) => $v !== ''),
         ]), $status);
+    }
+
+    /** @return array{back: string, back_q: string} the "← Assets" target, and "?back=…" (or '') to carry on links */
+    private function backContext(ServerRequestInterface $request): array
+    {
+        return ['back' => $this->back($request) ?? $this->prefix . '/assets', 'back_q' => $this->backQuery($request, '?')];
     }
 
     /** @param list<AssetUsageEntry>|null $usage */
@@ -479,10 +515,9 @@ final class AssetLibraryController
             'notice' => $notice,
             'error' => $error,
             'csrf' => self::csrf($request),
-        ];
-        $template = $request->getHeaderLine('HX-Request') === 'true' ? '@folio/admin/assets/panel.twig' : '@folio/admin/assets/panel_page.twig';
+        ] + $this->backContext($request);
 
-        return $this->html($this->engine->render($template, $context), $status);
+        return $this->html($this->engine->render('@folio/admin/assets/panel_page.twig', $context), $status);
     }
 
     /**

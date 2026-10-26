@@ -1040,17 +1040,31 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
 .folio-asset-mini { display: block; width: 40px; height: 40px; object-fit: cover; border-radius: var(--r-xs); border: 1px solid var(--c-border); }
 .folio-asset-pick { margin: 0; }
 
-.folio-asset-panel-slot:empty { display: none; }
-.folio-asset-panel-slot { margin-top: 24px; }
+.folio-asset-tabs { display: flex; gap: 4px; margin: 0 0 16px; border-bottom: 1px solid var(--c-border); }
+.folio-asset-tabs a {
+  padding: 8px 14px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--c-text-muted);
+  font-weight: 560;
+  text-decoration: none;
+}
+.folio-asset-tabs a:hover { color: var(--c-text); }
+.folio-asset-tabs a[aria-current="page"] { color: var(--c-text); border-bottom-color: var(--c-accent); }
 .folio-asset-panel {
   display: grid;
-  gap: 18px;
-  max-width: 780px;
+  gap: 24px;
+  max-width: 1100px;
   padding: 20px;
   border: 1px solid var(--c-border);
   border-radius: var(--r-lg);
   background: var(--c-surface);
   box-shadow: var(--shadow-sm);
+}
+.folio-asset-columns { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+.folio-asset-column { display: grid; gap: 18px; min-width: 0; }
+@media (min-width: 60rem) {
+  .folio-asset-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
 .folio-asset-panel p { margin: 0; }
 .folio-asset-preview { display: grid; gap: 8px; justify-items: start; }

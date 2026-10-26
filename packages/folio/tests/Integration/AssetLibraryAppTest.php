@@ -85,14 +85,14 @@ final class AssetLibraryAppTest extends TestCase
         $this->assertSame([30, 70], [$saved?->focalX, $saved?->focalY]);
     }
 
-    public function test_panel_fragment_for_htmx(): void
+    public function test_the_details_are_a_full_page_even_for_htmx(): void
     {
         $asset = $this->lib()->upload($this->file($this->png(), 'a.png'), null);
         $req = (new Psr17Factory())->createServerRequest('GET', '/folio/assets/' . $asset->id)->withHeader('HX-Request', 'true');
 
         $body = (string) $this->app()->handle($req)->getBody();
 
-        $this->assertStringNotContainsString('<html', $body);
+        $this->assertStringContainsString('<html', $body);
         $this->assertStringContainsString('folio-asset-panel', $body);
     }
 

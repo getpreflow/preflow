@@ -1,11 +1,14 @@
 {% extends '@folio/admin/_layout.twig' %}
 {% block title %}Folio — Edit {{ asset.label }}{% endblock %}
 {% block page_title %}Edit image: {{ asset.label }}{% endblock %}
-{% block actions %}<a class="btn btn-secondary" href="{{ prefix }}/assets/{{ asset.id }}">Back to the asset</a>{% endblock %}
+{% block actions %}<a class="btn btn-secondary" href="{{ back }}">← Assets</a>{% endblock %}
 {% block content %}
+{% set tab = 'edit' %}
+{% set editable = true %}
+{% include '@folio/admin/assets/_tabs.twig' %}
 {# Every form posts one op to {prefix}/assets/{id}/edit; image-editor.js fills x, y, w, h (percent of the
    turned and mirrored original) from Cropper.js. No inline styles: sizes come from image-editor.css. #}
-{% set action = prefix ~ '/assets/' ~ asset.id ~ '/edit' %}
+{% set action = prefix ~ '/assets/' ~ asset.id ~ '/edit' ~ back_q %}
 <section class="folio-image-editor" data-folio-image-editor aria-label="Edit image">
     {% if notice %}<p class="folio-saved" role="status">{{ notice }}</p>{% endif %}
     {% if error %}<div class="folio-notice" role="alert"><p>{{ error }}</p></div>{% endif %}
@@ -99,7 +102,7 @@
                 </li>
             {% endfor %}
         </ul>
-        <p class="folio-help">Without an own cut, a cover format follows the focal point (set it in the asset panel).</p>
+        <p class="folio-help">Without an own cut, a cover format follows the focal point (set it on the Details tab).</p>
     </div>
     {% endif %}
 </section>

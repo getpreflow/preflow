@@ -4,7 +4,7 @@
     {% for item in items %}
         <tr class="folio-asset{% if item.id in selected %} is-selected{% endif %}" data-asset-id="{{ item.id }}">
             <td>{% if item.thumb %}<img class="folio-asset-mini" src="{{ item.thumb }}" alt="" loading="lazy">{% endif %}</td>
-            <td><a href="{{ prefix }}/assets/{{ item.id }}">{{ item.label }}</a></td>
+            <td>{% if picker %}{{ item.label }}{% else %}<a href="{{ prefix }}/assets/{{ item.id }}{{ detail_q }}">{{ item.label }}</a>{% endif %}</td>
             <td>{{ item.kind }}</td>
             <td>{{ (item.size / 1024)|round(0, 'ceil') }} KB{% if item.width %} · {{ item.width }}×{{ item.height }}{% endif %}</td>
             <td>{{ item.created_at|date('Y-m-d') }}</td>
