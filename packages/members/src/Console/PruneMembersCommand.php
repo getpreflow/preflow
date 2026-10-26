@@ -61,7 +61,14 @@ final class PruneMembersCommand implements CommandInterface
                 if ($state === MemberState::Unconfirmed && $this->expired($m->get('registered_at'), $config->retention('unconfirmed'), $now)
                     || $state === MemberState::Declined && $this->expired($m->get('decided_at'), $config->retention('declined'), $now)) {
                     // The member's own rules (onSelfDelete): no one asked, so a refusal tells no one; it is counted.
-                    if (!$members->delete($m, byMember: false)->deleted) {
+                    // A throwing DELETING listener keeps this account; the run goes on (the logged line names no address).
+                    try {
+                        $deleted = $members->delete($m, byMember: false)->deleted;
+                    } catch (\Throwable $e) {
+                        error_log(sprintf('members:prune: deleting member %s failed (%s)', (string) $m->getId(), $e::class));
+                        $deleted = false;
+                    }
+                    if (!$deleted) {
                         $kept++;
                         continue;
                     }

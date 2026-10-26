@@ -430,6 +430,16 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Content\RecordValidator::class),
             (int) ($folioConfig['publishing']['revisions'] ?? 20),
         ));
+        $container->singleton(\Preflow\Folio\Publishing\PublishedCopies::class, fn (Container $c) => new \Preflow\Folio\Publishing\PublishedCopies(
+            $c->get(DataManager::class),
+            $c->get(\Preflow\Folio\Publishing\Publisher::class),
+        ));
+        // A member's own deletion (preflow/members) counts pointers in published snapshots, as a staff delete does.
+        if (interface_exists(\Preflow\Members\MemberDeleteCopies::class)) {
+            $container->singleton(\Preflow\Members\MemberDeleteCopies::class, static fn (Container $c): \Preflow\Members\MemberDeleteCopies => new \Preflow\Folio\Members\FolioMemberDeleteCopies(
+                $c->get(\Preflow\Folio\Publishing\PublishedCopies::class),
+            ));
+        }
         $container->bind(DraftRecordFactory::class, fn (Container $c) => new DraftRecordFactory($c->get(FieldTypeRegistry::class)));
         $container->bind(AdminController::class, fn (Container $c) => new AdminController(
             $c->get(TypeCatalog::class),
@@ -825,6 +835,14 @@ final class FolioServiceProvider extends ServiceProvider
 
         $app = $container->get(Application::class);
         self::requireRbacForMembers($container->get(ExtensionRegistry::class));
+        // ... and carries it into the published snapshots afterwards (best effort, see PublishedMemberDeletion).
+        if (class_exists(\Preflow\Members\MemberEvents::class) && $container->bound(\Preflow\Members\MemberEvents::class)) {
+            $container->get(\Preflow\Members\MemberEvents::class)->on(\Preflow\Members\MemberEvents::DELETED, new \Preflow\Folio\Members\PublishedMemberDeletion(
+                $container->get(DataManager::class),
+                $container->get(\Preflow\Folio\Publishing\Publisher::class),
+                $container->get(\Preflow\Folio\Publishing\PublishedCopies::class),
+            ));
+        }
         $screens = $container->get(ScreenRegistry::class);
         $this->registerFieldKinds($container, $app);
         $customizations = $container->get(Customizations::class);

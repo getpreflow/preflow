@@ -202,7 +202,23 @@ final class MemberEventsTest extends TestCase
         $this->assertInstanceOf(DynamicRecord::class, $deleted['member'], 'the record as it was');
         $this->assertSame('ada@example.com', $deleted['member']->get('email'));
         $this->assertSame(['member' => [$id]], $deleted['plan']->deletes());
+        $this->assertTrue($deleting['by_member'], 'the member deleted their own account');
+        $this->assertTrue($deleted['by_member']);
         $this->assertStringContainsString('members: a listener of members.deleted failed (RuntimeException: project step broke)', (string) file_get_contents($this->dir . '/error.log'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_cleanup_deletion_says_it_was_not_the_member(): void
+    {
+        $this->flowSite();
+        $m = $this->makeMember('old@example.com', 'unconfirmed');
+        $this->listen();
+
+        $this->assertTrue($this->flow->container()->get(Members::class)->removeIfUnconfirmed((string) $m->getId()));
+
+        $this->assertSame([MemberEvents::DELETING, MemberEvents::DELETED], $this->names());
+        $this->assertFalse($this->events[0][1]['by_member']);
+        $this->assertFalse($this->events[1][1]['by_member']);
     }
 
     /** Records every event of the flow app's registry. */

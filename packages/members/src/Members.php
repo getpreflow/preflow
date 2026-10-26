@@ -9,6 +9,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\DeletedBy;
 use Preflow\Data\DeletePlan;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\TypeDefinition;
 use Nyholm\Psr7\ServerRequest;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -31,6 +32,7 @@ final class Members
      * @param ?\Closure(): Confirmation $confirmation what follows a proven address (resolved when first needed: the admission may need Members)
      * @param ?\Closure(DynamicRecord, DeletePlan, string): bool $refusalNotice tells the owner of a refused own deletion
      *        (the member, the plan, the reason); returns whether a notice went out
+     * @param ?MemberDeleteCopies $copies copies of records (Folio's published snapshots) the plan counts for restrict
      */
     public function __construct(
         private readonly DataManager $dm,
@@ -39,6 +41,7 @@ final class Members
         private readonly ?\Closure $confirmation = null,
         private readonly ?MemberEvents $events = null,
         private readonly ?\Closure $refusalNotice = null,
+        private readonly ?MemberDeleteCopies $copies = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }
@@ -191,20 +194,23 @@ final class Members
      * says whether the site knows (the notice went out, or a listener returned true). Without
      * $byMember (members:prune, a confirm mail that failed: no one asked) a refusal tells no one.
      *
-     * Raises DELETING before and DELETED after a deletion (the record as it was, the plan applied).
+     * Raises DELETING before and DELETED after a deletion (the record as it was, the plan applied),
+     * both with by_member. Copies of pointing records (MemberDeleteCopies, Folio's published
+     * snapshots) count for restrict; carrying the deletion into them is their package's DELETED listener.
      */
     public function delete(DynamicRecord $m, bool $byMember = true): DeletionResult
     {
         $id = (string) $m->getId();
-        $plan = $this->dm->deletePlan(self::TYPE, [$id], null, DeletedBy::Self);
+        $copies = $this->copies;
+        $plan = $this->dm->deletePlan(self::TYPE, [$id], $copies === null ? null : static fn (TypeDefinition $def): array => $copies->of($def), DeletedBy::Self);
         if ($plan->restricted()) {
             return $this->refused($m, $plan, 'restricted', $byMember);
         }
-        if ($this->events !== null && !$this->events->dispatch(MemberEvents::DELETING, ['member' => $m, 'plan' => $plan])) {
+        if ($this->events !== null && !$this->events->dispatch(MemberEvents::DELETING, ['member' => $m, 'plan' => $plan, 'by_member' => $byMember])) {
             return $this->refused($m, $plan, 'listener', $byMember);
         }
         $this->dm->executeDeletePlan($plan);
-        $this->events?->dispatch(MemberEvents::DELETED, ['id' => $id, 'member' => $m, 'plan' => $plan]);
+        $this->events?->dispatch(MemberEvents::DELETED, ['id' => $id, 'member' => $m, 'plan' => $plan, 'by_member' => $byMember]);
 
         return new DeletionResult(deleted: true, refused: false, told: false, plan: $plan);
     }

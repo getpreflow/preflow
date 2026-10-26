@@ -15,6 +15,8 @@ use Preflow\Members\MemberEvents;
 use Preflow\Members\Members;
 use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Tests\Support\MembersScaffold;
+use Preflow\Notify\Notifier;
+use Preflow\Notify\TransportFactory;
 
 /**
  * A member deletes their own account: through the data delete plan with the self rules
@@ -141,6 +143,27 @@ final class SelfDeletionTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_failed_notice_mail_is_not_telling_the_site(): void
+    {
+        $this->orderSite('restrict', ['notice_email' => 'owner@site.test']);
+        $c = $this->flow->container();
+        $c->instance(Notifier::class, new Notifier($c->get(TransportFactory::class), [])); // every send fails
+        $m = $this->makeMember();
+        $this->order('o1', $m);
+
+        $response = $this->deleteOwnAccount();
+
+        $this->assertSame(409, $response->getStatusCode());
+        $html = html_entity_decode((string) $response->getBody(), ENT_QUOTES);
+        $this->assertStringContainsString(self::CONTACT, $html);
+        $this->assertStringNotContainsString(self::TOLD, $html);
+        $this->assertNotNull($c->get(Members::class)->find((string) $m->getId()));
+        $log = (string) file_get_contents($this->dir . '/error.log');
+        $this->assertStringContainsString('members: deletion refused notice failed for member ' . $m->getId(), $log);
+        $this->assertStringNotContainsString('owner@site.test', $log, 'no address in the log');
+    }
+
+    #[RunInSeparateProcess]
     public function test_restrict_without_address_but_a_listener_that_tells_the_site(): void
     {
         $this->orderSite('restrict');
@@ -226,6 +249,29 @@ final class SelfDeletionTest extends TestCase
         $this->assertSame(0, $code, $out);
         $this->assertStringContainsString('deleted 1 unconfirmed', $out);
         $this->assertNull($this->findOrder('o1'), 'the cascade went with it');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_prune_keeps_going_when_a_deleting_listener_throws(): void
+    {
+        $this->orderSite('detach');
+        $first = $this->makeMember('first@example.com', 'unconfirmed');
+        $second = $this->makeMember('second@example.com', 'unconfirmed');
+        $this->flow->container()->get(MemberEvents::class)->on(MemberEvents::DELETING, static function (array $p) use ($first): bool {
+            if ((string) $p['member']->getId() === (string) $first->getId()) {
+                throw new \RuntimeException('project check broke');
+            }
+
+            return true;
+        });
+
+        [$code, $out] = $this->command(new PruneMembersCommand(fn () => $this->flow), ['--now=' . (new \DateTimeImmutable('+10 days'))->format(\DATE_ATOM)]);
+
+        $this->assertSame(0, $code, $out);
+        $this->assertStringContainsString('deleted 1 unconfirmed, 0 declined; kept 1 (refused by a self rule or a hook); pruned tokens, remember, throttle', $out);
+        $this->assertNotNull($this->flow->container()->get(Members::class)->find((string) $first->getId()));
+        $this->assertNull($this->flow->container()->get(Members::class)->find((string) $second->getId()));
+        $this->assertStringContainsString('members:prune: deleting member ' . $first->getId() . ' failed (RuntimeException)', (string) file_get_contents($this->dir . '/error.log'));
     }
 
     #[RunInSeparateProcess]

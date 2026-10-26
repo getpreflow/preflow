@@ -9,15 +9,14 @@ use Preflow\Data\DeletedBy;
 use Preflow\Data\DeletePlan;
 use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
-use Preflow\Data\Migration\Schema;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Extension\AfterDelete;
 use Preflow\Folio\Extension\AfterSave;
 use Preflow\Folio\Extension\BeforeDelete;
 use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\Customization\Refused;
+use Preflow\Folio\Publishing\PublishedCopies;
 use Preflow\Folio\Publishing\Publisher;
-use Preflow\Folio\Publishing\ShadowTypes;
 use Preflow\Validation\ValidationException;
 
 /**
@@ -280,16 +279,7 @@ final class RecordDeleter
      */
     private function copies(TypeDefinition $def): array
     {
-        if (!$this->publishes($def->key)) {
-            return [];
-        }
-        $shadow = ShadowTypes::published($def);
-        $driver = $this->dm->driver($def->storage);
-        if ($driver instanceof PdoDriver && !(new Schema($driver->pdo()))->hasTable($shadow->table)) {
-            return [];
-        }
-
-        return [$shadow];
+        return (new PublishedCopies($this->dm, $this->publisher))->of($def);
     }
 
     /** @phpstan-assert-if-true !null $this->publisher */

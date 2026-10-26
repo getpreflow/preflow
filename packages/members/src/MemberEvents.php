@@ -19,10 +19,13 @@ namespace Preflow\Members;
  * - DECIDED     ['member', 'role' => 'member'|'pending'|'rejected'] — the admission (member, or pending
  *   for the owner) or the owner (member, rejected) decided.
  * - SIGNED_IN   ['member', 'request'] — the member pages or SignIn::in() signed the member in.
- * - DELETING    ['member', 'plan' => DeletePlan] — before the member's own deletion is carried out
+ * - DELETING    ['member', 'plan' => DeletePlan, 'by_member' => bool] — before the member's own deletion is carried out
  *   (the plan is not restricted). A listener returning false refuses it: nothing is deleted and
  *   DELETION_REFUSED follows. An exception here propagates (nothing has changed yet).
- * - DELETED     ['id' => string, 'member' => DynamicRecord (as it was), 'plan' => DeletePlan (applied)].
+ * - DELETED     ['id' => string, 'member' => DynamicRecord (as it was), 'plan' => DeletePlan (applied),
+ *   'by_member' => bool].
+ *   by_member (DELETING, DELETED): true when the member deleted their own account; false for a
+ *   cleanup no one asked for (members:prune, an account removed after its confirm mail failed).
  * - DELETION_REFUSED ['member', 'plan', 'reason' => 'restricted'|'listener', 'notice_sent' => bool] —
  *   the own deletion was refused: a self rule (onSelfDelete) says restrict, or a DELETING listener
  *   said no. notice_sent: the owner's notice mail went out (MembersSettings::noticeEmail()).

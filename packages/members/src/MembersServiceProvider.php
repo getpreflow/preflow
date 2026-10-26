@@ -72,6 +72,7 @@ final class MembersServiceProvider extends ServiceProvider
             static fn (): Confirmation => $c->get(Confirmation::class),
             $c->get(MemberEvents::class),
             static fn (DynamicRecord $m, DeletePlan $plan, string $reason): bool => self::refusalNotice($c, $m, $plan, $reason),
+            $c->bound(MemberDeleteCopies::class) ? $c->get(MemberDeleteCopies::class) : null,
         ));
         $container->singleton(Confirmation::class, static fn (Container $c): Confirmation => new Confirmation(
             $c->get(Members::class),
