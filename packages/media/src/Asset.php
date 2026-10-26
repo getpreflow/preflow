@@ -10,7 +10,7 @@ use Preflow\Data\TypeDefinition;
 final readonly class Asset
 {
     /** The asset's own columns that hold text (JSON text for lists and maps). */
-    public const array TEXT_COLUMNS = ['path', 'original_name', 'mime', 'size', 'width', 'height', 'duration', 'alt', 'title', 'focal_x', 'focal_y', 'poster', 'variants', 'created_at', 'created_by', 'version', 'versions', 'preview', 'color', 'palette', 'text_color', 'note'];
+    public const array TEXT_COLUMNS = ['path', 'original_name', 'mime', 'size', 'width', 'height', 'duration', 'alt', 'title', 'focal_x', 'focal_y', 'poster', 'variants', 'created_at', 'created_by', 'version', 'versions', 'preview', 'color', 'palette', 'text_color', 'note', 'rotation', 'flip', 'crop', 'crops', 'master'];
 
     /** Every key of the asset's own record: an extra field may not use one of these names. */
     public const array RESERVED = [...self::TEXT_COLUMNS, 'private', 'uuid'];
@@ -20,6 +20,7 @@ final readonly class Asset
      * @param list<Variant>         $variants
      * @param list<AssetVersion>    $versions earlier files, kept when the asset was replaced
      * @param list<string>          $palette  5-8 hex colours, most significant first
+     * @param array<string, CropRect> $crops  a crop per box preset, in percent of the rotated and flipped original
      * @param array<string, mixed>  $extra    values of the configured extra fields (each is a column of its own), by field name
      */
     public function __construct(
@@ -50,7 +51,21 @@ final readonly class Asset
         public ?string $textColor = null,
         public array $extra = [],
         public ?string $note = null,
+        /** Quarter turns clockwise, 0-3 (column rotation). */
+        public int $rotation = 0,
+        /** Mirrored left-right (column flip: 'h' or ''). */
+        public bool $mirrored = false,
+        public ?CropRect $crop = null,
+        public array $crops = [],
+        /** The edited image (rotated, flipped, cropped) the variants are made from. */
+        public ?Preview $master = null,
     ) {}
+
+    /** True when the delivered image differs from the file: turned, mirrored or cropped. */
+    public function isEdited(): bool
+    {
+        return $this->rotation !== 0 || $this->mirrored || $this->crop !== null;
+    }
 
     public function kind(): string
     {
@@ -99,6 +114,13 @@ final readonly class Asset
                 $versions[] = $version;
             }
         }
+        $crops = [];
+        foreach (self::decode($data['crops'] ?? []) as $preset => $rect) {
+            $rect = CropRect::fromArray($rect);
+            if (is_string($preset) && $preset !== '' && $rect !== null) {
+                $crops[$preset] = $rect;
+            }
+        }
         $palette = array_values(array_filter(self::decode($data['palette'] ?? []), static fn ($c) => is_string($c) && $c !== ''));
 
         return new self(
@@ -129,6 +151,11 @@ final readonly class Asset
             textColor: self::text($data['text_color'] ?? null),
             extra: self::extraFrom($record->getType(), $data),
             note: self::text($data['note'] ?? null),
+            rotation: is_numeric($data['rotation'] ?? null) ? ((int) $data['rotation'] % 4 + 4) % 4 : 0,
+            mirrored: ($data['flip'] ?? null) === 'h',
+            crop: CropRect::fromArray(self::decode($data['crop'] ?? [])),
+            crops: $crops,
+            master: Preview::fromArray(self::decode($data['master'] ?? [])),
         );
     }
 
@@ -160,6 +187,11 @@ final readonly class Asset
             'palette' => $this->palette,
             'text_color' => $this->textColor ?? '',
             'note' => $this->note ?? '',
+            'rotation' => $this->rotation,
+            'flip' => $this->mirrored ? 'h' : '',
+            'crop' => $this->crop?->toArray() ?? [],
+            'crops' => array_map(static fn (CropRect $c) => $c->toArray(), $this->crops),
+            'master' => $this->master?->toArray() ?? [],
         ] + array_diff_key($this->extra, array_flip(self::RESERVED));
     }
 

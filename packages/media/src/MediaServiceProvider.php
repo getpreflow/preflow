@@ -20,6 +20,7 @@ use Preflow\Media\Http\PrivateFileController;
 use Preflow\Media\Http\VariantController;
 use Preflow\Media\Image\ColorManagement;
 use Preflow\Media\Image\ImageBackends;
+use Preflow\Media\Image\Formats;
 use Preflow\Media\Image\ImageWidths;
 use Preflow\Media\Image\VariantGenerator;
 use Preflow\Media\Preview\PdfPreviewRenderer;
@@ -53,6 +54,8 @@ final class MediaServiceProvider extends ServiceProvider
         $config = MediaConfig::fromApp($app, $container->bound(DebugCollector::class) ? $container->get(DebugCollector::class) : null);
         $container->instance(MediaConfig::class, $config);
 
+        // The presets as formats, checked now so a bad box preset fails at boot.
+        $container->instance(Formats::class, Formats::fromConfig((array) $app->config()->get('image.presets', [])));
         // Eager widths (made at upload) and the on-demand allow-list, from config/image.php presets.
         $container->singleton(ImageWidths::class, fn () => ImageWidths::fromConfig(
             (array) $app->config()->get('image.presets', []),

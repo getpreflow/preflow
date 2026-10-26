@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Media;
 
-/** The rendered first page of a document asset (a PNG stored beside the file). */
+/** A rendered image stored beside the file: a document's first page (PNG) or an image's edited master. */
 final readonly class Preview
 {
     public function __construct(

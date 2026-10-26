@@ -165,7 +165,7 @@ final class ExtraFieldsTest extends TestCase
 
     public function test_a_field_named_like_an_asset_key_is_a_boot_error(): void
     {
-        foreach (['path', 'alt', 'preview', 'text_color', 'private', 'versions', 'uuid', 'Path'] as $name) {
+        foreach (['path', 'alt', 'preview', 'text_color', 'private', 'versions', 'uuid', 'Path', 'crop', 'crops', 'rotation', 'flip', 'master'] as $name) {
             try {
                 MediaConfig::fromApp($this->configDir("['fields' => ['{$name}' => ['type' => 'string']]]"));
                 $this->fail("{$name} was accepted");

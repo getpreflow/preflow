@@ -51,4 +51,16 @@ final class ImageWidthsTest extends TestCase
     {
         $this->assertSame([480, 768, 1024, 1600], ImageWidths::fromConfig([], null)->eager());
     }
+
+    public function test_box_presets_do_not_add_widths(): void
+    {
+        $widths = ImageWidths::fromConfig([
+            'card' => ['widths' => [480, 960]],
+            'cover-thumb' => ['width' => 200, 'height' => 200, 'fit' => 'cover', 'widths' => [999]],
+            'boxed' => ['width' => 200, 'height' => 200, 'fit' => 'contain', 'widths' => [998], 'step' => 1],
+        ], null);
+
+        $this->assertSame([480, 960], $widths->eager());
+        $this->assertSame([480, 960], $widths->allowed());
+    }
 }

@@ -34,6 +34,9 @@ final class ImageWidths
         $byPreset = [];
         $listed = [];
         foreach ($presets as $name => $preset) {
+            if (in_array($preset['fit'] ?? 'max', ['cover', 'contain'], true)) {
+                continue; // a box makes its own widths (Formats)
+            }
             $widths = self::ints($preset['widths'] ?? []);
             if ($widths === []) {
                 continue;

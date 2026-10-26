@@ -82,7 +82,7 @@ final class MediaLibrary
     public const int PREVIEW_LONG_SIDE = 1600;
 
     /** What a version keeps of the asset besides its file, and what a restore brings back. */
-    private const array SNAPSHOT = ['focal_x', 'focal_y'];
+    private const array SNAPSHOT = ['focal_x', 'focal_y', 'rotation', 'flip', 'crop', 'crops'];
 
     /** The folder under versions_dir with one lock file per asset ({id}.lock). */
     private const string LOCKS = '.locks';
@@ -650,14 +650,31 @@ final class MediaLibrary
             'versions' => array_map(static fn (AssetVersion $v) => $v->toArray(), $versions),
             'variants' => [],
             'preview' => [],
+            'master' => [],
             'color' => '',
             'palette' => [],
             'text_color' => '',
             'note' => '',
         ] + $asset->toData();
         foreach (self::SNAPSHOT as $key) {
-            if (array_key_exists($key, $restore) && is_numeric($restore[$key])) {
-                $data[$key] = max(0, min(100, (int) $restore[$key]));
+            if (!array_key_exists($key, $restore)) {
+                continue; // a version made before this key existed leaves it as it is
+            }
+            $value = $restore[$key];
+            if (in_array($key, ['focal_x', 'focal_y'], true)) {
+                if (is_numeric($value)) {
+                    $data[$key] = max(0, min(100, (int) $value));
+                }
+            } elseif ($key === 'rotation') {
+                if (is_numeric($value)) {
+                    $data[$key] = ((int) $value % 4 + 4) % 4;
+                }
+            } elseif ($key === 'flip') {
+                if (is_string($value)) {
+                    $data[$key] = $value === 'h' ? 'h' : '';
+                }
+            } elseif (is_array($value)) {
+                $data[$key] = $value;
             }
         }
         try {
