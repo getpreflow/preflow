@@ -22,7 +22,7 @@ final class ComposerConstraintsTest extends TestCase
             ['preflow/auth' => '<0.26', 'preflow/data' => '<0.26', 'preflow/folio' => '<0.37', 'preflow/i18n' => '<0.37'],
             $composer['conflict'] ?? null,
         );
-        foreach (['preflow/folio', 'preflow/i18n'] as $package) {
+        foreach (['preflow/i18n'] as $package) {
             $this->assertSame('^' . substr($composer['conflict'][$package], 1) . ' || @dev', $composer['require'][$package] ?? null, $package);
         }
     }

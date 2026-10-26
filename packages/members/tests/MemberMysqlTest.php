@@ -9,7 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Members\MemberState;
 use Preflow\Members\Members;
 use Preflow\Members\Tests\Support\MembersScaffold;
-use Preflow\Rbac\RoleList;
+use Preflow\Members\MemberRoles;
 use Preflow\Testing\MysqlTestDatabase;
 
 /** The member type on MySQL (alias members): migrate creates the table, the service round-trips. */
@@ -34,7 +34,7 @@ final class MemberMysqlTest extends TestCase
 
     public function test_member_create_and_save_on_mysql(): void
     {
-        $out = $this->migrateAndApply();
+        $out = $this->migrate();
         $this->assertStringContainsString('created table member', $out);
 
         $members = $this->container()->get(Members::class);
@@ -44,7 +44,7 @@ final class MemberMysqlTest extends TestCase
 
         $stored = $members->findByEmail('ada@example.com');
         $this->assertNotNull($stored);
-        $this->assertSame(['member'], RoleList::normalize($stored->get('roles')));
+        $this->assertSame(['member'], MemberRoles::of($stored));
         $this->assertSame(MemberState::Member, MemberState::fromRecord($stored));
         $this->assertSame('de', $stored->get('language'));
         $row = MysqlTestDatabase::pdo()->query('SELECT email, roles FROM member')->fetch(\PDO::FETCH_ASSOC);

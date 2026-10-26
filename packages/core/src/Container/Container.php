@@ -193,7 +193,13 @@ final class Container implements ContainerInterface
         $type = $param->getType();
 
         if ($type instanceof \ReflectionNamedType && !$type->isBuiltin()) {
-            return $this->get($type->getName());
+            $class = $type->getName();
+            // Optional and nothing to build it from (an unbound interface, a Closure): the default.
+            if ($param->isDefaultValueAvailable() && !$this->bound($class) && !self::buildable($class)) {
+                return $param->getDefaultValue();
+            }
+
+            return $this->get($class);
         }
 
         if ($param->isDefaultValueAvailable()) {
@@ -204,6 +210,17 @@ final class Container implements ContainerInterface
             "Unable to resolve parameter [\${$param->getName()}] "
             . "in class [{$context}]."
         );
+    }
+
+    /** Whether build() can make one: an existing class that is instantiable (not an interface, abstract or Closure). */
+    private static function buildable(string $class): bool
+    {
+        if (!class_exists($class)) {
+            return false;
+        }
+        $reflector = new \ReflectionClass($class);
+
+        return $reflector->isInstantiable() && $class !== \Closure::class;
     }
 
     private function resolveConfigAttribute(Attributes\Config $attr): mixed

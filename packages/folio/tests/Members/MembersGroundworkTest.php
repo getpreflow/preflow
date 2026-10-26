@@ -18,7 +18,7 @@ use Preflow\Folio\Members\Extension;
 use Preflow\Rbac\RbacResolver;
 use Preflow\Rbac\RoleList;
 use Preflow\Rbac\RoleStore;
-use Preflow\Folio\Tests\Members\Support\Dom;
+use Preflow\Members\Tests\Support\Dom;
 use Preflow\Folio\Tests\Members\Support\MembersScaffold;
 
 /** The member type on SQLite (or the default storage), its roles and settings, the sidebar, no export. */

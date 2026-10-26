@@ -9,7 +9,8 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Members\Admission\AcceptOnConfirm;
 use Preflow\Members\Tests\Support\Dom;
 use Preflow\Members\Tests\Support\MemberFlows;
-use Preflow\Rbac\RoleList;
+use Preflow\Members\Tests\Support\MembersScaffold;
+use Preflow\Members\MemberRoles;
 
 /**
  * A second site, not smart-stack: the members under /konto, German (default) and French, everyone
@@ -19,6 +20,7 @@ use Preflow\Rbac\RoleList;
 final class KontoSiteTest extends TestCase
 {
     use MemberFlows;
+    use MembersScaffold;
 
     protected function setUp(): void
     {
@@ -56,7 +58,7 @@ final class KontoSiteTest extends TestCase
         $this->assertSame(303, $in->getStatusCode());
         $this->assertSame('/fr/konto', $in->getHeaderLine('Location'), 'the landing, in French');
         $this->assertNotNull($this->cookie($in, 'site_member'), 'remembered');
-        $this->assertSame(['member'], RoleList::normalize($this->member('ada@example.com')->get('roles')));
+        $this->assertSame(['member'], MemberRoles::of($this->member('ada@example.com')));
 
         $account = $this->send('GET', '/fr/konto/account');
         $html = html_entity_decode((string) $account->getBody(), ENT_QUOTES);

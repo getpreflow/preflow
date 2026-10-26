@@ -10,7 +10,7 @@ use Preflow\Data\ModelLabelKeys;
 use Preflow\Folio\Extension\Attributes\FolioExtension;
 use Preflow\I18n\TranslationRegistry;
 use Preflow\I18n\Translator;
-use Preflow\Folio\Tests\Members\Support\Dom;
+use Preflow\Members\Tests\Support\Dom;
 use Preflow\Folio\Tests\Members\Support\MembersScaffold;
 
 /**

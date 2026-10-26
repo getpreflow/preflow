@@ -9,24 +9,28 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Tokens\Tokens;
 use Preflow\Data\DataManager;
 use Preflow\Members\Admission\AcceptOnConfirm;
+use Preflow\Members\Admission\OwnerApproval;
 use Preflow\Members\Members;
 use Preflow\Members\Tests\Fixtures\CompanyAdmission;
 use Preflow\Members\Tests\Fixtures\NoticeAdmission;
 use Preflow\Members\Tests\Support\Dom;
 use Preflow\Members\Tests\Support\MemberFlows;
+use Preflow\Members\Tests\Support\MembersScaffold;
 use Preflow\Notify\Notifier;
 use Preflow\Notify\TransportFactory;
-use Preflow\Rbac\RoleList;
+use Preflow\Members\MemberRoles;
 use Psr\Http\Message\ResponseInterface;
 
 /** Registration and the double opt-in: the register page, the confirm link, the admission's decision. */
 final class MemberRegistrationTest extends TestCase
 {
     use MemberFlows;
+    use MembersScaffold;
 
+    /** Written for the owner's decision (the default before 0.38); AcceptOnConfirm where a test says so. */
     protected function setUp(): void
     {
-        $this->flowSite();
+        $this->flowSite(['admission' => OwnerApproval::class]);
     }
 
     protected function tearDown(): void
@@ -66,7 +70,7 @@ final class MemberRegistrationTest extends TestCase
         $this->assertSame(['ada@example.com'], $mails[0]->to);
         $this->assertMatchesRegularExpression('~https://site\.test/members/confirm/[A-Za-z0-9_-]+~', $mails[0]->text);
         $m = $this->member('ada@example.com');
-        $this->assertSame([], RoleList::normalize($m->get('roles')));
+        $this->assertSame([], MemberRoles::of($m));
         $this->assertSame('en', $m->get('language'));
         $this->assertSame('Ada Lovelace', $m->get('name'));
         $this->assertSame('0', (string) $m->get('auth_epoch'));
@@ -267,8 +271,7 @@ TWIG,
     #[RunInSeparateProcess]
     public function test_closed_registration_hides_form_and_refuses_post(): void
     {
-        $this->saveRecord('members_settings', ['uuid' => 'members_settings', 'registration_open' => false]);
-        $this->flow = $this->app();
+        $this->reconfigure(['registration_open' => false]);
 
         $html = $this->html('/members/register');
         $this->assertSame([], Dom::all($html, '//form[@action="/members/register"]'));
@@ -306,8 +309,7 @@ TWIG,
     #[RunInSeparateProcess]
     public function test_confirm_with_owner_approval_sets_pending_and_mails_the_owner(): void
     {
-        $this->saveRecord('members_settings', ['uuid' => 'members_settings', 'notice_email' => 'owner@example.com']);
-        $this->flow = $this->app();
+        $this->reconfigure(['notice_email' => 'owner@example.com']);
         $this->register();
 
         $response = $this->post('/members/confirm', ['token' => $this->linkToken(0, 'confirm')]);
@@ -316,7 +318,7 @@ TWIG,
         $this->assertSame(200, $response->getStatusCode());
         $this->assertStringContainsString('Thanks for your interest', $html);
         $m = $this->member('ada@example.com');
-        $this->assertSame(['pending'], RoleList::normalize($m->get('roles')));
+        $this->assertSame(['pending'], MemberRoles::of($m));
         $this->assertSame('', (string) $m->get('decided_at'));
         $mails = $this->mails();
         $this->assertCount(2, $mails);
@@ -341,8 +343,7 @@ TWIG,
     {
         $this->removeScaffold();
         $this->flowSite(['admission' => AcceptOnConfirm::class, 'landing' => '/members/start']);
-        $this->saveRecord('members_settings', ['uuid' => 'members_settings', 'notice_email' => 'owner@example.com']);
-        $this->flow = $this->app();
+        $this->reconfigure(['notice_email' => 'owner@example.com']);
         $this->register([], '/de/members');
 
         $response = $this->post('/de/members/confirm', ['token' => $this->linkToken(0, 'confirm')]);
@@ -351,7 +352,7 @@ TWIG,
         $this->assertSame('/de/members/start', $response->getHeaderLine('Location'));
         $this->assertMatchesRegularExpression('~^site_member=[^;]+; Max-Age=2592000~', (string) $this->cookie($response, 'site_member'), 'remembered');
         $m = $this->member('ada@example.com');
-        $this->assertSame(['member'], RoleList::normalize($m->get('roles')));
+        $this->assertSame(['member'], MemberRoles::of($m));
         $this->assertNotSame('', (string) $m->get('decided_at'));
         $this->assertCount(1, $this->mails(), 'no owner notice for an accepted member');
         $this->assertSame(200, $this->send('GET', '/de/members/account')->getStatusCode(), 'signed in');

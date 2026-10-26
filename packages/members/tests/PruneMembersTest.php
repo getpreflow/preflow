@@ -27,7 +27,7 @@ final class PruneMembersTest extends TestCase
 
     public function test_prunes_unconfirmed_after_7_days_and_declined_after_30(): void
     {
-        $this->migrateAndApply();
+        $this->migrate();
         $this->member('u-6', [], 6);
         $this->member('u-8', [], 8);
         $this->member('d-29', ['rejected'], 29, decided: 29);
@@ -41,7 +41,7 @@ final class PruneMembersTest extends TestCase
 
     public function test_never_prunes_waiting_or_members(): void
     {
-        $this->migrateAndApply();
+        $this->migrate();
         $this->member('waiting', ['pending'], 90, confirmed: 90);
         $this->member('member', ['member'], 90, confirmed: 90, decided: 90);
         $this->member('undated', [], 0, registered: false);
@@ -55,7 +55,7 @@ final class PruneMembersTest extends TestCase
     public function test_retention_comes_from_config(): void
     {
         $this->write('config/members.php', "<?php\nreturn ['retention' => ['unconfirmed_days' => 2, 'declined_days' => 3]];\n");
-        $this->migrateAndApply();
+        $this->migrate();
         $this->member('u-1', [], 1);
         $this->member('u-3', [], 3);
         $this->member('d-4', ['rejected'], 9, decided: 4);

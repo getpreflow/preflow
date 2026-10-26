@@ -99,11 +99,22 @@ final class FolioServiceProvider extends ServiceProvider
             cacheFile: $app->basePath('storage/cache/folio-extensions.cache'),
         );
         $container->instance(ExtensionRegistry::class, $extensions);
-        // The members admin (the built-in extension "members", with preflow/members): the members
-        // core reads the owner's settings from Settings → Members through it.
-        if (class_exists(\Preflow\Members\Members::class)) {
+        // The members admin (the built-in extension "members", with preflow/members), when it is
+        // switched on: the members core reads the owner's settings from Settings → Members, and
+        // its pages set Folio's content locale. Bound whichever provider registers first (the core
+        // binds its config-based settings only when nothing is bound, and a later binding wins).
+        if (self::membersAdmin($extensions)) {
             $container->singleton(\Preflow\Members\MembersSettings::class, static fn (Container $c): \Preflow\Members\MembersSettings => new \Preflow\Folio\Members\FolioMembersSettings(
                 $c->get(ExtensionSettings::class),
+            ));
+        }
+        if (class_exists(\Preflow\Members\MembersDefaults::class)) {
+            // The member pages keep the site's Folio page layout unless config/members.php names one.
+            $container->instance(\Preflow\Members\MembersDefaults::class, new \Preflow\Members\MembersDefaults(['layout' => '@folio/frontend/_site.twig']));
+        }
+        if (interface_exists(\Preflow\Members\PageLocale::class)) {
+            $container->singleton(\Preflow\Members\PageLocale::class, static fn (Container $c): \Preflow\Members\PageLocale => new \Preflow\Folio\Members\FolioPageLocale(
+                $c->get(ContentLocale::class),
             ));
         }
         // Models go under Content unless their JSON names a "section"; their settings forms
@@ -114,8 +125,10 @@ final class FolioServiceProvider extends ServiceProvider
         $labelSources = [];
         foreach ($extensions->enabled() as $definition) {
             foreach ($extensions->enabledModels($definition->name) as $schema) {
+                $extension = $container->get($definition->class);
+                $schema = $extension->model($schema);
                 $labelSources[] = ['extension ' . $definition->name . ' model ' . $schema['key'], $schema, $definition->labelGroup()];
-                $extensionTypes[] = [$container->get($definition->class)->prepareModel($schema, $container), 'content', 'Extension model', $definition->labelGroup()];
+                $extensionTypes[] = [$extension->prepareModel($schema, $container), 'content', 'Extension model', $definition->labelGroup()];
             }
         }
         foreach ($extensions->enabled() as $definition) {
@@ -1106,11 +1119,16 @@ final class FolioServiceProvider extends ServiceProvider
         }
     }
 
+    /** Whether the members admin is Folio's built-in one (preflow/members installed) and switched on. */
+    private static function membersAdmin(ExtensionRegistry $extensions): bool
+    {
+        return $extensions->isEnabled('members') && $extensions->get('members')->class === \Preflow\Folio\Members\Extension::class;
+    }
+
     /** The members admin seeds and shows the member roles, which are rbac's. */
     private static function requireRbacForMembers(ExtensionRegistry $extensions): void
     {
-        if ($extensions->isEnabled('members') && $extensions->get('members')->class === \Preflow\Folio\Members\Extension::class
-            && !$extensions->isEnabled('rbac')) {
+        if (self::membersAdmin($extensions) && !$extensions->isEnabled('rbac')) {
             throw new \RuntimeException('The members extension needs the rbac extension for the member roles: run preflow folio:extensions:enable rbac.');
         }
     }
@@ -1143,6 +1161,7 @@ final class FolioServiceProvider extends ServiceProvider
 
         /** @var list<array{name: string, label: string, group: string, reason: ?string}> $entries */
         $entries = [];
+        $carried = [];
         foreach ($extensions->all() as $definition) {
             $extensionReason = $extensions->isEnabled($definition->name) ? null : "extension {$definition->name}";
             foreach ((new \ReflectionClass($definition->class))->getAttributes(\Preflow\Folio\Extension\Attributes\DeclaresPermission::class) as $attribute) {
@@ -1151,6 +1170,9 @@ final class FolioServiceProvider extends ServiceProvider
                     throw new \Preflow\Folio\Extension\ExtensionException("{$definition->class}: permission \"{$meta->name}\" must start with \"{$definition->name}.\" (the extension's name).");
                 }
                 $entries[] = ['name' => $meta->name, 'label' => $meta->label, 'group' => $definition->label, 'reason' => $extensionReason];
+                if (isset(ExtensionRegistry::BUILT_IN[$definition->class])) {
+                    $carried[$meta->name] = true; // the package Folio carries the admin of may declare it itself (members.access)
+                }
             }
             foreach ($definition->parts as $part) {
                 if ($extensions->optIn($definition->name, $part['id']) && !$extensions->partEnabled($definition->name, $part['id'])) {
@@ -1184,7 +1206,7 @@ final class FolioServiceProvider extends ServiceProvider
         }
 
         foreach ($entries as $entry) {
-            if (isset($builtin[$entry['name']])) {
+            if (isset($builtin[$entry['name']]) && !isset($carried[$entry['name']])) {
                 throw new \Preflow\Folio\Extension\ExtensionException("Permission \"{$entry['name']}\" ({$entry['group']}) is a Folio built-in; extensions declare their own names.");
             }
             if ($entry['reason'] === null) {

@@ -16,7 +16,7 @@ use Preflow\Members\Tests\Support\MembersScaffold;
 use Preflow\Members\Viewer;
 use Preflow\Auth\AuthManager;
 use Preflow\Auth\Record\RecordUser;
-use Preflow\Rbac\RoleList;
+use Preflow\Members\MemberRoles;
 
 /** The members domain service on a migrated SQLite site. */
 final class MembersServiceTest extends TestCase
@@ -26,7 +26,7 @@ final class MembersServiceTest extends TestCase
     protected function setUp(): void
     {
         $this->scaffold();
-        $this->migrateAndApply();
+        $this->migrate();
     }
 
     protected function tearDown(): void
@@ -44,7 +44,7 @@ final class MembersServiceTest extends TestCase
         $this->assertMatchesRegularExpression('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', (string) $stored->getId());
         $this->assertSame('ada@example.com', $stored->get('email'));
         $this->assertSame('Ada', $stored->get('name'));
-        $this->assertSame([], RoleList::normalize($stored->get('roles')));
+        $this->assertSame([], MemberRoles::of($stored));
         $this->assertNotSame('', (string) $stored->get('registered_at'));
         $this->assertSame('', (string) $stored->get('email_confirmed_at'));
         $this->assertSame('', (string) $stored->get('decided_at'));
@@ -59,7 +59,7 @@ final class MembersServiceTest extends TestCase
             'fields' => ['company' => ['type' => 'string'], 'screening_answer' => ['type' => 'text', 'readonly' => true]],
         ]));
         $this->flow = null;
-        $this->migrateAndApply();
+        $this->migrate();
 
         $members = $this->members();
         $m = $members->register('ada@example.com', 'Ada', 'correct horse battery', 'de', ['company' => 'Holz AG', 'screening_answer' => 'I build things']);
@@ -129,12 +129,12 @@ final class MembersServiceTest extends TestCase
 
         $members->decide($m, 'pending');
         $fresh = $members->find((string) $m->getId());
-        $this->assertSame(['pending'], RoleList::normalize($fresh->get('roles')));
+        $this->assertSame(['pending'], MemberRoles::of($fresh));
         $this->assertSame('', (string) $fresh->get('decided_at'));
 
         $members->decide($m, 'member');
         $fresh = $members->find((string) $m->getId());
-        $this->assertSame(['member'], RoleList::normalize($fresh->get('roles')));
+        $this->assertSame(['member'], MemberRoles::of($fresh));
         $this->assertNotSame('', (string) $fresh->get('decided_at'));
 
         $members->setPassword($m, 'another long password');

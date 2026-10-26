@@ -268,4 +268,27 @@ final class ContainerTest extends TestCase
 
         $this->assertSame($first, $container->get('consumer'));
     }
+
+    public function test_an_optional_parameter_nothing_can_build_takes_its_default(): void
+    {
+        $container = new Container();
+
+        $service = $container->make(ServiceWithOptionalClosure::class, ['name' => 'x']);
+
+        $this->assertNull($service->types, 'a Closure is no service: the default, as with Folio absent');
+        $this->assertNull($container->get(ServiceWithOptionalInterface::class)->some, 'an unbound interface: the default');
+
+        $container->bind(SomeInterface::class, fn () => new class implements SomeInterface {});
+        $this->assertNotNull($container->get(ServiceWithOptionalInterface::class)->some, 'bound: the binding');
+    }
+}
+
+final class ServiceWithOptionalClosure
+{
+    public function __construct(public readonly string $name, public readonly ?\Closure $types = null) {}
+}
+
+final class ServiceWithOptionalInterface
+{
+    public function __construct(public readonly ?SomeInterface $some = null) {}
 }

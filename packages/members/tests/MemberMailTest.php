@@ -393,7 +393,7 @@ final class MemberMailTest extends TestCase
         if ($from !== null) {
             $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => " . var_export($from, true) . "]]];\n");
         }
-        $this->migrateAndApply();
+        $this->migrate();
     }
 
     private function member(string $email, string $lang, string $name = 'Ada'): DynamicRecord

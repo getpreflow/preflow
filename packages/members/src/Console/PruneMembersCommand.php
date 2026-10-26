@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Preflow\Members\Console;
 
 use Preflow\Auth\Remember\RememberMe;
+use Preflow\Core\Application;
 use Preflow\Auth\Tokens\Tokens;
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\DevTools\Command\CommandInterface;
-use Preflow\Folio\Console\BootsApplication;
 use Preflow\Members\MemberState;
 use Preflow\Members\Members;
 use Preflow\Members\MembersConfig;
@@ -23,7 +23,10 @@ use Preflow\Members\MembersConfig;
  */
 final class PruneMembersCommand implements CommandInterface
 {
-    use BootsApplication;
+    /** @param (\Closure(): Application)|null $appFactory returns a booted application (tests) */
+    public function __construct(
+        private readonly ?\Closure $appFactory = null,
+    ) {}
 
     public function getName(): string { return 'members:prune'; }
     public function getDescription(): string { return 'Delete stale unconfirmed and declined members, prune expired tokens (run from cron)'; }
@@ -72,6 +75,18 @@ final class PruneMembersCommand implements CommandInterface
         echo "members:prune — deleted {$unconfirmed} unconfirmed, {$declined} declined; pruned tokens, remember, throttle\n";
 
         return 0;
+    }
+
+    /** The app in the working directory, booted. */
+    private function app(): Application
+    {
+        if ($this->appFactory !== null) {
+            return ($this->appFactory)();
+        }
+        $app = Application::create(getcwd() ?: '.');
+        $app->boot();
+
+        return $app;
     }
 
     /** @param list<string> $args --now=<ATOM> overrides the clock (tests) */

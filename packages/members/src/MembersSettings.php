@@ -6,8 +6,9 @@ namespace Preflow\Members;
 
 /**
  * The owner's members settings: whether registration is open, who hears about a member
- * waiting for a decision, and the owner's own accept and decline messages. Folio's members
- * admin implements it from Settings → Members.
+ * waiting for a decision, and the owner's own accept and decline messages. The core reads them
+ * from config/members.php (ConfigMembersSettings); Folio's members admin binds its own, from
+ * Settings → Members.
  */
 interface MembersSettings
 {

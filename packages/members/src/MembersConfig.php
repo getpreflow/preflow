@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Preflow\Members;
 
-use Preflow\Members\Admission\OwnerApproval;
+use Preflow\Members\Admission\AcceptOnConfirm;
 
 /**
- * config/members.php: every key optional, the defaults are smart-stack.works' values. The
+ * config/members.php: every key optional, the defaults are smart-stack.works' values (but the
+ * admission, AcceptOnConfirm, and the layout, the package's own page). The
  * constants are names stored data depends on (type, guard, permissions, token purposes);
  * they are listed here so a site can see them, not to be renamed.
  */
@@ -31,9 +32,10 @@ final class MembersConfig
         'path' => '/members',
         'landing' => null,
         'register' => null,
-        'layout' => '@folio/frontend/_site.twig',
+        // the package's own standalone page; a site names its layout (Folio's members admin names Folio's)
+        'layout' => '@members/_layout.twig',
         'mail' => ['from_name' => null, 'layout' => '@members/mail/layout.twig', 'accent' => '#d42a34'],
-        'admission' => OwnerApproval::class,
+        'admission' => AcceptOnConfirm::class,
         // [attempts, seconds] per throttle
         'throttle' => ['login' => [10, 900], 'register' => [5, 3600], 'forgot' => [5, 3600], 'resend' => [3, 3600]],
         'password_min' => 10,
@@ -42,14 +44,24 @@ final class MembersConfig
         'retention' => ['unconfirmed_days' => 7, 'declined_days' => 30],
         // the consent's privacy link: one URL, or locale => URL; '' = the consent without a link
         'privacy_url' => '',
+        // The owner's settings (ConfigMembersSettings; Folio's members admin keeps them under Settings → Members).
+        'registration_open' => true,
+        'notice_email' => null,
+        // one text, or locale => text; empty means the lang files' (members.mail.accepted.body / declined.body)
+        'accept_message' => null,
+        'decline_message' => null,
     ];
 
     /** @var array<string, mixed> */
     private readonly array $config;
 
-    /** @param array<string, mixed> $config the array config/members.php returns; nested groups merge key by key */
-    public function __construct(array $config = [])
+    /**
+     * @param array<string, mixed> $config the array config/members.php returns; nested groups merge key by key
+     * @param array<string, mixed> $defaults a package's defaults ({@see MembersDefaults}), under the site's keys
+     */
+    public function __construct(array $config = [], array $defaults = [])
     {
+        $config += $defaults;
         $merged = $config + self::DEFAULTS;
         foreach (['mail', 'throttle', 'retention'] as $group) {
             $merged[$group] = (is_array($config[$group] ?? null) ? $config[$group] : []) + self::DEFAULTS[$group];
@@ -61,12 +73,16 @@ final class MembersConfig
         $this->config = $merged;
     }
 
-    /** A missing file means all defaults. */
-    public static function fromFile(string $file): self
+    /**
+     * A missing file means all defaults.
+     *
+     * @param array<string, mixed> $defaults a package's defaults, under the file's keys
+     */
+    public static function fromFile(string $file, array $defaults = []): self
     {
         $config = is_file($file) ? require $file : [];
 
-        return new self(is_array($config) ? $config : []);
+        return new self(is_array($config) ? $config : [], $defaults);
     }
 
     /** Base path of the member pages, one leading slash and none trailing ("/members"). */
@@ -131,6 +147,12 @@ final class MembersConfig
     public function accent(): string
     {
         return (string) $this->config['mail']['accent'];
+    }
+
+    /** A key of config/members.php as given (or its default): the owner's settings, read by ConfigMembersSettings. */
+    public function value(string $key): mixed
+    {
+        return $this->config[$key] ?? null;
     }
 
     /** @return class-string the configured {@see Admission\Admission} */

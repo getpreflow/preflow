@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Members\Http;
 
 use Preflow\Core\Routing\RouteMode;
-use Preflow\Folio\Routing\PatternCompiler;
 use Preflow\Routing\RouteEntry;
+use Preflow\Routing\RoutePattern;
 
 /**
  * The member pages under the members path. Registered once: the locale middleware strips the
@@ -41,7 +41,7 @@ final class MembersRoutes
         $entries = [];
         foreach (self::ROUTES as [$method, $below, $controller, $action]) {
             $pattern = rtrim($path, '/') . $below;
-            $compiled = PatternCompiler::compile($pattern);
+            $compiled = RoutePattern::compile($pattern);
             $entries[] = new RouteEntry(
                 pattern: $pattern,
                 handler: $controller . '@' . $action,

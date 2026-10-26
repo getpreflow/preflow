@@ -32,7 +32,7 @@ final class PruneMembersMysqlTest extends TestCase
 
     public function test_prunes_stale_members_on_mysql(): void
     {
-        $this->migrateAndApply();
+        $this->migrate();
         $ago = static fn (int $d): string => (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->modify("-{$d} days")->format(\DATE_ATOM);
         foreach ([['u-8', [], 8, 0], ['u-6', [], 6, 0], ['d-31', ['rejected'], 31, 31], ['m', ['member'], 90, 90]] as [$id, $roles, $reg, $dec]) {
             $this->saveRecord('member', [

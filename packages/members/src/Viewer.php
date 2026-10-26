@@ -10,8 +10,8 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Auth\Record\RecordUser;
 
 /**
- * Who is looking at the member pages: a signed-in member (guard "members"), Folio staff
- * (the default guard) or nobody.
+ * Who is looking at the member pages: a signed-in member (guard "members"), staff (signed in
+ * with the default guard, as Folio's admins are) or nobody.
  */
 final class Viewer
 {

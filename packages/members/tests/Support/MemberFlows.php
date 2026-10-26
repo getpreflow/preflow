@@ -14,11 +14,11 @@ use Psr\Http\Message\ResponseInterface;
 
 /**
  * Request flows through the member pages on a scaffold site: one app handles a whole flow
- * (the native session lives in $_SESSION, so these tests run in a separate process).
+ * (the native session lives in $_SESSION, so these tests run in a separate process). The class
+ * uses a scaffold with it: MembersScaffold (the core) or Folio's (Folio and rbac).
  */
 trait MemberFlows
 {
-    use MembersScaffold;
 
     private const string PASSWORD = 'correct horse battery';
 
@@ -26,6 +26,9 @@ trait MemberFlows
 
     /** The members path of the site (config/members.php path), for the CSRF warm-up request. */
     private string $membersPath = '/members';
+
+    /** The flow site's config/members.php. @var array<string, mixed> */
+    private array $flowMembers = [];
 
     /**
      * A site with a minimal page layout, config/members.php $members, migrated and applied.
@@ -39,8 +42,10 @@ trait MemberFlows
     {
         $this->membersPath = '/' . trim((string) ($members['path'] ?? '/members'), '/');
         $this->scaffold(locales: $locales, sessionPaths: $sessionPaths ?? ['/folio', $this->membersPath]);
-        $this->write('config/members.php', "<?php\nreturn " . var_export($members, true) . ";\n");
-        $this->write('resources/folio/frontend/_site.twig', <<<'TWIG'
+        [$layoutFile, $layout] = $this->siteLayout();
+        $this->flowMembers = $members + ($layout === null ? [] : ['layout' => $layout]);
+        $this->write('config/members.php', "<?php\nreturn " . var_export($this->flowMembers, true) . ";\n");
+        $this->write($layoutFile, <<<'TWIG'
 <!DOCTYPE html>
 <html lang="{{ locale }}"><head>{% block meta %}<title>Site</title>{% endblock %}</head>
 <body><header>Site header</header><main>{% block content %}{% endblock %}</main></body></html>
@@ -48,7 +53,15 @@ TWIG);
         foreach ($files as $path => $content) {
             $this->write($path, $content);
         }
-        $this->migrateAndApply();
+        $this->migrate();
+        $this->flow = $this->app();
+    }
+
+    /** Changes config/members.php of the flow site ($more wins) and boots a fresh app. @param array<string, mixed> $more */
+    private function reconfigure(array $more): void
+    {
+        $this->flowMembers = $more + $this->flowMembers;
+        $this->write('config/members.php', "<?php\nreturn " . var_export($this->flowMembers, true) . ";\n");
         $this->flow = $this->app();
     }
 

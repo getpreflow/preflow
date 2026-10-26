@@ -10,16 +10,15 @@ use Preflow\Core\Container\Container;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\DevTools\Command\MigrateCommand;
-use Preflow\Folio\Console\ExtensionsApplyCommand;
 use Preflow\Testing\MysqlTestDatabase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * A temp site with Folio, rbac and the members extension (Folio's members admin) enabled (a
- * fake vendor/composer/installed.json lists both packages): staff from config/auth.php (admin),
- * the members guard as the package README documents it, members on SQLite (alias "members"),
- * en/de, mail into the in-memory transport.
+ * A temp site with the members core and neither Folio nor rbac: staff from config/auth.php
+ * (admin, the default guard), the members guard as the package README documents it, members on
+ * SQLite (alias "members"), en/de, mail into the in-memory transport. Folio's members admin
+ * tests build on it (packages/folio/tests/Members/Support/MembersScaffold adds Folio and rbac).
  */
 trait MembersScaffold
 {
@@ -46,8 +45,7 @@ trait MembersScaffold
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log'); // stderr fails a separate-process test
         // debug 0: the debug toolbar would list the SQL (password hashes included) on every page.
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Members', 'debug' => 0, 'engine' => 'twig', 'key' => 'members-app-test-key', 'url' => 'https://site.test'];\n");
-        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Rbac\\RbacServiceProvider::class, \\Preflow\\Members\\MembersServiceProvider::class];\n");
-        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
+        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Members\\MembersServiceProvider::class];\n");
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
             'default_guard' => 'session',
             'guards' => [
@@ -86,11 +84,6 @@ trait MembersScaffold
             'key' => 'page', 'table' => 'page', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Pages',
             'fields' => ['title' => ['type' => 'string']],
         ]));
-        $this->write('vendor/composer/installed.json', (string) json_encode(['packages' => [
-            ['name' => 'preflow/rbac', 'extra' => ['folio' => ['extension' => 'Preflow\\Rbac\\Extension']]],
-            ['name' => 'preflow/members'], // its admin is Folio's built-in extension "members"
-        ]]));
-        $this->write('config/folio/extensions.json', '{"enabled": {"members": {"disabled_parts": []}, "rbac": {"disabled_parts": []}}}');
         $this->write('app/pages/index.twig', 'HOME');
     }
 
@@ -132,17 +125,24 @@ trait MembersScaffold
         return ($this->flow ??= $this->app())->container();
     }
 
-    /** As every deploy does: preflow migrate, then folio:extensions:apply. @return string the combined output */
-    private function migrateAndApply(): string
+    /**
+     * Where a flow site's page layout goes, and the config/members.php layout naming it (null:
+     * the default layout is that file).
+     *
+     * @return array{0: string, 1: ?string}
+     */
+    private function siteLayout(): array
     {
-        $all = '';
-        foreach ([new MigrateCommand(fn () => $this->app()), new ExtensionsApplyCommand(fn () => $this->app())] as $command) {
-            [$code, $out] = $this->command($command);
-            $this->assertSame(0, $code, $out);
-            $all .= $out;
-        }
+        return ['resources/members/_site.twig', '@members/_site.twig'];
+    }
 
-        return $all;
+    /** As every deploy does: preflow migrate (a Folio site applies its extensions too). @return string the output */
+    private function migrate(): string
+    {
+        [$code, $out] = $this->command(new MigrateCommand(fn () => $this->app()));
+        $this->assertSame(0, $code, $out);
+
+        return $out;
     }
 
     /** @param list<string> $args @return array{0: int, 1: string} exit code and output */
@@ -171,29 +171,5 @@ trait MembersScaffold
         $request = (new Psr17Factory())->createServerRequest($method, $uri, ['REMOTE_ADDR' => '203.0.113.7']);
 
         return $body === [] ? $request : $request->withParsedBody($body);
-    }
-
-    /** Signs the admin in on the session app. */
-    private function signIn(): void
-    {
-        $this->flow ??= $this->app();
-        $login = (string) $this->flow->handle($this->request('GET', '/folio/login'))->getBody();
-        preg_match('/name="_csrf_token" value="([^"]+)"/', $login, $t);
-        $response = $this->flow->handle($this->request('POST', '/folio/login', ['email' => self::ADMIN_EMAIL, 'password' => self::ADMIN_PASSWORD, '_csrf_token' => $t[1] ?? '']));
-        $this->assertSame(302, $response->getStatusCode());
-    }
-
-    /** GET on the session app (signed in after signIn()). */
-    private function admin(string $uri): string
-    {
-        return (string) ($this->flow ??= $this->app())->handle($this->request('GET', $uri))->getBody();
-    }
-
-    /** @param array<string, string> $body POSTed with the CSRF token read from $page */
-    private function postFrom(string $page, string $uri, array $body): ResponseInterface
-    {
-        preg_match('/name="_csrf_token" value="([^"]+)"/', $this->admin($page), $t);
-
-        return $this->flow->handle($this->request('POST', $uri, $body + ['_csrf_token' => $t[1] ?? '']));
     }
 }

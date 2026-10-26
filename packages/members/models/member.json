@@ -1,0 +1,54 @@
+{
+    "key": "member",
+    "table": "member",
+    "storage": "members",
+    "id_field": "uuid",
+    "label": "Members",
+    "fields": {
+        "email": {
+            "type": "string",
+            "validate": [
+                "required"
+            ]
+        },
+        "password_hash": {
+            "type": "string",
+            "hidden": true,
+            "searchable": false
+        },
+        "name": {
+            "type": "string"
+        },
+        "language": {
+            "type": "select",
+            "options": {},
+            "readonly": true
+        },
+        "registered_at": {
+            "type": "date",
+            "time": true,
+            "readonly": true
+        },
+        "email_confirmed_at": {
+            "type": "date",
+            "time": true,
+            "readonly": true
+        },
+        "decided_at": {
+            "type": "date",
+            "time": true,
+            "readonly": true
+        },
+        "roles": {
+            "type": "list",
+            "readonly": true
+        },
+        "auth_epoch": {
+            "type": "string",
+            "hidden": true,
+            "searchable": false,
+            "readonly": true,
+            "default": "0"
+        }
+    }
+}

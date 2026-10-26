@@ -6,7 +6,6 @@ namespace Preflow\Members;
 
 use Nyholm\Psr7\Response;
 use Preflow\Data\Locales;
-use Preflow\Folio\Content\ContentLocale;
 use Preflow\I18n\Translator;
 use Preflow\View\AssetCollector;
 use Preflow\View\TemplateEngineInterface;
@@ -25,13 +24,13 @@ final class MembersView
     public function __construct(
         private readonly TemplateEngineInterface $engine,
         private readonly AssetCollector $assets,
-        private readonly ContentLocale $contentLocale,
         private readonly Viewer $viewer,
         private readonly MembersConfig $config,
         private readonly Links $links,
         private readonly LinkValidity $validity,
         private readonly Locales $locales,
         private readonly Translator $translator,
+        private readonly ?PageLocale $pageLocale = null,
     ) {}
 
     /**
@@ -46,10 +45,10 @@ final class MembersView
     {
         $locale = $request->getAttribute('locale');
         $locale = is_string($locale) && $this->locales->has($locale) ? $locale : $this->locales->default;
-        $this->contentLocale->set($locale);
         // The locale middleware did this when the site has an i18n config; without one the
         // translator stays on the default locale, which is right for a one-language site.
         $this->translator->setLocale($locale);
+        $this->pageLocale?->set($locale);
 
         $html = $this->engine->render('@members/' . $template . '.twig', $vars + [
             'locale' => $locale,

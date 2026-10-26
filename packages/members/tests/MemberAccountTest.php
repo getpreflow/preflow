@@ -11,11 +11,13 @@ use Preflow\Auth\Tokens\Tokens;
 use Preflow\Members\Members;
 use Preflow\Members\Tests\Support\Dom;
 use Preflow\Members\Tests\Support\MemberFlows;
+use Preflow\Members\Tests\Support\MembersScaffold;
 
 /** The account page: change the password, delete the account; who may see it. */
 final class MemberAccountTest extends TestCase
 {
     use MemberFlows;
+    use MembersScaffold;
 
     protected function setUp(): void
     {
@@ -46,17 +48,6 @@ final class MemberAccountTest extends TestCase
         $this->assertNotNull(Dom::first($html, '//form[@action="/members/account/delete"]//input[@name="confirm"]'));
         $this->assertStringContainsString('ada@example.com', $html);
         $this->assertNotNull(Dom::first($html, '//a[@href="/members"]'), 'back to the landing');
-    }
-
-    #[RunInSeparateProcess]
-    public function test_staff_is_sent_to_the_members_home(): void
-    {
-        $this->signIn();
-
-        $response = $this->send('GET', '/members/account');
-
-        $this->assertSame(303, $response->getStatusCode());
-        $this->assertSame('/members', $response->getHeaderLine('Location'));
     }
 
     #[RunInSeparateProcess]
@@ -202,10 +193,9 @@ final class MemberAccountTest extends TestCase
         $cookie = $this->flow->container()->get(RememberMe::class)->issue('members', (string) $m->getId());
         $this->assertSame(200, $this->send('GET', '/members/account', cookies: ['site_member' => $cookie])->getStatusCode(), 'the remember cookie opens the account');
 
-        $this->signIn();
-        $page = $this->admin('/folio/member/' . $m->getId() . '/edit');
-        preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $t);
-        $this->flow->handle($this->request('POST', '/folio/member/' . $m->getId() . '/_action/decline', ['message' => 'Sorry.', '_csrf_token' => $t[1] ?? '']));
+        // Declined (as the owner's decision does; Folio's panel is tested with Folio's members admin).
+        $members = $this->flow->container()->get(Members::class);
+        $members->decide($members->find((string) $m->getId()) ?? $this->fail('gone'), 'rejected');
         unset($_SESSION);
         $this->flow = $this->app(); // a fresh request: only the cookie
 

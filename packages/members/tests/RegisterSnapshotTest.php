@@ -7,6 +7,7 @@ namespace Preflow\Members\Tests;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Members\Tests\Support\MemberFlows;
+use Preflow\Members\Tests\Support\MembersScaffold;
 
 /**
  * The public "members" group ("Sie"): the German registration page is byte for byte the one
@@ -15,6 +16,7 @@ use Preflow\Members\Tests\Support\MemberFlows;
 final class RegisterSnapshotTest extends TestCase
 {
     use MemberFlows;
+    use MembersScaffold;
 
     /** The registration page and its error page in German, as v0.36.0 renders them (CSRF token blanked). */
     private const string SNAPSHOT = __DIR__ . '/Fixtures/register-de-v0.36.0.html';

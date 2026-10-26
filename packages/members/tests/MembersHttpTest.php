@@ -8,11 +8,13 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Members\Tests\Support\MemberFlows;
+use Preflow\Members\Tests\Support\MembersScaffold;
 
 /** What every member route shares: CSRF on each form, a session only where the members live, the routes per locale. */
 final class MembersHttpTest extends TestCase
 {
     use MemberFlows;
+    use MembersScaffold;
 
     private const array FORMS = ['/register', '/confirm', '/login', '/logout', '/forgot', '/reset', '/resend', '/account/password', '/account/delete'];
 

@@ -1,8 +1,15 @@
 # preflow/members
 
-Member accounts for a Preflow + Folio site: the member type in Folio with a waiting badge,
-a state column and a Decision panel (accept or decline with an editable message), the
-member roles, and a pluggable admission rule.
+Member accounts for a Preflow site: registration with a confirmed address, sign-in and
+sign-out, forgot and reset password, the account page, the member mails and a pluggable
+admission rule. It needs neither Folio nor rbac. On a Folio site, Folio adds the admin: the
+member list with a waiting badge, a state column and a Decision panel (accept or decline with
+an editable message), Settings → Members and the member roles (rbac).
+
+Without rbac, an admitted member (role `member`) has `members.access` and nothing more; with
+rbac, rbac's roles decide. The member type (`member`) is the package's own
+(`models/member.json`); a site adds fields with a model file `member.json` that says
+`"extends": true`.
 
 ## Install
 
@@ -66,15 +73,20 @@ return [
     'path' => '/members',                       // base path of the member pages
     'landing' => null,                          // where sign-in lands; null = path
     'register' => null,                         // where the pages link for registering; null = path/register
-    'layout' => '@folio/frontend/_site.twig',   // the layout the member pages extend
+    'layout' => '@members/_layout.twig',        // the layout the member pages extend (a Folio site: @folio/frontend/_site.twig)
     'mail' => ['from_name' => null, 'layout' => '@members/mail/layout.twig', 'accent' => '#d42a34'],
-    'admission' => Preflow\Members\Admission\OwnerApproval::class,
+    'admission' => Preflow\Members\Admission\AcceptOnConfirm::class,
     'throttle' => ['login' => [10, 900], 'register' => [5, 3600], 'forgot' => [5, 3600], 'resend' => [3, 3600]],
     'password_min' => 10,
     'confirm_ttl' => 86400,
     'reset_ttl' => 3600,
     'retention' => ['unconfirmed_days' => 7, 'declined_days' => 30],
     'privacy_url' => '',                        // the consent's privacy link: one URL or ['en' => '/privacy', 'de' => '/de/datenschutz']
+    // The owner's settings, without Folio (on a Folio site: Settings → Members):
+    'registration_open' => true,
+    'notice_email' => null,                     // told about a member waiting for the owner's decision
+    'accept_message' => null,                   // one text, or ['en' => …, 'de' => …]; null = the lang files'
+    'decline_message' => null,
 ];
 ```
 
@@ -134,8 +146,8 @@ default locale without a prefix):
 ## Admission
 
 After a member confirms the e-mail, the configured `Preflow\Members\Admission\Admission`
-decides: `AcceptOnConfirm` (a member at once) or `OwnerApproval` (the owner decides in
-Folio, the default). A site's own rule implements the interface:
+decides: `AcceptOnConfirm` (a member at once, the default) or `OwnerApproval` (the owner
+decides in Folio). A site's own rule implements the interface:
 
 ```php
 interface Admission

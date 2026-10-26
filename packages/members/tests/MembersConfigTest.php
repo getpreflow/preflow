@@ -7,9 +7,9 @@ namespace Preflow\Members\Tests;
 use PHPUnit\Framework\TestCase;
 use Preflow\Members\Admission\AcceptOnConfirm;
 use Preflow\Members\Admission\Admission;
-use Preflow\Members\Admission\OwnerApproval;
 use Preflow\Members\Links;
 use Preflow\Members\MembersConfig;
+use Preflow\Members\MembersDefaults;
 use Preflow\Members\Tests\Support\MembersScaffold;
 
 /** config/members.php: every key optional, defaults as smart-stack runs today; the provider reads the site's file. */
@@ -28,11 +28,11 @@ final class MembersConfigTest extends TestCase
 
         $this->assertSame('/members', $config->path());
         $this->assertSame('/members', $config->landing(), 'landing defaults to the path');
-        $this->assertSame('@folio/frontend/_site.twig', $config->layout());
+        $this->assertSame('@members/_layout.twig', $config->layout(), 'the package\'s own page layout');
         $this->assertNull($config->mailFromName());
         $this->assertSame('@members/mail/layout.twig', $config->mailLayout());
         $this->assertSame('#d42a34', $config->accent());
-        $this->assertSame(OwnerApproval::class, $config->admission());
+        $this->assertSame(AcceptOnConfirm::class, $config->admission(), 'a member once the address is confirmed');
         $this->assertSame([10, 900], $config->throttle('login'));
         $this->assertSame([5, 3600], $config->throttle('register'));
         $this->assertSame([5, 3600], $config->throttle('forgot'));
@@ -42,6 +42,24 @@ final class MembersConfigTest extends TestCase
         $this->assertSame(3600, $config->resetTtl());
         $this->assertSame(7, $config->retention('unconfirmed'));
         $this->assertSame(30, $config->retention('declined'));
+    }
+
+    public function test_a_package_may_set_defaults_and_the_site_file_wins(): void
+    {
+        $this->scaffold();
+        $c = $this->app()->container();
+        $this->assertSame('@members/_layout.twig', $c->get(MembersConfig::class)->layout(), 'without Folio: the package\'s own');
+
+        $this->assertSame('@folio/frontend/_site.twig', (new MembersConfig([], ['layout' => '@folio/frontend/_site.twig']))->layout());
+        $this->assertSame('@site/page.twig', (new MembersConfig(['layout' => '@site/page.twig'], ['layout' => '@folio/frontend/_site.twig']))->layout());
+
+        $this->write('config/members.php', "<?php\nreturn ['path' => '/konto'];\n");
+        $app = \Preflow\Core\Application::create($this->dir);
+        $app->container()->instance(MembersDefaults::class, new MembersDefaults(['layout' => '@folio/frontend/_site.twig', 'path' => '/ignored']));
+        $app->boot();
+        $config = $app->container()->get(MembersConfig::class);
+        $this->assertSame('@folio/frontend/_site.twig', $config->layout());
+        $this->assertSame('/konto', $config->path());
     }
 
     public function test_site_values_win_key_by_key(): void
@@ -141,7 +159,7 @@ final class MembersConfigTest extends TestCase
         $c = $this->app()->container();
 
         $this->assertSame('/members', $c->get(MembersConfig::class)->path());
-        $this->assertInstanceOf(OwnerApproval::class, $c->get(Admission::class));
+        $this->assertInstanceOf(AcceptOnConfirm::class, $c->get(Admission::class));
     }
 
     public function test_an_admission_class_that_is_no_admission_fails_at_boot(): void

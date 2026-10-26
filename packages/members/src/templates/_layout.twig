@@ -1,0 +1,40 @@
+{# The member pages' own page layout, for a site that names none (config/members.php layout):
+   a plain standalone page with the custom properties the member templates style with. A site
+   with its own design names its layout instead (blocks "meta" and "content"). #}
+<!DOCTYPE html>
+<html lang="{{ locale }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{% block meta %}<title>{{ t('members.label') }}</title>{% endblock %}
+{% for a in alternates %}<link rel="alternate" hreflang="{{ a.locale }}" href="{{ a.href }}">
+{% endfor %}
+</head>
+<body class="members-page">
+<main>
+{% block content %}{% endblock %}
+</main>
+{% apply css %}
+:root {
+  --paper: #ffffff;
+  --ink: #1a1a1a;
+  --ink-soft: #3d3d3d;
+  --ink-muted: #6b6b6b;
+  --rule: #d6d6d6;
+  --accent: #d42a34;
+  --accent-deep: #a81f28;
+  --accent-tint: #fbeaeb;
+  --radius: 4px;
+  --font-display: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, Menlo, Consolas, monospace;
+}
+*, *::before, *::after { box-sizing: border-box; }
+body.members-page { margin: 0; background: #f4f4f2; color: var(--ink); font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; line-height: 1.5; }
+.members-page .section-inner { margin: 0 auto; }
+.members-page h1, .members-page h2 { margin-top: 0; }
+.members-page .btn { display: inline-flex; align-items: center; border: 1px solid var(--ink); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: inherit; font-weight: 600; padding: 0.6rem 1rem; text-decoration: none; cursor: pointer; }
+.members-page .btn-primary { background: var(--accent); border-color: var(--accent); color: #ffffff; }
+.members-page .btn-primary:hover { background: var(--accent-deep); border-color: var(--accent-deep); }
+{% endapply %}
+</body>
+</html>

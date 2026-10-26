@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Members;
 
 use Preflow\Data\DynamicRecord;
-use Preflow\Rbac\RoleList;
 
 /** Where a member stands, derived from the record: roles first, then the confirmed email. */
 enum MemberState: string
@@ -17,7 +16,7 @@ enum MemberState: string
 
     public static function fromRecord(DynamicRecord $m): self
     {
-        $roles = RoleList::normalize($m->get('roles'));
+        $roles = MemberRoles::of($m);
         if (in_array('rejected', $roles, true)) {
             return self::Declined;
         }

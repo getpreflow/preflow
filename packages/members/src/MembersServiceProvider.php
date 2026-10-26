@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Preflow\Members;
 
+use Preflow\Auth\Access\Access;
+use Preflow\Auth\Access\DefaultResolver;
+use Preflow\Auth\Access\PermissionRegistry;
 use Preflow\Auth\PasswordHasherInterface;
 use Preflow\Core\Application;
 use Preflow\Core\Config\Config;
@@ -12,11 +15,10 @@ use Preflow\Core\Container\Exceptions\ContainerException;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Data\DataManager;
 use Preflow\Data\Locales;
-use Preflow\Folio\Extension\ExtensionRegistry;
-use Preflow\Folio\Content\ContentLocale;
 use Preflow\I18n\Translator;
 use Preflow\I18n\TranslationExtensionProvider;
 use Preflow\View\AssetCollector;
+use Preflow\Members\Access\MemberAccess;
 use Preflow\Members\Admission\Admission;
 use Preflow\Members\Http\MembersRoutes;
 use Preflow\Members\Http\SafeNext;
@@ -27,24 +29,37 @@ use Preflow\View\TemplateEngineInterface;
 
 /**
  * Binds the members services: MembersConfig (config/members.php; a missing file means the
- * defaults), Members, Links, LinkValidity, MemberMailer and the configured Admission, and adds the
- * package copy (lang/{locale}/members.php) under the site's own. A site's resources/members/ is
- * put in front of the package templates (@members) when it exists. When the Folio
- * extension "members" (Folio's members admin) is enabled, boot checks that the admission class
- * is one and adds the member pages' routes under the members path.
+ * defaults), Members, Links, LinkValidity, MemberMailer, the configured Admission and the
+ * owner's settings (ConfigMembersSettings, unless a package such as Folio's members admin binds
+ * its own), and adds the package copy (lang/{locale}/members.php) under the site's own. A site's
+ * resources/members/ is put in front of the package templates (@members) when it exists. Boot
+ * checks that the admission class is one, defines the member type when nothing has
+ * (MemberType), lets admitted members have members.access (declared at register) when no permission
+ * package decides (MemberAccess) and adds the member pages' routes under the members path.
+ * Neither Folio nor rbac is needed; with them, Folio carries the admin and rbac decides access.
  */
 final class MembersServiceProvider extends ServiceProvider
 {
     public function register(Container $container): void
     {
         self::siteTemplates($container);
+        // The core's one permission, before any provider boots (Folio's members admin, which
+        // declares it too, takes the core's; its own members.decide stays the admin's).
+        if ($container->bound(PermissionRegistry::class) && !$container->get(PermissionRegistry::class)->isDeclared(MembersConfig::PERMISSION)) {
+            $container->get(PermissionRegistry::class)->declare(MembersConfig::PERMISSION, 'Use the members area', 'Members');
+        }
         // Declared in composer.json (extra.preflow.translations); this covers apps whose Composer
         // metadata doesn't list the package (test apps, a core before 0.37).
         self::translator($container)->addDefaultsIfMissing('members', dirname(__DIR__) . '/lang', 'public');
         self::translator($container)->addDefaultsIfMissing('members-admin', dirname(__DIR__) . '/lang', 'admin');
         $container->singleton(MembersConfig::class, static fn (Container $c): MembersConfig => MembersConfig::fromFile(
             $c->get(Application::class)->basePath('config/members.php'),
+            $c->bound(MembersDefaults::class) ? $c->get(MembersDefaults::class)->config : [],
         ));
+        // Folio's members admin binds its own (Settings → Members), whichever provider registers first.
+        if (!$container->bound(MembersSettings::class)) {
+            $container->singleton(MembersSettings::class, static fn (Container $c): MembersSettings => new ConfigMembersSettings($c->get(MembersConfig::class)));
+        }
         $container->singleton(Members::class, static fn (Container $c): Members => new Members(
             $c->get(DataManager::class),
             $c->get(PasswordHasherInterface::class),
@@ -69,13 +84,13 @@ final class MembersServiceProvider extends ServiceProvider
         $container->singleton(MembersView::class, static fn (Container $c): MembersView => new MembersView(
             $c->get(TemplateEngineInterface::class),
             $c->get(AssetCollector::class),
-            $c->get(ContentLocale::class),
             $c->get(Viewer::class),
             $c->get(MembersConfig::class),
             $c->get(Links::class),
             $c->get(LinkValidity::class),
             $c->get(Locales::class),
             $c->get(Translator::class),
+            $c->bound(PageLocale::class) ? $c->get(PageLocale::class) : null,
         ));
         $container->singleton(Admission::class, static function (Container $c): Admission {
             $class = $c->get(MembersConfig::class)->admission();
@@ -89,12 +104,25 @@ final class MembersServiceProvider extends ServiceProvider
 
     public function boot(Container $container): void
     {
-        $extensions = $container->get(ExtensionRegistry::class);
-        if (!$extensions->isEnabled('members')) {
+        $container->get(Admission::class);
+        MemberType::define($container);
+        self::access($container);
+        self::routes($container);
+    }
+
+    /**
+     * members.access given to admitted members while no permission package has set a resolver:
+     * rbac and roles set theirs (rbac in its boot, also after this one), which then decides.
+     */
+    private static function access(Container $c): void
+    {
+        if (!$c->bound(Access::class)) {
             return;
         }
-        $container->get(Admission::class);
-        self::routes($container);
+        $access = $c->get(Access::class);
+        if ($access->resolver() instanceof DefaultResolver) {
+            $access->setResolver(new MemberAccess($access->resolver()));
+        }
     }
 
     /** The member pages' routes (Http\MembersRoutes) under the members path. */

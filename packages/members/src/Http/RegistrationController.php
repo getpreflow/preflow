@@ -65,7 +65,7 @@ final class RegistrationController
 
     public function register(ServerRequestInterface $request): ResponseInterface
     {
-        if (!$this->open($request)) {
+        if (!$this->open()) {
             return $this->show('closed', $request, [], 403);
         }
         $client = $this->throttle->client($request);
@@ -176,7 +176,7 @@ final class RegistrationController
      */
     private function page(ServerRequestInterface $request, array $errors = [], array $input = [], int $status = 200): ResponseInterface
     {
-        return $this->show('register', $request, ['open' => $this->open($request), 'errors' => $errors, 'old' => $input], $status);
+        return $this->show('register', $request, ['open' => $this->open(), 'errors' => $errors, 'old' => $input], $status);
     }
 
     /** A page with the flash notice a previous request left (e.g. after deleting the account). @param array<string, mixed> $vars */
@@ -185,7 +185,7 @@ final class RegistrationController
         return $this->view->render($template, $vars + ['notice' => Input::flash($request, Input::NOTICE)], $request, $status);
     }
 
-    private function open(ServerRequestInterface $request): bool
+    private function open(): bool
     {
         return $this->settings->registrationOpen();
     }
