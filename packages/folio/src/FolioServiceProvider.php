@@ -712,9 +712,17 @@ final class FolioServiceProvider extends ServiceProvider
      * The admins' overrides (Settings → Translations) as the translator's override layer. They
      * apply on admin requests only (AdminLocaleMiddleware turns them on): to admin groups and
      * to the site's own model labels, which are admin-only texts in the scope-less "site" group.
+     * Only when the layer is still empty (NoTranslationOverrides): a site or package that set
+     * its own TranslationOverrides keeps them.
      */
     private static function useOverrides(\Preflow\I18n\Translator $translator, Container $c): void
     {
+        foreach (['types', 'fields', 'options', 'sections'] as $area) {
+            $translator->overridable(\Preflow\Folio\Translations\EditableTexts::SITE . '.' . $area . '.');
+        }
+        if (!$translator->overrides() instanceof \Preflow\I18n\NoTranslationOverrides) {
+            return;
+        }
         // Built on first use (an admin request): the store needs the DataManager, which a public request never asks for here.
         $translator->setOverrides(new class ($c) implements \Preflow\I18n\TranslationOverrides {
             private ?\Preflow\Folio\Translations\StoredOverrides $store = null;
@@ -726,9 +734,6 @@ final class FolioServiceProvider extends ServiceProvider
                 return ($this->store ??= $this->container->get(\Preflow\Folio\Translations\StoredOverrides::class))->get($locale, $key);
             }
         });
-        foreach (['types', 'fields', 'options', 'sections'] as $area) {
-            $translator->overridable(\Preflow\Folio\Translations\EditableTexts::SITE . '.' . $area . '.');
-        }
     }
 
     /**

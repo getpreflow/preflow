@@ -52,6 +52,53 @@ final class FolioServiceProviderTest extends TestCase
         $this->assertSame('Your account for {site}', $translator->get('folio.mail.invite.subject', [], 'en'));
     }
 
+    /** A site or package that set its own TranslationOverrides keeps them: Folio only fills the empty layer. */
+    public function test_an_overrides_binding_of_the_site_is_kept(): void
+    {
+        $own = new class implements \Preflow\I18n\TranslationOverrides {
+            public function get(string $locale, string $key): ?string
+            {
+                return $key === 'folio.common.save' ? 'Keep it' : null;
+            }
+        };
+        foreach (['site first' => true, 'folio first' => false] as $order => $siteFirst) {
+            $app = Application::create(['app' => ['debug' => true]]);
+            $app->setRouter(new Router(pagesDir: null, controllers: []));
+            $site = new class ($own) extends \Preflow\Core\Container\ServiceProvider {
+                public function __construct(private readonly \Preflow\I18n\TranslationOverrides $own) {}
+                public function register(\Preflow\Core\Container\Container $container): void {}
+                public function boot(\Preflow\Core\Container\Container $container): void
+                {
+                    $container->get(\Preflow\I18n\Translator::class)->setOverrides($this->own);
+                }
+            };
+            if ($siteFirst) {
+                $app->registerProvider($site);
+            }
+            $app->registerProvider(new FolioServiceProvider());
+            if (!$siteFirst) {
+                $app->registerProvider($site);
+            }
+            $app->boot();
+
+            $translator = $app->container()->get(\Preflow\I18n\Translator::class);
+            $this->assertSame($own, $translator->overrides(), $order);
+            $translator->useOverrides(true);
+            $this->assertSame('Keep it', $translator->get('folio.common.save'), $order);
+        }
+    }
+
+    public function test_without_an_overrides_binding_folio_brings_its_own(): void
+    {
+        $app = Application::create(['app' => ['debug' => true]]);
+        $app->setRouter(new Router(pagesDir: null, controllers: []));
+        $app->registerProvider(new FolioServiceProvider());
+        $app->boot();
+
+        $overrides = $app->container()->get(\Preflow\I18n\Translator::class)->overrides();
+        $this->assertNotInstanceOf(\Preflow\I18n\NoTranslationOverrides::class, $overrides);
+    }
+
     /** @return iterable<string, array{list<class-string>}> */
     public static function providerOrders(): iterable
     {

@@ -84,6 +84,15 @@ final class TranslatorLayersTest extends TestCase
         $this->assertSame('Public site A', $t->get('pub.a'));
     }
 
+    public function test_the_overrides_layer_can_be_read_back(): void
+    {
+        $t = new Translator($this->tmp() . '/lang', 'en', 'en');
+        $this->assertInstanceOf(\Preflow\I18n\NoTranslationOverrides::class, $t->overrides());
+        $own = new \Preflow\I18n\NoTranslationOverrides();
+        $t->setOverrides($own);
+        $this->assertSame($own, $t->overrides());
+    }
+
     public function test_no_overrides_returns_null(): void
     {
         $this->assertNull((new NoTranslationOverrides())->get('en', 'adm.c'));

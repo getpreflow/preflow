@@ -135,6 +135,12 @@ final class Translator
         $this->overrides = $overrides;
     }
 
+    /** The override layer in use (NoTranslationOverrides until one is set). */
+    public function overrides(): TranslationOverrides
+    {
+        return $this->overrides;
+    }
+
     /**
      * Keys under this prefix ("site.types.") take overrides too, although their group has no
      * scope: admin-only texts in a site's own group (model labels). Never for a public group.
