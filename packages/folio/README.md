@@ -971,8 +971,8 @@ final class Overview
 
 - `FolioScreen(path, label, icon, section, order, permission)`: the permission is
   required. The `label` may be a translation key (`'site.screens.queue'`): the sidebar item
-  and `screen.label` then follow each staff member's admin language; plain text stays as written. `section` is `settings` by default; a new name adds a sidebar section after
-  the built-in ones.
+  and `screen.label` then follow each staff member's admin language; plain text stays as written.
+  `section` is `settings` by default; a new name adds a sidebar section after the built-in ones.
 - A method returns a `ScreenView(template, data)` (rendered in the admin layout with
   `prefix`, `csrf` and `screen` added to your data), a string, or any PSR-7 response.
   POSTs need the CSRF token (`_csrf_token`, available as `csrf` in the template).

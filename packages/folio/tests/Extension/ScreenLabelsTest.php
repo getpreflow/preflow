@@ -129,6 +129,13 @@ final class ScreenLabelsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_extensions_screen_shows_the_screen_part_in_the_interface_language(): void
+    {
+        $this->signInAs('de');
+        $this->assertStringContainsString('&emsp;Prüfen <code>screen:queue</code>', $this->html('/folio/extensions'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_a_plain_screen_label_stays_as_written(): void
     {
         $this->screen('Queue');

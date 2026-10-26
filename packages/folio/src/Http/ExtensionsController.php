@@ -36,7 +36,12 @@ final class ExtensionsController
     {
         return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->engine->render('@folio/admin/extensions.twig', [
             'prefix' => $this->prefix,
-            'extensions' => $this->state->overview($this->extensions),
+            'extensions' => array_map(static function (array $extension): array {
+                // A screen part's label may be a translation key: shown in the admin's language.
+                $extension['parts'] = array_map(static fn (array $part): array => ['label' => \Preflow\Folio\FolioText::label($part['label'])] + $part, $extension['parts']);
+
+                return $extension;
+            }, $this->state->overview($this->extensions)),
             'allow_changes' => $this->allowChanges,
             'csrf' => $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '',
         ]));
