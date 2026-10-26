@@ -533,7 +533,7 @@ final class AdminController
     {
         $type = (string) $request->getAttribute('type', '');
         if ($this->isSingleton($type)) {
-            return new Response(404, [], 'Singletons cannot be deleted');
+            return new Response(404, [], FolioText::get('folio.errors.singleton_delete'));
         }
         $id = (string) $request->getAttribute('id', '');
         if (!$this->catalog->has($type)) {

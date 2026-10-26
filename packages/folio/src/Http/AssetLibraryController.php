@@ -11,6 +11,8 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\RelationFieldType;
+use Preflow\Folio\FolioText;
+use Preflow\Folio\Media\MediaMessages;
 use Preflow\Folio\Media\FolioRecordReferences;
 use Preflow\Media\Asset;
 use Preflow\Media\AssetUploadException;
@@ -82,7 +84,7 @@ final class AssetLibraryController
             try {
                 $created[] = $this->library->upload($file, $by, private: $private === true)->id;
             } catch (AssetUploadException $e) {
-                $errors[] = $e->getMessage();
+                $errors[] = MediaMessages::text($e->getMessage());
             }
         }
 
@@ -103,15 +105,15 @@ final class AssetLibraryController
     {
         $asset = $this->library->find((string) $request->getAttribute('id', ''));
         if ($asset === null) {
-            return new Response(404, [], 'Not found');
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
         }
 
         $query = $request->getQueryParams();
         $notice = match (true) {
-            ($query['saved'] ?? null) === '1' => 'Saved.',
-            ($query['done'] ?? null) === 'replaced' => 'Replaced.',
-            ($query['done'] ?? null) === 'restored' => 'Restored version ' . (int) ($query['version'] ?? 0) . '.',
-            ($query['done'] ?? null) === 'version-deleted' => 'Version deleted.',
+            ($query['saved'] ?? null) === '1' => FolioText::get('folio.assets.saved'),
+            ($query['done'] ?? null) === 'replaced' => FolioText::get('folio.assets.replaced'),
+            ($query['done'] ?? null) === 'restored' => FolioText::get('folio.assets.restored', ['number' => (int) ($query['version'] ?? 0)]),
+            ($query['done'] ?? null) === 'version-deleted' => FolioText::get('folio.assets.version_deleted'),
             default => null,
         };
 
@@ -122,7 +124,7 @@ final class AssetLibraryController
     {
         $asset = $this->library->find((string) $request->getAttribute('id', ''));
         if ($asset === null) {
-            return new Response(404, [], 'Not found');
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
         }
         $body = (array) $request->getParsedBody();
         $meta = array_intersect_key($body, array_flip(['alt', 'title', 'focal_x', 'focal_y']));
@@ -144,13 +146,13 @@ final class AssetLibraryController
     {
         $asset = $this->library->find((string) $request->getAttribute('id', ''));
         if ($asset === null) {
-            return new Response(404, [], 'Not found');
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
         }
         try {
             $this->library->delete($asset->id);
         } catch (AssetInUseException $e) {
             $n = count($e->usages);
-            return $this->renderPanel($request, $asset, null, 'Used in ' . $n . ' record' . ($n === 1 ? '' : 's') . ' — remove it there first.', 409, $e->usages);
+            return $this->renderPanel($request, $asset, null, FolioText::choice('folio.assets.in_use', $n), 409, $e->usages);
         }
 
         return new Response(302, ['Location' => $this->back($request) ?? $this->prefix . '/assets']);
@@ -161,16 +163,16 @@ final class AssetLibraryController
     {
         $asset = $this->library->find((string) $request->getAttribute('id', ''));
         if ($asset === null) {
-            return new Response(404, [], 'Not found');
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
         }
         $file = $request->getUploadedFiles()['file'] ?? null;
         if (!$file instanceof UploadedFileInterface || $file->getError() === UPLOAD_ERR_NO_FILE) {
-            return $this->renderPanel($request, $asset, null, 'Choose a file to replace this one with.', 422);
+            return $this->renderPanel($request, $asset, null, FolioText::get('folio.assets.choose_file'), 422);
         }
         try {
             $this->library->replace($asset->id, $file, self::by($request));
         } catch (\Throwable $e) {
-            return $this->failed($request, $asset, 'replace the file', $e);
+            return $this->failed($request, $asset, 'replace the file', $e, FolioText::get('folio.assets.replace_failed'));
         }
 
         return $this->backToPanel($request, $asset, 'done=replaced');
@@ -180,12 +182,12 @@ final class AssetLibraryController
     {
         [$asset, $version] = $this->version($request);
         if ($asset === null || $version === null) {
-            return new Response(404, [], 'Not found');
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
         }
         try {
             $this->library->restore($asset->id, $version->number, self::by($request));
         } catch (\Throwable $e) {
-            return $this->failed($request, $asset, 'restore version ' . $version->number, $e);
+            return $this->failed($request, $asset, 'restore version ' . $version->number, $e, FolioText::get('folio.assets.restore_failed', ['number' => $version->number]));
         }
 
         return $this->backToPanel($request, $asset, 'done=restored&version=' . $version->number);
@@ -195,12 +197,12 @@ final class AssetLibraryController
     {
         [$asset, $version] = $this->version($request);
         if ($asset === null || $version === null) {
-            return new Response(404, [], 'Not found');
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
         }
         try {
             $this->library->deleteVersion($asset->id, $version->number);
         } catch (\Throwable $e) {
-            return $this->failed($request, $asset, 'delete version ' . $version->number, $e);
+            return $this->failed($request, $asset, 'delete version ' . $version->number, $e, FolioText::get('folio.assets.delete_version_failed', ['number' => $version->number]));
         }
 
         return $this->backToPanel($request, $asset, 'done=version-deleted');
@@ -211,17 +213,17 @@ final class AssetLibraryController
     {
         $asset = $this->library->find((string) $request->getAttribute('id', ''));
         if ($asset === null || !$this->library->isEditable($asset)) {
-            return new Response(404, [], 'Not found');
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
         }
         $query = $request->getQueryParams();
         $preset = is_string($query['preset'] ?? null) && isset($this->formats->boxes()[$query['preset']]) ? $query['preset'] : null;
         $notice = match ($query['done'] ?? null) {
-            'rotated' => 'Rotated.',
-            'mirrored' => 'Mirrored.',
-            'cropped' => 'Cropped.',
-            'crop-removed' => 'Crop removed.',
-            'format-cropped' => $preset !== null ? 'Saved the cut of ' . $preset . '.' : null,
-            'format-reset' => $preset !== null ? 'The cut of ' . $preset . ' follows the focal point again.' : null,
+            'rotated' => FolioText::get('folio.assets.rotated'),
+            'mirrored' => FolioText::get('folio.assets.mirrored'),
+            'cropped' => FolioText::get('folio.assets.cropped'),
+            'crop-removed' => FolioText::get('folio.assets.crop_removed'),
+            'format-cropped' => $preset !== null ? FolioText::get('folio.assets.format_cropped', ['preset' => $preset]) : null,
+            'format-reset' => $preset !== null ? FolioText::get('folio.assets.format_reset', ['preset' => $preset]) : null,
             default => null,
         };
 
@@ -236,16 +238,16 @@ final class AssetLibraryController
     {
         $asset = $this->library->find((string) $request->getAttribute('id', ''));
         if ($asset === null) {
-            return new Response(404, [], 'Not found');
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
         }
         try {
             $done = $this->apply($asset->id, (array) $request->getParsedBody());
         } catch (\InvalidArgumentException $e) {
-            return $this->renderEditor($request, $this->library->find($asset->id) ?? $asset, null, $e->getMessage(), 422);
+            return $this->renderEditor($request, $this->library->find($asset->id) ?? $asset, null, MediaMessages::text($e->getMessage()), 422);
         } catch (\Throwable $e) {
             error_log('folio: could not edit asset ' . $asset->id . ': ' . $e::class . ': ' . $e->getMessage());
 
-            return $this->renderEditor($request, $this->library->find($asset->id) ?? $asset, null, 'Could not edit the image. The error was logged.', 422);
+            return $this->renderEditor($request, $this->library->find($asset->id) ?? $asset, null, FolioText::get('folio.assets.edit_failed'), 422);
         }
 
         return new Response(302, ['Location' => $this->prefix . '/assets/' . $asset->id . '/edit?done=' . $done . $this->backQuery($request, '&')]);
@@ -279,7 +281,7 @@ final class AssetLibraryController
                 $this->library->setFormatCrop($id, $preset, $reset ? null : self::rect($body));
                 return ($reset ? 'format-reset' : 'format-cropped') . '&preset=' . rawurlencode($preset);
             default:
-                throw new \InvalidArgumentException('Unknown edit.');
+                throw new \InvalidArgumentException(FolioText::get('folio.assets.unknown_edit'));
         }
     }
 
@@ -293,7 +295,7 @@ final class AssetLibraryController
     {
         foreach (['x', 'y', 'w', 'h'] as $key) {
             if (!is_numeric($body[$key] ?? null)) {
-                throw new \InvalidArgumentException('Draw the area on the image first.');
+                throw new \InvalidArgumentException(FolioText::get('folio.assets.draw_first'));
             }
         }
 
@@ -304,10 +306,10 @@ final class AssetLibraryController
     {
         if (!$this->library->isEditable($asset)) {
             // Only an edit can get here with such an asset (the screen itself is a 404): the panel says why.
-            return $this->renderPanel($request, $asset, null, $error ?? 'This file cannot be edited.', 422);
+            return $this->renderPanel($request, $asset, null, $error ?? FolioText::get('folio.assets.not_editable'), 422);
         }
         $boxes = $this->formats->boxes();
-        $ratios = ['Free' => ''];
+        $ratios = [FolioText::get('folio.assets.free') => ''];
         foreach (self::RATIOS as $label => $ratio) {
             $ratios[$label] = self::ratio($ratio);
         }
@@ -363,15 +365,15 @@ final class AssetLibraryController
      * A failed file change as a panel error, never a 500: an upload error's message as it is
      * (it names the file and the reason), anything else logged and reported in general words.
      */
-    private function failed(ServerRequestInterface $request, Asset $asset, string $action, \Throwable $e): ResponseInterface
+    private function failed(ServerRequestInterface $request, Asset $asset, string $action, \Throwable $e, string $message): ResponseInterface
     {
         if ($e instanceof AssetUploadException) {
-            return $this->renderPanel($request, $asset, null, $e->getMessage(), 422);
+            return $this->renderPanel($request, $asset, null, MediaMessages::text($e->getMessage()), 422);
         }
         error_log('folio: could not ' . $action . ' of asset ' . $asset->id . ': ' . $e::class . ': ' . $e->getMessage());
         $current = $this->library->find($asset->id) ?? $asset;
 
-        return $this->renderPanel($request, $current, null, 'Could not ' . $action . '. The error was logged.', 422);
+        return $this->renderPanel($request, $current, null, $message, 422);
     }
 
     /** @return array{?Asset, ?AssetVersion} the asset and its version {n} from the route */
@@ -503,7 +505,7 @@ final class AssetLibraryController
             'fields' => $fields,
             'versions' => array_map(fn (AssetVersion $v) => $this->versionRow($asset, $v), $this->library->versions($asset->id)),
             'swatches' => self::swatches($asset),
-            'note' => $asset->note,
+            'note' => MediaMessages::note($asset->note),
             'raw' => $asset,
             'editable' => $this->library->isEditable($asset),
             'edited' => $asset->kind() === 'image' && $asset->isEdited(),
@@ -620,7 +622,7 @@ final class AssetLibraryController
             $html = null;
             $assets = [];
             if ($field->type === 'boolean') {
-                $options = ['1' => 'Yes', '0' => 'No'];
+                $options = ['1' => FolioText::get('folio.common.yes'), '0' => FolioText::get('folio.common.no')];
             } elseif ($field->type === 'select') {
                 $raw = is_array($field->config['options'] ?? null) ? $field->config['options'] : [];
                 foreach ($raw as $key => $text) {
@@ -669,9 +671,9 @@ final class AssetLibraryController
             return [];
         }
         $rgb = static fn (string $triple): string => 'rgb(' . str_replace(',', ', ', $triple) . ')';
-        $out = [['label' => 'Dominant', 'hex' => $data['color'], 'rgb' => $rgb($data['rgb'])]];
+        $out = [['label' => FolioText::get('folio.assets.dominant'), 'hex' => $data['color'], 'rgb' => $rgb($data['rgb'])]];
         foreach ($data['palette'] as $i => $hex) {
-            $out[] = ['label' => 'Palette ' . ($i + 1), 'hex' => $hex, 'rgb' => $rgb($data['palette_rgb'][$i])];
+            $out[] = ['label' => FolioText::get('folio.assets.palette', ['number' => $i + 1]), 'hex' => $hex, 'rgb' => $rgb($data['palette_rgb'][$i])];
         }
 
         return $out;

@@ -1,11 +1,11 @@
 {% extends layout|default('@folio/admin/_layout.twig') %}
-{% block title %}Folio — Assets{% endblock %}
-{% block page_title %}{{ picker ? 'Choose ' ~ (multiple ? 'assets' : 'an asset') : 'Assets' }}{% endblock %}
+{% block title %}Folio — {{ t('folio.nav.assets') }}{% endblock %}
+{% block page_title %}{{ picker ? t(multiple ? 'folio.assets.choose_many' : 'folio.assets.choose_one') : t('folio.nav.assets') }}{% endblock %}
 {% block content %}
 <div class="folio-assets{% if picker %} is-picker{% endif %}">
     {% if errors is not empty %}
         <div class="folio-notice" role="alert">
-            <p>Some files were not uploaded:</p>
+            <p>{{ t('folio.assets.not_uploaded') }}</p>
             <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
         </div>
     {% endif %}
@@ -13,10 +13,10 @@
     <div class="folio-assets-toolbar">
         <form method="get" action="{{ prefix }}/assets" class="folio-assets-search">
             {% if picker %}<input type="hidden" name="picker" value="1"><input type="hidden" name="multiple" value="{{ multiple ? '1' : '0' }}">{% if private is not null %}<input type="hidden" name="private" value="{{ private ? '1' : '0' }}">{% endif %}{% endif %}
-            <input type="search" name="q" value="{{ q }}" placeholder="Search name, title or alt text" aria-label="Search assets">
-            <select name="kind" aria-label="Kind">
-                <option value="">All kinds</option>
-                {% for k, label in {'image': 'Images', 'video': 'Videos', 'document': 'Documents'} %}
+            <input type="search" name="q" value="{{ q }}" placeholder="{{ t('folio.assets.search_placeholder') }}" aria-label="{{ t('folio.assets.search_label') }}">
+            <select name="kind" aria-label="{{ t('folio.assets.kind') }}">
+                <option value="">{{ t('folio.assets.all_kinds') }}</option>
+                {% for k, label in {'image': t('folio.assets.kinds.image'), 'video': t('folio.assets.kinds.video'), 'document': t('folio.assets.kinds.document')} %}
                     <option value="{{ k }}"{% if kind == k %} selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
@@ -25,7 +25,7 @@
                     <div class="folio-assets-filter">{{ f.html|raw }}</div>
                 {% else %}
                     <select name="f[{{ f.name }}]" aria-label="{{ f.label }}">
-                        <option value="">{{ f.label }}: any</option>
+                        <option value="">{{ t('folio.assets.filter_any', {label: f.label}) }}</option>
                         {% for value, text in f.options %}
                             <option value="{{ value }}"{% if f.value == value ~ '' %} selected{% endif %}>{{ text }}</option>
                         {% endfor %}
@@ -33,10 +33,10 @@
                 {% endif %}
             {% endfor %}
             <input type="hidden" name="view" value="{{ view }}">
-            <button type="submit" class="btn btn-secondary">Filter</button>
+            <button type="submit" class="btn btn-secondary">{{ t('folio.common.filter') }}</button>
         </form>
-        <nav class="folio-assets-views" aria-label="View">
-            {% for v, label in {'grid': 'Grid', 'list': 'List'} %}
+        <nav class="folio-assets-views" aria-label="{{ t('folio.assets.view') }}">
+            {% for v, label in {'grid': t('folio.assets.grid'), 'list': t('folio.assets.list')} %}
                 <a class="btn btn-ghost{% if view == v %} is-active{% endif %}" href="{{ prefix }}/assets?{{ (query|merge({'view': v}))|url_encode }}"{% if view == v %} aria-current="true"{% endif %}>{{ label }}</a>
             {% endfor %}
         </nav>
@@ -44,22 +44,23 @@
         <form method="post" action="{{ prefix }}/assets" enctype="multipart/form-data" class="folio-assets-upload">
             <input type="hidden" name="_csrf_token" value="{{ csrf }}">
             {% if picker %}<input type="hidden" name="picker" value="1"><input type="hidden" name="multiple" value="{{ multiple ? '1' : '0' }}">{% if private is not null %}<input type="hidden" name="private" value="{{ private ? '1' : '0' }}">{% endif %}{% endif %}
-            <input type="file" name="files[]" multiple aria-label="Files to upload">
-            <button type="submit" class="btn btn-primary">Upload</button>
+            <input type="file" name="files[]" multiple aria-label="{{ t('folio.assets.files_to_upload') }}">
+            <button type="submit" class="btn btn-primary">{{ t('folio.fields.upload') }}</button>
         </form>
         {% endif %}
     </div>
 
     {% if items is empty %}
-        <div class="folio-empty"><p>{{ q or kind or filtered ? 'No assets match.' : 'No assets yet. Upload some files.' }}</p></div>
+        <div class="folio-empty"><p>{{ t(q or kind or filtered ? 'folio.assets.no_match' : 'folio.assets.empty') }}</p></div>
     {% else %}
+        <p class="folio-help folio-assets-count">{{ t('folio.assets.count', {}, total) }}</p>
         {% if view == 'list' %}
             {% include '@folio/admin/assets/_list.twig' %}
         {% else %}
             {% include '@folio/admin/assets/_grid.twig' %}
         {% endif %}
         {% if pages > 1 %}
-            <nav class="folio-pagination" aria-label="Pages">
+            <nav class="folio-pagination" aria-label="{{ t('folio.list.pages') }}">
                 {% for p in 1..pages %}
                     <a class="btn btn-ghost{% if p == page %} is-active{% endif %}" href="{{ prefix }}/assets?{{ (query|merge({'view': view, 'page': p}))|url_encode }}">{{ p }}</a>
                 {% endfor %}

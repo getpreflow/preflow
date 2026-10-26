@@ -8,6 +8,7 @@ use Nyholm\Psr7\Response;
 use Preflow\Data\Locales;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\BlocksFieldType;
+use Preflow\Folio\FolioText;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -34,7 +35,7 @@ final class BlockEditorController
         $name = is_string($query['name'] ?? null) ? $query['name'] : '';
         $uid = is_string($query['uid'] ?? null) ? $query['uid'] : '';
         if (preg_match(self::NAME, $name) !== 1 || preg_match('/^[a-f0-9]{16}$/', $uid) !== 1) {
-            return new Response(400, [], 'Invalid block reference');
+            return new Response(400, [], FolioText::get('folio.errors.invalid_block'));
         }
         $locale = is_string($query['locale'] ?? null) && $this->locales->has($query['locale']) ? $query['locale'] : $this->locales->default;
         $depth = max(0, (int) ($query['depth'] ?? 0));
@@ -65,7 +66,7 @@ final class BlockEditorController
             : null;
 
         return $html === null
-            ? new Response(404, [], 'Nothing to duplicate')
+            ? new Response(404, [], FolioText::get('folio.errors.nothing_to_duplicate'))
             : new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
     }
 
@@ -82,7 +83,7 @@ final class BlockEditorController
         $query = $request->getQueryParams();
         $name = is_string($query['name'] ?? null) ? $query['name'] : '';
         if (preg_match(self::NAME, $name) !== 1) {
-            return new Response(400, [], 'Invalid field name');
+            return new Response(400, [], FolioText::get('folio.errors.invalid_field'));
         }
         $locale = is_string($query['locale'] ?? null) && $this->locales->has($query['locale']) ? $query['locale'] : $this->locales->default;
         $depth = max(0, (int) ($query['depth'] ?? 0));
@@ -93,7 +94,7 @@ final class BlockEditorController
             : null;
 
         if ($html === null) {
-            return new Response(404, [], 'Unknown block');
+            return new Response(404, [], FolioText::get('folio.errors.unknown_block'));
         }
 
         return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html);

@@ -156,6 +156,153 @@ final class AdminTranslationTest extends TestCase
         $this->assertStringNotContainsString('</script', $m[1]);
     }
 
+    /** Part 2: English source texts of the asset, users, roles, settings, extensions, cache and error screens. */
+    private const array ENGLISH_PART2 = ['Replace', 'Earlier versions', 'Edit image', 'Rotate left', 'Rotate right', 'Clear cache', 'Not used anywhere.', 'Upload', 'Details', 'Usage', 'Alt text', 'Grid', 'List', 'Select', 'All kinds', 'Images', 'Videos', 'Documents', 'Apply crop', 'Image crop', 'Remove crop', 'Ratio', 'Free', 'Formats', 'Download original', 'Choose an asset', 'Files', 'Size', 'Added', 'Clear all', 'Reset OPcache', 'Memory used', 'Hit rate', 'Installed', 'Not installed', 'Enabled', 'Disabled', 'Enable', 'No access', 'Ask an administrator if you need it.', "You don't have access to this.", 'Not found', 'Folio extensions', 'Folio blocks'];
+
+    /** @return array<string, array{string, list<string>, list<string>}> locale, texts that must show, English words that are the same in it */
+    public static function localesPart2(): array
+    {
+        return [
+            'German' => ['de', ['3 Dateien', 'Ersetzen', 'Frühere Versionen', 'Bild bearbeiten', 'Nach links drehen', 'Nirgends verwendet.', 'Cache leeren', 'Kein Zugriff', 'Erweiterungen'], ['Filter', 'Details', 'Formats', 'Videos']],
+            'French' => ['fr', ['3 fichiers', 'Remplacer', 'Versions précédentes', 'Modifier l’image', 'Pivoter à gauche', 'Utilisé nulle part.', 'Vider le cache', 'Accès refusé', 'Extensions'], ['Images', 'Formats', 'Documents']],
+        ];
+    }
+
+    /** Three PNGs in the library; the first replaced once (so it has an earlier version). @return list<string> their ids */
+    private function seedAssets(): array
+    {
+        $library = $this->flow->container()->get(\Preflow\Media\MediaLibrary::class);
+        $ids = [];
+        foreach (['red' => [255, 0, 0], 'green' => [0, 255, 0], 'blue' => [0, 0, 255]] as $name => [$r, $g, $b]) {
+            $image = imagecreatetruecolor(160, 120);
+            imagefill($image, 0, 0, (int) imagecolorallocate($image, $r, $g, $b));
+            $file = $this->dir . '/' . $name . '.png';
+            imagepng($image, $file);
+            $ids[] = $library->importFile($file, $name . '.png', null)->id;
+        }
+        $library->replace($ids[0], $this->dir . '/green.png', null);
+
+        return $ids;
+    }
+
+    /** @param list<string> $same */
+    private function assertTranslatedPart2(string $html, string $page, array $same): void
+    {
+        $this->assertTranslated($html, $page, $same);
+        $text = preg_replace('~<script(?![^>]*application/json)[^>]*>.*?</script>~s', '', $html) ?? '';
+        foreach (array_diff(self::ENGLISH_PART2, $same) as $english) {
+            $this->assertDoesNotMatchRegularExpression('~(?<![\w-])' . preg_quote($english, '~') . '(?![\w-])~u', $text, "{$page}: \"{$english}\" is still English");
+        }
+    }
+
+    #[RunInSeparateProcess]
+    #[DataProvider('localesPart2')]
+    #[\PHPUnit\Framework\Attributes\RequiresPhpExtension('gd')]
+    public function test_the_asset_screens_speak_the_users_language(string $locale, array $expected, array $same): void
+    {
+        $ids = $this->seedAssets();
+        $this->signInAs($locale);
+
+        $pages = [
+            'library (grid)' => $this->html('/folio/assets'),
+            'library (list)' => $this->html('/folio/assets?view=list'),
+            'asset page' => $this->html('/folio/assets/' . $ids[0]),
+            'edit image' => $this->html('/folio/assets/' . $ids[0] . '/edit'),
+            'picker' => $this->html('/folio/assets?picker=1&multiple=0'),
+        ];
+        $this->assertStringContainsString('folio-asset-list', $pages['library (list)'], 'the list view is there');
+        $this->assertStringContainsString('folio-asset-version-list', $pages['asset page'], 'the versions are there');
+        $this->assertStringContainsString('data-folio-image-editor', $pages['edit image'], 'the editor is there');
+        $this->assertStringContainsString('data-folio-pick', $pages['picker'], 'the picker is there');
+        foreach ($pages as $name => $html) {
+            $this->assertStringContainsString('<html lang="' . $locale . '">', $html, $name);
+            $this->assertTranslatedPart2($html, $name, $same);
+            $this->assertStringContainsString('id="folio-i18n"', $html, "{$name}: the JS dictionary");
+        }
+        $all = implode("\n", $pages);
+        foreach (array_slice($expected, 0, 6) as $text) {
+            $this->assertStringContainsString($text, $all);
+        }
+        $this->assertStringContainsString($locale === 'de' ? 'Nirgends verwendet.' : 'Utilisé nulle part.', $pages['asset page']);
+        // The library's dates in the language's pattern.
+        $pattern = $locale === 'de' ? '\d{2}\.\d{2}\.\d{4}' : '\d{2}/\d{2}/\d{4}';
+        $this->assertMatchesRegularExpression('~<td>' . $pattern . '</td>~', $pages['library (list)']);
+    }
+
+    #[RunInSeparateProcess]
+    #[DataProvider('localesPart2')]
+    public function test_users_settings_extensions_cache_and_errors_speak_the_users_language(string $locale, array $expected, array $same): void
+    {
+        $this->write('config/models/settings.json', (string) json_encode([
+            'key' => 'settings', 'table' => 'settings', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Site', 'singleton' => true,
+            'fields' => ['tagline' => ['type' => 'string']],
+        ]));
+        $this->write('app/Folio/Hello/Extension.php', "<?php\nnamespace App\\Folio\\Hello;\n#[\\Preflow\\Folio\\Extension\\Attributes\\FolioExtension(name: 'hello', label: 'Hello', version: '1.0.0')]\nfinal class Extension extends \\Preflow\\Folio\\Extension\\Extension {}\n");
+        require_once $this->dir . '/app/Folio/Hello/Extension.php'; // the test runner's autoloader doesn't know the site's app/
+        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'extensions' => ['allow_admin_changes' => false]];\n");
+        $this->flow = $this->app();
+        $this->signInAs($locale);
+        $ada = $this->staff('ada@site.test');
+
+        $pages = [
+            'users' => $this->html('/folio/staff'),
+            'user' => $this->html('/folio/staff/' . $ada->getId() . '/edit'),
+            'site settings' => $this->html('/folio/settings'),
+            'extensions' => $this->html('/folio/extensions'),
+            'cache' => $this->html('/folio/cache'),
+        ];
+        $forbidden = $this->post('/folio/extensions/hello', ['enabled' => '1']);
+        $this->assertSame(403, $forbidden->getStatusCode());
+        $pages['forbidden (403)'] = (string) $forbidden->getBody();
+        $notFound = $this->send('GET', '/folio/assets/nope');
+        $this->assertSame(404, $notFound->getStatusCode());
+        $pages['not found (404)'] = (string) $notFound->getBody();
+        $this->assertSame($locale === 'de' ? 'Nicht gefunden' : 'Introuvable', $pages['not found (404)']);
+
+        $this->assertStringContainsString('hello', $pages['extensions'], 'the extension is listed');
+        foreach ($pages as $name => $html) {
+            if ($name !== 'not found (404)') {
+                $this->assertStringContainsString('<html lang="' . $locale . '">', $html, $name);
+            }
+            // The users' field labels ("Email", from the field name) come from the site's model file, not Folio's texts.
+            $this->assertTranslatedPart2($html, $name, $name === 'users' || $name === 'user' ? [...$same, 'Email'] : $same);
+        }
+        $all = implode("\n", $pages);
+        foreach (array_slice($expected, 6) as $text) {
+            $this->assertStringContainsString($text, $all);
+        }
+
+        // The cache screen's flash after clearing all.
+        $this->post('/folio/cache/clear', ['all' => '1']);
+        $this->assertStringContainsString($locale === 'de' ? 'Alle Caches geleert' : 'Tous les caches vidés', $this->html('/folio/cache'));
+        // Developer-facing bodies of the block editor and the singleton delete.
+        $this->assertSame($locale === 'de' ? 'Ungültiger Feldname' : 'Nom de champ non valide', (string) $this->send('GET', '/folio/_blocks/x/new?name=1bad')->getBody());
+        $this->assertSame($locale === 'de' ? 'Ein Singleton kann nicht gelöscht werden' : 'Un singleton ne peut pas être supprimé', (string) $this->post('/folio/settings/settings/delete', [])->getBody());
+    }
+
+    public function test_media_messages_are_mapped_to_folio_texts(): void
+    {
+        $previous = FolioText::use(self::translator('de'));
+        try {
+            $this->assertSame('braucht Imagick für farbgetreue Varianten', \Preflow\Folio\Media\MediaMessages::note(\Preflow\Media\MediaLibrary::NOTE_NEEDS_IMAGICK));
+            $this->assertSame('a.svg: Dateien vom Typ image/svg+xml sind nicht erlaubt.', \Preflow\Folio\Media\MediaMessages::text('a.svg: files of type image/svg+xml are not allowed.'));
+            $this->assertSame('big.png ist größer als die Grenze von 2 MB.', \Preflow\Folio\Media\MediaMessages::text('big.png is larger than the 2 MB limit.'));
+            $this->assertSame('x.pdf: Ein Bild kann nur durch ein anderes Bild ersetzt werden.', \Preflow\Folio\Media\MediaMessages::text('x.pdf: a image can only be replaced by another image.'));
+            $this->assertSame('Something else entirely.', \Preflow\Folio\Media\MediaMessages::text('Something else entirely.'));
+            $this->assertSame('custom note', \Preflow\Folio\Media\MediaMessages::note('custom note'));
+        } finally {
+            FolioText::use($previous);
+        }
+        $this->assertSame('a.svg: files of type image/svg+xml are not allowed.', \Preflow\Folio\Media\MediaMessages::text('a.svg: files of type image/svg+xml are not allowed.'));
+    }
+
+    public function test_the_image_editor_script_holds_no_english_ui_text(): void
+    {
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/assets/image-editor.js');
+        $code = (string) preg_replace(['~/\*.*?\*/~s', '~//[^\n]*~'], '', $js);
+        $this->assertDoesNotMatchRegularExpression("~['\"][A-Z][a-z]+( [a-z]+)*[.!?]?['\"]~", $code, 'a UI text in image-editor.js');
+    }
+
     public function test_admin_js_and_the_preview_editor_hold_no_english_ui_text(): void
     {
         $root = dirname(__DIR__, 2) . '/assets/';

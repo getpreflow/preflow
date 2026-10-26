@@ -1,7 +1,7 @@
 {% extends '@folio/admin/_layout.twig' %}
-{% block title %}Folio — Edit {{ asset.label }}{% endblock %}
-{% block page_title %}Edit image: {{ asset.label }}{% endblock %}
-{% block actions %}<a class="btn btn-secondary" href="{{ back }}">← Assets</a>{% endblock %}
+{% block title %}Folio — {{ t('folio.assets.edit_title', {label: asset.label}) }}{% endblock %}
+{% block page_title %}{{ t('folio.assets.edit_heading', {label: asset.label}) }}{% endblock %}
+{% block actions %}<a class="btn btn-secondary" href="{{ back }}">{{ t('folio.assets.back') }}</a>{% endblock %}
 {% block content %}
 {% set tab = 'edit' %}
 {% set editable = true %}
@@ -9,12 +9,12 @@
 {# Every form posts one op to {prefix}/assets/{id}/edit; image-editor.js fills x, y, w, h (percent of the
    turned and mirrored original) from Cropper.js. No inline styles: sizes come from image-editor.css. #}
 {% set action = prefix ~ '/assets/' ~ asset.id ~ '/edit' ~ back_q %}
-<section class="folio-image-editor" data-folio-image-editor aria-label="Edit image">
+<section class="folio-image-editor" data-folio-image-editor aria-label="{{ t('folio.assets.edit_image') }}">
     {% if notice %}<p class="folio-saved" role="status">{{ notice }}</p>{% endif %}
     {% if error %}<div class="folio-notice" role="alert"><p>{{ error }}</p></div>{% endif %}
 
     <div class="folio-image-editor-tools">
-        {% for op, label in {'rotate-left': 'Rotate left', 'rotate-right': 'Rotate right', 'flip-h': 'Mirror ↔', 'flip-v': 'Mirror ↕'} %}
+        {% for op, label in {'rotate-left': t('folio.assets.rotate_left'), 'rotate-right': t('folio.assets.rotate_right'), 'flip-h': t('folio.assets.mirror_h'), 'flip-v': t('folio.assets.mirror_v')} %}
             <form method="post" action="{{ action }}">
                 <input type="hidden" name="_csrf_token" value="{{ csrf }}">
                 <input type="hidden" name="op" value="{{ op }}">
@@ -28,15 +28,15 @@
             <img src="{{ oriented }}" alt="" data-editor-image
                 {%- if crop %} data-crop-x="{{ crop.x }}" data-crop-y="{{ crop.y }}" data-crop-w="{{ crop.width }}" data-crop-h="{{ crop.height }}"{% endif %}>
         {% else %}
-            <p class="folio-help">The image can't be shown for cropping here (no WebP support, or it needs Imagick). Rotate and mirror still work.</p>
+            <p class="folio-help">{{ t('folio.assets.no_cropper') }}</p>
         {% endif %}
     </div>
     <p class="folio-asset-meta">
-        Delivered {{ delivered.width }}×{{ delivered.height }}{% if edited %} · original {{ asset.width }}×{{ asset.height }}{% endif %}
+        {{ t('folio.assets.delivered', {size: delivered.width ~ '×' ~ delivered.height}) }}{% if edited %} · {{ t('folio.assets.original') }} {{ asset.width }}×{{ asset.height }}{% endif %}
     </p>
 
     <div class="folio-image-editor-crop">
-        <h2>Image crop</h2>
+        <h2>{{ t('folio.assets.image_crop') }}</h2>
         <form method="post" action="{{ action }}" class="folio-image-editor-row" data-editor-rect>
             <input type="hidden" name="_csrf_token" value="{{ csrf }}">
             <input type="hidden" name="op" value="crop">
@@ -44,39 +44,39 @@
             <input type="hidden" name="y" value="">
             <input type="hidden" name="w" value="">
             <input type="hidden" name="h" value="">
-            <label class="folio-image-editor-ratio">Ratio
+            <label class="folio-image-editor-ratio">{{ t('folio.assets.ratio') }}
                 <select data-editor-ratio>
                     {% for label, value in ratios %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
                 </select>
             </label>
-            <button type="submit" class="btn btn-primary" data-editor-apply>Apply crop</button>
+            <button type="submit" class="btn btn-primary" data-editor-apply>{{ t('folio.assets.apply_crop') }}</button>
         </form>
         {% if crop %}
         <form method="post" action="{{ action }}">
             <input type="hidden" name="_csrf_token" value="{{ csrf }}">
             <input type="hidden" name="op" value="crop">
             <input type="hidden" name="clear" value="1">
-            <button type="submit" class="btn btn-ghost">Remove crop</button>
+            <button type="submit" class="btn btn-ghost">{{ t('folio.assets.remove_crop') }}</button>
         </form>
         {% endif %}
-        <p class="folio-help">Drag on the image to choose the area. Rotating clears the formats' own cuts.</p>
+        <p class="folio-help">{{ t('folio.assets.crop_help') }}</p>
     </div>
 
     {% if formats is not empty %}
     <div class="folio-image-editor-formats">
-        <h2>Formats</h2>
+        <h2>{{ t('folio.assets.formats') }}</h2>
         <ul class="folio-image-editor-format-list">
             {% for f in formats %}
                 <li class="folio-image-editor-format" data-preset="{{ f.name }}">
                     {% if f.cut %}<img class="folio-image-editor-cut" src="{{ f.cut }}" alt="" width="{{ f.cut_width }}" height="{{ f.cut_height }}" loading="lazy">{% endif %}
                     <div class="folio-image-editor-format-info">
                         <strong>{{ f.name }}</strong>
-                        <span class="folio-asset-meta">{{ f.width }}×{{ f.height }}, {{ f.fit }}{% if f.own %} · own cut{% endif %}</span>
+                        <span class="folio-asset-meta">{{ f.width }}×{{ f.height }}, {{ f.fit }}{% if f.own %} · {{ t('folio.assets.own_cut') }}{% endif %}</span>
                     </div>
                     {% if f.adjustable %}
                     <div class="folio-image-editor-format-actions">
                         <button type="button" class="btn btn-secondary" data-editor-adjust data-ratio="{{ f.ratio }}"
-                            {%- if f.region %} data-region-x="{{ f.region.x }}" data-region-y="{{ f.region.y }}" data-region-w="{{ f.region.width }}" data-region-h="{{ f.region.height }}"{% endif %}>Adjust</button>
+                            {%- if f.region %} data-region-x="{{ f.region.x }}" data-region-y="{{ f.region.y }}" data-region-w="{{ f.region.width }}" data-region-h="{{ f.region.height }}"{% endif %}>{{ t('folio.assets.adjust') }}</button>
                         <form method="post" action="{{ action }}" data-editor-rect data-editor-save hidden>
                             <input type="hidden" name="_csrf_token" value="{{ csrf }}">
                             <input type="hidden" name="op" value="format-crop">
@@ -85,8 +85,8 @@
                             <input type="hidden" name="y" value="">
                             <input type="hidden" name="w" value="">
                             <input type="hidden" name="h" value="">
-                            <button type="submit" class="btn btn-primary">Save cut</button>
-                            <button type="button" class="btn btn-ghost" data-editor-cancel>Cancel</button>
+                            <button type="submit" class="btn btn-primary">{{ t('folio.assets.save_cut') }}</button>
+                            <button type="button" class="btn btn-ghost" data-editor-cancel>{{ t('folio.common.cancel') }}</button>
                         </form>
                         {% if f.own %}
                         <form method="post" action="{{ action }}">
@@ -94,7 +94,7 @@
                             <input type="hidden" name="op" value="format-crop">
                             <input type="hidden" name="preset" value="{{ f.name }}">
                             <input type="hidden" name="reset" value="1">
-                            <button type="submit" class="btn btn-ghost">Reset</button>
+                            <button type="submit" class="btn btn-ghost">{{ t('folio.assets.reset') }}</button>
                         </form>
                         {% endif %}
                     </div>
@@ -102,7 +102,7 @@
                 </li>
             {% endfor %}
         </ul>
-        <p class="folio-help">Without an own cut, a cover format follows the focal point (set it on the Details tab).</p>
+        <p class="folio-help">{{ t('folio.assets.formats_help') }}</p>
     </div>
     {% endif %}
 </section>

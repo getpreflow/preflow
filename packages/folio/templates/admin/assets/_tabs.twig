@@ -1,7 +1,7 @@
 {# Details | Edit image; the second only for editable images and users who may edit. tab: 'details' or 'edit'. #}
-<nav class="folio-asset-tabs" aria-label="Asset">
-    <a href="{{ prefix }}/assets/{{ asset.id }}{{ back_q }}"{% if tab == 'details' %} aria-current="page"{% endif %}>Details</a>
+<nav class="folio-asset-tabs" aria-label="{{ t('folio.assets.tabs') }}">
+    <a href="{{ prefix }}/assets/{{ asset.id }}{{ back_q }}"{% if tab == 'details' %} aria-current="page"{% endif %}>{{ t('folio.assets.details') }}</a>
     {%- if editable and can('assets.edit') %}
-    <a href="{{ prefix }}/assets/{{ asset.id }}/edit{{ back_q }}"{% if tab == 'edit' %} aria-current="page"{% endif %}>Edit image</a>
+    <a href="{{ prefix }}/assets/{{ asset.id }}/edit{{ back_q }}"{% if tab == 'edit' %} aria-current="page"{% endif %}>{{ t('folio.assets.edit_image') }}</a>
     {%- endif %}
 </nav>

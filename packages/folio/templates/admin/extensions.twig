@@ -1,37 +1,37 @@
 {% extends "@folio/admin/_layout.twig" %}
-{% block title %}Folio — Extensions{% endblock %}
-{% block page_title %}Extensions{% endblock %}
+{% block title %}Folio — {{ t('folio.nav.extensions') }}{% endblock %}
+{% block page_title %}{{ t('folio.nav.extensions') }}{% endblock %}
 {% macro toggle(prefix, csrf, name, on, part = null) %}
     <form method="post" action="{{ prefix }}/extensions/{{ name }}">
         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
         {% if part %}<input type="hidden" name="part" value="{{ part }}">{% endif %}
         <input type="hidden" name="enabled" value="{{ on ? '0' : '1' }}">
-        <button type="submit" class="btn {{ on ? 'btn-ghost' : 'btn-secondary' }} btn-sm">{{ on ? 'Disable' : 'Enable' }}</button>
+        <button type="submit" class="btn {{ on ? 'btn-ghost' : 'btn-secondary' }} btn-sm">{{ t(on ? 'folio.extensions.disable' : 'folio.extensions.enable') }}</button>
     </form>
 {% endmacro %}
 {% block content %}
     {% import _self as ui %}
     {% if allow_changes %}
-        <div class="folio-notice" role="status"><p>Changes are written to config/folio/extensions.json and apply on the next request. Install steps don't run here: run <code>preflow folio:extensions:apply</code> (deploys do). Disabling keeps all data.</p></div>
+        <div class="folio-notice" role="status"><p>{{ t('folio.extensions.changes') }}</p></div>
     {% else %}
-        <div class="folio-notice" role="status"><p>Read-only: config/folio/extensions.json is the source. Change it (or run <code>preflow folio:extensions:enable</code> / <code>disable</code>) in development and deploy; deploys run <code>preflow folio:extensions:apply</code>.</p></div>
+        <div class="folio-notice" role="status"><p>{{ t('folio.extensions.read_only') }}</p></div>
     {% endif %}
     {% if extensions is empty %}
         <div class="folio-empty">
             <svg class="folio-icon folio-empty-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-settings"></use></svg>
-            <p>No extensions found (app/Folio/*/Extension.php or a Composer package's extra.folio.extension).</p>
+            <p>{{ t('folio.extensions.empty') }}</p>
         </div>
     {% else %}
         <div class="folio-table-wrap">
         <table class="folio-table">
-            <thead><tr><th>Extension</th><th>Version</th><th>Installed</th><th>State</th>{% if allow_changes %}<th><span class="folio-sr">Actions</span></th>{% endif %}</tr></thead>
+            <thead><tr><th>{{ t('folio.extensions.extension') }}</th><th>{{ t('folio.extensions.version') }}</th><th>{{ t('folio.extensions.installed') }}</th><th>{{ t('folio.extensions.state') }}</th>{% if allow_changes %}<th><span class="folio-sr">{{ t('folio.common.actions') }}</span></th>{% endif %}</tr></thead>
             <tbody>
             {% for ext in extensions %}
                 <tr>
                     <td><strong>{{ ext.label }}</strong> <code>{{ ext.name }}</code>{% if ext.description %}<br>{{ ext.description }}{% endif %}</td>
                     <td>{{ ext.version }}</td>
-                    <td>{% if ext.installed is null %}<span class="folio-badge is-draft">Not installed</span>{% elseif ext.installed != ext.version %}<span class="folio-badge is-changed">{{ ext.installed }}</span>{% else %}{{ ext.installed }}{% endif %}</td>
-                    <td><span class="folio-badge {{ ext.enabled ? 'is-published' : 'is-draft' }}">{{ ext.enabled ? 'Enabled' : 'Disabled' }}</span></td>
+                    <td>{% if ext.installed is null %}<span class="folio-badge is-draft">{{ t('folio.extensions.not_installed') }}</span>{% elseif ext.installed != ext.version %}<span class="folio-badge is-changed">{{ ext.installed }}</span>{% else %}{{ ext.installed }}{% endif %}</td>
+                    <td><span class="folio-badge {{ ext.enabled ? 'is-published' : 'is-draft' }}">{{ t(ext.enabled ? 'folio.extensions.enabled' : 'folio.extensions.disabled') }}</span></td>
                     {% if allow_changes %}<td><div class="folio-row-actions">{{ ui.toggle(prefix, csrf, ext.name, ext.enabled) }}</div></td>{% endif %}
                 </tr>
                 {% for part in ext.parts %}
@@ -39,7 +39,7 @@
                         <td>&emsp;{{ part.label }} <code>{{ part.id }}</code></td>
                         <td></td>
                         <td></td>
-                        <td><span class="folio-badge {{ part.enabled ? 'is-published' : 'is-draft' }}">{{ part.enabled ? 'On' : 'Off' }}</span></td>
+                        <td><span class="folio-badge {{ part.enabled ? 'is-published' : 'is-draft' }}">{{ t(part.enabled ? 'folio.extensions.on' : 'folio.extensions.off') }}</span></td>
                         {% if allow_changes %}<td><div class="folio-row-actions">{% if ext.enabled %}{{ ui.toggle(prefix, csrf, ext.name, part.enabled, part.id) }}{% endif %}</div></td>{% endif %}
                     </tr>
                 {% endfor %}

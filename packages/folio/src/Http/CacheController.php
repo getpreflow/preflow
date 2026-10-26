@@ -8,6 +8,7 @@ use Nyholm\Psr7\Response;
 use Preflow\Core\Cache\Bytes;
 use Preflow\Core\Cache\CacheRegistry;
 use Preflow\Core\Cache\OpcacheStatus;
+use Preflow\Folio\FolioText;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -19,6 +20,14 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final class CacheController
 {
+    /** The caches Folio knows by key, shown under its own name (others keep the name they register with). */
+    private const array LABELS = [
+        'folio.extensions' => 'folio.cache.extensions',
+        'folio.blocks' => 'folio.cache.blocks',
+        'data.json' => 'folio.cache.data_json',
+        'blade' => 'folio.cache.blade',
+    ];
+
     public function __construct(
         private readonly CacheRegistry $caches,
         private readonly OpcacheStatus $opcache,
@@ -33,7 +42,7 @@ final class CacheController
             $stats = $source->stats();
             $caches[] = [
                 'key' => $source->key(),
-                'label' => $source->label(),
+                'label' => self::label($source),
                 'entries' => $stats->entries,
                 'size' => Bytes::human($stats->bytes),
                 'note' => $stats->note,
@@ -65,17 +74,17 @@ final class CacheController
                 $entries += $cleared->entries;
                 $bytes += $cleared->bytes;
             }
-            self::flash($request, 'success', "Cleared all caches: {$entries} file(s), " . Bytes::human($bytes) . '.');
+            self::flash($request, 'success', FolioText::get('folio.cache.cleared_all', ['count' => $entries, 'size' => Bytes::human($bytes)]));
 
             return $this->back();
         }
 
         $source = is_string($body['key'] ?? null) ? $this->caches->get($body['key']) : null;
         if ($source === null) {
-            return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], 'Unknown cache');
+            return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], FolioText::get('folio.cache.unknown'));
         }
         $cleared = $source->clear();
-        self::flash($request, 'success', "{$source->label()}: {$cleared->entries} file(s), " . Bytes::human($cleared->bytes) . ' cleared.');
+        self::flash($request, 'success', FolioText::get('folio.cache.cleared', ['label' => self::label($source), 'count' => $cleared->entries, 'size' => Bytes::human($cleared->bytes)]));
 
         return $this->back();
     }
@@ -84,14 +93,21 @@ final class CacheController
     public function opcacheReset(ServerRequestInterface $request): ResponseInterface
     {
         if (!$this->opcache->enabled()) {
-            self::flash($request, 'error', 'OPcache is off.');
+            self::flash($request, 'error', FolioText::get('folio.cache.opcache_off'));
         } elseif ($this->opcache->reset()) {
-            self::flash($request, 'success', 'OPcache reset.');
+            self::flash($request, 'success', FolioText::get('folio.cache.opcache_reset'));
         } else {
-            self::flash($request, 'error', 'OPcache reset failed.');
+            self::flash($request, 'error', FolioText::get('folio.cache.opcache_reset_failed'));
         }
 
         return $this->back();
+    }
+
+    private static function label(\Preflow\Core\Cache\CacheSource $source): string
+    {
+        $key = self::LABELS[$source->key()] ?? null;
+
+        return $key !== null ? FolioText::get($key) : $source->label();
     }
 
     private function back(): ResponseInterface

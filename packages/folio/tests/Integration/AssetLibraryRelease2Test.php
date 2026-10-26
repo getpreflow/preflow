@@ -94,7 +94,7 @@ final class AssetLibraryRelease2Test extends TestCase
 
         $this->assertStringContainsString('folio-asset-versions', $panel);
         $this->assertMatchesRegularExpression('#<li class="folio-asset-version">\s*<span class="folio-asset-version-number">v1</span>#', $panel);
-        $this->assertStringContainsString((new \DateTimeImmutable($v1->createdAt))->format('Y-m-d H:i'), $panel);
+        $this->assertStringContainsString((new \DateTimeImmutable($v1->createdAt))->setTimezone(new \DateTimeZone(date_default_timezone_get()))->format('M j, Y H:i'), $panel); // folio_date(…, 'datetime'), English
         $this->assertStringContainsString((int) ceil($v1->size / 1024) . ' KB · 200×100', $panel);
         $this->assertStringContainsString('href="/files/' . $asset->id . '/v/1"', $panel);
         $this->assertStringContainsString('action="/folio/assets/' . $asset->id . '/versions/1/restore"', $panel);

@@ -1,13 +1,13 @@
 <table class="folio-table folio-asset-list">
-    <thead><tr><th></th><th>Name</th><th>Kind</th><th>Size</th><th>Added</th><th></th></tr></thead>
+    <thead><tr><th></th><th>{{ t('folio.assets.name') }}</th><th>{{ t('folio.assets.kind') }}</th><th>{{ t('folio.assets.size') }}</th><th>{{ t('folio.assets.added') }}</th><th></th></tr></thead>
     <tbody>
     {% for item in items %}
         <tr class="folio-asset{% if item.id in selected %} is-selected{% endif %}" data-asset-id="{{ item.id }}">
             <td>{% if item.thumb %}<img class="folio-asset-mini" src="{{ item.thumb }}" alt="" loading="lazy">{% endif %}</td>
             <td>{% if picker %}{{ item.label }}{% else %}<a href="{{ prefix }}/assets/{{ item.id }}{{ detail_q }}">{{ item.label }}</a>{% endif %}</td>
-            <td>{{ item.kind }}</td>
-            <td>{{ (item.size / 1024)|round(0, 'ceil') }} KB{% if item.width %} · {{ item.width }}×{{ item.height }}{% endif %}</td>
-            <td>{{ item.created_at|date('Y-m-d') }}</td>
+            <td>{{ t('folio.assets.kind_names.' ~ item.kind) }}</td>
+            <td>{{ t('folio.assets.size_kb', {size: folio_number((item.size / 1024)|round(0, 'ceil'))}) }}{% if item.width %} · {{ item.width }}×{{ item.height }}{% endif %}</td>
+            <td>{{ folio_date(item.created_at) }}</td>
             <td>{% include '@folio/admin/assets/_pick.twig' %}</td>
         </tr>
     {% endfor %}
