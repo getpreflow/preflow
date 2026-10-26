@@ -10,6 +10,23 @@
                 <p class="folio-help">{{ email }}</p>
             </div>
         </section>
+        {% set interface_locales = folio_interface_locales() %}
+        {% if interface_locales|length > 1 %}
+        <section class="folio-panel">
+            <h2 class="folio-panel-title">{{ t('folio.layout.language') }}</h2>
+            <form class="folio-panel-body" method="post" action="{{ locale_action }}">
+                {{ csrf_field()|raw }}
+                <p class="folio-help">{{ t('folio.account.language_help') }}</p>
+                <div class="form-group">
+                    <label for="locale" class="folio-sr">{{ t('folio.layout.language') }}</label>
+                    <select name="locale" id="locale">
+                        {% for code, name in interface_locales %}<option value="{{ code }}"{{ code == interface_locale ? ' selected' : '' }}>{{ name }}</option>{% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">{{ t('folio.common.save') }}</button>
+            </form>
+        </section>
+        {% endif %}
         <section class="folio-panel">
             <h2 class="folio-panel-title">Change password</h2>
             <form class="folio-panel-body" method="post" action="{{ password_action }}">

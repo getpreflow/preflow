@@ -19,7 +19,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * Every admin route asks one permission, by handler. "{type}" is the route's
  * type; "*.edit|create" means edit or create on any type (block editor
  * fragments have no type). Extension screens ask the permission their
- * #[FolioScreen] declares; SIGNED_IN asks none (the own account page);
+ * #[FolioScreen] declares; SIGNED_IN asks none (the own account page, the language switch);
  * any other handler is refused.
  * Runs after AdminAuthMiddleware, so the user is known.
  */
@@ -73,6 +73,7 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'BlockEditorController@duplicate' => '*.edit|create',
         'AccountController@show' => self::SIGNED_IN,
         'AccountController@password' => self::SIGNED_IN,
+        'LocaleController@update' => self::SIGNED_IN,
     ];
 
     public function __construct(

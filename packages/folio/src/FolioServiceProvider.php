@@ -198,12 +198,17 @@ final class FolioServiceProvider extends ServiceProvider
 
         // `preflow migrate` creates the tables of SQL-stored types from their model JSON
         // (the asset table is the media package's own media.table step).
-        // With extensions, the install state's table too (folio:extensions:apply runs the same sync).
+        // With extensions, the install state's table too (folio:extensions:apply runs the same sync);
+        // with sign-in, the user preferences' table.
         $container->bind(\Preflow\Folio\Storage\TableSync::class, fn (Container $c) => new \Preflow\Folio\Storage\TableSync(
             $c->get(TypeCatalog::class),
             $c->get(TypeRegistry::class),
             $c->get(DataManager::class),
-            $extensions->all() !== [] ? [$c->get(\Preflow\Folio\Extension\ExtensionState::class)->definition()] : [],
+            [
+                ...($extensions->all() !== [] ? [$c->get(\Preflow\Folio\Extension\ExtensionState::class)->definition()] : []),
+                // With sign-in, the users' own settings (the interface language).
+                ...(file_exists($app->basePath('config/auth.php')) ? [$c->get(\Preflow\Folio\Users\UserPreferences::class)->definition()] : []),
+            ],
         ));
         $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
             'folio.tables',
@@ -420,6 +425,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(ContentLocale::class),
             $c->get(\Preflow\View\AssetCollector::class),
             $c->get(\Preflow\Folio\Http\AdminAssetUrls::class),
+            self::translator($c, $app),
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
             dirname(__DIR__) . '/assets',
@@ -472,6 +478,26 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Auth\AuthManager::class),
             $prefix,
             $c->get(\Preflow\Folio\Http\AdminNav::class),
+        ));
+        // Each user's interface language (UserPreferences), applied per admin request.
+        $container->singleton(\Preflow\Folio\Users\UserPreferences::class, fn (Container $c) => new \Preflow\Folio\Users\UserPreferences(
+            $c->get(DataManager::class),
+        ));
+        $container->singleton(\Preflow\Folio\Http\InterfaceLocales::class, fn (Container $c) => new \Preflow\Folio\Http\InterfaceLocales(
+            self::translator($c, $app),
+            self::interfaceDefault($app, $folioCfg),
+        ));
+        $container->bind(\Preflow\Folio\Http\AdminLocaleMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\AdminLocaleMiddleware(
+            self::translator($c, $app),
+            $c->get(\Preflow\Folio\Http\InterfaceLocales::class),
+            $c->get(\Preflow\Folio\Users\UserPreferences::class),
+            $c->has(TemplateEngineInterface::class) ? $c->get(TemplateEngineInterface::class) : null,
+        ));
+        $container->bind(\Preflow\Folio\Http\LocaleController::class, fn (Container $c) => new \Preflow\Folio\Http\LocaleController(
+            $c->get(\Preflow\Folio\Users\UserPreferences::class),
+            $c->get(\Preflow\Folio\Http\InterfaceLocales::class),
+            self::translator($c, $app),
+            $prefix,
         ));
         $container->bind(\Preflow\Folio\Http\FolioPermissionMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\FolioPermissionMiddleware(
             $c->get(\Preflow\Auth\Access\Access::class),
@@ -569,26 +595,50 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Auth\UserProviderInterface::class),
             self::recordProviders($c),
             static function () use ($c, $app): \Preflow\Folio\Users\StaffMailer {
-                $locale = $c->get(\Preflow\Data\Locales::class)->default;
-                try {
-                    $translator = $c->get(\Preflow\I18n\Translator::class);
-                } catch (\Throwable) { // a core before 0.37 boots no translator without lang/ or config/i18n.php: one for the mails
-                    $translator = new \Preflow\I18n\Translator($app->basePath('lang'), $locale, $locale);
-                }
-                // Declared in composer.json (extra.preflow.translations); this covers apps whose
-                // Composer metadata doesn't list Folio (test apps, a core before 0.37).
-                $translator->addDefaultsIfMissing('folio', dirname(__DIR__) . '/lang', 'admin');
-
                 return new \Preflow\Folio\Users\StaffMailer(
                     $c->get(\Preflow\Notify\Notifier::class),
-                    $translator,
-                    $locale,
+                    self::translator($c, $app),
+                    $c->get(\Preflow\Data\Locales::class)->default, // for recipients without an interface language
                     (string) $app->config()->get('app.name', 'Folio'),
                 );
             },
             $auth->defaultGuardName(),
             $base === '' ? '' : $base . $prefix . '/password',
+            $c->get(\Preflow\Folio\Users\UserPreferences::class),
         );
+    }
+
+    /**
+     * The app's translator with Folio's texts. A core before 0.37 boots none without lang/ or
+     * config/i18n.php: then one is made and bound here.
+     */
+    private static function translator(Container $c, Application $app): \Preflow\I18n\Translator
+    {
+        if ($c->bound(\Preflow\I18n\Translator::class)) {
+            $translator = $c->get(\Preflow\I18n\Translator::class);
+        } else {
+            $locale = (string) $app->config()->get('app.locale', 'en');
+            $translator = new \Preflow\I18n\Translator($app->basePath('lang'), $locale, $locale);
+            $c->instance(\Preflow\I18n\Translator::class, $translator);
+        }
+        // Declared in composer.json (extra.preflow.translations); this covers apps whose
+        // Composer metadata doesn't list Folio (test apps, a core before 0.37).
+        $translator->addDefaultsIfMissing('folio', dirname(__DIR__) . '/lang', 'admin');
+
+        return $translator;
+    }
+
+    /**
+     * The admin's default interface language: config/folio.php "locale", else app.locale
+     * (English when Folio has no texts in it, InterfaceLocales::default()).
+     *
+     * @param array<string, mixed> $folioCfg
+     */
+    private static function interfaceDefault(Application $app, array $folioCfg): string
+    {
+        $locale = $folioCfg['locale'] ?? $app->config()->get('app.locale', 'en');
+
+        return is_string($locale) && $locale !== '' ? $locale : 'en';
     }
 
     public function boot(Container $container): void
@@ -655,6 +705,14 @@ final class FolioServiceProvider extends ServiceProvider
                 name: 'folio_extension_asset',
                 callable: fn (string $extension, string $path): string => $container->get(\Preflow\Folio\Extension\ExtensionAssets::class)->url($extension, $path),
                 isSafe: false,
+            ));
+
+            // The interface language of the admin request (AdminLocaleMiddleware updates it) and the
+            // offered languages with their own names (the sidebar switch, the account page).
+            $engine->addGlobal('interface_locale', $container->get(\Preflow\Folio\Http\InterfaceLocales::class)->default());
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_interface_locales',
+                callable: fn (): array => $container->get(\Preflow\Folio\Http\InterfaceLocales::class)->names(),
             ));
 
             // The sidebar: sections and items from the nav model (extensions add theirs), filtered by permission.

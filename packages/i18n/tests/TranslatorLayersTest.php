@@ -74,9 +74,12 @@ final class TranslatorLayersTest extends TestCase
     {
         $t = $this->translator();
         $this->assertSame('Site C', $t->get('adm.c'), 'off by default');
+        $this->assertFalse($t->usesOverrides());
 
         $t->useOverrides(true);
+        $this->assertTrue($t->usesOverrides());
         $t->useOverrides(false);
+        $this->assertFalse($t->usesOverrides());
         $this->assertSame('Site C', $t->get('adm.c'));
         $this->assertSame('Public site A', $t->get('pub.a'));
     }

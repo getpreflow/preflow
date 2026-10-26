@@ -114,43 +114,6 @@ final class LocaleMiddleware implements MiddlewareInterface
 
     private function detectFromAcceptLanguage(ServerRequestInterface $request): ?string
     {
-        $header = $request->getHeaderLine('Accept-Language');
-
-        if ($header === '') {
-            return null;
-        }
-
-        // Parse Accept-Language: de-DE,de;q=0.9,en;q=0.8
-        $parts = explode(',', $header);
-        $languages = [];
-
-        foreach ($parts as $part) {
-            $part = trim($part);
-            $segments = explode(';', $part);
-            $lang = strtolower(trim($segments[0]));
-            $q = 1.0;
-
-            if (isset($segments[1])) {
-                if (preg_match('/q=([0-9.]+)/', $segments[1], $m)) {
-                    $q = (float) $m[1];
-                }
-            }
-
-            // Extract just the language code (e.g., de-DE → de)
-            $shortLang = explode('-', $lang)[0];
-            $languages[$shortLang] = max($languages[$shortLang] ?? 0, $q);
-        }
-
-        // Sort by quality
-        arsort($languages);
-
-        // Find first available match
-        foreach (array_keys($languages) as $lang) {
-            if (in_array($lang, $this->availableLocales, true)) {
-                return $lang;
-            }
-        }
-
-        return null;
+        return AcceptLanguage::best($request->getHeaderLine('Accept-Language'), array_values($this->availableLocales));
     }
 }

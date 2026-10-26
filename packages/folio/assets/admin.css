@@ -1590,3 +1590,11 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
   color: var(--c-text);
   box-shadow: var(--shadow-sm);
 }
+
+/* The interface language switch (sidebar foot), the theme switch's look with letters. */
+.folio-locale-switch button {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}

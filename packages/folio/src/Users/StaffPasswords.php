@@ -13,8 +13,8 @@ use Preflow\Data\DynamicRecord;
 
 /**
  * Passwords of the Folio accounts that are records (any Folio user type behind the default guard,
- * see RecordProviders): invite and reset links by mail, the set-password page's token, the new
- * password. Generic, so Folio needs no user package; rbac's staff actions call it.
+ * see RecordProviders): invite and reset links by mail (in the account's interface language), the
+ * set-password page's token, the new password. Generic, so Folio needs no user package; rbac's staff actions call it.
  *
  * A link's token (preflow/auth Tokens) has the purpose folio.invite (7 days) or folio.reset
  * (1 hour) and the subject "{type}:{id}". A link works only while its account resolves through
@@ -35,6 +35,7 @@ final class StaffPasswords
      * @param \Closure(): StaffMailer $mailer       built on the first mail
      * @param string $passwordUrl                  absolute URL of the set-password page; the token is appended after "/"
      *                                             ('' when app.url is unset: invite and reset throw MissingAppUrl)
+     * @param UserPreferences|null $preferences    the recipients' interface languages (mails in theirs)
      */
     public function __construct(
         private readonly Tokens $tokens,
@@ -46,6 +47,7 @@ final class StaffPasswords
         private readonly \Closure $mailer,
         private readonly string $guard,
         private readonly string $passwordUrl,
+        private readonly ?UserPreferences $preferences = null,
     ) {}
 
     /** Whether the default guard has record users at all (else there is no password page). */
@@ -209,7 +211,8 @@ final class StaffPasswords
         $fields = $this->require($user)->fields();
         $to = (string) $user->get($fields['email']);
         $name = isset($user->getType()->fields['name']) ? trim((string) $user->get('name')) : '';
-        ($this->builtMailer ??= ($this->mailer)())->sendLater($mail, $to, $name !== '' ? $name : $to, $this->passwordUrl . '/' . $token, $this->subject($user));
+        $locale = $this->preferences?->locale((string) $user->getId()); // the auth id of a record user
+        ($this->builtMailer ??= ($this->mailer)())->sendLater($mail, $to, $name !== '' ? $name : $to, $this->passwordUrl . '/' . $token, $this->subject($user), $locale);
     }
 
     private function requireUrl(): void

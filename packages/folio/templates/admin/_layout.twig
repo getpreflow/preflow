@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ interface_locale|default('en') }}">
 <head>
     <meta charset="utf-8">
     <meta name="csp-nonce" content="{{ csp_nonce() }}">
@@ -62,22 +62,31 @@
             {% endfor %}
         </nav>
         <div class="folio-sidebar-foot">
-            <div id="folio-theme-toggle" class="folio-theme-switch" role="group" aria-label="Theme">
-                {% for choice, text in {'system': 'System', 'light': 'Light', 'dark': 'Dark'} %}
-                    <button type="button" data-theme-choice="{{ choice }}" aria-pressed="false" title="{{ text }} theme">
+            <div id="folio-theme-toggle" class="folio-theme-switch" role="group" aria-label="{{ t('folio.layout.theme') }}">
+                {% for choice, text in {'system': t('folio.layout.theme_system'), 'light': t('folio.layout.theme_light'), 'dark': t('folio.layout.theme_dark')} %}
+                    <button type="button" data-theme-choice="{{ choice }}" aria-pressed="false" title="{{ text }}">
                         <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ {'system': 'ui-monitor', 'light': 'ui-sun', 'dark': 'ui-moon'}[choice] }}"></use></svg>
-                        <span class="folio-sr">{{ text }} theme</span>
+                        <span class="folio-sr">{{ text }}</span>
                     </button>
                 {% endfor %}
             </div>
             {% if folio_auth_enabled|default(false) and auth_check() %}
+                {# The interface language: each button posts its locale (no script); shown with two or more languages. #}
+                {% set interface_locales = folio_interface_locales() %}
+                {% if interface_locales|length > 1 %}
+                <form method="post" action="{{ prefix }}/_locale" class="folio-theme-switch folio-locale-switch" aria-label="{{ t('folio.layout.language') }}">{{ csrf_field()|raw }}
+                    {% for code, name in interface_locales %}
+                        <button type="submit" name="locale" value="{{ code }}" lang="{{ code }}" title="{{ name }}" aria-pressed="{{ code == interface_locale ? 'true' : 'false' }}"><span aria-hidden="true">{{ code|upper }}</span><span class="folio-sr">{{ name }}</span></button>
+                    {% endfor %}
+                </form>
+                {% endif %}
                 {% set email = auth_user().email %}
-                <div class="folio-user">{% set account_url = folio_account_url() %}{% if account_url %}<a class="folio-user-link" href="{{ account_url }}" title="Your account">{% endif %}
+                <div class="folio-user">{% set account_url = folio_account_url() %}{% if account_url %}<a class="folio-user-link" href="{{ account_url }}" title="{{ t('folio.layout.your_account') }}">{% endif %}
                     <span class="folio-avatar" aria-hidden="true">{{ email|first|upper }}</span>
                     <span class="folio-user-email" title="{{ email }}">{{ email }}</span>{% if account_url %}</a>{% endif %}
                     <form method="post" action="{{ prefix }}/logout" class="folio-logout">{{ csrf_field()|raw }}
-                        <button type="submit" class="btn btn-ghost btn-icon" title="Log out">
-                            <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-logout"></use></svg><span class="folio-sr">Log out</span>
+                        <button type="submit" class="btn btn-ghost btn-icon" title="{{ t('folio.layout.log_out') }}">
+                            <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-logout"></use></svg><span class="folio-sr">{{ t('folio.layout.log_out') }}</span>
                         </button>
                     </form>
                 </div>

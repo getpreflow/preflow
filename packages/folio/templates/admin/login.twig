@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ interface_locale|default('en') }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex">
-    <title>Folio — Sign in</title>
+    <title>Folio — {{ t('folio.auth.sign_in') }}</title>
     <script nonce="{{ csp_nonce() }}">
     (function () {
         try {
@@ -31,7 +31,7 @@
         <form class="folio-auth-card" method="post" action="{{ login_action|default('') }}">
             {{ csrf_field()|raw }}
             <div class="folio-brand folio-auth-brand">{% include '@folio/admin/_logo.twig' %}<span class="folio-brand-name">Folio</span></div>
-            <h1 class="folio-auth-title">Sign in</h1>
+            <h1 class="folio-auth-title">{{ t('folio.auth.sign_in') }}</h1>
             <p class="folio-auth-lead">Welcome back. Your pages are waiting.</p>
             {% if login_error|default('') %}
                 <div class="folio-alert folio-alert-error" role="alert">{{ login_error }}</div>
@@ -54,7 +54,7 @@
 {% endif %}
             </div>
 {% endif %}
-            <button type="submit" class="btn btn-primary">Sign in</button>
+            <button type="submit" class="btn btn-primary">{{ t('folio.auth.sign_in') }}</button>
         </form>
         <p class="folio-auth-foot">Folio, the content side of <a href="https://preflow.dev" rel="noopener">Preflow</a></p>
     </main>

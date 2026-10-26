@@ -137,6 +137,12 @@ final class Translator
         $this->overridesOn = $on;
     }
 
+    /** Whether overrides are on now (so a caller that turns them on can restore the state it found). */
+    public function usesOverrides(): bool
+    {
+        return $this->overridesOn;
+    }
+
     /**
      * Every group with package files or a site file, sorted.
      *

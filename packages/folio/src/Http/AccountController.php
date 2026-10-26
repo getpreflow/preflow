@@ -17,8 +17,8 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * The signed-in account's own page ({prefix}/_account, from the user menu): who you are and
- * "change my password". Any signed-in record user of the default guard may use it, without a
+ * The signed-in account's own page ({prefix}/_account, from the user menu): who you are, the
+ * interface language (posted to {prefix}/_locale, LocaleController) and "change my password". Any signed-in record user of the default guard may use it, without a
  * permission (FolioPermissionMiddleware::SIGNED_IN); a config user has no page (404). Only the
  * password changes, through StaffPasswords::setPassword (the epoch goes up, other sessions,
  * remember-me logins and links end); this browser signs in afresh. The current password is
@@ -108,6 +108,7 @@ final class AccountController
             'error' => $error,
             'password_min' => $this->passwordMin,
             'password_action' => $this->prefix . '/_account/password',
+            'locale_action' => $this->prefix . '/_locale',
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'private, no-store'], $html);

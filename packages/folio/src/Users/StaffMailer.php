@@ -11,7 +11,7 @@ use Preflow\Notify\Notifier;
 /**
  * The invite and reset mails of Folio accounts: plain text, the words from Folio's lang files
  * (folio.mail.invite.*, folio.mail.reset.*; a site's lang/{locale}/folio.php is laid over them)
- * in the site's default language, as accounts have no language of their own. Queued with
+ * in the recipient's interface language, else the site's default language. Queued with
  * Notifier::sendLater, so an answer takes as long whether or not a mail follows. The sender is
  * the mail channel's own (config/notify.php).
  */
@@ -24,15 +24,19 @@ final class StaffMailer
         private readonly string $site,
     ) {}
 
-    /** @param 'invite'|'reset' $mail */
-    public function sendLater(string $mail, string $to, string $name, string $link, string $subject): void
+    /**
+     * @param 'invite'|'reset' $mail
+     * @param string|null $locale the recipient's interface language (null: the site default)
+     */
+    public function sendLater(string $mail, string $to, string $name, string $link, string $subject, ?string $locale = null): void
     {
+        $locale ??= $this->locale;
         $vars = ['{name}' => self::oneLine($name), '{site}' => self::oneLine($this->site), '{link}' => $link];
         $this->notifier->sendLater(
             new Email(
                 to: $to,
-                subject: strtr($this->translator->get('folio.mail.' . $mail . '.subject', [], $this->locale), $vars),
-                text: strtr($this->translator->get('folio.mail.' . $mail . '.body', [], $this->locale), $vars),
+                subject: strtr($this->translator->get('folio.mail.' . $mail . '.subject', [], $locale), $vars),
+                text: strtr($this->translator->get('folio.mail.' . $mail . '.body', [], $locale), $vars),
             ),
             static function () use ($mail, $subject): void {
                 error_log('folio: ' . $mail . ' mail failed for account ' . $subject); // no address, no exception text

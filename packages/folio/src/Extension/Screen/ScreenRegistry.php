@@ -25,6 +25,7 @@ final class ScreenRegistry
     public const array RESERVED = ['login', 'logout', '_assets', '_uploads', '_blocks', 'media', 'extensions', 'blocks', 'preview', 'upload', 'assets'];
 
     private const string AUTH_MW = 'Preflow\\Folio\\Http\\AdminAuthMiddleware';
+    private const string LOCALE_MW = 'Preflow\\Folio\\Http\\AdminLocaleMiddleware';
     private const string PERMISSION_MW = 'Preflow\\Folio\\Http\\FolioPermissionMiddleware';
     private const string WORKING_MW = 'Preflow\\Folio\\Http\\WorkingCopyMiddleware';
 
@@ -119,7 +120,7 @@ final class ScreenRegistry
     public function routes(string $prefix, bool $authEnabled): array
     {
         $base = rtrim('/' . trim($prefix, '/'), '/');
-        $middleware = $authEnabled ? [self::AUTH_MW, self::PERMISSION_MW] : [];
+        $middleware = $authEnabled ? [self::AUTH_MW, self::LOCALE_MW, self::PERMISSION_MW] : [self::LOCALE_MW];
         $middleware[] = self::WORKING_MW; // the active sidebar item, working copies as on every admin route
         $middleware[] = ScreenDispatcher::class;
 

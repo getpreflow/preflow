@@ -41,6 +41,7 @@ final class PreviewController
         private readonly ?ContentLocale $contentLocale = null,
         private readonly ?\Preflow\View\AssetCollector $assets = null,
         private readonly ?AdminAssetUrls $assetUrls = null,
+        private readonly ?\Preflow\I18n\Translator $translator = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
     }
@@ -61,7 +62,9 @@ final class PreviewController
         $draft = $this->drafts->build($typeDef, $request, $existing + [$typeDef->idField => $id], $locale, writeUploads: false);
         $this->contentLocale?->set($locale);
 
-        $html = $this->engine->render(FrontendController::template($this->engine, $route), [
+        // The frontend's template in the frontend's translator state (its locale, no admin
+        // overrides), not the editor's interface language.
+        $render = fn (): string => $this->engine->render(FrontendController::template($this->engine, $route), [
             'record' => $draft->localized($locale)->toArray(),
             'rendered' => $this->records->renderedMap($draft, $locale),
             'type' => $type,
@@ -69,6 +72,7 @@ final class PreviewController
             'locale' => $locale,
             'alternates' => [],
         ]);
+        $html = $this->translator === null ? $render() : AdminLocaleMiddleware::asFrontend($this->translator, $request, $render);
 
         $html = $this->assets?->injectInto($html) ?? $html;
 
