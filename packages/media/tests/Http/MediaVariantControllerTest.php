@@ -198,6 +198,11 @@ final class MediaVariantControllerTest extends TestCase
         $asset = $this->asset();
         $failing = new class implements \Preflow\Media\Image\ImageBackend {
             public function supports(string $format): bool { return true; }
+            public function writeEdited(string $src, string $dest, int $quarterTurns, bool $mirror, ?array $crop, string $format, int $quality, int $maxLongSide = 0): bool
+            {
+                return false;
+            }
+
             public function writeVariants(string $src, array $jobs, int $quality): array { return array_fill(0, count($jobs), false); }
         };
         $this->lib = $this->library([], new VariantGenerator($failing, $this->widths->eager(), 75));

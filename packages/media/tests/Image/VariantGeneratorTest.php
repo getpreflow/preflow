@@ -124,6 +124,11 @@ final class VariantGeneratorTest extends TestCase
     {
         $exploding = new class implements \Preflow\Media\Image\ImageBackend {
             public function supports(string $format): bool { return true; }
+            public function writeEdited(string $src, string $dest, int $quarterTurns, bool $mirror, ?array $crop, string $format, int $quality, int $maxLongSide = 0): bool
+            {
+                return false;
+            }
+
             public function writeVariants(string $src, array $jobs, int $quality): array { throw new \RuntimeException('out of memory'); }
         };
         $library = $this->library([], new VariantGenerator($exploding, [50], 75));

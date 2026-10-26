@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Media\Image;
 
 use Preflow\Media\Asset;
+use Preflow\Media\CropRect;
 use Preflow\Media\Variant;
 
 /**
@@ -109,6 +110,91 @@ final class VariantGenerator
         }
 
         return $rel;
+    }
+
+    /**
+     * Writes the edited master: upright, mirrored, turned, cropped (percent of the turned
+     * image), at most $maxLongSide on the long side when above 0. The format comes from
+     * the extension of $relativeDest. Returns the written width and height, or null.
+     *
+     * @return ?array{int, int}
+     */
+    public function renderEdited(string $dir, string $relativeSource, string $mime, int $quarterTurns, bool $mirror, ?CropRect $crop, string $relativeDest, int $maxLongSide = 0): ?array
+    {
+        $format = match (strtolower(pathinfo($relativeDest, PATHINFO_EXTENSION))) {
+            'jpg', 'jpeg' => 'jpeg',
+            'png' => 'png',
+            'webp' => 'webp',
+            default => null,
+        };
+        $source = rtrim($dir, '/') . '/' . $relativeSource;
+        if ($format === null || !in_array($mime, self::SOURCE_TYPES, true) || ($backend = $this->backendFor($source)) === null) {
+            return null;
+        }
+        $info = @getimagesize($source);
+        if ($info === false) {
+            return null;
+        }
+        [$w, $h] = Orientation::swapsAxes(Orientation::of($source)) ? [$info[1], $info[0]] : [$info[0], $info[1]];
+        $turns = (($quarterTurns % 4) + 4) % 4;
+        if ($turns % 2 === 1) {
+            [$w, $h] = [$h, $w];
+        }
+        $pixels = $crop?->pixels($w, $h);
+
+        $dest = rtrim($dir, '/') . '/' . $relativeDest;
+        $tmp = $dest . '.tmp-' . bin2hex(random_bytes(4)) . '.' . pathinfo($relativeDest, PATHINFO_EXTENSION);
+        $ok = $backend->writeEdited($source, $tmp, $turns, $mirror, $pixels, $format, 92, $maxLongSide);
+        $size = $ok ? @getimagesize($tmp) : false;
+        if ($size === false || !@rename($tmp, $dest)) {
+            @unlink($tmp);
+
+            return null;
+        }
+
+        return [$size[0], $size[1]];
+    }
+
+    /**
+     * One box-cropped variant ($crop in pixels of the source, scaled to $width), temp file then rename.
+     *
+     * @param array{x: int, y: int, w: int, h: int} $crop
+     */
+    public function generateBox(string $dir, string $relativeSource, string $mime, array $crop, int $width, string $format, string $relativeDest): bool
+    {
+        if (!$this->supports($mime, $format) || $width < 1) {
+            return false;
+        }
+        $backend = $this->backendFor(rtrim($dir, '/') . '/' . $relativeSource);
+        if ($backend === null || !$backend->supports($format)) {
+            return false;
+        }
+        $dest = rtrim($dir, '/') . '/' . $relativeDest;
+        $tmp = $dest . '.tmp-' . bin2hex(random_bytes(4)) . '.' . $format;
+        $ok = ($backend->writeVariants(rtrim($dir, '/') . '/' . $relativeSource, [['dest' => $tmp, 'width' => $width, 'format' => $format, 'crop' => $crop]], $this->quality)[0] ?? false) === true;
+        if (!$ok || !@rename($tmp, $dest)) {
+            @unlink($tmp);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /** Deletes the box files ({stem}-{preset}-{key}-{w}.{avif|webp}) of the delivery's stem; its plain, edit and preview files stay. */
+    public function removeBoxes(Asset $delivery, string $dir): void
+    {
+        $base = rtrim($dir, '/') . '/' . preg_replace('/\.[a-z0-9]+$/', '', $delivery->path);
+        $stem = basename($base) . '-';
+        foreach (['avif', 'webp'] as $format) {
+            foreach (glob(dirname($base) . '/' . $stem . '*.' . $format) ?: [] as $file) {
+                $rest = substr(basename($file), strlen($stem));
+                if (preg_match('/^([a-z][a-z0-9-]*)-([0-9a-f]{8})-([1-9]\d*)\.(avif|webp)$/', $rest, $m) === 1
+                    && !in_array($m[1], ['edit', 'preview', 'oriented'], true)) {
+                    @unlink($file);
+                }
+            }
+        }
     }
 
     /** True when the source needs colour management and this site cannot do it (no Imagick with lcms). */

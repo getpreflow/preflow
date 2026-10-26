@@ -258,6 +258,11 @@ final class ReplaceTest extends TestCase
                 return $format === 'webp';
             }
 
+            public function writeEdited(string $src, string $dest, int $quarterTurns, bool $mirror, ?array $crop, string $format, int $quality, int $maxLongSide = 0): bool
+            {
+                return false;
+            }
+
             public function writeVariants(string $src, array $jobs, int $quality): array
             {
                 file_put_contents($jobs[0]['dest'], 'half'); // dies after writing a file
@@ -285,6 +290,11 @@ final class ReplaceTest extends TestCase
             public function supports(string $format): bool
             {
                 return $format === 'webp';
+            }
+
+            public function writeEdited(string $src, string $dest, int $quarterTurns, bool $mirror, ?array $crop, string $format, int $quality, int $maxLongSide = 0): bool
+            {
+                return false;
             }
 
             public function writeVariants(string $src, array $jobs, int $quality): array
@@ -445,6 +455,11 @@ final class ReplaceTest extends TestCase
             public function supports(string $format): bool
             {
                 return $format === 'webp';
+            }
+
+            public function writeEdited(string $src, string $dest, int $quarterTurns, bool $mirror, ?array $crop, string $format, int $quality, int $maxLongSide = 0): bool
+            {
+                return false;
             }
 
             public function writeVariants(string $src, array $jobs, int $quality): array
