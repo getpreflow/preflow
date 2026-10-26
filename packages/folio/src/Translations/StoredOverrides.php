@@ -27,12 +27,14 @@ final class StoredOverrides implements TranslationOverrides
     /**
      * An override text as it may be stored and shown, or null when it may not: plain text that
      * is safe anywhere a text is printed unescaped, also inside a double-quoted HTML attribute
-     * (the translator's output is marked safe). No `<`, `>`, `"` or backtick, at most
+     * (the translator's output is marked safe). No `<`, `>`, `"` or backtick, nothing shaped like
+     * an HTML entity (`&#…`, `&name;`; a plain `&` is fine), at most
      * MAX_LENGTH characters, not empty; a straight apostrophe becomes the typographic one (’).
      */
     public static function validText(string $text): ?string
     {
-        if (trim($text) === '' || mb_strlen($text) > self::MAX_LENGTH || strpbrk($text, '<>"`') !== false) {
+        if (trim($text) === '' || mb_strlen($text) > self::MAX_LENGTH || strpbrk($text, '<>"`') !== false
+            || str_contains($text, '&#') || preg_match('/&[a-z][a-z0-9]*;/i', $text) === 1) {
             return null;
         }
 

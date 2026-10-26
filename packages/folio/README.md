@@ -1462,7 +1462,8 @@ the content languages (`config/i18n.php`) are separate.
 group (Folio, rbac, members-admin, codes, the extensions' groups) and the site's model labels,
 per language. A changed text replaces the delivered one in the admin for everyone using that
 language; *Reset* brings the delivered one back.
-- Plain text only: `<`, `>`, `"` and `` ` `` are refused, and texts whose English contains markup
+- Plain text only: `<`, `>`, `"`, `` ` `` and HTML entities (`&#…`, `&name;`; a plain `&` is
+  fine) are refused, and texts whose English contains markup
   are not offered. A straight `'` is stored as `’`.
 - Formats (`folio.format.*`) are configuration, not offered.
 - The texts live in the table `folio_translation_overrides` (run `preflow migrate` on SQL

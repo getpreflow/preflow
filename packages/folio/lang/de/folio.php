@@ -439,7 +439,7 @@ return [
         'reset' => 'Zurücksetzen',
         'saved' => 'Gespeichert: :key',
         'reset_done' => ':key zeigt wieder den mitgelieferten Text.',
-        'no_markup' => 'Nur reiner Text: <, >, " und ` sind nicht erlaubt.',
+        'no_markup' => 'Nur reiner Text: <, >, ", ` und HTML-Entitäten (&…;) sind nicht erlaubt.',
         'too_long' => 'Höchstens :max Zeichen.',
         'not_editable' => 'Dieser Text lässt sich hier nicht ändern.',
         'empty' => 'Keine passenden Texte.',

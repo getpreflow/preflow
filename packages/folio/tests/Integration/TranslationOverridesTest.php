@@ -303,7 +303,7 @@ final class TranslationOverridesTest extends TestCase
         $this->people();
         $this->signIn('ada@site.test');
 
-        foreach (['x" autofocus onfocus="y', 'Sichern`', '<i>Sichern', str_repeat('a', 2001), '   '] as $text) {
+        foreach (['x" autofocus onfocus="y', 'Sichern`', '<i>Sichern', '&#60;i&#62;Sichern', 'Sichern &amp; los', str_repeat('a', 2001), '   '] as $text) {
             $status = $this->post('/folio/translations', ['locale' => 'de', 'key' => 'folio.common.save', 'text' => $text])->getStatusCode();
             $this->assertSame(trim($text) === '' ? 302 : 422, $status, $text);
         }

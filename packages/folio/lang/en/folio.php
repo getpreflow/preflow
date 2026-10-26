@@ -459,7 +459,7 @@ return [
         'reset' => 'Reset',
         'saved' => 'Saved: :key',
         'reset_done' => ':key shows the delivered text again.',
-        'no_markup' => 'Plain text only: <, >, " and ` are not allowed.',
+        'no_markup' => 'Plain text only: <, >, ", ` and HTML entities (&…;) are not allowed.',
         'too_long' => 'At most :max characters.',
         'not_editable' => 'This text cannot be changed here.',
         'empty' => 'No texts match.',
