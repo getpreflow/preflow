@@ -7,8 +7,9 @@ namespace Preflow\I18n;
 /**
  * Translations by dot key ("group.area.name"). For each locale of the fallback chain (the
  * asked locale, then the fallback locale given to the constructor, then "en") the first
- * layer that has the key wins: an admin override (only when overrides are on and the
- * group's scope is "admin", or the key is under a prefix made overridable()), then the site's
+ * layer that has the key wins: an override (when overrides are on and the group's scope is
+ * "admin", or the key is under a prefix made overridable(); always for a group made
+ * alwaysOverride()), then the site's
  * lang/{locale}/{group}.php key by key, then
  * the package's file (addDefaults(), usually through TranslationRegistry). A key found
  * nowhere comes back as the key itself.
@@ -26,6 +27,9 @@ final class Translator
 
     /** @var list<string> key prefixes of groups without a scope that take overrides too (overridable()) */
     private array $overridablePrefixes = [];
+
+    /** @var array<string, true> groups whose overrides apply on every request (alwaysOverride()) */
+    private array $alwaysOverridden = [];
 
     /** @var array<string, array<string, mixed>> Cache: "locale.group" => translations */
     private array $loaded = [];
@@ -152,10 +156,45 @@ final class Translator
         }
     }
 
-    /** Whether an override would apply to the key (when overrides are on): an admin group's, or under an overridable() prefix of a group without scope. */
+    /**
+     * The group's overrides apply on every request, whether useOverrides() is on or off: texts
+     * of a site group that staff edit and that public pages or mails render. Not for an admin
+     * group (those stay admin-only). Calling it again changes nothing.
+     *
+     * @throws \InvalidArgumentException for an empty group or a group of scope "admin"
+     */
+    public function alwaysOverride(string $group): void
+    {
+        if ($group === '') {
+            throw new \InvalidArgumentException('A group name is required.');
+        }
+        if (($this->scopes[$group] ?? null) === 'admin') {
+            throw new \InvalidArgumentException("The group \"{$group}\" is an admin group; its overrides stay admin-only.");
+        }
+        $this->alwaysOverridden[$group] = true;
+    }
+
+    /**
+     * The groups made alwaysOverride(), sorted.
+     *
+     * @return list<string>
+     */
+    public function alwaysOverridden(): array
+    {
+        $groups = array_map('strval', array_keys($this->alwaysOverridden));
+        sort($groups);
+
+        return $groups;
+    }
+
+    /** Whether an override can apply to the key: an admin group's (when overrides are on), under an overridable() prefix of a group without scope, or in an alwaysOverride() group. */
     public function isOverridable(string $key): bool
     {
-        $scope = $this->scopes[strstr($key, '.', true) ?: $key] ?? null;
+        $group = strstr($key, '.', true) ?: $key;
+        if (isset($this->alwaysOverridden[$group])) {
+            return true;
+        }
+        $scope = $this->scopes[$group] ?? null;
         if ($scope !== null) {
             return $scope === 'admin';
         }
@@ -320,7 +359,7 @@ final class Translator
     /** The text in exactly one locale: an override (when it applies), else the files. */
     private function valueIn(string $key, string $locale): ?string
     {
-        if ($this->overridesOn && $this->isOverridable($key)) {
+        if (($this->overridesOn && $this->isOverridable($key)) || isset($this->alwaysOverridden[strstr($key, '.', true) ?: $key])) {
             $override = $this->overrides->get($locale, $key);
             if ($override !== null) {
                 return $override;

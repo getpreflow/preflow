@@ -242,4 +242,117 @@ final class TranslatorLayersTest extends TestCase
     {
         $this->assertSame('de', (new Translator($this->tmp(), 'fr', 'de'))->getFallbackLocale());
     }
+
+    private function reviewMail(string $locale = 'fr', string $fallback = 'fr'): Translator
+    {
+        $this->langFile('lang', 'fr', 'review-mail', ['approved' => ['subject' => 'En ligne']]);
+        $t = new Translator($this->tmp() . '/lang', $locale, $fallback);
+        $t->setOverrides(self::overrides([
+            'fr' => ['review-mail.approved.subject' => 'Votre objet est en ligne'],
+            'de' => ['review-mail.approved.subject' => 'Ihr Objekt ist online'],
+        ]));
+
+        return $t;
+    }
+
+    public function test_an_always_overridden_group_takes_overrides_with_overrides_off(): void
+    {
+        $t = $this->reviewMail();
+        $t->useOverrides(false);
+        $this->assertSame('En ligne', $t->get('review-mail.approved.subject', [], 'fr'));
+
+        $t->alwaysOverride('review-mail');
+        $this->assertSame('Votre objet est en ligne', $t->get('review-mail.approved.subject', [], 'fr'));
+    }
+
+    public function test_an_always_overridden_group_uses_the_asked_locale_not_the_current_one(): void
+    {
+        $t = $this->reviewMail('de', 'de');
+        $t->alwaysOverride('review-mail');
+
+        $this->assertSame('Ihr Objekt ist online', $t->get('review-mail.approved.subject'));
+        $this->assertSame('Votre objet est en ligne', $t->get('review-mail.approved.subject', [], 'fr'));
+    }
+
+    public function test_a_locale_file_wins_over_a_fallback_locale_override(): void
+    {
+        $key = 'review-mail.approved.subject';
+        $this->langFile('lang', 'it', 'review-mail', ['approved' => ['subject' => 'Online']]);
+        $t = $this->reviewMail('it', 'de');
+        $t->alwaysOverride('review-mail');
+        $this->assertSame('Online', $t->get($key, [], 'it'));
+
+        unlink($this->tmp() . '/lang/it/review-mail.php');
+        $t = new Translator($this->tmp() . '/lang', 'it', 'de');
+        $t->setOverrides(self::overrides(['de' => [$key => 'Ihr Objekt ist online']]));
+        $t->alwaysOverride('review-mail');
+        $this->assertSame('Ihr Objekt ist online', $t->get($key, [], 'it'));
+    }
+
+    public function test_parameters_in_an_always_overridden_text_are_replaced(): void
+    {
+        $t = new Translator($this->tmp() . '/lang', 'de', 'de');
+        $t->setOverrides(self::overrides(['de' => ['review-mail.hello' => 'Hallo :name']]));
+        $t->alwaysOverride('review-mail');
+
+        $this->assertSame('Hallo Ada', $t->get('review-mail.hello', ['name' => 'Ada']));
+    }
+
+    public function test_an_admin_group_cannot_be_always_overridden(): void
+    {
+        $t = new Translator($this->tmp() . '/lang', 'en', 'en');
+        $t->setScopes(['folio' => 'admin']);
+        $t->setOverrides(self::overrides(['en' => ['folio.x' => 'Over']]));
+
+        foreach (['folio', ''] as $group) {
+            try {
+                $t->alwaysOverride($group);
+                $this->fail('expected InvalidArgumentException for "' . $group . '"');
+            } catch (\InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+        $this->assertSame('folio.x', $t->get('folio.x'), 'overrides off: still needs useOverrides(true)');
+        $t->useOverrides(true);
+        $this->assertSame('Over', $t->get('folio.x'));
+    }
+
+    public function test_is_overridable_and_the_list(): void
+    {
+        $t = new Translator($this->tmp() . '/lang', 'en', 'en');
+        $t->setScopes(['members' => 'public']);
+        $t->alwaysOverride('review-mail');
+        $t->alwaysOverride('review-mail');
+
+        $this->assertTrue($t->isOverridable('review-mail.x'));
+        $this->assertSame(['review-mail'], $t->alwaysOverridden());
+        $this->assertFalse($t->isOverridable('members.x'));
+
+        $t->alwaysOverride('a-group');
+        $this->assertSame(['a-group', 'review-mail'], $t->alwaysOverridden());
+    }
+
+    public function test_other_keys_never_ask_the_override_layer(): void
+    {
+        $counter = new class implements TranslationOverrides {
+            public int $calls = 0;
+
+            public function get(string $locale, string $key): ?string
+            {
+                $this->calls++;
+
+                return null;
+            }
+        };
+        $t = new Translator($this->tmp() . '/lang', 'en', 'en');
+        $t->setScopes(['members' => 'public']);
+        $t->setOverrides($counter);
+        $t->useOverrides(false);
+        $t->alwaysOverride('review-mail');
+
+        $t->get('members.x');
+        $this->assertSame(0, $counter->calls);
+        $t->get('review-mail.x');
+        $this->assertSame(1, $counter->calls);
+    }
 }
