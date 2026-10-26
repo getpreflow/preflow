@@ -32,6 +32,7 @@ final class FrontendController
         private readonly ?\Preflow\View\AssetCollector $assets = null,
         private readonly ?FrontendGate $gate = null,
         private readonly ?ErrorHandler $errors = null,
+        private readonly ?string $appUrl = null,
     ) {}
 
     public function show(ServerRequestInterface $request): ResponseInterface
@@ -98,17 +99,33 @@ final class FrontendController
         return is_string($requested) && $locales->has($requested) ? $requested : $locales->default;
     }
 
+    /**
+     * The configured app.url (when absolute) is the one canonical host, so a request
+     * on www. or another alias still names the real one; otherwise the request's.
+     */
+    private function origin(ServerRequestInterface $request): string
+    {
+        $configured = trim((string) $this->appUrl);
+        $parts = $configured !== '' ? parse_url($configured) : false;
+        if (is_array($parts) && isset($parts['scheme'], $parts['host']) && in_array(strtolower($parts['scheme']), ['http', 'https'], true)) {
+            return strtolower($parts['scheme']) . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '');
+        }
+
+        $uri = $request->getUri();
+
+        return $uri->getHost() !== ''
+            ? $uri->getScheme() . '://' . $uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '')
+            : '';
+    }
+
     private function render(ServerRequestInterface $request, DynamicRecord $record, FrontendRoute $route, bool $preview): string
     {
         $locales = $record->getType()->locales;
         $locale = $this->locale($request, $record);
         $this->contentLocale?->set($locale);
 
-        // hreflang needs absolute URLs; 'url' stays relative for language switchers.
-        $uri = $request->getUri();
-        $origin = $uri->getHost() !== ''
-            ? $uri->getScheme() . '://' . $uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '')
-            : '';
+        // hreflang and canonical need absolute URLs; 'url' stays relative for language switchers.
+        $origin = $this->origin($request);
         $alternates = [];
         foreach ($locales->available as $code) {
             $url = $this->resolver->urlFor($record, $code);

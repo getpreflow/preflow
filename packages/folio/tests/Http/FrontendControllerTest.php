@@ -89,4 +89,40 @@ final class FrontendControllerTest extends TestCase
         $this->expectException(NotFoundHttpException::class);
         $controller->show($req);
     }
+
+    private function alternatesController(string $base, ?string $appUrl): FrontendController
+    {
+        $dm = $this->dm($base . '/m', $base . '/s');
+        $engine = new class implements TemplateEngineInterface {
+            public function render(string $template, array $context = []): string
+            {
+                return implode(',', array_column($context['alternates'], 'href'));
+            }
+            public function exists(string $template): bool { return true; }
+            public function addFunction(\Preflow\View\TemplateFunctionDefinition $function): void {}
+            public function addGlobal(string $name, mixed $value): void {}
+            public function getTemplateExtension(): string { return 'twig'; }
+            public function addNamespace(string $namespace, string $path): void {}
+        };
+
+        return new FrontendController(new FrontendResolver($dm, 'page'), $engine, new RecordRenderer($this->registry(), $engine), appUrl: $appUrl);
+    }
+
+    public function test_alternates_use_app_url_not_the_request_host(): void
+    {
+        $controller = $this->alternatesController(sys_get_temp_dir() . '/folio_fc_' . bin2hex(random_bytes(4)), 'https://example.test/');
+        $req = (new Psr17Factory())->createServerRequest('GET', 'https://www.example.test/home')->withAttribute('path', 'home');
+
+        $this->assertSame('https://example.test/', (string) $controller->show($req)->getBody());
+    }
+
+    public function test_alternates_fall_back_to_the_request_without_an_absolute_app_url(): void
+    {
+        foreach ([null, '', '/relative'] as $appUrl) {
+            $controller = $this->alternatesController(sys_get_temp_dir() . '/folio_fc_' . bin2hex(random_bytes(4)), $appUrl);
+            $req = (new Psr17Factory())->createServerRequest('GET', 'https://www.example.test/home')->withAttribute('path', 'home');
+
+            $this->assertSame('https://www.example.test/', (string) $controller->show($req)->getBody());
+        }
+    }
 }

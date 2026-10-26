@@ -393,6 +393,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\View\AssetCollector::class),
             $c->get(\Preflow\Folio\Content\FrontendGate::class),
             $c->get(\Preflow\Core\Error\ErrorHandler::class),
+            is_string($appUrl = $app->config()->get('app.url')) ? $appUrl : null,
         ));
         $container->singleton(\Preflow\Folio\Content\FrontendGate::class, fn (Container $c) => new \Preflow\Folio\Content\FrontendGate(
             $c->get(\Preflow\Auth\Access\Access::class),

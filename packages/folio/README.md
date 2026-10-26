@@ -1370,6 +1370,10 @@ return ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url
 - Templates receive `locale` and `alternates` (`[{locale, url}]`).
 - `{{ folio_alternate_links(alternates) }}` emits the `hreflang` links (including
   `x-default`).
+- The absolute URLs in `alternates` (`href`, used for `hreflang` and canonical links) use
+  the host of `app.url` (`config/app.php` `url`) when it is set and absolute, so a request
+  on `www.` or another alias still names the one canonical host. Without it they use the
+  request's scheme and host.
 - `{{ folio_url('page', id, 'de') }}` links to a record in a language.
 - Referenced records (relation, matrix) render in the page's language.
 
