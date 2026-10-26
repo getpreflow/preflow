@@ -30,7 +30,7 @@ final class LocaleController
     {
         $user = $request->getAttribute(Authenticatable::class);
         if (!$user instanceof Authenticatable) {
-            return new Response(302, ['Location' => $this->prefix . '/login']);
+            return new Response(302, ['Location' => rtrim($this->prefix, '/') . '/login']);
         }
         $locale = ((array) $request->getParsedBody())['locale'] ?? null;
         if (!is_string($locale) || !$this->locales->offers($locale)) {
@@ -42,10 +42,15 @@ final class LocaleController
         return new Response(302, ['Location' => $this->back($request)]);
     }
 
-    /** The referring admin page as a path (same origin, under the prefix), else the dashboard. */
+    /**
+     * The referring admin page as a path (same origin, under the prefix), else the dashboard.
+     * With the admin at the root ("/" or ""), every same-origin path is under it. A path that
+     * starts with "//" or holds a backslash is refused: as a Location it would leave the site.
+     */
     private function back(ServerRequestInterface $request): string
     {
-        $dashboard = '/' . trim($this->prefix, '/');
+        $base = trim($this->prefix, '/');
+        $dashboard = '/' . $base;
         $referer = parse_url($request->getHeaderLine('Referer'));
         $uri = $request->getUri();
         if (!is_array($referer) || $uri->getHost() === '' || !isset($referer['host'], $referer['scheme'])) {
@@ -55,7 +60,10 @@ final class LocaleController
             && strtolower($referer['host']) === strtolower($uri->getHost())
             && ($referer['port'] ?? null) === $uri->getPort();
         $path = (string) ($referer['path'] ?? '');
-        if (!$sameOrigin || ($path !== $dashboard && !str_starts_with($path, $dashboard . '/')) || str_contains($path, '\\')) {
+        if (!$sameOrigin || !str_starts_with($path, '/') || str_starts_with($path, '//') || str_contains($path, '\\')) {
+            return $dashboard;
+        }
+        if ($base !== '' && $path !== $dashboard && !str_starts_with($path, $dashboard . '/')) {
             return $dashboard;
         }
 
