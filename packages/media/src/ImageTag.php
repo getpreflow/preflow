@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Media;
 
 use Preflow\Media\Color\ColorRules;
+use Preflow\Media\Image\BoxPlan;
+use Preflow\Media\Image\Formats;
 use Preflow\Media\Image\ImageWidths;
 use Preflow\View\AssetCollector;
 use Preflow\View\ResponsiveImage;
@@ -24,6 +26,10 @@ use Preflow\View\ResponsiveImage;
  * Colours (ColorRules): colors() returns an asset's colours as data, colorClass() a
  * class carrying them as CSS variables, its rule in the nonce'd head style; the option
  * placeholder: true puts the dominant colour behind the <img> while it loads.
+ *
+ * An edited image renders its master (MediaLibrary::deliveryAsset()). A box preset (cover,
+ * contain) renders the files of its plan (MediaLibrary::boxPlan(), {base}-{w}.{fmt}) with the
+ * box's width and height; a cover box is already cut, so it gets no focal classes.
  */
 final class ImageTag
 {
@@ -42,6 +48,7 @@ final class ImageTag
         private readonly AssetCollector $css,
         private readonly string $legacyUrlPrefix,
         private readonly ?ImageWidths $widths = null,
+        private readonly ?Formats $formats = null,
     ) {}
 
     /**
@@ -61,6 +68,21 @@ final class ImageTag
         $asset = $this->library->find($value);
 
         return $asset !== null ? $this->library->url($asset) : '';
+    }
+
+    /**
+     * The URL of an asset value's own file, never its rendered master (the same as url()
+     * for an unedited asset); '' when there is none.
+     */
+    public function originalUrl(mixed $value): string
+    {
+        $value = self::first($value);
+        if ($value === null || preg_match(self::LEGACY_PATH, $value) === 1) {
+            return $this->url($value);
+        }
+        $asset = $this->library->find($value);
+
+        return $asset !== null ? $this->library->originalUrl($asset) : '';
     }
 
     /** The preview URL of a document asset value (a private one's is gated); '' when there is none. */
@@ -112,16 +134,22 @@ final class ImageTag
         }
         $src = $this->library->url($asset);
         $alt = $asset->altFor($this->locale->current(), $this->locale->default());
+        $record = $asset; // whose box plan: the image, the poster, or the document of a preview
         if ($asset->kind() === 'document') {
             $poster = $asset->posterId !== null ? $this->library->find($asset->posterId) : null;
             if ($poster !== null && $poster->kind() === 'image') {
-                [$asset, $src, $alt] = [$poster, $this->library->url($poster), $alt !== '' ? $alt : $poster->altFor($this->locale->current(), $this->locale->default())];
+                [$asset, $record, $src, $alt] = [$poster, $poster, $this->library->url($poster), $alt !== '' ? $alt : $poster->altFor($this->locale->current(), $this->locale->default())];
             } elseif (($preview = $this->library->previewAsset($asset)) !== null) {
                 [$asset, $src] = [$preview, (string) $this->library->previewUrl($asset)];
             }
         }
         if ($asset->kind() !== 'image') {
             return '<a href="' . self::e($src) . '">' . self::e($asset->label()) . '</a>';
+        }
+        $asset = $this->library->deliveryAsset($asset) ?? $asset; // an edited image: its master
+        $plan = $this->plan($record, $asset, $preset);
+        if ($plan !== null) {
+            $src = $this->library->url("{$plan->base}-" . self::nearest($plan->widths, $plan->width) . '.webp');
         }
 
         $opts = array_merge(ResponsiveImage::DEFAULTS, $preset !== null ? (array) ($this->presets[$preset] ?? []) : [], $options);
@@ -131,7 +159,7 @@ final class ImageTag
         $sources = '';
         $first = null; // [format, srcset] of the first source: what the browser will pick
         foreach ($asset->private ? [] : ['avif', 'webp'] as $format) {
-            $srcset = $this->srcset($asset, $format, $preset);
+            $srcset = $plan !== null ? $this->boxSrcset($plan, $format) : $this->srcset($asset, $format, $preset);
             if ($srcset !== '') {
                 $first ??= [$format, $srcset];
                 $sources .= '<source type="image/' . $format . '" srcset="' . self::e($srcset) . '" sizes="' . self::e($sizes) . '">';
@@ -144,7 +172,7 @@ final class ImageTag
                 : '<link rel="preload" as="image" href="' . self::e($src) . '" fetchpriority="high">', 'folio-preload:' . $asset->id . ':' . ($preset ?? ''));
         }
 
-        $classes = array_filter([trim((string) $opts['class']), ...$this->focalClasses($asset)]);
+        $classes = array_filter([trim((string) $opts['class']), ...($plan?->format->fit === 'cover' ? [] : $this->focalClasses($asset))]);
         if (($opts['placeholder'] ?? false) === true && ($colorClass = $this->colorRules()->classFor($asset)) !== '') {
             // Behind the image while it loads: the dominant colour as the <img>'s background.
             $classes = [...$classes, $colorClass, $this->colorRules()->placeholder()];
@@ -152,7 +180,9 @@ final class ImageTag
         $alt = is_string($options['alt'] ?? null) ? $options['alt'] : $alt;
 
         $img = '<img src="' . self::e($src) . '"';
-        if ($asset->width !== null && $asset->height !== null) {
+        if ($plan !== null) {
+            $img .= ' width="' . $plan->width . '" height="' . $plan->height . '"';
+        } elseif ($asset->width !== null && $asset->height !== null) {
             $img .= ' width="' . $asset->width . '" height="' . $asset->height . '"';
         }
         $img .= ' alt="' . self::e($alt) . '" loading="' . ($priority ? 'eager' : self::e((string) $opts['loading'])) . '" decoding="async"';
@@ -196,6 +226,48 @@ final class ImageTag
         usort($variants, static fn (Variant $a, Variant $b) => $a->width <=> $b->width);
 
         return implode(', ', array_map(fn (Variant $v) => $this->library->url($v->path) . ' ' . $v->width . 'w', $variants));
+    }
+
+    /**
+     * The box plan of a box preset, when the delivery image has WebP variants (else the
+     * preset renders as a width preset, as before boxes existed).
+     */
+    private function plan(Asset $record, Asset $delivery, ?string $preset): ?BoxPlan
+    {
+        if ($preset === null || $delivery->private || $this->formats?->get($preset)?->isBox() !== true
+            || !self::hasVariants($delivery, 'webp')) {
+            return null;
+        }
+
+        return $this->library->boxPlan($record, $preset);
+    }
+
+    /** A box plan's files in a format the delivery image has variants in. */
+    private function boxSrcset(BoxPlan $plan, string $format): string
+    {
+        if (!self::hasVariants($plan->source, $format)) {
+            return '';
+        }
+
+        return implode(', ', array_map(fn (int $w) => $this->library->url("{$plan->base}-{$w}.{$format}") . ' ' . $w . 'w', $plan->widths));
+    }
+
+    private static function hasVariants(Asset $asset, string $format): bool
+    {
+        return array_filter($asset->variants, static fn (Variant $v) => $v->format === $format) !== [];
+    }
+
+    /** @param list<int> $widths (not empty) @return int the width, else the closest of them (the smaller on a tie) */
+    private static function nearest(array $widths, int $width): int
+    {
+        $best = $widths[0];
+        foreach ($widths as $w) {
+            if (abs($w - $width) < abs($best - $width)) {
+                $best = $w;
+            }
+        }
+
+        return $best;
     }
 
     /**

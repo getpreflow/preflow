@@ -157,6 +157,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\View\AssetCollector::class),
             rtrim($prefix, '/') . '/_uploads',
             $c->get(\Preflow\Media\Image\ImageWidths::class),
+            $c->get(\Preflow\Media\Image\Formats::class),
         ));
         foreach ([
             'Preflow\\Folio\\Assets\\AssetLibrary' => \Preflow\Media\MediaLibrary::class,

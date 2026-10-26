@@ -66,6 +66,21 @@ final class VariantsCommandTest extends TestCase
         $this->assertStringContainsString('step-width', $out);
     }
 
+    public function test_variants_all_makes_the_box_files(): void
+    {
+        $this->writeFile('config/image.php', "<?php\nreturn ['presets' => ['cover-thumb' => ['width' => 200, 'height' => 200, 'fit' => 'cover']]];\n");
+        $asset = $this->media()->upload($this->pngUpload(), null);
+        $plan = $this->media()->boxPlan($asset, 'cover-thumb');
+        $this->assertFileDoesNotExist($this->dir . '/public/media/' . $plan->base . '-200.webp');
+
+        [$code, $out] = $this->runCommand(['--all']);
+
+        $this->assertSame(0, $code);
+        $this->assertFileExists($this->dir . '/public/media/' . $plan->base . '-200.webp');
+        $this->assertFileExists($this->dir . '/public/media/' . $plan->base . '-400.webp');
+        $this->assertStringContainsString('box variant', $out);
+    }
+
     private function pngUpload(): \Psr\Http\Message\UploadedFileInterface
     {
         $image = imagecreatetruecolor(900, 600);

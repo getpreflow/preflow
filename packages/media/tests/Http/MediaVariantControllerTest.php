@@ -273,6 +273,20 @@ final class MediaVariantControllerTest extends TestCase
         $this->assertSame([], glob($this->file($this->base($asset)) . '-*') ?: []);
     }
 
+    public function test_box_names_are_404_without_box_presets(): void
+    {
+        $asset = $this->asset();
+        $before = $this->mediaFiles();
+        foreach (['-cover-thumb-1a2b3c4d-200.webp', '-edit-1a2b3c4d-480.webp', '-x-480.webp'] as $suffix) {
+            try {
+                $this->serve($this->base($asset) . $suffix);
+                $this->fail($suffix . ' was served');
+            } catch (NotFoundHttpException) {
+            }
+        }
+        $this->assertSame($before, $this->mediaFiles());
+    }
+
     public function test_warm_generates_every_allowed_width(): void
     {
         $asset = $this->asset();

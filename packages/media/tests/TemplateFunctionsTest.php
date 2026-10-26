@@ -53,4 +53,30 @@ final class TemplateFunctionsTest extends TestCase
         $head = $container->get(AssetCollector::class)->renderHead();
         $this->assertSame(1, substr_count($head, 'rel="preload"'));
     }
+    public function test_box_presets_and_the_original_url(): void
+    {
+        $this->writeFile('config/image.php', "<?php\nreturn ['presets' => ['cover-thumb' => ['width' => 200, 'height' => 200, 'fit' => 'cover']]];\n");
+        $this->writeFile('box.twig', "{{ media_image(id, 'cover-thumb') }}|{{ media_original_url(id) }}|{{ media_url(id) }}|{{ media_original_url(null) }}");
+        $image = imagecreatetruecolor(800, 600);
+        ob_start();
+        imagepng($image);
+        $png = (string) ob_get_clean();
+        $f = new Psr17Factory();
+        $asset = $this->media()->upload($f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'a.png'), null);
+        $engine = $this->mediaApp()->container()->get(TemplateEngineInterface::class);
+
+        [$html, $original, $url, $none] = explode('|', $engine->render('box.twig', ['id' => $asset->id]));
+        $plan = $this->media()->boxPlan($asset, 'cover-thumb');
+        $this->assertStringContainsString('<img src="/media/' . $plan->base . '-200.webp" width="200" height="200"', $html);
+        $this->assertSame($url, $original);
+        $this->assertSame('', $none);
+        $res = $this->fetch('/media/' . $plan->base . '-400.webp');
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertSame([400, 400], array_slice((array) getimagesizefromstring((string) $res->getBody()), 0, 2));
+
+        $this->media()->rotate($asset->id, 1);
+        [, $original, $url] = explode('|', $engine->render('box.twig', ['id' => $asset->id]));
+        $this->assertSame('/media/' . $asset->path, $original);
+        $this->assertNotSame($url, $original);
+    }
 }

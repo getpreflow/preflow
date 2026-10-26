@@ -12,6 +12,8 @@ use Preflow\Data\SortDirection;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Media\Color\ColorExtractor;
+use Preflow\Media\Image\BoxPlan;
+use Preflow\Media\Image\Format;
 use Preflow\Media\Image\Formats;
 use Preflow\Media\Image\Geometry;
 use Preflow\Media\Image\Orientation;
@@ -582,23 +584,120 @@ final class MediaLibrary
     public function formatRegion(Asset $asset, string $preset): ?CropRect
     {
         $format = $this->formats?->get($preset);
-        $ratio = $format?->ratio();
-        if ($format === null || $ratio === null || $asset->kind() !== 'image' || $asset->width === null || $asset->height === null) {
+        if ($format === null || $format->ratio() === null || $asset->kind() !== 'image' || $asset->width === null || $asset->height === null) {
             return null;
         }
-        [$w, $h] = $asset->rotation % 2 === 1 ? [$asset->height, $asset->width] : [$asset->width, $asset->height];
+        [$w, $h] = self::orientedSize($asset);
+
+        return CropRect::fromPixels($this->region($asset, $format, $w, $h), $w, $h);
+    }
+
+    /**
+     * What a box preset takes, in pixels of the turned and mirrored original ($w x $h): for
+     * cover, its format crop (the part inside the image crop) fitted to the box ratio around
+     * its centre, else the focal box inside the image crop; for contain, the image crop.
+     *
+     * @return array{x: int, y: int, w: int, h: int}
+     */
+    private function region(Asset $asset, Format $format, int $w, int $h): array
+    {
         $crop = $asset->crop?->pixels($w, $h) ?? ['x' => 0, 'y' => 0, 'w' => $w, 'h' => $h];
+        $ratio = (float) $format->ratio();
         if ($format->fit !== 'cover') {
-            return CropRect::fromPixels($crop, $w, $h);
+            return $crop;
         }
-        $own = $asset->crops[$preset] ?? null;
+        $own = $asset->crops[$format->name] ?? null;
         if ($own !== null) {
-            return CropRect::fromPixels(Geometry::fitRatio($own->pixels($w, $h), $ratio), $w, $h);
+            $o = $own->pixels($w, $h);
+            $x = max($o['x'], $crop['x']);
+            $y = max($o['y'], $crop['y']);
+            $right = min($o['x'] + $o['w'], $crop['x'] + $crop['w']);
+            $bottom = min($o['y'] + $o['h'], $crop['y'] + $crop['h']);
+            if ($right - $x >= 1 && $bottom - $y >= 1) {
+                return Geometry::fitRatio(['x' => $x, 'y' => $y, 'w' => $right - $x, 'h' => $bottom - $y], $ratio);
+            }
         }
         // The focal point is in percent of the delivery image, which is the image crop.
         $box = Geometry::focalBox($crop['w'], $crop['h'], $ratio, $asset->focalX, $asset->focalY);
 
-        return CropRect::fromPixels(['x' => $crop['x'] + $box['x'], 'y' => $crop['y'] + $box['y'], 'w' => $box['w'], 'h' => $box['h']], $w, $h);
+        return ['x' => $crop['x'] + $box['x'], 'y' => $crop['y'] + $box['y'], 'w' => $box['w'], 'h' => $box['h']];
+    }
+
+    /** @return array{int, int} the original's size once turned */
+    private static function orientedSize(Asset $asset): array
+    {
+        return $asset->rotation % 2 === 1 ? [(int) $asset->height, (int) $asset->width] : [(int) $asset->width, (int) $asset->height];
+    }
+
+    /**
+     * How a box preset (cover, contain) is cut from the asset's delivery image now: the
+     * region (formatRegion() in pixels of the delivery image), the display size, the file
+     * widths and the base of the file names ({delivery stem}-{preset}-{key}, the key from
+     * the delivery stem, the preset and the region). Null for a preset that is not a box,
+     * a private asset, no delivery image, no variants backend, or above max_pixels.
+     */
+    public function boxPlan(Asset $asset, string $preset): ?BoxPlan
+    {
+        $format = $this->formats?->get($preset);
+        $ratio = $format?->ratio();
+        if ($format === null || $ratio === null || $asset->private || $this->variants === null) {
+            return null;
+        }
+        $source = $this->deliveryAsset($asset);
+        if ($source === null || $source->width === null || $source->height === null || $source->width < 1 || $source->height < 1 || !$this->withinMaxPixels($source)) {
+            return null;
+        }
+        [$sw, $sh] = [$source->width, $source->height];
+        if ($asset->kind() === 'image' && ($source->path !== $asset->path || !$asset->isEdited()) && $asset->width !== null && $asset->height !== null) {
+            // In pixels of the turned original, moved into the delivery image (the image crop, scaled to it).
+            [$w, $h] = self::orientedSize($asset);
+            $region = $this->region($asset, $format, $w, $h);
+            $cut = $asset->crop?->pixels($w, $h) ?? ['x' => 0, 'y' => 0, 'w' => $w, 'h' => $h];
+            [$fx, $fy] = [$sw / $cut['w'], $sh / $cut['h']];
+            $x = max(0, min($sw - 1, (int) round(($region['x'] - $cut['x']) * $fx)));
+            $y = max(0, min($sh - 1, (int) round(($region['y'] - $cut['y']) * $fy)));
+            $crop = ['x' => $x, 'y' => $y, 'w' => max(1, min($sw - $x, (int) round($region['w'] * $fx))), 'h' => max(1, min($sh - $y, (int) round($region['h'] * $fy)))];
+        } else {
+            // A document's preview, or an edit whose master could not be made: the picture shown, around its focal point.
+            $crop = $format->fit === 'cover'
+                ? Geometry::focalBox($sw, $sh, $ratio, $asset->focalX, $asset->focalY)
+                : ['x' => 0, 'y' => 0, 'w' => $sw, 'h' => $sh];
+        }
+        [$width, $height] = $format->fit === 'cover'
+            ? [$format->width, (int) $format->height]
+            : Geometry::containSize($crop['w'], $crop['h'], $format->width, (int) $format->height);
+        $wanted = $format->widths !== [] ? $format->widths : [$width, 2 * $width];
+        $widths = array_values(array_filter($wanted, static fn (int $w): bool => $w <= $crop['w']));
+        if ($crop['w'] < max($wanted)) {
+            $widths[] = $crop['w'];
+        }
+        $widths = array_values(array_unique($widths));
+        sort($widths);
+        $stem = self::stemOf($source->path);
+        $key = Formats::key([$stem, $format->name, $format->width, $format->height, $format->fit, $format->widths, $crop['x'], $crop['y'], $crop['w'], $crop['h']]);
+
+        return new BoxPlan($format, $source, "{$stem}-{$format->name}-{$key}", $width, $height, $widths, $crop);
+    }
+
+    /** Whether a box file may exist: a width of the plan, in a format the backend can write for the source. */
+    public function allowsBox(BoxPlan $plan, int $width, string $format): bool
+    {
+        return $this->variants !== null && in_array($width, $plan->widths, true) && $this->variants->supports($plan->source->mime, $format);
+    }
+
+    /**
+     * The file of one box variant ({base}-{width}.{format}), made now if missing; concurrent
+     * first requests wait on a per-file lock, so it is encoded once. Null for a width or
+     * format the plan does not allow, or when it could not be made.
+     */
+    public function boxFile(BoxPlan $plan, int $width, string $format): ?string
+    {
+        if (!$this->allowsBox($plan, $width, $format)) {
+            return null;
+        }
+        $rel = "{$plan->base}-{$width}.{$format}";
+
+        return $this->madeOnce($rel, fn () => $this->variants?->generateBox($this->dir, $plan->source->path, $plan->source->mime, $plan->crop, $width, $format, $rel));
     }
 
     /**
@@ -1104,6 +1203,18 @@ final class MediaLibrary
         }
 
         $rel = substr($asset->path, 0, (int) strrpos($asset->path, '.')) . "-{$width}.{$format}";
+
+        return $this->madeOnce($rel, fn () => $this->variants?->generateOne($this->dir, $asset->path, $asset->mime, $width, $format));
+    }
+
+    /**
+     * The file at $rel under the media dir, made by $make if missing. A per-file lock makes
+     * concurrent first requests wait for the one making it. Null when it is still missing.
+     *
+     * @param \Closure(): mixed $make
+     */
+    private function madeOnce(string $rel, \Closure $make): ?string
+    {
         $file = $this->absolute($rel);
         if (is_file($file)) {
             return $file;
@@ -1119,7 +1230,7 @@ final class MediaLibrary
             flock($lock, LOCK_EX);
             clearstatcache(true, $file);
             if (!is_file($file)) {
-                $this->variants->generateOne($this->dir, $asset->path, $asset->mime, $width, $format);
+                $make();
             }
         } finally {
             flock($lock, LOCK_UN);
@@ -1162,20 +1273,38 @@ final class MediaLibrary
     }
 
     /**
-     * Make every allowed variant the image can fill, in advance
-     * (media:variants --all). Returns how many were new.
+     * Make every allowed variant the delivery image can fill, and every box preset's files,
+     * in advance (media:variants --all). Returns how many were new.
      *
      * @param list<int> $allowed
      */
     public function warm(Asset $asset, array $allowed): int
     {
         $made = 0;
+        $delivery = $asset->private ? null : $this->deliveryAsset($asset);
+        if ($delivery === null) {
+            return 0;
+        }
         foreach (['avif', 'webp'] as $format) {
             foreach ($allowed as $width) {
-                $rel = substr($asset->path, 0, (int) strrpos($asset->path, '.')) . "-{$width}.{$format}";
+                $rel = self::stemOf($delivery->path) . "-{$width}.{$format}";
                 $had = is_file($this->absolute($rel));
-                if ($this->variantFile($asset, $width, $format, $allowed) !== null && !$had) {
+                if ($this->variantFile($delivery, $width, $format, $allowed) !== null && !$had) {
                     $made++;
+                }
+            }
+        }
+        foreach (array_keys($this->formats?->boxes() ?? []) as $preset) {
+            $plan = $this->boxPlan($asset, $preset);
+            foreach ($plan === null ? [] : ['avif', 'webp'] as $format) {
+                if (array_filter($delivery->variants, static fn (Variant $v) => $v->format === $format) === []) {
+                    continue; // pages list only the formats the image has variants in
+                }
+                foreach ($plan->widths as $width) {
+                    $had = is_file($this->absolute("{$plan->base}-{$width}.{$format}"));
+                    if ($this->boxFile($plan, $width, $format) !== null && !$had) {
+                        $made++;
+                    }
                 }
             }
         }

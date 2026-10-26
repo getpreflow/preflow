@@ -180,6 +180,19 @@ final class ImageTagTest extends TestCase
         $this->assertStringContainsString('srcset="' . $base . '-480.webp 480w"', $html);
     }
 
+    public function test_a_box_preset_without_a_plan_renders_as_today(): void
+    {
+        $presets = ['cover-thumb' => ['width' => 200, 'height' => 200, 'fit' => 'cover']];
+        $asset = $this->lib->upload($this->upload($this->png(1200, 800), 'a.png'), null);
+        $today = $this->tag($presets)->render($asset->id, 'cover-thumb');
+
+        // The library has no formats, so no plan: the same output with the formats passed to the tag.
+        $tag = new ImageTag($this->lib, $this->locale, $presets, $this->css, '/folio/_uploads', \Preflow\Media\Image\ImageWidths::fromConfig($presets, [480, 768]), \Preflow\Media\Image\Formats::fromConfig($presets));
+
+        $this->assertSame($today, $tag->render($asset->id, 'cover-thumb'));
+        $this->assertStringContainsString('width="1200" height="800"', $today);
+    }
+
     private function tag(array $presets = []): ImageTag
     {
         return new ImageTag($this->lib, $this->locale, $presets, $this->css, '/folio/_uploads', \Preflow\Media\Image\ImageWidths::fromConfig($presets, [480, 768]));

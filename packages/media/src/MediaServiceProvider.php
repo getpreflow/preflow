@@ -39,8 +39,8 @@ use Preflow\View\TemplateFunctionDefinition;
  * fails at boot), the library with its usage sources, the image tag and the
  * locale it renders alt text in. With SQL storage, `preflow migrate` creates the
  * asset table (the media.table step). At boot it adds its routes (private files,
- * missing variants) and the template functions media_image(), media_url(),
- * media_preview_url(), media_colors() and media_color_class(). The library reads
+ * missing variants and box files) and the template functions media_image(), media_url(),
+ * media_original_url(), media_preview_url(), media_colors() and media_color_class(). The library reads
  * colours with ColorExtractor. PDF previews come from Ghostscript or pdftocairo
  * (PdfPreviewRenderer), as the fallback of the shared PreviewRenderers, so a site's own renderer wins.
  * Private files are refused until something binds PrivateFileAccess (Folio does).
@@ -95,6 +95,7 @@ final class MediaServiceProvider extends ServiceProvider
             $c->get(AssetCollector::class),
             '',
             $c->get(ImageWidths::class),
+            $c->get(Formats::class),
         ));
 
         // Nobody downloads a private file until Folio or the site binds its own rules.
@@ -104,6 +105,7 @@ final class MediaServiceProvider extends ServiceProvider
         $container->bind(VariantController::class, fn (Container $c) => new VariantController(
             $c->get(MediaLibrary::class),
             $c->get(ImageWidths::class),
+            $c->get(Formats::class),
         ));
         $container->bind(PrivateFileController::class, fn (Container $c) => new PrivateFileController(
             $c->get(MediaLibrary::class),
@@ -132,6 +134,11 @@ final class MediaServiceProvider extends ServiceProvider
             $engine->addFunction(new TemplateFunctionDefinition(
                 name: 'media_url',
                 callable: fn (mixed $value = null): string => $container->get(ImageTag::class)->url($value),
+            ));
+            // media_original_url(id): the asset's own file, never its rendered master ('' without one; media_url() when unedited).
+            $engine->addFunction(new TemplateFunctionDefinition(
+                name: 'media_original_url',
+                callable: fn (mixed $value = null): string => $container->get(ImageTag::class)->originalUrl($value),
             ));
             // media_preview_url(id): a document's preview URL ('' without one; a private asset's is gated).
             $engine->addFunction(new TemplateFunctionDefinition(
