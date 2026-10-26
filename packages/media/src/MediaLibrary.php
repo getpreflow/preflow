@@ -281,7 +281,9 @@ final class MediaLibrary
      * matches every word in the original name, title or alt text (default locale). $filters
      * compare by equality on the extra fields declared in config "filters" (others are ignored):
      * a select or boolean field by value, a relation field by id (a list: any of them), a
-     * multiple relation as "contains the id". A page past the end gives the last page.
+     * multiple relation as "contains the id". The asset's own "private" flag filters the same
+     * way as a boolean (a picker that lists only what its field accepts). A page past the end
+     * gives the last page.
      *
      * @param array<string, mixed> $filters field name => value
      */
@@ -304,6 +306,17 @@ final class MediaLibrary
             if (is_string($name) && isset($def->fields[$name]) && array_key_exists($name, $filters)) {
                 $this->applyFilter($qb, $def->fields[$name], $filters[$name]);
             }
+        }
+        // Stored as 1/0 (missing on older records: public); IN compares as text in every driver.
+        $private = match ($filters['private'] ?? null) {
+            true, 1, '1' => true,
+            false, 0, '0' => false,
+            default => null,
+        };
+        if ($private === true) {
+            $qb->whereAny([['field' => 'private', 'operator' => 'IN', 'value' => ['1']]]);
+        } elseif ($private === false) {
+            $qb->whereAny([['field' => 'private', 'operator' => 'IN', 'value' => ['0']], ['field' => 'private', 'operator' => '=', 'value' => null]]);
         }
         $qb->orderBy('created_at', SortDirection::Desc)->orderBy($def->idField, SortDirection::Desc);
 

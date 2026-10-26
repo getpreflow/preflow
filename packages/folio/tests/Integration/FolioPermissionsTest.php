@@ -161,6 +161,9 @@ final class FolioPermissionsTest extends TestCase
             ['GET', '/folio/assets/a1'],
             ['POST', '/folio/assets/a1'],
             ['POST', '/folio/assets/a1/delete'],
+            ['POST', '/folio/assets/a1/replace'],
+            ['POST', '/folio/assets/a1/versions/1/restore'],
+            ['POST', '/folio/assets/a1/versions/1/delete'],
             ['GET', '/folio/site'],
         ] as [$method, $uri]) {
             yield "{$method} {$uri}" => [$method, $uri];
@@ -174,6 +177,41 @@ final class FolioPermissionsTest extends TestCase
         $this->as('viewer');
         $this->assertSame(403, $this->send($method, $uri, ['title' => 'X', 'slug' => 'x', '_locale' => 'en', 'direction' => 'up'])->getStatusCode());
         $this->assertSame(['en' => 'Draft'], $this->stored('post', 'p1')->get('title'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_assets_view_alone_cannot_replace_restore_or_delete_versions(): void
+    {
+        $this->as('editor'); // assets.view only
+        $lib = $this->app()->container()->get(\Preflow\Media\MediaLibrary::class);
+        $asset = $lib->importFile($this->pngFile(20, 10), 'old.png', null);
+        $lib->replace($asset->id, $this->pngFile(30, 10), null);
+
+        $f = new Psr17Factory();
+        $png = (string) file_get_contents($this->pngFile(40, 10));
+        $replace = $this->session->handle($f->createServerRequest('POST', '/folio/assets/' . $asset->id . '/replace')
+            ->withParsedBody(['_csrf_token' => $this->token])
+            ->withUploadedFiles(['file' => $f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'new.png')]));
+        $this->assertSame(403, $replace->getStatusCode());
+        $this->assertSame(403, $this->send('POST', '/folio/assets/' . $asset->id . '/versions/1/restore')->getStatusCode());
+        $this->assertSame(403, $this->send('POST', '/folio/assets/' . $asset->id . '/versions/1/delete')->getStatusCode());
+        $this->assertSame([2, [1]], [$lib->find($asset->id)?->version, array_map(static fn ($v) => $v->number, $lib->versions($asset->id))]);
+
+        // The panel offers none of it.
+        $panel = (string) $this->send('GET', '/folio/assets/' . $asset->id)->getBody();
+        $this->assertStringContainsString('href="/files/' . $asset->id . '/v/1"', $panel);
+        $this->assertStringNotContainsString('/replace"', $panel);
+        $this->assertStringNotContainsString('/versions/1/restore"', $panel);
+        $this->assertStringNotContainsString('/versions/1/delete"', $panel);
+    }
+
+    private function pngFile(int $w, int $h): string
+    {
+        $image = imagecreatetruecolor($w, $h);
+        $file = $this->dir . '/png-' . bin2hex(random_bytes(4)) . '.png';
+        imagepng($image, $file);
+
+        return $file;
     }
 
     #[RunInSeparateProcess]

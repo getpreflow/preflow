@@ -119,6 +119,42 @@ final class ExportImportTest extends TestCase
         $this->assertSame(['added' => [], 'changed' => [], 'removed' => []], $summary['media']);
     }
 
+    public function test_version_files_travel_and_an_archive_without_them_leaves_local_versions_alone(): void
+    {
+        $this->put('storage/media-versions/a1/v1.jpg', 'OLDJPEG');
+        $archive = $this->export();
+
+        $this->wipe('storage/media-versions');
+        $this->assertSame(['a1/v1.jpg'], $this->importer()->read($archive)->files['media-versions']['added']);
+        rewind($archive);
+        $this->import($archive);
+        $this->assertSame('OLDJPEG', file_get_contents($this->dir . '/storage/media-versions/a1/v1.jpg'));
+        $this->assertFileDoesNotExist($this->dir . '/public/media/a1/v1.jpg');
+
+        // A current archive carries the root: a version only here is removed.
+        $this->put('storage/media-versions/a1/v2.jpg', 'STRAY');
+        $this->import($this->exportWithout('storage/media-versions/a1/v2.jpg'));
+        $this->assertFileDoesNotExist($this->dir . '/storage/media-versions/a1/v2.jpg');
+
+        // An archive from before versions names no "media-versions" root: local versions stay.
+        $this->put('storage/media-versions/a1/v2.jpg', 'KEPT');
+        $this->import($this->craft('media/2026/10/a1.jpg', 'JPEGBYTES'));
+        $this->assertSame('KEPT', file_get_contents($this->dir . '/storage/media-versions/a1/v2.jpg'));
+        $this->assertSame('OLDJPEG', file_get_contents($this->dir . '/storage/media-versions/a1/v1.jpg'));
+    }
+
+    /** @return resource an export made while $rel is moved away */
+    private function exportWithout(string $rel)
+    {
+        $tmp = $this->dir . '/aside.tmp';
+        rename($this->dir . '/' . $rel, $tmp);
+        try {
+            return $this->export();
+        } finally {
+            rename($tmp, $this->dir . '/' . $rel);
+        }
+    }
+
     public function test_round_trip_restores_records_shadows_assets_and_files(): void
     {
         $before = $this->snapshot();

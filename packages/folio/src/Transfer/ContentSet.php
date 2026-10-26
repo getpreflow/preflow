@@ -16,7 +16,8 @@ use Preflow\Media\MediaLibrary;
  * Everything Folio owns at runtime: its types' tables (with the published and
  * revision shadows of publishing types), the asset records, the media
  * directory, the private media directory (its files travel with their asset
- * records, archive root "private-media") and legacy uploads. Nothing else (code, .env, caches, sessions,
+ * records, archive root "private-media"), the earlier files of replaced assets
+ * (MediaConfig versions_dir, archive root "media-versions") and legacy uploads. Nothing else (code, .env, caches, sessions,
  * other tables such as user_tokens) is content.
  */
 final class ContentSet
@@ -27,6 +28,7 @@ final class ContentSet
         private readonly ?string $mediaDir,
         private readonly ?string $uploadsDir,
         private readonly ?string $privateDir = null,
+        private readonly ?string $versionsDir = null,
     ) {}
 
     public static function fromApp(Application $app): self
@@ -60,6 +62,7 @@ final class ContentSet
             rtrim($media->dir, '/'),
             is_string($uploads) ? rtrim($uploads, '/') : null,
             $media->privateDir !== null ? rtrim($media->privateDir, '/') : null,
+            $media->versionsDir !== null ? rtrim($media->versionsDir, '/') : null,
         );
     }
 
@@ -82,7 +85,12 @@ final class ContentSet
     /** @return array<string, string> archive root => local directory */
     public function fileRoots(): array
     {
-        return array_filter(['media' => $this->mediaDir, 'uploads' => $this->uploadsDir, 'private-media' => $this->privateDir], 'is_string');
+        return array_filter([
+            'media' => $this->mediaDir,
+            'uploads' => $this->uploadsDir,
+            'private-media' => $this->privateDir,
+            'media-versions' => $this->versionsDir,
+        ], 'is_string');
     }
 
     /**

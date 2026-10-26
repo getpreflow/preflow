@@ -1017,6 +1017,16 @@
         }
     }
 
+    // Copy a value (asset library swatches: hex or rgb): <button data-copy="…">.
+    function onDataCopyClick(e) {
+        var btn = e.target.closest ? e.target.closest('[data-copy]') : null;
+        if (!btn || !navigator.clipboard || !navigator.clipboard.writeText) { return; }
+        navigator.clipboard.writeText(btn.getAttribute('data-copy')).then(function () {
+            btn.classList.add('is-copied');
+            setTimeout(function () { btn.classList.remove('is-copied'); }, 1200);
+        }, function () {});
+    }
+
     // Autosave never races a real save: once the form is submitted, pending
     // autosaves are dropped (their delay timer can still fire during navigation,
     // and would bump _version under the submit, which then looks like a conflict).
@@ -1532,6 +1542,7 @@
         document.addEventListener('keydown', onHandleKeydown);
         document.addEventListener('focusout', onHandleFocusOut);
         document.addEventListener('click', onCopyClick);
+        document.addEventListener('click', onDataCopyClick);
         document.addEventListener('click', onFocalClick);
         document.addEventListener('click', onPickClick);
         document.addEventListener('click', onAssetFieldClick);

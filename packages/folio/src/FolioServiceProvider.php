@@ -242,6 +242,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeCatalog::class),
             $locales ?? \Preflow\Data\Locales::single('en'),
             $prefix,
+            $c->get(FieldTypeRegistry::class),
+            $c->get(\Preflow\Media\MediaConfig::class),
         ));
 
         // Request-scoped: public renders read published snapshots, admin routes switch it to working copies.

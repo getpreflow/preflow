@@ -117,7 +117,7 @@ final class Importer
                 if (!array_key_exists($m[1], $manifest['tables'])) {
                     throw new TransferException("Record for a table outside the manifest: {$name}");
                 }
-            } elseif (preg_match('#^(media|uploads|private-media)/.+$#', $name, $m) !== 1 || !isset($this->set->fileRoots()[$m[1]])) {
+            } elseif (preg_match('#^(media|uploads|private-media|media-versions)/.+$#', $name, $m) !== 1 || !isset($this->set->fileRoots()[$m[1]])) {
                 throw new TransferException("Unexpected archive entry: {$name}");
             } else {
                 self::assertServableFile($name);
@@ -198,7 +198,7 @@ final class Importer
                     $diff['changed'][] = $rel;
                 }
             }
-            // A root the archive does not name (an export from before private assets) removes nothing.
+            // A root the archive does not name (an export from before private assets or versions) removes nothing.
             $diff['removed'] = array_key_exists($root, $manifest) ? array_values(array_diff($existing, $incoming)) : [];
             $out[$root] = $diff;
         }

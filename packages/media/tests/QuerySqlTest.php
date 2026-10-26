@@ -63,6 +63,7 @@ final class QuerySqlTest extends TestCase
         $lib = new MediaLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', [
             'storage' => $storage,
             'versions_dir' => $this->assetRoot . '/versions',
+            'private_dir' => $this->assetRoot . '/private',
             'fields' => ExtraFieldsTest::fields(),
             'filters' => ['usage_type', 'game', 'featured'],
         ]);
@@ -104,6 +105,12 @@ final class QuerySqlTest extends TestCase
         $this->assertSame(4, $second->total);
         $this->assertCount(2, $second->items);
         $this->assertSame($sorted([$old->id, $b->id, $c->id]), $sorted($ids($lib->query(filters: ['featured' => false])->items)));
+
+        // The private flag (stored 1/0) filters like a boolean.
+        $p = $lib->upload($this->upload($this->png(10, 10), 'p.png'), null, private: true);
+        $this->assertSame([$p->id], $ids($lib->query(filters: ['private' => true])->items));
+        $this->assertSame($sorted([$old->id, $a->id, $b->id, $c->id]), $sorted($ids($lib->query(filters: ['private' => false])->items)));
+        $lib->discard($p->id);
 
         // Extra values survive a replace and a restore.
         $lib->replace($a->id, $this->upload($this->png(20, 10), 'a2.png'), null);

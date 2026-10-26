@@ -749,7 +749,8 @@ A private asset field (`"private": true`) only takes private assets, and a publi
 public ones; its picker lists just those, and choosing the other kind is a field error.
 Without the asset library, a private field refuses uploads. Export and pull carry the private
 files with their asset records (archive root `private-media/`); an archive from before private
-assets has no such root, and importing it leaves local private files alone.
+assets has no such root, and importing it leaves local private files alone. The earlier files
+of replaced assets (`versions_dir`) travel the same way, under the archive root `media-versions/`.
 
 ```json
 "pdf": { "type": "asset", "asset": { "accept": "application/pdf", "private": true } }

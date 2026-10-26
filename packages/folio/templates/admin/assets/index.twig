@@ -20,6 +20,18 @@
                     <option value="{{ k }}"{% if kind == k %} selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
+            {% for f in filters %}
+                {% if f.html %}
+                    <div class="folio-assets-filter">{{ f.html|raw }}</div>
+                {% else %}
+                    <select name="f[{{ f.name }}]" aria-label="{{ f.label }}">
+                        <option value="">{{ f.label }}: any</option>
+                        {% for value, text in f.options %}
+                            <option value="{{ value }}"{% if f.value == value ~ '' %} selected{% endif %}>{{ text }}</option>
+                        {% endfor %}
+                    </select>
+                {% endif %}
+            {% endfor %}
             <input type="hidden" name="view" value="{{ view }}">
             <button type="submit" class="btn btn-secondary">Filter</button>
         </form>
@@ -39,7 +51,7 @@
     </div>
 
     {% if items is empty %}
-        <div class="folio-empty"><p>{{ q or kind ? 'No assets match.' : 'No assets yet. Upload some files.' }}</p></div>
+        <div class="folio-empty"><p>{{ q or kind or filtered ? 'No assets match.' : 'No assets yet. Upload some files.' }}</p></div>
     {% else %}
         {% if view == 'list' %}
             {% include '@folio/admin/assets/_list.twig' %}

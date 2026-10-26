@@ -1074,6 +1074,34 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
 .folio-asset-meta, .folio-help { font-size: 12.5px; color: var(--c-text-muted); }
 .folio-pagination { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 20px; }
 
+/* Library 0.35: note, PDF preview, swatches, replace and versions, toolbar filters */
+.folio-asset-note { padding: 8px 12px; border-radius: var(--r-sm); background: var(--c-surface-2); border: 1px solid var(--c-border); font-size: 13px; }
+.folio-asset-preview-image { display: block; max-width: 100%; max-height: 22rem; border-radius: var(--r-sm); border: 1px solid var(--c-border); }
+.folio-swatches { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.folio-swatch { display: inline-flex; align-items: center; gap: 2px; }
+.folio-swatch-chip, .folio-swatch-rgb {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 2px 8px 2px 2px;
+  border: 1px solid var(--c-border); border-radius: var(--r-sm); background: var(--c-surface);
+  color: inherit; font: inherit; font-size: 12.5px; cursor: copy;
+}
+.folio-swatch-rgb { padding: 2px 6px; color: var(--c-text-muted); }
+.folio-swatch.is-dominant .folio-swatch-chip { border-color: var(--c-border-strong); font-weight: 600; }
+.folio-swatch-color { display: block; width: 22px; height: 22px; border-radius: var(--r-xs); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); }
+.folio-swatch-hex { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+[data-copy].is-copied { border-color: var(--c-border-strong); }
+[data-copy].is-copied::after { content: "Copied"; font-size: 11.5px; color: var(--c-text-muted); }
+.folio-asset-versions { display: grid; gap: 10px; }
+.folio-asset-versions h2, .folio-asset-versions h3 { margin: 0; }
+.folio-asset-current { font-size: 13px; overflow-wrap: anywhere; }
+.folio-asset-replace { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.folio-asset-replace input[type="file"] { flex: 1 1 12rem; min-width: 0; }
+.folio-asset-version-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.folio-asset-version { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; }
+.folio-asset-version form { margin: 0; }
+.folio-asset-version-number { font-weight: 600; min-width: 2.5em; }
+.folio-asset-version-meta { color: var(--c-text-muted); }
+.folio-assets-filter .form-group { margin: 0; }
+
 /* Asset field inside a record form */
 .folio-asset-selection { list-style: none; margin: 4px 0 10px; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
 .folio-asset-selection:empty { display: none; }

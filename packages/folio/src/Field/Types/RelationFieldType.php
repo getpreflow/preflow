@@ -111,6 +111,27 @@ final class RelationFieldType implements FieldType
     }
 
     /**
+     * The targets a picker lists inline (id => label, in the picker's order), as a filter
+     * select can offer them; null when the target has too many to list (the editor searches).
+     * Without access to the target type: none.
+     *
+     * @param array<string, mixed> $config the field's config ("relation": to, labelField, orderBy)
+     * @return array<string, string>|null
+     */
+    public function choices(array $config): ?array
+    {
+        $cfg = $this->relationConfig($config);
+        if ($this->isLarge($cfg)) {
+            return null;
+        }
+        if ($this->can !== null && $cfg['to'] !== '' && !($this->can)($cfg['to'] . '.view')) {
+            return [];
+        }
+
+        return $this->options($cfg);
+    }
+
+    /**
      * The large-target editor: only the linked records (labels loaded in one query) as removable
      * chips with hidden inputs under the usual input names, plus a search box that the admin script
      * wires to the endpoint. Without script the linked records still submit unchanged.

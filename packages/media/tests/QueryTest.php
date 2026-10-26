@@ -29,7 +29,7 @@ final class QueryTest extends TestCase
     {
         $this->makeAssetRoot();
         $this->lib = $this->library(
-            ['fields' => ExtraFieldsTest::fields() + ['secret' => ['type' => 'select', 'options' => ['x' => 'X']]], 'filters' => ['usage_type', 'game', 'featured']],
+            ['fields' => ExtraFieldsTest::fields() + ['secret' => ['type' => 'select', 'options' => ['x' => 'X']]], 'filters' => ['usage_type', 'game', 'featured'], 'private_dir' => $this->assetRoot . '/private'],
             new VariantGenerator(new GdBackend(), [480], 75),
         );
         // a.png: cover of g1, b.png: step of g1+g2, c.png: cover of g2 and featured, d.pdf: a document
@@ -90,6 +90,17 @@ final class QueryTest extends TestCase
         $this->assertSame(['c'], $this->keys($this->lib->query(filters: ['featured' => true])));
         $this->assertSame(['c'], $this->keys($this->lib->query(filters: ['featured' => '1'])));
         $this->assertSame(['a', 'b', 'd'], $this->keys($this->lib->query(filters: ['featured' => false])));
+    }
+
+    public function test_the_private_flag_filters_like_a_boolean_without_being_declared(): void
+    {
+        $secret = $this->lib->upload($this->upload($this->png(10, 10), 'secret.png'), null, private: true);
+        $ids = static fn (\Preflow\Media\AssetPage $page) => array_map(static fn (Asset $a) => $a->id, $page->items);
+
+        $this->assertSame([$secret->id], $ids($this->lib->query(filters: ['private' => true])));
+        $this->assertNotContains($secret->id, $ids($this->lib->query(filters: ['private' => false])));
+        $this->assertSame(4, $this->lib->query(filters: ['private' => '0'])->total);
+        $this->assertSame(5, $this->lib->query(filters: ['private' => ''])->total);
     }
 
     public function test_filters_combine(): void

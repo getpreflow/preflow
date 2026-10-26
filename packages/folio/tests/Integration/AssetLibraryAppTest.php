@@ -57,7 +57,8 @@ final class AssetLibraryAppTest extends TestCase
         $this->lib()->upload($this->file($this->png(), 'IMG_002.png'), null);
         $this->lib()->upload($this->file("notes\n", 'Readme.txt'), null);
 
-        $search = (string) $this->get('/folio/assets?q=SEE')->getBody();
+        // MediaLibrary::query() searches alt text in the default language.
+        $search = (string) $this->get('/folio/assets?q=COAST')->getBody();
         $this->assertStringContainsString('IMG_001.png', $search);
         $this->assertStringNotContainsString('IMG_002.png', $search);
 

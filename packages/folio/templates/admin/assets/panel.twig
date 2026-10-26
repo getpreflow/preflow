@@ -1,6 +1,7 @@
 <section class="folio-asset-panel" aria-label="Asset details">
     {% if notice %}<p class="folio-saved" role="status">{{ notice }}</p>{% endif %}
     {% if error %}<div class="folio-notice" role="alert"><p>{{ error }}</p></div>{% endif %}
+    {% if note %}<p class="folio-asset-note" role="note">{{ note }}</p>{% endif %}
     <div class="folio-asset-preview">
         {% if asset.kind == 'image' %}
             <div class="folio-focal-picker" data-folio-focal>
@@ -9,9 +10,23 @@
             </div>
             <p class="folio-help">Click the image to set the focal point (kept visible when the image is cropped).</p>
         {% else %}
+            {% if asset.thumb %}<img class="folio-asset-preview-image" src="{{ asset.thumb }}" alt="">{% endif %}
             <p><a href="{{ asset.url }}">{{ asset.name }}</a></p>
         {% endif %}
         <p class="folio-asset-meta">{{ asset.mime }} · {{ (asset.size / 1024)|round(0, 'ceil') }} KB{% if asset.width %} · {{ asset.width }}×{{ asset.height }}{% endif %}</p>
+        {% if swatches is not empty %}
+            <ul class="folio-swatches" aria-label="Colours">
+                {% for s in swatches %}
+                    <li class="folio-swatch{% if loop.first %} is-dominant{% endif %}">
+                        <button type="button" class="folio-swatch-chip" data-copy="{{ s.hex }}" title="{{ s.label }}: copy {{ s.hex }}">
+                            <svg class="folio-swatch-color" viewBox="0 0 1 1" aria-hidden="true" focusable="false"><rect width="1" height="1" fill="{{ s.hex }}"/></svg>
+                            <span class="folio-swatch-hex">{{ s.hex }}</span>
+                        </button>
+                        <button type="button" class="folio-swatch-rgb" data-copy="{{ s.rgb }}" title="Copy {{ s.rgb }}">RGB</button>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
     </div>
     <form method="post" action="{{ prefix }}/assets/{{ asset.id }}" class="folio-asset-form">
         <fieldset class="folio-fields"{% if not can('assets.edit') %} disabled{% endif %}>
@@ -34,9 +49,49 @@
                 </select>
             </label>
         {% endif %}
+        {% if fields is not empty %}
+            <input type="hidden" name="_extra" value="1">
+            {% for html in fields %}{{ html|raw }}{% endfor %}
+        {% endif %}
         </fieldset>
         {% if can('assets.edit') %}<button type="submit" class="btn btn-primary">Save</button>{% endif %}
     </form>
+    <div class="folio-asset-versions">
+        <h2>File</h2>
+        <p class="folio-asset-current">Version {{ raw.version }} · <a href="{{ asset.url }}">{{ asset.url }}</a></p>
+        {% if can('assets.edit') %}
+        <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/replace" enctype="multipart/form-data" class="folio-asset-replace">
+            <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+            <input type="file" name="file" aria-label="New file (same kind)">
+            <button type="submit" class="btn btn-secondary">Replace</button>
+        </form>
+        <p class="folio-help">Same alt text, focal point and usage; the current file is kept as a version.</p>
+        {% endif %}
+        {% if versions is not empty %}
+            <h3>Earlier versions</h3>
+            <ul class="folio-asset-version-list">
+                {% for v in versions %}
+                    <li class="folio-asset-version">
+                        <span class="folio-asset-version-number">v{{ v.number }}</span>
+                        <span class="folio-asset-version-meta">{{ v.created_at ? v.created_at|date('Y-m-d H:i') : '' }} · {{ (v.size / 1024)|round(0, 'ceil') }} KB{% if v.width %} · {{ v.width }}×{{ v.height }}{% endif %}</span>
+                        <a href="{{ v.url }}">Open</a>
+                        {% if can('assets.edit') %}
+                        <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/versions/{{ v.number }}/restore" data-confirm="Make version {{ v.number }} the current file again?">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                            <button type="submit" class="btn btn-ghost">Restore</button>
+                        </form>
+                        {% endif %}
+                        {% if can('assets.delete') %}
+                        <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/versions/{{ v.number }}/delete" data-confirm="Delete version {{ v.number }} permanently?">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                            <button type="submit" class="btn btn-ghost">Delete</button>
+                        </form>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </div>
     <div class="folio-asset-usage">
         <h2>Usage</h2>
         {% if usage is empty %}
