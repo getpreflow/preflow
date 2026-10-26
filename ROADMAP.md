@@ -161,6 +161,7 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 - **A landing page at `GET /konto`:** confirm and login redirect there, but the package has no page; a configurable template or callback
 - **Primary link to the mail layout:** `MemberMailer` passes only lang, subject, accent and paragraphs; pass `action: {label, url}` for confirm, reset and "existing account" mails
 - **Italian (`it`) texts:** the package ships en, de and fr
+- **Member lock, sessions and sign-in info (after the split):** `Members::lock()`, `unlock()` and `isLocked()` with a readonly `locked_at` (a lock covers every sign-in path and shows a "Gesperrt" pill, never "declined"); `Members::endSessions()` (`auth_epoch` + 1 and `RememberMe::revokeAll()`); `Members::resendConfirmation()` (the public resend shares its code path); a readonly `last_login_at` set on sign-in, reset and confirmation
 
 ### rbac
 
@@ -189,6 +190,13 @@ The base exists (`TokenGuard`, `PersonalAccessToken`, `AuthMiddleware`). Missing
 ---
 
 ## Completed
+
+### v0.38.0 (prepared)
+
+- **Editable site texts:** `config/folio.php` `translations.editable` lists a site's own text groups for the Translations screen; overrides of listed groups apply on every request (public pages, mails in the recipient's language, console) in every content language; placeholders are kept (dropping or adding one is refused); `site` and admin groups are skipped. i18n: `Translator::alwaysOverride()`
+- **Screens:** `#[NavBadge]` on a `#[FolioScreen]` shows a sidebar count; screen labels may be translation keys (`site.screens.{name}`); `AdminNav::add()` takes an optional `$badge`
+- **Type customizations:** a `#[FormPanel]` returning null is hidden; a `#[ListColumn]` may return `Link($label, $url)` (admin-relative or same-site paths only)
+- **For the joint release:** Folio needs i18n `^0.38` (conflict `<0.38`) for `alwaysOverride()`; the members split's release task bumps the constraints and `ComposerConstraintsTest`
 
 ### v0.37.0 (prepared)
 

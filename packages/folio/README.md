@@ -359,7 +359,8 @@ column) and `export_url`. With the tick column the cell positions shift by one.
 `row.extra` holds the cells of extension `#[ListColumn]`s, in their order after the type's
 own columns (headings in `extra_columns`): each is plain text (escape it), a badge
 `{label, tone}` or a link `{label, href}` (see Type customizations). Extension columns are
-neither in the Excel export nor sortable.
+neither in the Excel export nor sortable. A site that overrides `_list_results.twig` must check
+`cell.href` before treating an iterable cell as a badge.
 
 At most 500 rows can be ticked for one bulk action or export (`RecordDeleter::MAX_IDS`): a
 request with more `ids[]` is refused with a 422 and changes nothing.
