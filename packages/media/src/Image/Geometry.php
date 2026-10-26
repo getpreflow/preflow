@@ -71,6 +71,33 @@ final class Geometry
         return [max(0, min(100, (int) round($x))), max(0, min(100, (int) round($y)))];
     }
 
+    /**
+     * A point (percent of the image) after the image turned clockwise by quarter turns
+     * (negative: counter-clockwise). It works for a point in percent of a crop too, as the
+     * crop turns with the image.
+     *
+     * @return array{int, int}
+     */
+    public static function pointRotated(int $x, int $y, int $quarterTurns): array
+    {
+        for ($i = (($quarterTurns % 4) + 4) % 4; $i > 0; $i--) {
+            [$x, $y] = [100 - $y, $x];
+        }
+
+        return [$x, $y];
+    }
+
+    /**
+     * A point (percent of the image, or of a crop mirrored with it) after the image was
+     * mirrored left-right, or top-bottom when not horizontal.
+     *
+     * @return array{int, int}
+     */
+    public static function pointMirrored(int $x, int $y, bool $horizontal): array
+    {
+        return $horizontal ? [100 - $x, $y] : [$x, 100 - $y];
+    }
+
     /** @return array{int, int} */
     private static function largest(int $width, int $height, float $ratio): array
     {

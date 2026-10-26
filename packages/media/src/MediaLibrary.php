@@ -12,6 +12,8 @@ use Preflow\Data\SortDirection;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Media\Color\ColorExtractor;
+use Preflow\Media\Image\Formats;
+use Preflow\Media\Image\Geometry;
 use Preflow\Media\Image\Orientation;
 use Preflow\Media\Image\VariantGenerator;
 use Preflow\Media\Preview\PreviewRenderers;
@@ -43,6 +45,12 @@ use Psr\Http\Message\UploadedFileInterface;
  * With a colour extractor, an image's colours (dominant colour, palette, text colour)
  * are read on upload, replace and restore from the image as people see it (sRGB),
  * a document's from its preview. A failure leaves the asset without colours.
+ *
+ * A public JPEG, PNG, WebP or AVIF image can be edited without touching its file:
+ * rotation, mirroring and an image crop (setCrop, rotate, flip) give it a rendered
+ * master ({stem}-edit-{key}.{ext}), which pages get instead of the file (deliveryAsset,
+ * url) together with its variants and colours; originalUrl stays the untouched file.
+ * Per-format crops (setFormatCrop) only change the box files of a cover preset.
  *
  * Deleting refuses an asset that a registered usage source still reports
  * (AssetInUseException), so every UI gets the rule.
@@ -84,6 +92,15 @@ final class MediaLibrary
     /** What a version keeps of the asset besides its file, and what a restore brings back. */
     private const array SNAPSHOT = ['focal_x', 'focal_y', 'rotation', 'flip', 'crop', 'crops'];
 
+    /** The image types that can be edited (rotated, mirrored, cropped). */
+    private const array EDITABLE = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
+
+    /** The rendered master keeps the original's format; AVIF becomes WebP. */
+    private const array MASTER_EXTENSIONS = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/avif' => 'webp'];
+
+    /** The long side of the editor's image (the turned and mirrored original without the crop). */
+    public const int ORIENTED_LONG_SIDE = 1600;
+
     /** The folder under versions_dir with one lock file per asset ({id}.lock). */
     private const string LOCKS = '.locks';
 
@@ -106,6 +123,7 @@ final class MediaLibrary
         private readonly ?AssetUsage $usage = null,
         private readonly ?PreviewRenderers $previews = null,
         private readonly ?ColorExtractor $colors = null,
+        private readonly ?Formats $formats = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
     }
@@ -450,7 +468,208 @@ final class MediaLibrary
             }
         }
 
-        return $this->save($data);
+        $saved = $this->save($data);
+        if ([$saved->focalX, $saved->focalY] !== [$asset->focalX, $asset->focalY]) {
+            $this->removeBoxes($saved); // their cut follows the focal point
+        }
+
+        return $saved;
+    }
+
+    /** True for a public JPEG, PNG, WebP or AVIF image: only those can be cropped, turned and mirrored. */
+    public function isEditable(Asset $asset): bool
+    {
+        return !$asset->private && in_array($asset->mime, self::EDITABLE, true);
+    }
+
+    /**
+     * Crop the image (percent of the turned and mirrored original); null removes the crop.
+     * The focal point keeps pointing at the same spot of the picture.
+     *
+     * @throws \InvalidArgumentException for an unknown asset or one that cannot be edited
+     */
+    public function setCrop(string $id, ?CropRect $rect): Asset
+    {
+        $rect = $rect !== null && !$rect->isWhole() ? $rect : null;
+
+        return $this->edit($id, static function (Asset $asset) use ($rect): array {
+            [$x, $y] = Geometry::focalAfter($asset->focalX, $asset->focalY, $asset->crop, $rect);
+
+            return ['crop' => $rect?->toArray() ?? [], 'focal_x' => $x, 'focal_y' => $y];
+        });
+    }
+
+    /**
+     * Turn the image clockwise by quarter turns (negative: counter-clockwise). The crop and
+     * the focal point turn with it; the per-format crops are cleared (their box ratio no
+     * longer fits).
+     *
+     * @throws \InvalidArgumentException for an unknown asset or one that cannot be edited
+     */
+    public function rotate(string $id, int $quarterTurns): Asset
+    {
+        $turns = (($quarterTurns % 4) + 4) % 4;
+
+        return $this->edit($id, static function (Asset $asset) use ($turns): array {
+            [$x, $y] = Geometry::pointRotated($asset->focalX, $asset->focalY, $turns);
+
+            return [
+                'rotation' => ($asset->rotation + $turns) % 4,
+                'crop' => $asset->crop?->rotated($turns)->toArray() ?? [],
+                'crops' => [],
+                'focal_x' => $x,
+                'focal_y' => $y,
+            ];
+        });
+    }
+
+    /**
+     * Mirror the image as it is shown, left-right ($horizontal) or top-bottom. The crop,
+     * the per-format crops and the focal point are mirrored with it.
+     *
+     * @throws \InvalidArgumentException for an unknown asset or one that cannot be edited
+     */
+    public function flip(string $id, bool $horizontal): Asset
+    {
+        return $this->edit($id, static function (Asset $asset) use ($horizontal): array {
+            [$x, $y] = Geometry::pointMirrored($asset->focalX, $asset->focalY, $horizontal);
+
+            // The file is mirrored left-right before it turns: mirroring what is shown turns the other way.
+            return [
+                'rotation' => (($horizontal ? 4 : 6) - $asset->rotation) % 4,
+                'flip' => $asset->mirrored ? '' : 'h',
+                'crop' => $asset->crop?->mirrored($horizontal)->toArray() ?? [],
+                'crops' => array_map(static fn (CropRect $c) => $c->mirrored($horizontal)->toArray(), $asset->crops),
+                'focal_x' => $x,
+                'focal_y' => $y,
+            ];
+        });
+    }
+
+    /**
+     * Set the crop a cover box preset takes (percent of the turned and mirrored original,
+     * cut to the box ratio around its centre); null goes back to the focal point. The
+     * master stays; the box files are made again on their next request.
+     *
+     * @throws \InvalidArgumentException for an unknown or uneditable asset, or a preset that is not a cover box
+     */
+    public function setFormatCrop(string $id, string $preset, ?CropRect $rect): Asset
+    {
+        $this->editable($id);
+        if ($this->formats?->get($preset)?->fit !== 'cover') {
+            throw new \InvalidArgumentException("Preset \"{$preset}\" is not a cover box in config/image.php, so it takes no crop.");
+        }
+
+        return $this->guarded($id, function () use ($id, $preset, $rect): Asset {
+            $data = $this->editable($id)->toData();
+            if ($rect === null) {
+                unset($data['crops'][$preset]);
+            } else {
+                $data['crops'][$preset] = $rect->toArray();
+            }
+            $saved = $this->save($data);
+            $this->removeBoxes($saved);
+
+            return $saved;
+        });
+    }
+
+    /**
+     * The region a cover preset shows now, in percent of the turned and mirrored original:
+     * its format crop fitted to the box ratio, else the focal box inside the image crop.
+     * A contain preset shows the whole image crop. Null for any other preset.
+     */
+    public function formatRegion(Asset $asset, string $preset): ?CropRect
+    {
+        $format = $this->formats?->get($preset);
+        $ratio = $format?->ratio();
+        if ($format === null || $ratio === null || $asset->kind() !== 'image' || $asset->width === null || $asset->height === null) {
+            return null;
+        }
+        [$w, $h] = $asset->rotation % 2 === 1 ? [$asset->height, $asset->width] : [$asset->width, $asset->height];
+        $crop = $asset->crop?->pixels($w, $h) ?? ['x' => 0, 'y' => 0, 'w' => $w, 'h' => $h];
+        if ($format->fit !== 'cover') {
+            return CropRect::fromPixels($crop, $w, $h);
+        }
+        $own = $asset->crops[$preset] ?? null;
+        if ($own !== null) {
+            return CropRect::fromPixels(Geometry::fitRatio($own->pixels($w, $h), $ratio), $w, $h);
+        }
+        // The focal point is in percent of the delivery image, which is the image crop.
+        $box = Geometry::focalBox($crop['w'], $crop['h'], $ratio, $asset->focalX, $asset->focalY);
+
+        return CropRect::fromPixels(['x' => $crop['x'] + $box['x'], 'y' => $crop['y'] + $box['y'], 'w' => $box['w'], 'h' => $box['h']], $w, $h);
+    }
+
+    /**
+     * The editor's image: the original turned and mirrored, without the crop, at most
+     * ORIENTED_LONG_SIDE on its long side ({stem}-oriented-{key}.webp, made on the first
+     * call). Null when it cannot be made (not editable, no WebP, needs Imagick).
+     */
+    public function orientedUrl(Asset $asset): ?string
+    {
+        if (!$this->isEditable($asset) || $this->variants === null || !$this->withinMaxPixels($asset)) {
+            return null;
+        }
+        $rel = self::stemOf($asset->path) . '-oriented-' . Formats::key([$asset->version, $asset->rotation, $asset->mirrored, 'oriented']) . '.webp';
+        if (!is_file($this->absolute($rel))) {
+            try {
+                $made = $this->variants->renderEdited($this->dir, $asset->path, $asset->mime, $asset->rotation, $asset->mirrored, null, $rel, self::ORIENTED_LONG_SIDE);
+            } catch (\Throwable $e) {
+                error_log("preflow/media: no editor image of asset {$asset->id}: " . $e::class . ': ' . $e->getMessage());
+                $made = null;
+            }
+            if ($made === null) {
+                return null;
+            }
+        }
+
+        return $this->url($rel);
+    }
+
+    /**
+     * One edit under the asset's lock: the old files made from the edits go (master and
+     * its variants, the file's variants, box files, the editor's image), the new edit state
+     * is saved, then the master, colours and variants are made again. Undoing every edit
+     * so brings back the file's variants under their usual names.
+     *
+     * @param \Closure(Asset): array<string, mixed> $change the changed fields of the record
+     */
+    private function edit(string $id, \Closure $change): Asset
+    {
+        $this->editable($id);
+
+        return $this->guarded($id, fn (): Asset => $this->remakeDerived($this->editable($id), $change));
+    }
+
+    /**
+     * With the lock held: remove what was made from the file and its edits, save (with
+     * $change applied), then make the master and variants again (and the colours).
+     *
+     * @param ?\Closure(Asset): array<string, mixed> $change
+     */
+    private function remakeDerived(Asset $asset, ?\Closure $change = null, bool $colors = true): Asset
+    {
+        $data = ($change !== null ? $change($asset) : []) + $asset->toData();
+        $this->removeDerived($asset);
+        $data['master'] = [];
+        $data['variants'] = [];
+        if ($asset->note === self::NOTE_NEEDS_IMAGICK) {
+            $data['note'] = ''; // set again if it still applies
+        }
+
+        return $this->deliver($this->save($data), $colors);
+    }
+
+    /** @throws \InvalidArgumentException for an unknown asset or one that cannot be edited */
+    private function editable(string $id): Asset
+    {
+        $asset = $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
+        if (!$this->isEditable($asset)) {
+            throw new \InvalidArgumentException("Asset {$id} cannot be edited: only public JPEG, PNG, WebP and AVIF images can.");
+        }
+
+        return $asset;
     }
 
     /** @throws AssetInUseException while a usage source reports the asset (nothing is deleted) */
@@ -849,7 +1068,7 @@ final class MediaLibrary
         $this->guarded($asset->id, $work);
     }
 
-    /** The asset's current file, its variants (also those made on demand) and its preview. */
+    /** The asset's current file, its variants (also those made on demand), its preview and the files made from its edits. */
     private function removeFiles(Asset $asset): void
     {
         $files = [$this->file($asset), $asset->preview !== null ? $this->fileAt($asset, $asset->preview->path) : null];
@@ -862,7 +1081,7 @@ final class MediaLibrary
             }
         }
         if (!$asset->private) {
-            $this->variants?->remove($asset, $this->dir);
+            $this->removeDerived($asset);
             $preview = $this->previewAsset($asset);
             if ($preview !== null) {
                 $this->variants?->remove($preview, $this->dir); // also the preview's variants made on demand
@@ -965,8 +1184,9 @@ final class MediaLibrary
     }
 
     /**
-     * Replace an image's variants (e.g. after the configured widths changed). Works on
-     * the stored record under the asset's lock, so a replace since $asset was read stands.
+     * Replace an image's variants (e.g. after the configured widths changed), and render an
+     * edited image's master again. Works on the stored record under the asset's lock, so a
+     * replace since $asset was read stands.
      */
     public function regenerate(Asset $asset): Asset
     {
@@ -982,15 +1202,8 @@ final class MediaLibrary
             if ($current->private || $current->kind() !== 'image') {
                 return $current;
             }
-            $this->variants->remove($current, $this->dir);
-            $data = $current->toData();
-            $data['variants'] = array_map(static fn (Variant $v) => $v->toArray(), $this->generateVariants($current));
-            $lacks = $this->lacksColorManagement($current);
-            if ($lacks || $current->note === self::NOTE_NEEDS_IMAGICK) {
-                $data['note'] = $lacks ? self::NOTE_NEEDS_IMAGICK : '';
-            }
-
-            return $this->save($data);
+            // The master (when edited) and the variants are made again; the colours stay.
+            return $this->remakeDerived($current, colors: false);
         });
     }
 
@@ -1039,17 +1252,24 @@ final class MediaLibrary
         });
     }
 
-    /** The URL of an asset (a private one: only the gated {private_url}/{id}) or of a path under the media URL. */
+    /** The URL of an asset (an edited image: its master; a private one: only the gated {private_url}/{id}) or of a path under the media URL. */
     public function url(Asset|string $target): string
     {
         if ($target instanceof Asset) {
             if ($target->private) {
                 return rtrim((string) ($this->config['private_url'] ?? '/files'), '/') . '/' . $target->id;
             }
-            $target = $target->path;
+            // An edited image is delivered as its rendered master.
+            $target = $target->kind() === 'image' ? ($this->deliveryAsset($target) ?? $target)->path : $target->path;
         }
 
         return rtrim($this->url, '/') . '/' . ltrim($target, '/');
+    }
+
+    /** The URL of the asset's own file, never the rendered master (for an unedited asset the same as url()). */
+    public function originalUrl(Asset $asset): string
+    {
+        return $asset->private ? $this->url($asset) : $this->url($asset->path);
     }
 
     /** The private directory (config "private_dir"); null when none is configured. */
@@ -1102,6 +1322,8 @@ final class MediaLibrary
                 return $this->previewUrl($asset);
             }
             $asset = $preview;
+        } else {
+            $asset = $this->deliveryAsset($asset) ?? $asset;
         }
         if ($asset->private) {
             return $this->url($asset); // gated: staff need the private permission (or "*") to see it
@@ -1126,6 +1348,101 @@ final class MediaLibrary
         }
 
         return new Asset(...[...get_object_vars($asset), 'path' => $preview->path, 'mime' => 'image/png', 'width' => $preview->width, 'height' => $preview->height]);
+    }
+
+    /**
+     * The image a page shows: an edited image's rendered master (its path, type and size, with
+     * the asset's variants, which are the master's), an image without one itself, a document's
+     * preview (previewAsset()); null for anything else.
+     */
+    public function deliveryAsset(Asset $asset): ?Asset
+    {
+        if ($asset->kind() !== 'image') {
+            return $this->previewAsset($asset);
+        }
+        $master = $asset->master;
+        // Only the current file's master ({stem}-edit-…): a record cannot point anywhere else.
+        if ($master === null || !$asset->isEdited() || !str_starts_with($master->path, self::stemOf($asset->path) . '-edit-')) {
+            return $asset;
+        }
+        $mime = array_search(pathinfo($master->path, PATHINFO_EXTENSION), ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'], true);
+
+        return new Asset(...[...get_object_vars($asset), 'path' => $master->path, 'mime' => (string) $mime, 'width' => $master->width, 'height' => $master->height]);
+    }
+
+    /**
+     * Render an edited image's master ({stem}-edit-{key}.{ext}, the key from the version and
+     * the edits) and save it on the asset. Without edits, or when it cannot be made, the asset
+     * stays as it is (then pages keep the file); a source that needs Imagick where it is
+     * missing gets the note.
+     */
+    private function renderMaster(Asset $asset): Asset
+    {
+        if (!$asset->isEdited() || !$this->isEditable($asset) || $this->variants === null || !$this->withinMaxPixels($asset)) {
+            return $asset;
+        }
+        $path = self::stemOf($asset->path) . '-edit-' . Formats::key([$asset->version, $asset->rotation, $asset->mirrored, $asset->crop?->toArray()])
+            . '.' . self::MASTER_EXTENSIONS[$asset->mime];
+        try {
+            $size = $this->variants->renderEdited($this->dir, $asset->path, $asset->mime, $asset->rotation, $asset->mirrored, $asset->crop, $path);
+        } catch (\Throwable $e) {
+            error_log("preflow/media: no edited image of asset {$asset->id}: " . $e::class . ': ' . $e->getMessage());
+            $size = null;
+        }
+        $data = $asset->toData();
+        if ($size !== null) {
+            $data['master'] = (new Preview($path, $size[0], $size[1]))->toArray();
+        } elseif ($this->lacksColorManagement($asset)) {
+            $data['note'] = self::NOTE_NEEDS_IMAGICK; // never shown in wrong colours: the file stays what pages get
+        } else {
+            return $asset;
+        }
+
+        return $this->save($data);
+    }
+
+    /**
+     * Delete what was made from a public asset's file and edits: the file's variants, its box
+     * files, the rendered master with its variants and box files, the editor's image. The
+     * file itself and a document's preview stay.
+     */
+    private function removeDerived(Asset $asset): void
+    {
+        if ($asset->private) {
+            return;
+        }
+        $this->variants?->remove($asset, $this->dir);
+        $this->variants?->removeBoxes($asset, $this->dir);
+        $stem = $this->absolute(self::stemOf($asset->path));
+        $own = '/^' . preg_quote(basename($stem), '/') . '-(edit-[0-9a-f]{8}(\.(jpg|png|webp)|-[a-z0-9-]+\.(avif|webp))|oriented-[0-9a-f]{8}\.webp)$/';
+        foreach ([...(glob($stem . '-edit-*') ?: []), ...(glob($stem . '-oriented-*') ?: [])] as $file) {
+            if (preg_match($own, basename($file)) === 1 && is_file($file)) {
+                unlink($file);
+            }
+        }
+    }
+
+    /** Delete the box files of the delivery image (they are made again on their next request). */
+    private function removeBoxes(Asset $asset): void
+    {
+        $delivery = $asset->private ? null : $this->deliveryAsset($asset);
+        if ($delivery !== null) {
+            $this->variants?->removeBoxes($delivery, $this->dir);
+        }
+    }
+
+    private function withinMaxPixels(Asset $asset): bool
+    {
+        return $asset->width !== null && $asset->height !== null
+            && $asset->width * $asset->height <= (int) ($this->config['max_pixels'] ?? self::DEFAULT_MAX_PIXELS);
+    }
+
+    /** A relative path without its extension (Y/m/{id} or Y/m/{id}-v{n}). */
+    private static function stemOf(string $path): string
+    {
+        $dot = strrpos($path, '.');
+
+        return $dot === false ? $path : substr($path, 0, $dot);
     }
 
     /** The preview's URL: under the media URL, or the gated {private_url}/{id}/preview of a private asset; null without one. */
@@ -1205,16 +1522,28 @@ final class MediaLibrary
     /**
      * The hook for everything derived from the asset's current file, run once the
      * record points at the complete file: after an upload, a replace and a restore.
-     * It makes a document's preview, reads the colours, then makes the variants of a
-     * public image or of a public document's preview. Returns the asset as saved.
+     * It makes a document's preview, then delivers it (deliver()). Returns the asset as saved.
      */
     private function afterFileChange(Asset $asset, bool $withPreview = true): Asset
     {
-        $asset = $this->readColors($withPreview ? $this->makePreview($asset) : $asset);
+        return $this->deliver($withPreview ? $this->makePreview($asset) : $asset);
+    }
+
+    /**
+     * What pages get of the asset: the rendered master of an edited image, the colours
+     * (unless $colors is false), then the variants of the delivery image (a public image,
+     * its master, or a public document's preview). Returns the asset as saved.
+     */
+    private function deliver(Asset $asset, bool $colors = true): Asset
+    {
+        $asset = $this->renderMaster($asset);
+        if ($colors) {
+            $asset = $this->readColors($asset);
+        }
         if ($asset->private) {
             return $asset; // no variants: they would be public files
         }
-        $source = $asset->kind() === 'image' ? $asset : $this->previewAsset($asset);
+        $source = $this->deliveryAsset($asset);
         if ($source === null) {
             return $asset;
         }
@@ -1230,7 +1559,7 @@ final class MediaLibrary
         // Optional: make the step widths now, so a page full of new images does not
         // start many encodes at once on its first view (assets.warm_on_upload).
         if (($this->config['warm_on_upload'] ?? false) === true && is_array($this->config['warm_widths'] ?? null)) {
-            $this->warm($this->previewAsset($asset) ?? $asset, array_values(array_map('intval', $this->config['warm_widths'])));
+            $this->warm($this->deliveryAsset($asset) ?? $asset, array_values(array_map('intval', $this->config['warm_widths'])));
         }
 
         return $asset;
@@ -1263,8 +1592,8 @@ final class MediaLibrary
     }
 
     /**
-     * The colours of an image's file or a document's preview; null without them. A
-     * failure is logged.
+     * The colours of the delivery image (an image's file or master, a document's preview);
+     * null without them. A failure is logged.
      *
      * @return ?array{color: string, palette: list<string>, text: string}
      */
@@ -1273,12 +1602,12 @@ final class MediaLibrary
         if ($this->colors === null) {
             return null;
         }
-        $source = $asset->kind() === 'image' ? $asset : $this->previewAsset($asset);
+        $source = $this->deliveryAsset($asset); // an edited image: its master
         if ($source === null || $source->mime === 'image/svg+xml' || $source->width === null || $source->height === null
             || $source->width * $source->height > (int) ($this->config['max_pixels'] ?? self::DEFAULT_MAX_PIXELS)) {
             return null;
         }
-        $file = $source === $asset ? $this->file($asset) : $this->previewFile($asset);
+        $file = $this->fileAt($asset, $source->path);
         if ($file === null || !is_file($file)) {
             return null;
         }

@@ -84,4 +84,23 @@ final readonly class CropRect
             'h' => max(1, min($height - $y, (int) round($this->height / 100 * $height))),
         ];
     }
+
+    /**
+     * A pixel area of a width x height image in percent of it.
+     *
+     * @param array{x: int, y: int, w: int, h: int} $pixels
+     */
+    public static function fromPixels(array $pixels, int $width, int $height): self
+    {
+        $width = max(1, $width);
+        $height = max(1, $height);
+
+        return self::of($pixels['x'] / $width * 100, $pixels['y'] / $height * 100, $pixels['w'] / $width * 100, $pixels['h'] / $height * 100);
+    }
+
+    /** True when it covers the whole image (cutting it would change nothing). */
+    public function isWhole(): bool
+    {
+        return $this->width >= 100.0 && $this->height >= 100.0;
+    }
 }

@@ -51,4 +51,16 @@ final class CropRectTest extends TestCase
         $this->assertSame(['x' => 9, 'y' => 9, 'w' => 1, 'h' => 1], $tiny);
         $this->assertSame(['x' => 0, 'y' => 0, 'w' => 1, 'h' => 1], CropRect::of(0, 0, 1, 1)->pixels(10, 10));
     }
+
+    public function test_from_pixels_is_the_area_in_percent(): void
+    {
+        $this->assertEquals(CropRect::of(50, 25, 25, 50), CropRect::fromPixels(['x' => 400, 'y' => 100, 'w' => 200, 'h' => 200], 800, 400));
+        $this->assertSame(['x' => 0.0, 'y' => 16.67, 'width' => 50.0, 'height' => 16.67], CropRect::fromPixels(['x' => 0, 'y' => 100, 'w' => 400, 'h' => 100], 800, 600)->toArray());
+    }
+
+    public function test_is_whole(): void
+    {
+        $this->assertTrue(CropRect::of(0, 0, 100, 100)->isWhole());
+        $this->assertFalse(CropRect::of(0, 0, 100, 99.5)->isWhole());
+    }
 }

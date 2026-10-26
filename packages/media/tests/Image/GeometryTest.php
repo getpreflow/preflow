@@ -38,4 +38,18 @@ final class GeometryTest extends TestCase
         $this->assertSame([25, 25], Geometry::focalAfter(50, 50, CropRect::of(0, 0, 50, 50), null));
         $this->assertSame([0, 100], Geometry::focalAfter(0, 100, CropRect::of(10, 10, 80, 80), CropRect::of(10, 10, 80, 80)));
     }
+
+    public function test_a_point_turns_with_the_image(): void
+    {
+        $this->assertSame([80, 30], Geometry::pointRotated(30, 20, 1));
+        $this->assertSame([70, 80], Geometry::pointRotated(30, 20, 2));
+        $this->assertSame([20, 70], Geometry::pointRotated(30, 20, -1));
+        $this->assertSame([30, 20], Geometry::pointRotated(30, 20, 4));
+    }
+
+    public function test_a_point_is_mirrored_with_the_image(): void
+    {
+        $this->assertSame([70, 20], Geometry::pointMirrored(30, 20, true));
+        $this->assertSame([30, 80], Geometry::pointMirrored(30, 20, false));
+    }
 }

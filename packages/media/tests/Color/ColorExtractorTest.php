@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace Preflow\Media\Tests\Color;
 
+use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\Locales;
 use Preflow\Media\Color\ColorExtractor;
+use Preflow\Media\CropRect;
 use Preflow\Media\Image\ColorManagement;
+use Preflow\Media\Image\GdBackend;
+use Preflow\Media\Image\VariantGenerator;
 use Preflow\Media\MediaLibrary;
 use Preflow\Media\Preview\PdfPreviewRenderer;
 use Preflow\Media\Preview\PreviewRenderers;
@@ -314,5 +318,22 @@ final class ColorExtractorTest extends TestCase
         // Made again with the preview.
         (new \ReflectionMethod(MediaLibrary::class, 'save'))->invoke($media, [...$asset->toData(), 'color' => '#123456']);
         $this->assertSame($asset->color, $media->remakePreview($media->find($asset->id))->color);
+    }
+
+    #[RequiresFunction('imagewebp')]
+    public function test_an_image_crop_reads_the_colours_of_the_cropped_image(): void
+    {
+        $dm = new DataManager(drivers: ['json' => new JsonFileDriver($this->assetRoot . '/store')], defaultDriver: 'json');
+        $media = new MediaLibrary($dm, new Locales(['en'], 'en'), $this->assetRoot . '/media', '/media', ['versions_dir' => $this->assetRoot . '/versions'], new VariantGenerator(new GdBackend(), [480], 75), colors: new ColorExtractor(new ColorManagement()));
+        $asset = $media->upload($this->upload($this->blocks(self::BLUE, self::AMBER), 'a.png'), null);
+        $this->assertNear(self::BLUE, (string) $asset->color, 8);
+
+        $cropped = $media->setCrop($asset->id, CropRect::of(70, 0, 30, 100));
+
+        $this->assertNear(self::AMBER, (string) $cropped->color, 8);
+        $this->assertSame('#000000', $cropped->textColor);
+        $this->assertNear(self::AMBER, (string) $media->extractColors($cropped)?->color, 8);
+
+        $this->assertNear(self::BLUE, (string) $media->setCrop($asset->id, null)->color, 8);
     }
 }

@@ -82,6 +82,7 @@ final class MediaServiceProvider extends ServiceProvider
             usage: $c->get(AssetUsage::class),
             previews: $c->get(PreviewRenderers::class),
             colors: new ColorExtractor($colors),
+            formats: $c->get(Formats::class),
         ));
         $container->singleton(LocaleProvider::class, fn (Container $c) => new ConfigLocaleProvider(
             static fn (): ?string => self::translatorLocale($c),

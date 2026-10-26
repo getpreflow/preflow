@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
 use Preflow\Media\AssetUploadException;
 use Preflow\Media\AssetVersion;
+use Preflow\Media\CropRect;
 use Preflow\Media\Image\GdBackend;
 use Preflow\Media\Image\ImageBackend;
 use Preflow\Media\Image\VariantGenerator;
@@ -512,5 +513,51 @@ final class ReplaceTest extends TestCase
 
         $library->delete($asset->id);
         $this->assertSame([], $this->filesUnder($this->assetRoot . '/versions'));
+    }
+
+    public function test_replace_keeps_the_edits_and_renders_a_new_master(): void
+    {
+        $library = $this->lib();
+        $asset = $library->upload($this->upload($this->png(800, 600), 'a.png'), null);
+        $library->rotate($asset->id, 1);
+        $edited = $library->setCrop($asset->id, CropRect::of(50, 50, 50, 50));
+        $old = [$library->absolute($edited->master->path), ...array_map(fn ($v) => $library->absolute($v->path), $edited->variants)];
+        $this->assertNotSame([], $edited->variants);
+
+        $new = $library->replace($asset->id, $this->upload($this->png(300, 600), 'b.png'), null);
+
+        $this->assertSame([1, false], [$new->rotation, $new->mirrored]);
+        $this->assertEquals(CropRect::of(50, 50, 50, 50), $new->crop);
+        $this->assertStringStartsWith(dirname($asset->path) . '/' . $asset->id . '-v2-edit-', (string) $new->master?->path);
+        $this->assertSame([300, 150], [$new->master->width, $new->master->height]); // 600x300 turned, then half of each side
+        $this->assertFileExists($library->absolute($new->master->path));
+        $this->assertSame('/media/' . $new->master->path, $library->url($new));
+        foreach ($new->variants as $v) {
+            $this->assertStringStartsWith(substr($new->master->path, 0, -4) . '-', $v->path);
+            $this->assertFileExists($library->absolute($v->path));
+        }
+        foreach ($old as $file) {
+            $this->assertFileDoesNotExist($file);
+        }
+        $this->assertSame([], glob($library->absolute(dirname($asset->path)) . '/' . $asset->id . '-edit-*'));
+    }
+
+    public function test_restore_brings_back_the_versions_edits(): void
+    {
+        $library = $this->lib();
+        $asset = $library->upload($this->upload($this->png(300, 200), 'a.png'), null);
+        $library->rotate($asset->id, 1);
+        $library->setCrop($asset->id, CropRect::of(0, 0, 50, 50));
+        $library->replace($asset->id, $this->upload($this->png(400, 200), 'b.png'), null);
+        $library->rotate($asset->id, 1);
+        $this->assertSame(2, $library->find($asset->id)->rotation);
+
+        $restored = $library->restore($asset->id, 1, null);
+
+        $this->assertSame(1, $restored->rotation);
+        $this->assertEquals(CropRect::of(0, 0, 50, 50), $restored->crop);
+        $this->assertStringStartsWith(dirname($asset->path) . '/' . $asset->id . '-v3-edit-', (string) $restored->master?->path);
+        $this->assertSame([100, 150], [$restored->master->width, $restored->master->height]);
+        $this->assertSame([], glob($library->absolute(dirname($asset->path)) . '/' . $asset->id . '-v2-*'));
     }
 }
