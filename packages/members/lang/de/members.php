@@ -77,6 +77,13 @@ return [
         'text' => 'Ihr Passwort stimmt, aber Ihre Adresse ist noch nicht bestätigt. Lassen Sie sich den Link noch einmal schicken.',
         'button' => 'Link noch einmal senden',
     ],
+    // The members home (GET {path}) for a signed-in member, unless the site has its own page there.
+    'landing' => [
+        'title' => 'Willkommen, :name',
+        'text' => 'Sie sind angemeldet.',
+        'account' => 'Ihr Konto',
+        'logout' => 'Abmelden',
+    ],
     'account' => [
         'back' => 'Zurück',
         'title' => 'Ihr Konto',
@@ -107,14 +114,20 @@ return [
     'mail' => [
         'confirm' => [
             'subject' => 'Bestätigen Sie Ihre E-Mail-Adresse',
+            // the button of the HTML mail (the layout's action)
+            'action' => 'E-Mail-Adresse bestätigen',
             'body' => "Guten Tag {name}\n\nBitte bestätigen Sie Ihre E-Mail-Adresse: {link}\n\nDer Link gilt {validity}. Falls Sie sich nicht angemeldet haben, ignorieren Sie diese Mail.",
         ],
         'existing' => [
             'subject' => 'Ihr Konto',
+            // the button of the HTML mail (the layout's action)
+            'action' => 'Anmelden',
             'body' => "Guten Tag {name}\n\nJemand (hoffentlich Sie) wollte sich mit dieser Adresse registrieren, aber Sie haben bereits ein Konto.\n\nAnmelden: {login_url}\nPasswort vergessen? {reset_url}\nDer Link zum Zurücksetzen gilt {validity}.",
         ],
         'reset' => [
             'subject' => 'Setzen Sie Ihr Passwort zurück',
+            // the button of the HTML mail (the layout's action)
+            'action' => 'Neues Passwort festlegen',
             'body' => "Guten Tag {name}\n\nHier legen Sie ein neues Passwort fest: {link}\n\nDer Link gilt {validity}. Falls Sie das nicht angefordert haben, ignorieren Sie diese Mail.",
         ],
         'notice' => [

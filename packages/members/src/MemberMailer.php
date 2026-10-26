@@ -37,6 +37,7 @@ final class MemberMailer
         private readonly LinkValidity $validity,
         private readonly ?string $from = null,
         private readonly ?MemberLinks $memberLinks = null,
+        private readonly ?MembersSettings $settings = null,
     ) {}
 
     /** @param ?\Closure(\Throwable): void $onFailure */
@@ -47,7 +48,7 @@ final class MemberMailer
             'name' => (string) $m->get('name'),
             'link' => $this->links->url($lang, '/confirm/' . $token),
             'validity' => $this->validity->confirm($lang),
-        ]), $onFailure);
+        ], action: ['confirm', $this->links->url($lang, '/confirm/' . $token)]), $onFailure);
     }
 
     /**
@@ -63,7 +64,7 @@ final class MemberMailer
             'login_url' => $this->links->url($lang, '/login'),
             'reset_url' => $this->links->url($lang, '/reset/' . $resetToken),
             'validity' => $this->validity->reset($lang),
-        ]), $onFailure);
+        ], action: ['existing', $this->links->url($lang, '/login')]), $onFailure);
     }
 
     /** @param ?\Closure(\Throwable): void $onFailure */
@@ -74,7 +75,7 @@ final class MemberMailer
             'name' => (string) $m->get('name'),
             'link' => $this->links->url($lang, '/reset/' . $token),
             'validity' => $this->validity->reset($lang),
-        ]), $onFailure);
+        ], action: ['reset', $this->links->url($lang, '/reset/' . $token)]), $onFailure);
     }
 
     /**
@@ -135,6 +136,26 @@ final class MemberMailer
         $this->sendMessage('declined', $m, $message);
     }
 
+    /**
+     * The message an accepted / declined mail starts with, in the member's language and with the
+     * placeholders filled in: the owner's text from Members settings stored for that language,
+     * else the lang files' (mail.{accepted|declined}.body), which a site overrides with its own
+     * lang/{locale}/members.php. Folio's Decision panel offers it for editing; members:decide sends it as is.
+     *
+     * @param 'accepted'|'declined' $mail
+     */
+    public function defaultMessage(DynamicRecord $m, string $mail): string
+    {
+        $lang = $this->lang($m);
+        $custom = $this->settings === null ? null : ($mail === 'accepted' ? $this->settings->acceptMessage($lang) : $this->settings->declineMessage($lang));
+        $text = $custom ?? $this->translator->get('members.mail.' . $mail . '.body', [], $lang);
+
+        return strtr($text, [
+            '{name}' => (string) $m->get('name'),
+            '{login_url}' => $mail === 'accepted' ? $this->links->url($lang, '/login') : '',
+        ]);
+    }
+
     /** The owner's message from the Decision panel, already filled in; only the subject comes from the lang files. */
     private function sendMessage(string $mail, DynamicRecord $m, string $message): void
     {
@@ -142,15 +163,28 @@ final class MemberMailer
         $this->notifier->send($this->compose($this->copy($mail, 'subject', $lang, []), $message, $lang, (string) $m->get('email')));
     }
 
-    /** @param array<string, string> $vars */
-    private function build(string $mail, string $lang, string $to, array $vars, string $body = 'body'): Email
+    /**
+     * @param array<string, string> $vars
+     * @param array{0: string, 1: string}|null $action the mail whose "action" text is the button's label, and the button's URL
+     */
+    private function build(string $mail, string $lang, string $to, array $vars, string $body = 'body', ?array $action = null): Email
     {
         return $this->compose(
             $this->copy($mail, 'subject', $lang, array_map(self::oneLine(...), $vars)),
             $this->copy($mail, $body, $lang, $vars),
             $lang,
             $to,
+            $action === null ? null : $this->action($action[0], $lang, $action[1]),
         );
+    }
+
+    /** The primary action of a mail for the layout: its label (members.mail.{mail}.action) and URL; none when the site's copy lacks the label. */
+    private function action(string $mail, string $lang, string $url): ?array
+    {
+        $key = 'members.mail.' . $mail . '.action';
+        $label = $this->translator->get($key, [], $lang);
+
+        return $label === '' || $label === $key ? null : ['label' => $label, 'url' => $url];
     }
 
     /** @param array<string, string> $vars {name} {link} {login_url} {reset_url} {validity} {email} {details} {folio_url} */
@@ -164,7 +198,8 @@ final class MemberMailer
         return strtr($this->translator->get('members.mail.' . $mail . '.' . $part, [], $lang), $map);
     }
 
-    private function compose(string $subject, string $text, string $lang, string $to): Email
+    /** @param array{label: string, url: string}|null $action */
+    private function compose(string $subject, string $text, string $lang, string $to, ?array $action = null): Email
     {
         return new Email(
             to: $to,
@@ -175,7 +210,7 @@ final class MemberMailer
                 'subject' => $subject,
                 'accent' => $this->config->accent(),
                 'paragraphs' => $this->paragraphs($text),
-            ]),
+            ] + ($action === null ? [] : ['action' => $action])),
             from: $this->from,
         );
     }

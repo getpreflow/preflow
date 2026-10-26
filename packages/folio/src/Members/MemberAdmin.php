@@ -20,11 +20,9 @@ use Preflow\Folio\Extension\Screen\ScreenView;
 use Preflow\I18n\Translator;
 use Preflow\Members\Admission\Admission;
 use Preflow\Members\Languages;
-use Preflow\Members\Links;
 use Preflow\Members\MemberMailer;
 use Preflow\Members\Members;
 use Preflow\Members\MembersConfig;
-use Preflow\Members\MembersSettings;
 use Preflow\Members\MemberState;
 use Preflow\Notify\TransportException;
 use Preflow\Validation\ValidationException;
@@ -54,8 +52,6 @@ final class MemberAdmin
     public function __construct(
         private readonly Members $members,
         private readonly MemberMailer $mailer,
-        private readonly Links $links,
-        private readonly MembersSettings $settings,
         private readonly RememberMe $remember,
         private readonly Admission $admission,
         private readonly Locales $locales,
@@ -93,7 +89,6 @@ final class MemberAdmin
     public function decision(DynamicRecord $m): ScreenView
     {
         $lang = $this->lang($m);
-        $name = (string) $m->get('name');
         $state = MemberState::fromRecord($m);
         // The raw value: the panel prints it with folio_date(…, 'datetime'), as Folio's date fields show it.
         $registered = (string) $m->get('registered_at');
@@ -106,8 +101,8 @@ final class MemberAdmin
             'details' => self::lines($this->admission->details($m, Admission::PANEL)),
             'can_accept' => in_array($state, self::ALLOWED['member'], true),
             'can_decline' => in_array($state, self::ALLOWED['rejected'], true),
-            'accept_text' => $this->text('accept_message', 'accepted', $lang, $name, $this->links->url($lang, '/login')),
-            'decline_text' => $this->text('decline_message', 'declined', $lang, $name),
+            'accept_text' => $this->mailer->defaultMessage($m, 'accepted'),
+            'decline_text' => $this->mailer->defaultMessage($m, 'declined'),
             'language_label' => $this->languageLabel($lang),
         ]);
     }
@@ -184,19 +179,6 @@ final class MemberAdmin
         $lang = (string) $m->get('language');
 
         return $this->locales->has($lang) ? $lang : $this->locales->default;
-    }
-
-    /**
-     * The default message in the member's language, with the placeholders filled in: the
-     * owner's text from Members settings stored for $lang itself, else the lang files'
-     * (mail.{mail}.body in $lang), which a site overrides with its own lang/{locale}/members.php.
-     */
-    private function text(string $setting, string $mail, string $lang, string $name, string $loginUrl = ''): string
-    {
-        $text = ($setting === 'accept_message' ? $this->settings->acceptMessage($lang) : $this->settings->declineMessage($lang))
-            ?? $this->translator->get('members.mail.' . $mail . '.body', [], $lang);
-
-        return strtr($text, ['{name}' => $name, '{login_url}' => $loginUrl]);
     }
 
     /**

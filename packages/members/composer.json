@@ -41,7 +41,10 @@
     },
     "extra": {
         "preflow": {
-            "commands": ["Preflow\\Members\\Console\\PruneMembersCommand"],
+            "commands": [
+                "Preflow\\Members\\Console\\PruneMembersCommand",
+                "Preflow\\Members\\Console\\DecideCommand"
+            ],
             "translations": {
                 "members": { "path": "lang", "scope": "public" },
                 "members-admin": { "path": "lang", "scope": "admin" }

@@ -1,5 +1,6 @@
 {# The HTML part of the member mails, neutral: a site replaces it with config/members.php mail.layout.
-   Gets lang, subject, accent (link colour) and paragraphs (safe HTML: escaped text, URLs linked). #}
+   Gets lang, subject, accent (link colour) and paragraphs (safe HTML: escaped text, URLs linked), and for the
+   confirm, reset and existing-account mails action ({label, url}: the mail's primary link; a layout may ignore it). #}
 <!doctype html>
 <html lang="{{ lang }}">
 <head><meta charset="utf-8"><title>{{ subject }}</title></head>
@@ -9,6 +10,10 @@
     {% for p in paragraphs %}
     <p style="margin:0 0 16px;color:#1a1a1a">{{ p|raw }}</p>
     {% endfor %}
+    {% if action is defined and action %}
+    <p style="margin:24px 0 8px"><a data-members-action href="{{ action.url }}" style="display:inline-block;background:{{ accent }};color:#ffffff;text-decoration:none;font-weight:600;padding:12px 24px;border-radius:4px">{{ action.label }}</a></p>
+    <p data-members-action-url style="margin:0 0 16px;font-size:13px;color:#666666;word-break:break-all">{{ action.url }}</p>
+    {% endif %}
   </div>
 </body>
 </html>

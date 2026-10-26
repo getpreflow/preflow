@@ -77,6 +77,13 @@ return [
         'text' => "Your password is right, but your address isn't confirmed yet. Have the link sent again.",
         'button' => 'Send the link again',
     ],
+    // The members home (GET {path}) for a signed-in member, unless the site has its own page there.
+    'landing' => [
+        'title' => 'Hello, :name',
+        'text' => 'You are signed in.',
+        'account' => 'Your account',
+        'logout' => 'Sign out',
+    ],
     'account' => [
         'back' => 'Back',
         'title' => 'Your account',
@@ -109,14 +116,20 @@ return [
     'mail' => [
         'confirm' => [
             'subject' => 'Confirm your email address',
+            // the button of the HTML mail (the layout's action)
+            'action' => 'Confirm email address',
             'body' => "Hi {name},\n\nplease confirm your email address: {link}\n\nThe link works for {validity}. If you didn't sign up, ignore this mail.",
         ],
         'existing' => [
             'subject' => 'Your account',
+            // the button of the HTML mail (the layout's action)
+            'action' => 'Log in',
             'body' => "Hi {name},\n\nsomeone (hopefully you) tried to register with this address, but you already have an account.\n\nLog in: {login_url}\nForgot your password? {reset_url}\nThe reset link works for {validity}.",
         ],
         'reset' => [
             'subject' => 'Reset your password',
+            // the button of the HTML mail (the layout's action)
+            'action' => 'Set a new password',
             'body' => "Hi {name},\n\nset a new password here: {link}\n\nThe link works for {validity}. If you didn't ask for this, ignore this mail.",
         ],
         'notice' => [

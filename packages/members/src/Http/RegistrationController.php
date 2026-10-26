@@ -10,6 +10,7 @@ use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
 use Preflow\Members\Admission\Admission;
+use Preflow\Members\Admission\ComposesName;
 use Preflow\Members\Admission\Decision;
 use Preflow\Members\Confirmation;
 use Preflow\Members\Links;
@@ -88,6 +89,10 @@ final class RegistrationController
             'email' => Members::normalizeEmail(Input::text($body, 'email')),
             'consent' => Input::text($body, 'consent') !== '',
         ] + array_diff_key(array_filter($body, is_string(...)), array_flip(self::SECRET));
+        // An admission that composes the name does it from its own fields; a posted "name" is not used then.
+        if ($this->admission instanceof ComposesName) {
+            $input['name'] = trim($this->admission->name($input));
+        }
 
         $errors = [];
         if ($input['name'] === '') {
@@ -185,7 +190,7 @@ final class RegistrationController
      */
     private function page(ServerRequestInterface $request, array $errors = [], array $input = [], int $status = 200, string $next = ''): ResponseInterface
     {
-        return $this->show('register', $request, ['open' => $this->open(), 'errors' => $errors, 'old' => $input, 'next' => $next], $status);
+        return $this->show('register', $request, ['open' => $this->open(), 'compose_name' => $this->admission instanceof ComposesName, 'errors' => $errors, 'old' => $input, 'next' => $next], $status);
     }
 
     /** A page with the flash notice a previous request left (e.g. after deleting the account). @param array<string, mixed> $vars */

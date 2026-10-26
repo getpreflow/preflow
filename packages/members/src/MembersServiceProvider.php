@@ -99,6 +99,7 @@ final class MembersServiceProvider extends ServiceProvider
             $c->get(LinkValidity::class),
             self::from($c),
             $c->bound(MemberLinks::class) ? $c->get(MemberLinks::class) : null,
+            $c->get(MembersSettings::class),
         ));
         $container->singleton(MembersView::class, static fn (Container $c): MembersView => new MembersView(
             $c->get(TemplateEngineInterface::class),
@@ -173,8 +174,27 @@ final class MembersServiceProvider extends ServiceProvider
         }
         $router = $c->get(RouterInterface::class);
         if ($router instanceof Router) {
-            $router->getCollection()->addMany(MembersRoutes::entries($c->get(MembersConfig::class)->path()));
+            $path = $c->get(MembersConfig::class)->path();
+            $collection = $router->getCollection();
+            $collection->addMany(MembersRoutes::entries($path));
+            // The default landing comes last and only where the site has no page of its own on that path (Ruling 4).
+            $landing = MembersRoutes::landing($path);
+            if ($landing !== null && !self::answers($collection->forMethod('GET'), $landing->pattern)) {
+                $collection->add($landing);
+            }
         }
+    }
+
+    /** @param array<int, \Preflow\Routing\RouteEntry> $routes */
+    private static function answers(array $routes, string $path): bool
+    {
+        foreach ($routes as $route) {
+            if ($route->pattern === $path || ($route->regex !== '' && preg_match($route->regex, $path) === 1)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function links(Container $c): Links

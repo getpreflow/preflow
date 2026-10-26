@@ -77,6 +77,13 @@ return [
         'text' => "Votre mot de passe est correct, mais votre adresse n'est pas encore confirmée. Faites-vous renvoyer le lien.",
         'button' => 'Renvoyer le lien',
     ],
+    // The members home (GET {path}) for a signed-in member, unless the site has its own page there.
+    'landing' => [
+        'title' => 'Bonjour, :name',
+        'text' => 'Vous êtes connecté.',
+        'account' => 'Votre compte',
+        'logout' => 'Se déconnecter',
+    ],
     'account' => [
         'back' => 'Retour',
         'title' => 'Votre compte',
@@ -107,14 +114,20 @@ return [
     'mail' => [
         'confirm' => [
             'subject' => 'Confirmez votre adresse e-mail',
+            // the button of the HTML mail (the layout's action)
+            'action' => 'Confirmer l\'adresse e-mail',
             'body' => "Bonjour {name},\n\nVeuillez confirmer votre adresse e-mail : {link}\n\nLe lien est valable {validity}. Si vous ne vous êtes pas inscrit, ignorez ce message.",
         ],
         'existing' => [
             'subject' => 'Votre compte',
+            // the button of the HTML mail (the layout's action)
+            'action' => 'Se connecter',
             'body' => "Bonjour {name},\n\nQuelqu'un (vous, espérons-le) a tenté de s'inscrire avec cette adresse, mais vous avez déjà un compte.\n\nSe connecter : {login_url}\nMot de passe oublié ? {reset_url}\nLe lien de réinitialisation est valable {validity}.",
         ],
         'reset' => [
             'subject' => 'Réinitialisez votre mot de passe',
+            // the button of the HTML mail (the layout's action)
+            'action' => 'Définir un nouveau mot de passe',
             'body' => "Bonjour {name},\n\nChoisissez un nouveau mot de passe ici : {link}\n\nLe lien est valable {validity}. Si vous n'avez rien demandé, ignorez ce message.",
         ],
         'notice' => [

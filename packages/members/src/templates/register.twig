@@ -21,12 +21,12 @@
       </div>
       {% endif %}
       <div class="members-row">
-        <div class="field{{ errors.name is defined ? ' field--error' : '' }}">
+        {% if not compose_name|default(false) %}<div class="field{{ errors.name is defined ? ' field--error' : '' }}">
           <label for="f-name">{{ t('members.form.name') }}</label>
           <input id="f-name" name="name" type="text" autocomplete="name" required value="{{ old.name|default('') }}">
           {% if errors.name is defined %}<p class="field-error">{{ t('members.errors.name') }}</p>{% endif %}
         </div>
-        <div class="field{{ errors.email is defined ? ' field--error' : '' }}">
+        {% endif %}<div class="field{{ errors.email is defined ? ' field--error' : '' }}">
           <label for="f-email">{{ t('members.form.email') }}</label>
           <input id="f-email" name="email" type="email" autocomplete="email" required value="{{ old.email|default('') }}">
           {% if errors.email is defined %}<p class="field-error">{{ t('members.errors.email') }}</p>{% endif %}
