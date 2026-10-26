@@ -1456,6 +1456,10 @@ the content languages (`config/i18n.php`) are separate.
   `lang/{locale}/folio.php` a site adds (two-letter codes).
 - Public pages never change with the admin's language: the translator's locale and the
   overrides are put back after every admin request.
+- Media's alt texts and captions follow the content language, not the admin's: Folio binds
+  media's `LocaleProvider` to its content locale. A site that binds media's
+  `ConfigLocaleProvider` itself is outside that wiring: it reads the translator's locale, which
+  on an admin request is the admin's language.
 
 **Changing a text: the Translations screen.** *Settings → Translations*
 (`{prefix}/translations`, permission `translations.edit`) lists the texts of every `admin`
@@ -1471,6 +1475,11 @@ language; *Reset* brings the delivered one back.
   lists it) and travel with `folio:export` / `folio:import` / `folio:pull`.
 - A site's own `lang/{locale}/folio.php` (or `rbac.php`, …) changes single keys for every
   request, in version control; an override on the screen wins over it.
+- Overrides apply on admin requests only. Staff mails sent from a console command or a queue
+  worker (outside an admin request) use the delivered texts and the site's `lang/` files.
+- A site or package that sets its own `TranslationOverrides` on the translator keeps it: Folio
+  only fills an empty override layer (`NoTranslationOverrides`), and the Translations screen's
+  texts then don't apply.
 
 **Model labels.** A model file's `label`, `label_singular`, a field's `label` and `help` and a
 select option's label can be a plain string or a map per language:
