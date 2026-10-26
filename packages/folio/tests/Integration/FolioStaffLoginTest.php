@@ -59,6 +59,37 @@ final class FolioStaffLoginTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_an_md5_crypt_hash_is_upgraded_at_sign_in_and_the_session_survives(): void
+    {
+        $old = crypt(self::PASSWORD, '$1$saltsalt$');
+        $this->assertStringStartsWith('$1$', $old);
+        $this->makeStaff(data: ['password_hash' => $old, 'auth_epoch' => '5']);
+
+        $response = $this->post('/folio/login', ['email' => 'ada@site.test', 'password' => self::PASSWORD]);
+
+        $this->assertSame('/folio', $response->getHeaderLine('Location'));
+        $staff = $this->staff('ada@site.test');
+        $new = (string) $staff->get('password_hash');
+        $hasher = new NativePasswordHasher();
+        $this->assertNotSame($old, $new);
+        $this->assertFalse($hasher->needsRehash($new), 'a hash needsRehash() accepts');
+        $this->assertTrue($hasher->verify(self::PASSWORD, $new));
+        $this->assertSame('5', (string) $staff->get('auth_epoch'), 'the epoch is untouched');
+        $this->assertSame(200, $this->send('GET', '/folio')->getStatusCode(), 'the new session survives');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_config_user_signs_in_and_nothing_changes(): void
+    {
+        $auth = (string) file_get_contents($this->dir . '/config/auth.php');
+
+        $this->assertSame('/folio', $this->post('/folio/login', ['email' => self::CONFIG_EMAIL, 'password' => self::PASSWORD])->getHeaderLine('Location'));
+
+        $this->assertSame($auth, (string) file_get_contents($this->dir . '/config/auth.php'));
+        $this->assertSame([], $this->dm()->queryType('staff')->get()->items(), 'no record made');
+    }
+
+    #[RunInSeparateProcess]
     public function test_config_era_sessions_and_remember_cookies_end_once_the_record_exists(): void
     {
         $login = $this->post('/folio/login', ['email' => self::CONFIG_EMAIL, 'password' => self::PASSWORD, 'remember' => '1']);

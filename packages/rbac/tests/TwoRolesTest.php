@@ -189,7 +189,7 @@ final class TwoRolesTest extends TestCase
             'default_guard' => 'session',
             'guards' => ['session' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'chain', 'population' => 'staff']],
             'providers' => [
-                'staff' => ['class' => \Preflow\Folio\Users\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
+                'staff' => ['class' => \Preflow\Auth\Record\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
                 'chain' => ['class' => \Preflow\Auth\ChainUserProvider::class, 'providers' => ['staff']],
             ],
             'session' => ['cookie' => 'rbac_two_roles_test', 'path' => '/', 'secure' => false],

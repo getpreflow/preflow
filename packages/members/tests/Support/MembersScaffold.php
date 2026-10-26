@@ -64,7 +64,7 @@ trait MembersScaffold
                     ['email' => self::ADMIN_EMAIL, 'password_hash' => password_hash(self::ADMIN_PASSWORD, PASSWORD_DEFAULT), 'roles' => ['admin']],
                 ]],
                 'members' => [
-                    'class' => \Preflow\Folio\Users\RecordUserProvider::class,
+                    'class' => \Preflow\Auth\Record\RecordUserProvider::class,
                     'type' => 'member', 'email' => 'email', 'password' => 'password_hash', 'roles' => 'roles',
                 ],
             ],

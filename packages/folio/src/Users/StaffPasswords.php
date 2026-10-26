@@ -7,6 +7,8 @@ namespace Preflow\Folio\Users;
 use Preflow\Auth\PasswordHasherInterface;
 use Preflow\Auth\Remember\RememberMe;
 use Preflow\Auth\Tokens\Tokens;
+use Preflow\Auth\Record\RecordUser;
+use Preflow\Auth\Record\RecordUserProvider;
 use Preflow\Auth\UserProviderInterface;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;

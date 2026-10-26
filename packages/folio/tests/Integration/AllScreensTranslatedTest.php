@@ -264,12 +264,12 @@ final class AllScreensTranslatedTest extends TestCase
                 'members' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'members', 'population' => 'members'],
             ],
             'providers' => [
-                'staff' => ['class' => \Preflow\Folio\Users\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
+                'staff' => ['class' => \Preflow\Auth\Record\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
                 'config' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [
                     ['email' => self::ADMIN_EMAIL, 'password_hash' => password_hash(self::PASSWORD, PASSWORD_DEFAULT), 'roles' => ['admin']],
                 ]],
                 'users' => ['class' => \Preflow\Auth\ChainUserProvider::class, 'providers' => ['staff', 'config']],
-                'members' => ['class' => \Preflow\Folio\Users\RecordUserProvider::class, 'type' => 'member', 'email' => 'email', 'password' => 'password_hash', 'roles' => 'roles'],
+                'members' => ['class' => \Preflow\Auth\Record\RecordUserProvider::class, 'type' => 'member', 'email' => 'email', 'password' => 'password_hash', 'roles' => 'roles'],
             ],
             'session' => ['cookie' => 'all_screens_test', 'path' => '/', 'paths' => ['/folio', '/members'], 'secure' => false],
         ], true) . ";\n");

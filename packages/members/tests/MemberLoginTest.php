@@ -46,6 +46,28 @@ final class MemberLoginTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_an_md5_crypt_hash_is_upgraded_at_sign_in_and_the_session_survives(): void
+    {
+        $member = $this->makeMember();
+        $old = crypt(self::PASSWORD, '$1$saltsalt$');
+        $this->assertStringStartsWith('$1$', $old);
+        $member->set('password_hash', $old);
+        $member->set('auth_epoch', '5');
+        $this->flow->container()->get(\Preflow\Data\DataManager::class)->saveType($member, false);
+
+        $this->assertSame(303, $this->post('/members/login', ['email' => 'ada@example.com', 'password' => self::PASSWORD])->getStatusCode());
+
+        $stored = $this->member('ada@example.com');
+        $new = (string) $stored->get('password_hash');
+        $hasher = new NativePasswordHasher();
+        $this->assertNotSame($old, $new);
+        $this->assertFalse($hasher->needsRehash($new), 'a hash needsRehash() accepts');
+        $this->assertTrue($hasher->verify(self::PASSWORD, $new));
+        $this->assertSame('5', (string) $stored->get('auth_epoch'), 'the epoch is untouched');
+        $this->assertSame(200, $this->send('GET', '/members/account')->getStatusCode(), 'the new session survives');
+    }
+
+    #[RunInSeparateProcess]
     public function test_login_is_case_insensitive_on_email(): void
     {
         $this->makeMember();

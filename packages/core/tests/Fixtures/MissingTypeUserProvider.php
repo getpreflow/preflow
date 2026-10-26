@@ -7,7 +7,7 @@ namespace Preflow\Core\Tests\Fixtures;
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\UserProviderInterface;
 
-/** Like Folio's RecordUserProvider when its user type is gone (extension disabled): the constructor throws. */
+/** Like auth's RecordUserProvider (as Folio builds it) when its user type is gone (extension disabled): the constructor throws. */
 final class MissingTypeUserProvider implements UserProviderInterface
 {
     /** @param array<string, mixed> $config */

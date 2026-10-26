@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Users;
 
+use Preflow\Auth\Record\RecordUserProvider;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 

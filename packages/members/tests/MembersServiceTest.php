@@ -15,7 +15,7 @@ use Preflow\Members\Members;
 use Preflow\Members\Tests\Support\MembersScaffold;
 use Preflow\Members\Viewer;
 use Preflow\Auth\AuthManager;
-use Preflow\Folio\Users\RecordUser;
+use Preflow\Auth\Record\RecordUser;
 use Preflow\Rbac\RoleList;
 
 /** The members domain service on a migrated SQLite site. */

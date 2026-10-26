@@ -11,7 +11,7 @@ use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
 use Preflow\Folio\Extension\Settings\ExtensionSettings;
-use Preflow\Folio\Users\RecordUser;
+use Preflow\Auth\Record\RecordUser;
 use Preflow\Members\Admission\Admission;
 use Preflow\Members\Admission\Decision;
 use Preflow\Members\Links;

@@ -6,11 +6,14 @@ namespace Preflow\Members\Http;
 
 use Preflow\Auth\AuthManager;
 use Preflow\Auth\PasswordHasherInterface;
+use Preflow\Auth\PasswordRehash;
+use Preflow\Auth\Record\RecordUserProvider;
 use Preflow\Auth\Remember\RememberMe;
 use Preflow\Auth\Tokens\Tokens;
 use Preflow\Core\Throttle\Throttle;
+use Preflow\Data\DataManager;
 use Preflow\Data\Locales;
-use Preflow\Folio\Users\RecordUser;
+use Preflow\Auth\Record\RecordUser;
 use Preflow\Members\Links;
 use Preflow\Members\MemberMailer;
 use Preflow\Members\Members;
@@ -42,6 +45,7 @@ final class AuthController
         private readonly AuthManager $auth,
         private readonly RememberMe $remember,
         private readonly PasswordHasherInterface $hasher,
+        private readonly DataManager $dm,
     ) {}
 
     public function form(ServerRequestInterface $request): ResponseInterface
@@ -91,7 +95,10 @@ final class AuthController
             return $this->view->render('thanks', ['notice' => ''], $request);
         }
 
-        $this->auth->guard(MembersConfig::GUARD)->login(new RecordUser($member), $request, remember: true);
+        $user = new RecordUser($member);
+        // An outdated hash (an imported $1$, an older cost) is upgraded while the password is at hand.
+        PasswordRehash::afterVerify(new RecordUserProvider($this->dm, ['type' => MembersConfig::TYPE]), $user, $password, $this->hasher);
+        $this->auth->guard(MembersConfig::GUARD)->login($user, $request, remember: true);
         $this->throttle->clear($purpose, $client);
         $this->throttle->clear($purpose, $key);
 

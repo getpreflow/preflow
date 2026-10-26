@@ -7,7 +7,7 @@ namespace Preflow\Members;
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\AuthManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Folio\Users\RecordUser;
+use Preflow\Auth\Record\RecordUser;
 
 /**
  * Who is looking at the member pages: a signed-in member (guard "members"), Folio staff

@@ -11,7 +11,7 @@ use Preflow\Auth\Tokens\Tokens;
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
-use Preflow\Folio\Users\RecordUser;
+use Preflow\Auth\Record\RecordUser;
 use Preflow\I18n\Translator;
 use Preflow\Members\Links;
 use Preflow\Members\Members;

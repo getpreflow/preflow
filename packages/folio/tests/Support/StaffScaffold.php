@@ -49,7 +49,7 @@ trait StaffScaffold
             'default_guard' => 'session',
             'guards' => ['session' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'users'] + $guard],
             'providers' => [
-                'staff' => ['class' => \Preflow\Folio\Users\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
+                'staff' => ['class' => \Preflow\Auth\Record\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
                 'config' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [
                     ['email' => self::CONFIG_EMAIL, 'password_hash' => password_hash(self::PASSWORD, PASSWORD_DEFAULT), 'roles' => ['admin']],
                 ]],

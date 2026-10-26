@@ -8,11 +8,12 @@ use Nyholm\Psr7\Response;
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\AuthManager;
 use Preflow\Auth\PasswordHasherInterface;
+use Preflow\Auth\PasswordRehash;
 use Preflow\Auth\SessionGuard;
 use Preflow\Auth\UserProviderInterface;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Core\Throttle\Throttle;
-use Preflow\Folio\Users\RecordUser;
+use Preflow\Auth\Record\RecordUser;
 use Preflow\Folio\Users\StaffPasswords;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -117,6 +118,8 @@ final class AuthController
             return $this->refuse($request);
         }
 
+        // An outdated hash (an imported $1$, an older cost) is upgraded while the password is at hand.
+        PasswordRehash::afterVerify($this->users, $user, $password, $this->hasher);
         $this->signIn($user, $request, $remember);
         // Only the address's count: a client that guesses many addresses keeps its count after one success.
         $this->throttle->clear(self::THROTTLE_LOGIN, $key);

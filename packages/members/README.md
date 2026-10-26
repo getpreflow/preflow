@@ -39,7 +39,7 @@ php preflow folio:extensions:apply
   ],
   'providers' => [
       'members' => [
-          'class' => Preflow\Folio\Users\RecordUserProvider::class,
+          'class' => Preflow\Auth\Record\RecordUserProvider::class,
           'type' => 'member', 'email' => 'email', 'password' => 'password_hash', 'roles' => 'roles',
       ],
   ],

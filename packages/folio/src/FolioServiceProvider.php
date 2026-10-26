@@ -72,6 +72,24 @@ final class FolioServiceProvider extends ServiceProvider
         $types = $dataManager?->getTypeRegistry() ?? new TypeRegistry($modelsPath, $locales);
         $container->instance(TypeRegistry::class, $types);
 
+        // Record user providers named in config/auth.php get their user type from Folio's catalog.
+        // The pre-0.38 Folio name still works, with a deprecation note.
+        $recordProvider = static fn (Container $c, array $parameters = []): \Preflow\Auth\Record\RecordUserProvider => new \Preflow\Auth\Record\RecordUserProvider(
+            $c->get(DataManager::class),
+            (array) ($parameters['config'] ?? []),
+            \Preflow\Folio\Users\RecordProviders::types($c->get(TypeCatalog::class), $c->get(TypeRegistry::class)),
+        );
+        $container->bind(\Preflow\Auth\Record\RecordUserProvider::class, $recordProvider);
+        $container->bind('Preflow\Folio\Users\RecordUserProvider', static function (Container $c, array $parameters = []) use ($recordProvider): \Preflow\Auth\Record\RecordUserProvider {
+            if ($c->bound(\Preflow\Core\Debug\DebugCollector::class)) {
+                $c->get(\Preflow\Core\Debug\DebugCollector::class)->logDeprecation(
+                    'config/auth.php: Preflow\Folio\Users\RecordUserProvider moved to ' . \Preflow\Auth\Record\RecordUserProvider::class . '; the old name is removed in the next release.',
+                );
+            }
+
+            return $recordProvider($c, $parameters);
+        });
+
         // Extensions (app/Folio/*, Composer extra.folio.extension), enabled by the committed
         // config/folio/extensions.json. Built before anything reads the catalog, so the models
         // of enabled extensions are types like the model files (frontend routes, permissions).
@@ -602,7 +620,7 @@ final class FolioServiceProvider extends ServiceProvider
     /**
      * The record providers (Folio user types) behind the default guard; none without auth.
      *
-     * @return list<\Preflow\Folio\Users\RecordUserProvider>
+     * @return list<\Preflow\Auth\Record\RecordUserProvider>
      */
     private static function recordProviders(Container $c): array
     {
@@ -994,7 +1012,7 @@ final class FolioServiceProvider extends ServiceProvider
                         return null;
                     }
 
-                    return $container->get(\Preflow\Auth\AuthManager::class)->user() instanceof \Preflow\Folio\Users\RecordUser
+                    return $container->get(\Preflow\Auth\AuthManager::class)->user() instanceof \Preflow\Auth\Record\RecordUser
                         ? '/' . trim($this->prefix($app), '/') . '/_account'
                         : null;
                 },

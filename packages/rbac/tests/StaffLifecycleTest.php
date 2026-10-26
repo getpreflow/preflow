@@ -53,7 +53,7 @@ final class StaffLifecycleTest extends TestCase
                 'remember' => ['cookie' => 'folio_remember', 'days' => 30, 'path' => '/folio'],
             ]],
             'providers' => [
-                'staff' => ['class' => \Preflow\Folio\Users\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
+                'staff' => ['class' => \Preflow\Auth\Record\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
                 'config' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [
                     ['email' => 'admin@site.test', 'password_hash' => $hash, 'roles' => ['admin']],
                 ]],

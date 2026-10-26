@@ -191,7 +191,7 @@ For an existing site with an `.env` admin:
 
    ```php
    'providers' => [
-       'staff'  => ['class' => Preflow\Folio\Users\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
+       'staff'  => ['class' => Preflow\Auth\Record\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
        'config' => ['class' => Preflow\Auth\ConfigUserProvider::class, 'users' => [/* the .env admin */]],
        'chain'  => ['class' => Preflow\Auth\ChainUserProvider::class, 'providers' => ['staff', 'config']],
    ],

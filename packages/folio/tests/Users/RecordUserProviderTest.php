@@ -19,8 +19,9 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Storage\TableSync;
-use Preflow\Folio\Users\RecordUser;
-use Preflow\Folio\Users\RecordUserProvider;
+use Preflow\Auth\Record\RecordUser;
+use Preflow\Auth\Record\RecordUserProvider;
+use Preflow\Folio\Users\RecordProviders;
 use Preflow\Testing\ArraySession;
 use Preflow\Testing\MysqlTestDatabase;
 use Preflow\Validation\RuleFactory;
@@ -97,7 +98,7 @@ final class RecordUserProviderTest extends TestCase
 
     private function provider(array $config = ['type' => 'member']): RecordUserProvider
     {
-        return new RecordUserProvider($this->dm, $this->catalog, $config);
+        return new RecordUserProvider($this->dm, $config, RecordProviders::types($this->catalog, $this->dm->getTypeRegistry()));
     }
 
     private function member(string $id, string $email, string $roles = '[]'): void

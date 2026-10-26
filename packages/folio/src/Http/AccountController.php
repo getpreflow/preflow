@@ -10,7 +10,7 @@ use Preflow\Auth\AuthManager;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Folio\Content\TypeCatalog;
-use Preflow\Folio\Users\RecordUser;
+use Preflow\Auth\Record\RecordUser;
 use Preflow\Folio\Users\StaffPasswords;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;

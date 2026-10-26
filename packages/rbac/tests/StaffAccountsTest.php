@@ -48,7 +48,7 @@ final class StaffAccountsTest extends TestCase
             'default_guard' => 'session',
             'guards' => ['session' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'chain', 'population' => 'staff']],
             'providers' => [
-                'staff' => ['class' => \Preflow\Folio\Users\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
+                'staff' => ['class' => \Preflow\Auth\Record\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
                 'config' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [
                     ['email' => 'admin@site.test', 'password_hash' => $hash, 'roles' => ['admin']],
                 ]],

@@ -46,7 +46,7 @@ return [
     ],
 
     // Any other provider class is built from the container with its entry as `config`,
-    // e.g. Preflow\Folio\Users\RecordUserProvider (members stored as a Folio type).
+    // e.g. Preflow\Auth\Record\RecordUserProvider (users stored as records of a data type).
     // `'active' => 'active'` there names a boolean field: a record with it off never resolves.
 
     // A chain tries the named providers in order, first hit wins (no lock-out while moving
@@ -141,7 +141,13 @@ $dm->save($token);
 - `ConfigUserProvider`: users from `config/auth.php` (`users`, usually one admin from `.env`).
   `entries()` returns the configured entries (the staff import reads them).
 - `DataManagerUserProvider`: an entity class (`model`).
-- `RecordUserProvider` (preflow/folio): users stored as a Folio type (`type`). With
+- `Preflow\Auth\Record\RecordUserProvider`: users stored as records of a data type (`type`; the
+  `email`, `password`, `roles` and `epoch` keys name its fields, defaults `email`, `password_hash`,
+  `roles`, `auth_epoch`). The signed-in user is a `Record\RecordUser`. Its constructor takes an
+  optional type lookup (`\Closure(string): ?TypeDefinition`); without one the DataManager's type
+  registry answers. Folio passes its type catalog (which also requires `"users"` in the model). Until
+  0.38 it lived in Folio as `Preflow\Folio\Users\RecordUserProvider`; that name still works for one
+  release and logs a deprecation. With
   `'active' => 'active'` it reads that boolean field. A record whose field is off (`false`, `0`, `'0'`,
   `''`, `'false'` or null) never resolves, by id or by credentials. Its sessions end on the next request.
   Without the key nothing changes.
@@ -155,6 +161,19 @@ $dm->save($token);
   active or not. So once a staff record exists for an address, the record decides: a disabled record
   is locked out, and the config password for that address no longer works. A `LazyUserProvider`
   passes the claim through (false while it is unavailable); `inner()` returns the built provider or null.
+
+### Rehash on sign-in
+
+A login that has just verified a password calls
+`PasswordRehash::afterVerify($provider, $user, $password, $hasher)`. When `$hasher->needsRehash()`
+says the stored hash is outdated (an imported `$1$` MD5-crypt hash, an older cost) and a provider
+behind `$provider` (itself, a chain's members, a lazy provider's built one) implements
+**`UpdatesPasswordHash`** (`updatePasswordHash($user, $oldHash, $newHash): bool`), the new hash is
+stored. The store is a compare-and-set: only while the stored hash is still `$oldHash`, so a
+password changed meanwhile stays. Nothing else changes (the session epoch neither), so the new
+session survives. A failure is logged without the password and leaves the account as it was; the
+sign-in goes on. `RecordUserProvider` implements it; a config user is left alone. Folio's staff
+login and the members login call it.
 
 ### Remember me
 

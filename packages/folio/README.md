@@ -1281,13 +1281,13 @@ A type can hold the site's own users or members:
   to a type that is not transferred.
 - Per-environment state (installed extension versions, throttle rows) is never exported.
 
-**Signing users in.** `Preflow\Folio\Users\RecordUserProvider` is a user provider over a
+**Signing users in.** `Preflow\Auth\Record\RecordUserProvider` is a user provider over a
 user type, for a `SessionGuard` in `config/auth.php`:
 
 ```php
 'providers' => [
     'members' => [
-        'class' => Preflow\Folio\Users\RecordUserProvider::class,
+        'class' => Preflow\Auth\Record\RecordUserProvider::class,
         'type' => 'member',
         'email' => 'email', 'password' => 'password_hash', 'roles' => 'roles',  // the defaults
     ],
@@ -1297,7 +1297,12 @@ user type, for a `SessionGuard` in `config/auth.php`:
 ],
 ```
 
+- The class lives in preflow/auth since 0.38; Folio builds it with its type catalog. The old
+  name `Preflow\Folio\Users\RecordUserProvider` (and `Preflow\Folio\Users\RecordUser`) works for
+  one release; a config naming it logs a deprecation.
 - The type must exist and have `"users"` set, or boot fails with a message naming it.
+- The Folio login upgrades an outdated password hash (an imported `$1$` hash, an older cost) at
+  sign-in, without touching `auth_epoch` (`Preflow\Auth\PasswordRehash`, see auth's README).
 - `findByCredentials()` lowercases and trims the typed email and accepts only an exact match
   of the stored value, and only when exactly one record has it: a database that compares
   loosely (MySQL collations) never lets a look-alike or duplicate pick an account. Store

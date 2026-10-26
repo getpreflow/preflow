@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Users;
+namespace Preflow\Auth\Record;
 
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\HasSessionEpoch;
 use Preflow\Data\DynamicRecord;
 
 /**
- * A record of a Folio user type as the logged-in account. Its session epoch is the value of
+ * A record of a user type as the logged-in account. Its session epoch is the value of
  * $epochField ("0" when the type has no such field): bumping it ends the user's other sessions.
  */
 final class RecordUser implements Authenticatable, HasSessionEpoch
@@ -70,7 +70,7 @@ final class RecordUser implements Authenticatable, HasSessionEpoch
 
     /**
      * An array, a JSON array string (as SQL returns a stored list) or a comma-separated string.
-     * Kept local: Folio does not depend on preflow/rbac.
+     * Kept local: auth does not depend on preflow/rbac.
      *
      * @return list<string> trimmed, unique, non-empty
      */

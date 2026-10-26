@@ -48,7 +48,7 @@ final class ImportConfigStaffTest extends TestCase
             'default_guard' => 'session',
             'guards' => ['session' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => $chain ? 'chain' : 'config', 'population' => 'staff']],
             'providers' => [
-                'staff' => ['class' => \Preflow\Folio\Users\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
+                'staff' => ['class' => \Preflow\Auth\Record\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active'],
                 'config' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => $users],
                 'chain' => ['class' => \Preflow\Auth\ChainUserProvider::class, 'providers' => ['staff', 'config']],
             ],
@@ -113,7 +113,7 @@ final class ImportConfigStaffTest extends TestCase
 
         $user = $this->container()->get(UserProviderInterface::class)->findByCredentials(['email' => 'admin@site.test']);
 
-        $this->assertInstanceOf(\Preflow\Folio\Users\RecordUser::class, $user, 'the record decides now');
+        $this->assertInstanceOf(\Preflow\Auth\Record\RecordUser::class, $user, 'the record decides now');
         $this->assertTrue(password_verify('secret', $user->getPasswordHash()));
         $this->assertSame(['admin'], $user->getRoles());
     }

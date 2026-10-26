@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 /**
- * The asset library, image tag, value classes and image backends moved to preflow/media. The old names keep working
- * for one release; use the Preflow\Media names. Loaded by Composer ("autoload.files").
+ * The asset library, image tag, value classes and image backends moved to preflow/media; the record users
+ * (RecordUser, RecordUserProvider) to preflow/auth (Preflow\Auth\Record). The old names keep working for one
+ * release; use the new names. A config/auth.php naming the old provider logs a deprecation (FolioServiceProvider).
+ * Loaded by Composer ("autoload.files").
  */
 
 $aliases = [
@@ -20,6 +22,8 @@ $aliases = [
     'Preflow\Folio\Assets\Image\GdBackend' => 'Preflow\Media\Image\GdBackend',
     'Preflow\Folio\Assets\Image\ImagickBackend' => 'Preflow\Media\Image\ImagickBackend',
     'Preflow\Folio\Assets\Image\Orientation' => 'Preflow\Media\Image\Orientation',
+    'Preflow\Folio\Users\RecordUser' => 'Preflow\Auth\Record\RecordUser',
+    'Preflow\Folio\Users\RecordUserProvider' => 'Preflow\Auth\Record\RecordUserProvider',
 ];
 
 foreach ($aliases as $old => $new) {

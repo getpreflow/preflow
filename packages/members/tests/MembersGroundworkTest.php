@@ -276,7 +276,7 @@ final class MembersGroundworkTest extends TestCase
 
         $this->assertInstanceOf(\Preflow\Auth\SessionGuard::class, $auth->guard('members'));
         $provider = (new \ReflectionProperty(\Preflow\Auth\SessionGuard::class, 'provider'))->getValue($auth->guard('members'));
-        $this->assertInstanceOf(\Preflow\Folio\Users\RecordUser::class, $provider->findByCredentials(['email' => 'ada@example.com']));
+        $this->assertInstanceOf(\Preflow\Auth\Record\RecordUser::class, $provider->findByCredentials(['email' => 'ada@example.com']));
         $this->assertNull($provider->findByCredentials(['email' => 'nobody@example.com']));
     }
 
