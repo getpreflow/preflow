@@ -17,7 +17,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/core' => '<0.34', 'preflow/data' => '<0.34', 'preflow/view' => '<0.34'],
+            ['preflow/core' => '<0.34', 'preflow/data' => '<0.35', 'preflow/view' => '<0.34'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound.

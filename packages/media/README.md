@@ -1,7 +1,8 @@
 # preflow/media
 
-The asset library for Preflow: uploads, responsive image variants (WebP/AVIF), private files,
-and where each asset is used. The package does all of it by itself. Folio is only a UI
+The asset library for Preflow: uploads, responsive image variants (WebP/AVIF), replacing a
+file with versions, extra fields, colour-managed variants, PDF previews, image colours,
+private files, and where each asset is used. The package does all of it by itself. Folio is only a UI
 adapter on top (library screen, asset field); it adds screens and binds its own rules to the
 hooks below.
 
@@ -24,9 +25,9 @@ With Folio you add nothing: Folio registers it. Listing it as well is harmless, 
 provider class is registered once.
 
 The provider reads the config at boot, registers the `MediaLibrary`, adds the routes for
-missing variants and private files, and the template functions `media_image()` and
-`media_url()`. With SQL storage, `preflow migrate` creates the asset table (the `media.table`
-step), so a site without Folio needs no manual SQL.
+missing variants and private files, and the template functions `media_image()`,
+`media_url()`, `media_preview_url()`, `media_colors()` and `media_color_class()`. With SQL storage, `preflow migrate` creates the asset table (the
+`media.table` step), so a site without Folio needs no manual SQL.
 
 ## Library
 
@@ -43,6 +44,8 @@ $library->delete($id); // refuses a used asset: AssetInUseException lists the us
 
 - `delete()` refuses an asset that is used anywhere (see usage sources) and throws
   `Preflow\Media\Usage\AssetInUseException`.
+- `find($id)`, `all()` and `query()` (below) read assets; `replace()`, `versions()`, `restore()`,
+  `deleteVersion()` and `prune()` are in Replace and versions.
 - `discard($id)` is intended only for an asset created in this request that nothing references
   yet, e.g. when the record that should reference it fails validation. It bypasses the usage
   check, so do not use it for anything else.
@@ -64,6 +67,12 @@ return [
     'quality' => 75,
     'private_dir' => __DIR__ . '/../storage/private-media', // default; never under public/
     'private_url' => '/files',                // default
+    'versions_dir' => __DIR__ . '/../storage/media-versions', // default; never under public/
+    'fields' => [],                       // extra asset fields, see Extra fields
+    'filters' => [],                      // names of extra fields offered as filters
+    'color_profile_cmyk' => null,         // ICC file for CMYK images without a profile; null: the shipped FOGRA39L
+    'ghostscript' => null,                // gs binary for PDF previews; null: looked up on PATH
+    'pdftocairo' => null,                 // Poppler's pdftocairo; null: looked up on PATH
 ];
 ```
 
@@ -71,7 +80,10 @@ return [
   (deprecated, logged to the debug collector and listed in the devtools debug toolbar). The
   two are never merged: a present `media.php` wins entirely.
 - Who may download private files is not a media setting; see Private files.
-- A `private_dir` inside `public/` or the media directory is refused at boot.
+- A `private_dir` or `versions_dir` inside `public/` or the media directory is refused at boot,
+  and so is a `color_profile_cmyk` that is not a readable file.
+- `versions_dir` and `private_dir` set to `null` (or `''`) turn the feature off: without a
+  `versions_dir`, `replace()` throws `AssetUploadException` rather than lose the current file.
 
 ## Images in templates
 
@@ -120,6 +132,185 @@ made; anything else under the media URL is a 404 that writes nothing. Concurrent
 requests wait on a per-file lock. `warm_on_upload` or `media:variants --all` make them in
 advance (use one on shared hosting). If an encode fails, the browser is redirected
 (uncached) to the closest existing size. A page under the media URL is not routed.
+
+## Replace and versions
+
+`replace()` swaps an asset's file and keeps everything that makes the asset itself: the id, so
+every record that references it still does, plus alt text, title, focal point, extra fields,
+usage, the private flag and the poster.
+
+```php
+$asset = $library->replace($id, $uploadedFile, $userId);  // or a path on disk (importers)
+$library->versions($id);          // list<AssetVersion>, newest first
+$library->restore($id, 2, $userId);   // make version 2 the current file again
+$library->deleteVersion($id, 2);
+$library->prune($id, keep: 3, olderThanDays: 90);   // returns how many were deleted
+```
+
+- The new file must be the same kind (image, video or document, `Asset::kind()`), else
+  `AssetUploadException` and nothing changes. A mime change inside the kind is fine.
+- Changes with the file: size, width, height, mime, original name, preview, colours and
+  variants. Old public files and their variants are removed after a successful replace.
+- The old file is first copied to `versions_dir` (`{versions_dir}/{id}/v{n}.{ext}`); the asset
+  records it in `versions` (number, size, size in pixels, mime, original name, date, the focal
+  point at that time). Version numbers only grow; a deleted number is not reused.
+- **Names.** Version 1 keeps today's names (`Y/m/{id}.{ext}`, variants `{id}-{w}.{fmt}`). From
+  version 2 the file is `Y/m/{id}-v{n}.{ext}` and its variants `{id}-v{n}-{w}.{fmt}`, so a
+  browser or CDN never serves the old bytes under the new name. Existing assets read as
+  version 1 with no earlier versions; nothing is rewritten.
+- `restore()` is a replace from an earlier file, so the current file becomes a version too.
+  The restored version's focal point comes back; alt texts and title stay as they are.
+  Restoring keeps the restored version.
+- `prune($id, $keep, $olderThanDays)` keeps the `$keep` newest earlier files and, with
+  `$olderThanDays`, deletes only those replaced longer ago than that. The current file is never
+  touched. Nothing is pruned automatically.
+- Replaces, restores, version deletes, prunes and the delete of one asset run one after another
+  (a lock in `{versions_dir}/{id}/.lock`).
+- **Serving.** Earlier files are never under `public/`. They are sent by the core route
+  `{private_url}/{id}/v/{n}` behind `PrivateFileAccess` (see Private files), whether the asset
+  is public or private. Without a bound rule that is a 403.
+- **`versions_dir` must be a shared directory in a deployment** (Deployer `shared_dirs`:
+  `storage/media-versions`) and git-ignored, or the next release deletes the earlier files.
+
+```
+php preflow media:versions:prune [--keep=N] [--older-than=DAYS] [--id=<id>]
+```
+
+Give `--keep`, `--older-than` or both; `--id` limits it to one asset.
+
+## Extra fields
+
+Add fields of your own to every asset (a licence, a photographer, a category) in
+`config/media.php`:
+
+```php
+'fields' => [
+    'credit'   => ['type' => 'string', 'label' => 'Credit'],
+    'category' => ['type' => 'select', 'label' => 'Category', 'options' => ['team' => 'Team', 'event' => 'Event']],
+    'approved' => ['type' => 'boolean', 'label' => 'Approved'],
+    'author'   => ['type' => 'relation', 'relation' => ['to' => 'author'], 'label' => 'Author'],
+],
+'filters' => ['category', 'approved', 'author'],   // select, relation and boolean fields only
+```
+
+- A field has the shape of a model field (`type`, `label`, `options`, …). Each becomes a text
+  column of the asset type; values are in `Asset::$extra` (`$asset->extra['credit']`).
+- A name must be letters, digits and underscores, starting with a letter, and must not be one
+  of the asset's own keys (`path`, `alt`, `title`, `color`, `palette`, `version`, `private`, …):
+  that is a boot error naming the field.
+- `$library->update($id, ['credit' => '…'])` sets them. A value that does not fit its field
+  (an option that does not exist) is cleared; other unknown keys are ignored.
+- `filters` entries that are not a declared select, relation or boolean field are ignored and
+  reported to the debug collector.
+
+### Querying
+
+```php
+$page = $library->query(kind: 'image', search: 'harbour', filters: ['category' => 'event'], page: 1, perPage: 50);
+$page->items;  // list<Asset>, newest first; also ->total, ->page, ->perPage
+```
+
+`kind` is `image`, `video` or `document` (null: all). `search` matches every word in the
+original name, title or alt text (in any locale). `filters` compare by equality on the
+configured `filters` fields (a relation by id, a list means any of them; a multiple relation
+means "contains"), and on the asset's own `private` flag. A page past the end gives the last
+page. Works on JSON and SQL storage.
+
+## Colour management
+
+Variants are always sRGB, so every browser shows the colours the photographer saw.
+
+- A **CMYK** image is converted to sRGB. Without an embedded profile it is taken as FOGRA39L
+  (coated), a CC0 profile shipped in `packages/media/resources/icc/` with its licence;
+  `color_profile_cmyk` points at another ICC file (SWOP, a newsprint profile, …).
+- An image with another profile, such as **Adobe RGB** or Display P3, is converted too.
+- Conversion uses relative colorimetric intent with black-point compensation, and the output
+  carries no embedded profile.
+- sRGB and untagged images are not touched: they use the same backend (GD when it can write
+  WebP) and produce the same files as before.
+- **Needs Imagick with lcms** (the common build). Without Imagick a CMYK or non-sRGB-profiled
+  image gets no variants (the original is served) and the asset's `note` reads
+  `needs Imagick for colour-accurate variants`; the library shows it. Installing Imagick and
+  running `media:variants --all` fixes those assets.
+
+## PDF previews
+
+A PDF gets a preview of its first page: a PNG in sRGB, long side 1600 px (capped by
+`max_pixels`), stored next to the file (`Y/m/{id}[-v{n}]-preview.png`), or in `private_dir`
+for a private asset. `media_preview_url(id)` returns its URL (`''` without one); the library's thumbnails of
+documents use it.
+
+- **Needs one of two programs on the server:**
+  - **Ghostscript 10.03.1 or newer** (`gs`), the colour-faithful engine: it follows a print
+    PDF's CMYK output intent. Older versions have published `-dSAFER` escapes, so they are
+    never run on uploaded files.
+  - otherwise **Poppler's `pdftocairo`**, which runs no PostScript. It converts CMYK naively
+    and ignores the output intent, so print PDFs look less true.
+  - Neither: no previews; uploads still work.
+- Both are looked up on PATH and in the usual places; `ghostscript` and `pdftocairo` in
+  `config/media.php` name the binaries.
+- Rendering uses an argument list (no shell), only the asset's own path, and a 30 second limit.
+  A broken, encrypted or empty PDF leaves `preview` null and the upload succeeds.
+- A private asset's preview is private too: `{private_url}/{id}/preview`, behind
+  `PrivateFileAccess`.
+- A replace makes the preview again.
+
+```
+php preflow media:previews [--id=<id>] [--all]
+```
+
+Makes the previews of documents that have none; `--all` (or `--id`) makes them again, for
+example after Ghostscript has been upgraded.
+
+## Colours
+
+Images (and the previews of documents) get their colours when they are uploaded or replaced:
+
+| Field | Meaning |
+|---|---|
+| `color` | the dominant colour, `#rrggbb` |
+| `palette` | 1 to 8 colours that occur in the image, most significant first (a flat image has fewer than 5) |
+| `text_color` | `#ffffff` or `#000000`, whichever has the higher WCAG contrast on `color` |
+
+SVG and videos have none. In templates:
+
+```twig
+{% set c = media_colors(record.cover) %}   {# {color, rgb: 'r,g,b', palette, palette_rgb, text} or null #}
+<section class="{{ media_color_class(record.cover) }}">   {# '' without colours #}
+    {{ media_image(record.cover, 'hero', {placeholder: true}) }}
+</section>
+```
+
+`media_color_class()` returns a class `media-c-{hash}` whose rule sets CSS variables
+`--media-color`, `--media-color-rgb`, `--media-text` and `--media-palette-1` …
+`--media-palette-N`. The rule goes into one `<style>` in the head with the CSP nonce, once per
+page and colour set, so there is never an inline style. Use them in your CSS:
+
+```css
+.card { background: rgba(var(--media-color-rgb), .8); color: var(--media-text); }
+.card a { border-color: var(--media-palette-2, var(--media-color)); }
+```
+
+`{placeholder: true}` for `media_image()` puts the dominant colour behind the `<img>` until
+it has loaded.
+
+```
+php preflow media:colors --all          # every asset without colours
+php preflow media:colors --id=<id>      # that asset again
+```
+
+Run `--all` once after upgrading, so existing assets get theirs.
+
+## Commands
+
+All are in the package's `extra.preflow.commands` and need `preflow/devtools`.
+
+| Command | Does |
+|---|---|
+| `media:variants [--id=<id>] [--all]` | makes the variants again (`--all` includes step widths) |
+| `media:versions:prune [--keep=N] [--older-than=DAYS] [--id=<id>]` | deletes earlier files of replaced assets |
+| `media:previews [--id=<id>] [--all]` | makes PDF previews |
+| `media:colors --all \| --id=<id>` | reads the colours of images and previews |
 
 ## Usage sources
 
@@ -175,11 +366,13 @@ plain `<img>`, no srcset) use it.
 - `decide(ServerRequestInterface $request, Asset $asset): ?ResponseInterface` returns `null`
   to allow, or the response to send (403, redirect). It is asked for every request on the
   route, also for an unknown id, so a refused visitor learns nothing about which ids exist.
+- Earlier versions (`{private_url}/{id}/v/{n}`) and private previews (`{private_url}/{id}/preview`)
+  go through the same rule.
 - Files are sent with `Cache-Control: private, no-store`; images inline, everything else as
   an attachment with the original name.
 - The route needs the session: the prefix of `private_url` must be covered by
   `session.paths` in `config/auth.php` and by the session cookie's path.
-- `private_dir` must be a shared directory in a deployment and git-ignored.
+- `private_dir` and `versions_dir` must be shared directories in a deployment and git-ignored.
 
 ## Allowed files
 
@@ -193,7 +386,8 @@ ZIP, and Word, Excel and PowerPoint files. SVG is refused unless `allow_svg` is 
 table: `uuid` as the primary key and every other field as a nullable text column (TEXT on
 SQLite, LONGTEXT on MySQL): `path`, `original_name`, `mime`, `title`, `poster`,
 `created_at`, `created_by`, `size`, `width`, `height`, `focal_x`, `focal_y`, `private`,
-`duration`, `alt` and `variants` (JSON). Columns it adds later are text too.
+`duration`, `alt` and `variants` (JSON), and `version`, `versions` (JSON), `preview`, `color`,
+`palette`, `text_color`, `note` and one column per extra field. Columns it adds later are text too.
 
 ## Use without Folio
 

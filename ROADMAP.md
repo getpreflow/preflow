@@ -1,6 +1,6 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-25 (v0.34.1)
+> Last updated: 2026-10-26 (v0.35.0 prepared)
 
 ## Current State
 
@@ -46,6 +46,20 @@ Asked for 2026-10-25 (holz-objekte.org is the first site whose staff need the Fo
 - the same mechanism for packages (members, rbac, …) and for user-land Folio extensions: an extension ships its own `lang/` folder that is discovered with it, a site's `lang/` can override any key, missing keys fall back to English, never break a screen
 - a check command listing keys missing per locale, so adding a language is filling a file
 
+### Performance Benchmarks
+
+Owner todo (2026-10-26). Measure Preflow against other PHP frameworks (for example Laravel, Symfony, Slim) so claims about speed rest on numbers:
+- requests per second, latency (median and p95) and memory per request
+- two cases: a public frontend page (a Folio page with a few blocks and an image) and the Folio admin (a list screen and an edit screen)
+- same PHP version, same opcache settings, same database; the method and the setup published with the results so anyone can repeat them
+
+### Documentation for Humans
+
+Owner todo (2026-10-26). Review and rewrite the preflow.dev docs so a newcomer can use them:
+- plain explanations first, internals second; task-oriented structure ("add a page", "protect a route", "send a mail") rather than one page per class
+- practical examples that run as written
+- Folio gets its own top-level navigation entry on preflow.dev, next to Home and Docs
+
 ### Database Relations
 
 Simple eager loading for related models:
@@ -86,6 +100,18 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 ---
 
 ## Completed
+
+### v0.35.0 (prepared)
+
+- **Replace and versions:** `MediaLibrary::replace()` swaps an asset's file and keeps its id, alt, title, focal point, extra fields, usage, private flag and poster. The old file goes to `versions_dir` (`storage/media-versions`, a shared deploy dir) and is served only through `{private_url}/{id}/v/{n}` behind `PrivateFileAccess`. `restore()`, `deleteVersion()`, `prune()` and `media:versions:prune`. Version 1 keeps today's names, version n is `{id}-v{n}.{ext}`
+- **Extra fields and `query()`:** `config/media.php` `fields` and `filters`; `MediaLibrary::query()` pages and filters by kind, search and extra fields (JSON and SQL)
+- **Colour management:** CMYK (default profile FOGRA39L, CC0, `color_profile_cmyk` overrides) and Adobe RGB/other profiles convert to sRGB with Imagick and lcms; without Imagick such images get no variants and a note. sRGB images unchanged
+- **PDF previews:** first page as sRGB PNG with Ghostscript 10.03.1 or newer (follows the CMYK output intent), else Poppler's `pdftocairo`; `media_preview_url()`, `media:previews`; private previews are gated
+- **Colours:** `color`, `palette` (1 to 8 real colours) and `text_color` per image; `media_colors()`, `media_color_class()` (CSS variables `--media-color`, `--media-color-rgb`, `--media-text`, `--media-palette-N`, nonce'd head style), `media_image(…, {placeholder: true})`, `media:colors`
+- **Folio library UI:** replace, versions (open, restore, delete), extra fields and filters, PDF thumbnails, colour swatches with copy; export/import carries `media-versions/`; staff with `assets.view` may open private files, previews and versions
+- **Folio frontend:** `hreflang` and canonical URLs use `app.url` (when set and absolute) instead of the request host
+- **Data:** `=` with a null value matches missing or NULL fields on SQL, as on the JSON driver; the query builder reads relations from the queried definition (code-defined types)
+- Constraints: media requires data `^0.35`; folio requires media `^0.35`
 
 ### v0.34.1
 

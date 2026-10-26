@@ -7,7 +7,7 @@
         "php": ">=8.4",
         "nyholm/psr7": "^1.8",
         "preflow/core": "^0.34 || @dev",
-        "preflow/data": "^0.34 || @dev",
+        "preflow/data": "^0.35 || @dev",
         "preflow/routing": "^0.1 || @dev",
         "preflow/view": "^0.34 || @dev"
     },
@@ -17,11 +17,11 @@
     },
     "suggest": {
         "preflow/i18n": "Per-language alt text for assets",
-        "preflow/devtools": "The media:variants command"
+        "preflow/devtools": "The media:* commands"
     },
     "conflict": {
         "preflow/core": "<0.34",
-        "preflow/data": "<0.34",
+        "preflow/data": "<0.35",
         "preflow/view": "<0.34"
     },
     "autoload": {

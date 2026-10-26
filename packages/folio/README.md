@@ -712,6 +712,23 @@ and `/files/{id}`.
   a poster image for videos;
 - **usage:** the records that use the asset, including published versions that still
   show it. Deleting a used asset is refused (by the media core).
+- **replace** (permission `assets.edit`): the details panel's *File* section takes a new file
+  of the same kind; the asset keeps its id, alt text, focal point, extra fields and usage, so
+  every record that shows it shows the new file. The current file is kept as a version;
+- **earlier versions:** listed newest first with date, size and dimensions. *Open* shows the
+  file (behind the private-file gate), *Restore* (`assets.edit`) makes it current again (the
+  current file becomes a version), *Delete* (`assets.delete`) removes it for good. Needs
+  `versions_dir` (default `storage/media-versions`, a shared directory in deployments); see the
+  media README, and `media:versions:prune` to trim old versions;
+- **extra fields:** the fields declared in `config/media.php` `fields` appear in the panel
+  under title, and the select, relation and boolean ones named in `filters` are filters next
+  to the kind filter;
+- **previews and colours:** a PDF shows its first page as thumbnail (needs Ghostscript
+  10.03.1 or newer, or `pdftocairo`; `media:previews` makes them for existing files), and an
+  image shows its dominant colour and palette as swatches: click a hex value or *RGB* to copy
+  it (`media:colors --all` reads them for existing assets);
+- **notes:** an image that could not get colour-accurate variants (CMYK without Imagick) shows
+  the asset's note in the panel.
 
 **Asset fields** store asset ids. The editor shows the selection with **Choose**, which
 opens the library as a picker in the drawer, and **Upload**, a plain file input that adds
@@ -719,7 +736,11 @@ the file to the library on save, so it works without JavaScript. A field's `acce
 (`image/*`, `video/*` or `.pdf,.zip`) limits what an upload may be. An asset field in a
 type's default template renders with `media_image()`.
 
-**Config.** Library settings (directory, widths, quality, private directory, …) live in
+**Permissions.** `assets.view` (screen and panel), `assets.upload`, `assets.edit` (details,
+extra fields, replace, restore), `assets.delete` (delete an asset or an earlier version).
+
+**Config.** Library settings (directory, widths, quality, private and versions directory,
+extra fields, colour profile, …) live in
 `config/media.php`. Folio reads two private-file settings from `config/folio.php`:
 
 ```php
