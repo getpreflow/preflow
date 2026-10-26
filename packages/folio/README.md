@@ -490,7 +490,8 @@ it implements `Preflow\Folio\Field\DisplaysInAdmin`, otherwise its frontend outp
 field type can implement it to show a friendlier value in the admin than it stores. The
 frontend output is never changed by it.
 
-A `date` shows "22 Oct 2026" in the admin, or "22 Oct 2026, 23:15" with `"time": true`. Only
+A `date` shows in the admin as `folio_date()` writes it in the interface language: "Oct 22, 2026"
+(German "22.10.2026", French "22/10/2026"), or "Oct 22, 2026 23:15" with `"time": true`. Only
 `Y-m-d`, `Y-m-d\TH:i` and ISO 8601 with an offset (shown in the app's timezone) are parsed; any
 other value is shown escaped as it is stored, never as an error.
 
