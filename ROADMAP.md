@@ -27,7 +27,13 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
 3. **Data integrity for the flow editor and games:** compare-and-set draft save (`UPDATE … WHERE _version = ?`),
    unique fields (game slug, codes) and typed columns, saving null clears an SQL column
 4. **Media for the migration:** derived assets (`derived_from`) shown as stacks in the library (originals with
-   their cropped/rotated or watermarked copies), garbage collection of unreferenced assets, `importFile(…, private)`
+   their cropped/rotated or watermarked copies), garbage collection of unreferenced assets, `importFile(…, private)`,
+   and **video thumbnails**: a `VideoPreviewRenderer` (the `PreviewRenderer` slot PDFs use) grabs one frame of an
+   MP4 with ffmpeg (e.g. at 1 s or 10 %) as the asset's preview, so library, picker, `media_image()`, colours and
+   box formats work for videos; a hand-picked poster still wins. ffmpeg's path is configurable in
+   `config/media.php` (like `ghostscript`), so a **static ffmpeg build** in the hosting account works where the host
+   has none (the live server has no ffmpeg today); without ffmpeg videos keep today's tile. A `media:previews`
+   backfill covers existing videos
 5. **Reporting/export and certificates (PDF)** — its own spec (needed for BG Genius Phase 5)
 
 Useful during BG Genius Phase 3, not blocking: route order by specificity, controller discovery beyond
