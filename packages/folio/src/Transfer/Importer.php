@@ -41,9 +41,11 @@ final class Importer
             $withData = $only !== 'media' && $carried !== 'media';
             $withFiles = $only !== 'data' && $carried !== 'data';
 
+            $tables = $withData ? $this->diffTables($dir, $manifest, $notices) : []; // adds a notice per row it leaves out
+
             return new ImportPlan(
                 $dir,
-                $withData ? $this->diffTables($dir, $manifest) : [],
+                $tables,
                 $withFiles ? $this->diffFiles($dir, $manifest) : [],
                 $notices,
             );
@@ -154,17 +156,31 @@ final class Importer
         return [$manifest, $notices];
     }
 
-    /** @return array<string, array{added: list<string>, changed: list<string>, removed: list<string>}> */
-    private function diffTables(string $dir, array $manifest): array
+    /**
+     * Incoming rows the ContentSet refuses (ContentSet::rowProblem()) are left out with a notice:
+     * neither stored nor counted as removed locally.
+     *
+     * @param list<string> $notices
+     * @return array<string, array{added: list<string>, changed: list<string>, removed: list<string>}>
+     */
+    private function diffTables(string $dir, array $manifest, array &$notices = []): array
     {
         $out = [];
         foreach (array_keys($manifest['tables']) as $table) {
             $def = $this->set->tables()[$table];
             $incoming = [];
+            $skipped = [];
             foreach (glob("{$dir}/data/{$table}/*.json") ?: [] as $file) {
                 $row = json_decode((string) file_get_contents($file), true);
                 if (!is_array($row)) {
                     throw new TransferException('Broken record in the export: ' . basename($file));
+                }
+                $problem = $this->set->rowProblem($table, basename($file, '.json'), $row);
+                if ($problem !== null) {
+                    // Left out: the local record of that id (if any) stays as it is.
+                    $notices[] = "{$table}/" . basename($file, '.json') . ": skipped, {$problem}.";
+                    $skipped[basename($file, '.json')] = true;
+                    continue;
                 }
                 $incoming[basename($file, '.json')] = $row;
             }
@@ -184,7 +200,7 @@ final class Importer
                 }
             }
             foreach (array_keys($local) as $id) {
-                if (!array_key_exists((string) $id, $incoming)) {
+                if (!array_key_exists((string) $id, $incoming) && !isset($skipped[(string) $id])) {
                     $diff['removed'][] = (string) $id;
                 }
             }

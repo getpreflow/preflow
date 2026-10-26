@@ -8,6 +8,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
+use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Http\FolioPermissionMiddleware;
 use Preflow\Folio\Tests\Support\StaffScaffold;
 use Preflow\Folio\Transfer\ContentSet;
@@ -282,6 +283,89 @@ final class TranslationOverridesTest extends TestCase
             $this->assertSame(['folio.common.save' => 'Sichern'], $this->overrides()->all('de'));
             $this->assertSame(['site.types.page.label' => 'Les pages'], $this->overrides()->all('fr'));
             $this->assertStringContainsString('>Sichern</button>', $this->html('/folio/_account'), 'the compiled cache is renewed');
+        } finally {
+            $second = $this->dir;
+            $this->dir = $first;
+            $this->removeSite();
+            $this->dir = $second;
+        }
+    }
+    /** A row written past set() (an import, a direct insert). @param array<string, string> $row */
+    private function insertRow(array $row): void
+    {
+        $this->overrides()->ensureTable();
+        $this->dm()->saveType(DynamicRecord::fromArray($this->overrides()->definition(), $row), false);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_override_texts_are_plain_text_everywhere(): void
+    {
+        $this->people();
+        $this->signIn('ada@site.test');
+
+        foreach (['x" autofocus onfocus="y', 'Sichern`', '<i>Sichern', str_repeat('a', 2001), '   '] as $text) {
+            $status = $this->post('/folio/translations', ['locale' => 'de', 'key' => 'folio.common.save', 'text' => $text])->getStatusCode();
+            $this->assertSame(trim($text) === '' ? 302 : 422, $status, $text);
+        }
+        $this->assertSame([], $this->overrides()->all('de'), 'nothing stored');
+
+        $this->assertSame(302, $this->post('/folio/translations', ['locale' => 'de', 'key' => 'folio.common.save', 'text' => "Speichern's"])->getStatusCode());
+        $this->assertSame(['folio.common.save' => 'Speichern’s'], $this->overrides()->all('de'), 'a typographic apostrophe');
+        $this->assertSame(302, $this->post('/folio/translations', ['locale' => 'de', 'key' => 'folio.common.save', 'text' => str_repeat('a', 2000)])->getStatusCode(), 'at most 2000 characters');
+        $this->post('/folio/translations/reset', ['locale' => 'de', 'key' => 'folio.common.save']);
+
+        $this->expectStoreRefuses(fn () => $this->overrides()->set('de', 'folio.common.save', 'x" onfocus="y', null));
+        $this->expectStoreRefuses(fn () => $this->overrides()->set('../x', 'folio.common.save', 'Sichern', null));
+        $this->expectStoreRefuses(fn () => $this->overrides()->forget('../x'));
+
+        // Rows written past the screen are never used.
+        $this->insertRow(['id' => 'de:folio.common.save', 'locale' => 'de', 'key' => 'folio.common.save', 'text' => 'x" autofocus onfocus="alert(1)']);
+        $this->insertRow(['id' => 'de:folio.layout.log_out', 'locale' => 'de', 'key' => 'folio.common.cancel', 'text' => 'Mismatch']);
+        $this->insertRow(['id' => 'deu:folio.layout.log_out', 'locale' => 'deu', 'key' => 'folio.layout.log_out', 'text' => 'Bad locale']);
+        $this->overrides()->forget('de');
+        $this->assertSame([], $this->overrides()->all('de'));
+        $account = $this->html('/folio/_account');
+        $this->assertStringContainsString('>Speichern</button>', $account, 'the delivered text');
+        $this->assertStringNotContainsString('onfocus', $account);
+        $this->assertStringNotContainsString('Mismatch', $account);
+    }
+
+    private function expectStoreRefuses(\Closure $call): void
+    {
+        try {
+            $call();
+            $this->fail('StoredOverrides accepted it');
+        } catch (\InvalidArgumentException) {
+            $this->addToAssertionCount(1);
+        }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_an_import_skips_override_rows_that_are_not_plain_text(): void
+    {
+        $this->overrides()->set('de', 'folio.common.save', 'Sichern', 'ada');
+        $this->insertRow(['id' => 'de:folio.layout.log_out', 'locale' => 'de', 'key' => 'folio.layout.log_out', 'text' => 'x" onfocus="y']);
+        $this->insertRow(['id' => 'fr:folio.common.save', 'locale' => 'fr', 'key' => 'folio.common.cancel', 'text' => 'Mismatch']);
+        $stream = fopen('php://temp', 'w+b');
+        (new Exporter(ContentSet::fromApp($this->flow), $this->dm()))->export($stream);
+        rewind($stream);
+        $first = $this->dir;
+
+        try {
+            $this->staffSite();
+            $importer = new Importer(ContentSet::fromApp($this->flow), $this->dm());
+            $plan = $importer->read($stream);
+            try {
+                $this->assertSame(['de:folio.common.save'], $plan->tables[StoredOverrides::TABLE]['added']);
+                $this->assertCount(2, array_filter($plan->notices, static fn (string $n): bool => str_starts_with($n, StoredOverrides::TABLE . '/')), implode("\n", $plan->notices));
+                $importer->apply($plan);
+            } finally {
+                $plan->cleanup();
+            }
+
+            $this->assertSame(['folio.common.save' => 'Sichern'], $this->overrides()->all('de'));
+            $this->assertNull($this->dm()->findIn($this->overrides()->definition(), 'de:folio.layout.log_out'), 'not stored');
+            $this->assertNull($this->dm()->findIn($this->overrides()->definition(), 'fr:folio.common.save'));
         } finally {
             $second = $this->dir;
             $this->dir = $first;

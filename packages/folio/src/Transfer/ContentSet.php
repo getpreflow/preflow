@@ -33,6 +33,8 @@ final class ContentSet
         private readonly ?string $versionsDir = null,
         /** @var (\Closure(list<string>): void)|null told the tables an import changed */
         private readonly ?\Closure $onImport = null,
+        /** @var array<string, \Closure(string, array<string, mixed>): ?string> table => why an imported row can't be stored (null: it can) */
+        private readonly array $rowChecks = [],
     ) {}
 
     public static function fromApp(Application $app): self
@@ -77,7 +79,19 @@ final class ContentSet
                     $overrides->forget();
                 }
             },
+            // Override texts are printed unescaped: an archive's rows pass the same checks as the screen's.
+            [StoredOverrides::TABLE => StoredOverrides::rowProblem(...)],
         );
+    }
+
+    /**
+     * Why an imported row of the table can't be stored, or null.
+     *
+     * @param array<string, mixed> $row
+     */
+    public function rowProblem(string $table, string $id, array $row): ?string
+    {
+        return isset($this->rowChecks[$table]) ? ($this->rowChecks[$table])($id, $row) : null;
     }
 
     /**

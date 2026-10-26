@@ -21,6 +21,55 @@ final class StoredOverrides implements TranslationOverrides
 {
     public const string TABLE = 'folio_translation_overrides';
 
+    /** The longest override text, in characters. */
+    public const int MAX_LENGTH = 2000;
+
+    /**
+     * An override text as it may be stored and shown, or null when it may not: plain text that
+     * is safe anywhere a text is printed unescaped, also inside a double-quoted HTML attribute
+     * (the translator's output is marked safe). No `<`, `>`, `"` or backtick, at most
+     * MAX_LENGTH characters, not empty; a straight apostrophe becomes the typographic one (’).
+     */
+    public static function validText(string $text): ?string
+    {
+        if (trim($text) === '' || mb_strlen($text) > self::MAX_LENGTH || strpbrk($text, '<>"`') !== false) {
+            return null;
+        }
+
+        return str_replace("'", '’', $text);
+    }
+
+    /** Two-letter locale codes only. */
+    public static function validLocale(string $locale): bool
+    {
+        return preg_match('/^[a-z]{2}$/', $locale) === 1;
+    }
+
+    /**
+     * Why a stored row can't be an override (null: it can): the id must be "{locale}:{key}",
+     * the locale two letters, the text validText(). Rows written past set() (an import, a
+     * direct insert) are checked with it on import and on every read.
+     *
+     * @param array<string, mixed> $row
+     */
+    public static function rowProblem(string $id, array $row): ?string
+    {
+        $locale = $row['locale'] ?? null;
+        $key = $row['key'] ?? null;
+        $text = $row['text'] ?? null;
+        if (!is_string($locale) || !self::validLocale($locale)) {
+            return 'the locale is not a two-letter code';
+        }
+        if (!is_string($key) || $key === '' || $id !== $locale . ':' . $key || ($row['id'] ?? $id) !== $id) {
+            return 'the id is not "{locale}:{key}"';
+        }
+        if (!is_string($text) || self::validText($text) === null) {
+            return 'the text is not plain text (no <, >, " or `, at most ' . self::MAX_LENGTH . ' characters)';
+        }
+
+        return null;
+    }
+
     private ?TypeDefinition $definition = null;
 
     private bool $tableReady = false;
@@ -49,7 +98,7 @@ final class StoredOverrides implements TranslationOverrides
 
     public function get(string $locale, string $key): ?string
     {
-        if (preg_match('/^[a-z]{2}$/', $locale) !== 1) {
+        if (!self::validLocale($locale)) {
             return null;
         }
         $texts = $this->cache->read($locale);
@@ -62,12 +111,16 @@ final class StoredOverrides implements TranslationOverrides
     }
 
     /**
-     * Every override of a locale, from the table (not the cache), sorted by key.
+     * Every override of a locale, from the table (not the cache), sorted by key. Rows that
+     * fail rowProblem() are left out.
      *
      * @return array<string, string>
      */
     public function all(string $locale): array
     {
+        if (!self::validLocale($locale)) {
+            return [];
+        }
         try {
             $records = $this->dm->queryIn($this->definition())->where('locale', $locale)->get()->items();
         } catch (\RuntimeException $e) {
@@ -79,10 +132,9 @@ final class StoredOverrides implements TranslationOverrides
         }
         $texts = [];
         foreach ($records as $record) {
-            $key = $record->get('key');
-            $text = $record->get('text');
-            if (is_string($key) && is_string($text) && $text !== '' && $record->get('locale') === $locale) {
-                $texts[$key] = $text;
+            $row = ['locale' => $record->get('locale'), 'key' => $record->get('key'), 'text' => $record->get('text')];
+            if ($row['locale'] === $locale && self::rowProblem((string) $record->get('id'), $row) === null) {
+                $texts[$row['key']] = (string) self::validText($row['text']);
             }
         }
         ksort($texts);
@@ -90,9 +142,20 @@ final class StoredOverrides implements TranslationOverrides
         return $texts;
     }
 
-    /** Stores an override (null or '' removes it) and drops the locale's compiled texts. */
+    /**
+     * Stores an override (null or '' removes it; the text goes through validText()) and drops
+     * the locale's compiled texts.
+     *
+     * @throws \InvalidArgumentException for a locale that isn't two letters or a text validText() refuses
+     */
     public function set(string $locale, string $key, ?string $text, ?string $by): void
     {
+        if (!self::validLocale($locale)) {
+            throw new \InvalidArgumentException("Not a two-letter locale: {$locale}");
+        }
+        if ($text !== null && $text !== '') {
+            $text = self::validText($text) ?? throw new \InvalidArgumentException("Not a plain text override for {$key}");
+        }
         $this->ensureTable();
         $id = $locale . ':' . $key;
         if ($text === null || $text === '') {
@@ -119,6 +182,9 @@ final class StoredOverrides implements TranslationOverrides
             $this->cache->clear();
 
             return;
+        }
+        if (!self::validLocale($locale)) {
+            throw new \InvalidArgumentException("Not a two-letter locale: {$locale}");
         }
         $this->cache->forget($locale);
     }

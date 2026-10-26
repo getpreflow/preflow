@@ -106,8 +106,15 @@ final class TranslationsController
         if (!$this->texts->editable($key, $locale)) {
             return self::refuse(FolioText::get('folio.translations.not_editable'));
         }
-        if (EditableTexts::markup($text)) {
-            return self::refuse(FolioText::get('folio.translations.no_markup'));
+        if ($text !== null) {
+            if (mb_strlen($text) > StoredOverrides::MAX_LENGTH) {
+                return self::refuse(FolioText::get('folio.translations.too_long', ['max' => StoredOverrides::MAX_LENGTH]));
+            }
+            // Plain text only: it is printed unescaped, also inside HTML attributes.
+            $text = StoredOverrides::validText($text);
+            if ($text === null) {
+                return self::refuse(FolioText::get('folio.translations.no_markup'));
+            }
         }
 
         $user = $request->getAttribute(Authenticatable::class);
