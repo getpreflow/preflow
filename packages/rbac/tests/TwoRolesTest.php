@@ -78,6 +78,8 @@ final class TwoRolesTest extends TestCase
             ['POST /folio/assets/{id}', '/folio/assets/missing', [], [404, 404, 403]],
             ['POST /folio/assets/{id}/delete', '/folio/assets/missing/delete', [], [404, 404, 403]],
             ['POST /folio/assets/{id}/replace', '/folio/assets/missing/replace', [], [404, 404, 403]],
+            ['GET /folio/assets/{id}/edit', '/folio/assets/missing/edit', [], [404, 404, 403]],
+            ['POST /folio/assets/{id}/edit', '/folio/assets/missing/edit', ['op' => 'rotate-right'], [404, 404, 403]],
             ['POST /folio/assets/{id}/versions/{n}/restore', '/folio/assets/missing/versions/1/restore', [], [404, 404, 403]],
             ['POST /folio/assets/{id}/versions/{n}/delete', '/folio/assets/missing/versions/1/delete', [], [404, 404, 403]],
             ['GET /folio/extensions', '/folio/extensions', [], [200, 403, 403]],
