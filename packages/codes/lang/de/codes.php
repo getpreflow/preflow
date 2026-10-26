@@ -37,7 +37,7 @@ return [
     ],
     'errors' => [
         'purpose' => 'Wähle einen Zweck.',
-        'not_readable' => 'Dieser Zweck erlaubt keine lesbaren Codes; zufällige Codes werden per Code ausgegeben.',
+        'not_readable' => 'Dieser Zweck erlaubt keine lesbaren Codes; zufällige Codes gibt die Site über ihren Programmcode aus.',
         'format' => 'Ein lesbarer Code braucht 4 bis 64 Buchstaben A–Z und Ziffern (Leerzeichen und Bindestriche werden ignoriert).',
         'taken' => 'Einen solchen Code gibt es für diesen Zweck bereits.',
         'max_uses' => '„Höchstens einlösbar“ muss eine ganze Zahl sein (leer: unbegrenzt).',

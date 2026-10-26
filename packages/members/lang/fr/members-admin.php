@@ -18,7 +18,7 @@ return [
             'language' => ['label' => 'Langue'],
             'registered_at' => ['label' => 'Inscrit le'],
             'email_confirmed_at' => ['label' => 'E-mail confirmé le'],
-            'decided_at' => ['label' => 'Décision le'],
+            'decided_at' => ['label' => 'Décidé le'],
             'roles' => ['label' => 'Rôles'],
         ],
         'members_settings' => [

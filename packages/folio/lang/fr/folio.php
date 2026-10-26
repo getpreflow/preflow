@@ -105,7 +105,7 @@ return [
         'copy_preview_link' => 'Copier le lien d’aperçu',
         'view' => 'Affichage',
         'view_form' => 'Formulaire',
-        'view_split' => 'Partagé',
+        'view_split' => 'Côte à côte',
         'view_preview' => 'Aperçu',
         'scheduled' => 'Publication prévue le :date. Enregistrer vos modifications annule la planification ; une personne autorisée à publier peut la replanifier.',
         'reload' => 'Recharger',

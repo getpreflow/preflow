@@ -1,7 +1,8 @@
 <?php
 
 // Meldungen der Regeln von preflow/validation (öffentlich: auch Formulare der Site nutzen sie,
-// sobald sie einen Translator übergeben). Eine Site ändert einzelne Schlüssel in ihrer lang/de/validation.php.
+// sobald sie einen Translator übergeben). Eine Site ändert einzelne Schlüssel in ihrer lang/de/validation.php;
+// diese Datei wirkt nur, wo ein Translator übergeben wird (Folios Admin tut das; ein Formular der Site muss einen übergeben).
 return [
     'required' => 'Dieses Feld ist erforderlich.',
     'email' => 'Muss eine gültige E-Mail-Adresse sein.',

@@ -37,7 +37,7 @@ return [
     ],
     'errors' => [
         'purpose' => 'Choisissez un usage.',
-        'not_readable' => 'Cet usage n’autorise pas les codes lisibles ; les codes aléatoires sont émis par le code.',
+        'not_readable' => 'Cet usage n’autorise pas les codes lisibles ; les codes aléatoires sont émis par le programme du site.',
         'format' => 'Un code lisible compte de 4 à 64 lettres A à Z et chiffres (les espaces et tirets sont ignorés).',
         'taken' => 'Un code identique existe déjà pour cet usage.',
         'max_uses' => 'Les utilisations max. doivent être un nombre entier (vide : illimité).',
