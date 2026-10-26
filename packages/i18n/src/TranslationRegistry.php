@@ -61,7 +61,11 @@ final class TranslationRegistry
                     is_array($spec) => [$spec['path'] ?? null, $spec['scope'] ?? 'admin'],
                     default => [null, null],
                 };
-                if ($group === '' || !is_string($path) || $path === '') {
+                if (preg_match('/^[a-z0-9_-]+$/i', $group) !== 1) {
+                    self::warn("package {$name} declares translation group \"{$group}\" (letters, digits, _ and - only); skipped.");
+                    continue;
+                }
+                if (!is_string($path) || $path === '') {
                     self::warn("package {$name} declares translation group \"{$group}\" without a path; skipped.");
                     continue;
                 }
@@ -74,6 +78,12 @@ final class TranslationRegistry
                     self::warn("package {$name} declares translation group \"{$group}\" in {$dir}, which does not exist; skipped.");
                     continue;
                 }
+                $real = realpath($dir);
+                if ($real === false || !str_starts_with($real . '/', $root . '/')) {
+                    self::warn("package {$name} declares translation group \"{$group}\" in {$dir}, outside the package; skipped.");
+                    continue;
+                }
+                $dir = $real;
                 if (isset($groups[$group])) {
                     self::warn("package {$name} declares translation group \"{$group}\", which another package declared first; skipped.");
                     continue;

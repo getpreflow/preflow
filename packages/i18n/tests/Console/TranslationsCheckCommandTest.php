@@ -73,6 +73,25 @@ final class TranslationsCheckCommandTest extends TestCase
         $this->assertStringContainsString('about.twig', $out);
     }
 
+    public function test_a_package_group_without_a_delivered_language_exits_1(): void
+    {
+        $this->file('vendor/composer/installed.json', (string) json_encode(['packages' => [
+            ['name' => 'acme/g', 'install-path' => '../acme/g', 'extra' => ['preflow' => ['translations' => ['g' => 'lang']]]],
+            ['name' => 'acme/h', 'install-path' => '../acme/h', 'extra' => ['preflow' => ['translations' => ['h' => 'lang']]]],
+        ]]));
+        // g ships en and de (setUp), h en, de and fr: g lacks fr entirely.
+        foreach (['en', 'de', 'fr'] as $locale) {
+            $this->langFile('vendor/acme/h/lang', $locale, 'h', ['x' => "X {$locale}"]);
+        }
+        $this->langFile('lang', 'en', 'site', ['only' => 'English site text']);
+
+        [$code, $out] = $this->check();
+
+        $this->assertSame(1, $code);
+        $this->assertMatchesRegularExpression('/\bfr\b.*\(g\b.*g\.a.*g\.nest\.b/s', $out);
+        $this->assertStringNotContainsString('site.only', $out, 'a site-only group: only languages it has files for');
+    }
+
     public function test_site_files_complete_a_package_group(): void
     {
         $this->langFile('vendor/acme/g/lang', 'fr', 'g', ['a' => 'A fr']);

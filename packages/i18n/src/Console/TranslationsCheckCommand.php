@@ -12,7 +12,8 @@ use Preflow\I18n\Translator;
 /**
  * preflow translations:check [--group=<group>]: the release gate for "no raw keys".
  * Lists, per group and language, the keys that exist in English but not in that language
- * (site file and package file together), and the keys used as t('…') in package
+ * (site file and package file together; a package group is checked in every language any
+ * package delivers, a site-only group in the languages it has files for), and the keys used as t('…') in package
  * templates and model files (of packages declaring translations) and in the site's
  * (app/, resources/, templates/, config/models/) that exist in no language. Exits 1 when
  * anything is missing. The package lists it in composer.json (extra.preflow.commands).
@@ -51,9 +52,23 @@ final class TranslationsCheckCommand implements CommandInterface
         $locales = array_values(array_unique(['en', ...$translator->locales()]));
         $problems = 0;
 
+        // Package groups (they have a scope: declared, or registered by their provider) must
+        // cover every language any package delivers; a site-only group the languages it has files for.
+        $delivered = [];
+        foreach ($translator->groups() as $group) {
+            if ($translator->scope($group) !== null) {
+                array_push($delivered, ...$translator->locales($group));
+            }
+        }
+        $delivered = array_values(array_unique($delivered));
+        sort($delivered);
+
         foreach ($groups as $group) {
             $english = $translator->entries($group, 'en');
-            foreach ($translator->locales($group) as $locale) {
+            $expected = $translator->scope($group) !== null
+                ? array_unique([...$delivered, ...$translator->locales($group)])
+                : $translator->locales($group);
+            foreach ($expected as $locale) {
                 if ($locale === 'en') {
                     continue;
                 }
@@ -62,7 +77,8 @@ final class TranslationsCheckCommand implements CommandInterface
                     continue;
                 }
                 $problems += count($missing);
-                echo "Missing in {$locale} ({$group}, " . count($missing) . "):\n";
+                $whole = !in_array($locale, $translator->locales($group), true) ? ', no file for this language' : '';
+                echo "Missing in {$locale} ({$group}, " . count($missing) . "{$whole}):\n";
                 foreach ($missing as $key) {
                     echo "  {$key}\n";
                 }

@@ -85,12 +85,16 @@ final class TranslationRegistryTest extends TestCase
     public function test_invalid_declarations_are_skipped_and_logged(): void
     {
         $this->langFile('vendor/acme/a/lang', 'en', 'a', ['k' => 'A']);
+        $this->langFile('vendor/acme/other/lang', 'en', 'escape', ['k' => 'Outside']);
         $file = $this->installed([
             ['name' => 'acme/a', 'install-path' => '../acme/a', 'extra' => ['preflow' => ['translations' => [
                 'a' => ['path' => 'lang', 'scope' => 'admin'],
                 'bad' => ['path' => 'lang', 'scope' => 'secret'],
                 'gone' => ['path' => 'nowhere', 'scope' => 'admin'],
                 'weird' => 42,
+                'escape' => ['path' => '../other/lang', 'scope' => 'admin'],
+                '../evil' => ['path' => 'lang', 'scope' => 'admin'],
+                'a.b' => 'lang',
             ]]]],
             ['name' => 'acme/b', 'install-path' => '../acme/b', 'extra' => ['preflow' => ['translations' => 'lang']]],
         ]);
@@ -102,6 +106,9 @@ final class TranslationRegistryTest extends TestCase
         $this->assertStringContainsString('bad', $log);
         $this->assertStringContainsString('secret', $log);
         $this->assertStringContainsString('gone', $log);
+        $this->assertStringContainsString('escape', $log);
+        $this->assertStringContainsString('../evil', $log);
+        $this->assertStringContainsString('a.b', $log);
     }
 
     public function test_broken_json_never_breaks_boot(): void
