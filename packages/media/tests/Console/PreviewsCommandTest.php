@@ -149,4 +149,34 @@ final class PreviewsCommandTest extends TestCase
         $this->assertSame("Made previews of 0 documents.\n1 document has no preview renderer (PDFs need Ghostscript or pdftocairo).\n", $out);
         $this->assertNull($this->media()->find($asset->id)?->preview);
     }
+
+    public function test_limit_processes_a_chunk_and_a_second_run_resumes(): void
+    {
+        $this->requireRenderer();
+        $ids = [];
+        foreach (['a', 'b', 'c'] as $name) {
+            $ids[] = $this->withoutPreview($this->pdf('rgb.pdf', "{$name}.pdf"))->id;
+        }
+
+        [$code, $out] = $this->runCommand(['--limit=2']);
+        $this->assertSame([0, "Made previews of 2 documents.\n1 document left: run again with --limit=2.\n"], [$code, $out]);
+
+        [$code, $out] = $this->runCommand(['--limit=2']);
+        $this->assertSame([0, "Made previews of 1 document.\n"], [$code, $out]);
+        foreach ($ids as $id) {
+            $this->assertNotNull($this->media()->find($id)?->preview);
+        }
+    }
+
+    public function test_id_of_an_unknown_asset_fails(): void
+    {
+        $unknown = str_repeat('0', 32);
+        $stderr = fopen('php://memory', 'w+');
+        ob_start();
+        $code = (new PreviewsCommand(fn () => $this->mediaApp(), $stderr))->execute(['--id=' . $unknown]);
+        $out = (string) ob_get_clean();
+        rewind($stderr);
+
+        $this->assertSame([1, '', "Asset {$unknown} not found.\n"], [$code, $out, (string) stream_get_contents($stderr)]);
+    }
 }

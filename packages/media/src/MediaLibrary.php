@@ -84,6 +84,9 @@ final class MediaLibrary
     /** What a version keeps of the asset besides its file, and what a restore brings back. */
     private const array SNAPSHOT = ['focal_x', 'focal_y'];
 
+    /** The folder under versions_dir with one lock file per asset ({id}.lock). */
+    private const string LOCKS = '.locks';
+
     private ?TypeDefinition $definition = null;
 
     /** @var \Closure(): \DateTimeImmutable */
@@ -408,6 +411,15 @@ final class MediaLibrary
      */
     public function update(string $id, array $meta): Asset
     {
+        $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
+
+        // Read and saved under the asset's lock: a replace running now is never undone.
+        return $this->guarded($id, fn (): Asset => $this->applyMeta($id, $meta));
+    }
+
+    /** @param array<string, mixed> $meta */
+    private function applyMeta(string $id, array $meta): Asset
+    {
         $asset = $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
         $data = $asset->toData();
 
@@ -727,9 +739,9 @@ final class MediaLibrary
     }
 
     /**
-     * Run $work holding the asset's lock ({versions_dir}/{id}/.lock), so replaces,
-     * restores, version deletes, prunes and the delete of one asset run one after
-     * another, each on the record the previous one saved.
+     * Run $work holding the asset's lock ({versions_dir}/.locks/{id}.lock), so replaces,
+     * restores, version deletes, prunes, edits, re-made derived files and the delete of
+     * one asset run one after another, each on the record the previous one saved.
      *
      * @template T
      * @param \Closure(): T $work
@@ -738,8 +750,8 @@ final class MediaLibrary
      */
     private function locked(string $id, \Closure $work, bool $required = true): mixed
     {
-        $folder = $this->versionsDir() . '/' . $id;
-        $lock = is_dir($folder) || @mkdir($folder, 0775, true) || is_dir($folder) ? @fopen($folder . '/.lock', 'c') : false;
+        $folder = $this->versionsDir() . '/' . self::LOCKS;
+        $lock = is_dir($folder) || @mkdir($folder, 0775, true) || is_dir($folder) ? @fopen($folder . '/' . $id . '.lock', 'c') : false;
         if ($lock === false) {
             if (!$required) {
                 return $work();
@@ -756,6 +768,12 @@ final class MediaLibrary
             flock($lock, LOCK_UN);
             fclose($lock);
         }
+    }
+
+    /** $work under the asset's lock; without a versions dir (no lock to take), unlocked. */
+    private function guarded(string $id, \Closure $work): mixed
+    {
+        return $this->versionsDir() !== null ? $this->locked($id, $work, required: false) : $work();
     }
 
     private function removeVersionsFolder(string $id): void
@@ -807,8 +825,11 @@ final class MediaLibrary
             }
             $this->dm->deleteIn($this->definition(), $asset->id);
             $this->removeVersionsFolder($asset->id);
+            if ($this->versionsDir() !== null) {
+                @unlink($this->versionsDir() . '/' . self::LOCKS . '/' . $asset->id . '.lock');
+            }
         };
-        $this->versionsDir() !== null ? $this->locked($asset->id, $work, required: false) : $work();
+        $this->guarded($asset->id, $work);
     }
 
     /** The asset's current file, its variants (also those made on demand) and its preview. */
@@ -926,61 +947,76 @@ final class MediaLibrary
         return $made;
     }
 
-    /** Replace an image's variants (e.g. after the configured widths changed). */
+    /**
+     * Replace an image's variants (e.g. after the configured widths changed). Works on
+     * the stored record under the asset's lock, so a replace since $asset was read stands.
+     */
     public function regenerate(Asset $asset): Asset
     {
         if ($this->variants === null || $asset->private || $asset->kind() !== 'image') {
             return $asset;
         }
-        $this->variants->remove($asset, $this->dir);
-        $data = $asset->toData();
-        $data['variants'] = array_map(static fn (Variant $v) => $v->toArray(), $this->generateVariants($asset));
-        $lacks = $this->lacksColorManagement($asset);
-        if ($lacks || $asset->note === self::NOTE_NEEDS_IMAGICK) {
-            $data['note'] = $lacks ? self::NOTE_NEEDS_IMAGICK : '';
-        }
 
-        return $this->save($data);
+        return $this->guarded($asset->id, function () use ($asset): Asset {
+            $current = $this->find($asset->id) ?? $asset; // a replace may have run since $asset was read
+            if ($current->private || $current->kind() !== 'image') {
+                return $current;
+            }
+            $this->variants->remove($current, $this->dir);
+            $data = $current->toData();
+            $data['variants'] = array_map(static fn (Variant $v) => $v->toArray(), $this->generateVariants($current));
+            $lacks = $this->lacksColorManagement($current);
+            if ($lacks || $current->note === self::NOTE_NEEDS_IMAGICK) {
+                $data['note'] = $lacks ? self::NOTE_NEEDS_IMAGICK : '';
+            }
+
+            return $this->save($data);
+        });
     }
 
     /**
      * Make a document's preview (and a public one's preview variants) again from its
      * current file, e.g. for documents uploaded before previews existed (media:previews).
-     * The old preview goes first. Without a renderer for the type, or for an image, the
-     * asset is returned as it is; a render that fails leaves it without a preview.
+     * The new preview is rendered to a temp file first and only then swapped in (record
+     * saved, then the old preview's leftovers removed), so a render that fails or is
+     * killed keeps the working preview. Null, with the asset unchanged, when nothing was
+     * rendered (an image, no renderer for the type, a broken file, the time limit).
      */
-    public function remakePreview(Asset $asset): Asset
+    public function remakePreview(Asset $asset): ?Asset
     {
         if ($asset->kind() === 'image' || $this->previews?->for($asset->mime) === null) {
-            return $asset;
+            return null;
         }
-        $work = function () use ($asset): Asset {
+
+        return $this->guarded($asset->id, function () use ($asset): ?Asset {
             $current = $this->find($asset->id) ?? $asset; // a replace may have run while we waited
-            $files = [$current->preview !== null ? $this->fileAt($current, $current->preview->path) : null];
-            if (!$current->private) {
-                $files = [...$files, ...array_map(fn (Variant $v) => $this->absolute($v->path), $current->variants)];
-                $preview = $this->previewAsset($current);
-                if ($preview !== null) {
-                    $this->variants?->remove($preview, $this->dir);
-                }
+            $rendered = $this->renderPreview($current);
+            if ($rendered === null) {
+                return null;
             }
-            $data = $current->toData();
-            $data['preview'] = [];
-            $data['variants'] = [];
-            $data['color'] = '';
-            $data['palette'] = [];
-            $data['text_color'] = '';
-            $saved = $this->save($data); // first: the record never points at a removed preview
-            foreach ($files as $file) {
+            [$tmp, $width, $height] = $rendered;
+            $path = substr($current->path, 0, (int) strrpos($current->path, '.')) . '-preview.png';
+            $old = [$current->preview !== null && $current->preview->path !== $path ? $this->fileAt($current, $current->preview->path) : null];
+            if (!$current->private) {
+                $old = [...$old, ...array_map(fn (Variant $v) => $this->absolute($v->path), $current->variants)];
+            }
+            $oldPreview = $this->previewAsset($current);
+            $saved = $this->placePreview($current, $tmp, $path, $width, $height, ['variants' => [], 'color' => '', 'palette' => [], 'text_color' => '']);
+            if ($saved === null) {
+                return null;
+            }
+            // The record is on the new preview: the old one's variants (also those made on demand) go.
+            if (!$current->private && $oldPreview !== null) {
+                $this->variants?->remove($oldPreview, $this->dir);
+            }
+            foreach ($old as $file) {
                 if ($file !== null && is_file($file)) {
                     unlink($file);
                 }
             }
 
-            return $this->afterFileChange($saved);
-        };
-
-        return $this->versionsDir() !== null ? $this->locked($asset->id, $work, required: false) : $work();
+            return $this->afterFileChange($saved, withPreview: false);
+        });
     }
 
     /** The URL of an asset (a private one: only the gated {private_url}/{id}) or of a path under the media URL. */
@@ -1152,9 +1188,9 @@ final class MediaLibrary
      * It makes a document's preview, reads the colours, then makes the variants of a
      * public image or of a public document's preview. Returns the asset as saved.
      */
-    private function afterFileChange(Asset $asset): Asset
+    private function afterFileChange(Asset $asset, bool $withPreview = true): Asset
     {
-        $asset = $this->readColors($this->makePreview($asset));
+        $asset = $this->readColors($withPreview ? $this->makePreview($asset) : $asset);
         if ($asset->private) {
             return $asset; // no variants: they would be public files
         }
@@ -1195,7 +1231,7 @@ final class MediaLibrary
             return $colors !== null ? $this->withColors($current, $colors) : null;
         };
 
-        return $this->versionsDir() !== null ? $this->locked($asset->id, $work, required: false) : $work();
+        return $this->guarded($asset->id, $work);
     }
 
     /** The colours read and saved on the asset; any failure leaves it as it is (the upload stands). */
@@ -1254,10 +1290,27 @@ final class MediaLibrary
      */
     private function makePreview(Asset $asset): Asset
     {
+        $rendered = $this->renderPreview($asset);
+        if ($rendered === null) {
+            return $asset;
+        }
+        $path = substr($asset->path, 0, (int) strrpos($asset->path, '.')) . '-preview.png';
+
+        return $this->placePreview($asset, $rendered[0], $path, $rendered[1], $rendered[2]) ?? $asset;
+    }
+
+    /**
+     * The asset's preview rendered to a temp PNG (the caller moves or removes it), with
+     * its size; null when there is no renderer or nothing usable came out (logged).
+     *
+     * @return ?array{0: string, 1: int, 2: int}
+     */
+    private function renderPreview(Asset $asset): ?array
+    {
         $renderer = $asset->kind() === 'image' ? null : $this->previews?->for($asset->mime);
         $file = $renderer !== null ? $this->file($asset) : null;
         if ($renderer === null || $file === null || !is_file($file)) {
-            return $asset;
+            return null;
         }
         $longSide = min(self::PREVIEW_LONG_SIDE, (int) floor(sqrt(max(1, (int) ($this->config['max_pixels'] ?? self::DEFAULT_MAX_PIXELS)))));
         try {
@@ -1265,23 +1318,40 @@ final class MediaLibrary
         } catch (\Throwable $e) {
             error_log("preflow/media: no preview of asset {$asset->id}: " . $e::class . ': ' . $e->getMessage());
 
-            return $asset;
+            return null;
         }
         if ($tmp === null) {
-            return $asset;
+            return null;
         }
+        $size = @getimagesize($tmp);
+        if (!is_array($size) || $size[2] !== IMAGETYPE_PNG) {
+            @unlink($tmp);
+
+            return null;
+        }
+
+        return [$tmp, (int) $size[0], (int) $size[1]];
+    }
+
+    /**
+     * Move a rendered temp PNG to $path beside the asset's file (atomically, so an old
+     * preview of that name is swapped) and save it on the record with $extra. Null when
+     * it could not be written. The temp file is gone afterwards either way.
+     *
+     * @param array<string, mixed> $extra
+     */
+    private function placePreview(Asset $asset, string $tmp, string $path, int $width, int $height, array $extra = []): ?Asset
+    {
         try {
-            $size = @getimagesize($tmp);
-            $path = substr($asset->path, 0, (int) strrpos($asset->path, '.')) . '-preview.png';
             $dest = $this->fileAt($asset, $path);
-            if (!is_array($size) || $size[2] !== IMAGETYPE_PNG || $dest === null || !self::writeAtomically($dest, null, $tmp)) {
-                return $asset;
+            if ($dest === null || !self::writeAtomically($dest, null, $tmp)) {
+                return null;
             }
         } finally {
             @unlink($tmp);
         }
-        $data = $asset->toData();
-        $data['preview'] = (new Preview($path, (int) $size[0], (int) $size[1]))->toArray();
+        $data = $extra + $asset->toData();
+        $data['preview'] = (new Preview($path, $width, $height))->toArray();
 
         return $this->save($data);
     }

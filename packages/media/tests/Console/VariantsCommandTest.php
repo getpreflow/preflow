@@ -88,4 +88,27 @@ final class VariantsCommandTest extends TestCase
 
         return [$code, (string) ob_get_clean()];
     }
+
+    public function test_limit_and_offset_split_a_run_into_chunks(): void
+    {
+        $ids = [];
+        foreach ([1, 2, 3] as $i) {
+            $asset = $this->media()->upload($this->pngUpload(), null);
+            foreach ($asset->variants as $v) {
+                unlink($this->dir . '/public/media/' . $v->path);
+            }
+            $ids[] = $asset->id;
+        }
+
+        [$code, $out] = $this->runCommand(['--limit=2']);
+        $this->assertSame([0, "Regenerated variants of 2 images.\n1 image left: run again with --limit=2 --offset=2.\n"], [$code, $out]);
+
+        [$code, $out] = $this->runCommand(['--limit=2', '--offset=2']);
+        $this->assertSame([0, "Regenerated variants of 1 image.\n"], [$code, $out]);
+        foreach ($ids as $id) {
+            foreach ($this->media()->find($id)->variants as $v) {
+                $this->assertFileExists($this->dir . '/public/media/' . $v->path);
+            }
+        }
+    }
 }

@@ -16,11 +16,17 @@ use Psr\Http\Message\ServerRequestInterface;
  * stored asset if there is one, else a placeholder carrying only the requested id.
  *
  * Also asked for {private_url}/{id}/v/{n}, an earlier file of an asset. Those are always
- * private, even when the asset is public: $asset is then the asset with private = true.
+ * private, even when the asset is public: $asset is then the asset with private = true,
+ * and the request carries the attribute VERSION (the version number), so rules can keep
+ * earlier files to fewer people than current ones (Folio: staff only). On every other
+ * request the attribute is null.
  *
  * The core binds DenyAllPrivateFileAccess; Folio, or a site's own provider, binds its rules.
  */
 interface PrivateFileAccess
 {
+    /** The request attribute of a version request: the version number (int); null otherwise. */
+    public const string VERSION = 'preflow.media.version';
+
     public function decide(ServerRequestInterface $request, Asset $asset): ?ResponseInterface;
 }

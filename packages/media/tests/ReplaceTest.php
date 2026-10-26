@@ -415,4 +415,87 @@ final class ReplaceTest extends TestCase
         $this->assertFileExists($library->absolute($current->path));
         $this->assertEqualsCanonicalizing([11, 12], [$current->width, $library->versions($asset->id)[0]->width]);
     }
+
+    public function test_regenerate_with_a_stale_asset_keeps_a_replace(): void
+    {
+        $library = $this->lib();
+        $asset = $library->upload($this->upload($this->png(600, 400), 'a.png'), null);
+        $stale = $library->find($asset->id); // media:variants --all read the list before the replace
+        $new = $library->replace($asset->id, $this->upload($this->png(500, 400), 'b.png'), null);
+
+        $after = $library->regenerate($stale);
+
+        $current = $library->find($asset->id);
+        $this->assertEquals($after, $current);
+        $this->assertSame([2, $new->path], [$current->version, $current->path]);
+        $this->assertSame([1], array_map(static fn (AssetVersion $v) => $v->number, $current->versions));
+        $this->assertFileExists($library->absolute($current->path));
+        $this->assertFileExists($library->versionFile($asset->id, 1));
+        $this->assertNotSame([], $current->variants);
+        foreach ($current->variants as $v) {
+            $this->assertStringContainsString($asset->id . '-v2-', $v->path);
+            $this->assertFileExists($library->absolute($v->path));
+        }
+    }
+
+    #[RequiresFunction('pcntl_fork')]
+    public function test_an_update_during_a_replace_waits_for_it(): void
+    {
+        $slow = new class implements ImageBackend {
+            public function supports(string $format): bool
+            {
+                return $format === 'webp';
+            }
+
+            public function writeVariants(string $src, array $jobs, int $quality): array
+            {
+                usleep(600000); // the replace's variants take a while, with the record already on the new file
+                foreach ($jobs as $job) {
+                    file_put_contents($job['dest'], 'x');
+                }
+
+                return array_fill(0, count($jobs), true);
+            }
+        };
+        $library = $this->lib(new VariantGenerator(null, [], 75));
+        $asset = $library->upload($this->upload($this->png(600, 400), 'a.png'), null);
+
+        $pid = pcntl_fork();
+        if ($pid === 0) {
+            $this->lib(new VariantGenerator($slow, [480], 75))->replace($asset->id, $this->upload($this->png(500, 400), 'b.png'), null);
+            exit(0);
+        }
+        // Once the replace saved the new file, edit the title (while its variants are being made).
+        $deadline = microtime(true) + 5;
+        while ($library->find($asset->id)?->version !== 2 && microtime(true) < $deadline) {
+            usleep(10000);
+        }
+        $library->update($asset->id, ['title' => 'Edited']);
+        pcntl_waitpid($pid, $status);
+        $this->assertSame(0, pcntl_wexitstatus($status));
+
+        $current = $library->find($asset->id);
+        $this->assertSame('Edited', $current->title);
+        $this->assertSame(2, $current->version);
+        $this->assertFileExists($library->absolute($current->path));
+        $this->assertNotSame([], $current->variants);
+        $this->assertSame([1], array_map(static fn (AssetVersion $v) => $v->number, $current->versions));
+    }
+
+    public function test_locks_live_in_one_folder_and_delete_removes_the_lock(): void
+    {
+        $library = $this->lib();
+        $asset = $library->upload($this->upload($this->png(40, 30), 'a.png'), null);
+        $library->update($asset->id, ['title' => 'T']);
+        $library->regenerate($library->find($asset->id));
+
+        // Touching an asset makes no folder for it: only its lock in .locks/.
+        $this->assertSame(['.locks/' . $asset->id . '.lock'], $this->filesUnder($this->assetRoot . '/versions'));
+
+        $library->replace($asset->id, $this->upload($this->png(50, 30), 'b.png'), null);
+        $this->assertSame(['.locks/' . $asset->id . '.lock', $asset->id . '/v1.png'], $this->filesUnder($this->assetRoot . '/versions'));
+
+        $library->delete($asset->id);
+        $this->assertSame([], $this->filesUnder($this->assetRoot . '/versions'));
+    }
 }

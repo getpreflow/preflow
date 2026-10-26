@@ -95,6 +95,17 @@ final class VersionFileTest extends TestCase
         $this->assertSame(403, $this->fetch('/files/' . $id . '/v/1')->getStatusCode());
     }
 
+    public function test_the_gate_can_tell_a_version_request_apart(): void
+    {
+        $this->scaffoldMediaApp([MediaServiceProvider::class, RefuseVersionRequests::class]);
+        [$id, ] = $this->replacedAsset();
+        $private = $this->media()->upload($this->file($this->png(30, 20), 'Private.png'), null, true);
+
+        $this->assertSame(403, $this->fetch('/files/' . $id . '/v/1')->getStatusCode());
+        $this->assertSame(200, $this->fetch('/files/' . $private->id)->getStatusCode());
+        $this->assertSame([1, null], RefuseVersionRequests::$seen);
+    }
+
     public function test_version_files_are_never_under_the_media_url(): void
     {
         $this->scaffoldMediaApp([MediaServiceProvider::class, AllowPrivateFiles::class]);
@@ -131,6 +142,27 @@ final class AllowPublicAssetsOnly extends \Preflow\Core\Container\ServiceProvide
             public function decide(\Psr\Http\Message\ServerRequestInterface $request, \Preflow\Media\Asset $asset): ?\Psr\Http\Message\ResponseInterface
             {
                 return $asset->private ? new \Nyholm\Psr7\Response(403) : null;
+            }
+        });
+    }
+}
+
+/** Allows everything but version requests, and records the attribute the gate saw. */
+final class RefuseVersionRequests extends \Preflow\Core\Container\ServiceProvider
+{
+    /** @var list<mixed> */
+    public static array $seen = [];
+
+    public function register(\Preflow\Core\Container\Container $container): void
+    {
+        self::$seen = [];
+        $container->instance(\Preflow\Media\Access\PrivateFileAccess::class, new class implements \Preflow\Media\Access\PrivateFileAccess {
+            public function decide(\Psr\Http\Message\ServerRequestInterface $request, \Preflow\Media\Asset $asset): ?\Psr\Http\Message\ResponseInterface
+            {
+                $version = $request->getAttribute(\Preflow\Media\Access\PrivateFileAccess::VERSION);
+                RefuseVersionRequests::$seen[] = $version;
+
+                return $version !== null ? new \Nyholm\Psr7\Response(403) : null;
             }
         });
     }

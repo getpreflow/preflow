@@ -245,6 +245,59 @@ final class PdfPreviewTest extends TestCase
         $this->assertStringContainsString("preflow/media: no preview of asset {$asset->id}: RuntimeException: boom", (string) file_get_contents($log));
     }
 
+    /** A one-page PDF of $w × $h units (times /UserUnit, turned by /Rotate), filled blue. */
+    private static function pagePdf(int $w, int $h, ?int $userUnit = null, int $rotate = 0): string
+    {
+        $content = "0 0 1 rg 0 0 {$w} {$h} re f";
+        $objects = [
+            '<< /Type /Catalog /Pages 2 0 R >>',
+            '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {$w} {$h}] " . ($userUnit !== null ? "/UserUnit {$userUnit} " : '') . "/Rotate {$rotate} /Contents 4 0 R >>",
+            '<< /Length ' . strlen($content) . " >>\nstream\n{$content}\nendstream",
+        ];
+        $out = "%PDF-1.6\n";
+        $offsets = [];
+        foreach ($objects as $i => $body) {
+            $offsets[] = strlen($out);
+            $out .= ($i + 1) . " 0 obj\n{$body}\nendobj\n";
+        }
+        $xref = strlen($out);
+        $out .= "xref\n0 5\n0000000000 65535 f \n";
+        foreach ($offsets as $o) {
+            $out .= sprintf("%010d 00000 n \n", $o);
+        }
+
+        return $out . "trailer << /Size 5 /Root 1 0 R >>\nstartxref\n{$xref}\n%%EOF\n";
+    }
+
+    public function test_a_huge_page_is_measured_small(): void
+    {
+        $renderer = new PdfPreviewRenderer(new ColorManagement());
+        if ($renderer->engine() !== PdfPreviewRenderer::GHOSTSCRIPT) {
+            $this->markTestSkipped('The measuring pass is Ghostscript\'s.');
+        }
+        $cases = [[100000, 50000, null, 0, [1600, 800]], [14400, 14400, 10, 0, [1600, 1600]], [100000, 50000, null, 90, [800, 1600]], [600, 400, null, 0, [1600, 1067]]];
+        foreach ($cases as [$w, $h, $unit, $rotate, $expected]) {
+            $file = $this->assetRoot . '/huge.pdf';
+            file_put_contents($file, self::pagePdf($w, $h, $unit, $rotate));
+            $started = microtime(true);
+
+            $png = $renderer->render($file, 1600);
+
+            // Unbounded, the measuring pass alone drew 25000 × 25000 (36000 × 36000) pixels for 10-20 s.
+            $this->assertLessThan(5, microtime(true) - $started);
+            $this->assertNotNull($png);
+            $this->assertSame($expected, array_slice((array) getimagesize($png), 0, 2));
+            $image = imagecreatefrompng($png);
+            foreach ([[2, 2], [$expected[0] - 3, $expected[1] - 3], [intdiv($expected[0], 2), intdiv($expected[1], 2)]] as [$x, $y]) {
+                $rgb = imagecolorsforindex($image, imagecolorat($image, $x, $y)); // the page fills the bitmap: no white margin
+                $this->assertLessThan(60, $rgb['red'] + $rgb['green'], "{$w}x{$h} at {$x},{$y}");
+                $this->assertGreaterThan(150, $rgb['blue']);
+            }
+            unlink($png);
+        }
+    }
+
     public function test_without_ghostscript_or_pdftocairo_there_is_no_renderer(): void
     {
         $renderer = new PdfPreviewRenderer(new ColorManagement(), $this->assetRoot . '/no-such-gs', pdftocairo: $this->assetRoot . '/no-such-pdftocairo');
@@ -403,6 +456,76 @@ final class PdfPreviewTest extends TestCase
 
         $library->delete($asset->id);
         $this->assertSame([], $this->filesUnder($this->assetRoot . '/media'));
+    }
+
+    /** A renderer that draws a PNG of one colour with GD, or fails when $fail says so. */
+    private function gdRenderer(array $rgb, bool &$fail): PreviewRenderer
+    {
+        return new class ($rgb, $fail) implements PreviewRenderer {
+            public function __construct(private array $rgb, private bool &$fail) {}
+
+            public function supports(string $mime): bool
+            {
+                return $mime === 'application/pdf';
+            }
+
+            public function render(string $file, int $longSide): ?string
+            {
+                if ($this->fail) {
+                    throw new \RuntimeException('killed');
+                }
+                $image = imagecreatetruecolor(1000, 500);
+                imagefill($image, 0, 0, (int) imagecolorallocate($image, ...$this->rgb));
+                $tmp = tempnam(sys_get_temp_dir(), 'preview');
+                imagepng($image, $tmp);
+
+                return $tmp;
+            }
+        };
+    }
+
+    public function test_a_failed_remake_keeps_the_working_preview(): void
+    {
+        $fail = false;
+        $library = $this->lib($this->renderers($this->gdRenderer([200, 30, 30], $fail)));
+        $asset = $library->upload($this->upload($this->pdf('rgb.pdf'), 'a.pdf'), null);
+        $this->assertNotNull($asset->preview);
+        $this->assertNotSame([], $asset->variants);
+        $files = [$this->assetRoot . '/media/' . $asset->preview->path, ...array_map(fn ($v) => $this->assetRoot . '/media/' . $v->path, $asset->variants)];
+        $bytes = array_map('file_get_contents', $files);
+
+        $fail = true;
+        $log = ini_set('error_log', $this->assetRoot . '/error.log');
+        try {
+            $this->assertNull($library->remakePreview($asset));
+        } finally {
+            ini_set('error_log', (string) $log);
+        }
+
+        $this->assertEquals($asset, $library->find($asset->id));
+        $this->assertSame($bytes, array_map('file_get_contents', $files));
+    }
+
+    public function test_a_remake_swaps_in_the_new_preview(): void
+    {
+        $fail = false;
+        $library = $this->lib($this->renderers($this->gdRenderer([200, 30, 30], $fail)));
+        $asset = $library->upload($this->upload($this->pdf('rgb.pdf'), 'a.pdf'), null);
+        $onDemand = $library->variantFile($library->previewAsset($asset), 640, 'webp', [480, 640, 960]);
+        $this->assertNotNull($onDemand);
+        $old = (string) file_get_contents($this->assetRoot . '/media/' . $asset->preview->path);
+
+        $new = $this->lib($this->renderers($this->gdRenderer([30, 30, 200], $fail)))->remakePreview($asset);
+
+        $this->assertNotNull($new);
+        $this->assertEquals($new, $library->find($asset->id));
+        $this->assertSame($asset->preview->path, $new->preview?->path);
+        $this->assertNotSame($old, file_get_contents($this->assetRoot . '/media/' . $new->preview->path));
+        $this->assertFileDoesNotExist($onDemand);
+        $this->assertNotSame([], $new->variants);
+        foreach ($new->variants as $v) {
+            $this->assertFileExists($this->assetRoot . '/media/' . $v->path);
+        }
     }
 
     public function test_regenerate_leaves_a_document_alone(): void

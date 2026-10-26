@@ -20,7 +20,8 @@ use Psr\Http\Message\ServerRequestInterface;
  *
  * {private_url}/{id}/v/{n}: an earlier file of any asset (public or private), with
  * the same gate and headers, confined to the versions directory. Version files are
- * always private: the gate is asked with the asset marked private.
+ * always private: the gate is asked with the asset marked private and the request
+ * attribute PrivateFileAccess::VERSION set to the number.
  *
  * {private_url}/{id}/preview: a private document's preview (a PNG in the private dir),
  * with the same gate and headers. A public asset's preview is under the media URL: 404.
@@ -56,7 +57,7 @@ final class PrivateFileController
         $asset = $this->library->find($id);
         // Earlier files are always private, also of a public asset: the gate sees it as private.
         $gated = $asset !== null ? new Asset(...[...get_object_vars($asset), 'private' => true]) : self::placeholder($id);
-        $refused = $this->access->decide($request, $gated);
+        $refused = $this->access->decide($request->withAttribute(PrivateFileAccess::VERSION, $number), $gated);
         if ($refused !== null) {
             return $refused;
         }

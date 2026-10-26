@@ -137,4 +137,48 @@ final class ColorsCommandTest extends TestCase
         $this->assertSame(0, $code);
         $this->assertSame("Extracted the colours of 0 assets.\n1 asset could not be read (unreadable, or it needs Imagick for its colour profile).\n", $out);
     }
+
+    public function test_limit_processes_a_chunk_and_a_second_run_resumes(): void
+    {
+        $assets = [];
+        foreach ([[25, 118, 210], [255, 193, 7], [200, 30, 30]] as $i => $rgb) {
+            $assets[] = $this->withColors($this->image($rgb, "{$i}.png"));
+        }
+
+        [$code, $out] = $this->runCommand(['--all', '--limit=2']);
+        $this->assertSame([0, "Extracted the colours of 2 assets.\n1 asset left: run again with --all --limit=2.\n"], [$code, $out]);
+
+        [$code, $out] = $this->runCommand(['--all', '--limit=2']);
+        $this->assertSame([0, "Extracted the colours of 1 asset.\n"], [$code, $out]);
+        foreach ($assets as $asset) {
+            $this->assertNotNull($this->media()->find($asset->id)?->color);
+        }
+    }
+
+    public function test_a_limit_that_is_not_a_positive_number_fails(): void
+    {
+        foreach (['--limit=0', '--limit=x', '--limit='] as $limit) {
+            [$code, $out, $err] = $this->runCommand(['--all', $limit]);
+            $this->assertSame([1, '', "--limit needs a positive number.\n"], [$code, $out, $err], $limit);
+        }
+    }
+
+    public function test_the_next_chunk_skips_assets_that_could_not_be_read(): void
+    {
+        $this->withColors($this->image([25, 118, 210], 'a.png'));
+        $this->withColors($this->image([255, 193, 7], 'b.png'));
+        [$first, $second] = $this->media()->all(); // the order the command goes in
+        file_put_contents($this->dir . '/public/media/' . $first->path, 'broken');
+        $log = ini_set('error_log', $this->dir . '/error.log');
+        try {
+            [, $out] = $this->runCommand(['--all', '--limit=1']);
+        } finally {
+            ini_set('error_log', (string) $log);
+        }
+        $this->assertSame("Extracted the colours of 0 assets.\n1 asset could not be read (unreadable, or it needs Imagick for its colour profile).\n1 asset left: run again with --all --limit=1 --offset=1.\n", $out);
+
+        [, $out] = $this->runCommand(['--all', '--limit=1', '--offset=1']);
+        $this->assertSame("Extracted the colours of 1 asset.\n", $out);
+        $this->assertNotNull($this->media()->find($second->id)?->color);
+    }
 }

@@ -28,7 +28,11 @@ use Preflow\Media\Image\ColorManagement;
  * (the output intent ignored). Neither usable: the renderer supports nothing.
  *
  * Ghostscript makes two passes: a tiny one that measures the page, then one at the
- * resolution that makes the long side at least $longSide. pdftocairo scales to the
+ * resolution that makes the long side at least $longSide. A page so large that the
+ * measuring pass would be over MEASURE_MAX pixels (its size from -dPDFINFO, with
+ * /UserUnit and /Rotate) is not measured by drawing: it is fitted straight into a
+ * bitmap of $longSide (-dFIXEDMEDIA -dPDFFitPage), so it never costs a huge bitmap
+ * or the time limit. pdftocairo scales to the
  * long side itself. The result is scaled to exactly $longSide, converted to sRGB and
  * stripped (Imagick through ColorManagement, else GD) and written as PNG.
  *
@@ -52,6 +56,9 @@ final class PdfPreviewRenderer implements PreviewRenderer
 
     /** The measuring pass: a 600 × 400 pt page is 150 × 100 px. */
     private const int MEASURE_DPI = 18;
+
+    /** The measuring pass's long side at most: larger pages (over 8000 pt) are fitted instead. */
+    private const int MEASURE_MAX = 2000;
 
     /** Seconds `gs --version` may take. */
     private const int VERSION_LIMIT = 5;
@@ -163,6 +170,15 @@ final class PdfPreviewRenderer implements PreviewRenderer
      */
     private function viaGhostscript(string $gs, string $file, int $longSide, float $deadline, array &$temps): ?string
     {
+        $points = self::pageSize($gs, $file, $deadline);
+        if ($points !== null && max($points) * self::MEASURE_DPI / 72 > self::MEASURE_MAX) {
+            [$w, $h] = $points[0] >= $points[1]
+                ? [$longSide, max(1, (int) round($points[1] * $longSide / $points[0]))]
+                : [max(1, (int) round($points[0] * $longSide / $points[1])), $longSide];
+            $temps[] = $page = self::tempFile();
+
+            return $this->ghostscript($gs, $file, $page, 72, $deadline, ['-dFIXEDMEDIA', '-dPDFFitPage', "-g{$w}x{$h}"]) ? $page : null;
+        }
         $temps[] = $measure = self::tempFile();
         if (!$this->ghostscript($gs, $file, $measure, self::MEASURE_DPI, $deadline)) {
             return null;
@@ -178,8 +194,39 @@ final class PdfPreviewRenderer implements PreviewRenderer
         return $this->ghostscript($gs, $file, $page, $dpi, $deadline) ? $page : null;
     }
 
-    /** The first page at $dpi into $out (a temp file, empty until Ghostscript writes it); false on failure, no page or at the deadline. */
-    private function ghostscript(string $gs, string $file, string $out, float $dpi, float $deadline): bool
+    /**
+     * The first page's width and height in points as shown (its CropBox, else MediaBox,
+     * times /UserUnit, swapped by a /Rotate of 90 or 270), as Ghostscript's -dPDFINFO
+     * prints them; null when it prints none.
+     *
+     * @return ?array{0: float, 1: float}
+     */
+    private static function pageSize(string $gs, string $file, float $deadline): ?array
+    {
+        $info = self::run([$gs, '-q', '-dNODISPLAY', '-dSAFER', '-dBATCH', '-dNOPAUSE', '-dPDFINFO', '-dFirstPage=1', '-dLastPage=1', $file], $deadline, capture: true);
+        if ($info === null || preg_match('/^Page 1\b(.*)$/m', $info, $line) !== 1) {
+            return null;
+        }
+        $box = '\[\s*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s*\]';
+        if (preg_match("/CropBox: {$box}/", $line[1], $b) !== 1 && preg_match("/MediaBox: {$box}/", $line[1], $b) !== 1) {
+            return null;
+        }
+        $unit = preg_match('/UserUnit: ([\d.]+)/', $line[1], $u) === 1 && (float) $u[1] > 0 ? (float) $u[1] : 1.0;
+        $size = [abs((float) $b[3] - (float) $b[1]) * $unit, abs((float) $b[4] - (float) $b[2]) * $unit];
+        if (preg_match('/Rotate = (-?\d+)/', $line[1], $r) === 1 && abs((int) $r[1]) % 180 === 90) {
+            $size = [$size[1], $size[0]];
+        }
+
+        return $size[0] > 0 && $size[1] > 0 ? $size : null;
+    }
+
+    /**
+     * The first page at $dpi into $out (a temp file, empty until Ghostscript writes it); false on
+     * failure, no page or at the deadline. $fit: options that fit the page into a fixed size.
+     *
+     * @param list<string> $fit
+     */
+    private function ghostscript(string $gs, string $file, string $out, float $dpi, float $deadline, array $fit = []): bool
     {
         $ok = self::run([
             $gs, '-q', '-dSAFER', '-dBATCH', '-dNOPAUSE', '-dNOPROMPT',
@@ -187,7 +234,7 @@ final class PdfPreviewRenderer implements PreviewRenderer
             '-dTextAlphaBits=4', '-dGraphicsAlphaBits=4',
             '-dUsePDFX3Profile', '-sDefaultCMYKProfile=' . $this->color->cmykProfile(),
             '-sOutputICCProfile=' . ColorManagement::SRGB_PROFILE, '-dRenderIntent=1', '-dBlackPtComp=1',
-            '-r' . sprintf('%.3F', $dpi), '-sOutputFile=' . str_replace('%', '%%', $out), '-f', $file,
+            '-r' . sprintf('%.3F', $dpi), ...$fit, '-sOutputFile=' . str_replace('%', '%%', $out), '-f', $file,
         ], $deadline) !== null;
         clearstatcache(true, $out);
 
