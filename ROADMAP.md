@@ -36,6 +36,16 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    backfill covers existing videos
 5. **Reporting/export and certificates (PDF)** — its own spec (needed for BG Genius Phase 5)
 
+**Rule (owner, 2026-10-26):** the framework holds abstractions, interfaces, hooks and generic mechanisms only;
+a feature one project needs is built in that project on top of them. A package's official admin UI lives in Folio
+(as media's library does); custom admin needs use userland Folio extensions. Steps 1 and 2 include an audit of
+members and codes against this rule.
+
+**Audit of all packages against this rule** (after the BG Genius steps, or alongside when a package is touched):
+go through every package (Folio, media, rbac, i18n, auth, data, notify, validation, devtools, …) for features that
+came from one project's needs, and turn each into a hook, a config option or an extension example, or move it into
+the project; note breaking changes for the consumers.
+
 Useful during BG Genius Phase 3, not blocking: route order by specificity, controller discovery beyond
 `app/Controllers`, CSRF without a session (the public player's feedback and contact forms), staff mails in the
 site's mail layout.
