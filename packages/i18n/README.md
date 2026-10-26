@@ -113,11 +113,11 @@ group.
 `TranslationOverrides` (`get(string $locale, string $key): ?string`) is the layer above the
 site files. `Translator::setOverrides()` sets it, and `useOverrides(true)` turns it on; it is
 off by default. Folio turns it on for the length of an admin request and stores the texts its
-Translations screen saves. An override never reaches a public page:
+Translations screen saves. Outside always-overridden groups (below), an override never reaches a public page:
 
 - only keys of an `admin` group take one, plus keys under prefixes registered with
   `Translator::overridable('site.types.')` (Folio registers its model-label prefixes);
-- a `public` group never does.
+- a `public` group never does, unless it is registered with `alwaysOverride()`.
 
 A site group that staff edit but public pages or mails render (Folio fills these from
 `translations.editable` in `config/folio.php`) is registered with
