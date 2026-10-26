@@ -118,6 +118,8 @@ return [
         'notice' => [
             'subject' => '{name} attend une validation',
             'body' => "{name} <{email}> a confirmé son adresse e-mail et attend une validation.{details}\n\nOuvrir dans Folio : {folio_url}",
+            // without a decision page to link (no admin such as Folio's)
+            'body_without_link' => "{name} <{email}> a confirmé son adresse e-mail et attend une validation.{details}",
         ],
         'accepted' => [
             'subject' => 'Votre compte est prêt',

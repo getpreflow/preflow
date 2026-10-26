@@ -56,6 +56,15 @@ final class DataManagerDynamicTest extends TestCase
         rmdir($this->tmpDir);
     }
 
+    public function test_ensure_type_registry_sets_one_only_when_there_is_none(): void
+    {
+        $bare = new DataManager([]);
+        $given = new TypeRegistry(sys_get_temp_dir() . '/no-models-' . bin2hex(random_bytes(3)));
+        $this->assertSame($given, $bare->ensureTypeRegistry($given));
+        $this->assertSame($given, $bare->getTypeRegistry());
+        $this->assertSame($given, $bare->ensureTypeRegistry(new TypeRegistry('/elsewhere')), 'never replaced');
+    }
+
     public function test_save_type_and_find_type(): void
     {
         $type = $this->dm->getTypeRegistry()->get('event');

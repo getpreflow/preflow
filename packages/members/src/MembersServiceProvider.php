@@ -80,6 +80,7 @@ final class MembersServiceProvider extends ServiceProvider
             $c->get(Admission::class),
             $c->get(LinkValidity::class),
             self::from($c),
+            $c->bound(MemberLinks::class) ? $c->get(MemberLinks::class) : null,
         ));
         $container->singleton(MembersView::class, static fn (Container $c): MembersView => new MembersView(
             $c->get(TemplateEngineInterface::class),

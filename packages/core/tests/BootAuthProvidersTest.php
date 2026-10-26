@@ -166,4 +166,26 @@ final class BootAuthProvidersTest extends TestCase
         $this->expectExceptionMessage('could not connect');
         $this->boot(['class' => BrokenUserProvider::class]);
     }
+
+    #[RunInSeparateProcess]
+    public function test_a_record_user_provider_is_built_from_config_without_folio(): void
+    {
+        @mkdir($this->dir . '/models', 0777, true);
+        @mkdir($this->dir . '/data', 0777, true);
+        file_put_contents($this->dir . '/models/member.json', (string) json_encode([
+            'key' => 'member', 'table' => 'member', 'id_field' => 'uuid',
+            'fields' => ['email' => ['type' => 'string'], 'password_hash' => ['type' => 'string'], 'roles' => ['type' => 'list']],
+        ]));
+        $app = $this->boot(
+            ['class' => \Preflow\Auth\Record\RecordUserProvider::class, 'type' => 'member', 'email' => 'email', 'password' => 'password_hash', 'roles' => 'roles'],
+            var_export(['default' => 'json', 'models_path' => $this->dir . '/models', 'drivers' => ['json' => ['driver' => \Preflow\Data\Driver\JsonFileDriver::class, 'path' => $this->dir . '/data']]], true),
+        );
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get('member'), ['uuid' => 'm1', 'email' => 'ada@example.com', 'password_hash' => 'x', 'roles' => ['member']]), false);
+
+        $provider = $app->container()->get(UserProviderInterface::class);
+
+        $this->assertInstanceOf(\Preflow\Auth\Record\RecordUserProvider::class, $provider->resolve());
+        $this->assertSame(['member'], $provider->findById('m1')?->getRoles());
+    }
 }

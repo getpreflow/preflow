@@ -10,6 +10,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Locales;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Schema\RecordTableSync;
+use Preflow\Data\TypeRegistry;
 
 /**
  * The member type ("member"), the core's own: models/member.json, on the storage alias
@@ -49,7 +50,8 @@ final class MemberType
 
     /**
      * Defines the member type with the data layer when nothing has (and the site has a data
-     * config), and has `preflow migrate` create or complete its table.
+     * config; without a models directory it gives the data layer a registry), and has
+     * `preflow migrate` create or complete its table.
      */
     public static function define(Container $c): void
     {
@@ -58,8 +60,14 @@ final class MemberType
             return;
         }
         $dm = $c->get(DataManager::class);
-        $registry = $dm->getTypeRegistry();
-        if ($registry === null || $registry->has(MembersConfig::TYPE)) {
+        // Without a models directory the data layer has no registry: the core brings one for its type.
+        $registry = $dm->getTypeRegistry() ?? $dm->ensureTypeRegistry(
+            $c->bound(TypeRegistry::class) ? $c->get(TypeRegistry::class) : new TypeRegistry(self::modelsPath($c->get(Application::class)), $c->get(Locales::class)),
+        );
+        if (!$c->bound(TypeRegistry::class)) {
+            $c->instance(TypeRegistry::class, $registry);
+        }
+        if ($registry->has(MembersConfig::TYPE)) {
             return;
         }
         $schema = self::extend(

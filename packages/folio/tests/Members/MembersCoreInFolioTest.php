@@ -111,6 +111,35 @@ final class MembersCoreInFolioTest extends TestCase
         $this->assertSame((string) file_get_contents(self::SNAPSHOT), $both);
     }
 
+    public function test_the_owners_notice_links_the_members_edit_page(): void
+    {
+        $this->scaffold(locales: ['de', 'en']);
+        $this->migrate();
+        $c = $this->container();
+        $m = $c->get(\Preflow\Members\Members::class)->register('ada@example.com', 'Ada Lovelace', 'correct horse battery', 'en');
+
+        $c->get(\Preflow\Members\MemberMailer::class)->noticeLater($m, 'owner@site.test');
+        $c->get(\Preflow\Notify\Notifier::class)->flushDeferred();
+
+        $sent = $c->get(\Preflow\Notify\TransportFactory::class)->get('mail')->sent();
+        $this->assertCount(1, $sent);
+        $this->assertStringEndsWith("wartet auf Freigabe.\n\nIn Folio öffnen: https://site.test/folio/member/" . $m->getId() . '/edit', $sent[0]->message->text);
+    }
+
+    public function test_without_the_members_admin_the_notice_has_no_link(): void
+    {
+        $this->scaffold();
+        $this->write('config/folio/extensions.json', '{"enabled": {"rbac": {"disabled_parts": []}}}');
+        $this->migrate();
+        $c = $this->container();
+        $m = $c->get(\Preflow\Members\Members::class)->register('ada@example.com', 'Ada Lovelace', 'correct horse battery', 'en');
+
+        $c->get(\Preflow\Members\MemberMailer::class)->noticeLater($m, 'owner@site.test');
+        $c->get(\Preflow\Notify\Notifier::class)->flushDeferred();
+
+        $this->assertStringNotContainsString('/folio/', $c->get(\Preflow\Notify\TransportFactory::class)->get('mail')->sent()[0]->message->text);
+    }
+
     #[RunInSeparateProcess]
     public function test_a_member_page_sets_folios_content_locale(): void
     {

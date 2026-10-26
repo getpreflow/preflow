@@ -118,6 +118,8 @@ return [
         'notice' => [
             'subject' => '{name} wartet auf Freigabe',
             'body' => "{name} <{email}> hat die E-Mail-Adresse bestätigt und wartet auf Freigabe.{details}\n\nIn Folio öffnen: {folio_url}",
+            // without a decision page to link (no admin such as Folio's)
+            'body_without_link' => "{name} <{email}> hat die E-Mail-Adresse bestätigt und wartet auf Freigabe.{details}",
         ],
         'accepted' => [
             'subject' => 'Ihr Konto ist bereit',

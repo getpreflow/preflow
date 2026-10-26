@@ -62,6 +62,23 @@ final class MemberAccessTest extends TestCase
         $this->assertTrue($access->allows(self::user([]), 'staff', 'page.edit', null), 'staff may do everything, as without members');
     }
 
+    public function test_member_state_and_access_read_the_roles_alike(): void
+    {
+        $this->scaffold();
+        $this->migrate();
+        $c = $this->app()->container();
+        $dm = $c->get(\Preflow\Data\DataManager::class);
+        $access = new MemberAccess(new DefaultResolver());
+
+        foreach ([['["member"]'], '["member"]', 'member', [' member '], ['["pending"]', 'x']] as $roles) {
+            $m = \Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get(MembersConfig::TYPE), ['uuid' => 'm1', 'roles' => $roles]);
+            $user = new \Preflow\Auth\Record\RecordUser($m);
+            $this->assertSame(\Preflow\Members\MemberRoles::of($m), $user->getRoles(), json_encode($roles));
+            $isMember = \Preflow\Members\MemberState::fromRecord($m) === \Preflow\Members\MemberState::Member;
+            $this->assertSame($isMember, $access->allows($user, 'members', MembersConfig::PERMISSION, null), json_encode($roles));
+        }
+    }
+
     public function test_the_provider_installs_it_over_the_default_resolver(): void
     {
         $this->scaffold();

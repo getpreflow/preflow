@@ -179,7 +179,6 @@ final class MembersConfigTest extends TestCase
         $this->assertSame('https://site.test/members/reset/x', $links->url('en', '/reset/x'));
         $this->assertSame('https://site.test/de/members', $links->url('de'));
         $this->assertSame('https://site.test/members/login', $links->url('xx', '/login'), 'an unknown locale gets the default');
-        $this->assertSame('https://site.test/folio/member/abc/edit', $links->folioMember('abc'));
     }
 
     public function test_links_follow_path_and_locales(): void

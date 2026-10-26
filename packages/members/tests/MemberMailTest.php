@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\DynamicRecord;
 use Preflow\I18n\Translator;
 use Preflow\Members\LinkValidity;
+use Preflow\Members\MemberLinks;
 use Preflow\Members\MemberMailer;
 use Preflow\Members\Members;
 use Preflow\Members\MemberState;
@@ -134,7 +135,8 @@ final class MemberMailTest extends TestCase
         $this->assertSame(['owner@site.test'], $mail->to);
         $this->assertSame($subject, $mail->subject);
         $this->assertStringStartsWith($lead, $mail->text);
-        $this->assertStringContainsString($open . 'https://site.test/folio/member/' . $m->getId() . '/edit', $mail->text);
+        $this->assertSame($lead, $mail->text, 'without an admin there is no decision link');
+        $this->assertStringNotContainsString($open, $mail->text);
         $this->assertStringNotContainsString('{details}', $mail->text);
         $this->assertStringNotContainsString('book code', $mail->text, 'no admission details from OwnerApproval');
     }
@@ -148,8 +150,25 @@ final class MemberMailTest extends TestCase
         $this->flush();
 
         $text = $this->onlyMail()->text;
-        $this->assertStringContainsString("waiting for approval.\n\nBook code: given, but it no longer worked.\n\n“I build things”\n\nOpen in Folio:", $text);
+        $this->assertStringEndsWith("waiting for approval.\n\nBook code: given, but it no longer worked.\n\n“I build things”", $text);
         $this->assertStringNotContainsString('book code: no', $text, 'the panel line stays in the panel');
+    }
+
+    public function test_notice_links_the_decision_page_a_package_names(): void
+    {
+        $this->site();
+        $this->container()->instance(MemberLinks::class, new class implements MemberLinks {
+            public function decisionUrl(DynamicRecord $m): ?string
+            {
+                return 'https://admin.test/decide/' . $m->getId();
+            }
+        });
+        $m = $this->member('ada@example.com', 'en', 'Ada Lovelace');
+
+        $this->mailer()->noticeLater($m, 'owner@site.test');
+        $this->flush();
+
+        $this->assertStringEndsWith("waiting for approval.\n\nOpen in Folio: https://admin.test/decide/" . $m->getId(), $this->onlyMail()->text);
     }
 
     /** @return array<string, array{string, string, string}> */

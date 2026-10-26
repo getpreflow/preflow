@@ -100,12 +100,18 @@ final class FolioServiceProvider extends ServiceProvider
         );
         $container->instance(ExtensionRegistry::class, $extensions);
         // The members admin (the built-in extension "members", with preflow/members), when it is
-        // switched on: the members core reads the owner's settings from Settings → Members, and
-        // its pages set Folio's content locale. Bound whichever provider registers first (the core
+        // switched on: the members core reads the owner's settings from Settings → Members and
+        // links the owner's notice to the Decision panel; its pages set Folio's content locale. Bound whichever provider registers first (the core
         // binds its config-based settings only when nothing is bound, and a later binding wins).
         if (self::membersAdmin($extensions)) {
             $container->singleton(\Preflow\Members\MembersSettings::class, static fn (Container $c): \Preflow\Members\MembersSettings => new \Preflow\Folio\Members\FolioMembersSettings(
                 $c->get(ExtensionSettings::class),
+            ));
+            // The owner's notice links the member's edit page (the Decision panel).
+            $appUrl = $app->config()->get('app.url');
+            $container->instance(\Preflow\Members\MemberLinks::class, new \Preflow\Folio\Members\FolioMemberLinks(
+                is_string($appUrl) && $appUrl !== '' ? $appUrl : 'http://localhost',
+                $prefix,
             ));
         }
         if (class_exists(\Preflow\Members\MembersDefaults::class)) {

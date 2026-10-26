@@ -35,6 +35,7 @@ final class MemberMailer
         private readonly Admission $admission,
         private readonly LinkValidity $validity,
         private readonly ?string $from = null,
+        private readonly ?MemberLinks $memberLinks = null,
     ) {}
 
     /** @param ?\Closure(\Throwable): void $onFailure */
@@ -87,12 +88,13 @@ final class MemberMailer
         foreach ($this->admission->details($m, Admission::NOTICE) as $label => $value) {
             $details .= "\n\n" . (is_int($label) ? $value : $label . ': ' . $value);
         }
+        // The decision page when a package (Folio's members admin) names one; else the text without the link line.
+        $url = $this->memberLinks?->decisionUrl($m);
         $this->notifier->sendLater($this->build('notice', $this->locales->default, $to, [
             'name' => (string) $m->get('name'),
             'email' => (string) $m->get('email'),
             'details' => $details,
-            'folio_url' => $this->links->folioMember((string) $m->getId()),
-        ]), $onFailure);
+        ] + ($url !== null && $url !== '' ? ['folio_url' => $url] : []), $url !== null && $url !== '' ? 'body' : 'body_without_link'), $onFailure);
     }
 
     /** @throws TransportException */
@@ -115,11 +117,11 @@ final class MemberMailer
     }
 
     /** @param array<string, string> $vars */
-    private function build(string $mail, string $lang, string $to, array $vars): Email
+    private function build(string $mail, string $lang, string $to, array $vars, string $body = 'body'): Email
     {
         return $this->compose(
             $this->copy($mail, 'subject', $lang, array_map(self::oneLine(...), $vars)),
-            $this->copy($mail, 'body', $lang, $vars),
+            $this->copy($mail, $body, $lang, $vars),
             $lang,
             $to,
         );

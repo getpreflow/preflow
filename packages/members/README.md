@@ -257,7 +257,9 @@ return ['mail' => ['confirm' => ['subject' => 'Bitte bestätige deine Adresse']]
   (a `TransportException` aborts the decision).
 - Each mail is in the member's language (the site default when the site lacks it); the owner's
   notice is in the site default locale. Mail bodies use `{name}`, `{link}`, `{login_url}`,
-  `{reset_url}`, `{validity}`, `{email}`, `{details}`, `{folio_url}`.
+  `{reset_url}`, `{validity}`, `{email}`, `{details}`, `{folio_url}`. `{folio_url}` is the
+  decision page a bound `MemberLinks` names (Folio's members admin: the member's edit page);
+  without one the notice uses `mail.notice.body_without_link`, text only.
 - `{validity}` (and `:validity` in `inbox.hint`) is how long the link works, from `confirm_ttl` /
   `reset_ttl`: `LinkValidity::confirm($locale)` / `reset($locale)` give "24 hours", "eine Stunde"
   (lang keys `validity.hours` / `validity.minutes`, plural forms).

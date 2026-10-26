@@ -324,7 +324,7 @@ TWIG,
         $this->assertCount(2, $mails);
         $this->assertSame(['owner@example.com'], $mails[1]->to);
         $this->assertSame('Ada Lovelace is waiting for approval', $mails[1]->subject);
-        $this->assertStringContainsString('https://site.test/folio/member/' . $m->getId() . '/edit', $mails[1]->text);
+        $this->assertStringNotContainsString('/folio/', $mails[1]->text, 'no admin, no decision link');
         $this->assertNull($this->cookie($response, 'site_member'), 'not signed in');
         $this->assertSame(303, $this->send('GET', '/members/account')->getStatusCode());
     }

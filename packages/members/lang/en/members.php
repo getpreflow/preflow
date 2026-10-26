@@ -120,6 +120,8 @@ return [
         'notice' => [
             'subject' => '{name} is waiting for approval',
             'body' => "{name} <{email}> confirmed their email and is waiting for approval.{details}\n\nOpen in Folio: {folio_url}",
+            // without a decision page to link (no admin such as Folio's)
+            'body_without_link' => "{name} <{email}> confirmed their email and is waiting for approval.{details}",
         ],
         'accepted' => [
             'subject' => 'Your account is ready',

@@ -24,7 +24,7 @@ final class RecordUser implements Authenticatable, HasSessionEpoch
         private readonly string $epochField = 'auth_epoch',
         private readonly string $emailField = 'email',
     ) {
-        $this->roles = self::roles($record->get($rolesField));
+        $this->roles = RoleField::normalize($record->get($rolesField));
     }
 
     public function getAuthId(): string
@@ -66,36 +66,5 @@ final class RecordUser implements Authenticatable, HasSessionEpoch
     public function record(): DynamicRecord
     {
         return $this->record;
-    }
-
-    /**
-     * An array, a JSON array string (as SQL returns a stored list) or a comma-separated string.
-     * Kept local: auth does not depend on preflow/rbac.
-     *
-     * @return list<string> trimmed, unique, non-empty
-     */
-    private static function roles(mixed $value): array
-    {
-        if (is_string($value)) {
-            $value = trim($value);
-            if (str_starts_with($value, '[')) {
-                $decoded = json_decode($value, true);
-                $value = is_array($decoded) ? $decoded : [];
-            } else {
-                $value = explode(',', $value);
-            }
-        }
-        $out = [];
-        foreach (is_array($value) ? $value : [] as $role) {
-            if (!is_string($role) && !is_int($role)) {
-                continue;
-            }
-            $role = trim((string) $role);
-            if ($role !== '' && !in_array($role, $out, true)) {
-                $out[] = $role;
-            }
-        }
-
-        return $out;
     }
 }

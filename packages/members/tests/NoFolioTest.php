@@ -94,6 +94,24 @@ final class NoFolioTest extends TestCase
         $this->assertSame([], array_values($loaded));
     }
 
+    #[RunInSeparateProcess]
+    public function test_a_site_without_a_models_directory_gets_the_member_type(): void
+    {
+        unlink($this->dir . '/config/models/page.json');
+        rmdir($this->dir . '/config/models');
+        $this->migrate();
+        $this->flow = $this->app();
+
+        $sent = $this->post('/members/register', ['name' => 'Ada Lovelace', 'email' => 'ada@example.com', 'password' => self::PASSWORD, 'consent' => '1']);
+        $this->assertSame(200, $sent->getStatusCode());
+        $this->assertStringContainsString('Check your inbox', (string) $sent->getBody());
+        $in = $this->post('/members/confirm', ['token' => $this->linkToken(0, 'confirm')]);
+        $this->assertSame(303, $in->getStatusCode());
+        $this->assertSame(['member'], MemberRoles::of($this->member('ada@example.com')));
+        $this->assertSame(200, $this->send('GET', '/members/account')->getStatusCode());
+        $this->assertFalse(is_dir($this->dir . '/config/models'), 'nothing written to the site');
+    }
+
     /** @return array<string, array{string, bool}> */
     public static function states(): array
     {

@@ -38,6 +38,20 @@ final class RecordUserProvider implements UserProviderInterface, ClaimsCredentia
     private readonly ?string $activeField;
 
     /**
+     * How the container builds one from config/auth.php (core binds it; Folio binds its own,
+     * with its type catalog): the DataManager's types.
+     *
+     * @return \Closure(\Preflow\Core\Container\Container, array<string, mixed>): self
+     */
+    public static function factory(): \Closure
+    {
+        return static fn (\Preflow\Core\Container\Container $c, array $parameters = []): self => new self(
+            $c->get(DataManager::class),
+            (array) ($parameters['config'] ?? []),
+        );
+    }
+
+    /**
      * @param array<string, mixed>                       $config
      * @param ?\Closure(string): ?TypeDefinition         $types  the type's definition by key; null: the DataManager's registry
      */

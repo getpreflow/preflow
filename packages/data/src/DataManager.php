@@ -15,7 +15,7 @@ final class DataManager
     public function __construct(
         private readonly array $drivers,
         private readonly string $defaultDriver = 'default',
-        private readonly ?TypeRegistry $typeRegistry = null,
+        private ?TypeRegistry $typeRegistry = null,
         private readonly ?ValidatorFactory $validatorFactory = null,
     ) {}
 
@@ -24,6 +24,16 @@ final class DataManager
     public function getTypeRegistry(): ?TypeRegistry
     {
         return $this->typeRegistry;
+    }
+
+    /**
+     * The registry, $registry when there is none yet (a site without a models directory): a
+     * package that defines its types in code (the members core) then still has one. An existing
+     * registry is never replaced.
+     */
+    public function ensureTypeRegistry(TypeRegistry $registry): TypeRegistry
+    {
+        return $this->typeRegistry ??= $registry;
     }
 
     public function fieldKinds(): FieldKinds
