@@ -958,7 +958,10 @@ final class MediaLibrary
         }
 
         return $this->guarded($asset->id, function () use ($asset): Asset {
-            $current = $this->find($asset->id) ?? $asset; // a replace may have run since $asset was read
+            $current = $this->find($asset->id); // a replace may have run since $asset was read
+            if ($current === null) {
+                return $asset; // deleted since: saving would bring the record back without its file
+            }
             if ($current->private || $current->kind() !== 'image') {
                 return $current;
             }
@@ -989,8 +992,8 @@ final class MediaLibrary
         }
 
         return $this->guarded($asset->id, function () use ($asset): ?Asset {
-            $current = $this->find($asset->id) ?? $asset; // a replace may have run while we waited
-            $rendered = $this->renderPreview($current);
+            $current = $this->find($asset->id); // a replace may have run while we waited
+            $rendered = $current !== null ? $this->renderPreview($current) : null; // null: deleted since
             if ($rendered === null) {
                 return null;
             }
@@ -1225,8 +1228,8 @@ final class MediaLibrary
     public function extractColors(Asset $asset): ?Asset
     {
         $work = function () use ($asset): ?Asset {
-            $current = $this->find($asset->id) ?? $asset; // a replace may have run while we waited
-            $colors = $this->colorsOf($current);
+            $current = $this->find($asset->id); // a replace may have run while we waited
+            $colors = $current !== null ? $this->colorsOf($current) : null; // null: deleted since
 
             return $colors !== null ? $this->withColors($current, $colors) : null;
         };

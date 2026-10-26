@@ -506,6 +506,33 @@ final class PdfPreviewTest extends TestCase
         $this->assertSame($bytes, array_map('file_get_contents', $files));
     }
 
+    public function test_backfills_save_nothing_for_an_asset_deleted_since_the_list_was_read(): void
+    {
+        $fail = false;
+        $dm = new \Preflow\Data\DataManager(drivers: ['json' => new \Preflow\Data\Driver\JsonFileDriver($this->assetRoot . '/store')], defaultDriver: 'json');
+        $library = new MediaLibrary(
+            $dm,
+            new \Preflow\Data\Locales(['en', 'de'], 'en'),
+            $this->assetRoot . '/media',
+            '/media',
+            ['versions_dir' => $this->assetRoot . '/versions'],
+            new VariantGenerator(new GdBackend(), [480], 75),
+            previews: $this->renderers($this->gdRenderer([200, 30, 30], $fail)),
+            colors: new \Preflow\Media\Color\ColorExtractor(new ColorManagement()),
+        );
+        $pdf = $library->upload($this->upload($this->pdf('rgb.pdf'), 'a.pdf'), null);
+        $image = $library->upload($this->upload($this->png(), 'a.png'), null);
+        $library->delete($pdf->id); // deleted while media:variants/previews/colors work through their list
+        $library->delete($image->id);
+
+        $this->assertSame($image, $library->regenerate($image));
+        $this->assertNull($library->remakePreview($pdf));
+        $this->assertNull($library->extractColors($image));
+        $this->assertNull($library->extractColors($pdf));
+
+        $this->assertSame([], $library->all());
+    }
+
     public function test_a_remake_swaps_in_the_new_preview(): void
     {
         $fail = false;

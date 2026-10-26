@@ -344,7 +344,7 @@ left, prints the command for the next chunk.
 ```
 php preflow media:colors --all --limit=300      # repeat until nothing is left
 php preflow media:previews --limit=50           # repeat until nothing is left
-php preflow media:variants --all --limit=200    # then: --limit=200 --offset=200, …
+php preflow media:variants --all --limit=200    # then: --all --limit=200 --offset=200, …
 ```
 
 ## Usage sources
