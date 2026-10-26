@@ -91,20 +91,20 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
                 ? '<img src="' . $e($thumb) . '" alt="" class="folio-asset-thumb">'
                 : '<a href="' . $e($href) . '">' . $e($text) . '</a>';
             $html .= '<input type="hidden" name="' . $e($selection) . '" value="' . $e($value) . '">';
-            $html .= '<button type="button" class="btn btn-ghost" data-folio-asset-remove aria-label="Remove ' . $e($text) . '">Remove</button>';
+            $html .= '<button type="button" class="btn btn-ghost" data-folio-asset-remove aria-label="' . $e(\Preflow\Folio\FolioText::get('folio.fields.remove_named', ['label' => $text])) . '">' . $e(\Preflow\Folio\FolioText::get('folio.common.remove')) . '</button>';
             $html .= '</li>' . "\n";
         }
         $html .= '  </ul>' . "\n";
 
         $html .= '  <div class="folio-asset-actions">';
         if ($this->library !== null && $this->allows('assets.view')) {
-            $html .= '<button type="button" class="btn btn-secondary" data-folio-asset-choose>Choose</button> ';
+            $html .= '<button type="button" class="btn btn-secondary" data-folio-asset-choose>' . $e(\Preflow\Folio\FolioText::get('folio.fields.choose')) . '</button> ';
         }
         if ($this->allows('assets.upload')) {
             $inputName = $cfg['multiple'] ? $name . '[]' : $name;
             $acceptAttr = $cfg['accept'] !== '' ? ' accept="' . $e($cfg['accept']) . '"' : '';
             $multipleAttr = $cfg['multiple'] ? ' multiple' : '';
-            $html .= '<label class="folio-asset-upload">Upload <input type="file" name="' . $e($inputName) . '"' . $acceptAttr . $multipleAttr . '></label>';
+            $html .= '<label class="folio-asset-upload">' . $e(\Preflow\Folio\FolioText::get('folio.fields.upload')) . ' <input type="file" name="' . $e($inputName) . '"' . $acceptAttr . $multipleAttr . '></label>';
         }
         $html .= '</div>' . "\n";
 
@@ -239,8 +239,8 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
             }
             $label = $asset?->originalName ?? basename($value);
             $this->errors[] = $private
-                ? "{$label} is a public file; upload it here to make it private."
-                : "{$label} is a private file; it can only be used in a private field.";
+                ? \Preflow\Folio\FolioText::get('folio.fields.public_file', ['label' => $label])
+                : \Preflow\Folio\FolioText::get('folio.fields.private_file', ['label' => $label]);
         }
 
         return $kept;

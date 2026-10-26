@@ -24,6 +24,20 @@
     var active = null;
     var frame = 0;
 
+    // The editor's word for an unnamed block, from the admin page's dictionary (same origin; folio.js.block).
+    var blockWordText = null;
+    function blockWord() {
+        if (blockWordText === null) {
+            blockWordText = '';
+            try {
+                var el = window.parent.document.getElementById('folio-i18n');
+                var texts = el ? JSON.parse(el.textContent || '{}') : {};
+                blockWordText = typeof texts.block === 'string' ? texts.block : '';
+            } catch (e) { blockWordText = ''; }
+        }
+        return blockWordText;
+    }
+
     function box(state) {
         var b = document.createElement('div');
         b.className = 'folio-pe-box ' + state;
@@ -67,7 +81,7 @@
         if (block === hovered && field === hoveredField) { return; }
         hovered = block;
         hoveredField = field;
-        label.textContent = block ? (block.getAttribute('data-folio-label') || 'Block') : '';
+        label.textContent = block ? (block.getAttribute('data-folio-label') || blockWord()) : '';
         schedule();
     });
     document.addEventListener('mouseleave', function () { hovered = null; hoveredField = null; schedule(); });

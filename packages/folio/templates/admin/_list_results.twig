@@ -9,7 +9,7 @@
         {% for chip in list.chips %}
             <span class="folio-filter-chip">
                 <span>{{ chip.label }}</span>
-                <a href="{{ chip.remove }}" aria-label="Remove filter {{ chip.name }}" title="Remove filter"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-x"></use></svg></a>
+                <a href="{{ chip.remove }}" aria-label="{{ t('folio.list.remove_filter_named', {name: chip.name}) }}" title="{{ t('folio.list.remove_filter') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-x"></use></svg></a>
             </span>
         {% endfor %}
     </div>
@@ -17,14 +17,14 @@
 {% if not has_records %}
     <div class="folio-empty">
         <svg class="folio-icon folio-empty-icon" aria-hidden="true"><use href="{{ icons }}#ui-file"></use></svg>
-        <p>No {{ label|lower }} yet.</p>
-        {% if may.create %}<a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new">Create one</a>{% endif %}
+        <p>{{ t('folio.list.empty', {label: folio_noun(label)}) }}</p>
+        {% if may.create %}<a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new">{{ t('folio.list.create_one') }}</a>{% endif %}
     </div>
 {% elseif rows is empty %}
     <div class="folio-empty folio-no-matches">
         <svg class="folio-icon folio-empty-icon" aria-hidden="true"><use href="{{ icons }}#ui-search"></use></svg>
-        <p>No matches.</p>
-        <a href="{{ list.clear }}">Clear search and filters</a>
+        <p>{{ t('folio.list.no_matches') }}</p>
+        <a href="{{ list.clear }}">{{ t('folio.list.clear_search') }}</a>
     </div>
 {% else %}
     {% set first_column = columns|keys|first %}
@@ -36,10 +36,10 @@
         <form class="folio-bulk-bar" id="folio-bulk" method="post" data-folio-bulk>
             <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
             <input type="hidden" name="_query" value="{{ list_query|default('') }}">
-            <span class="folio-bulk-count" data-folio-bulk-count>With selected:</span>
+            <span class="folio-bulk-count" data-folio-bulk-count>{{ t('folio.list.with_selected') }}</span>
             {% for field in bulk.fields %}
                 <details class="folio-bulk-menu">
-                    <summary class="btn btn-sm">Set {{ field.label }} ▾</summary>
+                    <summary class="btn btn-sm">{{ t('folio.list.set_field', {label: field.label}) }} ▾</summary>
                     <div class="folio-bulk-options">
                         {% for value, text in field.options %}<button type="submit" class="btn btn-sm" formaction="{{ field.url }}" name="value" value="{{ value }}">{{ text }}</button>{% endfor %}
                     </div>
@@ -47,34 +47,34 @@
             {% endfor %}
             {% for action in bulk.actions %}<button type="submit" class="btn btn-sm" formaction="{{ action.url }}"{% if action.confirm %} data-confirm="{{ action.confirm }}"{% endif %}>{{ action.label }}</button>{% endfor %}
             {# Needs JS: it sends the ticked ids to the export URL (a GET download), so the CSRF token never goes into a URL. #}
-            {% if export_url|default(null) %}<button type="button" class="btn btn-sm" data-folio-export="{{ export_url }}{{ list_query ? '?' ~ list_query }}" hidden>Export</button>{% endif %}
-            {% if bulk.delete %}<button type="submit" class="btn btn-sm" data-tone="danger" formaction="{{ bulk.delete.url }}" data-delete-plan="{{ bulk.delete.plan }}" data-confirm="Delete the selected records?">Delete</button>{% endif %}
-            <button type="reset" class="btn btn-sm folio-bulk-clear" data-folio-bulk-clear>Clear</button>
+            {% if export_url|default(null) %}<button type="button" class="btn btn-sm" data-folio-export="{{ export_url }}{{ list_query ? '?' ~ list_query }}" hidden>{{ t('folio.common.export') }}</button>{% endif %}
+            {% if bulk.delete %}<button type="submit" class="btn btn-sm" data-tone="danger" formaction="{{ bulk.delete.url }}" data-delete-plan="{{ bulk.delete.plan }}" data-confirm="{{ t('folio.list.confirm_bulk_delete') }}">{{ t('folio.common.delete') }}</button>{% endif %}
+            <button type="reset" class="btn btn-sm folio-bulk-clear" data-folio-bulk-clear>{{ t('folio.common.clear') }}</button>
         </form>
     {% endif %}
     <div class="folio-table-wrap">
     <table class="folio-table">
         <thead><tr>
-            {%- if bulk|default(null) %}<th class="folio-bulk-cell"><input type="checkbox" data-folio-bulk-all aria-label="Select all on this page" hidden></th>{% endif -%}
+            {%- if bulk|default(null) %}<th class="folio-bulk-cell"><input type="checkbox" data-folio-bulk-all aria-label="{{ t('folio.list.select_all') }}" hidden></th>{% endif -%}
             {%- for name, header in list.headers -%}
                 <th{% if header.dir %} aria-sort="{{ header.dir == 'asc' ? 'ascending' : 'descending' }}"{% endif %}>
                     {%- if header.href %}<a class="folio-sort" href="{{ header.href }}">{{ header.label }} {% if header.dir %}<span class="folio-sort-mark" aria-hidden="true">{{ header.dir == 'asc' ? '▲' : '▼' }}</span>{% else %}<span class="folio-sort-mark is-idle" aria-hidden="true"></span>{% endif %}</a>{% else %}{{ header.label }}{% endif -%}
                 </th>
             {%- endfor -%}
-            {%- for heading in extra_columns|default([]) %}<th>{{ heading }}</th>{% endfor %}{% if multilingual|default(false) %}<th>Languages</th>{% endif %}{% if publishing|default(false) %}<th>Publishing</th>{% endif %}<th><span class="folio-sr">Actions</span></th></tr></thead>
+            {%- for heading in extra_columns|default([]) %}<th>{{ heading }}</th>{% endfor %}{% if multilingual|default(false) %}<th>{{ t('folio.common.languages') }}</th>{% endif %}{% if publishing|default(false) %}<th>{{ t('folio.list.publishing') }}</th>{% endif %}<th><span class="folio-sr">{{ t('folio.common.actions') }}</span></th></tr></thead>
         <tbody>
         {% for row in rows %}
             {% set up_disabled = loop.first and list.page == 1 %}
             {% set down_disabled = loop.last and list.page == list.last_page %}
             <tr>
-                {% if bulk|default(null) %}<td class="folio-bulk-cell"><input type="checkbox" name="ids[]" value="{{ row.id }}" form="folio-bulk" data-folio-bulk-item aria-label="Select {{ row.cells[first_column]|default('') ?: '(untitled)' }}"></td>{% endif %}
-                {% for name, heading in columns %}<td>{% if loop.first %}<a class="folio-row-link" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">{% if row.marked[name] != '' %}{{ row.marked[name]|raw }}{% else %}(untitled){% endif %}</a>{% else %}{{ row.marked[name]|raw }}{% endif %}</td>{% endfor %}{% for cell in row.extra|default([]) %}<td>{% if cell is iterable %}<span class="folio-badge{% if cell.tone %} is-{{ cell.tone }}{% endif %}">{{ cell.label }}</span>{% else %}{{ cell }}{% endif %}</td>{% endfor %}
+                {% if bulk|default(null) %}<td class="folio-bulk-cell"><input type="checkbox" name="ids[]" value="{{ row.id }}" form="folio-bulk" data-folio-bulk-item aria-label="{{ t('folio.list.select_row', {label: row.cells[first_column]|default('') ?: t('folio.common.untitled')}) }}"></td>{% endif %}
+                {% for name, heading in columns %}<td>{% if loop.first %}<a class="folio-row-link" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">{% if row.marked[name] != '' %}{{ row.marked[name]|raw }}{% else %}{{ t('folio.common.untitled') }}{% endif %}</a>{% else %}{{ row.marked[name]|raw }}{% endif %}</td>{% endfor %}{% for cell in row.extra|default([]) %}<td>{% if cell is iterable %}<span class="folio-badge{% if cell.tone %} is-{{ cell.tone }}{% endif %}">{{ cell.label }}</span>{% else %}{{ cell }}{% endif %}</td>{% endfor %}
                 {% if multilingual|default(false) %}<td>{% for badge in row.languages %}<span class="folio-badge{% if 'missing' in badge %} is-incomplete{% endif %}">{{ badge }}</span> {% endfor %}</td>{% endif %}
                 {% if publishing|default(false) %}<td><span class="folio-badge is-{{ row.state.value }}">{{ row.state.label() }}</span></td>{% endif %}
                 <td>
                     <div class="folio-row-actions">
                         {% if orderable and may.edit %}
-                            {% for direction, text in {'up': 'Move up', 'down': 'Move down'} %}
+                            {% for direction, text in {'up': t('folio.common.move_up'), 'down': t('folio.common.move_down')} %}
                                 <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/move">
                                     <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                                     <input type="hidden" name="direction" value="{{ direction }}">
@@ -83,11 +83,11 @@
                                 </form>
                             {% endfor %}
                         {% endif %}
-                        {% if may.edit %}<a class="btn btn-secondary btn-sm" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">Edit</a>{% endif %}
+                        {% if may.edit %}<a class="btn btn-secondary btn-sm" href="{{ prefix }}/{{ type }}/{{ row.id }}/edit">{{ t('folio.common.edit') }}</a>{% endif %}
                         {% if may.delete %}
-                        <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/delete" data-confirm="Delete this record?" data-delete-plan="{{ prefix }}/{{ type }}/_delete-plan" data-delete-id="{{ row.id }}">
+                        <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/delete" data-confirm="{{ t('folio.list.confirm_delete') }}" data-delete-plan="{{ prefix }}/{{ type }}/_delete-plan" data-delete-id="{{ row.id }}">
                             <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                            <button type="submit" class="btn btn-ghost btn-icon" data-tone="danger" aria-label="Delete" title="Delete"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-trash"></use></svg></button>
+                            <button type="submit" class="btn btn-ghost btn-icon" data-tone="danger" aria-label="{{ t('folio.common.delete') }}" title="{{ t('folio.common.delete') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-trash"></use></svg></button>
                         </form>
                         {% endif %}
                     </div>
@@ -98,17 +98,17 @@
     </table>
     </div>
     </div>
-    <nav class="folio-pager" aria-label="Pages">
-        <span class="folio-pager-count">{{ list.from }}–{{ list.to }} of {{ list.total }}</span>
+    <nav class="folio-pager" aria-label="{{ t('folio.list.pages') }}">
+        <span class="folio-pager-count">{{ t('folio.list.pager', {start: folio_number(list.from), end: folio_number(list.to), total: folio_number(list.total)}) }}</span>
         {% if list.last_page > 1 %}
             <span class="folio-pager-links">
-                {% if list.prev %}<a class="btn btn-ghost btn-sm" href="{{ list.prev }}" rel="prev" aria-label="Previous page">‹</a>{% endif %}
+                {% if list.prev %}<a class="btn btn-ghost btn-sm" href="{{ list.prev }}" rel="prev" aria-label="{{ t('folio.list.previous_page') }}">‹</a>{% endif %}
                 {% for p in list.pages %}
                     {% if p.n is null %}<span class="folio-pager-gap">…</span>
                     {% elseif p.current %}<span class="btn btn-ghost btn-sm is-active" aria-current="page">{{ p.n }}</span>
                     {% else %}<a class="btn btn-ghost btn-sm" href="{{ p.href }}">{{ p.n }}</a>{% endif %}
                 {% endfor %}
-                {% if list.next %}<a class="btn btn-ghost btn-sm" href="{{ list.next }}" rel="next" aria-label="Next page">›</a>{% endif %}
+                {% if list.next %}<a class="btn btn-ghost btn-sm" href="{{ list.next }}" rel="next" aria-label="{{ t('folio.list.next_page') }}">›</a>{% endif %}
             </span>
         {% endif %}
     </nav>

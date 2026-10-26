@@ -3,10 +3,10 @@
     <input type="hidden" name="{{ name }}[{{ uid }}][_block]" value="{{ key }}">
     <input type="hidden" name="{{ name }}[{{ uid }}][_raw]" value="{{ raw }}">
     <div class="folio-block-head">
-        <span class="folio-block-label">Unknown block “{{ key }}”</span>
-        <span class="folio-block-summary">Its block class no longer exists; the content is kept until you remove it.</span>
+        <span class="folio-block-label">{{ t('folio.blocks.unknown', {key: key}) }}</span>
+        <span class="folio-block-summary">{{ t('folio.blocks.unknown_help') }}</span>
         <div class="folio-block-actions">
-            <button type="button" class="btn btn-ghost btn-icon" data-tone="danger" data-block-remove aria-label="Remove" title="Remove"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-trash"></use></svg></button>
+            <button type="button" class="btn btn-ghost btn-icon" data-tone="danger" data-block-remove aria-label="{{ t('folio.common.remove') }}" title="{{ t('folio.common.remove') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-trash"></use></svg></button>
         </div>
     </div>
 </div>

@@ -48,11 +48,13 @@ final class AdminLocaleMiddleware implements MiddlewareInterface
         $previousCurrent = $this->locales->currentOrNull();
 
         $this->enter($locale, true, $locale);
+        $previousText = \Preflow\Folio\FolioText::use($this->translator); // Folio's words in PHP (field types, notices)
         try {
             return $handler->handle($request
                 ->withAttribute(self::FRONTEND_LOCALE, $request->getAttribute(self::FRONTEND_LOCALE) ?? $previousLocale)
                 ->withAttribute(self::LOCALE, $locale));
         } finally {
+            \Preflow\Folio\FolioText::use($previousText);
             $this->enter($previousLocale, $previousOverrides, $previousCurrent);
         }
     }

@@ -1,6 +1,6 @@
 {% extends '@folio/admin/_layout.twig' %}
-{% block title %}Folio — Your account{% endblock %}
-{% block page_title %}Your account{% endblock %}
+{% block title %}Folio — {{ t('folio.account.title') }}{% endblock %}
+{% block page_title %}{{ t('folio.account.title') }}{% endblock %}
 {% block content %}
     <div class="folio-account">
         <section class="folio-panel folio-account-who">
@@ -28,25 +28,25 @@
         </section>
         {% endif %}
         <section class="folio-panel">
-            <h2 class="folio-panel-title">Change password</h2>
+            <h2 class="folio-panel-title">{{ t('folio.account.change_password') }}</h2>
             <form class="folio-panel-body" method="post" action="{{ password_action }}">
                 {{ csrf_field()|raw }}
-                <p class="folio-help">Use at least {{ password_min }} characters. Your other sessions and remembered devices are signed out.</p>
+                <p class="folio-help">{{ t('folio.account.password_help', {min: password_min}) }}</p>
                 {% if error %}<div class="folio-alert folio-alert-error" role="alert">{{ error }}</div>{% endif %}
                 <input type="email" name="username" value="{{ email }}" autocomplete="username" hidden>
                 <div class="form-group">
-                    <label for="current">Current password</label>
+                    <label for="current">{{ t('folio.account.current_password') }}</label>
                     <input type="password" name="current" id="current" autocomplete="current-password" required>
                 </div>
                 <div class="form-group">
-                    <label for="password">New password</label>
+                    <label for="password">{{ t('folio.auth.new_password') }}</label>
                     <input type="password" name="password" id="password" autocomplete="new-password" minlength="{{ password_min }}" required>
                 </div>
                 <div class="form-group">
-                    <label for="repeat">Repeat the new password</label>
+                    <label for="repeat">{{ t('folio.account.repeat_new_password') }}</label>
                     <input type="password" name="repeat" id="repeat" autocomplete="new-password" minlength="{{ password_min }}" required>
                 </div>
-                <button type="submit" class="btn btn-primary">Change password</button>
+                <button type="submit" class="btn btn-primary">{{ t('folio.account.change_password') }}</button>
             </form>
         </section>
     </div>

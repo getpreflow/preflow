@@ -1,10 +1,10 @@
 <div class="folio-share" id="folio-share">
     {% if url %}
-        <label class="folio-share-label">Preview link (valid {{ days }} days, no login needed)
+        <label class="folio-share-label">{{ t('folio.publishing.share_label', {days: days}) }}
             <input type="text" class="folio-share-url" readonly value="{{ url }}">
         </label>
-        <button type="button" class="btn btn-ghost" data-folio-copy>Copy</button>
-        <button type="button" class="btn btn-ghost" hx-post="{{ revoke_url }}" hx-target="#folio-share" hx-swap="outerHTML" hx-include="[name=_csrf_token]">Revoke all links</button>
+        <button type="button" class="btn btn-ghost" data-folio-copy>{{ t('folio.common.copy') }}</button>
+        <button type="button" class="btn btn-ghost" hx-post="{{ revoke_url }}" hx-target="#folio-share" hx-swap="outerHTML" hx-include="[name=_csrf_token]">{{ t('folio.publishing.revoke') }}</button>
     {% elseif message %}
         <p>{{ message }}</p>
     {% endif %}

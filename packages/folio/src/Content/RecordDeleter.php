@@ -102,11 +102,10 @@ final class RecordDeleter
             try {
                 $this->hook(BeforeSave::class, $record);
             } catch (ValidationException $e) {
-                throw new Refused(sprintf(
-                    "Can't delete: one %s that links here can't be saved without the link. %s",
-                    $this->noun($record->getType()->key, 1),
-                    implode(' ', self::messages($e->errors())),
-                ), 0, $e);
+                throw new Refused(\Preflow\Folio\FolioText::get('folio.delete.refused', [
+                    'noun' => $this->noun($record->getType()->key, 1),
+                    'messages' => implode(' ', self::messages($e->errors())),
+                ]), 0, $e);
             }
             $saves[] = $record;
         }
@@ -166,13 +165,13 @@ final class RecordDeleter
         $counts = $plan->counts();
         $lines = [];
         foreach ($counts['deleted'] as $type => $n) {
-            $lines[] = sprintf('Also deletes %d %s.', $n, $this->noun($type, $n));
+            $lines[] = \Preflow\Folio\FolioText::get('folio.delete.also_deletes', ['count' => $n, 'noun' => $this->noun($type, $n)]);
         }
         foreach ($counts['detached'] as $type => $n) {
-            $lines[] = sprintf('%d %s %s a link.', $n, $this->noun($type, $n), $n === 1 ? 'loses' : 'lose');
+            $lines[] = \Preflow\Folio\FolioText::choice('folio.delete.loses_link', $n, ['noun' => $this->noun($type, $n)]);
         }
 
-        return ['restricted' => false, 'lines' => $lines, 'confirm' => implode("\n", ["This can't be undone.", ...$lines])];
+        return ['restricted' => false, 'lines' => $lines, 'confirm' => implode("\n", [\Preflow\Folio\FolioText::get('folio.delete.cannot_undo'), ...$lines])];
     }
 
     private function restrictedText(DeletePlan $plan): string
@@ -183,7 +182,7 @@ final class RecordDeleter
         }
         $total = array_sum($plan->restrictions());
 
-        return sprintf("Can't delete: %s still %s here.", self::join($parts), $total === 1 ? 'points' : 'point');
+        return \Preflow\Folio\FolioText::choice('folio.delete.restricted', $total, ['records' => self::join($parts)]);
     }
 
     /**
@@ -302,16 +301,14 @@ final class RecordDeleter
     }
 
     /**
-     * The type's label as a noun for $n records: "games", "1 game"; a label starting
-     * with an acronym keeps its case ("FAQ entries").
+     * The type's label as a noun for $n records: "games", "1 game" (FolioText::noun(): in lower
+     * case where the language writes nouns so; a label starting with an acronym keeps its case,
+     * "FAQ entries"). The singular is guessed for English only; other languages keep the label.
      */
     private function noun(string $type, int $n): string
     {
-        $label = $this->catalog->get($type)?->label ?? ucfirst($type);
-        if (!preg_match('/^\p{Lu}\p{Lu}/u', $label)) {
-            $label = mb_strtolower(mb_substr($label, 0, 1)) . mb_substr($label, 1);
-        }
-        if ($n !== 1) {
+        $label = \Preflow\Folio\FolioText::noun($this->catalog->get($type)?->label ?? ucfirst($type));
+        if ($n !== 1 || \Preflow\Folio\FolioText::locale() !== 'en') {
             return $label;
         }
 
@@ -328,7 +325,7 @@ final class RecordDeleter
     {
         $last = array_pop($parts);
 
-        return $parts === [] ? (string) $last : implode(', ', $parts) . ' and ' . $last;
+        return $parts === [] ? (string) $last : \Preflow\Folio\FolioText::get('folio.delete.and', ['list' => implode(', ', $parts), 'last' => (string) $last]);
     }
 
     /**

@@ -56,7 +56,7 @@
                 {% if nav_section.label != '' %}<span class="folio-nav-label">{{ nav_section.label }}</span>{% endif %}
                 {% for item in nav_section.items %}
                     <a href="{{ item.url }}"{% if item.active %} class="active" aria-current="page"{% endif %}>
-                        <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ item.icon }}"></use></svg><span>{{ item.label }}</span>{% if item.badge %}<span class="folio-nav-badge" aria-label="{{ item.badge }} waiting">{{ item.badge }}</span>{% endif %}
+                        <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ item.icon }}"></use></svg><span>{{ item.label }}</span>{% if item.badge %}<span class="folio-nav-badge" aria-label="{{ t('folio.layout.waiting', {count: item.badge}) }}">{{ item.badge }}</span>{% endif %}
                     </a>
                 {% endfor %}
             {% endfor %}
@@ -107,6 +107,7 @@
     </div>
 </div>
 <div class="folio-toasts" aria-live="polite" data-folio-toasts></div>
+{% include '@folio/admin/_i18n.twig' %}
 <script nonce="{{ csp_nonce() }}">
 (function () {
     var group = document.getElementById('folio-theme-toggle');

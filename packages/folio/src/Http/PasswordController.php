@@ -29,7 +29,7 @@ final class PasswordController
     private const array FORGOT_LIMIT = [5, 3600];
     private const array PASSWORD_LIMIT = [10, 900];
 
-    private const string THROTTLED = 'Too many attempts. Try again later.';
+    private const string THROTTLED = 'folio.auth.throttled';
 
     public function __construct(
         private readonly StaffPasswords $passwords,
@@ -52,7 +52,7 @@ final class PasswordController
         $client = $this->throttle->client($request);
         $key = hash('sha256', $email);
         if ($this->throttle->tooMany(self::THROTTLE_FORGOT, $client, $max, $window) || $this->throttle->tooMany(self::THROTTLE_FORGOT, $key, $max, $window)) {
-            return $this->forgotPage(false, self::THROTTLED, 429);
+            return $this->forgotPage(false, \Preflow\Folio\FolioText::get(self::THROTTLED), 429);
         }
         $this->throttle->hit(self::THROTTLE_FORGOT, $client, $window);
         $this->throttle->hit(self::THROTTLE_FORGOT, $key, $window);
@@ -85,15 +85,15 @@ final class PasswordController
         [$max, $window] = self::PASSWORD_LIMIT;
         $client = $this->throttle->client($request);
         if ($this->throttle->tooMany(self::THROTTLE_PASSWORD, $client, $max, $window)) {
-            return $this->passwordPage($token, self::THROTTLED, 429);
+            return $this->passwordPage($token, \Preflow\Folio\FolioText::get(self::THROTTLED), 429);
         }
         $this->throttle->hit(self::THROTTLE_PASSWORD, $client, $window);
 
         if (mb_strlen($password) < $this->passwordMin) {
-            return $this->passwordPage($token, "The password needs at least {$this->passwordMin} characters.", 422);
+            return $this->passwordPage($token, \Preflow\Folio\FolioText::get('folio.auth.too_short', ['min' => $this->passwordMin]), 422);
         }
         if ($password !== (string) ($body['repeat'] ?? '')) {
-            return $this->passwordPage($token, "The two passwords don't match.", 422);
+            return $this->passwordPage($token, \Preflow\Folio\FolioText::get('folio.auth.mismatch'), 422);
         }
 
         $account = $this->passwords->consume($token);

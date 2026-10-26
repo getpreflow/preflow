@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Closure;
+use Preflow\Folio\FolioText;
 use Preflow\Folio\Content\TypeCatalog;
 
 /**
@@ -15,11 +16,12 @@ use Preflow\Folio\Content\TypeCatalog;
  */
 final class AdminNav
 {
-    private const BUILTIN = ['dashboard' => '', 'pages' => 'Pages', 'content' => 'Content', 'library' => 'Library', 'settings' => 'Settings'];
+    /** Built-in sections => their heading's key in Folio's texts (the dashboard has none). */
+    private const BUILTIN = ['dashboard' => '', 'pages' => 'folio.nav.pages', 'content' => 'folio.nav.content', 'library' => 'folio.nav.library', 'settings' => 'folio.nav.settings'];
 
     private string $prefix;
     private string $path = '';
-    /** @var list<array{section: string, label: string, url: string, icon: string, permission: ?string, order: int}> */
+    /** @var list<array{section: string, label: string|Closure, url: string, icon: string, permission: ?string, order: int}> */
     private array $added = [];
     /** @var (Closure(string): ?int)|null the count badge of a type key; set at boot (Customizations resolve after the nav is built) */
     private ?Closure $badges = null;
@@ -33,8 +35,12 @@ final class AdminNav
         $this->prefix = rtrim($prefix, '/');
     }
 
-    /** Adds an item to a section; a new section name sits between Content and Library, in the order first used. A null permission shows it to everyone. */
-    public function add(string $section, string $label, string $url, string $icon, ?string $permission, int $order = 100): void
+    /**
+     * Adds an item to a section; a new section name sits between Content and Library, in the order first used. A null permission shows it to everyone.
+     *
+     * @param string|Closure(): string $label a closure is asked when the sidebar renders (a text in the interface language)
+     */
+    public function add(string $section, string|Closure $label, string $url, string $icon, ?string $permission, int $order = 100): void
     {
         $this->added[] = compact('section', 'label', 'url', 'icon', 'permission', 'order');
     }
@@ -55,18 +61,18 @@ final class AdminNav
     public function sections(): array
     {
         $groups = array_fill_keys(array_keys(self::BUILTIN), []);
-        $add = function (string $section, string $label, string $url, string $icon, ?string $permission, int $order, ?string $type = null) use (&$groups): void {
+        $add = function (string $section, string|Closure $label, string $url, string $icon, ?string $permission, int $order, ?string $type = null) use (&$groups): void {
             $groups[$section][] = compact('label', 'url', 'icon', 'permission', 'order', 'type');
         };
 
-        $add('dashboard', 'Dashboard', $this->prefix === '' ? '/' : $this->prefix, 'ui-dashboard', 'folio.dashboard', 100);
+        $add('dashboard', static fn (): string => FolioText::get('folio.nav.dashboard'), $this->prefix === '' ? '/' : $this->prefix, 'ui-dashboard', 'folio.dashboard', 100);
         foreach ($this->catalog->all() as $listing) {
             if ($listing->nav) {
                 $icon = $listing->icon !== '' ? $listing->icon : ($listing->singleton ? 'ui-settings' : 'ui-file');
                 $add($listing->section, $listing->label, $this->prefix . '/' . $listing->key, $icon, $listing->key . '.view', $listing->order, $listing->key);
             }
         }
-        $add('library', 'Assets', $this->prefix . '/assets', 'ui-library', 'assets.view', 100);
+        $add('library', static fn (): string => FolioText::get('folio.nav.assets'), $this->prefix . '/assets', 'ui-library', 'assets.view', 100);
         foreach ($this->added as $item) {
             $add($item['section'], $item['label'], $item['url'], $item['icon'], $item['permission'], $item['order']);
         }
@@ -95,7 +101,7 @@ final class AdminNav
             $sections[] = [
                 'label' => self::sectionLabel($section),
                 'items' => array_map(fn (array $item): array => [
-                    'label' => $item['label'],
+                    'label' => $item['label'] instanceof Closure ? ($item['label'])() : $item['label'],
                     'url' => $item['url'],
                     'icon' => $item['icon'],
                     'active' => $item['url'] === $active,
@@ -128,10 +134,14 @@ final class AdminNav
         return $ordered;
     }
 
-    /** A section's heading: "Pages" for pages, "Member area" for member_area. */
+    /** A section's heading: "Pages" for pages (Folio's own sections in the interface language), "Member area" for member_area. */
     public static function sectionLabel(string $section): string
     {
-        return self::BUILTIN[$section] ?? ucfirst(str_replace(['_', '-'], ' ', $section));
+        if (isset(self::BUILTIN[$section])) {
+            return self::BUILTIN[$section] === '' ? '' : FolioText::get(self::BUILTIN[$section]);
+        }
+
+        return ucfirst(str_replace(['_', '-'], ' ', $section));
     }
 
     /**

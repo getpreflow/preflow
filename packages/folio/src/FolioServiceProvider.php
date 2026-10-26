@@ -641,6 +641,26 @@ final class FolioServiceProvider extends ServiceProvider
         return is_string($locale) && $locale !== '' ? $locale : 'en';
     }
 
+    /**
+     * admin.js's words: every folio.js.* key (as Folio's English file and the site's lang/en name
+     * them), short keys ("confirm_delete"), in the translator's language, as JSON that cannot
+     * close or break out of its script block.
+     */
+    private static function jsTexts(\Preflow\I18n\Translator $translator): string
+    {
+        $texts = [];
+        foreach (array_keys($translator->entries('folio', 'en')) as $key) {
+            if (str_starts_with($key, 'folio.js.')) {
+                $texts[substr($key, strlen('folio.js.'))] = $translator->get($key);
+            }
+        }
+
+        return json_encode(
+            (object) $texts,
+            JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
+    }
+
     public function boot(Container $container): void
     {
         // Folio's texts are declared in composer.json (extra.preflow.translations); this covers
@@ -660,10 +680,10 @@ final class FolioServiceProvider extends ServiceProvider
 
         // Settings → Extensions, once there is an extension (sites without any keep today's sidebar).
         if ($container->get(ExtensionRegistry::class)->all() !== []) {
-            $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', 'Extensions', rtrim($this->prefix($app), '/') . '/extensions', 'ui-settings', 'folio.extensions', 900);
+            $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.extensions'), rtrim($this->prefix($app), '/') . '/extensions', 'ui-settings', 'folio.extensions', 900);
         }
         // Settings → Cache, on every site (Folio registers its own caches).
-        $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', 'Cache', rtrim($this->prefix($app), '/') . '/cache', 'ui-settings', 'folio.cache', 950);
+        $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.cache'), rtrim($this->prefix($app), '/') . '/cache', 'ui-settings', 'folio.cache', 950);
         // Extension screens in the sidebar (filtered by their permission).
         foreach ($screens->all() as $screen) {
             $container->get(\Preflow\Folio\Http\AdminNav::class)->add(
@@ -713,6 +733,26 @@ final class FolioServiceProvider extends ServiceProvider
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_interface_locales',
                 callable: fn (): array => $container->get(\Preflow\Folio\Http\InterfaceLocales::class)->names(),
+            ));
+
+            // Dates and numbers in the interface language: folio_date(value, 'date'|'datetime'), folio_number(value).
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_date',
+                callable: static fn (mixed $value, string $style = 'date'): string => (new \Preflow\Folio\Http\AdminFormat())->date($value, $style),
+            ));
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_number',
+                callable: static fn (mixed $value): string => (new \Preflow\Folio\Http\AdminFormat())->number($value),
+            ));
+            // A type's label inside a sentence ("No posts yet."), as the interface language writes nouns.
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_noun',
+                callable: static fn (string $label): string => \Preflow\Folio\FolioText::noun($label),
+            ));
+            // admin.js's dictionary (_i18n.twig): the folio.js.* texts in the interface language, as JSON that is safe inside a script block.
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_js_texts',
+                callable: static fn (): string => self::jsTexts(\Preflow\Folio\FolioText::translator()),
             ));
 
             // The sidebar: sections and items from the nav model (extensions add theirs), filtered by permission.

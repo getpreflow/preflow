@@ -29,7 +29,7 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('opts.views', $js);                 // reads declared views
         $this->assertStringContainsString('[view]', $js);                     // emits the [view] input name
         $this->assertStringContainsString('data-matrix-view', $js);           // matches server markup
-        $this->assertStringContainsString('<option value="">Default</option>', $js);
+        $this->assertStringContainsString("'<option value=\"\">' + esc(folioT('default')) + '</option>'", $js); // in the interface language
     }
 
     public function test_defines_drawer_create_and_origin_checked_message_handler(): void
@@ -98,7 +98,7 @@ final class AdminJsTest extends TestCase
     public function test_undo_remove_and_unsaved_guard(): void
     {
         $js = $this->js();
-        $this->assertStringContainsString("'Undo'", $js);               // toast action after removing a block
+        $this->assertStringContainsString("folioT('undo')", $js);       // toast action after removing a block
         $this->assertStringContainsString('[data-folio-toasts]', $js);
         $this->assertStringContainsString("'beforeunload'", $js);       // leaving with unsaved changes asks
         $this->assertStringContainsString("hasAttribute('hx-post')", $js); // autosaving forms are not guarded
@@ -175,7 +175,7 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('_folioSubmitting', $js);
         $this->assertStringContainsString("'htmx:responseError'", $js);
         $this->assertStringContainsString("'htmx:sendError'", $js);
-        $this->assertStringContainsString('Not saved', $js);
+        $this->assertStringContainsString("folioT('not_saved_offline')", $js);
     }
 
     public function test_library_focal_and_pick_handlers(): void
@@ -233,7 +233,7 @@ final class AdminJsTest extends TestCase
 
         $list = (string) file_get_contents(dirname(__DIR__, 2) . '/templates/admin/_list_results.twig');
         $this->assertStringContainsString('data-delete-plan="{{ prefix }}/{{ type }}/_delete-plan" data-delete-id="{{ row.id }}"', $list);
-        $this->assertStringContainsString('data-confirm="Delete this record?"', $list); // the no-JS / failure fallback
+        $this->assertStringContainsString('data-confirm="{{ t(\'folio.list.confirm_delete\') }}"', $list); // the no-JS / failure fallback
     }
 
     public function test_bulk_bar_follows_the_ticked_rows(): void

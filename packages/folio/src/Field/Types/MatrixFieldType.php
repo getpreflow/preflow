@@ -89,11 +89,11 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
         }
         $html .= '</select>' . "\n";
         $html .= '      <select data-matrix-record></select>' . "\n";
-        $html .= '      <button type="button" class="btn btn-secondary" data-matrix-add>Add</button>' . "\n";
+        $html .= '      <button type="button" class="btn btn-secondary" data-matrix-add>' . $e(\Preflow\Folio\FolioText::get('folio.common.add')) . '</button>' . "\n";
         // "New" opens a create drawer: offered when the user may create one of the allowed types.
         $creatable = $this->can === null || array_filter($allowed, fn (string $key): bool => ($this->can)($key . '.create')) !== [];
         if ($creatable) {
-            $html .= '      <button type="button" class="btn btn-secondary" data-matrix-create>New</button>' . "\n";
+            $html .= '      <button type="button" class="btn btn-secondary" data-matrix-create>' . $e(\Preflow\Folio\FolioText::get('folio.common.new')) . '</button>' . "\n";
         }
         $html .= '    </div>' . "\n";
         $html .= '  </div>' . "\n";
@@ -143,7 +143,7 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
     {
         $n = count($this->toRefs($value));
 
-        return $n === 0 ? '' : $n . ($n === 1 ? ' row' : ' rows');
+        return $n === 0 ? '' : \Preflow\Folio\FolioText::choice('folio.fields.rows', $n);
     }
 
     public function renderFrontend(mixed $value, array $config): string
@@ -242,7 +242,7 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
         $viewSelect = '';
         if ($views !== []) {
             $viewSelect = '<select name="' . $e($field) . '[' . $i . '][view]" data-matrix-view>'
-                . '<option value="">Default</option>';
+                . '<option value="">' . $e(\Preflow\Folio\FolioText::get('folio.common.default')) . '</option>';
             foreach ($views as $v) {
                 $viewSelect .= '<option value="' . $e($v) . '"' . ($v === $view ? ' selected' : '') . '>' . $e($v) . '</option>';
             }
@@ -255,9 +255,9 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
             . '<span class="folio-matrix-label">' . $e($label) . ' <em>(' . $e($type) . ')</em></span>'
             . $viewSelect
             . '<span class="folio-matrix-controls">'
-            . '<button type="button" data-matrix-up>Up</button>'
-            . '<button type="button" data-matrix-down>Down</button>'
-            . '<button type="button" data-matrix-remove>Remove</button>'
+            . '<button type="button" data-matrix-up>' . $e(\Preflow\Folio\FolioText::get('folio.fields.up')) . '</button>'
+            . '<button type="button" data-matrix-down>' . $e(\Preflow\Folio\FolioText::get('folio.fields.down')) . '</button>'
+            . '<button type="button" data-matrix-remove>' . $e(\Preflow\Folio\FolioText::get('folio.common.remove')) . '</button>'
             . '</span></div>' . "\n";
     }
 

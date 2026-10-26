@@ -25,12 +25,12 @@
         <div class="folio-auth-hello">
             {% include '@folio/admin/_logo.twig' with {size: 'xl'} %}
             <p class="folio-auth-word">Folio</p>
-            <p class="folio-auth-line">Every word in its place<span class="folio-auth-caret"></span></p>
+            <p class="folio-auth-line">{{ t('folio.auth.tagline') }}<span class="folio-auth-caret"></span></p>
         </div>
     </aside>
     <main class="folio-auth-main">
         {% block card %}{% endblock %}
-        <p class="folio-auth-foot">Folio, the content side of <a href="https://preflow.dev" rel="noopener">Preflow</a></p>
+        <p class="folio-auth-foot">{{ t('folio.auth.powered_by') }} <a href="https://preflow.dev" rel="noopener">Preflow</a></p>
     </main>
 </div>
 </body>

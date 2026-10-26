@@ -1,0 +1,3 @@
+{# admin.js's words in the interface language (folio.js.*): read once by folioT(). JSON, not a script, so it needs no
+   execution; the nonce keeps strict CSP setups that also gate non-executing blocks happy. #}
+<script type="application/json" id="folio-i18n" nonce="{{ csp_nonce() }}">{{ folio_js_texts()|raw }}</script>

@@ -2,6 +2,23 @@
 (function () {
     'use strict';
 
+    // The page's words (folio.js.* in the interface language): <script type="application/json" id="folio-i18n">,
+    // read once. folioT('removed', {label: 'Hero'}) fills :label; a missing key comes back as the key.
+    var folioTexts = null;
+    function folioT(key, params) {
+        if (folioTexts === null) {
+            folioTexts = {};
+            var el = document.getElementById('folio-i18n');
+            try { folioTexts = el ? JSON.parse(el.textContent || '{}') : {}; } catch (e) { folioTexts = {}; }
+        }
+        var text = typeof folioTexts[key] === 'string' ? folioTexts[key] : key;
+        Object.keys(params || {}).forEach(function (name) {
+            text = text.split(':' + name).join(String(params[name]));
+        });
+        return text;
+    }
+    window.folioT = folioT; // for the other admin scripts (image editor, extensions)
+
     function esc(s) {
         var d = document.createElement('div');
         d.textContent = s == null ? '' : String(s);
@@ -28,7 +45,7 @@
         var close = document.createElement('button');
         close.type = 'button';
         close.className = 'folio-drawer-close';
-        close.textContent = 'Close';
+        close.textContent = folioT('close');
         close.addEventListener('click', closeDrawer);
         var frame = document.createElement('iframe');
         frame.className = 'folio-drawer-frame';
@@ -83,7 +100,7 @@
             var viewSelect = '';
             if (views.length) {
                 viewSelect = '<select name="' + esc(field) + '[' + i + '][view]" data-matrix-view>' +
-                    '<option value="">Default</option>';
+                    '<option value="">' + esc(folioT('default')) + '</option>';
                 views.forEach(function (v) {
                     viewSelect += '<option value="' + esc(v) + '"' + (v === view ? ' selected' : '') + '>' + esc(v) + '</option>';
                 });
@@ -96,9 +113,9 @@
                 '<span class="folio-matrix-label">' + esc(label) + ' <em>(' + esc(type) + ')</em></span>' +
                 viewSelect +
                 '<span class="folio-matrix-controls">' +
-                '<button type="button" data-matrix-up>Up</button>' +
-                '<button type="button" data-matrix-down>Down</button>' +
-                '<button type="button" data-matrix-remove>Remove</button>' +
+                '<button type="button" data-matrix-up>' + esc(folioT('up')) + '</button>' +
+                '<button type="button" data-matrix-down>' + esc(folioT('down')) + '</button>' +
+                '<button type="button" data-matrix-remove>' + esc(folioT('remove')) + '</button>' +
                 '</span>';
             rowsEl.appendChild(row);
             notifyChange(root);
@@ -198,7 +215,7 @@
         remove.type = 'button';
         remove.className = 'btn btn-ghost';
         remove.setAttribute('data-folio-asset-remove', '');
-        remove.textContent = 'Remove';
+        remove.textContent = folioT('remove');
         li.appendChild(remove);
         return li;
     }
@@ -733,7 +750,7 @@
                 }
             })
             .catch(function () {
-                if (window.confirm(src.getAttribute('data-confirm') || 'Delete this record?')) { send(); }
+                if (window.confirm(src.getAttribute('data-confirm') || folioT('confirm_delete'))) { send(); }
             })
             .then(function () { f.removeAttribute('data-delete-busy'); });
     }
@@ -791,12 +808,12 @@
 
     function cardLabel(card) {
         var el = card.querySelector(':scope > .folio-block-head .folio-block-label');
-        return el ? el.textContent.trim() : 'Block';
+        return el ? el.textContent.trim() : folioT('block');
     }
 
     function cardPosition(card) {
         var cards = Array.prototype.filter.call(card.parentNode.children, function (el) { return el.hasAttribute('data-block-card'); });
-        return (cards.indexOf(card) + 1) + ' of ' + cards.length;
+        return folioT('position', { index: cards.indexOf(card) + 1, total: cards.length });
     }
 
     function announce(card, text) {
@@ -853,7 +870,7 @@
         if (!target || target.parentNode !== dragCard.parentNode) { return; }
         e.preventDefault();
         target.parentNode.insertBefore(dragCard, target.classList.contains('is-drop-before') ? target : target.nextSibling);
-        announce(dragCard, 'Moved ' + cardLabel(dragCard) + ', position ' + cardPosition(dragCard) + '.');
+        announce(dragCard, folioT('moved', { label: cardLabel(dragCard), position: cardPosition(dragCard) }));
         notifyChange(dragCard);
     }
 
@@ -881,10 +898,10 @@
             // An autosave may have stored the moved order meanwhile: save the restored one.
             if (l.moved) { notifyChange(l.card); }
             l.handle.focus();
-            announce(l.card, 'Cancelled. ' + cardLabel(l.card) + ' is back at position ' + cardPosition(l.card) + '.');
+            announce(l.card, folioT('cancelled', { label: cardLabel(l.card), position: cardPosition(l.card) }));
             return;
         }
-        announce(l.card, 'Dropped ' + cardLabel(l.card) + ', position ' + cardPosition(l.card) + '.');
+        announce(l.card, folioT('dropped', { label: cardLabel(l.card), position: cardPosition(l.card) }));
         // Moved and back again counts too: an autosave may have stored the moved order.
         if (l.moved || l.card.nextSibling !== l.next) { notifyChange(l.card); }
     }
@@ -901,7 +918,7 @@
             lifted = { card: card, parent: card.parentNode, next: card.nextSibling, handle: handle };
             card.classList.add('is-lifted');
             handle.setAttribute('aria-pressed', 'true');
-            announce(card, 'Lifted ' + cardLabel(card) + ', position ' + cardPosition(card) + '. Arrow keys move it, Space drops it, Escape cancels.');
+            announce(card, folioT('lifted', { label: cardLabel(card), position: cardPosition(card) }));
         } else if (lifted && lifted.card === card && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
             e.preventDefault();
             var other = siblingCard(card, e.key === 'ArrowUp' ? -1 : 1);
@@ -909,7 +926,7 @@
             card.parentNode.insertBefore(card, e.key === 'ArrowUp' ? other : other.nextSibling);
             lifted.moved = true;
             handle.focus();
-            announce(card, cardLabel(card) + ', position ' + cardPosition(card) + '.');
+            announce(card, folioT('at_position', { label: cardLabel(card), position: cardPosition(card) }));
         } else if (lifted && lifted.card === card && e.key === 'Escape') {
             e.preventDefault();
             e.stopPropagation();
@@ -945,11 +962,11 @@
         var toast = document.createElement('div');
         toast.className = 'folio-toast';
         var text = document.createElement('span');
-        text.textContent = cardLabel(card) + ' removed';
+        text.textContent = folioT('removed', { label: cardLabel(card) });
         var undo = document.createElement('button');
         undo.type = 'button';
         undo.className = 'btn btn-sm folio-toast-action';
-        undo.textContent = 'Undo';
+        undo.textContent = folioT('undo');
         undo.addEventListener('click', function () {
             if (!list.isConnected) { dismissUndo(); return; }
             var before = next && next.parentNode === list ? next : list.querySelector(':scope > [data-blocks-picker]');
@@ -1008,7 +1025,7 @@
         var box = btn.closest('.folio-share');
         var input = box ? box.querySelector('.folio-share-url') : null;
         if (!input) { return; }
-        var done = function () { btn.textContent = 'Copied'; };
+        var done = function () { btn.textContent = folioT('copied'); };
         var fallback = function () { input.focus(); input.select(); };
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(input.value).then(done, fallback);
@@ -1046,8 +1063,8 @@
         if (!elt || !state || elt.tagName !== 'FORM' || !elt.hasAttribute('hx-post')) { return; }
         var xhr = e.detail.xhr;
         state.textContent = xhr && xhr.status === 403
-            ? 'Not saved — you don\'t have access to edit this.'
-            : 'Not saved — check your connection and save manually.';
+            ? folioT('not_saved_forbidden')
+            : folioT('not_saved_offline');
         state.classList.add('is-conflict');
     }
 
@@ -1098,7 +1115,7 @@
             thumb: btn.getAttribute('data-thumb') || '',
             label: btn.getAttribute('data-label') || ''
         }] }, window.location.origin);
-        btn.textContent = 'Selected';
+        btn.textContent = folioT('selected');
     }
 
     // Tabs: <div data-folio-tabs> with a .folio-segmented of <button data-folio-tab="key"> and
@@ -1246,7 +1263,7 @@
                 if (!append && !(data.items || []).length) {
                     var empty = document.createElement('li');
                     empty.className = 'folio-relation-empty';
-                    empty.textContent = 'No matches';
+                    empty.textContent = folioT('no_matches');
                     list.appendChild(empty);
                 }
                 if (data.more) {
@@ -1256,7 +1273,7 @@
                     mb.className = 'folio-relation-result folio-relation-more';
                     mb.setAttribute('data-folio-relation-more', '');
                     mb.setAttribute('data-page', String(page + 1));
-                    mb.textContent = 'More…';
+                    mb.textContent = folioT('more');
                     li2.appendChild(mb);
                     list.appendChild(li2);
                 }
@@ -1315,7 +1332,7 @@
         remove.type = 'button';
         remove.className = 'folio-chip-remove';
         remove.setAttribute('data-folio-relation-remove', '');
-        remove.setAttribute('aria-label', 'Remove ' + text);
+        remove.setAttribute('aria-label', folioT('remove_named', { label: text }));
         remove.textContent = '×';
         chip.appendChild(label);
         chip.appendChild(input);
@@ -1464,7 +1481,7 @@
         var n = items.filter(function (c) { return c.checked; }).length;
         bar.hidden = n === 0;
         var count = bar.querySelector('[data-folio-bulk-count]');
-        if (count) { count.textContent = n + ' selected'; }
+        if (count) { count.textContent = folioT('selected_count', { count: n }); }
         var all = document.querySelector('[data-folio-bulk-all]');
         if (all) {
             all.checked = n > 0 && n === items.length;

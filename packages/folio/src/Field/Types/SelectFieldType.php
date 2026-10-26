@@ -30,7 +30,7 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
         $value = (string) ($ctx->value ?? '');
 
         if ($value !== '' && !array_key_exists($value, $options)) {
-            $options = [$value => $value . ' (no longer an option)'] + $options;
+            $options = [$value => \Preflow\Folio\FolioText::get('folio.fields.no_longer_option', ['value' => $value])] + $options;
         }
 
         if (($ctx->config['display'] ?? 'select') === 'radio') {

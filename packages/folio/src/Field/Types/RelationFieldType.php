@@ -74,7 +74,7 @@ final class RelationFieldType implements FieldType
             if (count($options) > self::FILTER_THRESHOLD) {
                 // No name: the filter is never posted.
                 $html .= '  <input type="search" class="folio-relation-filter" data-folio-relation-filter'
-                    . ' placeholder="Filter…" aria-label="' . $e('Filter ' . $label) . '" autocomplete="off">' . "\n";
+                    . ' placeholder="' . $e(\Preflow\Folio\FolioText::get('folio.common.filter_placeholder')) . '" aria-label="' . $e(\Preflow\Folio\FolioText::get('folio.fields.filter_label', ['label' => $label])) . '" autocomplete="off">' . "\n";
             }
             $html .= '  <div class="folio-chips">' . "\n";
             foreach ($options as $id => $optLabel) {
@@ -91,7 +91,7 @@ final class RelationFieldType implements FieldType
             }
             $html .= '</label>' . "\n";
             $html .= '  <select name="' . $e($name) . '" id="' . $e($name) . '">' . "\n";
-            $html .= '    <option value="">— none —</option>' . "\n";
+            $html .= '    <option value="">' . $e(\Preflow\Folio\FolioText::get('folio.common.none')) . '</option>' . "\n";
             foreach ($options as $id => $optLabel) {
                 $sel = in_array((string) $id, $selected, true) ? ' selected' : '';
                 $html .= '    <option value="' . $e((string) $id) . '"' . $sel . '>' . $e($optLabel) . '</option>' . "\n";
@@ -170,12 +170,12 @@ final class RelationFieldType implements FieldType
             $text = $labels[$id] ?? $id;
             $html .= '    <span class="folio-chip" data-folio-relation-item><span class="folio-chip-label">' . $e($text) . '</span>'
                 . '<input type="hidden" name="' . $e($inputName) . '" value="' . $e($id) . '">'
-                . '<button type="button" class="folio-chip-remove" data-folio-relation-remove aria-label="' . $e('Remove ' . $text) . '">×</button></span>' . "\n";
+                . '<button type="button" class="folio-chip-remove" data-folio-relation-remove aria-label="' . $e(\Preflow\Folio\FolioText::get('folio.fields.remove_named', ['label' => $text])) . '">×</button></span>' . "\n";
         }
         $html .= '  </div>' . "\n";
         if ($canSearch) {
             $html .= '  <input type="search" class="folio-relation-filter" data-folio-relation-search data-folio-relation-url="' . $e($url) . '"'
-                . ' placeholder="Search…" aria-label="' . $e('Search ' . $label) . '" autocomplete="off">' . "\n";
+                . ' placeholder="' . $e(\Preflow\Folio\FolioText::get('folio.common.search_placeholder')) . '" aria-label="' . $e(\Preflow\Folio\FolioText::get('folio.fields.search_label', ['label' => $label])) . '" autocomplete="off">' . "\n";
             $html .= '  <ul class="folio-relation-results" data-folio-relation-results hidden></ul>' . "\n";
         }
         if ($ctx->help !== null && $ctx->help !== '') {

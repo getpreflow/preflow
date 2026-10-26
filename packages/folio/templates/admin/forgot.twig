@@ -1,25 +1,25 @@
 {% extends '@folio/admin/_auth_layout.twig' %}
-{% block title %}Forgot password{% endblock %}
+{% block title %}{{ t('folio.auth.forgot_title') }}{% endblock %}
 {% block card %}
         <form class="folio-auth-card folio-auth-card-fixed" method="post" action="{{ forgot_action }}">
             {{ csrf_field()|raw }}
             <div class="folio-brand folio-auth-brand">{% include '@folio/admin/_logo.twig' %}<span class="folio-brand-name">Folio</span></div>
-            <h1 class="folio-auth-title">Forgot password</h1>
+            <h1 class="folio-auth-title">{{ t('folio.auth.forgot_title') }}</h1>
             {% if sent %}
-            <p class="folio-auth-lead">If an account exists for this address, a link is on its way. It works for one hour.</p>
+            <p class="folio-auth-lead">{{ t('folio.auth.forgot_sent') }}</p>
             {% else %}
-            <p class="folio-auth-lead">Enter your email and we'll send you a link to choose a new password.</p>
+            <p class="folio-auth-lead">{{ t('folio.auth.forgot_lead') }}</p>
             {% endif %}
             {% if error %}
                 <div class="folio-alert folio-alert-error" role="alert">{{ error }}</div>
             {% endif %}
             {% if not sent %}
             <div class="form-group">
-                <label for="email">Email</label>
+                <label for="email">{{ t('folio.auth.email') }}</label>
                 <input type="email" name="email" id="email" autocomplete="username" required autofocus>
             </div>
-            <button type="submit" class="btn btn-primary">Send link</button>
+            <button type="submit" class="btn btn-primary">{{ t('folio.auth.send_link') }}</button>
             {% endif %}
-            <p class="folio-auth-back"><a class="folio-auth-link" href="{{ login_url }}">Back to sign in</a></p>
+            <p class="folio-auth-back"><a class="folio-auth-link" href="{{ login_url }}">{{ t('folio.auth.back_to_sign_in') }}</a></p>
         </form>
 {% endblock %}

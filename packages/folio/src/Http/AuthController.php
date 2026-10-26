@@ -35,8 +35,8 @@ final class AuthController
     /** [attempts, seconds], per client and per e-mail */
     private const array LOGIN_LIMIT = [10, 900];
 
-    private const string INVALID = 'Invalid email or password.';
-    private const string THROTTLED = 'Too many attempts. Try again later.';
+    private const string INVALID = 'folio.auth.invalid';
+    private const string THROTTLED = 'folio.auth.throttled';
 
     public function __construct(
         private readonly AuthManager $auth,
@@ -98,7 +98,7 @@ final class AuthController
         $client = $this->throttle->client($request);
         $key = hash('sha256', mb_strtolower($email));
         if ($this->throttle->tooMany(self::THROTTLE_LOGIN, $client, $max, $window) || $this->throttle->tooMany(self::THROTTLE_LOGIN, $key, $max, $window)) {
-            return $this->page(self::THROTTLED, 429);
+            return $this->page(\Preflow\Folio\FolioText::get(self::THROTTLED), 429);
         }
 
         $user = $email === '' ? null : $this->users->findByCredentials(['email' => $email]);
@@ -143,7 +143,7 @@ final class AuthController
     {
         $session = $request->getAttribute(SessionInterface::class);
         if ($session instanceof SessionInterface) {
-            $session->flash('error', self::INVALID);
+            $session->flash('error', \Preflow\Folio\FolioText::get(self::INVALID));
         }
 
         return new Response(302, ['Location' => $this->prefix . '/login']);

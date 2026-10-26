@@ -42,7 +42,7 @@ final class PublishingController
         [$type, $id] = $this->target($request);
         $current = $type !== null ? $this->dm->findType($type, $id) : null;
         if ($type === null || $current === null) {
-            return new Response(404, [], 'Not found');
+            return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.not_found'));
         }
 
         $typeDef = $current->getType();
@@ -57,7 +57,7 @@ final class PublishingController
         try {
             $this->publisher->saveDraft($record, $loaded);
         } catch (VersionConflict) {
-            return $this->status('Not saved — someone else changed this record. Reload or save to overwrite.', null, true);
+            return $this->status(\Preflow\Folio\FolioText::get('folio.publishing.not_saved_conflict'), null, true);
         }
 
         return $this->status(self::stateText($this->publisher->state($record)), (int) $record->get('_version'));
@@ -69,7 +69,7 @@ final class PublishingController
         [$type, $id] = $this->target($request);
         $revision = (string) $request->getAttribute('rev', '');
         if ($type === null || ($restored = $this->publisher->restore($type, $id, $revision)) === null) {
-            return new Response(404, [], 'Not found');
+            return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.not_found'));
         }
         if (!$this->mayPublish($type) && (string) $restored->get('_publish_at') !== '') {
             $restored->set('_publish_at', ''); // restored content goes live only when someone who may publish says so
@@ -84,7 +84,7 @@ final class PublishingController
     {
         $working = $this->shareable($request);
         if ($working === null) {
-            return new Response(404, [], 'Not found');
+            return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.not_found'));
         }
 
         $nonce = $working->get('_share_token');
@@ -100,7 +100,7 @@ final class PublishingController
             ? self::origin($request) . $path . '?folio_preview=' . $this->links?->create($typeDef->key, (string) $working->getId(), $nonce)
             : null;
 
-        return $this->shareFragment($working, $url, $url === null ? 'This record has no URL in this language yet.' : null);
+        return $this->shareFragment($working, $url, $url === null ? \Preflow\Folio\FolioText::get('folio.publishing.no_url') : null);
     }
 
     /** Rotate the record's share token: every earlier preview link stops working. */
@@ -108,11 +108,11 @@ final class PublishingController
     {
         $working = $this->shareable($request);
         if ($working === null) {
-            return new Response(404, [], 'Not found');
+            return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.not_found'));
         }
         $this->rotateShareToken($working);
 
-        return $this->shareFragment($working, null, 'Links revoked. Earlier preview links no longer work.');
+        return $this->shareFragment($working, null, \Preflow\Folio\FolioText::get('folio.publishing.revoked'));
     }
 
     private function mayPublish(string $type): bool
@@ -122,14 +122,14 @@ final class PublishingController
 
     public static function stateText(PublishState $state): string
     {
-        return $state === PublishState::Published ? 'Published' : 'Saved · not published';
+        return \Preflow\Folio\FolioText::get($state === PublishState::Published ? 'folio.publishing.published' : 'folio.publishing.saved_not_published');
     }
 
     public function unpublish(ServerRequestInterface $request): ResponseInterface
     {
         [$type, $id] = $this->target($request);
         if ($type === null) {
-            return new Response(404, [], 'Unknown type');
+            return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.unknown_type'));
         }
         $this->publisher->unpublish($type, $id);
 
@@ -140,7 +140,7 @@ final class PublishingController
     {
         [$type, $id] = $this->target($request);
         if ($type === null) {
-            return new Response(404, [], 'Unknown type');
+            return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.unknown_type'));
         }
         $this->publisher->discard($type, $id);
 

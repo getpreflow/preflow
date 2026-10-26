@@ -51,7 +51,7 @@ final class PreviewController
         $type = (string) $request->getAttribute('type', '');
         $route = $this->frontend->routeFor($type);
         if (!$this->catalog->has($type) || $route === null) {
-            return new Response(404, [], 'Not found');
+            return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.not_found'));
         }
 
         $typeDef = $this->registry->get($type);

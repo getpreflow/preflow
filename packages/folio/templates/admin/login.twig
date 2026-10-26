@@ -24,7 +24,7 @@
         <div class="folio-auth-hello">
             {% include '@folio/admin/_logo.twig' with {size: 'xl'} %}
             <p class="folio-auth-word">Folio</p>
-            <p class="folio-auth-line">Every word in its place<span class="folio-auth-caret"></span></p>
+            <p class="folio-auth-line">{{ t('folio.auth.tagline') }}<span class="folio-auth-caret"></span></p>
         </div>
     </aside>
     <main class="folio-auth-main">
@@ -32,31 +32,31 @@
             {{ csrf_field()|raw }}
             <div class="folio-brand folio-auth-brand">{% include '@folio/admin/_logo.twig' %}<span class="folio-brand-name">Folio</span></div>
             <h1 class="folio-auth-title">{{ t('folio.auth.sign_in') }}</h1>
-            <p class="folio-auth-lead">Welcome back. Your pages are waiting.</p>
+            <p class="folio-auth-lead">{{ t('folio.auth.welcome') }}</p>
             {% if login_error|default('') %}
                 <div class="folio-alert folio-alert-error" role="alert">{{ login_error }}</div>
             {% endif %}
             <div class="form-group">
-                <label for="email">Email</label>
+                <label for="email">{{ t('folio.auth.email') }}</label>
                 <input type="email" name="email" id="email" autocomplete="username" required autofocus>
             </div>
             <div class="form-group">
-                <label for="password">Password</label>
+                <label for="password">{{ t('folio.auth.password') }}</label>
                 <input type="password" name="password" id="password" autocomplete="current-password" required>
             </div>
 {% if remember_offered|default(false) or forgot_url|default('') %}
             <div class="folio-auth-row">
 {% if remember_offered|default(false) %}
-                <label class="folio-auth-check"><input type="checkbox" name="remember" value="1"> Keep me signed in</label>
+                <label class="folio-auth-check"><input type="checkbox" name="remember" value="1"> {{ t('folio.auth.remember') }}</label>
 {% endif %}
 {% if forgot_url|default('') %}
-                <a class="folio-auth-link" href="{{ forgot_url }}">Forgot password?</a>
+                <a class="folio-auth-link" href="{{ forgot_url }}">{{ t('folio.auth.forgot_link') }}</a>
 {% endif %}
             </div>
 {% endif %}
             <button type="submit" class="btn btn-primary">{{ t('folio.auth.sign_in') }}</button>
         </form>
-        <p class="folio-auth-foot">Folio, the content side of <a href="https://preflow.dev" rel="noopener">Preflow</a></p>
+        <p class="folio-auth-foot">{{ t('folio.auth.powered_by') }} <a href="https://preflow.dev" rel="noopener">Preflow</a></p>
     </main>
 </div>
 </body>

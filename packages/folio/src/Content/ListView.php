@@ -80,7 +80,7 @@ final class ListView
             if ($field->type === 'select') {
                 $filter['options'] = self::selectOptions($field->config);
             } elseif ($field->type === 'boolean') {
-                $filter['options'] = ['1' => 'Yes', '0' => 'No'];
+                $filter['options'] = ['1' => \Preflow\Folio\FolioText::get('folio.common.yes'), '0' => \Preflow\Folio\FolioText::get('folio.common.no')];
             } elseif ($field->type === 'relation') {
                 $options = $relations->options($target, RelationLabels::labelField($def, $name));
                 if ($options === null) {
@@ -175,20 +175,30 @@ final class ListView
             return self::selectOptions($config)[(string) $value] ?? (string) $value;
         }
         if ($type === 'boolean') {
-            return $value === '1' ? 'Yes' : 'No';
+            return \Preflow\Folio\FolioText::get($value === '1' ? 'folio.common.yes' : 'folio.common.no');
         }
         if ($type === 'date') {
             $range = (array) $value;
             if (isset($range['from'], $range['to'])) {
-                return $range['from'] . ' – ' . $range['to'];
+                return self::chipDate((string) $range['from']) . ' – ' . self::chipDate((string) $range['to']);
             }
 
-            return isset($range['from']) ? 'from ' . $range['from'] : 'until ' . ($range['to'] ?? '');
+            return isset($range['from'])
+                ? \Preflow\Folio\FolioText::get('folio.list.chip_from', ['date' => self::chipDate((string) $range['from'])])
+                : \Preflow\Folio\FolioText::get('folio.list.chip_until', ['date' => self::chipDate((string) ($range['to'] ?? ''))]);
         }
         $ids = array_map('strval', (array) $value);
         $labels = $relations->labels($target, $ids, $labelField);
 
         return implode(', ', array_map(static fn (string $id) => $labels[$id] ?? $id, $ids));
+    }
+
+    /** A date filter's value as the interface language writes dates (the raw value when it is no date). */
+    private static function chipDate(string $value): string
+    {
+        $text = (new \Preflow\Folio\Http\AdminFormat())->date($value);
+
+        return $text !== '' ? $text : $value;
     }
 
     /**

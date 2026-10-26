@@ -13,7 +13,7 @@
     <div class="folio-blocks-list" data-blocks-list>
         {% for card in cards %}{{ card|raw }}{% endfor %}
         <div class="folio-blocks-picker" data-blocks-picker>
-            {% if not single %}<span class="folio-blocks-picker-label"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>Add block</span>{% endif %}
+            {% if not single %}<span class="folio-blocks-picker-label"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>{{ t('folio.blocks.add_block') }}</span>{% endif %}
             {% for group, items in groups %}
                 <div class="folio-blocks-group">
                     {% if not single %}<span class="folio-blocks-group-label">{{ group }}</span>{% endif %}
@@ -22,7 +22,7 @@
                                 hx-get="{{ item.url }}" hx-target="closest [data-blocks-picker]" hx-swap="beforebegin" hx-disabled-elt="this"
                                 {% if item.description %}title="{{ item.description }}"{% endif %}>
                             <svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ item.icon }}"></use></svg>
-                            {% if single %}Add {{ item.label }}{% else %}{{ item.label }}{% endif %}
+                            {% if single %}{{ t('folio.blocks.add', {label: item.label}) }}{% else %}{{ item.label }}{% endif %}
                         </button>
                     {% endfor %}
                 </div>

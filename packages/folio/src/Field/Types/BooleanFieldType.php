@@ -54,10 +54,14 @@ final class BooleanFieldType extends AbstractScalarFieldType implements \Preflow
         return $this->normalizeInput($value, []);
     }
 
-    /** Yes / No; nothing stored (null or '') shows as empty rather than "No". */
+    /** Yes / No in the interface language; nothing stored (null or '') shows as empty rather than "No". */
     public function renderAdmin(mixed $value, array $config): string
     {
-        return $value === null || $value === '' ? '' : $this->renderFrontend($value, $config);
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        return \Preflow\Folio\FolioText::get($this->normalizeInput($value, $config) ? 'folio.common.yes' : 'folio.common.no');
     }
 
     public function renderFrontend(mixed $value, array $config): string

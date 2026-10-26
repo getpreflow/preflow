@@ -1,11 +1,11 @@
 {% extends layout|default('@folio/admin/_layout.twig') %}
 {% block title %}Folio — {{ record_title|default(null) ?: heading }}{% endblock %}
-{% block breadcrumb %}<nav class="folio-breadcrumb" aria-label="Breadcrumb"><a href="{{ prefix }}/{{ type }}">{{ label }}</a>{% if record_title|default(null) %}<svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-chevron"></use></svg><span>Edit</span>{% endif %}</nav>{% endblock %}
+{% block breadcrumb %}<nav class="folio-breadcrumb" aria-label="{{ t('folio.form.breadcrumb') }}"><a href="{{ prefix }}/{{ type }}">{{ label }}</a>{% if record_title|default(null) %}<svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-chevron"></use></svg><span>{{ t('folio.common.edit') }}</span>{% endif %}</nav>{% endblock %}
 {% block page_title %}<span class="folio-title-text">{{ record_title|default(null) ?: heading }}</span>{% if publishing %} <span class="folio-badge is-{{ publishing.state }}">{{ publishing.label }}</span>{% if publishing.save_state %} <span id="folio-save-state" class="folio-save-state" aria-live="polite">{{ publishing.save_state != publishing.label ? publishing.save_state : '' }}</span>{% endif %}{% endif %}{% endblock %}
 {% block actions %}{% for record_action in record_actions|default([]) %}<form method="post" action="{{ record_action.url }}"{% if record_action.confirm %} data-confirm="{{ record_action.confirm }}"{% endif %}>
     <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
     <button type="submit" class="btn btn-secondary">{% if record_action.icon %}<svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ record_action.icon }}"></use></svg>{% endif %}{{ record_action.label }}</button>
-</form>{% endfor %}{% if publishing and publishing.share_url %}<button type="button" class="btn btn-ghost" hx-post="{{ publishing.share_url }}" hx-target="#folio-share" hx-swap="outerHTML" hx-include="[name=_csrf_token], [name=_locale]"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#link"></use></svg>Copy preview link</button>{% endif %}{% if previewable|default(false) %} <div class="folio-segmented folio-view-switch" role="group" aria-label="View" data-folio-preview>{% for mode, text in {'form': 'Form', 'split': 'Split', 'preview': 'Preview'} %}<button type="button" data-folio-view="{{ mode }}" aria-pressed="false" title="{{ text }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ {'form': 'ui-file', 'split': 'ui-split', 'preview': 'ui-eye'}[mode] }}"></use></svg><span>{{ text }}</span></button>{% endfor %}</div>{% endif %}{% endblock %}
+</form>{% endfor %}{% if publishing and publishing.share_url %}<button type="button" class="btn btn-ghost" hx-post="{{ publishing.share_url }}" hx-target="#folio-share" hx-swap="outerHTML" hx-include="[name=_csrf_token], [name=_locale]"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#link"></use></svg>{{ t('folio.form.copy_preview_link') }}</button>{% endif %}{% if previewable|default(false) %} <div class="folio-segmented folio-view-switch" role="group" aria-label="{{ t('folio.form.view') }}" data-folio-preview>{% for mode, text in {'form': t('folio.form.view_form'), 'split': t('folio.form.view_split'), 'preview': t('folio.form.view_preview')} %}<button type="button" data-folio-view="{{ mode }}" aria-pressed="false" title="{{ text }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ {'form': 'ui-file', 'split': 'ui-split', 'preview': 'ui-eye'}[mode] }}"></use></svg><span>{{ text }}</span></button>{% endfor %}</div>{% endif %}{% endblock %}
 {% block content %}
     {% if previewable|default(false) %}<div class="folio-split" data-folio-split data-mode="form">
     <div class="folio-split-form">{% endif %}
@@ -13,15 +13,15 @@
     <div class="folio-form folio-editor{% if side_panels is not empty %} has-side{% endif %}">
         {% if publishing and publishing.share_url %}<div class="folio-share" id="folio-share"></div>{% endif %}
         {% if publishing and publishing.schedule_cancels|default(false) %}
-            <div class="folio-notice" role="status"><p>Scheduled to publish on {{ publishing.publish_at|date('Y-m-d H:i') }}. Saving your changes cancels the schedule; someone who may publish can schedule it again.</p></div>
+            <div class="folio-notice" role="status"><p>{{ t('folio.form.scheduled', {date: folio_date(publishing.publish_at, 'datetime')}) }}</p></div>
         {% endif %}
         {% if notice %}
             <div class="folio-notice" role="alert">
-                <p>{{ notice }}{% if reload_url %} <a href="{{ reload_url }}">Reload</a>{% endif %}</p>
+                <p>{{ notice }}{% if reload_url %} <a href="{{ reload_url }}">{{ t('folio.form.reload') }}</a>{% endif %}</p>
             </div>
         {% endif %}
         {% if multilingual|default(false) %}
-            <nav class="folio-languages" aria-label="Editing language">
+            <nav class="folio-languages" aria-label="{{ t('folio.form.editing_language') }}">
                 {% for lang in languages %}
                     <a class="folio-language{% if lang.active %} is-active{% endif %}" href="{{ lang.url }}"{% if lang.active %} aria-current="true"{% endif %}>{{ lang.name }}</a>
                 {% endfor %}
@@ -29,7 +29,7 @@
         {% endif %}
         {% if locale_errors|default([]) is not empty %}
             <div class="folio-locale-errors" role="alert">
-                <p>Other languages need attention:</p>
+                <p>{{ t('folio.form.other_languages') }}</p>
                 <ul>
                     {% for err in locale_errors %}
                         <li><a href="{{ err.url }}">{{ err.language }}</a>: {{ err.field }} — {{ err.messages|join(' ') }}</li>
@@ -52,7 +52,7 @@
         {% if multilingual|default(false) %}
             <input type="hidden" name="_locale" value="{{ locale }}">
             <fieldset class="folio-visibility">
-                <legend>Visible in</legend>
+                <legend>{{ t('folio.form.visible_in') }}</legend>
                 <input type="hidden" name="_locales_submitted" value="1">
                 {% for lang in languages %}
                     <label class="folio-visibility-option">
@@ -71,13 +71,13 @@
                 {{ field.html|raw }}
                 {% if multilingual|default(false) %}
                     {% if not field.translatable and not field.structured|default(false) %}
-                        <p class="folio-shared">Shared across languages</p>
+                        <p class="folio-shared">{{ t('folio.form.shared') }}</p>
                     {% elseif field.falls_back %}
-                        <p class="folio-fallback-hint">Falls back to {{ default_language }}</p>
+                        <p class="folio-fallback-hint">{{ t('folio.form.falls_back', {language: default_language}) }}</p>
                     {% endif %}
                     {% if field.translatable and field.reference %}
                         <details class="folio-reference">
-                            <summary>{{ default_language }} text</summary>
+                            <summary>{{ t('folio.form.reference', {language: default_language}) }}</summary>
                             <p>{{ field.reference }}</p>
                         </details>
                     {% endif %}
@@ -87,44 +87,44 @@
         </fieldset>
         <div class="folio-form-actions">
             {% if publishing and (can_save ?? true) and (can_publish ?? true) %}
-                <label class="folio-publish-at"><span>Publish at</span><input type="datetime-local" name="_publish_at" value="{{ publishing.publish_at }}"></label>
+                <label class="folio-publish-at"><span>{{ t('folio.form.publish_at') }}</span><input type="datetime-local" name="_publish_at" value="{{ publishing.publish_at }}"></label>
             {% endif %}
             <div class="folio-form-buttons">
-                <a class="btn btn-ghost" href="{{ prefix }}/{{ type }}">Cancel</a>
+                <a class="btn btn-ghost" href="{{ prefix }}/{{ type }}">{{ t('folio.common.cancel') }}</a>
                 {% if not (can_save ?? true) %}
                 {% elseif publishing %}
-                    <button type="submit" class="btn {{ (can_publish ?? true) ? 'btn-secondary' : 'btn-primary' }}">Save draft</button>
-                    {% if (can_publish ?? true) %}<button type="submit" class="btn btn-primary" name="_action" value="publish">Publish</button>{% endif %}
+                    <button type="submit" class="btn {{ (can_publish ?? true) ? 'btn-secondary' : 'btn-primary' }}">{{ t('folio.form.save_draft') }}</button>
+                    {% if (can_publish ?? true) %}<button type="submit" class="btn btn-primary" name="_action" value="publish">{{ t('folio.form.publish') }}</button>{% endif %}
                 {% else %}
-                    {{ form.submit('Save', {attrs: {class: 'btn btn-primary'}})|raw }}
+                    {{ form.submit(t('folio.common.save'), {attrs: {class: 'btn btn-primary'}})|raw }}
                 {% endif %}
             </div>
         </div>
         {{ form_end()|raw }}
         {% if side_panels is not empty %}
-        <aside class="folio-side" aria-label="Side panels">
+        <aside class="folio-side" aria-label="{{ t('folio.form.side_panels') }}">
             {% for panel in side_panels %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}
         </aside>
         {% endif %}
         {% set history = publishing and (publishing.revisions is not empty or publishing.discard_url or publishing.unpublish_url) %}
         {% set extras = panels|default([])|filter(p => p.position != 'side') %}
         {% if history or extras is not empty %}
-        <section class="folio-form-extras" aria-label="{{ history ? 'History and visibility' : 'More about this record' }}">
+        <section class="folio-form-extras" aria-label="{{ history ? t('folio.form.history') : t('folio.form.more') }}">
         {% for panel in extras|filter(p => p.position == 'before') %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}
         {% if history %}
         {% if publishing.revisions is not empty %}
             <details class="folio-revisions">
-                <summary><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-history"></use></svg>Revisions <span class="folio-count">{{ publishing.revisions|length }}</span></summary>
+                <summary><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-history"></use></svg>{{ t('folio.revisions.title') }} <span class="folio-count">{{ publishing.revisions|length }}</span></summary>
                 <ol class="folio-revision-list">
                     {% for rev in publishing.revisions %}
                         <li class="folio-revision">
-                            <span class="folio-revision-date">{{ rev.date|date('Y-m-d H:i') }}</span>
+                            <span class="folio-revision-date">{{ folio_date(rev.date, 'datetime') }}</span>
                             <span class="folio-revision-by">{{ rev.by ?: '—' }}</span>
-                            <span class="folio-revision-changed">Changed: {{ rev.changed is empty ? '—' : rev.changed|join(', ') }}</span>
+                            <span class="folio-revision-changed">{{ t('folio.revisions.changed', {fields: rev.changed is empty ? '—' : rev.changed|join(', ')}) }}</span>
                             {% if (can_save ?? true) %}
-                            <form method="post" action="{{ rev.restore_url }}" data-confirm="Replace the working copy with this revision?">
+                            <form method="post" action="{{ rev.restore_url }}" data-confirm="{{ t('folio.revisions.confirm_restore') }}">
                                 <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                                <button type="submit" class="btn btn-ghost">Restore</button>
+                                <button type="submit" class="btn btn-ghost">{{ t('folio.common.restore') }}</button>
                             </form>
                             {% endif %}
                         </li>
@@ -135,15 +135,15 @@
         {% if publishing.discard_url or publishing.unpublish_url %}
             <div class="folio-publish-actions">
                 {% if publishing.discard_url %}
-                    <form method="post" action="{{ publishing.discard_url }}" data-confirm="Discard all changes since the last publish?">
+                    <form method="post" action="{{ publishing.discard_url }}" data-confirm="{{ t('folio.publishing.confirm_discard') }}">
                         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                        <button type="submit" class="btn btn-ghost">Discard changes</button>
+                        <button type="submit" class="btn btn-ghost">{{ t('folio.publishing.discard') }}</button>
                     </form>
                 {% endif %}
                 {% if publishing.unpublish_url %}
-                    <form method="post" action="{{ publishing.unpublish_url }}" data-confirm="Unpublish? The public page will no longer be available.">
+                    <form method="post" action="{{ publishing.unpublish_url }}" data-confirm="{{ t('folio.publishing.confirm_unpublish') }}">
                         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                        <button type="submit" class="btn btn-danger">Unpublish</button>
+                        <button type="submit" class="btn btn-danger">{{ t('folio.publishing.unpublish') }}</button>
                     </form>
                 {% endif %}
             </div>
@@ -154,18 +154,18 @@
         {% endif %}
     </div>
     {% if previewable|default(false) %}</div>
-    <div class="folio-resizer" data-folio-resizer role="separator" aria-orientation="vertical" aria-label="Resize the preview" tabindex="0"></div>
-    <section class="folio-split-stage" data-folio-stage data-preview-url="{{ preview_url }}" aria-label="Live preview">
+    <div class="folio-resizer" data-folio-resizer role="separator" aria-orientation="vertical" aria-label="{{ t('folio.form.resize') }}" tabindex="0"></div>
+    <section class="folio-split-stage" data-folio-stage data-preview-url="{{ preview_url }}" aria-label="{{ t('folio.form.live_preview') }}">
         <div class="folio-preview-bar">
-            <span class="folio-preview-title"><span class="folio-live-dot"></span>Live preview</span>
-            <div class="folio-segmented" role="group" aria-label="Viewport">
-                {% for vp in [['Desktop', '100%', 'ui-monitor'], ['Tablet', '768px', 'ui-tablet'], ['Mobile', '375px', 'ui-phone']] %}
+            <span class="folio-preview-title"><span class="folio-live-dot"></span>{{ t('folio.form.live_preview') }}</span>
+            <div class="folio-segmented" role="group" aria-label="{{ t('folio.form.viewport') }}">
+                {% for vp in [[t('folio.form.desktop'), '100%', 'ui-monitor'], [t('folio.form.tablet'), '768px', 'ui-tablet'], [t('folio.form.mobile'), '375px', 'ui-phone']] %}
                     <button type="button" data-preview-viewport="{{ vp[1] }}" aria-pressed="{{ loop.first ? 'true' : 'false' }}" title="{{ vp[0] }}{{ loop.first ? '' : ' (' ~ vp[1] ~ ')' }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ vp[2] }}"></use></svg><span>{{ vp[0] }}</span></button>
                 {% endfor %}
             </div>
-            <button type="button" class="btn btn-ghost btn-sm folio-focus-toggle" data-folio-focus aria-pressed="false" title="Focus mode: opening a block closes the others">Focus</button>
+            <button type="button" class="btn btn-ghost btn-sm folio-focus-toggle" data-folio-focus aria-pressed="false" title="{{ t('folio.form.focus_help') }}">{{ t('folio.form.focus') }}</button>
         </div>
-        <iframe class="folio-preview-frame" name="folio-preview-frame" title="Live preview of this page"></iframe>
+        <iframe class="folio-preview-frame" name="folio-preview-frame" title="{{ t('folio.form.live_preview_frame') }}"></iframe>
     </section>
     </div>{% endif %}
 {% endblock %}

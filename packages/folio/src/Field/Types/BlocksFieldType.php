@@ -159,10 +159,10 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
 
         $count = count($list);
         if (isset($config['min']) && $count < (int) $config['min']) {
-            $errors[rtrim($prefix, '.')][] = sprintf('Add at least %d block%s.', (int) $config['min'], (int) $config['min'] === 1 ? '' : 's');
+            $errors[rtrim($prefix, '.')][] = \Preflow\Folio\FolioText::choice('folio.blocks.min', (int) $config['min']);
         }
         if (isset($config['max']) && $count > (int) $config['max']) {
-            $errors[rtrim($prefix, '.')][] = sprintf('At most %d block%s allowed.', (int) $config['max'], (int) $config['max'] === 1 ? '' : 's');
+            $errors[rtrim($prefix, '.')][] = \Preflow\Folio\FolioText::choice('folio.blocks.max', (int) $config['max']);
         }
 
         foreach ($list as $block) {
@@ -346,7 +346,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         $groups = [];
         foreach ($this->blocks->grouped($allowed) as $group => $definitions) {
             foreach ($definitions as $definition) {
-                $groups[$group][] = [
+                // Blocks without a group of their own sit under Folio's "Blocks", in the interface language.
+                $groups[$group === \Preflow\Folio\Block\Block::DEFAULT_GROUP ? \Preflow\Folio\FolioText::get('folio.blocks.group') : $group][] = [
                     'key' => $definition->key,
                     'label' => $definition->label,
                     'icon' => $definition->icon ?? 'block',
@@ -516,7 +517,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     {
         $n = count($this->fromStorage($value));
 
-        return $n === 0 ? '' : $n . ($n === 1 ? ' block' : ' blocks');
+        return $n === 0 ? '' : \Preflow\Folio\FolioText::choice('folio.blocks.count', $n);
     }
 
     public function renderFrontend(mixed $value, array $config): string

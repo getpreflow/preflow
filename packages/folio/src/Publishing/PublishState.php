@@ -11,12 +11,13 @@ enum PublishState: string
     case Published = 'published';
     case Changed = 'changed';
 
+    /** In the interface language during an admin request (FolioText), else English. */
     public function label(): string
     {
         return match ($this) {
-            self::Draft => 'Draft',
-            self::Published => 'Published',
-            self::Changed => 'Changed',
+            self::Draft => \Preflow\Folio\FolioText::get('folio.publishing.draft'),
+            self::Published => \Preflow\Folio\FolioText::get('folio.publishing.published'),
+            self::Changed => \Preflow\Folio\FolioText::get('folio.publishing.changed'),
         };
     }
 }

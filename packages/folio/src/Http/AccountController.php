@@ -56,20 +56,20 @@ final class AccountController
         $key = 'account:' . $record->getType()->key . ':' . $record->getId();
         [$max, $window] = self::LIMIT;
         if ($this->throttle->tooMany(PasswordController::THROTTLE_PASSWORD, $key, $max, $window)) {
-            return $this->page($user, 'Too many attempts. Try again later.', 429);
+            return $this->page($user, \Preflow\Folio\FolioText::get('folio.auth.throttled'), 429);
         }
         $this->throttle->hit(PasswordController::THROTTLE_PASSWORD, $key, $window);
 
         $body = (array) $request->getParsedBody();
         $password = (string) ($body['password'] ?? '');
         if (!$this->passwords->verify($record, (string) ($body['current'] ?? ''))) {
-            return $this->page($user, 'The current password is wrong.', 422);
+            return $this->page($user, \Preflow\Folio\FolioText::get('folio.account.wrong_current'), 422);
         }
         if (mb_strlen($password) < $this->passwordMin) {
-            return $this->page($user, "The new password needs at least {$this->passwordMin} characters.", 422);
+            return $this->page($user, \Preflow\Folio\FolioText::get('folio.account.new_too_short', ['min' => $this->passwordMin]), 422);
         }
         if ($password !== (string) ($body['repeat'] ?? '')) {
-            return $this->page($user, "The two passwords don't match.", 422);
+            return $this->page($user, \Preflow\Folio\FolioText::get('folio.auth.mismatch'), 422);
         }
 
         // Only the password: the record as stored, nothing from the form but the new password.
@@ -82,7 +82,7 @@ final class AccountController
         }
         $session = $request->getAttribute(SessionInterface::class);
         if ($session instanceof SessionInterface) {
-            $session->flash('success', 'Password changed. Your other sessions are signed out.');
+            $session->flash('success', \Preflow\Folio\FolioText::get('folio.account.password_changed'));
         }
 
         return new Response(302, ['Location' => $this->prefix . '/_account']);
@@ -116,6 +116,6 @@ final class AccountController
 
     private static function notFound(): ResponseInterface
     {
-        return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], 'Not found');
+        return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], \Preflow\Folio\FolioText::get('folio.errors.not_found'));
     }
 }
