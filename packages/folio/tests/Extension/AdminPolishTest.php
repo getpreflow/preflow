@@ -106,6 +106,62 @@ final class AdminPolishTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_list_column_link_renders_escaped_anchor(): void
+    {
+        $this->polish();
+        $this->as('admin');
+        $this->seed('m1', ['name' => 'Ada', 'state' => 'published']);
+
+        $body = (string) $this->send('GET', '/folio/member')->getBody();
+        $this->assertStringContainsString('<td><a href="/folio/member/m1/edit">Ada &lt;b&gt;</a></td>', $body);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_list_column_link_with_unsafe_url_is_plain_text(): void
+    {
+        $this->polish();
+        $this->as('admin');
+        $this->seed('m1', ['name' => 'Ada', 'state' => 'published']);
+
+        $body = (string) $this->send('GET', '/folio/member')->getBody();
+        $this->assertStringContainsString('<td>Evil</td>', $body);
+        $this->assertStringNotContainsString('javascript:', $body);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_export_with_a_link_column_still_works(): void
+    {
+        if (!class_exists(\OpenSpout\Reader\XLSX\Reader::class)) {
+            $this->markTestSkipped('openspout/openspout is not installed.');
+        }
+        $this->polish();
+        $this->as('admin');
+        $this->seed('m1', ['name' => 'Ada', 'state' => 'published']);
+
+        $res = $this->send('GET', '/folio/member/_export');
+        $this->assertSame(200, $res->getStatusCode());
+        $file = tempnam(sys_get_temp_dir(), 'folio_x');
+        file_put_contents($file, (string) $res->getBody());
+        $reader = new \OpenSpout\Reader\XLSX\Reader();
+        $reader->open($file);
+        $header = [];
+        $count = 0;
+        foreach ($reader->getSheetIterator() as $sheet) {
+            foreach ($sheet->getRowIterator() as $row) {
+                $count++;
+                $header = $header ?: array_map(static fn ($c) => (string) $c->getValue(), $row->getCells());
+            }
+        }
+        $reader->close();
+        unlink($file);
+        $this->assertSame(2, $count);
+        $this->assertNotSame([], $header);
+        $this->assertNotContains('Owner', $header);
+        $this->assertNotContains('Evil', $header);
+        $this->assertContains('Name', $header);
+    }
+
+    #[RunInSeparateProcess]
     public function test_list_column_unknown_tone_falls_back(): void
     {
         $this->polish();
@@ -338,6 +394,18 @@ final class AdminPolishTest extends TestCase
                 public function text(DynamicRecord $record): string
                 {
                     return 'text cell';
+                }
+
+                #[\Preflow\Folio\Extension\ListColumn('Owner', position: 50)]
+                public function owner(DynamicRecord $record): \Preflow\Folio\Extension\Link
+                {
+                    return new \Preflow\Folio\Extension\Link('Ada <b>', 'member/' . $record->getId() . '/edit');
+                }
+
+                #[\Preflow\Folio\Extension\ListColumn('Evil', position: 60)]
+                public function evil(DynamicRecord $record): \Preflow\Folio\Extension\Link
+                {
+                    return new \Preflow\Folio\Extension\Link('Evil', 'javascript:alert(1)');
                 }
             }
             PHP));

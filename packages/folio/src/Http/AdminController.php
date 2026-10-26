@@ -30,6 +30,7 @@ use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Extension\AfterSave;
 use Preflow\Folio\Extension\Badge;
+use Preflow\Folio\Extension\Link;
 use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\Customization\Customizations;
 use Preflow\Folio\Extension\Customization\Refused;
@@ -155,11 +156,20 @@ final class AdminController
                 'id' => $record->getId(),
                 'cells' => $cells,
                 'marked' => $marked,
-                // Extension columns (#[ListColumn]): plain text, or a Badge; both escaped by the template.
-                'extra' => array_map(static function (array $column) use ($record): string|array {
+                // Extension columns (#[ListColumn]): plain text, a Badge or a Link; all escaped by the template.
+                'extra' => array_map(function (array $column) use ($record): string|array {
                     $value = ($column['callable'])($record);
 
-                    return $value instanceof Badge ? ['label' => $value->label, 'tone' => $value->tone()] : (string) $value;
+                    if ($value instanceof Badge) {
+                        return ['label' => $value->label, 'tone' => $value->tone()];
+                    }
+                    if ($value instanceof Link) {
+                        $href = $value->href($this->prefix);
+
+                        return $href === null ? $value->label : ['label' => $value->label, 'href' => $href];
+                    }
+
+                    return (string) $value;
                 }, $extraColumns),
                 'languages' => $multilingual ? $this->languageBadges($typeDef, $record) : [],
                 'state' => $states !== null ? ($states[(string) $record->getId()] ?? PublishState::Draft) : null,

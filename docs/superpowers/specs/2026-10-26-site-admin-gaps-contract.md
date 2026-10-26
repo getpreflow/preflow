@@ -39,4 +39,4 @@ Release: all packages 0.38.0; site moves to `^0.38`.
 
 A5 Panel null — a `#[FormPanel]` method may return null: no heading, no box, no side column or extras section on its account; an empty string still renders.
 
-<!-- A6 (from Task 6) is appended by that task. -->
+A6 Link cell — a `#[ListColumn]` may return `Preflow\Folio\Extension\Link($label, $url)` beside `Badge`. `href($adminPrefix)`: a URL without a leading `/` is relative to the admin prefix (`member/3/edit` → `{prefix}/member/3/edit`), one leading `/` is a site path used as is; anything with a scheme or host, `//`, a backslash, or a control or whitespace character is no link and the escaped label shows as plain text. The list cell becomes `{label, href}`. Extension columns stay out of the Excel export and are not sortable.

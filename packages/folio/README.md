@@ -357,8 +357,9 @@ escaped HTML with the search matches in `<mark>` (print it with `|raw`). Use `li
 for the sort links, `list.chips`, `list.clear`, `bulk` (null without any bulk action: no tick
 column) and `export_url`. With the tick column the cell positions shift by one.
 `row.extra` holds the cells of extension `#[ListColumn]`s, in their order after the type's
-own columns (headings in `extra_columns`): each is plain text (escape it) or a badge
-`{label, tone}` (see Type customizations).
+own columns (headings in `extra_columns`): each is plain text (escape it), a badge
+`{label, tone}` or a link `{label, href}` (see Type customizations). Extension columns are
+neither in the Excel export nor sortable.
 
 At most 500 rows can be ticked for one bulk action or export (`RecordDeleter::MAX_IDS`): a
 request with more `ids[]` is refused with a 422 and changes nothing.
@@ -1111,7 +1112,7 @@ final class NoteTweaks
 |---|---|---|
 | `#[FormPanel(label, position: 'after')]` | `fn(DynamicRecord): ScreenView\|string\|null` | A panel on the edit form (not on create), `before` or `after` Folio's own extras, or `side`: a sticky column about 340 px wide to the right of the fields from 1280 px (on a previewable type in its plain form view; in split view the panels stack), stacked right under the form fields below that. A string is shown as escaped text, a `ScreenView` as a template fragment (it gets `prefix`, `csrf`, `type`, `id` and `record`). Returning `null` hides the panel (no heading, no box, and no side column or extras section on its account; an empty string still renders an empty panel). Any other position is a boot error. |
 | `#[RecordAction(name, label, permission, icon, confirm, toolbar: true)]` | `fn(DynamicRecord, ServerRequestInterface): ?ResponseInterface` | A POST button at `{prefix}/{type}/{id}/_action/{name}`; null redirects back to the form with "{label}: done". Needs the permission and the type's edit permission. With `toolbar: false` there is no button in the form header; the action stays routed and permission-checked, for a form inside a `FormPanel` to post to. |
-| `#[ListColumn(label, position: 100)]` | `fn(DynamicRecord): string\|Badge` | A column after the type's own, ordered by position, shown as escaped text, or as a status pill for `new Badge($label, $tone)` (tone `''`, `published`, `draft`, `changed` or `incomplete`; the label is escaped, an unknown tone is shown plain). |
+| `#[ListColumn(label, position: 100)]` | `fn(DynamicRecord): string\|Badge\|Link` | A column after the type's own, ordered by position, shown as escaped text, as a link for `new Link($label, $url)` (`$url` is `member/3/edit`, relative to the admin prefix, or a site path like `/shop/order?id=3`; anything with a scheme, host, `//`, backslash or whitespace is no link and shows the escaped label), or as a status pill for `new Badge($label, $tone)` (tone `''`, `published`, `draft`, `changed` or `incomplete`; the label is escaped, an unknown tone is shown plain). |
 | `#[NavBadge]` | `fn(): ?int` | A count badge on the type's sidebar item (e.g. waiting members); also on a `#[FolioScreen]` class (see Screens), computed only while the item is visible and at most once per request; `null`, `0` or any non-int return shows none, a callback that throws shows no badge (the admin still renders), several add up, one per class. Keep it cheap: it runs on admin page renders. |
 | `#[FieldPlaceholder(field)]` | `fn(string $locale): ?string` | What the field means while it is empty, as its placeholder in the edit form in the locale being edited (e.g. a standard text from the lang files); it replaces the "falls back to" placeholder of a translatable field. The field must exist on the type (boot error), one per field. |
 | `#[BeforeSave]` | `fn(DynamicRecord): void` | Before validation; may `set()` fields. Throw `Preflow\Validation\ValidationException` to refuse the save: the form is shown again with its errors (422). |
