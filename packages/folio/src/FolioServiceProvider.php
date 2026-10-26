@@ -245,6 +245,7 @@ final class FolioServiceProvider extends ServiceProvider
             $prefix,
             $c->get(FieldTypeRegistry::class),
             $c->get(\Preflow\Media\MediaConfig::class),
+            $c->get(\Preflow\Media\Image\Formats::class),
         ));
 
         // Request-scoped: public renders read published snapshots, admin routes switch it to working copies.
@@ -985,6 +986,11 @@ final class FolioServiceProvider extends ServiceProvider
             'preview-editor.js' => 'preview-editor.js',
             'trix.css' => 'vendor/trix.css',
             'trix.js' => 'vendor/trix.umd.min.js',
+            // The Edit image screen: Cropper.js (vendored) and its adapter.
+            'cropper.css' => 'vendor/cropper.min.css',
+            'cropper.js' => 'vendor/cropper.min.js',
+            'image-editor.css' => 'image-editor.css',
+            'image-editor.js' => 'image-editor.js',
             'icons.svg' => 'icons.svg',
             // The vendored htmx build from preflow/htmx (block picker fragments).
             'htmx.js' => dirname((string) (new \ReflectionClass(\Preflow\Htmx\HtmxAssets::class))->getFileName(), 2) . '/assets/htmx.min.js',

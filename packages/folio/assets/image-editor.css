@@ -1,0 +1,53 @@
+/* Folio's Edit image screen ({prefix}/assets/{id}/edit). Cropper.js brings its own cropper.css. */
+.folio-image-editor {
+  display: grid;
+  gap: 18px;
+  max-width: 1000px;
+  padding: 20px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  box-shadow: var(--shadow-sm);
+}
+.folio-image-editor p { margin: 0; }
+.folio-image-editor h2 { margin: 0 0 10px; font-size: 15px; }
+.folio-image-editor form { margin: 0; }
+
+.folio-image-editor-tools,
+.folio-image-editor-row,
+.folio-image-editor-crop,
+.folio-image-editor-format-actions,
+.folio-image-editor-format-actions form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.folio-image-editor-crop h2,
+.folio-image-editor-crop .folio-help { flex-basis: 100%; }
+.folio-image-editor-format-actions form[hidden] { display: none; }
+
+/* The cropper takes the size of this box; the image keeps its ratio inside it. */
+.folio-image-editor-stage { max-width: 100%; border-radius: var(--r-sm); overflow: hidden; background: var(--c-surface-2); }
+.folio-image-editor-stage img { display: block; max-width: 100%; max-height: 70vh; }
+
+.folio-image-editor-ratio { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+
+.folio-image-editor-format-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.folio-image-editor-format {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+}
+.folio-image-editor-format.is-active { border-color: var(--c-accent); box-shadow: 0 0 0 2px var(--c-accent-soft); }
+.folio-image-editor-format-info { display: grid; gap: 2px; min-width: 10rem; }
+.folio-image-editor-format-actions { margin-left: auto; }
+.folio-image-editor-cut {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 160px;
+  max-height: 120px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--c-border);
+  background: var(--c-surface-2);
+}

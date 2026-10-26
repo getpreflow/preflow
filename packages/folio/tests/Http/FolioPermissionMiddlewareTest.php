@@ -56,6 +56,8 @@ final class FolioPermissionMiddlewareTest extends TestCase
         yield ['Preflow\\Folio\\Http\\AssetLibraryController@save', 'assets.edit'];
         yield ['Preflow\\Folio\\Http\\AssetLibraryController@destroy', 'assets.delete'];
         yield ['Preflow\\Folio\\Http\\AssetLibraryController@replace', 'assets.edit'];
+        yield ['Preflow\\Folio\\Http\\AssetLibraryController@editor', 'assets.edit'];
+        yield ['Preflow\\Folio\\Http\\AssetLibraryController@edit', 'assets.edit'];
         yield ['Preflow\\Folio\\Http\\AssetLibraryController@restoreVersion', 'assets.edit'];
         yield ['Preflow\\Folio\\Http\\AssetLibraryController@deleteVersion', 'assets.delete'];
         yield ['Preflow\\Folio\\Http\\BlockEditorController@newBlock', '*.edit|create'];

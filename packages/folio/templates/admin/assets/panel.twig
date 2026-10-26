@@ -13,7 +13,13 @@
             {% if asset.thumb %}<img class="folio-asset-preview-image" src="{{ asset.thumb }}" alt="">{% endif %}
             <p><a href="{{ asset.url }}">{{ asset.name }}</a></p>
         {% endif %}
-        <p class="folio-asset-meta">{{ asset.mime }} · {{ (asset.size / 1024)|round(0, 'ceil') }} KB{% if asset.width %} · {{ asset.width }}×{{ asset.height }}{% endif %}</p>
+        <p class="folio-asset-meta">{{ asset.mime }} · {{ (asset.size / 1024)|round(0, 'ceil') }} KB{% if edited %} · {{ delivered.width }}×{{ delivered.height }} (original {{ asset.width }}×{{ asset.height }}){% elseif asset.width %} · {{ asset.width }}×{{ asset.height }}{% endif %}</p>
+        {% if (editable and can('assets.edit')) or edited %}
+            <p class="folio-asset-edit-actions">
+                {%- if editable and can('assets.edit') %}<a class="btn btn-secondary" href="{{ prefix }}/assets/{{ asset.id }}/edit">Edit image</a>{% endif %}
+                {%- if edited %} <a class="btn btn-ghost" href="{{ original_url }}" download>Download original</a>{% endif -%}
+            </p>
+        {% endif %}
         {% if swatches is not empty %}
             <ul class="folio-swatches" aria-label="Colours">
                 {% for s in swatches %}

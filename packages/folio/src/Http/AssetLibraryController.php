@@ -16,6 +16,9 @@ use Preflow\Media\Asset;
 use Preflow\Media\AssetUploadException;
 use Preflow\Media\AssetVersion;
 use Preflow\Media\Color\ColorRules;
+use Preflow\Media\CropRect;
+use Preflow\Media\Image\Format;
+use Preflow\Media\Image\Formats;
 use Preflow\Media\MediaConfig;
 use Preflow\Media\MediaLibrary;
 use Preflow\Media\Usage\AssetInUseException;
@@ -33,7 +36,9 @@ use Psr\Http\Message\UploadedFileInterface;
  * title, focal point, video poster, the extra fields with Folio's field types) with usage,
  * colour swatches, replace and the version list (open, restore, delete), and delete (the
  * library refuses it while used). With ?picker=1 it renders in the drawer layout and each
- * asset gets a "Select" button. Every change goes through MediaLibrary.
+ * asset gets a "Select" button. {prefix}/assets/{id}/edit is the Edit image screen: rotate,
+ * mirror, the image crop and the cover presets' cuts (Cropper.js draws the area). Every
+ * change goes through MediaLibrary; Folio only adds the UI.
  */
 final class AssetLibraryController
 {
@@ -48,7 +53,11 @@ final class AssetLibraryController
         private readonly string $prefix,
         private readonly FieldTypeRegistry $fieldTypes,
         private readonly MediaConfig $media,
+        private readonly Formats $formats,
     ) {}
+
+    /** The image crop's ratios besides "Free" and the box presets' own: label => width / height. */
+    private const array RATIOS = ['1:1' => 1.0, '4:3' => 4 / 3, '3:2' => 1.5, '16:9' => 16 / 9];
 
     public function index(ServerRequestInterface $request): ResponseInterface
     {
@@ -197,6 +206,159 @@ final class AssetLibraryController
         return $this->backToPanel($asset, 'done=version-deleted');
     }
 
+    /** The Edit image screen: the turned and mirrored original in the cropper, and each box preset's cut. */
+    public function editor(ServerRequestInterface $request): ResponseInterface
+    {
+        $asset = $this->library->find((string) $request->getAttribute('id', ''));
+        if ($asset === null || !$this->library->isEditable($asset)) {
+            return new Response(404, [], 'Not found');
+        }
+        $query = $request->getQueryParams();
+        $preset = is_string($query['preset'] ?? null) && isset($this->formats->boxes()[$query['preset']]) ? $query['preset'] : null;
+        $notice = match ($query['done'] ?? null) {
+            'rotated' => 'Rotated.',
+            'mirrored' => 'Mirrored.',
+            'cropped' => 'Cropped.',
+            'crop-removed' => 'Crop removed.',
+            'format-cropped' => $preset !== null ? 'Saved the cut of ' . $preset . '.' : null,
+            'format-reset' => $preset !== null ? 'The cut of ' . $preset . ' follows the focal point again.' : null,
+            default => null,
+        };
+
+        return $this->renderEditor($request, $asset, $notice);
+    }
+
+    /**
+     * One edit from the screen (op: rotate-left, rotate-right, flip-h, flip-v, crop, format-crop),
+     * then back to it. What the core refuses is shown with its message (422).
+     */
+    public function edit(ServerRequestInterface $request): ResponseInterface
+    {
+        $asset = $this->library->find((string) $request->getAttribute('id', ''));
+        if ($asset === null) {
+            return new Response(404, [], 'Not found');
+        }
+        try {
+            $done = $this->apply($asset->id, (array) $request->getParsedBody());
+        } catch (\InvalidArgumentException $e) {
+            return $this->renderEditor($request, $this->library->find($asset->id) ?? $asset, null, $e->getMessage(), 422);
+        } catch (\Throwable $e) {
+            error_log('folio: could not edit asset ' . $asset->id . ': ' . $e::class . ': ' . $e->getMessage());
+
+            return $this->renderEditor($request, $this->library->find($asset->id) ?? $asset, null, 'Could not edit the image. The error was logged.', 422);
+        }
+
+        return new Response(302, ['Location' => $this->prefix . '/assets/' . $asset->id . '/edit?done=' . $done]);
+    }
+
+    /**
+     * Calls the core for one edit of the screen.
+     *
+     * @param array<mixed> $body
+     * @return string the screen's "done" query
+     * @throws \InvalidArgumentException for an unknown op, a missing area, or what the core refuses
+     */
+    private function apply(string $id, array $body): string
+    {
+        $preset = is_string($body['preset'] ?? null) ? $body['preset'] : '';
+        switch ($body['op'] ?? null) {
+            case 'rotate-left':
+            case 'rotate-right':
+                $this->library->rotate($id, $body['op'] === 'rotate-left' ? -1 : 1);
+                return 'rotated';
+            case 'flip-h':
+            case 'flip-v':
+                $this->library->flip($id, $body['op'] === 'flip-h');
+                return 'mirrored';
+            case 'crop':
+                $clear = ($body['clear'] ?? null) === '1';
+                $this->library->setCrop($id, $clear ? null : self::rect($body));
+                return $clear ? 'crop-removed' : 'cropped';
+            case 'format-crop':
+                $reset = ($body['reset'] ?? null) === '1';
+                $this->library->setFormatCrop($id, $preset, $reset ? null : self::rect($body));
+                return ($reset ? 'format-reset' : 'format-cropped') . '&preset=' . rawurlencode($preset);
+            default:
+                throw new \InvalidArgumentException('Unknown edit.');
+        }
+    }
+
+    /**
+     * The area of a crop form (x, y, w, h in percent).
+     *
+     * @param array<mixed> $body
+     * @throws \InvalidArgumentException when it is missing (no area drawn, or no JavaScript)
+     */
+    private static function rect(array $body): CropRect
+    {
+        foreach (['x', 'y', 'w', 'h'] as $key) {
+            if (!is_numeric($body[$key] ?? null)) {
+                throw new \InvalidArgumentException('Draw the area on the image first.');
+            }
+        }
+
+        return CropRect::of((float) $body['x'], (float) $body['y'], (float) $body['w'], (float) $body['h']);
+    }
+
+    private function renderEditor(ServerRequestInterface $request, Asset $asset, ?string $notice, ?string $error = null, int $status = 200): ResponseInterface
+    {
+        if (!$this->library->isEditable($asset)) {
+            // Only an edit can get here with such an asset (the screen itself is a 404): the panel says why.
+            return $this->renderPanel($request, $asset, null, $error ?? 'This file cannot be edited.', 422);
+        }
+        $boxes = $this->formats->boxes();
+        $ratios = ['Free' => ''];
+        foreach (self::RATIOS as $label => $ratio) {
+            $ratios[$label] = self::ratio($ratio);
+        }
+        foreach ($boxes as $format) {
+            $ratios[$format->name . ' (' . $format->width . '×' . $format->height . ')'] = self::ratio((float) $format->ratio());
+        }
+        return $this->html($this->engine->render('@folio/admin/assets/edit.twig', [
+            'prefix' => $this->prefix,
+            'types' => $this->catalog->all(),
+            'section' => 'assets',
+            'editor_assets' => ['admin.js', 'cropper.css', 'image-editor.css', 'cropper.js', 'image-editor.js'],
+            'asset' => $this->item($asset),
+            'oriented' => $this->library->orientedUrl($asset),
+            'crop' => $asset->crop?->toArray(),
+            'edited' => $asset->isEdited(),
+            'delivered' => self::size($this->library->deliveryAsset($asset) ?? $asset),
+            'ratios' => $ratios,
+            'formats' => array_values(array_map(fn (Format $f) => $this->formatRow($asset, $f), $boxes)),
+            'notice' => $notice,
+            'error' => $error,
+            'csrf' => self::csrf($request),
+        ]), $status);
+    }
+
+    /** @return array<string, mixed> one box preset on the screen: its box, its cut now and (cover) its region */
+    private function formatRow(Asset $asset, Format $format): array
+    {
+        $plan = $this->library->boxPlan($asset, $format->name);
+        $region = $format->fit === 'cover' ? $this->library->formatRegion($asset, $format->name) : null;
+
+        return [
+            'name' => $format->name,
+            'width' => $format->width,
+            'height' => $format->height,
+            'fit' => $format->fit,
+            'ratio' => self::ratio((float) $format->ratio()),
+            'cut' => $plan !== null ? $this->library->url($plan->base . '-' . $plan->width . '.webp') : null,
+            'cut_width' => $plan?->width,
+            'cut_height' => $plan?->height,
+            'region' => $region?->toArray(),
+            'adjustable' => $format->fit === 'cover',
+            'own' => isset($asset->crops[$format->name]),
+        ];
+    }
+
+    /** A ratio as the screen's select and data attributes carry it (4 decimals). */
+    private static function ratio(float $ratio): string
+    {
+        return number_format($ratio, 4, '.', '');
+    }
+
     /**
      * A failed file change as a panel error, never a 500: an upload error's message as it is
      * (it names the file and the reason), anything else logged and reported in general words.
@@ -307,6 +469,10 @@ final class AssetLibraryController
             'swatches' => self::swatches($asset),
             'note' => $asset->note,
             'raw' => $asset,
+            'editable' => $this->library->isEditable($asset),
+            'edited' => $asset->kind() === 'image' && $asset->isEdited(),
+            'original_url' => $this->library->originalUrl($asset),
+            'delivered' => self::size($this->library->deliveryAsset($asset) ?? $asset),
             'locales' => $this->locales->available,
             'posters' => array_map(fn (Asset $a) => $this->item($a), $posters),
             'usage' => array_map(self::usageRow(...), $usage ?? $this->usage->of($asset->id)),
@@ -474,6 +640,12 @@ final class AssetLibraryController
         }
 
         return $out;
+    }
+
+    /** @return array{width: ?int, height: ?int} */
+    private static function size(Asset $asset): array
+    {
+        return ['width' => $asset->width, 'height' => $asset->height];
     }
 
     private static function by(ServerRequestInterface $request): ?string
