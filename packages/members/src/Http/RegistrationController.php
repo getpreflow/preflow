@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace Preflow\Members\Http;
 
-use Preflow\Auth\AuthManager;
 use Preflow\Auth\PasswordHasherInterface;
 use Preflow\Auth\Tokens\Tokens;
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
-use Preflow\Auth\Record\RecordUser;
 use Preflow\Members\Admission\Admission;
 use Preflow\Members\Admission\Decision;
 use Preflow\Members\Confirmation;
@@ -20,6 +18,7 @@ use Preflow\Members\Members;
 use Preflow\Members\MembersConfig;
 use Preflow\Members\MembersSettings;
 use Preflow\Members\MembersView;
+use Preflow\Members\SignIn;
 use Preflow\Members\MemberState;
 use Preflow\Members\Viewer;
 use Psr\Http\Message\ResponseInterface;
@@ -48,7 +47,7 @@ final class RegistrationController
         private readonly Locales $locales,
         private readonly Tokens $tokens,
         private readonly Throttle $throttle,
-        private readonly AuthManager $auth,
+        private readonly SignIn $signIn,
         private readonly MembersSettings $settings,
         private readonly PasswordHasherInterface $hasher,
         private readonly SafeNext $safeNext,
@@ -124,6 +123,7 @@ final class RegistrationController
             $password,
             $this->locale($request),
             $this->admission->recordValues($input),
+            request: $request,
         );
         // Only a next SafeNext keeps is stored; it is checked again when the confirmation follows it.
         if ($next !== '' && $this->safeNext->of($next, $this->locale($request)) === $next) {
@@ -167,7 +167,7 @@ final class RegistrationController
         $decision = $this->confirmation->confirm($member, $request);
         $notice = $this->admission->confirmNotice($member);
         if ($decision === Decision::Accept) {
-            $this->auth->guard(MembersConfig::GUARD)->login(new RecordUser($member), $request, remember: true);
+            $this->signIn->in($member, $request);
             // After the login, which starts a fresh session id: the landing (the site's page) shows it.
             if ($notice !== null && $notice !== '') {
                 Input::flashSet($request, Input::NOTICE, $notice);

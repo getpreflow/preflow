@@ -89,6 +89,8 @@ return [
         'delete_text' => 'Cette action supprime votre compte et vos données personnelles. Elle est irréversible. Vous pouvez vous réinscrire à tout moment.',
         'confirm' => 'Je comprends que cette action supprime mon compte.',
         'delete_submit' => 'Supprimer mon compte',
+        'refused_told' => "Votre compte ne peut pas être supprimé pour le moment. Le site a été informé et vous contactera.",
+        'refused_contact' => 'Votre compte ne peut pas être supprimé pour le moment. Veuillez nous contacter.',
         'errors' => [
             'current' => 'Le mot de passe actuel est incorrect.',
             'delete_current' => 'Le mot de passe actuel est incorrect.',
@@ -128,6 +130,14 @@ return [
         'declined' => [
             'subject' => 'À propos de votre inscription',
             'body' => "Bonjour {name},\n\nMerci de votre intérêt. Malheureusement, nous ne pouvons pas vous ouvrir de compte pour le moment.\n\nCordialement",
+        ],
+        // à l'adresse de notification quand un membre n'a pas pu supprimer son propre compte
+        'deletion_refused' => [
+            'subject' => "{name} n'a pas pu supprimer son compte",
+            'body' => "{name} <{email}> a demandé la suppression de son compte, mais il n'a pas été supprimé : {reason}\n\nVeuillez prendre contact avec cette personne.\n\nOuvrir dans Folio : {folio_url}",
+            'body_without_link' => "{name} <{email}> a demandé la suppression de son compte, mais il n'a pas été supprimé : {reason}\n\nVeuillez prendre contact avec cette personne.",
+            'restricted' => 'des enregistrements y font encore référence ({records}).',
+            'listener' => 'le site a refusé la suppression.',
         ],
     ],
 ];

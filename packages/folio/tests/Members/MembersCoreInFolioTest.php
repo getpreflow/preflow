@@ -198,6 +198,34 @@ final class MembersCoreInFolioTest extends TestCase
         $this->assertSame(303, $this->send('GET', '/members/account', cookies: ['site_member' => $cookie])->getStatusCode(), 'a declined member is out');
     }
 
+    #[RunInSeparateProcess]
+    public function test_a_staff_delete_in_folio_follows_on_delete_not_the_self_rule(): void
+    {
+        $this->flowSite(files: ['config/models/order.json' => (string) json_encode([
+            'key' => 'order', 'table' => 'order', 'storage' => 'members', 'id_field' => 'uuid', 'label' => 'Orders',
+            'fields' => [
+                'title' => ['type' => 'string'],
+                'member' => ['type' => 'relation', 'relation' => ['to' => 'member', 'onDelete' => 'restrict', 'onSelfDelete' => 'detach']],
+            ],
+        ])]);
+        $m = $this->makeMember();
+        $dm = $this->flow->container()->get(\Preflow\Data\DataManager::class);
+        $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get('order'), ['uuid' => 'o1', 'title' => 'Order', 'member' => (string) $m->getId()]), false);
+        $deleter = new \Preflow\Folio\Content\RecordDeleter($dm, $this->flow->container()->get(TypeCatalog::class));
+
+        $this->assertTrue($deleter->plan('member', [(string) $m->getId()])->restricted(), 'staff: onDelete restrict');
+        try {
+            $deleter->delete('member', [(string) $m->getId()]);
+            $this->fail('the staff delete is refused');
+        } catch (\Preflow\Folio\Extension\Customization\Refused) {
+        }
+        $this->assertNotNull($dm->findType('member', (string) $m->getId()));
+
+        // The member's own deletion takes the self rule on the same site.
+        $this->assertTrue($this->flow->container()->get(\Preflow\Members\Members::class)->delete($m)->deleted);
+        $this->assertSame('', (string) $dm->findType('order', 'o1')?->get('member'));
+    }
+
     private static function stable(string $html): string
     {
         return (string) preg_replace(['/(name="_csrf_token" value=")[^"]+/', '/(nonce=")[^"]+/', '/(Nonce":")[^"]+/'], '$1…', $html);

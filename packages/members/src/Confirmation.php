@@ -13,7 +13,8 @@ use Psr\Http\Message\ServerRequestInterface;
  * What follows a proven address, whoever proved it (the confirm link, or a project with
  * Members::register(…, emailVerified: true)): the member is confirmed, the configured Admission
  * decides, and the member becomes "member" or "pending" (then the owner hears of it).
- * Signing in and where to go next are the caller's.
+ * Signing in and where to go next are the caller's. Raises MemberEvents::CONFIRMED (Members::decide()
+ * raises DECIDED).
  */
 final class Confirmation
 {
@@ -22,11 +23,13 @@ final class Confirmation
         private readonly Admission $admission,
         private readonly MemberMailer $mailer,
         private readonly MembersSettings $settings,
+        private readonly ?MemberEvents $events = null,
     ) {}
 
     public function confirm(DynamicRecord $member, ServerRequestInterface $request): Decision
     {
         $this->members->confirm($member);
+        $this->events?->dispatch(MemberEvents::CONFIRMED, ['member' => $member, 'request' => $request]);
         $decision = $this->admission->afterConfirm($member, $request);
         if ($decision === Decision::Accept) {
             $this->members->decide($member, 'member');

@@ -89,6 +89,8 @@ return [
         'delete_text' => 'This removes your account and your personal data. It cannot be undone. You can register again at any time.',
         'confirm' => 'I understand this deletes my account.',
         'delete_submit' => 'Delete my account',
+        'refused_told' => "Your account can't be deleted right now. The site has been told and will get in touch with you.",
+        'refused_contact' => "Your account can't be deleted right now. Please contact us.",
         'errors' => [
             'current' => 'The current password is wrong.',
             'delete_current' => 'The current password is wrong.',
@@ -130,6 +132,14 @@ return [
         'declined' => [
             'subject' => 'About your registration',
             'body' => "Hi {name},\n\nthank you for your interest. Unfortunately we can't give you an account at this time.\n\nBest regards",
+        ],
+        // to the notice address when a member's own deletion was refused
+        'deletion_refused' => [
+            'subject' => '{name} could not delete their account',
+            'body' => "{name} <{email}> asked to delete their account, but it was not deleted: {reason}\n\nPlease get in touch with them.\n\nOpen in Folio: {folio_url}",
+            'body_without_link' => "{name} <{email}> asked to delete their account, but it was not deleted: {reason}\n\nPlease get in touch with them.",
+            'restricted' => 'records still point to it ({records}).',
+            'listener' => 'the site refused the deletion.',
         ],
     ],
 ];

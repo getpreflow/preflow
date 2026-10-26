@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Members;
 
+use Preflow\Data\DeletePlan;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
 use Preflow\I18n\Translator;
@@ -95,6 +96,31 @@ final class MemberMailer
             'email' => (string) $m->get('email'),
             'details' => $details,
         ] + ($url !== null && $url !== '' ? ['folio_url' => $url] : []), $url !== null && $url !== '' ? 'body' : 'body_without_link'), $onFailure);
+    }
+
+    /**
+     * The owner's mail about a member whose own deletion was refused, in the site's default locale:
+     * why ($reason 'restricted': the types still pointing at the account, with counts; 'listener':
+     * the site refused) and the member's page when a package names one. Sent at once, so the
+     * caller knows whether it went out.
+     *
+     * @throws TransportException
+     */
+    public function deletionRefused(DynamicRecord $m, string $to, DeletePlan $plan, string $reason): void
+    {
+        $lang = $this->locales->default;
+        $records = implode(', ', array_map(
+            static fn (string $type, int $n): string => "{$type}: {$n}",
+            array_keys($plan->restrictions()),
+            $plan->restrictions(),
+        ));
+        $why = strtr($this->translator->get('members.mail.deletion_refused.' . ($reason === 'restricted' ? 'restricted' : 'listener'), [], $lang), ['{records}' => $records]);
+        $url = $this->memberLinks?->decisionUrl($m);
+        $this->notifier->send($this->build('deletion_refused', $lang, $to, [
+            'name' => (string) $m->get('name'),
+            'email' => (string) $m->get('email'),
+            'reason' => $why,
+        ] + ($url !== null && $url !== '' ? ['folio_url' => $url] : []), $url !== null && $url !== '' ? 'body' : 'body_without_link'));
     }
 
     /** @throws TransportException */

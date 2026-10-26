@@ -18,7 +18,8 @@ use Preflow\Members\MembersConfig;
 /**
  * Nightly from cron: unconfirmed accounts go after retention.unconfirmed_days (7) from registration,
  * declined ones after retention.declined_days (30) from the decision (config/members.php), and
- * expired tokens, remember rows and throttle hits are pruned. Prints counts only, never an email
+ * expired tokens, remember rows and throttle hits are pruned. Deletions go through Members::delete() (the self
+ * rules, the DELETING / DELETED hooks); an account a restrict rule or a hook keeps is counted as kept. Prints counts only, never an email
  * or a name. The package lists it in composer.json (extra.preflow.commands), so it needs no setup.
  */
 final class PruneMembersCommand implements CommandInterface
@@ -51,7 +52,7 @@ final class PruneMembersCommand implements CommandInterface
             $config = $c->get(MembersConfig::class);
             $members = $c->get(Members::class);
 
-            $unconfirmed = $declined = 0;
+            $unconfirmed = $declined = $kept = 0;
             foreach ($c->get(DataManager::class)->queryType(MembersConfig::TYPE)->get() as $m) {
                 if (!$m instanceof DynamicRecord) {
                     continue;
@@ -59,7 +60,11 @@ final class PruneMembersCommand implements CommandInterface
                 $state = MemberState::fromRecord($m);
                 if ($state === MemberState::Unconfirmed && $this->expired($m->get('registered_at'), $config->retention('unconfirmed'), $now)
                     || $state === MemberState::Declined && $this->expired($m->get('decided_at'), $config->retention('declined'), $now)) {
-                    $members->delete($m);
+                    // The member's own rules (onSelfDelete): no one asked, so a refusal tells no one; it is counted.
+                    if (!$members->delete($m, byMember: false)->deleted) {
+                        $kept++;
+                        continue;
+                    }
                     $state === MemberState::Unconfirmed ? $unconfirmed++ : $declined++;
                 }
             }
@@ -72,7 +77,8 @@ final class PruneMembersCommand implements CommandInterface
             fclose($lock);
         }
 
-        echo "members:prune — deleted {$unconfirmed} unconfirmed, {$declined} declined; pruned tokens, remember, throttle\n";
+        $refused = $kept > 0 ? "; kept {$kept} (refused by a self rule or a hook)" : '';
+        echo "members:prune — deleted {$unconfirmed} unconfirmed, {$declined} declined{$refused}; pruned tokens, remember, throttle\n";
 
         return 0;
     }

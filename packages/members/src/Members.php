@@ -6,10 +6,17 @@ namespace Preflow\Members;
 
 use Preflow\Auth\PasswordHasherInterface;
 use Preflow\Data\DataManager;
+use Preflow\Data\DeletedBy;
+use Preflow\Data\DeletePlan;
 use Preflow\Data\DynamicRecord;
 use Nyholm\Psr7\ServerRequest;
+use Psr\Http\Message\ServerRequestInterface;
 
-/** Member records: registration, confirmation, the owner's decision, deletion. */
+/**
+ * Member records: registration, confirmation, the owner's decision, deletion. Raises the
+ * MemberEvents REGISTERED, DECIDED and DELETING / DELETED / DELETION_REFUSED (with the services
+ * from the container; a bare Members raises none and tells no one).
+ */
 final class Members
 {
     private const string TYPE = MembersConfig::TYPE;
@@ -22,12 +29,16 @@ final class Members
     /**
      * @param ?\Closure(): \DateTimeImmutable $now UTC clock, injectable for tests
      * @param ?\Closure(): Confirmation $confirmation what follows a proven address (resolved when first needed: the admission may need Members)
+     * @param ?\Closure(DynamicRecord, DeletePlan, string): bool $refusalNotice tells the owner of a refused own deletion
+     *        (the member, the plan, the reason); returns whether a notice went out
      */
     public function __construct(
         private readonly DataManager $dm,
         private readonly PasswordHasherInterface $hasher,
         ?\Closure $now = null,
         private readonly ?\Closure $confirmation = null,
+        private readonly ?MemberEvents $events = null,
+        private readonly ?\Closure $refusalNotice = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }
@@ -69,11 +80,14 @@ final class Members
      * it, a sign-in elsewhere); Members never assumes so. The member is confirmed at once and the
      * admission decides as after a confirmation ({@see Confirmation}: a member, or pending with
      * the owner's notice); no confirmation mail is sent. Sign the member in with {@see SignIn}.
-     * The admission's afterConfirm() gets the current request as PHP sees it ($_SERVER).
+     * The admission's afterConfirm() gets $request, else the current request as PHP sees it ($_SERVER).
+     *
+     * Raises MemberEvents::REGISTERED (with $request, null when none was given), then for a
+     * verified address CONFIRMED and DECIDED.
      *
      * @param array<string, mixed> $extra
      */
-    public function register(string $email, string $name, string $password, string $language, array $extra = [], bool $emailVerified = false): DynamicRecord
+    public function register(string $email, string $name, string $password, string $language, array $extra = [], bool $emailVerified = false, ?ServerRequestInterface $request = null): DynamicRecord
     {
         if ($emailVerified && $this->confirmation === null) {
             throw new \LogicException('Members::register(emailVerified: true) needs the members services (Members from the container).');
@@ -100,8 +114,9 @@ final class Members
             'auth_epoch' => '0',
         ] + $extra);
         $this->dm->saveType($record, false);
+        $this->events?->dispatch(MemberEvents::REGISTERED, ['member' => $record, 'request' => $request]);
         if ($emailVerified) {
-            ($this->confirmation)()->confirm($record, self::currentRequest());
+            ($this->confirmation)()->confirm($record, $request ?? self::currentRequest());
         }
 
         return $record;
@@ -138,7 +153,11 @@ final class Members
         $this->save($m);
     }
 
-    /** @param string $role member, pending or rejected */
+    /**
+     * The admission's or the owner's decision; raises MemberEvents::DECIDED.
+     *
+     * @param string $role member, pending or rejected
+     */
     public function decide(DynamicRecord $m, string $role): void
     {
         $m->set('roles', [$role]);
@@ -146,6 +165,7 @@ final class Members
             $m->set('decided_at', $this->stamp());
         }
         $this->save($m);
+        $this->events?->dispatch(MemberEvents::DECIDED, ['member' => $m, 'role' => $role]);
     }
 
     /**
@@ -160,9 +180,46 @@ final class Members
         $this->save($m);
     }
 
-    public function delete(DynamicRecord $m): void
+    /**
+     * The member's own deletion: through the data delete plan with the self rules (each relation's
+     * onSelfDelete; without one, its onDelete). Pointing records are detached or deleted with the
+     * member (cascade), in one transaction per SQL connection (JSON-file writes are not undone).
+     *
+     * Refused, with nothing changed, when a self rule says restrict or a MemberEvents::DELETING
+     * listener returns false. Then, when $byMember, the owner gets a notice at
+     * MembersSettings::noticeEmail() (if set) and DELETION_REFUSED is raised; the result's "told"
+     * says whether the site knows (the notice went out, or a listener returned true). Without
+     * $byMember (members:prune, a confirm mail that failed: no one asked) a refusal tells no one.
+     *
+     * Raises DELETING before and DELETED after a deletion (the record as it was, the plan applied).
+     */
+    public function delete(DynamicRecord $m, bool $byMember = true): DeletionResult
     {
-        $this->dm->deleteType(self::TYPE, (string) $m->getId());
+        $id = (string) $m->getId();
+        $plan = $this->dm->deletePlan(self::TYPE, [$id], null, DeletedBy::Self);
+        if ($plan->restricted()) {
+            return $this->refused($m, $plan, 'restricted', $byMember);
+        }
+        if ($this->events !== null && !$this->events->dispatch(MemberEvents::DELETING, ['member' => $m, 'plan' => $plan])) {
+            return $this->refused($m, $plan, 'listener', $byMember);
+        }
+        $this->dm->executeDeletePlan($plan);
+        $this->events?->dispatch(MemberEvents::DELETED, ['id' => $id, 'member' => $m, 'plan' => $plan]);
+
+        return new DeletionResult(deleted: true, refused: false, told: false, plan: $plan);
+    }
+
+    private function refused(DynamicRecord $m, DeletePlan $plan, string $reason, bool $byMember): DeletionResult
+    {
+        if (!$byMember) {
+            return new DeletionResult(deleted: false, refused: true, told: false, plan: $plan, reason: $reason);
+        }
+        $sent = $this->refusalNotice !== null && ($this->refusalNotice)($m, $plan, $reason);
+        $handled = $this->events?->handled(MemberEvents::DELETION_REFUSED, [
+            'member' => $m, 'plan' => $plan, 'reason' => $reason, 'notice_sent' => $sent,
+        ]) ?? false;
+
+        return new DeletionResult(deleted: false, refused: true, told: $sent || $handled, plan: $plan, reason: $reason);
     }
 
     /**
@@ -175,9 +232,7 @@ final class Members
         if ($m === null || MemberState::fromRecord($m) !== MemberState::Unconfirmed) {
             return false;
         }
-        $this->delete($m);
-
-        return true;
+        return $this->delete($m, byMember: false)->deleted;
     }
 
     /** Confirmed accounts the owner has not decided yet. */

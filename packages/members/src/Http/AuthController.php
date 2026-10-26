@@ -19,6 +19,7 @@ use Preflow\Members\MemberMailer;
 use Preflow\Members\Members;
 use Preflow\Members\MembersConfig;
 use Preflow\Members\MembersView;
+use Preflow\Members\SignIn;
 use Preflow\Members\MemberState;
 use Preflow\Members\Viewer;
 use Psr\Http\Message\ResponseInterface;
@@ -46,6 +47,7 @@ final class AuthController
         private readonly RememberMe $remember,
         private readonly PasswordHasherInterface $hasher,
         private readonly DataManager $dm,
+        private readonly SignIn $signIn,
     ) {}
 
     public function form(ServerRequestInterface $request): ResponseInterface
@@ -98,7 +100,7 @@ final class AuthController
         $user = new RecordUser($member);
         // An outdated hash (an imported $1$, an older cost) is upgraded while the password is at hand.
         PasswordRehash::afterVerify(new RecordUserProvider($this->dm, ['type' => MembersConfig::TYPE]), $user, $password, $this->hasher);
-        $this->auth->guard(MembersConfig::GUARD)->login($user, $request, remember: true);
+        $this->signIn->in($member, $request);
         $this->throttle->clear($purpose, $client);
         $this->throttle->clear($purpose, $key);
 
@@ -175,7 +177,7 @@ final class AuthController
         $this->members->setPassword($member, $password);
         $this->remember->revokeAll(MembersConfig::GUARD, $id);
         $this->tokens->revokeAll(MembersConfig::RESET_PURPOSE, $id);
-        $this->auth->guard(MembersConfig::GUARD)->login(new RecordUser($member), $request, remember: true);
+        $this->signIn->in($member, $request);
 
         return $this->view->redirect($this->links->localize($this->locale($request), $this->config->landing()));
     }

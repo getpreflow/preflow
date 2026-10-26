@@ -15,6 +15,8 @@ use Preflow\Core\Container\Container;
 use Preflow\Core\Container\Exceptions\ContainerException;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Data\DataManager;
+use Preflow\Data\DeletePlan;
+use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
 use Preflow\I18n\Translator;
 use Preflow\I18n\TranslationExtensionProvider;
@@ -30,7 +32,7 @@ use Preflow\View\TemplateEngineInterface;
 
 /**
  * Binds the members services: MembersConfig (config/members.php; a missing file means the
- * defaults), Members, Confirmation, SignIn, Links, LinkValidity, MemberMailer, the configured Admission and the
+ * defaults), MemberEvents (the hooks), Members, Confirmation, SignIn, Links, LinkValidity, MemberMailer, the configured Admission and the
  * owner's settings (ConfigMembersSettings, unless a package such as Folio's members admin binds
  * its own), and adds the package copy (lang/{locale}/members.php) under the site's own. A site's
  * resources/members/ is put in front of the package templates (@members) when it exists. Boot
@@ -61,19 +63,24 @@ final class MembersServiceProvider extends ServiceProvider
         if (!$container->bound(MembersSettings::class)) {
             $container->singleton(MembersSettings::class, static fn (Container $c): MembersSettings => new ConfigMembersSettings($c->get(MembersConfig::class)));
         }
+        // The hooks: one registry; projects add listeners in their provider's boot().
+        $container->singleton(MemberEvents::class, static fn (): MemberEvents => new MemberEvents());
         $container->singleton(Members::class, static fn (Container $c): Members => new Members(
             $c->get(DataManager::class),
             $c->get(PasswordHasherInterface::class),
             null,
             static fn (): Confirmation => $c->get(Confirmation::class),
+            $c->get(MemberEvents::class),
+            static fn (DynamicRecord $m, DeletePlan $plan, string $reason): bool => self::refusalNotice($c, $m, $plan, $reason),
         ));
         $container->singleton(Confirmation::class, static fn (Container $c): Confirmation => new Confirmation(
             $c->get(Members::class),
             $c->get(Admission::class),
             $c->get(MemberMailer::class),
             $c->get(MembersSettings::class),
+            $c->get(MemberEvents::class),
         ));
-        $container->singleton(SignIn::class, static fn (Container $c): SignIn => new SignIn($c->get(AuthManager::class)));
+        $container->singleton(SignIn::class, static fn (Container $c): SignIn => new SignIn($c->get(AuthManager::class), $c->get(MemberEvents::class)));
         $container->singleton(LinkValidity::class, static fn (Container $c): LinkValidity => new LinkValidity(
             $c->get(Translator::class),
             $c->get(MembersConfig::class),
@@ -133,6 +140,27 @@ final class MembersServiceProvider extends ServiceProvider
         $access = $c->get(Access::class);
         if ($access->resolver() instanceof DefaultResolver) {
             $access->setResolver(new MemberAccess($access->resolver()));
+        }
+    }
+
+    /**
+     * The owner's notice of a refused own deletion, at MembersSettings::noticeEmail(): whether it
+     * went out (no address: false; a failed mail is logged without the address: false).
+     */
+    private static function refusalNotice(Container $c, DynamicRecord $m, DeletePlan $plan, string $reason): bool
+    {
+        $to = $c->get(MembersSettings::class)->noticeEmail();
+        if ($to === null) {
+            return false;
+        }
+        try {
+            $c->get(MemberMailer::class)->deletionRefused($m, $to, $plan, $reason);
+
+            return true;
+        } catch (\Throwable $e) {
+            error_log(sprintf('members: deletion refused notice failed for member %s (%s)', (string) $m->getId(), $e::class));
+
+            return false;
         }
     }
 

@@ -89,6 +89,8 @@ return [
         'delete_text' => 'Das entfernt Ihr Konto und Ihre persönlichen Daten. Es lässt sich nicht rückgängig machen. Sie können sich jederzeit neu registrieren.',
         'confirm' => 'Ich verstehe, dass mein Konto damit gelöscht wird.',
         'delete_submit' => 'Mein Konto löschen',
+        'refused_told' => 'Ihr Konto kann im Moment nicht gelöscht werden. Die Website wurde informiert und meldet sich bei Ihnen.',
+        'refused_contact' => 'Ihr Konto kann im Moment nicht gelöscht werden. Bitte kontaktieren Sie uns.',
         'errors' => [
             'current' => 'Das aktuelle Passwort stimmt nicht.',
             'delete_current' => 'Das aktuelle Passwort stimmt nicht.',
@@ -128,6 +130,14 @@ return [
         'declined' => [
             'subject' => 'Zu Ihrer Registrierung',
             'body' => "Guten Tag {name}\n\nVielen Dank für Ihr Interesse. Leider können wir Ihnen im Moment kein Konto geben.\n\nFreundliche Grüsse",
+        ],
+        // an die Benachrichtigungsadresse, wenn ein Mitglied sein Konto nicht selbst löschen konnte
+        'deletion_refused' => [
+            'subject' => '{name} konnte das Konto nicht löschen',
+            'body' => "{name} <{email}> wollte das eigene Konto löschen, es wurde aber nicht gelöscht: {reason}\n\nBitte nehmen Sie Kontakt auf.\n\nIn Folio öffnen: {folio_url}",
+            'body_without_link' => "{name} <{email}> wollte das eigene Konto löschen, es wurde aber nicht gelöscht: {reason}\n\nBitte nehmen Sie Kontakt auf.",
+            'restricted' => 'Es verweisen noch Datensätze darauf ({records}).',
+            'listener' => 'Die Website hat die Löschung abgelehnt.',
         ],
     ],
 ];
