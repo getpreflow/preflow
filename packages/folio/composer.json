@@ -43,5 +43,12 @@
         "psr-4": {
             "Preflow\\Folio\\Tests\\": "tests/"
         }
+    },
+    "extra": {
+        "preflow": {
+            "translations": {
+                "folio": { "path": "lang", "scope": "admin" }
+            }
+        }
     }
 }

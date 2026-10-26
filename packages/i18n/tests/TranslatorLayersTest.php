@@ -1,0 +1,191 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\I18n\Tests;
+
+use PHPUnit\Framework\TestCase;
+use Preflow\I18n\NoTranslationOverrides;
+use Preflow\I18n\Tests\Support\TempLang;
+use Preflow\I18n\TranslationOverrides;
+use Preflow\I18n\Translator;
+
+/** Layers (override > site file > package file), scopes, the locale fallback chain. */
+final class TranslatorLayersTest extends TestCase
+{
+    use TempLang;
+
+    protected function tearDown(): void
+    {
+        $this->removeTmp();
+    }
+
+    /** @param array<string, array<string, string>> $map locale => key => text */
+    private static function overrides(array $map): TranslationOverrides
+    {
+        return new class ($map) implements TranslationOverrides {
+            /** @param array<string, array<string, string>> $map */
+            public function __construct(private readonly array $map) {}
+
+            public function get(string $locale, string $key): ?string
+            {
+                return $this->map[$locale][$key] ?? null;
+            }
+        };
+    }
+
+    private function translator(string $locale = 'en', string $fallback = 'en'): Translator
+    {
+        $site = $this->tmp() . '/lang';
+        $pkg = $this->tmp() . '/pkg/lang';
+        $this->langFile('pkg/lang', 'en', 'adm', ['a' => 'Package A', 'b' => 'Package B', 'c' => 'Package C']);
+        $this->langFile('pkg/lang', 'en', 'pub', ['a' => 'Public package A']);
+        $this->langFile('lang', 'en', 'adm', ['b' => 'Site B', 'c' => 'Site C']);
+        $this->langFile('lang', 'en', 'pub', ['a' => 'Public site A']);
+
+        $t = new Translator($site, $locale, $fallback);
+        $t->addDefaults('adm', $pkg);
+        $t->addDefaults('pub', $pkg);
+        $t->setScopes(['adm' => 'admin', 'pub' => 'public']);
+        $t->setOverrides(self::overrides(['en' => ['adm.c' => 'Override C', 'pub.a' => 'Public override']]));
+
+        return $t;
+    }
+
+    public function test_admin_group_with_overrides_on(): void
+    {
+        $t = $this->translator();
+        $t->useOverrides(true);
+
+        $this->assertSame('Override C', $t->get('adm.c'), 'override first');
+        $this->assertSame('Site B', $t->get('adm.b'), 'then the site file');
+        $this->assertSame('Package A', $t->get('adm.a'), 'then the package');
+    }
+
+    public function test_public_group_ignores_overrides(): void
+    {
+        $t = $this->translator();
+        $t->useOverrides(true);
+
+        $this->assertSame('Public site A', $t->get('pub.a'));
+    }
+
+    public function test_overrides_are_off_by_default_and_when_turned_off(): void
+    {
+        $t = $this->translator();
+        $this->assertSame('Site C', $t->get('adm.c'), 'off by default');
+
+        $t->useOverrides(true);
+        $t->useOverrides(false);
+        $this->assertSame('Site C', $t->get('adm.c'));
+        $this->assertSame('Public site A', $t->get('pub.a'));
+    }
+
+    public function test_no_overrides_returns_null(): void
+    {
+        $this->assertNull((new NoTranslationOverrides())->get('en', 'adm.c'));
+    }
+
+    public function test_fallback_chain_locale_then_site_default_then_en(): void
+    {
+        $this->langFile('lang', 'en', 'g', ['only_en' => 'English only']);
+        $this->langFile('lang', 'de', 'g', ['only_de' => 'Nur Deutsch']);
+        $t = new Translator($this->tmp() . '/lang', 'fr', 'de');
+
+        $this->assertSame('English only', $t->get('g.only_en'));
+        $this->assertSame('Nur Deutsch', $t->get('g.only_de'));
+        $this->assertSame('g.nowhere', $t->get('g.nowhere'));
+        $this->assertSame('English only', $t->choice('g.only_en', 2));
+    }
+
+    public function test_overrides_follow_the_fallback_chain(): void
+    {
+        $t = $this->translator('fr', 'de');
+        $t->useOverrides(true);
+
+        $this->assertSame('Override C', $t->get('adm.c'), 'no fr or de text: the en override');
+    }
+
+    public function test_parameters_and_plurals(): void
+    {
+        $this->langFile('lang', 'de', 'g', ['hello' => 'Hallo :name', 'files' => ':count Datei|:count Dateien']);
+        $this->langFile('lang', 'fr', 'g', ['hello' => 'Bonjour :name', 'files' => ':count fichier|:count fichiers']);
+        $t = new Translator($this->tmp() . '/lang', 'de', 'de');
+
+        $this->assertSame('Hallo Ana', $t->get('g.hello', ['name' => 'Ana']));
+        $this->assertSame('1 Datei', $t->choice('g.files', 1));
+        $this->assertSame('2 Dateien', $t->choice('g.files', 2));
+
+        $t->setLocale('fr');
+        $this->assertSame('1 fichier', $t->choice('g.files', 1));
+        $this->assertSame('2 fichiers', $t->choice('g.files', 2));
+    }
+
+    public function test_has_checks_one_locale_with_all_layers(): void
+    {
+        $t = $this->translator();
+        $this->langFile('lang', 'de', 'adm', ['d' => 'Site D']);
+        $this->assertTrue($t->has('adm.a'));
+        $this->assertTrue($t->has('adm.b', 'en'));
+        $this->assertFalse($t->has('adm.a', 'de'), 'no fallback');
+        $this->assertTrue($t->has('adm.d', 'de'));
+        $this->assertFalse($t->has('adm.nope'));
+        $this->assertFalse($t->has('adm'), 'a whole group is not a key');
+
+        $t->setOverrides(self::overrides(['de' => ['adm.x' => 'Ü']]));
+        $this->assertFalse($t->has('adm.x', 'de'), 'overrides off');
+        $t->useOverrides(true);
+        $this->assertTrue($t->has('adm.x', 'de'));
+    }
+
+    public function test_groups_lists_package_and_site_groups(): void
+    {
+        $t = $this->translator();
+        $this->langFile('lang', 'de', 'site', ['x' => 'X']);
+
+        $this->assertSame(['adm', 'pub', 'site'], $t->groups());
+    }
+
+    public function test_locales_with_files_per_group_or_overall(): void
+    {
+        $t = $this->translator();
+        $this->langFile('pkg/lang', 'fr', 'adm', ['a' => 'A fr']);
+        $this->langFile('lang', 'de', 'site', ['x' => 'X']);
+
+        $this->assertSame(['en', 'fr'], $t->locales('adm'));
+        $this->assertSame(['de'], $t->locales('site'));
+        $this->assertSame([], $t->locales('nope'));
+        $this->assertSame(['de', 'en', 'fr'], $t->locales());
+    }
+
+    public function test_entries_are_flattened_full_keys_of_one_locale(): void
+    {
+        $t = $this->translator();
+        $this->langFile('lang', 'en', 'nest', ['a' => ['b' => 'AB', 'c' => ['d' => 'ACD']], 'e' => 'E']);
+        $t->useOverrides(true);
+
+        $this->assertSame(['adm.a' => 'Package A', 'adm.b' => 'Site B', 'adm.c' => 'Site C'], $t->entries('adm', 'en'), 'site over package, no overrides');
+        $this->assertSame(['nest.a.b' => 'AB', 'nest.a.c.d' => 'ACD', 'nest.e' => 'E'], $t->entries('nest', 'en'));
+        $this->assertSame([], $t->entries('adm', 'fr'), 'no fallback');
+    }
+
+    public function test_add_defaults_if_missing_only_registers_undeclared_groups(): void
+    {
+        $t = $this->translator();
+        $this->langFile('other/lang', 'en', 'adm', ['a' => 'Other A']);
+        $this->langFile('other/lang', 'en', 'late', ['a' => 'Late A']);
+
+        $t->addDefaultsIfMissing('adm', $this->tmp() . '/other/lang', 'public');
+        $t->addDefaultsIfMissing('late', $this->tmp() . '/other/lang', 'admin');
+
+        $this->assertSame('Package A', $t->get('adm.a'), 'already declared: no-op');
+        $this->assertSame('admin', $t->scope('adm'), 'scope untouched');
+        $this->assertSame('Late A', $t->get('late.a'));
+        $this->assertSame('admin', $t->scope('late'));
+    }
+
+    public function test_fallback_locale_is_readable(): void
+    {
+        $this->assertSame('de', (new Translator($this->tmp(), 'fr', 'de'))->getFallbackLocale());
+    }
+}

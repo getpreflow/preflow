@@ -39,6 +39,19 @@ final class FolioServiceProviderTest extends TestCase
         $this->assertSame('GET /{...path}', $last);
     }
 
+    /** Without Composer metadata listing Folio (as here), the provider still registers its texts. */
+    public function test_folio_texts_are_registered_without_composer_metadata(): void
+    {
+        $app = Application::create(['app' => ['debug' => true]]);
+        $app->setRouter(new Router(pagesDir: null, controllers: []));
+        $app->registerProvider(new FolioServiceProvider());
+        $app->boot();
+
+        $translator = $app->container()->get(\Preflow\I18n\Translator::class);
+        $this->assertSame('admin', $translator->scope('folio'));
+        $this->assertSame('Your account for {site}', $translator->get('folio.mail.invite.subject', [], 'en'));
+    }
+
     /** @return iterable<string, array{list<class-string>}> */
     public static function providerOrders(): iterable
     {

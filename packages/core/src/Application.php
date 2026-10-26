@@ -833,13 +833,13 @@ final class Application
             return;
         }
 
-        // Boot with interface strings (lang/) and/or a locale config: a
-        // content-only multilingual app may have config/i18n.php but no lang/ yet.
+        // A translator is always booted: installed packages bring their texts (extra.preflow.translations).
+        // Locale detection only with interface strings (lang/) and/or a locale config (a
+        // content-only multilingual app may have config/i18n.php but no lang/ yet), so a
+        // site with neither keeps its frontend unchanged.
         $langDir = $this->basePath('lang');
         $i18nPath = $this->basePath('config/i18n.php');
-        if (!is_dir($langDir) && !file_exists($i18nPath)) {
-            return;
-        }
+        $localized = is_dir($langDir) || file_exists($i18nPath);
 
         $i18nConfig = file_exists($i18nPath) ? (array) require $i18nPath : [];
         $locale = (string) ($i18nConfig['default'] ?? $this->config->get('app.locale', 'en'));
@@ -849,6 +849,11 @@ final class Application
 
         $translator = new \Preflow\I18n\Translator($langDir, $locale, $fallback);
         $this->container->instance(\Preflow\I18n\Translator::class, $translator);
+        if (class_exists(\Preflow\I18n\TranslationRegistry::class)) {
+            $registry = \Preflow\I18n\TranslationRegistry::fromInstalled($this->basePath('vendor/composer/installed.json'));
+            $registry->apply($translator);
+            $this->container->instance(\Preflow\I18n\TranslationRegistry::class, $registry);
+        }
 
         // t()/tc() and locale helpers
         if ($this->container->has(\Preflow\View\TemplateEngineInterface::class)) {
@@ -859,7 +864,7 @@ final class Application
 
         // Locale middleware. No cookie by default with the prefix strategy (the URL
         // carries the locale), so sites can truthfully claim "no cookies".
-        if (class_exists(\Preflow\I18n\LocaleMiddleware::class)) {
+        if ($localized && class_exists(\Preflow\I18n\LocaleMiddleware::class)) {
             $this->addMiddleware(new \Preflow\I18n\LocaleMiddleware(
                 $translator,
                 $available,

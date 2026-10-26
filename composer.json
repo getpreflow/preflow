@@ -159,6 +159,7 @@
             "Preflow\\Codes\\Tests\\": "packages/codes/tests/",
             "Preflow\\Folio\\Tests\\": "packages/folio/tests/",
             "Preflow\\Form\\Tests\\": "packages/form/tests/",
+            "Preflow\\I18n\\Tests\\": "packages/i18n/tests/",
             "Preflow\\Media\\Tests\\": "packages/media/tests/",
             "Preflow\\Members\\Tests\\": "packages/members/tests/",
             "Preflow\\Notify\\Tests\\": "packages/notify/tests/",

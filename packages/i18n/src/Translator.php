@@ -4,9 +4,24 @@ declare(strict_types=1);
 
 namespace Preflow\I18n;
 
+/**
+ * Translations by dot key ("group.area.name"). For each locale of the fallback chain (the
+ * asked locale, then the fallback locale given to the constructor, then "en") the first
+ * layer that has the key wins: an admin override (only when overrides are on and the
+ * group's scope is "admin"), then the site's lang/{locale}/{group}.php key by key, then
+ * the package's file (addDefaults(), usually through TranslationRegistry). A key found
+ * nowhere comes back as the key itself.
+ */
 final class Translator
 {
     private string $locale;
+
+    /** @var array<string, string> group => 'admin'|'public' */
+    private array $scopes = [];
+
+    private TranslationOverrides $overrides;
+
+    private bool $overridesOn = false;
 
     /** @var array<string, array<string, mixed>> Cache: "locale.group" => translations */
     private array $loaded = [];
@@ -20,6 +35,7 @@ final class Translator
         private readonly string $fallbackLocale,
     ) {
         $this->locale = $locale;
+        $this->overrides = new NoTranslationOverrides();
     }
 
     /**
@@ -30,24 +46,9 @@ final class Translator
      */
     public function get(string $key, array $params = [], ?string $locale = null): string
     {
-        $locale ??= $this->locale;
-        $value = $this->resolve($key, $locale);
+        $value = $this->lookup($key, $locale ?? $this->locale);
 
-        // Fallback to default locale
-        if ($value === null && $locale !== $this->fallbackLocale) {
-            $value = $this->resolve($key, $this->fallbackLocale);
-        }
-
-        // Key not found — return the key itself
-        if ($value === null) {
-            return $key;
-        }
-
-        if (!is_string($value)) {
-            return $key;
-        }
-
-        return $this->replaceParams($value, $params);
+        return $value === null ? $key : $this->replaceParams($value, $params);
     }
 
     /**
@@ -57,23 +58,25 @@ final class Translator
      */
     public function choice(string $key, int $count, array $params = [], ?string $locale = null): string
     {
-        $locale ??= $this->locale;
-        $value = $this->resolve($key, $locale);
-
-        if ($value === null && $locale !== $this->fallbackLocale) {
-            $value = $this->resolve($key, $this->fallbackLocale);
-        }
-
-        if ($value === null || !is_string($value)) {
+        $value = $this->lookup($key, $locale ?? $this->locale);
+        if ($value === null) {
             return $key;
         }
 
-        $resolver = new PluralResolver();
-        $resolved = $resolver->resolve($value, $count);
-
+        $resolved = (new PluralResolver())->resolve($value, $count);
         $params['count'] = (string) $count;
 
         return $this->replaceParams($resolved, $params);
+    }
+
+    /**
+     * Whether the key has a text in exactly this locale (default: the current one), in any
+     * layer: an override (when on and the group is admin), the site file or the package file.
+     * No fallback to other locales.
+     */
+    public function has(string $key, ?string $locale = null): bool
+    {
+        return $this->valueIn($key, $locale ?? $this->locale) !== null;
     }
 
     /**
@@ -91,6 +94,104 @@ final class Translator
         }
     }
 
+    /**
+     * Register a package's files for a group only when nothing registered the group yet
+     * (a declaration in the package's composer.json, extra.preflow.translations, normally
+     * does). For apps without Composer metadata listing the package, e.g. test apps.
+     *
+     * @param 'admin'|'public' $scope
+     */
+    public function addDefaultsIfMissing(string $group, string $langPath, string $scope = 'admin'): void
+    {
+        if (isset($this->defaults[$group])) {
+            return;
+        }
+        $this->addDefaults($group, $langPath);
+        $this->scopes[$group] ??= $scope;
+    }
+
+    /**
+     * Groups' scopes: 'admin' (admin interface, staff mails: overridable on admin requests)
+     * or 'public'. Merged into the scopes set before.
+     *
+     * @param array<string, string> $scopes group => scope
+     */
+    public function setScopes(array $scopes): void
+    {
+        $this->scopes = array_replace($this->scopes, $scopes);
+    }
+
+    public function scope(string $group): ?string
+    {
+        return $this->scopes[$group] ?? null;
+    }
+
+    public function setOverrides(TranslationOverrides $overrides): void
+    {
+        $this->overrides = $overrides;
+    }
+
+    /** Overrides are off by default; Folio turns them on for admin requests. */
+    public function useOverrides(bool $on): void
+    {
+        $this->overridesOn = $on;
+    }
+
+    /**
+     * Every group with package files or a site file, sorted.
+     *
+     * @return list<string>
+     */
+    public function groups(): array
+    {
+        $groups = array_keys($this->defaults);
+        foreach (glob($this->langPath . '/*/*.php') ?: [] as $file) {
+            $groups[] = basename($file, '.php');
+        }
+        $groups = array_values(array_unique(array_map('strval', $groups)));
+        sort($groups);
+
+        return $groups;
+    }
+
+    /**
+     * The locales with a file for the group (or for any group): package files and the
+     * site's lang/, sorted.
+     *
+     * @return list<string>
+     */
+    public function locales(?string $group = null): array
+    {
+        $dirs = [$this->langPath];
+        foreach ($group === null ? $this->defaults : [$this->defaults[$group] ?? []] as $paths) {
+            array_push($dirs, ...$paths);
+        }
+        $locales = [];
+        foreach ($dirs as $dir) {
+            foreach (glob($dir . '/*/' . ($group ?? '*') . '.php') ?: [] as $file) {
+                $locales[] = basename(dirname($file));
+            }
+        }
+        $locales = array_values(array_unique($locales));
+        sort($locales);
+
+        return $locales;
+    }
+
+    /**
+     * A group's texts in exactly one locale (site file over package file, no overrides, no
+     * fallback), flattened to full dot keys: ['folio.common.save' => 'Save', ...].
+     *
+     * @return array<string, string>
+     */
+    public function entries(string $group, string $locale): array
+    {
+        $entries = [];
+        self::flatten($this->loadGroup($locale, $group), $group, $entries);
+
+        return $entries;
+    }
+
     public function getLocale(): string
     {
         return $this->locale;
@@ -99,6 +200,54 @@ final class Translator
     public function setLocale(string $locale): void
     {
         $this->locale = $locale;
+    }
+
+    /** The site's default locale, the second step of the fallback chain. */
+    public function getFallbackLocale(): string
+    {
+        return $this->fallbackLocale;
+    }
+
+    /** The first text along the fallback chain: the locale, the fallback locale, then en. */
+    private function lookup(string $key, string $locale): ?string
+    {
+        foreach (array_unique([$locale, $this->fallbackLocale, 'en']) as $candidate) {
+            $value = $this->valueIn($key, $candidate);
+            if ($value !== null) {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    /** The text in exactly one locale: an override (when it applies), else the files. */
+    private function valueIn(string $key, string $locale): ?string
+    {
+        if ($this->overridesOn && ($this->scopes[strstr($key, '.', true) ?: $key] ?? null) === 'admin') {
+            $override = $this->overrides->get($locale, $key);
+            if ($override !== null) {
+                return $override;
+            }
+        }
+        $value = $this->resolve($key, $locale);
+
+        return is_string($value) ? $value : null;
+    }
+
+    /**
+     * @param array<mixed>          $data
+     * @param array<string, string> $into
+     */
+    private static function flatten(array $data, string $prefix, array &$into): void
+    {
+        foreach ($data as $key => $value) {
+            if (is_array($value)) {
+                self::flatten($value, $prefix . '.' . $key, $into);
+            } elseif (is_string($value)) {
+                $into[$prefix . '.' . $key] = $value;
+            }
+        }
     }
 
     /**

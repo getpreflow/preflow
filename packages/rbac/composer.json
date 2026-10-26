@@ -37,7 +37,10 @@
             "extension": "Preflow\\Rbac\\Extension"
         },
         "preflow": {
-            "commands": ["Preflow\\Rbac\\Console\\ImportConfigStaffCommand"]
+            "commands": ["Preflow\\Rbac\\Console\\ImportConfigStaffCommand"],
+            "translations": {
+                "rbac": { "path": "lang", "scope": "admin" }
+            }
         }
     }
 }

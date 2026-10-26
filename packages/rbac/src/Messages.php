@@ -12,8 +12,8 @@ use Preflow\I18n\Translator;
 
 /**
  * The rbac strings (lang/{locale}/rbac.php, a site's lang/{locale}/rbac.php laid over them
- * key by key) through the app's translator; an app without one (no lang/ and no
- * config/i18n.php) gets a translator of its own here. Folio's admin is English-only and
+ * key by key) through the app's translator; an app without one (a core before 0.37 with
+ * no lang/ and no config/i18n.php) gets a translator of its own here. Folio's admin is English-only and
  * the translator's locale is the content locale, so get() answers in English by default;
  * de and fr are there for a caller that asks for them.
  */
@@ -29,7 +29,9 @@ final class Messages
             $locale = $c->get(Locales::class)->default;
             $translator = new Translator($c->get(Application::class)->basePath('lang'), $locale, $locale);
         }
-        $translator->addDefaults('rbac', dirname(__DIR__) . '/lang');
+        // Declared in composer.json (extra.preflow.translations); this covers apps whose Composer
+        // metadata doesn't list the package (test apps, a core before 0.37).
+        $translator->addDefaultsIfMissing('rbac', dirname(__DIR__) . '/lang', 'admin');
 
         return new self($translator);
     }

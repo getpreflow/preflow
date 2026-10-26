@@ -38,7 +38,9 @@ final class MembersServiceProvider extends ServiceProvider
     public function register(Container $container): void
     {
         self::siteTemplates($container);
-        self::translator($container)->addDefaults('members', dirname(__DIR__) . '/lang');
+        // Declared in composer.json (extra.preflow.translations); this covers apps whose Composer
+        // metadata doesn't list the package (test apps, a core before 0.37).
+        self::translator($container)->addDefaultsIfMissing('members', dirname(__DIR__) . '/lang', 'public');
         $container->singleton(MembersConfig::class, static fn (Container $c): MembersConfig => MembersConfig::fromFile(
             $c->get(Application::class)->basePath('config/members.php'),
         ));
@@ -152,7 +154,7 @@ final class MembersServiceProvider extends ServiceProvider
     {
         try {
             return $c->get(Translator::class);
-        } catch (ContainerException) {
+        } catch (ContainerException) { // a core before 0.37 boots none without lang/ or config/i18n.php
             $locale = $c->get(Locales::class)->default;
             $translator = new Translator($c->get(Application::class)->basePath('lang'), $locale, $locale);
             $c->instance(Translator::class, $translator);

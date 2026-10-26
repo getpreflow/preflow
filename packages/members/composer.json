@@ -42,7 +42,10 @@
             "extension": "Preflow\\Members\\Extension"
         },
         "preflow": {
-            "commands": ["Preflow\\Members\\Console\\PruneMembersCommand"]
+            "commands": ["Preflow\\Members\\Console\\PruneMembersCommand"],
+            "translations": {
+                "members": { "path": "lang", "scope": "public" }
+            }
         }
     }
 }

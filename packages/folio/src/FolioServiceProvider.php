@@ -572,10 +572,12 @@ final class FolioServiceProvider extends ServiceProvider
                 $locale = $c->get(\Preflow\Data\Locales::class)->default;
                 try {
                     $translator = $c->get(\Preflow\I18n\Translator::class);
-                } catch (\Throwable) { // the app has no translator (no lang/, no config/i18n.php): one for the mails
+                } catch (\Throwable) { // a core before 0.37 boots no translator without lang/ or config/i18n.php: one for the mails
                     $translator = new \Preflow\I18n\Translator($app->basePath('lang'), $locale, $locale);
                 }
-                $translator->addDefaults('folio', dirname(__DIR__) . '/lang');
+                // Declared in composer.json (extra.preflow.translations); this covers apps whose
+                // Composer metadata doesn't list Folio (test apps, a core before 0.37).
+                $translator->addDefaultsIfMissing('folio', dirname(__DIR__) . '/lang', 'admin');
 
                 return new \Preflow\Folio\Users\StaffMailer(
                     $c->get(\Preflow\Notify\Notifier::class),
@@ -591,6 +593,13 @@ final class FolioServiceProvider extends ServiceProvider
 
     public function boot(Container $container): void
     {
+        // Folio's texts are declared in composer.json (extra.preflow.translations); this covers
+        // apps whose Composer metadata doesn't list Folio (test apps). In boot: an app may
+        // register Folio before it boots its translator.
+        if ($container->bound(\Preflow\I18n\Translator::class)) {
+            $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('folio', dirname(__DIR__) . '/lang', 'admin');
+        }
+
         $app = $container->get(Application::class);
         $screens = $container->get(ScreenRegistry::class);
         $this->registerFieldKinds($container, $app);
