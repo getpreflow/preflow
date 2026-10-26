@@ -216,6 +216,23 @@ final class Translator
     }
 
     /**
+     * The languages the site offers: the locales with any file in the site's own lang/, sorted.
+     *
+     * @return list<string>
+     */
+    public function siteLocales(): array
+    {
+        $locales = [];
+        foreach (glob($this->langPath . '/*/*.php') ?: [] as $file) {
+            $locales[] = basename(dirname($file));
+        }
+        $locales = array_values(array_unique($locales));
+        sort($locales);
+
+        return $locales;
+    }
+
+    /**
      * A group's texts in exactly one locale (site file over package file, no overrides, no
      * fallback), flattened to full dot keys: ['folio.common.save' => 'Save', ...].
      *

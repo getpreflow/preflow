@@ -157,6 +157,46 @@ final class TranslationsCheckCommandTest extends TestCase
         $this->assertStringNotContainsString('model labels', $this->check(['--group=site'], ['g.fields.thing.size.label' => 'Size'])[1]);
     }
 
+    public function test_keys_a_site_adds_to_a_package_group_are_checked_only_in_the_sites_languages(): void
+    {
+        // g is delivered in en, de and fr; the site offers en and de and adds a key to g there.
+        $this->langFile('vendor/acme/g/lang', 'fr', 'g', ['a' => 'A fr', 'nest' => ['b' => 'B fr']]);
+        $this->langFile('lang', 'en', 'g', ['extra' => 'Site extra']);
+        $this->langFile('lang', 'de', 'g', ['extra' => 'Site extra de']);
+
+        [$code, $out] = $this->check();
+
+        $this->assertSame(0, $code, $out);
+        $this->assertStringNotContainsString('g.extra', $out);
+    }
+
+    public function test_a_site_added_key_is_still_needed_in_a_language_the_site_offers(): void
+    {
+        $this->langFile('vendor/acme/g/lang', 'fr', 'g', ['a' => 'A fr', 'nest' => ['b' => 'B fr']]);
+        $this->langFile('lang', 'en', 'g', ['extra' => 'Site extra']);
+        $this->langFile('lang', 'de', 'site', ['x' => 'X de']);
+        $this->langFile('lang', 'en', 'site', ['x' => 'X']);
+
+        [$code, $out] = $this->check();
+
+        $this->assertSame(1, $code, $out);
+        $this->assertMatchesRegularExpression('/\bde\b.*\(g\b.*g\.extra/s', $out);
+        $this->assertDoesNotMatchRegularExpression('/\bfr\b.*\(g\b.*g\.extra/s', $out, 'the site has no French files');
+    }
+
+    public function test_a_package_key_missing_in_a_delivered_language_still_exits_1_beside_site_keys(): void
+    {
+        $this->langFile('vendor/acme/g/lang', 'fr', 'g', ['a' => 'A fr']);
+        $this->langFile('lang', 'en', 'g', ['extra' => 'Site extra']);
+        $this->langFile('lang', 'de', 'g', ['extra' => 'Site extra de']);
+
+        [$code, $out] = $this->check();
+
+        $this->assertSame(1, $code);
+        $this->assertMatchesRegularExpression('/\bfr\b.*g\.nest\.b/s', $out);
+        $this->assertStringNotContainsString('g.extra', $out);
+    }
+
     public function test_metadata(): void
     {
         $command = new TranslationsCheckCommand();

@@ -147,8 +147,10 @@ php preflow translations:check --group=folio
 The release gate for "no raw keys". It lists:
 
 - per group and language, the keys that exist in English but not in that language (site and
-  package files together). A package group is checked in every language any package delivers;
-  a site group in the languages it has files for;
+  package files together). A package group's own keys are checked in every language any
+  package delivers; keys a site adds to a package group (in its `lang/en/{group}.php`) only in
+  the languages the site has `lang/` files for, so a site offering English and German isn't
+  asked for French texts of its own keys; a site group in the languages it has files for;
 - keys used as `t('…')` in package templates and model files and in the site's `app/`,
   `resources/`, `templates/` and `config/models/`, that exist in no language;
 - derived keys (model labels) of package groups that have no text in a delivered language,

@@ -161,6 +161,16 @@ final class TranslatorLayersTest extends TestCase
         $this->assertSame(['de', 'en', 'fr'], $t->locales());
     }
 
+    public function test_site_locales_are_the_languages_of_the_sites_own_files(): void
+    {
+        $t = $this->translator();
+        $this->langFile('pkg/lang', 'fr', 'adm', ['a' => 'A fr']);
+        $this->langFile('lang', 'de', 'site', ['x' => 'X']);
+
+        $this->assertNotContains('fr', $t->siteLocales(), 'a package language is not a site language');
+        $this->assertContains('de', $t->siteLocales());
+    }
+
     public function test_entries_are_flattened_full_keys_of_one_locale(): void
     {
         $t = $this->translator();

@@ -13,8 +13,9 @@ use Preflow\I18n\Translator;
 /**
  * preflow translations:check [--group=<group>]: the release gate for "no raw keys".
  * Lists, per group and language, the keys that exist in English but not in that language
- * (site file and package file together; a package group is checked in every language any
- * package delivers, a site-only group in the languages it has files for), and the keys used as t('…') in package
+ * (site file and package file together; a package group's package keys are checked in every
+ * language any package delivers and the keys only the site adds to it in the languages the
+ * site has lang/ files for; a site-only group in the languages it has files for), and the keys used as t('…') in package
  * templates and model files (of packages declaring translations) and in the site's
  * (app/, resources/, templates/, config/models/) that exist in no language. Keys derived
  * from other files (DerivedKeys: model files' labels, which Folio registers) are checked
@@ -67,16 +68,22 @@ final class TranslationsCheckCommand implements CommandInterface
         $delivered = array_values(array_unique($delivered));
         sort($delivered);
 
+        $siteLocales = $translator->siteLocales();
         foreach ($groups as $group) {
-            $english = $translator->entries($group, 'en');
-            $expected = $translator->scope($group) !== null
+            $package = $translator->scope($group) !== null;
+            // A package group: its package keys in every delivered language; keys only the
+            // site adds to it in the languages the site offers (has lang/ files for).
+            $english = $package ? $translator->packageEntries($group, 'en') : $translator->entries($group, 'en');
+            $siteOnly = $package ? array_diff_key($translator->siteEntries($group, 'en'), $english) : [];
+            $expected = $package
                 ? array_unique([...$delivered, ...$translator->locales($group)])
                 : $translator->locales($group);
             foreach ($expected as $locale) {
                 if ($locale === 'en') {
                     continue;
                 }
-                $missing = array_keys(array_diff_key($english, $translator->entries($group, $locale)));
+                $required = in_array($locale, $siteLocales, true) ? $english + $siteOnly : $english;
+                $missing = array_keys(array_diff_key($required, $translator->entries($group, $locale)));
                 if ($missing === []) {
                     continue;
                 }
