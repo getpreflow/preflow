@@ -33,18 +33,9 @@ final readonly class Relation
             return null;
         }
 
-        $onDelete = OnDelete::tryFrom((string) ($config['onDelete'] ?? OnDelete::Detach->value));
-        if ($onDelete === null) {
-            throw new \InvalidArgumentException(sprintf(
-                'Unknown onDelete "%s" on relation %s.%s (use detach, cascade or restrict)',
-                is_scalar($config['onDelete']) ? (string) $config['onDelete'] : get_debug_type($config['onDelete']),
-                $type,
-                $field->name,
-            ));
-        }
-
-        // Own-account deletion: an unset or unknown value follows onDelete.
-        $onSelfDelete = OnDelete::tryFrom((string) ($config['onSelfDelete'] ?? '')) ?? $onDelete;
+        $onDelete = self::rule($config, 'onDelete', OnDelete::Detach, $type, $field->name);
+        // Own-account deletion: unset follows onDelete; a set value is parsed like onDelete.
+        $onSelfDelete = self::rule($config, 'onSelfDelete', $onDelete, $type, $field->name);
 
         $labelField = $config['labelField'] ?? null;
 
@@ -57,5 +48,28 @@ final readonly class Relation
             onSelfDelete: $onSelfDelete,
             labelField: is_string($labelField) && $labelField !== '' ? $labelField : null,
         );
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    private static function rule(array $config, string $key, OnDelete $default, string $type, string $field): OnDelete
+    {
+        if (!isset($config[$key])) {
+            return $default;
+        }
+        $raw = $config[$key];
+        $rule = is_scalar($raw) ? OnDelete::tryFrom((string) $raw) : null;
+        if ($rule === null) {
+            throw new \InvalidArgumentException(sprintf(
+                'Unknown %s "%s" on relation %s.%s (use detach, cascade or restrict)',
+                $key,
+                is_scalar($raw) ? (string) $raw : get_debug_type($raw),
+                $type,
+                $field,
+            ));
+        }
+
+        return $rule;
     }
 }

@@ -100,12 +100,26 @@ final class DeletePlannerSelfRuleTest extends TestCase
         $this->assertSame(['person' => ['p1'], 'item' => ['i1']], $dm->deletePlan('person', ['p1'], null, DeletedBy::Self)->deletes());
     }
 
-    public function test_invalid_self_rule_falls_back_to_on_delete(): void
+    public function test_invalid_self_rule_throws_like_on_delete(): void
     {
-        $dm = $this->dm(['onDelete' => 'restrict', 'onSelfDelete' => 'bogus']);
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Unknown onSelfDelete "detech" on relation item.owner');
 
-        $this->assertTrue($dm->deletePlan('person', ['p1'], null, DeletedBy::Self)->restricted());
-        $relation = $dm->relationsTo('person')[0];
+        $this->dm(['onDelete' => 'restrict', 'onSelfDelete' => 'detech'])->relationsTo('person');
+    }
+
+    public function test_non_scalar_self_rule_throws_without_a_warning(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Unknown onSelfDelete "array"');
+
+        $this->dm(['onSelfDelete' => ['x']])->relationsTo('person');
+    }
+
+    public function test_unset_self_rule_follows_on_delete(): void
+    {
+        $relation = $this->dm(['onDelete' => 'restrict'])->relationsTo('person')[0];
+
         $this->assertSame(OnDelete::Restrict, $relation->onSelfDelete);
     }
 }

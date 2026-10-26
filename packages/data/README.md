@@ -298,6 +298,7 @@ free-text kinds). The pointer is stored as today: an id string, or a JSON array 
 | `to` | Target type. A field without it is no relation. |
 | `multiple` | Several targets (JSON array) instead of one. Default `false`. |
 | `onDelete` | What deleting a *target* does to the pointing records (see [Delete plans](#delete-plans)): `detach` (default) removes the id from the pointer, `cascade` deletes the pointing record too, `restrict` refuses the delete. Any other value throws `InvalidArgumentException`. |
+| `onSelfDelete` | The same choices, applied when the owner deletes their own record (`deletePlan(..., DeletedBy::Self)`) instead of staff. Unset follows `onDelete`; any other value throws `InvalidArgumentException`. |
 | `labelField` | The target field shown and searched as its label. |
 
 ```php
