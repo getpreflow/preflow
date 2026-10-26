@@ -9,7 +9,8 @@ should use them too, so its screens read like the delivered ones.
 
 - **German:** "du" in the admin interface and in staff mails ("Wähle dein Passwort"). Standard
   spelling with ß ("Schließen", "Größe", "Freundliche Grüße"). A dash in a sentence is a
-  spaced em dash (" — "), as in English.
+  spaced en dash (" – "), as German writes it ("Nicht gespeichert – prüfe deine Verbindung");
+  English and French keep the spaced em dash (" — ").
   - Exception: members' **public** texts (`members` group: member pages and mails to
     members) keep "Sie" and their present wording, so public pages stay byte-identical.
 - **French:** neutral wording where possible (infinitives on buttons: "Enregistrer",

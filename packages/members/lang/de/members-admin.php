@@ -38,7 +38,7 @@ return [
     'decision' => [
         'title' => 'Entscheidung',
         'registered' => 'Registriert am :date',
-        'unconfirmed' => 'Noch nicht bestätigt — nichts zu entscheiden.',
+        'unconfirmed' => 'Noch nicht bestätigt – nichts zu entscheiden.',
         'accept' => 'Annehmen',
         'decline' => 'Ablehnen',
         'accept_send' => 'Annehmen und senden',
@@ -46,9 +46,9 @@ return [
         'message_to' => 'Nachricht an :name',
         'sent_in' => 'Wird auf :language gesendet. Die Vorlage kommt aus den Mitglieder-Einstellungen; du kannst sie frei bearbeiten.',
         'empty_message' => 'Die Nachricht ist leer.',
-        'cant_accept' => ':state: Annehmen nicht möglich — nichts wurde geändert.',
-        'cant_decline' => ':state: Ablehnen nicht möglich — nichts wurde geändert.',
-        'mail_failed' => 'Die Mail konnte nicht gesendet werden — nichts wurde geändert.',
+        'cant_accept' => ':state: Annehmen nicht möglich – nichts wurde geändert.',
+        'cant_decline' => ':state: Ablehnen nicht möglich – nichts wurde geändert.',
+        'mail_failed' => 'Die Mail konnte nicht gesendet werden – nichts wurde geändert.',
         'languages' => [
             'en' => 'Englisch',
             'de' => 'Deutsch',

@@ -47,6 +47,7 @@ final class MembersAdminTranslationTest extends TestCase
         }
         foreach ($translator->entries('members-admin', 'de') as $key => $text) {
             $this->assertDoesNotMatchRegularExpression('/\b(Sie|Ihr|Ihre|Ihren|Ihnen)\b/u', $text, $key);
+            $this->assertStringNotContainsString(' — ', $text, $key . ': German uses the spaced en dash " – "');
         }
         foreach (['list.state', 'decision.title', 'decision.accept_send', 'permissions.access', 'roles.members.pending', 'types.members_settings.label', 'fields.members_settings.registration_open.label'] as $key) {
             $this->assertContains('members-admin.' . $key, $keys, $key);

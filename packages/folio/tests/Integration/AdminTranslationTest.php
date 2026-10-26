@@ -409,6 +409,21 @@ final class AdminTranslationTest extends TestCase
         $this->assertSame([], array_values(array_diff($keys['fr'], $keys['en'])), 'only in fr');
     }
 
+    public function test_german_writes_a_spaced_en_dash_and_natural_wording(): void
+    {
+        foreach (self::translator('de')->entries('folio', 'de') as $key => $text) {
+            $this->assertStringNotContainsString(' — ', $text, $key . ': German uses the spaced en dash " – "');
+        }
+        $de = self::translator('de');
+        $this->assertSame('Als Entwurf gespeichert – nicht veröffentlicht.', $de->get('folio.form.not_published'));
+        $this->assertSame('Wie im System', $de->get('folio.layout.theme_system'));
+        foreach (['fields', 'js'] as $area) {
+            $this->assertSame('Nach oben', $de->get("folio.{$area}.up"), $area);
+            $this->assertSame('Nach unten', $de->get("folio.{$area}.down"), $area);
+        }
+        $this->assertSame('Folio – Inhalte mit', $de->get('folio.auth.powered_by'));
+    }
+
     private static function translator(string $locale): Translator
     {
         $translator = new Translator(sys_get_temp_dir() . '/folio-no-site-lang', $locale, 'en');
