@@ -1072,6 +1072,9 @@ final class AdminController
         $assets = null;
         foreach ($custom['panels'] as $panel) {
             $result = ($panel['callable'])($record);
+            if ($result === null) {
+                continue; // null hides the panel: no heading, no box, no assets
+            }
             if ($result instanceof ScreenView && $result->assets !== [] && $this->pageAssets !== null) {
                 $own = $this->pageAssets->resolve($panel['extension'], $result->assets, $panel['owner']);
                 $assets ??= ['styles' => [], 'scripts' => [], 'modules' => [], 'htmx' => false];

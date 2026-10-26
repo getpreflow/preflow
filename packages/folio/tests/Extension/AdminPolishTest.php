@@ -142,6 +142,44 @@ final class AdminPolishTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_panel_returning_null_renders_nothing(): void
+    {
+        $this->polish();
+        $this->as('admin');
+        $this->seed('m1', ['name' => 'Hidden', 'state' => 'waiting']);
+
+        $edit = (string) $this->send('GET', '/folio/member/m1/edit')->getBody();
+        $this->assertStringNotContainsString('Maybe', $edit);
+        $this->assertStringContainsString('<h2 class="folio-panel-title">Decision</h2>', $edit);
+        $this->assertStringContainsString('Plain after', $edit);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_only_null_panels_leave_no_side_column(): void
+    {
+        $this->polish(allNull: true);
+        $this->as('admin');
+        $this->seed('m1', ['name' => 'Ada', 'state' => 'waiting']);
+
+        $edit = (string) $this->send('GET', '/folio/member/m1/edit')->getBody();
+        $this->assertStringNotContainsString('has-side', $edit);
+        $this->assertStringNotContainsString('<aside class="folio-side"', $edit);
+        $this->assertStringNotContainsString('folio-form-extras', $edit);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_panel_returning_a_string_renders_as_before(): void
+    {
+        $this->polish();
+        $this->as('admin');
+        $this->seed('m1', ['name' => 'Ada', 'state' => 'waiting']);
+
+        $edit = (string) $this->send('GET', '/folio/member/m1/edit')->getBody();
+        $this->assertStringContainsString('<h2 class="folio-panel-title">Maybe</h2>', $edit);
+        $this->assertStringContainsString('shown', $edit);
+    }
+
+    #[RunInSeparateProcess]
     public function test_unknown_panel_position_is_rejected(): void
     {
         $this->polish();
@@ -196,7 +234,7 @@ final class AdminPolishTest extends TestCase
         $this->assertStringNotContainsString('hidden', $box);
     }
 
-    private function polish(): void
+    private function polish(bool $allNull = false): void
     {
         $this->write('app/Folio/Polish/Extension.php', <<<'PHP'
             <?php
@@ -218,7 +256,7 @@ final class AdminPolishTest extends TestCase
                 <button type="submit" class="btn btn-primary">Send</button>
             </form>
             TWIG);
-        $this->write('app/Folio/Polish/Types/MemberAdmin.php', <<<'PHP'
+        $this->write('app/Folio/Polish/Types/MemberAdmin.php', str_replace('__ALL_NULL__', $allNull ? 'true' : 'false', <<<'PHP'
             <?php
             namespace App\Folio\Polish\Types;
 
@@ -230,18 +268,32 @@ final class AdminPolishTest extends TestCase
             #[\Preflow\Folio\Extension\Attributes\FolioType('member')]
             final class MemberAdmin
             {
+                private const ALL_NULL = __ALL_NULL__;
+
                 public function __construct(private readonly DataManager $dm) {}
 
                 #[\Preflow\Folio\Extension\FormPanel('Decision', position: 'side')]
                 public function decision(DynamicRecord $record): ScreenView
                 {
-                    return new ScreenView('@polish/decision.twig');
+                    return self::ALL_NULL ? null : new ScreenView('@polish/decision.twig');
+                }
+
+                #[\Preflow\Folio\Extension\FormPanel('Maybe', position: 'side')]
+                public function maybe(DynamicRecord $record): ?string
+                {
+                    return self::ALL_NULL || $record->get('name') === 'Hidden' ? null : 'shown';
+                }
+
+                #[\Preflow\Folio\Extension\FormPanel('Maybe after')]
+                public function maybeAfter(DynamicRecord $record): ?string
+                {
+                    return self::ALL_NULL || $record->get('name') === 'Hidden' ? null : 'shown';
                 }
 
                 #[\Preflow\Folio\Extension\FormPanel('Plain after')]
-                public function after(DynamicRecord $record): string
+                public function after(DynamicRecord $record): ?string
                 {
-                    return 'Plain after';
+                    return self::ALL_NULL ? null : 'Plain after';
                 }
 
                 #[\Preflow\Folio\Extension\RecordAction('toolbar-on', 'In header', 'polish.decide')]
@@ -283,7 +335,7 @@ final class AdminPolishTest extends TestCase
                     return 'text cell';
                 }
             }
-            PHP);
+            PHP));
         $this->write('config/folio/extensions.json', (string) json_encode(['enabled' => ['polish' => ['disabled_parts' => []]]]));
     }
 

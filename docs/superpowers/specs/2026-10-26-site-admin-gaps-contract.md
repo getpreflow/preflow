@@ -37,4 +37,6 @@ A4 Members (preflow/members) -- deferred to after the members split
 
 Release: all packages 0.38.0; site moves to `^0.38`.
 
-<!-- A5 (from Task 5) and A6 (from Task 6) are appended by those tasks. -->
+A5 Panel null — a `#[FormPanel]` method may return null: no heading, no box, no side column or extras section on its account; an empty string still renders.
+
+<!-- A6 (from Task 6) is appended by that task. -->
