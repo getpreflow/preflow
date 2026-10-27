@@ -163,7 +163,7 @@ final class RegistrationController
         $token = Input::text(Input::body($request), 'token');
         $id = $token === '' ? null : $this->tokens->consume($token, MembersConfig::CONFIRM_PURPOSE);
         $member = $id === null ? null : $this->members->find($id);
-        if ($member === null || MemberState::fromRecord($member) !== MemberState::Unconfirmed) {
+        if ($member === null || MemberState::fromRecord($member) !== MemberState::Unconfirmed || $this->members->isLocked($member)) {
             return $this->show('confirm', $request, ['token' => '', 'used' => true], 410);
         }
         // Followed once: cleared with the confirmation, whatever the admission decides.

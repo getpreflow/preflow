@@ -83,7 +83,8 @@ final class AuthController
             $ok = $this->hasher->verify($password, (string) $member->get('password_hash'));
         }
         $state = $member === null ? null : MemberState::fromRecord($member);
-        if (!$ok || $member === null || $state === MemberState::Declined) {
+        // A locked account fails like a declined one, before its state shows.
+        if (!$ok || $member === null || $state === MemberState::Declined || $this->members->isLocked($member)) {
             $this->throttle->hit($purpose, $client, $window);
             $this->throttle->hit($purpose, $key, $window);
 
@@ -135,7 +136,7 @@ final class AuthController
         $this->throttle->hit($purpose, $key, $window);
 
         $member = $email === '' ? null : $this->members->findByEmail($email);
-        if ($member !== null && MemberState::fromRecord($member) === MemberState::Member) {
+        if ($member !== null && MemberState::fromRecord($member) === MemberState::Member && !$this->members->isLocked($member)) {
             $id = (string) $member->getId();
             $this->mailer->resetLater(
                 $member,
@@ -170,7 +171,7 @@ final class AuthController
 
         $id = $token === '' ? null : $this->tokens->consume($token, MembersConfig::RESET_PURPOSE);
         $member = $id === null ? null : $this->members->find($id);
-        if ($member === null || MemberState::fromRecord($member) !== MemberState::Member) {
+        if ($member === null || MemberState::fromRecord($member) !== MemberState::Member || $this->members->isLocked($member)) {
             return $this->resetPage($request, '', 'expired', 410);
         }
 

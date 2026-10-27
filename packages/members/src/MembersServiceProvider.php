@@ -74,7 +74,7 @@ final class MembersServiceProvider extends ServiceProvider
             $c->get(MemberEvents::class),
             static fn (DynamicRecord $m, DeletePlan $plan, string $reason): bool => self::refusalNotice($c, $m, $plan, $reason),
             $c->bound(MemberDeleteCopies::class) ? $c->get(MemberDeleteCopies::class) : null,
-            $c->has(RememberMe::class) ? $c->get(RememberMe::class) : null,
+            $c->bound(RememberMe::class) ? $c->get(RememberMe::class) : null,
         ));
         $container->singleton(Confirmation::class, static fn (Container $c): Confirmation => new Confirmation(
             $c->get(Members::class),
@@ -83,7 +83,7 @@ final class MembersServiceProvider extends ServiceProvider
             $c->get(MembersSettings::class),
             $c->get(MemberEvents::class),
         ));
-        $container->singleton(SignIn::class, static fn (Container $c): SignIn => new SignIn($c->get(AuthManager::class), $c->get(MemberEvents::class)));
+        $container->singleton(SignIn::class, static fn (Container $c): SignIn => new SignIn($c->get(AuthManager::class), $c->get(MemberEvents::class), $c->get(Members::class)));
         $container->singleton(LinkValidity::class, static fn (Container $c): LinkValidity => new LinkValidity(
             $c->get(Translator::class),
             $c->get(MembersConfig::class),

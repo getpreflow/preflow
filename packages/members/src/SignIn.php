@@ -20,15 +20,20 @@ final class SignIn
     public function __construct(
         private readonly AuthManager $auth,
         private readonly ?MemberEvents $events = null,
+        private readonly ?Members $members = null,
     ) {}
 
-    /** @throws \LogicException when $member is not admitted (unconfirmed, waiting for the owner, declined) */
+    /** @throws \LogicException when $member is locked or not admitted (unconfirmed, waiting for the owner, declined) */
     public function in(DynamicRecord $member, ServerRequestInterface $request): void
     {
+        if ((string) $member->get('locked_at') !== '') {
+            throw new \LogicException('SignIn::in(): a locked member signs in nowhere.');
+        }
         if (MemberState::fromRecord($member) !== MemberState::Member) {
             throw new \LogicException('SignIn::in(): only an admitted member signs in; this one is ' . MemberState::fromRecord($member)->value . '.');
         }
         $this->auth->guard(MembersConfig::GUARD)->login(new RecordUser($member), $request, remember: true);
+        $this->members?->noteSignIn($member);
         $this->events?->dispatch(MemberEvents::SIGNED_IN, ['member' => $member, 'request' => $request]);
     }
 }
