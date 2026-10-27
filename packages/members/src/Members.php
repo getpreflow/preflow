@@ -89,6 +89,7 @@ final class Members
      * verified address CONFIRMED and DECIDED.
      *
      * @param array<string, mixed> $extra
+     * @throws EmailTakenException when the address already has an account (check with findByEmail())
      */
     public function register(string $email, string $name, string $password, string $language, array $extra = [], bool $emailVerified = false, ?ServerRequestInterface $request = null): DynamicRecord
     {
@@ -96,6 +97,10 @@ final class Members
             throw new \LogicException('Members::register(emailVerified: true) needs the members services (Members from the container).');
         }
         $def = ($this->dm->getTypeRegistry() ?? throw new \LogicException('No type registry.'))->get(self::TYPE);
+        $email = self::normalizeEmail($email);
+        if ($this->findByEmail($email) !== null) {
+            throw new EmailTakenException($email);
+        }
         foreach (array_keys($extra) as $key) {
             if (in_array($key, self::OWN_FIELDS, true)) {
                 throw new \LogicException("Members::register(): \"{$key}\" is set by Members itself, not by the admission's recordValues().");
@@ -106,7 +111,7 @@ final class Members
         }
         $record = DynamicRecord::fromArray($def, [
             'uuid' => self::uuid(),
-            'email' => self::normalizeEmail($email),
+            'email' => $email,
             'name' => trim($name),
             'password_hash' => $this->hasher->hash($password),
             'language' => $language,

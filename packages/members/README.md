@@ -177,11 +177,19 @@ A project that has proven the address itself (an invitation mailed to it) create
 account confirmed, and may sign it in:
 
 ```php
-$member = $container->get(Members::class)->register($email, $name, $password, $locale, emailVerified: true);
-if (MemberState::fromRecord($member) === MemberState::Member) {
-    $container->get(SignIn::class)->in($member, $request); // the members guard, remembered
+$members = $container->get(Members::class);
+if ($members->findByEmail($email) !== null) {
+    // the address has an account already: send the person to the sign-in instead
+} else {
+    $member = $members->register($email, $name, $password, $locale, emailVerified: true);
+    if (MemberState::fromRecord($member) === MemberState::Member) {
+        $container->get(SignIn::class)->in($member, $request); // the members guard, remembered
+    }
 }
 ```
+
+An address has one account: `register()` throws `Preflow\Members\EmailTakenException`
+(its `email` property holds the normalised address) when one exists already.
 
 `emailVerified: true` sends no confirmation mail; the admission decides at once as after a
 confirmation (`AcceptOnConfirm`: a member; `OwnerApproval`: pending, and the owner is told).

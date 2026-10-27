@@ -34,6 +34,21 @@ final class MembersServiceTest extends TestCase
         $this->removeScaffold();
     }
 
+    public function test_register_refuses_a_taken_address(): void
+    {
+        $members = $this->members();
+        $first = $members->register('ada@example.com', 'Ada', 'correct horse battery', 'en');
+
+        try {
+            $members->register(' ADA@example.com ', 'Ada Two', 'correct horse battery', 'en', emailVerified: true);
+            $this->fail('a second account on the same address');
+        } catch (\Preflow\Members\EmailTakenException $e) {
+            $this->assertSame('ada@example.com', $e->email);
+        }
+        $this->assertSame($first->getId(), $members->findByEmail('ada@example.com')?->getId());
+        $this->assertCount(1, $this->container()->get(\Preflow\Data\DataManager::class)->queryType(\Preflow\Members\MembersConfig::TYPE)->get()->items());
+    }
+
     public function test_register_normalises_email_and_sets_defaults(): void
     {
         $members = $this->members();
