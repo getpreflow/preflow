@@ -147,7 +147,10 @@ $dm->save($token);
   optional type lookup (`\Closure(string): ?TypeDefinition`); without one the DataManager's type
   registry answers. Folio passes its type catalog (which also requires `"users"` in the model). Until
   0.38 it lived in Folio as `Preflow\Folio\Users\RecordUserProvider`; that name still works for one
-  release and logs a deprecation. With
+  release and logs a deprecation. Core binds `RecordUserProvider::factory()` (the DataManager and
+  the provider's config entry), so `config/auth.php` builds it on a site without Folio; Folio
+  binds its own. The `roles` field is read by `Record\RoleField::normalize()` (a list, a JSON
+  string, a comma string or ints; trimmed, unique, non-empty), the rule rbac uses too. With
   `'active' => 'active'` it reads that boolean field. A record whose field is off (`false`, `0`, `'0'`,
   `''`, `'false'` or null) never resolves, by id or by credentials. Its sessions end on the next request.
   Without the key nothing changes.
@@ -374,7 +377,9 @@ left).
 
 **A custom resolver:** implement `PermissionResolver::allows($user, $population,
 $permission, $subject)` and register it with `$access->setResolver(...)` in a
-service provider.
+service provider. `$access->resolver()` returns the one answering now, so a package can wrap it
+or leave another package's in place (the members core wraps only the `DefaultResolver`, giving
+an admitted member `members.access`; with rbac, rbac decides).
 
 ## Custom guards
 

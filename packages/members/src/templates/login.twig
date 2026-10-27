@@ -17,5 +17,5 @@
   <button class="btn btn-primary members-submit" type="submit">{{ t('members.login.submit') }}</button>
 </form>
 <p class="members-switch"><a href="{{ base }}/forgot">{{ t('members.login.forgot') }}</a></p>
-<p class="members-switch">{{ t('members.login.no_account') }} <a href="{{ register }}">{{ t('members.login.register') }}</a></p>
+<p class="members-switch">{{ t('members.login.no_account') }} <a href="{{ register }}{{ next_query|default('') }}">{{ t('members.login.register') }}</a></p>
 {% endblock %}

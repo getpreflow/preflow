@@ -104,11 +104,16 @@ final class AccountController
             return $this->page($request, $member, '', 'delete_current', 422);
         }
 
+        // Through the delete plan with the self rules: a restrict rule (or a hook) keeps the account, and
+        // the member reads whether the site knows. Nothing else changes then; the member stays signed in.
+        $result = $this->members->delete($member);
+        if ($result->refused) {
+            return $this->page($request, $member, '', $result->told ? 'refused_told' : 'refused_contact', 409);
+        }
         // What other packages keep about the member (a code redemption's redeemer id) is a trail, not personal data.
         $this->tokens->revokeAll(MembersConfig::CONFIRM_PURPOSE, $id);
         $this->tokens->revokeAll(MembersConfig::RESET_PURPOSE, $id);
         $this->remember->revokeAll(MembersConfig::GUARD, $id);
-        $this->members->delete($member);
         $this->auth->guard(MembersConfig::GUARD)->logout($request);
         $this->throttle->clear(MembersConfig::THROTTLE_LOGIN, $this->key($id));
         // After the logout, which starts a fresh session: the register page shows the notice once.

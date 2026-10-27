@@ -30,15 +30,16 @@ final class MembersViewTest extends TestCase
         if (!$i18nConfig) {
             unlink($this->dir . '/config/i18n.php');
         }
-        $this->write('config/members.php', "<?php\nreturn {$members};\n");
+        // The site names its layout (a site without one gets the package's @members/_layout.twig).
+        $this->write('config/members.php', "<?php\nreturn {$members} + ['layout' => '@members/_site.twig'];\n");
         $layout = <<<'TWIG'
 <!DOCTYPE html>
 <html lang="{{ locale }}"><head>{% block meta %}<title>Site</title>{% endblock %}
 {% for a in alternates %}<link rel="alternate" hreflang="{{ a.locale }}" href="{{ a.href }}">{% endfor %}</head>
 <body data-layout="{{ layout }}"><header id="site-header">Site header</header><main>{% block content %}{% endblock %}</main></body></html>
 TWIG;
-        $this->write('resources/folio/frontend/_site.twig', $layout);
-        $this->write('resources/folio/frontend/other.twig', str_replace('Site header', 'Other header', $layout));
+        $this->write('resources/members/_site.twig', $layout);
+        $this->write('resources/members/_other.twig', str_replace('Site header', 'Other header', $layout));
     }
 
     private function view(): MembersView
@@ -162,9 +163,20 @@ TWIG;
         $this->assertSame('private, no-store', $see->getHeaderLine('Cache-Control'));
     }
 
+    public function test_the_default_layout_is_neutral(): void
+    {
+        // No site's colour: every colour of the package's own page layout is a grey.
+        preg_match_all('/#([0-9a-f]{6})\b/i', (string) file_get_contents(__DIR__ . '/../src/templates/_layout.twig'), $m);
+        $this->assertNotEmpty($m[1]);
+        foreach ($m[1] as $hex) {
+            $rgb = array_map(hexdec(...), str_split($hex, 2));
+            $this->assertLessThanOrEqual(8, max($rgb) - min($rgb), "#{$hex} is no grey");
+        }
+    }
+
     public function test_the_configured_layout_is_extended(): void
     {
-        $this->site("['layout' => '@folio/frontend/other.twig']");
+        $this->site("['layout' => '@members/_other.twig']");
         $html = $this->html('login');
 
         $this->assertSame('Other header', Dom::text($html, '//header'));

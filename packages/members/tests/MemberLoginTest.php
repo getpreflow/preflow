@@ -12,7 +12,7 @@ use Preflow\Auth\Remember\RememberMe;
 use Preflow\Auth\Tokens\Tokens;
 use Preflow\Members\Tests\Support\Dom;
 use Preflow\Members\Tests\Support\MemberFlows;
-use Preflow\Members\Viewer;
+use Preflow\Members\Tests\Support\MembersScaffold;
 use Preflow\Notify\Notifier;
 use Psr\Http\Message\ResponseInterface;
 
@@ -20,6 +20,7 @@ use Psr\Http\Message\ResponseInterface;
 final class MemberLoginTest extends TestCase
 {
     use MemberFlows;
+    use MembersScaffold;
 
     protected function setUp(): void
     {
@@ -65,6 +66,24 @@ final class MemberLoginTest extends TestCase
         $this->assertTrue($hasher->verify(self::PASSWORD, $new));
         $this->assertSame('5', (string) $stored->get('auth_epoch'), 'the epoch is untouched');
         $this->assertSame(200, $this->send('GET', '/members/account')->getStatusCode(), 'the new session survives');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_signed_in_listeners_get_the_upgraded_hash(): void
+    {
+        $member = $this->makeMember();
+        $old = crypt(self::PASSWORD, '$1$saltsalt$');
+        $member->set('password_hash', $old);
+        $this->flow->container()->get(\Preflow\Data\DataManager::class)->saveType($member, false);
+        $seen = null;
+        $this->flow->container()->get(\Preflow\Members\MemberEvents::class)->on(\Preflow\Members\MemberEvents::SIGNED_IN, static function (array $p) use (&$seen): void {
+            $seen = (string) $p['member']->get('password_hash');
+        });
+
+        $this->assertSame(303, $this->post('/members/login', ['email' => 'ada@example.com', 'password' => self::PASSWORD])->getStatusCode());
+
+        $this->assertNotSame($old, $seen, 'the listener sees the record after the rehash');
+        $this->assertSame((string) $this->member('ada@example.com')->get('password_hash'), $seen);
     }
 
     #[RunInSeparateProcess]
@@ -191,30 +210,13 @@ final class MemberLoginTest extends TestCase
         $this->assertSame('/members/r/x', Dom::first($html, $form . '//input[@name="next"]')?->getAttribute('value'));
         $this->assertNotNull(Dom::first($html, $form . '//input[@name="_csrf_token"]'));
         $this->assertNotNull(Dom::first($html, '//a[@href="/members/forgot"]'));
-        $this->assertNotNull(Dom::first($html, '//a[@href="/members/register"]'));
+        $this->assertNotNull(Dom::first($html, '//a[@href="/members/register?next=' . rawurlencode('/members/r/x') . '"]'), 'the register link passes next on');
         $this->assertNotNull(Dom::first($this->html('/de/members/login'), '//form[@action="/de/members/login"]'));
 
         $this->post('/members/login', ['email' => 'ada@example.com', 'password' => self::PASSWORD]);
         $again = $this->send('GET', '/members/login?next=' . rawurlencode('/members/r/x'));
         $this->assertSame(303, $again->getStatusCode());
         $this->assertSame('/members/r/x', $again->getHeaderLine('Location'));
-    }
-
-    #[RunInSeparateProcess]
-    public function test_logout_keeps_staff_session(): void
-    {
-        $this->makeMember();
-        $this->signIn();
-        $this->assertSame(200, $this->send('GET', '/folio')->getStatusCode(), 'staff is in');
-        $this->post('/members/login', ['email' => 'ada@example.com', 'password' => self::PASSWORD]);
-
-        $response = $this->post('/members/logout', []);
-
-        $this->assertSame(303, $response->getStatusCode());
-        $this->assertSame('/members', $response->getHeaderLine('Location'));
-        $this->assertStringContainsString('site_member=; Max-Age=0', $this->cookie($response, 'site_member') ?? '');
-        $this->assertSame(200, $this->send('GET', '/folio')->getStatusCode(), 'staff stays signed in');
-        $this->assertNull($this->flow->container()->get(Viewer::class)->member());
     }
 
     #[RunInSeparateProcess]

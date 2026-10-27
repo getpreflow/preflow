@@ -6,7 +6,6 @@ namespace Preflow\Members;
 
 use Nyholm\Psr7\Response;
 use Preflow\Data\Locales;
-use Preflow\Folio\Content\ContentLocale;
 use Preflow\I18n\Translator;
 use Preflow\View\AssetCollector;
 use Preflow\View\TemplateEngineInterface;
@@ -25,20 +24,20 @@ final class MembersView
     public function __construct(
         private readonly TemplateEngineInterface $engine,
         private readonly AssetCollector $assets,
-        private readonly ContentLocale $contentLocale,
         private readonly Viewer $viewer,
         private readonly MembersConfig $config,
         private readonly Links $links,
         private readonly LinkValidity $validity,
         private readonly Locales $locales,
         private readonly Translator $translator,
+        private readonly ?PageLocale $pageLocale = null,
     ) {}
 
     /**
      * Template variables every page gets (a page's own $vars win): locale, alternates, viewer,
      * layout, base (the member pages' URL: locale prefix and path), landing, register (the register link), password_min,
      * validity.confirm / validity.reset, privacy_url (config privacy_url in the page locale), and empty defaults for the form state (notice, error,
-     * errors, old, ...), so a template never trips over an unset variable in debug mode.
+     * errors, old, next, next_query: "?next=..." for the links between login and register, ...), so a template never trips over an unset variable in debug mode.
      *
      * @param array<string, mixed> $vars
      */
@@ -46,10 +45,10 @@ final class MembersView
     {
         $locale = $request->getAttribute('locale');
         $locale = is_string($locale) && $this->locales->has($locale) ? $locale : $this->locales->default;
-        $this->contentLocale->set($locale);
         // The locale middleware did this when the site has an i18n config; without one the
         // translator stays on the default locale, which is right for a one-language site.
         $this->translator->setLocale($locale);
+        $this->pageLocale?->set($locale);
 
         $html = $this->engine->render('@members/' . $template . '.twig', $vars + [
             'locale' => $locale,
@@ -61,7 +60,7 @@ final class MembersView
             'register' => $this->links->localize($locale, $this->config->register()),
             'password_min' => $this->config->passwordMin(),
             'validity' => ['confirm' => $this->validity->confirm($locale), 'reset' => $this->validity->reset($locale)],
-            'notice' => '', 'error' => '', 'errors' => [], 'old' => [], 'old_email' => '', 'next' => '',
+            'notice' => '', 'error' => '', 'errors' => [], 'old' => [], 'old_email' => '', 'next' => '', 'next_query' => '',
             'email' => '', 'name' => '', 'token' => '', 'sent' => false, 'used' => false, 'open' => true,
             'privacy_url' => $this->config->privacyUrl($locale, $this->locales->default),
         ]);

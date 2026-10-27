@@ -77,6 +77,13 @@ return [
         'text' => 'Ihr Passwort stimmt, aber Ihre Adresse ist noch nicht bestätigt. Lassen Sie sich den Link noch einmal schicken.',
         'button' => 'Link noch einmal senden',
     ],
+    // The members home (GET {path}) for a signed-in member, unless the site has its own page there.
+    'landing' => [
+        'title' => 'Willkommen, :name',
+        'text' => 'Sie sind angemeldet.',
+        'account' => 'Ihr Konto',
+        'logout' => 'Abmelden',
+    ],
     'account' => [
         'back' => 'Zurück',
         'title' => 'Ihr Konto',
@@ -89,6 +96,8 @@ return [
         'delete_text' => 'Das entfernt Ihr Konto und Ihre persönlichen Daten. Es lässt sich nicht rückgängig machen. Sie können sich jederzeit neu registrieren.',
         'confirm' => 'Ich verstehe, dass mein Konto damit gelöscht wird.',
         'delete_submit' => 'Mein Konto löschen',
+        'refused_told' => 'Ihr Konto kann im Moment nicht gelöscht werden. Die Website wurde informiert und meldet sich bei Ihnen.',
+        'refused_contact' => 'Ihr Konto kann im Moment nicht gelöscht werden. Bitte kontaktieren Sie uns.',
         'errors' => [
             'current' => 'Das aktuelle Passwort stimmt nicht.',
             'delete_current' => 'Das aktuelle Passwort stimmt nicht.',
@@ -105,19 +114,27 @@ return [
     'mail' => [
         'confirm' => [
             'subject' => 'Bestätigen Sie Ihre E-Mail-Adresse',
+            // the button of the HTML mail (the layout's action)
+            'action' => 'E-Mail-Adresse bestätigen',
             'body' => "Guten Tag {name}\n\nBitte bestätigen Sie Ihre E-Mail-Adresse: {link}\n\nDer Link gilt {validity}. Falls Sie sich nicht angemeldet haben, ignorieren Sie diese Mail.",
         ],
         'existing' => [
             'subject' => 'Ihr Konto',
+            // the button of the HTML mail (the layout's action)
+            'action' => 'Anmelden',
             'body' => "Guten Tag {name}\n\nJemand (hoffentlich Sie) wollte sich mit dieser Adresse registrieren, aber Sie haben bereits ein Konto.\n\nAnmelden: {login_url}\nPasswort vergessen? {reset_url}\nDer Link zum Zurücksetzen gilt {validity}.",
         ],
         'reset' => [
             'subject' => 'Setzen Sie Ihr Passwort zurück',
+            // the button of the HTML mail (the layout's action)
+            'action' => 'Neues Passwort festlegen',
             'body' => "Guten Tag {name}\n\nHier legen Sie ein neues Passwort fest: {link}\n\nDer Link gilt {validity}. Falls Sie das nicht angefordert haben, ignorieren Sie diese Mail.",
         ],
         'notice' => [
             'subject' => '{name} wartet auf Freigabe',
             'body' => "{name} <{email}> hat die E-Mail-Adresse bestätigt und wartet auf Freigabe.{details}\n\nIn Folio öffnen: {folio_url}",
+            // without a decision page to link (no admin such as Folio's)
+            'body_without_link' => "{name} <{email}> hat die E-Mail-Adresse bestätigt und wartet auf Freigabe.{details}",
         ],
         'accepted' => [
             'subject' => 'Ihr Konto ist bereit',
@@ -126,6 +143,14 @@ return [
         'declined' => [
             'subject' => 'Zu Ihrer Registrierung',
             'body' => "Guten Tag {name}\n\nVielen Dank für Ihr Interesse. Leider können wir Ihnen im Moment kein Konto geben.\n\nFreundliche Grüsse",
+        ],
+        // an die Benachrichtigungsadresse, wenn ein Mitglied sein Konto nicht selbst löschen konnte
+        'deletion_refused' => [
+            'subject' => '{name} konnte das Konto nicht löschen',
+            'body' => "{name} <{email}> wollte das eigene Konto löschen, es wurde aber nicht gelöscht: {reason}\n\nBitte nehmen Sie Kontakt auf.\n\nIn Folio öffnen: {folio_url}",
+            'body_without_link' => "{name} <{email}> wollte das eigene Konto löschen, es wurde aber nicht gelöscht: {reason}\n\nBitte nehmen Sie Kontakt auf.",
+            'restricted' => 'Es verweisen noch Datensätze darauf ({records}).',
+            'listener' => 'Die Website hat die Löschung abgelehnt.',
         ],
     ],
 ];

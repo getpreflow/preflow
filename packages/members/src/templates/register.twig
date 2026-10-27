@@ -14,19 +14,19 @@
     {% if notice %}<p class="members-note" role="status">{{ notice }}</p>{% endif %}
     {% if open %}
     <form class="members-card" method="post" action="{{ base }}/register" novalidate>
-      {{ csrf_field() }}
+      {% if next|default('') %}<input type="hidden" name="next" value="{{ next }}">{% endif %}{{ csrf_field() }}
       {% if errors %}
       <div class="members-errors" role="alert">
         {% if errors.form is defined %}{{ t('members.errors.' ~ errors.form) }}{% else %}{{ t('members.errors.summary') }}{% endif %}
       </div>
       {% endif %}
       <div class="members-row">
-        <div class="field{{ errors.name is defined ? ' field--error' : '' }}">
+        {% if not compose_name|default(false) %}<div class="field{{ errors.name is defined ? ' field--error' : '' }}">
           <label for="f-name">{{ t('members.form.name') }}</label>
           <input id="f-name" name="name" type="text" autocomplete="name" required value="{{ old.name|default('') }}">
           {% if errors.name is defined %}<p class="field-error">{{ t('members.errors.name') }}</p>{% endif %}
         </div>
-        <div class="field{{ errors.email is defined ? ' field--error' : '' }}">
+        {% endif %}<div class="field{{ errors.email is defined ? ' field--error' : '' }}">
           <label for="f-email">{{ t('members.form.email') }}</label>
           <input id="f-email" name="email" type="email" autocomplete="email" required value="{{ old.email|default('') }}">
           {% if errors.email is defined %}<p class="field-error">{{ t('members.errors.email') }}</p>{% endif %}
@@ -54,13 +54,13 @@
         {% if errors.consent is defined %}<p class="field-error">{{ t('members.errors.consent') }}</p>{% endif %}
       </div>
       <button class="btn btn-primary members-submit" type="submit">{{ t('members.form.submit') }}</button>
-      <p class="members-switch">{{ t('members.form.registered') }} <a href="{{ base }}/login">{{ t('members.form.login') }}</a></p>
+      <p class="members-switch">{{ t('members.form.registered') }} <a href="{{ base }}/login{{ next_query|default('') }}">{{ t('members.form.login') }}</a></p>
     </form>
     {% else %}
     <div class="members-card">
       <h2>{{ t('members.closed.title') }}</h2>
       <p>{{ t('members.closed.text') }}</p>
-      <p class="members-switch"><a href="{{ base }}/login">{{ t('members.form.login') }}</a></p>
+      <p class="members-switch"><a href="{{ base }}/login{{ next_query|default('') }}">{{ t('members.form.login') }}</a></p>
     </div>
     {% endif %}
   </div>

@@ -2562,7 +2562,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/core",
-                "reference": "287a41fed3953b222e8d4640f4cc3e2730887961"
+                "reference": "245e120b9fbbadde88b17b2e8d50c25f11b432b9"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
@@ -2574,6 +2574,7 @@
                 "psr/http-server-middleware": "^1.0"
             },
             "conflict": {
+                "preflow/auth": "<0.38",
                 "preflow/data": "<0.28"
             },
             "require-dev": {
@@ -2686,15 +2687,15 @@
             "dist": {
                 "type": "path",
                 "url": "packages/folio",
-                "reference": "9b40955d3e1df425e16325717f0b52afd440a066"
+                "reference": "b15b4a1d2c139aed9876bdfab7973769d7513430"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
                 "php": ">=8.4",
-                "preflow/auth": "^0.27 || @dev",
+                "preflow/auth": "^0.38 || @dev",
                 "preflow/components": "^0.1 || @dev",
                 "preflow/core": "^0.34 || @dev",
-                "preflow/data": "^0.37 || @dev",
+                "preflow/data": "^0.38 || @dev",
                 "preflow/devtools": "^0.20 || @dev",
                 "preflow/form": "^0.1 || @dev",
                 "preflow/htmx": "^0.1 || @dev",
@@ -2707,11 +2708,12 @@
                 "symfony/html-sanitizer": "^7.0"
             },
             "conflict": {
-                "preflow/auth": "<0.27",
+                "preflow/auth": "<0.38",
                 "preflow/core": "<0.34",
-                "preflow/data": "<0.37",
+                "preflow/data": "<0.38",
                 "preflow/i18n": "<0.37",
                 "preflow/media": "<0.36",
+                "preflow/members": "<0.38",
                 "preflow/notify": "<0.25",
                 "preflow/validation": "<0.37"
             },
@@ -2719,7 +2721,8 @@
                 "phpunit/phpunit": "^11.0"
             },
             "suggest": {
-                "openspout/openspout": "^4 — Excel export of admin lists (the Export button shows once it is installed)"
+                "openspout/openspout": "^4 — Excel export of admin lists (the Export button shows once it is installed)",
+                "preflow/members": "Member accounts; Folio adds their admin (the built-in extension \"members\", which needs preflow/rbac)"
             },
             "type": "library",
             "extra": {
@@ -2939,40 +2942,42 @@
             "dist": {
                 "type": "path",
                 "url": "packages/members",
-                "reference": "84f88a7400c5ca51ca7650cee927126cc0924bc3"
+                "reference": "cd56c6de0c30cba48148d5ecd4a29201e65a4071"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
                 "php": ">=8.4",
-                "preflow/auth": "^0.26 || @dev",
-                "preflow/core": "^0.25 || @dev",
-                "preflow/data": "^0.26 || @dev",
+                "preflow/auth": "^0.38 || @dev",
+                "preflow/core": "^0.38 || @dev",
+                "preflow/data": "^0.38 || @dev",
                 "preflow/devtools": "^0.26 || @dev",
-                "preflow/folio": "^0.37 || @dev",
-                "preflow/i18n": "^0.37 || @dev",
+                "preflow/i18n": "^0.38 || @dev",
                 "preflow/notify": "^0.25 || @dev",
-                "preflow/rbac": "^0.25 || @dev",
-                "preflow/routing": "^0.25 || @dev",
+                "preflow/routing": "^0.38 || @dev",
                 "preflow/validation": "^0.26 || @dev",
                 "preflow/view": "^0.25 || @dev"
             },
             "conflict": {
-                "preflow/auth": "<0.26",
-                "preflow/data": "<0.26",
-                "preflow/folio": "<0.37",
-                "preflow/i18n": "<0.37"
+                "preflow/auth": "<0.38",
+                "preflow/core": "<0.38",
+                "preflow/data": "<0.38",
+                "preflow/folio": "<0.38",
+                "preflow/i18n": "<0.38",
+                "preflow/routing": "<0.38"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0"
             },
+            "suggest": {
+                "preflow/folio": "The members admin: the Members list, the owner's decision panel and Settings → Members (Folio carries it when this package is installed)",
+                "preflow/rbac": "Roles and permissions beyond members.access (Folio's members admin needs it)"
+            },
             "type": "library",
             "extra": {
-                "folio": {
-                    "extension": "Preflow\\Members\\Extension"
-                },
                 "preflow": {
                     "commands": [
-                        "Preflow\\Members\\Console\\PruneMembersCommand"
+                        "Preflow\\Members\\Console\\PruneMembersCommand",
+                        "Preflow\\Members\\Console\\DecideCommand"
                     ],
                     "translations": {
                         "members": {
@@ -2999,7 +3004,7 @@
             "license": [
                 "MIT"
             ],
-            "description": "Preflow members — member accounts for a Preflow + Folio site: the member type, the owner's decision, pluggable admission",
+            "description": "Preflow members — member accounts for a Preflow site: registration, sign-in, the account page, pluggable admission; Folio adds the admin",
             "transport-options": {
                 "symlink": true,
                 "relative": true

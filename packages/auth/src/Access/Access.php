@@ -41,6 +41,12 @@ final class Access
         $this->resolver = $resolver;
     }
 
+    /** The resolver answering now: DefaultResolver until a package sets one (a package may wrap it, or leave another's in place). */
+    public function resolver(): PermissionResolver
+    {
+        return $this->resolver;
+    }
+
     /** A package that authenticates staff with this guard (Folio) marks it; config still wins. */
     public function markStaffGuard(string $guard): void
     {

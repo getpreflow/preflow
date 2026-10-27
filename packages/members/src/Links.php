@@ -55,7 +55,12 @@ final class Links
         return array_values($this->locales->available);
     }
 
-    /** The member's edit page in Folio. */
+    /**
+     * The member's edit page in Folio.
+     *
+     * @deprecated 0.38: the core no longer uses it (the owner's notice links what a bound
+     * MemberLinks names; Folio binds the edit page). Kept one release for sites that call it.
+     */
     public function folioMember(string $id): string
     {
         return $this->base . rtrim($this->folioPrefix, '/') . '/' . MembersConfig::TYPE . '/' . rawurlencode($id) . '/edit';

@@ -40,6 +40,9 @@
     {% if error in ['confirm', 'delete_current'] %}
     <div class="members-errors" role="alert">{{ t('members.account.errors.' ~ error) }}</div>
     {% endif %}
+    {% if error in ['refused_told', 'refused_contact'] %}
+    <div class="members-errors" role="alert">{{ t('members.account.' ~ error) }}</div>
+    {% endif %}
     <div class="field">
       <label for="f-delete-current">{{ t('members.account.current') }}</label>
       <input id="f-delete-current" name="current" type="password" autocomplete="current-password" required>

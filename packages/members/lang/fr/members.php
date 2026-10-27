@@ -77,6 +77,13 @@ return [
         'text' => "Votre mot de passe est correct, mais votre adresse n'est pas encore confirmée. Faites-vous renvoyer le lien.",
         'button' => 'Renvoyer le lien',
     ],
+    // The members home (GET {path}) for a signed-in member, unless the site has its own page there.
+    'landing' => [
+        'title' => 'Bonjour, :name',
+        'text' => 'Vous êtes connecté.',
+        'account' => 'Votre compte',
+        'logout' => 'Se déconnecter',
+    ],
     'account' => [
         'back' => 'Retour',
         'title' => 'Votre compte',
@@ -89,6 +96,8 @@ return [
         'delete_text' => 'Cette action supprime votre compte et vos données personnelles. Elle est irréversible. Vous pouvez vous réinscrire à tout moment.',
         'confirm' => 'Je comprends que cette action supprime mon compte.',
         'delete_submit' => 'Supprimer mon compte',
+        'refused_told' => "Votre compte ne peut pas être supprimé pour le moment. Le site a été informé et vous contactera.",
+        'refused_contact' => 'Votre compte ne peut pas être supprimé pour le moment. Veuillez nous contacter.',
         'errors' => [
             'current' => 'Le mot de passe actuel est incorrect.',
             'delete_current' => 'Le mot de passe actuel est incorrect.',
@@ -105,19 +114,27 @@ return [
     'mail' => [
         'confirm' => [
             'subject' => 'Confirmez votre adresse e-mail',
+            // the button of the HTML mail (the layout's action)
+            'action' => 'Confirmer l\'adresse e-mail',
             'body' => "Bonjour {name},\n\nVeuillez confirmer votre adresse e-mail : {link}\n\nLe lien est valable {validity}. Si vous ne vous êtes pas inscrit, ignorez ce message.",
         ],
         'existing' => [
             'subject' => 'Votre compte',
+            // the button of the HTML mail (the layout's action)
+            'action' => 'Se connecter',
             'body' => "Bonjour {name},\n\nQuelqu'un (vous, espérons-le) a tenté de s'inscrire avec cette adresse, mais vous avez déjà un compte.\n\nSe connecter : {login_url}\nMot de passe oublié ? {reset_url}\nLe lien de réinitialisation est valable {validity}.",
         ],
         'reset' => [
             'subject' => 'Réinitialisez votre mot de passe',
+            // the button of the HTML mail (the layout's action)
+            'action' => 'Définir un nouveau mot de passe',
             'body' => "Bonjour {name},\n\nChoisissez un nouveau mot de passe ici : {link}\n\nLe lien est valable {validity}. Si vous n'avez rien demandé, ignorez ce message.",
         ],
         'notice' => [
             'subject' => '{name} attend une validation',
             'body' => "{name} <{email}> a confirmé son adresse e-mail et attend une validation.{details}\n\nOuvrir dans Folio : {folio_url}",
+            // without a decision page to link (no admin such as Folio's)
+            'body_without_link' => "{name} <{email}> a confirmé son adresse e-mail et attend une validation.{details}",
         ],
         'accepted' => [
             'subject' => 'Votre compte est prêt',
@@ -126,6 +143,14 @@ return [
         'declined' => [
             'subject' => 'À propos de votre inscription',
             'body' => "Bonjour {name},\n\nMerci de votre intérêt. Malheureusement, nous ne pouvons pas vous ouvrir de compte pour le moment.\n\nCordialement",
+        ],
+        // à l'adresse de notification quand un membre n'a pas pu supprimer son propre compte
+        'deletion_refused' => [
+            'subject' => "{name} n'a pas pu supprimer son compte",
+            'body' => "{name} <{email}> a demandé la suppression de son compte, mais il n'a pas été supprimé : {reason}\n\nVeuillez prendre contact avec cette personne.\n\nOuvrir dans Folio : {folio_url}",
+            'body_without_link' => "{name} <{email}> a demandé la suppression de son compte, mais il n'a pas été supprimé : {reason}\n\nVeuillez prendre contact avec cette personne.",
+            'restricted' => 'des enregistrements y font encore référence ({records}).',
+            'listener' => 'le site a refusé la suppression.',
         ],
     ],
 ];

@@ -22,6 +22,19 @@ abstract class Extension
     }
 
     /**
+     * One of the extension's model schemas (models/*.json) as Folio takes it, for the type and
+     * its label keys alike: the file's, unless the extension completes it from code (the members
+     * admin takes the member type the members core defines and adds what the admin needs).
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    public function model(array $schema): array
+    {
+        return $schema;
+    }
+
+    /**
      * One of the extension's model schemas (models/*.json) at boot, before a site's "extends"
      * file is merged: an extension adjusts what JSON can't know, such as a storage alias with
      * a fallback or select options from the site's locales.

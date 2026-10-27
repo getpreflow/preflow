@@ -2,18 +2,29 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Tests\Members\Fixtures;
+namespace Preflow\Members\Tests\Fixtures;
 
 use Preflow\Data\DynamicRecord;
 use Preflow\Members\Admission\Admission;
+use Preflow\Members\Admission\ComposesName;
 use Preflow\Members\Admission\Decision;
 use Psr\Http\Message\ServerRequestInterface;
 
-/** A site rule for the tests: the owner decides; the panel lists two lines, the owner's notice two others (one without a label). */
-final class ListedAdmission implements Admission
+/** A site rule for the tests: first and last name instead of one name field; the owner decides. */
+final class ComposedNameAdmission implements Admission, ComposesName
 {
+    /** @var list<array<string, mixed>> the input validate() saw */
+    public static array $seen = [];
+
+    public function name(array $input): string
+    {
+        return trim(trim((string) ($input['first_name'] ?? '')) . ' ' . trim((string) ($input['last_name'] ?? '')));
+    }
+
     public function validate(array $input, ServerRequestInterface $request, array $baseErrors): array
     {
+        self::$seen[] = $input;
+
         return [];
     }
 
@@ -34,8 +45,6 @@ final class ListedAdmission implements Admission
 
     public function details(DynamicRecord $member, string $for): array
     {
-        return $for === self::NOTICE
-            ? ['Book code' => 'given, but it no longer worked.', '“I build things”']
-            : ['book code' => 'no', 'email' => (string) $member->get('email')];
+        return [];
     }
 }

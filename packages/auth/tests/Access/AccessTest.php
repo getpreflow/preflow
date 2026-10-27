@@ -93,6 +93,16 @@ final class AccessTest extends TestCase
         $this->assertSame(1, substr_count((string) file_get_contents($this->log), 'pgae.edit'));
     }
 
+    public function test_the_resolver_is_the_default_until_one_is_set(): void
+    {
+        $access = $this->access();
+        $this->assertInstanceOf(\Preflow\Auth\Access\DefaultResolver::class, $access->resolver());
+
+        $own = new \Preflow\Auth\Access\DefaultResolver();
+        $access->setResolver($own);
+        $this->assertSame($own, $access->resolver());
+    }
+
     public function test_a_resolver_answers_once_set(): void
     {
         $access = $this->access(populations: ['folio' => 'staff']);

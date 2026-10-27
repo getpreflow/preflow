@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Members\Tests;
+namespace Preflow\Folio\Tests\Members;
 
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\I18n\Console\TranslationsCheckCommand;
-use Preflow\Members\Tests\Support\MembersScaffold;
+use Preflow\Folio\Tests\Members\Support\MembersScaffold;
 
 /**
  * `preflow translations:check` on a site with Folio, rbac, members, codes and validation
@@ -34,7 +34,7 @@ final class PackageTranslationsCheckTest extends TestCase
         $this->scaffold(['members' => 'sqlite', 'auth' => 'sqlite', 'throttle' => 'sqlite', 'codes' => 'sqlite'], ['en', 'de', 'fr']);
         $packages = [];
         foreach (self::PACKAGES as $name) {
-            $root = dirname(__DIR__, 2) . '/' . $name;
+            $root = dirname(__DIR__, 3) . '/' . $name;
             $packages[] = [...json_decode((string) file_get_contents($root . '/composer.json'), true), 'install-path' => $root];
         }
         $this->write('vendor/composer/installed.json', (string) json_encode(['packages' => $packages]));

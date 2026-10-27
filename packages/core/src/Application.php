@@ -1041,6 +1041,11 @@ final class Application
         $hasher = new $hasherClass();
         $this->container->instance(\Preflow\Auth\PasswordHasherInterface::class, $hasher);
 
+        // Record users from config/auth.php without a package that binds its own (Folio does, later).
+        if (!$this->container->bound(\Preflow\Auth\Record\RecordUserProvider::class)) {
+            $this->container->bind(\Preflow\Auth\Record\RecordUserProvider::class, \Preflow\Auth\Record\RecordUserProvider::factory());
+        }
+
         // User providers
         $providers = [];
         foreach ($authConfig['providers'] ?? [] as $name => $providerConfig) {

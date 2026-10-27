@@ -18,7 +18,7 @@ use Preflow\Folio\Members\Extension;
 use Preflow\Rbac\RbacResolver;
 use Preflow\Rbac\RoleList;
 use Preflow\Rbac\RoleStore;
-use Preflow\Folio\Tests\Members\Support\Dom;
+use Preflow\Members\Tests\Support\Dom;
 use Preflow\Folio\Tests\Members\Support\MembersScaffold;
 
 /** The member type on SQLite (or the default storage), its roles and settings, the sidebar, no export. */
@@ -126,7 +126,7 @@ final class MembersGroundworkTest extends TestCase
         $this->assertSame('member', $def->table);
         $this->assertSame('members', $def->storage);
         $this->assertSame('uuid', $def->idField);
-        $this->assertSame(['email', 'password_hash', 'name', 'language', 'registered_at', 'email_confirmed_at', 'decided_at', 'roles', 'auth_epoch'], array_keys($def->fields));
+        $this->assertSame(['email', 'password_hash', 'name', 'language', 'registered_at', 'email_confirmed_at', 'decided_at', 'roles', 'auth_epoch', 'next'], array_keys($def->fields));
         $this->assertSame(['en' => 'English', 'de' => 'Deutsch'], $def->fields['language']->config['options']);
     }
 

@@ -10,15 +10,16 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Locales;
 use Preflow\Folio\Extension\Attributes\DeclaresPermission;
 use Preflow\Folio\Extension\Attributes\FolioExtension;
-use Preflow\Members\Languages;
 use Preflow\Members\MembersConfig;
+use Preflow\Members\MemberType;
 use Preflow\Rbac\RoleStore;
 
 /**
  * The members admin (preflow/members' accounts in Folio), Folio's built-in extension "members",
- * there when preflow/members is installed: the member type (models/member.json; its admin labels
- * in the members package's lang/{locale}/members-admin.php), its roles (rbac, which the admin
- * needs: FolioMembers checks it at boot), the owner's Decision panel (MemberAdmin) and the
+ * there when preflow/members is installed: the member type (the members core's, MemberType, with
+ * what models/member.json adds for the admin: the list, the menu section, roles as rbac roles;
+ * its admin labels in the members package's lang/{locale}/members-admin.php), its roles (rbac,
+ * which the admin needs: FolioServiceProvider checks it at boot), the owner's Decision panel (MemberAdmin) and the
  * settings under Settings → Members settings (their labels, the permissions' and the seeded
  * roles' are members-admin keys too), which FolioMembersSettings gives the members core.
  */
@@ -41,9 +42,26 @@ final class Extension extends \Preflow\Folio\Extension\Extension
     }
 
     /**
-     * The member type on the storage alias "members" when the site has it, else on "default";
-     * the language options are the site's locales.
+     * The members core's member type with the admin's additions (models/member.json): its keys
+     * added, its fields' settings over the core's (roles: rbac_roles), the core's field order.
      */
+    public function model(array $schema): array
+    {
+        if (($schema['key'] ?? null) !== MembersConfig::TYPE) {
+            return $schema;
+        }
+        $core = MemberType::schema();
+        $fields = $core['fields'];
+        foreach ((array) ($schema['fields'] ?? []) as $name => $field) {
+            $fields[$name] = array_replace((array) ($fields[$name] ?? []), (array) $field);
+        }
+
+        unset($core['fields'], $schema['fields']);
+
+        return array_replace($core, $schema) + ['fields' => $fields];
+    }
+
+    /** As the core prepares it: storage "members" when the site has it, else "default"; the site's locales as language options. */
     public function prepareModel(array $schema, Container $c): array
     {
         if (($schema['key'] ?? null) !== MembersConfig::TYPE) {
@@ -51,10 +69,8 @@ final class Extension extends \Preflow\Folio\Extension\Extension
         }
         // The DataManager is bound only with config/data.php (Container::has() is true for any class).
         $drivers = is_file($c->get(Application::class)->basePath('config/data.php')) ? $c->get(DataManager::class)->driverNames() : [];
-        $schema['storage'] = in_array(MembersConfig::STORAGE, $drivers, true) ? MembersConfig::STORAGE : 'default';
-        $schema['fields']['language']['options'] = Languages::options($c->get(Locales::class)->available);
 
-        return $schema;
+        return MemberType::prepare($schema, $drivers, $c->get(Locales::class)->available);
     }
 
     /**

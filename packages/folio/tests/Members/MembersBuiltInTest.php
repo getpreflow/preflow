@@ -12,7 +12,7 @@ use Preflow\Folio\Extension\ExtensionRegistry;
 use Preflow\Folio\Extension\ExtensionState;
 use Preflow\Folio\Members\Extension;
 use Preflow\Folio\Members\FolioMembersSettings;
-use Preflow\Folio\Tests\Members\Support\Dom;
+use Preflow\Members\Tests\Support\Dom;
 use Preflow\Folio\Tests\Members\Support\MembersScaffold;
 use Preflow\Members\MembersSettings;
 
