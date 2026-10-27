@@ -11,7 +11,7 @@ use Preflow\Data\Migration\Schema;
 use Preflow\Data\Schema\RecordTables;
 use Preflow\Folio\Tests\Members\Support\MembersScaffold;
 
-/** Every record table a package syncs is in RecordTables, so the conversion finds them all. */
+/** Every record table a package syncs is in RecordTables, the list of all record tables. */
 final class RecordTablesRegistryTest extends TestCase
 {
     use MembersScaffold;

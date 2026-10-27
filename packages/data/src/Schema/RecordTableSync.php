@@ -17,14 +17,14 @@ use Preflow\Data\TypeFieldDefinition;
  * or free text when the table is untyped. Unique and plain indexes come only with the columns
  * this sync creates: an existing column is never altered and never gets an index, so a column
  * whose type differs from its kind (or a unique field without its index) is reported as a
- * warning for the conversion command. Nothing is ever dropped; JSON-stored definitions are
- * left alone.
+ * warning naming the column to convert (data README, "Converting record tables"). Nothing is
+ * ever dropped; JSON-stored definitions are left alone.
  *
  * @phpstan-import-type Entry from RecordTables
  */
 final class RecordTableSync
 {
-    private const string CONVERT = 'run preflow data:convert';
+    private const string CONVERT = 'convert the table (see the data README)';
 
     public function __construct(private readonly DataManager $dm) {}
 

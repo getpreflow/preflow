@@ -83,13 +83,13 @@ final class MysqlTypedSyncTest extends TestCase
         $lines = $sync->sync(self::def());
 
         $this->assertSame([
-            'warning: event.seats is longtext, expected number; run preflow data:convert',
-            'warning: event.open is longtext, expected boolean; run preflow data:convert',
-            'warning: event.starts is longtext, expected date; run preflow data:convert',
-            'warning: event.slug is longtext, expected short; run preflow data:convert',
-            'warning: event.city is longtext, expected short; run preflow data:convert',
-            'warning: event.short is longtext, expected short; run preflow data:convert',
-            'warning: event.slug has no unique index; run preflow data:convert',
+            'warning: event.seats is longtext, expected number; convert the table (see the data README)',
+            'warning: event.open is longtext, expected boolean; convert the table (see the data README)',
+            'warning: event.starts is longtext, expected date; convert the table (see the data README)',
+            'warning: event.slug is longtext, expected short; convert the table (see the data README)',
+            'warning: event.city is longtext, expected short; convert the table (see the data README)',
+            'warning: event.short is longtext, expected short; convert the table (see the data README)',
+            'warning: event.slug has no unique index; convert the table (see the data README)',
         ], $lines);
         $this->assertSame($before, (new Schema($this->pdo))->columnTypes('event'));
         $this->assertSame(['PRIMARY'], (new Schema($this->pdo))->indexes('event'));

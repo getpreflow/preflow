@@ -92,9 +92,9 @@ final class TypedSyncTest extends TestCase
         $lines = $sync->sync(self::def());
 
         $this->assertSame([
-            'warning: event.seats is text, expected number; run preflow data:convert',
-            'warning: event.open is text, expected boolean; run preflow data:convert',
-            'warning: event.slug has no unique index; run preflow data:convert',
+            'warning: event.seats is text, expected number; convert the table (see the data README)',
+            'warning: event.open is text, expected boolean; convert the table (see the data README)',
+            'warning: event.slug has no unique index; convert the table (see the data README)',
         ], $lines);
         $this->assertSame($before, (new Schema($this->pdo))->columnTypes('event'));
         $this->assertSame([], array_values(array_filter((new Schema($this->pdo))->indexes('event'), static fn (string $i): bool => !str_starts_with($i, 'sqlite_'))));

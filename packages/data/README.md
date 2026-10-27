@@ -272,9 +272,19 @@ Columns are typed only when sync creates them (with the table, or added later), 
 unique (`uniq_{table}_{field}`, over the field and its scope) and plain (`idx_{table}_{field}`)
 indexes; names past 64 characters are shortened with a crc32 hash. An existing column is never
 altered and never gets an index: a column whose type differs from its kind, or a unique field
-without its index, is printed as a warning (`warning: post.seats is text, expected number; run
-preflow data:convert`). Packages register their tables with `RecordTables`, so the conversion
-finds every one.
+without its index, is printed as a warning (`warning: post.seats is text, expected number;
+convert the table (see the data README)`; see Converting record tables below). Packages register
+their tables with `RecordTables`: it lists every record table, whichever package syncs it.
+
+**Converting record tables.** Sync never changes a column it did not create, so a column the
+warning names is converted on purpose:
+
+- An untyped column on an existing site (a table made before typed columns) is converted once
+  with the monorepo's one-time script `tools/convert-typed-columns.php`, which finds the tables
+  through `RecordTables`.
+- A column whose kind changed later (a field turned translatable, a relation became `multiple`,
+  a field's type was edited or it became unique) is converted with a migration in the project.
+
 `preflow_migrations` is `migration VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, ran_at VARCHAR(32) NOT NULL`.
 
 **64-character names.** MySQL caps table and index names at 64 characters. The index name is
