@@ -1,6 +1,17 @@
-{# The Decision panel (side column): state, a one-line summary with the admission's details, then Accept / Decline with an editable message. #}
+{# The Decision panel (side column): state, a one-line summary with the admission's details, the lock and sign-in lines, the lock / unlock / resend buttons that apply, then Accept / Decline with an editable message. #}
 <p><span class="folio-badge{% if state_tone %} is-{{ state_tone }}{% endif %}">{{ state_label }}</span></p>
 <p class="folio-help">{{ t('members-admin.decision.registered', {date: folio_date(registered, 'datetime') ?: registered}) }}{% for line in details %} · {{ line }}{% endfor %}</p>
+
+{% if locked_at %}<p class="folio-help">{{ t('members-admin.lock.locked_since', {date: folio_date(locked_at, 'datetime') ?: locked_at}) }}</p>{% endif %}
+{% if last_login_at %}<p class="folio-help">{{ t('members-admin.lock.last_login', {date: folio_date(last_login_at, 'datetime') ?: last_login_at}) }}</p>{% endif %}
+<div class="folio-actions">
+    {% for a in [{key: 'lock', on: can_lock}, {key: 'unlock', on: can_unlock}, {key: 'resend_confirmation', on: can_resend}] %}{% if a.on %}
+        <form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/{{ a.key }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+            <button type="submit" class="btn btn-secondary">{{ t('members-admin.lock.' ~ (a.key == 'resend_confirmation' ? 'resend' : a.key)) }}</button>
+        </form>
+    {% endif %}{% endfor %}
+</div>
 
 {% if state == 'unconfirmed' %}
     <p class="folio-help">{{ t('members-admin.decision.unconfirmed') }}</p>

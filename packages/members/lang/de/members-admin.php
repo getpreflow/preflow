@@ -36,6 +36,20 @@ return [
         'waiting' => 'Wartet',
         'member' => 'Mitglied',
         'declined' => 'Abgelehnt',
+        'locked' => 'Gesperrt',
+    ],
+    // Lock, unlock and resend on a member; :date is a date, :state a member's state.
+    'lock' => [
+        'lock' => 'Sperren',
+        'unlock' => 'Entsperren',
+        'resend' => 'Bestätigung erneut senden',
+        'locked_since' => 'Gesperrt seit :date',
+        'last_login' => 'Letzte Anmeldung :date',
+        'done_lock' => 'Mitglied gesperrt und überall abgemeldet.',
+        'done_unlock' => 'Mitglied entsperrt.',
+        'done_resend' => 'Bestätigungsmail gesendet.',
+        'resend_failed' => 'Die Mail konnte nicht gesendet werden.',
+        'cant_resend' => ':state: nur ein unbestätigtes Mitglied hat einen Link zum erneuten Senden.',
     ],
     'decision' => [
         'title' => 'Entscheidung',

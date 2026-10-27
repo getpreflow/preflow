@@ -14,11 +14,12 @@ use PHPUnit\Framework\TestCase;
  * so media registers once; 0.33's cache registry Settings → Cache lists; since 0.27 it builds
  * the chain from config/auth.php, which RecordProviders and StaffPasswords look into), data 0.38
  * (DeletedBy for deletePlan(); since 0.37 ModelLabelKeys and label maps; since 0.34 RecordTableSync, since 0.28 searchLoose, whereAny, deletePlan,
- * relations), i18n 0.38 (Translator::alwaysOverride() for editable site texts; since 0.37 translation scopes, overrides, Labels, DerivedKeys, the fallback chain), notify 0.25
+ * relations), i18n 0.39 (Translator::alwaysOverride() for editable site texts, unreleased in 0.38; since 0.37 translation scopes, overrides, Labels, DerivedKeys, the fallback chain), notify 0.25
  * (Notifier::sendLater; the bound its require names), media 0.36 (box presets, edits and writeEdited; the asset
  * classes Folio's library and field build on), validation 0.37 (Message, ValidatorFactory::useTranslator()).
  * preflow/members is only suggested (Folio carries its admin when it is installed); a members
- * release before 0.38 still ships its own admin extension, so it conflicts.
+ * release before 0.39 lacks Members::lock(), unlock(), isLocked(), endSessions() and resendConfirmation()
+ * (and before 0.38 still shipped its own admin extension), so it conflicts.
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -27,7 +28,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/auth' => '<0.38', 'preflow/core' => '<0.34', 'preflow/data' => '<0.38', 'preflow/i18n' => '<0.38', 'preflow/media' => '<0.36', 'preflow/members' => '<0.38', 'preflow/notify' => '<0.25', 'preflow/validation' => '<0.37'],
+            ['preflow/auth' => '<0.38', 'preflow/core' => '<0.34', 'preflow/data' => '<0.38', 'preflow/i18n' => '<0.39', 'preflow/media' => '<0.36', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/validation' => '<0.37'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; members is suggested, not required.

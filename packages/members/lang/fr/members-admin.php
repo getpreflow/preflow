@@ -36,6 +36,20 @@ return [
         'waiting' => 'En attente',
         'member' => 'Membre',
         'declined' => 'Refusé',
+        'locked' => 'Verrouillé',
+    ],
+    // Lock, unlock and resend on a member; :date is a date, :state a member's state.
+    'lock' => [
+        'lock' => 'Verrouiller',
+        'unlock' => 'Déverrouiller',
+        'resend' => 'Renvoyer la confirmation',
+        'locked_since' => 'Verrouillé depuis le :date',
+        'last_login' => 'Dernière connexion le :date',
+        'done_lock' => 'Membre verrouillé et déconnecté partout.',
+        'done_unlock' => 'Membre déverrouillé.',
+        'done_resend' => 'E-mail de confirmation envoyé.',
+        'resend_failed' => 'L’e-mail n’a pas pu être envoyé.',
+        'cant_resend' => ':state : seul un membre non confirmé a un lien à renvoyer.',
     ],
     'decision' => [
         'title' => 'Décision',

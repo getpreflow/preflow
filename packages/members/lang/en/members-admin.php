@@ -38,6 +38,20 @@ return [
         'waiting' => 'Waiting',
         'member' => 'Member',
         'declined' => 'Declined',
+        'locked' => 'Locked',
+    ],
+    // Lock, unlock and resend on a member; :date is a date, :state a member's state.
+    'lock' => [
+        'lock' => 'Lock',
+        'unlock' => 'Unlock',
+        'resend' => 'Resend confirmation',
+        'locked_since' => 'Locked since :date',
+        'last_login' => 'Last sign-in :date',
+        'done_lock' => 'Member locked and signed out everywhere.',
+        'done_unlock' => 'Member unlocked.',
+        'done_resend' => 'Confirmation mail sent.',
+        'resend_failed' => 'The mail could not be sent.',
+        'cant_resend' => ':state: only an unconfirmed member has a link to resend.',
     ],
     // The Decision panel on a member, and its flashes.
     'decision' => [

@@ -16,7 +16,8 @@
         "filters": [
             "registered_at",
             "email_confirmed_at",
-            "decided_at"
+            "decided_at",
+            "locked_at"
         ]
     },
     "fields": {

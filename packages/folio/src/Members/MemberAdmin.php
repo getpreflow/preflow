@@ -41,7 +41,7 @@ use Psr\Http\Message\ServerRequestInterface;
 #[FolioType('member')]
 final class MemberAdmin
 {
-    private const array TONES = ['waiting' => 'changed', 'member' => 'published', 'declined' => 'draft', 'unconfirmed' => ''];
+    private const array TONES = ['waiting' => 'changed', 'member' => 'published', 'declined' => 'draft', 'unconfirmed' => '', 'locked' => 'incomplete'];
 
     /** The states each decision may start from. */
     private const array ALLOWED = [
@@ -80,9 +80,10 @@ final class MemberAdmin
     #[ListColumn('members-admin.list.state', 5)]
     public function state(DynamicRecord $m): Badge
     {
-        $state = MemberState::fromRecord($m);
+        // A lock shows over the state (the member keeps it); never the declined label.
+        $key = $this->members->isLocked($m) ? 'locked' : MemberState::fromRecord($m)->value;
 
-        return new Badge($this->stateLabel($state), self::TONES[$state->value]);
+        return new Badge($this->translator->get('members-admin.states.' . $key), self::TONES[$key]);
     }
 
     #[FormPanel('members-admin.decision.title', position: 'side')]
@@ -92,11 +93,17 @@ final class MemberAdmin
         $state = MemberState::fromRecord($m);
         // The raw value: the panel prints it with folio_date(…, 'datetime'), as Folio's date fields show it.
         $registered = (string) $m->get('registered_at');
+        $locked = $this->members->isLocked($m);
 
         return new ScreenView('@members/decision.twig', [
             'state' => $state->value,
-            'state_label' => $this->stateLabel($state),
-            'state_tone' => self::TONES[$state->value],
+            'state_label' => $locked ? $this->translator->get('members-admin.states.locked') : $this->stateLabel($state),
+            'state_tone' => self::TONES[$locked ? 'locked' : $state->value],
+            'locked_at' => $locked ? (string) $m->get('locked_at') : '',
+            'last_login_at' => (string) $m->get('last_login_at'),
+            'can_lock' => !$locked,
+            'can_unlock' => $locked,
+            'can_resend' => $state === MemberState::Unconfirmed,
             'registered' => $registered,
             'details' => self::lines($this->admission->details($m, Admission::PANEL)),
             'can_accept' => in_array($state, self::ALLOWED['member'], true),
@@ -117,6 +124,43 @@ final class MemberAdmin
     public function decline(DynamicRecord $m, ServerRequestInterface $request): ?ResponseInterface
     {
         return $this->decide($m, $request, 'rejected');
+    }
+
+    // Folio hides an action per record nowhere: the panel offers only the buttons that apply (toolbar: false),
+    // and a crafted POST is refused with a flash.
+    #[RecordAction(name: 'lock', label: 'members-admin.lock.lock', permission: MembersConfig::DECIDE, toolbar: false)]
+    public function lock(DynamicRecord $m, ServerRequestInterface $request): ResponseInterface
+    {
+        // Locking twice keeps the first time (Members::lock()) and ends the sessions again; here a locked member is left alone.
+        if (!$this->members->isLocked($m)) {
+            $this->members->lock($m);
+        }
+
+        return $this->back($request, $this->translator->get('members-admin.lock.done_lock'), $m, 'success');
+    }
+
+    #[RecordAction(name: 'unlock', label: 'members-admin.lock.unlock', permission: MembersConfig::DECIDE, toolbar: false)]
+    public function unlock(DynamicRecord $m, ServerRequestInterface $request): ResponseInterface
+    {
+        $this->members->unlock($m);
+
+        return $this->back($request, $this->translator->get('members-admin.lock.done_unlock'), $m, 'success');
+    }
+
+    #[RecordAction(name: 'resend_confirmation', label: 'members-admin.lock.resend', permission: MembersConfig::DECIDE, toolbar: false)]
+    public function resendConfirmation(DynamicRecord $m, ServerRequestInterface $request): ResponseInterface
+    {
+        $state = MemberState::fromRecord($m);
+        if ($state !== MemberState::Unconfirmed) {
+            return $this->back($request, $this->translator->get('members-admin.lock.cant_resend', ['state' => $this->stateLabel($state)]), $m);
+        }
+        try {
+            $this->members->resendConfirmation($m);
+        } catch (TransportException) {
+            return $this->back($request, $this->translator->get('members-admin.lock.resend_failed'), $m);
+        }
+
+        return $this->back($request, $this->translator->get('members-admin.lock.done_resend'), $m, 'success');
     }
 
     private function decide(DynamicRecord $m, ServerRequestInterface $request, string $role): ?ResponseInterface
@@ -147,11 +191,11 @@ final class MemberAdmin
         return null;
     }
 
-    private function back(ServerRequestInterface $request, string $error, DynamicRecord $m): ResponseInterface
+    private function back(ServerRequestInterface $request, string $message, DynamicRecord $m, string $type = 'error'): ResponseInterface
     {
         $session = $request->getAttribute(SessionInterface::class);
         if ($session instanceof SessionInterface) {
-            $session->flash('error', $error);
+            $session->flash($type, $message);
         }
         $prefix = rtrim((string) preg_replace('~/member/.*$~', '', $request->getUri()->getPath()), '/');
 
