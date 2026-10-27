@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.41.2** — 4030 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.42.0** — 4160 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -31,7 +31,7 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    `preflow/codes` runs without it. See `docs/superpowers/plans/2026-10-27-release-0.40-checklist.md`
 3. ~~**Data integrity for the flow editor and games:** compare-and-set draft save (`UPDATE … WHERE _version = ?`)
    (done in 0.41: `DataManager::saveTypeIfVersion()`, `Publisher::saveDraft()` atomic), unique fields (game slug,
-   codes) and typed columns, saving null clears an SQL column~~ — done in 0.42 (prepared, not released): saving
+   codes) and typed columns, saving null clears an SQL column~~ — done in 0.42: saving
    `null` clears a column, unique fields (validated, with the database as the guard), typed record tables,
    `RecordTables` and the one-time `tools/convert-typed-columns.php`. See
    `docs/superpowers/plans/2026-10-27-release-0.42-checklist.md`
