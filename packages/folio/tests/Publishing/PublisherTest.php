@@ -380,6 +380,26 @@ final class PublisherTest extends TestCase
         $this->assertSame([], $p->states('post', []));
     }
 
+    /** A long id list is read in chunks (each a query with a bounded IN list), with the same states. */
+    public function test_states_of_many_ids_query_in_chunks(): void
+    {
+        $driver = $this->racing();
+        $p = $this->publisher();
+        foreach (['a' => 'A', 'b' => 'B'] as $id => $title) {
+            $record = DynamicRecord::fromArray($this->registry->get('post'), ['uuid' => $id, 'title' => $title]);
+            $p->saveDraft($record, null);
+        }
+        $p->publish($this->dm->findType('post', 'a'), null);
+        $driver->findMany = [];
+
+        $ids = ['a', ...array_map(static fn (int $i): string => "missing-{$i}", range(1, 1100)), 'b'];
+        $states = $p->states('post', $ids);
+
+        $this->assertSame(['a' => PublishState::Published, 'b' => PublishState::Draft], $states);
+        $this->assertSame(3, $driver->findMany['post__published'] ?? 0);
+        $this->assertSame(3, $driver->findMany['post'] ?? 0);
+    }
+
     private function publisher(int $keep = 20): Publisher
     {
         $fieldTypes = new FieldTypeRegistry();

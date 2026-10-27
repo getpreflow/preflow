@@ -27,6 +27,9 @@ final class Publisher
     /** How often saveDraft() without a loaded version tries before giving up on a busy record. */
     private const int SAVE_ATTEMPTS = 3;
 
+    /** How many ids states() reads per query. */
+    private const int STATES_CHUNK = 500;
+
     /** @var \Closure(): \DateTimeImmutable */
     private readonly \Closure $now;
 
@@ -82,7 +85,7 @@ final class Publisher
 
     /**
      * States of a type's working copies, with one snapshot query: every working copy, or
-     * the ones with these ids (ids that do not exist are left out).
+     * the ones with these ids (ids that do not exist are left out; one query per 500 ids).
      *
      * @param list<string>|null $ids
      * @return array<string, PublishState> keyed by id
@@ -94,20 +97,24 @@ final class Publisher
         }
         $def = $this->definition($type);
         $shadow = ShadowTypes::published($def);
-        $only = $ids === null ? null : array_values(array_map('strval', $ids));
-        $snapshots = [];
-        foreach ($this->among($this->dm->queryIn($shadow), $shadow, $only)->get()->items() as $snapshot) {
-            $snapshots[(string) $snapshot->getId()] = $snapshot;
-        }
+        $only = $ids === null ? null : array_values(array_unique(array_map('strval', $ids)));
+        // A bounded IN list per query (MySQL binds one placeholder per id).
+        $chunks = $only === null ? [null] : array_chunk($only, self::STATES_CHUNK);
 
         $states = [];
-        foreach ($this->among($this->dm->queryIn($def), $def, $only)->get()->items() as $working) {
-            $id = (string) $working->getId();
-            // An IN on a text column compares case- and accent-insensitively on MySQL: exact ids only.
-            if ($only !== null && !in_array($id, $only, true)) {
-                continue;
+        foreach ($chunks as $chunk) {
+            $snapshots = [];
+            foreach ($this->among($this->dm->queryIn($shadow), $shadow, $chunk)->get()->items() as $snapshot) {
+                $snapshots[(string) $snapshot->getId()] = $snapshot;
             }
-            $states[$id] = self::compare($working, $snapshots[$id] ?? null);
+            foreach ($this->among($this->dm->queryIn($def), $def, $chunk)->get()->items() as $working) {
+                $id = (string) $working->getId();
+                // An IN on a text column compares case- and accent-insensitively on MySQL: exact ids only.
+                if ($chunk !== null && !in_array($id, $chunk, true)) {
+                    continue;
+                }
+                $states[$id] = self::compare($working, $snapshots[$id] ?? null);
+            }
         }
 
         return $states;

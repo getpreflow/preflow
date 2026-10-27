@@ -96,9 +96,54 @@ final class DataManagerVersionedSaveTest extends TestCase
 
     public function test_a_driver_without_versioned_writes_gets_a_read_compare_write(): void
     {
+        $dm = new DataManager(['default' => self::plainDriver()], typeRegistry: new TypeRegistry($this->dir . '/models'));
+        $dm->saveType($this->note($dm, ['title' => 'A', '_version' => 2]));
+
+        $notices = $this->collectingNotices(function () use ($dm): void {
+            $this->assertFalse($dm->saveTypeIfVersion($this->note($dm, ['title' => 'X']), 1));
+            $this->assertTrue($dm->saveTypeIfVersion($this->note($dm, ['title' => 'B']), 2));
+        });
+        $this->assertSame('B', $dm->findType('note', 'n1')->get('title'));
+        $this->assertSame(3, (int) $dm->findType('note', 'n1')->get('_version'));
+        $this->assertCount(1, $notices, 'once per driver class');
+        $this->assertStringContainsString('VersionedStorage', $notices[0]);
+    }
+
+    public function test_a_failed_save_removes_a_version_the_record_did_not_have(): void
+    {
+        $dm = $this->sqliteDm();
+        $dm->saveType($this->note($dm, ['title' => 'A', '_version' => 2]));
+
+        $record = $this->note($dm, ['title' => 'X']);
+        $this->assertFalse($dm->saveTypeIfVersion($record, 1));
+
+        $this->assertArrayNotHasKey('_version', $record->toArray());
+    }
+
+    /** @return list<string> the E_USER_NOTICE messages $run raised */
+    private function collectingNotices(\Closure $run): array
+    {
+        $notices = [];
+        set_error_handler(static function (int $errno, string $message) use (&$notices): bool {
+            $notices[] = $message;
+
+            return true;
+        }, E_USER_NOTICE);
+        try {
+            $run();
+        } finally {
+            restore_error_handler();
+        }
+
+        return $notices;
+    }
+
+    private static function plainDriver(): StorageDriver
+    {
         $inner = new SqliteDriver(new \PDO('sqlite::memory:'));
         $inner->pdo()->exec('CREATE TABLE notes (uuid TEXT PRIMARY KEY, title TEXT, _version TEXT)');
-        $plain = new class ($inner) implements StorageDriver {
+
+        return new class ($inner) implements StorageDriver {
             public function __construct(private readonly StorageDriver $inner) {}
             public function findOne(string $type, string|int $id, string $idField = 'uuid'): ?array { return $this->inner->findOne($type, $id, $idField); }
             public function findMany(string $type, Query $query): ResultSet { return $this->inner->findMany($type, $query); }
@@ -108,12 +153,5 @@ final class DataManagerVersionedSaveTest extends TestCase
             public function lastInsertId(): string|int { return $this->inner->lastInsertId(); }
             public function rawQuery(string $sql, array $bindings = []): array { return $this->inner->rawQuery($sql, $bindings); }
         };
-        $dm = new DataManager(['default' => $plain], typeRegistry: new TypeRegistry($this->dir . '/models'));
-        $dm->saveType($this->note($dm, ['title' => 'A', '_version' => 2]));
-
-        $this->assertFalse($dm->saveTypeIfVersion($this->note($dm, ['title' => 'X']), 1));
-        $this->assertTrue($dm->saveTypeIfVersion($this->note($dm, ['title' => 'B']), 2));
-        $this->assertSame('B', $dm->findType('note', 'n1')->get('title'));
-        $this->assertSame(3, (int) $dm->findType('note', 'n1')->get('_version'));
     }
 }

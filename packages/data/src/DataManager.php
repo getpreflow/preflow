@@ -341,10 +341,11 @@ final class DataManager
      * version counts as 0; a record not stored yet is inserted when $expected is 0.
      *
      * Atomic on every built-in driver (VersionedStorage). Any other driver gets a plain
-     * read, compare and write, which is not.
+     * read, compare and write, which is not (an E_USER_NOTICE says so, once per driver class).
+     * SQL drivers match only a canonical integer string as the stored version ('5', not '05').
      *
      * @return bool false when someone else saved in between: nothing was written and the
-     *              record's version is left as it was
+     *              record's version is left as it was (removed again if it had none)
      * @throws ValidationException when $validate and the record fails its rules (nothing saved)
      */
     public function saveTypeIfVersion(DynamicRecord $record, int $expected, ?int $next = null, string $versionField = '_version', bool $validate = true, array $rules = []): bool
@@ -356,12 +357,14 @@ final class DataManager
         $id = $record->getId() ?? throw new \RuntimeException("DynamicRecord must have an ID ({$typeDef->idField}) before saving.");
         $driver = $this->resolveDriver($typeDef->storage);
 
+        $had = array_key_exists($versionField, $record->toArray());
         $before = $record->get($versionField);
         $record->set($versionField, $next ?? $expected + 1);
 
         if ($driver instanceof VersionedStorage) {
             $written = $driver->saveIfVersion($typeDef->table, $id, $record->toArray(), $versionField, $expected, $typeDef->idField);
         } else {
+            self::noticeNotVersioned($driver);
             $stored = $driver->findOne($typeDef->table, $id, $typeDef->idField);
             $written = $stored === null ? $expected === 0 : (int) ($stored[$versionField] ?? 0) === $expected;
             if ($written) {
@@ -370,10 +373,27 @@ final class DataManager
         }
 
         if (!$written) {
-            $record->set($versionField, $before);
+            $had ? $record->set($versionField, $before) : $record->remove($versionField);
         }
 
         return $written;
+    }
+
+    /** @var array<class-string, true> driver classes already told about */
+    private static array $noticedNotVersioned = [];
+
+    /** Once per driver class: its version-checked saves are a read, compare and write, not atomic. */
+    private static function noticeNotVersioned(StorageDriver $driver): void
+    {
+        $class = $driver::class;
+        if (isset(self::$noticedNotVersioned[$class])) {
+            return;
+        }
+        self::$noticedNotVersioned[$class] = true;
+        trigger_error(
+            "Storage driver {$class} does not implement Preflow\\Data\\VersionedStorage: saveTypeIfVersion() reads, compares and writes, which two concurrent saves can both pass.",
+            E_USER_NOTICE,
+        );
     }
 
     /**

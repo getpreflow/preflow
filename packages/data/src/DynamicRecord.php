@@ -25,6 +25,12 @@ final class DynamicRecord
         $this->data[$field] = $value;
     }
 
+    /** Drop a field, so toArray() no longer has the key (set(null) keeps it). */
+    public function remove(string $field): void
+    {
+        unset($this->data[$field]);
+    }
+
     public function getId(): ?string
     {
         return $this->data[$this->type->idField] ?? null;
