@@ -335,6 +335,48 @@ final class DataManager
     }
 
     /**
+     * Save a dynamic record only if its stored version is still $expected (compare-and-set):
+     * the record is written with $versionField = $next (default $expected + 1), and of two
+     * writers holding the same version exactly one gets through. A missing or empty stored
+     * version counts as 0; a record not stored yet is inserted when $expected is 0.
+     *
+     * Atomic on every built-in driver (VersionedStorage). Any other driver gets a plain
+     * read, compare and write, which is not.
+     *
+     * @return bool false when someone else saved in between: nothing was written and the
+     *              record's version is left as it was
+     * @throws ValidationException when $validate and the record fails its rules (nothing saved)
+     */
+    public function saveTypeIfVersion(DynamicRecord $record, int $expected, ?int $next = null, string $versionField = '_version', bool $validate = true, array $rules = []): bool
+    {
+        $typeDef = $record->getType();
+        if ($validate) {
+            $this->validateDynamicRecord($record, $rules);
+        }
+        $id = $record->getId() ?? throw new \RuntimeException("DynamicRecord must have an ID ({$typeDef->idField}) before saving.");
+        $driver = $this->resolveDriver($typeDef->storage);
+
+        $before = $record->get($versionField);
+        $record->set($versionField, $next ?? $expected + 1);
+
+        if ($driver instanceof VersionedStorage) {
+            $written = $driver->saveIfVersion($typeDef->table, $id, $record->toArray(), $versionField, $expected, $typeDef->idField);
+        } else {
+            $stored = $driver->findOne($typeDef->table, $id, $typeDef->idField);
+            $written = $stored === null ? $expected === 0 : (int) ($stored[$versionField] ?? 0) === $expected;
+            if ($written) {
+                $driver->save($typeDef->table, $id, $record->toArray(), $typeDef->idField);
+            }
+        }
+
+        if (!$written) {
+            $record->set($versionField, $before);
+        }
+
+        return $written;
+    }
+
+    /**
      * Delete a dynamic record by type and ID.
      */
     public function deleteType(string $type, string|int $id): void

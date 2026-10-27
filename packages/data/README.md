@@ -43,6 +43,7 @@ $dm->update(Model $model): void         // explicit UPDATE
 $dm->delete(Post::class, $id): void     // delete by class + ID
 $dm->delete($model): void               // delete by model instance
 $dm->raw(string $sql, array $bindings, string $storage): array  // raw SQL query
+$dm->saveTypeIfVersion(DynamicRecord $record, int $expected): bool // compare-and-set, see below
 ```
 
 `save()` detects an empty ID field and automatically issues an INSERT, then reads back `lastInsertId()` into the model — no need to pre-generate IDs for auto-increment tables.
@@ -169,6 +170,39 @@ $taken = $dm->execute(
 One conditional statement decides by its affected rows, so concurrent requests cannot both
 take the last seat. A package writing its own SQL for both SQLite and MySQL asks the driver
 for `PdoDriver::dialect()` (`quoteIdentifier()`, `MysqlDialect`).
+
+### Version-checked saves (compare-and-set)
+
+Reading a record, comparing its version and then saving it leaves a window: two requests
+that both read version 3 both pass the check, and the later save overwrites the earlier one.
+`saveTypeIfVersion()` closes it. The write itself carries the version it expects:
+
+```php
+$record = $dm->findType('game', $id);
+$loaded = (int) ($record->get('_version') ?? 0);   // what the editor loaded
+$record->set('title', $title);
+
+if (!$dm->saveTypeIfVersion($record, $loaded)) {
+    // someone else saved in between: nothing was written
+}
+// written with _version = $loaded + 1
+```
+
+- Of two writers holding the same version exactly one gets through; the other gets `false`
+  and its record keeps the version it had.
+- The record is written with `$next` (default `$expected + 1`) in `$versionField` (default
+  `_version`). `next: $expected` writes without moving the version on.
+- A missing or empty stored version counts as 0. A record that is not stored yet is
+  inserted when `$expected` is 0; of two such inserts one fails.
+- Validation runs as in `saveType()` (`validate: false` skips it).
+- SQLite and MySQL check in the write's own `UPDATE … WHERE id = ? AND _version = ?`, in a
+  transaction (one the caller opened is used as it is). The JSON driver checks and writes
+  under a lock file (`.lock` in the type's folder). All three implement
+  `Preflow\Data\VersionedStorage::saveIfVersion()`; a driver that does not gets a plain
+  read, compare and write.
+
+Folio's `Publisher::saveDraft()` uses it, and throws `VersionConflict` instead of returning
+`false`.
 
 ## MySQL and MariaDB
 

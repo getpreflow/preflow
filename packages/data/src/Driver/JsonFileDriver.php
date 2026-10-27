@@ -9,9 +9,9 @@ use Preflow\Data\Locales;
 use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
 use Preflow\Data\SortDirection;
-use Preflow\Data\StorageDriver;
+use Preflow\Data\VersionedStorage;
 
-final class JsonFileDriver implements StorageDriver
+final class JsonFileDriver implements VersionedStorage
 {
     public function __construct(
         private readonly string $basePath,
@@ -243,6 +243,39 @@ final class JsonFileDriver implements StorageDriver
 
         $this->bumpGeneration($type);
         $this->clearCache($type);
+    }
+
+    /**
+     * Checks and writes under an exclusive lock on the type's lock file (`.lock` in its folder,
+     * which no query reads), so two version-checked writers of the type take turns.
+     */
+    public function saveIfVersion(string $type, string|int $id, array $data, string $versionField, int $expected, string $idField = 'uuid'): bool
+    {
+        self::assertSafe($type, $id);
+        if (($data[$versionField] ?? null) === null) {
+            throw new \InvalidArgumentException("saveIfVersion() needs the version to write in [{$versionField}].");
+        }
+        $dir = $this->typeDir($type);
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) {
+            throw new \RuntimeException("Could not create {$dir}.");
+        }
+        $lock = fopen($dir . '/.lock', 'c');
+        if ($lock === false || !flock($lock, LOCK_EX)) {
+            throw new \RuntimeException("Could not lock {$dir}/.lock.");
+        }
+        try {
+            $stored = $this->findOne($type, $id, $idField);
+            $current = $stored === null ? null : (int) ($stored[$versionField] ?? 0);
+            if ($stored === null ? $expected !== 0 : $current !== $expected) {
+                return false;
+            }
+            $this->save($type, $id, $data, $idField);
+
+            return true;
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
     }
 
     public function delete(string $type, string|int $id, string $idField = 'uuid'): void

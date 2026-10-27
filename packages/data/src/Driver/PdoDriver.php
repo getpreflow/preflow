@@ -6,9 +6,9 @@ namespace Preflow\Data\Driver;
 
 use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
-use Preflow\Data\StorageDriver;
+use Preflow\Data\VersionedStorage;
 
-abstract class PdoDriver implements StorageDriver
+abstract class PdoDriver implements VersionedStorage
 {
     public function __construct(
         protected readonly \PDO $pdo,
@@ -108,16 +108,104 @@ abstract class PdoDriver implements StorageDriver
     }
 
     /**
+     * The version check is the write's own UPDATE: it claims the record by setting the version
+     * column WHERE the stored version is $expected, inside a transaction (the row stays locked
+     * until it ends), then writes $data as save() does. A transaction the caller already opened
+     * is used as it is and left to the caller.
+     */
+    public function saveIfVersion(string $type, string|int $id, array $data, string $versionField, int $expected, string $idField = 'uuid'): bool
+    {
+        if (($data[$versionField] ?? null) === null) {
+            throw new \InvalidArgumentException("saveIfVersion() needs the version to write in [{$versionField}].");
+        }
+        if ($id === '' || $id === 0 || $id === '0') {
+            throw new \InvalidArgumentException('saveIfVersion() needs the record id.');
+        }
+        $data[$idField] ??= $id;
+
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $written = $this->claim($type, $id, (string) $data[$versionField], $versionField, $expected, $idField);
+            if ($written) {
+                $this->save($type, $id, $data, $idField);
+            } elseif ($expected === 0 && !$this->exists($type, $id, $idField)) {
+                $written = $this->insertNew($type, $data);
+            }
+            if ($own) {
+                $written ? $this->pdo->commit() : $this->pdo->rollBack();
+            }
+
+            return $written;
+        } catch (\Throwable $e) {
+            if ($own && $this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /** Set the version column where the stored version is $expected; whether the record matched. */
+    private function claim(string $type, string|int $id, string $next, string $versionField, int $expected, string $idField): bool
+    {
+        $table = $this->dialect->quoteIdentifier($type);
+        $version = $this->dialect->quoteIdentifier($versionField);
+        $col = $this->dialect->quoteIdentifier($idField);
+        // Compared as text: the column is text in Folio's tables, and a number column takes it too.
+        $matches = $expected === 0 ? "({$version} IS NULL OR {$version} = ?)" : "{$version} = ?";
+
+        $update = "UPDATE {$table} SET {$version} = ? WHERE {$col} = ? AND {$matches}";
+        if ($this->write($type, $update, [$next, $id, (string) $expected])->rowCount() > 0) {
+            return true;
+        }
+
+        // MySQL without FOUND_ROWS counts changed rows only: a write keeping the version matched
+        // but changed nothing. The UPDATE has locked the row either way.
+        $select = "SELECT 1 FROM {$table} WHERE {$col} = ? AND {$matches} LIMIT 1";
+
+        return $this->read($type, $select, [$id, (string) $expected])->fetchColumn() !== false;
+    }
+
+    /**
+     * A plain INSERT (no upsert) for a record expected not to exist yet; a concurrent insert of
+     * the same id makes it fail on the primary key, which is a lost race and not an error.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function insertNew(string $type, array $data): bool
+    {
+        $data = array_map(
+            static fn ($v) => is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) : $v,
+            $data,
+        );
+        $data = array_filter($data, fn ($v) => $v !== null);
+        try {
+            $this->write($type, $this->dialect->insertSql($type, array_keys($data)), array_values($data));
+
+            return true;
+        } catch (\PDOException $e) {
+            if (($e->errorInfo[0] ?? $e->getCode()) === '23000') {
+                return false;
+            }
+            throw $e;
+        }
+    }
+
+    /**
      * Runs a write; a record key the table has no column for (a model field
      * added without migrating) names the fix instead of the raw PDO error.
      *
      * @param list<mixed> $bindings
      */
-    private function write(string $table, string $sql, array $bindings): void
+    private function write(string $table, string $sql, array $bindings): \PDOStatement
     {
         try {
             $stmt = $this->pdo->prepare($sql);
             $this->executeWithLogging($stmt, $sql, $bindings);
+
+            return $stmt;
         } catch (\PDOException $e) {
             if (preg_match('/(?:no such column:|has no column named|Unknown column)\s*[\'"`]?([A-Za-z0-9_]+)/', $e->getMessage(), $m) === 1) {
                 throw new \RuntimeException("Table {$table} has no column {$m[1]}; run `preflow migrate`.", 0, $e);
