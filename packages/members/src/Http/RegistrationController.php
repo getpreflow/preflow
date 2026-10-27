@@ -62,7 +62,9 @@ final class RegistrationController
         }
         // A site that shows the form on its own page (config "register") has no second one here.
         if ($this->config->register() !== $this->config->path() . '/register') {
-            return $this->view->redirect($this->links->localize($this->locale($request), $this->config->register()));
+            $locale = $this->locale($request);
+
+            return $this->view->redirect($this->links->localize($locale, $this->config->register()) . $this->safeNext->query(Input::text($request->getQueryParams(), 'next'), $locale));
         }
 
         return $this->page($request, next: Input::text($request->getQueryParams(), 'next'));
@@ -190,7 +192,7 @@ final class RegistrationController
      */
     private function page(ServerRequestInterface $request, array $errors = [], array $input = [], int $status = 200, string $next = ''): ResponseInterface
     {
-        return $this->show('register', $request, ['open' => $this->open(), 'compose_name' => $this->admission instanceof ComposesName, 'errors' => $errors, 'old' => $input, 'next' => $next], $status);
+        return $this->show('register', $request, ['open' => $this->open(), 'compose_name' => $this->admission instanceof ComposesName, 'errors' => $errors, 'old' => $input, 'next' => $next, 'next_query' => $this->safeNext->query($next, $this->locale($request))], $status);
     }
 
     /** A page with the flash notice a previous request left (e.g. after deleting the account). @param array<string, mixed> $vars */

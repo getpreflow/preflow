@@ -37,7 +37,7 @@ final class MembersView
      * Template variables every page gets (a page's own $vars win): locale, alternates, viewer,
      * layout, base (the member pages' URL: locale prefix and path), landing, register (the register link), password_min,
      * validity.confirm / validity.reset, privacy_url (config privacy_url in the page locale), and empty defaults for the form state (notice, error,
-     * errors, old, ...), so a template never trips over an unset variable in debug mode.
+     * errors, old, next, next_query: "?next=..." for the links between login and register, ...), so a template never trips over an unset variable in debug mode.
      *
      * @param array<string, mixed> $vars
      */
@@ -60,7 +60,7 @@ final class MembersView
             'register' => $this->links->localize($locale, $this->config->register()),
             'password_min' => $this->config->passwordMin(),
             'validity' => ['confirm' => $this->validity->confirm($locale), 'reset' => $this->validity->reset($locale)],
-            'notice' => '', 'error' => '', 'errors' => [], 'old' => [], 'old_email' => '', 'next' => '',
+            'notice' => '', 'error' => '', 'errors' => [], 'old' => [], 'old_email' => '', 'next' => '', 'next_query' => '',
             'email' => '', 'name' => '', 'token' => '', 'sent' => false, 'used' => false, 'open' => true,
             'privacy_url' => $this->config->privacyUrl($locale, $this->locales->default),
         ]);

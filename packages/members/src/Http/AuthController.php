@@ -216,7 +216,7 @@ final class AuthController
 
     private function loginPage(ServerRequestInterface $request, string $next, string $email = '', string $error = '', int $status = 200): ResponseInterface
     {
-        return $this->view->render('login', ['next' => $next, 'old_email' => $email, 'error' => $error], $request, $status);
+        return $this->view->render('login', ['next' => $next, 'next_query' => $this->safeNext->query($next, $this->locale($request)), 'old_email' => $email, 'error' => $error], $request, $status);
     }
 
     private function resetPage(ServerRequestInterface $request, string $token, string $error = '', int $status = 200): ResponseInterface

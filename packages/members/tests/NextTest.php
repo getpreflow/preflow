@@ -128,6 +128,38 @@ final class NextTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_next_survives_the_switch_between_login_and_register(): void
+    {
+        $this->flowSite(['next' => ['allow' => ['/games/']]]);
+        $q = '?next=' . rawurlencode('/games/catan?seat=2');
+
+        $login = $this->html('/members/login' . $q);
+        $this->assertNotNull(Dom::first($login, '//a[@href="/members/register' . $q . '"]'), 'login links to register with next');
+        $register = $this->html('/members/register' . $q);
+        $this->assertNotNull(Dom::first($register, '//a[@href="/members/login' . $q . '"]'), 'register links to login with next');
+        $this->assertNotNull(Dom::first($this->html('/de/members/login' . $q), '//a[@href="/de/members/register' . $q . '"]'));
+
+        // A next SafeNext drops is not passed on; without one the links stay as they were.
+        $foreign = '?next=' . rawurlencode('/shop/cart');
+        $this->assertNotNull(Dom::first($this->html('/members/login' . $foreign), '//a[@href="/members/register"]'));
+        $this->assertNotNull(Dom::first($this->html('/members/register' . $foreign), '//a[@href="/members/login"]'));
+        $this->assertNotNull(Dom::first($this->html('/members/login'), '//a[@href="/members/register"]'));
+        $this->assertNotNull(Dom::first($this->html('/members/register'), '//a[@href="/members/login"]'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_redirect_to_a_sites_own_register_page_keeps_next(): void
+    {
+        $this->flowSite(['register' => '/join', 'next' => ['allow' => ['/games/']]], files: ['app/pages/join.twig' => 'JOIN']);
+        $q = '?next=' . rawurlencode('/games/catan');
+
+        $this->assertSame('/join' . $q, $this->send('GET', '/members/register' . $q)->getHeaderLine('Location'));
+        $this->assertSame('/de/join' . $q, $this->send('GET', '/de/members/register' . $q)->getHeaderLine('Location'));
+        $this->assertSame('/join', $this->send('GET', '/members/register?next=' . rawurlencode('//evil.test'))->getHeaderLine('Location'));
+        $this->assertSame('/join', $this->send('GET', '/members/register')->getHeaderLine('Location'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_registration_and_confirmation_land_on_next_once(): void
     {
         $this->flowSite();

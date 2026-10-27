@@ -46,6 +46,15 @@ final class SafeNext
         return preg_match('#^(?:' . $this->bases() . ')(/[A-Za-z0-9._~%/-]*)?(\?[\x21-\x7E]*)?$#D', $next) === 1 ? $next : $home;
     }
 
+    /**
+     * "?next=..." to pass $next on to another member page (the login and register links, the
+     * redirect to a site's own register page) when this class keeps it; else "".
+     */
+    public function query(?string $next, string $locale): string
+    {
+        return $next !== null && $next !== '' && $this->of($next, $locale) === $next ? '?next=' . rawurlencode($next) : '';
+    }
+
     /** The members path and the allowed paths in every locale ("/members|/de/members|/games"), as a regex alternation. */
     private function bases(): string
     {
