@@ -12,7 +12,8 @@ declare(strict_types=1);
  * does not fit (a number field holding text, a yes/no other than '', 0, 1, true, false, a date not
  * in a stored format, a short text over its length, a duplicate in a unique field) is listed and
  * nothing is changed. --check only reports. A rerun continues where an interrupted run stopped.
- * --sqlite=<file> runs against that SQLite file (a copy) instead of the configured one.
+ * --sqlite=<file> runs against that SQLite file (a copy) instead of the configured one; its backup
+ * then goes to backups/ beside that file, not into the site (unless --backup-dir says otherwise).
  * Exit code: 0 converted, clean or nothing to do; 1 failures, a failed backup or an error.
  * See packages/data/README.md, "Converting record tables".
  */

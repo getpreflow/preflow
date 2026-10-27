@@ -91,7 +91,7 @@ final class Cli
             $this->out("Site {$site}, storage [{$storage}]: {$database}");
 
             $tables = Tables::from($dm, $app->container()->get(RecordTables::class)->all(), $storage);
-            $backup = new Backup($pdo, $backupDir ?? "{$site}/storage/backups", $mysql ? self::mysqlConfig($base) : []);
+            $backup = new Backup($pdo, self::backupDir($site, $sqlite, $backupDir), $mysql ? self::mysqlConfig($base) : []);
 
             return (new Conversion($tables, $backup))->run($check, $this->out(...));
         } catch (\Throwable $e) {
@@ -99,6 +99,15 @@ final class Cli
         } finally {
             $overlay?->remove();
         }
+    }
+
+    /**
+     * Where the backup goes: --backup-dir, else beside the copy with --sqlite (a dry run writes
+     * nothing into the site), else the site's storage/backups/.
+     */
+    public static function backupDir(string $site, ?string $sqlite, ?string $backupDir): string
+    {
+        return $backupDir ?? ($sqlite !== null ? dirname($sqlite) . '/backups' : "{$site}/storage/backups");
     }
 
     /**

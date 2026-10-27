@@ -10,6 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Tools\Convert\Backup;
+use Preflow\Tools\Convert\Cli;
 use Preflow\Tools\Convert\Overlay;
 
 /** tools/convert-typed-columns.php on SQLite: the table is rebuilt typed, in one transaction. */
@@ -100,6 +101,15 @@ final class ConvertTypedColumnsTest extends TestCase
         $this->assertFileExists($site . '/.env');
         $this->assertDirectoryExists($site . '/storage/data');
         $this->assertFileDoesNotExist($site . '/storage/data/site.sqlite');
+    }
+
+    /** A dry run on a copy writes nothing into the site: its backups go next to the copy. */
+    public function testBackupDirIsBesideTheCopyWithSqlite(): void
+    {
+        $this->assertSame('/site/storage/backups', Cli::backupDir('/site', null, null));
+        $this->assertSame('/scratch/backups', Cli::backupDir('/site', '/scratch/site-copy.sqlite', null));
+        $this->assertSame('/elsewhere', Cli::backupDir('/site', '/scratch/site-copy.sqlite', '/elsewhere'));
+        $this->assertSame('/elsewhere', Cli::backupDir('/site', null, '/elsewhere'));
     }
 
     public function testOverlayRefusesASiteWithoutSqlite(): void

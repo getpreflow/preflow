@@ -58,7 +58,13 @@ final class Checker
     public static function misfit(ColumnKind $kind, string $value, ?int $length): ?string
     {
         return match ($kind) {
-            ColumnKind::Number => $value === '' || preg_match('/^-?\d+(\.\d+)?$/', $value) === 1 ? null : 'not a number',
+            ColumnKind::Number => match (true) {
+                $value === '' => null,
+                preg_match('/^-?\d+(\.\d+)?$/', $value) !== 1 => 'not a number',
+                // A DOUBLE (MySQL) or REAL (SQLite) holds 15 significant digits exactly; more are stored rounded.
+                strlen(ltrim((string) preg_replace('/e.*$/', '', Converter::decimal($value)), '-')) > 15 => 'too precise for a number column (more than 15 significant digits)',
+                default => null,
+            },
             ColumnKind::Boolean => in_array(strtolower($value), ['', '0', '1', 'true', 'false'], true) ? null : "not yes/no ('', 0, 1, true, false)",
             ColumnKind::Date => $value === '' || self::isDate($value) ? null : 'not a date in a stored format',
             ColumnKind::Short => mb_strlen($value) <= ($length ?? FieldKinds::DEFAULT_LENGTH) ? null : 'longer than ' . ($length ?? FieldKinds::DEFAULT_LENGTH) . ' characters',

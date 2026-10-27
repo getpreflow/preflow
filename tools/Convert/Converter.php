@@ -149,10 +149,34 @@ final class Converter
         }
 
         return match ($kind) {
-            ColumnKind::Number => is_numeric($now) && is_numeric($was) && (float) $was === (float) $now,
+            ColumnKind::Number => is_numeric($now) && is_numeric($was) && self::decimal($was) === self::decimal($now),
             ColumnKind::Boolean => (int) $now === (in_array(strtolower((string) $was), ['1', 'true'], true) ? 1 : 0),
             default => (string) $was === (string) $now,
         };
+    }
+
+    /**
+     * A number's exact decimal value in one normal form: sign, significant digits without
+     * leading or trailing zeros, and the power of ten ('12.50' is "125e-1", '1.2E+19' "12e18",
+     * '-0' "0"). A float is read with 15 significant digits, all a double holds exactly, so a
+     * value that lost digits on the way in reads back different.
+     */
+    public static function decimal(int|float|string $value): string
+    {
+        $text = is_float($value) ? sprintf('%.15g', $value) : trim((string) $value);
+        if (preg_match('/^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/', $text, $m) !== 1 || ($m[2] ?? '') . ($m[3] ?? '') === '') {
+            throw new \InvalidArgumentException("Not a number: {$text}");
+        }
+        $fraction = $m[3] ?? '';
+        $digits = ltrim($m[2] . $fraction, '0');
+        if ($digits === '') {
+            return '0';
+        }
+        $exponent = (int) ($m[4] ?? 0) - strlen($fraction);
+        $trimmed = rtrim($digits, '0');
+        $exponent += strlen($digits) - strlen($trimmed);
+
+        return ($m[1] === '-' ? '-' : '') . $trimmed . ($exponent !== 0 ? "e{$exponent}" : '');
     }
 
     /**

@@ -15,6 +15,7 @@ use Preflow\Data\TypeFieldDefinition;
 use Preflow\Tools\Convert\Backup;
 use Preflow\Tools\Convert\Checker;
 use Preflow\Tools\Convert\Conversion;
+use Preflow\Tools\Convert\Converter;
 use Preflow\Tools\Convert\Failure;
 use Preflow\Tools\Convert\Tables;
 
@@ -155,6 +156,47 @@ trait ConvertScenarios
         $this->assertSame($this->expectedType('number'), $schema->columnTypes('venue')['capacity']);
         $this->assertEquals(12, $this->snapshot('event')['a']['seats']);
         $this->assertCount(2, $this->backupFiles(), 'the first backup stays');
+    }
+
+    /** A number column is a double: more than 15 significant digits would be stored rounded. */
+    public function testTooPreciseNumberFailsAndNothingChanges(): void
+    {
+        $this->legacy(self::event());
+        $this->insert('event', [
+            ['uuid' => 'a', 'seats' => '12345678901234567890'],
+            ['uuid' => 'b', 'seats' => '0.12345678901234567'],
+            ['uuid' => 'c', 'seats' => '123456789012345'],
+            ['uuid' => 'd', 'seats' => '-0001.500000000000000000'],
+            ['uuid' => 'e', 'seats' => '12000000000000000000000'],
+        ]);
+        $before = $this->snapshot('event');
+
+        $failures = (new Checker($this->tables()))->check();
+
+        $this->assertSame([
+            ['a', '12345678901234567890', 'too precise for a number column (more than 15 significant digits)'],
+            ['b', '0.12345678901234567', 'too precise for a number column (more than 15 significant digits)'],
+        ], array_map(static fn (Failure $f): array => [$f->id, $f->value, $f->reason], $failures));
+        $this->assertSame(1, $this->conversion()->run(false, static fn (string $line) => null));
+        $this->assertSame($before, $this->snapshot('event'));
+        $this->assertSame([], $this->backupFiles());
+
+        $this->pdo()->exec("DELETE FROM event WHERE uuid IN ('a', 'b')");
+        $this->assertSame(0, $this->conversion()->run(false, static fn (string $line) => null));
+        $rows = $this->snapshot('event');
+        $this->assertSame('123456789012345', Converter::decimal($rows['c']['seats']));
+        $this->assertSame('-15e-1', Converter::decimal($rows['d']['seats']));
+        $this->assertSame('12e21', Converter::decimal($rows['e']['seats']));
+    }
+
+    public function testDecimalNormalForm(): void
+    {
+        foreach ([
+            ['12', '12'], [12, '12'], [12.0, '12'], ['12.50', '125e-1'], ['-0', '0'], ['0.000', '0'],
+            ['007', '7'], ['1.2E+19', '12e18'], [1.2e19, '12e18'], ['0.001', '1e-3'], [0.1, '1e-1'], [-2.5, '-25e-1'],
+        ] as [$value, $normal]) {
+            $this->assertSame($normal, Converter::decimal($value), var_export($value, true));
+        }
     }
 
     /** A field added since the table was made has no column yet: migrate adds it and its index, typed. */
