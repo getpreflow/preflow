@@ -13,26 +13,49 @@ final class SqliteDriver extends PdoDriver
         parent::__construct($pdo, $dialect, new QueryCompiler($dialect), $collector);
     }
 
+    /** Whether exclusive() has its BEGIN IMMEDIATE open (PDO before PHP 8.5 does not report it). */
+    private bool $immediate = false;
+
     /**
      * Inside BEGIN IMMEDIATE: the database's write lock, taken up front, so no other connection
      * writes until $fn is done and committed. A caller's open transaction is used as it is.
+     * The transaction is tracked here, not by PDO::inTransaction(), which reports one opened
+     * with exec() only from PHP 8.5.
      */
     public function exclusive(string $type, \Closure $fn): mixed
     {
-        if ($this->pdo->inTransaction()) {
+        if ($this->inTransaction()) {
             return $fn();
         }
         $this->pdo->exec('BEGIN IMMEDIATE');
+        $this->immediate = true;
         try {
             $result = $fn();
-            $this->pdo->exec('COMMIT');
-
-            return $result;
         } catch (\Throwable $e) {
-            if ($this->pdo->inTransaction()) {
+            $this->immediate = false;
+            try {
                 $this->pdo->exec('ROLLBACK');
+            } catch (\PDOException) {
+                // Already rolled back by SQLite; the original failure is what matters.
             }
             throw $e;
         }
+        $this->immediate = false;
+        try {
+            $this->pdo->exec('COMMIT');
+        } catch (\Throwable $e) {
+            try {
+                $this->pdo->exec('ROLLBACK');
+            } catch (\PDOException) {
+            }
+            throw $e;
+        }
+
+        return $result;
+    }
+
+    protected function inTransaction(): bool
+    {
+        return $this->immediate || parent::inTransaction();
     }
 }

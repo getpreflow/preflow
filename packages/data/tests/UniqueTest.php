@@ -32,6 +32,46 @@ final class UniqueMember extends Model
     public string $email = '';
 }
 
+/**
+ * A PDO that reports only transactions opened through its API (beginTransaction()), not one
+ * opened with exec('BEGIN …'), as PDO SQLite before PHP 8.5 does.
+ */
+final class ApiTransactionPdo extends \PDO
+{
+    private bool $open = false;
+
+    public function beginTransaction(): bool
+    {
+        if ($this->open) {
+            throw new \PDOException('There is already an active transaction');
+        }
+        $this->exec('BEGIN');
+
+        return $this->open = true;
+    }
+
+    public function commit(): bool
+    {
+        $this->exec('COMMIT');
+        $this->open = false;
+
+        return true;
+    }
+
+    public function rollBack(): bool
+    {
+        $this->exec('ROLLBACK');
+        $this->open = false;
+
+        return true;
+    }
+
+    public function inTransaction(): bool
+    {
+        return $this->open;
+    }
+}
+
 /** Unique fields on SQLite: validation, the unique index as the guard, the lock for translatable fields. */
 final class UniqueTest extends TestCase
 {
@@ -116,6 +156,40 @@ final class UniqueTest extends TestCase
 
         $this->assertTrue($locked, 'no other connection can write between the check and the write');
         $this->assertFalse($this->pdo->inTransaction());
+    }
+
+    public function testWriteLockIsReleasedWithoutPdoReportingTheTransaction(): void
+    {
+        $pdo = new ApiTransactionPdo('sqlite:' . $this->dir . '/db.sqlite');
+        $this->dm = new DataManager(['sqlite' => new SqliteDriver($pdo)], 'sqlite', null, new ValidatorFactory(new RuleFactory()));
+        $doc = $this->doc();
+        $pdo->exec('ALTER TABLE doc ADD COLUMN _version TEXT');
+        $other = new \PDO('sqlite:' . $this->dir . '/db.sqlite');
+        $other->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $other->setAttribute(\PDO::ATTR_TIMEOUT, 0);
+        $writable = static function () use ($other): bool {
+            try {
+                $other->exec('BEGIN IMMEDIATE');
+                $other->exec('ROLLBACK');
+
+                return true;
+            } catch (\PDOException) {
+                return false;
+            }
+        };
+
+        $this->save($doc, ['uuid' => 'a', 'slug' => ['de' => 'spiel', 'en' => 'game']]);
+        $this->assertTrue($writable(), 'released after a save');
+
+        $taken = ['slug.en' => ['This value is already taken.']];
+        $this->assertSame($taken, $this->errorsOf($doc, ['uuid' => 'b', 'slug' => ['de' => 'zwei', 'en' => 'game']], validate: false));
+        $this->assertTrue($writable(), 'released after a failing check');
+
+        $record = DynamicRecord::fromArray($doc, ['uuid' => 'c', 'slug' => ['de' => 'drei', 'en' => 'three']]);
+        $this->assertTrue($this->dm->saveTypeIfVersion($record, 0, validate: false), 'a versioned save inside the lock opens no second transaction');
+        $this->assertFalse($this->dm->saveTypeIfVersion(DynamicRecord::fromArray($doc, ['uuid' => 'c', 'slug' => ['de' => 'drei']]), 5, validate: false));
+        $this->assertTrue($writable(), 'released after versioned saves');
+        $this->assertSame('three', \Preflow\Data\LocaleValue::pick($this->dm->findIn($doc, 'c')?->get('slug'), $doc->locales, 'en'));
     }
 
     public function testModelDuplicateIsAFieldError(): void

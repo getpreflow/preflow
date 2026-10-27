@@ -172,7 +172,7 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites
         $data[$versionField] = self::canonicalVersion($data[$versionField]);
         $next = (string) $data[$versionField];
 
-        $own = !$this->pdo->inTransaction();
+        $own = !$this->inTransaction();
         if ($own) {
             $this->pdo->beginTransaction();
         }
@@ -188,7 +188,7 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites
 
             return $written;
         } catch (\Throwable $e) {
-            if ($own && $this->pdo->inTransaction()) {
+            if ($own && $this->inTransaction()) {
                 $this->pdo->rollBack();
             }
             if ($own && $e instanceof \PDOException && self::isLostRace($e)) {
@@ -196,6 +196,15 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites
             }
             throw $e;
         }
+    }
+
+    /**
+     * Whether a transaction is open on the connection: one opened through PDO, or one the
+     * driver opened itself (SqliteDriver::exclusive()).
+     */
+    protected function inTransaction(): bool
+    {
+        return $this->pdo->inTransaction();
     }
 
     /** An integral number or numeric string as its canonical integer string ('05', 5.0: '5'); anything else as it is. */
