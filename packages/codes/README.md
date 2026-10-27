@@ -193,7 +193,7 @@ if (!$check->ok) { return $this->invalidInvitationPage(); } // "this invitation 
 //  - not signed in, new address      -> your short form, Members::register(..., emailVerified: true)
 //  - signed in with that address     -> redeem, but only if that address is CONFIRMED: an unconfirmed
 //                                       self-registered address must not redeem someone else's invitation
-if ($member->get('email_confirmed_at') !== '') { // the confirmed address
+if ((string) $member->get('email_confirmed_at') !== '') { // the confirmed address
     $codes->redeem($code, 'bggenius.invite', $member->id, $throttle->client($request), recipient: $member->email);
 }
 // your codes.redeemed listener adds the member to the group; then redirect to the welcome page.
