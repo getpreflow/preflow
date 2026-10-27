@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-27 (v0.37.0 released, v0.38.0 prepared)
+> Last updated: 2026-10-27 (v0.38.0 released)
 
 ## Current State
 
-**v0.37.0** — 3600 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.38.0** — 3801 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
