@@ -128,8 +128,8 @@ final class Publisher
     }
 
     /**
-     * Save the working copy without rules (half-finished work is fine) except its unique
-     * fields: a value another record has is refused, as on any save. As version stored + 1. The version check is atomic with the write: of two saves holding the same
+     * Save the working copy without rules (half-finished work is fine) except what the storage
+     * refuses (DataManager::validateStorable()): a taken unique value, an overlong bounded value. As version stored + 1. The version check is atomic with the write: of two saves holding the same
      * version, one gets VersionConflict, also when both passed the check at the same time.
      *
      * @param int|null $loadedVersion the _version the editor loaded; null skips the check
@@ -138,12 +138,14 @@ final class Publisher
      *                                the tries reread the same snapshot, so one lost race is
      *                                VersionConflict, or the driver's error on MariaDB/SQLite)
      * @throws VersionConflict
-     * @throws ValidationException validation.unique on a taken unique field (nothing saved)
+     * @throws ValidationException validation.unique on a taken unique field, validation.max.string
+     *                             on an overlong bounded one (nothing saved)
      */
     public function saveDraft(DynamicRecord $working, ?int $loadedVersion): void
     {
-        // A draft skips the rules, not its unique fields: a value another record has is refused.
-        $this->dm->validateUnique($working);
+        // A draft skips the rules, not what the storage refuses: a value another record has in a
+        // unique field, a value longer than its bounded column.
+        $this->dm->validateStorable($working);
         // The write itself carries the version it expects (DataManager::saveTypeIfVersion): a
         // save landing between this read and the write makes the write fail, never overwrite.
         // Without a loaded version, a save that lost such a race is retried on the newer version.
@@ -321,6 +323,7 @@ final class Publisher
      * With $loadedVersion, only if the working copy is still stored with it (else VersionConflict).
      *
      * @throws VersionConflict
+     * @throws ValidationException when another record has taken a unique value since (nothing saved)
      */
     public function discard(string $type, string $id, ?int $loadedVersion = null): ?DynamicRecord
     {
@@ -347,6 +350,7 @@ final class Publisher
      * With $loadedVersion, only if the working copy is still stored with it (else VersionConflict).
      *
      * @throws VersionConflict
+     * @throws ValidationException when the storage refuses the revision's content (validateStorable(); nothing saved)
      */
     public function restore(string $type, string $id, string $revisionId, ?int $loadedVersion = null): ?DynamicRecord
     {
@@ -437,6 +441,7 @@ final class Publisher
      *
      * @param array<string, mixed> $content
      * @throws VersionConflict when $loadedVersion is given and stale
+     * @throws ValidationException when the storage refuses the content
      */
     private function replaceContent(string $type, string $id, array $content, ?int $loadedVersion = null): DynamicRecord
     {
@@ -454,6 +459,8 @@ final class Publisher
         $data['_version'] = (int) ($working?->get('_version') ?? 0) + 1;
 
         $record = DynamicRecord::fromArray($def, $data);
+        // A revision may hold a unique value another record has taken since, or one longer than its column.
+        $this->dm->validateStorable($record);
         if ($loadedVersion === null) {
             $this->dm->saveType($record, false);
         } elseif (!$this->dm->saveTypeIfVersion($record, $loadedVersion, validate: false)) {

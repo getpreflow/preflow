@@ -138,6 +138,7 @@ return [
         'title' => 'Versions',
         'changed' => 'Modifié : :fields',
         'confirm_restore' => 'Remplacer la copie de travail par cette version ?',
+        'not_restored' => 'Non restauré — :field : :message',
     ],
     'publishing' => [
         'draft' => 'Brouillon',
@@ -145,6 +146,8 @@ return [
         'changed' => 'Modifié',
         'saved_not_published' => 'Enregistré · non publié',
         'not_saved_conflict' => 'Non enregistré — quelqu’un d’autre a modifié cette entrée. Rechargez ou enregistrez pour écraser.',
+        'not_saved_invalid' => 'Non enregistré — :field : :message',
+        'not_discarded' => 'Non abandonné — :field : :message',
         'discard' => 'Abandonner les modifications',
         'confirm_discard' => 'Abandonner toutes les modifications depuis la dernière publication ?',
         'unpublish' => 'Retirer la publication',

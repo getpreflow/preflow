@@ -112,6 +112,18 @@ final class ConvertTypedColumnsTest extends TestCase
         $this->assertSame('/elsewhere', Cli::backupDir('/site', null, '/elsewhere'));
     }
 
+    /** With preflow/core older than 0.42 nothing binds RecordTables: packages register into throwaway instances. */
+    public function testRefusesAnAppWithoutRecordTablesBound(): void
+    {
+        $container = new \Preflow\Core\Container\Container();
+        $problem = Cli::registryProblem($container);
+        $this->assertNotNull($problem);
+        $this->assertStringContainsString('preflow/core', $problem);
+
+        $container->instance(\Preflow\Data\Schema\RecordTables::class, new \Preflow\Data\Schema\RecordTables());
+        $this->assertNull(Cli::registryProblem($container));
+    }
+
     public function testOverlayRefusesASiteWithoutSqlite(): void
     {
         $site = $this->dir . '/site';

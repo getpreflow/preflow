@@ -94,19 +94,30 @@ final class FieldKinds
      */
     public function lengthRules(TypeDefinition $def): array
     {
+        return array_map(static fn (int $length): string => 'max:' . $length, $this->lengths($def));
+    }
+
+    /**
+     * The column lengths of a type's bounded string columns (what lengthRules() limits them to),
+     * by field.
+     *
+     * @return array<string, int>
+     */
+    public function lengths(TypeDefinition $def): array
+    {
         $scopes = [];
         foreach ($def->uniqueFields() as $scope) {
             array_push($scopes, ...$scope);
         }
-        $rules = [];
+        $lengths = [];
         foreach ($def->fields as $name => $field) {
-            $rule = $this->lengthRule(in_array($name, $scopes, true) ? $field->withIndex() : $field);
-            if ($rule !== null) {
-                $rules[$name] = $rule;
+            $field = in_array($name, $scopes, true) ? $field->withIndex() : $field;
+            if ($this->columnKindOf($field) === ColumnKind::Short) {
+                $lengths[$name] = $field->length ?? self::DEFAULT_LENGTH;
             }
         }
 
-        return $rules;
+        return $lengths;
     }
 
     /** The length rule of a unique or indexed string column ("max:191"), or null for any other field. */

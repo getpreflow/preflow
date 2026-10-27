@@ -148,6 +148,7 @@ return [
         'title' => 'Revisions',
         'changed' => 'Changed: :fields',
         'confirm_restore' => 'Replace the working copy with this revision?',
+        'not_restored' => 'Not restored — :field: :message',
     ],
     'publishing' => [
         'draft' => 'Draft',
@@ -155,6 +156,8 @@ return [
         'changed' => 'Changed',
         'saved_not_published' => 'Saved · not published',
         'not_saved_conflict' => 'Not saved — someone else changed this record. Reload or save to overwrite.',
+        'not_saved_invalid' => 'Not saved — :field: :message',
+        'not_discarded' => 'Not discarded — :field: :message',
         'discard' => 'Discard changes',
         'confirm_discard' => 'Discard all changes since the last publish?',
         'unpublish' => 'Unpublish',

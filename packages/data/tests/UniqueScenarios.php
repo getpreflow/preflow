@@ -129,6 +129,31 @@ trait UniqueScenarios
         $this->assertSame(['purpose'], array_keys($errors));
     }
 
+    /** What the storage would refuse, for a save that skips the rules (a draft): bounded lengths and unique fields. */
+    public function testValidateStorable(): void
+    {
+        $page = $this->page();
+        $code = $this->code();
+        $this->save($page, ['uuid' => 'a', 'slug' => 'x']);
+        $storable = function (TypeDefinition $def, array $data): array {
+            try {
+                $this->dm->validateStorable(DynamicRecord::fromArray($def, $data));
+
+                return [];
+            } catch (ValidationException $e) {
+                return $e->errors();
+            }
+        };
+
+        $this->assertSame(['slug' => ['Must be at most 191 characters.']], $storable($page, ['uuid' => 'b', 'slug' => str_repeat('s', 192)]));
+        $this->assertSame(['purpose' => ['Must be at most 191 characters.']], $storable($code, ['uuid' => 'c', 'code' => 'ABC', 'purpose' => str_repeat('p', 192)]));
+        $this->assertSame(['slug' => ['This value is already taken.']], $storable($page, ['uuid' => 'b', 'slug' => 'x']));
+        $this->assertSame([], $storable($page, ['uuid' => 'b', 'slug' => str_repeat('s', 191), 'title' => str_repeat('t', 500)]), 'text fields are unbounded');
+        $this->assertSame([], $storable($page, ['uuid' => 'b', 'slug' => '2024']), 'a number-like value is measured as text');
+        $this->assertSame([], $storable($page, ['uuid' => 'b', 'slug' => null]));
+        $this->assertNull($this->dm->findIn($page, 'b'), 'a check writes nothing');
+    }
+
     public function testRaceIsAFieldErrorAndTouchesNothing(): void
     {
         $page = $this->page();

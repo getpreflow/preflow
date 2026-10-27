@@ -236,15 +236,17 @@ fields (unique within them), and may carry an index and a length:
 ```
 
 ```php
-#[Field(unique: true, length: 320)] public string $email = '';
-#[Field(unique: ['purpose'])] public string $code = '';
+#[Field(unique: true, length: 320)] public ?string $email = null;
+#[Field(unique: ['purpose'])] public ?string $code = null;
 ```
 
 - **Validation.** `save()`, `insert()`, `update()`, `saveType()` and `saveTypeIfVersion()` add the
   `Preflow\Data\Validation\Unique` rule for every unique field (per locale for a translatable
   field). A duplicate is a `ValidationException` with `validation.unique` ("already taken") on the
   field, not an exception from the database. `DataManager::validateUnique($record)` checks only
-  the unique fields (Folio uses it for draft saves). Empty values (`null`, `''`) and values with
+  the unique fields; `DataManager::validateStorable($record)` checks what the storage itself
+  would refuse, the unique fields and the length of every bounded column (`validation.max.string`),
+  for a save that skips the other rules (Folio uses it for draft saves and restored revisions). Empty values (`null`, `''`) and values with
   a `null` scope are never duplicates. Comparison is exact: case and accents count, on every
   database. App forms use the rule directly:
   `new Unique($dm, 'game', 'slug', scope: ['purpose'], exceptId: $id)` (the scope is read from the
@@ -345,10 +347,15 @@ warning names is converted on purpose:
   it backs the database up to `storage/backups/` (SQLite: a file copy; MySQL: a dump), converts
   table by table (a rerun continues after an interruption and keeps the first backup), and checks
   again. Empty strings in number, yes/no and date columns, and in unique fields, become `NULL`.
-  `--sqlite=<file>` runs against a copy instead of the configured SQLite file. Upload the whole
+  `--sqlite=<file>` runs against a copy instead of the configured SQLite file (its backup then goes
+  to `backups/` beside the copy), `--backup-dir=<dir>` puts the backup elsewhere, and
+  `--storage=<driver>` picks the SQL storage when several are configured. A MySQL backup needs
+  `mysqldump` or `mariadb-dump` on the machine running the script. The site needs `preflow/core`
+  0.42 or later too (it binds `RecordTables`; the script refuses otherwise). Upload the whole
   `tools/` directory to a site, run it with writes stopped, remove it afterwards. To restore: copy
-  the SQLite backup back, or `mysql < dump`. Until a site is converted, `preflow migrate` prints
-  the drift warnings on every run.
+  the SQLite backup back, or load the dump with the site's own database credentials
+  (`mysql --defaults-extra-file=<option file> <database> < <backup>.sql`). Until a site is
+  converted, `preflow migrate` prints the drift warnings on every run.
 - `RecordTableSync::specs()` is public (the script builds its columns with it).
 - A column whose kind changed later (a field turned translatable, a relation became `multiple`,
   a field's type was edited or it became unique) is converted with a migration in the project.

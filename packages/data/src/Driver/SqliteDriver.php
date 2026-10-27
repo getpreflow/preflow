@@ -54,6 +54,12 @@ final class SqliteDriver extends PdoDriver
         return $result;
     }
 
+    /** PDO sends false as '', which an INTEGER column keeps as text: bools go as 1/0, as on MySQL. */
+    protected function prepareBindings(array $bindings): array
+    {
+        return array_map(static fn (mixed $v): mixed => is_bool($v) ? (int) $v : $v, $bindings);
+    }
+
     protected function inTransaction(): bool
     {
         return $this->immediate || parent::inTransaction();

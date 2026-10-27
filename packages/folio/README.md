@@ -490,8 +490,11 @@ Any field also takes:
   indexed string, select or single relation): a duplicate value is refused on the field with
   "already taken", in the form, in autosave and in a draft save, also when two saves race and the
   database's unique index refuses the second. Empty values are never duplicates and are stored as
-  `NULL`. A publishing type's `__published` snapshot gets a plain index, not a unique one. Restoring
-  a revision whose value is taken meanwhile is not handled yet (see the roadmap). See
+  `NULL`. A publishing type's `__published` snapshot gets a plain index, not a unique one. Autosave
+  and draft saves skip the other rules but not what the storage refuses: a taken value or one longer
+  than its column is answered in the save state ("Not saved — Slug: …") and nothing is saved.
+  Restoring a revision or discarding changes whose value another record has taken meanwhile is
+  refused with an error message on the editor, and the working copy stays as it was. See
   `preflow/data` "Unique fields and indexes".
 
 `hidden` and `readonly` apply on create too: such a field starts empty unless a `#[BeforeSave]` hook sets it.

@@ -138,6 +138,7 @@ return [
         'title' => 'Versionen',
         'changed' => 'Geändert: :fields',
         'confirm_restore' => 'Die Arbeitsversion durch diese Version ersetzen?',
+        'not_restored' => 'Nicht wiederhergestellt – :field: :message',
     ],
     'publishing' => [
         'draft' => 'Entwurf',
@@ -145,6 +146,8 @@ return [
         'changed' => 'Geändert',
         'saved_not_published' => 'Gespeichert · nicht veröffentlicht',
         'not_saved_conflict' => 'Nicht gespeichert – jemand anderes hat diesen Eintrag geändert. Lade neu oder speichere, um zu überschreiben.',
+        'not_saved_invalid' => 'Nicht gespeichert – :field: :message',
+        'not_discarded' => 'Nicht verworfen – :field: :message',
         'discard' => 'Änderungen verwerfen',
         'confirm_discard' => 'Alle Änderungen seit der letzten Veröffentlichung verwerfen?',
         'unpublish' => 'Veröffentlichung zurückziehen',

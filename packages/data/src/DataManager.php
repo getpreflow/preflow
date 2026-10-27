@@ -489,6 +489,34 @@ final class DataManager
         }
     }
 
+    /**
+     * Check what the storage itself would refuse, for a save that skips the other rules (a
+     * draft, a restored revision): a bounded string column (a unique or indexed string, a unique
+     * field's scope) longer than its length, and a unique value another record has. A length is
+     * measured as text, also for a number-like value. Runs without a validator factory too.
+     *
+     * @throws ValidationException with validation.max.string or validation.unique on each field
+     */
+    public function validateStorable(DynamicRecord $record): void
+    {
+        $def = $record->getType();
+        $data = $record->toArray();
+        $failures = [];
+        foreach ($this->fieldKinds()->lengths($def) as $name => $length) {
+            $value = $data[$name] ?? null;
+            if (is_scalar($value) && mb_strlen((string) $value) > $length) {
+                $failures[$name] = new Message('validation.max.string', ['max' => (string) $length]);
+            }
+        }
+        $checks = array_diff_key($this->uniqueChecks($def, $data, $record->getId(), $def->uniqueFields()), $failures);
+        foreach ($this->takenFields($checks) as $key) {
+            $failures[$key] = new Message('validation.unique');
+        }
+        if ($failures !== []) {
+            throw $this->failure($failures);
+        }
+    }
+
     private function validateModel(Model $model, array $extraRules = [], ?string $scenario = null): void
     {
         if ($this->validatorFactory === null) {
@@ -630,16 +658,33 @@ final class DataManager
      */
     private function uniqueFailure(array $fields): ValidationException
     {
-        $taken = new class implements ValidationRule {
-            public function validate(mixed $value, ValidationContext $context): Message
-            {
-                return new Message('validation.unique');
-            }
-        };
-        $result = $this->validatorFactory?->make(array_fill_keys($fields, [$taken]), [])->validate()
-            ?? new ValidationResult(array_fill_keys($fields, [(new Message('validation.unique'))->english()]));
+        return $this->failure(array_fill_keys($fields, new Message('validation.unique')));
+    }
 
-        return new ValidationException($result);
+    /**
+     * A ValidationException with one message per field, in the validator's language when there
+     * is one.
+     *
+     * @param non-empty-array<string, Message> $messages
+     */
+    private function failure(array $messages): ValidationException
+    {
+        if ($this->validatorFactory === null) {
+            return new ValidationException(new ValidationResult(array_map(static fn (Message $m): array => [$m->english()], $messages)));
+        }
+        $rules = [];
+        foreach ($messages as $field => $message) {
+            $rules[$field] = [new class ($message) implements ValidationRule {
+                public function __construct(private readonly Message $message) {}
+
+                public function validate(mixed $value, ValidationContext $context): Message
+                {
+                    return $this->message;
+                }
+            }];
+        }
+
+        return new ValidationException($this->validatorFactory->make($rules, [])->validate());
     }
 
     /**

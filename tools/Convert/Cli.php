@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Tools\Convert;
 
 use Preflow\Core\Application;
+use Preflow\Core\Container\Container;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\Schema\RecordTables;
@@ -67,6 +68,10 @@ final class Cli
                 $this->out('Nothing to convert: no SQL storage configured.');
                 return 0;
             }
+            $problem = self::registryProblem($app->container());
+            if ($problem !== null) {
+                return $this->fail($problem);
+            }
             $dm = $app->container()->get(DataManager::class);
             $storage ??= self::defaultStorage($dm);
             if ($storage === false) {
@@ -99,6 +104,18 @@ final class Cli
         } finally {
             $overlay?->remove();
         }
+    }
+
+    /**
+     * Why the app's RecordTables cannot be trusted, or null. preflow/core before 0.42 does not bind
+     * it: each package then registers into an instance of its own and the conversion would find no
+     * table and report nothing to convert.
+     */
+    public static function registryProblem(Container $container): ?string
+    {
+        return $container->bound(RecordTables::class)
+            ? null
+            : "The site's app does not bind RecordTables (preflow/core older than 0.42), so no record table is registered: update preflow/core to 0.42 or later first. Nothing was changed.";
     }
 
     /**

@@ -6,6 +6,7 @@ namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
 use Preflow\Data\DataManager;
+use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
@@ -13,6 +14,7 @@ use Preflow\Folio\Publishing\Publisher;
 use Preflow\Folio\Publishing\PreviewLinks;
 use Preflow\Folio\Publishing\PublishState;
 use Preflow\Folio\Publishing\VersionConflict;
+use Preflow\Validation\ValidationException;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -58,6 +60,9 @@ final class PublishingController
             $this->publisher->saveDraft($record, $loaded);
         } catch (VersionConflict) {
             return $this->status(\Preflow\Folio\FolioText::get('folio.publishing.not_saved_conflict'), null, true);
+        } catch (ValidationException $e) {
+            // What the storage refuses (a taken unique value, an overlong bounded one): the editor keeps its version.
+            return $this->status(self::refusal('folio.publishing.not_saved_invalid', $typeDef, $e), null, true);
         }
 
         return $this->status(self::stateText($this->publisher->state($record)), (int) $record->get('_version'));
@@ -68,7 +73,15 @@ final class PublishingController
     {
         [$type, $id] = $this->target($request);
         $revision = (string) $request->getAttribute('rev', '');
-        if ($type === null || ($restored = $this->publisher->restore($type, $id, $revision)) === null) {
+        try {
+            $restored = $type !== null ? $this->publisher->restore($type, $id, $revision) : null;
+        } catch (ValidationException $e) {
+            \assert($type !== null);
+            self::flash($request, 'error', self::refusal('folio.revisions.not_restored', $this->dm->getTypeRegistry()?->get($type), $e));
+
+            return $this->backToEditor($type, $id);
+        }
+        if ($type === null || $restored === null) {
             return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.not_found'));
         }
         if (!$this->mayPublish($type) && (string) $restored->get('_publish_at') !== '') {
@@ -142,7 +155,11 @@ final class PublishingController
         if ($type === null) {
             return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.unknown_type'));
         }
-        $this->publisher->discard($type, $id);
+        try {
+            $this->publisher->discard($type, $id);
+        } catch (ValidationException $e) {
+            self::flash($request, 'error', self::refusal('folio.publishing.not_discarded', $this->dm->getTypeRegistry()?->get($type), $e));
+        }
 
         return $this->backToEditor($type, $id);
     }
@@ -177,6 +194,29 @@ final class PublishingController
             'days' => intdiv($this->links?->ttl() ?? 0, 86400),
             'revoke_url' => $base . '/share/revoke',
         ]));
+    }
+
+    /** A refused write's text: the first field error with the field's label ("Not saved — Slug: This value is already taken."). */
+    private static function refusal(string $key, ?TypeDefinition $def, ValidationException $e): string
+    {
+        $errors = $e->errors();
+        $first = (string) array_key_first($errors);
+        [$name, $locale] = array_pad(explode('.', $first, 2), 2, null);
+        $field = $def?->fields[$name] ?? null;
+        $label = \Preflow\Folio\FolioText::label($field?->label ?? ucfirst(str_replace('_', ' ', $name)));
+        if ($locale !== null) {
+            $label .= ' (' . strtoupper($locale) . ')';
+        }
+
+        return \Preflow\Folio\FolioText::get($key, ['field' => $label, 'message' => (string) ($errors[$first][0] ?? '')]);
+    }
+
+    private static function flash(ServerRequestInterface $request, string $type, string $message): void
+    {
+        $session = $request->getAttribute(\Preflow\Core\Http\Session\SessionInterface::class);
+        if ($session instanceof \Preflow\Core\Http\Session\SessionInterface) {
+            $session->flash($type, $message);
+        }
     }
 
     private static function origin(ServerRequestInterface $request): string

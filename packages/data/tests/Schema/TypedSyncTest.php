@@ -83,6 +83,24 @@ final class TypedSyncTest extends TestCase
         $this->assertSame(['c', 'd', 'a', 'b'], $sorted);
     }
 
+    /** PDO binds false as '' on SQLite too: a yes/no column stores 0 and 1, as on MySQL. */
+    public function testBooleanIsStoredAsZeroOrOne(): void
+    {
+        $this->sync()->sync(self::def());
+        $driver = $this->dm()->driver('sqlite');
+        $driver->save('event', 'a', ['uuid' => 'a', 'open' => false]);
+        $driver->save('event', 'b', ['uuid' => 'b', 'open' => true]);
+        $driver->save('event', 'c', ['uuid' => 'c', 'open' => true]);
+        $driver->save('event', 'c', ['uuid' => 'c', 'open' => false]);
+
+        $rows = $this->pdo->query('SELECT uuid, open, typeof(open) AS t FROM event ORDER BY uuid')->fetchAll(\PDO::FETCH_ASSOC);
+        $this->assertSame([
+            ['uuid' => 'a', 'open' => 0, 't' => 'integer'],
+            ['uuid' => 'b', 'open' => 1, 't' => 'integer'],
+            ['uuid' => 'c', 'open' => 0, 't' => 'integer'],
+        ], $rows);
+    }
+
     public function testExistingColumnIsNeverAltered(): void
     {
         $sync = $this->sync();
