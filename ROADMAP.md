@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.39.0** — 3903 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.40.0** — 3957 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -25,8 +25,8 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    memberships, certificates), a primary link (`action`) for the mail layout, the admission composing the name~~
    — done in 0.38 (prepared, not released). The audit of members against the rule below is in
    `docs/superpowers/plans/2026-10-26-release-0.38-checklist.md`; its open findings wait for the owner
-2. ~~**Codes:** a redemption hook and email delivery for invitations (builds on 1's `next`)~~ — done in 0.40
-   (prepared, not released): codes bound to a recipient, `forRecipient`, `renew`, a purpose `ttl`, `CodeEvents`
+2. ~~**Codes:** a redemption hook and email delivery for invitations (builds on 1's `next`)~~ — done in 0.40:
+   codes bound to a recipient, `forRecipient`, `renew`, a purpose `ttl`, `CodeEvents`
    (a failing redeemed listener undoes the redemption), `CodeMailer`; the codes admin moved to Folio and
    `preflow/codes` runs without it. See `docs/superpowers/plans/2026-10-27-release-0.40-checklist.md`
 3. **Data integrity for the flow editor and games:** compare-and-set draft save (`UPDATE … WHERE _version = ?`),
@@ -168,6 +168,11 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 - **Italian (`it`) texts:** the package ships en, de and fr
 - ~~**Member lock, sessions and sign-in info (after the split):**~~ done in 0.39 (`Members::lock()`, `unlock()`, `isLocked()`, `endSessions()`, `resendConfirmation()`, `locked_at`, `last_login_at`; Folio: Locked pill, Lock / Unlock / Resend confirmation in the Decision panel): `Members::lock()`, `unlock()` and `isLocked()` with a readonly `locked_at` (a lock covers every sign-in path and shows a "Gesperrt" pill, never "declined"); `Members::endSessions()` (`auth_epoch` + 1 and `RememberMe::revokeAll()`); `Members::resendConfirmation()` (the public resend shares its code path); a readonly `last_login_at` set on sign-in, reset and confirmation
 - **Folio hook bridge for member self-deletion:** a member's own deletion runs `MemberEvents` but not Folio's record hooks on `member`. Bridge them in Folio's members adapter: `DELETING` runs `#[BeforeSave]`/`#[BeforeDelete]` and can refuse, `DELETED` runs `#[AfterSave]`/`#[AfterDelete]`. Before holz-objekte.org drops its workaround
+
+### codes
+
+- **`renew()` against a concurrent revoke:** `renew()` checks the code outside the lock and its `UPDATE` has no guard, so a revoke landing between the check and the write can be renewed over (the code revives). Guard the write (`WHERE revoked_at IS NULL`, the JSON write under the lock re-checks)
+- **Index on `(recipient, purpose)`:** Folio syncs the columns as TEXT; `forRecipient()` scans by `recipient`. Fine for invitation volumes
 
 ### rbac
 
