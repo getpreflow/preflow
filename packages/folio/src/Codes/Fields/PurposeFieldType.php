@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Codes\Fields;
+namespace Preflow\Folio\Codes\Fields;
 
 use Preflow\Codes\Purpose;
 use Preflow\Folio\Field\FieldContext;

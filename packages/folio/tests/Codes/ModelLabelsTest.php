@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Codes\Tests;
+namespace Preflow\Folio\Tests\Codes;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\ModelLabelKeys;
@@ -19,7 +19,7 @@ final class ModelLabelsTest extends TestCase
 {
     public function test_the_package_declares_the_admin_group_codes_and_the_extension_uses_it(): void
     {
-        $root = dirname(__DIR__);
+        $root = dirname(__DIR__, 2);
         $composer = json_decode((string) file_get_contents($root . '/composer.json'), true);
         $installed = sys_get_temp_dir() . '/preflow_installed_' . bin2hex(random_bytes(4)) . '.json';
         file_put_contents($installed, (string) json_encode(['packages' => [[...$composer, 'install-path' => $root]]]));
@@ -30,17 +30,21 @@ final class ModelLabelsTest extends TestCase
         }
 
         $this->assertSame('admin', $registry->scope('codes'));
-        $meta = (new \ReflectionClass(\Preflow\Codes\Extension::class))->getAttributes(FolioExtension::class)[0]->newInstance();
+        $meta = (new \ReflectionClass(\Preflow\Folio\Codes\Extension::class))->getAttributes(FolioExtension::class)[0]->newInstance();
         $this->assertSame('codes', $meta->translations);
     }
 
     public function test_every_label_of_the_model_has_a_text_in_en_de_and_fr(): void
     {
         $translator = new Translator('/no/such/lang', 'en', 'en');
-        $translator->addDefaults('codes', dirname(__DIR__) . '/lang');
-        $keys = ModelLabelKeys::derive(json_decode((string) file_get_contents(dirname(__DIR__) . '/src/models/code.json'), true), 'codes');
+        $translator->addDefaults('codes', dirname(__DIR__, 2) . '/lang');
+        $keys = ModelLabelKeys::derive(
+            (new \Preflow\Folio\Codes\Extension())->model(json_decode((string) file_get_contents(dirname(__DIR__, 2) . '/src/Codes/models/code.json'), true)),
+            'codes',
+        );
 
         $this->assertArrayHasKey('codes.fields.code.purpose.label', $keys);
+        $this->assertArrayHasKey('codes.fields.code.recipient.label', $keys);
         $this->assertArrayNotHasKey('codes.fields.code.payload.label', $keys, 'hidden');
         foreach (['en', 'de', 'fr'] as $locale) {
             foreach (array_keys($keys) as $key) {

@@ -8,9 +8,8 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * "^0.37 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
- * Composer from pairing codes with a release that lacks the APIs it calls: folio 0.37
- * (#[FolioExtension(translations: …)], attribute labels as keys, folio_date()), i18n 0.37 (the admin-scoped
- * codes group).
+ * Composer from pairing codes with a release that lacks the APIs it calls: i18n 0.37 (translation scopes).
+ * Folio is not required (it carries the codes admin and conflicts with codes before 0.40).
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -18,12 +17,10 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(
-            ['preflow/folio' => '<0.37', 'preflow/i18n' => '<0.37'],
-            $composer['conflict'] ?? null,
-        );
-        foreach (['preflow/folio', 'preflow/i18n'] as $package) {
-            $this->assertSame('^' . substr($composer['conflict'][$package], 1) . ' || @dev', $composer['require'][$package] ?? null, $package);
+        $this->assertSame(['preflow/i18n' => '<0.37'], $composer['conflict'] ?? null);
+        $this->assertSame('^0.37 || @dev', $composer['require']['preflow/i18n'] ?? null);
+        foreach (['preflow/notify', 'preflow/view'] as $package) {
+            $this->assertArrayHasKey($package, $composer['require'], $package);
         }
     }
 }

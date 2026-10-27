@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Codes\Tests;
+namespace Preflow\Folio\Tests\Codes;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\I18n\Translator;
@@ -13,7 +13,7 @@ final class CodesTranslationTest extends TestCase
     public function test_the_group_has_the_same_keys_in_en_de_and_fr(): void
     {
         $translator = new Translator('/no/such/lang', 'en', 'en');
-        $translator->addDefaults('codes', dirname(__DIR__) . '/lang');
+        $translator->addDefaults('codes', dirname(__DIR__, 2) . '/lang');
         $keys = array_keys($translator->entries('codes', 'en'));
         foreach (['de', 'fr'] as $locale) {
             $this->assertEqualsCanonicalizing($keys, array_keys($translator->entries('codes', $locale)), $locale);
@@ -26,11 +26,10 @@ final class CodesTranslationTest extends TestCase
         }
     }
 
-    public function test_composer_requires_i18n_and_declares_the_admin_group(): void
+    public function test_folio_declares_the_admin_group(): void
     {
-        $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
+        $composer = json_decode((string) file_get_contents(dirname(__DIR__, 2) . '/composer.json'), true);
 
-        $this->assertArrayHasKey('preflow/i18n', $composer['require']);
         $this->assertSame(['path' => 'lang', 'scope' => 'admin'], $composer['extra']['preflow']['translations']['codes']);
     }
 }

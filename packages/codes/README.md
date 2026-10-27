@@ -8,21 +8,20 @@ redeem.
 
 ```
 composer require preflow/codes
-php preflow folio:extensions:enable codes
+php preflow folio:extensions:enable codes   # only with Folio: its built-in codes admin
 php preflow migrate
 ```
 
-- Add `Preflow\Codes\CodesServiceProvider` to `config/providers.php` (after
-  `FolioServiceProvider`). It binds `Codes` and registers the `code_redemption` migration.
-- Codes live in the storage alias `codes`. With the extension enabled, booting without it
-  is an error, so add it to `config/data.php`:
+- Add `Preflow\Codes\CodesServiceProvider` to `config/providers.php`. It binds `Codes` and registers the `code_redemption` migration.
+- Codes live in the storage alias `codes` when the site has it, else in `default`. To keep
+  them apart, add the alias to `config/data.php`:
 
   ```php
   'aliases' => ['codes' => 'sqlite'],
   ```
 
 - `preflow migrate` creates the redemptions table (package migration) and the `code`
-  table (Folio's table sync). It migrates the `sqlite` driver unless `--storage=` names
+  table (the core's own sync, or Folio's with its admin). It migrates the `sqlite` driver unless `--storage=` names
   another, so point the alias at the driver you migrate.
 
 ## Purposes
@@ -77,7 +76,7 @@ if (!$result->ok) {
   `codes.{purpose}`; after `throttle.max` failures within `throttle.window` seconds, even a
   valid code is refused as `throttled`. Without a client nothing is throttled.
 - `revoke($codeId)` stops a code for good.
-- Codes are the Folio type `code` (*Library → Codes*); neither codes nor redemptions are
+- With Folio, codes are the type `code` (*Library → Codes*, Folio's built-in `codes` extension); neither codes nor redemptions are
   exported or imported. The `purpose` field (`codes_purpose`) offers the configured purposes.
 
 ## Aliases

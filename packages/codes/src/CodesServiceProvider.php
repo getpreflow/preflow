@@ -4,31 +4,22 @@ declare(strict_types=1);
 
 namespace Preflow\Codes;
 
-use Preflow\Codes\Fields\PurposeFieldType;
 use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DataManager;
 use Preflow\Data\Migration\MigrationRegistry;
-use Preflow\Folio\Extension\ExtensionRegistry;
-use Preflow\Folio\Field\FieldTypeRegistry;
 
 /**
  * Binds Codes (purposes and throttle from config/codes.php; a missing file means no purposes)
- * and registers the code_redemption migration. At boot it defines the type "code" (CodeType);
- * when the Folio extension "codes" is enabled (config/folio/extensions.json), it also registers
- * the field type codes_purpose.
+ * and registers the code_redemption migration. At boot it defines the type "code" (CodeType)
+ * unless something did already (Folio's codes admin defines its own, richer one).
  */
 final class CodesServiceProvider extends ServiceProvider
 {
     public function register(Container $container): void
     {
-        // The admin labels (lang/{locale}/codes.php): declared in composer.json (extra.preflow.translations);
-        // this covers apps whose Composer metadata doesn't list the package (test apps).
-        if ($container->bound(\Preflow\I18n\Translator::class)) {
-            $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('codes', dirname(__DIR__) . '/lang', 'admin');
-        }
         $container->get(MigrationRegistry::class)->addPath(dirname(__DIR__) . '/migrations');
         $container->singleton(Codes::class, static fn (Container $c): Codes => new Codes(
             $c->get(DataManager::class),
@@ -41,12 +32,6 @@ final class CodesServiceProvider extends ServiceProvider
     public function boot(Container $container): void
     {
         CodeType::define($container);
-
-        // The Folio extension (still here): only when Folio is installed and the extension enabled.
-        if (!$container->bound(ExtensionRegistry::class) || !$container->get(ExtensionRegistry::class)->isEnabled('codes')) {
-            return;
-        }
-        $container->get(FieldTypeRegistry::class)->register(new PurposeFieldType($container->get(Codes::class)->purposes()));
     }
 
     /** @return array<string, mixed> config/codes.php */

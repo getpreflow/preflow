@@ -23,17 +23,18 @@ final class ExtensionRegistry
     /**
      * Extensions Folio carries itself, each there when the package it adapts is installed
      * (Composer lists it and its class exists), as Folio carries media's library: the members
-     * admin with preflow/members. A project's or a package's own extension of the same name
+     * admin with preflow/members, the codes admin with preflow/codes. A project's or a package's own extension of the same name
      * takes its place.
      *
      * @var array<class-string, array{package: string, class: string}> extension class => what switches it on
      */
     public const array BUILT_IN = [
         \Preflow\Folio\Members\Extension::class => ['package' => 'preflow/members', 'class' => 'Preflow\\Members\\Members'],
+        \Preflow\Folio\Codes\Extension::class => ['package' => 'preflow/codes', 'class' => 'Preflow\\Codes\\Codes'],
     ];
 
     /** Extension classes packages declared before Folio carried them; an installed.json of then still names them. */
-    private const array MOVED = ['Preflow\\Members\\Extension'];
+    private const array MOVED = ['Preflow\\Members\\Extension', 'Preflow\\Codes\\Extension'];
 
     /** @var array<string, ExtensionDefinition> by name, sorted */
     private array $extensions = [];

@@ -26,10 +26,12 @@
     },
     "suggest": {
         "openspout/openspout": "^4 — Excel export of admin lists (the Export button shows once it is installed)",
+        "preflow/codes": "Codes; Folio adds their admin (the built-in extension \"codes\")",
         "preflow/members": "Member accounts; Folio adds their admin (the built-in extension \"members\", which needs preflow/rbac)"
     },
     "conflict": {
         "preflow/auth": "<0.38",
+        "preflow/codes": "<0.40",
         "preflow/core": "<0.34",
         "preflow/data": "<0.38",
         "preflow/i18n": "<0.39",
@@ -50,7 +52,8 @@
     "extra": {
         "preflow": {
             "translations": {
-                "folio": { "path": "lang", "scope": "admin" }
+                "folio": { "path": "lang", "scope": "admin" },
+                "codes": { "path": "lang", "scope": "admin" }
             }
         }
     }

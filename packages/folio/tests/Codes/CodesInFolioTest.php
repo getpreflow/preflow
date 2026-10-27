@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Codes\Tests;
+namespace Preflow\Folio\Tests\Codes;
 
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
@@ -24,6 +24,7 @@ final class CodesInFolioTest extends TestCase
 {
     private string $dir;
     private ?Application $session = null;
+    private bool $hasCodesAlias = true;
     private string $token = '';
     private string|false $errorLog = false;
 
@@ -65,7 +66,7 @@ final class CodesInFolioTest extends TestCase
             'fields' => ['title' => ['type' => 'string']],
         ]));
         $this->write('vendor/composer/installed.json', (string) json_encode(['packages' => [
-            ['name' => 'preflow/codes', 'extra' => ['folio' => ['extension' => 'Preflow\\Codes\\Extension']]],
+            ['name' => 'preflow/codes'],
         ]]));
         $this->write('config/folio/extensions.json', '{"enabled": {"codes": {"disabled_parts": []}}}');
         $this->write('app/pages/index.twig', 'HOME');
@@ -102,7 +103,7 @@ final class CodesInFolioTest extends TestCase
         $app->boot();
         $c = $app->container();
         $registry = $c->get(MigrationRegistry::class);
-        (new Migrator($c->get(DataManager::class)->driver('codes')->pdo(), $registry->paths()))->migrate();
+        (new Migrator($c->get(DataManager::class)->driver($this->hasCodesAlias ? 'codes' : 'default')->pdo(), $registry->paths()))->migrate();
         foreach ($registry->steps() as $step) {
             $step();
         }
@@ -164,6 +165,82 @@ final class CodesInFolioTest extends TestCase
     private function create(array $over = []): array
     {
         return $over + ['purpose' => 'members.book', 'code' => 'smart-stack 2026', 'label' => 'Book', 'max_uses' => '3'];
+    }
+
+    public function test_codes_admin_is_built_in_when_codes_installed(): void
+    {
+        // A site of the previous release: Composer's metadata still names the package's own extension class.
+        $this->write('vendor/composer/installed.json', (string) json_encode(['packages' => [
+            ['name' => 'preflow/codes', 'extra' => ['folio' => ['extension' => 'Preflow\\Codes\\Extension']]],
+        ]]));
+
+        $registry = \Preflow\Folio\Extension\ExtensionRegistry::discover($this->dir, debug: true);
+
+        $this->assertSame(\Preflow\Folio\Codes\Extension::class, $registry->get('codes')->class);
+        $this->assertTrue($registry->isEnabled('codes'));
+        $this->assertSame('codes', $registry->get('codes')->translations);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_recipient_shown_readonly(): void
+    {
+        $this->codes()->issue('members.book', [], 'BOOKCODE1');
+        $id = $this->idOf('BOOKCODE1');
+        $record = $this->stored($id);
+        $record->set('recipient', 'anna@site.test');
+        $this->dm()->saveType($record, validate: false);
+        $this->login();
+
+        $form = (string) $this->send('GET', "/folio/code/{$id}/edit")->getBody();
+        $this->assertStringContainsString('<span class="form-label">Recipient</span>', $form);
+        $this->assertStringContainsString('anna@site.test', $form);
+        $this->assertStringNotContainsString('name="recipient"', $form);
+
+        // A recipient typed into an update post is ignored.
+        $this->assertSame(302, $this->send('POST', "/folio/code/{$id}", ['label' => 'Book', 'recipient' => 'evil@site.test'])->getStatusCode());
+        $this->assertSame('anna@site.test', $this->stored($id)->get('recipient'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_purpose_is_the_codes_purpose_field_in_the_admin(): void
+    {
+        $c = $this->app()->container();
+        $field = $c->get(DataManager::class)->getTypeRegistry()->get('code')->fields['purpose'];
+
+        $this->assertSame('codes_purpose', $field->type);
+        $this->assertSame('codes_purpose', $c->get(\Preflow\Folio\Field\FieldTypeRegistry::class)->get($field->type)->key());
+        $this->assertSame('codes', $c->get(DataManager::class)->getTypeRegistry()->get('code')->storage);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_purpose_stays_the_codes_purpose_field_when_codes_boots_before_folio(): void
+    {
+        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Codes\\CodesServiceProvider::class, \\Preflow\\Folio\\FolioServiceProvider::class];\n");
+        $field = $this->app()->container()->get(DataManager::class)->getTypeRegistry()->get('code')->fields['purpose'];
+
+        $this->assertSame('codes_purpose', $field->type);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_enabled_without_a_codes_alias_the_admin_type_uses_default_storage(): void
+    {
+        $data = require $this->dir . '/config/data.php';
+        unset($data['aliases']);
+        $data['default'] = 'sqlite';
+        $this->hasCodesAlias = false;
+        $this->write('config/data.php', "<?php\nreturn " . var_export($data, true) . ";\n");
+        $app = $this->app();
+        $c = $app->container();
+        $type = $c->get(DataManager::class)->getTypeRegistry()->get('code');
+
+        $this->assertSame('default', $type->storage);
+        $this->assertSame('codes_purpose', $type->fields['purpose']->type, 'still the Folio admin type');
+        $codes = new Codes($c->get(DataManager::class), $c->get(Throttle::class), require $this->dir . '/config/codes.php');
+        $code = $codes->issue('members.book', [], 'FALLBACK1');
+        $this->assertTrue($codes->check('FALLBACK1', 'members.book')->ok);
+        $this->assertTrue($codes->redeem('FALLBACK1', 'members.book', 'member-1')->ok);
+        $this->assertSame(1, (int) $this->stored($this->idOf('FALLBACK1'))->get('uses'));
+        $this->assertNotSame('', $code);
     }
 
     #[RunInSeparateProcess]

@@ -368,7 +368,8 @@ final class Codes
         return $this->redemptions ??= new TypeDefinition(
             key: '_code_redemption',
             table: self::REDEMPTIONS,
-            storage: self::STORAGE,
+            // Beside the code type: its storage is "codes" or, without that alias, "default".
+            storage: $this->dm->getTypeRegistry()?->get('code')?->storage ?? self::STORAGE,
             fields: [
                 'code_id' => new TypeFieldDefinition('code_id', 'string'),
                 'purpose' => new TypeFieldDefinition('purpose', 'string'),

@@ -1,0 +1,39 @@
+{
+    "key": "code",
+    "section": "library",
+    "order": 20,
+    "icon": "ui-key",
+    "list": {
+        "filters": [
+            "expires_at",
+            "form"
+        ]
+    },
+    "fields": {
+        "purpose": {
+            "type": "codes_purpose"
+        },
+        "expires_at": {
+            "help": "Empty: never expires."
+        },
+        "max_uses": {
+            "help": "Empty: unlimited."
+        },
+        "uses": {
+            "readonly": true
+        },
+        "revoked_at": {
+            "readonly": true
+        },
+        "payload": {
+            "hidden": true,
+            "searchable": false
+        },
+        "form": {
+            "readonly": true
+        },
+        "recipient": {
+            "readonly": true
+        }
+    }
+}

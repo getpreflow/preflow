@@ -494,7 +494,7 @@ final class CodesTest extends TestCase
 
     public function test_missing_codes_alias_falls_back_to_default_storage(): void
     {
-        // With the Folio extension enabled its own model file defines the type first (until it moves, Task 2).
+        // Without the Folio extension the core defines the type (with it, Folio's: see Folio's CodesInFolioTest).
         $this->write('config/folio/extensions.json', '{"enabled": {}}');
         $this->dataConfig([]);
         $app = Application::create($this->dir);

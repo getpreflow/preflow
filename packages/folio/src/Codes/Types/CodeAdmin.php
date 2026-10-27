@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Codes\Types;
+namespace Preflow\Folio\Codes\Types;
 
 use Preflow\Codes\Codes;
 use Preflow\Data\DataManager;

@@ -873,11 +873,16 @@ final class FolioServiceProvider extends ServiceProvider
         // register Folio before it boots its translator.
         if ($container->bound(\Preflow\I18n\Translator::class)) {
             $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('folio', dirname(__DIR__) . '/lang', 'admin');
+            $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('codes', dirname(__DIR__) . '/lang', 'admin');
             self::useOverrides($container->get(\Preflow\I18n\Translator::class), $container);
         }
 
         $app = $container->get(Application::class);
         self::requireRbacForMembers($container->get(ExtensionRegistry::class));
+        // The codes admin's purpose select lists the purposes of config/codes.php (preflow/codes' Codes).
+        if (self::codesAdmin($container->get(ExtensionRegistry::class)) && $container->bound(\Preflow\Codes\Codes::class)) {
+            $container->get(FieldTypeRegistry::class)->register(new \Preflow\Folio\Codes\Fields\PurposeFieldType($container->get(\Preflow\Codes\Codes::class)->purposes()));
+        }
         // ... and carries it into the published snapshots afterwards (best effort, see PublishedMemberDeletion).
         if (class_exists(\Preflow\Members\MemberEvents::class) && $container->bound(\Preflow\Members\MemberEvents::class)) {
             $container->get(\Preflow\Members\MemberEvents::class)->on(\Preflow\Members\MemberEvents::DELETED, new \Preflow\Folio\Members\PublishedMemberDeletion(
@@ -1191,6 +1196,12 @@ final class FolioServiceProvider extends ServiceProvider
     private static function membersAdmin(ExtensionRegistry $extensions): bool
     {
         return $extensions->isEnabled('members') && $extensions->get('members')->class === \Preflow\Folio\Members\Extension::class;
+    }
+
+    /** Whether the codes admin is Folio's built-in one (preflow/codes installed) and switched on. */
+    private static function codesAdmin(ExtensionRegistry $extensions): bool
+    {
+        return $extensions->isEnabled('codes') && $extensions->get('codes')->class === \Preflow\Folio\Codes\Extension::class;
     }
 
     /** The members admin seeds and shows the member roles, which are rbac's. */

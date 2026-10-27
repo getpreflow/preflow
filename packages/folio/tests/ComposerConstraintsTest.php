@@ -19,7 +19,8 @@ use PHPUnit\Framework\TestCase;
  * classes Folio's library and field build on), validation 0.37 (Message, ValidatorFactory::useTranslator()).
  * preflow/members is only suggested (Folio carries its admin when it is installed); a members
  * release before 0.39 lacks Members::lock(), unlock(), isLocked(), endSessions() and resendConfirmation()
- * (and before 0.38 still shipped its own admin extension), so it conflicts.
+ * (and before 0.38 still shipped its own admin extension), so it conflicts. preflow/codes is suggested too
+ * (Folio carries its admin since 0.40; before that the package shipped it), so it conflicts below 0.40.
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -28,13 +29,15 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/auth' => '<0.38', 'preflow/core' => '<0.34', 'preflow/data' => '<0.38', 'preflow/i18n' => '<0.39', 'preflow/media' => '<0.36', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/validation' => '<0.37'],
+            ['preflow/auth' => '<0.38', 'preflow/codes' => '<0.40', 'preflow/core' => '<0.34', 'preflow/data' => '<0.38', 'preflow/i18n' => '<0.39', 'preflow/media' => '<0.36', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/validation' => '<0.37'],
             $composer['conflict'] ?? null,
         );
-        // Each conflict matches its require's lower bound; members is suggested, not required.
-        $this->assertArrayNotHasKey('preflow/members', $composer['require']);
-        $this->assertArrayHasKey('preflow/members', $composer['suggest'] ?? []);
-        foreach (array_diff_key($composer['conflict'], ['preflow/members' => true]) as $package => $below) {
+        // Each conflict matches its require's lower bound; members and codes are suggested, not required.
+        foreach (['preflow/members', 'preflow/codes'] as $suggested) {
+            $this->assertArrayNotHasKey($suggested, $composer['require']);
+            $this->assertArrayHasKey($suggested, $composer['suggest'] ?? []);
+        }
+        foreach (array_diff_key($composer['conflict'], ['preflow/members' => true, 'preflow/codes' => true]) as $package => $below) {
             $this->assertSame('^' . substr($below, 1) . ' || @dev', $composer['require'][$package] ?? null, $package);
         }
     }
