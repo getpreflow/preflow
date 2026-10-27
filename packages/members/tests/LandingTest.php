@@ -61,6 +61,27 @@ final class LandingTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_staff_without_a_member_account_gets_the_landing_not_a_loop(): void
+    {
+        $this->flowSite();
+        $this->signInStaff();
+
+        $landing = $this->send('GET', '/members');
+        $html = (string) $landing->getBody();
+        $this->assertSame(200, $landing->getStatusCode(), 'staff may access: the landing, not the login');
+        $this->assertStringContainsString('Hello, ' . self::ADMIN_EMAIL, $html);
+        $this->assertNull(Dom::first($html, '//a[@href="/members/account"]'), 'no member account, no account link');
+        $this->assertNull(Dom::first($html, '//form[@action="/members/logout"]'), 'nothing to sign out of here');
+
+        $login = $this->send('GET', '/members/login');
+        $this->assertSame(303, $login->getStatusCode());
+        $this->assertSame('/members', $login->getHeaderLine('Location'), 'the login sends staff to the landing, which renders');
+        $account = $this->send('GET', '/members/account');
+        $this->assertSame('/members', $account->getHeaderLine('Location'), 'the account page sends staff to the landing too');
+        $this->assertSame(200, $this->send('GET', '/de/members')->getStatusCode());
+    }
+
+    #[RunInSeparateProcess]
     public function test_a_waiting_member_is_not_let_in(): void
     {
         $this->flowSite();
@@ -86,5 +107,12 @@ final class LandingTest extends TestCase
 
         $this->assertSame('/konto/login', $this->send('GET', '/konto')->getHeaderLine('Location'));
         $this->assertSame(404, $this->send('GET', '/members')->getStatusCode());
+    }
+
+    /** Staff signed in with the default guard (config/auth.php's admin), as a staff login leaves the session. */
+    private function signInStaff(): void
+    {
+        $this->send('GET', '/members/forgot'); // starts the session
+        $_SESSION['_auth_user_id'] = self::ADMIN_EMAIL;
     }
 }

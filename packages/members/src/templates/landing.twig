@@ -1,4 +1,4 @@
-{# The members home for a signed-in member, unless the site has its own page on the members path. #}
+{# The members home for a signed-in member (or staff, without the account links), unless the site has its own page on the members path. #}
 {% extends '@members/_card.twig' %}
 
 {% block card %}
@@ -6,9 +6,11 @@
 <h1>{{ t('members.landing.title', {name: name}) }}</h1>
 <p>{{ t('members.landing.text') }}</p>
 {% if notice %}<p class="members-status__note" role="status">{{ notice }}</p>{% endif %}
+{% if has_account %}
 <p><a href="{{ base }}/account">{{ t('members.landing.account') }}</a></p>
 <form method="post" action="{{ base }}/logout">
   {{ csrf_field() }}
   <button class="btn" type="submit">{{ t('members.landing.logout') }}</button>
 </form>
+{% endif %}
 {% endblock %}
