@@ -720,9 +720,13 @@ reread the same snapshot.
 **Publishing in your own code:** `Publisher::publish($record, $by, $loadedVersion)` validates,
 then writes the working copy only if it is still stored with `$loadedVersion`, then writes the
 snapshot (on SQL storage in one transaction). A stale version throws `VersionConflict` before
-anything is written. The version is kept: publishing changes no content, so open editors stay
-valid. Without the third argument (`null`) the working copy is written unchecked, as the
-scheduler, `folio:publish` and importers need. Folio's own form publish passes the version its
+anything is written. The working copy is written as version stored + 1 when its content
+differs from the stored one (any field but the id and Folio's `_` keys: an approve that sets a
+status, an import), so an editor still on the old version conflicts instead of writing the old
+content back; unchanged content (Folio's form: draft save, then publish; the scheduler) keeps
+the version. Read the version from the record after `publish()`. Without the third argument
+(`null`) the working copy is written unchecked (same version rule), as the scheduler,
+`folio:publish` and importers need. Folio's own form publish passes the version its
 draft save just wrote. `discard($type, $id, $loadedVersion)` and
 `restore($type, $id, $revision, $loadedVersion)` check the same way (they bump the version).
 

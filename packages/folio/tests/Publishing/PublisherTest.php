@@ -463,15 +463,79 @@ final class PublisherTest extends TestCase
         $this->assertSame('2030-01-01T00:00:00+00:00', $this->reload('post')->get('_publish_at'));
     }
 
-    public function test_publish_without_a_loaded_version_stays_unchecked(): void
+    public function test_publish_without_a_loaded_version_stays_unchecked_and_bumps_changed_content(): void
     {
         $p = $this->publisher();
         $this->dm->saveType($this->working('post', ['title' => 'Stored', '_version' => 5]), false);
 
-        $p->publish($this->working('post', ['title' => 'Imported']), 'importer'); // no _version, as importers build it
+        $imported = $this->working('post', ['title' => 'Imported']); // no _version, as importers build it
+        $p->publish($imported, 'importer');
 
         $this->assertSame('Imported', $p->snapshot('post', 'r1')?->get('title'));
-        $this->assertArrayNotHasKey('_version', array_filter($this->reload('post')->toArray(), static fn ($v) => $v !== null));
+        $this->assertSame(6, (int) $this->reload('post')->get('_version'), 'never back to none');
+        $this->assertSame(6, $imported->get('_version'));
+    }
+
+    public function test_publish_without_a_loaded_version_keeps_the_version_of_unchanged_content(): void
+    {
+        $p = $this->publisher();
+        $this->dm->saveType($this->working('post', ['title' => 'Stored', '_version' => 5, '_publish_at' => '2030-01-01T00:00:00+00:00']), false);
+
+        $p->publish($this->reload('post'), 'scheduler');
+
+        $this->assertSame(5, (int) $this->reload('post')->get('_version'), 'clearing the schedule is not content');
+    }
+
+    /** A site's approve changes a field and publishes: the version moves on, the record carries it. */
+    public function test_publish_with_changed_content_bumps_the_version(): void
+    {
+        $p = $this->publisher();
+        $this->dm->saveType($this->working('post', ['title' => 'Start', 'body' => 'in review', '_version' => 3]), false);
+
+        $approved = $this->reload('post');
+        $approved->set('body', 'approved');
+        $p->publish($approved, 'reviewer', 3);
+
+        $this->assertSame(4, (int) $this->reload('post')->get('_version'));
+        $this->assertSame(4, $approved->get('_version'));
+        $this->assertSame('approved', $p->snapshot('post', 'r1')?->get('body'));
+    }
+
+    /** An editor left open on the old version must not write the old content back over a publish that changed it. */
+    public function test_an_editor_holding_the_version_before_a_changing_publish_conflicts(): void
+    {
+        $p = $this->publisher();
+        $this->dm->saveType($this->working('post', ['title' => 'Start', 'body' => 'in review', '_version' => 3]), false);
+        $editor = $this->reload('post'); // open in Folio at version 3
+
+        $approved = $this->reload('post');
+        $approved->set('body', 'approved');
+        $p->publish($approved, 'reviewer', 3);
+
+        $editor->set('title', 'Autosaved');
+        try {
+            $p->saveDraft($editor, 3);
+            $this->fail('expected VersionConflict');
+        } catch (VersionConflict $e) {
+            $this->assertSame(4, $e->current);
+        }
+        $this->assertSame('approved', $this->reload('post')->get('body'));
+    }
+
+    public function test_a_changing_publish_against_a_stale_version_conflicts_with_the_stored_version(): void
+    {
+        $p = $this->publisher();
+        $this->dm->saveType($this->working('post', ['title' => 'Theirs', '_version' => 4]), false);
+        $mine = $this->working('post', ['title' => 'Mine', '_version' => 3]);
+
+        try {
+            $p->publish($mine, 'me', 3);
+            $this->fail('expected VersionConflict');
+        } catch (VersionConflict $e) {
+            $this->assertSame(4, $e->current);
+        }
+        $this->assertSame(3, $mine->get('_version'), 'the record is left as it was');
+        $this->assertNull($p->snapshot('post', 'r1'));
     }
 
     public function test_discard_and_restore_with_a_stale_loaded_version_conflict(): void

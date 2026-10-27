@@ -56,6 +56,7 @@ final class SqliteContentTest extends TestCase
                 'title' => ['type' => 'string', 'translatable' => true, 'validate' => ['required']],
                 'slug' => ['type' => 'string', 'translatable' => true],
                 'related' => ['type' => 'relation', 'relation' => ['to' => 'post', 'multiple' => true]],
+                'featured' => ['type' => 'boolean'],
             ],
         ]);
         $this->model('site', ['singleton' => true, 'fields' => ['tagline' => ['type' => 'string', 'translatable' => true]]]);
@@ -195,6 +196,24 @@ final class SqliteContentTest extends TestCase
         }
     }
 
+    /** Folio's form flow: the draft save, then publish of the same record, keeps the version (stored JSON text is the same content). */
+    public function test_publish_after_save_draft_keeps_the_version_on_sqlite(): void
+    {
+        $type = $this->dm->getTypeRegistry()->get('post');
+        $record = DynamicRecord::fromArray($type, ['uuid' => 'p1', 'title' => ['en' => 'T', 'de' => 'T'], 'slug' => ['en' => 'p1'], 'related' => ['x'], 'featured' => false, '_order' => 3, '_locales' => ['en', 'de']]);
+        $this->publisher->saveDraft($record, 0);
+        $this->publisher->publish($record, 'me', 1);
+        $this->assertSame(1, (int) $this->dm->findType('post', 'p1')->get('_version'));
+
+        $reloaded = $this->dm->findType('post', 'p1');
+        $this->publisher->publish($reloaded, 'me', 1);
+        $this->assertSame(1, (int) $this->dm->findType('post', 'p1')->get('_version'));
+
+        $reloaded->set('title', ['en' => 'Changed']);
+        $this->publisher->publish($reloaded, 'me', 1);
+        $this->assertSame(2, (int) $this->dm->findType('post', 'p1')->get('_version'));
+    }
+
     /** Another connection saves after the editor loaded: the checked publish conflicts, nothing goes live. */
     public function test_checked_publish_refuses_a_save_from_another_connection(): void
     {
@@ -295,6 +314,7 @@ final class SqliteContentTest extends TestCase
     {
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());
+        $fieldTypes->register(new \Preflow\Folio\Field\Types\BooleanFieldType());
 
         return $fieldTypes;
     }

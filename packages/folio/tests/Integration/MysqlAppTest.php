@@ -59,6 +59,40 @@ final class MysqlAppTest extends TestCase
         $this->assertSame(5, (int) $this->stored('post', 'p1')->get('_version'));
     }
 
+    /** After a form publish (content unchanged: the version stays) the editor and autosave go on with the stored version. */
+    public function test_form_and_autosave_after_a_form_publish(): void
+    {
+        $this->migrateStep();
+        $this->working('post', 'p1', ['title' => ['en' => 'Start'], 'slug' => ['en' => 'hello'], '_version' => 3]);
+
+        $this->assertSame(302, $this->post('/folio/post/p1', ['title' => 'Mine', 'slug' => 'hello', '_locale' => 'en', '_version' => '3', '_action' => 'publish'])->getStatusCode());
+        $this->assertSame(4, (int) $this->stored('post', 'p1')->get('_version'), 'the draft save moved it on, the publish kept it');
+        $this->assertStringContainsString('name="_version" id="folio-version" value="4"', (string) $this->get('/folio/post/p1/edit')->getBody());
+
+        $auto = (string) $this->post('/folio/post/p1/autosave', ['title' => 'Later', 'slug' => 'hello', '_locale' => 'en', '_version' => '4'])->getBody();
+        $this->assertStringContainsString('id="folio-version" value="5" hx-swap-oob="true"', $auto);
+    }
+
+    /** A publish that changed content (a site's approve) moves the version on: an editor still on the old one conflicts, a reload goes on. */
+    public function test_form_and_autosave_after_a_publish_that_changed_content(): void
+    {
+        $this->migrateStep();
+        $this->working('post', 'p1', ['title' => ['en' => 'Start'], 'slug' => ['en' => 'hello'], 'status' => 'review', '_version' => 3]);
+        $approved = $this->stored('post', 'p1');
+        $approved->set('status', 'approved');
+        $this->publisher()->publish($approved, 'reviewer', 3);
+        $this->assertSame(4, (int) $this->stored('post', 'p1')->get('_version'));
+
+        $stale = (string) $this->post('/folio/post/p1/autosave', ['title' => 'Start', 'slug' => 'hello', 'status' => 'review', '_locale' => 'en', '_version' => '3'])->getBody();
+        $this->assertStringContainsString('is-conflict', $stale);
+        $this->assertSame(409, $this->post('/folio/post/p1', ['title' => 'Start', 'slug' => 'hello', 'status' => 'review', '_locale' => 'en', '_version' => '3'])->getStatusCode());
+        $this->assertSame('approved', $this->stored('post', 'p1')->get('status'));
+
+        $this->assertStringContainsString('name="_version" id="folio-version" value="4"', (string) $this->get('/folio/post/p1/edit')->getBody());
+        $auto = (string) $this->post('/folio/post/p1/autosave', ['title' => 'Later', 'slug' => 'hello', 'status' => 'approved', '_locale' => 'en', '_version' => '4'])->getBody();
+        $this->assertStringContainsString('id="folio-version" value="5" hx-swap-oob="true"', $auto);
+    }
+
     /** A save landing between the form's draft save and its publish: the publish conflicts, nothing goes live. */
     public function test_form_publish_refuses_a_save_landing_before_the_publish(): void
     {

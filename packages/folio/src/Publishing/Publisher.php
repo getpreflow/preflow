@@ -167,12 +167,19 @@ final class Publisher
      * Validate fully, then save the working copy (schedule cleared) and copy
      * it to the snapshot.
      *
+     * The working copy is written as version stored + 1 when its content differs from the
+     * stored one (any field but the id and META: a site's approve that sets a status, an
+     * import), so an editor still holding the old version conflicts instead of writing the old
+     * content back. Unchanged content (Folio's form: the draft save, then publish; the
+     * scheduler) keeps the version, and open editors stay valid. The record carries the
+     * version written.
+     *
      * With $loadedVersion (the _version the editor loaded), the working copy is written only if
      * it is still stored with that version, checked in the write as saveDraft() does; a stale
-     * one throws VersionConflict before any snapshot is written. The version is kept (publishing
-     * changes no content, so open editors stay valid). On SQL storage the working copy and the
-     * snapshot are written in one transaction (a caller's open transaction is used as it is);
-     * JSON writes the working copy first.
+     * one throws VersionConflict (with the stored version) before any snapshot is written, and
+     * the record is left as it was. On SQL storage the working copy and the snapshot are written
+     * in one transaction (a caller's open transaction is used as it is); JSON writes the working
+     * copy first.
      *
      * Without it (null) the working copy is written unchecked, as the scheduler, the CLI and
      * importers (records built without _version) need.
@@ -187,8 +194,19 @@ final class Publisher
         $def = $working->getType();
         $shadow = ShadowTypes::published($def);
 
+        // Read before any transaction: on MariaDB a transaction's later write to a row changed
+        // since its first read fails (snapshot isolation); the claim catches a save in between.
+        $stored = $this->dm->findIn($def, (string) $working->getId());
+        $changed = $stored === null || self::comparable($working) !== self::comparable($stored);
+
         if ($loadedVersion === null) {
             $previous = $this->dm->findIn($shadow, (string) $working->getId());
+            $storedVersion = $stored?->get('_version');
+            if ($changed) {
+                $working->set('_version', (int) ($storedVersion ?? 0) + 1);
+            } elseif ($storedVersion !== null) {
+                $working->set('_version', (int) $storedVersion);
+            }
 
             // '' rather than null: SQL drivers skip null values, so null would never clear it.
             $working->set('_publish_at', '');
@@ -197,10 +215,12 @@ final class Publisher
             return $this->writeSnapshot($working, $previous, $by);
         }
 
-        return $this->transaction([$def, $shadow], function () use ($working, $shadow, $by, $loadedVersion): DynamicRecord {
+        $next = $changed ? $loadedVersion + 1 : $loadedVersion;
+
+        return $this->transaction([$def, $shadow], function () use ($working, $shadow, $by, $loadedVersion, $next): DynamicRecord {
             $schedule = $working->toArray();
             $working->set('_publish_at', '');
-            if (!$this->dm->saveTypeIfVersion($working, $loadedVersion, $loadedVersion, validate: false)) {
+            if (!$this->dm->saveTypeIfVersion($working, $loadedVersion, $next, validate: false)) {
                 array_key_exists('_publish_at', $schedule) ? $working->set('_publish_at', $schedule['_publish_at']) : $working->remove('_publish_at');
                 throw new VersionConflict($this->storedVersion($working));
             }
@@ -464,6 +484,42 @@ final class Publisher
         $data = array_filter($data, static fn (mixed $value): bool => !self::isEmpty($value));
 
         return (string) json_encode(self::sortKeys($data));
+    }
+
+    /**
+     * content() as stored, so a record built in PHP and the same record read back from SQL
+     * compare equal: JSON text decoded, numbers and booleans as the text SQL returns.
+     */
+    private static function comparable(DynamicRecord $record): string
+    {
+        $fields = $record->getType()->fields;
+        $data = array_diff_key($record->toArray(), array_flip([...self::META, $record->getType()->idField]));
+        foreach ($data as $name => $value) {
+            // A boolean comes back as '1', '0' or '' (SQLite stores false as ''): compare its truth.
+            $data[$name] = ($fields[$name]->type ?? null) === 'boolean'
+                ? (in_array($value, [true, 1, '1'], true) ? '1' : '')
+                : self::asStored($value);
+        }
+        $data = array_filter($data, static fn (mixed $value): bool => !self::isEmpty($value));
+
+        return (string) json_encode(self::sortKeys($data));
+    }
+
+    private static function asStored(mixed $value): mixed
+    {
+        if (is_string($value) && ($value[0] ?? '') !== '' && str_contains('[{', $value[0])) {
+            $decoded = json_decode($value, true);
+            if (is_array($decoded)) {
+                $value = $decoded;
+            }
+        }
+
+        return match (true) {
+            is_array($value) => array_map(self::asStored(...), $value),
+            is_bool($value) => $value ? '1' : '0',
+            is_int($value), is_float($value) => (string) $value,
+            default => $value,
+        };
     }
 
     /** null, '', an empty list or JSON '[]', or a locale map/list of only such values. */
