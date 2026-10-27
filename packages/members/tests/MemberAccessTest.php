@@ -47,6 +47,15 @@ final class MemberAccessTest extends TestCase
         }
     }
 
+    public function test_rejected_and_pending_win_over_member(): void
+    {
+        $access = new MemberAccess(new DefaultResolver());
+
+        foreach ([['member', 'rejected'], ['rejected', 'member'], ['pending', 'member']] as $roles) {
+            $this->assertFalse($access->allows(self::user($roles), 'members', MembersConfig::PERMISSION, null), implode(',', $roles));
+        }
+    }
+
     public function test_a_member_gets_nothing_else(): void
     {
         $access = new MemberAccess(new DefaultResolver());
@@ -70,7 +79,7 @@ final class MemberAccessTest extends TestCase
         $dm = $c->get(\Preflow\Data\DataManager::class);
         $access = new MemberAccess(new DefaultResolver());
 
-        foreach ([['["member"]'], '["member"]', 'member', [' member '], ['["pending"]', 'x']] as $roles) {
+        foreach ([['["member"]'], '["member"]', 'member', [' member '], ['["pending"]', 'x'], ['member', 'rejected'], ['rejected', 'member'], ['member', 'pending']] as $roles) {
             $m = \Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get(MembersConfig::TYPE), ['uuid' => 'm1', 'roles' => $roles]);
             $user = new \Preflow\Auth\Record\RecordUser($m);
             $this->assertSame(\Preflow\Members\MemberRoles::of($m), $user->getRoles(), json_encode($roles));

@@ -6,7 +6,7 @@ namespace Preflow\Members;
 
 use Preflow\Data\DynamicRecord;
 
-/** Where a member stands, derived from the record: roles first, then the confirmed email. */
+/** Where a member stands, derived from the record: roles first ("rejected" wins, then {@see MemberRoles::admitted()}), then the confirmed email. */
 enum MemberState: string
 {
     case Unconfirmed = 'unconfirmed';
@@ -20,7 +20,7 @@ enum MemberState: string
         if (in_array('rejected', $roles, true)) {
             return self::Declined;
         }
-        if (in_array('member', $roles, true)) {
+        if (MemberRoles::admitted($roles)) {
             return self::Member;
         }
         $confirmed = $m->get('email_confirmed_at');

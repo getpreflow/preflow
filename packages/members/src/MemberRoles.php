@@ -21,4 +21,15 @@ final class MemberRoles
     {
         return RoleField::normalize($roles);
     }
+
+    /**
+     * Whether these roles admit a member: "member" without "rejected" or "pending" (either wins).
+     * The one rule MemberState and MemberAccess read.
+     *
+     * @param list<string> $roles normalized
+     */
+    public static function admitted(array $roles): bool
+    {
+        return in_array('member', $roles, true) && !in_array('rejected', $roles, true) && !in_array('pending', $roles, true);
+    }
 }
