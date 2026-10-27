@@ -566,7 +566,7 @@ final class DataManager
 
         // A unique or indexed string, and a unique field's scope, is a bounded column: it may not outgrow it.
         foreach ($this->fieldKinds()->lengthRules($typeDef) as $name => $lengthRule) {
-            $rules[$name] = array_values(array_unique([...($rules[$name] ?? []), $lengthRule]));
+            $rules[$name] = [...($rules[$name] ?? []), $lengthRule];
         }
 
         if ($extraRules !== []) {

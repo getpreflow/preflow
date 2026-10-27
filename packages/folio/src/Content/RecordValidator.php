@@ -51,7 +51,7 @@ final class RecordValidator
      * layer merges extra rules per field. A "readonly" field gets an empty list:
      * it is not validated on save (nor checked for being unique).
      *
-     * @return array<string, list<string>>
+     * @return array<string, list<string|\Preflow\Validation\ValidationRule>>
      */
     public function rules(TypeDefinition $typeDef): array
     {

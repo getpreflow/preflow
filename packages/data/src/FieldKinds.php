@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Data;
 
 use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Validation\MaxChars;
 
 /**
  * Which field types count as free text and which as a relation, and which column kind each
@@ -90,11 +91,11 @@ final class FieldKinds
      * The length rules of a type's bounded string columns: its unique or indexed string fields and
      * the scope fields of its unique fields (stored as indexed), by field.
      *
-     * @return array<string, string>
+     * @return array<string, MaxChars>
      */
     public function lengthRules(TypeDefinition $def): array
     {
-        return array_map(static fn (int $length): string => 'max:' . $length, $this->lengths($def));
+        return array_map(static fn (int $length): MaxChars => new MaxChars($length), $this->lengths($def));
     }
 
     /**
@@ -120,13 +121,13 @@ final class FieldKinds
         return $lengths;
     }
 
-    /** The length rule of a unique or indexed string column ("max:191"), or null for any other field. */
-    public function lengthRule(TypeFieldDefinition $field): ?string
+    /** The length rule of a unique or indexed string column (at most 191 characters), or null for any other field. */
+    public function lengthRule(TypeFieldDefinition $field): ?MaxChars
     {
         if ($this->columnKindOf($field) !== ColumnKind::Short) {
             return null;
         }
 
-        return 'max:' . ($field->length ?? self::DEFAULT_LENGTH);
+        return new MaxChars($field->length ?? self::DEFAULT_LENGTH);
     }
 }
