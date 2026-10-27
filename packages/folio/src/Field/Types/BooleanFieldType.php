@@ -10,11 +10,16 @@ use Preflow\Folio\Field\FieldContext;
  * A yes/no checkbox. A hidden "0" sibling makes an unchecked box submit, and a
  * missing value normalizes to false, so unchecking always saves false.
  */
-final class BooleanFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\DisplaysInAdmin
+final class BooleanFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\DisplaysInAdmin, \Preflow\Folio\Field\HasColumnKind
 {
     public function key(): string
     {
         return 'boolean';
+    }
+
+    public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
+    {
+        return \Preflow\Data\Schema\ColumnKind::Boolean;
     }
 
     protected function inputType(): string

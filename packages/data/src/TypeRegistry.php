@@ -116,6 +116,17 @@ final class TypeRegistry
         return [$map['en'] ?? reset($map), $map];
     }
 
+    /** @return bool|list<string> */
+    private static function unique(mixed $value): bool|array
+    {
+        if (!is_array($value)) {
+            return (bool) $value;
+        }
+        $scope = array_values(array_filter($value, 'is_string'));
+
+        return $scope === [] ? true : $scope;
+    }
+
     private function parse(array $schema): TypeDefinition
     {
         $fields = [];
@@ -130,7 +141,7 @@ final class TypeRegistry
             [$label, $labels] = self::text($fieldDef['label'] ?? null);
             [$help, $helps] = self::text($fieldDef['help'] ?? null);
             $config = array_diff_key($fieldDef, array_flip(
-                ['type', 'searchable', 'transform', 'validate', 'label', 'help', 'translatable'],
+                ['type', 'searchable', 'transform', 'validate', 'label', 'help', 'translatable', 'unique', 'index', 'length'],
             ));
 
             $fields[$name] = new TypeFieldDefinition(
@@ -145,6 +156,9 @@ final class TypeRegistry
                 translatable: (bool) ($fieldDef['translatable'] ?? false),
                 labels: $labels,
                 helps: $helps,
+                unique: self::unique($fieldDef['unique'] ?? false),
+                index: (bool) ($fieldDef['index'] ?? false),
+                length: isset($fieldDef['length']) ? (int) $fieldDef['length'] : null,
             );
 
             if ($searchable) {

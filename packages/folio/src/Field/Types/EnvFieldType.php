@@ -13,11 +13,16 @@ use Preflow\Form\FieldRenderer;
  * shows the name and whether it is set, never the value; nothing is read from the request or
  * stored (DraftRecordFactory writes no key). ExtensionSettings::get() reads getenv(NAME).
  */
-final class EnvFieldType implements FieldType
+final class EnvFieldType implements FieldType, \Preflow\Folio\Field\HasColumnKind
 {
     public function key(): string
     {
         return 'env';
+    }
+
+    public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
+    {
+        return \Preflow\Data\Schema\ColumnKind::Short;
     }
 
     public function renderEditor(FieldContext $ctx): string

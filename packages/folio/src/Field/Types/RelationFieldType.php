@@ -15,7 +15,7 @@ use Preflow\Folio\Field\FieldType;
  * storing the selected target id(s). No data-layer relation model — ids are
  * resolved to records on demand for display.
  */
-final class RelationFieldType implements FieldType
+final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColumnKind
 {
     /** A multi relation shows a filter input above this many options. */
     private const FILTER_THRESHOLD = 12;
@@ -43,6 +43,11 @@ final class RelationFieldType implements FieldType
     public function key(): string
     {
         return 'relation';
+    }
+
+    public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
+    {
+        return ($config['multiple'] ?? false) ? \Preflow\Data\Schema\ColumnKind::Text : \Preflow\Data\Schema\ColumnKind::Short;
     }
 
     public function renderEditor(FieldContext $ctx): string

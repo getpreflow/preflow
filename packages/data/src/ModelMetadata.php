@@ -136,6 +136,23 @@ final class ModelMetadata
     }
 
     /**
+     * Unique fields with the fields that scope their uniqueness (empty: unique across the table).
+     *
+     * @return array<string, list<string>>
+     */
+    public function uniqueFields(): array
+    {
+        $unique = [];
+        foreach ($this->fields as $name => $field) {
+            if ($field->unique !== false) {
+                $unique[$name] = $field->unique === true ? [] : array_values($field->unique);
+            }
+        }
+
+        return $unique;
+    }
+
+    /**
      * Return validation rules filtered for a specific scenario.
      *
      * Rules without an `on` constraint apply to all scenarios (including null).

@@ -12,11 +12,16 @@ use Preflow\Folio\Http\AdminFormat;
  * A date ("Y-m-d"), or date and time ("Y-m-d\TH:i") with "time": true.
  * Stored as the string the browser input produces; empty is allowed unless required.
  */
-final class DateFieldType extends AbstractScalarFieldType implements DisplaysInAdmin
+final class DateFieldType extends AbstractScalarFieldType implements DisplaysInAdmin, \Preflow\Folio\Field\HasColumnKind
 {
     public function key(): string
     {
         return 'date';
+    }
+
+    public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
+    {
+        return \Preflow\Data\Schema\ColumnKind::Date;
     }
 
     protected function inputType(): string

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Data;
 
+use Preflow\Data\Schema\ColumnKind;
 use Preflow\Validation\ValidatorFactory;
 use Preflow\Validation\ValidationException;
 
@@ -331,7 +332,7 @@ final class DataManager
             throw new \RuntimeException("DynamicRecord must have an ID ({$typeDef->idField}) before saving.");
         }
 
-        $driver->save($typeDef->table, $id, $record->toArray(), $typeDef->idField);
+        $driver->save($typeDef->table, $id, $this->storageData($record), $typeDef->idField);
     }
 
     /**
@@ -362,13 +363,13 @@ final class DataManager
         $record->set($versionField, $next ?? $expected + 1);
 
         if ($driver instanceof VersionedStorage) {
-            $written = $driver->saveIfVersion($typeDef->table, $id, $record->toArray(), $versionField, $expected, $typeDef->idField);
+            $written = $driver->saveIfVersion($typeDef->table, $id, $this->storageData($record), $versionField, $expected, $typeDef->idField);
         } else {
             self::noticeNotVersioned($driver);
             $stored = $driver->findOne($typeDef->table, $id, $typeDef->idField);
             $written = $stored === null ? $expected === 0 : (int) ($stored[$versionField] ?? 0) === $expected;
             if ($written) {
-                $driver->save($typeDef->table, $id, $record->toArray(), $typeDef->idField);
+                $driver->save($typeDef->table, $id, $this->storageData($record), $typeDef->idField);
             }
         }
 
@@ -377,6 +378,27 @@ final class DataManager
         }
 
         return $written;
+    }
+
+    /**
+     * The record's values as written: an empty string in a number, yes/no or date field is NULL
+     * (those columns hold no empty text); empty text stays ''.
+     *
+     * @return array<string, mixed>
+     */
+    private function storageData(DynamicRecord $record): array
+    {
+        $data = $record->toArray();
+        foreach ($record->getType()->fields as $name => $field) {
+            if (($data[$name] ?? null) !== '') {
+                continue;
+            }
+            if (in_array($this->fieldKinds()->columnKindOf($field), [ColumnKind::Number, ColumnKind::Boolean, ColumnKind::Date], true)) {
+                $data[$name] = null;
+            }
+        }
+
+        return $data;
     }
 
     /** @var array<class-string, true> driver classes already told about */
@@ -458,6 +480,14 @@ final class DataManager
 
         $typeDef = $record->getType();
         $rules = $typeDef->validationRules();
+
+        // A unique or indexed string is a bounded column: it may not outgrow it.
+        foreach ($typeDef->fields as $name => $field) {
+            $lengthRule = $this->fieldKinds()->lengthRule($field);
+            if ($lengthRule !== null) {
+                $rules[$name] = array_values(array_unique([...($rules[$name] ?? []), $lengthRule]));
+            }
+        }
 
         if ($extraRules !== []) {
             $rules = array_merge($rules, $extraRules);

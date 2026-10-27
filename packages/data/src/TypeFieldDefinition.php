@@ -11,6 +11,7 @@ final readonly class TypeFieldDefinition
      * @param array<string, mixed> $config
      * @param array<string, string> $labels the label per language when the model file gives a map ("label": {"en": …, "de": …}); $label is then its "en" entry, else the first
      * @param array<string, string> $helps  the same for the help text
+     * @param bool|list<string> $unique true, or the names of the fields that scope the uniqueness
      */
     public function __construct(
         public string $name,
@@ -24,5 +25,8 @@ final readonly class TypeFieldDefinition
         public bool $translatable = false,
         public array $labels = [],
         public array $helps = [],
+        public bool|array $unique = false,
+        public bool $index = false,
+        public ?int $length = null,
     ) {}
 }

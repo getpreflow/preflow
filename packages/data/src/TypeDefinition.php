@@ -40,6 +40,29 @@ final readonly class TypeDefinition
     }
 
     /**
+     * Unique fields with the fields that scope their uniqueness (empty: unique across the table).
+     *
+     * @return array<string, list<string>>
+     */
+    public function uniqueFields(): array
+    {
+        $unique = [];
+        foreach ($this->fields as $name => $field) {
+            if ($field->unique !== false) {
+                $unique[$name] = $field->unique === true ? [] : $field->unique;
+            }
+        }
+
+        return $unique;
+    }
+
+    /** @return list<string> */
+    public function indexedFields(): array
+    {
+        return array_keys(array_filter($this->fields, static fn ($f) => $f->index));
+    }
+
+    /**
      * Collect validation rules from all field definitions.
      *
      * @return array<string, list<string>>

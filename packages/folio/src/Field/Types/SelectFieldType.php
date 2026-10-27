@@ -12,11 +12,16 @@ use Preflow\Folio\Field\FieldContext;
  * Adds an in: rule automatically. A stored value that is no longer an option
  * stays visible (and selected) so editing never silently drops it.
  */
-final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\SearchableText
+final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\SearchableText, \Preflow\Folio\Field\HasColumnKind
 {
     public function key(): string
     {
         return 'select';
+    }
+
+    public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
+    {
+        return \Preflow\Data\Schema\ColumnKind::Short;
     }
 
     protected function inputType(): string

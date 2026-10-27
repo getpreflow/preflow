@@ -1381,6 +1381,9 @@ final class FolioServiceProvider extends ServiceProvider
             if ($type instanceof \Preflow\Folio\Field\SearchableText) {
                 $kinds->text($key);
             }
+            if ($type instanceof \Preflow\Folio\Field\HasColumnKind) {
+                $kinds->column($key, static fn (array $config): \Preflow\Data\Schema\ColumnKind => $type->columnKind($config));
+            }
         }
         $kinds->relation('relation');
     }

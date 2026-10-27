@@ -13,7 +13,7 @@ use Preflow\Folio\Field\Types\SelectFieldType;
  * A code's purpose ("codes_purpose"): a select whose options are the purposes of
  * config/codes.php, so the model JSON needs no copy of them.
  */
-final class PurposeFieldType implements FieldType
+final class PurposeFieldType implements FieldType, \Preflow\Folio\Field\HasColumnKind
 {
     private readonly SelectFieldType $select;
 
@@ -27,6 +27,11 @@ final class PurposeFieldType implements FieldType
     public function key(): string
     {
         return 'codes_purpose';
+    }
+
+    public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
+    {
+        return \Preflow\Data\Schema\ColumnKind::Short;
     }
 
     public function renderEditor(FieldContext $ctx): string
