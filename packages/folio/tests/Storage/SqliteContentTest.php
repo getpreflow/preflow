@@ -23,6 +23,7 @@ use Preflow\Folio\Field\Types\RelationFieldType;
 use Preflow\Folio\Field\Types\StringFieldType;
 use Preflow\Folio\Publishing\PublishState;
 use Preflow\Folio\Publishing\Publisher;
+use Preflow\Folio\Publishing\VersionConflict;
 use Preflow\Folio\Publishing\ShadowTypes;
 use Preflow\Folio\Storage\TableSync;
 use Preflow\Folio\Transfer\ContentSet;
@@ -192,6 +193,45 @@ final class SqliteContentTest extends TestCase
         } finally {
             $plan->cleanup();
         }
+    }
+
+    /** Another connection saves after the editor loaded: the checked publish conflicts, nothing goes live. */
+    public function test_checked_publish_refuses_a_save_from_another_connection(): void
+    {
+        $type = $this->dm->getTypeRegistry()->get('post');
+        $this->publisher->saveDraft(DynamicRecord::fromArray($type, ['uuid' => 'p1', 'title' => ['en' => 'Start'], 'slug' => ['en' => 'p1']]), 0);
+        $mine = $this->dm->findType('post', 'p1');
+
+        $other = $this->dataManager($this->dir . '/a.sqlite');
+        $theirs = $other->findType('post', 'p1');
+        $theirs->set('title', ['en' => 'Theirs']);
+        $this->assertTrue($other->saveTypeIfVersion($theirs, 1, validate: false));
+
+        try {
+            $this->publisher->publish($mine, 'me', 1);
+            $this->fail('expected VersionConflict');
+        } catch (VersionConflict $e) {
+            $this->assertSame(2, $e->current);
+        }
+        $this->assertNull($this->publisher->snapshot('post', 'p1'));
+        $this->assertSame('Theirs', json_decode((string) $this->dm->findType('post', 'p1')->get('title'), true)['en']);
+    }
+
+    /** The checked publish claims the working copy and writes the snapshot in one transaction. */
+    public function test_checked_publish_rolls_back_the_working_copy_when_the_snapshot_fails(): void
+    {
+        $type = $this->dm->getTypeRegistry()->get('post');
+        $this->dm->saveType(DynamicRecord::fromArray($type, ['uuid' => 'p1', 'title' => ['en' => 'Start'], 'slug' => ['en' => 'p1'], '_version' => 1, '_publish_at' => '2030-01-01T00:00:00+00:00']), false);
+        $this->dm->driver('sqlite')->pdo()->exec('ALTER TABLE "post__published" DROP COLUMN "title"'); // the snapshot INSERT fails
+
+        try {
+            $this->publisher->publish($this->dm->findType('post', 'p1'), 'me', 1);
+            $this->fail('the snapshot write should fail');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('post__published', $e->getMessage());
+        }
+        $this->assertSame('2030-01-01T00:00:00+00:00', $this->dm->findType('post', 'p1')->get('_publish_at'));
+        $this->assertFalse($this->dm->driver('sqlite')->pdo()->inTransaction());
     }
 
     /**

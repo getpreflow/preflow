@@ -400,6 +400,106 @@ final class PublisherTest extends TestCase
         $this->assertSame(3, $driver->findMany['post'] ?? 0);
     }
 
+    public function test_publish_with_the_loaded_version_publishes_and_keeps_the_version(): void
+    {
+        $p = $this->publisher();
+        $this->dm->saveType($this->working('post', ['title' => 'Start', '_version' => 3, '_publish_at' => '2030-01-01T00:00:00+00:00']), false);
+
+        $p->publish($this->reload('post'), 'me', 3);
+
+        $this->assertSame('Start', $p->snapshot('post', 'r1')?->get('title'));
+        $this->assertSame(3, (int) $this->reload('post')->get('_version'), 'publishing changes no content: open editors stay valid');
+        $this->assertSame('', $this->reload('post')->get('_publish_at'));
+        $this->assertCount(1, $p->revisions('post', 'r1'));
+    }
+
+    public function test_publish_with_a_stale_loaded_version_conflicts_and_writes_nothing(): void
+    {
+        $p = $this->publisher();
+        $this->dm->saveType($this->working('post', ['title' => 'Theirs', '_version' => 2, '_publish_at' => '2030-01-01T00:00:00+00:00']), false);
+        $mine = $this->working('post', ['title' => 'Mine', '_version' => 1, '_publish_at' => '2031-01-01T00:00:00+00:00']);
+
+        try {
+            $p->publish($mine, 'me', 1);
+            $this->fail('expected VersionConflict');
+        } catch (VersionConflict $e) {
+            $this->assertSame(2, $e->current);
+        }
+        $this->assertNull($p->snapshot('post', 'r1'));
+        $this->assertSame([], $p->revisions('post', 'r1'));
+        $this->assertSame('Theirs', $this->reload('post')->get('title'));
+        $this->assertSame('2030-01-01T00:00:00+00:00', $this->reload('post')->get('_publish_at'));
+        $this->assertSame('2031-01-01T00:00:00+00:00', $mine->get('_publish_at'), 'the record is left as it was');
+        $this->assertSame(1, $mine->get('_version'));
+    }
+
+    public function test_publish_with_a_loaded_version_refuses_a_save_landing_between_check_and_write(): void
+    {
+        $driver = $this->racing();
+        $p = $this->publisher();
+        $this->dm->saveType($this->working('post', ['title' => 'Start', '_version' => 1]), false);
+        $mine = $this->reload('post');
+        $driver->raceOnce($this->theirSave('Theirs', 2));
+
+        $this->expectException(VersionConflict::class);
+        try {
+            $p->publish($mine, 'me', 1);
+        } finally {
+            $this->assertNull($p->snapshot('post', 'r1'));
+            $this->assertSame('Theirs', $this->reload('post')->get('title'));
+        }
+    }
+
+    public function test_publish_with_a_loaded_version_validates_before_it_writes(): void
+    {
+        $p = $this->publisher();
+        $this->dm->saveType($this->working('post', ['title' => '', '_version' => 1, '_publish_at' => '2030-01-01T00:00:00+00:00']), false);
+
+        try {
+            $p->publish($this->reload('post'), 'me', 1);
+            $this->fail('expected ValidationException');
+        } catch (ValidationException) {
+        }
+        $this->assertSame('2030-01-01T00:00:00+00:00', $this->reload('post')->get('_publish_at'));
+    }
+
+    public function test_publish_without_a_loaded_version_stays_unchecked(): void
+    {
+        $p = $this->publisher();
+        $this->dm->saveType($this->working('post', ['title' => 'Stored', '_version' => 5]), false);
+
+        $p->publish($this->working('post', ['title' => 'Imported']), 'importer'); // no _version, as importers build it
+
+        $this->assertSame('Imported', $p->snapshot('post', 'r1')?->get('title'));
+        $this->assertArrayNotHasKey('_version', array_filter($this->reload('post')->toArray(), static fn ($v) => $v !== null));
+    }
+
+    public function test_discard_and_restore_with_a_stale_loaded_version_conflict(): void
+    {
+        $p = $this->publisher();
+        $p->saveDraft($this->working('post', ['title' => 'Published']), 0);
+        $p->publish($this->reload('post'), 'me', 1);
+        $edited = $this->reload('post');
+        $edited->set('title', 'Edited');
+        $p->saveDraft($edited, 1); // version 2
+        $revision = $p->revisions('post', 'r1')[0]->id;
+
+        foreach (['discard' => fn () => $p->discard('post', 'r1', 1), 'restore' => fn () => $p->restore('post', 'r1', $revision, 1)] as $what => $call) {
+            try {
+                $call();
+                $this->fail("{$what}: expected VersionConflict");
+            } catch (VersionConflict $e) {
+                $this->assertSame(2, $e->current, $what);
+            }
+            $this->assertSame('Edited', $this->reload('post')->get('title'), $what);
+        }
+
+        $this->assertSame('Published', $p->discard('post', 'r1', 2)?->get('title'));
+        $this->assertSame(3, (int) $this->reload('post')->get('_version'));
+        $this->assertSame('Published', $p->restore('post', 'r1', $revision, 3)?->get('title'));
+        $this->assertSame(4, (int) $this->reload('post')->get('_version'));
+    }
+
     private function publisher(int $keep = 20): Publisher
     {
         $fieldTypes = new FieldTypeRegistry();

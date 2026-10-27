@@ -189,7 +189,7 @@ if (!$dm->saveTypeIfVersion($record, $loaded)) {
 ```
 
 - Of two writers holding the same version exactly one gets through; the other gets `false`
-  and its record keeps the version it had.
+  and its record keeps the version it had (a record that had none gets none back).
 - The record is written with `$next` (default `$expected + 1`) in `$versionField` (default
   `_version`). `next: $expected` writes without moving the version on.
 - A missing or empty stored version counts as 0. A record that is not stored yet is
@@ -199,7 +199,14 @@ if (!$dm->saveTypeIfVersion($record, $loaded)) {
   transaction (one the caller opened is used as it is). The JSON driver checks and writes
   under a lock file (`.lock` in the type's folder). All three implement
   `Preflow\Data\VersionedStorage::saveIfVersion()`; a driver that does not gets a plain
-  read, compare and write.
+  read, compare and write (and one `E_USER_NOTICE` per driver class saying so).
+- SQL compares the stored version as text: only a canonical integer string matches (`'5'`,
+  not `'05'` or `'5.0'`, which JSON reads as 5); `NULL` and `''` match 0. Versions are
+  written canonical.
+- Inside your own transaction: a save committed by another connection after your first read
+  gives `false` on MySQL; MariaDB 11.6+ (`innodb_snapshot_isolation`) and SQLite in WAL mode
+  refuse the write with an error instead, and your transaction has to roll back. In the
+  driver's own transaction a deadlock or that error is a lost race (`false`).
 
 Folio's `Publisher::saveDraft()` uses it, and throws `VersionConflict` instead of returning
 `false`.

@@ -1269,7 +1269,16 @@ final class AdminController
 
         if (($body['_action'] ?? null) === 'publish') {
             try {
-                $this->publisher?->publish($record, self::userId($request));
+                // Checked against the version the draft save just wrote: a save landing in between conflicts.
+                $this->publisher?->publish($record, self::userId($request), (int) $record->get('_version'));
+            } catch (VersionConflict $e) {
+                $this->customizations?->runHooks(AfterSave::class, $record); // the working copy was saved
+                $values = $record->toArray();
+                $values['_version'] = $e->current;
+                return $this->form($type, $values, $action, $heading, [], $csrf, 409, $layout, $locale, $editUrl,
+                    notice: FolioText::get('folio.form.conflict'),
+                    reloadUrl: $editUrl,
+                );
             } catch (ValidationException $e) {
                 $this->customizations?->runHooks(AfterSave::class, $record); // the working copy was saved
                 return $this->form($type, $record->toArray(), $action, $heading, $e->errors(), $csrf, 422, $layout, $locale, $editUrl,

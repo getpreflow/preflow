@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Publishing;
 
 use Preflow\Data\DataManager;
+use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\QueryBuilder;
 use Preflow\Data\TypeDefinition;
@@ -132,7 +133,10 @@ final class Publisher
      * version, one gets VersionConflict, also when both passed the check at the same time.
      *
      * @param int|null $loadedVersion the _version the editor loaded; null skips the check
-     *                                (a save never conflicts then, unless the record stays busy)
+     *                                (a save conflicts then only if others save the record
+     *                                during each of its 3 tries; inside a caller's transaction
+     *                                the tries reread the same snapshot, so one lost race is
+     *                                VersionConflict, or the driver's error on MariaDB/SQLite)
      * @throws VersionConflict
      */
     public function saveDraft(DynamicRecord $working, ?int $loadedVersion): void
@@ -163,20 +167,53 @@ final class Publisher
      * Validate fully, then save the working copy (schedule cleared) and copy
      * it to the snapshot.
      *
+     * With $loadedVersion (the _version the editor loaded), the working copy is written only if
+     * it is still stored with that version, checked in the write as saveDraft() does; a stale
+     * one throws VersionConflict before any snapshot is written. The version is kept (publishing
+     * changes no content, so open editors stay valid). On SQL storage the working copy and the
+     * snapshot are written in one transaction (a caller's open transaction is used as it is);
+     * JSON writes the working copy first.
+     *
+     * Without it (null) the working copy is written unchecked, as the scheduler, the CLI and
+     * importers (records built without _version) need.
+     *
      * @throws ValidationException
+     * @throws VersionConflict
      */
-    public function publish(DynamicRecord $working, ?string $by): DynamicRecord
+    public function publish(DynamicRecord $working, ?string $by, ?int $loadedVersion = null): DynamicRecord
     {
         $this->validator->validate($working);
 
         $def = $working->getType();
         $shadow = ShadowTypes::published($def);
 
-        $previous = $this->dm->findIn($shadow, (string) $working->getId());
+        if ($loadedVersion === null) {
+            $previous = $this->dm->findIn($shadow, (string) $working->getId());
 
-        // '' rather than null: SQL drivers skip null values, so null would never clear it.
-        $working->set('_publish_at', '');
-        $this->dm->saveType($working, false);
+            // '' rather than null: SQL drivers skip null values, so null would never clear it.
+            $working->set('_publish_at', '');
+            $this->dm->saveType($working, false);
+
+            return $this->writeSnapshot($working, $previous, $by);
+        }
+
+        return $this->transaction([$def, $shadow], function () use ($working, $shadow, $by, $loadedVersion): DynamicRecord {
+            $schedule = $working->toArray();
+            $working->set('_publish_at', '');
+            if (!$this->dm->saveTypeIfVersion($working, $loadedVersion, $loadedVersion, validate: false)) {
+                array_key_exists('_publish_at', $schedule) ? $working->set('_publish_at', $schedule['_publish_at']) : $working->remove('_publish_at');
+                throw new VersionConflict($this->storedVersion($working));
+            }
+
+            return $this->writeSnapshot($working, $this->dm->findIn($shadow, (string) $working->getId()), $by);
+        });
+    }
+
+    /** Copy a saved working copy to its snapshot and append a revision. */
+    private function writeSnapshot(DynamicRecord $working, ?DynamicRecord $previous, ?string $by): DynamicRecord
+    {
+        $def = $working->getType();
+        $shadow = ShadowTypes::published($def);
 
         $stamp = ($this->now)()->format(DATE_ATOM);
         $snapshot = DynamicRecord::fromArray($shadow, array_merge(
@@ -187,6 +224,47 @@ final class Publisher
         $this->appendRevision($def, $snapshot, $previous, $stamp, $by);
 
         return $snapshot;
+    }
+
+    /**
+     * Run $writes in one transaction per SQL connection the types are stored on (one already
+     * open is left to its owner); rolled back on any error. JSON storage has none.
+     *
+     * @template T
+     * @param list<TypeDefinition> $types
+     * @param \Closure(): T $writes
+     * @return T
+     */
+    private function transaction(array $types, \Closure $writes): mixed
+    {
+        /** @var array<int, \PDO> $began */
+        $began = [];
+        try {
+            foreach ($types as $type) {
+                $driver = $this->dm->driver($type->storage);
+                if (!$driver instanceof PdoDriver) {
+                    continue;
+                }
+                $pdo = $driver->pdo();
+                if (!isset($began[spl_object_id($pdo)]) && !$pdo->inTransaction()) {
+                    $pdo->beginTransaction();
+                    $began[spl_object_id($pdo)] = $pdo;
+                }
+            }
+            $result = $writes();
+            foreach ($began as $pdo) {
+                $pdo->commit();
+            }
+
+            return $result;
+        } catch (\Throwable $e) {
+            foreach ($began as $pdo) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+            }
+            throw $e;
+        }
     }
 
     public function unpublish(string $type, string $id): void
@@ -215,15 +293,20 @@ final class Publisher
         }
     }
 
-    /** Reset the working copy to the published content; null when nothing is published. */
-    public function discard(string $type, string $id): ?DynamicRecord
+    /**
+     * Reset the working copy to the published content; null when nothing is published.
+     * With $loadedVersion, only if the working copy is still stored with it (else VersionConflict).
+     *
+     * @throws VersionConflict
+     */
+    public function discard(string $type, string $id, ?int $loadedVersion = null): ?DynamicRecord
     {
         $snapshot = $this->snapshot($type, $id);
         if ($snapshot === null) {
             return null;
         }
 
-        return $this->replaceContent($type, $id, $snapshot->toArray());
+        return $this->replaceContent($type, $id, $snapshot->toArray(), $loadedVersion);
     }
 
     /**
@@ -236,12 +319,17 @@ final class Publisher
         return $this->revisionsOf($this->definition($type), $id);
     }
 
-    /** Copy a revision into the working copy; it must be published again to go live. */
-    public function restore(string $type, string $id, string $revisionId): ?DynamicRecord
+    /**
+     * Copy a revision into the working copy; it must be published again to go live.
+     * With $loadedVersion, only if the working copy is still stored with it (else VersionConflict).
+     *
+     * @throws VersionConflict
+     */
+    public function restore(string $type, string $id, string $revisionId, ?int $loadedVersion = null): ?DynamicRecord
     {
         foreach ($this->revisions($type, $id) as $revision) {
             if ($revision->id === $revisionId) {
-                return $this->replaceContent($type, $id, $revision->data);
+                return $this->replaceContent($type, $id, $revision->data, $loadedVersion);
             }
         }
 
@@ -325,8 +413,9 @@ final class Publisher
      * bumping its version (so open editors see a conflict).
      *
      * @param array<string, mixed> $content
+     * @throws VersionConflict when $loadedVersion is given and stale
      */
-    private function replaceContent(string $type, string $id, array $content): DynamicRecord
+    private function replaceContent(string $type, string $id, array $content, ?int $loadedVersion = null): DynamicRecord
     {
         $def = $this->definition($type);
         $working = $this->dm->findIn($def, $id);
@@ -342,7 +431,11 @@ final class Publisher
         $data['_version'] = (int) ($working?->get('_version') ?? 0) + 1;
 
         $record = DynamicRecord::fromArray($def, $data);
-        $this->dm->saveType($record, false);
+        if ($loadedVersion === null) {
+            $this->dm->saveType($record, false);
+        } elseif (!$this->dm->saveTypeIfVersion($record, $loadedVersion, validate: false)) {
+            throw new VersionConflict($this->storedVersion($record));
+        }
 
         return $record;
     }

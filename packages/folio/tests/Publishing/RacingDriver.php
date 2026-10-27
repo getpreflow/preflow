@@ -17,19 +17,23 @@ final class RacingDriver implements VersionedStorage
 {
     private ?\Closure $race = null;
 
+    private int $skip = 0;
+
     /** @var array<string, int> */
     public array $findMany = [];
 
     public function __construct(private readonly VersionedStorage $inner) {}
 
-    public function raceOnce(\Closure $race): void
+    /** $skip: version-checked writes to let through first (a form publish: the draft save, then the publish). */
+    public function raceOnce(\Closure $race, int $skip = 0): void
     {
         $this->race = $race;
+        $this->skip = $skip;
     }
 
     public function saveIfVersion(string $type, string|int $id, array $data, string $versionField, int $expected, string $idField = 'uuid'): bool
     {
-        if ($this->race !== null) {
+        if ($this->race !== null && $this->skip-- <= 0) {
             $race = $this->race;
             $this->race = null;
             $race();

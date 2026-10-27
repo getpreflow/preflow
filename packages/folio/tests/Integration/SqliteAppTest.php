@@ -50,6 +50,22 @@ final class SqliteAppTest extends TestCase
         $this->assertSame(5, (int) $this->stored('post', 'p1')->get('_version'));
     }
 
+    /** A save landing between the form's draft save and its publish: the publish conflicts, nothing goes live. */
+    public function test_form_publish_refuses_a_save_landing_before_the_publish(): void
+    {
+        $this->migrateStep();
+        $this->working('post', 'p1', ['title' => ['en' => 'Start'], 'slug' => ['en' => 'hello'], '_version' => 3]);
+
+        $res = $this->racingRequest('/folio/post/p1', ['title' => 'Mine', 'slug' => 'hello', '_locale' => 'en', '_version' => '3', '_action' => 'publish'], skip: 1, theirVersion: 5);
+
+        $this->assertSame(409, $res->getStatusCode());
+        $body = (string) $res->getBody();
+        $this->assertStringContainsString('Someone else changed this record', $body);
+        $this->assertStringContainsString('name="_version" id="folio-version" value="5"', $body);
+        $this->assertSame('Theirs', $this->storedTitle('p1'));
+        $this->assertNull($this->publisher()->snapshot('post', 'p1'));
+    }
+
     public function test_admin_publish_and_public_page(): void
     {
         $this->migrateStep();

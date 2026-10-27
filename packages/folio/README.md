@@ -713,13 +713,35 @@ try {
 }
 ```
 
+`saveDraft($record, null)` can still throw `VersionConflict` in rare cases: when others save
+the record during each of its three tries, or inside your own transaction, where the retries
+reread the same snapshot.
+
+**Publishing in your own code:** `Publisher::publish($record, $by, $loadedVersion)` validates,
+then writes the working copy only if it is still stored with `$loadedVersion`, then writes the
+snapshot (on SQL storage in one transaction). A stale version throws `VersionConflict` before
+anything is written. The version is kept: publishing changes no content, so open editors stay
+valid. Without the third argument (`null`) the working copy is written unchecked, as the
+scheduler, `folio:publish` and importers need. Folio's own form publish passes the version its
+draft save just wrote. `discard($type, $id, $loadedVersion)` and
+`restore($type, $id, $revision, $loadedVersion)` check the same way (they bump the version).
+
+```php
+try {
+    $publisher->saveDraft($record, (int) $body['_version']);
+    $publisher->publish($record, $userId, (int) $record->get('_version'));
+} catch (VersionConflict $e) {
+    // someone saved in between; nothing was published
+}
+```
+
 For a version-checked write outside publishing, use `DataManager::saveTypeIfVersion()` (see
 preflow/data).
 
 **States in your own code:** `->state($working)` reads the snapshot; `->stateWith($working,
 $snapshot)` compares with a snapshot you already have (`null`: nothing published) and reads
 nothing. `->states($type)` gives every working copy's state, `->states($type, $ids)` those of
-some ids, each with one snapshot query.
+some ids, each with one snapshot query (one per 500 ids).
 
 **SQL storage:**
 - Create `{table}__published` with the type's columns plus `_published_at` and

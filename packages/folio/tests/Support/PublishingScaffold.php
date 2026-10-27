@@ -134,20 +134,20 @@ trait PublishingScaffold
     }
 
     /**
-     * POST through an app whose storage lets another request save p1 ("Theirs", version 4)
-     * right before the request's own version-checked write.
+     * POST through an app whose storage lets another request save p1 ("Theirs", version
+     * $theirVersion) right before the request's own version-checked write (after $skip of them).
      *
      * @param array<string, mixed> $body
      */
-    private function racingRequest(string $uri, array $body): \Psr\Http\Message\ResponseInterface
+    private function racingRequest(string $uri, array $body, int $skip = 0, int $theirVersion = 4): \Psr\Http\Message\ResponseInterface
     {
         $app = $this->app();
         $c = $app->container();
         $dm = $c->get(\Preflow\Data\DataManager::class);
         $racing = new \Preflow\Folio\Tests\Publishing\RacingDriver($dm->driver($this->storage));
-        $racing->raceOnce(function (): void {
-            $this->working('post', 'p1', ['title' => ['en' => 'Theirs'], 'slug' => ['en' => 'hello'], '_version' => 4]);
-        });
+        $racing->raceOnce(function () use ($theirVersion): void {
+            $this->working('post', 'p1', ['title' => ['en' => 'Theirs'], 'slug' => ['en' => 'hello'], '_version' => $theirVersion]);
+        }, $skip);
         $racingDm = new \Preflow\Data\DataManager([$this->storage => $racing] + ['json' => $dm->driver('json'), 'default' => $dm->driver('default')], 'default', $dm->getTypeRegistry());
         $c->instance(\Preflow\Data\DataManager::class, $racingDm);
         $c->instance(\Preflow\Folio\Publishing\Publisher::class, new \Preflow\Folio\Publishing\Publisher(

@@ -59,6 +59,55 @@ final class MysqlAppTest extends TestCase
         $this->assertSame(5, (int) $this->stored('post', 'p1')->get('_version'));
     }
 
+    /** A save landing between the form's draft save and its publish: the publish conflicts, nothing goes live. */
+    public function test_form_publish_refuses_a_save_landing_before_the_publish(): void
+    {
+        $this->migrateStep();
+        $this->working('post', 'p1', ['title' => ['en' => 'Start'], 'slug' => ['en' => 'hello'], '_version' => 3]);
+
+        $res = $this->racingRequest('/folio/post/p1', ['title' => 'Mine', 'slug' => 'hello', '_locale' => 'en', '_version' => '3', '_action' => 'publish'], skip: 1, theirVersion: 5);
+
+        $this->assertSame(409, $res->getStatusCode());
+        $body = (string) $res->getBody();
+        $this->assertStringContainsString('Someone else changed this record', $body);
+        $this->assertStringContainsString('name="_version" id="folio-version" value="5"', $body);
+        $this->assertSame('Theirs', $this->storedTitle('p1'));
+        $this->assertNull($this->publisher()->snapshot('post', 'p1'));
+    }
+
+    /** Another connection saves after the editor loaded: the checked publish (in its transaction) conflicts, nothing goes live. */
+    public function test_checked_publish_refuses_a_save_from_another_connection(): void
+    {
+        $this->migrateStep();
+        $this->working('post', 'p1', ['title' => ['en' => 'Start'], 'slug' => ['en' => 'hello'], '_version' => 3]);
+        $mine = $this->stored('post', 'p1');
+
+        $c = MysqlTestDatabase::dataConfig();
+        $pdo = new \PDO(
+            sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', $c['host'], $c['port'], $c['database']),
+            $c['username'],
+            $c['password'],
+            \Preflow\Data\Driver\MysqlDriver::connectionOptions(),
+        );
+        $other = new DataManager(['mysql' => new \Preflow\Data\Driver\MysqlDriver($pdo)], 'mysql', $this->dm()->getTypeRegistry());
+        $theirs = $other->findType('post', 'p1');
+        $theirs->set('title', ['en' => 'Theirs']);
+        $this->assertTrue($other->saveTypeIfVersion($theirs, 3, validate: false));
+
+        try {
+            $this->publisher()->publish($mine, 'me', 3);
+            $this->fail('expected VersionConflict');
+        } catch (\Preflow\Folio\Publishing\VersionConflict $e) {
+            $this->assertSame(4, $e->current);
+        }
+        $this->assertNull($this->publisher()->snapshot('post', 'p1'));
+        $this->assertSame('Theirs', $this->storedTitle('p1'));
+
+        $this->publisher()->publish($this->stored('post', 'p1'), 'me', 4);
+        $this->assertNotNull($this->publisher()->snapshot('post', 'p1'));
+        $this->assertSame(4, (int) $this->stored('post', 'p1')->get('_version'));
+    }
+
     public function test_admin_publish_and_public_page(): void
     {
         $this->migrateStep();
