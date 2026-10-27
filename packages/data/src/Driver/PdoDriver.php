@@ -112,6 +112,20 @@ abstract class PdoDriver implements VersionedStorage
      * column WHERE the stored version is $expected, inside a transaction (the row stays locked
      * until it ends), then writes $data as save() does. A transaction the caller already opened
      * is used as it is and left to the caller.
+     *
+     * A first save ($expected 0) of a record that does not exist yet inserts it instead (no
+     * claim first: on MySQL the claim of a missing row takes a gap lock, and two such first
+     * saves then deadlock on their INSERTs); a concurrent first save that inserted it first
+     * makes the INSERT fail on the primary key, and the claim decides.
+     *
+     * The stored version is compared as text: only a canonical integer string matches ('5', not
+     * '05' or '5.0'), and NULL or '' match 0. An integral version in $data is written canonical.
+     *
+     * A lost race the server reports as an error (a deadlock, 40001; MariaDB's snapshot
+     * isolation, 1020) gives false when this call opened the transaction (the server rolled it
+     * back, nothing was written). In a caller's transaction it is rethrown: the caller's
+     * transaction is gone. So is SQLite's refusal to write from a caller's transaction that read
+     * before another connection committed (WAL, SQLITE_BUSY_SNAPSHOT, "database is locked").
      */
     public function saveIfVersion(string $type, string|int $id, array $data, string $versionField, int $expected, string $idField = 'uuid'): bool
     {
@@ -122,17 +136,18 @@ abstract class PdoDriver implements VersionedStorage
             throw new \InvalidArgumentException('saveIfVersion() needs the record id.');
         }
         $data[$idField] ??= $id;
+        $data[$versionField] = self::canonicalVersion($data[$versionField]);
+        $next = (string) $data[$versionField];
 
         $own = !$this->pdo->inTransaction();
         if ($own) {
             $this->pdo->beginTransaction();
         }
         try {
-            $written = $this->claim($type, $id, (string) $data[$versionField], $versionField, $expected, $idField);
-            if ($written) {
+            $written = $expected === 0 && !$this->exists($type, $id, $idField) && $this->insertNew($type, $data);
+            if (!$written && $this->claim($type, $id, $next, $versionField, $expected, $idField)) {
                 $this->save($type, $id, $data, $idField);
-            } elseif ($expected === 0 && !$this->exists($type, $id, $idField)) {
-                $written = $this->insertNew($type, $data);
+                $written = true;
             }
             if ($own) {
                 $written ? $this->pdo->commit() : $this->pdo->rollBack();
@@ -143,8 +158,32 @@ abstract class PdoDriver implements VersionedStorage
             if ($own && $this->pdo->inTransaction()) {
                 $this->pdo->rollBack();
             }
+            if ($own && $e instanceof \PDOException && self::isLostRace($e)) {
+                return false;
+            }
             throw $e;
         }
+    }
+
+    /** An integral number or numeric string as its canonical integer string ('05', 5.0: '5'); anything else as it is. */
+    private static function canonicalVersion(mixed $version): mixed
+    {
+        if (is_int($version)) {
+            return (string) $version;
+        }
+        if ((is_string($version) || is_float($version)) && is_numeric($version) && (float) $version == (int) $version) {
+            return (string) (int) $version;
+        }
+
+        return $version;
+    }
+
+    /** A deadlock or serialization failure (40001), or MariaDB's "record has changed since last read" (1020). */
+    private static function isLostRace(\PDOException $e): bool
+    {
+        $state = $e->errorInfo[0] ?? (is_string($e->getCode()) ? $e->getCode() : null);
+
+        return $state === '40001' || ($e->errorInfo[1] ?? null) === 1020;
     }
 
     /** Set the version column where the stored version is $expected; whether the record matched. */
@@ -154,16 +193,20 @@ abstract class PdoDriver implements VersionedStorage
         $version = $this->dialect->quoteIdentifier($versionField);
         $col = $this->dialect->quoteIdentifier($idField);
         // Compared as text: the column is text in Folio's tables, and a number column takes it too.
-        $matches = $expected === 0 ? "({$version} IS NULL OR {$version} = ?)" : "{$version} = ?";
+        $matches = $expected === 0 ? "({$version} IS NULL OR {$version} = '' OR {$version} = ?)" : "{$version} = ?";
 
         $update = "UPDATE {$table} SET {$version} = ? WHERE {$col} = ? AND {$matches}";
         if ($this->write($type, $update, [$next, $id, (string) $expected])->rowCount() > 0) {
             return true;
         }
+        if ($next !== (string) $expected) {
+            return false;
+        }
 
         // MySQL without FOUND_ROWS counts changed rows only: a write keeping the version matched
-        // but changed nothing. The UPDATE has locked the row either way.
-        $select = "SELECT 1 FROM {$table} WHERE {$col} = ? AND {$matches} LIMIT 1";
+        // but changed nothing. A locking read, as the UPDATE was: in a caller's transaction a
+        // plain read would see its snapshot, possibly older than a save committed since.
+        $select = "SELECT 1 FROM {$table} WHERE {$col} = ? AND {$matches} LIMIT 1" . $this->dialect->lockingRead();
 
         return $this->read($type, $select, [$id, (string) $expected])->fetchColumn() !== false;
     }
@@ -201,12 +244,15 @@ abstract class PdoDriver implements VersionedStorage
      */
     private function write(string $table, string $sql, array $bindings): \PDOStatement
     {
+        $stmt = null;
         try {
             $stmt = $this->pdo->prepare($sql);
             $this->executeWithLogging($stmt, $sql, $bindings);
 
             return $stmt;
         } catch (\PDOException $e) {
+            // The exception's trace holds the statement; reset it, or SQLite keeps its read open.
+            $stmt?->closeCursor();
             if (preg_match('/(?:no such column:|has no column named|Unknown column)\s*[\'"`]?([A-Za-z0-9_]+)/', $e->getMessage(), $m) === 1) {
                 throw new \RuntimeException("Table {$table} has no column {$m[1]}; run `preflow migrate`.", 0, $e);
             }
@@ -222,12 +268,14 @@ abstract class PdoDriver implements VersionedStorage
      */
     private function read(string $table, string $sql, array $bindings): \PDOStatement
     {
+        $stmt = null;
         try {
             $stmt = $this->pdo->prepare($sql);
             $this->executeWithLogging($stmt, $sql, $bindings);
 
             return $stmt;
         } catch (\PDOException $e) {
+            $stmt?->closeCursor();
             if (preg_match('/no such table|base table or view not found|relation .* does not exist/i', $e->getMessage()) === 1) {
                 throw new \RuntimeException("Table {$table} does not exist; run `preflow migrate`.", 0, $e);
             }

@@ -47,6 +47,11 @@ final class MysqlDialect implements Dialect
         );
     }
 
+    public function lockingRead(): string
+    {
+        return ' FOR UPDATE';
+    }
+
     public function localizedColumn(string $quotedColumn, string $locale, bool $isDefault): string
     {
         if (preg_match('/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/', $locale) !== 1) {

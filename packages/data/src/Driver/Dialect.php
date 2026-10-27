@@ -11,6 +11,13 @@ interface Dialect
     public function insertSql(string $table, array $columns): string;
 
     /**
+     * What a SELECT appends to lock the rows it reads until the transaction ends (and to read
+     * them as they are now, not as the transaction's snapshot has them): ' FOR UPDATE', or ''
+     * where the database has no row locks (SQLite locks the whole file on write).
+     */
+    public function lockingRead(): string;
+
+    /**
      * SQL expression for a translatable column's value in one locale: the
      * locale's entry of a stored JSON object, or (for the default locale) a
      * plain stored value.

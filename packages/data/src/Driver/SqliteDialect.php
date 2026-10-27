@@ -37,6 +37,12 @@ final class SqliteDialect implements Dialect
         );
     }
 
+    /** No FOR UPDATE: a write locks the whole database, and a transaction reads its own snapshot. */
+    public function lockingRead(): string
+    {
+        return '';
+    }
+
     public function localizedColumn(string $quotedColumn, string $locale, bool $isDefault): string
     {
         if (preg_match('/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/', $locale) !== 1) {
