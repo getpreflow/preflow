@@ -96,4 +96,12 @@ final class ClearingTest extends TestCase
 
         $this->assertNull($json->findOne('games', 'g1', 'id')['subtitle']);
     }
+
+    public function testVersionedFirstSaveRethrowsAConstraintFailureThatIsNotTheIdTaken(): void
+    {
+        $this->pdo->exec('CREATE TABLE notes (id TEXT PRIMARY KEY, title TEXT NOT NULL, _version TEXT)');
+
+        $this->expectException(\PDOException::class);
+        $this->sqlite->saveIfVersion('notes', 'n1', ['title' => null, '_version' => 1], '_version', 0, 'id');
+    }
 }

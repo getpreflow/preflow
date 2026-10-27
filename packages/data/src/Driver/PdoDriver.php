@@ -106,11 +106,10 @@ abstract class PdoDriver implements VersionedStorage
             return;
         }
 
-        // UPDATE ... WHERE id = ?, and an INSERT when there is none.
+        // A plain read first, then INSERT or UPDATE ... WHERE id = ?: an UPDATE of a missing id
+        // takes a gap lock in a transaction, and two first saves into one gap then deadlock.
         $set = array_diff_key($data, [$idField => true]);
-        $update = fn (): bool => $set !== [] ? $this->updated($type, $id, $set, $idField) : $this->exists($type, $id, $idField);
-
-        if ($update()) {
+        if ($this->exists($type, $id, $idField) && ($set === [] || $this->updated($type, $id, $set, $idField))) {
             return;
         }
         try {
@@ -120,7 +119,9 @@ abstract class PdoDriver implements VersionedStorage
             if (!$this->dialect->isPrimaryKeyViolation($e, $type, $idField)) {
                 throw $e;
             }
-            $update();
+            if ($set !== []) {
+                $this->updated($type, $id, $set, $idField);
+            }
         }
     }
 
@@ -175,7 +176,7 @@ abstract class PdoDriver implements VersionedStorage
             $this->pdo->beginTransaction();
         }
         try {
-            $written = $expected === 0 && !$this->exists($type, $id, $idField) && $this->insertNew($type, $data);
+            $written = $expected === 0 && !$this->exists($type, $id, $idField) && $this->insertNew($type, $data, $idField);
             if (!$written && $this->claim($type, $id, $next, $versionField, $expected, $idField)) {
                 $this->save($type, $id, $data, $idField);
                 $written = true;
@@ -248,7 +249,7 @@ abstract class PdoDriver implements VersionedStorage
      *
      * @param array<string, mixed> $data
      */
-    private function insertNew(string $type, array $data): bool
+    private function insertNew(string $type, array $data, string $idField): bool
     {
         $data = array_map(
             static fn ($v) => is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) : $v,
@@ -259,7 +260,7 @@ abstract class PdoDriver implements VersionedStorage
 
             return true;
         } catch (\PDOException $e) {
-            if (($e->errorInfo[0] ?? $e->getCode()) === '23000') {
+            if ($this->dialect->isPrimaryKeyViolation($e, $type, $idField)) {
                 return false;
             }
             throw $e;

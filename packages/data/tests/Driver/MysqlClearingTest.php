@@ -82,4 +82,38 @@ final class MysqlClearingTest extends TestCase
         $this->expectException(\PDOException::class);
         $this->driver->save('games', 'c', ['title' => 'C', 'slug' => 'x'], 'id');
     }
+
+    public function testVersionedFirstSaveRethrowsAUniqueDuplicateThatIsNotTheIdTaken(): void
+    {
+        $this->pdo->exec('ALTER TABLE games ADD COLUMN _version VARCHAR(20) NULL');
+        $this->pdo->exec('CREATE UNIQUE INDEX games_slug ON games (slug)');
+        $this->driver->save('games', 'a', ['title' => 'A', 'slug' => 'x'], 'id');
+
+        $this->expectException(\PDOException::class);
+        $this->driver->saveIfVersion('games', 'c', ['slug' => 'x', '_version' => 1], '_version', 0, 'id');
+    }
+
+    public function testTwoTransactionsSavingNewIdsInOneGapDoNotDeadlock(): void
+    {
+        $c = MysqlTestDatabase::dataConfig();
+        $second = new \PDO(
+            sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', $c['host'], $c['port'], $c['database']),
+            $c['username'],
+            $c['password'],
+            MysqlDriver::connectionOptions(),
+        );
+        $other = new MysqlDriver($second);
+        $this->driver->save('games', 'a', ['title' => 'A'], 'id');
+        $this->driver->save('games', 'z', ['title' => 'Z'], 'id');
+
+        $this->pdo->beginTransaction();
+        $second->beginTransaction();
+        $this->driver->save('games', 'm', ['title' => 'M'], 'id');
+        $other->save('games', 'n', ['title' => 'N'], 'id');
+        $this->pdo->commit();
+        $second->commit();
+
+        $this->assertSame('M', $this->driver->findOne('games', 'm', 'id')['title']);
+        $this->assertSame('N', $this->driver->findOne('games', 'n', 'id')['title']);
+    }
 }
