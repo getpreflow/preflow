@@ -117,12 +117,13 @@ final class RecordTableSync
 
     /**
      * The columns besides the id, each with its kind: the field's (a scope field of a unique
-     * field counts as indexed), free text for extra columns and in untyped tables.
+     * field counts as indexed), free text for extra columns and in untyped tables. Public: the
+     * conversion of existing tables gives them the same columns.
      *
      * @param list<string> $extraColumns
      * @return array<string, ColumnSpec>
      */
-    private function specs(TypeDefinition $def, array $extraColumns, bool $typed): array
+    public function specs(TypeDefinition $def, array $extraColumns, bool $typed): array
     {
         $scopes = [];
         foreach ($def->uniqueFields() as $scope) {
