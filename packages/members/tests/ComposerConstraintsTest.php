@@ -11,7 +11,7 @@ use PHPUnit\Framework\TestCase;
  * Composer from pairing members with a release that lacks the APIs it calls: auth 0.38
  * (Preflow\Auth\Record\RecordUser(Provider), RoleField, PasswordRehash, Access::resolver()),
  * core 0.38 (bootAuth binds RecordUserProvider::factory(), so config/auth.php builds record users
- * without Folio), data 0.38 (DeletedBy and onSelfDelete in deletePlan(), ensureTypeRegistry()),
+ * without Folio), data 0.42 (unique fields for `email`, RecordTables; since 0.38 DeletedBy and onSelfDelete in deletePlan(), ensureTypeRegistry()),
  * routing 0.38 (RoutePattern), i18n (raised with the release; since 0.37 translation scopes:
  * the public members group and the admin members-admin group). Folio and rbac are suggestions
  * only (the core runs without them); an older Folio (before 0.38) still carries the old members
@@ -24,7 +24,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/auth' => '<0.38', 'preflow/core' => '<0.38', 'preflow/data' => '<0.38', 'preflow/folio' => '<0.38', 'preflow/i18n' => '<0.38', 'preflow/routing' => '<0.38'],
+            ['preflow/auth' => '<0.38', 'preflow/core' => '<0.38', 'preflow/data' => '<0.42', 'preflow/folio' => '<0.38', 'preflow/i18n' => '<0.38', 'preflow/routing' => '<0.38'],
             $composer['conflict'] ?? null,
         );
         foreach (['preflow/auth', 'preflow/core', 'preflow/data', 'preflow/i18n', 'preflow/routing'] as $package) {

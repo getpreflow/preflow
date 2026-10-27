@@ -29,9 +29,12 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    codes bound to a recipient, `forRecipient`, `renew`, a purpose `ttl`, `CodeEvents`
    (a failing redeemed listener undoes the redemption), `CodeMailer`; the codes admin moved to Folio and
    `preflow/codes` runs without it. See `docs/superpowers/plans/2026-10-27-release-0.40-checklist.md`
-3. **Data integrity for the flow editor and games:** ~~compare-and-set draft save (`UPDATE … WHERE _version = ?`)~~
+3. ~~**Data integrity for the flow editor and games:** compare-and-set draft save (`UPDATE … WHERE _version = ?`)
    (done in 0.41: `DataManager::saveTypeIfVersion()`, `Publisher::saveDraft()` atomic), unique fields (game slug,
-   codes) and typed columns, saving null clears an SQL column
+   codes) and typed columns, saving null clears an SQL column~~ — done in 0.42 (prepared, not released): saving
+   `null` clears a column, unique fields (validated, with the database as the guard), typed record tables,
+   `RecordTables` and the one-time `tools/convert-typed-columns.php`. See
+   `docs/superpowers/plans/2026-10-27-release-0.42-checklist.md`
 4. **Media for the migration:** derived assets (`derived_from`) shown as stacks in the library (originals with
    their cropped/rotated or watermarked copies), garbage collection of unreferenced assets, `importFile(…, private)`,
    and **video thumbnails**: a `VideoPreviewRenderer` (the `PreviewRenderer` slot PDFs use) grabs one frame of an
@@ -140,8 +143,12 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 - ~~**Rehash on sign-in (members, Folio staff login):**~~ done in 0.38 (`PasswordRehash`, `UpdatesPasswordHash`): after a successful `verify()`, call `needsRehash()` and store a fresh hash (old `$1$` MD5-crypt and low-cost bcrypt hashes are never upgraded today). `needsRehash()` exists in `NativePasswordHasher`; no login calls it
 - **CSRF without a session (core):** `CsrfMiddleware` skips requests without a session, so public POSTs on sites with `session.paths` (like buttons, contact forms) are unprotected. Wanted: a stateless (cookieless) token for chosen paths, or a session started on POST only
 - **Translation params in one pass (i18n):** `Translator::replaceParams` substitutes sequentially (`str_replace` per param), so a value containing `:other` is replaced again; use one `strtr` pass. Also a plain-text variant of `t()` (not html-safe, params unescaped) for values passed to functions that escape themselves (e.g. `media_image(…, {alt: …})`), and make preflow/twig's unused `TranslationExtension::t()` escape like the i18n provider
-- **Saving null clears SQL columns (data):** `PdoDriver::save()` drops null values before the upsert, so `set(field, null)` keeps the old value (sites clear with `''`)
-- **Unique fields and typed columns (data/Folio):** a unique-field rule (validated; upsert by primary key only, so a duplicate can't overwrite another record) and typed columns (numbers stored as numbers, real indexes instead of LONGTEXT prefix indexes)
+- ~~**Saving null clears SQL columns (data):**~~ done in 0.42 (`save()` writes nulls; a partial save leaves the other columns alone; SQLite upserts on the primary key, MySQL updates)
+- ~~**Unique fields and typed columns (data/Folio):**~~ done in 0.42 (`unique`, `index` and `length` field options, `Unique` rule plus the database guard, typed record tables, `RecordTables`, the conversion script)
+- **Restoring a revision whose unique value is taken (Folio):** `PublishingController::restore` lets the `ValidationException` of a slug now used by another record escape (a 500); show it as a message on the revision screen
+- **Model unique property without null (data):** a `Model` unique property typed `string` (not `?string`) keeps `''`, so a second empty value is reported "already taken"; the property has to accept `null` (document it or store `null` through the hydrator)
+- **Raw `inTransaction()` inside SQLite `exclusive()` (data/Folio):** `DeletePlanner`, `Publisher` and `RecordDeleter` ask `$pdo->inTransaction()`, which on PHP 8.4 is true inside the driver's own `BEGIN IMMEDIATE` and would nest a `BEGIN` if they ever ran there (not today); ask the driver
+- **MySQL `GET_LOCK` inside a caller's transaction (data):** the unique check's lock is released at the end of `exclusive()`, before the caller's commit, so the check does not cover a write the caller commits later (the unique index still refuses it); document in `ExclusiveWrites` or hold the lock to the commit
 - ~~**Compare-and-set draft save (Folio publishing):**~~ done in 0.41 (`VersionedStorage::saveIfVersion()` on SQLite, MySQL and JSON, `DataManager::saveTypeIfVersion()`; `Publisher::saveDraft()` checks in the write, autosave and form save with it; `Publisher::stateWith()`, `states($type, $ids)`)
 - **Sequences (data):** a sequence / next-number helper for public numbers
 - ~~**Version-checked publish (Folio):**~~ done in 0.41.1 (`Publisher::publish($record, $by, $loadedVersion)`: claims the working copy, version kept, then the snapshot, in one SQL transaction; `null` stays unchecked for the scheduler, CLI and importers; Folio's form publish passes its version; `discard()`/`restore()` take one too)
@@ -175,7 +182,7 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 ### codes
 
 - **`renew()` against a concurrent revoke:** `renew()` checks the code outside the lock and its `UPDATE` has no guard, so a revoke landing between the check and the write can be renewed over (the code revives). Guard the write (`WHERE revoked_at IS NULL`, the JSON write under the lock re-checks)
-- **Index on `(recipient, purpose)`:** Folio syncs the columns as TEXT; `forRecipient()` scans by `recipient`. Fine for invitation volumes
+- ~~**Index on `(recipient, purpose)`:**~~ done in 0.42 as an index on `recipient` (`forRecipient()` no longer scans; `purpose` is only the scope of the unique `code`)
 
 ### rbac
 

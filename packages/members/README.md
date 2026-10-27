@@ -189,7 +189,11 @@ if ($members->findByEmail($email) !== null) {
 ```
 
 An address has one account: `register()` throws `Preflow\Members\EmailTakenException`
-(its `email` property holds the normalised address) when one exists already.
+(its `email` property holds the normalised address) when one exists already. The `email` column
+is unique (a unique index on SQL, length 320), so two registrations racing for one address end in
+`EmailTakenException` for the second. A site that already holds duplicates sees them in
+`php tools/convert-typed-columns.php <site-dir> --check` (the data README, "Converting record
+tables") and must resolve them before the unique index can be added.
 
 `emailVerified: true` sends no confirmation mail; the admission decides at once as after a
 confirmation (`AcceptOnConfirm`: a member; `OwnerApproval`: pending, and the owner is told).
@@ -427,6 +431,14 @@ return ['mail' => ['confirm' => ['subject' => 'Bitte bestätige deine Adresse']]
   without a from name the channel's own sender applies.
 - When a new member's confirm mail fails, remove the account with
   `Members::removeIfUnconfirmed($id)`: it keeps a member who confirmed meanwhile.
+
+## Upgrading to 0.42
+
+- **`email` is unique.** Run `preflow migrate`, then convert the table once with
+  `tools/convert-typed-columns.php` (a site with duplicate addresses sees them listed by `--check`
+  and keeps its table unchanged until they are resolved). `register()` still throws
+  `EmailTakenException`, also when two registrations race.
+- Requires `preflow/data` 0.42.
 
 ## Upgrading to 0.39
 

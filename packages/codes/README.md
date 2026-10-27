@@ -60,7 +60,8 @@ if (!$result->ok) {
   non-breaking space or a zero-width space, as word processors and phones insert them).
 - A random code is 16 random bytes, base64url without padding (22 characters). Lookups trim
   it, nothing more.
-- Codes are unique within their purpose; an unknown purpose throws. Codes are bearer tokens:
+- Codes are unique within their purpose (a unique index on SQL; two requests issuing the same
+  code, one draws again, up to three times); an unknown purpose throws. Codes are bearer tokens:
   they are compared with `hash_equals`.
 - `check()` says whether a code would be accepted and counts no use. Give it a client
   (`$codes->check($typed, 'members.book', $throttle->client($request))`) when it answers a
@@ -70,7 +71,7 @@ if (!$result->ok) {
   user agent).
 - **Uses are counted atomically**, so `max_uses` holds under concurrent redeems: on SQL one
   conditional `UPDATE` (`DataManager::execute()`; `uses` and `max_uses` are compared as
-  numbers, though Folio stores them as TEXT), on the JSON driver a file lock in
+  numbers, whichever column type the table has), on the JSON driver a file lock in
   `storage/locks`. The last use goes to one request; the others get `used_up`.
 - `Result`: `ok`, `reason` (`unknown`, `expired`, `used_up`, `revoked`, `throttled`, `wrong_recipient`),
   `payload` (on success) and `codeId`.
@@ -88,6 +89,13 @@ otherwise in `default`; either must name a SQL driver or the JSON driver. A miss
 no error. The failure counters of the throttle live in the table `preflow_throttle` of the
 driver named `throttle` when one is configured (an optional alias), otherwise in the default
 storage.
+
+The tables are typed (`max_uses`, `uses` numbers; `code` unique within `purpose`; `recipient`
+indexed, so `forRecipient()` does not scan) and need `preflow/data` 0.42 and `preflow/validation`
+(a taken code is a `Preflow\Validation\ValidationException`). A table made by an older release
+keeps its text columns and gets the unique index only when converted: run
+`php tools/convert-typed-columns.php <site-dir> --check` from the framework checkout, then without
+`--check` (see the data README, "Converting record tables"). `preflow migrate` warns until then.
 
 ## Admin
 

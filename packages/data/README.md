@@ -22,7 +22,7 @@ Models are annotated with PHP attributes. `DataManager` is the single entry poin
 |---|---|---|
 | `#[Entity(table: 'posts', storage: 'sqlite')]` | Class | Maps model to a table/collection and a named driver. `storage` defaults to `'default'`. |
 | `#[Id]` | Property | Marks the primary key field. Works on any property — use `string $uuid` for UUIDs or `int $id` for auto-increment. |
-| `#[Field(searchable: true)]` | Property | Marks a field; `searchable: true` includes it in full-text search. |
+| `#[Field(searchable: true)]` | Property | Marks a field; `searchable: true` includes it in full-text search. `unique: true` (or `unique: ['scope', ...]`), `index: true` and `length: n` are described in [Unique fields and indexes](#unique-fields-and-indexes). |
 | `#[Timestamps]` | Class | Adds `created_at` / `updated_at` handling. |
 
 ### `Model`
@@ -211,6 +211,63 @@ if (!$dm->saveTypeIfVersion($record, $loaded)) {
 Folio's `Publisher::saveDraft()` uses it, and throws `VersionConflict` instead of returning
 `false`.
 
+### Saving null clears a column
+
+`save()` writes every key it is given, `null` included: `$record->set('expires_at', null)`
+clears the column on SQLite, MySQL and JSON alike (before 0.42 SQL drivers dropped nulls, so a
+clear needed `''`). A key the caller does not pass is left alone: a partial save no longer
+nulls the other columns on SQLite (it used `INSERT OR REPLACE`, which replaced the whole row;
+it is an upsert on the primary key now, and on MySQL an `UPDATE` with an `INSERT` for a new
+record). A save never touches another record: a value colliding with a unique index is an error
+(below), not an overwrite.
+
+A migration-made column that is `NOT NULL` now fails on a `null` instead of silently keeping
+its old value.
+
+## Unique fields and indexes
+
+A field is declared unique in the model JSON or with the attribute, optionally scoped by other
+fields (unique within them), and may carry an index and a length:
+
+```json
+"slug":   { "type": "string", "unique": true, "length": 191 },
+"code":   { "type": "string", "unique": ["purpose"] },
+"city":   { "type": "string", "index": true }
+```
+
+```php
+#[Field(unique: true, length: 320)] public string $email = '';
+#[Field(unique: ['purpose'])] public string $code = '';
+```
+
+- **Validation.** `save()`, `insert()`, `update()`, `saveType()` and `saveTypeIfVersion()` add the
+  `Preflow\Data\Validation\Unique` rule for every unique field (per locale for a translatable
+  field). A duplicate is a `ValidationException` with `validation.unique` ("already taken") on the
+  field, not an exception from the database. `DataManager::validateUnique($record)` checks only
+  the unique fields (Folio uses it for draft saves). Empty values (`null`, `''`) and values with
+  a `null` scope are never duplicates. Comparison is exact: case and accents count, on every
+  database. App forms use the rule directly:
+  `new Unique($dm, 'game', 'slug', scope: ['purpose'], exceptId: $id)` (the scope is read from the
+  validated data, or given as `['purpose' => 'invite']`).
+- **Database guard.** On SQL the unique index is the last line: two requests passing the
+  validation together, one gets a `ValidationException` on the field from the index, and both
+  rows stay as they were. A save with `validate: false` can therefore throw `ValidationException`
+  too. Translatable unique fields (stored as JSON, no index) and every unique field on JSON
+  storage are checked and written under the type's lock; the JSON check reads every record of
+  the type, so unique fields on large JSON types are slow.
+- **Empty is NULL.** An empty value in a unique field is stored as `NULL` (a unique index would
+  refuse a second `''`). For a `Model`, the property must accept `null`.
+- **Index and length.** `unique` and `index` make a short text column: `VARCHAR(length)` (default
+  191) with `utf8mb4_bin` on MySQL, so the index compares exactly; validation then limits the
+  value to `length` characters, also for the scope fields of a unique field. Free text, blocks
+  and translatable fields get no index. `__revisions` tables are never checked or indexed;
+  `__published` tables are typed like their working table but carry plain indexes only.
+- **What sync does.** A new unique field's index is made with its column (`uniq_{table}_{field}`
+  over the field and its scope); on an existing column migrate never adds it (it prints the
+  drift warning below). MySQL caps a composite key at 3072 bytes, so keep scopes short.
+- Custom field types tell the data package their column with `Preflow\Folio\Field\HasColumnKind`
+  (`columnKind(array $config): ColumnKind`) or `FieldKinds::column($type, ColumnKind|Closure)`.
+
 ## MySQL and MariaDB
 
 `preflow migrate`, `Schema` introspection and Folio's table sync run on MariaDB 10.6+ (tested;
@@ -281,7 +338,18 @@ warning names is converted on purpose:
 
 - An untyped column on an existing site (a table made before typed columns) is converted once
   with the monorepo's one-time script `tools/convert-typed-columns.php`, which finds the tables
-  through `RecordTables`.
+  through `RecordTables`. `php tools/convert-typed-columns.php <site-dir> --check` lists every
+  value that does not fit (a number field holding text, a yes/no other than `''`, `0`, `1`,
+  `true`, `false`, a date in no stored format, a short text over its length, a duplicate in a
+  unique field) with table, record id, field and reason, and changes nothing. Without `--check`
+  it backs the database up to `storage/backups/` (SQLite: a file copy; MySQL: a dump), converts
+  table by table (a rerun continues after an interruption and keeps the first backup), and checks
+  again. Empty strings in number, yes/no and date columns, and in unique fields, become `NULL`.
+  `--sqlite=<file>` runs against a copy instead of the configured SQLite file. Upload the whole
+  `tools/` directory to a site, run it with writes stopped, remove it afterwards. To restore: copy
+  the SQLite backup back, or `mysql < dump`. Until a site is converted, `preflow migrate` prints
+  the drift warnings on every run.
+- `RecordTableSync::specs()` is public (the script builds its columns with it).
 - A column whose kind changed later (a field turned translatable, a relation became `multiple`,
   a field's type was edited or it became unique) is converted with a migration in the project.
 

@@ -485,6 +485,15 @@ Any field also takes:
   Since 0.27 this holds for every type, so a site whose models declare defaults now sees them
   prefilled on create forms (before, a create form started empty).
 
+- `"unique": true` (or `"unique": ["scope_field", ...]`, unique within those fields), `"index": true`
+  and `"length": n` (default 191; the column length and the character limit of a unique or
+  indexed string, select or single relation): a duplicate value is refused on the field with
+  "already taken", in the form, in autosave and in a draft save, also when two saves race and the
+  database's unique index refuses the second. Empty values are never duplicates and are stored as
+  `NULL`. A publishing type's `__published` snapshot gets a plain index, not a unique one. Restoring
+  a revision whose value is taken meanwhile is not handled yet (see the roadmap). See
+  `preflow/data` "Unique fields and indexes".
+
 `hidden` and `readonly` apply on create too: such a field starts empty unless a `#[BeforeSave]` hook sets it.
 
 The admin display (read-only fields and list cells) is the field type's `renderAdmin()` when
@@ -496,6 +505,13 @@ A `date` shows in the admin as `folio_date()` writes it in the interface languag
 (German "22.10.2026", French "22/10/2026"), or "Oct 22, 2026 23:15" with `"time": true`. Only
 `Y-m-d`, `Y-m-d\TH:i` and ISO 8601 with an offset (shown in the app's timezone) are parsed; any
 other value is shown escaped as it is stored, never as an error.
+
+A field type says how its value is stored in a SQL column by implementing
+`Preflow\Folio\Field\HasColumnKind` (`columnKind(array $config): Preflow\Data\Schema\ColumnKind`:
+`Text`, `Short`, `Number`, `Boolean` or `Date`); Folio registers it with the data package. The
+shipped types do (`number` is a number, `boolean` yes/no, `date` an ISO text, `string`, `select`,
+`env` and a single `relation` are short when unique or indexed, otherwise text); a type without it
+is stored as text.
 
 A field type's own rules (e.g. `select`'s allowed values) are enforced in addition to
 `validate`. To add or replace a type, list the classes in `config/folio.php`:
@@ -1415,7 +1431,11 @@ php preflow migrate
 
 - The step creates the type's table, the `__published` and `__revisions` shadows of
   publishing types, the asset table, and Folio's own internal tables. The id is
-  `TEXT PRIMARY KEY`, every other column nullable `TEXT`.
+  `TEXT PRIMARY KEY`; every other column is nullable and typed by its field (numbers and yes/no
+  as numbers, everything else text; unique and indexed fields get their indexes), see
+  `preflow/data` "Record tables". `__revisions` stay text. A site made before 0.42 keeps its text
+  columns until it is converted with `tools/convert-typed-columns.php`; `preflow migrate` warns
+  about them meanwhile.
 - It **creates and adds only**: missing tables and columns are added, nothing is ever
   dropped, renamed or altered. Re-running it is safe.
 - **SQLite only for now.** A Folio type stored on MySQL makes the step throw.

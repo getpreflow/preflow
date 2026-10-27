@@ -6,7 +6,7 @@
     "require": {
         "php": ">=8.4",
         "preflow/core": "^0.34 || @dev",
-        "preflow/data": "^0.41 || @dev",
+        "preflow/data": "^0.42 || @dev",
         "preflow/view": "^0.1 || @dev",
         "preflow/routing": "^0.1 || @dev",
         "preflow/form": "^0.1 || @dev",
@@ -33,7 +33,7 @@
         "preflow/auth": "<0.38",
         "preflow/codes": "<0.40",
         "preflow/core": "<0.34",
-        "preflow/data": "<0.41",
+        "preflow/data": "<0.42",
         "preflow/i18n": "<0.39",
         "preflow/media": "<0.36",
         "preflow/members": "<0.39",
