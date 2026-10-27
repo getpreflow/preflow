@@ -330,9 +330,10 @@ too. Words are changed in the lang files (see Copy and mails), not in templates.
 
 ## Cron
 
-Run `members:prune` nightly (the package registers the command through
-`extra.preflow.commands`, `preflow list` shows it, as `members:decide`). That needs
-preflow/devtools 0.26; with an older devtools only the commands are missing, the member pages and
+The package brings two console commands, `members:prune` and `members:decide`. It lists both in
+`composer.json` (`extra.preflow.commands`), so they need no setup and `preflow list` shows them.
+Run `members:prune` nightly. The commands need preflow/devtools 0.26; with an older devtools only
+the commands are missing, the member pages and
 Folio work (the package conflicts with auth, core, data, folio, i18n and routing before 0.38, not
 with devtools):
 
