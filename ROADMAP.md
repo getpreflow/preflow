@@ -29,8 +29,9 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    codes bound to a recipient, `forRecipient`, `renew`, a purpose `ttl`, `CodeEvents`
    (a failing redeemed listener undoes the redemption), `CodeMailer`; the codes admin moved to Folio and
    `preflow/codes` runs without it. See `docs/superpowers/plans/2026-10-27-release-0.40-checklist.md`
-3. **Data integrity for the flow editor and games:** compare-and-set draft save (`UPDATE … WHERE _version = ?`),
-   unique fields (game slug, codes) and typed columns, saving null clears an SQL column
+3. **Data integrity for the flow editor and games:** ~~compare-and-set draft save (`UPDATE … WHERE _version = ?`)~~
+   (done in 0.41: `DataManager::saveTypeIfVersion()`, `Publisher::saveDraft()` atomic), unique fields (game slug,
+   codes) and typed columns, saving null clears an SQL column
 4. **Media for the migration:** derived assets (`derived_from`) shown as stacks in the library (originals with
    their cropped/rotated or watermarked copies), garbage collection of unreferenced assets, `importFile(…, private)`,
    and **video thumbnails**: a `VideoPreviewRenderer` (the `PreviewRenderer` slot PDFs use) grabs one frame of an
@@ -141,7 +142,9 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 - **Translation params in one pass (i18n):** `Translator::replaceParams` substitutes sequentially (`str_replace` per param), so a value containing `:other` is replaced again; use one `strtr` pass. Also a plain-text variant of `t()` (not html-safe, params unescaped) for values passed to functions that escape themselves (e.g. `media_image(…, {alt: …})`), and make preflow/twig's unused `TranslationExtension::t()` escape like the i18n provider
 - **Saving null clears SQL columns (data):** `PdoDriver::save()` drops null values before the upsert, so `set(field, null)` keeps the old value (sites clear with `''`)
 - **Unique fields and typed columns (data/Folio):** a unique-field rule (validated; upsert by primary key only, so a duplicate can't overwrite another record) and typed columns (numbers stored as numbers, real indexes instead of LONGTEXT prefix indexes)
-- **Compare-and-set draft save and sequences (Folio publishing):** `Publisher::saveDraft()` reads `_version` then writes (not atomic); wanted `UPDATE … WHERE _version = ?` and a sequence / next-number helper for public numbers
+- ~~**Compare-and-set draft save (Folio publishing):**~~ done in 0.41 (`VersionedStorage::saveIfVersion()` on SQLite, MySQL and JSON, `DataManager::saveTypeIfVersion()`; `Publisher::saveDraft()` checks in the write, autosave and form save with it; `Publisher::stateWith()`, `states($type, $ids)`)
+- **Sequences (data):** a sequence / next-number helper for public numbers
+- **Version-checked publish (Folio):** `Publisher::publish()` writes the working copy back unchecked (it clears `_publish_at`); a save landing between a form's `saveDraft()` and its publish is overwritten. Checking it there means a `VersionConflict` from `publish()` (callers: form, scheduler, CLI, site importers that publish records built without `_version`), so it waits for a decision
 - ~~**Member self-deletion and delete plans (members):**~~ done in 0.38 (`onSelfDelete`, `MemberEvents`, `DeletionResult`): `Members::delete()` (account page, `members:prune`) uses `deleteType()` and ignores relations and Folio's delete plan (`restrict` relations are bypassed, e.g. orders keep a dangling member id). Wanted: delete through the delete plan, or before/after hooks
 - **Private files: session and owners (media/Folio):** private files live at `/files/{id}`, outside Folio's session path, so sites must add `/files` to `session.paths`; serve them under Folio's own path (e.g. `{prefix}/files`) or start the session there. Optional: a per-owner rule (callback or record field) so members can see their own private files
 
