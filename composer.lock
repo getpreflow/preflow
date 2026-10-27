@@ -2471,17 +2471,20 @@
             "dist": {
                 "type": "path",
                 "url": "packages/codes",
-                "reference": "ffe491b71a120fe702af144b33df7b6a6edb9e22"
+                "reference": "a738eedbd9f6de0708961a6075c6a3e7a37c6e84"
             },
             "require": {
                 "php": ">=8.4",
                 "preflow/core": "^0.20 || @dev",
                 "preflow/data": "^0.21 || @dev",
-                "preflow/folio": "^0.37 || @dev",
-                "preflow/i18n": "^0.37 || @dev"
+                "preflow/i18n": "^0.37 || @dev",
+                "preflow/notify": "^0.25 || @dev",
+                "preflow/view": "^0.1 || @dev"
             },
             "conflict": {
-                "preflow/folio": "<0.37",
+                "preflow/core": "<0.38",
+                "preflow/data": "<0.38",
+                "preflow/folio": "<0.40",
                 "preflow/i18n": "<0.37"
             },
             "require-dev": {
@@ -2489,14 +2492,11 @@
             },
             "type": "library",
             "extra": {
-                "folio": {
-                    "extension": "Preflow\\Codes\\Extension"
-                },
                 "preflow": {
                     "translations": {
-                        "codes": {
+                        "codes-mail": {
                             "path": "lang",
-                            "scope": "admin"
+                            "scope": "public"
                         }
                     }
                 }
@@ -2687,7 +2687,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/folio",
-                "reference": "19084637d94e7943f6fff80d30759dfd8081c76a"
+                "reference": "bebea794b6158645afe0146e271a27ac8a777e1d"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
@@ -2709,6 +2709,7 @@
             },
             "conflict": {
                 "preflow/auth": "<0.38",
+                "preflow/codes": "<0.40",
                 "preflow/core": "<0.34",
                 "preflow/data": "<0.38",
                 "preflow/i18n": "<0.39",
@@ -2722,6 +2723,7 @@
             },
             "suggest": {
                 "openspout/openspout": "^4 — Excel export of admin lists (the Export button shows once it is installed)",
+                "preflow/codes": "Codes; Folio adds their admin (the built-in extension \"codes\")",
                 "preflow/members": "Member accounts; Folio adds their admin (the built-in extension \"members\", which needs preflow/rbac)"
             },
             "type": "library",
@@ -2729,6 +2731,10 @@
                 "preflow": {
                     "translations": {
                         "folio": {
+                            "path": "lang",
+                            "scope": "admin"
+                        },
+                        "codes": {
                             "path": "lang",
                             "scope": "admin"
                         }
