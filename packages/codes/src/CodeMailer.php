@@ -43,13 +43,14 @@ final class CodeMailer
         $link = $this->absolute($url);
         $lang = isset($options['language']) && $this->locales->has($options['language']) ? $options['language'] : $this->locales->default;
         $fromName = self::oneLine((string) ($options['from_name'] ?? ''));
-        $message = self::plain((string) ($options['message'] ?? ''));
+        $message = trim(self::plain((string) ($options['message'] ?? '')));
         $subject = self::oneLine((string) ($options['subject'] ?? '')) ?: self::oneLine($this->t('subject', $lang));
 
         $parts = [$fromName === '' ? $this->t('intro_anonymous', $lang) : $this->t('intro', $lang, ['from_name' => $fromName])];
-        if (trim($message) !== '') {
+        if ($message !== '') {
             $parts[] = $message;
         }
+        $open = count($parts);
         $parts[] = $this->t('open', $lang, ['link' => $link]);
         $parts[] = $code->expiresAt === null
             ? $this->t('personal', $lang)
@@ -65,7 +66,7 @@ final class CodeMailer
                 'lang' => $lang,
                 'subject' => $subject,
                 'accent' => $this->accent(),
-                'paragraphs' => $this->paragraphs($text),
+                'paragraphs' => $this->paragraphs($parts, $open, $link),
                 'action' => ['label' => $this->t('action', $lang), 'url' => $link],
                 'message' => $message,
                 'from_name' => $fromName,
@@ -131,11 +132,12 @@ final class CodeMailer
         return is_array($mail) ? ($mail[$key] ?? null) : null;
     }
 
+    /** The accent colour from config/codes.php mail.accent; '' (the layout's neutral design) when none is set. */
     private function accent(): string
     {
         $accent = $this->mail('accent');
 
-        return is_string($accent) && preg_match('/^#[0-9a-fA-F]{3,8}$/', $accent) === 1 ? $accent : '#d42a34';
+        return is_string($accent) && preg_match('/^#[0-9a-fA-F]{3,8}$/', $accent) === 1 ? $accent : '';
     }
 
     /** The sender from config/codes.php, else null: the mail channel's own. */
@@ -158,14 +160,23 @@ final class CodeMailer
         return (string) preg_replace('/(?!\n)[\p{Cc}\p{Cf}\x{2028}\x{2029}]/u', '', $value);
     }
 
-    /** @return list<string> safe HTML: escaped paragraphs with URLs linked and single line breaks kept */
-    private function paragraphs(string $text): array
+    /**
+     * Escaped paragraphs with single line breaks kept. Only the invitation link (in part $open) becomes a link:
+     * URLs in the sender's message stay plain text.
+     *
+     * @param list<string> $parts
+     * @return list<string> safe HTML
+     */
+    private function paragraphs(array $parts, int $open, string $link): array
     {
-        $accent = htmlspecialchars($this->accent(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $style = 'color:' . ($this->accent() !== '' ? htmlspecialchars($this->accent(), ENT_QUOTES | ENT_HTML5, 'UTF-8') : '#1a1a1a');
         $out = [];
-        foreach (preg_split('/\n{2,}/', trim($text)) ?: [] as $p) {
+        foreach ($parts as $i => $p) {
             $html = htmlspecialchars($p, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            $html = (string) preg_replace('~https?://[^\s<]+~', '<a href="$0" style="color:' . $accent . '">$0</a>', $html);
+            if ($i === $open) {
+                $safe = htmlspecialchars($link, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $html = str_replace($safe, '<a href="' . $safe . '" style="' . $style . '">' . $safe . '</a>', $html);
+            }
             $out[] = nl2br($html, false);
         }
 

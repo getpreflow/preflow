@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Preflow\Codes;
 
 use Preflow\Core\Application;
+use Preflow\Core\Config\Config;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DataManager;
-use Preflow\Core\Config\Config;
 use Preflow\Data\Locales;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\I18n\Translator;

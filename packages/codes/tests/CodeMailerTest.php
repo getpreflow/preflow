@@ -135,6 +135,33 @@ final class CodeMailerTest extends CodesAppTestCase
         $this->assertSame('Club <club@site.test>', $this->onlyMail()->from);
     }
 
+    public function test_no_brand_colour_unless_configured(): void
+    {
+        $this->mailer()->send($this->code(), 'ada@example.com', '/invite/x');
+        $html = (string) $this->onlyMail()->html;
+        $this->assertStringNotContainsString('d42a34', strtolower($html));
+        $this->assertStringContainsString('#1a1a1a', $html);
+    }
+
+    public function test_configured_accent_is_used(): void
+    {
+        $this->write('config/codes.php', "<?php\nreturn ['purposes' => [], 'mail' => ['accent' => '#0a7d33']];\n");
+        $this->mailer()->send($this->code(), 'ada@example.com', '/invite/x');
+        $html = (string) $this->onlyMail()->html;
+        $this->assertStringContainsString('background:#0a7d33', $html);
+        $this->assertStringContainsString('color:#0a7d33', $html);
+    }
+
+    public function test_only_the_invitation_link_is_linked_and_message_is_trimmed(): void
+    {
+        $this->mailer()->send($this->code(), 'ada@example.com', '/invite/x', ['message' => "\nSee https://evil.test/x now\n"]);
+        $mail = $this->onlyMail();
+        $this->assertStringContainsString('See https://evil.test/x now', (string) $mail->html);
+        $this->assertStringNotContainsString('href="https://evil.test', (string) $mail->html);
+        $this->assertSame(2, substr_count((string) $mail->html, 'href="https://site.test/invite/x"'));
+        $this->assertStringContainsString("You're invited.\n\nSee https://evil.test/x now\n\nOpen your invitation", $mail->text);
+    }
+
     private function mailer(): CodeMailer
     {
         return $this->app()->container()->get(CodeMailer::class);
