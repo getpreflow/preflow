@@ -7,6 +7,7 @@ namespace Preflow\Codes;
 use Preflow\Core\Container\Container;
 use Preflow\Data\DataManager;
 use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Data\Schema\RecordTables;
 use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Data\TypeRegistry;
 
@@ -64,10 +65,14 @@ final class CodeType
             return;
         }
         $definition = $registry->define(self::prepare(self::schema(), $dm->driverNames()));
+        $tables = static fn (): array => [RecordTables::entry($definition)];
+        if ($c->bound(RecordTables::class)) {
+            $c->get(RecordTables::class)->add('codes', $tables);
+        }
         if ($c->bound(MigrationRegistry::class)) {
             $c->get(MigrationRegistry::class)->afterMigrate(
                 'codes.table',
-                static fn (): array => (new RecordTableSync($c->get(DataManager::class)))->sync($definition),
+                static fn (): array => (new RecordTableSync($c->get(DataManager::class)))->syncAll($tables()),
             );
         }
     }

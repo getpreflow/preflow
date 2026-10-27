@@ -67,7 +67,8 @@ final class Importer
             $driver = $this->dm->driver($def->storage);
             foreach ([...$diff['added'], ...$diff['changed']] as $id) {
                 $row = json_decode((string) file_get_contents("{$plan->dir}/data/{$table}/{$id}.json"), true, 512, JSON_THROW_ON_ERROR);
-                $driver->save($table, $id, $row, $def->idField);
+                // As saveType() writes it: no empty text in number, yes/no or date columns.
+                $driver->save($table, $id, $this->dm->storageValues($def, $row), $def->idField);
             }
             foreach ($diff['removed'] as $id) {
                 $driver->delete($table, $id, $def->idField);

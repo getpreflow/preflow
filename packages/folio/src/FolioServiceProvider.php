@@ -275,6 +275,10 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(\Preflow\Folio\Translations\StoredOverrides::class)->definition(),
             ],
         ));
+        $container->get(\Preflow\Data\Schema\RecordTables::class)->add(
+            'folio',
+            static fn (): array => $container->get(\Preflow\Folio\Storage\TableSync::class)->tables(),
+        );
         $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
             'folio.tables',
             static fn (): array => $container->get(\Preflow\Folio\Storage\TableSync::class)->sync(),

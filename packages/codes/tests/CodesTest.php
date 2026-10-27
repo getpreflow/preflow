@@ -13,6 +13,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Migration\Migrator;
+use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Folio\Transfer\ContentSet;
 use Preflow\Folio\Transfer\Exporter;
 use Preflow\Testing\MysqlTestDatabase;
@@ -433,11 +434,20 @@ final class CodesTest extends TestCase
         }
     }
 
-    /** Folio's number field and hand edits store text: '3.0', '' (unlimited) and '' uses all count as numbers. */
+    /**
+     * A table made before typed columns holds text: Folio's number field and hand edits store
+     * '3.0', '' (unlimited) and '' uses, which all count as numbers.
+     */
     public function test_max_uses_and_uses_stored_as_loose_text(): void
     {
         $codes = $this->codes();
         $dm = $this->app()->container()->get(DataManager::class);
+        $def = $dm->getTypeRegistry()->get('code');
+        $driver = $dm->driver($def->storage);
+        if ($driver instanceof PdoDriver) {
+            $driver->pdo()->exec('DROP TABLE ' . $driver->dialect()->quoteIdentifier($def->table));
+            (new RecordTableSync($dm))->sync($def, typed: false);
+        }
         $codes->issue('members.book', [], 'THREEDOT0');
         $codes->issue('members.book', [], 'EMPTYMAX');
         $dm->execute("UPDATE code SET max_uses = '3.0', uses = '' WHERE uuid = ?", [(string) $codes->check('THREEDOT0', 'members.book')->codeId], 'codes');

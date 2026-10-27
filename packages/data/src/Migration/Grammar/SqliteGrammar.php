@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Migration\Grammar;
 
+use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Schema\ColumnSpec;
+
 /** The DDL text here is pinned by SqliteDdlCharacterisationTest: existing sites must not see changes. */
 final class SqliteGrammar implements SchemaGrammar
 {
+    use RecordIndexNames;
+
     public function quote(string $identifier): string
     {
         return '"' . $identifier . '"';
@@ -43,10 +48,29 @@ final class SqliteGrammar implements SchemaGrammar
 
     public function createRecordTable(string $table, string $idField, array $columns): string
     {
-        $defs = array_map(fn (string $c): string => $this->quote($c) . ' TEXT', $columns);
+        $defs = array_map(fn (ColumnSpec $c): string => $this->quote($c->name) . ' ' . $this->recordColumnType($c->kind, $c->length), $columns);
 
         return 'CREATE TABLE ' . $this->quote($table) . ' (' . $this->quote($idField) . ' TEXT PRIMARY KEY, '
             . implode(', ', $defs) . ')';
+    }
+
+    /**
+     * NUMERIC, not REAL: '12' stays the integer 12 (REAL would read back 12.0), '12.5' becomes 12.5,
+     * and numbers sort numerically. SQLite has no bounded strings: Short is TEXT.
+     */
+    public function recordColumnType(ColumnKind $kind, ?int $length = null): string
+    {
+        return match ($kind) {
+            ColumnKind::Number => 'NUMERIC',
+            ColumnKind::Boolean => 'INTEGER',
+            ColumnKind::Text, ColumnKind::Short, ColumnKind::Date => 'TEXT',
+        };
+    }
+
+    public function createRecordIndex(string $name, string $table, array $columns, bool $unique): string
+    {
+        return 'CREATE ' . ($unique ? 'UNIQUE ' : '') . 'INDEX ' . $this->quote($name) . ' ON ' . $this->quote($table)
+            . ' (' . implode(', ', array_map($this->quote(...), $columns)) . ')';
     }
 
     public function createIndex(string $table, string $column): string
@@ -71,6 +95,23 @@ final class SqliteGrammar implements SchemaGrammar
     public function columns(\PDO $pdo, string $table): array
     {
         $rows = $pdo->query('PRAGMA table_info(' . $this->quote($table) . ')')->fetchAll(\PDO::FETCH_ASSOC);
+
+        return array_map(static fn (array $row): string => (string) $row['name'], $rows);
+    }
+
+    public function columnTypes(\PDO $pdo, string $table): array
+    {
+        $types = [];
+        foreach ($pdo->query('PRAGMA table_info(' . $this->quote($table) . ')')->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+            $types[(string) $row['name']] = strtolower((string) $row['type']);
+        }
+
+        return $types;
+    }
+
+    public function indexes(\PDO $pdo, string $table): array
+    {
+        $rows = $pdo->query('PRAGMA index_list(' . $this->quote($table) . ')')->fetchAll(\PDO::FETCH_ASSOC);
 
         return array_map(static fn (array $row): string => (string) $row['name'], $rows);
     }

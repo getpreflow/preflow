@@ -7,6 +7,8 @@ namespace Preflow\Data\Tests\Migration;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Migration\Grammar\MysqlGrammar;
 use Preflow\Data\Migration\Grammar\SqliteGrammar;
+use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Schema\ColumnSpec;
 
 /** Pure SQL strings: no database needed. */
 final class MysqlGrammarTest extends TestCase
@@ -95,7 +97,7 @@ final class MysqlGrammarTest extends TestCase
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage("Identifier \"{$table}\" is 65 characters; MySQL allows at most 64.");
 
-        (new MysqlGrammar())->createRecordTable($table, 'uuid', ['title']);
+        (new MysqlGrammar())->createRecordTable($table, 'uuid', [new ColumnSpec('title')]);
     }
 
     public function test_only_bounded_kinds_can_be_indexed(): void
@@ -114,7 +116,7 @@ final class MysqlGrammarTest extends TestCase
         $this->assertSame(
             'CREATE TABLE `posts` (`id` VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, `title` LONGTEXT, `body` LONGTEXT) '
             . 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
-            (new MysqlGrammar())->createRecordTable('posts', 'id', ['title', 'body']),
+            (new MysqlGrammar())->createRecordTable('posts', 'id', [new ColumnSpec('title'), new ColumnSpec('body')]),
         );
     }
 
@@ -122,7 +124,35 @@ final class MysqlGrammarTest extends TestCase
     {
         $this->assertSame(
             'CREATE TABLE "posts" ("id" TEXT PRIMARY KEY, "title" TEXT, "body" TEXT)',
-            (new SqliteGrammar())->createRecordTable('posts', 'id', ['title', 'body']),
+            (new SqliteGrammar())->createRecordTable('posts', 'id', [new ColumnSpec('title'), new ColumnSpec('body')]),
         );
+    }
+
+    public function test_typed_record_table(): void
+    {
+        $columns = [
+            new ColumnSpec('body'),
+            new ColumnSpec('slug', ColumnKind::Short),
+            new ColumnSpec('code', ColumnKind::Short, 40),
+            new ColumnSpec('seats', ColumnKind::Number),
+            new ColumnSpec('open', ColumnKind::Boolean),
+            new ColumnSpec('starts', ColumnKind::Date),
+        ];
+
+        $this->assertSame(
+            'CREATE TABLE `e` (`uuid` VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, `body` LONGTEXT, `slug` VARCHAR(191) COLLATE utf8mb4_bin, '
+            . '`code` VARCHAR(40) COLLATE utf8mb4_bin, `seats` DOUBLE, `open` TINYINT(1), `starts` VARCHAR(32)) '
+            . 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+            (new MysqlGrammar())->createRecordTable('e', 'uuid', $columns),
+        );
+        $this->assertSame(
+            'CREATE TABLE "e" ("uuid" TEXT PRIMARY KEY, "body" TEXT, "slug" TEXT, "code" TEXT, "seats" NUMERIC, "open" INTEGER, "starts" TEXT)',
+            (new SqliteGrammar())->createRecordTable('e', 'uuid', $columns),
+        );
+        $this->assertSame(
+            'CREATE UNIQUE INDEX `uniq_e_code` ON `e` (`code`, `purpose`)',
+            (new MysqlGrammar())->createRecordIndex('uniq_e_code', 'e', ['code', 'purpose'], true),
+        );
+        $this->assertSame('CREATE INDEX "idx_e_slug" ON "e" ("slug")', (new SqliteGrammar())->createRecordIndex('idx_e_slug', 'e', ['slug'], false));
     }
 }

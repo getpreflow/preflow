@@ -511,11 +511,12 @@ ZIP, and Word, Excel and PowerPoint files. SVG is refused unless `allow_svg` is 
 ## SQL storage
 
 `preflow migrate` creates the table (`media.table`), as `RecordTableSync` makes any record
-table: `uuid` as the primary key and every other field as a nullable text column (TEXT on
-SQLite, LONGTEXT on MySQL): `path`, `original_name`, `mime`, `title`, `poster`,
+table: `uuid` as the primary key, `private` a yes/no column (INTEGER on SQLite, TINYINT(1) on
+MySQL) and every other field a nullable text column (TEXT on SQLite, LONGTEXT on MySQL): `path`, `original_name`, `mime`, `title`, `poster`,
 `created_at`, `created_by`, `size`, `width`, `height`, `focal_x`, `focal_y`, `private`,
 `duration`, `alt` and `variants` (JSON), and `version`, `versions` (JSON), `preview`, `color`,
-`palette`, `text_color`, `note` and one column per extra field. Columns it adds later are text too.
+`palette`, `text_color`, `note` and one column per extra field (typed by its field type). Columns
+it adds later are typed the same way; existing columns are never altered.
 
 ## Use without Folio
 

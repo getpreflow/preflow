@@ -379,6 +379,10 @@ final class Application
             $migrations->addPath(dirname((string) (new \ReflectionClass(\Preflow\Auth\Tokens\Tokens::class))->getFileName(), 3) . '/migrations');
         }
         $this->container->instance(\Preflow\Data\Migration\MigrationRegistry::class, $migrations);
+        // Every record table packages sync from a type definition, for the conversion to find (data 0.42+).
+        if (class_exists(\Preflow\Data\Schema\RecordTables::class)) {
+            $this->container->instance(\Preflow\Data\Schema\RecordTables::class, new \Preflow\Data\Schema\RecordTables());
+        }
 
         $dataConfigPath = $this->basePath('config/data.php');
         if (!file_exists($dataConfigPath)) {

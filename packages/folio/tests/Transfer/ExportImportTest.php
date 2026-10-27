@@ -321,6 +321,25 @@ final class ExportImportTest extends TestCase
         $this->assertFileExists($this->dir . '/public/media/2026/10/stray.jpg');
     }
 
+    /** Rows go in as a save writes them: an empty number, yes/no or date is NULL (typed SQL columns refuse ''), empty text stays. */
+    public function test_import_stores_empty_typed_values_as_null(): void
+    {
+        $this->writeModel('event', ['label' => 'Events', 'fields' => [
+            'name' => ['type' => 'string'], 'seats' => ['type' => 'number'], 'open' => ['type' => 'boolean'], 'starts' => ['type' => 'date'],
+        ]]);
+        $this->driver()->save('event', 'e1', ['uuid' => 'e1', 'name' => '', 'seats' => '', 'open' => '', 'starts' => '']);
+        $archive = $this->export('data');
+        $this->wipe('storage/data/event');
+
+        $this->import($archive, 'data');
+
+        $row = $this->driver()->findOne('event', 'e1');
+        $this->assertSame('', $row['name']);
+        foreach (['seats', 'open', 'starts'] as $field) {
+            $this->assertNull($row[$field] ?? null, $field);
+        }
+    }
+
     public function test_partial_exports_never_remove_what_they_did_not_carry(): void
     {
         $dataOnly = $this->export('data');

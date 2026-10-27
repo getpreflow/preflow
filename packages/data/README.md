@@ -255,8 +255,26 @@ several SQL drivers pass `--storage`.
 | `timestamps()` | TEXT, nullable | VARCHAR(32), nullable |
 | `addColumn()` default | TEXT | LONGTEXT |
 
-Folio's synced tables use `id VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY` and nullable
-`LONGTEXT` for every other column, so a field holding 100 KB of blocks JSON fits.
+**Record tables** (the tables `RecordTableSync` makes from a type definition: Folio's types,
+codes, members, media assets) use `id VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY` (TEXT on
+SQLite), and every other column is nullable and typed by its field's column kind
+(`FieldKinds::columnKindOf()`):
+
+| Kind | Field types | SQLite | MySQL |
+|---|---|---|---|
+| text | text, blocks, translatable fields, JSON, strings that are neither unique nor indexed | TEXT | LONGTEXT |
+| short | a string, select or single relation that is unique or indexed | TEXT | VARCHAR(`length`, default 191) COLLATE utf8mb4_bin |
+| number | number | NUMERIC (`'12'` stays 12, sorts numerically) | DOUBLE |
+| boolean | boolean | INTEGER | TINYINT(1) |
+| date | date | TEXT | VARCHAR(32) (ISO text) |
+
+Columns are typed only when sync creates them (with the table, or added later), and so are the
+unique (`uniq_{table}_{field}`, over the field and its scope) and plain (`idx_{table}_{field}`)
+indexes; names past 64 characters are shortened with a crc32 hash. An existing column is never
+altered and never gets an index: a column whose type differs from its kind, or a unique field
+without its index, is printed as a warning (`warning: post.seats is text, expected number; run
+preflow data:convert`). Packages register their tables with `RecordTables`, so the conversion
+finds every one.
 `preflow_migrations` is `migration VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, ran_at VARCHAR(32) NOT NULL`.
 
 **64-character names.** MySQL caps table and index names at 64 characters. The index name is

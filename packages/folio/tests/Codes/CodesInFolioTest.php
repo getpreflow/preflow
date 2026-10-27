@@ -369,10 +369,10 @@ final class CodesInFolioTest extends TestCase
 
         $this->assertSame(302, $this->send('POST', '/folio/code', $this->create(['max_uses' => '3.0']))->getStatusCode());
         $id = $this->idOf('SMARTSTACK2026');
-        $this->assertSame('3', $this->stored($id)->get('max_uses'));
+        $this->assertSame('3', (string) $this->stored($id)->get('max_uses')); // a typed column reads back 3
 
         $this->assertSame(302, $this->send('POST', "/folio/code/{$id}", ['label' => 'Book', 'max_uses' => ' 5.0 '])->getStatusCode());
-        $this->assertSame('5', $this->stored($id)->get('max_uses'));
+        $this->assertSame('5', (string) $this->stored($id)->get('max_uses'));
 
         $this->assertSame(302, $this->send('POST', "/folio/code/{$id}", ['label' => 'Book', 'max_uses' => ''])->getStatusCode());
         $this->assertSame('', (string) $this->stored($id)->get('max_uses'));

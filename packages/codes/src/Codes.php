@@ -296,10 +296,10 @@ final class Codes
         $driver = $this->dm->driver($type->storage);
 
         if ($driver instanceof PdoDriver) {
-            [$table, $id, $uses, $max, $count, $limit] = $this->sql($driver, $type);
+            [$table, $id, $uses, $max, $count, $limit, $empty] = $this->sql($driver, $type);
 
             return $this->dm->execute(
-                "UPDATE {$table} SET {$uses} = {$count} + 1 WHERE {$id} = ? AND ({$max} IS NULL OR {$max} = '' OR {$count} < {$limit})",
+                "UPDATE {$table} SET {$uses} = {$count} + 1 WHERE {$id} = ? AND ({$max} IS NULL OR {$empty} OR {$count} < {$limit})",
                 [$codeId],
                 $type->storage,
             ) === 1;
@@ -354,7 +354,7 @@ final class Codes
     /**
      * Quoted names and the numeric expressions for the use counting UPDATEs.
      *
-     * @return array{0: string, 1: string, 2: string, 3: string, 4: string, 5: string} table, id, uses, max, count, limit
+     * @return array{0: string, 1: string, 2: string, 3: string, 4: string, 5: string, 6: string} table, id, uses, max, count, limit, max-is-empty
      */
     private function sql(PdoDriver $driver, TypeDefinition $type): array
     {
@@ -363,18 +363,22 @@ final class Codes
         $id = $dialect->quoteIdentifier($type->idField);
         $uses = $dialect->quoteIdentifier('uses');
         $max = $dialect->quoteIdentifier('max_uses');
-        // Folio syncs these columns as TEXT, so compare as numbers, never as strings.
+        // TEXT on tables made before typed columns (and holding '' or '3.0'), numbers after:
+        // compare as numbers, never as strings, and check for '' only on the text form.
         if ($dialect instanceof MysqlDialect) {
             // Strict mode turns CAST('' AS SIGNED) and CAST('3.0' AS SIGNED) into errors
             // inside an UPDATE, so only well-formed numbers are cast; '' uses count as 0.
             $count = "(CASE WHEN {$uses} REGEXP '^[0-9]+$' THEN CAST({$uses} AS SIGNED) ELSE 0 END)";
             $limit = "(CASE WHEN {$max} REGEXP '^[0-9]+([.][0-9]*)?$' THEN CAST({$max} AS DECIMAL(65,10)) ELSE 0 END)";
+            // A DOUBLE column compared with '' is an error in an UPDATE under strict mode.
+            $empty = "CAST({$max} AS CHAR) = ''";
         } else {
             $count = "CAST(COALESCE({$uses}, 0) AS INTEGER)";
             $limit = "CAST({$max} AS INTEGER)";
+            $empty = "{$max} = ''";
         }
 
-        return [$table, $id, $uses, $max, $count, $limit];
+        return [$table, $id, $uses, $max, $count, $limit, $empty];
     }
 
     /** Runs $fn holding an exclusive lock on codes-{id}.lock in the lock directory. */

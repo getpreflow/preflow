@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Publishing;
 
+use Preflow\Data\Schema\RecordTables;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 
@@ -15,9 +16,26 @@ use Preflow\Data\TypeFieldDefinition;
  *
  * A snapshot keeps its type's key (only the table differs): it is the same
  * content type, so routes, URLs and type templates resolve as for the record.
+ *
+ * @phpstan-import-type Entry from RecordTables
  */
 final class ShadowTypes
 {
+    /**
+     * Their tables: the snapshots typed like the record's table but without unique indexes (they
+     * hold copies), the revisions free text (history must never block a conversion).
+     *
+     * @param list<string> $extra columns besides the fields
+     * @return list<Entry>
+     */
+    public static function tables(TypeDefinition $def, array $extra = []): array
+    {
+        return [
+            RecordTables::entry(self::published($def), $extra, unique: false),
+            RecordTables::entry(self::revisions($def), $extra, typed: false, unique: false),
+        ];
+    }
+
     public static function published(TypeDefinition $def): TypeDefinition
     {
         return new TypeDefinition(

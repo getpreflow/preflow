@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Storage;
 
 use Preflow\Data\DataManager;
+use Preflow\Data\Schema\RecordTables;
 use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
@@ -18,11 +19,14 @@ use Preflow\Folio\Publishing\ShadowTypes;
  * shadows of publishing types, and Folio's own internal tables it is given
  * (the extension install state). The asset table is preflow/media's own
  * media.table step.
- * On SQLite the id is TEXT PRIMARY KEY and every other column nullable TEXT;
- * on MySQL the id is VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY (ids compare
- * exactly) and every other column nullable LONGTEXT (the grammar's createRecordTable). Missing
- * tables and columns are added; nothing is ever dropped or altered.
+ * The id is the primary key; the working and internal tables are typed with
+ * their unique indexes, the published snapshots typed without them, the
+ * revisions free text (RecordTableSync, ShadowTypes). Missing tables and
+ * columns are added; nothing is ever dropped or altered. tables() is what
+ * Folio registers with the data layer's RecordTables.
  * JSON-stored types are left alone.
+ *
+ * @phpstan-import-type Entry from RecordTables
  */
 final class TableSync
 {
@@ -41,31 +45,27 @@ final class TableSync
         $this->records = new RecordTableSync($dm);
     }
 
-    /** @return list<string> the changes made, one line each */
+    /** @return list<string> the changes made and the warnings, one line each */
     public function sync(): array
     {
-        $lines = [];
-        foreach ($this->definitions() as $def) {
-            array_push($lines, ...$this->records->sync($def, self::SYSTEM));
-        }
-
-        return $lines;
+        return $this->records->syncAll($this->tables());
     }
 
-    /** @return list<TypeDefinition> */
-    private function definitions(): array
+    /** @return list<Entry> every table, with the system columns Folio writes besides the fields */
+    public function tables(): array
     {
-        $defs = [];
+        $tables = [];
         foreach ($this->catalog->all() as $listing) {
             $def = $this->registry->get($listing->key);
-            $defs[] = $def;
+            $tables[] = RecordTables::entry($def, self::SYSTEM);
             if ($listing->publishing) {
-                $defs[] = ShadowTypes::published($def);
-                $defs[] = ShadowTypes::revisions($def);
+                array_push($tables, ...ShadowTypes::tables($def, self::SYSTEM));
             }
         }
-        array_push($defs, ...$this->internal);
+        foreach ($this->internal as $def) {
+            $tables[] = RecordTables::entry($def, self::SYSTEM);
+        }
 
-        return $defs;
+        return $tables;
     }
 }

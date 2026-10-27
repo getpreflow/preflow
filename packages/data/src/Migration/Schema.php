@@ -60,6 +60,18 @@ final class Schema
         return $this->grammar->columns($this->pdo, $table);
     }
 
+    /** @return array<string, string> the lower-case SQL type of each column, in table order */
+    public function columnTypes(string $table): array
+    {
+        return $this->grammar->columnTypes($this->pdo, $table);
+    }
+
+    /** @return list<string> the names of the table's indexes */
+    public function indexes(string $table): array
+    {
+        return $this->grammar->indexes($this->pdo, $table);
+    }
+
     /** Adds a nullable column to an existing table; a null type is free text (TEXT / LONGTEXT). */
     public function addColumn(string $table, string $column, ?string $type = null): void
     {

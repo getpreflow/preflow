@@ -11,6 +11,7 @@ use Preflow\Core\Debug\DebugCollector;
 use Preflow\Data\DataManager;
 use Preflow\Data\Locales;
 use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Data\Schema\RecordTables;
 use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Core\Routing\RouterInterface;
 use Preflow\Media\Access\DenyAllPrivateFileAccess;
@@ -113,9 +114,11 @@ final class MediaServiceProvider extends ServiceProvider
         ));
 
         if ($config->storage !== 'json') {
+            $tables = static fn (): array => [RecordTables::entry($container->get(MediaLibrary::class)->definition())];
+            $container->get(RecordTables::class)->add('media', $tables);
             $container->get(MigrationRegistry::class)->afterMigrate(
                 'media.table',
-                static fn (): array => (new RecordTableSync($container->get(DataManager::class)))->sync($container->get(MediaLibrary::class)->definition()),
+                static fn (): array => (new RecordTableSync($container->get(DataManager::class)))->syncAll($tables()),
             );
         }
     }

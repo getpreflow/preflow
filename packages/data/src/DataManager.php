@@ -380,16 +380,23 @@ final class DataManager
         return $written;
     }
 
-    /**
-     * The record's values as written: an empty string in a number, yes/no or date field is NULL
-     * (those columns hold no empty text); empty text stays ''.
-     *
-     * @return array<string, mixed>
-     */
+    /** @return array<string, mixed> */
     private function storageData(DynamicRecord $record): array
     {
-        $data = $record->toArray();
-        foreach ($record->getType()->fields as $name => $field) {
+        return $this->storageValues($record->getType(), $record->toArray());
+    }
+
+    /**
+     * A row of this type as it is written: an empty string in a number, yes/no or date field is
+     * NULL (those columns hold no empty text); empty text stays ''. For callers writing rows to
+     * a driver themselves (an import), as saveType() does.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    public function storageValues(TypeDefinition $def, array $data): array
+    {
+        foreach ($def->fields as $name => $field) {
             if (($data[$name] ?? null) !== '') {
                 continue;
             }

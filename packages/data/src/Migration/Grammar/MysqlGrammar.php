@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Migration\Grammar;
 
+use Preflow\Data\FieldKinds;
+use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Schema\ColumnSpec;
+
 /**
  * MariaDB 10.6+ / MySQL 8. InnoDB utf8mb4 limits index keys to 3072 bytes (767 on old row formats),
  * so primary keys and indexed columns stay VARCHAR; TEXT/LONGTEXT cannot be indexed without a prefix.
@@ -12,6 +16,8 @@ namespace Preflow\Data\Migration\Grammar;
  */
 final class MysqlGrammar implements SchemaGrammar
 {
+    use RecordIndexNames;
+
     private const TABLE_OPTIONS = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
 
     private const EXACT = ' COLLATE utf8mb4_bin';
@@ -69,10 +75,28 @@ final class MysqlGrammar implements SchemaGrammar
 
     public function createRecordTable(string $table, string $idField, array $columns): string
     {
-        $defs = array_map(fn (string $c): string => $this->quote($c) . ' LONGTEXT', $columns);
+        $defs = array_map(fn (ColumnSpec $c): string => $this->quote($c->name) . ' ' . $this->recordColumnType($c->kind, $c->length), $columns);
 
         return 'CREATE TABLE ' . $this->quote($table) . ' (' . $this->quote($idField) . ' VARCHAR(191)' . self::EXACT . ' PRIMARY KEY, '
             . implode(', ', $defs) . ') ' . self::TABLE_OPTIONS;
+    }
+
+    /** Short columns are unique or indexed: they compare exactly, as ids do. Dates stay ISO text. */
+    public function recordColumnType(ColumnKind $kind, ?int $length = null): string
+    {
+        return match ($kind) {
+            ColumnKind::Text => 'LONGTEXT',
+            ColumnKind::Short => 'VARCHAR(' . ($length ?? FieldKinds::DEFAULT_LENGTH) . ')' . self::EXACT,
+            ColumnKind::Number => 'DOUBLE',
+            ColumnKind::Boolean => 'TINYINT(1)',
+            ColumnKind::Date => 'VARCHAR(32)',
+        };
+    }
+
+    public function createRecordIndex(string $name, string $table, array $columns, bool $unique): string
+    {
+        return 'CREATE ' . ($unique ? 'UNIQUE ' : '') . 'INDEX ' . $this->quote($name) . ' ON ' . $this->quote($table)
+            . ' (' . implode(', ', array_map($this->quote(...), $columns)) . ')';
     }
 
     public function createIndex(string $table, string $column): string
@@ -99,6 +123,28 @@ final class MysqlGrammar implements SchemaGrammar
         $stmt = $pdo->prepare(
             'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION'
         );
+        $stmt->execute([$table]);
+
+        return array_map('strval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
+    }
+
+    public function columnTypes(\PDO $pdo, string $table): array
+    {
+        $stmt = $pdo->prepare(
+            'SELECT COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION'
+        );
+        $stmt->execute([$table]);
+        $types = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_NUM) as [$name, $type]) {
+            $types[(string) $name] = strtolower((string) $type);
+        }
+
+        return $types;
+    }
+
+    public function indexes(\PDO $pdo, string $table): array
+    {
+        $stmt = $pdo->prepare('SELECT DISTINCT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?');
         $stmt->execute([$table]);
 
         return array_map('strval', $stmt->fetchAll(\PDO::FETCH_COLUMN));

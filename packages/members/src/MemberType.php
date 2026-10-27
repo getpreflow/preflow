@@ -9,6 +9,7 @@ use Preflow\Core\Container\Container;
 use Preflow\Data\DataManager;
 use Preflow\Data\Locales;
 use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Data\Schema\RecordTables;
 use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Data\TypeRegistry;
 
@@ -75,10 +76,14 @@ final class MemberType
             self::modelsPath($c->get(Application::class)) . '/' . MembersConfig::TYPE . '.json',
         );
         $definition = $registry->define($schema);
+        $tables = static fn (): array => [RecordTables::entry($definition)];
+        if ($c->bound(RecordTables::class)) {
+            $c->get(RecordTables::class)->add('members', $tables);
+        }
         if ($c->bound(MigrationRegistry::class)) {
             $c->get(MigrationRegistry::class)->afterMigrate(
                 'members.table',
-                static fn (): array => (new RecordTableSync($c->get(DataManager::class)))->sync($definition),
+                static fn (): array => (new RecordTableSync($c->get(DataManager::class)))->syncAll($tables()),
             );
         }
     }
