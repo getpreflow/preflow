@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-27 (v0.41.1 released)
+> Last updated: 2026-10-27 (v0.41.2 released)
 
 ## Current State
 
-**v0.41.1** — 4019 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.41.2** — 4030 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -226,6 +226,10 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
 ---
 
 ## Completed
+
+### v0.41.2
+
+- **Folio:** `Publisher::publish()` moves `_version` on (stored + 1) when the published content differs from the stored working copy (checked and unchecked), so an editor on the old version conflicts instead of writing old content back; unchanged content keeps it. See the 0.41 checklist
 
 ### v0.41.1
 
