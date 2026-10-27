@@ -43,12 +43,24 @@ final class MemberMailer
     /** @param ?\Closure(\Throwable): void $onFailure */
     public function confirmLater(DynamicRecord $m, string $token, ?\Closure $onFailure = null): void
     {
+        $this->notifier->sendLater($this->confirmEmail($m, $token), $onFailure);
+    }
+
+    /** The confirmation mail at once, so the caller (staff resending it) knows whether it went out. @throws TransportException */
+    public function confirm(DynamicRecord $m, string $token): void
+    {
+        $this->notifier->send($this->confirmEmail($m, $token));
+    }
+
+    private function confirmEmail(DynamicRecord $m, string $token): Email
+    {
         $lang = $this->lang($m);
-        $this->notifier->sendLater($this->build('confirm', $lang, (string) $m->get('email'), [
+
+        return $this->build('confirm', $lang, (string) $m->get('email'), [
             'name' => (string) $m->get('name'),
             'link' => $this->links->url($lang, '/confirm/' . $token),
             'validity' => $this->validity->confirm($lang),
-        ], action: ['confirm', $this->links->url($lang, '/confirm/' . $token)]), $onFailure);
+        ], action: ['confirm', $this->links->url($lang, '/confirm/' . $token)]);
     }
 
     /**

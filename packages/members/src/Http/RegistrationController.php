@@ -13,6 +13,7 @@ use Preflow\Members\Admission\Admission;
 use Preflow\Members\Admission\ComposesName;
 use Preflow\Members\Admission\Decision;
 use Preflow\Members\Confirmation;
+use Preflow\Members\ConfirmationMail;
 use Preflow\Members\Links;
 use Preflow\Members\MemberMailer;
 use Preflow\Members\Members;
@@ -53,6 +54,7 @@ final class RegistrationController
         private readonly PasswordHasherInterface $hasher,
         private readonly SafeNext $safeNext,
         private readonly Confirmation $confirmation,
+        private readonly ConfirmationMail $confirmationMail,
     ) {}
 
     public function form(ServerRequestInterface $request): ResponseInterface
@@ -139,9 +141,8 @@ final class RegistrationController
         // Queued: it goes out after the response, so a fresh address answers as fast as a known one. If it cannot
         // be sent, the account is removed again (the visitor can simply register once more); no address is logged.
         $id = (string) $member->getId();
-        $this->mailer->confirmLater(
+        $this->confirmationMail->sendLater(
             $member,
-            $this->tokens->issue(MembersConfig::CONFIRM_PURPOSE, $id, $this->config->confirmTtl()),
             function () use ($id): void {
                 $this->tokens->revokeAll(MembersConfig::CONFIRM_PURPOSE, $id);
                 $this->members->removeIfUnconfirmed($id);
@@ -218,8 +219,7 @@ final class RegistrationController
                 $this->mailer->existingLater($existing, $this->tokens->issue(MembersConfig::RESET_PURPOSE, $id, $this->config->resetTtl()), $failed);
                 break;
             case MemberState::Unconfirmed:
-                $this->tokens->revokeAll(MembersConfig::CONFIRM_PURPOSE, $id);
-                $this->mailer->confirmLater($existing, $this->tokens->issue(MembersConfig::CONFIRM_PURPOSE, $id, $this->config->confirmTtl()), $failed);
+                $this->confirmationMail->sendLater($existing, $failed);
                 break;
             default: // waiting or declined: no mail, the answer stays the same
         }

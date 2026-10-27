@@ -14,6 +14,7 @@ use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DataManager;
 use Preflow\Data\Locales;
 use Preflow\Auth\Record\RecordUser;
+use Preflow\Members\ConfirmationMail;
 use Preflow\Members\Links;
 use Preflow\Members\MemberMailer;
 use Preflow\Members\Members;
@@ -48,6 +49,7 @@ final class AuthController
         private readonly PasswordHasherInterface $hasher,
         private readonly DataManager $dm,
         private readonly SignIn $signIn,
+        private readonly ConfirmationMail $confirmationMail,
     ) {}
 
     public function form(ServerRequestInterface $request): ResponseInterface
@@ -203,10 +205,8 @@ final class AuthController
             $member = $email === '' ? null : $this->members->findByEmail($email);
             if ($member !== null && MemberState::fromRecord($member) === MemberState::Unconfirmed) {
                 $id = (string) $member->getId();
-                $this->tokens->revokeAll(MembersConfig::CONFIRM_PURPOSE, $id);
-                $this->mailer->confirmLater(
+                $this->confirmationMail->sendLater(
                     $member,
-                    $this->tokens->issue(MembersConfig::CONFIRM_PURPOSE, $id, $this->config->confirmTtl()),
                     static function () use ($id): void {
                         error_log('members: confirm mail failed for member ' . $id);
                     },

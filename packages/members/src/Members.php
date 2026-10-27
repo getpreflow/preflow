@@ -35,6 +35,7 @@ final class Members
      *        (the member, the plan, the reason); returns whether a notice went out
      * @param ?MemberDeleteCopies $copies copies of records (Folio's published snapshots) the plan counts for restrict
      * @param ?RememberMe $remember removes a member's remember rows when sessions end (without it only the epoch moves)
+     * @param ?\Closure(): ConfirmationMail $confirmationMail resends a confirmation link (resolved when first needed)
      */
     public function __construct(
         private readonly DataManager $dm,
@@ -45,6 +46,7 @@ final class Members
         private readonly ?\Closure $refusalNotice = null,
         private readonly ?MemberDeleteCopies $copies = null,
         private readonly ?RememberMe $remember = null,
+        private readonly ?\Closure $confirmationMail = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }
@@ -214,7 +216,30 @@ final class Members
 
     public function isLocked(DynamicRecord $m): bool
     {
+        return self::locked($m);
+    }
+
+    /** The one definition of "locked", for code without a Members (SignIn). */
+    public static function locked(DynamicRecord $m): bool
+    {
         return (string) $m->get('locked_at') !== '';
+    }
+
+    /**
+     * Mails an unconfirmed member a fresh confirmation link (the earlier ones stop working), at once.
+     *
+     * @throws \LogicException when the member is not unconfirmed, or this Members has no ConfirmationMail
+     * @throws \Preflow\Notify\TransportException when the mail cannot be sent
+     */
+    public function resendConfirmation(DynamicRecord $m): void
+    {
+        if ($this->confirmationMail === null) {
+            throw new \LogicException('Members::resendConfirmation() needs the confirmation mail service; take Members from the container.');
+        }
+        if (MemberState::fromRecord($m) !== MemberState::Unconfirmed) {
+            throw new \LogicException('Members::resendConfirmation(): only an unconfirmed member has a link to resend.');
+        }
+        ($this->confirmationMail)()->send($m);
     }
 
     /** Ends every session of the member: the epoch moves on and the remember rows go. Saves the member. */

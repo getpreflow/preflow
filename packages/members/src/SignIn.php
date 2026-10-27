@@ -26,7 +26,7 @@ final class SignIn
     /** @throws \LogicException when $member is locked or not admitted (unconfirmed, waiting for the owner, declined) */
     public function in(DynamicRecord $member, ServerRequestInterface $request): void
     {
-        if ((string) $member->get('locked_at') !== '') {
+        if ($this->members !== null ? $this->members->isLocked($member) : Members::locked($member)) {
             throw new \LogicException('SignIn::in(): a locked member signs in nowhere.');
         }
         if (MemberState::fromRecord($member) !== MemberState::Member) {

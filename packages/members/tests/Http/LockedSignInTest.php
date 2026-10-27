@@ -56,6 +56,32 @@ final class LockedSignInTest extends TestCase
         $this->assertSame('', (string) $this->member('ada@example.com')->get('last_login_at'));
     }
 
+    /** @return array<string, array{string}> */
+    public static function notAdmittedStates(): array
+    {
+        return ['unconfirmed' => ['unconfirmed'], 'waiting' => ['pending']];
+    }
+
+    #[RunInSeparateProcess]
+    #[\PHPUnit\Framework\Attributes\DataProvider('notAdmittedStates')]
+    public function test_locked_unconfirmed_or_waiting_member_gets_the_wrong_password_refusal(string $state): void
+    {
+        $m = $this->makeMember('ada@example.com', $state);
+        $wrong = $this->post('/members/login', ['email' => 'ada@example.com', 'password' => 'not the password']);
+        $this->flow->container()->get(Members::class)->lock($m);
+
+        $locked = $this->post('/members/login', ['email' => 'ada@example.com', 'password' => self::PASSWORD]);
+
+        $this->assertSame(422, $wrong->getStatusCode());
+        $this->assertSame(422, $locked->getStatusCode());
+        $error = '//*[contains(@class,"error") or @role="alert"]';
+        $a = Dom::first((string) $wrong->getBody(), $error);
+        $b = Dom::first((string) $locked->getBody(), $error);
+        $this->assertNotNull($b);
+        $this->assertSame(trim((string) $a?->textContent), trim($b->textContent), 'they never learn their state');
+        $this->assertNull($this->cookie($locked, 'site_member'));
+    }
+
     #[RunInSeparateProcess]
     public function test_locked_member_gets_no_reset_mail(): void
     {
