@@ -11,5 +11,7 @@ final readonly class Purpose
         public string $name,
         public string $label,
         public bool $readable,
+        /** Days a code of this purpose lives when issued without an expiry; null: forever. */
+        public ?int $ttl = null,
     ) {}
 }

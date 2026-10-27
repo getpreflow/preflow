@@ -16,6 +16,7 @@
         "revoked_at": { "type": "string", "label": "Revoked at" },
         "payload": { "type": "string", "label": "Payload (JSON)" },
         "form": { "type": "select", "label": "Form", "options": { "readable": "Readable", "random": "Random" }, "validate": ["required", "in:readable,random"] },
-        "recipient": { "type": "string", "label": "Recipient" }
+        "recipient": { "type": "string", "label": "Recipient" },
+        "created_at": { "type": "number", "label": "Created at" }
     }
 }

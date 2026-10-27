@@ -17,6 +17,7 @@ return [
             'revoked_at' => ['label' => 'Révoqué le'],
             'form' => ['label' => 'Forme'],
             'recipient' => ['label' => 'Destinataire'],
+            'created_at' => ['label' => 'Créé le'],
         ],
     ],
     'options' => [

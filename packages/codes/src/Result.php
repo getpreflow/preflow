@@ -11,25 +11,28 @@ namespace Preflow\Codes;
 final readonly class Result
 {
     /**
-     * @param 'unknown'|'expired'|'used_up'|'revoked'|'throttled'|null $reason
+     * @param 'unknown'|'expired'|'used_up'|'revoked'|'throttled'|'wrong_recipient'|null $reason
      * @param array<string, mixed> $payload the code's payload, on success only
+     * @param ?string $recipient the address a bound code is for: set when the code was found and is live
+     *                           (success and wrong_recipient), never on other failures
      */
     public function __construct(
         public bool $ok,
         public ?string $reason = null,
         public array $payload = [],
         public ?string $codeId = null,
+        public ?string $recipient = null,
     ) {}
 
     /** @param array<string, mixed> $payload */
-    public static function success(array $payload, string $codeId): self
+    public static function success(array $payload, string $codeId, ?string $recipient = null): self
     {
-        return new self(true, null, $payload, $codeId);
+        return new self(true, null, $payload, $codeId, $recipient);
     }
 
-    /** @param 'unknown'|'expired'|'used_up'|'revoked'|'throttled' $reason */
-    public static function failure(string $reason, ?string $codeId = null): self
+    /** @param 'unknown'|'expired'|'used_up'|'revoked'|'throttled'|'wrong_recipient' $reason */
+    public static function failure(string $reason, ?string $codeId = null, ?string $recipient = null): self
     {
-        return new self(false, $reason, [], $codeId);
+        return new self(false, $reason, [], $codeId, $recipient);
     }
 }

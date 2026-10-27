@@ -17,6 +17,7 @@ return [
             'revoked_at' => ['label' => 'Widerrufen am'],
             'form' => ['label' => 'Form'],
             'recipient' => ['label' => 'Empfänger'],
+            'created_at' => ['label' => 'Erstellt am'],
         ],
     ],
     'options' => [

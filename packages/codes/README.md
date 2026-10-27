@@ -114,3 +114,13 @@ never an IP address or user agent. The throttle counts failures per client key
 `preflow_throttle`, not with the redemption. Codes and
 redemptions are never exported or imported with content, so they do not travel between
 sites.
+
+## Recipients, renewal and ttl
+
+- `issue(..., recipient: 'anna@example.org')` binds a random code to an address (lower-cased, trimmed;
+  one use). `redeem($code, $purpose, $id, $client, recipient: $email)` then accepts only that address;
+  otherwise the reason is `wrong_recipient` (counted by the throttle, no use spent). `check()` without an
+  address passes and returns the address in `Result::$recipient`.
+- `record()`, `get()` and `forRecipient($email, $purpose, open: true)` return `CodeRecord`s (newest first).
+- `renew($codeId, $expiresAt)` gives a live code a new expiry. A purpose with `'ttl' => 30` (days) in
+  `config/codes.php` expires codes issued without `expiresAt` after that time.

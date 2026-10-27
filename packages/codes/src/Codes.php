@@ -56,6 +56,7 @@ final class Codes
                 (string) $name,
                 (string) ($purpose['label'] ?? $name),
                 (bool) ($purpose['readable'] ?? false),
+                isset($purpose['ttl']) && (int) $purpose['ttl'] > 0 ? (int) $purpose['ttl'] : null,
             );
         }
         $this->purposes = $purposes;
@@ -80,7 +81,11 @@ final class Codes
     /**
      * Issues a code and returns it as stored: a readable one when $code is given (normalised,
      * 4–64 characters A–Z and 0–9, only for purposes that allow readable codes), a random one
-     * otherwise. Codes are unique within their purpose.
+     * otherwise. Codes are unique within their purpose. Without $expiresAt a code lives as long
+     * as the purpose's ttl (days) says, if it has one.
+     *
+     * A random code can be bound to a $recipient (an e-mail address, normalised to lower case):
+     * it then holds exactly one use, whatever $maxUses says, and redeems only for that address.
      *
      * @param array<string, mixed> $payload what the code grants, handed back on a successful redeem
      */
@@ -91,8 +96,23 @@ final class Codes
         string $label = '',
         ?\DateTimeImmutable $expiresAt = null,
         ?int $maxUses = null,
+        ?string $recipient = null,
     ): string {
         $definition = $this->purpose($purpose);
+        if ($recipient !== null) {
+            if ($code !== null) {
+                throw new \InvalidArgumentException('A readable code cannot be bound to a recipient.');
+            }
+            $recipient = self::normalizeRecipient($recipient);
+            if (!str_contains($recipient, '@')) {
+                throw new \InvalidArgumentException('A recipient needs an e-mail address.');
+            }
+            $maxUses = 1;
+        }
+        $now = ($this->clock)();
+        if ($expiresAt === null && $definition->ttl !== null) {
+            $expiresAt = $now->modify("+{$definition->ttl} days");
+        }
         if ($code !== null) {
             if (!$definition->readable) {
                 throw new \InvalidArgumentException("Code purpose [{$purpose}] does not allow readable codes.");
@@ -117,12 +137,14 @@ final class Codes
             'purpose' => $purpose,
             'code' => $code,
             'label' => $label,
-            'expires_at' => $expiresAt?->setTimezone(new \DateTimeZone(date_default_timezone_get()))->format('Y-m-d\TH:i'),
+            'expires_at' => $expiresAt === null ? null : self::storeTime($expiresAt),
             'max_uses' => $maxUses,
             'uses' => 0,
             'revoked_at' => null,
             'payload' => json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             'form' => $form,
+            'recipient' => $recipient,
+            'created_at' => $now->getTimestamp(),
         ]), false);
 
         return $code;
@@ -131,15 +153,17 @@ final class Codes
     /**
      * Whether the code would be accepted for the purpose now; counts no use. With a $client
      * (Throttle::client()) it is throttled like redeem(): same key, and every failure counts.
+     * A code bound to a recipient: with $recipient it must match (else wrong_recipient); without,
+     * the check passes and Result::$recipient tells whom the code is for.
      */
-    public function check(string $code, string $purpose, ?string $client = null): Result
+    public function check(string $code, string $purpose, ?string $client = null, ?string $recipient = null): Result
     {
         $this->purpose($purpose);
         if ($client !== null && $this->tooMany($purpose, $client)) {
             return Result::failure('throttled');
         }
 
-        $result = $this->evaluate($code, $purpose);
+        $result = $this->evaluate($code, $purpose, $recipient, false);
         if (!$result->ok && $client !== null) {
             $this->throttle->hit("codes.{$purpose}", $client, $this->throttleWindow);
         }
@@ -152,7 +176,8 @@ final class Codes
         return $this->throttle->tooMany("codes.{$purpose}", $client, $this->throttleMax, $this->throttleWindow);
     }
 
-    private function evaluate(string $code, string $purpose): Result
+    /** Unknown, revoked, expired, used up, then the recipient: wrong_recipient is only told for a live code. */
+    private function evaluate(string $code, string $purpose, ?string $recipient, bool $redeeming): Result
     {
         $record = $this->find($code, $purpose);
         if ($record === null) {
@@ -169,23 +194,34 @@ final class Codes
         if ($max !== null && $max !== '' && (int) $record->get('uses') >= (int) $max) {
             return Result::failure('used_up', $id);
         }
+        $bound = (string) ($record->get('recipient') ?? '');
+        $bound = $bound === '' ? null : $bound;
+        if ($bound !== null) {
+            $typed = $recipient === null ? null : self::normalizeRecipient($recipient);
+            $matches = $typed !== null && hash_equals($bound, $typed);
+            if (!$matches && ($typed !== null || $redeeming)) {
+                return Result::failure('wrong_recipient', $id, $bound);
+            }
+        }
         $payload = json_decode((string) ($record->get('payload') ?? ''), true);
 
-        return Result::success(is_array($payload) ? $payload : [], $id);
+        return Result::success(is_array($payload) ? $payload : [], $id, $bound);
     }
 
     /**
      * Redeems the code: counts a use and records the redemption. With a $client (Throttle::client()),
      * too many failures from it within the window refuse even a valid code, and every failure counts.
+     * A code bound to a recipient redeems only with that address in $recipient (any case, surrounding
+     * spaces ignored); otherwise wrong_recipient, which counts for the throttle but uses nothing up.
      */
-    public function redeem(string $code, string $purpose, ?string $redeemer = null, ?string $client = null): Result
+    public function redeem(string $code, string $purpose, ?string $redeemer = null, ?string $client = null, ?string $recipient = null): Result
     {
         $this->purpose($purpose);
         if ($client !== null && $this->tooMany($purpose, $client)) {
             return Result::failure('throttled');
         }
 
-        $result = $this->evaluate($code, $purpose);
+        $result = $this->evaluate($code, $purpose, $recipient, true);
         if ($result->ok && !$this->countUse((string) $result->codeId)) {
             $result = Result::failure('used_up', $result->codeId);
         }
@@ -312,6 +348,128 @@ final class Codes
         }
 
         return $rows;
+    }
+
+    /** The code as a record, or null when the purpose has no such code. */
+    public function record(string $code, string $purpose): ?CodeRecord
+    {
+        $this->purpose($purpose);
+        $record = $this->find($code, $purpose);
+
+        return $record === null ? null : $this->toRecord($record);
+    }
+
+    public function get(string $codeId): ?CodeRecord
+    {
+        $record = $this->dm->findType('code', $codeId);
+
+        return $record === null ? null : $this->toRecord($record);
+    }
+
+    /**
+     * The codes bound to an address, newest first (codes from before created_at last); by default
+     * only open ones (not revoked, used up or expired).
+     *
+     * @return list<CodeRecord>
+     */
+    public function forRecipient(string $email, ?string $purpose = null, bool $open = true): array
+    {
+        $email = self::normalizeRecipient($email);
+        if ($email === '') {
+            return [];
+        }
+        $query = $this->dm->queryType('code')->where('recipient', '=', $email);
+        if ($purpose !== null) {
+            $query->where('purpose', '=', $purpose);
+        }
+        $rows = $query->get()->items();
+        usort($rows, static function (DynamicRecord $a, DynamicRecord $b): int {
+            $x = $a->get('created_at');
+            $y = $b->get('created_at');
+            $x = $x === null || $x === '' ? null : (int) $x;
+            $y = $y === null || $y === '' ? null : (int) $y;
+            if ($x !== $y) {
+                return $x === null ? 1 : ($y === null ? -1 : $y <=> $x);
+            }
+
+            return strcmp((string) $a->getId(), (string) $b->getId());
+        });
+        $now = ($this->clock)();
+        $records = [];
+        foreach ($rows as $row) {
+            $record = $this->toRecord($row);
+            if (!$open || $record->isOpen($now)) {
+                $records[] = $record;
+            }
+        }
+
+        return $records;
+    }
+
+    /**
+     * Gives a code a new expiry. Only a code that could still work: unknown, revoked and used-up
+     * codes, and dates that are not in the future, are refused.
+     */
+    public function renew(string $codeId, \DateTimeImmutable $expiresAt): void
+    {
+        $record = $this->dm->findType('code', $codeId)
+            ?? throw new \InvalidArgumentException("Unknown code [{$codeId}].");
+        if ((string) ($record->get('revoked_at') ?? '') !== '') {
+            throw new \InvalidArgumentException('A revoked code cannot be renewed.');
+        }
+        $max = $record->get('max_uses');
+        if ($max !== null && $max !== '' && (int) $record->get('uses') >= (int) $max) {
+            throw new \InvalidArgumentException('A used-up code cannot be renewed.');
+        }
+        if ($expiresAt <= ($this->clock)()) {
+            throw new \InvalidArgumentException('A code can only be renewed until a time in the future.');
+        }
+        $record->set('expires_at', self::storeTime($expiresAt));
+        $this->dm->saveType($record, false);
+    }
+
+    /** E-mail addresses match without regard to case and surrounding spaces. */
+    private static function normalizeRecipient(string $email): string
+    {
+        return strtolower(trim($email));
+    }
+
+    private static function storeTime(\DateTimeImmutable $at): string
+    {
+        return $at->setTimezone(new \DateTimeZone(date_default_timezone_get()))->format('Y-m-d\TH:i');
+    }
+
+    private function toRecord(DynamicRecord $r): CodeRecord
+    {
+        $payload = json_decode((string) ($r->get('payload') ?? ''), true);
+        $recipient = (string) ($r->get('recipient') ?? '');
+        $max = $r->get('max_uses');
+
+        return new CodeRecord(
+            (string) $r->getId(),
+            (string) $r->get('purpose'),
+            (string) ($r->get('code') ?? ''),
+            $recipient === '' ? null : $recipient,
+            is_array($payload) ? $payload : [],
+            self::parseTime($r->get('expires_at')),
+            (int) $r->get('uses'),
+            $max === null || $max === '' ? null : (int) $max,
+            self::parseTime($r->get('revoked_at')),
+            (string) ($r->get('form') ?? ''),
+        );
+    }
+
+    /** An unreadable time becomes the epoch: an expiry that has passed, a revocation that happened. */
+    private static function parseTime(mixed $value): ?\DateTimeImmutable
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        try {
+            return new \DateTimeImmutable((string) $value);
+        } catch (\Exception) {
+            return new \DateTimeImmutable('@0');
+        }
     }
 
     /**
