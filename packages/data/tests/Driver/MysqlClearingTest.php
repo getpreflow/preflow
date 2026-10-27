@@ -7,6 +7,7 @@ namespace Preflow\Data\Tests\Driver;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Driver\MysqlDriver;
+use Preflow\Data\UniqueViolation;
 use Preflow\Testing\MysqlTestDatabase;
 
 #[Group('mysql')]
@@ -64,7 +65,9 @@ final class MysqlClearingTest extends TestCase
         try {
             $this->driver->save('games', 'b', ['title' => 'B2', 'slug' => 'x'], 'id');
             $this->fail('A duplicate on a unique index must fail.');
-        } catch (\PDOException $e) {
+        } catch (UniqueViolation $e) {
+            // DataManager turns it into a field error (MysqlUniqueTest).
+            $this->assertSame('games_slug', $e->index);
             $this->assertSame('23000', $e->errorInfo[0]);
         }
 
@@ -79,7 +82,7 @@ final class MysqlClearingTest extends TestCase
         $this->pdo->exec('CREATE UNIQUE INDEX games_slug ON games (slug)');
         $this->driver->save('games', 'a', ['title' => 'A', 'slug' => 'x'], 'id');
 
-        $this->expectException(\PDOException::class);
+        $this->expectException(UniqueViolation::class);
         $this->driver->save('games', 'c', ['title' => 'C', 'slug' => 'x'], 'id');
     }
 

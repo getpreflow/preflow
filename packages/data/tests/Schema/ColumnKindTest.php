@@ -83,7 +83,8 @@ final class ColumnKindTest extends TestCase
 
     public function test_unique_short_field_gets_length_rule(): void
     {
-        [$dm, , $registry] = $this->dm();
+        [$dm, $pdo, $registry] = $this->dm();
+        $pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, qty, active, due, note, slug, code)'); // the unique check reads it
         $type = $registry->get('item');
         $dm->validate(DynamicRecord::fromArray($type, ['uuid' => 'a', 'slug' => str_repeat('x', 191)]));
         try {

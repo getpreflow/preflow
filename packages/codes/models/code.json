@@ -8,7 +8,7 @@
     "transfer": false,
     "fields": {
         "purpose": { "type": "string", "label": "Purpose", "validate": ["required"] },
-        "code": { "type": "string", "label": "Code" },
+        "code": { "type": "string", "label": "Code", "unique": ["purpose"] },
         "label": { "type": "string", "label": "Label" },
         "expires_at": { "type": "date", "label": "Expires at", "time": true },
         "max_uses": { "type": "number", "label": "Max uses" },
@@ -16,7 +16,7 @@
         "revoked_at": { "type": "string", "label": "Revoked at" },
         "payload": { "type": "string", "label": "Payload (JSON)" },
         "form": { "type": "select", "label": "Form", "options": { "readable": "Readable", "random": "Random" }, "validate": ["required", "in:readable,random"] },
-        "recipient": { "type": "string", "label": "Recipient" },
+        "recipient": { "type": "string", "label": "Recipient", "index": true, "length": 320 },
         "created_at": { "type": "number", "label": "Created at" }
     }
 }

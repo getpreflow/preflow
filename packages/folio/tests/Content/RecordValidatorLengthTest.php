@@ -28,6 +28,8 @@ final class RecordValidatorLengthTest extends TestCase
                 'code' => ['type' => 'string', 'index' => true, 'length' => 10],
                 'title' => ['type' => 'string'],
                 'ro' => ['type' => 'string', 'unique' => true, 'readonly' => true],
+                'number' => ['type' => 'string', 'unique' => ['series']],
+                'series' => ['type' => 'string'],
             ],
         ]));
         try {
@@ -50,5 +52,6 @@ final class RecordValidatorLengthTest extends TestCase
         $this->assertSame(['max:10'], $rules['code']);
         $this->assertArrayNotHasKey('title', $rules);
         $this->assertSame([], $rules['ro']);
+        $this->assertSame(['max:191'], $rules['series'], 'a unique field\'s scope is a bounded column too');
     }
 }

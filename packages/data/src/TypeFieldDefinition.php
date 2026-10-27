@@ -29,4 +29,13 @@ final readonly class TypeFieldDefinition
         public bool $index = false,
         public ?int $length = null,
     ) {}
+
+    /** This field marked indexed (a unique field's scope field is stored as an indexed one). */
+    public function withIndex(): self
+    {
+        return new self(
+            $this->name, $this->type, $this->searchable, $this->transform, $this->validate, $this->label, $this->help,
+            $this->config, $this->translatable, $this->labels, $this->helps, $this->unique, true, $this->length,
+        );
+    }
 }

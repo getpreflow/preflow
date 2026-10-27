@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Driver;
 
+use Preflow\Data\ExclusiveWrites;
 use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
 use Preflow\Data\VersionedStorage;
 
-abstract class PdoDriver implements VersionedStorage
+abstract class PdoDriver implements VersionedStorage, ExclusiveWrites
 {
     public function __construct(
         protected readonly \PDO $pdo,
@@ -89,7 +90,7 @@ abstract class PdoDriver implements VersionedStorage
 
         if ($isEmpty) {
             unset($data[$idField]);
-            $this->write($type, $this->dialect->insertSql($type, array_keys($data)), array_values($data));
+            $this->write($type, $this->dialect->insertSql($type, array_keys($data)), array_values($data), $idField);
 
             return;
         }
@@ -97,11 +98,11 @@ abstract class PdoDriver implements VersionedStorage
         $data[$idField] ??= $id;
 
         // Only the row with this id is written. A null clears its column; a column not passed is
-        // left alone; a duplicate on a unique index other than the primary key fails and touches
-        // no row.
+        // left alone; a duplicate on a unique index other than the primary key fails with a
+        // UniqueViolation and touches no row.
         $upsert = $this->dialect->upsertSql($type, array_keys($data), $idField);
         if ($upsert !== null) {
-            $this->write($type, $upsert, array_values($data));
+            $this->write($type, $upsert, array_values($data), $idField);
 
             return;
         }
@@ -113,7 +114,7 @@ abstract class PdoDriver implements VersionedStorage
             return;
         }
         try {
-            $this->write($type, $this->dialect->insertSql($type, array_keys($data)), array_values($data));
+            $this->write($type, $this->dialect->insertSql($type, array_keys($data)), array_values($data), $idField);
         } catch (\PDOException $e) {
             // A concurrent first save inserted the id between our check and insert: update it.
             if (!$this->dialect->isPrimaryKeyViolation($e, $type, $idField)) {
@@ -135,7 +136,7 @@ abstract class PdoDriver implements VersionedStorage
     {
         $sql = $this->dialect->updateSql($type, array_keys($set), $idField);
 
-        return $this->write($type, $sql, [...array_values($set), $id])->rowCount() > 0
+        return $this->write($type, $sql, [...array_values($set), $id], $idField)->rowCount() > 0
             || $this->exists($type, $id, $idField);
     }
 
@@ -256,7 +257,7 @@ abstract class PdoDriver implements VersionedStorage
             $data,
         );
         try {
-            $this->write($type, $this->dialect->insertSql($type, array_keys($data)), array_values($data));
+            $this->write($type, $this->dialect->insertSql($type, array_keys($data)), array_values($data), $idField);
 
             return true;
         } catch (\PDOException $e) {
@@ -269,11 +270,12 @@ abstract class PdoDriver implements VersionedStorage
 
     /**
      * Runs a write; a record key the table has no column for (a model field
-     * added without migrating) names the fix instead of the raw PDO error.
+     * added without migrating) names the fix instead of the raw PDO error. With the
+     * table's $idField, a duplicate on another unique index is a UniqueViolation.
      *
      * @param list<mixed> $bindings
      */
-    private function write(string $table, string $sql, array $bindings): \PDOStatement
+    private function write(string $table, string $sql, array $bindings, ?string $idField = null): \PDOStatement
     {
         $stmt = null;
         try {
@@ -287,7 +289,8 @@ abstract class PdoDriver implements VersionedStorage
             if (preg_match('/(?:no such column:|has no column named|Unknown column)\s*[\'"`]?([A-Za-z0-9_]+)/', $e->getMessage(), $m) === 1) {
                 throw new \RuntimeException("Table {$table} has no column {$m[1]}; run `preflow migrate`.", 0, $e);
             }
-            throw $e;
+            $unique = $idField === null ? null : $this->dialect->uniqueViolation($e, $table, $idField);
+            throw $unique ?? $e;
         }
     }
 

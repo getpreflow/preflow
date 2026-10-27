@@ -33,4 +33,21 @@ final class MysqlDialectTest extends TestCase
     {
         $this->assertNull($this->dialect->upsertSql('posts', ['uuid', 'title'], 'uuid'));
     }
+
+    public function test_duplicate_keys_are_told_apart_by_the_key_that_ends_the_message(): void
+    {
+        $error = static function (string $message): \PDOException {
+            $e = new \PDOException('SQLSTATE[23000]: Integrity constraint violation: 1062 ' . $message);
+            $e->errorInfo = ['23000', 1062, $message];
+
+            return $e;
+        };
+
+        $this->assertTrue($this->dialect->isPrimaryKeyViolation($error("Duplicate entry 'a' for key 'PRIMARY'"), 'posts', 'uuid'));
+        $this->assertTrue($this->dialect->isPrimaryKeyViolation($error("Duplicate entry 'a' for key 'posts.PRIMARY'"), 'posts', 'uuid'));
+        $sneaky = $error("Duplicate entry 'x for key 'PRIMARY'' for key 'posts.uniq_posts_slug'");
+        $this->assertFalse($this->dialect->isPrimaryKeyViolation($sneaky, 'posts', 'uuid'));
+        $this->assertSame('uniq_posts_slug', $this->dialect->uniqueViolation($sneaky, 'posts', 'uuid')?->index);
+        $this->assertNull($this->dialect->uniqueViolation($error("Duplicate entry 'a' for key 'PRIMARY'"), 'posts', 'uuid'));
+    }
 }

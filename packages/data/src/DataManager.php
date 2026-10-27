@@ -4,9 +4,15 @@ declare(strict_types=1);
 
 namespace Preflow\Data;
 
+use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\Schema\ColumnKind;
-use Preflow\Validation\ValidatorFactory;
+use Preflow\Data\Validation\Unique;
+use Preflow\Validation\Message;
+use Preflow\Validation\ValidationContext;
 use Preflow\Validation\ValidationException;
+use Preflow\Validation\ValidationResult;
+use Preflow\Validation\ValidationRule;
+use Preflow\Validation\ValidatorFactory;
 
 final class DataManager
 {
@@ -189,6 +195,9 @@ final class DataManager
 
     /**
      * Save a model.
+     *
+     * @throws ValidationException when $validate and the model fails its rules, and (validated
+     *         or not) when the storage refuses a unique field's duplicate (nothing saved)
      */
     public function save(Model $model, bool $validate = true, array $rules = [], ?string $scenario = null): void
     {
@@ -198,11 +207,11 @@ final class DataManager
 
         $meta = ModelMetadata::for($model::class);
         $driver = $this->resolveDriver($meta->storage);
-        $data = $model->toArray();
+        $data = $this->modelData($meta, $model);
         $id = $data[$meta->idField] ?? null;
         $isEmpty = $id === null || $id === '' || $id === 0 || $id === '0';
 
-        $driver->save($meta->table, $id ?? '', $data, $meta->idField);
+        $this->guardedModel($meta, $data, fn () => $driver->save($meta->table, $id ?? '', $data, $meta->idField));
 
         if ($isEmpty) {
             $newId = $driver->lastInsertId();
@@ -224,10 +233,10 @@ final class DataManager
 
         $meta = ModelMetadata::for($model::class);
         $driver = $this->resolveDriver($meta->storage);
-        $data = $model->toArray();
+        $data = $this->modelData($meta, $model);
 
         // Force INSERT by passing empty ID (PdoDriver strips the ID field and does plain INSERT)
-        $driver->save($meta->table, 0, $data, $meta->idField);
+        $this->guardedModel($meta, $data, fn () => $driver->save($meta->table, 0, $data, $meta->idField));
 
         $newId = $driver->lastInsertId();
         if ($newId !== '' && $newId !== 0) {
@@ -247,14 +256,14 @@ final class DataManager
 
         $meta = ModelMetadata::for($model::class);
         $driver = $this->resolveDriver($meta->storage);
-        $data = $model->toArray();
+        $data = $this->modelData($meta, $model);
         $id = $data[$meta->idField] ?? null;
 
         if ($id === null || $id === '' || $id === 0 || $id === '0') {
             throw new \RuntimeException("Cannot update model without an ID. Use insert() for new records.");
         }
 
-        $driver->save($meta->table, $id, $data, $meta->idField);
+        $this->guardedModel($meta, $data, fn () => $driver->save($meta->table, $id, $data, $meta->idField));
     }
 
     /**
@@ -316,6 +325,13 @@ final class DataManager
 
     /**
      * Save a dynamic record.
+     *
+     * Unique fields: validation checks them (Unique), and the storage guards them whether
+     * validated or not (the unique index on SQL; translatable fields and JSON storage are checked
+     * in the save under the type's lock, ExclusiveWrites). A duplicate is a ValidationException
+     * with validation.unique on the field ("field.locale" for another locale's value).
+     *
+     * @throws ValidationException (nothing saved)
      */
     public function saveType(DynamicRecord $record, bool $validate = true, array $rules = []): void
     {
@@ -332,7 +348,7 @@ final class DataManager
             throw new \RuntimeException("DynamicRecord must have an ID ({$typeDef->idField}) before saving.");
         }
 
-        $driver->save($typeDef->table, $id, $this->storageData($record), $typeDef->idField);
+        $this->guarded($record, fn () => $driver->save($typeDef->table, $id, $this->storageData($record), $typeDef->idField));
     }
 
     /**
@@ -362,15 +378,23 @@ final class DataManager
         $before = $record->get($versionField);
         $record->set($versionField, $next ?? $expected + 1);
 
-        if ($driver instanceof VersionedStorage) {
-            $written = $driver->saveIfVersion($typeDef->table, $id, $this->storageData($record), $versionField, $expected, $typeDef->idField);
-        } else {
-            self::noticeNotVersioned($driver);
-            $stored = $driver->findOne($typeDef->table, $id, $typeDef->idField);
-            $written = $stored === null ? $expected === 0 : (int) ($stored[$versionField] ?? 0) === $expected;
-            if ($written) {
-                $driver->save($typeDef->table, $id, $this->storageData($record), $typeDef->idField);
-            }
+        try {
+            $written = $this->guarded($record, function () use ($driver, $typeDef, $id, $record, $versionField, $expected): bool {
+                if ($driver instanceof VersionedStorage) {
+                    return $driver->saveIfVersion($typeDef->table, $id, $this->storageData($record), $versionField, $expected, $typeDef->idField);
+                }
+                self::noticeNotVersioned($driver);
+                $stored = $driver->findOne($typeDef->table, $id, $typeDef->idField);
+                $written = $stored === null ? $expected === 0 : (int) ($stored[$versionField] ?? 0) === $expected;
+                if ($written) {
+                    $driver->save($typeDef->table, $id, $this->storageData($record), $typeDef->idField);
+                }
+
+                return $written;
+            });
+        } catch (\Throwable $e) {
+            $had ? $record->set($versionField, $before) : $record->remove($versionField);
+            throw $e;
         }
 
         if (!$written) {
@@ -388,8 +412,9 @@ final class DataManager
 
     /**
      * A row of this type as it is written: an empty string in a number, yes/no or date field is
-     * NULL (those columns hold no empty text); empty text stays ''. For callers writing rows to
-     * a driver themselves (an import), as saveType() does.
+     * NULL (those columns hold no empty text), and so is an empty unique value (NULL is never a
+     * duplicate in a unique index, '' would be); other empty text stays ''. For callers writing
+     * rows to a driver themselves (an import), as saveType() does.
      *
      * @param array<string, mixed> $data
      * @return array<string, mixed>
@@ -400,7 +425,8 @@ final class DataManager
             if (($data[$name] ?? null) !== '') {
                 continue;
             }
-            if (in_array($this->fieldKinds()->columnKindOf($field), [ColumnKind::Number, ColumnKind::Boolean, ColumnKind::Date], true)) {
+            $kind = $this->fieldKinds()->columnKindOf($field);
+            if (in_array($kind, [ColumnKind::Number, ColumnKind::Boolean, ColumnKind::Date], true) || ($field->unique !== false && $kind !== ColumnKind::Text)) {
                 $data[$name] = null;
             }
         }
@@ -448,6 +474,21 @@ final class DataManager
         $this->validateDynamicRecord($record, $rules);
     }
 
+    /**
+     * Check only the record's unique fields against the other records (as validation does): for
+     * a save that skips the other rules, such as a draft.
+     *
+     * @throws ValidationException with validation.unique on each taken field
+     */
+    public function validateUnique(DynamicRecord $record): void
+    {
+        $def = $record->getType();
+        $taken = $this->takenFields($this->uniqueChecks($def, $record->toArray(), $record->getId(), $def->uniqueFields()));
+        if ($taken !== []) {
+            throw $this->uniqueFailure($taken);
+        }
+    }
+
     private function validateModel(Model $model, array $extraRules = [], ?string $scenario = null): void
     {
         if ($this->validatorFactory === null) {
@@ -467,11 +508,18 @@ final class DataManager
             $rules = array_merge($rules, $extraRules);
         }
 
+        $data = $model->toArray();
+        $id = $data[$meta->idField] ?? null;
+        $id = $id === '' || $id === 0 || $id === '0' ? null : $id;
+        foreach ($meta->uniqueFields() as $field => $scope) {
+            $rules[$field] = [...($rules[$field] ?? []), new Unique($this, $model::class, $field, $scope, $id)];
+        }
+
         if ($rules === []) {
             return;
         }
 
-        $validator = $this->validatorFactory->make($rules, $model->toArray(), subject: $model);
+        $validator = $this->validatorFactory->make($rules, $data, subject: $model);
         $result = $validator->validate();
 
         if ($result->fails()) {
@@ -488,23 +536,32 @@ final class DataManager
         $typeDef = $record->getType();
         $rules = $typeDef->validationRules();
 
-        // A unique or indexed string is a bounded column: it may not outgrow it.
-        foreach ($typeDef->fields as $name => $field) {
-            $lengthRule = $this->fieldKinds()->lengthRule($field);
-            if ($lengthRule !== null) {
-                $rules[$name] = array_values(array_unique([...($rules[$name] ?? []), $lengthRule]));
-            }
+        // A unique or indexed string, and a unique field's scope, is a bounded column: it may not outgrow it.
+        foreach ($this->fieldKinds()->lengthRules($typeDef) as $name => $lengthRule) {
+            $rules[$name] = array_values(array_unique([...($rules[$name] ?? []), $lengthRule]));
         }
 
         if ($extraRules !== []) {
             $rules = array_merge($rules, $extraRules);
         }
 
+        [$rules, $data] = $this->localizedValidation($typeDef, $rules, $record->toArray());
+
+        // Unique fields, per locale for translatable ones; not a field the extra rules leave
+        // unvalidated (an empty list: Folio's read-only fields).
+        $unique = array_filter(
+            $typeDef->uniqueFields(),
+            static fn (string $field): bool => ($extraRules[$field] ?? null) !== [],
+            ARRAY_FILTER_USE_KEY,
+        );
+        foreach ($this->uniqueChecks($typeDef, $record->toArray(), $record->getId(), $unique) as $key => [$rule, $value]) {
+            $rules[$key] = [...($rules[$key] ?? []), $rule];
+            $data[$key] = $value;
+        }
+
         if ($rules === []) {
             return;
         }
-
-        [$rules, $data] = $this->localizedValidation($typeDef, $rules, $record->toArray());
 
         $validator = $this->validatorFactory->make($rules, $data, subject: $record);
         $result = $validator->validate();
@@ -512,6 +569,195 @@ final class DataManager
         if ($result->fails()) {
             throw new ValidationException($result);
         }
+    }
+
+    /**
+     * The Unique rule of each of $fields with the value it checks, by error key: the field, or
+     * "field.locale" for a translatable field's value in another locale than the default. The
+     * scope is given as the record's values.
+     *
+     * @param array<string, mixed> $data the record's values
+     * @param array<string, list<string>> $fields unique fields => scope fields
+     * @return array<string, array{Unique, mixed}>
+     */
+    private function uniqueChecks(TypeDefinition $def, array $data, string|int|null $id, array $fields): array
+    {
+        $checks = [];
+        $translatable = $def->translatableFields();
+        foreach ($fields as $field => $scope) {
+            $values = [];
+            foreach ($scope as $name) {
+                $values[$name] = $data[$name] ?? null;
+            }
+            if (!in_array($field, $translatable, true)) {
+                $checks[$field] = [new Unique($this, $def, $field, $values, $id), $data[$field] ?? null];
+                continue;
+            }
+            foreach (LocaleValue::map($data[$field] ?? null, $def->locales) as $locale => $value) {
+                $locale = (string) $locale;
+                if ($def->locales->has($locale)) {
+                    $key = $locale === $def->locales->default ? $field : $field . '.' . $locale;
+                    $checks[$key] = [new Unique($this, $def, $field, $values, $id, $locale), $value];
+                }
+            }
+        }
+
+        return $checks;
+    }
+
+    /**
+     * The keys of the checks whose value another record has.
+     *
+     * @param array<string, array{Unique, mixed}> $checks
+     * @return list<string>
+     */
+    private function takenFields(array $checks): array
+    {
+        $taken = [];
+        foreach ($checks as $key => [$rule, $value]) {
+            if ($rule->validate($value, new ValidationContext($key, [])) !== true) {
+                $taken[] = $key;
+            }
+        }
+
+        return $taken;
+    }
+
+    /**
+     * validation.unique on each of the fields, in the validator's language when there is one.
+     *
+     * @param non-empty-list<string> $fields
+     */
+    private function uniqueFailure(array $fields): ValidationException
+    {
+        $taken = new class implements ValidationRule {
+            public function validate(mixed $value, ValidationContext $context): Message
+            {
+                return new Message('validation.unique');
+            }
+        };
+        $result = $this->validatorFactory?->make(array_fill_keys($fields, [$taken]), [])->validate()
+            ?? new ValidationResult(array_fill_keys($fields, [(new Message('validation.unique'))->english()]));
+
+        return new ValidationException($result);
+    }
+
+    /**
+     * Runs the write of $record with its unique fields guarded: unique values no index guards
+     * (translatable fields on SQL, every unique field on other storages) are checked under the
+     * type's lock, with the write; a duplicate the unique index refuses becomes the field error.
+     * Under the lock, a field the save leaves as stored (with its scope) is not checked again:
+     * a duplicate from before the field was unique does not block other changes to the record.
+     *
+     * @template T
+     * @param \Closure(): T $write
+     * @return T
+     */
+    private function guarded(DynamicRecord $record, \Closure $write): mixed
+    {
+        $def = $record->getType();
+        $unique = $def->uniqueFields();
+        if ($unique === []) {
+            return $write();
+        }
+        $driver = $this->resolveDriver($def->storage);
+        $checked = $driver instanceof PdoDriver ? array_intersect_key($unique, array_flip($def->translatableFields())) : $unique;
+
+        return $this->guardedWrite($driver, $def->table, $unique, $checked === [] ? null : function () use ($def, $driver, $record, $checked): array {
+            $data = $record->toArray();
+            $id = $record->getId();
+            $stored = $id === null ? null : $driver->findOne($def->table, $id, $def->idField);
+            if ($stored !== null) {
+                $checked = array_filter($checked, static function (array $scope, string $field) use ($def, $data, $stored): bool {
+                    foreach ([$field, ...$scope] as $name) {
+                        $translatable = in_array($name, $def->translatableFields(), true);
+                        $before = $translatable ? LocaleValue::map($stored[$name] ?? null, $def->locales) : $stored[$name] ?? null;
+                        $after = $translatable ? LocaleValue::map($data[$name] ?? null, $def->locales) : $data[$name] ?? null;
+                        if (is_scalar($before) && is_scalar($after) ? (string) $before !== (string) $after : $before != $after) {
+                            return true;
+                        }
+                    }
+
+                    return false;
+                }, ARRAY_FILTER_USE_BOTH);
+            }
+
+            return $this->takenFields($this->uniqueChecks($def, $data, $id, $checked));
+        }, $write);
+    }
+
+    /**
+     * The model's write, guarded as guarded() does for records (on SQL by the index alone).
+     *
+     * @param array<string, mixed> $data
+     * @param \Closure(): void $write
+     */
+    private function guardedModel(ModelMetadata $meta, array $data, \Closure $write): void
+    {
+        $unique = $meta->uniqueFields();
+        if ($unique === []) {
+            $write();
+
+            return;
+        }
+        $driver = $this->resolveDriver($meta->storage);
+        $id = $data[$meta->idField] ?? null;
+        $id = $id === '' || $id === 0 || $id === '0' ? null : $id;
+        $check = $driver instanceof PdoDriver ? null : function () use ($meta, $unique, $data, $id): array {
+            $checks = [];
+            foreach ($unique as $field => $scope) {
+                $checks[$field] = [new Unique($this, $meta->modelClass, $field, array_intersect_key($data, array_flip($scope)) + array_fill_keys($scope, null), $id), $data[$field] ?? null];
+            }
+
+            return $this->takenFields($checks);
+        };
+        $this->guardedWrite($driver, $meta->table, $unique, $check, $write);
+    }
+
+    /**
+     * @param array<string, list<string>> $unique
+     * @param (\Closure(): list<string>)|null $check the taken fields, run under the lock with the write
+     */
+    private function guardedWrite(StorageDriver $driver, string $table, array $unique, ?\Closure $check, \Closure $write): mixed
+    {
+        try {
+            if ($check === null || !$driver instanceof ExclusiveWrites) {
+                return $write();
+            }
+
+            return $driver->exclusive($table, function () use ($check, $write): mixed {
+                $taken = $check();
+                if ($taken !== []) {
+                    throw $this->uniqueFailure($taken);
+                }
+
+                return $write();
+            });
+        } catch (UniqueViolation $e) {
+            $field = $e->field($table, $unique);
+            if ($field === null) {
+                throw $e;
+            }
+            throw $this->uniqueFailure([$field]);
+        }
+    }
+
+    /**
+     * The model's values as written: an empty unique value is NULL (never a duplicate) where its
+     * property takes null back.
+     *
+     * @return array<string, mixed>
+     */
+    private function modelData(ModelMetadata $meta, Model $model): array
+    {
+        $data = $model->toArray();
+        foreach (array_keys($meta->uniqueFields()) as $field) {
+            if (($data[$field] ?? null) === '' && (new \ReflectionProperty($model, $field))->getType()?->allowsNull() !== false) {
+                $data[$field] = null;
+            }
+        }
+
+        return $data;
     }
 
     /**

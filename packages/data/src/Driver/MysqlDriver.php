@@ -34,6 +34,36 @@ final class MysqlDriver extends PdoDriver
         parent::__construct($pdo, $dialect, new QueryCompiler($dialect), $collector);
     }
 
+    /** Seconds exclusive() waits for the type's lock before it gives up. */
+    public const int LOCK_WAIT = 10;
+
+    /**
+     * Holding the named lock preflow_unique_{type} (GET_LOCK, per connection, nestable). Saves
+     * outside a transaction commit before the lock is released; in a caller's transaction the
+     * lock is released before the caller commits.
+     */
+    public function exclusive(string $type, \Closure $fn): mixed
+    {
+        $name = 'preflow_unique_' . $type;
+        if (strlen($name) > 64) {
+            $name = substr($name, 0, 55) . '_' . sprintf('%08x', crc32($name)); // GET_LOCK takes 64 characters
+        }
+        $lock = $this->pdo->prepare('SELECT GET_LOCK(?, ' . self::LOCK_WAIT . ')');
+        $lock->execute([$name]);
+        $taken = (int) $lock->fetchColumn() === 1;
+        $lock->closeCursor();
+        if (!$taken) {
+            throw new \RuntimeException("Could not take the lock {$name} within " . self::LOCK_WAIT . ' seconds.');
+        }
+        try {
+            return $fn();
+        } finally {
+            $release = $this->pdo->prepare('SELECT RELEASE_LOCK(?)');
+            $release->execute([$name]);
+            $release->closeCursor();
+        }
+    }
+
     /** PDO sends false as '', which strict mode refuses for a TINYINT(1): bools go as 1/0. */
     protected function prepareBindings(array $bindings): array
     {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Driver;
 
+use Preflow\Data\ExclusiveWrites;
 use Preflow\Data\LocaleValue;
 use Preflow\Data\Locales;
 use Preflow\Data\Query;
@@ -11,8 +12,11 @@ use Preflow\Data\ResultSet;
 use Preflow\Data\SortDirection;
 use Preflow\Data\VersionedStorage;
 
-final class JsonFileDriver implements VersionedStorage
+final class JsonFileDriver implements VersionedStorage, ExclusiveWrites
 {
+    /** @var array<string, true> types whose lock this driver holds (exclusive() nests) */
+    private array $locked = [];
+
     public function __construct(
         private readonly string $basePath,
         private readonly ?string $cacheDir = null,
@@ -246,14 +250,39 @@ final class JsonFileDriver implements VersionedStorage
     }
 
     /**
-     * Checks and writes under an exclusive lock on the type's lock file (`.lock` in its folder,
-     * which no query reads), so two version-checked writers of the type take turns.
+     * Checks and writes under the type's lock (exclusive()), so two version-checked writers of
+     * the type take turns.
      */
     public function saveIfVersion(string $type, string|int $id, array $data, string $versionField, int $expected, string $idField = 'uuid'): bool
     {
         self::assertSafe($type, $id);
         if (($data[$versionField] ?? null) === null) {
             throw new \InvalidArgumentException("saveIfVersion() needs the version to write in [{$versionField}].");
+        }
+
+        return $this->exclusive($type, function () use ($type, $id, $data, $versionField, $expected, $idField): bool {
+            $stored = $this->findOne($type, $id, $idField);
+            $current = $stored === null ? null : (int) ($stored[$versionField] ?? 0);
+            if ($stored === null ? $expected !== 0 : $current !== $expected) {
+                return false;
+            }
+            $this->save($type, $id, $data, $idField);
+
+            return true;
+        });
+    }
+
+    /**
+     * Holding an exclusive lock on the type's lock file (`.lock` in its folder, which no query
+     * reads); a nested call for the type runs inside the lock this driver already holds.
+     */
+    public function exclusive(string $type, \Closure $fn): mixed
+    {
+        if (!self::safeName($type)) {
+            throw new \InvalidArgumentException('Not a usable JSON storage type: ' . json_encode($type, JSON_INVALID_UTF8_SUBSTITUTE));
+        }
+        if (isset($this->locked[$type])) {
+            return $fn();
         }
         $dir = $this->typeDir($type);
         if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) {
@@ -263,16 +292,11 @@ final class JsonFileDriver implements VersionedStorage
         if ($lock === false || !flock($lock, LOCK_EX)) {
             throw new \RuntimeException("Could not lock {$dir}/.lock.");
         }
+        $this->locked[$type] = true;
         try {
-            $stored = $this->findOne($type, $id, $idField);
-            $current = $stored === null ? null : (int) ($stored[$versionField] ?? 0);
-            if ($stored === null ? $expected !== 0 : $current !== $expected) {
-                return false;
-            }
-            $this->save($type, $id, $data, $idField);
-
-            return true;
+            return $fn();
         } finally {
+            unset($this->locked[$type]);
             flock($lock, LOCK_UN);
             fclose($lock);
         }

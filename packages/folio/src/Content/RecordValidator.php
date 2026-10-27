@@ -46,15 +46,17 @@ final class RecordValidator
 
     /**
      * Per-field rules: the JSON "validate" list plus the field type's own rules
-     * (e.g. select's in:…, date's format) and, for a unique or indexed string, its length limit. Keyed by field, because the data
+     * (e.g. select's in:…, date's format) and, for a unique or indexed string or a unique
+     * field's scope, its length limit. Keyed by field, because the data
      * layer merges extra rules per field. A "readonly" field gets an empty list:
-     * it is not validated on save.
+     * it is not validated on save (nor checked for being unique).
      *
      * @return array<string, list<string>>
      */
     public function rules(TypeDefinition $typeDef): array
     {
         $rules = [];
+        $lengthRules = $this->dm->fieldKinds()->lengthRules($typeDef);
         foreach ($typeDef->fields as $name => $fieldDef) {
             if (self::readonly($fieldDef->config)) {
                 // The editor can't touch it, so its stored value is not checked: it would block
@@ -66,9 +68,8 @@ final class RecordValidator
                 ...$fieldDef->validate,
                 ...$this->fieldTypes->get($fieldDef->type)->rules($fieldDef->config),
             ]));
-            $lengthRule = $this->dm->fieldKinds()->lengthRule($fieldDef);
-            if ($lengthRule !== null) {
-                $merged[] = $lengthRule;
+            if (isset($lengthRules[$name])) {
+                $merged[] = $lengthRules[$name];
             }
             if ($merged !== []) {
                 $rules[$name] = $merged;

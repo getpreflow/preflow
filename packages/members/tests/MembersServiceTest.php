@@ -49,6 +49,24 @@ final class MembersServiceTest extends TestCase
         $this->assertCount(1, $this->container()->get(\Preflow\Data\DataManager::class)->queryType(\Preflow\Members\MembersConfig::TYPE)->get()->items());
     }
 
+    public function test_email_is_unique_even_unvalidated(): void
+    {
+        $members = $this->members();
+        $members->register('ada@example.com', 'Ada', 'correct horse battery', 'en');
+        $dm = $this->container()->get(\Preflow\Data\DataManager::class);
+        $type = $dm->getTypeRegistry()->get(\Preflow\Members\MembersConfig::TYPE);
+        $this->assertSame(true, $type->fields['email']->unique);
+        $this->assertSame(320, $type->fields['email']->length);
+
+        try {
+            $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($type, ['uuid' => 'other', 'email' => 'ada@example.com']), false);
+            $this->fail('a second member on the same address');
+        } catch (\Preflow\Validation\ValidationException $e) {
+            $this->assertSame(['email'], array_keys($e->errors()));
+        }
+        $this->assertCount(1, $dm->queryType(\Preflow\Members\MembersConfig::TYPE)->get()->items());
+    }
+
     public function test_register_normalises_email_and_sets_defaults(): void
     {
         $members = $this->members();

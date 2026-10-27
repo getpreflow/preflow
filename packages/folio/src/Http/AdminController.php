@@ -374,7 +374,10 @@ final class AdminController
             // Once saved, the record exists: a re-rendered form must update it, not create another.
             $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
             $base = $this->prefix . '/' . $type . '/' . $record->getId();
-            $failed = $this->savePublishing($request, $record, $type, $base . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $csrf, $locale, $base . '/edit', $layout);
+            $failed = $this->savePublishing($request, $record, $type, $base . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $csrf, $locale, $base . '/edit', $layout,
+                newAction: $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''),
+                newHeading: FolioText::get('folio.form.new', ['label' => $this->labelFor($type)]),
+            );
             if ($failed !== null) {
                 return $failed;
             }
@@ -1250,7 +1253,7 @@ final class AdminController
      * The #[AfterSave] hooks run once the working copy is saved (after the publish attempt).
      * Returns the form to re-render on a version conflict or a failed publish.
      */
-    private function savePublishing(ServerRequestInterface $request, DynamicRecord $record, string $type, string $action, string $heading, string $csrf, string $locale, string $editUrl, string $layout = '@folio/admin/_layout.twig'): ?ResponseInterface
+    private function savePublishing(ServerRequestInterface $request, DynamicRecord $record, string $type, string $action, string $heading, string $csrf, string $locale, string $editUrl, string $layout = '@folio/admin/_layout.twig', ?string $newAction = null, ?string $newHeading = null): ?ResponseInterface
     {
         $body = (array) $request->getParsedBody();
         $this->applySchedule($record, $type, $body);
@@ -1265,6 +1268,11 @@ final class AdminController
                 notice: FolioText::get('folio.form.conflict'),
                 reloadUrl: $editUrl,
             );
+        } catch (ValidationException $e) {
+            // A unique value another record has: nothing saved, so a new record's form creates it again.
+            return $newAction !== null
+                ? $this->form($type, $record->toArray(), $newAction, $newHeading ?? $heading, $e->errors(), $csrf, 422, $layout, $locale)
+                : $this->form($type, $record->toArray(), $action, $heading, $e->errors(), $csrf, 422, $layout, $locale, $editUrl);
         }
 
         if (($body['_action'] ?? null) === 'publish') {

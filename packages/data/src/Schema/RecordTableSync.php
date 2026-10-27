@@ -9,7 +9,6 @@ use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\Migration\Grammar\Grammars;
 use Preflow\Data\Migration\Schema;
 use Preflow\Data\TypeDefinition;
-use Preflow\Data\TypeFieldDefinition;
 
 /**
  * The table of one SQL-stored type: created when missing, missing columns added. The id is the
@@ -136,7 +135,7 @@ final class RecordTableSync
                 continue;
             }
             if (in_array($name, $scopes, true) && !$field->index) {
-                $field = self::asIndexed($field);
+                $field = $field->withIndex();
             }
             $specs[$name] = new ColumnSpec($name, $this->dm->fieldKinds()->columnKindOf($field), $field->length);
         }
@@ -146,14 +145,6 @@ final class RecordTableSync
         unset($specs[$def->idField]);
 
         return $specs;
-    }
-
-    private static function asIndexed(TypeFieldDefinition $f): TypeFieldDefinition
-    {
-        return new TypeFieldDefinition(
-            $f->name, $f->type, $f->searchable, $f->transform, $f->validate, $f->label, $f->help, $f->config,
-            $f->translatable, $f->labels, $f->helps, $f->unique, true, $f->length,
-        );
     }
 
     /**

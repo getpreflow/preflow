@@ -128,8 +128,8 @@ final class Publisher
     }
 
     /**
-     * Save the working copy without rules (half-finished work is fine), as version
-     * stored + 1. The version check is atomic with the write: of two saves holding the same
+     * Save the working copy without rules (half-finished work is fine) except its unique
+     * fields: a value another record has is refused, as on any save. As version stored + 1. The version check is atomic with the write: of two saves holding the same
      * version, one gets VersionConflict, also when both passed the check at the same time.
      *
      * @param int|null $loadedVersion the _version the editor loaded; null skips the check
@@ -138,9 +138,12 @@ final class Publisher
      *                                the tries reread the same snapshot, so one lost race is
      *                                VersionConflict, or the driver's error on MariaDB/SQLite)
      * @throws VersionConflict
+     * @throws ValidationException validation.unique on a taken unique field (nothing saved)
      */
     public function saveDraft(DynamicRecord $working, ?int $loadedVersion): void
     {
+        // A draft skips the rules, not its unique fields: a value another record has is refused.
+        $this->dm->validateUnique($working);
         // The write itself carries the version it expects (DataManager::saveTypeIfVersion): a
         // save landing between this read and the write makes the write fail, never overwrite.
         // Without a loaded version, a save that lost such a race is retried on the newer version.

@@ -37,4 +37,20 @@ final class SqliteDialectTest extends TestCase
         );
         $this->assertStringEndsWith('DO NOTHING', $this->dialect->upsertSql('posts', ['uuid'], 'uuid'));
     }
+
+    public function test_unique_failures_name_their_columns(): void
+    {
+        $error = static function (string $message): \PDOException {
+            $e = new \PDOException('SQLSTATE[23000]: Integrity constraint violation: 19 ' . $message);
+            $e->errorInfo = ['23000', 19, $message];
+
+            return $e;
+        };
+
+        $this->assertTrue($this->dialect->isPrimaryKeyViolation($error('UNIQUE constraint failed: posts.uuid'), 'posts', 'uuid'));
+        $this->assertFalse($this->dialect->isPrimaryKeyViolation($error('UNIQUE constraint failed: posts.uuid_ext'), 'posts', 'uuid'));
+        $this->assertFalse($this->dialect->isPrimaryKeyViolation($error('NOT NULL constraint failed: posts.uuid'), 'posts', 'uuid'));
+        $this->assertSame(['code', 'purpose'], $this->dialect->uniqueViolation($error('UNIQUE constraint failed: posts.code, posts.purpose'), 'posts', 'uuid')?->columns);
+        $this->assertNull($this->dialect->uniqueViolation($error('UNIQUE constraint failed: posts.uuid'), 'posts', 'uuid'));
+    }
 }

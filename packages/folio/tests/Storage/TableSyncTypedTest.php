@@ -37,7 +37,7 @@ final class TableSyncTypedTest extends TestCase
         $this->assertSame('integer', $schema->columnTypes('event')['open']);
         $this->assertContains('uniq_event_slug', $schema->indexes('event'));
         $this->assertSame('numeric', $schema->columnTypes('event__published')['seats']);
-        $this->assertSame([], self::own($schema->indexes('event__published')));
+        $this->assertSame(['idx_event__published_slug'], self::own($schema->indexes('event__published')), 'the unique field plain indexed, never unique');
         $this->assertSame(['text'], array_values(array_unique($schema->columnTypes('event__revisions'))));
         $this->assertSame([], self::own($schema->indexes('event__revisions')));
         $this->assertSame([], $this->migrateStep());
@@ -55,7 +55,8 @@ final class TableSyncTypedTest extends TestCase
         $this->assertSame('varchar(191)', $schema->columnTypes('event')['slug']);
         $this->assertContains('uniq_event_slug', $schema->indexes('event'));
         $this->assertSame('double', $schema->columnTypes('event__published')['seats']);
-        $this->assertSame(['PRIMARY'], $schema->indexes('event__published'));
+        $this->assertEqualsCanonicalizing(['PRIMARY', 'idx_event__published_slug'], $schema->indexes('event__published'), 'the unique field plain indexed, never unique');
+        $this->assertSame('varchar(191)', $schema->columnTypes('event__published')['slug']);
         $this->assertSame(['varchar(191)', 'longtext'], array_values(array_unique($schema->columnTypes('event__revisions'))), 'the uuid key, then text');
         $this->assertSame(['PRIMARY'], $schema->indexes('event__revisions'));
         $this->assertSame([], $this->migrateStep());

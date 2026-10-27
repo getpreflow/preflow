@@ -21,4 +21,5 @@ return [
     'in' => 'Muss eines davon sein: :values.',
     'regex' => 'Das Format ist ungültig.',
     'confirmed' => 'Die Bestätigung stimmt nicht überein.',
+    'unique' => 'Dieser Wert ist bereits vergeben.',
 ];

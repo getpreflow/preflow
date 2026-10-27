@@ -11,6 +11,7 @@ use Preflow\Data\DeletedBy;
 use Preflow\Data\DeletePlan;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
+use Preflow\Validation\ValidationException;
 use Nyholm\Psr7\ServerRequest;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -128,7 +129,12 @@ final class Members
             'last_login_at' => '',
             'auth_epoch' => '0',
         ] + $extra);
-        $this->dm->saveType($record, false);
+        try {
+            $this->dm->saveType($record, false);
+        } catch (ValidationException $e) {
+            // Registered by someone else between the check and the write.
+            throw isset($e->errors()['email']) ? new EmailTakenException($email) : $e;
+        }
         $this->events?->dispatch(MemberEvents::REGISTERED, ['member' => $record, 'request' => $request]);
         if ($emailVerified) {
             ($this->confirmation)()->confirm($record, $request ?? self::currentRequest());

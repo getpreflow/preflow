@@ -12,6 +12,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\SortDirection;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
+use Preflow\Validation\ValidationException;
 
 /**
  * Codes that grant something for one purpose (config/codes.php): readable codes (a book code,
@@ -30,17 +31,22 @@ final class Codes
     public const string STORAGE = 'codes';
     public const string REDEMPTIONS = 'code_redemption';
 
+    /** Random codes tried before issue() gives up on finding a free one. */
+    private const int ISSUE_ATTEMPTS = 3;
+
     /** @var array<string, Purpose> */
     private readonly array $purposes;
     private readonly int $throttleMax;
     private readonly int $throttleWindow;
     private readonly \Closure $clock;
     private readonly string $lockDir;
+    private readonly \Closure $randomCode;
     private ?TypeDefinition $redemptions = null;
 
     /**
      * @param array<string, mixed> $config config/codes.php: purposes (name => label, readable) and throttle (max, window)
      * @param (\Closure(): \DateTimeImmutable)|null $clock
+     * @param (\Closure(): string)|null $randomCode makes a random code (default: 128 bits, base64url)
      */
     public function __construct(
         private readonly DataManager $dm,
@@ -49,6 +55,7 @@ final class Codes
         ?\Closure $clock = null,
         ?string $lockDir = null,
         private readonly ?CodeEvents $events = null,
+        ?\Closure $randomCode = null,
     ) {
         $purposes = [];
         foreach ((array) ($config['purposes'] ?? []) as $name => $purpose) {
@@ -65,6 +72,7 @@ final class Codes
         $this->throttleWindow = (int) ($config['throttle']['window'] ?? 900);
         $this->lockDir = $lockDir ?? sys_get_temp_dir();
         $this->clock = $clock ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
+        $this->randomCode = $randomCode ?? static fn (): string => rtrim(strtr(base64_encode(random_bytes(16)), '+/', '-_'), '=');
     }
 
     /** @return array<string, Purpose> by name */
@@ -83,7 +91,8 @@ final class Codes
      * Issues a code and returns it as stored: a readable one when $code is given (normalised,
      * 4–64 characters A–Z and 0–9, only for purposes that allow readable codes), a random one
      * otherwise. Codes are unique within their purpose. Without $expiresAt a code lives as long
-     * as the purpose's ttl (days) says, if it has one.
+     * as the purpose's ttl (days) says, if it has one. A random code another code of the purpose
+     * has already (found, or refused by the storage) is drawn again.
      *
      * A random code can be bound to a $recipient (an e-mail address, normalised to lower case):
      * it then holds exactly one use, whatever $maxUses says, and redeems only for that address.
@@ -124,31 +133,49 @@ final class Codes
             }
             $form = 'readable';
         } else {
-            $code = rtrim(strtr(base64_encode(random_bytes(16)), '+/', '-_'), '=');
             $form = 'random';
-        }
-        if ($this->find($code, $purpose) !== null) {
-            throw new \InvalidArgumentException("A code like this already exists for purpose [{$purpose}].");
         }
 
         $type = $this->dm->getTypeRegistry()?->get('code')
             ?? throw new \RuntimeException('preflow/codes: the type "code" is not defined (no config/data.php?).');
-        $this->dm->saveType(DynamicRecord::fromArray($type, [
-            $type->idField => bin2hex(random_bytes(16)),
-            'purpose' => $purpose,
-            'code' => $code,
-            'label' => $label,
-            'expires_at' => $expiresAt === null ? null : self::storeTime($expiresAt),
-            'max_uses' => $maxUses,
-            'uses' => 0,
-            'revoked_at' => null,
-            'payload' => json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-            'form' => $form,
-            'recipient' => $recipient,
-            'created_at' => $now->getTimestamp(),
-        ]), false);
+        for ($attempt = 1; ; $attempt++) {
+            if ($form === 'random') {
+                $code = ($this->randomCode)();
+            }
+            $retry = $form === 'random' && $attempt < self::ISSUE_ATTEMPTS;
+            if ($this->find($code, $purpose) !== null) {
+                if ($retry) {
+                    continue;
+                }
+                throw new \InvalidArgumentException("A code like this already exists for purpose [{$purpose}].");
+            }
+            try {
+                $this->dm->saveType(DynamicRecord::fromArray($type, [
+                    $type->idField => bin2hex(random_bytes(16)),
+                    'purpose' => $purpose,
+                    'code' => $code,
+                    'label' => $label,
+                    'expires_at' => $expiresAt === null ? null : self::storeTime($expiresAt),
+                    'max_uses' => $maxUses,
+                    'uses' => 0,
+                    'revoked_at' => null,
+                    'payload' => json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                    'form' => $form,
+                    'recipient' => $recipient,
+                    'created_at' => $now->getTimestamp(),
+                ]), false);
 
-        return $code;
+                return $code;
+            } catch (ValidationException $e) {
+                // Issued by someone else between the check and the write.
+                if (!isset($e->errors()['code'])) {
+                    throw $e;
+                }
+                if (!$retry) {
+                    throw new \InvalidArgumentException("A code like this already exists for purpose [{$purpose}].", 0, $e);
+                }
+            }
+        }
     }
 
     /**

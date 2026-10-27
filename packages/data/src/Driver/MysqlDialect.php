@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Driver;
 
+use Preflow\Data\UniqueViolation;
+
 final class MysqlDialect implements Dialect
 {
     public function quoteIdentifier(string $name): string
@@ -42,11 +44,36 @@ final class MysqlDialect implements Dialect
         return null;
     }
 
-    /** Error 1062 on the key named PRIMARY; any other unique index is a different failure. */
+    /**
+     * Error 1062 on the key named PRIMARY; any other unique index is a different failure. The key
+     * ends the message ("for key 'PRIMARY'", MySQL 8: "for key 'table.PRIMARY'"); the duplicate
+     * value before it may hold any text.
+     */
     public function isPrimaryKeyViolation(\PDOException $e, string $table, string $idField): bool
     {
-        return ($e->errorInfo[1] ?? null) === 1062
-            && (str_contains($e->getMessage(), "for key 'PRIMARY'") || str_contains($e->getMessage(), "for key '{$table}.PRIMARY'"));
+        return ($e->errorInfo[1] ?? null) === 1062 && self::duplicateKey($e, $table) === 'PRIMARY';
+    }
+
+    /** Error 1062 on a key other than PRIMARY, with the key's name. */
+    public function uniqueViolation(\PDOException $e, string $table, string $idField): ?UniqueViolation
+    {
+        if (($e->errorInfo[1] ?? null) !== 1062) {
+            return null;
+        }
+        $key = self::duplicateKey($e, $table);
+
+        return $key === null || $key === 'PRIMARY' ? null : new UniqueViolation($e, $key);
+    }
+
+    /** The key a 1062 names, without MySQL 8's table prefix. */
+    private static function duplicateKey(\PDOException $e, string $table): ?string
+    {
+        $message = (string) ($e->errorInfo[2] ?? $e->getMessage());
+        if (preg_match("/for key '([^']+)'\\s*\$/", $message, $m) !== 1) {
+            return null;
+        }
+
+        return str_starts_with($m[1], $table . '.') ? substr($m[1], strlen($table) + 1) : $m[1];
     }
 
     public function lockingRead(): string

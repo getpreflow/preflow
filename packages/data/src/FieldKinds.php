@@ -86,6 +86,29 @@ final class FieldKinds
         return $kind;
     }
 
+    /**
+     * The length rules of a type's bounded string columns: its unique or indexed string fields and
+     * the scope fields of its unique fields (stored as indexed), by field.
+     *
+     * @return array<string, string>
+     */
+    public function lengthRules(TypeDefinition $def): array
+    {
+        $scopes = [];
+        foreach ($def->uniqueFields() as $scope) {
+            array_push($scopes, ...$scope);
+        }
+        $rules = [];
+        foreach ($def->fields as $name => $field) {
+            $rule = $this->lengthRule(in_array($name, $scopes, true) ? $field->withIndex() : $field);
+            if ($rule !== null) {
+                $rules[$name] = $rule;
+            }
+        }
+
+        return $rules;
+    }
+
     /** The length rule of a unique or indexed string column ("max:191"), or null for any other field. */
     public function lengthRule(TypeFieldDefinition $field): ?string
     {

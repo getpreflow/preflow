@@ -21,4 +21,5 @@ return [
     'in' => 'Doit être l’une de ces valeurs : :values.',
     'regex' => 'Le format n’est pas valide.',
     'confirmed' => 'La confirmation ne correspond pas.',
+    'unique' => 'Cette valeur est déjà utilisée.',
 ];

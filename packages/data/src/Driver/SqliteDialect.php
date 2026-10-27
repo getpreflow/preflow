@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Driver;
 
+use Preflow\Data\UniqueViolation;
+
 final class SqliteDialect implements Dialect
 {
     public function quoteIdentifier(string $name): string
@@ -51,11 +53,32 @@ final class SqliteDialect implements Dialect
             . ($updates === [] ? 'DO NOTHING' : 'DO UPDATE SET ' . implode(', ', $updates));
     }
 
-    /** SQLite names the violated column ("UNIQUE constraint failed: posts.uuid"). */
+    /** SQLite names the violated columns, the primary key alone ("UNIQUE constraint failed: posts.uuid"). */
     public function isPrimaryKeyViolation(\PDOException $e, string $table, string $idField): bool
     {
-        return str_contains($e->getMessage(), "constraint failed: {$table}.{$idField}")
-            && !str_contains($e->getMessage(), "{$table}.{$idField},");
+        return self::uniqueColumns($e, $table) === [$idField];
+    }
+
+    /** A UNIQUE failure on columns other than the primary key alone, with the columns. */
+    public function uniqueViolation(\PDOException $e, string $table, string $idField): ?UniqueViolation
+    {
+        $columns = self::uniqueColumns($e, $table);
+
+        return $columns === null || $columns === [$idField] ? null : new UniqueViolation($e, null, $columns);
+    }
+
+    /** @return list<string>|null the columns of a UNIQUE failure ("UNIQUE constraint failed: t.a, t.b") */
+    private static function uniqueColumns(\PDOException $e, string $table): ?array
+    {
+        if (preg_match('/UNIQUE constraint failed: (.+)$/', (string) ($e->errorInfo[2] ?? $e->getMessage()), $m) !== 1) {
+            return null;
+        }
+        $columns = [];
+        foreach (explode(', ', $m[1]) as $column) {
+            $columns[] = str_starts_with($column, $table . '.') ? substr($column, strlen($table) + 1) : $column;
+        }
+
+        return $columns;
     }
 
     /** No FOR UPDATE: a write locks the whole database, and a transaction reads its own snapshot. */

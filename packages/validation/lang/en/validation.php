@@ -23,4 +23,5 @@ return [
     'in' => 'Must be one of: :values.',
     'regex' => 'Format is invalid.',
     'confirmed' => 'Confirmation does not match.',
+    'unique' => 'This value is already taken.',
 ];

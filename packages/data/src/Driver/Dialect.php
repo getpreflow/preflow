@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Driver;
 
+use Preflow\Data\UniqueViolation;
+
 interface Dialect
 {
     public function quoteIdentifier(string $name): string;
@@ -22,6 +24,9 @@ interface Dialect
 
     /** Whether the failure is a duplicate on the primary key (not on another unique index). */
     public function isPrimaryKeyViolation(\PDOException $e, string $table, string $idField): bool;
+
+    /** The failure as a duplicate on a unique index other than the primary key, or null when it is none. */
+    public function uniqueViolation(\PDOException $e, string $table, string $idField): ?UniqueViolation;
 
     /**
      * What a SELECT appends to lock the rows it reads until the transaction ends (and to read
