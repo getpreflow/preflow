@@ -307,6 +307,10 @@ $dm->relationsTo('designer');   // list<Relation>: every relation, across all ty
 $dm->getTypeRegistry()->keys(); // every type key, sorted
 ```
 
+A site without a models directory has no type registry. A package that defines its types in code
+calls `$dm->ensureTypeRegistry(new TypeRegistry($path))`: it sets that registry only when there is
+none and returns the one in use (the members core does this for its `member` type).
+
 Relations work across storages: a SQL type may point at a JSON type and back.
 
 ## `whereAny` operators
@@ -410,6 +414,10 @@ $dm->executeDeletePlan($plan);
 - The optional third argument, `fn (TypeDefinition $t): array`, names extra definitions that
   hold copies of a type's records (for example a published shadow table). They count toward
   restrictions only.
+- **Who deletes.** The fourth argument, `DeletedBy::Staff` (default) or `DeletedBy::Self`,
+  picks each relation's rule: `Self` applies `onSelfDelete` (unset: `onDelete`), for a person
+  deleting their own record (the members package's account deletion and `members:prune`). Folio's
+  staff deletes pass `Staff`.
 - **The plan is a snapshot.** Records added or changed between `deletePlan()` and
   `executeDeletePlan()` are not part of it; plan and execute close together, and plan again
   if the user confirms later.

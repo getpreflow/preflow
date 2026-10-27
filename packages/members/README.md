@@ -1,8 +1,10 @@
 # preflow/members
 
 Member accounts for a Preflow site: registration with a confirmed address, sign-in and
-sign-out, forgot and reset password, the account page, the member mails and a pluggable
-admission rule. It needs neither Folio nor rbac. On a Folio site, Folio adds the admin: the
+sign-out, forgot and reset password, the account page with self-deletion, the member mails, a
+pluggable admission rule and hooks for a project's own steps. It needs neither Folio nor rbac
+(it requires auth, core, data, routing, i18n, notify, validation, view and devtools). On a
+Folio site, Folio adds the admin: the
 member list with a waiting badge, a state column and a Decision panel (accept or decline with
 an editable message), Settings → Members and the member roles (rbac).
 
@@ -13,6 +15,15 @@ rbac, rbac's roles decide. The member type (`member`) is the package's own
 
 ## Install
 
+Without Folio:
+
+```
+composer require preflow/members
+php preflow migrate
+```
+
+On a Folio site, with the members admin:
+
 ```
 composer require preflow/members
 php preflow folio:extensions:enable rbac
@@ -21,8 +32,11 @@ php preflow migrate
 php preflow folio:extensions:apply
 ```
 
-- Add `Preflow\Members\MembersServiceProvider` to `config/providers.php` (after
+- Add `Preflow\Members\MembersServiceProvider` to `config/providers.php` (on a Folio site after
   `FolioServiceProvider` and `RbacServiceProvider`).
+- Without Folio the owner's settings come from `config/members.php` (see Configuration), the
+  owner decides waiting members with `php preflow members:decide <email> accept|decline`, and
+  the member pages use the package's own layout unless `layout` names the site's.
 - The members admin (the `members` extension: member list, Decision panel, Settings →
   Members) is Folio's, there once this package is installed. Its member roles (`pending`,
   `member`, `rejected`) need the `rbac` extension; booting without it is an error. `folio:extensions:apply` creates the roles that are missing and
@@ -112,6 +126,7 @@ default locale without a prefix):
 
 | Method | Path | Page |
 |---|---|---|
+| GET | `{path}` | the members home: a default landing (greeting, account, sign out) unless the site has its own page there |
 | GET, POST | `{path}/register` | register form; POST registers (same answer for known addresses); GET is a 303 to `register` when that is another page |
 | GET | `{path}/confirm/{token}` | the confirm form (a mail scanner's GET uses nothing) |
 | POST | `{path}/confirm` | confirms; then the admission decides |
@@ -125,9 +140,13 @@ default locale without a prefix):
 | POST | `{path}/account/password` | change the password |
 | POST | `{path}/account/delete` | delete the account, to `register` |
 
-- **The members home (`GET {path}`) is the site's own page** (a toolbox, "my objects"); the
-  package only sends people there: after sign-out, and staff who open the account page.
-  Sign-in, reset and an accepted confirmation go to `landing`.
+- **The members home (`GET {path}`):** a site that answers that path itself (a page
+  `app/pages/members/index.twig`, a controller route, a dynamic `/{slug}` route that matches it)
+  keeps its page; otherwise the package serves `@members/landing.twig` (a greeting, the account
+  link and sign out; signed out or not admitted: to the login). Only routes registered before
+  members boots count: a provider that adds the same path must be listed before
+  `MembersServiceProvider`. Sign-out and staff who open the account page go to `{path}`;
+  sign-in, reset and an accepted confirmation go to `landing`.
 - After a confirmation `Decision::Accept` makes a member, signs them in (remembered) and
   redirects to `landing`; `Decision::Pending` gives the `pending` role, shows the thanks page
   and mails the owner (Members settings `notice_email`, when set). The admission's
@@ -172,8 +191,10 @@ refuses a member who is not admitted (a `LogicException`).
 ## Admission
 
 After a member confirms the e-mail, the configured `Preflow\Members\Admission\Admission`
-decides: `AcceptOnConfirm` (a member at once, the default) or `OwnerApproval` (the owner
-decides in Folio). A site's own rule implements the interface:
+decides: `AcceptOnConfirm` (a member at once, the default) or `OwnerApproval` (opt-in:
+`'admission' => OwnerApproval::class`; the owner decides in Folio's Decision panel, with
+`members:decide`, or in code with `Members::decide()`). A site's own rule implements the
+interface:
 
 ```php
 interface Admission
@@ -204,10 +225,85 @@ Site fields come after the package's in the edit form; `"after": "name"` on a fi
 right after that field instead. The same works for the Members settings (`members_settings.json`
 with `"extends": true`).
 
+An admission that also implements `Preflow\Members\Admission\ComposesName` supplies the stored
+name from the site's own fields (first and last name): `name(array $input): string`. The
+register form then has no name field, a posted `name` is ignored, and `validate()` sees the
+composed name as `$input['name']`; an empty one fails like a missing name.
+
+## Hooks
+
+`Preflow\Members\MemberEvents` (a container singleton) lets a project add its steps without
+watching routes. Register listeners in a provider's `boot()`:
+
+```php
+$events = $container->get(MemberEvents::class);
+$events->on(MemberEvents::REGISTERED, fn (array $p) => $invitations->accept($p['member'], $p['request']));
+$events->on(MemberEvents::DELETING, fn (array $p) => !$certificates->pendingFor($p['member'])); // false refuses
+```
+
+| Event | Payload | When |
+|---|---|---|
+| `REGISTERED` | `member`, `request` (null when none was given) | a new account (the form, or `Members::register()`) |
+| `CONFIRMED` | `member`, `request` | the address is proven (the link, or `emailVerified`); before the admission decides |
+| `DECIDED` | `member`, `role` (`member`, `pending`, `rejected`) | the admission or the owner decided |
+| `SIGNED_IN` | `member`, `request` | the member pages or `SignIn::in()` signed the member in |
+| `DELETING` | `member`, `plan`, `by_member` | before an account is deleted; `false` refuses |
+| `DELETED` | `id`, `member` (as it was), `plan` (applied), `by_member` | after |
+| `DELETION_REFUSED` | `member`, `plan`, `reason` (`restricted`, `listener`), `notice_sent` | the member's own deletion was refused; return `true` when you told the site |
+
+`on()` with an unknown event name throws. Listeners run in registration order. An exception in
+a `DELETING` listener propagates (nothing has changed yet); in every other listener it is logged,
+the remaining listeners run and the member action stands. `by_member` is false for a clean-up
+no one asked for (`members:prune`, an account removed after its confirm mail failed); those
+raise no `DELETION_REFUSED` and mail nobody.
+
+Interfaces a package or site may bind (all optional except the settings, which have a default):
+
+- `MembersSettings`: `registrationOpen()`, `noticeEmail()`, `acceptMessage($locale)`,
+  `declineMessage($locale)`. The default reads `config/members.php`; Folio's members admin
+  binds Settings → Members.
+- `MemberLinks::decisionUrl($member)`: the page where the owner decides, linked from the owner's
+  mails. Folio's members admin binds the member's edit page; without a binding the mails are
+  text only.
+- `MemberDeleteCopies::of($definition)`: tables holding copies of records (Folio's published
+  snapshots), counted by a `restrict` self rule.
+- `PageLocale::set($locale)`: told a member page's locale before it renders (Folio sets its
+  content locale, so the site layout renders in the page's language).
+- `MembersDefaults`: a package's defaults under the site's `config/members.php` (Folio names its
+  frontend layout as `layout`).
+
+## Deleting an account
+
+A member deletes their own account on the account page; `members:prune` removes unconfirmed and
+declined ones. Both go through the data layer's delete plan with the **self rules**: a relation
+pointing at `member` may say what happens when the member deletes themselves, apart from what
+staff deletes do:
+
+```json
+"owner": { "type": "relation", "to": "member", "onDelete": "restrict", "onSelfDelete": "detach" }
+```
+
+Without `onSelfDelete` the relation's `onDelete` applies to both. `Members::delete($member)`
+returns a `DeletionResult` (`deleted`, `refused`, `told`, `plan`, `reason`):
+
+- a `restrict` self rule, or a `DELETING` listener returning `false`, refuses: nothing is
+  deleted, the owner gets a notice mail at `notice_email` (when set) and `DELETION_REFUSED` is
+  raised;
+- the account page then answers 409 and tells the member either that the site has been told
+  (the notice went out, or a listener returned `true`) or to contact the site; the member stays
+  signed in;
+- otherwise detaches and cascades are applied, then the member is deleted, signed out and their
+  tokens and remember rows revoked.
+
+On a Folio site the deletion also reaches published snapshots (cleared pointers, unpublished
+cascaded pages). Folio's own record hooks (`#[AfterDelete]` and the like on admin types) do not
+run for the records a member's deletion detaches or deletes.
+
 ## Overriding templates
 
-The pages are `@members/{register,confirm,login,forgot,reset,resend,check-inbox,thanks,closed,account}.twig`
-plus the shared `_card.twig`, all extending the configured `layout`. `@members/decision.twig` is
+The pages are `@members/{landing,register,confirm,login,forgot,reset,resend,check-inbox,thanks,closed,account}.twig`
+plus the shared `_card.twig`, all extending the configured `layout` (default `@members/_layout.twig`,
+a standalone page; a Folio site's default is `@folio/frontend/_site.twig`). `@members/decision.twig` is
 the Decision panel of Folio's members admin (a fragment in the admin, not a page). A site overrides one by
 putting a file of the same name in `resources/members/` (searched before the package; a new
 directory needs a fresh request to be picked up).
@@ -235,9 +331,10 @@ too. Words are changed in the lang files (see Copy and mails), not in templates.
 ## Cron
 
 Run `members:prune` nightly (the package registers the command through
-`extra.preflow.commands`, `preflow list` shows it). That needs preflow/devtools 0.26; with an
-older devtools only the command is missing, the member pages and Folio work (the package
-conflicts with auth, data, folio and i18n before 0.26, not with devtools):
+`extra.preflow.commands`, `preflow list` shows it, as `members:decide`). That needs
+preflow/devtools 0.26; with an older devtools only the commands are missing, the member pages and
+Folio work (the package conflicts with auth, core, data, folio, i18n and routing before 0.38, not
+with devtools):
 
 ```
 17 3 * * * cd /path/to/site/current && php preflow members:prune
@@ -246,7 +343,12 @@ conflicts with auth, data, folio and i18n before 0.26, not with devtools):
 Unconfirmed accounts go after `retention.unconfirmed_days` (7, from registration), declined
 ones after `retention.declined_days` (30, from the decision); expired tokens, remember rows and
 throttle hits are pruned. It prints counts only (no addresses or names) and a lock file in
-`storage/locks` keeps two runs from overlapping.
+`storage/locks` keeps two runs from overlapping. An account a self rule or a hook keeps is
+counted (`; kept N (refused by a self rule or a hook)`, only when N > 0).
+
+`members:decide <email> accept|decline` decides a member waiting for the owner (`OwnerApproval`
+without Folio's panel): the accepted or declined mail goes out first (the Members settings'
+message, else the lang files'), and only when it was sent the role changes.
 
 ## Locales
 
@@ -290,8 +392,38 @@ return ['mail' => ['confirm' => ['subject' => 'Bitte bestätige deine Adresse']]
   `reset_ttl`: `LinkValidity::confirm($locale)` / `reset($locale)` give "24 hours", "eine Stunde"
   (lang keys `validity.hours` / `validity.minutes`, plural forms).
 - The HTML part renders `mail.layout` (default the neutral `@members/mail/layout.twig`) with
-  `lang`, `subject`, `accent` and `paragraphs` (escaped text, URLs linked in the accent colour).
+  `lang`, `subject`, `accent` and `paragraphs` (escaped text, URLs linked in the accent colour),
+  and for the confirm, reset and existing-account mails `action` (`{label, url}`, the primary
+  link; label from `mail.{confirm,reset,existing}.action`). The shipped layout shows it as a
+  button with the URL below; a site's layout may ignore it. The text part is unchanged.
 - The sender is `mail.from_name` with the address of `config/notify.php` `channels.email.from`;
   without a from name the channel's own sender applies.
 - When a new member's confirm mail fails, remove the account with
   `Members::removeIfUnconfirmed($id)`: it keeps a member who confirmed meanwhile.
+
+## Upgrading to 0.38
+
+The full list is in the framework's 0.38 release checklist; what a site with members checks:
+
+- **The default admission is `AcceptOnConfirm`** (was owner approval). A site that wants the
+  owner to decide sets `'admission' => Preflow\Members\Admission\OwnerApproval::class`.
+- **The default layout** is the package's `@members/_layout.twig` on a site without Folio; a
+  Folio site keeps `@folio/frontend/_site.twig`. Set `layout` to keep a layout of your own.
+- **No Folio or rbac needed.** The package no longer requires them; Folio carries the members
+  admin when this package is installed (it still needs the `rbac` extension).
+- **`config/auth.php`:** the provider class is `Preflow\Auth\Record\RecordUserProvider`.
+  `Preflow\Folio\Users\RecordUserProvider` keeps working for one release (a deprecation is
+  logged); `new` with the old constructor (a `TypeCatalog`) no longer works.
+- **`preflow migrate`** on SQL storage: the member type gains the hidden field `next`; without
+  the column a registration that carries a `next` fails.
+- **`next.allow`:** `next` keeps today's rule (member pages only) unless you add prefixes.
+- **`GET {path}`** now has a default landing where the site had none (a 404 before). A site route
+  on that path wins.
+- **`Members::delete()`** returns a `DeletionResult` and follows the self rules (`onSelfDelete`,
+  else `onDelete`): a `restrict` relation now keeps the account instead of leaving a dangling id.
+- **`MemberEvents`, `ComposesName`, the mail `action`** are new; a mail layout that ignores
+  `action` is unchanged.
+- **Owner notice without Folio:** without a `MemberLinks` binding the notice uses
+  `mail.notice.body_without_link`; a site that overrode only `mail.notice.body` gets the package's
+  text without the link there.
+- **`Links::folioMember()`** is deprecated (unused by the package) and goes in the next release.

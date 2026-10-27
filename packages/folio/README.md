@@ -857,8 +857,16 @@ copied from it.
 `Extension.php` (class `App\Folio\{Dir}\Extension`). A package names its extension class
 in `composer.json`: `"extra": {"folio": {"extension": "Vendor\\Pkg\\Extension"}}`. Folio
 carries one itself: the members admin (`members`, in `src/Members/`), there when Composer lists
-`preflow/members`; it needs the `rbac` extension enabled. A project's or package's own extension
-named `members` takes its place.
+`preflow/members` (in `vendor/composer/installed.json`) and its classes load; it needs the `rbac`
+extension enabled. A project's or package's own extension named `members` takes its place. Until
+0.38 the admin was in the members package; an `installed.json` that still names
+`Preflow\Members\Extension` is ignored, and `folio-extensions.cache` rebuilds by itself. With the
+admin enabled Folio binds Settings → Members as the members core's `MembersSettings` and the
+member's edit page as `MemberLinks` (the link in the owner's mails). Whenever `preflow/members` is
+installed it binds its content locale as `PageLocale`, names `@folio/frontend/_site.twig` as the
+member pages' default `layout` (`MembersDefaults`), and it also counts published snapshots in a member's own deletion
+(`MemberDeleteCopies`) and carries the deletion into them (pointers cleared, cascaded pages
+unpublished; the snapshot gets no revision entry).
 
 ```php
 // app/Folio/Demo/Extension.php

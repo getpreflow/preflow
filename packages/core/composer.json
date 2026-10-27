@@ -16,6 +16,7 @@
         "phpunit/phpunit": "^11.0"
     },
     "conflict": {
+        "preflow/auth": "<0.38",
         "preflow/data": "<0.28"
     },
     "autoload": {

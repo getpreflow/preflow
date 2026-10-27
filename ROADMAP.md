@@ -1,6 +1,6 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-26 (v0.37.0 released)
+> Last updated: 2026-10-27 (v0.37.0 released, v0.38.0 prepared)
 
 ## Current State
 
@@ -18,11 +18,13 @@ BG Genius's Phase 1 is live; lists (0.29), screen assets (0.30), cache (0.33) an
 What its Phases 3–5 still need from the framework, with the matching follow-ups from the
 holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port" below):
 
-1. **Members split into a core and a Folio adapter**, together with the members follow-ups BG Genius needs:
+1. ~~**Members split into a core and a Folio adapter**, together with the members follow-ups BG Genius needs:
    `next` through registration and confirmation (host invitation → register → confirm → into the group), a
    landing page at `/konto` (base of the member area / host group view), rehash on sign-in (members and Folio
    staff; migrated BG Genius admin users), member self-deletion through the delete plan or hooks (progress, group
-   memberships, certificates), a primary link (`action`) for the mail layout, the admission composing the name
+   memberships, certificates), a primary link (`action`) for the mail layout, the admission composing the name~~
+   — done in 0.38 (prepared, not released). The audit of members against the rule below is in
+   `docs/superpowers/plans/2026-10-26-release-0.38-checklist.md`; its open findings wait for the owner
 2. **Codes:** a redemption hook and email delivery for invitations (builds on 1's `next`)
 3. **Data integrity for the flow editor and games:** compare-and-set draft save (`UPDATE … WHERE _version = ?`),
    unique fields (game slug, codes) and typed columns, saving null clears an SQL column
@@ -131,13 +133,13 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 
 ### Security and data integrity
 
-- **Rehash on sign-in (members, Folio staff login):** after a successful `verify()`, call `needsRehash()` and store a fresh hash (old `$1$` MD5-crypt and low-cost bcrypt hashes are never upgraded today). `needsRehash()` exists in `NativePasswordHasher`; no login calls it
+- ~~**Rehash on sign-in (members, Folio staff login):**~~ done in 0.38 (`PasswordRehash`, `UpdatesPasswordHash`): after a successful `verify()`, call `needsRehash()` and store a fresh hash (old `$1$` MD5-crypt and low-cost bcrypt hashes are never upgraded today). `needsRehash()` exists in `NativePasswordHasher`; no login calls it
 - **CSRF without a session (core):** `CsrfMiddleware` skips requests without a session, so public POSTs on sites with `session.paths` (like buttons, contact forms) are unprotected. Wanted: a stateless (cookieless) token for chosen paths, or a session started on POST only
 - **Translation params in one pass (i18n):** `Translator::replaceParams` substitutes sequentially (`str_replace` per param), so a value containing `:other` is replaced again; use one `strtr` pass. Also a plain-text variant of `t()` (not html-safe, params unescaped) for values passed to functions that escape themselves (e.g. `media_image(…, {alt: …})`), and make preflow/twig's unused `TranslationExtension::t()` escape like the i18n provider
 - **Saving null clears SQL columns (data):** `PdoDriver::save()` drops null values before the upsert, so `set(field, null)` keeps the old value (sites clear with `''`)
 - **Unique fields and typed columns (data/Folio):** a unique-field rule (validated; upsert by primary key only, so a duplicate can't overwrite another record) and typed columns (numbers stored as numbers, real indexes instead of LONGTEXT prefix indexes)
 - **Compare-and-set draft save and sequences (Folio publishing):** `Publisher::saveDraft()` reads `_version` then writes (not atomic); wanted `UPDATE … WHERE _version = ?` and a sequence / next-number helper for public numbers
-- **Member self-deletion and delete plans (members):** `Members::delete()` (account page, `members:prune`) uses `deleteType()` and ignores relations and Folio's delete plan (`restrict` relations are bypassed, e.g. orders keep a dangling member id). Wanted: delete through the delete plan, or before/after hooks
+- ~~**Member self-deletion and delete plans (members):**~~ done in 0.38 (`onSelfDelete`, `MemberEvents`, `DeletionResult`): `Members::delete()` (account page, `members:prune`) uses `deleteType()` and ignores relations and Folio's delete plan (`restrict` relations are bypassed, e.g. orders keep a dangling member id). Wanted: delete through the delete plan, or before/after hooks
 - **Private files: session and owners (media/Folio):** private files live at `/files/{id}`, outside Folio's session path, so sites must add `/files` to `session.paths`; serve them under Folio's own path (e.g. `{prefix}/files`) or start the session there. Optional: a per-owner rule (callback or record field) so members can see their own private files
 
 ### Media and assets
@@ -156,10 +158,10 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 
 ### Members
 
-- **Admission supplies the name:** registration requires one posted `name`; let an admission compose it (e.g. `Admission::name($input)`) or let a site drop the `name` field (sites asking for first and last name)
-- **`next` through registration and confirmation:** kept today only on sign-in; carry a checked `next` with the pending account so a checkout can continue after registering
-- **A landing page at `GET /konto`:** confirm and login redirect there, but the package has no page; a configurable template or callback
-- **Primary link to the mail layout:** `MemberMailer` passes only lang, subject, accent and paragraphs; pass `action: {label, url}` for confirm, reset and "existing account" mails
+- ~~**Admission supplies the name:**~~ done in 0.38 (`ComposesName`): registration requires one posted `name`; let an admission compose it (e.g. `Admission::name($input)`) or let a site drop the `name` field (sites asking for first and last name)
+- ~~**`next` through registration and confirmation:**~~ done in 0.38 (`next.allow`): kept today only on sign-in; carry a checked `next` with the pending account so a checkout can continue after registering
+- ~~**A landing page at `GET /konto`:**~~ done in 0.38 (a default landing; the site's own route wins): confirm and login redirect there, but the package has no page; a configurable template or callback
+- ~~**Primary link to the mail layout:**~~ done in 0.38 (`action` for confirm, reset and existing): `MemberMailer` passes only lang, subject, accent and paragraphs; pass `action: {label, url}` for confirm, reset and "existing account" mails
 - **Italian (`it`) texts:** the package ships en, de and fr
 
 ### rbac
@@ -180,6 +182,28 @@ The base exists (`TokenGuard`, `PersonalAccessToken`, `AuthMiddleware`). Missing
 
 ---
 
+## Later: SEO and GEO
+
+Owner (2026-10-26). What exists today: canonical links and `hreflang` alternates (0.35), `noindex` on the
+member pages. Later, as generic mechanisms (a site's own wording and data stay in the site):
+
+- **`sitemap.xml` and `robots.txt`:** generated from the routes and Folio's published pages (per locale, with
+  `hreflang`), a hook for a site's own entries; `robots.txt` from config, pointing at the sitemap
+- **Meta and Open Graph helpers:** title, description, image (a media preset), `og:*` and Twitter cards from one
+  template helper; a Folio SEO panel on publishing types (title, description, image, noindex per page and locale)
+- **Structured data (JSON-LD):** helpers for the common types (Organization, WebSite, Article, BreadcrumbList,
+  Product, Event), filled from a record or a page
+- **301 redirects on slug change:** Folio remembers a page's old paths and redirects them; a redirects list in
+  Settings for hand-made entries
+- **GEO (generative engine optimisation):** `llms.txt` and plain-text/Markdown views of pages for AI search.
+  Owner's idea: an `{% apply geo %}` block in component templates, like `{% apply css %}`, holding the
+  component's Markdown; the blocks of a page are collected in render order and served as `/page.md` and for
+  `Accept: text/markdown`, and listed in `llms.txt`
+- **An SEO audit command:** `preflow seo:audit` checks pages for a missing title or description, duplicate titles,
+  missing `alt` texts, broken internal links and `hreflang` pairs without their counterpart
+
+---
+
 ## Lower Priority
 
 - **Error page customization** — app-level 404/500 templates
@@ -189,6 +213,31 @@ The base exists (`TokenGuard`, `PersonalAccessToken`, `AuthMiddleware`). Missing
 ---
 
 ## Completed
+
+### v0.38.0 (prepared)
+
+- **Members split:** `preflow/members` is a core without Folio and rbac (registration, confirmation, sign-in and
+  out, forgot and reset, account page with self-deletion, mails, `members:prune`, `members:decide`); it requires
+  auth, core, data, routing and i18n. Folio carries the members admin (Members list, Decision panel, Settings →
+  Members, the rbac roles) and switches it on when `preflow/members` is installed. Without rbac an admitted member
+  has `members.access`; the member state stays in `roles`
+- **Admission:** the default is `AcceptOnConfirm`; `OwnerApproval` stays, opt-in; `ComposesName` lets an admission
+  compose the stored name
+- **`next`:** checked the same way for sign-in, registration and confirmation (kept with the pending account,
+  hidden member field `next`); `next.allow` widens the default (member pages only)
+- **Verified accounts:** `Members::register(…, emailVerified: true)` and `SignIn::in()` for a project that proved
+  the address itself
+- **Hooks:** `MemberEvents` (registered, confirmed, decided, signed in, deleting, deleted, deletion refused);
+  `MembersSettings`, `MemberLinks`, `MemberDeleteCopies`, `PageLocale`, `MembersDefaults` interfaces and defaults
+- **Self-deletion through the delete plan:** relations take `onSelfDelete` (data, `DeletedBy`); `Members::delete()`
+  returns a `DeletionResult`; a refusal tells the owner (`notice_email`) and the member; Folio carries the deletion
+  into published snapshots
+- **Default landing at `GET {path}`**, mail `action` (a primary button) for the confirm, reset and existing mails
+- **auth:** `RecordUser` / `RecordUserProvider` moved from Folio to `Preflow\Auth\Record` (old names aliased for one
+  release), `RoleField`, `PasswordRehash` and `UpdatesPasswordHash` (rehash on sign-in for members and Folio staff),
+  `Access::resolver()`; routing `RoutePattern`; data `ensureTypeRegistry()`
+- Constraints: members requires auth, core, data, routing and i18n `^0.38` and conflicts with Folio `<0.38`; Folio
+  requires auth and data `^0.38` and conflicts with members `<0.38`; core conflicts with auth `<0.38`
 
 ### v0.37.0 (prepared)
 

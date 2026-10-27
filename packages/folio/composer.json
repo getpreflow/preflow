@@ -6,12 +6,12 @@
     "require": {
         "php": ">=8.4",
         "preflow/core": "^0.34 || @dev",
-        "preflow/data": "^0.37 || @dev",
+        "preflow/data": "^0.38 || @dev",
         "preflow/view": "^0.1 || @dev",
         "preflow/routing": "^0.1 || @dev",
         "preflow/form": "^0.1 || @dev",
         "preflow/validation": "^0.37 || @dev",
-        "preflow/auth": "^0.27 || @dev",
+        "preflow/auth": "^0.38 || @dev",
         "preflow/components": "^0.1 || @dev",
         "preflow/htmx": "^0.1 || @dev",
         "preflow/i18n": "^0.37 || @dev",
@@ -29,11 +29,12 @@
         "preflow/members": "Member accounts; Folio adds their admin (the built-in extension \"members\", which needs preflow/rbac)"
     },
     "conflict": {
-        "preflow/auth": "<0.27",
+        "preflow/auth": "<0.38",
         "preflow/core": "<0.34",
-        "preflow/data": "<0.37",
+        "preflow/data": "<0.38",
         "preflow/i18n": "<0.37",
         "preflow/media": "<0.36",
+        "preflow/members": "<0.38",
         "preflow/notify": "<0.25",
         "preflow/validation": "<0.37"
     },
