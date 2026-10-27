@@ -19,7 +19,7 @@ use Preflow\Data\TypeFieldDefinition;
  * for links). Codes are bearer tokens: they are matched with hash_equals after a lookup by
  * purpose, and redemptions record who redeemed, never an IP address or user agent.
  *
- * Codes are the Folio type "code" (storage alias "codes"); redemptions are the internal table
+ * Codes are the data type "code" (storage alias "codes"); redemptions are the internal table
  * code_redemption on the same storage, never in the TypeCatalog, so neither is exported.
  * redeem() counts a use atomically, so max_uses holds under concurrent redeems: on a SQL
  * storage one conditional UPDATE, on the JSON driver a file lock in $lockDir around the
@@ -111,7 +111,7 @@ final class Codes
         }
 
         $type = $this->dm->getTypeRegistry()?->get('code')
-            ?? throw new \RuntimeException('preflow/codes needs the Folio type "code" (enable the codes extension).');
+            ?? throw new \RuntimeException('preflow/codes: the type "code" is not defined (no config/data.php?).');
         $this->dm->saveType(DynamicRecord::fromArray($type, [
             $type->idField => bin2hex(random_bytes(16)),
             'purpose' => $purpose,
@@ -215,7 +215,7 @@ final class Codes
     private function countUse(string $codeId): bool
     {
         $type = $this->dm->getTypeRegistry()?->get('code')
-            ?? throw new \RuntimeException('preflow/codes needs the Folio type "code" (enable the codes extension).');
+            ?? throw new \RuntimeException('preflow/codes: the type "code" is not defined (no config/data.php?).');
         $driver = $this->dm->driver($type->storage);
 
         if ($driver instanceof PdoDriver) {

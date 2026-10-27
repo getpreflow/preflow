@@ -16,8 +16,8 @@ use Preflow\Folio\Field\FieldTypeRegistry;
 
 /**
  * Binds Codes (purposes and throttle from config/codes.php; a missing file means no purposes)
- * and registers the code_redemption migration. When the Folio extension "codes" is enabled
- * (config/folio/extensions.json), it requires the storage alias "codes" at boot and registers
+ * and registers the code_redemption migration. At boot it defines the type "code" (CodeType);
+ * when the Folio extension "codes" is enabled (config/folio/extensions.json), it also registers
  * the field type codes_purpose.
  */
 final class CodesServiceProvider extends ServiceProvider
@@ -40,14 +40,12 @@ final class CodesServiceProvider extends ServiceProvider
 
     public function boot(Container $container): void
     {
-        if (!$container->get(ExtensionRegistry::class)->isEnabled('codes')) {
+        CodeType::define($container);
+
+        // The Folio extension (still here): only when Folio is installed and the extension enabled.
+        if (!$container->bound(ExtensionRegistry::class) || !$container->get(ExtensionRegistry::class)->isEnabled('codes')) {
             return;
         }
-        $dm = is_file($container->get(Application::class)->basePath('config/data.php')) ? $container->get(DataManager::class) : null;
-        if ($dm === null || !in_array(Codes::STORAGE, $dm->driverNames(), true)) {
-            throw new \RuntimeException("The codes extension stores codes in the storage alias [codes], which is not configured: add 'aliases' => ['codes' => '<driver>'] to config/data.php (a SQL driver such as 'sqlite').");
-        }
-
         $container->get(FieldTypeRegistry::class)->register(new PurposeFieldType($container->get(Codes::class)->purposes()));
     }
 

@@ -492,21 +492,16 @@ final class CodesTest extends TestCase
         $codes->issue('members.book', [], 'book-1234');
     }
 
-    public function test_missing_codes_alias_throws_at_boot(): void
+    public function test_missing_codes_alias_falls_back_to_default_storage(): void
     {
-        $this->dataConfig([]);
-        try {
-            Application::create($this->dir)->boot();
-            $this->fail('Booting with the codes extension and no codes alias must throw.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString("'aliases' => ['codes' => '<driver>']", $e->getMessage());
-        }
-
-        // Without the extension enabled, nothing is required.
+        // With the Folio extension enabled its own model file defines the type first (until it moves, Task 2).
         $this->write('config/folio/extensions.json', '{"enabled": {}}');
+        $this->dataConfig([]);
         $app = Application::create($this->dir);
         $app->boot();
-        $this->assertInstanceOf(Application::class, $app);
+        $type = $app->container()->get(DataManager::class)->getTypeRegistry()?->get('code');
+        $this->assertNotNull($type);
+        $this->assertSame('default', $type->storage);
     }
 
     public function test_purpose_field_offers_configured_purposes(): void

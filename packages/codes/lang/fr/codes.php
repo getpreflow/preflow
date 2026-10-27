@@ -16,6 +16,7 @@ return [
             'uses' => ['label' => 'Utilisations'],
             'revoked_at' => ['label' => 'Révoqué le'],
             'form' => ['label' => 'Forme'],
+            'recipient' => ['label' => 'Destinataire'],
         ],
     ],
     'options' => [

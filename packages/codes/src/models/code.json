@@ -19,6 +19,7 @@
         "uses": { "type": "number", "label": "Uses", "readonly": true },
         "revoked_at": { "type": "string", "label": "Revoked at", "readonly": true },
         "payload": { "type": "string", "label": "Payload (JSON)", "hidden": true, "searchable": false },
-        "form": { "type": "select", "label": "Form", "readonly": true, "options": { "readable": "Readable", "random": "Random" }, "validate": ["required", "in:readable,random"] }
+        "form": { "type": "select", "label": "Form", "readonly": true, "options": { "readable": "Readable", "random": "Random" }, "validate": ["required", "in:readable,random"] },
+        "recipient": { "type": "string", "label": "Recipient", "readonly": true }
     }
 }
