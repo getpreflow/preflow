@@ -125,6 +125,7 @@ final class MembersServiceProvider extends ServiceProvider
     public function boot(Container $container): void
     {
         $container->get(Admission::class);
+        $container->get(MembersConfig::class)->nextAllow(); // a bad next.allow entry fails here, not on the first sign-in
         MemberType::define($container);
         self::access($container);
         self::routes($container);

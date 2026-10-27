@@ -171,6 +171,16 @@ final class MembersConfigTest extends TestCase
         $this->app();
     }
 
+    public function test_a_bad_next_allow_entry_fails_at_boot(): void
+    {
+        $this->scaffold();
+        $this->write('config/members.php', "<?php\nreturn ['next' => ['allow' => ['//evil.example']]];\n");
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('config/members.php next.allow: "//evil.example" is no path of this site');
+        $this->app();
+    }
+
     public function test_links_never_use_the_request_host(): void
     {
         $this->scaffold();
