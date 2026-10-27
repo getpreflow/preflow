@@ -100,6 +100,8 @@ final class AuthController
         $user = new RecordUser($member);
         // An outdated hash (an imported $1$, an older cost) is upgraded while the password is at hand.
         PasswordRehash::afterVerify(new RecordUserProvider($this->dm, ['type' => MembersConfig::TYPE]), $user, $password, $this->hasher);
+        // Read again: the SIGNED_IN listeners get the record as stored, the upgraded hash included.
+        $member = $this->members->find((string) $member->getId()) ?? $member;
         $this->signIn->in($member, $request);
         $this->throttle->clear($purpose, $client);
         $this->throttle->clear($purpose, $key);

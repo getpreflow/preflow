@@ -69,6 +69,24 @@ final class MemberLoginTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_signed_in_listeners_get_the_upgraded_hash(): void
+    {
+        $member = $this->makeMember();
+        $old = crypt(self::PASSWORD, '$1$saltsalt$');
+        $member->set('password_hash', $old);
+        $this->flow->container()->get(\Preflow\Data\DataManager::class)->saveType($member, false);
+        $seen = null;
+        $this->flow->container()->get(\Preflow\Members\MemberEvents::class)->on(\Preflow\Members\MemberEvents::SIGNED_IN, static function (array $p) use (&$seen): void {
+            $seen = (string) $p['member']->get('password_hash');
+        });
+
+        $this->assertSame(303, $this->post('/members/login', ['email' => 'ada@example.com', 'password' => self::PASSWORD])->getStatusCode());
+
+        $this->assertNotSame($old, $seen, 'the listener sees the record after the rehash');
+        $this->assertSame((string) $this->member('ada@example.com')->get('password_hash'), $seen);
+    }
+
+    #[RunInSeparateProcess]
     public function test_login_is_case_insensitive_on_email(): void
     {
         $this->makeMember();
@@ -192,7 +210,7 @@ final class MemberLoginTest extends TestCase
         $this->assertSame('/members/r/x', Dom::first($html, $form . '//input[@name="next"]')?->getAttribute('value'));
         $this->assertNotNull(Dom::first($html, $form . '//input[@name="_csrf_token"]'));
         $this->assertNotNull(Dom::first($html, '//a[@href="/members/forgot"]'));
-        $this->assertNotNull(Dom::first($html, '//a[@href="/members/register"]'));
+        $this->assertNotNull(Dom::first($html, '//a[@href="/members/register?next=' . rawurlencode('/members/r/x') . '"]'), 'the register link passes next on');
         $this->assertNotNull(Dom::first($this->html('/de/members/login'), '//form[@action="/de/members/login"]'));
 
         $this->post('/members/login', ['email' => 'ada@example.com', 'password' => self::PASSWORD]);
