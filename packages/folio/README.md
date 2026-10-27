@@ -632,7 +632,9 @@ header:
   Uploads are only stored on a manual save.
 - **Conflicts:** each save sends the `_version` it was loaded with. If someone else
   saved in between, the save is refused ("Someone else changed this record"). Saving
-  again overwrites their change; reloading discards yours.
+  again overwrites their change; reloading discards yours. The check is part of the
+  write (`DataManager::saveTypeIfVersion()`), so two saves arriving at the same moment
+  cannot both pass it.
 - **Revisions:** every publish keeps a full copy in `{table}__revisions`, with the date,
   the user and the fields that changed. **Restore** copies one into the working copy,
   and it then has to be published again. Keep more or fewer revisions with
@@ -695,6 +697,29 @@ show working copies.
 snapshots (or over the records themselves when the type does not publish), and
 `->live($type, $id)` returns one record. Querying the type directly with `DataManager`
 returns working copies, drafts included.
+
+**Saving working copies in your own code:** `Publisher::saveDraft($record, $loadedVersion)`
+saves without rules as version stored + 1 and throws `VersionConflict` (with `->current`,
+the stored version) when the stored version is not `$loadedVersion`, also when another save
+lands between the check and the write. With `null` it does not check and retries on a newer
+version instead. A site form that saves a publishing type's record calls it with the version
+its form loaded:
+
+```php
+try {
+    $publisher->saveDraft($record, (int) $body['_version']);
+} catch (VersionConflict $e) {
+    // show the conflict; $e->current is the version to save against
+}
+```
+
+For a version-checked write outside publishing, use `DataManager::saveTypeIfVersion()` (see
+preflow/data).
+
+**States in your own code:** `->state($working)` reads the snapshot; `->stateWith($working,
+$snapshot)` compares with a snapshot you already have (`null`: nothing published) and reads
+nothing. `->states($type)` gives every working copy's state, `->states($type, $ids)` those of
+some ids, each with one snapshot query.
 
 **SQL storage:**
 - Create `{table}__published` with the type's columns plus `_published_at` and

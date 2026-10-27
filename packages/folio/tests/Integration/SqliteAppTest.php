@@ -33,6 +33,23 @@ final class SqliteAppTest extends TestCase
         $this->assertSame([], $this->migrateStep());
     }
 
+    public function test_autosave_refuses_a_save_landing_between_check_and_write(): void
+    {
+        $this->migrateStep();
+        $this->working('post', 'p1', ['title' => ['en' => 'Start'], 'slug' => ['en' => 'hello'], '_version' => 3]);
+
+        $body = (string) $this->racingRequest('/folio/post/p1/autosave', ['title' => 'Mine', 'slug' => 'hello', '_locale' => 'en', '_version' => '3'])->getBody();
+
+        $this->assertStringContainsString('is-conflict', $body);
+        $this->assertStringNotContainsString('hx-swap-oob', $body);
+        $this->assertSame('Theirs', $this->storedTitle('p1'));
+        $this->assertSame(4, (int) $this->stored('post', 'p1')->get('_version'));
+
+        $this->post('/folio/post/p1/autosave', ['title' => 'Mine', 'slug' => 'hello', '_locale' => 'en', '_version' => '4']);
+        $this->assertSame('Mine', $this->storedTitle('p1'));
+        $this->assertSame(5, (int) $this->stored('post', 'p1')->get('_version'));
+    }
+
     public function test_admin_publish_and_public_page(): void
     {
         $this->migrateStep();
@@ -96,6 +113,14 @@ final class SqliteAppTest extends TestCase
     }
 
     /** @return list<string> */
+    /** The English title as stored (SQL columns hold a translatable field as JSON text). */
+    private function storedTitle(string $id): ?string
+    {
+        $title = $this->stored('post', $id)->get('title');
+
+        return (is_string($title) ? json_decode($title, true) : $title)['en'] ?? null;
+    }
+
     private function migrateStep(): array
     {
         return ($this->app()->container()->get(MigrationRegistry::class)->steps()['folio.tables'] ?? throw new \RuntimeException('step not registered'))();

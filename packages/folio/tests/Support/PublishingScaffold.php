@@ -133,6 +133,32 @@ trait PublishingScaffold
         return $this->app()->handle((new Psr17Factory())->createServerRequest('POST', $uri)->withParsedBody($body));
     }
 
+    /**
+     * POST through an app whose storage lets another request save p1 ("Theirs", version 4)
+     * right before the request's own version-checked write.
+     *
+     * @param array<string, mixed> $body
+     */
+    private function racingRequest(string $uri, array $body): \Psr\Http\Message\ResponseInterface
+    {
+        $app = $this->app();
+        $c = $app->container();
+        $dm = $c->get(\Preflow\Data\DataManager::class);
+        $racing = new \Preflow\Folio\Tests\Publishing\RacingDriver($dm->driver($this->storage));
+        $racing->raceOnce(function (): void {
+            $this->working('post', 'p1', ['title' => ['en' => 'Theirs'], 'slug' => ['en' => 'hello'], '_version' => 4]);
+        });
+        $racingDm = new \Preflow\Data\DataManager([$this->storage => $racing] + ['json' => $dm->driver('json'), 'default' => $dm->driver('default')], 'default', $dm->getTypeRegistry());
+        $c->instance(\Preflow\Data\DataManager::class, $racingDm);
+        $c->instance(\Preflow\Folio\Publishing\Publisher::class, new \Preflow\Folio\Publishing\Publisher(
+            $racingDm,
+            $c->get(\Preflow\Folio\Content\TypeCatalog::class),
+            $c->get(\Preflow\Folio\Content\RecordValidator::class),
+        ));
+
+        return $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', $uri)->withParsedBody($body));
+    }
+
     private function dm(): DataManager
     {
         return $this->app()->container()->get(DataManager::class);

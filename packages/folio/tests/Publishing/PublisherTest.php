@@ -261,6 +261,125 @@ final class PublisherTest extends TestCase
         $this->assertSame('B', $p->snapshot('post', 'r1')?->get('title'));
     }
 
+    /** Storage whose next version-checked write is preceded by another writer's save. */
+    private function racing(): RacingDriver
+    {
+        $driver = new RacingDriver(new JsonFileDriver($this->dir . '/store'));
+        $this->dm = new DataManager(
+            drivers: ['json' => $driver],
+            defaultDriver: 'json',
+            typeRegistry: $this->registry,
+            validatorFactory: new ValidatorFactory(new RuleFactory()),
+        );
+
+        return $driver;
+    }
+
+    /** Another request's save of r1, straight to the files, with its own DataManager. */
+    private function theirSave(string $title, int $version): \Closure
+    {
+        return function () use ($title, $version): void {
+            $other = new DataManager(['json' => new JsonFileDriver($this->dir . '/store')], 'json', $this->registry);
+            $other->saveType($this->working('post', ['title' => $title, '_version' => $version]), false);
+        };
+    }
+
+    public function test_save_draft_refuses_a_save_landing_between_check_and_write(): void
+    {
+        $driver = $this->racing();
+        $p = $this->publisher();
+        $this->dm->saveType($this->working('post', ['title' => 'Start', '_version' => 1]), false);
+
+        $mine = $this->reload('post');
+        $mine->set('title', 'Mine');
+        $driver->raceOnce($this->theirSave('Theirs', 2));
+
+        try {
+            $p->saveDraft($mine, 1);
+            $this->fail('expected VersionConflict');
+        } catch (VersionConflict $e) {
+            $this->assertSame(2, $e->current);
+        }
+        $this->assertSame('Theirs', $this->reload('post')->get('title'));
+        $this->assertSame(2, $this->reload('post')->get('_version'));
+    }
+
+    public function test_save_draft_without_a_loaded_version_retries_on_the_newer_version(): void
+    {
+        $driver = $this->racing();
+        $p = $this->publisher();
+        $this->dm->saveType($this->working('post', ['title' => 'Start', '_version' => 1]), false);
+
+        $mine = $this->reload('post');
+        $mine->set('title', 'Mine');
+        $driver->raceOnce($this->theirSave('Theirs', 2));
+        $p->saveDraft($mine, null);
+
+        $this->assertSame('Mine', $this->reload('post')->get('title'));
+        $this->assertSame(3, $this->reload('post')->get('_version'), 'the version never goes back');
+        $this->assertSame(3, $mine->get('_version'));
+    }
+
+    public function test_save_draft_of_a_new_record_starts_at_version_one(): void
+    {
+        $p = $this->publisher();
+        $p->saveDraft($this->working('post', ['title' => 'New']), 0);
+
+        $this->assertSame(1, $this->reload('post')->get('_version'));
+    }
+
+    public function test_state_with_gives_the_same_state_as_state(): void
+    {
+        $p = $this->publisher();
+        $post = $this->working('post', ['title' => 'A']);
+        $p->saveDraft($post, null);
+        $cases = ['draft' => $this->reload('post')];
+
+        $p->publish($this->reload('post'), null);
+        $cases['published'] = $this->reload('post');
+
+        $scheduled = $this->reload('post');
+        $scheduled->set('_publish_at', '2026-11-01T09:00');
+        $p->saveDraft($scheduled, null);
+        $cases['scheduled, unchanged'] = $this->reload('post');
+
+        $changed = $this->reload('post');
+        $changed->set('title', 'B');
+        $p->saveDraft($changed, null);
+        $cases['changed'] = $this->reload('post');
+
+        $expected = ['draft' => PublishState::Draft, 'published' => PublishState::Published, 'scheduled, unchanged' => PublishState::Published, 'changed' => PublishState::Changed];
+        $snapshot = $p->snapshot('post', 'r1');
+        foreach ($cases as $case => $working) {
+            $this->assertSame($expected[$case], $p->stateWith($working, $case === 'draft' ? null : $snapshot), $case);
+        }
+        $this->assertSame($p->state($cases['changed']), $p->stateWith($cases['changed'], $snapshot));
+    }
+
+    public function test_states_of_some_ids_read_their_snapshots_in_one_query(): void
+    {
+        $driver = $this->racing();
+        $p = $this->publisher();
+        foreach (['a' => 'A', 'b' => 'B', 'c' => 'C'] as $id => $title) {
+            $record = DynamicRecord::fromArray($this->registry->get('post'), ['uuid' => $id, 'title' => $title]);
+            $p->saveDraft($record, null);
+            if ($id !== 'c') {
+                $p->publish($record, null);
+            }
+        }
+        $b = $this->dm->findType('post', 'b');
+        $b->set('title', 'B2');
+        $p->saveDraft($b, null);
+        $driver->findMany = [];
+
+        $states = $p->states('post', ['a', 'b', 'c', 'missing']);
+
+        $this->assertSame(['a' => PublishState::Published, 'b' => PublishState::Changed, 'c' => PublishState::Draft], $states);
+        $this->assertSame(1, $driver->findMany['post__published'] ?? 0);
+        $this->assertSame($p->states('post'), $p->states('post', ['a', 'b', 'c']));
+        $this->assertSame([], $p->states('post', []));
+    }
+
     private function publisher(int $keep = 20): Publisher
     {
         $fieldTypes = new FieldTypeRegistry();

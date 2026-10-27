@@ -24,6 +24,9 @@ final class Publisher
     /** Working-copy-only keys that are not copied into a snapshot. */
     private const array WORKING_ONLY = ['_version', '_publish_at', '_share_token'];
 
+    /** How often saveDraft() without a loaded version tries before giving up on a busy record. */
+    private const int SAVE_ATTEMPTS = 3;
+
     /** @var \Closure(): \DateTimeImmutable */
     private readonly \Closure $now;
 
@@ -64,49 +67,89 @@ final class Publisher
     public function state(DynamicRecord $working): PublishState
     {
         $id = (string) $working->getId();
-        $snapshot = $this->dm->findIn(ShadowTypes::published($working->getType()), $id);
 
+        return $this->stateWith($working, $this->dm->findIn(ShadowTypes::published($working->getType()), $id));
+    }
+
+    /**
+     * The state of a working copy against a snapshot the caller already read (null: none is
+     * published), without reading anything: what state() returns for the same pair.
+     */
+    public function stateWith(DynamicRecord $working, ?DynamicRecord $snapshot): PublishState
+    {
         return self::compare($working, $snapshot);
     }
 
     /**
-     * States of every working copy of a type, with one snapshot query.
+     * States of a type's working copies, with one snapshot query: every working copy, or
+     * the ones with these ids (ids that do not exist are left out).
      *
+     * @param list<string>|null $ids
      * @return array<string, PublishState> keyed by id
      */
-    public function states(string $type): array
+    public function states(string $type, ?array $ids = null): array
     {
+        if ($ids === []) {
+            return [];
+        }
         $def = $this->definition($type);
+        $shadow = ShadowTypes::published($def);
+        $only = $ids === null ? null : array_values(array_map('strval', $ids));
         $snapshots = [];
-        foreach ($this->dm->queryIn(ShadowTypes::published($def))->get()->items() as $snapshot) {
+        foreach ($this->among($this->dm->queryIn($shadow), $shadow, $only)->get()->items() as $snapshot) {
             $snapshots[(string) $snapshot->getId()] = $snapshot;
         }
 
         $states = [];
-        foreach ($this->dm->queryIn($def)->get()->items() as $working) {
+        foreach ($this->among($this->dm->queryIn($def), $def, $only)->get()->items() as $working) {
             $id = (string) $working->getId();
+            // An IN on a text column compares case- and accent-insensitively on MySQL: exact ids only.
+            if ($only !== null && !in_array($id, $only, true)) {
+                continue;
+            }
             $states[$id] = self::compare($working, $snapshots[$id] ?? null);
         }
 
         return $states;
     }
 
+    /** @param list<string>|null $ids */
+    private function among(QueryBuilder $query, TypeDefinition $def, ?array $ids): QueryBuilder
+    {
+        return $ids === null ? $query : $query->whereAny([['field' => $def->idField, 'operator' => 'IN', 'value' => $ids]]);
+    }
+
     /**
-     * Save the working copy without rules (half-finished work is fine).
+     * Save the working copy without rules (half-finished work is fine), as version
+     * stored + 1. The version check is atomic with the write: of two saves holding the same
+     * version, one gets VersionConflict, also when both passed the check at the same time.
      *
      * @param int|null $loadedVersion the _version the editor loaded; null skips the check
+     *                                (a save never conflicts then, unless the record stays busy)
      * @throws VersionConflict
      */
     public function saveDraft(DynamicRecord $working, ?int $loadedVersion): void
     {
-        $stored = $this->dm->findIn($working->getType(), (string) $working->getId());
-        $current = (int) ($stored?->get('_version') ?? 0);
-        if ($loadedVersion !== null && $loadedVersion !== $current) {
-            throw new VersionConflict($current);
+        // The write itself carries the version it expects (DataManager::saveTypeIfVersion): a
+        // save landing between this read and the write makes the write fail, never overwrite.
+        // Without a loaded version, a save that lost such a race is retried on the newer version.
+        for ($attempt = 1; ; $attempt++) {
+            $current = $this->storedVersion($working);
+            if ($loadedVersion !== null && $loadedVersion !== $current) {
+                throw new VersionConflict($current);
+            }
+            if ($this->dm->saveTypeIfVersion($working, $current, $current + 1, validate: false)) {
+                return;
+            }
+            if ($loadedVersion !== null || $attempt >= self::SAVE_ATTEMPTS) {
+                throw new VersionConflict($this->storedVersion($working));
+            }
         }
+    }
 
-        $working->set('_version', $current + 1);
-        $this->dm->saveType($working, false);
+    private function storedVersion(DynamicRecord $working): int
+    {
+        return (int) ($this->dm->findIn($working->getType(), (string) $working->getId())?->get('_version') ?? 0);
     }
 
     /**
