@@ -21,16 +21,16 @@ final class MysqlDialectTest extends TestCase
         $this->assertSame('`users`', $this->dialect->quoteIdentifier('users'));
     }
 
-    public function test_upsert_generates_on_duplicate_key_update(): void
+    public function test_update_targets_one_row_by_id(): void
     {
-        $sql = $this->dialect->upsertSql('posts', ['uuid', 'title', 'body'], 'uuid');
+        $this->assertSame(
+            'UPDATE `posts` SET `title` = ?, `body` = ? WHERE `uuid` = ?',
+            $this->dialect->updateSql('posts', ['title', 'body'], 'uuid'),
+        );
+    }
 
-        $this->assertStringContainsString('INSERT INTO', $sql);
-        $this->assertStringContainsString('ON DUPLICATE KEY UPDATE', $sql);
-        $this->assertStringContainsString('`posts`', $sql);
-        $this->assertStringContainsString('`title` = VALUES(`title`)', $sql);
-        $this->assertStringContainsString('`body` = VALUES(`body`)', $sql);
-        $this->assertStringNotContainsString('`uuid` = VALUES(`uuid`)', $sql);
-        $this->assertSame(3, substr_count($sql, '?'));
+    public function test_no_single_statement_upsert(): void
+    {
+        $this->assertNull($this->dialect->upsertSql('posts', ['uuid', 'title'], 'uuid'));
     }
 }

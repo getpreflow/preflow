@@ -89,22 +89,53 @@ abstract class PdoDriver implements VersionedStorage
 
         if ($isEmpty) {
             unset($data[$idField]);
-            $data = array_filter($data, fn ($v) => $v !== null);
-            $columns = array_keys($data);
-            $sql = $this->dialect->insertSql($type, $columns);
-            $this->write($type, $sql, array_values($data));
-        } else {
-            if (!isset($data[$idField])) {
-                $data[$idField] = $id;
-            }
+            $this->write($type, $this->dialect->insertSql($type, array_keys($data)), array_values($data));
 
-            // Filter out null values
-            $data = array_filter($data, fn ($v) => $v !== null);
-
-            $columns = array_keys($data);
-            $sql = $this->dialect->upsertSql($type, $columns, $idField);
-            $this->write($type, $sql, array_values($data));
+            return;
         }
+
+        $data[$idField] ??= $id;
+
+        // Only the row with this id is written. A null clears its column; a column not passed is
+        // left alone; a duplicate on a unique index other than the primary key fails and touches
+        // no row.
+        $upsert = $this->dialect->upsertSql($type, array_keys($data), $idField);
+        if ($upsert !== null) {
+            $this->write($type, $upsert, array_values($data));
+
+            return;
+        }
+
+        // UPDATE ... WHERE id = ?, and an INSERT when there is none.
+        $set = array_diff_key($data, [$idField => true]);
+        $update = fn (): bool => $set !== [] ? $this->updated($type, $id, $set, $idField) : $this->exists($type, $id, $idField);
+
+        if ($update()) {
+            return;
+        }
+        try {
+            $this->write($type, $this->dialect->insertSql($type, array_keys($data)), array_values($data));
+        } catch (\PDOException $e) {
+            // A concurrent first save inserted the id between our check and insert: update it.
+            if (!$this->dialect->isPrimaryKeyViolation($e, $type, $idField)) {
+                throw $e;
+            }
+            $update();
+        }
+    }
+
+    /**
+     * UPDATE of the record's columns; whether the record matched. MySQL without FOUND_ROWS counts
+     * changed rows only, so a write that changed nothing is told apart by looking for the row.
+     *
+     * @param array<string, mixed> $set
+     */
+    private function updated(string $type, string|int $id, array $set, string $idField): bool
+    {
+        $sql = $this->dialect->updateSql($type, array_keys($set), $idField);
+
+        return $this->write($type, $sql, [...array_values($set), $id])->rowCount() > 0
+            || $this->exists($type, $id, $idField);
     }
 
     /**
@@ -223,7 +254,6 @@ abstract class PdoDriver implements VersionedStorage
             static fn ($v) => is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) : $v,
             $data,
         );
-        $data = array_filter($data, fn ($v) => $v !== null);
         try {
             $this->write($type, $this->dialect->insertSql($type, array_keys($data)), array_values($data));
 

@@ -11,16 +11,15 @@ final class SqliteDialect implements Dialect
         return '"' . $name . '"';
     }
 
-    public function upsertSql(string $table, array $columns, string $idField): string
+    public function updateSql(string $table, array $columns, string $idField): string
     {
-        $quoted = array_map(fn (string $c) => $this->quoteIdentifier($c), $columns);
-        $placeholders = array_fill(0, count($columns), '?');
+        $sets = array_map(fn (string $c) => $this->quoteIdentifier($c) . ' = ?', $columns);
 
         return sprintf(
-            'INSERT OR REPLACE INTO %s (%s) VALUES (%s)',
+            'UPDATE %s SET %s WHERE %s = ?',
             $this->quoteIdentifier($table),
-            implode(', ', $quoted),
-            implode(', ', $placeholders),
+            implode(', ', $sets),
+            $this->quoteIdentifier($idField),
         );
     }
 
@@ -35,6 +34,28 @@ final class SqliteDialect implements Dialect
             implode(', ', $quoted),
             implode(', ', $placeholders),
         );
+    }
+
+    public function upsertSql(string $table, array $columns, string $idField): ?string
+    {
+        $updates = [];
+        foreach ($columns as $col) {
+            if ($col !== $idField) {
+                $q = $this->quoteIdentifier($col);
+                $updates[] = "{$q} = excluded.{$q}";
+            }
+        }
+
+        return $this->insertSql($table, $columns)
+            . ' ON CONFLICT(' . $this->quoteIdentifier($idField) . ') '
+            . ($updates === [] ? 'DO NOTHING' : 'DO UPDATE SET ' . implode(', ', $updates));
+    }
+
+    /** SQLite names the violated column ("UNIQUE constraint failed: posts.uuid"). */
+    public function isPrimaryKeyViolation(\PDOException $e, string $table, string $idField): bool
+    {
+        return str_contains($e->getMessage(), "constraint failed: {$table}.{$idField}")
+            && !str_contains($e->getMessage(), "{$table}.{$idField},");
     }
 
     /** No FOR UPDATE: a write locks the whole database, and a transaction reads its own snapshot. */

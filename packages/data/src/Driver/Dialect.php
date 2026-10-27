@@ -7,8 +7,21 @@ namespace Preflow\Data\Driver;
 interface Dialect
 {
     public function quoteIdentifier(string $name): string;
-    public function upsertSql(string $table, array $columns, string $idField): string;
+
+    /** UPDATE of the given columns of the one row whose id column equals the last binding. */
+    public function updateSql(string $table, array $columns, string $idField): string;
+
     public function insertSql(string $table, array $columns): string;
+
+    /**
+     * One atomic statement inserting the record or updating the row with that id (the conflict
+     * target is the id only, so no other row is ever replaced), or null where the dialect has none
+     * and PdoDriver does UPDATE, then INSERT.
+     */
+    public function upsertSql(string $table, array $columns, string $idField): ?string;
+
+    /** Whether the failure is a duplicate on the primary key (not on another unique index). */
+    public function isPrimaryKeyViolation(\PDOException $e, string $table, string $idField): bool;
 
     /**
      * What a SELECT appends to lock the rows it reads until the transaction ends (and to read

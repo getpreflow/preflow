@@ -21,14 +21,20 @@ final class SqliteDialectTest extends TestCase
         $this->assertSame('"users"', $this->dialect->quoteIdentifier('users'));
     }
 
-    public function test_upsert_generates_insert_or_replace(): void
+    public function test_update_targets_one_row_by_id(): void
     {
-        $sql = $this->dialect->upsertSql('posts', ['uuid', 'title', 'body'], 'uuid');
+        $this->assertSame(
+            'UPDATE "posts" SET "title" = ?, "body" = ? WHERE "uuid" = ?',
+            $this->dialect->updateSql('posts', ['title', 'body'], 'uuid'),
+        );
+    }
 
-        $this->assertStringContainsString('INSERT OR REPLACE INTO', $sql);
-        $this->assertStringContainsString('"posts"', $sql);
-        $this->assertStringContainsString('"uuid"', $sql);
-        $this->assertStringContainsString('"title"', $sql);
-        $this->assertSame(3, substr_count($sql, '?'));
+    public function test_upsert_conflicts_on_the_id_only(): void
+    {
+        $this->assertSame(
+            'INSERT INTO "posts" ("uuid", "title") VALUES (?, ?) ON CONFLICT("uuid") DO UPDATE SET "title" = excluded."title"',
+            $this->dialect->upsertSql('posts', ['uuid', 'title'], 'uuid'),
+        );
+        $this->assertStringEndsWith('DO NOTHING', $this->dialect->upsertSql('posts', ['uuid'], 'uuid'));
     }
 }

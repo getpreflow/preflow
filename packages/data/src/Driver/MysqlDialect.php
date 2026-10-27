@@ -11,26 +11,15 @@ final class MysqlDialect implements Dialect
         return '`' . $name . '`';
     }
 
-    public function upsertSql(string $table, array $columns, string $idField): string
+    public function updateSql(string $table, array $columns, string $idField): string
     {
-        $quoted = array_map(fn (string $c) => $this->quoteIdentifier($c), $columns);
-        $placeholders = array_fill(0, count($columns), '?');
-
-        $updates = [];
-        foreach ($columns as $col) {
-            if ($col === $idField) {
-                continue;
-            }
-            $q = $this->quoteIdentifier($col);
-            $updates[] = "{$q} = VALUES({$q})";
-        }
+        $sets = array_map(fn (string $c) => $this->quoteIdentifier($c) . ' = ?', $columns);
 
         return sprintf(
-            'INSERT INTO %s (%s) VALUES (%s) ON DUPLICATE KEY UPDATE %s',
+            'UPDATE %s SET %s WHERE %s = ?',
             $this->quoteIdentifier($table),
-            implode(', ', $quoted),
-            implode(', ', $placeholders),
-            implode(', ', $updates),
+            implode(', ', $sets),
+            $this->quoteIdentifier($idField),
         );
     }
 
@@ -45,6 +34,19 @@ final class MysqlDialect implements Dialect
             implode(', ', $quoted),
             implode(', ', $placeholders),
         );
+    }
+
+    /** No single statement: ON DUPLICATE KEY UPDATE would update whichever row a unique index matches. */
+    public function upsertSql(string $table, array $columns, string $idField): ?string
+    {
+        return null;
+    }
+
+    /** Error 1062 on the key named PRIMARY; any other unique index is a different failure. */
+    public function isPrimaryKeyViolation(\PDOException $e, string $table, string $idField): bool
+    {
+        return ($e->errorInfo[1] ?? null) === 1062
+            && (str_contains($e->getMessage(), "for key 'PRIMARY'") || str_contains($e->getMessage(), "for key '{$table}.PRIMARY'"));
     }
 
     public function lockingRead(): string
