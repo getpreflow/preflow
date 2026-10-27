@@ -50,6 +50,8 @@ return [
         'done_resend' => 'Bestätigungsmail gesendet.',
         'resend_failed' => 'Die Mail konnte nicht gesendet werden.',
         'cant_resend' => ':state: nur ein unbestätigtes Mitglied hat einen Link zum erneuten Senden.',
+        'already_locked' => 'Das Mitglied ist bereits gesperrt.',
+        'not_locked' => 'Das Mitglied ist nicht gesperrt.',
     ],
     'decision' => [
         'title' => 'Entscheidung',

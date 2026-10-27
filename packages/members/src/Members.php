@@ -228,7 +228,7 @@ final class Members
     /**
      * Mails an unconfirmed member a fresh confirmation link (the earlier ones stop working), at once.
      *
-     * @throws \LogicException when the member is not unconfirmed, or this Members has no ConfirmationMail
+     * @throws \LogicException when the member is not unconfirmed or is locked, or this Members has no ConfirmationMail
      * @throws \Preflow\Notify\TransportException when the mail cannot be sent
      */
     public function resendConfirmation(DynamicRecord $m): void
@@ -236,8 +236,8 @@ final class Members
         if ($this->confirmationMail === null) {
             throw new \LogicException('Members::resendConfirmation() needs the confirmation mail service; take Members from the container.');
         }
-        if (MemberState::fromRecord($m) !== MemberState::Unconfirmed) {
-            throw new \LogicException('Members::resendConfirmation(): only an unconfirmed member has a link to resend.');
+        if (MemberState::fromRecord($m) !== MemberState::Unconfirmed || $this->isLocked($m)) {
+            throw new \LogicException('Members::resendConfirmation(): only an unconfirmed, unlocked member has a link to resend (a locked account gets no mail).');
         }
         ($this->confirmationMail)()->send($m);
     }
@@ -250,11 +250,17 @@ final class Members
         $this->remember?->revokeAll(MembersConfig::GUARD, (string) $m->getId());
     }
 
-    /** Notes a sign-in as the member's last one. */
+    /**
+     * Notes a sign-in as the member's last one. Written on the record read afresh, so a lock (or any
+     * change) that landed since $m was loaded is kept; $m gets the stamp too.
+     */
     public function noteSignIn(DynamicRecord $m): void
     {
-        $m->set('last_login_at', $this->stamp());
-        $this->save($m);
+        $stamp = $this->stamp();
+        $fresh = $this->find((string) $m->getId()) ?? $m;
+        $fresh->set('last_login_at', $stamp);
+        $this->save($fresh);
+        $m->set('last_login_at', $stamp);
     }
 
     /**

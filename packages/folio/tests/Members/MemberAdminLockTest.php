@@ -138,6 +138,33 @@ final class MemberAdminLockTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_resend_action_refuses_a_locked_unconfirmed_member(): void
+    {
+        $m = $this->makeMember('ada@example.com', 'unconfirmed');
+        $this->flow->container()->get(Members::class)->lock($m);
+        $this->signIn();
+
+        $this->act($m, 'resend_confirmation');
+
+        $this->assertSame([], $this->mails());
+        $this->assertStringContainsString('only an unconfirmed member', $this->flash($m));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_lock_and_unlock_flash_an_error_where_they_do_not_apply(): void
+    {
+        $a = $this->makeMember('a@example.com', 'member');
+        $b = $this->makeMember('b@example.com', 'member');
+        $this->flow->container()->get(Members::class)->lock($b);
+        $this->signIn();
+
+        $this->act($a, 'unlock');
+        $this->assertStringContainsString('is not locked', $this->flash($a));
+        $this->act($b, 'lock');
+        $this->assertStringContainsString('already locked', $this->flash($b));
+    }
+
+    #[RunInSeparateProcess]
     public function test_actions_need_members_decide(): void
     {
         $this->signIn();
@@ -207,7 +234,7 @@ final class MemberAdminLockTest extends TestCase
     {
         $translator = new Translator('/no/such/lang', 'en', 'en');
         $translator->addDefaults('members-admin', dirname(__DIR__, 3) . '/members/lang');
-        $keys = ['states.locked', 'lock.lock', 'lock.unlock', 'lock.resend', 'lock.locked_since', 'lock.last_login', 'lock.done_lock', 'lock.done_unlock', 'lock.done_resend', 'lock.resend_failed', 'lock.cant_resend'];
+        $keys = ['states.locked', 'lock.lock', 'lock.unlock', 'lock.resend', 'lock.locked_since', 'lock.last_login', 'lock.done_lock', 'lock.done_unlock', 'lock.done_resend', 'lock.resend_failed', 'lock.cant_resend', 'lock.already_locked', 'lock.not_locked'];
         foreach (['en', 'de', 'fr'] as $locale) {
             $entries = $translator->entries('members-admin', $locale);
             foreach ($keys as $key) {

@@ -211,6 +211,9 @@ final class RegistrationController
     private function remindExisting(DynamicRecord $existing): void
     {
         $id = (string) $existing->getId();
+        if ($this->members->isLocked($existing)) {
+            return; // a locked account gets no mail; the answer stays the same
+        }
         $failed = static function () use ($id): void {
             error_log('members: mail to an existing account failed, member ' . $id);
         };

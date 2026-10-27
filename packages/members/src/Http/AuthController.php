@@ -203,7 +203,7 @@ final class AuthController
         if (!$this->throttle->tooMany($purpose, $key, $max, $window)) {
             $this->throttle->hit($purpose, $key, $window);
             $member = $email === '' ? null : $this->members->findByEmail($email);
-            if ($member !== null && MemberState::fromRecord($member) === MemberState::Unconfirmed) {
+            if ($member !== null && MemberState::fromRecord($member) === MemberState::Unconfirmed && !$this->members->isLocked($member)) {
                 $id = (string) $member->getId();
                 $this->confirmationMail->sendLater(
                     $member,

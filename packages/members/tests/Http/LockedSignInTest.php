@@ -96,6 +96,48 @@ final class LockedSignInTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_resend_sends_no_mail_to_a_locked_unconfirmed_member(): void
+    {
+        $m = $this->makeMember('ada@example.com', 'unconfirmed');
+        $other = $this->post('/members/resend', ['email' => 'nobody@example.com']);
+        $this->flow->container()->get(Members::class)->lock($m);
+
+        $response = $this->post('/members/resend', ['email' => 'ada@example.com']);
+
+        $this->assertSame($other->getStatusCode(), $response->getStatusCode());
+        $this->assertSame([], $this->mails());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_resend_still_mails_an_unlocked_unconfirmed_member(): void
+    {
+        $this->makeMember('ada@example.com', 'unconfirmed');
+
+        $this->post('/members/resend', ['email' => 'ada@example.com']);
+
+        $this->assertCount(1, $this->mails());
+    }
+
+    /** @return array<string, array{string}> */
+    public static function lockedKinds(): array
+    {
+        return ['unconfirmed' => ['unconfirmed'], 'member' => ['member']];
+    }
+
+    #[RunInSeparateProcess]
+    #[\PHPUnit\Framework\Attributes\DataProvider('lockedKinds')]
+    public function test_registering_again_sends_no_mail_to_a_locked_account(string $state): void
+    {
+        $m = $this->makeMember('ada@example.com', $state);
+        $this->flow->container()->get(Members::class)->lock($m);
+
+        $response = $this->post('/members/register', ['name' => 'Ada', 'email' => 'ada@example.com', 'password' => self::PASSWORD, 'consent' => '1']);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame([], $this->mails());
+    }
+
+    #[RunInSeparateProcess]
     public function test_reset_link_of_a_locked_member_is_expired(): void
     {
         $m = $this->makeMember();

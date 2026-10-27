@@ -52,6 +52,8 @@ return [
         'done_resend' => 'Confirmation mail sent.',
         'resend_failed' => 'The mail could not be sent.',
         'cant_resend' => ':state: only an unconfirmed member has a link to resend.',
+        'already_locked' => 'The member is already locked.',
+        'not_locked' => 'The member is not locked.',
     ],
     // The Decision panel on a member, and its flashes.
     'decision' => [

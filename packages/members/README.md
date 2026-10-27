@@ -428,6 +428,18 @@ return ['mail' => ['confirm' => ['subject' => 'Bitte bestätige deine Adresse']]
 - When a new member's confirm mail fails, remove the account with
   `Members::removeIfUnconfirmed($id)`: it keeps a member who confirmed meanwhile.
 
+## Upgrading to 0.39
+
+- **Run `preflow migrate` after updating.** The member type has two new columns, `locked_at` and
+  `last_login_at`, on SQL storage; without them registration and every sign-in fail.
+- **Lock / unlock:** `Members::lock($m)` locks the account (it keeps roles and password, cannot sign in
+  on any path, and its sessions end); `unlock($m)` lifts it. A locked account gets no mail.
+- **`Members::endSessions($m)`** ends every session of a member (the epoch moves on, remember rows go).
+- **`Members::resendConfirmation($m)`** mails an unconfirmed, unlocked member a fresh link at once
+  (it throws `LogicException` otherwise, and `TransportException` when the mail fails).
+- **Last sign-in:** `last_login_at` is set on every sign-in (login, reset, confirmation).
+- **Folio's members admin** offers Lock, Unlock and Resend confirmation to staff with `members.decide`.
+
 ## Upgrading to 0.38
 
 The full list is in the framework's 0.38 release checklist; what a site with members checks:

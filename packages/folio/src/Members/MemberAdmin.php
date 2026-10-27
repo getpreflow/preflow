@@ -103,7 +103,7 @@ final class MemberAdmin
             'last_login_at' => (string) $m->get('last_login_at'),
             'can_lock' => !$locked,
             'can_unlock' => $locked,
-            'can_resend' => $state === MemberState::Unconfirmed,
+            'can_resend' => $state === MemberState::Unconfirmed && !$locked,
             'registered' => $registered,
             'details' => self::lines($this->admission->details($m, Admission::PANEL)),
             'can_accept' => in_array($state, self::ALLOWED['member'], true),
@@ -127,14 +127,14 @@ final class MemberAdmin
     }
 
     // Folio hides an action per record nowhere: the panel offers only the buttons that apply (toolbar: false),
-    // and a crafted POST is refused with a flash.
+    // and a crafted POST where one does not apply is refused with an error flash and changes nothing.
     #[RecordAction(name: 'lock', label: 'members-admin.lock.lock', permission: MembersConfig::DECIDE, toolbar: false)]
     public function lock(DynamicRecord $m, ServerRequestInterface $request): ResponseInterface
     {
-        // Locking twice keeps the first time (Members::lock()) and ends the sessions again; here a locked member is left alone.
-        if (!$this->members->isLocked($m)) {
-            $this->members->lock($m);
+        if ($this->members->isLocked($m)) {
+            return $this->back($request, $this->translator->get('members-admin.lock.already_locked'), $m);
         }
+        $this->members->lock($m);
 
         return $this->back($request, $this->translator->get('members-admin.lock.done_lock'), $m, 'success');
     }
@@ -142,6 +142,9 @@ final class MemberAdmin
     #[RecordAction(name: 'unlock', label: 'members-admin.lock.unlock', permission: MembersConfig::DECIDE, toolbar: false)]
     public function unlock(DynamicRecord $m, ServerRequestInterface $request): ResponseInterface
     {
+        if (!$this->members->isLocked($m)) {
+            return $this->back($request, $this->translator->get('members-admin.lock.not_locked'), $m);
+        }
         $this->members->unlock($m);
 
         return $this->back($request, $this->translator->get('members-admin.lock.done_unlock'), $m, 'success');
@@ -151,7 +154,7 @@ final class MemberAdmin
     public function resendConfirmation(DynamicRecord $m, ServerRequestInterface $request): ResponseInterface
     {
         $state = MemberState::fromRecord($m);
-        if ($state !== MemberState::Unconfirmed) {
+        if ($state !== MemberState::Unconfirmed || $this->members->isLocked($m)) {
             return $this->back($request, $this->translator->get('members-admin.lock.cant_resend', ['state' => $this->stateLabel($state)]), $m);
         }
         try {

@@ -122,6 +122,33 @@ final class MembersLockTest extends TestCase
         $this->assertSame('2026-10-27T09:30:00+00:00', $this->reload($members, $m)->get('last_login_at'));
     }
 
+    public function test_resend_confirmation_refuses_a_locked_member(): void
+    {
+        $members = $this->members();
+        $m = $members->register('ada@example.com', 'Ada', 'correct horse battery', 'en');
+        $members->lock($m);
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('locked');
+        $members->resendConfirmation($m);
+    }
+
+    public function test_note_sign_in_keeps_a_lock_that_landed_meanwhile(): void
+    {
+        $members = $this->members();
+        $first = $this->member($members);
+        $second = $this->reload($members, $first);
+
+        $members->lock($second);
+        $members->noteSignIn($first);
+
+        $stored = $this->reload($members, $first);
+        $this->assertTrue($members->isLocked($stored), 'still locked');
+        $this->assertSame('1', (string) $stored->get('auth_epoch'));
+        $this->assertNotSame('', (string) $stored->get('last_login_at'));
+        $this->assertNotSame('', (string) $first->get('last_login_at'), 'the passed record shows it too');
+    }
+
     public function test_register_sets_lock_and_login_fields_empty(): void
     {
         $m = $this->members()->register('ada@example.com', 'Ada', 'correct horse battery', 'en');

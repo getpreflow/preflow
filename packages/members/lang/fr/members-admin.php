@@ -50,6 +50,8 @@ return [
         'done_resend' => 'E-mail de confirmation envoyé.',
         'resend_failed' => 'L’e-mail n’a pas pu être envoyé.',
         'cant_resend' => ':state : seul un membre non confirmé a un lien à renvoyer.',
+        'already_locked' => 'Le membre est déjà verrouillé.',
+        'not_locked' => 'Le membre n’est pas verrouillé.',
     ],
     'decision' => [
         'title' => 'Décision',
