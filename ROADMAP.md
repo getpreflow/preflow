@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-27 (v0.38.0 released)
+> Last updated: 2026-10-27 (v0.39.0 released)
 
 ## Current State
 
-**v0.38.0** — 3801 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.39.0** — 3903 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -216,7 +216,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
 
 ## Completed
 
-### v0.39.0 (prepared)
+### v0.39.0
 
 - **Editable site texts:** `config/folio.php` `translations.editable` lists a site's own text groups for the Translations screen; overrides of listed groups apply on every request (public pages, mails in the recipient's language, console) in every content language; placeholders are kept (dropping or adding one is refused); `site` and admin groups are skipped. i18n: `Translator::alwaysOverride()`
 - **Screens:** `#[NavBadge]` on a `#[FolioScreen]` shows a sidebar count; screen labels may be translation keys (`site.screens.{name}`); `AdminNav::add()` takes an optional `$badge`
