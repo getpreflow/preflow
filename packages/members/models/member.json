@@ -39,6 +39,16 @@
             "time": true,
             "readonly": true
         },
+        "locked_at": {
+            "type": "date",
+            "time": true,
+            "readonly": true
+        },
+        "last_login_at": {
+            "type": "date",
+            "time": true,
+            "readonly": true
+        },
         "roles": {
             "type": "list",
             "readonly": true

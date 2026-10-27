@@ -19,6 +19,8 @@ return [
             'registered_at' => ['label' => 'Inscrit le'],
             'email_confirmed_at' => ['label' => 'E-mail confirmé le'],
             'decided_at' => ['label' => 'Décidé le'],
+            'locked_at' => ['label' => 'Bloqué le'],
+            'last_login_at' => ['label' => 'Dernière connexion'],
             'roles' => ['label' => 'Rôles'],
         ],
         'members_settings' => [

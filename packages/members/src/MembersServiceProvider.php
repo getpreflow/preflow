@@ -9,6 +9,7 @@ use Preflow\Auth\Access\DefaultResolver;
 use Preflow\Auth\Access\PermissionRegistry;
 use Preflow\Auth\AuthManager;
 use Preflow\Auth\PasswordHasherInterface;
+use Preflow\Auth\Remember\RememberMe;
 use Preflow\Core\Application;
 use Preflow\Core\Config\Config;
 use Preflow\Core\Container\Container;
@@ -73,6 +74,7 @@ final class MembersServiceProvider extends ServiceProvider
             $c->get(MemberEvents::class),
             static fn (DynamicRecord $m, DeletePlan $plan, string $reason): bool => self::refusalNotice($c, $m, $plan, $reason),
             $c->bound(MemberDeleteCopies::class) ? $c->get(MemberDeleteCopies::class) : null,
+            $c->has(RememberMe::class) ? $c->get(RememberMe::class) : null,
         ));
         $container->singleton(Confirmation::class, static fn (Container $c): Confirmation => new Confirmation(
             $c->get(Members::class),

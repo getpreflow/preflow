@@ -20,6 +20,8 @@ return [
             'registered_at' => ['label' => 'Registered At'],
             'email_confirmed_at' => ['label' => 'Email Confirmed At'],
             'decided_at' => ['label' => 'Decided At'],
+            'locked_at' => ['label' => 'Locked At'],
+            'last_login_at' => ['label' => 'Last Sign-in'],
             'roles' => ['label' => 'Roles'],
         ],
         'members_settings' => [

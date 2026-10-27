@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Members;
 
 use Preflow\Auth\PasswordHasherInterface;
+use Preflow\Auth\Remember\RememberMe;
 use Preflow\Data\DataManager;
 use Preflow\Data\DeletedBy;
 use Preflow\Data\DeletePlan;
@@ -23,7 +24,7 @@ final class Members
     private const string TYPE = MembersConfig::TYPE;
 
     /** Fields register() fills itself; $extra must not set them. */
-    private const array OWN_FIELDS = ['uuid', 'email', 'name', 'password_hash', 'language', 'roles', 'registered_at', 'email_confirmed_at', 'decided_at', 'auth_epoch', 'next'];
+    private const array OWN_FIELDS = ['uuid', 'email', 'name', 'password_hash', 'language', 'roles', 'registered_at', 'email_confirmed_at', 'decided_at', 'locked_at', 'last_login_at', 'auth_epoch', 'next'];
 
     private readonly \Closure $now;
 
@@ -33,6 +34,7 @@ final class Members
      * @param ?\Closure(DynamicRecord, DeletePlan, string): bool $refusalNotice tells the owner of a refused own deletion
      *        (the member, the plan, the reason); returns whether a notice went out
      * @param ?MemberDeleteCopies $copies copies of records (Folio's published snapshots) the plan counts for restrict
+     * @param ?RememberMe $remember removes a member's remember rows when sessions end (without it only the epoch moves)
      */
     public function __construct(
         private readonly DataManager $dm,
@@ -42,6 +44,7 @@ final class Members
         private readonly ?MemberEvents $events = null,
         private readonly ?\Closure $refusalNotice = null,
         private readonly ?MemberDeleteCopies $copies = null,
+        private readonly ?RememberMe $remember = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }
@@ -119,6 +122,8 @@ final class Members
             'registered_at' => $this->stamp(),
             'email_confirmed_at' => '',
             'decided_at' => '',
+            'locked_at' => '',
+            'last_login_at' => '',
             'auth_epoch' => '0',
         ] + $extra);
         $this->dm->saveType($record, false);
@@ -185,6 +190,45 @@ final class Members
     {
         $m->set('password_hash', $this->hasher->hash($password));
         $m->set('auth_epoch', (string) ((int) $m->get('auth_epoch') + 1));
+        $this->save($m);
+    }
+
+    /**
+     * Locks the account: it stays what it is (roles, password, state) but cannot sign in, and its
+     * sessions end. A second lock keeps the first time and ends sessions again.
+     */
+    public function lock(DynamicRecord $m): void
+    {
+        if (!$this->isLocked($m)) {
+            $m->set('locked_at', $this->stamp());
+        }
+        $this->endSessions($m);
+    }
+
+    /** Lifts the lock; ended sessions stay ended (the epoch is not rolled back). */
+    public function unlock(DynamicRecord $m): void
+    {
+        $m->set('locked_at', '');
+        $this->save($m);
+    }
+
+    public function isLocked(DynamicRecord $m): bool
+    {
+        return (string) $m->get('locked_at') !== '';
+    }
+
+    /** Ends every session of the member: the epoch moves on and the remember rows go. Saves the member. */
+    public function endSessions(DynamicRecord $m): void
+    {
+        $m->set('auth_epoch', (string) ((int) $m->get('auth_epoch') + 1));
+        $this->save($m);
+        $this->remember?->revokeAll(MembersConfig::GUARD, (string) $m->getId());
+    }
+
+    /** Notes a sign-in as the member's last one. */
+    public function noteSignIn(DynamicRecord $m): void
+    {
+        $m->set('last_login_at', $this->stamp());
         $this->save($m);
     }
 
