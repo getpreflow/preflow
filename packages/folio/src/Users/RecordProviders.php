@@ -21,8 +21,9 @@ final class RecordProviders
 {
     /**
      * The type lookup Folio gives a RecordUserProvider: a type of the catalog (model files and enabled
-     * extensions' models), defined by $registry; null when the catalog has no such type. A type that
-     * is not a user type ("users" in its model) throws.
+     * extensions' models), defined by $registry; else a type only $registry defines (a package's own,
+     * as preflow/members' "member"); null when neither has it. A catalog type that is not a user
+     * type ("users" in its model) throws.
      *
      * @return \Closure(string): ?TypeDefinition
      */
@@ -31,7 +32,10 @@ final class RecordProviders
         return static function (string $type) use ($catalog, $registry): ?TypeDefinition {
             $listing = $catalog->get($type);
             if ($listing === null) {
-                return null;
+                // A type Folio does not list but a package defines (preflow/members' "member" while
+                // Folio's members extension is off): the data registry's. A disabled extension's own
+                // types are not defined there, so they stay unavailable.
+                return $registry->has($type) ? $registry->get($type) : null;
             }
             if ($listing->users === null) {
                 throw new \RuntimeException("User provider: type \"{$type}\" is not a user type (set \"users\" in its model).");

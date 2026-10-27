@@ -275,6 +275,16 @@ final class RecordUserProviderTest extends TestCase
         $this->provider(['type' => 'page']);
     }
 
+    public function test_a_type_folio_does_not_list_falls_back_to_the_data_registry(): void
+    {
+        // As on a site with preflow/members and Folio's members extension not enabled: the core defines "member", Folio's catalog lacks it.
+        mkdir($this->dir . '/empty');
+        $this->member('m1', 'ada@example.com');
+        $provider = new RecordUserProvider($this->dm, ['type' => 'member'], RecordProviders::types(new TypeCatalog($this->dir . '/empty'), $this->dm->getTypeRegistry()));
+
+        $this->assertSame('ada@example.com', $provider->findById('m1')?->getEmail());
+    }
+
     public function test_unknown_type_throws(): void
     {
         $this->expectException(\Preflow\Auth\UserProviderUnavailable::class);
