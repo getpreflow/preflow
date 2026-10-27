@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-27 (v0.41.0 released)
+> Last updated: 2026-10-27 (v0.41.1 released)
 
 ## Current State
 
-**v0.41.0** — 3988 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.41.1** — 4019 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -144,7 +144,7 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 - **Unique fields and typed columns (data/Folio):** a unique-field rule (validated; upsert by primary key only, so a duplicate can't overwrite another record) and typed columns (numbers stored as numbers, real indexes instead of LONGTEXT prefix indexes)
 - ~~**Compare-and-set draft save (Folio publishing):**~~ done in 0.41 (`VersionedStorage::saveIfVersion()` on SQLite, MySQL and JSON, `DataManager::saveTypeIfVersion()`; `Publisher::saveDraft()` checks in the write, autosave and form save with it; `Publisher::stateWith()`, `states($type, $ids)`)
 - **Sequences (data):** a sequence / next-number helper for public numbers
-- **Version-checked publish (Folio):** `Publisher::publish()` writes the working copy back unchecked (it clears `_publish_at`); a save landing between a form's `saveDraft()` and its publish is overwritten. Checking it there means a `VersionConflict` from `publish()` (callers: form, scheduler, CLI, site importers that publish records built without `_version`), so it waits for a decision
+- ~~**Version-checked publish (Folio):**~~ done in 0.41.1 (`Publisher::publish($record, $by, $loadedVersion)`: claims the working copy, version kept, then the snapshot, in one SQL transaction; `null` stays unchecked for the scheduler, CLI and importers; Folio's form publish passes its version; `discard()`/`restore()` take one too)
 - ~~**Member self-deletion and delete plans (members):**~~ done in 0.38 (`onSelfDelete`, `MemberEvents`, `DeletionResult`): `Members::delete()` (account page, `members:prune`) uses `deleteType()` and ignores relations and Folio's delete plan (`restrict` relations are bypassed, e.g. orders keep a dangling member id). Wanted: delete through the delete plan, or before/after hooks
 - **Private files: session and owners (media/Folio):** private files live at `/files/{id}`, outside Folio's session path, so sites must add `/files` to `session.paths`; serve them under Folio's own path (e.g. `{prefix}/files`) or start the session there. Optional: a per-owner rule (callback or record field) so members can see their own private files
 
@@ -226,6 +226,11 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
 ---
 
 ## Completed
+
+### v0.41.1
+
+- **Compare-and-set fixes (data):** no lost update in a caller's REPEATABLE READ transaction (the version-keeping follow-up read locks, `Dialect::lockingRead()`); a stored `''` version matches 0 on SQL; a first save inserts before claiming (two concurrent first saves deadlocked on MySQL), a deadlock in the driver's own transaction is `false`; fallback notice, version key restored as absent
+- **Folio:** `Publisher::publish($record, $by, $loadedVersion)` version-checked (form publish uses it; null unchanged), `discard()`/`restore()` likewise; `states($type, $ids)` in chunks of 500. See `docs/superpowers/plans/2026-10-27-release-0.41-checklist.md`
 
 ### v0.41.0
 
