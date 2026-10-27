@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-27 (v0.39.0 released)
+> Last updated: 2026-10-27 (v0.41.0 released)
 
 ## Current State
 
-**v0.40.0** — 3957 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.41.0** — 3988 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -226,6 +226,11 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
 ---
 
 ## Completed
+
+### v0.41.0
+
+- **Compare-and-set saves (data):** `VersionedStorage::saveIfVersion()` on SQLite, MySQL (`UPDATE … WHERE _version = ?` in a transaction) and JSON (under a lock file); `DataManager::saveTypeIfVersion($record, $expected)` returns false when someone else saved in between
+- **Folio:** `Publisher::saveDraft()` checks the version in the write (autosave and form save; responses unchanged); `Publisher::stateWith($working, $snapshot)`, `states($type, $ids)`; Folio needs data `^0.41`. See `docs/superpowers/plans/2026-10-27-release-0.41-checklist.md`
 
 ### v0.39.0
 
