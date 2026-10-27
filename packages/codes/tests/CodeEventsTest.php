@@ -114,6 +114,56 @@ final class CodeEventsTest extends CodesAppTestCase
         $this->assertCount(1, $codes->redemptions($id));
     }
 
+    public function test_failing_redemption_insert_gives_the_use_back_and_rethrows(): void
+    {
+        $codes = $this->withEvents();
+        $c = $codes->issue('q', [], maxUses: 1);
+        $id = (string) $codes->check($c, 'q')->codeId;
+        $this->app()->container()->get(DataManager::class)->execute('DROP TABLE code_redemption', [], 'default');
+
+        try {
+            $codes->redeem($c, 'q', 'm1');
+            $this->fail('the insert failure should propagate');
+        } catch (\PDOException) {
+            $this->addToAssertionCount(1);
+        }
+        $this->assertSame(0, $codes->get($id)->uses);
+    }
+
+    public function test_undo_failure_keeps_the_listeners_exception(): void
+    {
+        $codes = $this->withEvents();
+        $c = $codes->issue('q', [], maxUses: 1);
+        $id = (string) $codes->check($c, 'q')->codeId;
+        $dm = $this->app()->container()->get(DataManager::class);
+        $log = ini_set('error_log', $this->dir . '/storage/php.log'); // the undo failure is logged
+        $this->events->on(CodeEvents::REDEEMED, static function () use ($dm): void {
+            $dm->execute('DROP TABLE code_redemption', [], 'default'); // the undo's delete will fail
+            throw new \RuntimeException('group');
+        });
+
+        try {
+            $codes->redeem($c, 'q', 'm1');
+            $this->fail('the listener exception should propagate');
+        } catch (\Throwable $e) {
+            $this->assertInstanceOf(\RuntimeException::class, $e);
+            $this->assertSame('group', $e->getMessage());
+        }
+        ini_set('error_log', (string) $log);
+        $this->assertSame(0, $codes->get($id)->uses);
+        $this->assertStringContainsString('undoing a failed redeem failed', (string) file_get_contents($this->dir . '/storage/php.log'));
+    }
+
+    public function test_dispatch_without_events_reads_nothing_extra(): void
+    {
+        $codes = $this->codes(); // no CodeEvents
+        $c = $codes->issue('q', []);
+        $id = (string) $codes->check($c, 'q')->codeId;
+        $codes->revoke($id);
+        $this->assertTrue($codes->redeem($codes->issue('q', []), 'q')->ok);
+        $this->assertNotNull($codes->get($id)->revokedAt);
+    }
+
     public function test_undo_deletes_only_its_own_redemption(): void
     {
         $codes = $this->withEvents();

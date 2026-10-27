@@ -186,13 +186,16 @@ $mailer->send($codes->record($code, 'bggenius.invite'), $email, '/invite/' . $co
 
 // GET /invite/{code}
 $check = $codes->check($code, 'bggenius.invite', $throttle->client($request));
-if (!$check->ok) { /* "this invitation is no longer valid" */ }
+if (!$check->ok) { return $this->invalidInvitationPage(); } // "this invitation is no longer valid"; stop here
 // $check->recipient is the invited address:
 //  - signed in with another address -> "this invitation is for another address, sign out?"
 //  - not signed in, account exists   -> sign in, with ?next=/invite/{code} (members: next.allow)
 //  - not signed in, new address      -> your short form, Members::register(..., emailVerified: true)
-//  - signed in with that address     ->
-$codes->redeem($code, 'bggenius.invite', $member->id, $throttle->client($request), recipient: $member->email);
+//  - signed in with that address     -> redeem, but only if that address is CONFIRMED: an unconfirmed
+//                                       self-registered address must not redeem someone else's invitation
+if ($member->get('email_confirmed_at') !== '') { // the confirmed address
+    $codes->redeem($code, 'bggenius.invite', $member->id, $throttle->client($request), recipient: $member->email);
+}
 // your codes.redeemed listener adds the member to the group; then redirect to the welcome page.
 ```
 

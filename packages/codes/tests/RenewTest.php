@@ -43,4 +43,27 @@ final class RenewTest extends CodesAppTestCase
             }
         }
     }
+
+    /** renew() and revoke() write their one column: a use counted meanwhile is never overwritten. */
+    public function test_renew_and_revoke_write_only_their_column(): void
+    {
+        $codes = $this->codes();
+        $dm = $this->app()->container()->get(\Preflow\Data\DataManager::class);
+        $dm->execute('CREATE TABLE touched (col TEXT)', [], 'default');
+        // SQLite saves with INSERT OR REPLACE: any whole-record write is an INSERT.
+        $dm->execute("CREATE TRIGGER t_ins AFTER INSERT ON code BEGIN INSERT INTO touched VALUES ('insert'); END", [], 'default');
+        $a = $codes->issue('q');
+        $aId = (string) $codes->check($a, 'q')->codeId;
+        $b = $codes->issue('q');
+        $bId = (string) $codes->check($b, 'q')->codeId;
+
+        $dm->execute('DELETE FROM touched', [], 'default'); // the issues above inserted
+        $codes->renew($aId, $this->now->modify('+3 days'));
+        $codes->revoke($bId);
+
+        $touched = $dm->driver('default')->pdo()->query('SELECT col FROM touched')->fetchAll(\PDO::FETCH_COLUMN);
+        $this->assertSame([], $touched);
+        $this->assertNotNull($codes->get($bId)->revokedAt);
+        $this->assertEquals($this->now->modify('+3 days'), $codes->get($aId)->expiresAt);
+    }
 }

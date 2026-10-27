@@ -28,7 +28,9 @@ final class NoFolioDependencyTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertArrayNotHasKey('preflow/folio', $composer['require']);
-        $this->assertArrayNotHasKey('preflow/folio', $composer['conflict'] ?? []);
+        $this->assertArrayNotHasKey('preflow/folio', $composer['suggest'] ?? []);
+        // Only a guard: Folio carries the admin and must be 0.40 or later; codes never needs it.
+        $this->assertSame('<0.40', $composer['conflict']['preflow/folio'] ?? null);
         $this->assertArrayNotHasKey('folio', $composer['extra'] ?? []);
         $this->assertArrayNotHasKey('codes', $composer['extra']['preflow']['translations'] ?? []);
     }

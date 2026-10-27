@@ -160,4 +160,18 @@ final class RecipientTest extends CodesAppTestCase
         $this->assertNull($result->recipient);
         $this->assertSame('unknown', $codes->redeem('NOPE0000', 'p', 'm1', 'client-1')->reason);
     }
+
+    public function test_issue_refuses_a_malformed_recipient(): void
+    {
+        $codes = $this->codes();
+        foreach (['anna', 'anna@', 'an na@example.org', "anna@example.org\r\nBcc: x@y.z", 'a@b@c.org', ''] as $bad) {
+            try {
+                $codes->issue('q', [], recipient: $bad);
+                $this->fail('issue should refuse ' . json_encode($bad));
+            } catch (\InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+        $this->assertSame('anna@example.org', $codes->record($codes->issue('q', [], recipient: ' Anna@Example.org '), 'q')->recipient);
+    }
 }

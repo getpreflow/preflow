@@ -441,6 +441,20 @@ final class CodesInFolioTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_code_bound_to_a_recipient_keeps_exactly_one_use(): void
+    {
+        $codes = $this->codes();
+        $code = $codes->issue('forcemap.round', [], recipient: 'anna@example.org');
+        $id = $this->idOf($code);
+        $this->login();
+
+        $this->assertSame(302, $this->send('POST', "/folio/code/{$id}", ['label' => 'Invite', 'max_uses' => '9'])->getStatusCode());
+        $this->assertSame(1, (int) $this->stored($id)->get('max_uses'));
+        $this->assertSame(302, $this->send('POST', "/folio/code/{$id}", ['label' => 'Invite', 'max_uses' => ''])->getStatusCode());
+        $this->assertSame(1, (int) $this->stored($id)->get('max_uses'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_counters_and_state_read_only_payload_hidden(): void
     {
         $this->codes()->issue('members.book', ['edition' => 1], 'BOOKCODE1', 'Book');

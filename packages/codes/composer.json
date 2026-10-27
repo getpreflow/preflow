@@ -15,6 +15,9 @@
         "phpunit/phpunit": "^11.0"
     },
     "conflict": {
+        "preflow/core": "<0.38",
+        "preflow/data": "<0.38",
+        "preflow/folio": "<0.40",
         "preflow/i18n": "<0.37"
     },
     "autoload": {

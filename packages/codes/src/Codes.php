@@ -105,7 +105,7 @@ final class Codes
                 throw new \InvalidArgumentException('A readable code cannot be bound to a recipient.');
             }
             $recipient = self::normalizeRecipient($recipient);
-            if (!str_contains($recipient, '@')) {
+            if (filter_var($recipient, FILTER_VALIDATE_EMAIL) === false) {
                 throw new \InvalidArgumentException('A recipient needs an e-mail address.');
             }
             $maxUses = 1;
@@ -234,25 +234,35 @@ final class Codes
             return $result;
         }
 
+        $codeId = (string) $result->codeId;
         $redemptionId = bin2hex(random_bytes(16));
-        $this->dm->saveType(new DynamicRecord($this->redemptionType(), [
-            'id' => $redemptionId,
-            'code_id' => $result->codeId,
-            'purpose' => $purpose,
-            'redeemer' => $redeemer,
-            'redeemed_at' => ($this->clock)()->getTimestamp(),
-        ]), false);
-
-        if ($this->events !== null) {
-            try {
-                $this->dispatch(CodeEvents::REDEEMED, (string) $result->codeId, $redeemer);
-            } catch (\Throwable $e) {
-                // The redeem did not happen: give the use back and drop this redemption, no throttle hit.
-                $this->uncountUse((string) $result->codeId);
-                $this->dm->deleteIn($this->redemptionType(), $redemptionId);
-
-                throw $e;
+        $written = false;
+        try {
+            $this->dm->saveType(new DynamicRecord($this->redemptionType(), [
+                'id' => $redemptionId,
+                'code_id' => $result->codeId,
+                'purpose' => $purpose,
+                'redeemer' => $redeemer,
+                'redeemed_at' => ($this->clock)()->getTimestamp(),
+            ]), false);
+            $written = true;
+            $this->dispatch(CodeEvents::REDEEMED, $codeId, $redeemer);
+        } catch (\Throwable $e) {
+            // The redeem did not happen: give the use back and drop the redemption if it was
+            // written, no throttle hit. A failing undo is logged and never hides the original exception.
+            $undo = [fn () => $this->uncountUse($codeId)];
+            if ($written) {
+                $undo[] = fn () => $this->dm->deleteIn($this->redemptionType(), $redemptionId);
             }
+            foreach ($undo as $step) {
+                try {
+                    $step();
+                } catch (\Throwable $failure) {
+                    error_log('preflow/codes: undoing a failed redeem failed: ' . $failure::class . ': ' . $failure->getMessage());
+                }
+            }
+
+            throw $e;
         }
 
         return $result;
@@ -260,11 +270,14 @@ final class Codes
 
     private function dispatch(string $event, string $codeId, ?string $redeemer): void
     {
+        if ($this->events === null) {
+            return;
+        }
         $code = $this->get($codeId);
         if ($code === null) {
             return;
         }
-        $this->events?->dispatch($event, [
+        $this->events->dispatch($event, [
             'code' => $code,
             'purpose' => $code->purpose,
             'redeemer' => $redeemer,
@@ -383,7 +396,7 @@ final class Codes
         }
     }
 
-    /** Revokes the code; a revoked code keeps its first revocation time. */
+    /** Revokes the code; a revoked code keeps its first revocation time. Writes that one column only. */
     public function revoke(string $codeId): void
     {
         $record = $this->dm->findType('code', $codeId)
@@ -391,9 +404,46 @@ final class Codes
         if ((string) ($record->get('revoked_at') ?? '') !== '') {
             return;
         }
-        $record->set('revoked_at', ($this->clock)()->format(DATE_ATOM));
-        $this->dm->saveType($record, false);
-        $this->dispatch(CodeEvents::REVOKED, $codeId, null);
+        $at = ($this->clock)()->format(DATE_ATOM);
+        $changed = $this->writeColumn($codeId, 'revoked_at', $at, static fn (DynamicRecord $r): bool => (string) ($r->get('revoked_at') ?? '') === '');
+        if ($changed) {
+            $this->dispatch(CodeEvents::REVOKED, $codeId, null);
+        }
+    }
+
+    /**
+     * Sets one column of a code without writing the rest of the record back, so a use counted at
+     * the same time is never overwritten: one UPDATE on a SQL storage, the JSON driver's
+     * read-modify-write under the code's lock. $applies decides on the fresh record whether to write.
+     *
+     * @param \Closure(DynamicRecord): bool $applies
+     */
+    private function writeColumn(string $codeId, string $column, string $value, \Closure $applies): bool
+    {
+        $type = $this->dm->getTypeRegistry()?->get('code')
+            ?? throw new \RuntimeException('preflow/codes: the type "code" is not defined (no config/data.php?).');
+        $driver = $this->dm->driver($type->storage);
+
+        if ($driver instanceof PdoDriver) {
+            $dialect = $driver->dialect();
+            $table = $dialect->quoteIdentifier($type->table);
+            $id = $dialect->quoteIdentifier($type->idField);
+            $col = $dialect->quoteIdentifier($column);
+            $guard = $column === 'revoked_at' ? " AND ({$col} IS NULL OR {$col} = '')" : '';
+
+            return $this->dm->execute("UPDATE {$table} SET {$col} = ? WHERE {$id} = ?{$guard}", [$value, $codeId], $type->storage) === 1;
+        }
+
+        return $this->locked($codeId, function () use ($codeId, $column, $value, $applies): bool {
+            $record = $this->dm->findType('code', $codeId);
+            if ($record === null || !$applies($record)) {
+                return false;
+            }
+            $record->set($column, $value);
+            $this->dm->saveType($record, false);
+
+            return true;
+        });
     }
 
     /**
@@ -495,8 +545,7 @@ final class Codes
         if ($expiresAt <= ($this->clock)()) {
             throw new \InvalidArgumentException('A code can only be renewed until a time in the future.');
         }
-        $record->set('expires_at', self::storeTime($expiresAt));
-        $this->dm->saveType($record, false);
+        $this->writeColumn($codeId, 'expires_at', self::storeTime($expiresAt), static fn (): bool => true);
     }
 
     /** E-mail addresses match without regard to case and surrounding spaces. */

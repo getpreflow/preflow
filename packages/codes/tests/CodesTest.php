@@ -604,6 +604,48 @@ final class CodesTest extends TestCase
         $this->test_concurrent_redeem_cannot_exceed_max_uses();
     }
 
+    public function test_throwing_listener_undoes_use_and_redemption(): void
+    {
+        $c = $this->app()->container();
+        $events = new \Preflow\Codes\CodeEvents();
+        $codes = new Codes(
+            $c->get(DataManager::class),
+            $c->get(Throttle::class),
+            require $this->dir . '/config/codes.php',
+            fn (): \DateTimeImmutable => $this->now,
+            $this->dir . '/storage/locks',
+            $events,
+        );
+        $calls = 0;
+        $events->on(\Preflow\Codes\CodeEvents::REDEEMED, function () use (&$calls): void {
+            if (++$calls === 1) {
+                throw new \RuntimeException('group');
+            }
+        });
+        $code = $codes->issue('forcemap.round', [], maxUses: 1);
+        $id = (string) $codes->check($code, 'forcemap.round')->codeId;
+
+        try {
+            $codes->redeem($code, 'forcemap.round', 'm1');
+            $this->fail('the listener exception should propagate');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('group', $e->getMessage());
+        }
+        $this->assertSame(0, $codes->get($id)->uses);
+        $this->assertSame([], $codes->redemptions($id));
+
+        $this->assertTrue($codes->redeem($code, 'forcemap.round', 'm1')->ok);
+        $this->assertSame(1, $codes->get($id)->uses);
+        $this->assertCount(1, $codes->redemptions($id));
+    }
+
+    #[Group('mysql')]
+    public function test_throwing_listener_undo_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_throwing_listener_undoes_use_and_redemption();
+    }
+
     #[Group('mysql')]
     public function test_max_uses_ten_allows_exactly_ten_on_mysql(): void
     {

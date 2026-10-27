@@ -46,6 +46,9 @@ final class CodeAdmin
             foreach (self::KEPT as $field) {
                 $record->set($field, $stored->get($field));
             }
+            if ((string) ($stored->get('recipient') ?? '') !== '') {
+                $record->set('max_uses', '1'); // a bound code has exactly one use
+            }
 
             return;
         }
