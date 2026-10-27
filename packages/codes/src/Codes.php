@@ -48,6 +48,7 @@ final class Codes
         array $config = [],
         ?\Closure $clock = null,
         ?string $lockDir = null,
+        private readonly ?CodeEvents $events = null,
     ) {
         $purposes = [];
         foreach ((array) ($config['purposes'] ?? []) as $name => $purpose) {
@@ -233,15 +234,42 @@ final class Codes
             return $result;
         }
 
+        $redemptionId = bin2hex(random_bytes(16));
         $this->dm->saveType(new DynamicRecord($this->redemptionType(), [
-            'id' => bin2hex(random_bytes(16)),
+            'id' => $redemptionId,
             'code_id' => $result->codeId,
             'purpose' => $purpose,
             'redeemer' => $redeemer,
             'redeemed_at' => ($this->clock)()->getTimestamp(),
         ]), false);
 
+        if ($this->events !== null) {
+            try {
+                $this->dispatch(CodeEvents::REDEEMED, (string) $result->codeId, $redeemer);
+            } catch (\Throwable $e) {
+                // The redeem did not happen: give the use back and drop this redemption, no throttle hit.
+                $this->uncountUse((string) $result->codeId);
+                $this->dm->deleteIn($this->redemptionType(), $redemptionId);
+
+                throw $e;
+            }
+        }
+
         return $result;
+    }
+
+    private function dispatch(string $event, string $codeId, ?string $redeemer): void
+    {
+        $code = $this->get($codeId);
+        if ($code === null) {
+            return;
+        }
+        $this->events?->dispatch($event, [
+            'code' => $code,
+            'purpose' => $code->purpose,
+            'redeemer' => $redeemer,
+            'payload' => $code->payload,
+        ]);
     }
 
     /**
@@ -255,21 +283,7 @@ final class Codes
         $driver = $this->dm->driver($type->storage);
 
         if ($driver instanceof PdoDriver) {
-            $dialect = $driver->dialect();
-            $table = $dialect->quoteIdentifier($type->table);
-            $id = $dialect->quoteIdentifier($type->idField);
-            $uses = $dialect->quoteIdentifier('uses');
-            $max = $dialect->quoteIdentifier('max_uses');
-            // Folio syncs these columns as TEXT, so compare as numbers, never as strings.
-            if ($dialect instanceof MysqlDialect) {
-                // Strict mode turns CAST('' AS SIGNED) and CAST('3.0' AS SIGNED) into errors
-                // inside an UPDATE, so only well-formed numbers are cast; '' uses count as 0.
-                $count = "(CASE WHEN {$uses} REGEXP '^[0-9]+$' THEN CAST({$uses} AS SIGNED) ELSE 0 END)";
-                $limit = "(CASE WHEN {$max} REGEXP '^[0-9]+([.][0-9]*)?$' THEN CAST({$max} AS DECIMAL(65,10)) ELSE 0 END)";
-            } else {
-                $count = "CAST(COALESCE({$uses}, 0) AS INTEGER)";
-                $limit = "CAST({$max} AS INTEGER)";
-            }
+            [$table, $id, $uses, $max, $count, $limit] = $this->sql($driver, $type);
 
             return $this->dm->execute(
                 "UPDATE {$table} SET {$uses} = {$count} + 1 WHERE {$id} = ? AND ({$max} IS NULL OR {$max} = '' OR {$count} < {$limit})",
@@ -292,6 +306,62 @@ final class Codes
 
             return true;
         });
+    }
+
+    /** Gives one counted use back, atomically and never below zero (the undo of countUse()). */
+    private function uncountUse(string $codeId): void
+    {
+        $type = $this->dm->getTypeRegistry()?->get('code')
+            ?? throw new \RuntimeException('preflow/codes: the type "code" is not defined (no config/data.php?).');
+        $driver = $this->dm->driver($type->storage);
+
+        if ($driver instanceof PdoDriver) {
+            [$table, $id, $uses, , $count] = $this->sql($driver, $type);
+            $this->dm->execute(
+                "UPDATE {$table} SET {$uses} = {$count} - 1 WHERE {$id} = ? AND {$count} > 0",
+                [$codeId],
+                $type->storage,
+            );
+
+            return;
+        }
+
+        $this->locked($codeId, function () use ($codeId): bool {
+            $record = $this->dm->findType('code', $codeId);
+            if ($record === null || (int) $record->get('uses') <= 0) {
+                return false;
+            }
+            $record->set('uses', (int) $record->get('uses') - 1);
+            $this->dm->saveType($record, false);
+
+            return true;
+        });
+    }
+
+    /**
+     * Quoted names and the numeric expressions for the use counting UPDATEs.
+     *
+     * @return array{0: string, 1: string, 2: string, 3: string, 4: string, 5: string} table, id, uses, max, count, limit
+     */
+    private function sql(PdoDriver $driver, TypeDefinition $type): array
+    {
+        $dialect = $driver->dialect();
+        $table = $dialect->quoteIdentifier($type->table);
+        $id = $dialect->quoteIdentifier($type->idField);
+        $uses = $dialect->quoteIdentifier('uses');
+        $max = $dialect->quoteIdentifier('max_uses');
+        // Folio syncs these columns as TEXT, so compare as numbers, never as strings.
+        if ($dialect instanceof MysqlDialect) {
+            // Strict mode turns CAST('' AS SIGNED) and CAST('3.0' AS SIGNED) into errors
+            // inside an UPDATE, so only well-formed numbers are cast; '' uses count as 0.
+            $count = "(CASE WHEN {$uses} REGEXP '^[0-9]+$' THEN CAST({$uses} AS SIGNED) ELSE 0 END)";
+            $limit = "(CASE WHEN {$max} REGEXP '^[0-9]+([.][0-9]*)?$' THEN CAST({$max} AS DECIMAL(65,10)) ELSE 0 END)";
+        } else {
+            $count = "CAST(COALESCE({$uses}, 0) AS INTEGER)";
+            $limit = "CAST({$max} AS INTEGER)";
+        }
+
+        return [$table, $id, $uses, $max, $count, $limit];
     }
 
     /** Runs $fn holding an exclusive lock on codes-{id}.lock in the lock directory. */
@@ -323,6 +393,7 @@ final class Codes
         }
         $record->set('revoked_at', ($this->clock)()->format(DATE_ATOM));
         $this->dm->saveType($record, false);
+        $this->dispatch(CodeEvents::REVOKED, $codeId, null);
     }
 
     /**

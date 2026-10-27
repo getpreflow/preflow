@@ -21,11 +21,13 @@ final class CodesServiceProvider extends ServiceProvider
     public function register(Container $container): void
     {
         $container->get(MigrationRegistry::class)->addPath(dirname(__DIR__) . '/migrations');
+        $container->singleton(CodeEvents::class, static fn (): CodeEvents => new CodeEvents());
         $container->singleton(Codes::class, static fn (Container $c): Codes => new Codes(
             $c->get(DataManager::class),
             $c->get(Throttle::class),
             self::config($c),
             lockDir: $c->get(Application::class)->basePath('storage/locks'),
+            events: $c->get(CodeEvents::class),
         ));
     }
 
