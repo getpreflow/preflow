@@ -2471,19 +2471,20 @@
             "dist": {
                 "type": "path",
                 "url": "packages/codes",
-                "reference": "a738eedbd9f6de0708961a6075c6a3e7a37c6e84"
+                "reference": "74ba6da48554debd64c49e06242ec80b84ecdf7d"
             },
             "require": {
                 "php": ">=8.4",
                 "preflow/core": "^0.20 || @dev",
-                "preflow/data": "^0.21 || @dev",
+                "preflow/data": "^0.42 || @dev",
                 "preflow/i18n": "^0.37 || @dev",
                 "preflow/notify": "^0.25 || @dev",
+                "preflow/validation": "^0.26 || @dev",
                 "preflow/view": "^0.1 || @dev"
             },
             "conflict": {
                 "preflow/core": "<0.38",
-                "preflow/data": "<0.38",
+                "preflow/data": "<0.42",
                 "preflow/folio": "<0.40",
                 "preflow/i18n": "<0.37"
             },
@@ -2606,14 +2607,17 @@
             "dist": {
                 "type": "path",
                 "url": "packages/data",
-                "reference": "0f4aa502a65f9e65f24587d758f5d1ce868b98af"
+                "reference": "5ea9f1410c51d84b191be59ef1b7b87dd65ab392"
             },
             "require": {
                 "ext-pdo": "*",
                 "ext-pdo_sqlite": "*",
                 "php": ">=8.4",
                 "preflow/core": "^0.1 || @dev",
-                "preflow/validation": "^0.1 || @dev"
+                "preflow/validation": "^0.42 || @dev"
+            },
+            "conflict": {
+                "preflow/validation": "<0.42"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0"
@@ -2687,7 +2691,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/folio",
-                "reference": "c1d09c18a28825e18e3879b5ddb83e603cb00d97"
+                "reference": "fe8686ee6c4e130319f8ae0d793feeb28f83c7e4"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
@@ -2695,7 +2699,7 @@
                 "preflow/auth": "^0.38 || @dev",
                 "preflow/components": "^0.1 || @dev",
                 "preflow/core": "^0.34 || @dev",
-                "preflow/data": "^0.41 || @dev",
+                "preflow/data": "^0.42 || @dev",
                 "preflow/devtools": "^0.20 || @dev",
                 "preflow/form": "^0.1 || @dev",
                 "preflow/htmx": "^0.1 || @dev",
@@ -2711,7 +2715,7 @@
                 "preflow/auth": "<0.38",
                 "preflow/codes": "<0.40",
                 "preflow/core": "<0.34",
-                "preflow/data": "<0.41",
+                "preflow/data": "<0.42",
                 "preflow/i18n": "<0.39",
                 "preflow/media": "<0.36",
                 "preflow/members": "<0.39",
@@ -2889,19 +2893,19 @@
             "dist": {
                 "type": "path",
                 "url": "packages/media",
-                "reference": "faee858098350144b45229172f69cd8333fa0529"
+                "reference": "6f16ae513ebe0af5775c7f74d3ef78c7a5228e8d"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
                 "php": ">=8.4",
                 "preflow/core": "^0.34 || @dev",
-                "preflow/data": "^0.35 || @dev",
+                "preflow/data": "^0.42 || @dev",
                 "preflow/routing": "^0.1 || @dev",
                 "preflow/view": "^0.34 || @dev"
             },
             "conflict": {
                 "preflow/core": "<0.34",
-                "preflow/data": "<0.35",
+                "preflow/data": "<0.42",
                 "preflow/view": "<0.34"
             },
             "require-dev": {
@@ -2948,14 +2952,14 @@
             "dist": {
                 "type": "path",
                 "url": "packages/members",
-                "reference": "cd56c6de0c30cba48148d5ecd4a29201e65a4071"
+                "reference": "2be3a37864243bcbec729798588edab80cfb1255"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
                 "php": ">=8.4",
                 "preflow/auth": "^0.38 || @dev",
                 "preflow/core": "^0.38 || @dev",
-                "preflow/data": "^0.38 || @dev",
+                "preflow/data": "^0.42 || @dev",
                 "preflow/devtools": "^0.26 || @dev",
                 "preflow/i18n": "^0.38 || @dev",
                 "preflow/notify": "^0.25 || @dev",
@@ -2966,7 +2970,7 @@
             "conflict": {
                 "preflow/auth": "<0.38",
                 "preflow/core": "<0.38",
-                "preflow/data": "<0.38",
+                "preflow/data": "<0.42",
                 "preflow/folio": "<0.38",
                 "preflow/i18n": "<0.38",
                 "preflow/routing": "<0.38"
