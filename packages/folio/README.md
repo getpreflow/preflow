@@ -870,6 +870,11 @@ member pages' default `layout` (`MembersDefaults`), and it also counts published
 (`MemberDeleteCopies`) and carries the deletion into them (pointers cleared, cascaded pages
 unpublished; the snapshot gets no revision entry).
 
+The members admin also locks and unlocks a member (a Locked pill over the state, sessions ended, sign-in refused
+while locked) and resends the confirmation mail to an unconfirmed one: the record actions `lock`, `unlock` and
+`resend_confirmation` (`members.decide`), offered in the Decision panel where they apply, with "Locked since" and
+"Last sign-in" lines. Needs `preflow/members` 0.39.
+
 ```php
 // app/Folio/Demo/Extension.php
 #[FolioExtension(name: 'demo', label: 'Demo', description: 'A screen, a note customization and a setting', icon: 'ui-puzzle', version: '1.0.0')]

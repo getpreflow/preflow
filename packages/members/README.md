@@ -367,6 +367,17 @@ message, else the lang files'), and only when it was sent the role changes.
 Locales and URL prefixes come from `config/i18n.php`; the package lang files ship `en`, `de`
 and `fr`. Without `config/i18n.php` the pages run in a single locale with no prefix.
 
+## Locking, sessions and sign-in info
+
+- `Members::lock($m)` / `unlock($m)` / `isLocked($m)`: `locked_at` (readonly) is set or cleared; a
+  lock ends the sessions (`endSessions()`) and refuses every sign-in path like a declined member,
+  without saying "locked" on a public page. Unlock keeps the old password; sessions stay ended.
+- `Members::endSessions($m)`: `auth_epoch` + 1 and the remember rows go.
+- `Members::resendConfirmation($m)`: sends the confirm link again to the stored address (earlier
+  links stop working); `\LogicException` unless the member is unconfirmed, `TransportException`
+  when the mail fails.
+- `last_login_at` (readonly) is set on every sign-in: login, confirmation and reset.
+
 ## In Folio
 
 - Members (sidebar section Members) with a waiting badge and a State column, newest first,
@@ -380,6 +391,10 @@ and `fr`. Without `config/i18n.php` the pages run in a single locale with no pre
   form shows that standard text, in the language being edited, as the field's placeholder. A
   text stored only for another locale is not used (the member gets the lang default in their
   language).
+- Lock and unlock (the Decision panel): a locked member keeps the state and the password but
+  cannot sign in anywhere and is signed out everywhere; the State column says Locked, never
+  Declined. Resend confirmation mails an unconfirmed member the link again, to the stored address.
+  The panel also shows the member's last sign-in. All of it needs `members.decide`.
 
 ## Copy and mails
 

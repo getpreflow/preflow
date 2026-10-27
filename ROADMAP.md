@@ -163,7 +163,7 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 - ~~**A landing page at `GET /konto`:**~~ done in 0.38 (a default landing; the site's own route wins): confirm and login redirect there, but the package has no page; a configurable template or callback
 - ~~**Primary link to the mail layout:**~~ done in 0.38 (`action` for confirm, reset and existing): `MemberMailer` passes only lang, subject, accent and paragraphs; pass `action: {label, url}` for confirm, reset and "existing account" mails
 - **Italian (`it`) texts:** the package ships en, de and fr
-- **Member lock, sessions and sign-in info (after the split):** `Members::lock()`, `unlock()` and `isLocked()` with a readonly `locked_at` (a lock covers every sign-in path and shows a "Gesperrt" pill, never "declined"); `Members::endSessions()` (`auth_epoch` + 1 and `RememberMe::revokeAll()`); `Members::resendConfirmation()` (the public resend shares its code path); a readonly `last_login_at` set on sign-in, reset and confirmation
+- ~~**Member lock, sessions and sign-in info (after the split):**~~ done in 0.39 (`Members::lock()`, `unlock()`, `isLocked()`, `endSessions()`, `resendConfirmation()`, `locked_at`, `last_login_at`; Folio: Locked pill, Lock / Unlock / Resend confirmation in the Decision panel): `Members::lock()`, `unlock()` and `isLocked()` with a readonly `locked_at` (a lock covers every sign-in path and shows a "Gesperrt" pill, never "declined"); `Members::endSessions()` (`auth_epoch` + 1 and `RememberMe::revokeAll()`); `Members::resendConfirmation()` (the public resend shares its code path); a readonly `last_login_at` set on sign-in, reset and confirmation
 - **Folio hook bridge for member self-deletion:** a member's own deletion runs `MemberEvents` but not Folio's record hooks on `member`. Bridge them in Folio's members adapter: `DELETING` runs `#[BeforeSave]`/`#[BeforeDelete]` and can refuse, `DELETED` runs `#[AfterSave]`/`#[AfterDelete]`. Before holz-objekte.org drops its workaround
 
 ### rbac
@@ -216,12 +216,16 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
 
 ## Completed
 
-### v0.38.0 (prepared)
+### v0.39.0 (prepared)
 
 - **Editable site texts:** `config/folio.php` `translations.editable` lists a site's own text groups for the Translations screen; overrides of listed groups apply on every request (public pages, mails in the recipient's language, console) in every content language; placeholders are kept (dropping or adding one is refused); `site` and admin groups are skipped. i18n: `Translator::alwaysOverride()`
 - **Screens:** `#[NavBadge]` on a `#[FolioScreen]` shows a sidebar count; screen labels may be translation keys (`site.screens.{name}`); `AdminNav::add()` takes an optional `$badge`
 - **Type customizations:** a `#[FormPanel]` returning null is hidden; a `#[ListColumn]` may return `Link($label, $url)` (admin-relative or same-site paths only)
-- **Constraints:** Folio needs i18n `^0.38` (conflict `<0.38`) for `alwaysOverride()`
+- **Constraints:** Folio needs i18n `^0.39` (conflict `<0.39`) for `alwaysOverride()` and conflicts with members `<0.39` (the lock calls)
+- **Member lock, sessions and sign-in info:** `Members::lock()`, `unlock()`, `isLocked()` (readonly `locked_at`; a lock covers every sign-in path and ends the sessions), `endSessions()`, `resendConfirmation()` and a readonly `last_login_at` set on every sign-in. Folio: a Locked pill in the State column (never Declined), Lock, Unlock and Resend confirmation in the Decision panel (permission `members.decide`), "Locked since" and "Last sign-in" lines; no per-record action visibility in Folio yet, so the panel offers only the buttons that apply and a crafted POST is refused
+
+### v0.38.0
+
 - **Members split:** `preflow/members` is a core without Folio and rbac (registration, confirmation, sign-in and
   out, forgot and reset, account page with self-deletion, mails, `members:prune`, `members:decide`); it requires
   auth, core, data, routing and i18n. Folio carries the members admin (Members list, Decision panel, Settings →
