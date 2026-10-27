@@ -26,5 +26,15 @@
         "psr-4": {
             "Preflow\\Codes\\Tests\\": "tests/"
         }
+    },
+    "extra": {
+        "preflow": {
+            "translations": {
+                "codes-mail": {
+                    "path": "lang",
+                    "scope": "public"
+                }
+            }
+        }
     }
 }

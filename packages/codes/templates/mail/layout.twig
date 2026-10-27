@@ -1,0 +1,19 @@
+{# The HTML part of the invitation mail, neutral: a site replaces it with config/codes.php mail.layout or the
+   template option. Gets lang, subject, accent (colour), paragraphs (safe HTML: escaped text, URLs linked),
+   action ({label, url}: the personal link), message and from_name (plain text, escaped by Twig), plus the vars option. #}
+<!doctype html>
+<html lang="{{ lang }}">
+<head><meta charset="utf-8"><title>{{ subject }}</title></head>
+<body style="margin:0;padding:0;background:#ffffff;color:#1a1a1a;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:16px;line-height:1.55">
+  <div style="max-width:560px;margin:0 auto;padding:32px 24px">
+    <div style="height:3px;background:{{ accent }};margin-bottom:24px"></div>
+    {% for p in paragraphs %}
+    <p style="margin:0 0 16px;color:#1a1a1a">{{ p|raw }}</p>
+    {% endfor %}
+    {% if action is defined and action %}
+    <p style="margin:24px 0 8px"><a data-codes-action href="{{ action.url }}" style="display:inline-block;background:{{ accent }};color:#ffffff;text-decoration:none;font-weight:600;padding:12px 24px;border-radius:4px">{{ action.label }}</a></p>
+    <p data-codes-action-url style="margin:0 0 16px;font-size:13px;color:#666666;word-break:break-all">{{ action.url }}</p>
+    {% endif %}
+  </div>
+</body>
+</html>
