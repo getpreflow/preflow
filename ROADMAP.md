@@ -25,7 +25,10 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    memberships, certificates), a primary link (`action`) for the mail layout, the admission composing the name~~
    — done in 0.38 (prepared, not released). The audit of members against the rule below is in
    `docs/superpowers/plans/2026-10-26-release-0.38-checklist.md`; its open findings wait for the owner
-2. **Codes:** a redemption hook and email delivery for invitations (builds on 1's `next`)
+2. ~~**Codes:** a redemption hook and email delivery for invitations (builds on 1's `next`)~~ — done in 0.40
+   (prepared, not released): codes bound to a recipient, `forRecipient`, `renew`, a purpose `ttl`, `CodeEvents`
+   (a failing redeemed listener undoes the redemption), `CodeMailer`; the codes admin moved to Folio and
+   `preflow/codes` runs without it. See `docs/superpowers/plans/2026-10-27-release-0.40-checklist.md`
 3. **Data integrity for the flow editor and games:** compare-and-set draft save (`UPDATE … WHERE _version = ?`),
    unique fields (game slug, codes) and typed columns, saving null clears an SQL column
 4. **Media for the migration:** derived assets (`derived_from`) shown as stacks in the library (originals with

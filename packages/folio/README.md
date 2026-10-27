@@ -870,6 +870,14 @@ member pages' default `layout` (`MembersDefaults`), and it also counts published
 (`MemberDeleteCopies`) and carries the deletion into them (pointers cleared, cascaded pages
 unpublished; the snapshot gets no revision entry).
 
+The codes admin (`codes`, in `src/Codes/`) is Folio's too, there when Composer lists `preflow/codes`:
+*Library → Codes* with the type `code`, the `codes_purpose` field, redemptions, expiry filters and
+the *Revoke* action (permissions `code.view|create|edit|delete` and `codes.revoke`). Its texts are the
+translation group `codes`, shipped by Folio. `preflow/codes` no longer needs Folio: it defines the type
+`code` itself and Folio's richer definition takes its place when the extension is enabled; the storage
+alias `codes` is optional (fallback `default`). The admin creates readable codes only; codes bound to a
+recipient come from `Codes::issue()`. See the codes README.
+
 The members admin also locks and unlocks a member (a Locked pill over the state, sessions ended, sign-in refused
 while locked) and resends the confirmation mail to an unconfirmed one: the record actions `lock`, `unlock` and
 `resend_confirmation` (`members.decide`), offered in the Decision panel where they apply, with "Locked since" and

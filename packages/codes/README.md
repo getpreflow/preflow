@@ -12,9 +12,11 @@ php preflow folio:extensions:enable codes   # only with Folio: its built-in code
 php preflow migrate
 ```
 
+- Folio is optional: without it, skip the `folio:extensions:enable` line (the core defines the type `code`, and the
+  table is created by `preflow migrate`).
 - Add `Preflow\Codes\CodesServiceProvider` to `config/providers.php`. It binds `Codes` and registers the `code_redemption` migration.
-- Codes live in the storage alias `codes` when the site has it, else in `default`. To keep
-  them apart, add the alias to `config/data.php`:
+- The alias is optional: codes live in the storage alias `codes` when the site has it, else in
+  `default`. To keep them apart, add the alias to `config/data.php`:
 
   ```php
   'aliases' => ['codes' => 'sqlite'],
@@ -70,7 +72,7 @@ if (!$result->ok) {
   conditional `UPDATE` (`DataManager::execute()`; `uses` and `max_uses` are compared as
   numbers, though Folio stores them as TEXT), on the JSON driver a file lock in
   `storage/locks`. The last use goes to one request; the others get `used_up`.
-- `Result`: `ok`, `reason` (`unknown`, `expired`, `used_up`, `revoked`, `throttled`),
+- `Result`: `ok`, `reason` (`unknown`, `expired`, `used_up`, `revoked`, `throttled`, `wrong_recipient`),
   `payload` (on success) and `codeId`.
 - With a client (`Throttle::client($request)`), every failed redeem counts against it under
   `codes.{purpose}`; after `throttle.max` failures within `throttle.window` seconds, even a
@@ -79,20 +81,24 @@ if (!$result->ok) {
 - With Folio, codes are the type `code` (*Library → Codes*, Folio's built-in `codes` extension); neither codes nor redemptions are
   exported or imported. The `purpose` field (`codes_purpose`) offers the configured purposes.
 
-## Aliases
+## Storage
 
-The extension stores codes and redemptions in the storage alias `codes` (`config/data.php`
-`aliases`); it must name a SQL driver. A missing alias is an error at boot. The failure
-counters of the throttle live in the table `preflow_throttle` of the driver named `throttle`
-when one is configured (an optional alias), otherwise in the default storage.
+Codes and redemptions live in the storage alias `codes` when `config/data.php` has one,
+otherwise in `default`; either must name a SQL driver or the JSON driver. A missing alias is
+no error. The failure counters of the throttle live in the table `preflow_throttle` of the
+driver named `throttle` when one is configured (an optional alias), otherwise in the default
+storage.
 
 ## Admin
 
+The admin belongs to Folio (its built-in `codes` extension, texts in the translation group
+`codes`); `preflow/codes` itself runs without Folio and defines the type `code` on its own.
 *Library → Codes* lists the codes with a *Redemptions* column: the number of redemptions, or
 `revoked` / `expired`. The list filters by *Expires at* (from/until) and *Form* (readable /
 random).
 
-- **Create:** the admin creates readable codes only, for purposes with `readable: true`.
+- **Create:** the admin creates readable codes only, for purposes with `readable: true`. It cannot
+  create codes bound to a recipient (those come from `issue(..., recipient:)`).
   The code is normalised (upper case, no spaces or dashes) and must be 4–64 characters
   `A-Z0-9` and unique within its purpose; otherwise the form shows the error. Random codes
   come from `Codes::issue()`.
@@ -124,3 +130,70 @@ sites.
 - `record()`, `get()` and `forRecipient($email, $purpose, open: true)` return `CodeRecord`s (newest first).
 - `renew($codeId, $expiresAt)` gives a live code a new expiry. A purpose with `'ttl' => 30` (days) in
   `config/codes.php` expires codes issued without `expiresAt` after that time.
+- Readable codes cannot be bound to a recipient (a typed code is meant to be shared), and a bound code
+  holds exactly one use. The admin cannot create bound codes.
+- `forRecipient($email, 'purpose')` lists a person's open codes (pass `open: false` to include used,
+  revoked and expired ones). Recipients are never exported.
+
+## Events
+
+`Preflow\Codes\CodeEvents` is bound in the container; register listeners in a provider's `boot()`:
+
+```php
+$container->get(CodeEvents::class)->on(CodeEvents::REDEEMED, function (array $e): void {
+    // $e: code (CodeRecord), purpose, redeemer, payload
+    $groups->add($e['payload']['group'], $e['redeemer']);
+}, 'bggenius.invite'); // optional: only this purpose
+```
+
+- `codes.redeemed` runs inside `redeem()`, after the use is counted and the redemption stored.
+  If a listener throws, the package undoes its own state (the use is given back, the redemption
+  deleted) and rethrows, so the person can try again. This is not a throttle failure.
+- The package cannot roll back your writes: keep them in your own transaction, make the listener
+  idempotent, and send no mails before you are done.
+- `codes.revoked` runs after the revoke is stored; an exception propagates, the revoke stands.
+
+## Mail
+
+`CodeMailer::send(CodeRecord $code, string $to, string $url, array $options = []): bool` sends one
+invitation through `preflow/notify`. `$url` is the link your app built (a path is made absolute with
+`app.url`); only that link is linked in the mail. Options: `subject`, `message` (plain text, escaped),
+`from_name`, `language` (default the site's), `template` and `vars` (your own mail template). It returns
+`false` on a transport failure (logged without the address); the code stays valid. The words are in the
+translation group `codes-mail` (en, de, fr; German public texts use "Sie").
+
+`config/codes.php`:
+
+```php
+'mail' => [
+    'layout' => 'resources/mail/layout.twig', // default @codes/mail/layout.twig (neutral)
+    'from' => 'Club <club@example.org>',      // default: the mail channel's sender
+    'accent' => '#0a7d33',                    // link and button colour; no default
+],
+```
+
+A custom layout receives `accent` as an empty string unless `mail.accent` is set, and also `lang`,
+`subject`, `paragraphs`, `action` (`label`, `url`), `message` and `from_name`.
+
+## Example: an invitation route (app code)
+
+The route, the group and the pages are yours; the package supplies check, redeem, hook and mail.
+
+```php
+// Invite: bind a code to the address, mail the link.
+$code = $codes->issue('bggenius.invite', ['group' => $group], recipient: $email); // ttl from the purpose
+$mailer->send($codes->record($code, 'bggenius.invite'), $email, '/invite/' . $code, ['message' => $text, 'from_name' => $host]);
+
+// GET /invite/{code}
+$check = $codes->check($code, 'bggenius.invite', $throttle->client($request));
+if (!$check->ok) { /* "this invitation is no longer valid" */ }
+// $check->recipient is the invited address:
+//  - signed in with another address -> "this invitation is for another address, sign out?"
+//  - not signed in, account exists   -> sign in, with ?next=/invite/{code} (members: next.allow)
+//  - not signed in, new address      -> your short form, Members::register(..., emailVerified: true)
+//  - signed in with that address     ->
+$codes->redeem($code, 'bggenius.invite', $member->id, $throttle->client($request), recipient: $member->email);
+// your codes.redeemed listener adds the member to the group; then redirect to the welcome page.
+```
+
+Withdraw with `revoke($codeId)`; resend with `renew($codeId, $newExpiry)` and the same link again.
