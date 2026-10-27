@@ -307,6 +307,10 @@ On a Folio site the deletion also reaches published snapshots (cleared pointers,
 cascaded pages). Folio's own record hooks (`#[AfterDelete]` and the like on admin types) do not
 run for the records a member's deletion detaches or deletes.
 
+A staff delete in Folio's admin raises no `MemberEvents`: a project that cleans up on every
+member deletion, by the member or by staff, also listens to Folio's `#[AfterDelete]` on `member`
+(a `#[FolioType('member')]` class) besides `DELETED`.
+
 ## Overriding templates
 
 The pages are `@members/{landing,register,confirm,login,forgot,reset,resend,check-inbox,thanks,closed,account}.twig`
@@ -340,10 +344,9 @@ too. Words are changed in the lang files (see Copy and mails), not in templates.
 
 The package brings two console commands, `members:prune` and `members:decide`. It lists both in
 `composer.json` (`extra.preflow.commands`), so they need no setup and `preflow list` shows them.
-Run `members:prune` nightly. The commands need preflow/devtools 0.26; with an older devtools only
-the commands are missing, the member pages and
-Folio work (the package conflicts with auth, core, data, folio, i18n and routing before 0.38, not
-with devtools):
+Run `members:prune` nightly. The commands need preflow/devtools 0.26. With an older devtools only
+the commands are missing, while the member pages and Folio keep working (the package conflicts with
+auth, core, data, folio, i18n and routing before 0.38, not with devtools):
 
 ```
 17 3 * * * cd /path/to/site/current && php preflow members:prune

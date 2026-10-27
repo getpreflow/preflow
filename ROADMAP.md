@@ -163,6 +163,7 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 - ~~**A landing page at `GET /konto`:**~~ done in 0.38 (a default landing; the site's own route wins): confirm and login redirect there, but the package has no page; a configurable template or callback
 - ~~**Primary link to the mail layout:**~~ done in 0.38 (`action` for confirm, reset and existing): `MemberMailer` passes only lang, subject, accent and paragraphs; pass `action: {label, url}` for confirm, reset and "existing account" mails
 - **Italian (`it`) texts:** the package ships en, de and fr
+- **Folio hook bridge for member self-deletion:** a member's own deletion runs `MemberEvents` but not Folio's record hooks on `member`. Bridge them in Folio's members adapter: `DELETING` runs `#[BeforeSave]`/`#[BeforeDelete]` and can refuse, `DELETED` runs `#[AfterSave]`/`#[AfterDelete]`. Before holz-objekte.org drops its workaround
 
 ### rbac
 
