@@ -123,8 +123,8 @@ for every site, not only new ones.
   additive while the previous release serves); that is the conversion's job (my call).
 - **Drift:** a column's kind can change after conversion (a field turns translatable when a site adds a
   locale, a relation becomes `multiple`, a field's type is edited, a field becomes unique). Sync detects a
-  column whose kind differs from the definition and prints a warning naming the conversion command; the
-  conversion re-types it with the same check-first rules (my call).
+  column whose kind differs from the definition and prints a warning; a site not converted yet sees one per
+  column. A column whose kind changed later is fixed with a migration in that project (owner, 2026-10-27).
 - **Which tables:** every record table the data layer creates from a type definition (`createRecordTable`:
   Folio types, codes, members, media assets, user preferences, stored overrides) and its `__published`
   table, which the frontend reads and sorts. `__revisions` stays text: it is history, and an old revision's
@@ -134,37 +134,36 @@ for every site, not only new ones.
 - Numbers read back as before through the field type (`NumberFieldType::fromStorage`), so templates do not
   change. Queries that cast (`CAST(… AS DECIMAL)`, codes' numeric cast) keep working.
 
-### 4. Converting existing tables
+### 4. Converting existing tables (a one-time script, not a framework command)
 
-- **A command, run on purpose:** `preflow data:convert` (name left to the builder) with `--check`
-  (report only, changes nothing). It is **not** part of `preflow migrate`, because the deploys run migrate
-  while the previous release still serves (smart-stack.works' `deploy:migrate`: "migrations … must stay
-  additive"). The new release works on text and on typed columns alike, so the order is: deploy the new
-  release (migrate stays additive), then run the conversion (my call; it keeps a failed conversion from
-  touching a running site at all).
+Owner, 2026-10-27: the framework has one user, so the conversion is not a framework feature; the owner's sites
+are converted with a one-time script. The framework keeps clearing, unique fields, typed new tables and columns,
+and the drift warning in `preflow migrate` (which also names a site that is not converted yet). A field whose
+kind changes later is fixed with a migration in that project.
+
+- **The script:** `tools/convert-typed-columns.php` in the monorepo root (not in any package, not split, not
+  on Packagist). It boots a site's app from the site's directory, takes the record tables from `RecordTables`,
+  and runs: check → backup → convert → re-check. `--check` reports only.
+- **When:** after the site's deploy of the new release (the new release works on text and on typed columns;
+  migrate stays additive while the previous release serves). First against a copy of the site's database
+  locally, then on the live site with the owner's go-ahead (uploaded for the run and removed after).
 - **Order of work:**
-  1. Check every value of every record table against its target kind, and every unique field for existing
-     duplicates. Any failure: print every one (table, record id, field, value, why) and stop. Nothing was
-     changed, no backup is needed. Drift (section 3) is checked the same way.
-  2. Back up the database: MySQL dump (`mysqldump` or a PHP dump of the record tables when the binary is
-     missing) / a copy of the SQLite file, into `storage/backups/` with a timestamp; the last 5 are kept
-     (my call). If the backup fails, stop. A backup taken before a conversion that has not finished yet is never
-     rotated away: a rerun after an interrupted run (the server kills long SSH jobs) keeps the first
-     backup, takes a new one, checks again and continues with the columns not typed yet (my call).
+  1. Check every value of every typed record table against its target kind, and every unique field for
+     existing duplicates. Any failure: print every one (table, record id, field, value, why) and stop.
+     Nothing was changed.
+  2. Back up the database (MySQL: `mysqldump`, credentials in a temporary 0600 option file; SQLite:
+     `VACUUM INTO`) into the site's `storage/backups/` with a timestamp. If the backup fails, stop.
   3. Convert table by table. Empty strings in number, date and yes/no columns become NULL (the one conversion
-     that is not a failure). On MySQL, `ALTER TABLE … MODIFY` per table; on SQLite, the table is rebuilt
-     (create typed, copy, swap) inside a transaction. A table that fails mid-way is rolled back where the
-     database allows (SQLite) and the command stops, naming the backup to restore (MySQL DDL is not
-     transactional).
-  4. Re-check: every converted value reads back equal to the original (numbers numerically, text exactly).
-- **What doesn't fit:** a number field holding text (`'12 Spieler'`), a yes/no holding anything but
-  `''`, `0`, `1`, `true`, `false` (my call: those five are accepted, `'ja'` is not), a date not in the stored
-  formats, a short-text value over the limit **on a unique field**, duplicates on a unique field.
-- The command is idempotent: an already typed column is skipped.
-- `--check` runs locally against a copy and on the server before the deploy, so the owner sees the list
-  first.
-- The upgrade notes tell each site to run `--check`, deploy, then convert. holz-objekte.org converts in its own
-  session.
+     that is not a failure). MySQL: one `ALTER TABLE` per table (types and unique indexes together); SQLite:
+     rebuild the table (create typed, copy, swap) in a transaction.
+  4. Re-check: every converted value reads back equal to the original (numbers numerically, text exactly);
+     a mismatch stops with the backup path.
+- **What doesn't fit:** a number field holding text (`'12 Spieler'`), a yes/no holding anything but `''`,
+  `0`, `1`, `true`, `false`, a date not in the stored formats, a short-text value over the limit on a unique
+  field, duplicates on a unique field.
+- Already typed columns are skipped, so a rerun after an interruption continues (with a new backup; the
+  earlier ones stay, nothing rotates them).
+- holz-objekte.org converts in its own session with the same script.
 
 ## Constraints
 
@@ -182,8 +181,8 @@ for every site, not only new ones.
 - Unique: a duplicate is refused with a field error through `DataManager` and Folio's form; two simultaneous
   saves with the same value: one wins, the other gets the field error (SQLite and MySQL); a save never changes
   another record; scoped uniqueness (codes per purpose); translatable per locale.
-- Conversion: `--check` lists bad values and duplicates and changes nothing; a clean run backs up, converts,
-  re-checks; a second run does nothing; numbers sort numerically after it.
+- Conversion script: `--check` lists bad values and duplicates and changes nothing; a clean run backs up,
+  converts, re-checks; a second run does nothing; numbers sort numerically after it.
 - Copies of smart-stack.works and smeyer.me databases convert cleanly (or list what to fix); both sites'
   suites stay green.
 
@@ -192,12 +191,10 @@ for every site, not only new ones.
 - The exact SQL types per kind and the exact MySQL write that cannot hit another unique key.
 - Where the column-kind mapping lives for types without Folio, and the field type method name.
 - The lock for translatable unique fields.
-- Where the conversion records an unfinished run (a marker file next to the backups is enough).
-- The command name and its output format.
 - How the backup is restored (documented command or steps).
 
 ## Size
 
 Large: one plan of about 6–7 tasks (clearing + safe upsert; unique definition, validation and indexes; column
-kinds and typed sync; the conversion command with check, backup and re-check; Folio form errors and
+kinds and typed sync; the one-time conversion script with check, backup and re-check; Folio form errors and
 translations; docs, upgrade notes, release). One release.

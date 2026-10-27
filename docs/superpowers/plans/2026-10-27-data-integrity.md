@@ -4,7 +4,7 @@
 
 **Goal:** Saving null clears a column on every driver, fields can be unique (validated and enforced by the database), record tables get real column types, and a separate command converts existing tables safely (check first, backup, convert, re-check).
 
-**Architecture:** The data package owns everything: drivers (clearing, safe upsert), `ColumnKind` and the field-type → kind mapping (`FieldKinds`), typed `RecordTableSync` with a `RecordTables` registry of every record table, unique validation plus the database index, and the conversion (`Preflow\Data\Schema\Conversion\*`) that devtools' `data:convert` command runs. Folio's field types declare their column kind through an optional interface and Folio registers its tables (with `__published` typed, `__revisions` text); codes and members declare their unique fields.
+**Architecture:** The data package owns everything: drivers (clearing, safe upsert), `ColumnKind` and the field-type → kind mapping (`FieldKinds`), typed `RecordTableSync` with a `RecordTables` registry of every record table, unique validation plus the database index, and the drift warning; existing tables are converted by a one-time script in the monorepo's `tools/` (owner, 2026-10-27: not a framework command). Folio's field types declare their column kind through an optional interface and Folio registers its tables (with `__published` typed, `__revisions` text); codes and members declare their unique fields.
 
 **Tech Stack:** PHP 8.4, PDO (SQLite, MySQL/MariaDB 10.6+), PHPUnit, the Preflow monorepo (`packages/data`, `validation`, `devtools`, `folio`, `codes`, `members`, `media`).
 
@@ -22,7 +22,7 @@
 - Strings get `VARCHAR(n)` only when the field is unique or indexed (`n` = field `length`, default 191) and validation then limits them to `n` characters; all other text stays `LONGTEXT`/`TEXT`.
 - Unique and indexed columns compare exactly on MySQL (`utf8mb4_bin`). Empty values (NULL, `''`) are never unique-checked.
 - `__revisions` tables stay text and are never checked; `__published` tables are typed like their working table but carry no unique indexes.
-- Backups go to `storage/backups/` with a timestamp; the last 5 are kept; a backup taken before an unfinished conversion is never rotated away.
+- Backups go to the site's `storage/backups/` with a timestamp; no rotation.
 - Long SSH jobs are killed after about 12 minutes: the conversion works table by table and a rerun continues.
 - Message keys in the `validation` group, en/de/fr (German "Sie" in public texts; the validation group is public).
 - The full suite stays green (baseline from `main` before Task 1); PHPUnit deprecations not above the baseline count.
@@ -31,7 +31,7 @@
 
 1. **A partial save on SQLite** (a caller passing only some columns) used to null every other column through `INSERT OR REPLACE`; after Task 1 it must leave them alone. Test in Task 1.
 2. **A save colliding with another record's unique value on MySQL** must fail with a field error and leave *both* rows untouched (today's `ON DUPLICATE KEY UPDATE` would update the other row once a unique index exists). Test in Task 4 (MySQL group).
-3. **A conversion interrupted after some tables** (process killed): the rerun continues, keeps the first backup, and does not re-convert typed columns. Test in Task 5.
+3. **A conversion interrupted after some tables** (process killed): the rerun continues and does not re-convert typed columns. Test in Task 5.
 4. **A number stored as `'12'` on SQLite** must read back `'12'`/`12`, not `'12.0'` (SQLite `REAL` affinity would change it); use `NUMERIC`. Test in Task 3.
 5. **A Folio form save with a duplicate slug** shows "already taken" on the field, not a 500 (both the validation path and the race path where the database refuses). Test in Task 4.
 
@@ -95,7 +95,7 @@
   - `final readonly class ColumnSpec { string $name; ColumnKind $kind; ?int $length; }`
   - SQL per kind — MySQL: Text `LONGTEXT`, Short `VARCHAR(n) COLLATE utf8mb4_bin`, Number `DOUBLE`, Boolean `TINYINT(1)`, Date `VARCHAR(32)`; SQLite: Text `TEXT`, Short `TEXT`, Number `NUMERIC`, Boolean `INTEGER`, Date `TEXT`. One method `SchemaGrammar::recordColumnType(ColumnKind, ?int $length): string`.
   - Index names: `uniq_{table}_{field}` / `idx_{table}_{field}`; when longer than 64 characters, `uniq_` + first 50 characters + `_` + 8 hex of `crc32` of the full name (one helper `SchemaGrammar::indexName(string $prefix, string $table, string $field): string`).
-  - `RecordTableSync::sync(TypeDefinition $def, array $extraColumns = [], bool $typed = true, bool $unique = true): list<string>` — creates typed tables, adds missing columns typed, creates unique (field + scope) and plain indexes **only for tables and columns it creates in this call**; for existing columns whose SQL type differs from the expected kind it returns a line `"warning: {table}.{column} is {actual}, expected {kind}; run preflow data:convert"` and changes nothing.
+  - `RecordTableSync::sync(TypeDefinition $def, array $extraColumns = [], bool $typed = true, bool $unique = true): list<string>` — creates typed tables, adds missing columns typed, creates unique (field + scope) and plain indexes **only for tables and columns it creates in this call**; for existing columns whose SQL type differs from the expected kind it returns a line `"warning: {table}.{column} is {actual}, expected {kind}; convert the table (see the data README)"` and changes nothing.
   - `RecordTables` (container singleton in data): `add(string $source, \Closure $definitions): void` where the closure returns `list<array{def: TypeDefinition, extra: list<string>, typed: bool, unique: bool}>`; `all(): list<…>` (same shape). Every caller of `RecordTableSync` registers its tables there: Folio (working tables typed+unique, `__published` typed without unique, `__revisions` `typed: false`), codes, members, media assets, user preferences, stored overrides.
   - `Schema::columnTypes(string $table): array<string, string>` (lower-case SQL type per column).
 
@@ -142,46 +142,37 @@
 - [ ] **Step 4: Run** full `vendor/bin/phpunit` and `composer test:mysql` — Expected: PASS.
 - [ ] **Step 5: Commit** `feat(data): unique fields with validation and a database guard`
 
-### Task 5: The conversion command
+### Task 5: The one-time conversion script (owner, 2026-10-27: not a framework command)
 
 **Files:**
-- Create: `packages/data/src/Schema/Conversion/ConversionPlan.php`, `Checker.php`, `Failure.php`, `Backup.php`, `Converter.php` (all in `packages/data/src/Schema/Conversion/`), `packages/devtools/src/Command/DataConvertCommand.php`
-- Modify: devtools' built-in command list (where `MigrateCommand` is registered)
-- Test: `packages/data/tests/Schema/Conversion/CheckerTest.php`, `ConverterTest.php`, `MysqlConverterTest.php` (`#[Group('mysql')]`), `packages/devtools/tests/Command/DataConvertCommandTest.php`
+- Create: `tools/convert-typed-columns.php` (monorepo root; not in a package), `tools/tests/ConvertTypedColumnsTest.php` (run by the root phpunit config; add the directory there if needed)
 
 **Interfaces:**
-- Consumes: `RecordTables::all()`, `ColumnKind`, `FieldKinds::columnKindOf()`, `SchemaGrammar::recordColumnType()`/`indexName()`, `Schema::columnTypes()` (Tasks 2–3).
-- Produces:
-  - `ConversionPlan::for(DataManager $dm, RecordTables $tables, string $storage): ConversionPlan` — per table the columns whose type or indexes differ from the definition (typed: false tables skipped).
-  - `Checker::check(ConversionPlan $plan): list<Failure>`; `Failure { string $table; string $id; string $field; string $value; string $reason; }` — reasons `not a number`, `not yes/no`, `not a date`, `longer than {n}`, `duplicate of {id}`.
-  - Accepted values: Number — `''`/NULL or a string matching `^-?\d+(\.\d+)?$` (also `e` exponent off; a comma is a failure); Boolean — `''`, `0`, `1`, `true`, `false` case-insensitive; Date — `''`/NULL or one of `Y-m-d`, `Y-m-d\TH:i`, `Y-m-d\TH:i:s`, `Y-m-d\TH:i:sP`, `Y-m-d\TH:i:s.uP`, `Y-m-d\TH:iP`, `Y-m-d H:i:s`; Short — length ≤ n; unique — no two non-empty equal values within the scope (exact comparison).
-  - `Backup::create(DataManager $dm, string $storage, string $dir): string` (path): SQLite `VACUUM INTO`; MySQL `mysqldump` when on PATH (credentials through a temporary option file with mode 0600, never on the command line), else a PHP dump of every table in the database as `CREATE TABLE` + `INSERT`s. `Backup::rotate(string $dir, int $keep = 5, ?string $protect = null)`.
-  - Marker file `storage/backups/data-convert.pending` holding the first backup's path while a conversion is unfinished; `rotate()` never deletes the protected file; removed after a complete run.
-  - `Converter::convert(ConversionPlan $plan, \Closure $log): void` — per table: read all rows; `''` → NULL for Number/Boolean/Date columns, booleans written as 0/1; MySQL one `ALTER TABLE … MODIFY …, ADD UNIQUE INDEX …` per table; SQLite rebuild (create `{table}__new` typed, `INSERT … SELECT`, drop, rename, recreate indexes) in a transaction; then re-read and compare each value with the original (numbers numerically, booleans as 0/1, text exactly); a mismatch stops with the backup path in the message.
-  - `preflow data:convert [--check] [--storage=<driver>]`: `--check` prints the plan and every failure, exit 1 on failures, 0 otherwise, changes nothing. Without `--check`: plan → check (failures: print, exit 1, nothing changed, no backup) → backup (failure: exit 1) → convert table by table, printing each → remove marker → "Done." Nothing to convert: "Nothing to convert." exit 0.
+- Consumes: `RecordTables::all()`, `FieldKinds::columnKindOf()`, `SchemaGrammar::recordColumnType()`/`indexName()`, `Schema::columnTypes()` (Tasks 2–3).
+- Produces: `php tools/convert-typed-columns.php <site-dir> [--check] [--storage=<driver>]`. The logic lives in classes inside the script's own namespace `Preflow\Tools\Convert` (in `tools/Convert/*.php`, autoloaded by the script itself), so the test can drive it against a test app: `Checker::check(): list<Failure>`, `Backup::create(): string`, `Converter::convert(\Closure $log): void`. Exit codes: 0 clean/converted/nothing to do, 1 failures or backup failure.
+  - Accepted values: Number — `''`/NULL or `^-?\d+(\.\d+)?$` (a comma is a failure); Boolean — `''`, `0`, `1`, `true`, `false` case-insensitive; Date — `''`/NULL or one of `Y-m-d`, `Y-m-d\TH:i`, `Y-m-d\TH:i:s`, `Y-m-d\TH:i:sP`, `Y-m-d\TH:i:s.uP`, `Y-m-d\TH:iP`, `Y-m-d H:i:s`; Short — length ≤ n; unique — no two non-empty equal values within the scope (exact).
+  - Tables with `typed: false` (`__revisions`) are skipped. Already typed columns are skipped.
+  - Backup: SQLite `VACUUM INTO`; MySQL `mysqldump` with a temporary 0600 option file (never credentials on the command line); into `<site-dir>/storage/backups/`. No rotation.
 
-- [ ] **Step 1: Write the failing tests**
-  - `testCheckListsEveryBadValue`: number `'12 Spieler'`, boolean `'ja'`, date `'27.10.2026'`, unique duplicate → four `Failure`s with table, id, field, value; the database is unchanged afterwards (compare a dump before/after).
-  - `testConvertTypesAndKeepsValues` (SQLite, MySQL): untyped table with `'12'`, `'12.5'`, `''` numbers, `'1'`/`''`/`'true'` booleans, ISO dates → typed columns; values `12`, `12.5`, NULL; booleans 1, NULL, 1; dates unchanged; numeric order correct.
-  - `testFailureChangesNothingAndTakesNoBackup`: with one bad value, no backup file exists and column types are unchanged.
-  - `testBackupBeforeConvert`: a successful run leaves one backup in the dir; a 6th run keeps 5.
-  - `testInterruptedRunResumes` (Review Focus 3): convert with a `$log` closure that throws after the first table; marker exists; rerun converts the rest, the first backup still exists, typed tables are skipped, marker removed.
+- [ ] **Step 1: Write the failing tests** (SQLite; MySQL variants in `#[Group('mysql')]`)
+  - `testCheckListsEveryBadValue`: number `'12 Spieler'`, boolean `'ja'`, date `'27.10.2026'`, a unique duplicate → four failures with table, id, field, value; database unchanged, no backup written.
+  - `testConvertTypesAndKeepsValues`: `'12'`, `'12.5'`, `''` numbers → 12, 12.5, NULL; booleans `'1'`/`''`/`'true'` → 1, NULL, 1; dates unchanged; numeric order correct; a backup file exists.
   - `testSecondRunNothingToConvert`.
-  - `testRevisionsUntouched`: a `__revisions` table with `'12 Spieler'` neither fails the check nor changes.
-  - `testDriftIsConverted`: a converted `Short` column whose field became translatable is re-typed to Text.
-  - Command: `--check` exit codes and output lines; refusal text names each failure.
+  - `testRevisionsUntouched`: a `__revisions` table with `'12 Spieler'` neither fails nor changes.
+  - `testInterruptedRunContinues`: a `$log` that throws after the first table; the rerun converts the rest, typed tables skipped.
 - [ ] **Step 2: Run** — Expected: FAIL.
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** full `vendor/bin/phpunit` and `composer test:mysql` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat(data): data:convert converts record tables to typed columns (check, backup, convert, re-check)`
+- [ ] **Step 4: Run** the tests, `vendor/bin/phpunit` and `composer test:mysql` — Expected: PASS.
+- [ ] **Step 5: Dry runs on copies.** Copy smart-stack.works' and smeyer.me's local databases into the scratch directory, point the sites at the copies (never the originals; never production), run `--check` then the conversion, and record the output in the release checklist.
+- [ ] **Step 6: Commit** `feat(tools): one-time script converting record tables to typed columns`
 
 ### Task 6: Docs, upgrade notes, release checklist, site dry runs
 
 **Files:**
-- Modify: `packages/data/README.md` (clearing, unique, index, length, column kinds, `RecordTables`, `data:convert`), `packages/folio/README.md` (unique fields in model JSON, field types' `HasColumnKind`), `packages/codes/README.md`, `packages/members/README.md`, `packages/devtools/README.md`, `ROADMAP.md` (step 3 done; roadmap entries struck; the codes "Index on (recipient, purpose)" item done)
+- Modify: `packages/data/README.md` (clearing, unique, index, length, column kinds, `RecordTables`, the drift warning), `packages/folio/README.md` (unique fields in model JSON, field types' `HasColumnKind`), `packages/codes/README.md`, `packages/members/README.md`, `ROADMAP.md` (step 3 done; roadmap entries struck; the codes "Index on (recipient, purpose)" item done)
 - Create: `docs/superpowers/plans/2026-10-27-release-0.42-checklist.md`
 
-- [ ] **Step 1:** Write the READMEs and the checklist. The checklist's upgrade notes: partial saves no longer null other columns on SQLite; null clears on MySQL; members `email` and codes `code` unique (a site with duplicates sees them in `data:convert --check`); the order per site: `preflow data:convert --check` on the server (and locally on a copy), deploy (migrate stays additive), then `preflow data:convert`; restore steps for the backup (SQLite: copy the file back; MySQL: `mysql < dump`); holz-objekte.org converts in its own session.
-- [ ] **Step 2: Site dry runs (read-only).** Copy smart-stack.works' and smeyer.me's local databases to the scratch directory, point a test app at the copies (never the originals; never production), run `data:convert --check` then `data:convert` against the copies, record the output (failures listed or clean, tables converted) in the checklist. Run both sites' suites against the framework branch (`vendor/preflow/*` symlinks; delete `storage/cache/folio-*.cache` first): green.
+- [ ] **Step 1:** Write the READMEs and the checklist. The checklist's upgrade notes: partial saves no longer null other columns on SQLite; null clears on MySQL; members `email` and codes `code` unique (a site with duplicates sees them in the script's `--check`); the order per site: `tools/convert-typed-columns.php --check` on a local copy, deploy (migrate stays additive), then the script on the live site with the owner's go-ahead; restore steps for the backup (SQLite: copy the file back; MySQL: `mysql < dump`); holz-objekte.org converts in its own session.
+- [ ] **Step 2: Site suites.** Run both sites' suites against the framework branch (`vendor/preflow/*` symlinks; delete `storage/cache/folio-*.cache` first): green.
 - [ ] **Step 3: Run** full `vendor/bin/phpunit` and `composer test:mysql`; record counts in the checklist.
-- [ ] **Step 4: Commit** `docs: data integrity (clearing, unique fields, typed columns, data:convert)`
+- [ ] **Step 4: Commit** `docs: data integrity (clearing, unique fields, typed columns, conversion script)`
