@@ -163,6 +163,17 @@ TWIG;
         $this->assertSame('private, no-store', $see->getHeaderLine('Cache-Control'));
     }
 
+    public function test_the_default_layout_is_neutral(): void
+    {
+        // No site's colour: every colour of the package's own page layout is a grey.
+        preg_match_all('/#([0-9a-f]{6})\b/i', (string) file_get_contents(__DIR__ . '/../src/templates/_layout.twig'), $m);
+        $this->assertNotEmpty($m[1]);
+        foreach ($m[1] as $hex) {
+            $rgb = array_map(hexdec(...), str_split($hex, 2));
+            $this->assertLessThanOrEqual(8, max($rgb) - min($rgb), "#{$hex} is no grey");
+        }
+    }
+
     public function test_the_configured_layout_is_extended(): void
     {
         $this->site("['layout' => '@members/_other.twig']");
