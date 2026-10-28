@@ -12,6 +12,7 @@ use Preflow\Data\SortDirection;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Media\Color\ColorExtractor;
+use Preflow\Media\Derived\DerivedMakers;
 use Preflow\Media\Image\BoxPlan;
 use Preflow\Media\Image\Format;
 use Preflow\Media\Image\Formats;
@@ -129,6 +130,7 @@ final class MediaLibrary
         private readonly ?PreviewRenderers $previews = null,
         private readonly ?ColorExtractor $colors = null,
         private readonly ?Formats $formats = null,
+        private readonly ?DerivedMakers $makers = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
     }
@@ -346,6 +348,110 @@ final class MediaLibrary
         }
 
         return $counts;
+    }
+
+    /**
+     * Make a copy again from its original, in place: same id, the earlier file becomes a
+     * version (the replace() path, so versions_dir is needed), everything else stays (alt,
+     * title, its own edits). A plain copy (maker "copy") takes the original's file as
+     * uploaded and keeps its own crop, rotation and flip; any other maker gets the original
+     * as people see it (turned and mirrored, without the crop, at full size). The copy then
+     * counts as made from the original's current version (isStale() is false).
+     *
+     * @param ?array<string, mixed> $params new settings for the maker, stored on the copy (null: the copy's own)
+     * @throws \InvalidArgumentException for an unknown asset, an original, a maker nobody registered, or an original that is gone (nothing changed)
+     * @throws AssetUploadException (nothing changed)
+     */
+    public function remake(string $copyId, ?string $by, ?array $params = null): Asset
+    {
+        $copy = $this->find($copyId) ?? throw new \InvalidArgumentException("Unknown asset {$copyId}.");
+        if (!$copy->isCopy()) {
+            throw new \InvalidArgumentException("Asset {$copyId} is not a copy, so there is nothing to make it from.");
+        }
+        $maker = null;
+        if ($copy->maker !== self::MAKER_COPY) {
+            $maker = $copy->maker !== null ? $this->makers?->get($copy->maker) : null;
+            $maker ?? throw new \InvalidArgumentException("Copy {$copyId} was made by \"{$copy->maker}\", which no DerivedMaker is registered for.");
+        }
+        $originalId = (string) $copy->derivedFrom;
+        $gone = static fn (): \InvalidArgumentException => new \InvalidArgumentException("The original {$originalId} of copy {$copyId} is gone.");
+        $this->find($originalId) ?? throw $gone();
+        $this->requireVersionsDir($copyId, $copy->originalName);
+
+        // The original's record and the file the maker gets, read together: a replace running now cannot swap the file in between.
+        [$original, $input] = $this->guarded($originalId, function () use ($originalId, $gone, $maker): array {
+            $original = $this->find($originalId) ?? throw $gone();
+
+            return [$original, $this->makerInput($original, raw: $maker === null)];
+        });
+        $made = null;
+        try {
+            $made = $maker?->make($original, $input, $params ?? $copy->makerParams) ?? $input;
+            $bytes = $this->readFile($made, $original->originalName);
+            $fields = ['derived_version' => $original->version] + ($params !== null ? ['maker_params' => $params] : []);
+
+            return $this->locked($copyId, fn (): Asset => $this->swapFile($copyId, $bytes, $original->originalName, $by, [], $fields));
+        } finally {
+            @unlink($input);
+            if ($made !== null && $made !== $input) {
+                @unlink($made);
+            }
+        }
+    }
+
+    /** Whether remake() can run now: a copy whose original is there, made by "copy" or a registered maker, with versions_dir set. */
+    public function canRemake(Asset $copy): bool
+    {
+        if (!$copy->isCopy() || $this->versionsDir() === null || $copy->maker === null) {
+            return false;
+        }
+        if ($copy->maker !== self::MAKER_COPY && $this->makers?->has($copy->maker) !== true) {
+            return false;
+        }
+
+        return $this->find((string) $copy->derivedFrom) !== null;
+    }
+
+    /** True when the copy's original changed since the copy was made: its file version is above the one the copy was made from. */
+    public function isStale(Asset $copy): bool
+    {
+        if (!$copy->isCopy()) {
+            return false;
+        }
+        $original = $this->find((string) $copy->derivedFrom);
+
+        return $original !== null && $original->version > ($copy->derivedVersion ?? 0);
+    }
+
+    /**
+     * What a maker gets of the original, as a file the caller deletes: the file as uploaded
+     * ($raw, or an original that is not turned or mirrored, or no editable image), else the
+     * original turned and mirrored without the crop, at full size (the editor's image, uncapped).
+     *
+     * @throws AssetUploadException
+     */
+    private function makerInput(Asset $original, bool $raw): string
+    {
+        $file = $this->file($original);
+        if ($file === null || !is_file($file)) {
+            throw new AssetUploadException("{$original->originalName}: the file of asset {$original->id} is missing.");
+        }
+        if ($raw || !$this->isEditable($original) || ($original->rotation === 0 && !$original->mirrored)) {
+            $tmp = sys_get_temp_dir() . '/preflow-media-' . bin2hex(random_bytes(8)) . '.' . pathinfo($original->path, PATHINFO_EXTENSION);
+            if (!@copy($file, $tmp)) {
+                @unlink($tmp);
+                throw new AssetUploadException("{$original->originalName}: the file of asset {$original->id} could not be copied for its copy.");
+            }
+
+            return $tmp;
+        }
+        // A name of its own per call (two remakes never share it) that removeDerived() knows, so a leftover goes with the original's next edit.
+        $rel = self::stemOf($original->path) . '-oriented-' . Formats::key([$original->version, $original->rotation, $original->mirrored, 'full', bin2hex(random_bytes(8))]) . '.webp';
+        if ($this->variants === null || !$this->withinMaxPixels($original) || !$this->renderOriented($original, $rel, 0)) {
+            throw new AssetUploadException("{$original->originalName}: asset {$original->id} could not be turned and mirrored for its copy (no image backend, above max_pixels, or no WebP).");
+        }
+
+        return $this->absolute($rel);
     }
 
     /** @throws \InvalidArgumentException for an unknown asset, or a copy whose original is gone */
@@ -840,19 +946,26 @@ final class MediaLibrary
             return null;
         }
         $rel = self::stemOf($asset->path) . '-oriented-' . Formats::key([$asset->version, $asset->rotation, $asset->mirrored, 'oriented']) . '.webp';
-        if (!is_file($this->absolute($rel))) {
-            try {
-                $made = $this->variants->renderEdited($this->dir, $asset->path, $asset->mime, $asset->rotation, $asset->mirrored, null, $rel, self::ORIENTED_LONG_SIDE);
-            } catch (\Throwable $e) {
-                error_log("preflow/media: no editor image of asset {$asset->id}: " . $e::class . ': ' . $e->getMessage());
-                $made = null;
-            }
-            if ($made === null) {
-                return null;
-            }
+        if (!is_file($this->absolute($rel)) && !$this->renderOriented($asset, $rel, self::ORIENTED_LONG_SIDE)) {
+            return null;
         }
 
         return $this->url($rel);
+    }
+
+    /**
+     * Write the original turned and mirrored, without the crop, to $rel (WebP, beside the file),
+     * at most $longSide on its long side (0: full size). False when it could not be made.
+     */
+    private function renderOriented(Asset $asset, string $rel, int $longSide): bool
+    {
+        try {
+            return $this->variants?->renderEdited($this->dir, $asset->path, $asset->mime, $asset->rotation, $asset->mirrored, null, $rel, $longSide) !== null;
+        } catch (\Throwable $e) {
+            error_log("preflow/media: no turned image of asset {$asset->id}: " . $e::class . ': ' . $e->getMessage());
+
+            return false;
+        }
     }
 
     /**
@@ -1042,9 +1155,10 @@ final class MediaLibrary
      * then remove the old file's leftovers and make the new derived files.
      *
      * @param array<string, mixed> $restore a version's meta snapshot to bring back ([] for a plain replace)
+     * @param array<string, mixed> $fields record fields set with the new file (a remade copy's settings and original version)
      * @throws AssetUploadException
      */
-    private function swapFile(string $id, string $bytes, string $name, ?string $by, array $restore): Asset
+    private function swapFile(string $id, string $bytes, string $name, ?string $by, array $restore, array $fields = []): Asset
     {
         $asset = $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
         [$mime, $ext] = $this->sniff($bytes, $name);
@@ -1102,7 +1216,7 @@ final class MediaLibrary
             'palette' => [],
             'text_color' => '',
             'note' => '',
-        ] + $asset->toData();
+        ] + $fields + $asset->toData();
         foreach (self::SNAPSHOT as $key) {
             if (!array_key_exists($key, $restore)) {
                 continue; // a version made before this key existed leaves it as it is

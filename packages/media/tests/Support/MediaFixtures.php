@@ -8,6 +8,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\Locales;
+use Preflow\Media\Derived\DerivedMakers;
 use Preflow\Media\Image\VariantGenerator;
 use Preflow\Media\MediaLibrary;
 use Preflow\Media\Usage\AssetUsage;
@@ -40,11 +41,11 @@ trait MediaFixtures
     }
 
     /** @param array<string, mixed> $config */
-    private function library(array $config = [], ?VariantGenerator $variants = null, ?AssetUsage $usage = null, ?\Closure $now = null): MediaLibrary
+    private function library(array $config = [], ?VariantGenerator $variants = null, ?AssetUsage $usage = null, ?\Closure $now = null, ?DerivedMakers $makers = null): MediaLibrary
     {
         $dm = new DataManager(drivers: ['json' => new JsonFileDriver($this->assetRoot . '/store')], defaultDriver: 'json');
 
-        return new MediaLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', $config, $variants, $now, $usage);
+        return new MediaLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', $config, $variants, $now, $usage, makers: $makers);
     }
 
     private function png(int $width = 1200, int $height = 800): string

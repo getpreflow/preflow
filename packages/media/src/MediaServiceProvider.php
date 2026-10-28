@@ -17,6 +17,7 @@ use Preflow\Core\Routing\RouterInterface;
 use Preflow\Media\Access\DenyAllPrivateFileAccess;
 use Preflow\Media\Access\PrivateFileAccess;
 use Preflow\Media\Color\ColorExtractor;
+use Preflow\Media\Derived\DerivedMakers;
 use Preflow\Media\Http\PrivateFileController;
 use Preflow\Media\Http\VariantController;
 use Preflow\Media\Image\ColorManagement;
@@ -45,6 +46,7 @@ use Preflow\View\TemplateFunctionDefinition;
  * media_original_url(), media_preview_url(), media_colors() and media_color_class(). The library reads
  * colours with ColorExtractor. PDF previews come from Ghostscript or pdftocairo
  * (PdfPreviewRenderer), as the fallback of the shared PreviewRenderers, so a site's own renderer wins.
+ * Copies are made again (remake) by the makers sites and packages register on the shared DerivedMakers.
  * Private files are refused until something binds PrivateFileAccess (Folio does).
  * Listed in config/providers.php by a site without Folio; Folio registers it itself.
  */
@@ -90,6 +92,7 @@ final class MediaServiceProvider extends ServiceProvider
             previews: $c->get(PreviewRenderers::class),
             colors: new ColorExtractor($colors),
             formats: $c->get(Formats::class),
+            makers: $c->get(DerivedMakers::class),
         ));
         $container->singleton(LocaleProvider::class, fn (Container $c) => new ConfigLocaleProvider(
             static fn (): ?string => self::translatorLocale($c),
