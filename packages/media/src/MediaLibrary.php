@@ -262,17 +262,24 @@ final class MediaLibrary
      * Store a file on disk (which stays where it is) as a copy of an original: a full asset of
      * its own that knows its original, how it was made ($maker, e.g. "watermark") and with which
      * settings ($params). A stack is one original and its copies, so the id of a copy stands for
-     * its original. The copy is private when the original is, unless $private says otherwise.
+     * its original. The copy is private when the original is, unless $private says otherwise,
+     * and starts with the original's alt text (every locale) and title.
      *
      * @param array<string, mixed> $params
      * @throws AssetUploadException
-     * @throws \InvalidArgumentException for an unknown original
+     * @throws \InvalidArgumentException for an unknown original, or the maker "copy" (reserved for makeCopy())
      */
     public function derive(string $originalId, string $file, ?string $by, ?string $maker = null, array $params = [], ?bool $private = null): Asset
     {
+        if ($maker === self::MAKER_COPY) {
+            // remake() would treat it as a plain copy and take the original's raw file over the made one.
+            throw new \InvalidArgumentException('The maker "' . self::MAKER_COPY . '" is reserved for makeCopy().');
+        }
         $original = $this->originalOf($originalId);
 
         return $this->store($this->readFile($file, $original->originalName), $original->originalName, $by, $private ?? $original->private, [
+            'alt' => $original->alt,
+            'title' => $original->title,
             'derived_from' => $original->id,
             'maker' => $maker ?? '',
             'maker_params' => $params,
@@ -284,7 +291,8 @@ final class MediaLibrary
      * A new copy to edit on its own. Of an original: its file as uploaded, starting with its
      * crop, rotation, flip, format crops and focal point (maker "copy"). Of a copy: a sibling
      * (same original, maker and settings) with that copy's file and edits, so a watermarked
-     * copy's copy is watermarked too. The copy's own edited image is made like any edit's.
+     * copy's copy is watermarked too. The copy starts with the copied asset's alt text (every
+     * locale) and title. The copy's own edited image is made like any edit's.
      *
      * @throws AssetUploadException
      * @throws \InvalidArgumentException for an unknown asset
@@ -305,6 +313,8 @@ final class MediaLibrary
         $original = $source->isCopy() ? $this->originalOf($source->id) : $source;
         $data = $source->toData();
         $fields = array_intersect_key($data, array_flip(self::SNAPSHOT)) + [
+            'alt' => $source->alt,
+            'title' => $source->title,
             'derived_from' => $original->id,
             'maker' => $source->isCopy() ? $source->maker ?? '' : self::MAKER_COPY,
             'maker_params' => $source->makerParams,
@@ -312,6 +322,53 @@ final class MediaLibrary
         ];
 
         return $this->store($bytes, $source->originalName, $by, $source->private, $fields);
+    }
+
+    /**
+     * Mark an asset already in the library as a copy of another (for assets made before copies
+     * existed, or imported as separate files): it then stands behind its original, counts as
+     * made from the original's current version, and remake() can make it again. Only the record
+     * changes; the file, alt, title and edits stay. $maker null for a copy made by nothing
+     * remake() knows; never "copy" (reserved for makeCopy(), whose copies start from the
+     * original's edits).
+     *
+     * @param array<string, mixed> $params the maker's settings, stored on the copy
+     * @throws \InvalidArgumentException (nothing changed) for an unknown or binned asset or
+     *         original, an asset linked to itself, an original that is itself a copy, an asset
+     *         that has copies of its own, or the maker "copy"
+     */
+    public function linkCopy(string $id, string $originalId, ?string $maker = null, array $params = []): Asset
+    {
+        if ($id === $originalId) {
+            throw new \InvalidArgumentException("Asset {$id} cannot be a copy of itself.");
+        }
+        if ($maker === self::MAKER_COPY) {
+            throw new \InvalidArgumentException('The maker "' . self::MAKER_COPY . '" is reserved for makeCopy().');
+        }
+        $known = fn (string $which, string $assetId): Asset => $this->find($assetId) ?? throw new \InvalidArgumentException(
+            $this->findBinned($assetId) !== null ? "The {$which} {$assetId} is in the bin; restore it first." : "Unknown asset {$assetId}.",
+        );
+        $known('asset', $id);
+
+        return $this->guarded($id, function () use ($id, $originalId, $maker, $params, $known): Asset {
+            $asset = $known('asset', $id); // binned or deleted while we waited
+            $original = $known('original', $originalId);
+            if ($original->isCopy()) {
+                throw new \InvalidArgumentException("Asset {$originalId} is itself a copy (of {$original->derivedFrom}); link to that original instead.");
+            }
+            // Copies in the bin count too: restoring one must not make a copy of a copy.
+            if ($this->dm->queryIn($this->definition())->where('derived_from', '=', $id)->get()->items() !== []) {
+                throw new \InvalidArgumentException("Asset {$id} has copies of its own; an original cannot become a copy.");
+            }
+            $data = [
+                'derived_from' => $original->id,
+                'maker' => $maker ?? '',
+                'maker_params' => $params,
+                'derived_version' => $original->version,
+            ] + $asset->toData();
+
+            return $this->save($data);
+        });
     }
 
     /**

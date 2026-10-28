@@ -242,4 +242,110 @@ final class CopiesTest extends TestCase
             $this->assertContains($name, Asset::RESERVED);
         }
     }
+
+    public function test_copies_start_with_the_alt_and_title(): void
+    {
+        $original = $this->lib->update($this->original()->id, ['alt' => ['en' => 'A red square', 'de' => 'Ein rotes Quadrat'], 'title' => 'Red']);
+
+        $derived = $this->lib->derive($original->id, $this->fileWith($this->jpeg(60, 40, 10)), null, 'watermark');
+        $copy = $this->lib->makeCopy($original->id, null);
+        $edited = $this->lib->update($copy->id, ['alt' => ['en' => 'The copy'], 'title' => 'Copy title']);
+        $sibling = $this->lib->makeCopy($edited->id, null);
+
+        $this->assertSame($original->alt, $derived->alt, 'derive: the original\'s alt in every locale');
+        $this->assertSame('Red', $derived->title);
+        $this->assertSame($original->alt, $copy->alt);
+        $this->assertSame('Red', $copy->title);
+        $this->assertSame(['en' => 'The copy', 'de' => 'Ein rotes Quadrat'], $sibling->alt, 'a copy of a copy: the copied asset\'s');
+        $this->assertSame('Copy title', $sibling->title);
+        $this->assertSame($original->alt, $this->lib->find($derived->id)?->alt, 'stored');
+    }
+
+    public function test_derive_refuses_the_reserved_maker_copy(): void
+    {
+        $original = $this->original();
+
+        try {
+            $this->lib->derive($original->id, $this->fileWith($this->jpeg()), null, MediaLibrary::MAKER_COPY);
+            $this->fail('derive() should refuse the maker "copy"');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('reserved', $e->getMessage());
+        }
+        $this->assertSame([], $this->lib->copies($original->id));
+        $this->assertSame(MediaLibrary::MAKER_COPY, $this->lib->makeCopy($original->id, null)->maker, 'makeCopy() still makes them');
+    }
+
+    public function test_link_copy_marks_an_existing_asset_as_a_copy(): void
+    {
+        $original = $this->lib->replace($this->original()->id, $this->upload($this->jpeg(red: 20), 'second.jpg'), 'ed');
+        $other = $this->lib->update($this->lib->upload($this->upload($this->jpeg(60, 40, 10), 'old-watermarked.jpg'), 'ed')->id, ['title' => 'Kept']);
+        $bytes = $this->bytesOf($other);
+
+        $linked = $this->lib->linkCopy($other->id, $original->id, 'watermark', ['line' => '© Ed']);
+
+        $this->assertSame($other->id, $linked->id);
+        $this->assertSame($original->id, $linked->derivedFrom);
+        $this->assertSame('watermark', $linked->maker);
+        $this->assertSame(['line' => '© Ed'], $linked->makerParams);
+        $this->assertSame(2, $linked->derivedVersion, 'made from the original\'s current version');
+        $this->assertSame('Kept', $linked->title);
+        $this->assertSame($bytes, $this->bytesOf($linked), 'the file stays');
+        $this->assertFalse($this->lib->isStale($linked));
+        $this->assertSame([$other->id], array_map(static fn (Asset $c) => $c->id, $this->lib->copies($original->id)));
+        $this->assertSame($original->id, $this->lib->find($other->id)?->derivedFrom, 'stored');
+
+        $plain = $this->lib->linkCopy($this->original()->id, $original->id);
+        $this->assertNull($plain->maker, 'no maker: a copy remake() cannot make again');
+        $this->assertFalse($this->lib->canRemake($plain));
+    }
+
+    public function test_link_copy_refusals(): void
+    {
+        $original = $this->original();
+        $copy = $this->lib->makeCopy($original->id, null);
+        $other = $this->original();
+        $binned = $this->original();
+        $this->lib(['bin_dir' => $this->assetRoot . '/bin'])->delete($binned->id);
+        $unknown = str_repeat('a', 32);
+
+        $cases = [
+            'itself' => [$other->id, $other->id, null, 'itself'],
+            'the maker copy' => [$other->id, $original->id, MediaLibrary::MAKER_COPY, 'reserved'],
+            'a copy as original' => [$other->id, $copy->id, null, 'itself a copy'],
+            'an original with copies' => [$original->id, $other->id, null, 'copies of its own'],
+            'an unknown asset' => [$unknown, $original->id, null, 'Unknown asset'],
+            'an unknown original' => [$other->id, $unknown, null, 'Unknown asset'],
+            'a binned asset' => [$binned->id, $original->id, null, 'in the bin'],
+            'a binned original' => [$other->id, $binned->id, null, 'in the bin'],
+        ];
+        foreach ($cases as $case => [$id, $originalId, $maker, $message]) {
+            try {
+                $this->lib->linkCopy($id, $originalId, $maker);
+                $this->fail("linkCopy() should refuse {$case}");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString($message, $e->getMessage(), $case);
+            }
+        }
+        $this->assertNull($this->lib->find($other->id)?->derivedFrom, 'nothing changed');
+        $this->assertNull($this->lib->find($original->id)?->derivedFrom);
+    }
+
+    public function test_link_copy_counts_copies_in_the_bin(): void
+    {
+        $original = $this->original();
+        $copy = $this->lib->makeCopy($original->id, null);
+        $this->lib(['bin_dir' => $this->assetRoot . '/bin'])->delete($copy->id);
+
+        $this->expectExceptionMessage('copies of its own');
+        $this->lib->linkCopy($original->id, $this->original()->id);
+    }
+
+    /** @param array<string, mixed> $config */
+    private function lib(array $config): MediaLibrary
+    {
+        return $this->library(
+            $config + ['versions_dir' => $this->assetRoot . '/versions', 'private_dir' => $this->assetRoot . '/private'],
+            new VariantGenerator(new GdBackend(), [480], 75),
+        );
+    }
 }
