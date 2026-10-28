@@ -98,6 +98,12 @@ final class SqliteDialect implements Dialect
             . " THEN json_extract({$quotedColumn}, '$.\"{$locale}\"') ELSE {$plain} END)";
     }
 
+    /** SQLite never takes a number for '' when comparing, so NULLIF keeps 0 a number. */
+    public function numericValue(string $expression): string
+    {
+        return "CAST(NULLIF({$expression}, '') AS REAL)";
+    }
+
     /** One binding however many ids: the ids as a JSON array, read back with json_each(). */
     public function inList(string $quotedColumn, array $ids, array &$bindings): string
     {

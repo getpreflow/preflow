@@ -21,6 +21,13 @@ final class MysqlDialectTest extends TestCase
         $this->assertSame('`users`', $this->dialect->quoteIdentifier('users'));
     }
 
+    public function test_numeric_value_compares_empty_as_text_and_adds_a_double(): void
+    {
+        // NULLIF on the number itself would turn 0 into NULL ('' = 0 in MySQL); "+ 0" without
+        // the double gives MAX() no decimals on MariaDB.
+        $this->assertSame("(NULLIF(CAST(`n` AS CHAR), '') + 0e0)", $this->dialect->numericValue('`n`'));
+    }
+
     public function test_update_targets_one_row_by_id(): void
     {
         $this->assertSame(

@@ -92,6 +92,17 @@ final class MysqlDialect implements Dialect
             . " THEN JSON_UNQUOTE(JSON_EXTRACT({$quotedColumn}, '$.\"{$locale}\"')) ELSE {$plain} END)";
     }
 
+    /**
+     * Compared as text: MySQL takes '' for 0 when comparing a number, so NULLIF on the number
+     * column itself would turn 0 into NULL. Adding the double 0e0 also works where CAST(… AS
+     * DOUBLE) does not (MariaDB before 10.4.5); a plain "+ 0" gives MAX() a type without
+     * decimals on MariaDB (7.5 came back as 8).
+     */
+    public function numericValue(string $expression): string
+    {
+        return "(NULLIF(CAST({$expression} AS CHAR), '') + 0e0)";
+    }
+
     public function inList(string $quotedColumn, array $ids, array &$bindings): string
     {
         array_push($bindings, ...array_values($ids));

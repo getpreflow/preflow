@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Driver;
 
+use Preflow\Data\AggregateQuery;
+use Preflow\Data\AggregatingStorage;
 use Preflow\Data\ExclusiveWrites;
 use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
 use Preflow\Data\VersionedStorage;
 
-abstract class PdoDriver implements VersionedStorage, ExclusiveWrites
+abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage
 {
     public function __construct(
         protected readonly \PDO $pdo,
@@ -76,6 +78,13 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites
         $items = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
         return new ResultSet($items, $total);
+    }
+
+    public function aggregate(AggregateQuery $query): array
+    {
+        [$sql, $bindings] = $this->compiler->compileAggregate($query);
+
+        return $this->read($query->table(), $sql, $bindings)->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void

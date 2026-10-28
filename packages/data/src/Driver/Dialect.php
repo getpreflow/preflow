@@ -43,6 +43,12 @@ interface Dialect
     public function localizedColumn(string $quotedColumn, string $locale, bool $isDefault): string;
 
     /**
+     * SQL expression for a value as a number: NULL for NULL and '' (no number), else the value
+     * converted to a number, also where the column stores text.
+     */
+    public function numericValue(string $expression): string;
+
+    /**
      * SQL true when the column equals any of the ids (a non-empty list). Appends its bindings,
      * as few as the dialect allows: their number must not grow with the ids where avoidable.
      *

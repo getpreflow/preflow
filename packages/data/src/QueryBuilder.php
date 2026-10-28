@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Data;
 
+use Preflow\Data\Schema\ColumnKind;
+
 /**
  * @template T of Model
  */
@@ -304,15 +306,8 @@ final class QueryBuilder
      */
     public function get(): ResultSet
     {
-        $this->applyLooseSearches();
-        $translatable = $this->typeDef?->translatableFields() ?? [];
-        if ($translatable !== []) {
-            $default = $this->typeDef->locales->default;
-            $this->query->localize($translatable, $this->locale ?? $default, $default);
-        }
-
         $table = $this->meta?->table ?? $this->typeDef?->table;
-        $result = $this->driver->findMany($table, $this->query);
+        $result = $this->driver->findMany($table, $this->prepared());
 
         if ($this->typeDef !== null) {
             $items = array_map(
@@ -329,6 +324,66 @@ final class QueryBuilder
         }, $result->items());
 
         return new ResultSet($models, $result->total());
+    }
+
+    /**
+     * Group and count, sum, average… the records this builder's filters select (where,
+     * whereAny, search, searchLoose, in its locale). This builder's orderBy, limit and offset
+     * do not apply: the aggregate query has its own.
+     */
+    public function aggregate(): AggregateQuery
+    {
+        $kinds = $this->dataManager?->fieldKinds() ?? new FieldKinds();
+        $fields = [];
+        $numeric = [];
+        $multiple = [];
+        if ($this->typeDef !== null) {
+            $fields[] = $this->typeDef->idField;
+            foreach ($this->typeDef->fields as $name => $def) {
+                $fields[] = $name;
+                if ($kinds->columnKindOf($def) === ColumnKind::Number) {
+                    $numeric[] = $name;
+                }
+                if ($kinds->isRelation($def->type) && ($def->config['multiple'] ?? false)) {
+                    $multiple[] = $name;
+                }
+            }
+        } elseif ($this->meta !== null) {
+            $fields = [$this->meta->idField, ...array_keys($this->meta->fields)];
+            foreach ($fields as $name) {
+                if (!property_exists($this->meta->modelClass, $name)) {
+                    continue; // the default id field of a model without an #[Id] property
+                }
+                $type = (new \ReflectionProperty($this->meta->modelClass, $name))->getType();
+                if ($type instanceof \ReflectionNamedType && in_array($type->getName(), ['int', 'float'], true)) {
+                    $numeric[] = $name;
+                }
+            }
+        }
+        $fields = array_values(array_unique($fields));
+        $numeric = array_values(array_unique($numeric));
+
+        return new AggregateQuery(
+            $this->driver,
+            (string) ($this->meta?->table ?? $this->typeDef?->table),
+            $this->prepared(),
+            $fields,
+            $numeric,
+            $multiple,
+        );
+    }
+
+    /** The query with the loose searches resolved and translatable fields compared in the locale. */
+    private function prepared(): Query
+    {
+        $this->applyLooseSearches();
+        $translatable = $this->typeDef?->translatableFields() ?? [];
+        if ($translatable !== []) {
+            $default = $this->typeDef->locales->default;
+            $this->query->localize($translatable, $this->locale ?? $default, $default);
+        }
+
+        return $this->query;
     }
 
     /**

@@ -21,6 +21,16 @@ final class SqliteDialectTest extends TestCase
         $this->assertSame('"users"', $this->dialect->quoteIdentifier('users'));
     }
 
+    public function test_numeric_value_keeps_zero_and_drops_empty(): void
+    {
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->exec("CREATE TABLE t (n NUMERIC, s TEXT)");
+        $pdo->exec("INSERT INTO t VALUES (0, '0'), (2.5, '2.5'), (NULL, '')");
+        $sql = 'SELECT COUNT(' . $this->dialect->numericValue('"n"') . '), SUM(' . $this->dialect->numericValue('"s"') . ') FROM t';
+
+        $this->assertSame([2, 2.5], $pdo->query($sql)->fetch(\PDO::FETCH_NUM));
+    }
+
     public function test_update_targets_one_row_by_id(): void
     {
         $this->assertSame(
