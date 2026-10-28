@@ -44,15 +44,40 @@ final class MpdfEngine implements PdfEngine
             ...$this->fonts(),
         ]);
 
-        if ($headerHtml !== '') {
-            $mpdf->SetHTMLHeader($headerHtml);
-        }
-        if ($footerHtml !== '') {
-            $mpdf->SetHTMLFooter($footerHtml);
-        }
-        $mpdf->WriteHTML($html);
+        $mpdf->WriteHTML(self::withHeaderAndFooter($html, $headerHtml, $footerHtml));
 
         return $mpdf->Output('', \Mpdf\Output\Destination::STRING_RETURN);
+    }
+
+    /**
+     * Header and footer as named mPDF blocks that an @page rule attaches to
+     * every page. SetHTMLHeader() would be dropped as soon as the document's
+     * own CSS has an @page rule (margins, size), which templates often do.
+     */
+    private static function withHeaderAndFooter(string $html, string $headerHtml, string $footerHtml): string
+    {
+        $blocks = '';
+        $page = [];
+        if ($headerHtml !== '') {
+            $blocks .= '<htmlpageheader name="preflowHeader">' . $headerHtml . '</htmlpageheader>';
+            $page[] = 'header: html_preflowHeader;';
+        }
+        if ($footerHtml !== '') {
+            $blocks .= '<htmlpagefooter name="preflowFooter">' . $footerHtml . '</htmlpagefooter>';
+            $page[] = 'footer: html_preflowFooter;';
+        }
+        if ($blocks === '') {
+            return $html;
+        }
+        $blocks = '<style>@page { ' . implode(' ', $page) . ' }</style>' . $blocks;
+
+        if (preg_match('/<body\b[^>]*>/i', $html, $match, PREG_OFFSET_CAPTURE)) {
+            $at = $match[0][1] + strlen($match[0][0]);
+
+            return substr($html, 0, $at) . $blocks . substr($html, $at);
+        }
+
+        return $blocks . $html;
     }
 
     /**

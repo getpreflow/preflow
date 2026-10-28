@@ -57,14 +57,16 @@ final class BladeEngine implements TemplateEngineInterface
     {
         $context = array_merge($this->globals, $context);
 
-        // Absolute path -- add its directory as a location (deduplicate to avoid finder bloat)
+        // Absolute path -- rendered as that very file (a name lookup would let two
+        // same-named files in different folders collide); its directory becomes a
+        // location so it can @include siblings by name (deduplicated to avoid finder bloat).
         if (str_starts_with($template, '/') && file_exists($template)) {
             $dir = dirname($template);
             $finder = $this->viewFactory->getFinder();
             if (!in_array($dir, $finder->getPaths(), true)) {
                 $finder->addLocation($dir);
             }
-            return $this->viewFactory->make(basename($template, '.blade.php'), $context)->render();
+            return $this->viewFactory->file($template, $context)->render();
         }
 
         return $this->viewFactory->make($template, $context)->render();

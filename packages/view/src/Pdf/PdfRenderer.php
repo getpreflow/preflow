@@ -55,8 +55,10 @@ final class PdfRenderer
         $footer = $this->renderOptional($page->footerTemplate, $context);
         $html = self::htmlPage($this->templates->render($doc->template(), $context));
 
-        if ($header !== '') {
-            $html = (string) preg_replace('/<body\b[^>]*>/i', "\$0\n<header>{$header}</header>", $html, 1);
+        // Spliced, not preg_replace()d: "$1" or "\1" in rendered text must stay text.
+        if ($header !== '' && preg_match('/<body\b[^>]*>/i', $html, $match, PREG_OFFSET_CAPTURE)) {
+            $at = $match[0][1] + strlen($match[0][0]);
+            $html = substr($html, 0, $at) . "\n<header>{$header}</header>" . substr($html, $at);
         }
         if ($footer !== '') {
             $at = strripos($html, '</body>');

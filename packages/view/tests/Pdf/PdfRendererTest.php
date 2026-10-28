@@ -15,6 +15,7 @@ use Preflow\View\Pdf\MpdfEngine;
 use Preflow\View\Pdf\PageSettings;
 use Preflow\View\Pdf\PdfConfig;
 use Preflow\View\Pdf\PdfDocument;
+use Preflow\View\Pdf\PdfEngine;
 use Preflow\View\Pdf\PdfRenderer;
 use Preflow\View\Pdf\PdfResponse;
 use Preflow\View\TemplateEngineInterface;
@@ -60,8 +61,8 @@ final class PdfRendererTest extends TestCase
         $text = (new Parser())->parseContent($bytes)->getText();
 
         $this->assertStringContainsString('Awarded to Ada Lovelace', $text);
-        // resolveState() ran before the template saw the properties.
-        $this->assertStringContainsString('Brass: Birmingham', $text);
+        // resolveState() ran before the template saw the properties, and the @if around it saw the value.
+        $this->assertStringContainsString('for mastering Brass: Birmingham', $text);
     }
 
     public function test_page_settings_apply(): void
@@ -95,6 +96,38 @@ final class PdfRendererTest extends TestCase
         $this->assertStringContainsString('Footer page 1 of 1', $text);
     }
 
+    public function test_header_and_footer_repeat_on_every_page_despite_an_at_page_rule(): void
+    {
+        $probe = new CertificateDocument('Ada');
+        $body = $this->dir . '/two-pages.twig';
+        file_put_contents($body, '<style>@page { margin-top: 25mm; }</style><p>One</p><pagebreak /><p>Two</p>');
+        $doc = new class ($body, new PageSettings(headerTemplate: $probe->fixture('header'), footerTemplate: $probe->fixture('footer'))) extends PdfDocument {
+            public string $name = 'Ada';
+
+            public function __construct(private readonly string $file, private readonly PageSettings $settings)
+            {
+            }
+
+            public function template(): string
+            {
+                return $this->file;
+            }
+
+            public function page(): PageSettings
+            {
+                return $this->settings;
+            }
+        };
+
+        $pages = (new Parser())->parseContent($this->renderer('twig')->render($doc))->getPages();
+
+        $this->assertCount(2, $pages);
+        foreach ($pages as $i => $page) {
+            $this->assertStringContainsString('Header for Ada', $page->getText());
+            $this->assertStringContainsString('Footer page ' . ($i + 1) . ' of 2', $page->getText());
+        }
+    }
+
     #[DataProvider('engines')]
     public function test_html_preview_renders_without_engine(string $extension): void
     {
@@ -109,11 +142,62 @@ final class PdfRendererTest extends TestCase
         $this->assertStringStartsWith('<!DOCTYPE html>', $html);
         $this->assertStringContainsString('<meta charset="utf-8">', $html);
         $this->assertStringContainsString('h1 { color: #b0306a;', $html);
+        $this->assertStringContainsString('@page { margin-top: 20mm; }', $html);
+        $this->assertStringContainsString('for mastering Brass: Birmingham', $html);
         $this->assertStringContainsString('Awarded to Ada', $html);
         $this->assertStringContainsString('Brass: Birmingham', $html);
         $this->assertStringContainsString('Header for Ada', $html);
         $this->assertStringEndsWith("</body>\n</html>\n", $html);
         $this->assertDirectoryDoesNotExist($this->dir . '/pdf');
+    }
+
+    #[DataProvider('engines')]
+    public function test_the_style_block_reaches_the_engine_with_its_at_rules(string $extension): void
+    {
+        $engine = new class implements PdfEngine {
+            public string $html = '';
+
+            public function render(string $html, PageSettings $page, string $headerHtml, string $footerHtml): string
+            {
+                $this->html = $html;
+
+                return '%PDF';
+            }
+        };
+        $renderer = new PdfRenderer($this->templates($extension), $engine, new PdfConfig($this->dir . '/pdf'));
+
+        $renderer->render(new CertificateDocument('Ada', $extension));
+
+        $this->assertStringContainsString('@page { margin-top: 20mm; }', $engine->html);
+        $this->assertStringContainsString('for mastering Brass: Birmingham', $engine->html);
+    }
+
+    #[DataProvider('engines')]
+    public function test_preview_keeps_dollar_signs_in_header_and_footer(string $extension): void
+    {
+        $header = $this->dir . '/money-header.' . $extension;
+        $footer = $this->dir . '/money-footer.' . $extension;
+        file_put_contents($header, 'Price $10 off, ${1} and \\1 stay');
+        file_put_contents($footer, 'Footer $0 stays');
+        $doc = new CertificateDocument('Ada', $extension, new PageSettings(headerTemplate: $header, footerTemplate: $footer));
+
+        $html = (new PdfRenderer($this->templates($extension), null, new PdfConfig($this->dir . '/pdf')))->html($doc);
+
+        $this->assertStringContainsString('<header>Price $10 off, ${1} and \\1 stay</header>', $html);
+        $this->assertStringContainsString('<footer>Footer $0 stays</footer>', $html);
+    }
+
+    #[DataProvider('engines')]
+    public function test_header_templates_with_the_same_file_name_stay_apart(string $extension): void
+    {
+        $probe = new CertificateDocument('Ada', $extension);
+        $renderer = new PdfRenderer($this->templates($extension), null, new PdfConfig($this->dir . '/pdf'));
+        $first = new CertificateDocument('Ada', $extension, new PageSettings(headerTemplate: $probe->fixture('header')));
+        $second = new CertificateDocument('Ada', $extension, new PageSettings(headerTemplate: $probe->fixture('other/header')));
+
+        $this->assertStringContainsString('Header for Ada', $renderer->html($first));
+        $this->assertStringContainsString('Other header', $renderer->html($second));
+        $this->assertStringContainsString('Header for Ada', $renderer->html($first));
     }
 
     #[RunInSeparateProcess]
