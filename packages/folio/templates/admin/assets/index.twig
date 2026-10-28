@@ -3,6 +3,8 @@
 {% block page_title %}{{ picker ? t(multiple ? 'folio.assets.choose_many' : 'folio.assets.choose_one') : t('folio.nav.assets') }}{% endblock %}
 {% block content %}
 <div class="folio-assets{% if picker %} is-picker{% endif %}">
+    {% if notice %}<p class="folio-saved" role="status">{{ notice }}{% if can('assets.delete') %} <a href="{{ prefix }}/assets/bin">{{ t('folio.assets.bin') }}</a>{% endif %}</p>{% endif %}
+    {% if no_bin %}<p class="folio-help folio-assets-no-bin" role="note">{{ t('folio.assets.no_bin') }}</p>{% endif %}
     {% if errors is not empty %}
         <div class="folio-notice" role="alert">
             <p>{{ t('folio.assets.not_uploaded') }}</p>
@@ -32,6 +34,9 @@
                     </select>
                 {% endif %}
             {% endfor %}
+            {% if cleanup %}
+                <label class="folio-assets-unused"><input type="checkbox" name="unused" value="1"{% if unused %} checked{% endif %}> {{ t('folio.assets.unused_only') }}</label>
+            {% endif %}
             <input type="hidden" name="view" value="{{ view }}">
             <button type="submit" class="btn btn-secondary">{{ t('folio.common.filter') }}</button>
         </form>
@@ -40,6 +45,9 @@
                 <a class="btn btn-ghost{% if view == v %} is-active{% endif %}" href="{{ prefix }}/assets?{{ (query|merge({'view': v}))|url_encode }}"{% if view == v %} aria-current="true"{% endif %}>{{ label }}</a>
             {% endfor %}
         </nav>
+        {% if has_bin and not picker and can('assets.delete') %}
+            <a class="btn btn-ghost folio-assets-bin" href="{{ prefix }}/assets/bin">{{ t('folio.assets.bin') }}</a>
+        {% endif %}
         {% if can('assets.upload') %}
         <form method="post" action="{{ prefix }}/assets" enctype="multipart/form-data" class="folio-assets-upload">
             <input type="hidden" name="_csrf_token" value="{{ csrf }}">
@@ -51,7 +59,7 @@
     </div>
 
     {% if items is empty %}
-        <div class="folio-empty"><p>{{ t(q or kind or filtered ? 'folio.assets.no_match' : 'folio.assets.empty') }}</p></div>
+        <div class="folio-empty"><p>{% if unused %}{{ t('folio.assets.no_unused', {days: min_age_days}) }}{% else %}{{ t(q or kind or filtered ? 'folio.assets.no_match' : 'folio.assets.empty') }}{% endif %}</p></div>
     {% else %}
         <p class="folio-help folio-assets-count">{{ t('folio.assets.count', {}, total) }}</p>
         {% if view == 'list' %}

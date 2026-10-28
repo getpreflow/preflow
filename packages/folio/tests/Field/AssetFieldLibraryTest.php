@@ -197,6 +197,35 @@ final class AssetFieldLibraryTest extends TestCase
         $this->assertSame('', $this->field()->renderAdmin(null, self::SINGLE));
     }
 
+    public function test_a_binned_asset_stays_selected(): void
+    {
+        $this->lib = $this->library(['bin_dir' => $this->assetRoot . '/bin', 'private_dir' => $this->assetRoot . '/private']);
+        $public = $this->asset();
+        $private = $this->lib->upload($this->upload($this->png(10, 10), 'p.png'), null, private: true)->id;
+        $this->lib->delete($public);
+        $this->lib->delete($private);
+        $field = $this->field();
+
+        // Restoring it from the bin brings it back on the record, so a save keeps the id.
+        $this->assertSame($public, $field->resolve(['', $public], null, [], self::SINGLE, true, null));
+        $this->assertSame($private, $field->resolve(['', $private], null, [], ['asset' => ['multiple' => false, 'private' => true]], true, null));
+        $this->assertSame([], $field->drainErrors());
+    }
+
+    public function test_editor_and_admin_show_a_binned_asset_as_in_the_bin(): void
+    {
+        $this->lib = $this->library(['bin_dir' => $this->assetRoot . '/bin']);
+        $id = $this->asset();
+        $this->lib->delete($id);
+
+        $html = $this->field()->renderEditor(new FieldContext(name: 'cover', label: 'Cover', value: $id, config: self::SINGLE));
+
+        $this->assertStringContainsString('<a href="/folio/assets/bin">x.png (in the bin)</a>', $html);
+        $this->assertStringContainsString('name="cover_ids[]" value="' . $id . '"', $html);
+        $this->assertStringNotContainsString('<img', $html);
+        $this->assertSame('x.png (in the bin)', $this->field()->renderAdmin($id, self::SINGLE));
+    }
+
     private function asset(): string
     {
         return $this->lib->upload($this->upload($this->png(10, 10), 'x.png'), null)->id;

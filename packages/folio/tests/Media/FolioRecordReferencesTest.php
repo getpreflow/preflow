@@ -16,7 +16,11 @@ use Preflow\Media\Usage\AssetInUseException;
 use Preflow\Media\Usage\AssetUsage;
 use Preflow\Media\Usage\AssetUsageEntry;
 use Preflow\Folio\Block\BlockRegistry;
+use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Field\FieldTypeRegistry;
+use Preflow\Folio\Field\Types\StringFieldType;
+use Preflow\Folio\Publishing\Publisher;
 use Preflow\Folio\Publishing\ShadowTypes;
 use Preflow\Folio\Tests\Fixtures\Blocks\HeroBlock\HeroBlock;
 use Preflow\Folio\Tests\Fixtures\Blocks\LinkBlock;
@@ -145,6 +149,60 @@ final class FolioRecordReferencesTest extends TestCase
         $this->assertNull($usage[0]->note); // the working copy
     }
 
+    public function test_revision_reference_is_reported_non_blocking(): void
+    {
+        $library = $this->library();
+        $asset = $library->upload($this->upload($this->png(10, 10), 'a.png'), null);
+        $publisher = $this->publisher();
+        $def = $this->registry->get('page');
+        $publisher->publish(DynamicRecord::fromArray($def, ['uuid' => 'p1', 'title' => 'About', 'slug' => 'about', 'cover' => $asset->id]), null);
+        $publisher->publish(DynamicRecord::fromArray($def, ['uuid' => 'p1', 'title' => 'About us', 'slug' => 'about', 'cover' => '']), null);
+
+        $usage = $this->usage()->usagesOf($asset->id);
+
+        $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio', 'earlier revision', blocksDelete: false)], $usage);
+        $this->assertFalse($usage[0]->blocksDelete);
+    }
+
+    public function test_revision_reference_lets_a_delete_bin_the_asset(): void
+    {
+        $usage = new AssetUsage();
+        $library = $this->library(['bin_dir' => $this->assetRoot . '/bin'], usage: $usage);
+        $usage->register($this->usage());
+        $asset = $library->upload($this->upload($this->png(10, 10), 'a.png'), null);
+        $publisher = $this->publisher();
+        $def = $this->registry->get('page');
+        $publisher->publish(DynamicRecord::fromArray($def, ['uuid' => 'p1', 'title' => 'About', 'slug' => 'about', 'cover' => $asset->id]), null);
+        $publisher->publish(DynamicRecord::fromArray($def, ['uuid' => 'p1', 'title' => 'About', 'slug' => 'about', 'cover' => '']), null);
+
+        $library->delete($asset->id);
+
+        $this->assertNull($library->find($asset->id));
+        $this->assertNotNull($library->findBinned($asset->id));
+    }
+
+    public function test_working_reference_still_blocks(): void
+    {
+        $usage = new AssetUsage();
+        $library = $this->library(['bin_dir' => $this->assetRoot . '/bin'], usage: $usage);
+        $usage->register($this->usage());
+        $asset = $library->upload($this->upload($this->png(10, 10), 'a.png'), null);
+        $publisher = $this->publisher();
+        $def = $this->registry->get('page');
+        $publisher->publish(DynamicRecord::fromArray($def, ['uuid' => 'p1', 'title' => 'About', 'slug' => 'about', 'cover' => $asset->id]), null);
+        $publisher->publish(DynamicRecord::fromArray($def, ['uuid' => 'p1', 'title' => 'About us', 'slug' => 'about', 'cover' => $asset->id]), null);
+
+        // The working copy wins over its revisions: one entry, blocking.
+        $this->assertEquals([new AssetUsageEntry('About us', '/folio/page/p1/edit', 'folio')], $this->usage()->usagesOf($asset->id));
+        try {
+            $library->delete($asset->id);
+            $this->fail('delete() should refuse an asset a working copy uses');
+        } catch (AssetInUseException $e) {
+            $this->assertCount(1, $e->usages);
+        }
+        $this->assertNotNull($library->find($asset->id));
+    }
+
     public function test_poster_usage(): void
     {
         $library = $this->library();
@@ -209,6 +267,14 @@ final class FolioRecordReferencesTest extends TestCase
     private function references(): AssetReferences
     {
         return new AssetReferences(new BlockRegistry([HeroBlock::class, LinkBlock::class, TradeoffNoteBlock::class]));
+    }
+
+    private function publisher(): Publisher
+    {
+        $fieldTypes = new FieldTypeRegistry();
+        $fieldTypes->register(new StringFieldType());
+
+        return new Publisher($this->dm, new TypeCatalog($this->assetRoot . '/models'), new RecordValidator($fieldTypes, $this->dm));
     }
 
     private function usage(): FolioRecordReferences

@@ -1,0 +1,45 @@
+{% extends '@folio/admin/_layout.twig' %}
+{% block title %}Folio — {{ t('folio.assets.bin') }}{% endblock %}
+{% block page_title %}{{ t('folio.assets.bin') }}{% endblock %}
+{% block actions %}<a class="btn btn-secondary" href="{{ prefix }}/assets">{{ t('folio.assets.back') }}</a>{% endblock %}
+{% block content %}
+<div class="folio-assets folio-asset-bin">
+    {% if error %}<div class="folio-notice" role="alert"><p>{{ error }}</p></div>{% endif %}
+    {% if has_bin %}
+        <p class="folio-help">{{ t('folio.assets.bin_help', {days: bin_days}) }}</p>
+    {% else %}
+        <p class="folio-help folio-assets-no-bin" role="note">{{ t('folio.assets.no_bin') }}</p>
+    {% endif %}
+    {% if items is empty %}
+        <div class="folio-empty"><p>{{ t('folio.assets.bin_empty') }}</p></div>
+    {% else %}
+        <p class="folio-help folio-assets-count">{{ t('folio.assets.bin_count', {}, total) }}</p>
+        <table class="folio-table folio-asset-list">
+            <thead><tr><th>{{ t('folio.assets.name') }}</th><th>{{ t('folio.assets.kind') }}</th><th>{{ t('folio.assets.size') }}</th><th>{{ t('folio.assets.binned_at') }}</th><th></th></tr></thead>
+            <tbody>
+            {% for item in items %}
+                <tr data-asset-id="{{ item.id }}">
+                    <td>{{ item.label }}{% if item.label != item.name %} <span class="folio-help">{{ item.name }}</span>{% endif %}</td>
+                    <td>{{ t('folio.assets.kind_names.' ~ item.kind) }}</td>
+                    <td>{{ t('folio.assets.size_kb', {size: folio_number((item.size / 1024)|round(0, 'ceil'))}) }}</td>
+                    <td>{{ folio_date(item.binned_at) }}</td>
+                    <td>
+                        <form method="post" action="{{ prefix }}/assets/bin/{{ item.id }}/restore">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                            <button type="submit" class="btn btn-secondary">{{ t('folio.assets.restore_from_bin') }}</button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% if pages > 1 %}
+            <nav class="folio-pagination" aria-label="{{ t('folio.list.pages') }}">
+                {% for p in 1..pages %}
+                    <a class="btn btn-ghost{% if p == page %} is-active{% endif %}" href="{{ prefix }}/assets/bin?page={{ p }}">{{ p }}</a>
+                {% endfor %}
+            </nav>
+        {% endif %}
+    {% endif %}
+</div>
+{% endblock %}

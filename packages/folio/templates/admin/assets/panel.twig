@@ -107,13 +107,15 @@
             <p>{{ t('folio.assets.unused') }}</p>
         {% else %}
             <p>{{ t('folio.assets.used_in', {}, usage|length) }}</p>
-            <ul>{% for u in usage %}<li><a href="{{ u.url }}">{{ u.label }}</a>{% if u.where == 'published' %} {{ t('folio.assets.published_version') }}{% elseif u.where == 'poster' %} {{ t('folio.assets.as_poster') }}{% endif %}</li>{% endfor %}</ul>
+            <ul>{% for u in usage %}<li>{% if u.url %}<a href="{{ u.url }}">{{ u.label }}</a>{% else %}{{ u.label }}{% endif %}{% if u.where == 'published' %} {{ t('folio.assets.published_version') }}{% elseif u.where == 'revision' %} {{ t('folio.assets.earlier_revision') }}{% elseif u.where == 'poster' %} {{ t('folio.assets.as_poster') }}{% elseif u.where == 'binned_poster' %} {{ t('folio.assets.binned_poster') }}{% endif %}</li>{% endfor %}</ul>
         {% endif %}
     </div>
     {% if can('assets.delete') %}
-    <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/delete{{ back_q }}" data-confirm="{{ t('folio.assets.confirm_delete') }}">
+    {# Only a usage that blocks a delete disables it: an earlier revision lets the file go into the bin. #}
+    {% set blocked = usage|filter(u => u.blocks) is not empty %}
+    <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/delete{{ back_q }}" data-confirm="{{ t(has_bin ? 'folio.assets.confirm_bin' : 'folio.assets.confirm_delete') }}">
         <input type="hidden" name="_csrf_token" value="{{ csrf }}">
-        <button type="submit" class="btn btn-danger"{% if usage is not empty %} disabled title="{{ t('folio.assets.remove_first') }}"{% endif %}>{{ t('folio.common.delete') }}</button>
+        <button type="submit" class="btn btn-danger"{% if blocked %} disabled title="{{ t('folio.assets.remove_first') }}"{% endif %}>{{ t('folio.common.delete') }}</button>
     </form>
     {% endif %}
 </section>

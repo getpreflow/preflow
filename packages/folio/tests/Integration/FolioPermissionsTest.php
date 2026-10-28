@@ -164,6 +164,8 @@ final class FolioPermissionsTest extends TestCase
             ['POST', '/folio/assets/a1/replace'],
             ['POST', '/folio/assets/a1/versions/1/restore'],
             ['POST', '/folio/assets/a1/versions/1/delete'],
+            ['GET', '/folio/assets/bin'],
+            ['POST', '/folio/assets/bin/a1/restore'],
             ['GET', '/folio/site'],
         ] as [$method, $uri]) {
             yield "{$method} {$uri}" => [$method, $uri];

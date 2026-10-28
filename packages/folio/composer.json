@@ -15,7 +15,7 @@
         "preflow/components": "^0.1 || @dev",
         "preflow/htmx": "^0.1 || @dev",
         "preflow/i18n": "^0.39 || @dev",
-        "preflow/media": "^0.36 || @dev",
+        "preflow/media": "^0.43 || @dev",
         "preflow/notify": "^0.25 || @dev",
         "preflow/devtools": "^0.20 || @dev",
         "nyholm/psr7": "^1.8",
@@ -35,7 +35,7 @@
         "preflow/core": "<0.34",
         "preflow/data": "<0.42",
         "preflow/i18n": "<0.39",
-        "preflow/media": "<0.36",
+        "preflow/media": "<0.43",
         "preflow/members": "<0.39",
         "preflow/notify": "<0.25",
         "preflow/validation": "<0.37"

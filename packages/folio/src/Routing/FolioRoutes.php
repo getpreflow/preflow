@@ -59,6 +59,8 @@ final class FolioRoutes
             ['POST', $prefix . '/_blocks/duplicate',   'duplicate', self::BLOCKS],
             ['GET',  $prefix . '/assets',              'index', self::ASSETS],
             ['POST', $prefix . '/assets',              'upload', self::ASSETS],
+            ['GET',  $prefix . '/assets/bin',          'bin', self::ASSETS], // before assets/{id}
+            ['POST', $prefix . '/assets/bin/{id}/restore', 'restoreFromBin', self::ASSETS],
             ['GET',  $prefix . '/assets/{id}',         'panel', self::ASSETS],
             ['POST', $prefix . '/assets/{id}',         'save', self::ASSETS],
             ['POST', $prefix . '/assets/{id}/delete',  'destroy', self::ASSETS],

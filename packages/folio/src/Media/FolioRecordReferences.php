@@ -13,6 +13,7 @@ use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Assets\AssetReferences;
 use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Content\TypeListing;
 use Preflow\Folio\Publishing\ShadowTypes;
 use Preflow\Media\Usage\AssetReferenceSource;
 use Preflow\Media\Usage\AssetUsageEntry;
@@ -20,17 +21,22 @@ use Preflow\Media\Usage\AssetUsageEntry;
 /**
  * Folio's records as a usage source: working copies of every type, published
  * snapshots (a live page may still show an asset the draft already dropped,
- * note "published version"). Each record is listed once. Poster use is the
- * media core's own source (PosterReferences).
+ * note "published version") and earlier revisions (restoring one brings the
+ * asset back, note "earlier revision"). Each record is listed once. A revision
+ * does not block a delete: the asset goes into the bin, and cleanup and
+ * emptying the bin keep it while a revision needs it. Poster use is the media
+ * core's own source (PosterReferences).
  *
  * Runs on every delete, so it reads only what can hold a reference: types
  * without an asset or blocks field are skipped, and on SQL storage only rows
- * whose asset or blocks columns contain the id (LIKE) are walked.
+ * whose asset or blocks columns (a revision's "data") contain the id (LIKE)
+ * are walked.
  */
 final class FolioRecordReferences implements AssetReferenceSource
 {
     public const string NAME = 'folio';
     public const string PUBLISHED = 'published version';
+    public const string REVISION = 'earlier revision';
 
     public function __construct(
         private readonly AssetReferences $references,
@@ -68,17 +74,39 @@ final class FolioRecordReferences implements AssetReferenceSource
                     }
                     $usage[$key] = new AssetUsageEntry(
                         $labeler->label($record),
-                        $listing->singleton
-                            ? $this->prefix . '/' . $listing->key
-                            : $this->prefix . '/' . $listing->key . '/' . rawurlencode((string) $record->getId()) . '/edit',
+                        $this->editUrl($listing, (string) $record->getId()),
                         self::NAME,
                         $where === 'published' ? self::PUBLISHED : null,
+                    );
+                }
+            }
+            if ($listing->publishing) {
+                foreach ($this->candidates(ShadowTypes::revisions($def), ['data'], $assetId) as $row) {
+                    $key = $listing->key . '/' . (string) $row->get('record_id');
+                    $data = json_decode((string) $row->get('data'), true);
+                    if (isset($usage[$key]) || !is_array($data) || !in_array($assetId, $this->references->collect($def, $data), true)) {
+                        continue;
+                    }
+                    $record = DynamicRecord::fromArray($def, $data);
+                    $usage[$key] = new AssetUsageEntry(
+                        $labeler->label($record),
+                        $this->editUrl($listing, (string) $row->get('record_id')),
+                        self::NAME,
+                        self::REVISION,
+                        blocksDelete: false,
                     );
                 }
             }
         }
 
         return array_values($usage);
+    }
+
+    private function editUrl(TypeListing $listing, string $id): string
+    {
+        return $listing->singleton
+            ? $this->prefix . '/' . $listing->key
+            : $this->prefix . '/' . $listing->key . '/' . rawurlencode($id) . '/edit';
     }
 
     /** @return list<string> the fields AssetReferences::collect() reads */

@@ -120,7 +120,8 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
     }
 
     /**
-     * Thumbnail URL (images), label and link of a stored value.
+     * Thumbnail URL (images), label and link of a stored value. A file in the bin keeps its
+     * place (restoring it brings it back) and says so, linking to the bin.
      *
      * @return array{0: ?string, 1: string, 2: string}
      */
@@ -130,9 +131,18 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         if ($asset !== null) {
             return [$this->library->thumbnailUrl($asset), $asset->label(), $this->library->url($asset)];
         }
+        $binned = $this->library?->findBinned($value);
+        if ($binned !== null) {
+            return [null, self::inBin($binned), rtrim($this->adminPrefix, '/') . '/assets/bin'];
+        }
         $url = $this->urlFor($value);
 
         return [$this->isImage($value) ? $url : null, basename($value), $url];
+    }
+
+    private static function inBin(\Preflow\Media\Asset $asset): string
+    {
+        return \Preflow\Folio\FolioText::get('folio.assets.in_bin', ['label' => $asset->label()]);
     }
 
     public function normalizeInput(mixed $raw, array $config): mixed
@@ -163,7 +173,15 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
     /** The file names (the library's original name, else the stored path), comma-separated and escaped. */
     public function renderAdmin(mixed $value, array $config): string
     {
-        $names = array_map(fn (string $v): string => $this->library?->find($v)?->label() ?? $v, $this->toList($value));
+        $names = array_map(function (string $v): string {
+            $asset = $this->library?->find($v);
+            if ($asset !== null) {
+                return $asset->label();
+            }
+            $binned = $this->library?->findBinned($v);
+
+            return $binned !== null ? self::inBin($binned) : $v;
+        }, $this->toList($value));
 
         return htmlspecialchars(implode(', ', $names), ENT_QUOTES, 'UTF-8');
     }
@@ -211,9 +229,9 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
     {
         $base = $submittedIds === null
             ? $this->toList($this->fromStorage($existing))
-            // Only values that exist: asset ids, or paths this field wrote earlier.
+            // Only values that exist: asset ids (one in the bin too: restoring it brings it back), or paths this field wrote earlier.
             : $this->matchingPrivacy(
-                array_values(array_filter($submittedIds, fn ($v) => is_string($v) && $v !== '' && ($this->library?->isAssetId($v) === true || $this->isStoredUpload($v)))),
+                array_values(array_filter($submittedIds, fn ($v) => is_string($v) && $v !== '' && ($this->library?->isAssetId($v) === true || $this->library?->findBinned($v) !== null || $this->isStoredUpload($v)))),
                 $this->assetConfig($config)['private'],
             );
 
@@ -232,7 +250,7 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
     {
         $kept = [];
         foreach ($values as $value) {
-            $asset = $this->library?->find($value);
+            $asset = $this->library?->find($value) ?? $this->library?->findBinned($value);
             if (($asset?->private ?? false) === $private) {
                 $kept[] = $value;
                 continue;

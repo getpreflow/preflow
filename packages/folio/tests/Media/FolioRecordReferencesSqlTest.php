@@ -60,6 +60,7 @@ class FolioRecordReferencesSqlTest extends TestCase
             $sync->sync($this->registry->get($key));
         }
         $sync->sync(ShadowTypes::published($this->registry->get('page')));
+        $sync->sync(ShadowTypes::revisions($this->registry->get('page')));
     }
 
     protected function tearDown(): void
@@ -124,9 +125,36 @@ class FolioRecordReferencesSqlTest extends TestCase
             $this->assertStringNotContainsString('tag', $statement, 'a type without asset or blocks fields is not read');
             $this->assertStringContainsString(' LIKE ?', $statement, 'every read is prefiltered');
         }
-        $this->assertCount(2, $sql); // the working table and its published shadow
+        $this->assertCount(3, $sql); // the working table, its published shadow and its revisions
         foreach ($collector->getQueries() as $q) {
             $this->assertContains('%' . self::ID . '%', $q['bindings']);
+        }
+    }
+
+    public function test_revision_reference_on_sql(): void
+    {
+        $page = $this->registry->get('page');
+        $revisions = ShadowTypes::revisions($page);
+        $this->save($page, 'p1', ['title' => 'Now', 'cover' => '']);
+        $this->save($revisions, 'r1', ['record_id' => 'p1', 'seq' => 1, 'data' => json_encode(['uuid' => 'p1', 'title' => 'Then', 'gallery' => json_encode([self::ID])]), 'changed' => '[]', 'created_at' => '2026-01-01T00:00:00+00:00']);
+        $this->save($revisions, 'r2', ['record_id' => 'p1', 'seq' => 2, 'data' => json_encode(['uuid' => 'p1', 'title' => 'Before', 'cover' => self::ID]), 'changed' => '[]', 'created_at' => '2026-01-02T00:00:00+00:00']);
+        // The id where the walker does not look (a title): a LIKE candidate, not a usage.
+        $this->save($page, 'p2', ['title' => 'Other']);
+        $this->save($revisions, 'r3', ['record_id' => 'p2', 'seq' => 1, 'data' => json_encode(['uuid' => 'p2', 'title' => self::ID]), 'changed' => '[]', 'created_at' => '2026-01-01T00:00:00+00:00']);
+        $collector = new DebugCollector();
+        $dm = new DataManager(drivers: ['sql' => $this->driverOn($collector)], defaultDriver: 'sql', typeRegistry: $this->registry);
+
+        $usage = (new FolioRecordReferences($this->walker(), $dm, new TypeCatalog($this->dir . '/models'), $this->registry, '/folio'))->usagesOf(self::ID);
+
+        $this->assertCount(1, $usage);
+        $this->assertSame('/folio/page/p1/edit', $usage[0]->url);
+        $this->assertSame('earlier revision', $usage[0]->note);
+        $this->assertFalse($usage[0]->blocksDelete);
+        $this->assertContains($usage[0]->label, ['Then', 'Before']); // one entry for the record, from either revision
+        $revisionReads = array_filter($collector->getQueries(), static fn (array $q): bool => str_contains((string) $q['sql'], 'page__revisions'));
+        $this->assertCount(1, $revisionReads);
+        foreach ($revisionReads as $q) {
+            $this->assertStringContainsString(' LIKE ?', (string) $q['sql']);
         }
     }
 

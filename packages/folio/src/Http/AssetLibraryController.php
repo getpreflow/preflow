@@ -15,8 +15,10 @@ use Preflow\Folio\FolioText;
 use Preflow\Folio\Media\MediaMessages;
 use Preflow\Folio\Media\FolioRecordReferences;
 use Preflow\Media\Asset;
+use Preflow\Media\AssetPage;
 use Preflow\Media\AssetUploadException;
 use Preflow\Media\AssetVersion;
+use Preflow\Media\Cleanup\AssetCleanup;
 use Preflow\Media\Color\ColorRules;
 use Preflow\Media\CropRect;
 use Preflow\Media\Image\Format;
@@ -39,8 +41,10 @@ use Psr\Http\Message\UploadedFileInterface;
  * colour swatches, replace and the version list (open, restore, delete), and delete (the
  * library refuses it while used). With ?picker=1 it renders in the drawer layout and each
  * asset gets a "Select" button. {prefix}/assets/{id}/edit is the Edit image screen: rotate,
- * mirror, the image crop and the cover presets' cuts (Cropper.js draws the area). Every
- * change goes through MediaLibrary; Folio only adds the UI.
+ * mirror, the image crop and the cover presets' cuts (Cropper.js draws the area). With
+ * bin_dir a delete moves the file into the bin ({prefix}/assets/bin lists and restores);
+ * without it the library warns that deletes are for good. With cleanup on, "Unused only"
+ * lists what cleanup would bin. Every change goes through MediaLibrary; Folio only adds the UI.
  */
 final class AssetLibraryController
 {
@@ -56,6 +60,7 @@ final class AssetLibraryController
         private readonly FieldTypeRegistry $fieldTypes,
         private readonly MediaConfig $media,
         private readonly Formats $formats,
+        private readonly AssetCleanup $cleanup,
     ) {}
 
     /** The image crop's ratios besides "Free" and the box presets' own: label => width / height. */
@@ -114,6 +119,7 @@ final class AssetLibraryController
             ($query['done'] ?? null) === 'replaced' => FolioText::get('folio.assets.replaced'),
             ($query['done'] ?? null) === 'restored' => FolioText::get('folio.assets.restored', ['number' => (int) ($query['version'] ?? 0)]),
             ($query['done'] ?? null) === 'version-deleted' => FolioText::get('folio.assets.version_deleted'),
+            ($query['done'] ?? null) === 'unbinned' => FolioText::get('folio.assets.unbinned'),
             default => null,
         };
 
@@ -154,8 +160,56 @@ final class AssetLibraryController
             $n = count($e->usages);
             return $this->renderPanel($request, $asset, null, FolioText::choice('folio.assets.in_use', $n), 409, $e->usages);
         }
+        $location = $this->back($request) ?? $this->prefix . '/assets';
+        if ($this->library->binDir() !== null) {
+            $location .= (str_contains($location, '?') ? '&' : '?') . 'done=binned';
+        }
 
-        return new Response(302, ['Location' => $this->back($request) ?? $this->prefix . '/assets']);
+        return new Response(302, ['Location' => $location]);
+    }
+
+    /** {prefix}/assets/bin: what was deleted, the most recently deleted first, each with "Restore". */
+    public function bin(ServerRequestInterface $request): ResponseInterface
+    {
+        return $this->renderBin($request, max(1, (int) ($request->getQueryParams()['page'] ?? 1)));
+    }
+
+    /** Brings a file back from the bin, then shows its page. */
+    public function restoreFromBin(ServerRequestInterface $request): ResponseInterface
+    {
+        $asset = $this->library->findBinned((string) $request->getAttribute('id', ''));
+        if ($asset === null) {
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+        }
+        try {
+            $this->library->restoreFromBin($asset->id);
+        } catch (\Throwable $e) {
+            error_log('folio: could not restore asset ' . $asset->id . ' from the bin: ' . $e::class . ': ' . $e->getMessage());
+
+            return $this->renderBin($request, 1, FolioText::get('folio.assets.restore_from_bin_failed', ['label' => $asset->label()]), 422);
+        }
+
+        return new Response(302, ['Location' => $this->prefix . '/assets/' . $asset->id . '?done=unbinned']);
+    }
+
+    private function renderBin(ServerRequestInterface $request, int $page, ?string $error = null, int $status = 200): ResponseInterface
+    {
+        $result = $this->library->binned($page, self::PER_PAGE);
+
+        return $this->html($this->engine->render('@folio/admin/assets/bin.twig', [
+            'prefix' => $this->prefix,
+            'types' => $this->catalog->all(),
+            'section' => 'assets',
+            'editor_assets' => ['admin.js'],
+            'items' => array_map(fn (Asset $a) => ['binned_at' => $a->binnedAt] + $this->item($a), $result->items),
+            'total' => $result->total,
+            'page' => $result->page,
+            'pages' => max(1, (int) ceil($result->total / self::PER_PAGE)),
+            'has_bin' => $this->library->binDir() !== null,
+            'bin_days' => $this->media->cleanup['bin_days'],
+            'error' => $error,
+            'csrf' => self::csrf($request),
+        ]), $status);
     }
 
     /** A new file for the asset (same kind); the old one becomes a version. Errors show in the panel. */
@@ -452,7 +506,10 @@ final class AssetLibraryController
             $editorAssets = [...$editorAssets, ...$control['assets']]; // a remote relation editor's own assets
         }
 
-        $result = $this->library->query($kind === '' ? null : $kind, $q, $filters + ($private === null ? [] : ['private' => $private]), $page, self::PER_PAGE);
+        $unused = !$picker && $this->cleanup->isEnabled() && ($params['unused'] ?? '') === '1';
+        $result = $unused
+            ? $this->unused($kind, $q, $page)
+            : $this->library->query($kind === '' ? null : $kind, $q, $filters + ($private === null ? [] : ['private' => $private]), $page, self::PER_PAGE);
         $total = $result->total;
         $pages = max(1, (int) ceil($total / self::PER_PAGE));
         $page = $result->page;
@@ -471,6 +528,12 @@ final class AssetLibraryController
             'kind' => $kind,
             'filters' => $controls,
             'filtered' => $filters !== [],
+            'unused' => $unused,
+            'cleanup' => !$picker && $this->cleanup->isEnabled(),
+            'min_age_days' => $this->media->cleanup['min_age_days'],
+            'no_bin' => !$picker && $this->library->binDir() === null,
+            'has_bin' => $this->library->binDir() !== null,
+            'notice' => ($params['done'] ?? null) === 'binned' ? FolioText::get('folio.assets.binned') : null,
             'view' => $view,
             'picker' => $picker,
             'multiple' => $multiple,
@@ -478,9 +541,34 @@ final class AssetLibraryController
             'selected' => $selected,
             'errors' => $errors,
             'csrf' => self::csrf($request),
-            'detail_q' => '?back=' . rawurlencode($this->prefix . '/assets?' . http_build_query(array_filter(['q' => $q, 'kind' => $kind, 'f' => $filters, 'view' => $view, 'page' => (string) $page], static fn ($v) => $v !== '' && $v !== []))),
-            'query' => array_filter(['q' => $q, 'kind' => $kind, 'f' => $filters, 'picker' => $picker ? '1' : '', 'multiple' => $picker ? ($multiple ? '1' : '0') : '', 'private' => $private === null ? '' : ($private ? '1' : '0')], static fn ($v) => $v !== ''),
+            'detail_q' => '?back=' . rawurlencode($this->prefix . '/assets?' . http_build_query(array_filter(['q' => $q, 'kind' => $kind, 'f' => $filters, 'unused' => $unused ? '1' : '', 'view' => $view, 'page' => (string) $page], static fn ($v) => $v !== '' && $v !== []))),
+            'query' => array_filter(['q' => $q, 'kind' => $kind, 'f' => $filters, 'unused' => $unused ? '1' : '', 'picker' => $picker ? '1' : '', 'multiple' => $picker ? ($multiple ? '1' : '0') : '', 'private' => $private === null ? '' : ($private ? '1' : '0')], static fn ($v) => $v !== ''),
         ]), $status);
+    }
+
+    /**
+     * One page of what cleanup would bin (AssetCleanup::candidates(): unused, uploaded longer
+     * ago than min_age_days), oldest upload first, narrowed by kind and the search words (each
+     * in the name, title or an alt text). The toolbar's extra filters don't apply here.
+     * The usage sources are asked about every old enough asset on each request and the
+     * result is paged here, so pages are exact (cleanup's own chunks count checked assets,
+     * not candidates); on a very large library this page is slow, like media:cleanup.
+     */
+    private function unused(string $kind, string $q, int $page): AssetPage
+    {
+        $words = preg_split('/\s+/', mb_strtolower($q), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $assets = [];
+        foreach ($this->cleanup->candidates($kind === '' ? [] : ['kind' => $kind]) as $candidate) {
+            $asset = $candidate->asset;
+            $text = mb_strtolower($asset->originalName . ' ' . $asset->title . ' ' . implode(' ', $asset->alt));
+            if (array_filter($words, static fn (string $w): bool => !str_contains($text, $w)) === []) {
+                $assets[] = $asset;
+            }
+        }
+        $pages = max(1, (int) ceil(count($assets) / self::PER_PAGE));
+        $page = min($page, $pages);
+
+        return new AssetPage(array_slice($assets, ($page - 1) * self::PER_PAGE, self::PER_PAGE), count($assets), $page, self::PER_PAGE);
     }
 
     /** @return array{back: string, back_q: string} the "← Assets" target, and "?back=…" (or '') to carry on links */
@@ -513,7 +601,8 @@ final class AssetLibraryController
             'delivered' => self::size($this->library->deliveryAsset($asset) ?? $asset),
             'locales' => $this->locales->available,
             'posters' => array_map(fn (Asset $a) => $this->item($a), $posters),
-            'usage' => array_map(self::usageRow(...), $usage ?? $this->usage->of($asset->id)),
+            'usage' => array_map($this->usageRow(...), $usage ?? $this->usage->of($asset->id)),
+            'has_bin' => $this->library->binDir() !== null,
             'notice' => $notice,
             'error' => $error,
             'csrf' => self::csrf($request),
@@ -524,23 +613,30 @@ final class AssetLibraryController
 
     /**
      * A usage entry as the panel template's row: where it is ("working",
-     * "published" from Folio's note, "poster" from the core's poster source;
-     * other sources' entries count as working copies).
+     * "published" and "revision" from Folio's notes, "poster" and "binned_poster"
+     * from the core's poster source; other sources' entries count as working
+     * copies), and whether it blocks a delete. The poster of a binned file links
+     * to the bin.
      *
-     * @return array{label: string, url: string, where: string, source: string, note: ?string}
+     * @return array{label: string, url: string, where: string, source: string, note: ?string, blocks: bool}
      */
-    private static function usageRow(AssetUsageEntry $entry): array
+    private function usageRow(AssetUsageEntry $entry): array
     {
+        $where = match ($entry->note) {
+            FolioRecordReferences::PUBLISHED => 'published',
+            FolioRecordReferences::REVISION => 'revision',
+            PosterReferences::NOTE => 'poster',
+            PosterReferences::NOTE_BINNED => 'binned_poster',
+            default => 'working',
+        };
+
         return [
             'label' => $entry->label,
-            'url' => $entry->url ?? '',
-            'where' => match ($entry->note) {
-                FolioRecordReferences::PUBLISHED => 'published',
-                PosterReferences::NOTE => 'poster',
-                default => 'working',
-            },
+            'url' => $entry->url ?? ($where === 'binned_poster' ? $this->prefix . '/assets/bin' : ''),
+            'where' => $where,
             'source' => $entry->source,
             'note' => $entry->note,
+            'blocks' => $entry->blocksDelete,
         ];
     }
 

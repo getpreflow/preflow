@@ -64,6 +64,8 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'AssetLibraryController@edit' => 'assets.edit',
         'AssetLibraryController@restoreVersion' => 'assets.edit',
         'AssetLibraryController@deleteVersion' => 'assets.delete',
+        'AssetLibraryController@bin' => 'assets.delete',
+        'AssetLibraryController@restoreFromBin' => 'assets.delete',
         'ExtensionsController@index' => 'folio.extensions',
         'ExtensionsController@toggle' => 'folio.extensions',
         'CacheController@index' => 'folio.cache',
