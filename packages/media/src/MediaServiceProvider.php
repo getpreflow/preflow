@@ -48,10 +48,13 @@ use Preflow\View\TemplateFunctionDefinition;
  * (PdfPreviewRenderer), as the fallback of the shared PreviewRenderers, so a site's own renderer wins.
  * Copies are made again (remake) by the makers sites and packages register on the shared DerivedMakers.
  * Private files are refused until something binds PrivateFileAccess (Folio does).
+ * A delete moves an asset into config bin_dir; without one, `preflow migrate` warns that deletes are for good.
  * Listed in config/providers.php by a site without Folio; Folio registers it itself.
  */
 final class MediaServiceProvider extends ServiceProvider
 {
+    public const string NO_BIN_WARNING = 'media: bin_dir is not set; deleted assets are removed for good (see the media README)';
+
     public function register(Container $container): void
     {
         $app = $container->get(Application::class);
@@ -125,9 +128,13 @@ final class MediaServiceProvider extends ServiceProvider
         if ($config->storage !== 'json') {
             $tables = static fn (): array => [RecordTables::entry($container->get(MediaLibrary::class)->definition())];
             $container->get(RecordTables::class)->add('media', $tables);
+            // Without bin_dir a delete is for good: migrate says so once per run (the media README has the setting).
             $container->get(MigrationRegistry::class)->afterMigrate(
                 'media.table',
-                static fn (): array => (new RecordTableSync($container->get(DataManager::class)))->syncAll($tables()),
+                static fn (): array => [
+                    ...(new RecordTableSync($container->get(DataManager::class)))->syncAll($tables()),
+                    ...($config->binDir === null ? [self::NO_BIN_WARNING] : []),
+                ],
             );
         }
     }

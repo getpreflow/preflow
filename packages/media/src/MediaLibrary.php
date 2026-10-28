@@ -22,6 +22,7 @@ use Preflow\Media\Image\VariantGenerator;
 use Preflow\Media\Preview\PreviewRenderers;
 use Preflow\Media\Usage\AssetInUseException;
 use Preflow\Media\Usage\AssetUsage;
+use Preflow\Media\Usage\AssetUsageEntry;
 use Psr\Http\Message\UploadedFileInterface;
 
 /**
@@ -55,8 +56,12 @@ use Psr\Http\Message\UploadedFileInterface;
  * url) together with its variants and colours; originalUrl stays the untouched file.
  * Per-format crops (setFormatCrop) only change the box files of a cover preset.
  *
- * Deleting refuses an asset that a registered usage source still reports
- * (AssetInUseException), so every UI gets the rule.
+ * Deleting refuses an asset that a registered usage source reports with a usage that
+ * blocks a delete (AssetInUseException), so every UI gets the rule. With config
+ * "bin_dir" a delete moves the asset into the bin ({bin_dir}/{id}/, never served):
+ * the record stays, marked binned_at, and find(), all() and query() no longer see
+ * it; restoreFromBin() brings it back, emptyBin() deletes it for good later.
+ * Without bin_dir a delete removes it for good.
  */
 final class MediaLibrary
 {
@@ -308,7 +313,7 @@ final class MediaLibrary
     }
 
     /**
-     * The copies of an original, newest first.
+     * The copies of an original, newest first; a copy in the bin is not one of them.
      *
      * @return list<Asset>
      */
@@ -318,7 +323,7 @@ final class MediaLibrary
             return [];
         }
         $def = $this->definition();
-        $records = $this->dm->queryIn($def)
+        $records = $this->live($this->dm->queryIn($def))
             ->where('derived_from', '=', $originalId)
             ->orderBy('created_at', SortDirection::Desc)->orderBy($def->idField, SortDirection::Desc)
             ->get();
@@ -327,7 +332,7 @@ final class MediaLibrary
     }
 
     /**
-     * How many copies each of the ids has (0 for none), in one query.
+     * How many copies each of the ids has (0 for none; copies in the bin do not count), in one query.
      *
      * @param list<string> $ids
      * @return array<string, int>
@@ -339,7 +344,7 @@ final class MediaLibrary
             return [];
         }
         $counts = array_fill_keys($ids, 0);
-        $copies = $this->dm->queryIn($this->definition())->whereAny([['field' => 'derived_from', 'operator' => 'IN', 'value' => $ids]])->get();
+        $copies = $this->live($this->dm->queryIn($this->definition()))->whereAny([['field' => 'derived_from', 'operator' => 'IN', 'value' => $ids]])->get();
         foreach ($copies->items() as $record) {
             $from = (string) ($record->toArray()['derived_from'] ?? '');
             if (isset($counts[$from])) {
@@ -359,7 +364,7 @@ final class MediaLibrary
      * counts as made from the original's current version (isStale() is false).
      *
      * @param ?array<string, mixed> $params new settings for the maker, stored on the copy (null: the copy's own)
-     * @throws \InvalidArgumentException for an unknown asset, an original, a maker nobody registered, or an original that is gone (nothing changed)
+     * @throws \InvalidArgumentException for an unknown asset, an original, a maker nobody registered, or an original that is gone or in the bin (nothing changed)
      * @throws AssetUploadException (nothing changed)
      */
     public function remake(string $copyId, ?string $by, ?array $params = null): Asset
@@ -374,7 +379,9 @@ final class MediaLibrary
             $maker ?? throw new \InvalidArgumentException("Copy {$copyId} was made by \"{$copy->maker}\", which no DerivedMaker is registered for.");
         }
         $originalId = (string) $copy->derivedFrom;
-        $gone = static fn (): \InvalidArgumentException => new \InvalidArgumentException("The original {$originalId} of copy {$copyId} is gone.");
+        $gone = fn (): \InvalidArgumentException => new \InvalidArgumentException($this->findBinned($originalId) !== null
+            ? "The original {$originalId} of copy {$copyId} is in the bin; restore it first."
+            : "The original {$originalId} of copy {$copyId} is gone.");
         $this->find($originalId) ?? throw $gone();
         $this->requireVersionsDir($copyId, $copy->originalName);
 
@@ -501,7 +508,24 @@ final class MediaLibrary
         return (string) file_get_contents($path);
     }
 
+    /** A live asset: one in the bin is not found (pages, pickers and media_image() never resolve it; findBinned() does). */
     public function find(string $id): ?Asset
+    {
+        $asset = $this->record($id);
+
+        return $asset !== null && $asset->binnedAt === null ? $asset : null;
+    }
+
+    /** An asset in the bin; null for a live or unknown one. */
+    public function findBinned(string $id): ?Asset
+    {
+        $asset = $this->record($id);
+
+        return $asset?->binnedAt !== null ? $asset : null;
+    }
+
+    /** The stored asset, live or binned. */
+    private function record(string $id): ?Asset
     {
         if (preg_match(self::ID_PATTERN, $id) !== 1) {
             return null;
@@ -511,17 +535,23 @@ final class MediaLibrary
         return $record === null ? null : Asset::fromRecord($record);
     }
 
-    /** @return list<Asset> newest first */
+    /** Only assets that are not in the bin (binned_at is empty, or missing on records from before the bin). */
+    private function live(QueryBuilder $qb): QueryBuilder
+    {
+        return $qb->whereAny([['field' => 'binned_at', 'operator' => '=', 'value' => ''], ['field' => 'binned_at', 'operator' => '=', 'value' => null]]);
+    }
+
+    /** @return list<Asset> the live assets, newest first */
     public function all(): array
     {
-        $assets = array_map(Asset::fromRecord(...), array_values($this->dm->queryIn($this->definition())->get()->items()));
+        $assets = array_map(Asset::fromRecord(...), array_values($this->live($this->dm->queryIn($this->definition()))->get()->items()));
         usort($assets, static fn (Asset $a, Asset $b) => [$b->createdAt, $b->id] <=> [$a->createdAt, $a->id]);
 
         return $assets;
     }
 
     /**
-     * One page of assets, newest first. $kind is image, video or document (null: all); $search
+     * One page of live assets (none from the bin), newest first. $kind is image, video or document (null: all); $search
      * matches every word in the original name, title or alt text (in any locale). $filters
      * compare by equality on the extra fields declared in config "filters" (others are ignored):
      * a select or boolean field by value, a relation field by id (a list: any of them), a
@@ -538,7 +568,7 @@ final class MediaLibrary
     public function query(?string $kind = null, string $search = '', array $filters = [], int $page = 1, int $perPage = 50, ?bool $copies = null): AssetPage
     {
         $def = $this->definition();
-        $qb = $this->dm->queryIn($def)->locale($this->locales->default);
+        $qb = $this->live($this->dm->queryIn($def)->locale($this->locales->default));
 
         if ($kind !== null && $kind !== '') {
             $qb->whereAny([['field' => 'mime', 'operator' => 'IN', 'value' => array_keys(array_filter(
@@ -570,6 +600,22 @@ final class MediaLibrary
         }
         $qb->orderBy('created_at', SortDirection::Desc)->orderBy($def->idField, SortDirection::Desc);
 
+        return self::page($qb, $page, $perPage);
+    }
+
+    /** One page of the assets in the bin, the most recently binned first. A page past the end gives the last page. */
+    public function binned(int $page = 1, int $perPage = 50): AssetPage
+    {
+        $def = $this->definition();
+        $qb = $this->dm->queryIn($def)->where('binned_at', '>', '')
+            ->orderBy('binned_at', SortDirection::Desc)->orderBy($def->idField, SortDirection::Desc);
+
+        return self::page($qb, $page, $perPage);
+    }
+
+    /** A page of the query's assets; a page past the end gives the last page. */
+    private static function page(QueryBuilder $qb, int $page, int $perPage): AssetPage
+    {
         $perPage = max(1, $perPage);
         $result = $qb->paginate($perPage, max(1, $page));
         if ($result->currentPage > $result->lastPage) {
@@ -1013,23 +1059,281 @@ final class MediaLibrary
         return $asset;
     }
 
-    /** @throws AssetInUseException while a usage source reports the asset (nothing is deleted) */
+    /**
+     * Move the asset into the bin (with bin_dir; restoreFromBin() brings it back), or remove it
+     * for good without one. A usage that does not block a delete (an earlier revision) lets it bin.
+     *
+     * @throws AssetInUseException while a usage source reports a usage that blocks a delete (nothing changes)
+     * @throws \RuntimeException when a file could not be moved into the bin (nothing changes)
+     */
     public function delete(string $id): void
     {
         $asset = $this->find($id);
         if ($asset === null) {
             return;
         }
-        $usages = $this->usage?->of($id) ?? [];
+        $usages = $this->usage?->blocking($id) ?? [];
         if ($usages !== []) {
             throw new AssetInUseException($id, $usages);
         }
-        $this->remove($asset);
+        if ($this->binDir() !== null) {
+            $this->bin($asset);
+        } else {
+            $this->remove($asset);
+        }
     }
 
     /**
-     * Delete without asking the usage sources. Only for an asset created in this
-     * request that nothing can reference yet (an upload a field then refuses).
+     * Bring an asset back from the bin: its files go back where they were (the media dir, the
+     * private dir for a private asset, its earlier files to versions_dir), the record is live
+     * again, and what is made from the file (variants, an edited image's master) is made again;
+     * its colours stay. A copy whose original is in the bin brings the original back first; a
+     * copy whose original was deleted for good becomes an ordinary asset (its link to the
+     * original, maker and maker settings are cleared).
+     *
+     * @throws \InvalidArgumentException for an asset that is not in the bin
+     * @throws \RuntimeException without bin_dir, or when a file could not be moved back (nothing changes)
+     */
+    public function restoreFromBin(string $id): Asset
+    {
+        $asset = $this->findBinned($id) ?? throw new \InvalidArgumentException("Asset {$id} is not in the bin.");
+        $this->requireBinDir();
+        if ($asset->derivedFrom !== null && $this->findBinned($asset->derivedFrom) !== null) {
+            $this->restoreFromBin($asset->derivedFrom);
+        }
+
+        return $this->guarded($id, function () use ($id): Asset {
+            $asset = $this->findBinned($id) ?? throw new \InvalidArgumentException("Asset {$id} is not in the bin."); // restored while we waited
+            $moves = $this->restoreMoves($asset);
+            self::moveAll($moves, "Asset {$id} could not be restored");
+            $data = $asset->toData();
+            $data['binned_at'] = '';
+            if ($asset->derivedFrom !== null && $this->record($asset->derivedFrom) === null) {
+                $data = ['derived_from' => '', 'maker' => '', 'maker_params' => [], 'derived_version' => null] + $data;
+            }
+            try {
+                $saved = $this->save($data);
+            } catch (\Throwable $e) {
+                self::moveAll(self::reversed($moves), "Asset {$id} could not be put back into the bin");
+                throw $e;
+            }
+            $this->removeTree($this->binDir() . '/' . $id);
+
+            return $this->remakeDerived($saved, colors: false);
+        });
+    }
+
+    /**
+     * Delete for good what has been in the bin longer than $olderThanDays, except an asset a usage
+     * source still reports, blocking or not (an earlier revision, a live copy of an original): it
+     * stays in the bin and is listed with the reason. $progress is called for each asset old
+     * enough, with whether it was deleted.
+     *
+     * @param ?\Closure(Asset, bool): void $progress
+     * @throws \RuntimeException without bin_dir
+     */
+    public function emptyBin(int $olderThanDays, ?\Closure $progress = null): BinEmptyResult
+    {
+        $this->requireBinDir();
+        $cutoff = ($this->now)()->modify('-' . max(0, $olderThanDays) . ' days');
+        $deleted = 0;
+        $kept = [];
+        foreach ($this->dm->queryIn($this->definition())->where('binned_at', '>', '')->get()->items() as $record) {
+            $asset = Asset::fromRecord($record);
+            $at = \DateTimeImmutable::createFromFormat(DATE_ATOM, (string) $asset->binnedAt) ?: null;
+            if ($at === null || $at >= $cutoff) {
+                continue; // binned recently (an unreadable date is kept)
+            }
+            $usages = $this->usage?->of($asset->id) ?? [];
+            if ($usages !== []) {
+                $kept[] = ['id' => $asset->id, 'reason' => self::stillUsed($usages)];
+                if ($progress !== null) {
+                    $progress($asset, false);
+                }
+                continue;
+            }
+            $gone = $this->purge($asset->id);
+            $deleted += $gone ? 1 : 0;
+            if ($progress !== null) {
+                $progress($asset, $gone);
+            }
+        }
+
+        return new BinEmptyResult($deleted, $kept);
+    }
+
+    /** @param non-empty-list<AssetUsageEntry> $usages */
+    private static function stillUsed(array $usages): string
+    {
+        return 'still used: ' . implode('; ', array_map(
+            static fn (AssetUsageEntry $u): string => "{$u->label} ({$u->source}" . ($u->note !== null && $u->note !== '' ? ", {$u->note}" : '') . ')',
+            $usages,
+        ));
+    }
+
+    /** The bin directory (config "bin_dir"); null when none is configured, and then a delete removes an asset for good. */
+    public function binDir(): ?string
+    {
+        $dir = $this->config['bin_dir'] ?? null;
+
+        return is_string($dir) && $dir !== '' ? rtrim($dir, '/') : null;
+    }
+
+    /** @throws \RuntimeException without a bin directory */
+    private function requireBinDir(): void
+    {
+        if ($this->binDir() === null) {
+            throw new \RuntimeException('No bin directory is configured (bin_dir in config/media.php).');
+        }
+    }
+
+    /**
+     * With bin_dir, under the asset's lock: move its own files (the current file, a document's
+     * preview, its earlier files) into {bin_dir}/{id}/ (files/, versions/), mark the record
+     * binned, then delete what was made from them (variants, the rendered master, box files,
+     * the editor's image); restoreFromBin() makes those again.
+     */
+    private function bin(Asset $asset): void
+    {
+        $this->guarded($asset->id, function () use ($asset): void {
+            $current = $this->find($asset->id); // a replace may have run while we waited
+            if ($current === null) {
+                return; // binned or deleted meanwhile
+            }
+            $bin = $this->binDir() . '/' . $current->id;
+            $moves = [];
+            foreach ([$this->file($current), $this->previewFile($current)] as $file) {
+                if ($file !== null && is_file($file)) {
+                    $moves[] = [$file, $bin . '/files/' . basename($file)];
+                }
+            }
+            $versions = $this->versionsDir() !== null ? $this->versionsDir() . '/' . $current->id : null;
+            foreach ($versions !== null ? self::filesIn($versions) : [] as $name) {
+                $moves[] = [$versions . '/' . $name, $bin . '/versions/' . $name];
+            }
+            self::moveAll($moves, "Asset {$current->id} could not be moved into the bin");
+            $data = $current->toData();
+            $data['binned_at'] = ($this->now)()->format(DATE_ATOM);
+            $data['variants'] = [];
+            $data['master'] = [];
+            try {
+                $this->save($data);
+            } catch (\Throwable $e) {
+                self::moveAll(self::reversed($moves), "Asset {$current->id} could not be taken back out of the bin");
+                throw $e;
+            }
+            if ($versions !== null) {
+                @rmdir($versions);
+            }
+            // The record is binned: what was made from the files goes (the moved files are no longer there).
+            $this->removeFiles($current);
+            $this->removeLeftovers($current);
+        });
+    }
+
+    /**
+     * Where each of a binned asset's files in the bin goes back to.
+     *
+     * @return list<array{0: string, 1: string}> from, to
+     * @throws \RuntimeException when a file has nowhere to go (no private_dir, no versions_dir)
+     */
+    private function restoreMoves(Asset $asset): array
+    {
+        $bin = $this->binDir() . '/' . $asset->id;
+        $moves = [];
+        if ($this->file($asset) === null) {
+            throw new \RuntimeException("Asset {$asset->id} could not be restored: no private directory is configured (private_dir).");
+        }
+        foreach (array_filter([$this->file($asset), $this->previewFile($asset)]) as $target) {
+            if (is_file($bin . '/files/' . basename($target))) {
+                $moves[] = [$bin . '/files/' . basename($target), $target];
+            }
+        }
+        $versions = self::filesIn($bin . '/versions');
+        if ($versions !== [] && $this->versionsDir() === null) {
+            throw new \RuntimeException("Asset {$asset->id} could not be restored: no versions directory is configured (versions_dir) for its earlier files.");
+        }
+        foreach ($versions as $name) {
+            $moves[] = [$bin . '/versions/' . $name, $this->versionsDir() . '/' . $asset->id . '/' . $name];
+        }
+
+        return $moves;
+    }
+
+    /** Delete a binned asset for good: its record, then its files in the bin. False when it is no longer in the bin. */
+    private function purge(string $id): bool
+    {
+        return $this->guarded($id, function () use ($id): bool {
+            if ($this->findBinned($id) === null) {
+                return false; // restored meanwhile
+            }
+            $this->dm->deleteIn($this->definition(), $id);
+            $this->removeTree($this->binDir() . '/' . $id);
+            $this->removeVersionsFolder($id);
+            if ($this->versionsDir() !== null) {
+                @unlink($this->versionsDir() . '/' . self::LOCKS . '/' . $id . '.lock');
+            }
+
+            return true;
+        });
+    }
+
+    /**
+     * Move each file (rename, so a file is never half there); when one fails, the ones moved go back.
+     *
+     * @param list<array{0: string, 1: string}> $moves from, to
+     * @throws \RuntimeException when a file could not be moved (nothing changed)
+     */
+    private static function moveAll(array $moves, string $failure): void
+    {
+        $done = [];
+        foreach ($moves as [$from, $to]) {
+            $dir = dirname($to);
+            if ((!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) || !@rename($from, $to)) {
+                foreach (array_reverse($done) as [$movedFrom, $movedTo]) {
+                    @rename($movedTo, $movedFrom);
+                }
+                throw new \RuntimeException("{$failure}: {$from} could not be moved to {$to}; nothing was changed.");
+            }
+            $done[] = [$from, $to];
+        }
+    }
+
+    /**
+     * @param list<array{0: string, 1: string}> $moves
+     * @return list<array{0: string, 1: string}> the same moves the other way, last first
+     */
+    private static function reversed(array $moves): array
+    {
+        return array_map(static fn (array $m): array => [$m[1], $m[0]], array_reverse($moves));
+    }
+
+    /** @return list<string> the names of the files directly in $dir ([] when it does not exist) */
+    private static function filesIn(string $dir): array
+    {
+        if (!is_dir($dir)) {
+            return [];
+        }
+
+        return array_values(array_filter(scandir($dir) ?: [], static fn (string $e): bool => $e !== '.' && $e !== '..' && is_file($dir . '/' . $e)));
+    }
+
+    /** Delete a directory with everything in it. */
+    private function removeTree(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+        foreach ($it as $f) {
+            $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
+        }
+        @rmdir($dir);
+    }
+
+    /**
+     * Delete for good without asking the usage sources (never into the bin). Only for an asset
+     * created in this request that nothing can reference yet (an upload a field then refuses).
      */
     public function discard(string $id): void
     {
@@ -1391,16 +1695,7 @@ final class MediaLibrary
         $work = function () use ($asset): void {
             $current = $this->find($asset->id) ?? $asset; // a replace may have run while we waited
             $this->removeFiles($current);
-            // Leftovers of earlier files ({id}-v2-480.webp made on demand during a replace, a preview
-            // whose record was never saved), in the media or private dir: only this id's names.
-            $base = $current->private ? $this->privateDir() : rtrim($this->dir, '/');
-            if ($base !== null && preg_match('#^\d{4}/\d{2}$#', dirname($current->path)) === 1) {
-                foreach (glob($base . '/' . dirname($current->path) . '/' . $current->id . '-*') ?: [] as $file) {
-                    if (is_file($file)) {
-                        unlink($file);
-                    }
-                }
-            }
+            $this->removeLeftovers($current);
             $this->dm->deleteIn($this->definition(), $asset->id);
             $this->removeVersionsFolder($asset->id);
             if ($this->versionsDir() !== null) {
@@ -1408,6 +1703,23 @@ final class MediaLibrary
             }
         };
         $this->guarded($asset->id, $work);
+    }
+
+    /**
+     * Leftovers of earlier files ({id}-v2-480.webp made on demand during a replace, a preview
+     * whose record was never saved), in the media or private dir: only this id's names.
+     */
+    private function removeLeftovers(Asset $asset): void
+    {
+        $base = $asset->private ? $this->privateDir() : rtrim($this->dir, '/');
+        if ($base === null || preg_match('#^\d{4}/\d{2}$#', dirname($asset->path)) !== 1) {
+            return;
+        }
+        foreach (glob($base . '/' . dirname($asset->path) . '/' . $asset->id . '-*') ?: [] as $file) {
+            if (is_file($file)) {
+                unlink($file);
+            }
+        }
     }
 
     /** The asset's current file, its variants (also those made on demand), its preview and the files made from its edits. */

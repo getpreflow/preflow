@@ -189,6 +189,36 @@ final class RemakeTest extends TestCase
         $this->assertNull($this->stamp->lastInput);
     }
 
+    public function test_remake_refuses_a_copy_whose_original_is_binned(): void
+    {
+        $makers = new DerivedMakers();
+        $makers->register($this->stamp);
+        $this->lib = $this->library(
+            ['versions_dir' => $this->assetRoot . '/versions', 'bin_dir' => $this->assetRoot . '/bin'],
+            new VariantGenerator(new GdBackend(), [480], 75),
+            makers: $makers,
+        );
+        $original = $this->original();
+        $copy = $this->stamped($original);
+        $bytes = $this->bytesOf($copy);
+        $this->lib->delete($original->id); // no usage sources here: the original bins although it has a copy
+        $this->assertNotNull($this->lib->findBinned($original->id));
+
+        try {
+            $this->lib->remake($copy->id, null);
+            $this->fail('remake() should refuse a copy whose original is in the bin');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('in the bin', $e->getMessage());
+        }
+
+        $after = $this->lib->find($copy->id);
+        $this->assertSame(1, $after?->version);
+        $this->assertSame($bytes, $this->bytesOf($after));
+        $this->assertFalse($this->lib->canRemake($after));
+        $this->assertFalse($this->lib->isStale($after));
+        $this->assertNull($this->stamp->lastInput);
+    }
+
     public function test_remake_refuses_an_original(): void
     {
         $original = $this->original();

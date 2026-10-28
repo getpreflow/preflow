@@ -10,7 +10,7 @@ use Preflow\Data\TypeDefinition;
 final readonly class Asset
 {
     /** The asset's own columns that hold text (JSON text for lists and maps). */
-    public const array TEXT_COLUMNS = ['path', 'original_name', 'mime', 'size', 'width', 'height', 'duration', 'alt', 'title', 'focal_x', 'focal_y', 'poster', 'variants', 'created_at', 'created_by', 'version', 'versions', 'preview', 'color', 'palette', 'text_color', 'note', 'rotation', 'flip', 'crop', 'crops', 'master', 'derived_from', 'maker', 'maker_params'];
+    public const array TEXT_COLUMNS = ['path', 'original_name', 'mime', 'size', 'width', 'height', 'duration', 'alt', 'title', 'focal_x', 'focal_y', 'poster', 'variants', 'created_at', 'created_by', 'version', 'versions', 'preview', 'color', 'palette', 'text_color', 'note', 'rotation', 'flip', 'crop', 'crops', 'master', 'derived_from', 'maker', 'maker_params', 'binned_at'];
 
     /** Every key of the asset's own record: an extra field may not use one of these names. */
     public const array RESERVED = [...self::TEXT_COLUMNS, 'private', 'derived_version', 'uuid'];
@@ -67,6 +67,8 @@ final readonly class Asset
         public array $makerParams = [],
         /** The original's file version the copy was made from. */
         public ?int $derivedVersion = null,
+        /** When the asset was moved into the bin (ISO 8601); null for a live asset. */
+        public ?string $binnedAt = null,
     ) {}
 
     /** True for a copy of another asset (derived_from is set). */
@@ -174,6 +176,7 @@ final readonly class Asset
             maker: self::text($data['maker'] ?? null),
             makerParams: array_filter(self::decode($data['maker_params'] ?? []), static fn ($k) => is_string($k), ARRAY_FILTER_USE_KEY),
             derivedVersion: is_numeric($data['derived_version'] ?? null) && (int) $data['derived_version'] >= 1 ? (int) $data['derived_version'] : null,
+            binnedAt: self::text($data['binned_at'] ?? null),
         );
     }
 
@@ -214,6 +217,7 @@ final readonly class Asset
             'maker' => $this->maker ?? '',
             'maker_params' => $this->makerParams,
             'derived_version' => $this->derivedVersion,
+            'binned_at' => $this->binnedAt ?? '',
         ] + array_diff_key($this->extra, array_flip(self::RESERVED));
     }
 

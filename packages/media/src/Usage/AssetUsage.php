@@ -10,7 +10,8 @@ use Preflow\Core\Container\Attributes\Singleton;
  * Where an asset is used, asked of every registered source in registration
  * order, then of the sources registered as last (the core's poster source, so
  * poster rows list after record rows). MediaLibrary::delete() refuses an asset
- * while this reports usages.
+ * while this reports a usage that blocks a delete (blocking()); emptying the bin
+ * skips an asset while it reports any usage (of()).
  *
  * One per container from its first resolution, whichever provider asks first,
  * so a source registered before MediaServiceProvider is kept.
@@ -43,6 +44,12 @@ final class AssetUsage
         }
 
         return $usages;
+    }
+
+    /** @return list<AssetUsageEntry> the usages that refuse a delete (AssetUsageEntry::$blocksDelete) */
+    public function blocking(string $assetId): array
+    {
+        return array_values(array_filter($this->of($assetId), static fn (AssetUsageEntry $e): bool => $e->blocksDelete));
     }
 
     public function isUsed(string $assetId): bool

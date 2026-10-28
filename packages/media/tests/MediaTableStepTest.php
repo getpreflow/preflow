@@ -78,6 +78,37 @@ final class MediaTableStepTest extends TestCase
         $this->assertStringNotContainsString('folio_assets', $out);
     }
 
+    public function test_migrate_warns_once_without_bin_dir(): void
+    {
+        file_put_contents($this->dir . '/config/media.php', '<?php return ["storage" => "sqlite"];');
+
+        [$code, $out] = $this->migrate();
+
+        $this->assertSame(0, $code, $out);
+        $this->assertSame(1, substr_count($out, 'media: bin_dir is not set; deleted assets are removed for good (see the media README)'), $out);
+    }
+
+    public function test_migrate_does_not_warn_with_bin_dir(): void
+    {
+        file_put_contents($this->dir . '/config/media.php', '<?php return ["storage" => "sqlite", "bin_dir" => ' . var_export($this->dir . '/storage/media-bin', true) . '];');
+
+        [$code, $out] = $this->migrate();
+
+        $this->assertSame(0, $code, $out);
+        $this->assertStringNotContainsString('bin_dir', $out);
+    }
+
+    public function test_migrate_adds_the_binned_at_column(): void
+    {
+        file_put_contents($this->dir . '/config/media.php', '<?php return ["storage" => "sqlite"];');
+
+        $this->migrate();
+
+        $pdo = new \PDO('sqlite:' . $this->dir . '/app.sqlite');
+        $columns = $pdo->query('PRAGMA table_info(folio_assets)')->fetchAll(\PDO::FETCH_ASSOC);
+        $this->assertContains('binned_at', array_column($columns, 'name'));
+    }
+
     public function test_json_storage_registers_no_step(): void
     {
         $this->assertArrayNotHasKey('media.table', $this->app()->container()->get(MigrationRegistry::class)->steps());

@@ -9,12 +9,15 @@ use Preflow\Core\Debug\DebugCollector;
 
 /**
  * The media settings: config/media.php, or (deprecated) config/folio.php
- * "assets" when media.php is missing. The two are never merged. A private_dir
- * or versions_dir inside public/ or the media directory is refused: those files
- * would be served without the gate.
+ * "assets" when media.php is missing. The two are never merged. A private_dir,
+ * versions_dir or bin_dir inside public/ or the media directory is refused: those
+ * files would be served without the gate.
  */
 final readonly class MediaConfig
 {
+    /** Cleanup is opt-in: off until a site turns it on; binned assets are deleted for good after bin_days. */
+    public const array CLEANUP_DEFAULTS = ['enabled' => false, 'min_age_days' => 7, 'bin_days' => 30];
+
     public const string DEPRECATION = 'config/folio.php "assets" is deprecated; move it to config/media.php';
 
     private const string MEDIA = 'config/media.php';
@@ -24,6 +27,7 @@ final readonly class MediaConfig
      * @param list<int>|null                      $widths
      * @param array<string, array<string, mixed>> $fields
      * @param list<string>                        $filters
+     * @param array{enabled: bool, min_age_days: int, bin_days: int} $cleanup
      */
     public function __construct(
         public string $dir,
@@ -50,6 +54,9 @@ final readonly class MediaConfig
         public ?string $ghostscript = null,
         /** Poppler's pdftocairo, for PDF previews without a safe Ghostscript; null: looked up like gs. Neither: no previews. */
         public ?string $pdftocairo = null,
+        /** Deleted assets ({bin_dir}/{id}/), a shared deploy dir like versions_dir; null: a delete removes them for good. */
+        public ?string $binDir = null,
+        public array $cleanup = self::CLEANUP_DEFAULTS,
     ) {}
 
     public static function fromApp(Application $app, ?DebugCollector $debug = null): self
@@ -92,12 +99,15 @@ final readonly class MediaConfig
             colorProfileCmyk: is_string($values['color_profile_cmyk'] ?? null) && $values['color_profile_cmyk'] !== '' ? $values['color_profile_cmyk'] : null,
             ghostscript: is_string($values['ghostscript'] ?? null) && $values['ghostscript'] !== '' ? $values['ghostscript'] : null,
             pdftocairo: is_string($values['pdftocairo'] ?? null) && $values['pdftocairo'] !== '' ? $values['pdftocairo'] : null,
+            binDir: is_string($values['bin_dir'] ?? null) && $values['bin_dir'] !== '' ? $values['bin_dir'] : null,
+            cleanup: self::cleanup($values['cleanup'] ?? null),
         );
         if ($config->colorProfileCmyk !== null && (!is_file($config->colorProfileCmyk) || !is_readable($config->colorProfileCmyk))) {
             throw new \RuntimeException("{$config->key('color_profile_cmyk')} ({$config->colorProfileCmyk}) is not a readable file.");
         }
         $config->checkOutsideServed($app, 'private_dir', $config->privateDir);
         $config->checkOutsideServed($app, 'versions_dir', $config->versionsDir);
+        $config->checkOutsideServed($app, 'bin_dir', $config->binDir);
 
         return $config;
     }
@@ -133,6 +143,24 @@ final readonly class MediaConfig
             'color_profile_cmyk' => $this->colorProfileCmyk,
             'ghostscript' => $this->ghostscript,
             'pdftocairo' => $this->pdftocairo,
+            'bin_dir' => $this->binDir,
+            'cleanup' => $this->cleanup,
+        ];
+    }
+
+    /**
+     * The cleanup settings over their defaults (a value of the wrong type keeps the default).
+     *
+     * @return array{enabled: bool, min_age_days: int, bin_days: int}
+     */
+    private static function cleanup(mixed $values): array
+    {
+        $values = is_array($values) ? $values : [];
+
+        return [
+            'enabled' => ($values['enabled'] ?? false) === true,
+            'min_age_days' => is_int($values['min_age_days'] ?? null) && $values['min_age_days'] >= 0 ? $values['min_age_days'] : self::CLEANUP_DEFAULTS['min_age_days'],
+            'bin_days' => is_int($values['bin_days'] ?? null) && $values['bin_days'] >= 0 ? $values['bin_days'] : self::CLEANUP_DEFAULTS['bin_days'],
         ];
     }
 
@@ -184,7 +212,7 @@ final readonly class MediaConfig
         return $out;
     }
 
-    /** A directory of gated files (private_dir, versions_dir) must not be served by the web server. */
+    /** A directory of gated files (private_dir, versions_dir, bin_dir) must not be served by the web server. */
     private function checkOutsideServed(Application $app, string $name, ?string $dir): void
     {
         if ($dir === null) {

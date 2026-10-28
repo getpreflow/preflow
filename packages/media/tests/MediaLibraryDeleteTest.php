@@ -58,4 +58,22 @@ final class MediaLibraryDeleteTest extends TestCase
         $this->assertNull($library->find($asset->id));
         $this->assertFileDoesNotExist($library->absolute($asset->path));
     }
+
+    public function test_only_blocking_usages_refuse(): void
+    {
+        $usage = new AssetUsage();
+        $library = $this->library(usage: $usage);
+        $asset = $library->upload($this->upload($this->png(10, 10), 'a.png'), null);
+        $usage->register(AssetUsageTest::source('revisions', [$asset->id => [
+            new AssetUsageEntry('Home page', null, 'revisions', 'earlier revision', blocksDelete: false),
+        ]]));
+
+        $this->assertTrue($usage->isUsed($asset->id));
+        $this->assertSame([], $usage->blocking($asset->id));
+        $library->delete($asset->id); // no bin_dir: removed for good, as before
+
+        $this->assertNull($library->find($asset->id));
+        $this->assertNull($library->findBinned($asset->id));
+        $this->assertFileDoesNotExist($library->absolute($asset->path));
+    }
 }

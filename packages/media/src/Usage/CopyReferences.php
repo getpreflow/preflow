@@ -7,8 +7,9 @@ namespace Preflow\Media\Usage;
 use Preflow\Media\MediaLibrary;
 
 /**
- * The library's copies as usages of their original: an original is not deleted
- * while copies point at it (the copies go first). Registered by
+ * The library's live copies as usages of their original: an original is not deleted
+ * while copies point at it (the copies go first). A copy in the bin is not reported
+ * (MediaLibrary::copies() leaves it out), so it does not keep its original. Registered by
  * MediaServiceProvider, so every site gets it. The entry has no URL; a UI that
  * links copies does so itself.
  */

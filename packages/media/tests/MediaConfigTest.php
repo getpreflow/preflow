@@ -216,6 +216,45 @@ final class MediaConfigTest extends TestCase
         MediaConfig::fromApp(Application::create($this->dir));
     }
 
+    public function test_bin_dir_and_cleanup_defaults(): void
+    {
+        $config = MediaConfig::fromApp(Application::create($this->dir));
+
+        $this->assertNull($config->binDir);
+        $this->assertNull($config->toArray()['bin_dir']);
+        $this->assertSame(['enabled' => false, 'min_age_days' => 7, 'bin_days' => 30], $config->cleanup);
+        $this->assertSame($config->cleanup, $config->toArray()['cleanup']);
+    }
+
+    public function test_bin_dir_and_cleanup_values(): void
+    {
+        $this->write('media.php', ['bin_dir' => $this->dir . '/storage/media-bin', 'cleanup' => ['enabled' => true, 'bin_days' => 14]]);
+
+        $config = MediaConfig::fromApp(Application::create($this->dir));
+
+        $this->assertSame($this->dir . '/storage/media-bin', $config->binDir);
+        $this->assertSame($this->dir . '/storage/media-bin', $config->toArray()['bin_dir']);
+        $this->assertSame(['enabled' => true, 'min_age_days' => 7, 'bin_days' => 14], $config->cleanup);
+    }
+
+    public function test_bin_dir_under_public_is_refused(): void
+    {
+        $this->write('media.php', ['bin_dir' => $this->dir . '/public/bin']);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('config/media.php bin_dir');
+        MediaConfig::fromApp(Application::create($this->dir));
+    }
+
+    public function test_bin_dir_inside_the_media_dir_is_refused(): void
+    {
+        $this->write('media.php', ['dir' => $this->dir . '/web/media', 'bin_dir' => $this->dir . '/web/media/.bin']);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('bin_dir');
+        MediaConfig::fromApp(Application::create($this->dir));
+    }
+
     public function test_versions_dir_inside_the_media_dir_is_refused(): void
     {
         $this->write('media.php', ['dir' => $this->dir . '/web/media', 'versions_dir' => $this->dir . '/web/media/old']);
