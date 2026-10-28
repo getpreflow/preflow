@@ -38,6 +38,7 @@
         "preflow": {
             "commands": [
                 "Preflow\\Media\\Console\\BinCommand",
+                "Preflow\\Media\\Console\\CleanupCommand",
                 "Preflow\\Media\\Console\\ColorsCommand",
                 "Preflow\\Media\\Console\\PreviewsCommand",
                 "Preflow\\Media\\Console\\VariantsCommand",

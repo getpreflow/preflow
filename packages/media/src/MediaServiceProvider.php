@@ -16,6 +16,7 @@ use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Core\Routing\RouterInterface;
 use Preflow\Media\Access\DenyAllPrivateFileAccess;
 use Preflow\Media\Access\PrivateFileAccess;
+use Preflow\Media\Cleanup\AssetCleanup;
 use Preflow\Media\Color\ColorExtractor;
 use Preflow\Media\Derived\DerivedMakers;
 use Preflow\Media\Http\PrivateFileController;
@@ -96,6 +97,11 @@ final class MediaServiceProvider extends ServiceProvider
             colors: new ColorExtractor($colors),
             formats: $c->get(Formats::class),
             makers: $c->get(DerivedMakers::class),
+        ));
+        $container->singleton(AssetCleanup::class, fn (Container $c) => new AssetCleanup(
+            $c->get(MediaLibrary::class),
+            $c->get(AssetUsage::class),
+            $config->cleanup,
         ));
         $container->singleton(LocaleProvider::class, fn (Container $c) => new ConfigLocaleProvider(
             static fn (): ?string => self::translatorLocale($c),
