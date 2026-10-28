@@ -1,6 +1,6 @@
 {% extends '@folio/admin/_layout.twig' %}
 {% block title %}Folio — {{ t('folio.assets.edit_title', {label: asset.label}) }}{% endblock %}
-{% block page_title %}{{ t('folio.assets.edit_heading', {label: asset.label}) }}{% endblock %}
+{% block page_title %}{{ t('folio.assets.edit_heading', {label: asset.label}) }}{% if asset.copy %} <span class="folio-asset-copy-mark">{{ copy_of ? t('folio.assets.copy_of_label', {label: copy_of}) : t('folio.assets.copy_mark') }}</span>{% endif %}{% endblock %}
 {% block actions %}<a class="btn btn-secondary" href="{{ back }}">{{ t('folio.assets.back') }}</a>{% endblock %}
 {% block content %}
 {% set tab = 'edit' %}

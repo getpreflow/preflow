@@ -1,4 +1,5 @@
-{# The number of an original's copies on its tile. In the picker it opens the stack (the original and its copies to pick from). #}
+{# A copy's marker, and the number of an original's copies on its tile. In the picker the number opens the stack (the original and its copies to pick from). #}
+{% if item.copy|default(false) %}<span class="folio-asset-copy-mark">{{ t('folio.assets.copy_mark') }}</span>{% endif %}
 {% if item.copies|default(0) > 0 %}
     {%- if picker -%}
         <a class="folio-asset-stack" href="{{ prefix }}/assets?{{ (query|merge({'stack': item.id}))|url_encode }}" title="{{ t('folio.assets.open_stack', {}, item.copies) }}">{{ item.copies }}</a>

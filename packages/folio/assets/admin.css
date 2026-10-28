@@ -1060,6 +1060,21 @@ a.folio-asset-thumb:hover { border-color: var(--c-border-strong); box-shadow: va
   box-shadow: var(--shadow-md);
 }
 .folio-asset-list .folio-asset-stack { position: static; display: inline-block; margin-left: 6px; }
+/* A copy's marker: on its tile, next to its name in lists, in the Edit image heading and the bin. */
+.folio-asset-copy-mark {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-xs);
+  background: var(--c-surface);
+  color: var(--c-text-muted);
+  font-size: 12px;
+  font-weight: 560;
+  line-height: 18px;
+  vertical-align: middle;
+}
+.folio-asset-grid .folio-asset-copy-mark { position: absolute; top: 6px; left: 6px; }
+.folio-asset-list .folio-asset-copy-mark { margin-left: 6px; }
 a.folio-asset-stack:hover { background: var(--c-accent-hover); }
 .folio-assets-stack-heading { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; font-weight: 560; }
 .folio-asset-original { display: grid; gap: 8px; justify-items: start; }

@@ -87,9 +87,11 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         foreach ($this->toList($this->fromStorage($ctx->value)) as $value) {
             [$thumb, $text, $href] = $this->describe($value);
             $html .= '    <li class="folio-asset-item" data-asset-item>';
-            $html .= $thumb !== null
-                ? '<img src="' . $e($thumb) . '" alt="" class="folio-asset-thumb">'
-                : '<a href="' . $e($href) . '">' . $e($text) . '</a>';
+            $html .= match (true) {
+                $thumb !== null => '<img src="' . $e($thumb) . '" alt="" class="folio-asset-thumb">',
+                $href !== null => '<a href="' . $e($href) . '">' . $e($text) . '</a>',
+                default => '<span>' . $e($text) . '</span>',
+            };
             $html .= '<input type="hidden" name="' . $e($selection) . '" value="' . $e($value) . '">';
             $html .= '<button type="button" class="btn btn-ghost" data-folio-asset-remove aria-label="' . $e(\Preflow\Folio\FolioText::get('folio.fields.remove_named', ['label' => $text])) . '">' . $e(\Preflow\Folio\FolioText::get('folio.common.remove')) . '</button>';
             $html .= '</li>' . "\n";
@@ -121,9 +123,10 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
 
     /**
      * Thumbnail URL (images), label and link of a stored value. A file in the bin keeps its
-     * place (restoring it brings it back) and says so, linking to the bin.
+     * place (restoring it brings it back) and says so, linking to the bin for those who may
+     * open it (assets.delete); for others the link is null (plain text).
      *
-     * @return array{0: ?string, 1: string, 2: string}
+     * @return array{0: ?string, 1: string, 2: ?string}
      */
     private function describe(string $value): array
     {
@@ -133,7 +136,7 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         }
         $binned = $this->library?->findBinned($value);
         if ($binned !== null) {
-            return [null, self::inBin($binned), rtrim($this->adminPrefix, '/') . '/assets/bin'];
+            return [null, self::inBin($binned), $this->allows('assets.delete') ? rtrim($this->adminPrefix, '/') . '/assets/bin' : null];
         }
         $url = $this->urlFor($value);
 

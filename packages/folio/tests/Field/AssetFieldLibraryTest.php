@@ -226,6 +226,20 @@ final class AssetFieldLibraryTest extends TestCase
         $this->assertSame('x.png (in the bin)', $this->field()->renderAdmin($id, self::SINGLE));
     }
 
+    public function test_the_bin_link_needs_assets_delete(): void
+    {
+        $this->lib = $this->library(['bin_dir' => $this->assetRoot . '/bin']);
+        $id = $this->asset();
+        $this->lib->delete($id);
+        $field = new AssetFieldType($this->assetRoot . '/uploads', '/folio/_uploads', null, $this->lib, '/folio', static fn (string $permission): bool => $permission !== 'assets.delete');
+
+        $html = $field->renderEditor(new FieldContext(name: 'cover', label: 'Cover', value: $id, config: self::SINGLE));
+
+        // The bin page would answer 403: plain text instead of a link.
+        $this->assertStringContainsString('<span>x.png (in the bin)</span>', $html);
+        $this->assertStringNotContainsString('/folio/assets/bin', $html);
+    }
+
     private function asset(): string
     {
         return $this->lib->upload($this->upload($this->png(10, 10), 'x.png'), null)->id;

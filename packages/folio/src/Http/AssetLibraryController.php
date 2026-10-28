@@ -163,15 +163,42 @@ final class AssetLibraryController
         try {
             $this->library->delete($asset->id);
         } catch (AssetInUseException $e) {
-            $n = count($e->usages);
-            return $this->renderPanel($request, $asset, null, FolioText::choice('folio.assets.in_use', $n), 409, $e->usages);
+            return $this->renderPanel($request, $asset, null, self::inUse($e->usages), 409, $e->usages);
+        } catch (\RuntimeException $e) {
+            if ($this->library->binDir() === null) {
+                throw $e;
+            }
+            // A file could not be moved into the bin (nothing changed).
+            error_log('folio: could not move asset ' . $asset->id . ' into the bin: ' . $e::class . ': ' . $e->getMessage());
+
+            return $this->renderPanel($request, $asset, null, FolioText::get('folio.assets.bin_failed', ['label' => $asset->label()]), 422);
         }
         $location = $this->back($request) ?? $this->prefix . '/assets';
         if ($this->library->binDir() !== null) {
+            // A page the library was opened on after an earlier delete already says done=binned: once is enough.
+            $location = preg_replace('/([?&])done=[^&]*(&|$)/', '$1', $location) ?? $location;
+            $location = rtrim($location, '?&');
             $location .= (str_contains($location, '?') ? '&' : '?') . 'done=binned';
         }
 
         return new Response(302, ['Location' => $location]);
+    }
+
+    /**
+     * Why a delete was refused: the records that use the file, then its copies (each copy is
+     * a usage of its original, but people count them apart: they are on the Copies panel).
+     *
+     * @param list<AssetUsageEntry> $usages
+     */
+    private static function inUse(array $usages): string
+    {
+        $copies = count(array_filter($usages, static fn (AssetUsageEntry $u): bool => $u->note === CopyReferences::NOTE));
+        $records = count($usages) - $copies;
+
+        return implode(' ', array_filter([
+            $records > 0 ? FolioText::choice('folio.assets.in_use', $records) : '',
+            $copies > 0 ? FolioText::choice('folio.assets.in_use_copies', $copies) : '',
+        ]));
     }
 
     /** {prefix}/assets/bin: what was deleted, the most recently deleted first, each with "Restore". */
@@ -207,7 +234,7 @@ final class AssetLibraryController
             'types' => $this->catalog->all(),
             'section' => 'assets',
             'editor_assets' => ['admin.js'],
-            'items' => array_map(fn (Asset $a) => ['binned_at' => $a->binnedAt] + $this->item($a), $result->items),
+            'items' => array_map(fn (Asset $a) => ['binned_at' => $a->binnedAt, 'copy_of' => $this->originalLabel($a)] + $this->item($a), $result->items),
             'total' => $result->total,
             'page' => $result->page,
             'pages' => max(1, (int) ceil($result->total / self::PER_PAGE)),
@@ -216,6 +243,17 @@ final class AssetLibraryController
             'error' => $error,
             'csrf' => self::csrf($request),
         ]), $status);
+    }
+
+    /** The label of a copy's original, live or in the bin; null for an original, or a copy whose original is gone. */
+    private function originalLabel(Asset $asset): ?string
+    {
+        if (!$asset->isCopy()) {
+            return null;
+        }
+        $id = (string) $asset->derivedFrom;
+
+        return ($this->library->find($id) ?? $this->library->findBinned($id))?->label();
     }
 
     /** A new file for the asset (same kind); the old one becomes a version. Errors show in the panel. */
@@ -431,6 +469,7 @@ final class AssetLibraryController
             'section' => 'assets',
             'editor_assets' => ['admin.js', 'cropper.css', 'image-editor.css', 'cropper.js', 'image-editor.js'],
             'asset' => $this->item($asset),
+            'copy_of' => $this->originalLabel($asset),
             'oriented' => $this->library->orientedUrl($asset),
             'crop' => $asset->crop?->toArray(),
             'edited' => $asset->isEdited(),
@@ -735,8 +774,10 @@ final class AssetLibraryController
      * A usage entry as the panel template's row: where it is ("working",
      * "published" and "revision" from Folio's notes, "poster" and "binned_poster"
      * from the core's poster source, "copy" from its copy source; other sources'
-     * entries count as working copies), and whether it blocks a delete. The poster of a binned file links
-     * to the bin.
+     * entries count as working copies), and whether it blocks a delete: without bin_dir every
+     * usage does, as the library refuses a delete for good under any usage (an earlier revision
+     * would lose its file). The template links the poster of a binned file to the bin for those
+     * who may open it (assets.delete).
      *
      * @return array{label: string, url: string, where: string, source: string, note: ?string, blocks: bool}
      */
@@ -753,11 +794,11 @@ final class AssetLibraryController
 
         return [
             'label' => $entry->label,
-            'url' => $entry->url ?? ($where === 'binned_poster' ? $this->prefix . '/assets/bin' : ''),
+            'url' => $entry->url ?? '',
             'where' => $where,
             'source' => $entry->source,
             'note' => $entry->note,
-            'blocks' => $entry->blocksDelete,
+            'blocks' => $entry->blocksDelete || $this->library->binDir() === null,
         ];
     }
 
@@ -926,6 +967,7 @@ final class AssetLibraryController
             'focal_y' => $asset->focalY,
             'poster' => $asset->posterId,
             'created_at' => $asset->createdAt,
+            'copy' => $asset->isCopy(),
         ];
     }
 

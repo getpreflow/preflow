@@ -6,7 +6,7 @@
     <div class="folio-asset-original">
         <p>
             {%- if copy.original %}{{ t('folio.assets.copy_of') }} <a href="{{ prefix }}/assets/{{ copy.original.id }}">{{ copy.original.label }}</a>
-            {%- elseif copy.binned_original %}{{ t('folio.assets.copy_of') }} <a href="{{ prefix }}/assets/bin">{{ t('folio.assets.in_bin', {label: copy.binned_original}) }}</a>
+            {%- elseif copy.binned_original %}{{ t('folio.assets.copy_of') }} {% if can('assets.delete') %}<a href="{{ prefix }}/assets/bin">{{ t('folio.assets.in_bin', {label: copy.binned_original}) }}</a>{% else %}{{ t('folio.assets.in_bin', {label: copy.binned_original}) }}{% endif %}
             {%- else %}{{ t('folio.assets.copy_of_gone') }}{% endif %} · {{ t('folio.assets.made_by', {maker: copy.maker}) }}</p>
         {% if copy.stale %}<p class="folio-asset-stale" role="note">{{ t('folio.assets.original_changed_help') }}</p>{% endif %}
         {% if copy.can_remake and can('assets.edit') %}
@@ -119,11 +119,18 @@
     </div>
     <div class="folio-asset-usage">
         <h2>{{ t('folio.assets.usage') }}</h2>
+        {# Records and copies are counted apart: each copy is a usage of its original, but it is listed under Copies. #}
+        {% set records = usage|filter(u => u.where != 'copy') %}
+        {% set copy_usages = usage|length - records|length %}
         {% if usage is empty %}
             <p>{{ t('folio.assets.unused') }}</p>
-        {% else %}
-            <p>{{ t('folio.assets.used_in', {}, usage|length) }}</p>
-            <ul>{% for u in usage %}<li>{% if u.url %}<a href="{{ u.url }}">{{ u.label }}</a>{% else %}{{ u.label }}{% endif %}{% if u.where == 'published' %} {{ t('folio.assets.published_version') }}{% elseif u.where == 'revision' %} {{ t('folio.assets.earlier_revision') }}{% elseif u.where == 'poster' %} {{ t('folio.assets.as_poster') }}{% elseif u.where == 'binned_poster' %} {{ t('folio.assets.binned_poster') }}{% elseif u.where == 'copy' %} {{ t('folio.assets.as_copy') }}{% endif %}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if records is not empty %}
+            <p>{{ t('folio.assets.used_in', {}, records|length) }}</p>
+            <ul>{% for u in records %}<li>{% if u.url %}<a href="{{ u.url }}">{{ u.label }}</a>{% elseif u.where == 'binned_poster' and can('assets.delete') %}<a href="{{ prefix }}/assets/bin">{{ u.label }}</a>{% else %}{{ u.label }}{% endif %}{% if u.where == 'published' %} {{ t('folio.assets.published_version') }}{% elseif u.where == 'revision' %} {{ t('folio.assets.earlier_revision') }}{% elseif u.where == 'poster' %} {{ t('folio.assets.as_poster') }}{% elseif u.where == 'binned_poster' %} {{ t('folio.assets.binned_poster') }}{% endif %}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if copy_usages > 0 %}
+            <p class="folio-asset-has-copies"><a href="#copies">{{ t('folio.assets.has_copies', {}, copy_usages) }}</a></p>
         {% endif %}
     </div>
     {% if copies is not empty %}
@@ -139,7 +146,7 @@
                         {% if c.stale %}<span class="folio-asset-stale">{{ t('folio.assets.original_changed') }}</span>{% endif %}
                         <span class="folio-asset-meta">
                             {%- if c.usage is empty %}{{ t('folio.assets.unused') }}
-                            {%- else %}{{ t('folio.assets.used_in', {}, c.usage|length) }} {% for u in c.usage %}{% if u.url %}<a href="{{ u.url }}">{{ u.label }}</a>{% else %}{{ u.label }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% endif -%}
+                            {%- else %}{{ t('folio.assets.used_in', {}, c.usage|length) }} {% for u in c.usage %}{% if u.url %}<a href="{{ u.url }}">{{ u.label }}</a>{% elseif u.where == 'binned_poster' and can('assets.delete') %}<a href="{{ prefix }}/assets/bin">{{ u.label }}</a>{% else %}{{ u.label }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% endif -%}
                         </span>
                     </div>
                 </li>

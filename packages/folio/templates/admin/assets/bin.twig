@@ -19,7 +19,7 @@
             <tbody>
             {% for item in items %}
                 <tr data-asset-id="{{ item.id }}">
-                    <td>{{ item.label }}{% if item.label != item.name %} <span class="folio-help">{{ item.name }}</span>{% endif %}</td>
+                    <td>{{ item.label }}{% if item.label != item.name %} <span class="folio-help">{{ item.name }}</span>{% endif %}{% if item.copy %} <span class="folio-asset-copy-mark">{{ item.copy_of ? t('folio.assets.copy_of_label', {label: item.copy_of}) : t('folio.assets.copy_mark') }}</span>{% endif %}</td>
                     <td>{{ t('folio.assets.kind_names.' ~ item.kind) }}</td>
                     <td>{{ t('folio.assets.size_kb', {size: folio_number((item.size / 1024)|round(0, 'ceil'))}) }}</td>
                     <td>{{ folio_date(item.binned_at) }}</td>

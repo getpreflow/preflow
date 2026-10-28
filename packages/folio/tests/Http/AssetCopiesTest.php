@@ -77,7 +77,9 @@ final class AssetCopiesTest extends TestCase
         $this->assertMatchesRegularExpression('/data-copy-id="' . $old->id . '".*?class="folio-asset-stale"/s', $panel);
         $this->assertStringContainsString('plain copy', $panel);
         $this->assertStringContainsString('Not used anywhere.', $panel);
-        $this->assertStringContainsString('photo.png (copy)', $panel); // the usage list names the copies
+        // Copies are counted apart from records: the Copies panel lists them.
+        $this->assertStringContainsString('<a href="#copies">Has 2 copies (listed under Copies).</a>', $panel);
+        $this->assertStringNotContainsString('Used in', $panel);
 
         $copyPage = (string) $this->get('/folio/assets/' . $old->id)->getBody();
         $this->assertStringContainsString('Copy of <a href="/folio/assets/' . $original->id . '">photo.png</a>', $copyPage);
@@ -179,6 +181,47 @@ final class AssetCopiesTest extends TestCase
 
         // A field that takes only private files: the public stack offers nothing.
         $this->assertStringNotContainsString('data-folio-pick', (string) $this->get('/folio/assets?picker=1&multiple=0&private=1&stack=' . $original->id)->getBody());
+    }
+
+    public function test_original_usage_counts_records_apart_from_copies(): void
+    {
+        $original = $this->lib()->upload($this->file($this->png(), 'photo.png'), null);
+        $this->lib()->makeCopy($original->id, null);
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello'], 'cover' => $original->id]);
+
+        $panel = (string) $this->get('/folio/assets/' . $original->id)->getBody();
+        $this->assertStringContainsString('<p>Used in 1 record:</p>', $panel);
+        $this->assertStringContainsString('<li><a href="/folio/post/p1/edit">Hello</a></li>', $panel);
+        $this->assertStringContainsString('Has 1 copy (listed under Copies).', $panel);
+
+        $res = $this->post('/folio/assets/' . $original->id . '/delete');
+        $this->assertSame(409, $res->getStatusCode());
+        $this->assertStringContainsString('Used in 1 record — remove it there first. The file has 1 copy — delete the copy first.', (string) $res->getBody());
+    }
+
+    public function test_copies_are_marked_as_copies(): void
+    {
+        $this->write('config/media.php', "<?php\nreturn ['bin_dir' => " . var_export($this->dir . '/storage/media-bin', true) . "];\n");
+        $original = $this->lib()->upload($this->file($this->png(), 'photo.png'), null);
+        $copy = $this->lib()->makeCopy($original->id, null);
+        $mark = '<span class="folio-asset-copy-mark">copy</span>';
+
+        $library = (string) $this->get('/folio/assets')->getBody();
+        $this->assertStringNotContainsString($mark, $library, 'the stack shows its original only');
+        $search = (string) $this->get('/folio/assets?q=photo')->getBody();
+        $this->assertSame(1, substr_count($search, $mark), 'the copy tile, not the original');
+        $this->assertMatchesRegularExpression('/data-asset-id="' . $copy->id . '".*?folio-asset-copy-mark/s', $search);
+        $this->assertSame(1, substr_count((string) $this->get('/folio/assets?q=photo&view=list')->getBody(), $mark));
+        $stack = (string) $this->get('/folio/assets?picker=1&stack=' . $original->id)->getBody();
+        $this->assertSame(1, substr_count($stack, $mark));
+
+        $editor = (string) $this->get('/folio/assets/' . $copy->id . '/edit')->getBody();
+        $this->assertStringContainsString('<span class="folio-asset-copy-mark">Copy of photo.png</span>', $editor);
+        $this->assertStringNotContainsString('folio-asset-copy-mark', (string) $this->get('/folio/assets/' . $original->id . '/edit')->getBody());
+
+        $this->lib()->delete($copy->id);
+        $bin = (string) $this->get('/folio/assets/bin')->getBody();
+        $this->assertStringContainsString('<span class="folio-asset-copy-mark">Copy of photo.png</span>', $bin);
     }
 
     private function lib(): MediaLibrary
