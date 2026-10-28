@@ -10,6 +10,7 @@ use Preflow\Auth\Tokens\Tokens;
 use Preflow\Data\DataManager;
 use Preflow\Members\Admission\AcceptOnConfirm;
 use Preflow\Members\Admission\OwnerApproval;
+use Preflow\Members\Http\Trap;
 use Preflow\Members\Members;
 use Preflow\Members\Tests\Fixtures\CompanyAdmission;
 use Preflow\Members\Tests\Fixtures\NoticeAdmission;
@@ -266,6 +267,46 @@ TWIG,
         $this->assertSame(429, $response->getStatusCode());
         $this->assertStringContainsString('Too many attempts, try again later', (string) $response->getBody());
         $this->assertNull($this->flow->container()->get(Members::class)->findByEmail('u6@example.com'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_form_has_a_trap_field_people_never_reach(): void
+    {
+        $html = $this->html('/members/register');
+
+        $input = Dom::first($html, '//form[@action="/members/register"]//input[@name="' . Trap::FIELD . '"]');
+        $this->assertNotNull($input);
+        $this->assertSame('-1', $input->getAttribute('tabindex'), 'out of the tab order');
+        $this->assertSame('off', $input->getAttribute('autocomplete'), 'never autofilled');
+        $this->assertSame('', $input->getAttribute('value'));
+        $box = Dom::first($html, '//*[@aria-hidden="true"][.//input[@name="' . Trap::FIELD . '"]]');
+        $this->assertNotNull($box, 'hidden from screen readers');
+        $this->assertStringContainsString('members-trap', $box->getAttribute('class'));
+        $this->assertMatchesRegularExpression('~<style[^>]*>[^<]*\.members-trap\s*\{[^}]*left:\s*-10000px~', $html, 'moved off screen without the site\'s CSS');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_filled_trap_registers_nobody_and_answers_like_a_registration(): void
+    {
+        $response = $this->register([Trap::FIELD => 'https://spam.example']);
+        $html = (string) $response->getBody();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertStringContainsString('Check your inbox', $html);
+        $this->assertStringContainsString('ada@example.com', $html);
+        $this->assertStringNotContainsString('spam.example', $html);
+        $this->assertSame([], $this->mails());
+        $this->assertNull($this->flow->container()->get(Members::class)->findByEmail('ada@example.com'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_filled_trap_counts_for_the_throttle(): void
+    {
+        for ($i = 1; $i <= 5; $i++) {
+            $this->register(['email' => "bot{$i}@example.com", Trap::FIELD => 'x']);
+        }
+
+        $this->assertSame(429, $this->register()->getStatusCode());
     }
 
     #[RunInSeparateProcess]

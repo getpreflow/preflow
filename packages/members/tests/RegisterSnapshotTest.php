@@ -11,7 +11,7 @@ use Preflow\Members\Tests\Support\MembersScaffold;
 
 /**
  * The public "members" group ("Sie"): the German registration page is byte for byte the one
- * of v0.36.0. (The admin's "members-admin" texts are tested with Folio's members admin.)
+ * of v0.36.0, plus the bots' trap field (0.42.1). (The admin's "members-admin" texts are tested with Folio's members admin.)
  */
 final class RegisterSnapshotTest extends TestCase
 {

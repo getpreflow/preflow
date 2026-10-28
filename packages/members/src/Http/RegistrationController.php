@@ -36,7 +36,7 @@ use Psr\Http\Message\ServerRequestInterface;
 final class RegistrationController
 {
     /** Form fields that never go back into the page or to the admission. */
-    private const array SECRET = ['password', '_csrf_token', 'next'];
+    private const array SECRET = ['password', '_csrf_token', 'next', Trap::FIELD];
 
     public function __construct(
         private readonly MembersView $view,
@@ -85,6 +85,10 @@ final class RegistrationController
         $this->throttle->hit(MembersConfig::THROTTLE_REGISTER, $client, $window);
 
         $body = Input::body($request);
+        if (Trap::caught($body)) {
+            // A bot: nobody is registered, and the answer is the one a registration gets.
+            return $this->show('check-inbox', $request, ['email' => Members::normalizeEmail(Input::text($body, 'email'))]);
+        }
         $password = Input::text($body, 'password');
         $next = Input::text($body, 'next');
         // The admission's own fields come along as posted; name, email and consent normalised.

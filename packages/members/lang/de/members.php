@@ -15,6 +15,8 @@ return [
         'submit' => 'Konto erstellen',
         'registered' => 'Schon registriert?',
         'login' => 'Anmelden',
+        // The trap field for bots (Http\Trap); people never see it.
+        'trap' => 'Dieses Feld bitte leer lassen',
     ],
     'closed' => [
         'title' => 'Registrierung geschlossen',

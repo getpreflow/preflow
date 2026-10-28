@@ -42,6 +42,7 @@
       {% block admission_fields %}{% endblock %}
       {# More fields of an extended member type. #}
       {% block extra_fields %}{% endblock %}
+      {% include '@members-package/_trap.twig' %}
       <div class="field{{ errors.consent is defined ? ' field--error' : '' }}">
         <label class="members-check" for="f-consent">
           <input id="f-consent" name="consent" type="checkbox" value="1" required{{ old.consent|default(false) ? ' checked' : '' }}>

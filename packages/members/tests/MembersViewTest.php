@@ -230,7 +230,7 @@ TWIG);
         $site = $this->html('register', ['open' => true, 'errors' => ['name' => true], 'old' => ['name' => 'Ada']]);
         $this->assertSame('Join us', Dom::text($site, '//h1[@id="intro"]'));
         $names = array_map(static fn (\DOMElement $e): string => $e->getAttribute('name'), Dom::all($site, '//form//input'));
-        $this->assertSame(['name', 'email', 'password', 'code', 'company', 'consent'], $names);
+        $this->assertSame(['name', 'email', 'password', 'code', 'company', 'members_website', 'consent'], $names);
         $this->assertSame('Ada', Dom::first($site, '//input[@name="name"]')?->getAttribute('value'));
         $this->assertSame('Please check the highlighted fields.', Dom::text($site, '//div[@role="alert"]'));
         $this->assertSame('Please enter your name.', Dom::text($site, '//p[contains(@class,"field-error")]'));

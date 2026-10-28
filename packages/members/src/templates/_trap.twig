@@ -1,0 +1,7 @@
+{# A field for bots only (Preflow\Members\Http\Trap): off screen, out of the tab order and hidden from
+   screen readers; the style needs no site CSS. A site with its own register form includes this. #}
+<style nonce="{{ csp_nonce() }}">.members-trap{position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden}</style>
+<div class="members-trap" aria-hidden="true">
+  <label for="f-members-website">{{ t('members.form.trap') }}</label>
+  <input id="f-members-website" name="members_website" type="text" value="" tabindex="-1" autocomplete="off">
+</div>

@@ -170,6 +170,10 @@ default locale without a prefix):
 - Throttles (`throttle` config): sign-in per client and per address, registration per
   client, forgot per client and per address, resend per address (over the limit the page
   stays the same, only the mail is skipped).
+- A trap for bots (`Http\Trap`): the register form has a text field `members_website` that people
+  never see or reach (off screen, `tabindex="-1"`, `aria-hidden`, `autocomplete="off"`). A
+  registration with it filled in creates nobody and sends no mail, and answers "check your inbox"
+  as a real one does; it counts for the registration throttle.
 
 ## Accounts a project creates
 
@@ -341,7 +345,8 @@ To change only a part of a page, extend the original through `@members-package` 
 `extra_fields` (fields you added to the member type) and `consent_text`; set `privacy_url` in
 `config/members.php` for the privacy link, or override `consent_text` (e.g. for a link a Folio
 setting chooses). The posted values are in `old` (`old.code`), the errors in `errors`
-(`errors.code`). The mail layout (`mail.layout`) is a template
+(`errors.code`). A register form of your own (an override of the form, or a site page) includes
+the bots' trap: `{% include '@members-package/_trap.twig' %}` inside the `<form>`. The mail layout (`mail.layout`) is a template
 too. Words are changed in the lang files (see Copy and mails), not in templates.
 
 ## Cron
@@ -431,6 +436,12 @@ return ['mail' => ['confirm' => ['subject' => 'Bitte bestätige deine Adresse']]
   without a from name the channel's own sender applies.
 - When a new member's confirm mail fails, remove the account with
   `Members::removeIfUnconfirmed($id)`: it keeps a member who confirmed meanwhile.
+
+## Upgrading to 0.42.1
+
+- **The register form has a trap field for bots.** The package form has it; a site that writes
+  its own register form adds `{% include '@members-package/_trap.twig' %}` inside the `<form>`
+  (without it nothing breaks, the form just has no trap). New text `members.form.trap`.
 
 ## Upgrading to 0.42
 
