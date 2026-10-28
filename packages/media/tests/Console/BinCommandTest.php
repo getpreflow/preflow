@@ -180,4 +180,62 @@ final class BinCommandTest extends TestCase
     {
         $this->assertSame([1, '', "--limit needs a positive number.\n"], $this->runCommand(['--limit=0']));
     }
+
+    public function test_list_pages_from_any_offset(): void
+    {
+        foreach (['a.png', 'b.png', 'c.png', 'd.png', 'e.png'] as $name) {
+            $this->media()->delete($this->png($name)->id);
+        }
+        [, $all] = $this->runCommand([]);
+        $rows = array_slice(explode("\n", trim($all)), 1);
+
+        [$code, $out] = $this->runCommand(['--limit=2', '--offset=1']);
+
+        $this->assertCount(5, $rows);
+        $this->assertSame(
+            "5 assets in the bin:\n{$rows[1]}\n{$rows[2]}\n2 assets left: run again with --limit=2 --offset=3.\n",
+            $out,
+        );
+        $this->assertSame(0, $code);
+        [, $last] = $this->runCommand(['--limit=2', '--offset=4']);
+        $this->assertSame("5 assets in the bin:\n{$rows[4]}\n", $last);
+    }
+
+    public function test_empty_in_chunks(): void
+    {
+        foreach (['a.png' => 13, 'b.png' => 12, 'c.png' => 11] as $name => $days) {
+            $this->binnedDaysAgo($this->png($name), $days);
+        }
+
+        [$code, $first] = $this->runCommand(['--empty', '--limit=2']);
+        [, $rest] = $this->runCommand(['--empty', '--limit=2']);
+
+        $this->assertSame(0, $code);
+        $this->assertSame(
+            "Deleted 2 assets for good (in the bin longer than 10 days).\n1 asset left: run again with --empty --limit=2.\n",
+            $first,
+        );
+        $this->assertSame("Deleted 1 asset for good (in the bin longer than 10 days).\n", $rest);
+        $this->assertSame(0, $this->media()->binned()->total);
+    }
+
+    public function test_empty_chunk_continues_after_kept_assets(): void
+    {
+        $kept = $this->png('kept.png');
+        $this->mediaApp()->container()->get(AssetUsage::class)->register(AssetUsageTest::source('revisions', [$kept->id => [
+            new AssetUsageEntry('Home page', null, 'revisions', 'earlier revision', blocksDelete: false),
+        ]]));
+        $this->binnedDaysAgo($kept, 12);
+        $this->binnedDaysAgo($this->png('old.png'), 11);
+
+        [, $out] = $this->runCommand(['--empty', '--limit=1']);
+
+        $this->assertSame(
+            "Deleted 0 assets for good (in the bin longer than 10 days).\n"
+            . "Kept 1 asset:\n"
+            . "  {$kept->id} kept.png: still used: Home page (revisions, earlier revision)\n"
+            . "1 asset left: run again with --empty --limit=1 --offset=1.\n",
+            $out,
+        );
+    }
 }

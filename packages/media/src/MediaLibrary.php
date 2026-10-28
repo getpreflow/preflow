@@ -1124,26 +1124,36 @@ final class MediaLibrary
     }
 
     /**
-     * Delete for good what has been in the bin longer than $olderThanDays, except an asset a usage
-     * source still reports, blocking or not (an earlier revision, a live copy of an original): it
-     * stays in the bin and is listed with the reason. $progress is called for each asset old
-     * enough, with whether it was deleted.
+     * Delete for good what has been in the bin longer than $olderThanDays, the longest binned
+     * first, except an asset a usage source still reports, blocking or not (an earlier revision,
+     * a live copy of an original, the poster of a binned video): it stays in the bin and is
+     * listed with the reason. $progress is called for each asset checked, with whether it was
+     * deleted. In chunks: $offset skips that many old enough assets, $limit checks at most that
+     * many; deleted assets leave the bin, so the next chunk starts after the kept ones
+     * ($offset + count of kept), and the result says how many are left.
      *
      * @param ?\Closure(Asset, bool): void $progress
      * @throws \RuntimeException without bin_dir
      */
-    public function emptyBin(int $olderThanDays, ?\Closure $progress = null): BinEmptyResult
+    public function emptyBin(int $olderThanDays, ?\Closure $progress = null, ?int $limit = null, int $offset = 0): BinEmptyResult
     {
         $this->requireBinDir();
         $cutoff = ($this->now)()->modify('-' . max(0, $olderThanDays) . ' days');
-        $deleted = 0;
-        $kept = [];
+        $old = [];
         foreach ($this->dm->queryIn($this->definition())->where('binned_at', '>', '')->get()->items() as $record) {
             $asset = Asset::fromRecord($record);
             $at = \DateTimeImmutable::createFromFormat(DATE_ATOM, (string) $asset->binnedAt) ?: null;
-            if ($at === null || $at >= $cutoff) {
-                continue; // binned recently (an unreadable date is kept)
+            if ($at !== null && $at < $cutoff) {
+                $old[] = [$at, $asset->id, $asset]; // an unreadable date is kept
             }
+        }
+        // Longest binned first, then by id: the same order on every run.
+        usort($old, static fn (array $a, array $b): int => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
+        $old = array_column($old, 2);
+        $chunk = array_slice($old, max(0, $offset), $limit !== null ? max(0, $limit) : null);
+        $deleted = 0;
+        $kept = [];
+        foreach ($chunk as $asset) {
             $usages = $this->usage?->of($asset->id) ?? [];
             if ($usages !== []) {
                 $kept[] = ['id' => $asset->id, 'reason' => self::stillUsed($usages)];
@@ -1159,7 +1169,7 @@ final class MediaLibrary
             }
         }
 
-        return new BinEmptyResult($deleted, $kept);
+        return new BinEmptyResult($deleted, $kept, max(0, count($old) - max(0, $offset) - count($chunk)));
     }
 
     /** @param non-empty-list<AssetUsageEntry> $usages */
@@ -1213,7 +1223,8 @@ final class MediaLibrary
             }
             self::moveAll($moves, "Asset {$current->id} could not be moved into the bin");
             $data = $current->toData();
-            $data['binned_at'] = ($this->now)()->format(DATE_ATOM);
+            // In UTC: the same offset everywhere, so text order (the bin's sorting) is time order.
+            $data['binned_at'] = ($this->now)()->setTimezone(new \DateTimeZone('UTC'))->format(DATE_ATOM);
             $data['variants'] = [];
             $data['master'] = [];
             try {

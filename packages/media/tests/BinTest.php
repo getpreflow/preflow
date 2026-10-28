@@ -22,6 +22,7 @@ use Preflow\Media\Usage\AssetInUseException;
 use Preflow\Media\Usage\AssetUsage;
 use Preflow\Media\Usage\AssetUsageEntry;
 use Preflow\Media\Usage\CopyReferences;
+use Preflow\Media\Usage\PosterReferences;
 use Preflow\View\AssetCollector;
 use Preflow\View\NonceGenerator;
 
@@ -453,5 +454,93 @@ final class BinTest extends TestCase
         $this->assertNotNull($this->lib->find($asset->id));
         $this->assertNull($this->lib->findBinned($asset->id));
         $this->assertSame([], $this->binFiles($asset->id));
+    }
+
+    public function test_binned_at_is_stored_in_utc(): void
+    {
+        $this->clock = new \DateTimeImmutable('2026-10-01T12:00:00+02:00');
+        $asset = $this->photo();
+
+        $this->lib->delete($asset->id);
+
+        // Text order is time order only when every value has the same offset.
+        $this->assertSame('2026-10-01T10:00:00+00:00', $this->lib->findBinned($asset->id)?->binnedAt);
+    }
+
+    public function test_empty_in_chunks_oldest_first(): void
+    {
+        $ids = [];
+        foreach (['a.jpg', 'b.jpg', 'c.jpg'] as $name) {
+            $ids[] = $id = $this->photo($name)->id;
+            $this->lib->delete($id);
+            $this->later(1);
+        }
+        $this->later(31);
+
+        $first = $this->lib->emptyBin(30, limit: 2);
+
+        $this->assertSame([2, [], 1], [$first->deleted, $first->kept, $first->left]);
+        $this->assertNull($this->lib->findBinned($ids[0]));
+        $this->assertNull($this->lib->findBinned($ids[1]));
+        $this->assertNotNull($this->lib->findBinned($ids[2]));
+
+        $rest = $this->lib->emptyBin(30, limit: 2);
+
+        $this->assertSame([1, 0], [$rest->deleted, $rest->left]);
+        $this->assertNull($this->lib->findBinned($ids[2]));
+    }
+
+    public function test_empty_with_offset_skips_the_first_old_assets(): void
+    {
+        $kept = $this->photo('kept.jpg');
+        $this->usage->register(AssetUsageTest::source('revisions', [$kept->id => [
+            new AssetUsageEntry('Home page', null, 'revisions', 'earlier revision', blocksDelete: false),
+        ]]));
+        $this->lib->delete($kept->id);
+        $this->later(1);
+        $other = $this->photo('other.jpg');
+        $this->lib->delete($other->id);
+        $this->later(31);
+
+        $first = $this->lib->emptyBin(30, limit: 1);
+        // Kept assets stay ahead of the next chunk: it starts after them.
+        $next = $this->lib->emptyBin(30, limit: 1, offset: count($first->kept));
+
+        $this->assertSame([0, 1, 1], [$first->deleted, count($first->kept), $first->left]);
+        $this->assertSame([1, [], 0], [$next->deleted, $next->kept, $next->left]);
+        $this->assertNotNull($this->lib->findBinned($kept->id));
+        $this->assertNull($this->lib->findBinned($other->id));
+    }
+
+    public function test_poster_of_a_binned_asset_is_kept_in_the_bin(): void
+    {
+        $lib = $this->lib;
+        $this->usage->register(new PosterReferences(static fn (): MediaLibrary => $lib), last: true);
+        $poster = $this->photo('poster.jpg');
+        $clip = $this->lib->upload($this->upload("notes\n", 'clip.txt'), 'ed');
+        $this->lib->update($clip->id, ['poster' => $poster->id]);
+        $this->usage->register(AssetUsageTest::source('revisions', [$clip->id => [
+            new AssetUsageEntry('Home page', null, 'revisions', 'earlier revision', blocksDelete: false),
+        ]]));
+
+        try {
+            $this->lib->delete($poster->id);
+            $this->fail('the poster of a live asset is refused');
+        } catch (AssetInUseException) {
+        }
+        $this->lib->delete($clip->id);
+        $this->assertEquals(
+            [new AssetUsageEntry('clip.txt', null, PosterReferences::NAME, PosterReferences::NOTE_BINNED, blocksDelete: false)],
+            $this->usage->of($poster->id),
+        );
+        $this->lib->delete($poster->id); // its asset is in the bin: the poster may follow
+        $this->later(31);
+
+        $result = $this->lib->emptyBin(30);
+
+        $this->assertSame(0, $result->deleted);
+        $kept = array_column($result->kept, 'reason', 'id');
+        $this->assertStringContainsString(PosterReferences::NOTE_BINNED, $kept[$poster->id]);
+        $this->assertNotNull($this->lib->findBinned($poster->id));
     }
 }
