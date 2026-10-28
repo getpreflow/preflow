@@ -35,6 +35,8 @@ final class PdfBootTest extends TestCase
 
         $bytes = $container->get(PdfRenderer::class)->render($this->document($dir));
         $this->assertStringStartsWith('%PDF', $bytes);
+        // The building blocks are registered: pdf_page_break() made a second page.
+        $this->assertCount(2, (new \Smalot\PdfParser\Parser())->parseContent($bytes)->getPages());
         $this->assertDirectoryExists($dir . '/storage/cache/pdf');
     }
 
@@ -66,7 +68,7 @@ final class PdfBootTest extends TestCase
 
     private function document(string $dir): PdfDocument
     {
-        file_put_contents($dir . '/hello.twig', '<p>Hello {{ name }}</p>');
+        file_put_contents($dir . '/hello.twig', '<p>Hello {{ name }}</p>{{ pdf_page_break() }}<p>Bye</p>');
 
         return new class ($dir . '/hello.twig') extends PdfDocument {
             public string $name = 'Ada';

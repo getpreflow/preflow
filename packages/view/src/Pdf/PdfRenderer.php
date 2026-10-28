@@ -28,24 +28,35 @@ final class PdfRenderer
      */
     public function render(PdfDocument $doc): string
     {
-        $doc->resolveState();
-        $context = self::context($doc);
-        $page = $doc->page();
+        $engine = $this->engine();
 
-        return $this->engine()->render(
-            self::htmlPage($this->templates->render($doc->template(), $context)),
-            $page,
-            $this->renderOptional($page->headerTemplate, $context),
-            $this->renderOptional($page->footerTemplate, $context),
-        );
+        // The engine runs inside the scope too: scaled image copies must outlive the templates until mPDF has read them.
+        return Blocks::forPdf($this->config, function () use ($doc, $engine): string {
+            $doc->resolveState();
+            $context = self::context($doc);
+            $page = $doc->page();
+
+            return $engine->render(
+                self::htmlPage($this->templates->render($doc->template(), $context)),
+                $page,
+                $this->renderOptional($page->headerTemplate, $context),
+                $this->renderOptional($page->footerTemplate, $context),
+            );
+        });
     }
 
     /**
      * The same document as an HTML page, for a preview in the browser. It
      * needs no PDF library. Header and footer are shown above and below the
-     * content; page numbers and page breaks only work in the PDF.
+     * content; the building blocks render approximately (page numbers as
+     * nothing, a page break as a dashed line).
      */
     public function html(PdfDocument $doc): string
+    {
+        return Blocks::forPreview(fn (): string => $this->previewHtml($doc));
+    }
+
+    private function previewHtml(PdfDocument $doc): string
     {
         $doc->resolveState();
         $context = self::context($doc);

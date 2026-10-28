@@ -39,7 +39,7 @@ final class MpdfEngine implements PdfEngine
             'margin_right' => $page->marginRight,
             'margin_bottom' => $page->marginBottom,
             'margin_left' => $page->marginLeft,
-            'default_font' => $this->config->defaultFont,
+            'default_font' => self::fontKey($this->config->defaultFont),
             'tempDir' => $this->tempDir(),
             ...$this->fonts(),
         ]);
@@ -82,7 +82,10 @@ final class MpdfEngine implements PdfEngine
 
     /**
      * mPDF's font settings with the configured fonts added to its bundled
-     * ones. mPDF matches CSS font-family names lowercased and without spaces.
+     * ones. A configured font is one file, its regular style; a name that
+     * mPDF already uses for a bundled family (or translates to one) is
+     * refused, since the single file would replace that family's bold and
+     * italic too.
      *
      * @return array{fontDir?: list<string>, fontdata?: array<string, array<string, string>>}
      */
@@ -93,16 +96,31 @@ final class MpdfEngine implements PdfEngine
         }
 
         $dirs = (new \Mpdf\Config\ConfigVariables())->getDefaults()['fontDir'];
-        $fontdata = (new \Mpdf\Config\FontVariables())->getDefaults()['fontdata'];
+        $defaults = (new \Mpdf\Config\FontVariables())->getDefaults();
+        $fontdata = $defaults['fontdata'];
         foreach ($this->config->fonts as $name => $file) {
+            $key = self::fontKey((string) $name);
+            if (isset($defaults['fontdata'][$key]) || isset($defaults['fonttrans'][$key])) {
+                throw new \InvalidArgumentException(
+                    "The PDF font name '{$name}' is a font family bundled with mPDF; register the file under another name.",
+                );
+            }
             if (!is_file($file)) {
                 throw new \InvalidArgumentException("The PDF font '{$name}' points to '{$file}', which is not a file.");
             }
             $dirs[] = dirname($file);
-            $fontdata[strtolower(str_replace(' ', '', $name))] = ['R' => basename($file)];
+            $fontdata[$key] = ['R' => basename($file)];
         }
 
         return ['fontDir' => array_values(array_unique($dirs)), 'fontdata' => $fontdata];
+    }
+
+    /**
+     * How mPDF names a font family: CSS font-family lowercased, without spaces.
+     */
+    private static function fontKey(string $name): string
+    {
+        return strtolower(str_replace(' ', '', $name));
     }
 
     private function tempDir(): string

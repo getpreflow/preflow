@@ -79,4 +79,30 @@ final class TemplateFunctionsTest extends TestCase
         $this->assertSame('/media/' . $asset->path, $original);
         $this->assertNotSame($url, $original);
     }
+
+    /** pdf_image() (preflow/view) finds a media asset by id through the booted site's container. */
+    public function test_pdf_image_looks_up_an_asset_by_id(): void
+    {
+        $image = imagecreatetruecolor(800, 600);
+        ob_start();
+        imagepng($image);
+        $png = (string) ob_get_clean();
+        $f = new Psr17Factory();
+        $asset = $this->media()->upload($f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'a.png'), null);
+        $this->writeFile('certificate.twig', "{{ pdf_image(id, {width_mm: 40}) }}");
+        $doc = new class ($this->dir . '/certificate.twig', $asset->id) extends \Preflow\View\Pdf\PdfDocument {
+            public function __construct(private readonly string $file, public string $id)
+            {
+            }
+
+            public function template(): string
+            {
+                return $this->file;
+            }
+        };
+        $renderer = $this->mediaApp()->container()->get(\Preflow\View\Pdf\PdfRenderer::class);
+
+        $this->assertStringContainsString('<img src="/media/' . $asset->path . '" alt="" style="width: 40mm;" />', $renderer->html($doc));
+        $this->assertStringStartsWith('%PDF', $renderer->render($doc));
+    }
 }

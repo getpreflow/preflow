@@ -687,9 +687,9 @@ final class Application
             $this->registerExtensionProvider($engine, $helpersProvider);
         }
 
-        // QR template function
+        // QR and PDF building-block template functions
         if (class_exists(\Preflow\View\ViewExtensionProvider::class)) {
-            $this->registerExtensionProvider($engine, new \Preflow\View\ViewExtensionProvider());
+            $this->registerExtensionProvider($engine, new \Preflow\View\ViewExtensionProvider($this->container));
         }
     }
 
