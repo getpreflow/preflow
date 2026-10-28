@@ -36,8 +36,8 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    `RecordTables` and the one-time `tools/convert-typed-columns.php`. See
    `docs/superpowers/plans/2026-10-27-release-0.42-checklist.md`
 4. ~~**Media for the migration:** derived assets (`derived_from`) shown as stacks in the library, garbage collection
-   of unreferenced assets, `importFile(…, private)`, and video thumbnails with ffmpeg~~ — done in 0.43 (prepared,
-   not released): copies (`derive()`, `makeCopy()`, makers, `remake()`, stale marks) shown as stacks in Folio's
+   of unreferenced assets, `importFile(…, private)`, and video thumbnails with ffmpeg~~ — done in 0.43 (released
+   2026-10-28): copies (`derive()`, `makeCopy()`, makers, `remake()`, stale marks) shown as stacks in Folio's
    library; every delete goes to a bin (`bin_dir`, `media:bin`, restore); opt-in cleanup of unused assets
    (`media:cleanup`, Folio's "Unused only" filter) that only knows the usages sources report; `VideoPreviewRenderer`
    (ffmpeg path configurable, a static build works, `media:previews` covers videos; a poster still wins);
