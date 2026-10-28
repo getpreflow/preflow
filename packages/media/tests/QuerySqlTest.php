@@ -120,4 +120,73 @@ final class QuerySqlTest extends TestCase
         $restored = $lib->restore($a->id, 1, null);
         $this->assertSame(['cover', ['g1'], true], [$restored->extra['usage_type'], $restored->extra['game'], $restored->extra['featured']]);
     }
+
+    /** A SQLite library with a.png, rules.pdf and a copy of a.png; the copy last. @return array{0: MediaLibrary, 1: string, 2: string, 3: string, 4: \PDO} */
+    private function sqliteWithCopy(): array
+    {
+        $pdo = new \PDO('sqlite::memory:');
+        mkdir($this->assetRoot . '/models');
+        $dm = new DataManager(drivers: ['sqlite' => new SqliteDriver($pdo)], defaultDriver: 'sqlite', typeRegistry: new TypeRegistry($this->assetRoot . '/models'));
+        $lib = new MediaLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', ['storage' => 'sqlite', 'versions_dir' => $this->assetRoot . '/versions']);
+        (new RecordTableSync($dm))->sync($lib->definition());
+        $a = $lib->upload($this->upload($this->png(40, 30), 'a.png'), null);
+        $doc = $lib->upload($this->upload("%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n", 'rules.pdf'), null);
+        file_put_contents($this->assetRoot . '/made.png', $this->png(40, 30));
+        $copy = $lib->derive($a->id, $this->assetRoot . '/made.png', null, 'watermark', ['line' => 'x']);
+
+        return [$lib, $a->id, $doc->id, $copy->id, $pdo];
+    }
+
+    /** @return list<string> sorted ids */
+    private static function idsOf(\Preflow\Media\AssetPage $page): array
+    {
+        $ids = array_map(static fn ($x) => $x->id, $page->items);
+        sort($ids);
+
+        return $ids;
+    }
+
+    /** @param list<string> $ids @return list<string> */
+    private static function sorted(array $ids): array
+    {
+        sort($ids);
+
+        return $ids;
+    }
+
+    public function test_copies_hidden_by_default(): void
+    {
+        [$lib, $a, $doc, $copy, $pdo] = $this->sqliteWithCopy();
+
+        $this->assertSame(self::sorted([$a, $doc]), self::idsOf($lib->query()));
+        $this->assertSame(2, $lib->query()->total);
+        $this->assertSame(1, $lib->query(kind: 'image')->total);
+        $this->assertSame(2, $lib->query(copies: false)->total);
+        $this->assertSame(['line' => 'x'], $lib->find($copy)->makerParams); // JSON text in the column
+
+        // Records from before copies existed hold NULL there and are originals.
+        $pdo->exec('UPDATE folio_assets SET derived_from = NULL WHERE derived_from = \'\'');
+        $this->assertSame(self::sorted([$a, $doc]), self::idsOf($lib->query()));
+        $this->assertNull($lib->find($a)->derivedFrom);
+    }
+
+    public function test_search_finds_copies(): void
+    {
+        [$lib, $a, , $copy] = $this->sqliteWithCopy();
+
+        $page = $lib->query(search: 'a.png');
+        $this->assertSame(self::sorted([$a, $copy]), self::idsOf($page));
+        $this->assertSame(2, $page->total);
+    }
+
+    public function test_copies_true_includes_them(): void
+    {
+        [$lib, $a, $doc, $copy] = $this->sqliteWithCopy();
+
+        $page = $lib->query(copies: true);
+        $this->assertSame(self::sorted([$a, $doc, $copy]), self::idsOf($page));
+        $this->assertSame(3, $page->total);
+        $this->assertSame([$copy], array_map(static fn ($x) => $x->id, $lib->copies($a)));
+        $this->assertSame([$a => 1, $doc => 0], $lib->copyCounts([$a, $doc]));
+    }
 }

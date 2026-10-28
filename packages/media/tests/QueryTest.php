@@ -226,4 +226,47 @@ final class QueryTest extends TestCase
         $this->assertNotContains($this->assets['c']->id, $false);
         $this->assertCount(5, $this->lib->query()->items);
     }
+
+    /** A copy of a.png (same original name) made by a maker from a file on disk. */
+    private function copyOfA(): Asset
+    {
+        $file = $this->assetRoot . '/made.png';
+        file_put_contents($file, $this->png(40, 30));
+
+        return $this->lib->derive($this->assets['a']->id, $file, null, 'watermark');
+    }
+
+    public function test_copies_hidden_by_default(): void
+    {
+        $this->copyOfA();
+
+        $page = $this->lib->query();
+        $this->assertSame(['a', 'b', 'c', 'd'], $this->keys($page));
+        $this->assertSame(4, $page->total);
+        $this->assertSame(3, $this->lib->query(kind: 'image')->total);
+        $this->assertSame(2, $this->lib->query(filters: ['usage_type' => 'cover'])->total);
+        $this->assertSame(4, $this->lib->query(copies: false)->total);
+    }
+
+    public function test_search_finds_copies(): void
+    {
+        $copy = $this->copyOfA();
+
+        $page = $this->lib->query(search: 'a.png');
+        $this->assertSame(2, $page->total);
+        $this->assertContains($copy->id, array_map(static fn (Asset $a) => $a->id, $page->items));
+        $this->assertSame(1, $this->lib->query(search: 'a.png', copies: false)->total);
+        $this->assertSame(4, $this->lib->query(search: '  ')->total); // no words: no search
+    }
+
+    public function test_copies_true_includes_them(): void
+    {
+        $copy = $this->copyOfA();
+
+        $page = $this->lib->query(copies: true);
+        $this->assertSame(5, $page->total);
+        $this->assertCount(5, $page->items);
+        $this->assertContains($copy->id, array_map(static fn (Asset $a) => $a->id, $page->items));
+        $this->assertCount(1, $this->lib->query(copies: true, perPage: 2, page: 3)->items);
+    }
 }

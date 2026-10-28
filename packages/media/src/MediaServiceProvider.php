@@ -29,6 +29,7 @@ use Preflow\Media\Preview\PreviewRenderers;
 use Preflow\Media\Usage\AssetUsage;
 use Preflow\Media\Usage\LazyReferenceSource;
 use Preflow\Media\Routing\MediaRoutes;
+use Preflow\Media\Usage\CopyReferences;
 use Preflow\Media\Usage\PosterReferences;
 use Preflow\Routing\Router;
 use Preflow\View\AssetCollector;
@@ -69,6 +70,11 @@ final class MediaServiceProvider extends ServiceProvider
         $container->singleton(PosterReferences::class, fn (Container $c) => new PosterReferences(static fn (): MediaLibrary => $c->get(MediaLibrary::class)));
         $container->get(AssetUsage::class)->register(
             new LazyReferenceSource(PosterReferences::NAME, static fn (): PosterReferences => $container->get(PosterReferences::class)),
+            last: true,
+        );
+        // An original with copies is in use by them (asked after the poster source).
+        $container->get(AssetUsage::class)->register(
+            new CopyReferences(static fn (): MediaLibrary => $container->get(MediaLibrary::class)),
             last: true,
         );
         $colors = new ColorManagement($config->colorProfileCmyk);

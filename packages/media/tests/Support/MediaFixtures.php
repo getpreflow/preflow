@@ -40,11 +40,11 @@ trait MediaFixtures
     }
 
     /** @param array<string, mixed> $config */
-    private function library(array $config = [], ?VariantGenerator $variants = null, ?AssetUsage $usage = null): MediaLibrary
+    private function library(array $config = [], ?VariantGenerator $variants = null, ?AssetUsage $usage = null, ?\Closure $now = null): MediaLibrary
     {
         $dm = new DataManager(drivers: ['json' => new JsonFileDriver($this->assetRoot . '/store')], defaultDriver: 'json');
 
-        return new MediaLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', $config, $variants, usage: $usage);
+        return new MediaLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', $config, $variants, $now, $usage);
     }
 
     private function png(int $width = 1200, int $height = 800): string

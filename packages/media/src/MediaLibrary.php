@@ -94,6 +94,9 @@ final class MediaLibrary
     /** What a version keeps of the asset besides its file, and what a restore brings back. */
     private const array SNAPSHOT = ['focal_x', 'focal_y', 'rotation', 'flip', 'crop', 'crops'];
 
+    /** The maker of a plain copy (makeCopy() of an original): the original's file, unchanged. */
+    public const string MAKER_COPY = 'copy';
+
     /** The image types that can be edited (rotated, mirrored, cropped). */
     private const array EDITABLE = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
 
@@ -237,11 +240,122 @@ final class MediaLibrary
     /**
      * Copy a file on disk into the library (the source stays where it is).
      *
+     * @param bool $private store in the private directory, served only through the gated URL
      * @throws AssetUploadException
      */
-    public function importFile(string $absPath, string $originalName, ?string $by): Asset
+    public function importFile(string $absPath, string $originalName, ?string $by, bool $private = false): Asset
     {
-        return $this->store($this->readFile($absPath, $originalName), $originalName, $by);
+        return $this->store($this->readFile($absPath, $originalName), $originalName, $by, $private);
+    }
+
+    /**
+     * Store a file on disk (which stays where it is) as a copy of an original: a full asset of
+     * its own that knows its original, how it was made ($maker, e.g. "watermark") and with which
+     * settings ($params). A stack is one original and its copies, so the id of a copy stands for
+     * its original. The copy is private when the original is, unless $private says otherwise.
+     *
+     * @param array<string, mixed> $params
+     * @throws AssetUploadException
+     * @throws \InvalidArgumentException for an unknown original
+     */
+    public function derive(string $originalId, string $file, ?string $by, ?string $maker = null, array $params = [], ?bool $private = null): Asset
+    {
+        $original = $this->originalOf($originalId);
+
+        return $this->store($this->readFile($file, $original->originalName), $original->originalName, $by, $private ?? $original->private, [
+            'derived_from' => $original->id,
+            'maker' => $maker ?? '',
+            'maker_params' => $params,
+            'derived_version' => $original->version,
+        ]);
+    }
+
+    /**
+     * A new copy to edit on its own. Of an original: its file as uploaded, starting with its
+     * crop, rotation, flip, format crops and focal point (maker "copy"). Of a copy: a sibling
+     * (same original, maker and settings) with that copy's file and edits, so a watermarked
+     * copy's copy is watermarked too. The copy's own edited image is made like any edit's.
+     *
+     * @throws AssetUploadException
+     * @throws \InvalidArgumentException for an unknown asset
+     */
+    public function makeCopy(string $id, ?string $by): Asset
+    {
+        $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
+        // The record and its file read together: a replace running now cannot swap the file in between.
+        [$source, $bytes] = $this->guarded($id, function () use ($id): array {
+            $source = $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
+            $file = $this->file($source);
+            if ($file === null || !is_file($file)) {
+                throw new AssetUploadException("{$source->originalName}: the file of asset {$id} is missing.");
+            }
+
+            return [$source, (string) file_get_contents($file)];
+        });
+        $original = $source->isCopy() ? $this->originalOf($source->id) : $source;
+        $data = $source->toData();
+        $fields = array_intersect_key($data, array_flip(self::SNAPSHOT)) + [
+            'derived_from' => $original->id,
+            'maker' => $source->isCopy() ? $source->maker ?? '' : self::MAKER_COPY,
+            'maker_params' => $source->makerParams,
+            'derived_version' => $source->isCopy() ? $source->derivedVersion : $source->version,
+        ];
+
+        return $this->store($bytes, $source->originalName, $by, $source->private, $fields);
+    }
+
+    /**
+     * The copies of an original, newest first.
+     *
+     * @return list<Asset>
+     */
+    public function copies(string $originalId): array
+    {
+        if (preg_match(self::ID_PATTERN, $originalId) !== 1) {
+            return [];
+        }
+        $def = $this->definition();
+        $records = $this->dm->queryIn($def)
+            ->where('derived_from', '=', $originalId)
+            ->orderBy('created_at', SortDirection::Desc)->orderBy($def->idField, SortDirection::Desc)
+            ->get();
+
+        return array_map(Asset::fromRecord(...), array_values($records->items()));
+    }
+
+    /**
+     * How many copies each of the ids has (0 for none), in one query.
+     *
+     * @param list<string> $ids
+     * @return array<string, int>
+     */
+    public function copyCounts(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter($ids, static fn ($id) => is_string($id) && preg_match(self::ID_PATTERN, $id) === 1)));
+        if ($ids === []) {
+            return [];
+        }
+        $counts = array_fill_keys($ids, 0);
+        $copies = $this->dm->queryIn($this->definition())->whereAny([['field' => 'derived_from', 'operator' => 'IN', 'value' => $ids]])->get();
+        foreach ($copies->items() as $record) {
+            $from = (string) ($record->toArray()['derived_from'] ?? '');
+            if (isset($counts[$from])) {
+                $counts[$from]++;
+            }
+        }
+
+        return $counts;
+    }
+
+    /** @throws \InvalidArgumentException for an unknown asset, or a copy whose original is gone */
+    private function originalOf(string $id): Asset
+    {
+        $asset = $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
+        if (!$asset->isCopy()) {
+            return $asset;
+        }
+
+        return $this->find((string) $asset->derivedFrom) ?? throw new \InvalidArgumentException("The original {$asset->derivedFrom} of asset {$id} is gone.");
     }
 
     /**
@@ -308,9 +422,13 @@ final class MediaLibrary
      * way as a boolean (a picker that lists only what its field accepts). A page past the end
      * gives the last page.
      *
+     * Copies stand behind their original (a stack): $copies null hides them unless a search
+     * looks for something (then a copy can be found and picked directly), true lists them,
+     * false hides them. The condition is in the query, so totals and pages count what is shown.
+     *
      * @param array<string, mixed> $filters field name => value
      */
-    public function query(?string $kind = null, string $search = '', array $filters = [], int $page = 1, int $perPage = 50): AssetPage
+    public function query(?string $kind = null, string $search = '', array $filters = [], int $page = 1, int $perPage = 50, ?bool $copies = null): AssetPage
     {
         $def = $this->definition();
         $qb = $this->dm->queryIn($def)->locale($this->locales->default);
@@ -338,6 +456,10 @@ final class MediaLibrary
             $qb->whereAny([['field' => 'private', 'operator' => 'IN', 'value' => ['1']]]);
         } elseif ($private === false) {
             $qb->whereAny([['field' => 'private', 'operator' => 'IN', 'value' => ['0']], ['field' => 'private', 'operator' => '=', 'value' => null]]);
+        }
+        if (!($copies ?? trim($search) !== '')) {
+            // Empty for an original; missing (NULL) on records from before copies existed.
+            $qb->whereAny([['field' => 'derived_from', 'operator' => '=', 'value' => ''], ['field' => 'derived_from', 'operator' => '=', 'value' => null]]);
         }
         $qb->orderBy('created_at', SortDirection::Desc)->orderBy($def->idField, SortDirection::Desc);
 
@@ -1614,8 +1736,11 @@ final class MediaLibrary
         return $this->find($value) !== null;
     }
 
-    /** @throws AssetUploadException */
-    private function store(string $bytes, string $name, ?string $by, bool $private = false): Asset
+    /**
+     * @param array<string, mixed> $fields record fields set from the start (a copy's link and edits)
+     * @throws AssetUploadException
+     */
+    private function store(string $bytes, string $name, ?string $by, bool $private = false, array $fields = []): Asset
     {
         [$mime, $ext] = $this->sniff($bytes, $name);
 
@@ -1658,7 +1783,7 @@ final class MediaLibrary
         );
         // The record first: if variant generation dies (time or memory limit), the
         // file is still a usable asset whose variants can be made later.
-        return $this->afterFileChange($this->save($asset->toData()));
+        return $this->afterFileChange($this->save($fields + $asset->toData()));
     }
 
     /**

@@ -10,7 +10,7 @@ use Preflow\Data\TypeDefinition;
 final readonly class Asset
 {
     /** The asset's own columns that hold text (JSON text for lists and maps). */
-    public const array TEXT_COLUMNS = ['path', 'original_name', 'mime', 'size', 'width', 'height', 'duration', 'alt', 'title', 'focal_x', 'focal_y', 'poster', 'variants', 'created_at', 'created_by', 'version', 'versions', 'preview', 'color', 'palette', 'text_color', 'note', 'rotation', 'flip', 'crop', 'crops', 'master'];
+    public const array TEXT_COLUMNS = ['path', 'original_name', 'mime', 'size', 'width', 'height', 'duration', 'alt', 'title', 'focal_x', 'focal_y', 'poster', 'variants', 'created_at', 'created_by', 'version', 'versions', 'preview', 'color', 'palette', 'text_color', 'note', 'rotation', 'flip', 'crop', 'crops', 'master', 'derived_from', 'maker', 'maker_params', 'derived_version'];
 
     /** Every key of the asset's own record: an extra field may not use one of these names. */
     public const array RESERVED = [...self::TEXT_COLUMNS, 'private', 'uuid'];
@@ -22,6 +22,7 @@ final readonly class Asset
      * @param list<string>          $palette  5-8 hex colours, most significant first
      * @param array<string, CropRect> $crops  a crop per box preset, in percent of the rotated and flipped original
      * @param array<string, mixed>  $extra    values of the configured extra fields (each is a column of its own), by field name
+     * @param array<string, mixed>  $makerParams the settings the copy's maker made it with (e.g. a copyright line)
      */
     public function __construct(
         public string $id,
@@ -59,7 +60,20 @@ final readonly class Asset
         public array $crops = [],
         /** The edited image (rotated, flipped, cropped) the variants are made from. */
         public ?Preview $master = null,
+        /** The id of the original this asset is a copy of (always an original, never a copy); null for an original. */
+        public ?string $derivedFrom = null,
+        /** How the copy was made: a maker's name ("copy" for a plain copy), or null when nobody said. */
+        public ?string $maker = null,
+        public array $makerParams = [],
+        /** The original's file version the copy was made from. */
+        public ?int $derivedVersion = null,
     ) {}
+
+    /** True for a copy of another asset (derived_from is set). */
+    public function isCopy(): bool
+    {
+        return $this->derivedFrom !== null;
+    }
 
     /** True when the delivered image differs from the file: turned, mirrored or cropped. */
     public function isEdited(): bool
@@ -156,6 +170,10 @@ final readonly class Asset
             crop: CropRect::fromArray(self::decode($data['crop'] ?? [])),
             crops: $crops,
             master: Preview::fromArray(self::decode($data['master'] ?? [])),
+            derivedFrom: self::text($data['derived_from'] ?? null),
+            maker: self::text($data['maker'] ?? null),
+            makerParams: array_filter(self::decode($data['maker_params'] ?? []), static fn ($k) => is_string($k), ARRAY_FILTER_USE_KEY),
+            derivedVersion: is_numeric($data['derived_version'] ?? null) && (int) $data['derived_version'] >= 1 ? (int) $data['derived_version'] : null,
         );
     }
 
@@ -192,6 +210,10 @@ final readonly class Asset
             'crop' => $this->crop?->toArray() ?? [],
             'crops' => array_map(static fn (CropRect $c) => $c->toArray(), $this->crops),
             'master' => $this->master?->toArray() ?? [],
+            'derived_from' => $this->derivedFrom ?? '',
+            'maker' => $this->maker ?? '',
+            'maker_params' => $this->makerParams,
+            'derived_version' => $this->derivedVersion,
         ] + array_diff_key($this->extra, array_flip(self::RESERVED));
     }
 

@@ -53,7 +53,7 @@ final class PosterReferencesTest extends TestCase
         $video = $library->upload($this->upload("notes\n", 'clip.txt'), null);
         $library->update($video->id, ['poster' => $poster->id]);
 
-        $this->assertSame(['media'], $c->get(AssetUsage::class)->sourceNames());
+        $this->assertSame(['media', 'copies'], $c->get(AssetUsage::class)->sourceNames());
         try {
             $library->delete($poster->id);
             $this->fail('delete() should refuse an asset used as a poster');
@@ -86,7 +86,7 @@ final class PosterReferencesTest extends TestCase
         $library = $c->get(MediaLibrary::class);
         $asset = $library->upload($this->upload($this->png(), 'a.png'), null);
 
-        $this->assertSame(['site', 'media'], $c->get(AssetUsage::class)->sourceNames());
+        $this->assertSame(['site', 'media', 'copies'], $c->get(AssetUsage::class)->sourceNames());
         try {
             $library->delete($asset->id);
             $this->fail('delete() should refuse an asset the site source reports');

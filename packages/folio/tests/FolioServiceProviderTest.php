@@ -119,7 +119,7 @@ final class FolioServiceProviderTest extends TestCase
 
         $this->assertTrue($c->hasProvider(\Preflow\Media\MediaServiceProvider::class));
         $this->assertInstanceOf(\Preflow\Folio\Media\ContentLocaleProvider::class, $c->get(\Preflow\Media\LocaleProvider::class));
-        $this->assertSame(['folio', 'media'], $c->get(\Preflow\Media\Usage\AssetUsage::class)->sourceNames()); // poster use asked last
+        $this->assertSame(['folio', 'media', 'copies'], $c->get(\Preflow\Media\Usage\AssetUsage::class)->sourceNames()); // poster use and copies asked last
 
         // One ImageTag, Folio's: legacy upload paths resolve under {prefix}/_uploads.
         $c->instance(\Preflow\Data\DataManager::class, new \Preflow\Data\DataManager(drivers: ['json' => new \Preflow\Data\Driver\JsonFileDriver(sys_get_temp_dir() . '/folio_order_' . bin2hex(random_bytes(4)))], defaultDriver: 'json'));
