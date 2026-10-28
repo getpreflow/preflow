@@ -143,6 +143,7 @@ final class MediaLibrary
             $fields[$name] = new TypeFieldDefinition($name, 'string', translatable: $name === 'alt');
         }
         $fields['private'] = new TypeFieldDefinition('private', 'boolean'); // missing on older records: public
+        $fields['derived_version'] = new TypeFieldDefinition('derived_version', 'number'); // a copy's original file version; NULL for an original
         // The site's extra fields (config/media.php "fields"): a column each, so the table step adds them and queries filter on them.
         $fields += $this->extraFields();
 

@@ -163,6 +163,10 @@ final class QuerySqlTest extends TestCase
         $this->assertSame(1, $lib->query(kind: 'image')->total);
         $this->assertSame(2, $lib->query(copies: false)->total);
         $this->assertSame(['line' => 'x'], $lib->find($copy)->makerParams); // JSON text in the column
+        $this->assertSame(1, $lib->find($copy)->derivedVersion);
+        $columns = array_column($pdo->query('PRAGMA table_info(folio_assets)')->fetchAll(\PDO::FETCH_ASSOC), 'type', 'name');
+        $this->assertStringNotContainsStringIgnoringCase('TEXT', (string) $columns['derived_version']); // a number column
+        $this->assertNull($pdo->query("SELECT derived_version FROM folio_assets WHERE uuid = '{$a}'")->fetchColumn()); // an original: NULL
 
         // Records from before copies existed hold NULL there and are originals.
         $pdo->exec('UPDATE folio_assets SET derived_from = NULL WHERE derived_from = \'\'');

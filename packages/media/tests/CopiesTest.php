@@ -228,4 +228,18 @@ final class CopiesTest extends TestCase
         $this->assertFileExists((string) $this->lib->file($asset));
         $this->assertFileDoesNotExist($this->lib->absolute($asset->path));
     }
+
+    public function test_the_copy_columns_are_declared_with_their_types(): void
+    {
+        $fields = $this->lib->definition()->fields;
+
+        $this->assertSame('string', $fields['derived_from']->type);
+        $this->assertSame('string', $fields['maker']->type);
+        $this->assertSame('string', $fields['maker_params']->type);
+        $this->assertSame('number', $fields['derived_version']->type);
+        $this->assertNotContains('derived_version', Asset::TEXT_COLUMNS);
+        foreach (['derived_from', 'maker', 'maker_params', 'derived_version'] as $name) {
+            $this->assertContains($name, Asset::RESERVED);
+        }
+    }
 }

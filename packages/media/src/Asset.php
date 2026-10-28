@@ -10,10 +10,10 @@ use Preflow\Data\TypeDefinition;
 final readonly class Asset
 {
     /** The asset's own columns that hold text (JSON text for lists and maps). */
-    public const array TEXT_COLUMNS = ['path', 'original_name', 'mime', 'size', 'width', 'height', 'duration', 'alt', 'title', 'focal_x', 'focal_y', 'poster', 'variants', 'created_at', 'created_by', 'version', 'versions', 'preview', 'color', 'palette', 'text_color', 'note', 'rotation', 'flip', 'crop', 'crops', 'master', 'derived_from', 'maker', 'maker_params', 'derived_version'];
+    public const array TEXT_COLUMNS = ['path', 'original_name', 'mime', 'size', 'width', 'height', 'duration', 'alt', 'title', 'focal_x', 'focal_y', 'poster', 'variants', 'created_at', 'created_by', 'version', 'versions', 'preview', 'color', 'palette', 'text_color', 'note', 'rotation', 'flip', 'crop', 'crops', 'master', 'derived_from', 'maker', 'maker_params'];
 
     /** Every key of the asset's own record: an extra field may not use one of these names. */
-    public const array RESERVED = [...self::TEXT_COLUMNS, 'private', 'uuid'];
+    public const array RESERVED = [...self::TEXT_COLUMNS, 'private', 'derived_version', 'uuid'];
 
     /**
      * @param array<string, string> $alt      alt text per locale
