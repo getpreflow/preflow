@@ -33,7 +33,7 @@ v0.42.0 (non-destructive crop/rotate/flip, replace and versions, `AssetReference
 2. A copy can be **remade from its original in place**: same asset id, so every place that uses it shows the new
    file without any reference changes.
 3. Folio's image editor can **save an edit as a copy**.
-4. **Cleanup of unused assets**, opt-in only, listing before deleting, deleting into a **bin** for 30 days.
+4. **Cleanup of unused assets of every kind**, opt-in only, listing before deleting, deleting into a **bin** for 30 days.
 5. `importFile(…, private: true)`.
 6. **Video previews** from one frame via ffmpeg, so library, picker, `media_image()`, colours and box formats work
    for videos.
@@ -110,6 +110,7 @@ v0.42.0 (non-destructive crop/rotate/flip, replace and versions, `AssetReference
 
 ### 4. Cleanup of unused assets
 
+- **Every kind of asset (owner):** cleanup and the bin cover images, videos, documents and any other file alike, public and private. (`derive()` is likewise kind-neutral; only Folio's "Make a copy and edit it" is image-only, since the editor is.)
 - **Opt-in:** `config/media.php` `'cleanup' => ['enabled' => false, 'min_age_days' => 7, 'bin_days' => 30]`.
   Off by default; the command refuses with a pointer to the docs while it's off.
 - **What counts as unused:** no usage source reports the asset, it is not a poster (the core's poster source), it is
