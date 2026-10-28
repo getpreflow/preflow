@@ -4,7 +4,7 @@
     {% for item in items %}
         <tr class="folio-asset{% if item.id in selected %} is-selected{% endif %}" data-asset-id="{{ item.id }}">
             <td>{% if item.thumb %}<img class="folio-asset-mini" src="{{ item.thumb }}" alt="" loading="lazy">{% endif %}</td>
-            <td>{% if picker %}{{ item.label }}{% else %}<a href="{{ prefix }}/assets/{{ item.id }}{{ detail_q }}">{{ item.label }}</a>{% endif %}</td>
+            <td>{% if picker %}{{ item.label }}{% else %}<a href="{{ prefix }}/assets/{{ item.id }}{{ detail_q }}">{{ item.label }}</a>{% endif %} {% include '@folio/admin/assets/_stack.twig' %}</td>
             <td>{{ t('folio.assets.kind_names.' ~ item.kind) }}</td>
             <td>{{ t('folio.assets.size_kb', {size: folio_number((item.size / 1024)|round(0, 'ceil'))}) }}{% if item.width %} · {{ item.width }}×{{ item.height }}{% endif %}</td>
             <td>{{ folio_date(item.created_at) }}</td>

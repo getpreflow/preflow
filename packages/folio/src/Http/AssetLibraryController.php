@@ -28,6 +28,7 @@ use Preflow\Media\MediaLibrary;
 use Preflow\Media\Usage\AssetInUseException;
 use Preflow\Media\Usage\AssetUsage;
 use Preflow\Media\Usage\AssetUsageEntry;
+use Preflow\Media\Usage\CopyReferences;
 use Preflow\Media\Usage\PosterReferences;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -44,7 +45,11 @@ use Psr\Http\Message\UploadedFileInterface;
  * mirror, the image crop and the cover presets' cuts (Cropper.js draws the area). With
  * bin_dir a delete moves the file into the bin ({prefix}/assets/bin lists and restores);
  * without it the library warns that deletes are for good. With cleanup on, "Unused only"
- * lists what cleanup would bin. Every change goes through MediaLibrary; Folio only adds the UI.
+ * lists what cleanup would bin. An original with copies is one tile with the number of its
+ * copies (a text search shows the copies too); its page lists them, a copy's page links its
+ * original and offers Remake from original, the Edit image screen "Make a copy and edit it",
+ * and the picker opens a stack (?stack={id}) to pick the original or a copy. Every change
+ * goes through MediaLibrary; Folio only adds the UI.
  */
 final class AssetLibraryController
 {
@@ -120,6 +125,7 @@ final class AssetLibraryController
             ($query['done'] ?? null) === 'restored' => FolioText::get('folio.assets.restored', ['number' => (int) ($query['version'] ?? 0)]),
             ($query['done'] ?? null) === 'version-deleted' => FolioText::get('folio.assets.version_deleted'),
             ($query['done'] ?? null) === 'unbinned' => FolioText::get('folio.assets.unbinned'),
+            ($query['done'] ?? null) === 'remade' => FolioText::get('folio.assets.remade'),
             default => null,
         };
 
@@ -278,6 +284,7 @@ final class AssetLibraryController
             'crop-removed' => FolioText::get('folio.assets.crop_removed'),
             'format-cropped' => $preset !== null ? FolioText::get('folio.assets.format_cropped', ['preset' => $preset]) : null,
             'format-reset' => $preset !== null ? FolioText::get('folio.assets.format_reset', ['preset' => $preset]) : null,
+            'copied' => FolioText::get('folio.assets.copied'),
             default => null,
         };
 
@@ -305,6 +312,54 @@ final class AssetLibraryController
         }
 
         return new Response(302, ['Location' => $this->prefix . '/assets/' . $asset->id . '/edit?done=' . $done . $this->backQuery($request, '&')]);
+    }
+
+    /**
+     * "Make a copy and edit it" on the Edit image screen: a new copy (of an original: maker
+     * "copy" with its edits; of a copy: a sibling), then the screen on the copy. The asset
+     * itself stays as it is. Only editable images, like the screen.
+     */
+    public function makeCopy(ServerRequestInterface $request): ResponseInterface
+    {
+        $asset = $this->library->find((string) $request->getAttribute('id', ''));
+        if ($asset === null || !$this->library->isEditable($asset)) {
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+        }
+        try {
+            $copy = $this->library->makeCopy($asset->id, self::by($request));
+        } catch (\Throwable $e) {
+            $message = $e instanceof AssetUploadException ? MediaMessages::text($e->getMessage()) : FolioText::get('folio.assets.copy_failed');
+            if (!$e instanceof AssetUploadException) {
+                error_log('folio: could not copy asset ' . $asset->id . ': ' . $e::class . ': ' . $e->getMessage());
+            }
+
+            return $this->renderEditor($request, $asset, null, $message, 422);
+        }
+
+        return new Response(302, ['Location' => $this->prefix . '/assets/' . $copy->id . '/edit?done=copied' . $this->backQuery($request, '&')]);
+    }
+
+    /**
+     * Remake from original: the copy made again from its original's current file, same id
+     * (the earlier file becomes a version). Refused on the page when the core can't
+     * (no maker registered, the original gone or in the bin, no versions_dir).
+     */
+    public function remake(ServerRequestInterface $request): ResponseInterface
+    {
+        $copy = $this->library->find((string) $request->getAttribute('id', ''));
+        if ($copy === null || !$copy->isCopy()) {
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+        }
+        if (!$this->library->canRemake($copy)) {
+            return $this->renderPanel($request, $copy, null, FolioText::get('folio.assets.cannot_remake'), 422);
+        }
+        try {
+            $this->library->remake($copy->id, self::by($request));
+        } catch (\Throwable $e) {
+            return $this->failed($request, $copy, 'remake', $e, FolioText::get('folio.assets.remake_failed'));
+        }
+
+        return $this->backToPanel($request, $copy, 'done=remade');
     }
 
     /**
@@ -507,12 +562,19 @@ final class AssetLibraryController
         }
 
         $unused = !$picker && $this->cleanup->isEnabled() && ($params['unused'] ?? '') === '1';
-        $result = $unused
-            ? $this->unused($kind, $q, $page)
-            : $this->library->query($kind === '' ? null : $kind, $q, $filters + ($private === null ? [] : ['private' => $private]), $page, self::PER_PAGE);
+        $stack = $picker && is_string($params['stack'] ?? null) ? $this->library->find($params['stack']) : null;
+        $stack = $stack !== null && !$stack->isCopy() ? $stack : null;
+        $result = match (true) {
+            $stack !== null => $this->stack($stack, $private),
+            $unused => $this->unused($kind, $q, $page),
+            default => $this->library->query($kind === '' ? null : $kind, $q, $filters + ($private === null ? [] : ['private' => $private]), $page, self::PER_PAGE),
+        };
         $total = $result->total;
-        $pages = max(1, (int) ceil($total / self::PER_PAGE));
+        $pages = $stack !== null ? 1 : max(1, (int) ceil($total / self::PER_PAGE));
         $page = $result->page;
+        // An opened stack shows no bubbles: its original's copies are the tiles.
+        $counts = $stack === null ? $this->library->copyCounts(array_map(static fn (Asset $a) => $a->id, $result->items)) : [];
+        $query = array_filter(['q' => $q, 'kind' => $kind, 'f' => $filters, 'unused' => $unused ? '1' : '', 'picker' => $picker ? '1' : '', 'multiple' => $picker ? ($multiple ? '1' : '0') : '', 'private' => $private === null ? '' : ($private ? '1' : '0')], static fn ($v) => $v !== '');
 
         return $this->html($this->engine->render('@folio/admin/assets/index.twig', [
             'prefix' => $this->prefix,
@@ -520,10 +582,12 @@ final class AssetLibraryController
             'section' => 'assets',
             'layout' => $picker ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig',
             'editor_assets' => array_values(array_unique($editorAssets)),
-            'items' => array_map(fn (Asset $a) => $this->item($a), $result->items),
+            'items' => array_map(fn (Asset $a) => ['copies' => $counts[$a->id] ?? 0] + $this->item($a), $result->items),
             'total' => $total,
             'page' => $page,
             'pages' => $pages,
+            'stack' => $stack !== null ? $this->item($stack) : null,
+            'unstacked' => $query,
             'q' => $q,
             'kind' => $kind,
             'filters' => $controls,
@@ -542,7 +606,7 @@ final class AssetLibraryController
             'errors' => $errors,
             'csrf' => self::csrf($request),
             'detail_q' => '?back=' . rawurlencode($this->prefix . '/assets?' . http_build_query(array_filter(['q' => $q, 'kind' => $kind, 'f' => $filters, 'unused' => $unused ? '1' : '', 'view' => $view, 'page' => (string) $page], static fn ($v) => $v !== '' && $v !== []))),
-            'query' => array_filter(['q' => $q, 'kind' => $kind, 'f' => $filters, 'unused' => $unused ? '1' : '', 'picker' => $picker ? '1' : '', 'multiple' => $picker ? ($multiple ? '1' : '0') : '', 'private' => $private === null ? '' : ($private ? '1' : '0')], static fn ($v) => $v !== ''),
+            'query' => $query + ($stack !== null ? ['stack' => $stack->id] : []),
         ]), $status);
     }
 
@@ -569,6 +633,20 @@ final class AssetLibraryController
         $page = min($page, $pages);
 
         return new AssetPage(array_slice($assets, ($page - 1) * self::PER_PAGE, self::PER_PAGE), count($assets), $page, self::PER_PAGE);
+    }
+
+    /**
+     * An opened stack in the picker: the original, then its copies (newest first), those
+     * the field accepts (its private filter), on one page.
+     */
+    private function stack(Asset $original, ?bool $private): AssetPage
+    {
+        $assets = array_values(array_filter(
+            [$original, ...$this->library->copies($original->id)],
+            static fn (Asset $a): bool => $private === null || $a->private === $private,
+        ));
+
+        return new AssetPage($assets, count($assets), 1, max(1, count($assets)));
     }
 
     /** @return array{back: string, back_q: string} the "← Assets" target, and "?back=…" (or '') to carry on links */
@@ -602,6 +680,8 @@ final class AssetLibraryController
             'locales' => $this->locales->available,
             'posters' => array_map(fn (Asset $a) => $this->item($a), $posters),
             'usage' => array_map($this->usageRow(...), $usage ?? $this->usage->of($asset->id)),
+            'copies' => $asset->isCopy() ? [] : array_map($this->copyRow(...), $this->library->copies($asset->id)),
+            'copy' => $asset->isCopy() ? $this->copyInfo($asset) : null,
             'has_bin' => $this->library->binDir() !== null,
             'notice' => $notice,
             'error' => $error,
@@ -611,11 +691,51 @@ final class AssetLibraryController
         return $this->html($this->engine->render('@folio/admin/assets/panel_page.twig', $context), $status);
     }
 
+    /** @return array<string, mixed> a row of an original's Copies panel: the copy, its maker, where it is used, whether the original changed since */
+    private function copyRow(Asset $copy): array
+    {
+        return [
+            'maker' => $this->makerLabel($copy),
+            'stale' => $this->library->isStale($copy),
+            'usage' => array_map($this->usageRow(...), $this->usage->of($copy->id)),
+        ] + $this->item($copy);
+    }
+
+    /**
+     * What a copy's page says about its original: the original (null when it is gone or in
+     * the bin; then its label from the bin), the maker, whether it changed since, whether
+     * Remake from original can run.
+     *
+     * @return array{original: ?array<string, mixed>, binned_original: ?string, maker: string, stale: bool, can_remake: bool}
+     */
+    private function copyInfo(Asset $copy): array
+    {
+        $original = $this->library->find((string) $copy->derivedFrom);
+
+        return [
+            'original' => $original !== null ? $this->item($original) : null,
+            'binned_original' => $original === null ? $this->library->findBinned((string) $copy->derivedFrom)?->label() : null,
+            'maker' => $this->makerLabel($copy),
+            'stale' => $this->library->isStale($copy),
+            'can_remake' => $this->library->canRemake($copy),
+        ];
+    }
+
+    /** How a copy was made, for people: "plain copy" for Folio's own, a maker's name as registered, or "unknown". */
+    private function makerLabel(Asset $copy): string
+    {
+        return match ($copy->maker) {
+            MediaLibrary::MAKER_COPY => FolioText::get('folio.assets.maker_copy'),
+            null => FolioText::get('folio.assets.maker_unknown'),
+            default => $copy->maker,
+        };
+    }
+
     /**
      * A usage entry as the panel template's row: where it is ("working",
      * "published" and "revision" from Folio's notes, "poster" and "binned_poster"
-     * from the core's poster source; other sources' entries count as working
-     * copies), and whether it blocks a delete. The poster of a binned file links
+     * from the core's poster source, "copy" from its copy source; other sources'
+     * entries count as working copies), and whether it blocks a delete. The poster of a binned file links
      * to the bin.
      *
      * @return array{label: string, url: string, where: string, source: string, note: ?string, blocks: bool}
@@ -627,6 +747,7 @@ final class AssetLibraryController
             FolioRecordReferences::REVISION => 'revision',
             PosterReferences::NOTE => 'poster',
             PosterReferences::NOTE_BINNED => 'binned_poster',
+            CopyReferences::NOTE => 'copy',
             default => 'working',
         };
 

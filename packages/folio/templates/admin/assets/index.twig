@@ -58,6 +58,9 @@
         {% endif %}
     </div>
 
+    {% if stack %}
+        <p class="folio-assets-stack-heading">{{ t('folio.assets.stack_heading', {label: stack.label}) }} <a class="btn btn-ghost" href="{{ prefix }}/assets?{{ unstacked|url_encode }}">{{ t('folio.assets.all_files') }}</a></p>
+    {% endif %}
     {% if items is empty %}
         <div class="folio-empty"><p>{% if unused %}{{ t('folio.assets.no_unused', {days: min_age_days}) }}{% else %}{{ t(q or kind or filtered ? 'folio.assets.no_match' : 'folio.assets.empty') }}{% endif %}</p></div>
     {% else %}

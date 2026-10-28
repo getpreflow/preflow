@@ -162,6 +162,8 @@ final class FolioPermissionsTest extends TestCase
             ['POST', '/folio/assets/a1'],
             ['POST', '/folio/assets/a1/delete'],
             ['POST', '/folio/assets/a1/replace'],
+            ['POST', '/folio/assets/a1/copy'],
+            ['POST', '/folio/assets/a1/remake'],
             ['POST', '/folio/assets/a1/versions/1/restore'],
             ['POST', '/folio/assets/a1/versions/1/delete'],
             ['GET', '/folio/assets/bin'],

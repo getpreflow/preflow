@@ -1,0 +1,8 @@
+{# The number of an original's copies on its tile. In the picker it opens the stack (the original and its copies to pick from). #}
+{% if item.copies|default(0) > 0 %}
+    {%- if picker -%}
+        <a class="folio-asset-stack" href="{{ prefix }}/assets?{{ (query|merge({'stack': item.id}))|url_encode }}" title="{{ t('folio.assets.open_stack', {}, item.copies) }}">{{ item.copies }}</a>
+    {%- else -%}
+        <span class="folio-asset-stack" title="{{ t('folio.assets.copies_count', {}, item.copies) }}">{{ item.copies }}</span>
+    {%- endif -%}
+{% endif %}

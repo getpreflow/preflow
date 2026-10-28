@@ -67,6 +67,8 @@ final class FolioRoutes
             ['POST', $prefix . '/assets/{id}/replace', 'replace', self::ASSETS],
             ['GET',  $prefix . '/assets/{id}/edit',    'editor', self::ASSETS],
             ['POST', $prefix . '/assets/{id}/edit',    'edit', self::ASSETS],
+            ['POST', $prefix . '/assets/{id}/copy',    'makeCopy', self::ASSETS],
+            ['POST', $prefix . '/assets/{id}/remake',  'remake', self::ASSETS],
             ['POST', $prefix . '/assets/{id}/versions/{n}/restore', 'restoreVersion', self::ASSETS],
             ['POST', $prefix . '/assets/{id}/versions/{n}/delete',  'deleteVersion', self::ASSETS],
             ['GET',  $prefix . '/extensions',          'index', self::EXTENSIONS],
