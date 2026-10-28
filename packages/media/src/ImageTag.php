@@ -19,9 +19,10 @@ use Preflow\View\ResponsiveImage;
  * presets. Legacy upload paths render as a plain <img>; documents as a link.
  * Private assets have no variants: their gated URL, without a srcset.
  *
- * A document with a poster (an image asset) renders the poster; one with a preview
- * renders the preview like an image (with the preview's variants when public; the
- * gated preview URL when private). The document's alt text is used, else the poster's.
+ * A video or document with a poster (an image asset) renders the poster; one with a
+ * preview (a video's frame, a PDF's first page) renders the preview like an image (with
+ * the preview's variants when public; the gated preview URL when private). Its own alt
+ * text is used, else the poster's.
  *
  * Colours (ColorRules): colors() returns an asset's colours as data, colorClass() a
  * class carrying them as CSS variables, its rule in the nonce'd head style; the option
@@ -85,7 +86,7 @@ final class ImageTag
         return $asset !== null ? $this->library->originalUrl($asset) : '';
     }
 
-    /** The preview URL of a document asset value (a private one's is gated); '' when there is none. */
+    /** The preview URL of a video or document asset value (a private one's is gated); '' when there is none. */
     public function previewUrl(mixed $value): string
     {
         $value = self::first($value);
@@ -134,8 +135,8 @@ final class ImageTag
         }
         $src = $this->library->url($asset);
         $alt = $asset->altFor($this->locale->current(), $this->locale->default());
-        $record = $asset; // whose box plan: the image, the poster, or the document of a preview
-        if ($asset->kind() === 'document') {
+        $record = $asset; // whose box plan: the image, the poster, or the video or document of a preview
+        if ($asset->kind() !== 'image') {
             $poster = $asset->posterId !== null ? $this->library->find($asset->posterId) : null;
             if ($poster !== null && $poster->kind() === 'image') {
                 [$asset, $record, $src, $alt] = [$poster, $poster, $this->library->url($poster), $alt !== '' ? $alt : $poster->altFor($this->locale->current(), $this->locale->default())];

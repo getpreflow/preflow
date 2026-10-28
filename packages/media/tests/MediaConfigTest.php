@@ -155,6 +155,20 @@ final class MediaConfigTest extends TestCase
         $this->assertNull($config->toArray()['ghostscript']);
         $this->assertNull($config->pdftocairo);
         $this->assertNull($config->toArray()['pdftocairo']);
+        $this->assertNull($config->ffmpeg);
+        $this->assertNull($config->toArray()['ffmpeg']);
+        $this->assertNull($config->ffprobe);
+        $this->assertNull($config->toArray()['ffprobe']);
+    }
+
+    public function test_ffmpeg_and_ffprobe(): void
+    {
+        $this->write('media.php', ['ffmpeg' => '/opt/ffmpeg/ffmpeg', 'ffprobe' => '/opt/ffmpeg/ffprobe']);
+
+        $config = MediaConfig::fromApp(Application::create($this->dir));
+
+        $this->assertSame(['/opt/ffmpeg/ffmpeg', '/opt/ffmpeg/ffprobe'], [$config->ffmpeg, $config->ffprobe]);
+        $this->assertSame(['/opt/ffmpeg/ffmpeg', '/opt/ffmpeg/ffprobe'], [$config->toArray()['ffmpeg'], $config->toArray()['ffprobe']]);
     }
 
     public function test_ghostscript_and_pdftocairo(): void

@@ -41,10 +41,12 @@ use Psr\Http\Message\UploadedFileInterface;
  * "versions_dir" ({versions_dir}/{id}/v{n}.{ext}, never served by the web server;
  * only the gated {private_url}/{id}/v/{n}). Restore is a replace from a version.
  *
- * A document a preview renderer supports (a PDF) gets a preview of its first page
- * on upload, replace and restore: {stem}-preview.png beside its file, in the private
- * dir for a private asset (served only at the gated {private_url}/{id}/preview).
- * A public document's variants are its preview's ({stem}-preview-{w}.{fmt}).
+ * A document or video a preview renderer supports (a PDF: its first page; a video:
+ * one frame) gets a preview on upload, replace and restore: {stem}-preview.png beside
+ * its file, in the private dir for a private asset (served only at the gated
+ * {private_url}/{id}/preview). A public document's or video's variants are its
+ * preview's ({stem}-preview-{w}.{fmt}). An image poster picked for it wins over the
+ * preview wherever it is shown (thumbnailUrl(), ImageTag).
  *
  * With a colour extractor, an image's colours (dominant colour, palette, text colour)
  * are read on upload, replace and restore from the image as people see it (sRGB),
@@ -2009,11 +2011,16 @@ final class MediaLibrary
 
     /**
      * A small preview URL: the 480 (else smallest) WebP variant, else the original image; for a
-     * document its preview's (a private one: the gated preview URL); null for other files.
+     * video or document its image poster's, else its preview's (a private one: the gated preview
+     * URL); null for other files.
      */
     public function thumbnailUrl(Asset $asset): ?string
     {
         if ($asset->kind() !== 'image') {
+            $poster = $asset->posterId !== null && $asset->posterId !== $asset->id ? $this->find($asset->posterId) : null;
+            if ($poster !== null && $poster->kind() === 'image') {
+                return $this->thumbnailUrl($poster);
+            }
             $preview = $this->previewAsset($asset);
             if ($preview === null || $asset->private) {
                 return $this->previewUrl($asset);

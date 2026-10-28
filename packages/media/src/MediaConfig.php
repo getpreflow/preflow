@@ -54,6 +54,10 @@ final readonly class MediaConfig
         public ?string $ghostscript = null,
         /** Poppler's pdftocairo, for PDF previews without a safe Ghostscript; null: looked up like gs. Neither: no previews. */
         public ?string $pdftocairo = null,
+        /** ffmpeg for video previews (one frame); null: looked up like gs. None: videos keep their tile. */
+        public ?string $ffmpeg = null,
+        /** ffprobe for a video's length (where the frame is taken); null: looked up like gs. None: the frame at 1 s. */
+        public ?string $ffprobe = null,
         /** Deleted assets ({bin_dir}/{id}/), a shared deploy dir like versions_dir; null: a delete removes them for good. */
         public ?string $binDir = null,
         public array $cleanup = self::CLEANUP_DEFAULTS,
@@ -99,6 +103,8 @@ final readonly class MediaConfig
             colorProfileCmyk: is_string($values['color_profile_cmyk'] ?? null) && $values['color_profile_cmyk'] !== '' ? $values['color_profile_cmyk'] : null,
             ghostscript: is_string($values['ghostscript'] ?? null) && $values['ghostscript'] !== '' ? $values['ghostscript'] : null,
             pdftocairo: is_string($values['pdftocairo'] ?? null) && $values['pdftocairo'] !== '' ? $values['pdftocairo'] : null,
+            ffmpeg: is_string($values['ffmpeg'] ?? null) && $values['ffmpeg'] !== '' ? $values['ffmpeg'] : null,
+            ffprobe: is_string($values['ffprobe'] ?? null) && $values['ffprobe'] !== '' ? $values['ffprobe'] : null,
             binDir: is_string($values['bin_dir'] ?? null) && $values['bin_dir'] !== '' ? $values['bin_dir'] : null,
             cleanup: self::cleanup($values['cleanup'] ?? null),
         );
@@ -143,6 +149,8 @@ final readonly class MediaConfig
             'color_profile_cmyk' => $this->colorProfileCmyk,
             'ghostscript' => $this->ghostscript,
             'pdftocairo' => $this->pdftocairo,
+            'ffmpeg' => $this->ffmpeg,
+            'ffprobe' => $this->ffprobe,
             'bin_dir' => $this->binDir,
             'cleanup' => $this->cleanup,
         ];

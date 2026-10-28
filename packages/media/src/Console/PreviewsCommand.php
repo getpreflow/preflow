@@ -10,12 +10,12 @@ use Preflow\Media\MediaLibrary;
 use Preflow\Media\Preview\PreviewRenderers;
 
 /**
- * Make document previews (a PDF's first page), e.g. for documents uploaded before
- * previews existed: media:previews [--id=<id>] [--all] [--limit=<n>]. Without options,
- * every document without a preview (so a run that was stopped resumes where it ended);
- * --all makes every document's preview again; --id that one's; --limit=<n> does at
- * most n and prints the command that continues (--offset=<n> skips the first n). Private documents get private previews, public
- * ones also their variants. The package lists it in composer.json
+ * Make previews of videos (one frame) and documents (a PDF's first page), e.g. for files
+ * uploaded before previews existed: media:previews [--id=<id>] [--all] [--limit=<n>].
+ * Without options, every video and document without a preview (so a run that was stopped
+ * resumes where it ended); --all makes every preview again; --id that file's; --limit=<n>
+ * does at most n and prints the command that continues (--offset=<n> skips the first n).
+ * Private files get private previews, public ones also their variants. The package lists it in composer.json
  * (extra.preflow.commands), so a site needs no setup.
  */
 final class PreviewsCommand implements CommandInterface
@@ -32,7 +32,7 @@ final class PreviewsCommand implements CommandInterface
     ) {}
 
     public function getName(): string { return 'media:previews'; }
-    public function getDescription(): string { return 'Make previews of library documents without one [--id=<id>] [--all: make every preview again] [--limit=<n> --offset=<n>: in chunks]'; }
+    public function getDescription(): string { return 'Make previews of library videos and documents without one [--id=<id>] [--all: make every preview again] [--limit=<n> --offset=<n>: in chunks]'; }
 
     public function execute(array $args): int
     {
@@ -59,7 +59,7 @@ final class PreviewsCommand implements CommandInterface
         $todo = [];
         $unsupported = 0;
         foreach ($assets as $asset) {
-            if ($asset->kind() !== 'document' || (!$all && $asset->preview !== null)) {
+            if ($asset->kind() === 'image' || (!$all && $asset->preview !== null)) {
                 continue;
             }
             if ($renderers->for($asset->mime) === null) {
@@ -75,17 +75,17 @@ final class PreviewsCommand implements CommandInterface
         foreach ($chunk as $asset) {
             $library->remakePreview($asset) !== null ? $made++ : $failed++;
         }
-        echo 'Made previews of ' . self::plural($made, 'document') . ".\n";
+        echo 'Made previews of ' . self::plural($made, 'file') . ".\n";
         if ($failed > 0) {
-            echo self::plural($failed, 'document') . " could not be rendered (unreadable, encrypted or over the time limit).\n";
+            echo self::plural($failed, 'file') . " could not be rendered (unreadable, encrypted or over the time limit).\n";
         }
         if ($unsupported > 0) {
-            echo "{$unsupported} document" . ($unsupported === 1 ? ' has' : 's have') . " no preview renderer (PDFs need Ghostscript or pdftocairo).\n";
+            echo "{$unsupported} file" . ($unsupported === 1 ? ' has' : 's have') . " no preview renderer (PDFs need Ghostscript or pdftocairo, videos ffmpeg).\n";
         }
         if ($left > 0) {
-            // Without --all, documents that got a preview drop out of the list; only failures stay ahead.
+            // Without --all, files that got a preview drop out of the list; only failures stay ahead.
             $next = $offset + ($all ? count($chunk) : $failed);
-            echo self::plural($left, 'document') . ' left: run again with ' . ($all ? '--all ' : '') . "--limit={$limit}" . ($next > 0 ? " --offset={$next}" : '') . ".\n";
+            echo self::plural($left, 'file') . ' left: run again with ' . ($all ? '--all ' : '') . "--limit={$limit}" . ($next > 0 ? " --offset={$next}" : '') . ".\n";
         }
 
         return 0;

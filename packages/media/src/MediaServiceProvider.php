@@ -28,6 +28,7 @@ use Preflow\Media\Image\ImageWidths;
 use Preflow\Media\Image\VariantGenerator;
 use Preflow\Media\Preview\PdfPreviewRenderer;
 use Preflow\Media\Preview\PreviewRenderers;
+use Preflow\Media\Preview\VideoPreviewRenderer;
 use Preflow\Media\Usage\AssetUsage;
 use Preflow\Media\Usage\LazyReferenceSource;
 use Preflow\Media\Routing\MediaRoutes;
@@ -46,7 +47,8 @@ use Preflow\View\TemplateFunctionDefinition;
  * missing variants and box files) and the template functions media_image(), media_url(),
  * media_original_url(), media_preview_url(), media_colors() and media_color_class(). The library reads
  * colours with ColorExtractor. PDF previews come from Ghostscript or pdftocairo
- * (PdfPreviewRenderer), as the fallback of the shared PreviewRenderers, so a site's own renderer wins.
+ * (PdfPreviewRenderer), video previews (one frame) from ffmpeg (VideoPreviewRenderer), both as
+ * fallbacks of the shared PreviewRenderers, so a site's own renderer wins.
  * Copies are made again (remake) by the makers sites and packages register on the shared DerivedMakers.
  * Private files are refused until something binds PrivateFileAccess (Folio does).
  * A delete moves an asset into config bin_dir; without one, `preflow migrate` warns that deletes are for good.
@@ -85,6 +87,7 @@ final class MediaServiceProvider extends ServiceProvider
         );
         $colors = new ColorManagement($config->colorProfileCmyk);
         $container->get(PreviewRenderers::class)->register(new PdfPreviewRenderer($colors, $config->ghostscript, pdftocairo: $config->pdftocairo), fallback: true);
+        $container->get(PreviewRenderers::class)->register(new VideoPreviewRenderer($config->ffmpeg, $config->ffprobe), fallback: true);
         $container->singleton(MediaLibrary::class, fn (Container $c) => new MediaLibrary(
             $c->get(DataManager::class),
             self::locales($c),
@@ -165,7 +168,7 @@ final class MediaServiceProvider extends ServiceProvider
                 name: 'media_original_url',
                 callable: fn (mixed $value = null): string => $container->get(ImageTag::class)->originalUrl($value),
             ));
-            // media_preview_url(id): a document's preview URL ('' without one; a private asset's is gated).
+            // media_preview_url(id): a video's or document's preview URL ('' without one; a private asset's is gated).
             $engine->addFunction(new TemplateFunctionDefinition(
                 name: 'media_preview_url',
                 callable: fn (mixed $value = null): string => $container->get(ImageTag::class)->previewUrl($value),

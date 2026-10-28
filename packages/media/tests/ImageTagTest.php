@@ -10,6 +10,9 @@ use Preflow\Media\MediaLibrary;
 use Preflow\Media\ImageTag;
 use Preflow\Media\Image\GdBackend;
 use Preflow\Media\Image\VariantGenerator;
+use Preflow\Media\Preview\PdfPreviewRenderer;
+use Preflow\Media\Preview\PreviewRenderers;
+use Preflow\Media\Preview\VideoPreviewRenderer;
 use Preflow\Media\Tests\Support\FixedLocale;
 use Preflow\Media\Tests\Support\MediaFixtures;
 use Preflow\View\AssetCollector;
@@ -191,6 +194,54 @@ final class ImageTagTest extends TestCase
 
         $this->assertSame($today, $tag->render($asset->id, 'cover-thumb'));
         $this->assertStringContainsString('width="1200" height="800"', $today);
+    }
+
+    /** A library whose videos get a frame as their preview (ffmpeg; skipped without it). */
+    private function videoLibrary(): MediaLibrary
+    {
+        if (PdfPreviewRenderer::findBinary('ffmpeg') === null) {
+            $this->markTestSkipped('No ffmpeg on this machine.');
+        }
+        $renderers = new PreviewRenderers();
+        $renderers->register(new VideoPreviewRenderer());
+
+        return $this->lib = $this->library([], new VariantGenerator(new GdBackend(), [480, 768], 75), previews: $renderers);
+    }
+
+    private function clip(): \Preflow\Media\Asset
+    {
+        $bytes = (string) file_get_contents(__DIR__ . '/Fixtures/video/clip.mp4');
+
+        return $this->lib->upload($this->upload($bytes, 'clip.mp4'), null);
+    }
+
+    public function test_video_renders_frame_image(): void
+    {
+        $this->videoLibrary();
+        $clip = $this->clip();
+        $this->lib->update($clip->id, ['alt' => ['en' => 'Test pattern']]);
+        $base = '/media/' . substr($clip->path, 0, (int) strrpos($clip->path, '.')) . '-preview';
+
+        $html = $this->tag()->render($clip->id);
+
+        $this->assertStringStartsWith('<picture>', $html);
+        $this->assertStringContainsString('<source type="image/webp" srcset="' . $base . '-480.webp 480w, ' . $base . '-768.webp 768w', $html);
+        $this->assertStringContainsString('<img src="' . $base . '.png" width="1600" height="900" alt="Test pattern"', $html);
+        $this->assertSame('/media/' . $clip->path, $this->tag()->url($clip->id)); // the video stays the video
+    }
+
+    public function test_video_poster_wins(): void
+    {
+        $this->videoLibrary();
+        $clip = $this->clip();
+        $poster = $this->lib->upload($this->upload($this->png(1200, 900), 'poster.png'), null);
+        $this->lib->update($clip->id, ['poster' => $poster->id, 'alt' => ['en' => 'Clip']]);
+
+        $html = $this->tag()->render($clip->id);
+
+        $this->assertStringStartsWith('<picture>', $html);
+        $this->assertStringContainsString('<img src="/media/' . $poster->path . '" width="1200" height="900" alt="Clip"', $html);
+        $this->assertStringNotContainsString('preview', $html);
     }
 
     private function tag(array $presets = []): ImageTag

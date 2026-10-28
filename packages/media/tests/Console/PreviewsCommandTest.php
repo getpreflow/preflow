@@ -13,7 +13,7 @@ use Preflow\Media\MediaLibrary;
 use Preflow\Media\Preview\PdfPreviewRenderer;
 use Preflow\Media\Tests\Support\MediaApp;
 
-/** media:previews [--id=<id>] [--all]: previews for documents uploaded before previews existed. */
+/** media:previews [--id=<id>] [--all]: previews for documents and videos uploaded before previews existed. */
 #[RequiresFunction('imagewebp')]
 final class PreviewsCommandTest extends TestCase
 {
@@ -93,7 +93,7 @@ final class PreviewsCommandTest extends TestCase
         [$code, $out] = $this->runCommand([]);
 
         $this->assertSame(0, $code);
-        $this->assertSame("Made previews of 2 documents.\n", $out);
+        $this->assertSame("Made previews of 2 files.\n", $out);
         $public = $this->media()->find($public->id);
         $this->assertSame([1600, 1067], [$public->preview?->width, $public->preview?->height]);
         $this->assertFileExists($this->dir . '/public/media/' . $public->preview->path);
@@ -121,8 +121,8 @@ final class PreviewsCommandTest extends TestCase
         [, $one] = $this->runCommand(['--id=' . $a->id]);
         [, $all] = $this->runCommand(['--all']);
 
-        $this->assertSame("Made previews of 1 document.\n", $one);
-        $this->assertSame("Made previews of 2 documents.\n", $all);
+        $this->assertSame("Made previews of 1 file.\n", $one);
+        $this->assertSame("Made previews of 2 files.\n", $all);
         $this->assertFileDoesNotExist($stale);
         $this->assertFileExists($this->dir . '/public/media/' . $this->media()->find($a->id)?->preview?->path);
     }
@@ -135,7 +135,7 @@ final class PreviewsCommandTest extends TestCase
         [$code, $out] = $this->runCommand([]);
 
         $this->assertSame(0, $code);
-        $this->assertSame("Made previews of 0 documents.\n1 document could not be rendered (unreadable, encrypted or over the time limit).\n", $out);
+        $this->assertSame("Made previews of 0 files.\n1 file could not be rendered (unreadable, encrypted or over the time limit).\n", $out);
     }
 
     public function test_without_a_renderer_nothing_is_made(): void
@@ -146,7 +146,7 @@ final class PreviewsCommandTest extends TestCase
         [$code, $out] = $this->runCommand([]);
 
         $this->assertSame(0, $code);
-        $this->assertSame("Made previews of 0 documents.\n1 document has no preview renderer (PDFs need Ghostscript or pdftocairo).\n", $out);
+        $this->assertSame("Made previews of 0 files.\n1 file has no preview renderer (PDFs need Ghostscript or pdftocairo, videos ffmpeg).\n", $out);
         $this->assertNull($this->media()->find($asset->id)?->preview);
     }
 
@@ -159,13 +159,34 @@ final class PreviewsCommandTest extends TestCase
         }
 
         [$code, $out] = $this->runCommand(['--limit=2']);
-        $this->assertSame([0, "Made previews of 2 documents.\n1 document left: run again with --limit=2.\n"], [$code, $out]);
+        $this->assertSame([0, "Made previews of 2 files.\n1 file left: run again with --limit=2.\n"], [$code, $out]);
 
         [$code, $out] = $this->runCommand(['--limit=2']);
-        $this->assertSame([0, "Made previews of 1 document.\n"], [$code, $out]);
+        $this->assertSame([0, "Made previews of 1 file.\n"], [$code, $out]);
         foreach ($ids as $id) {
             $this->assertNotNull($this->media()->find($id)?->preview);
         }
+    }
+
+    public function test_makes_video_previews(): void
+    {
+        if (PdfPreviewRenderer::findBinary('ffmpeg') === null) {
+            $this->markTestSkipped('No ffmpeg on this machine.');
+        }
+        $bytes = (string) file_get_contents(__DIR__ . '/../Fixtures/video/clip.mp4');
+        $f = new Psr17Factory();
+        $uploaded = $this->media()->upload($f->createUploadedFile($f->createStream($bytes), strlen($bytes), UPLOAD_ERR_OK, 'clip.mp4'), null);
+        $this->assertNotNull($uploaded->preview, 'the app registers the video renderer');
+        $clip = $this->withoutPreview($uploaded);
+        $this->assertNull($clip->preview);
+
+        [$code, $out] = $this->runCommand([]);
+
+        $this->assertSame([0, "Made previews of 1 file.\n"], [$code, $out]);
+        $clip = $this->media()->find($clip->id);
+        $this->assertSame([1600, 900], [$clip?->preview?->width, $clip?->preview?->height]);
+        $this->assertFileExists($this->dir . '/public/media/' . $clip->preview->path);
+        $this->assertNotSame([], $clip->variants);
     }
 
     public function test_id_of_an_unknown_asset_fails(): void

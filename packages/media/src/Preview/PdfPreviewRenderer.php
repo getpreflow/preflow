@@ -258,11 +258,12 @@ final class PdfPreviewRenderer implements PreviewRenderer
 
     /**
      * Run without a shell, stderr discarded, killed at the deadline. Returns stdout
-     * ('' unless $capture) on exit code 0, else null.
+     * ('' unless $capture) on exit code 0, else null. Shared with the other renderers
+     * (VideoPreviewRenderer), like findBinary().
      *
      * @param list<string> $command
      */
-    private static function run(array $command, float $deadline, bool $capture = false): ?string
+    public static function run(array $command, float $deadline, bool $capture = false): ?string
     {
         $null = PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null';
         $process = @proc_open($command, [0 => ['file', $null, 'r'], 1 => $capture ? ['pipe', 'w'] : ['file', $null, 'w'], 2 => ['file', $null, 'w']], $pipes);
@@ -337,7 +338,8 @@ final class PdfPreviewRenderer implements PreviewRenderer
         return [$size[0], $size[1]] === [$w, $h];
     }
 
-    private static function tempFile(): string
+    /** An empty temp file for a renderer's output (the caller removes or hands it on). */
+    public static function tempFile(): string
     {
         $file = tempnam(sys_get_temp_dir(), 'preflow-preview-');
         if ($file === false) {
