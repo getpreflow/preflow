@@ -1467,7 +1467,8 @@ php preflow folio:pull production --only=data # records only (or --only=media)
 
 - **What content means:** the records of every Folio type (with their published and
   revision copies), the asset records, the media directory and legacy uploads. Assets in the
-  media bin stay on their server (their files are in its bin only).
+  media bin stay on their server (their files are in its bin only): an export leaves them out
+  and an import or pull leaves the local ones alone.
   Never code, `.env`, caches, logs, sessions or other tables (`user_tokens`).
 - **SSH:** your SSH agent and `~/.ssh/config`, with no credentials in config. Host keys
   are never ignored, so a changed key aborts.

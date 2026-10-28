@@ -133,6 +133,31 @@ final class ExportImportTest extends TestCase
         $this->assertNull($this->driver()->findOne('folio_assets', 'b1'), 'a binned asset stays on its server');
     }
 
+    public function test_a_local_asset_in_the_bin_survives_an_import_and_can_be_restored(): void
+    {
+        $this->write('config/media.php', "<?php\nreturn ['bin_dir' => " . var_export($this->dir . '/storage/media-bin', true) . "];\n");
+        $archive = $this->export(); // made before the asset existed, like a pull from live
+        $lib = $this->app()->container()->get(\Preflow\Media\MediaLibrary::class);
+        $png = imagecreatetruecolor(10, 10);
+        ob_start();
+        imagepng($png);
+        $bytes = (string) ob_get_clean();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $asset = $lib->upload($f->createUploadedFile($f->createStream($bytes), strlen($bytes), UPLOAD_ERR_OK, 'binned.png'), null);
+        $lib->delete($asset->id);
+        $this->assertNotNull($lib->findBinned($asset->id));
+
+        $summary = $this->import($archive);
+
+        $this->assertNotContains($asset->id, $summary['tables']['folio_assets']['removed'] ?? []);
+        $this->assertNotNull($this->driver()->findOne('folio_assets', 'a1'), 'the archive\'s own assets as before');
+        $lib = $this->app()->container()->get(\Preflow\Media\MediaLibrary::class);
+        $this->assertNotNull($lib->findBinned($asset->id), 'the binned record stays');
+        $this->assertDirectoryExists($this->dir . '/storage/media-bin/' . $asset->id . '/files');
+        $restored = $lib->restoreFromBin($asset->id);
+        $this->assertSame($bytes, file_get_contents((string) $lib->file($restored)));
+    }
+
     public function test_version_files_travel_and_an_archive_without_them_leaves_local_versions_alone(): void
     {
         $this->put('storage/media-versions/a1/v1.jpg', 'OLDJPEG');

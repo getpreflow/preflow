@@ -159,7 +159,8 @@ final class Importer
 
     /**
      * Incoming rows the ContentSet refuses (ContentSet::rowProblem()) are left out with a notice:
-     * neither stored nor counted as removed locally.
+     * neither stored nor counted as removed locally. Local rows an export leaves out
+     * (ContentSet::skipsExport(), assets in the bin) are not counted as removed either.
      *
      * @param list<string> $notices
      * @return array<string, array{added: list<string>, changed: list<string>, removed: list<string>}>
@@ -200,8 +201,9 @@ final class Importer
                     $diff['changed'][] = $id;
                 }
             }
-            foreach (array_keys($local) as $id) {
-                if (!array_key_exists((string) $id, $incoming) && !isset($skipped[(string) $id])) {
+            foreach ($local as $id => $row) {
+                // A row an export leaves out (an asset in this server's bin) is never in an archive: it stays.
+                if (!array_key_exists((string) $id, $incoming) && !isset($skipped[(string) $id]) && !$this->set->skipsExport($table, $row)) {
                     $diff['removed'][] = (string) $id;
                 }
             }

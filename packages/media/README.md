@@ -618,9 +618,11 @@ good as before, and `preflow migrate` and Folio's library warn about it.
 - `restoreFromBin($id)` moves the files back and makes the variants again. A copy whose original
   is in the bin restores the original first. It throws for an asset that is not in the bin, and
   (`RuntimeException`, nothing changed) when its file is not in `{bin_dir}/{id}/files/`, so a record
-  never comes back without its file.
+  never comes back without its file. So an asset that was binned while its file was already
+  missing cannot be restored; it stays in the bin until it is emptied.
 - **The bin stays on its server.** Folio's export (`folio:export`, `folio:pull`, backups) leaves
-  binned assets out: their files are in this server's bin only.
+  binned assets out: their files are in this server's bin only. An import leaves the local bin
+  alone, so binned assets can still be restored after a pull.
 - **Posters and revisions are kept.** A poster of a binned video or document, and an asset an
   earlier revision still uses, are reported as non-blocking uses (`AssetUsageEntry::$blocksDelete`
   false): you may move them to the bin by hand, but emptying the bin never deletes them for good
