@@ -298,6 +298,9 @@ $copy = $library->derive($originalId, $path, $userId, maker: 'watermark', params
 // a copy of the file as it is now, with the original's crop, turn and mirror as its start
 $copy = $library->makeCopy($originalId, $userId);
 
+// an asset already in the library becomes a copy (files made before copies existed)
+$copy = $library->linkCopy($assetId, $originalId, maker: 'watermark', params: ['line' => '(c) Me']);
+
 $library->copies($originalId);   // list<Asset>, newest first
 $library->copyCounts($ids);      // [id => number of live copies]
 ```
@@ -305,10 +308,20 @@ $library->copyCounts($ids);      // [id => number of live copies]
 - `derive($originalId, $file, $by, $maker, $params, $private)` stores `$file` as a copy of the
   original. Given the id of a copy it links to that copy's original, so stacks are one level deep.
   `$private` null takes the original's flag. The file is read from disk and stays where it is.
+  The copy starts with the original's alt text (every language) and title. The maker `copy` is
+  refused (`InvalidArgumentException`): it is `makeCopy()`'s.
 - `makeCopy($id, $by)` copies the file and the edits (crop, turn, mirror, format crops, focal point)
   so the copy starts as the original looks now; editing it changes only the copy. Called on a copy
-  it makes a sibling with the same original, maker and settings. The maker is the reserved
-  name `copy`.
+  it makes a sibling with the same original, maker and settings. The copy starts with the copied
+  asset's alt text (every language) and title. The maker is the reserved name `copy`.
+- `linkCopy($id, $originalId, $maker = null, $params = [])` marks an asset already in the library
+  as a copy of `$originalId`: for files made before copies existed, such as watermarked images a
+  site kept next to their originals. Only the record changes (`derived_from`, `maker`,
+  `maker_params`, and `derived_version` set to the original's current version); the file, alt text,
+  title and edits stay. `$maker` null for a copy no maker can make again; `copy` is refused. It
+  refuses (`InvalidArgumentException`, nothing changed) an asset linked to itself, an original that
+  is itself a copy (link to its original instead), an asset that has copies of its own (in the bin
+  too), and an asset or original that is unknown or in the bin.
 - **Makers.** A maker produces a copy's file from its original, so it can be produced again:
 
 ```php
@@ -465,7 +478,9 @@ colours and the box formats treat a video like a document with a picture.
 - **A poster wins.** An image poster set on the video (or on a document) is shown instead of the
   preview, in the library and in `media_image()`; clear the poster and the frame is back.
 - ffmpeg is run with an argument list (no shell), reads only the asset's own file and has a
-  20 second limit for all its tries. A broken file leaves `preview` null and the upload succeeds.
+  20 second limit for all its tries. The input format is pinned by the file's type (`-f mov` for
+  MP4 and QuickTime, `-f matroska` for WebM), so ffmpeg never reads a crafted file as something
+  else, such as a playlist. A broken file leaves `preview` null and the upload succeeds.
 - A replace makes the preview again. Like the PDF preview it is rendered in the upload's request.
 
 ```
@@ -601,17 +616,26 @@ good as before, and `preflow migrate` and Folio's library warn about it.
   versions and a document's or video's preview. Variants, the rendered master and box files are
   deleted and made again on restore. The record stays, with `binned_at` set (UTC).
 - `restoreFromBin($id)` moves the files back and makes the variants again. A copy whose original
-  is in the bin restores the original first. It throws for an asset that is not in the bin.
+  is in the bin restores the original first. It throws for an asset that is not in the bin, and
+  (`RuntimeException`, nothing changed) when its file is not in `{bin_dir}/{id}/files/`, so a record
+  never comes back without its file.
+- **The bin stays on its server.** Folio's export (`folio:export`, `folio:pull`, backups) leaves
+  binned assets out: their files are in this server's bin only.
 - **Posters and revisions are kept.** A poster of a binned video or document, and an asset an
   earlier revision still uses, are reported as non-blocking uses (`AssetUsageEntry::$blocksDelete`
   false): you may move them to the bin by hand, but emptying the bin never deletes them for good
   while they could still be needed.
-- **Emptying.** `emptyBin($olderThanDays)` deletes for good the assets binned longer ago than
-  that and keeps any that a usage source still reports (with the reason). It returns a
-  `BinEmptyResult`. Nothing empties the bin by itself; run the command (a cron job works).
+- **Emptying.** `emptyBin($olderThanDays, ?Closure $progress = null, ?int $limit = null, int $offset = 0)`
+  deletes for good the assets binned longer ago than that, the longest binned first, and keeps any
+  that a usage source still reports (with the reason). `$progress($asset, $deleted)` is called for
+  each asset checked. In chunks, `$limit` checks at most that many and `$offset` skips that many
+  old enough ones; the next chunk starts at `$offset` plus the number kept. It returns a
+  `BinEmptyResult` (`deleted`, `kept`, `left`). Nothing empties the bin by itself; run the command (a cron job works).
 - `bin_dir` must be a shared directory in a deployment (Deployer `shared_dirs`:
   `storage/media-bin`) and git-ignored, or the next release deletes the bin.
 - Without a bin there is no restore: `discard()` and a delete without `bin_dir` remove for good.
+  So without `bin_dir`, `delete()` refuses under **every** usage, a non-blocking one (an earlier
+  revision) included: a delete for good must never take a file a revision still shows.
 
 ```
 php preflow media:bin                                  # list the bin
@@ -630,7 +654,7 @@ it on:
 
 ```php
 'cleanup' => [
-    'enabled' => false,     // opt in
+    'enabled' => false,     // opt in: true exactly (a boolean); "1" or "yes" leaves it off
     'min_age_days' => 7,    // an asset is only looked at this long after its upload
     'bin_days' => 30,       // what media:bin --empty deletes: in the bin longer than this
 ],
