@@ -16,12 +16,8 @@ use chillerlan\QRCode\QROptions;
  */
 final class QrCode
 {
-    private const ECC = [
-        'L' => EccLevel::L,
-        'M' => EccLevel::M,
-        'Q' => EccLevel::Q,
-        'H' => EccLevel::H,
-    ];
+    // Level names only: the library's EccLevel is resolved after the availability check.
+    private const ECC_LEVELS = ['L', 'M', 'Q', 'H'];
 
     private static ?string $libraryClass = null;
 
@@ -41,6 +37,7 @@ final class QrCode
      */
     public static function svg(string $data, array $options = []): string
     {
+        self::requireLibrary();
         $o = self::normalise($options);
         $svg = (string) (new Library(self::options($o, QROutputInterface::MARKUP_SVG)))->render($data);
 
@@ -63,6 +60,7 @@ final class QrCode
      */
     public static function png(string $data, array $options = []): string
     {
+        self::requireLibrary();
         $o = self::normalise($options);
         $options = self::options($o, QROutputInterface::GDIMAGE_PNG);
 
@@ -84,17 +82,31 @@ final class QrCode
     }
 
     /**
+     * Runs before anything touches a library symbol, so a missing library
+     * gives this message and not an autoload fatal.
+     */
+    private static function requireLibrary(): void
+    {
+        if (!self::available()) {
+            throw new \RuntimeException(
+                'QR codes need the chillerlan/php-qrcode library. Install it with: composer require chillerlan/php-qrcode',
+            );
+        }
+    }
+
+    /**
      * @param array<string, mixed> $options
      * @return array{size: int, margin: int, ecc: string, color: string, background: string}
      */
     private static function normalise(array $options): array
     {
         $ecc = strtoupper((string) ($options['ecc'] ?? 'M'));
-        if (!isset(self::ECC[$ecc])) {
+        if (!in_array($ecc, self::ECC_LEVELS, true)) {
             throw new \InvalidArgumentException("QR error correction must be one of L, M, Q, H; got '{$ecc}'.");
         }
 
         return [
+            // Below 21px even the smallest QR symbol cannot be drawn.
             'size' => max(21, (int) ($options['size'] ?? 200)),
             'margin' => max(0, (int) ($options['margin'] ?? 2)),
             'ecc' => $ecc,
@@ -108,19 +120,13 @@ final class QrCode
      */
     private static function options(array $o, string $outputType): QROptions
     {
-        if (!self::available()) {
-            throw new \RuntimeException(
-                'QR codes need the chillerlan/php-qrcode library. Install it with: composer require chillerlan/php-qrcode',
-            );
-        }
-
         $colors = $outputType === QROutputInterface::MARKUP_SVG
             ? [$o['color'], $o['background']]
             : [self::rgb($o['color']), self::rgb($o['background'])];
 
         return new QROptions([
             'outputType' => $outputType,
-            'eccLevel' => self::ECC[$o['ecc']],
+            'eccLevel' => constant(EccLevel::class . '::' . $o['ecc']),
             'quietzoneSize' => $o['margin'],
             'outputBase64' => false,
             'svgAddXmlHeader' => false,

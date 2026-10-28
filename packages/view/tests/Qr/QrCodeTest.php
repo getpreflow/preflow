@@ -6,6 +6,7 @@ namespace Preflow\View\Tests\Qr;
 
 use chillerlan\QRCode\QRCode as Library;
 use chillerlan\QRCode\QROptions;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\View\Qr\QrCode;
 use Preflow\View\ViewExtensionProvider;
@@ -78,5 +79,37 @@ final class QrCodeTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('composer require chillerlan/php-qrcode');
         QrCode::svg('x');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_really_absent_library_gives_the_runtime_exception_not_an_autoload_fatal(): void
+    {
+        // Hide the chillerlan namespace from every autoloader, as if it were not installed.
+        $loaders = spl_autoload_functions();
+        foreach ($loaders as $loader) {
+            spl_autoload_unregister($loader);
+        }
+        spl_autoload_register(static function (string $class) use ($loaders): void {
+            if (str_starts_with($class, 'chillerlan\\')) {
+                return;
+            }
+            foreach ($loaders as $loader) {
+                $loader($class);
+                if (class_exists($class, false) || interface_exists($class, false) || enum_exists($class, false)) {
+                    return;
+                }
+            }
+        });
+
+        $this->assertFalse(QrCode::available());
+
+        foreach (['svg', 'png'] as $method) {
+            try {
+                QrCode::$method('x');
+                $this->fail("{$method}() should have thrown");
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('composer require chillerlan/php-qrcode', $e->getMessage());
+            }
+        }
     }
 }
