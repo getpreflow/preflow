@@ -35,14 +35,13 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    `null` clears a column, unique fields (validated, with the database as the guard), typed record tables,
    `RecordTables` and the one-time `tools/convert-typed-columns.php`. See
    `docs/superpowers/plans/2026-10-27-release-0.42-checklist.md`
-4. **Media for the migration:** derived assets (`derived_from`) shown as stacks in the library (originals with
-   their cropped/rotated or watermarked copies), garbage collection of unreferenced assets, `importFile(…, private)`,
-   and **video thumbnails**: a `VideoPreviewRenderer` (the `PreviewRenderer` slot PDFs use) grabs one frame of an
-   MP4 with ffmpeg (e.g. at 1 s or 10 %) as the asset's preview, so library, picker, `media_image()`, colours and
-   box formats work for videos; a hand-picked poster still wins. ffmpeg's path is configurable in
-   `config/media.php` (like `ghostscript`), so a **static ffmpeg build** in the hosting account works where the host
-   has none (the live server has no ffmpeg today); without ffmpeg videos keep today's tile. A `media:previews`
-   backfill covers existing videos
+4. ~~**Media for the migration:** derived assets (`derived_from`) shown as stacks in the library, garbage collection
+   of unreferenced assets, `importFile(…, private)`, and video thumbnails with ffmpeg~~ — done in 0.43 (prepared,
+   not released): copies (`derive()`, `makeCopy()`, makers, `remake()`, stale marks) shown as stacks in Folio's
+   library; every delete goes to a bin (`bin_dir`, `media:bin`, restore); opt-in cleanup of unused assets
+   (`media:cleanup`, Folio's "Unused only" filter) that only knows the usages sources report; `VideoPreviewRenderer`
+   (ffmpeg path configurable, a static build works, `media:previews` covers videos; a poster still wins);
+   `importFile(…, private: true)`. See `docs/superpowers/plans/2026-10-28-release-0.43-checklist.md`
 5. **Reporting/export and certificates (PDF)** — its own spec (needed for BG Genius Phase 5)
 
 **Rule (owner, 2026-10-26):** the framework holds abstractions, interfaces, hooks and generic mechanisms only;
@@ -158,9 +157,9 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 ### Media and assets
 
 - **HEIC/HEIF uploads:** accept and convert iPhone photos (Imagick) on upload
-- **`importFile(…, bool $private)`:** only `upload()` can create private assets today
-- **Derived assets:** a `derived_from` link from a copy to its original (e.g. a watermarked image), set by whoever creates the copy. The Folio library then shows an original with its derivatives as one stack: the original as thumbnail, a bubble with the number of derivatives, the derivatives reachable from the stack (owner's wish)
-- **Asset garbage collection:** delete unreferenced assets (filter by owner/origin, minimum age), or release on publish the assets a publish drops; a record's delete in Folio never deletes its assets today
+- ~~**`importFile(…, bool $private)`**~~ — done in 0.43
+- ~~**Derived assets** and **asset garbage collection**~~ — done in 0.43 (copies as stacks in the library; opt-in cleanup into a bin)
+- **External video embeds (later, if a project needs one):** YouTube/Vimeo as their own field type (an embed URL with a poster), not a media asset: the library holds files only
 
 ### Folio
 

@@ -1,8 +1,9 @@
 # preflow/media
 
 The asset library for Preflow: uploads, responsive image variants (WebP/AVIF), replacing a
-file with versions, extra fields, colour-managed variants, PDF previews, image colours,
-private files, and where each asset is used. The package does all of it by itself. Folio is only a UI
+file with versions, copies of an asset, a bin for deleted files, cleanup of unused ones, extra
+fields, colour-managed variants, PDF and video previews, image colours, private files, and where
+each asset is used. The package does all of it by itself. Folio is only a UI
 adapter on top (library screen, asset field); it adds screens and binds its own rules to the
 hooks below.
 
@@ -43,7 +44,11 @@ $library->delete($id); // refuses a used asset: AssetInUseException lists the us
 ```
 
 - `delete()` refuses an asset that is used anywhere (see usage sources) and throws
-  `Preflow\Media\Usage\AssetInUseException`.
+  `Preflow\Media\Usage\AssetInUseException`. With `bin_dir` set it moves the asset into the
+  bin instead of removing it (see The bin).
+- `find()` and `all()` return live assets only; `findBinned()` and `binned()` reach the bin.
+- `importFile($path, $name, $by, private: true)` copies a file from disk into the library as a
+  private asset, like `upload(..., private: true)`; the source stays where it is.
 - `find($id)`, `all()` and `query()` (below) read assets; `replace()`, `versions()`, `restore()`,
   `deleteVersion()` and `prune()` are in Replace and versions.
 - **Uploads do their work at once.** `upload()` (and a replace or restore) makes the variants,
@@ -72,11 +77,15 @@ return [
     'private_dir' => __DIR__ . '/../storage/private-media', // default; never under public/
     'private_url' => '/files',                // default
     'versions_dir' => __DIR__ . '/../storage/media-versions', // default; never under public/
+    'bin_dir' => null,                    // where deleted assets wait (see The bin); null: no bin
+    'cleanup' => ['enabled' => false, 'min_age_days' => 7, 'bin_days' => 30], // see Cleanup
     'fields' => [],                       // extra asset fields, see Extra fields
     'filters' => [],                      // names of extra fields offered as filters
     'color_profile_cmyk' => null,         // ICC file for CMYK images without a profile; null: the shipped FOGRA39L
     'ghostscript' => null,                // gs binary for PDF previews; null: looked up on PATH
     'pdftocairo' => null,                 // Poppler's pdftocairo; null: looked up on PATH
+    'ffmpeg' => null,                     // ffmpeg binary for video previews; null: looked up on PATH
+    'ffprobe' => null,                    // ffprobe binary (video length); null: looked up on PATH
 ];
 ```
 
@@ -84,7 +93,7 @@ return [
   (deprecated, logged to the debug collector and listed in the devtools debug toolbar). The
   two are never merged: a present `media.php` wins entirely.
 - Who may download private files is not a media setting; see Private files.
-- A `private_dir` or `versions_dir` inside `public/` or the media directory is refused at boot,
+- A `private_dir`, `versions_dir` or `bin_dir` inside `public/` or the media directory is refused at boot,
   and so is a `color_profile_cmyk` that is not a readable file.
 - `versions_dir` and `private_dir` set to `null` (or `''`) turn the feature off: without a
   `versions_dir`, `replace()` throws `AssetUploadException` rather than lose the current file.
@@ -275,6 +284,76 @@ php preflow media:versions:prune [--keep=N] [--older-than=DAYS] [--id=<id>]
 
 Give `--keep`, `--older-than` or both; `--id` limits it to one asset.
 
+## Copies and makers
+
+A copy is an asset of its own that remembers which asset it came from, so a library can show an
+original with its copies (a cropped version, a watermarked one) and make a copy again when the
+original changes. The copy has its own id, file, alt text, focal point and edits; the link is
+`derived_from` (the original's id), plus `maker`, `maker_params` and `derived_version`.
+
+```php
+// the copy's file comes from you (a watermark you drew, a cut-out)
+$copy = $library->derive($originalId, $path, $userId, maker: 'watermark', params: ['line' => '(c) Me']);
+
+// a copy of the file as it is now, with the original's crop, turn and mirror as its start
+$copy = $library->makeCopy($originalId, $userId);
+
+$library->copies($originalId);   // list<Asset>, newest first
+$library->copyCounts($ids);      // [id => number of live copies]
+```
+
+- `derive($originalId, $file, $by, $maker, $params, $private)` stores `$file` as a copy of the
+  original. Given the id of a copy it links to that copy's original, so stacks are one level deep.
+  `$private` null takes the original's flag. The file is read from disk and stays where it is.
+- `makeCopy($id, $by)` copies the file and the edits (crop, turn, mirror, format crops, focal point)
+  so the copy starts as the original looks now; editing it changes only the copy. Called on a copy
+  it makes a sibling with the same original, maker and settings. The maker is the reserved
+  name `copy`.
+- **Makers.** A maker produces a copy's file from its original, so it can be produced again:
+
+```php
+use Preflow\Media\Asset;
+use Preflow\Media\Derived\{DerivedMaker, DerivedMakers};
+
+final class Watermark implements DerivedMaker
+{
+    public function name(): string { return 'watermark'; }
+
+    public function make(Asset $original, string $file, array $params): string
+    {
+        $out = tempnam(sys_get_temp_dir(), 'wm');
+        // draw $params['line'] onto $file, write the result to $out
+        return $out;   // the library owns this temp file and deletes it
+    }
+}
+
+// in your provider's boot()
+$container->get(DerivedMakers::class)->register(new Watermark());
+```
+
+- **What a maker receives:** the `Asset` of the original, `$file` and the copy's `$params`. `$file`
+  is the original as people see it: turned and mirrored, without the crop, at full size (the raw
+  file for an unedited image, a video or a document). It is a temp file the library deletes
+  afterwards. The maker returns the path of a new temp file, which the library owns as well.
+  Only the maker `copy` is different: it takes the original's raw file and keeps the copy's own
+  crop, turn and mirror.
+- `DerivedMakers` is one registry per container (`#[Singleton]`); register in `boot()`. `copy` is
+  reserved and cannot be registered (`InvalidArgumentException`).
+- **Remake.** `remake($copyId, $by, ?array $params = null)` runs the maker again on the original's
+  current file and swaps the result into the same copy, keeping its id, so everything that uses
+  it keeps working; the old file becomes a version (needs `versions_dir`, like `replace()`).
+  `$params` null keeps the stored settings. It refuses (`InvalidArgumentException`, nothing
+  changed) an original, a copy whose maker is not registered, and a copy whose original is gone
+  or in the bin.
+- `canRemake($copy)` says whether `remake()` can work; `isStale($copy)` is true when the original
+  was replaced after the copy was made or remade (`derived_version` is older than the original's
+  `version`).
+- **Copies are hidden in lists.** `query()` leaves them out unless you pass `copies: true` or
+  search, so a library shows originals; copies are reached through `copies()`.
+- **Copies protect their original.** `CopyReferences`, a usage source the core registers, reports
+  every live copy as a use of its original: the original cannot be deleted while a copy exists,
+  cleanup keeps it, and emptying the bin skips it. A copy in the bin does not count.
+
 ## Extra fields
 
 Add fields of your own to every asset (a licence, a photographer, a category) in
@@ -368,6 +447,34 @@ example after Ghostscript has been upgraded. A preview is rendered to a temp fil
 then swapped in, so a render that fails or is killed keeps the working preview. `--id` of an
 unknown asset is an error (exit 1).
 
+## Video previews
+
+A video (MP4, WebM, QuickTime) gets a preview from one frame: a PNG in sRGB, long side 1600 px,
+stored next to the file (`Y/m/{id}[-v{n}]-preview.png`, in `private_dir` for a private asset). It
+works like the PDF preview, so the library, the picker, `media_image()`, `media_preview_url()`, the
+colours and the box formats treat a video like a document with a picture.
+
+- **Needs ffmpeg.** It is looked up on PATH and in the usual places; `ffmpeg` and `ffprobe` in
+  `config/media.php` name the binaries, so a static build placed in the hosting account works
+  where the host has none. `ffprobe` is optional (it reads the length). Without ffmpeg there are
+  no previews and videos keep their plain tile; uploads still work.
+- **Which frame.** For a video shorter than 10 seconds the frame at 10 % of its length, else the
+  frame at 1 second. Without ffprobe, or when it cannot read the file, 1 second. If no frame comes
+  out there, the first frame is tried. Non-square pixels are made square and a turned video is
+  turned.
+- **A poster wins.** An image poster set on the video (or on a document) is shown instead of the
+  preview, in the library and in `media_image()`; clear the poster and the frame is back.
+- ffmpeg is run with an argument list (no shell), reads only the asset's own file and has a
+  20 second limit for all its tries. A broken file leaves `preview` null and the upload succeeds.
+- A replace makes the preview again. Like the PDF preview it is rendered in the upload's request.
+
+```
+php preflow media:previews [--id=<id>] [--all] [--limit=<n>] [--offset=<n>]
+```
+
+`media:previews` covers videos as well as PDFs: run it once after ffmpeg is installed to give
+existing videos their preview.
+
 ## Colours
 
 Images (and the previews of documents) get their colours when they are uploaded or replaced:
@@ -416,7 +523,9 @@ All are in the package's `extra.preflow.commands` and need `preflow/devtools`.
 |---|---|
 | `media:variants [--id=<id>] [--all] [--limit=N] [--offset=N]` | makes the variants again (`--all` includes step widths and box variants) |
 | `media:versions:prune [--keep=N] [--older-than=DAYS] [--id=<id>]` | deletes earlier files of replaced assets |
-| `media:previews [--id=<id>] [--all] [--limit=N] [--offset=N]` | makes PDF previews |
+| `media:previews [--id=<id>] [--all] [--limit=N] [--offset=N]` | makes PDF and video previews |
+| `media:bin [--restore=<id>] [--empty] [--limit=N] [--offset=N]` | lists the bin, restores an asset, empties what is old enough |
+| `media:cleanup [--delete] [--kind=<kind>] [--by=<user>] [--private\|--public] [--older-than=DAYS] [--limit=N] [--offset=N]` | lists unused assets, or moves them into the bin |
 | `media:colors --all [--limit=N] [--offset=N] \| --id=<id>` | reads the colours of images and previews |
 
 **Long runs.** A host may end long SSH sessions (some after about 12 minutes). Run
@@ -475,6 +584,78 @@ A source may scan its data on request or keep an index up to date on save; the i
 does not care. It is asked on every delete, so keep it cheap: Folio's skips types without
 asset or blocks fields and, on SQL storage, reads only rows whose columns contain the id.
 
+## The bin
+
+Set `bin_dir` and every delete moves the asset into the bin instead of removing it: a manual
+delete, cleanup, and anything that calls `delete()`. Without `bin_dir` delete removes files for
+good as before, and `preflow migrate` and Folio's library warn about it.
+
+```php
+'bin_dir' => __DIR__ . '/../storage/media-bin',   // never under public/ or the media dir
+```
+
+- `delete($id)` still refuses a used asset. A binned asset is hidden from `find()`, `all()`,
+  `query()`, the pickers and `media_image()`; `findBinned($id)` and `binned($page, $perPage)`
+  (newest first) reach it.
+- **What is kept.** The asset's own files move to `{bin_dir}/{id}/`: the current file, earlier
+  versions and a document's or video's preview. Variants, the rendered master and box files are
+  deleted and made again on restore. The record stays, with `binned_at` set (UTC).
+- `restoreFromBin($id)` moves the files back and makes the variants again. A copy whose original
+  is in the bin restores the original first. It throws for an asset that is not in the bin.
+- **Posters and revisions are kept.** A poster of a binned video or document, and an asset an
+  earlier revision still uses, are reported as non-blocking uses (`AssetUsageEntry::$blocksDelete`
+  false): you may move them to the bin by hand, but emptying the bin never deletes them for good
+  while they could still be needed.
+- **Emptying.** `emptyBin($olderThanDays)` deletes for good the assets binned longer ago than
+  that and keeps any that a usage source still reports (with the reason). It returns a
+  `BinEmptyResult`. Nothing empties the bin by itself; run the command (a cron job works).
+- `bin_dir` must be a shared directory in a deployment (Deployer `shared_dirs`:
+  `storage/media-bin`) and git-ignored, or the next release deletes the bin.
+- Without a bin there is no restore: `discard()` and a delete without `bin_dir` remove for good.
+
+```
+php preflow media:bin                                  # list the bin
+php preflow media:bin --restore=<id>                   # bring one back
+php preflow media:bin --empty                          # delete for good what is older than cleanup.bin_days
+php preflow media:bin --empty --limit=100 [--offset=N] # in chunks; prints the command for the next one
+```
+
+The list takes `--limit` and `--offset` as well. `--empty` prints how many assets it deleted and
+which it kept and why.
+
+## Cleanup
+
+Cleanup finds assets that nothing uses and moves them into the bin. It is **off** until you turn
+it on:
+
+```php
+'cleanup' => [
+    'enabled' => false,     // opt in
+    'min_age_days' => 7,    // an asset is only looked at this long after its upload
+    'bin_days' => 30,       // what media:bin --empty deletes: in the bin longer than this
+],
+```
+
+> **Warning.** Cleanup only knows the usages reported through usage sources. Folio reports its
+> records and their revisions. An app that stores asset ids or URLs anywhere else must register an
+> `AssetReferenceSource`, or cleanup treats those assets as unused.
+
+It covers every kind of asset, public and private (kinds `image`, `video`, `document`; text, ZIP
+and Office files are documents). An asset counts as unused when no source reports it at all, a
+non-blocking use (a poster, a revision, the original of a copy) included.
+
+```
+php preflow media:cleanup                  # list the unused assets and why; changes nothing
+php preflow media:cleanup --delete         # move them into the bin (needs bin_dir)
+```
+
+Options: `--kind=image|video|document`, `--by=<uploader>`, `--private` or `--public`,
+`--older-than=<days>` (instead of `min_age_days`), `--limit=<n>` and `--offset=<n>`. With
+`--limit` it checks at most n assets and prints the command that continues. While `enabled` is
+false the command refuses and says why. Cleanup never deletes for good: a mistake is undone with
+`media:bin --restore=<id>` until `media:bin --empty` has run. Folio adds an "Unused only" filter
+to its library when cleanup is on.
+
 ## Private files
 
 Uploads with `private: true` go to `private_dir`, outside `public/`, get no variants, and
@@ -515,8 +696,10 @@ table: `uuid` as the primary key, `private` a yes/no column (INTEGER on SQLite, 
 MySQL) and every other field a nullable text column (TEXT on SQLite, LONGTEXT on MySQL): `path`, `original_name`, `mime`, `title`, `poster`,
 `created_at`, `created_by`, `size`, `width`, `height`, `focal_x`, `focal_y`, `private`,
 `duration`, `alt` and `variants` (JSON), and `version`, `versions` (JSON), `preview`, `color`,
-`palette`, `text_color`, `note` and one column per extra field (typed by its field type). Columns
-it adds later are typed the same way; existing columns are never altered.
+`palette`, `text_color`, `note`, the copy columns `derived_from`, `maker`, `maker_params` (JSON) and
+`derived_version` (a number), `binned_at` and one column per extra field (typed by its field type). Columns
+it adds later are typed the same way; existing columns are never altered. Run `preflow migrate`
+when you upgrade: queries read `derived_from` and `binned_at`.
 
 ## Use without Folio
 
