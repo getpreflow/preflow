@@ -2691,7 +2691,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/folio",
-                "reference": "fe8686ee6c4e130319f8ae0d793feeb28f83c7e4"
+                "reference": "4a923a272d613a4df858fb11536abfb8384532ed"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
@@ -2704,7 +2704,7 @@
                 "preflow/form": "^0.1 || @dev",
                 "preflow/htmx": "^0.1 || @dev",
                 "preflow/i18n": "^0.39 || @dev",
-                "preflow/media": "^0.36 || @dev",
+                "preflow/media": "^0.43 || @dev",
                 "preflow/notify": "^0.25 || @dev",
                 "preflow/routing": "^0.1 || @dev",
                 "preflow/validation": "^0.37 || @dev",
@@ -2717,7 +2717,7 @@
                 "preflow/core": "<0.34",
                 "preflow/data": "<0.42",
                 "preflow/i18n": "<0.39",
-                "preflow/media": "<0.36",
+                "preflow/media": "<0.43",
                 "preflow/members": "<0.39",
                 "preflow/notify": "<0.25",
                 "preflow/validation": "<0.37"
@@ -2893,7 +2893,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/media",
-                "reference": "6f16ae513ebe0af5775c7f74d3ef78c7a5228e8d"
+                "reference": "8c27411bf29b83297579c453172ed52417a2c368"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
@@ -2920,6 +2920,8 @@
             "extra": {
                 "preflow": {
                     "commands": [
+                        "Preflow\\Media\\Console\\BinCommand",
+                        "Preflow\\Media\\Console\\CleanupCommand",
                         "Preflow\\Media\\Console\\ColorsCommand",
                         "Preflow\\Media\\Console\\PreviewsCommand",
                         "Preflow\\Media\\Console\\VariantsCommand",
