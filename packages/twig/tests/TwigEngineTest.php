@@ -171,4 +171,14 @@ final class TwigEngineTest extends TestCase
     {
         $this->assertFalse(method_exists($this->engine, 'getTwig'));
     }
+
+    public function test_qr_svg_function_renders_svg(): void
+    {
+        $this->engine->addFunction(
+            (new \Preflow\View\ViewExtensionProvider())->getTemplateFunctions()[0],
+        );
+        $this->createTemplate('qr.twig', "{{ qr_svg('https://x.test') }}");
+
+        $this->assertStringContainsString('<svg', $this->engine->render('qr.twig'));
+    }
 }

@@ -678,6 +678,11 @@ final class Application
             $helpersProvider = new \Preflow\Core\Helpers\HelpersExtensionProvider($responsiveImage);
             $this->registerExtensionProvider($engine, $helpersProvider);
         }
+
+        // QR template function
+        if (class_exists(\Preflow\View\ViewExtensionProvider::class)) {
+            $this->registerExtensionProvider($engine, new \Preflow\View\ViewExtensionProvider());
+        }
     }
 
     private function bootForm(): void

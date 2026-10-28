@@ -160,4 +160,14 @@ final class BladeEngineTest extends TestCase
         $css = $this->assets->renderCss();
         $this->assertStringContainsString('.test { color: red; }', $css);
     }
+
+    public function test_qr_svg_function_renders_svg(): void
+    {
+        $this->engine->addFunction(
+            (new \Preflow\View\ViewExtensionProvider())->getTemplateFunctions()[0],
+        );
+        file_put_contents($this->tmpDir . '/qr.blade.php', "@qr_svg('https://x.test')");
+
+        $this->assertStringContainsString('<svg', $this->engine->render('qr'));
+    }
 }
