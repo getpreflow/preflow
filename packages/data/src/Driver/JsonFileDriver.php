@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Driver;
 
+use Preflow\Data\AggregateQuery;
+use Preflow\Data\AggregatingStorage;
 use Preflow\Data\ExclusiveWrites;
 use Preflow\Data\LocaleValue;
 use Preflow\Data\Locales;
@@ -12,7 +14,7 @@ use Preflow\Data\ResultSet;
 use Preflow\Data\SortDirection;
 use Preflow\Data\VersionedStorage;
 
-final class JsonFileDriver implements VersionedStorage, ExclusiveWrites
+final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage
 {
     /** @var array<string, true> types whose lock this driver holds (exclusive() nests) */
     private array $locked = [];
@@ -195,16 +197,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites
             return new ResultSet([]);
         }
 
-        $items = $this->loadRecords($type, $dir);
-
-        // Apply search
-        if ($query->getSearchTerm() !== null) {
-            $items = $this->applySearch($items, $query->getSearchTerm(), $query->getSearchFields(), $query);
-        }
-
-        // Apply where conditions
-        $items = $this->applyWheres($items, $query->getWheres(), $query);
-        $items = $this->applyAnyGroups($items, $query);
+        $items = $this->matching($type, $dir, $query);
 
         // Apply ordering
         $items = $this->applyOrderBy($items, $query->getOrderBy(), $query);
@@ -223,6 +216,196 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites
         }, $items);
 
         return new ResultSet(array_values($items), $total);
+    }
+
+    /**
+     * The type's records that pass the query's search, wheres and OR-groups.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function matching(string $type, string $dir, Query $query): array
+    {
+        $items = $this->loadRecords($type, $dir);
+        if ($query->getSearchTerm() !== null) {
+            $items = $this->applySearch($items, $query->getSearchTerm(), $query->getSearchFields(), $query);
+        }
+        $items = $this->applyWheres($items, $query->getWheres(), $query);
+
+        return $this->applyAnyGroups($items, $query);
+    }
+
+    /**
+     * Groups and computes in PHP what SQL's GROUP BY does, with the same rules (see
+     * AggregateQuery): missing values form one group, measures skip them, number fields count
+     * as numbers (numeric text too), other values compare as stored; having, then the orders,
+     * then limit and offset.
+     */
+    public function aggregate(AggregateQuery $aggregate): array
+    {
+        $type = $aggregate->table();
+        $dir = $this->typeDir($type);
+        $query = $aggregate->query();
+        $numeric = array_fill_keys($aggregate->numericFields(), true);
+        $items = self::safeName($type) && is_dir($dir) ? $this->matching($type, $dir, $query) : [];
+
+        $groups = [];
+        foreach ($items as $item) {
+            $values = [];
+            foreach ($aggregate->groups() as $field) {
+                $value = $this->value($item, $field, $query);
+                $values[$field] = isset($numeric[$field]) ? self::numberOrAsStored($value) : $value;
+            }
+            $key = self::key(array_values($values));
+            $groups[$key] ??= ['values' => $values, 'items' => []];
+            $groups[$key]['items'][] = $item;
+        }
+        if ($groups === [] && $aggregate->groups() === []) {
+            $groups[] = ['values' => [], 'items' => []]; // totals of nothing are one row
+        }
+
+        $rows = [];
+        foreach ($groups as $group) {
+            $row = $group['values'];
+            foreach ($aggregate->measures() as $measure) {
+                $row[$measure['as']] = $this->measure($measure, $group['items'], $query, isset($numeric[(string) $measure['field']]));
+            }
+            if ($this->passesHavings($row, $aggregate->havings())) {
+                $rows[] = $row;
+            }
+        }
+
+        $orders = $aggregate->orders();
+        usort($rows, static function (array $a, array $b) use ($orders): int {
+            foreach ($orders as $order) {
+                $cmp = self::compareNullsFirst($a[$order['name']], $b[$order['name']]);
+                if ($cmp !== 0) {
+                    return $order['direction'] === SortDirection::Desc ? -$cmp : $cmp;
+                }
+            }
+
+            return 0;
+        });
+
+        $limit = $aggregate->limitValue();
+        $offset = $aggregate->offsetValue();
+        if ($limit !== null || $offset !== null) {
+            $rows = array_slice($rows, $offset ?? 0, $limit);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * One measure over a group's records. count counts records; the others skip missing values
+     * (null, and '' where a number is read).
+     *
+     * @param array{fn: string, field: ?string, as: string} $measure
+     * @param list<array<string, mixed>> $items
+     */
+    private function measure(array $measure, array $items, Query $query, bool $numericField): int|float|string|bool|null
+    {
+        if ($measure['fn'] === 'count') {
+            return count($items);
+        }
+        $asNumbers = $numericField || in_array($measure['fn'], ['sum', 'avg'], true);
+        $values = [];
+        foreach ($items as $item) {
+            $value = $this->value($item, (string) $measure['field'], $query);
+            $value = $asNumbers ? self::number($value) : $value;
+            if ($value !== null && is_scalar($value)) {
+                $values[] = $value;
+            }
+        }
+
+        return match ($measure['fn']) {
+            'countDistinct' => count(array_unique(array_map(static fn (mixed $v): string => self::key([$v]), $values))),
+            'sum' => array_sum($values),
+            'avg' => $values === [] ? null : array_sum($values) / count($values),
+            'min' => $values === [] ? null : array_reduce($values, static fn ($carry, $v) => $carry === null || self::compare($v, $carry) < 0 ? $v : $carry),
+            'max' => $values === [] ? null : array_reduce($values, static fn ($carry, $v) => $carry === null || self::compare($v, $carry) > 0 ? $v : $carry),
+            default => throw new \InvalidArgumentException(sprintf('Unknown aggregate function "%s".', $measure['fn'])),
+        };
+    }
+
+    /**
+     * A stored value read as a number, as SQL does: null for null and '' (no number), the
+     * leading number of other text (0 if none), booleans as 1 and 0; anything else no value.
+     */
+    private static function number(mixed $value): int|float|null
+    {
+        return match (true) {
+            $value === null, $value === '' => null,
+            is_int($value), is_float($value) => $value,
+            is_bool($value) => (int) $value,
+            is_string($value) => is_numeric($value) ? $value + 0 : (float) $value,
+            default => null,
+        };
+    }
+
+    /**
+     * What tells values apart: their type and value, with 8 and 8.0 one number.
+     *
+     * @param list<mixed> $values
+     */
+    private static function key(array $values): string
+    {
+        $values = array_map(static fn (mixed $v): mixed => is_int($v) ? (float) $v : $v, $values);
+
+        return json_encode($values, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION | JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    /** A number field's group value: its number, but '' and non-scalar values as stored. */
+    private static function numberOrAsStored(mixed $value): mixed
+    {
+        return $value !== '' && is_scalar($value) ? self::number($value) : $value;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param list<array{alias: string, operator: string, value: int|float}> $havings
+     */
+    private function passesHavings(array $row, array $havings): bool
+    {
+        foreach ($havings as $having) {
+            $value = self::number($row[$having['alias']]);
+            if ($value === null) {
+                return false; // a missing result matches no comparison
+            }
+            $passes = match ($having['operator']) {
+                '=' => $value == $having['value'],
+                '!=' => $value != $having['value'],
+                '<' => $value < $having['value'],
+                '<=' => $value <= $having['value'],
+                '>' => $value > $having['value'],
+                '>=' => $value >= $having['value'],
+                default => false,
+            };
+            if (!$passes) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** Ascending order with null first, as SQLite and MySQL sort it. */
+    private static function compareNullsFirst(mixed $a, mixed $b): int
+    {
+        if ($a === null || $b === null) {
+            return ($a !== null) <=> ($b !== null);
+        }
+
+        return self::compare($a, $b);
+    }
+
+    /** Numbers by value, text by its bytes (as SQL's binary comparison), anything else by PHP's order. */
+    private static function compare(mixed $a, mixed $b): int
+    {
+        if (is_string($a) && is_string($b)) {
+            return strcmp($a, $b) <=> 0;
+        }
+
+        return $a <=> $b;
     }
 
     public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void

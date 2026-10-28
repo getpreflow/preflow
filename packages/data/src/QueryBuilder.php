@@ -328,8 +328,9 @@ final class QueryBuilder
 
     /**
      * Group and count, sum, average… the records this builder's filters select (where,
-     * whereAny, search, searchLoose, in its locale). This builder's orderBy, limit and offset
-     * do not apply: the aggregate query has its own.
+     * whereAny, search, searchLoose, in its locale), as they are now: later changes to this
+     * builder do not reach the aggregate query. This builder's orderBy, limit and offset do
+     * not apply: the aggregate query has its own.
      */
     public function aggregate(): AggregateQuery
     {
@@ -337,12 +338,16 @@ final class QueryBuilder
         $fields = [];
         $numeric = [];
         $multiple = [];
+        $boolean = [];
         if ($this->typeDef !== null) {
             $fields[] = $this->typeDef->idField;
             foreach ($this->typeDef->fields as $name => $def) {
                 $fields[] = $name;
-                if ($kinds->columnKindOf($def) === ColumnKind::Number) {
+                $kind = $kinds->columnKindOf($def);
+                if ($kind === ColumnKind::Number) {
                     $numeric[] = $name;
+                } elseif ($kind === ColumnKind::Boolean) {
+                    $boolean[] = $name;
                 }
                 if ($kinds->isRelation($def->type) && ($def->config['multiple'] ?? false)) {
                     $multiple[] = $name;
@@ -357,6 +362,8 @@ final class QueryBuilder
                 $type = (new \ReflectionProperty($this->meta->modelClass, $name))->getType();
                 if ($type instanceof \ReflectionNamedType && in_array($type->getName(), ['int', 'float'], true)) {
                     $numeric[] = $name;
+                } elseif ($type instanceof \ReflectionNamedType && $type->getName() === 'bool') {
+                    $boolean[] = $name;
                 }
             }
         }
@@ -366,10 +373,11 @@ final class QueryBuilder
         return new AggregateQuery(
             $this->driver,
             (string) ($this->meta?->table ?? $this->typeDef?->table),
-            $this->prepared(),
+            clone $this->prepared(),
             $fields,
             $numeric,
             $multiple,
+            array_values(array_unique($boolean)),
         );
     }
 

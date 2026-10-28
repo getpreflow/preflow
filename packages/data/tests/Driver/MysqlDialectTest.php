@@ -28,6 +28,11 @@ final class MysqlDialectTest extends TestCase
         $this->assertSame("(NULLIF(CAST(`n` AS CHAR), '') + 0e0)", $this->dialect->numericValue('`n`'));
     }
 
+    public function test_exact_text_compares_case(): void
+    {
+        $this->assertSame('(CAST(`s` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin)', $this->dialect->exactText('`s`'));
+    }
+
     public function test_update_targets_one_row_by_id(): void
     {
         $this->assertSame(

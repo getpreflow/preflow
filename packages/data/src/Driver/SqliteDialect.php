@@ -104,6 +104,12 @@ final class SqliteDialect implements Dialect
         return "CAST(NULLIF({$expression}, '') AS REAL)";
     }
 
+    /** SQLite compares text with BINARY unless a column says otherwise; the tables here do not. */
+    public function exactText(string $expression): string
+    {
+        return $expression;
+    }
+
     /** One binding however many ids: the ids as a JSON array, read back with json_each(). */
     public function inList(string $quotedColumn, array $ids, array &$bindings): string
     {

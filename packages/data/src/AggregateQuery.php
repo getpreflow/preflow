@@ -12,11 +12,12 @@ namespace Preflow\Data;
  * Every name is checked against the type's fields (or the model's), so no caller text reaches
  * the storage as SQL. The rules are the same on every storage:
  * - count() counts records; every other measure skips missing values: NULL, and '' in number
- *   fields (sum, avg and the numeric min/max skip '' in any field, as it is no number).
- * - sum() and avg() treat values as numbers; min(), max() and countDistinct() do for number
- *   fields and compare stored values as they are for any other field.
+ *   fields.
+ * - sum() and avg() take number fields only; min(), max() and countDistinct() compare numbers
+ *   for number fields and stored values as they are, case and all, for any other field.
  * - avg/min/max of no values are null, sum of no values is 0; numbers come back as int when
- *   integral, else as float (also number fields among the group values).
+ *   integral, else as float, and booleans as bool (also among the group values).
+ * - Text groups are exact: 'a' and 'A' are two groups.
  * - Ordered by orderBy() first, then by the group fields ascending (also as tie-breakers).
  *
  * The builder's own orderBy(), limit() and offset() do not apply; this query has its own.
@@ -46,6 +47,7 @@ final class AggregateQuery
      * @param list<string> $fields the fields the type or model has (names allowed in a query)
      * @param list<string> $numericFields the fields stored as numbers
      * @param list<string> $multipleFields the relation fields holding a list of ids
+     * @param list<string> $booleanFields the fields stored as booleans
      */
     public function __construct(
         private readonly StorageDriver $driver,
@@ -54,6 +56,7 @@ final class AggregateQuery
         private readonly array $fields,
         private readonly array $numericFields = [],
         private readonly array $multipleFields = [],
+        private readonly array $booleanFields = [],
     ) {}
 
     /** Group by these fields (a single relation groups by the related id; a multiple relation is refused). */
@@ -84,14 +87,16 @@ final class AggregateQuery
         return $this->measure('countDistinct', $field, $as);
     }
 
+    /** The sum of a number field. */
     public function sum(string $field, string $as): self
     {
-        return $this->measure('sum', $field, $as);
+        return $this->measure('sum', $this->numberField($field, 'sum'), $as);
     }
 
+    /** The average of a number field. */
     public function avg(string $field, string $as): self
     {
-        return $this->measure('avg', $field, $as);
+        return $this->measure('avg', $this->numberField($field, 'avg'), $as);
     }
 
     public function min(string $field, string $as): self
@@ -240,6 +245,12 @@ final class AggregateQuery
         return $this->numericFields;
     }
 
+    /** @return list<string> */
+    public function booleanFields(): array
+    {
+        return $this->booleanFields;
+    }
+
     public function table(): string
     {
         return $this->table;
@@ -268,6 +279,17 @@ final class AggregateQuery
         }
     }
 
+    /** A field sum() or avg() may take: a number would be guessed from any other. */
+    private function numberField(string $field, string $fn): string
+    {
+        $this->field($field);
+        if (!$this->isNumeric($field)) {
+            throw new \InvalidArgumentException(sprintf('%s() needs a number field; "%s" is no number.', $fn, $field));
+        }
+
+        return $field;
+    }
+
     private function isNumeric(string $field): bool
     {
         return in_array($field, $this->numericFields, true);
@@ -293,7 +315,7 @@ final class AggregateQuery
     }
 
     /**
-     * A row as the rules say: numbers as int or float, sum of nothing 0.
+     * A row as the rules say: numbers as int or float, booleans as bool, sum of nothing 0.
      *
      * @param array<string, mixed> $row
      * @return array<string, mixed>
@@ -303,7 +325,7 @@ final class AggregateQuery
         $typed = [];
         foreach ($this->groups as $field) {
             $value = $row[$field] ?? null;
-            $typed[$field] = $this->isNumeric($field) ? self::number($value) : $value;
+            $typed[$field] = $this->value($field, $value);
         }
         foreach ($this->measures as $measure) {
             $value = $row[$measure['as']] ?? null;
@@ -311,11 +333,25 @@ final class AggregateQuery
                 'count', 'countDistinct' => (int) $value,
                 'sum' => self::number($value) ?? 0,
                 'avg' => self::number($value),
-                default => $this->isNumeric((string) $measure['field']) ? self::number($value) : $value,
+                default => $this->value((string) $measure['field'], $value),
             };
         }
 
         return $typed;
+    }
+
+    /** A field's value (a group value, a min or max) as its kind: number, bool or as stored. */
+    private function value(string $field, mixed $value): mixed
+    {
+        if ($this->isNumeric($field)) {
+            return self::number($value);
+        }
+        if (in_array($field, $this->booleanFields, true)) {
+            // SQLite gives 0/1, MySQL '0'/'1', JSON true/false.
+            return $value === null || $value === '' ? null : (bool) (is_string($value) ? (int) $value : $value);
+        }
+
+        return $value;
     }
 
     /** An int when integral (and exact as one), else a float; null and '' are null; anything else as it is. */

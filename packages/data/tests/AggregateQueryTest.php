@@ -108,6 +108,18 @@ final class AggregateQueryTest extends TestCase
         $this->aggregate()->groupBy('tags');
     }
 
+    public function test_sum_and_avg_of_a_field_that_is_no_number_are_refused(): void
+    {
+        foreach (['sum', 'avg'] as $fn) {
+            try {
+                $this->aggregate()->{$fn}('member', 'x');
+                $this->fail("{$fn}() of a relation must be refused");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('"member" is no number', $e->getMessage());
+            }
+        }
+    }
+
     public function test_driver_without_aggregating_storage_is_refused(): void
     {
         $this->expectException(\LogicException::class);

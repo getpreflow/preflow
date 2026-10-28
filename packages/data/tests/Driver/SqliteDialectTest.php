@@ -31,6 +31,11 @@ final class SqliteDialectTest extends TestCase
         $this->assertSame([2, 2.5], $pdo->query($sql)->fetch(\PDO::FETCH_NUM));
     }
 
+    public function test_exact_text_is_the_binary_column(): void
+    {
+        $this->assertSame('"s"', $this->dialect->exactText('"s"'));
+    }
+
     public function test_update_targets_one_row_by_id(): void
     {
         $this->assertSame(

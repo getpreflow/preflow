@@ -67,17 +67,18 @@ class QueryCompiler
     {
         $query = $aggregate->query();
         $numeric = array_fill_keys($aggregate->numericFields(), true);
+        $boolean = array_fill_keys($aggregate->booleanFields(), true);
         $bindings = [];
         $select = [];
 
         $groups = [];
         foreach ($aggregate->groups() as $field) {
-            $groups[$field] = $this->column($field, $query);
+            $groups[$field] = $this->stored($field, $query, $numeric, $boolean);
             $select[] = $groups[$field] . ' AS ' . $this->dialect->quoteIdentifier($field);
         }
         $measures = [];
         foreach ($aggregate->measures() as $measure) {
-            $measures[$measure['as']] = $this->measure($measure, $query, $numeric);
+            $measures[$measure['as']] = $this->measure($measure, $query, $numeric, $boolean);
             $select[] = $measures[$measure['as']] . ' AS ' . $this->dialect->quoteIdentifier($measure['as']);
         }
 
@@ -122,21 +123,21 @@ class QueryCompiler
     }
 
     /**
-     * One result's SQL. sum and avg take numbers of any field; countDistinct, min and max do
-     * for number fields and compare stored values otherwise. A sum of no values is 0.
+     * One result's SQL. sum and avg take numbers (of number fields); countDistinct, min and max
+     * do for number fields and compare stored values otherwise. A sum of no values is 0.
      *
      * @param array{fn: string, field: ?string, as: string} $measure
      * @param array<string, true> $numeric
+     * @param array<string, true> $boolean
      */
-    private function measure(array $measure, Query $query, array $numeric): string
+    private function measure(array $measure, Query $query, array $numeric, array $boolean): string
     {
         if ($measure['fn'] === 'count') {
             return 'COUNT(*)';
         }
         $field = (string) $measure['field'];
-        $column = $this->column($field, $query);
-        $number = $this->dialect->numericValue($column);
-        $value = isset($numeric[$field]) ? $number : $column;
+        $number = $this->dialect->numericValue($this->column($field, $query));
+        $value = isset($numeric[$field]) ? $number : $this->stored($field, $query, $numeric, $boolean);
 
         return match ($measure['fn']) {
             'countDistinct' => "COUNT(DISTINCT {$value})",
@@ -146,6 +147,20 @@ class QueryCompiler
             'max' => "MAX({$value})",
             default => throw new \InvalidArgumentException(sprintf('Unknown aggregate function "%s".', $measure['fn'])),
         };
+    }
+
+    /**
+     * A field's value as grouped and compared as stored: text exactly (case and all, on every
+     * storage), numbers and booleans as their columns hold them.
+     *
+     * @param array<string, true> $numeric
+     * @param array<string, true> $boolean
+     */
+    private function stored(string $field, Query $query, array $numeric, array $boolean): string
+    {
+        $column = $this->column($field, $query);
+
+        return isset($numeric[$field]) || isset($boolean[$field]) ? $column : $this->dialect->exactText($column);
     }
 
     /**

@@ -103,6 +103,16 @@ final class MysqlDialect implements Dialect
         return "(NULLIF(CAST({$expression} AS CHAR), '') + 0e0)";
     }
 
+    /**
+     * The tables' collations ignore case; utf8mb4_bin compares code points. The cast first
+     * gives any expression (a JSON value, a column of another charset) the charset utf8mb4_bin
+     * belongs to.
+     */
+    public function exactText(string $expression): string
+    {
+        return "(CAST({$expression} AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin)";
+    }
+
     public function inList(string $quotedColumn, array $ids, array &$bindings): string
     {
         array_push($bindings, ...array_values($ids));

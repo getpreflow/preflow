@@ -49,6 +49,12 @@ interface Dialect
     public function numericValue(string $expression): string;
 
     /**
+     * SQL expression for a text value that groups, compares and sorts by its exact characters
+     * (byte order): 'a' and 'A' are different, whatever the column's collation.
+     */
+    public function exactText(string $expression): string;
+
+    /**
      * SQL true when the column equals any of the ids (a non-empty list). Appends its bindings,
      * as few as the dialect allows: their number must not grow with the ids where avoidable.
      *
