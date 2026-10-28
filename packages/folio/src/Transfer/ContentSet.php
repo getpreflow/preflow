@@ -17,7 +17,7 @@ use Preflow\Media\MediaLibrary;
  * Everything Folio owns at runtime: its types' tables (with the published and
  * revision shadows of publishing types), the asset records, the media
  * directory, the private media directory (its files travel with their asset
- * records, archive root "private-media"), the earlier files of replaced assets
+ * records, archive root "private-media"; assets in the bin stay on the server), the earlier files of replaced assets
  * (MediaConfig versions_dir, archive root "media-versions") and legacy uploads, and the
  * admins' interface text overrides (StoredOverrides). Nothing else (code, .env, caches, sessions,
  * other tables such as user_tokens) is content.
@@ -35,6 +35,8 @@ final class ContentSet
         private readonly ?\Closure $onImport = null,
         /** @var array<string, \Closure(string, array<string, mixed>): ?string> table => why an imported row can't be stored (null: it can) */
         private readonly array $rowChecks = [],
+        /** @var array<string, \Closure(array<string, mixed>): bool> table => whether an export leaves the row out */
+        private readonly array $exportSkips = [],
     ) {}
 
     public static function fromApp(Application $app): self
@@ -81,7 +83,19 @@ final class ContentSet
             },
             // Override texts are printed unescaped: an archive's rows pass the same checks as the screen's.
             [StoredOverrides::TABLE => StoredOverrides::rowProblem(...)],
+            // The bin is local to a server: a binned asset's files are not in the archive, so elsewhere it could never be restored.
+            [$assets->table => static fn (array $row): bool => (string) ($row['binned_at'] ?? '') !== ''],
         );
+    }
+
+    /**
+     * Whether an export leaves the row out (an asset in the bin).
+     *
+     * @param array<string, mixed> $row
+     */
+    public function skipsExport(string $table, array $row): bool
+    {
+        return isset($this->exportSkips[$table]) && ($this->exportSkips[$table])($row);
     }
 
     /**

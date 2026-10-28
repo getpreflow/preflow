@@ -273,6 +273,26 @@ final class BinTest extends TestCase
         $this->lib->restoreFromBin($asset->id);
     }
 
+    public function test_restore_without_the_files_in_the_bin_is_refused_and_changes_nothing(): void
+    {
+        $asset = $this->photo();
+        $this->lib->delete($asset->id);
+        $binnedAt = $this->lib->findBinned($asset->id)?->binnedAt;
+        // The bin folder is gone (cleaned by hand, or the record came from another server).
+        unlink($this->assetRoot . '/bin/' . $asset->id . '/files/' . basename($asset->path));
+
+        try {
+            $this->lib->restoreFromBin($asset->id);
+            $this->fail('restoreFromBin() should refuse an asset whose file is not in the bin');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('the files are not in the bin', $e->getMessage());
+        }
+
+        $this->assertNull($this->lib->find($asset->id));
+        $this->assertSame($binnedAt, $this->lib->findBinned($asset->id)?->binnedAt, 'still in the bin, unchanged');
+        $this->assertSame([], $this->publicFiles($asset));
+    }
+
     public function test_restore_copy_restores_binned_original(): void
     {
         $original = $this->photo();

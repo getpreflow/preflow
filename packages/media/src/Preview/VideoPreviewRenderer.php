@@ -16,8 +16,9 @@ namespace Preflow\Media\Preview;
  * PNG; it converts the video's colours to RGB itself, without a profile.
  *
  * Both run through PdfPreviewRenderer::run() with an argument list (no shell): fixed
- * options, the asset's own path (read through the file protocol only, so a crafted
- * file cannot make ffmpeg fetch anything) and a temp output file; all passes share
+ * options, the asset's own path (read through the file protocol only, with the input
+ * format pinned by the file's type, so a crafted file cannot make ffmpeg fetch anything
+ * or read it as a playlist) and a temp output file; all passes share
  * one time limit, after which the process is killed. Without ffmpeg the renderer
  * supports nothing; a broken file, a failing ffmpeg or the time limit give null.
  * An upload never fails because of either.
@@ -28,6 +29,12 @@ final class VideoPreviewRenderer implements PreviewRenderer
     public const int TIME_LIMIT = 20;
 
     public const array MIMES = ['video/mp4', 'video/webm', 'video/quicktime'];
+
+    /** The demuxer each type is read with, pinned before -i: ffmpeg never picks one from what the file claims to be. */
+    private const array INPUT_FORMATS = ['video/mp4' => 'mov', 'video/quicktime' => 'mov', 'video/webm' => 'matroska'];
+
+    /** The library names a video's file by its type (MediaLibrary::EXTENSIONS), so the extension tells the type. */
+    private const array EXTENSION_MIMES = ['mp4' => 'video/mp4', 'mov' => 'video/quicktime', 'webm' => 'video/webm'];
 
     /** Videos shorter than this (seconds) take their frame at SHORT_FRACTION of their length. */
     private const float SHORT = 10.0;
@@ -59,14 +66,15 @@ final class VideoPreviewRenderer implements PreviewRenderer
     public function render(string $file, int $longSide): ?string
     {
         [$ffmpeg, $ffprobe] = $this->resolve();
-        if ($ffmpeg === null || $longSide < 1 || !is_file($file)) {
+        $format = self::inputFormat($file);
+        if ($ffmpeg === null || $format === null || $longSide < 1 || !is_file($file)) {
             return null;
         }
         $deadline = microtime(true) + $this->timeLimit;
-        $seek = self::seekFor($ffprobe !== null ? self::duration($ffprobe, $file, $deadline) : null);
+        $seek = self::seekFor($ffprobe !== null ? self::duration($ffprobe, $file, $format, $deadline) : null);
         foreach (array_unique([$seek, 0.0]) as $at) {
             $out = PdfPreviewRenderer::tempFile();
-            if ($this->frame($ffmpeg, $file, $at, $longSide, $out, $deadline)) {
+            if ($this->frame($ffmpeg, $file, $format, $at, $longSide, $out, $deadline)) {
                 return $out;
             }
             @unlink($out);
@@ -93,28 +101,56 @@ final class VideoPreviewRenderer implements PreviewRenderer
         ];
     }
 
-    /** The container's length in seconds as ffprobe reads it; null when it cannot. */
-    private static function duration(string $ffprobe, string $file, float $deadline): ?float
+    /** The ffmpeg input format (demuxer) for a video file of the library: by its type, which its extension tells; null for any other file. */
+    public static function inputFormat(string $file): ?string
     {
-        $out = PdfPreviewRenderer::run([
-            $ffprobe, '-v', 'error', '-protocol_whitelist', 'file',
-            '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', $file,
-        ], $deadline, capture: true);
+        $mime = self::EXTENSION_MIMES[strtolower(pathinfo($file, PATHINFO_EXTENSION))] ?? null;
+
+        return $mime !== null ? self::INPUT_FORMATS[$mime] : null;
+    }
+
+    /**
+     * ffprobe's arguments for the container's length: only the file protocol, the format pinned.
+     *
+     * @return list<string>
+     */
+    public static function probeArgs(string $ffprobe, string $file, string $format): array
+    {
+        return [
+            $ffprobe, '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1',
+            '-protocol_whitelist', 'file', '-f', $format, '-i', $file,
+        ];
+    }
+
+    /**
+     * ffmpeg's arguments for one PNG frame at $at seconds, scaled to $longSide: only the file protocol, the format pinned.
+     *
+     * @return list<string>
+     */
+    public static function frameArgs(string $ffmpeg, string $file, string $format, float $at, int $longSide, string $out): array
+    {
+        return [
+            $ffmpeg, '-nostdin', '-v', 'error', '-y',
+            '-protocol_whitelist', 'file', '-ss', sprintf('%.3F', $at), '-f', $format, '-i', $file,
+            '-an', '-sn', '-dn', '-frames:v', '1',
+            '-vf', "scale=iw*sar:ih,setsar=1,scale={$longSide}:{$longSide}:force_original_aspect_ratio=decrease",
+            '-f', 'image2pipe', '-c:v', 'png', $out,
+        ];
+    }
+
+    /** The container's length in seconds as ffprobe reads it; null when it cannot. */
+    private static function duration(string $ffprobe, string $file, string $format, float $deadline): ?float
+    {
+        $out = PdfPreviewRenderer::run(self::probeArgs($ffprobe, $file, $format), $deadline, capture: true);
         $out = $out !== null ? trim($out) : '';
 
         return is_numeric($out) && (float) $out > 0 ? (float) $out : null;
     }
 
     /** The frame at $at seconds into $out (an empty temp file), scaled to $longSide; false when none came out. */
-    private function frame(string $ffmpeg, string $file, float $at, int $longSide, string $out, float $deadline): bool
+    private function frame(string $ffmpeg, string $file, string $format, float $at, int $longSide, string $out, float $deadline): bool
     {
-        $ok = PdfPreviewRenderer::run([
-            $ffmpeg, '-nostdin', '-v', 'error', '-y',
-            '-protocol_whitelist', 'file', '-ss', sprintf('%.3F', $at), '-i', $file,
-            '-an', '-sn', '-dn', '-frames:v', '1',
-            '-vf', "scale=iw*sar:ih,setsar=1,scale={$longSide}:{$longSide}:force_original_aspect_ratio=decrease",
-            '-f', 'image2pipe', '-c:v', 'png', $out,
-        ], $deadline) !== null;
+        $ok = PdfPreviewRenderer::run(self::frameArgs($ffmpeg, $file, $format, $at, $longSide, $out), $deadline) !== null;
         clearstatcache(true, $out);
         $size = $ok && is_file($out) && filesize($out) > 0 ? @getimagesize($out) : false;
 

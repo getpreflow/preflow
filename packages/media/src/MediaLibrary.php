@@ -615,6 +615,25 @@ final class MediaLibrary
         return self::page($qb, $page, $perPage);
     }
 
+    /**
+     * The assets, live and binned, that use $id as their poster, newest first: one query on
+     * the poster column (PosterReferences asks this on every delete and every bin empty).
+     *
+     * @return list<Asset>
+     */
+    public function assetsWithPoster(string $id): array
+    {
+        if (preg_match(self::ID_PATTERN, $id) !== 1) {
+            return [];
+        }
+        $def = $this->definition();
+        $records = $this->dm->queryIn($def)->where('poster', '=', $id)
+            ->orderBy('created_at', SortDirection::Desc)->orderBy($def->idField, SortDirection::Desc)
+            ->get();
+
+        return array_map(Asset::fromRecord(...), array_values($records->items()));
+    }
+
     /** A page of the query's assets; a page past the end gives the last page. */
     private static function page(QueryBuilder $qb, int $page, int $perPage): AssetPage
     {
@@ -1063,9 +1082,10 @@ final class MediaLibrary
 
     /**
      * Move the asset into the bin (with bin_dir; restoreFromBin() brings it back), or remove it
-     * for good without one. A usage that does not block a delete (an earlier revision) lets it bin.
+     * for good without one. A usage that does not block a delete (an earlier revision) lets it bin;
+     * without bin_dir every usage refuses, since a delete for good must never break a revision.
      *
-     * @throws AssetInUseException while a usage source reports a usage that blocks a delete (nothing changes)
+     * @throws AssetInUseException while a usage source reports a usage that blocks a delete, or any usage without bin_dir (nothing changes)
      * @throws \RuntimeException when a file could not be moved into the bin (nothing changes)
      */
     public function delete(string $id): void
@@ -1074,7 +1094,7 @@ final class MediaLibrary
         if ($asset === null) {
             return;
         }
-        $usages = $this->usage?->blocking($id) ?? [];
+        $usages = ($this->binDir() !== null ? $this->usage?->blocking($id) : $this->usage?->of($id)) ?? [];
         if ($usages !== []) {
             throw new AssetInUseException($id, $usages);
         }
@@ -1094,7 +1114,7 @@ final class MediaLibrary
      * original, maker and maker settings are cleared).
      *
      * @throws \InvalidArgumentException for an asset that is not in the bin
-     * @throws \RuntimeException without bin_dir, or when a file could not be moved back (nothing changes)
+     * @throws \RuntimeException without bin_dir, when the files are not in the bin, or when a file could not be moved back (nothing changes)
      */
     public function restoreFromBin(string $id): Asset
     {
@@ -1248,14 +1268,19 @@ final class MediaLibrary
      * Where each of a binned asset's files in the bin goes back to.
      *
      * @return list<array{0: string, 1: string}> from, to
-     * @throws \RuntimeException when a file has nowhere to go (no private_dir, no versions_dir)
+     * @throws \RuntimeException when a file has nowhere to go (no private_dir, no versions_dir), or the current file is not in the bin
      */
     private function restoreMoves(Asset $asset): array
     {
         $bin = $this->binDir() . '/' . $asset->id;
         $moves = [];
-        if ($this->file($asset) === null) {
+        $file = $this->file($asset);
+        if ($file === null) {
             throw new \RuntimeException("Asset {$asset->id} could not be restored: no private directory is configured (private_dir).");
+        }
+        // A live record without its file would break every page that shows it: the bin folder went missing (another server, a manual clean-up).
+        if (!is_file($bin . '/files/' . basename($file))) {
+            throw new \RuntimeException("Asset {$asset->id} could not be restored: the files are not in the bin ({$bin}/files/).");
         }
         foreach (array_filter([$this->file($asset), $this->previewFile($asset)]) as $target) {
             if (is_file($bin . '/files/' . basename($target))) {

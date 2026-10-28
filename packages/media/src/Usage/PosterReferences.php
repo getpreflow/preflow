@@ -23,9 +23,6 @@ final class PosterReferences implements AssetReferenceSource
     public const string NOTE = 'as poster';
     public const string NOTE_BINNED = 'poster of a binned asset';
 
-    /** Binned assets read per page while looking for posters. */
-    private const int PAGE = 200;
-
     /**
      * @param \Closure(): MediaLibrary $library resolved on first use (the library itself asks this source)
      * @param (\Closure(Asset): ?string)|null $editUrl
@@ -43,26 +40,16 @@ final class PosterReferences implements AssetReferenceSource
     /** @return list<AssetUsageEntry> */
     public function usagesOf(string $assetId): array
     {
-        $library = ($this->library)();
-        $usages = [];
-        foreach ($library->all() as $asset) {
-            if ($asset->posterId === $assetId) {
-                $usages[] = new AssetUsageEntry($asset->label(), $this->editUrl !== null ? ($this->editUrl)($asset) : null, self::NAME, self::NOTE);
-            }
-        }
-        // A binned asset has no screen to edit it on: no URL.
-        for ($page = 1; ; $page++) {
-            $binned = $library->binned($page, self::PAGE);
-            foreach ($binned->page === $page ? $binned->items : [] as $asset) {
-                if ($asset->posterId === $assetId) {
-                    $usages[] = new AssetUsageEntry($asset->label(), null, self::NAME, self::NOTE_BINNED, blocksDelete: false);
-                }
-            }
-            if ($binned->page !== $page || $page * self::PAGE >= $binned->total) {
-                break;
+        $live = $binned = [];
+        foreach (($this->library)()->assetsWithPoster($assetId) as $asset) {
+            if ($asset->binnedAt === null) {
+                $live[] = new AssetUsageEntry($asset->label(), $this->editUrl !== null ? ($this->editUrl)($asset) : null, self::NAME, self::NOTE);
+            } else {
+                // A binned asset has no screen to edit it on: no URL.
+                $binned[] = new AssetUsageEntry($asset->label(), null, self::NAME, self::NOTE_BINNED, blocksDelete: false);
             }
         }
 
-        return $usages;
+        return [...$live, ...$binned];
     }
 }

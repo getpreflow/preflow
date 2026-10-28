@@ -119,6 +119,20 @@ final class ExportImportTest extends TestCase
         $this->assertSame(['added' => [], 'changed' => [], 'removed' => []], $summary['media']);
     }
 
+    public function test_assets_in_the_bin_are_left_out_of_an_export(): void
+    {
+        $this->driver()->save('folio_assets', 'b1', ['uuid' => 'b1', 'path' => '2026/10/b1.jpg', 'mime' => 'image/jpeg', 'binned_at' => '2026-10-01T10:00:00+00:00']);
+        $this->driver()->save('folio_assets', 'l1', ['uuid' => 'l1', 'path' => '2026/10/l1.jpg', 'mime' => 'image/jpeg', 'binned_at' => '']);
+        $archive = $this->export('data');
+
+        $this->wipe('storage/data/folio_assets');
+        $this->import($archive, 'data');
+
+        $this->assertNotNull($this->driver()->findOne('folio_assets', 'a1'), 'a record from before the bin travels');
+        $this->assertNotNull($this->driver()->findOne('folio_assets', 'l1'), 'a live asset travels');
+        $this->assertNull($this->driver()->findOne('folio_assets', 'b1'), 'a binned asset stays on its server');
+    }
+
     public function test_version_files_travel_and_an_archive_without_them_leaves_local_versions_alone(): void
     {
         $this->put('storage/media-versions/a1/v1.jpg', 'OLDJPEG');

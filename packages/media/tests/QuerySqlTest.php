@@ -17,6 +17,8 @@ use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Data\TypeRegistry;
 use Preflow\Media\MediaLibrary;
 use Preflow\Media\Tests\Support\MediaFixtures;
+use Preflow\Media\Usage\AssetUsageEntry;
+use Preflow\Media\Usage\PosterReferences;
 use Preflow\Testing\MysqlTestDatabase;
 
 /** Extra fields and query() on SQL storage: the columns come from the table step, lists are JSON text. */
@@ -192,5 +194,25 @@ final class QuerySqlTest extends TestCase
         $this->assertSame(3, $page->total);
         $this->assertSame([$copy], array_map(static fn ($x) => $x->id, $lib->copies($a)));
         $this->assertSame([$a => 1, $doc => 0], $lib->copyCounts([$a, $doc]));
+    }
+
+    public function test_assets_with_poster_reads_the_poster_column_live_and_binned(): void
+    {
+        [$lib, $a, $doc, , $pdo] = $this->sqliteWithCopy();
+        $lib->update($doc, ['poster' => $a]);
+        $other = $lib->upload($this->upload("notes\n", 'notes.txt'), null);
+        $lib->update($other->id, ['poster' => $a]);
+        // notes.txt is in the bin (as a delete with bin_dir leaves it).
+        $pdo->exec("UPDATE folio_assets SET binned_at = '2026-10-01T10:00:00+00:00' WHERE uuid = '{$other->id}'");
+
+        // Both, live and binned (uploaded in the same second: the order between them is by id).
+        $this->assertSame(self::sorted([$other->id, $doc]), self::sorted(array_map(static fn ($x) => $x->id, $lib->assetsWithPoster($a))));
+        $this->assertSame([], $lib->assetsWithPoster($doc));
+        $this->assertSame([], $lib->assetsWithPoster('not-an-id'));
+        // Live usages first; the binned asset's does not block a delete.
+        $this->assertEquals([
+            new AssetUsageEntry('rules.pdf', null, PosterReferences::NAME, PosterReferences::NOTE),
+            new AssetUsageEntry('notes.txt', null, PosterReferences::NAME, PosterReferences::NOTE_BINNED, blocksDelete: false),
+        ], (new PosterReferences(static fn (): MediaLibrary => $lib))->usagesOf($a));
     }
 }

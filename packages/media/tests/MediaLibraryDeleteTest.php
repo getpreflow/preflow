@@ -59,21 +59,25 @@ final class MediaLibraryDeleteTest extends TestCase
         $this->assertFileDoesNotExist($library->absolute($asset->path));
     }
 
-    public function test_only_blocking_usages_refuse(): void
+    public function test_without_a_bin_every_usage_refuses(): void
     {
         $usage = new AssetUsage();
         $library = $this->library(usage: $usage);
         $asset = $library->upload($this->upload($this->png(10, 10), 'a.png'), null);
-        $usage->register(AssetUsageTest::source('revisions', [$asset->id => [
-            new AssetUsageEntry('Home page', null, 'revisions', 'earlier revision', blocksDelete: false),
-        ]]));
+        $revision = new AssetUsageEntry('Home page', null, 'revisions', 'earlier revision', blocksDelete: false);
+        $usage->register(AssetUsageTest::source('revisions', [$asset->id => [$revision]]));
 
-        $this->assertTrue($usage->isUsed($asset->id));
         $this->assertSame([], $usage->blocking($asset->id));
-        $library->delete($asset->id); // no bin_dir: removed for good, as before
+        $this->assertNull($library->binDir());
+        try {
+            // No bin_dir: the delete would be for good, and the revision would lose its image.
+            $library->delete($asset->id);
+            $this->fail('delete() without a bin should refuse an asset an earlier revision uses');
+        } catch (AssetInUseException $e) {
+            $this->assertSame([$revision], $e->usages);
+        }
 
-        $this->assertNull($library->find($asset->id));
-        $this->assertNull($library->findBinned($asset->id));
-        $this->assertFileDoesNotExist($library->absolute($asset->path));
+        $this->assertNotNull($library->find($asset->id));
+        $this->assertFileExists($library->absolute($asset->path));
     }
 }

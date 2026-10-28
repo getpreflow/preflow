@@ -31,8 +31,11 @@ final class Exporter
             foreach ($this->set->tables() as $table => $def) {
                 $rows[$table] = [];
                 foreach ($this->dm->driver($def->storage)->findMany($table, new Query())->items() as $row) {
+                    if ($this->set->skipsExport($table, $row)) {
+                        continue; // an asset in the bin: its files stay in this server's bin
+                    }
                     $id = (string) ($row[$def->idField] ?? '');
-                    // Never skip a record: a missing one is deleted on the importing side.
+                    // Never skip a record otherwise: a missing one is deleted on the importing side.
                     if (preg_match(Importer::ID, $id) !== 1) {
                         throw new TransferException("Record {$table}/{$id} has an id the export cannot carry (allowed: letters, digits, '.', '_', '-', not starting with '.')");
                     }

@@ -133,6 +133,65 @@ final class VideoPreviewRendererTest extends TestCase
         $this->assertLessThan(5, microtime(true) - $started);
     }
 
+    public function test_the_input_format_is_pinned_by_the_type(): void
+    {
+        $this->assertSame('mov', VideoPreviewRenderer::inputFormat('/m/2026/10/a.mp4'));
+        $this->assertSame('mov', VideoPreviewRenderer::inputFormat('/m/2026/10/a.MOV'));
+        $this->assertSame('matroska', VideoPreviewRenderer::inputFormat('/m/2026/10/a.webm'));
+        $this->assertNull(VideoPreviewRenderer::inputFormat('/m/2026/10/a.m3u8'));
+        $this->assertNull(VideoPreviewRenderer::inputFormat('/m/2026/10/a'));
+
+        $probe = VideoPreviewRenderer::probeArgs('ffprobe', '/m/a.mp4', 'mov');
+        $frame = VideoPreviewRenderer::frameArgs('ffmpeg', '/m/a.webm', 'matroska', 1.0, 160, '/tmp/out.png');
+        foreach ([[$probe, 'mov', '/m/a.mp4'], [$frame, 'matroska', '/m/a.webm']] as [$args, $format, $file]) {
+            $input = array_search('-i', $args, true);
+            $this->assertIsInt($input);
+            $this->assertSame(['-f', $format, '-i', $file], array_slice($args, $input - 2, 4), 'the format comes right before the input');
+            $this->assertContains('file', $args, 'only the file protocol');
+        }
+    }
+
+    public function test_ffprobe_and_ffmpeg_are_called_with_the_pinned_format(): void
+    {
+        $log = $this->assetRoot . '/calls.log';
+        foreach (['ffmpeg', 'ffprobe'] as $name) {
+            // Records its arguments, one per line, then fails (no frame, no length).
+            file_put_contents($this->assetRoot . '/' . $name, "#!/bin/sh\necho {$name} >> '{$log}'\nfor a in \"\$@\"; do echo \"\$a\" >> '{$log}'; done\nexit 1\n");
+            chmod($this->assetRoot . '/' . $name, 0755);
+        }
+        $webm = $this->assetRoot . '/clip.webm';
+        copy(self::FIXTURES . '/clip.mp4', $webm);
+
+        $this->assertNull((new VideoPreviewRenderer($this->assetRoot . '/ffmpeg', $this->assetRoot . '/ffprobe'))->render($webm, 160));
+
+        $calls = [];
+        foreach (file($log, FILE_IGNORE_NEW_LINES) ?: [] as $line) {
+            if ($line === 'ffmpeg' || $line === 'ffprobe') {
+                $calls[] = [$line];
+            } else {
+                $calls[count($calls) - 1][] = $line;
+            }
+        }
+        $this->assertSame(['ffprobe', 'ffmpeg', 'ffmpeg'], array_map(static fn (array $c): string => $c[0], $calls), 'the length, then the frame at 1 s and the first frame');
+        foreach ($calls as $call) {
+            $input = array_search('-i', $call, true);
+            $this->assertIsInt($input, $call[0]);
+            $this->assertSame(['-f', 'matroska', '-i', $webm], array_slice($call, $input - 2, 4), $call[0]);
+        }
+    }
+
+    public function test_a_file_of_another_type_is_not_handed_to_ffmpeg(): void
+    {
+        $log = $this->assetRoot . '/calls.log';
+        file_put_contents($this->assetRoot . '/ffmpeg', "#!/bin/sh\necho called >> '{$log}'\nexit 1\n");
+        chmod($this->assetRoot . '/ffmpeg', 0755);
+        $playlist = $this->assetRoot . '/list.m3u8';
+        file_put_contents($playlist, "#EXTM3U\n");
+
+        $this->assertNull((new VideoPreviewRenderer($this->assetRoot . '/ffmpeg', '/nonexistent/ffprobe'))->render($playlist, 160));
+        $this->assertFileDoesNotExist($log);
+    }
+
     public function test_upload_makes_the_preview_and_a_poster_wins_the_thumbnail(): void
     {
         $this->requireFfmpeg();
