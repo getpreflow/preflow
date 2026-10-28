@@ -13,6 +13,7 @@
         "chillerlan/php-qrcode": "^5.0",
         "illuminate/filesystem": "^12.56",
         "illuminate/view": "^12.56",
+        "mpdf/mpdf": "^8.2",
         "nyholm/psr7-server": "^1.1",
         "openspout/openspout": "^4",
         "phpunit/phpunit": "^11.0",
@@ -37,6 +38,7 @@
         "preflow/twig": "@dev",
         "preflow/validation": "@dev",
         "preflow/view": "@dev",
+        "smalot/pdfparser": "^2.0",
         "symfony/mailer": "^7.3 || ^8.0",
         "symfony/notifier": "^7.3 || ^8.0"
     },

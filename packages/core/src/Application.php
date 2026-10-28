@@ -80,6 +80,13 @@ final class Application
             $config['image'] = is_array($image) ? $image : [];
         }
 
+        // View settings (view.pdf: temp dir, fonts, default font for PDFs).
+        $viewPath = rtrim($basePath, '/') . '/config/view.php';
+        if (file_exists($viewPath)) {
+            $view = require $viewPath;
+            $config['view'] = is_array($view) ? $view : [];
+        }
+
         return new self(new Config($config), $basePath);
     }
 
@@ -169,6 +176,7 @@ final class Application
         $this->bootSecurityHeaders($debug);
         $this->bootValidation();
         $this->bootHelpers();
+        $this->bootPdf();
         $this->bootComponentLayer($debug, $secretKey, $collector);
         $this->bootForm();
         $this->bootRouting();
@@ -683,6 +691,50 @@ final class Application
         if (class_exists(\Preflow\View\ViewExtensionProvider::class)) {
             $this->registerExtensionProvider($engine, new \Preflow\View\ViewExtensionProvider());
         }
+    }
+
+    /**
+     * PDFs from templates. Both bindings are lazy, so a site's service
+     * provider can bind its own PdfEngine; mPDF is bound only when installed,
+     * looked up in Composer's metadata so its large class is not loaded on
+     * every request.
+     */
+    private function bootPdf(): void
+    {
+        if (!class_exists(\Preflow\View\Pdf\PdfRenderer::class)
+            || !$this->container->has(\Preflow\View\TemplateEngineInterface::class)) {
+            return;
+        }
+
+        $pdf = (array) $this->config->get('view.pdf', []);
+        $config = new \Preflow\View\Pdf\PdfConfig(
+            tempDir: $this->projectPath((string) ($pdf['temp_dir'] ?? 'storage/cache/pdf')),
+            fonts: array_map(fn ($file): string => $this->projectPath((string) $file), (array) ($pdf['fonts'] ?? [])),
+            defaultFont: (string) ($pdf['default_font'] ?? 'dejavusanscondensed'),
+        );
+        $this->container->instance(\Preflow\View\Pdf\PdfConfig::class, $config);
+
+        if (class_exists(\Composer\InstalledVersions::class) && \Composer\InstalledVersions::isInstalled('mpdf/mpdf')) {
+            $this->container->singleton(
+                \Preflow\View\Pdf\PdfEngine::class,
+                static fn (): \Preflow\View\Pdf\PdfEngine => new \Preflow\View\Pdf\MpdfEngine($config),
+            );
+        }
+
+        $this->container->singleton(
+            \Preflow\View\Pdf\PdfRenderer::class,
+            static fn (Container $c): \Preflow\View\Pdf\PdfRenderer => new \Preflow\View\Pdf\PdfRenderer(
+                $c->get(\Preflow\View\TemplateEngineInterface::class),
+                $c->bound(\Preflow\View\Pdf\PdfEngine::class) ? $c->get(\Preflow\View\Pdf\PdfEngine::class) : null,
+                $config,
+            ),
+        );
+    }
+
+    /** A path from config: absolute as given, relative to the project root otherwise. */
+    private function projectPath(string $path): string
+    {
+        return str_starts_with($path, '/') ? $path : $this->absolutePath($path);
     }
 
     private function bootForm(): void
