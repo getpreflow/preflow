@@ -2778,7 +2778,7 @@
         },
         {
             "name": "preflow/auth",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/auth",
@@ -2815,7 +2815,7 @@
         },
         {
             "name": "preflow/blade",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/blade",
@@ -2853,7 +2853,7 @@
         },
         {
             "name": "preflow/codes",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/codes",
@@ -2909,7 +2909,7 @@
         },
         {
             "name": "preflow/components",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/components",
@@ -2945,7 +2945,7 @@
         },
         {
             "name": "preflow/core",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/core",
@@ -2989,7 +2989,7 @@
         },
         {
             "name": "preflow/data",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/data",
@@ -3030,7 +3030,7 @@
         },
         {
             "name": "preflow/devtools",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/devtools",
@@ -3073,7 +3073,7 @@
         },
         {
             "name": "preflow/folio",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/folio",
@@ -3155,7 +3155,7 @@
         },
         {
             "name": "preflow/form",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/form",
@@ -3191,7 +3191,7 @@
         },
         {
             "name": "preflow/htmx",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/htmx",
@@ -3228,7 +3228,7 @@
         },
         {
             "name": "preflow/i18n",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/i18n",
@@ -3275,7 +3275,7 @@
         },
         {
             "name": "preflow/media",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/media",
@@ -3336,7 +3336,7 @@
         },
         {
             "name": "preflow/members",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/members",
@@ -3410,7 +3410,7 @@
         },
         {
             "name": "preflow/notify",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/notify",
@@ -3455,7 +3455,7 @@
         },
         {
             "name": "preflow/rbac",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/rbac",
@@ -3518,7 +3518,7 @@
         },
         {
             "name": "preflow/roles",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/roles",
@@ -3555,7 +3555,7 @@
         },
         {
             "name": "preflow/routing",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/routing",
@@ -3590,7 +3590,7 @@
         },
         {
             "name": "preflow/testing",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/testing",
@@ -3634,7 +3634,7 @@
         },
         {
             "name": "preflow/twig",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/twig",
@@ -3675,7 +3675,7 @@
         },
         {
             "name": "preflow/validation",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/validation",
@@ -3724,11 +3724,11 @@
         },
         {
             "name": "preflow/view",
-            "version": "dev-feature/aggregates-qr-pdf",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/view",
-                "reference": "a8865948bcd41f3ae04346be01707129254fa828"
+                "reference": "235fd19c21ade727cc00de40f81dfb01f744914e"
             },
             "require": {
                 "matthiasmullie/minify": "^1.3",
@@ -3737,7 +3737,9 @@
             },
             "require-dev": {
                 "chillerlan/php-qrcode": "^5.0",
-                "phpunit/phpunit": "^11.0"
+                "mpdf/mpdf": "^8.2",
+                "phpunit/phpunit": "^11.0",
+                "smalot/pdfparser": "^2.0"
             },
             "suggest": {
                 "chillerlan/php-qrcode": "Renders QR codes (^5.0)",
