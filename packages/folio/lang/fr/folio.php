@@ -396,6 +396,8 @@ return [
             'svg_disabled' => 'L’importation de fichiers SVG est désactivée.',
             'type_not_allowed' => ':file : les fichiers de type :mime ne sont pas autorisés.',
             'too_large' => ':file dépasse la limite de :limit.',
+            'heic_unsupported' => ':file : les photos HEIC/HEIF ne peuvent pas être enregistrées ici, car Imagick sur le serveur ne prend pas en charge HEIC. Convertissez d\'abord la photo en JPEG.',
+            'heic_failed' => ':file : la photo HEIC/HEIF n\'a pas pu être convertie.',
         ],
     ],
     'cache' => [

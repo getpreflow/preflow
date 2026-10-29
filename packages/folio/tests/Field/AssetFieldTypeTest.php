@@ -8,6 +8,13 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\Types\AssetFieldType;
+use Preflow\Folio\FolioText;
+use Preflow\I18n\Translator;
+use Preflow\Data\DataManager;
+use Preflow\Data\Driver\JsonFileDriver;
+use Preflow\Data\Locales;
+use Preflow\Media\Image\HeicConverter;
+use Preflow\Media\MediaLibrary;
 
 final class AssetFieldTypeTest extends TestCase
 {
@@ -41,6 +48,39 @@ final class AssetFieldTypeTest extends TestCase
     {
         $f = new Psr17Factory();
         return $f->createUploadedFile($f->createStream($data), strlen($data), UPLOAD_ERR_OK, $name, $mime);
+    }
+
+    public function test_upload_refusal_is_shown_in_interface_language(): void
+    {
+        $dm = new DataManager(drivers: ['json' => new JsonFileDriver($this->dir . '/store')], defaultDriver: 'json');
+        $noHeic = new class implements HeicConverter {
+            public function available(): bool
+            {
+                return false;
+            }
+
+            public function toJpeg(string $bytes): string
+            {
+                throw new \RuntimeException('no decoder');
+            }
+        };
+        $library = new MediaLibrary($dm, new Locales(['en', 'de'], 'en'), $this->dir . '/media', '/media', heic: $noHeic);
+        $type = new AssetFieldType($this->dir, '/folio/_uploads', null, $library, '/folio');
+        $heic = "\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic" . str_repeat("\x00", 64); // sniffed as image/heic
+        $translator = new Translator(sys_get_temp_dir() . '/folio-no-site-lang', 'de', 'en');
+        $translator->addDefaults('folio', dirname(__DIR__, 2) . '/lang');
+
+        $previous = FolioText::use($translator);
+        try {
+            $value = $type->resolve(null, null, [$this->upload('IMG_0001.HEIC', 'image/heic', $heic)], ['asset' => ['multiple' => false, 'accept' => 'image/*']], true, null);
+            $errors = $type->drainErrors();
+        } finally {
+            FolioText::use($previous);
+        }
+
+        $this->assertSame('', $value);
+        $this->assertSame(['IMG_0001.HEIC: HEIC/HEIF-Fotos können hier nicht gespeichert werden, weil Imagick auf dem Server kein HEIC unterstützt. Bitte das Foto zuerst in JPEG umwandeln.'], $errors);
+        $this->assertSame([], $library->all());
     }
 
     public function test_key(): void

@@ -396,6 +396,8 @@ return [
             'svg_disabled' => 'Das Hochladen von SVG-Dateien ist ausgeschaltet.',
             'type_not_allowed' => ':file: Dateien vom Typ :mime sind nicht erlaubt.',
             'too_large' => ':file ist größer als die Grenze von :limit.',
+            'heic_unsupported' => ':file: HEIC/HEIF-Fotos können hier nicht gespeichert werden, weil Imagick auf dem Server kein HEIC unterstützt. Bitte das Foto zuerst in JPEG umwandeln.',
+            'heic_failed' => ':file: Das HEIC/HEIF-Foto konnte nicht umgewandelt werden.',
         ],
     ],
     'cache' => [

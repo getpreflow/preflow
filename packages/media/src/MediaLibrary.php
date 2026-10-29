@@ -17,6 +17,8 @@ use Preflow\Media\Image\BoxPlan;
 use Preflow\Media\Image\Format;
 use Preflow\Media\Image\Formats;
 use Preflow\Media\Image\Geometry;
+use Preflow\Media\Image\HeicConverter;
+use Preflow\Media\Image\ImagickHeicConverter;
 use Preflow\Media\Image\Orientation;
 use Preflow\Media\Image\VariantGenerator;
 use Preflow\Media\Preview\PreviewRenderers;
@@ -138,6 +140,7 @@ final class MediaLibrary
         private readonly ?ColorExtractor $colors = null,
         private readonly ?Formats $formats = null,
         private readonly ?DerivedMakers $makers = null,
+        private readonly ?HeicConverter $heic = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
     }
@@ -1560,7 +1563,7 @@ final class MediaLibrary
     private function swapFile(string $id, string $bytes, string $name, ?string $by, array $restore, array $fields = []): Asset
     {
         $asset = $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
-        [$mime, $ext] = $this->sniff($bytes, $name);
+        [$bytes, $name, $mime, $ext] = $this->intake($bytes, $name);
         if (Asset::kindOf($mime) !== $asset->kind()) {
             throw new AssetUploadException("{$name}: a {$asset->kind()} can only be replaced by another {$asset->kind()}.");
         }
@@ -2269,7 +2272,7 @@ final class MediaLibrary
      */
     private function store(string $bytes, string $name, ?string $by, bool $private = false, array $fields = []): Asset
     {
-        [$mime, $ext] = $this->sniff($bytes, $name);
+        [$bytes, $name, $mime, $ext] = $this->intake($bytes, $name);
 
         $now = ($this->now)();
         $id = bin2hex(random_bytes(16));
@@ -2500,14 +2503,33 @@ final class MediaLibrary
     }
 
     /**
-     * The sniffed MIME type and the extension it is stored with (never the client's).
+     * What a file is stored as: its bytes, name, sniffed MIME type and the extension it is
+     * stored with (never the client's). A HEIC or HEIF photo becomes a JPEG here (bytes, MIME,
+     * extension and the name's extension), so it is stored, measured and versioned as a JPEG;
+     * without a HEIC decoder it is refused before anything is written.
      *
-     * @return array{0: string, 1: string}
-     * @throws AssetUploadException for a type that is not allowed
+     * @return array{0: string, 1: string, 2: string, 3: string} bytes, name, MIME type, extension
+     * @throws AssetUploadException for a type that is not allowed, or a HEIC/HEIF that cannot be converted
      */
-    private function sniff(string $bytes, string $name): array
+    private function intake(string $bytes, string $name): array
     {
-        $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($bytes) ?: 'application/octet-stream';
+        $mime = self::sniffMime($bytes);
+        if ($mime === 'image/heic' || $mime === 'image/heif') {
+            $heic = $this->heic ?? new ImagickHeicConverter();
+            if (!$heic->available()) {
+                throw new AssetUploadException("{$name}: HEIC/HEIF images need Imagick with HEIC support on the server, which is missing.");
+            }
+            try {
+                $bytes = $heic->toJpeg($bytes);
+            } catch (\RuntimeException) {
+                throw new AssetUploadException("{$name}: the HEIC/HEIF image could not be converted.");
+            }
+            if (self::sniffMime($bytes) !== 'image/jpeg') {
+                throw new AssetUploadException("{$name}: the HEIC/HEIF image could not be converted.");
+            }
+            $mime = 'image/jpeg';
+            $name = (string) preg_replace('/\.[^.\/\\\\]*$/', '', $name) . '.jpg';
+        }
         if ($mime === 'image/svg+xml' && ($this->config['allow_svg'] ?? false) !== true) {
             throw new AssetUploadException('SVG uploads are disabled.');
         }
@@ -2516,7 +2538,12 @@ final class MediaLibrary
             throw new AssetUploadException("{$name}: files of type {$mime} are not allowed.");
         }
 
-        return [$mime, $ext];
+        return [$bytes, $name, $mime, $ext];
+    }
+
+    private static function sniffMime(string $bytes): string
+    {
+        return (new \finfo(FILEINFO_MIME_TYPE))->buffer($bytes) ?: 'application/octet-stream';
     }
 
     /** @return array{0: ?int, 1: ?int} an image's width and height as displayed (EXIF orientation applied) */

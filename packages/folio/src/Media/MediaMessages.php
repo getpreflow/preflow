@@ -35,6 +35,8 @@ final class MediaMessages
         '/^SVG uploads are disabled\.$/' => 'svg_disabled',
         '/^(?<file>.+): files of type (?<mime>.+) are not allowed\.$/s' => 'type_not_allowed',
         '/^(?<file>.+) is larger than the (?<limit>\d+(?:\.\d+)? (?:B|KB|MB)) limit\.$/s' => 'too_large',
+        '/^(?<file>.+): HEIC\/HEIF images need Imagick with HEIC support on the server, which is missing\.$/s' => 'heic_unsupported',
+        '/^(?<file>.+): the HEIC\/HEIF image could not be converted\.$/s' => 'heic_failed',
     ];
 
     /** A core message as the admin shows it. */

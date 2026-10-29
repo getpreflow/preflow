@@ -414,6 +414,8 @@ return [
             'svg_disabled' => 'SVG uploads are disabled.',
             'type_not_allowed' => ':file: files of type :mime are not allowed.',
             'too_large' => ':file is larger than the :limit limit.',
+            'heic_unsupported' => ':file: HEIC/HEIF photos can\'t be stored here because the server\'s Imagick has no HEIC support. Convert the photo to JPEG first.',
+            'heic_failed' => ':file: the HEIC/HEIF photo could not be converted.',
         ],
     ],
     // Settings → Cache. The caches' own names follow under their keys (others show as they register).

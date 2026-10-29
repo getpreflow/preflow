@@ -712,8 +712,38 @@ plain `<img>`, no srcset) use it.
 ## Allowed files
 
 The type is sniffed from the content, never from the client's name; the stored extension
-follows it. Allowed: JPEG, PNG, GIF, WebP, AVIF, MP4, WebM, QuickTime, PDF, plain text, CSV,
-ZIP, and Word, Excel and PowerPoint files. SVG is refused unless `allow_svg` is set.
+follows it. Allowed: JPEG, PNG, GIF, WebP, AVIF, HEIC and HEIF (stored as JPEG), MP4, WebM,
+QuickTime, PDF, plain text, CSV, ZIP, and Word, Excel and PowerPoint files. SVG is refused
+unless `allow_svg` is set.
+
+## HEIC and HEIF
+
+Phone photos (iPhones and many Android phones save HEIC) become JPEG assets on upload, import
+and replace.
+
+- **Needs Imagick with HEIC support** (libheif). Check with
+  `php -r 'print_r(Imagick::queryFormats("HEI*"));'`: it must list `HEIC` (HEIF files are read
+  by the same delegate). Without it a HEIC or HEIF file is refused with
+  `{name}: HEIC/HEIF images need Imagick with HEIC support on the server, which is missing.`,
+  and a file Imagick cannot decode with `{name}: the HEIC/HEIF image could not be converted.`
+  Nothing is written in either case. HEIC sequences (bursts, live photos) stay refused.
+- The JPEG (quality 92) **is** the asset's file: MIME `image/jpeg`, extension `.jpg`, and the
+  original name's extension becomes `.jpg` (`IMG_1234.HEIC` is stored as `IMG_1234.jpg`), so
+  a download matches its content. `max_bytes` still checks the uploaded HEIC.
+- **The HEIC original is not kept.** Only Safari displays HEIC, and every library feature
+  (variants, editing, boxes, colours, versions, the bin, private files, cleanup) works on the
+  asset's one file. The JPEG keeps the colour profile and the EXIF data, so it loses nothing
+  a page or an editor can see. A site that must archive camera originals keeps them outside
+  the library.
+- **Orientation:** libheif turns and mirrors the photo when it decodes it, so the pixels are
+  upright and the JPEG says orientation 1 (also in its EXIF), and the photo is never turned
+  twice. Width and height are the upright ones.
+- **Colour:** the ICC profile stays, so a Display P3 photo gets sRGB variants through
+  [colour management](#colour-management) like any JPEG.
+- Another converter (a service, `heif-convert`, …) implements
+  `Preflow\Media\Image\HeicConverter` (`available()`, `toJpeg(string $bytes): string`, which
+  throws `\RuntimeException` for a file it cannot decode) and is passed to the `MediaLibrary`
+  constructor (`heic:`). The default is `ImagickHeicConverter`.
 
 ## SQL storage
 

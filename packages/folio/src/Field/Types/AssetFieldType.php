@@ -7,6 +7,7 @@ namespace Preflow\Folio\Field\Types;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
 use Preflow\Folio\Field\HandlesUpload;
+use Preflow\Folio\Media\MediaMessages;
 use Psr\Http\Message\UploadedFileInterface;
 
 /**
@@ -306,7 +307,7 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         try {
             $asset = $this->library?->upload($file, $by, private: $private);
         } catch (\Preflow\Media\AssetUploadException $e) {
-            $this->errors[] = $e->getMessage();
+            $this->errors[] = MediaMessages::text($e->getMessage());
             return null;
         }
         if ($asset === null) {
