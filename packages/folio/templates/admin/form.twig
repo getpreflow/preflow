@@ -47,6 +47,8 @@
         {% if publishing %}
             <input type="hidden" name="_version" id="folio-version" value="{{ publishing.version }}">
         {% endif %}
+        {# The form's default button (Enter in a field) saves, never one of the "Still correct" buttons that come first. #}
+        {% if (can_save ?? true) %}<button type="submit" hidden tabindex="-1" aria-hidden="true"></button>{% endif %}
         {# Without the right to save, the fields are shown read-only (display: contents, no layout change). #}
         <fieldset class="folio-fields"{% if not (can_save ?? true) %} disabled{% endif %}>
         {% if multilingual|default(false) %}
@@ -78,7 +80,7 @@
                     {% if field.outdated %}
                         <p class="folio-outdated">
                             <span>{{ field.outdated.plain ? t('folio.form.outdated') : t('folio.form.outdated_texts', {count: field.outdated.count}) }}</span>
-                            {% if can_save ?? true %}<button type="submit" form="folio-confirm-{{ field.name }}" class="btn btn-ghost">{{ t('folio.form.still_correct') }}</button>{% endif %}
+                            {% if can_save ?? true %}<button type="submit" formaction="{{ prefix }}/{{ type }}/{{ record_id }}/_translations/confirm" name="_confirm_path" value="{{ field.name }}" class="btn btn-ghost">{{ t('folio.form.still_correct') }}</button>{% endif %}
                         </p>
                     {% endif %}
                     {% if field.translatable and field.reference %}
@@ -107,17 +109,6 @@
             </div>
         </div>
         {{ form_end()|raw }}
-        {# "Still correct" forms live outside the editor form (forms cannot nest); their buttons point here with form="…". #}
-        {% if multilingual|default(false) and (can_save ?? true) and locale != default_locale %}
-            {% for field in fields|filter(f => f.outdated) %}
-                <form id="folio-confirm-{{ field.name }}" method="post" action="{{ prefix }}/{{ type }}/{{ record_id }}/_translations/confirm" hidden>
-                    <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                    <input type="hidden" name="locale" value="{{ locale }}">
-                    <input type="hidden" name="path" value="{{ field.name }}">
-                    {% if publishing %}<input type="hidden" name="_version" value="{{ publishing.version }}">{% endif %}
-                </form>
-            {% endfor %}
-        {% endif %}
         {% if side_panels is not empty %}
         <aside class="folio-side" aria-label="{{ t('folio.form.side_panels') }}">
             {% for panel in side_panels %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}

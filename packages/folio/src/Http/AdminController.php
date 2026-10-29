@@ -444,9 +444,14 @@ final class AdminController
     }
 
     /**
-     * "Still correct": the translations in a language (all, or those under "path") are marked as
+     * "Still correct": the translations in a language (all, or those under the path) are marked as
      * made from the current default texts. Saves the working copy with the version check; nothing
      * is published.
+     *
+     * From the editor form (it posts _locale and the fields, the button names the path in
+     * _confirm_path) the submitted values are saved together with the stamp, with the form's
+     * current _version, so nothing typed is lost. Without form fields (an API-style post: locale,
+     * optional path, _version) only the stamp is saved.
      */
     public function confirmTranslation(ServerRequestInterface $request): ResponseInterface
     {
@@ -456,33 +461,60 @@ final class AdminController
             return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
         }
         $typeDef = $this->registry->get($type);
-        $record = $this->dm->findType($type, $id);
+        $current = $this->dm->findType($type, $id);
         $body = (array) $request->getParsedBody();
-        $locale = is_string($body['locale'] ?? null) ? $body['locale'] : '';
-        if ($record === null || !$typeDef->locales->has($locale) || $locale === $typeDef->locales->default) {
+        $fromForm = is_string($body['_locale'] ?? null);
+        $locale = $body['_locale'] ?? $body['locale'] ?? '';
+        $locale = is_string($locale) ? $locale : '';
+        if ($current === null || !$typeDef->locales->has($locale) || $locale === $typeDef->locales->default) {
             return new Response(404, [], FolioText::get('folio.errors.not_found'));
         }
-        $path = is_string($body['path'] ?? null) && $body['path'] !== '' ? $body['path'] : null;
+        $path = $body['_confirm_path'] ?? $body['path'] ?? null;
+        $path = is_string($path) && $path !== '' ? $path : null;
+        $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
+        $action = $this->prefix . '/' . $type . '/' . $id;
+        $editUrl = $action . '/edit';
+        $heading = FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]);
+        $done = new Response(302, ['Location' => $editUrl . '?locale=' . rawurlencode($locale) . '&confirmed=1']);
 
-        $confirmed = $this->translations->confirm($typeDef, $record, $locale, $path);
+        if ($fromForm) {
+            $built = $this->drafts->build($typeDef, $request, $current->toArray(), $locale, $this->can('assets.upload'));
+            if ($this->drafts->uploadErrors() !== []) {
+                return $this->form($type, $built->toArray(), $action, $heading, $this->drafts->uploadErrors(), $csrf, 422, locale: $locale, editUrl: $editUrl);
+            }
+            $record = $this->translations->confirm($typeDef, $built, $locale, $path);
+            if (($errors = $this->beforeSave($record)) !== null) {
+                return $this->form($type, $record->toArray(), $action, $heading, $errors, $csrf, 422, locale: $locale, editUrl: $editUrl);
+            }
+            if ($this->publishes($type)) {
+                return $this->savePublishing($request, $record, $type, $action, $heading, $csrf, $locale, $editUrl) ?? $done;
+            }
+            try {
+                $this->saveWithBlocks($typeDef, $record);
+            } catch (ValidationException $e) {
+                return $this->form($type, $record->toArray(), $action, $heading, $e->errors(), $csrf, 422, locale: $locale, editUrl: $editUrl);
+            }
+
+            return $done;
+        }
+
+        $confirmed = $this->translations->confirm($typeDef, $current, $locale, $path);
         $loaded = is_string($body['_version'] ?? null) && ctype_digit($body['_version']) ? (int) $body['_version'] : null;
         try {
             if ($this->publishes($type)) {
-                $this->publisher?->saveDraft($confirmed, $loaded);
+                $this->publisher->saveDraft($confirmed, $loaded);
             } else {
                 $this->dm->saveType($confirmed, false);
             }
         } catch (VersionConflict $e) {
-            $values = $record->toArray();
+            $values = $current->toArray();
             $values['_version'] = $e->current;
-            $editUrl = $this->prefix . '/' . $type . '/' . $id . '/edit';
 
-            return $this->form($type, $values, $this->prefix . '/' . $type . '/' . $id, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), [],
-                $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '', 409, locale: $locale, editUrl: $editUrl,
+            return $this->form($type, $values, $action, $heading, [], $csrf, 409, locale: $locale, editUrl: $editUrl,
                 notice: FolioText::get('folio.form.conflict'), reloadUrl: $editUrl . '?locale=' . rawurlencode($locale));
         }
 
-        return new Response(302, ['Location' => $this->prefix . '/' . $type . '/' . $id . '/edit?locale=' . rawurlencode($locale) . '&confirmed=1']);
+        return $done;
     }
 
     public function update(ServerRequestInterface $request): ResponseInterface

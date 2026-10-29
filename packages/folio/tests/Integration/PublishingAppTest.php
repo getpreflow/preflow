@@ -639,7 +639,57 @@ final class PublishingAppTest extends TestCase
         $body = (string) $this->get('/folio/post/p1/edit?locale=de')->getBody();
 
         $this->assertStringContainsString('2 texts outdated', $body);
-        $this->assertStringContainsString('name="path" value="sections"', $body);
+        $this->assertStringContainsString('name="_confirm_path" value="sections"', $body);
         $this->assertStringContainsString('title="de · 2 outdated"', $body);
+    }
+
+    public function test_still_correct_from_the_form_uses_the_current_version_and_keeps_typed_text(): void
+    {
+        $status = $this->app()->container()->get(\Preflow\Folio\Content\TranslationStatus::class);
+        $def = $this->dm()->getTypeRegistry()->get('post');
+        $this->working('post', 'p1', [
+            'title' => ['en' => 'Hello!', 'de' => 'Hallo'], 'slug' => ['en' => 'hello', 'de' => 'hallo'], '_locales' => ['en', 'de'],
+            '_translated_from' => ['de' => ['title' => $status->fingerprint('Hello'), 'slug' => $status->fingerprint('hello')]],
+        ]);
+        $rendered = (string) $this->get('/folio/post/p1/edit?locale=de')->getBody();
+        preg_match('/id="folio-version" value="(\d+)"/', $rendered, $m);
+        $renderedVersion = $m[1];
+
+        // An autosave lands between render and click: the version moves on.
+        $autosave = $this->post('/folio/post/p1/autosave', ['title' => 'Hallo Welt', 'slug' => 'hallo', '_locale' => 'de', '_version' => $renderedVersion]);
+        $this->assertSame(200, $autosave->getStatusCode());
+        $current = (int) $this->stored('post', 'p1')->get('_version');
+        $this->assertGreaterThan((int) $renderedVersion, $current);
+
+        // The form posts what is typed and the refreshed version.
+        $res = $this->post('/folio/post/p1/_translations/confirm', [
+            '_locale' => 'de', 'title' => 'Hallo Welt!', 'slug' => 'hallo', '_confirm_path' => 'title', '_version' => (string) $current,
+        ]);
+
+        $this->assertSame(302, $res->getStatusCode(), (string) $res->getBody());
+        $stored = $this->stored('post', 'p1');
+        $this->assertSame('Hallo Welt!', $stored->get('title')['de'], 'the typed text is saved with the stamp');
+        $this->assertSame('Hello!', $stored->get('title')['en']);
+        $this->assertSame([], $status->outdated($def, $stored, 'de'));
+
+        // The version the page rendered with is still refused.
+        $stale = $this->post('/folio/post/p1/_translations/confirm', ['_locale' => 'de', 'title' => 'X', 'slug' => 'hallo', '_confirm_path' => 'title', '_version' => $renderedVersion]);
+        $this->assertSame(409, $stale->getStatusCode());
+        $this->assertSame('Hallo Welt!', $this->stored('post', 'p1')->get('title')['de']);
+    }
+
+    public function test_form_confirm_button_is_part_of_the_editor_form(): void
+    {
+        $status = $this->app()->container()->get(\Preflow\Folio\Content\TranslationStatus::class);
+        $this->working('post', 'p1', [
+            'title' => ['en' => 'Hello!', 'de' => 'Hallo'], 'slug' => ['en' => 'hello'], '_locales' => ['en', 'de'],
+            '_translated_from' => ['de' => ['title' => $status->fingerprint('Hello')]],
+        ]);
+
+        $body = (string) $this->get('/folio/post/p1/edit?locale=de')->getBody();
+
+        $this->assertMatchesRegularExpression('/<button type="submit" formaction="\/folio\/post\/p1\/_translations\/confirm" name="_confirm_path" value="title"/', $body);
+        $this->assertLessThan(strpos($body, 'formaction='), strpos($body, '<button type="submit" hidden'), 'the default button for Enter comes first');
+        $this->assertStringNotContainsString('id="folio-confirm-', $body);
     }
 }

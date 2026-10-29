@@ -896,12 +896,25 @@ final class FolioAppTest extends TestCase
 
         $this->assertStringContainsString('folio-outdated', $body);
         $this->assertStringContainsString('/folio/page/' . $id . '/_translations/confirm', $body);
-        $this->assertStringContainsString('name="path" value="title"', $body);
-        $this->assertStringContainsString('name="locale" value="de"', $body);
-        $this->assertStringContainsString('Still correct', $body);
-        $this->assertStringNotContainsString('name="path" value="slug"', $body);
+        $this->assertStringContainsString('name="_confirm_path" value="title"', $body);
+                $this->assertStringContainsString('Still correct', $body);
+        $this->assertStringNotContainsString('name="_confirm_path" value="slug"', $body);
 
         $this->assertStringNotContainsString('folio-outdated', (string) $this->get('/folio/page/' . $id . '/edit')->getBody(), 'the default language has nothing outdated');
+    }
+
+    public function test_still_correct_on_a_plain_type_saves_typed_edits_with_the_stamp(): void
+    {
+        $id = $this->outdatedPage();
+
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page/' . $id . '/_translations/confirm')
+            ->withAttribute('type', 'page')->withAttribute('id', $id)
+            ->withParsedBody(['_locale' => 'de', 'title' => 'Über uns', 'slug' => 'ueber-about', 'body' => 'k', 'status' => 'published', '_confirm_path' => 'title']));
+
+        $this->assertSame(302, $res->getStatusCode(), (string) $res->getBody());
+        $this->assertSame('Über uns', $this->dm()->findType('page', $id)->get('title')['de']);
+        $body = (string) $this->get('/folio/page/' . $id . '/edit?locale=de')->getBody();
+        $this->assertStringNotContainsString('folio-outdated', $body);
     }
 
     public function test_language_tab_shows_counts(): void
