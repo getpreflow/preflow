@@ -416,6 +416,7 @@ return [
             'too_large' => ':file is larger than the :limit limit.',
             'heic_unsupported' => ':file: HEIC/HEIF photos can\'t be stored here because the server\'s Imagick has no HEIC support. Convert the photo to JPEG first.',
             'heic_failed' => ':file: the HEIC/HEIF photo could not be converted.',
+            'heic_too_large' => ':file: the HEIC/HEIF photo is too large to convert.',
         ],
     ],
     // Settings → Cache. The caches' own names follow under their keys (others show as they register).

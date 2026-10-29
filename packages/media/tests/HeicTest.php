@@ -13,6 +13,7 @@ use Preflow\Data\Locales;
 use Preflow\Media\AssetUploadException;
 use Preflow\Media\Image\GdBackend;
 use Preflow\Media\Image\HeicConverter;
+use Preflow\Media\Image\HeicTooLarge;
 use Preflow\Media\Image\ImagickHeicConverter;
 use Preflow\Media\Image\Orientation;
 use Preflow\Media\Image\VariantGenerator;
@@ -20,9 +21,7 @@ use Preflow\Media\MediaLibrary;
 use Preflow\Media\Tests\Support\MediaFixtures;
 
 /** HEIC and HEIF photos become JPEG assets; without a converter they are refused and nothing is written. */
-#[RequiresPhpExtension('gd')]
 #[RequiresPhpExtension('fileinfo')]
-#[RequiresFunction('imagewebp')]
 final class HeicTest extends TestCase
 {
     use MediaFixtures;
@@ -41,7 +40,8 @@ final class HeicTest extends TestCase
         $this->removeAssetRoot();
     }
 
-    private function lib(?HeicConverter $heic = null): MediaLibrary
+    /** @param array<string, mixed> $config */
+    private function lib(?HeicConverter $heic = null, array $config = []): MediaLibrary
     {
         $dm = new DataManager(drivers: ['json' => new JsonFileDriver($this->assetRoot . '/store')], defaultDriver: 'json');
 
@@ -50,7 +50,7 @@ final class HeicTest extends TestCase
             new Locales(['en', 'de'], 'en'),
             $this->assetRoot . '/media',
             '/media',
-            ['versions_dir' => $this->assetRoot . '/versions'],
+            $config + ['versions_dir' => $this->assetRoot . '/versions'],
             new VariantGenerator(new GdBackend(), [480], 75),
             heic: $heic,
         );
@@ -132,6 +132,8 @@ final class HeicTest extends TestCase
         $this->assertNotEmpty($asset->variants);
     }
 
+    #[RequiresPhpExtension('gd')]
+    #[RequiresFunction('imagewebp')]
     public function test_heic_import_becomes_jpeg(): void
     {
         $this->requireHeic();
@@ -140,6 +142,8 @@ final class HeicTest extends TestCase
         $this->assertJpegAsset($lib, $lib->importFile(self::FIXTURE, 'IMG_0001.HEIC', null));
     }
 
+    #[RequiresPhpExtension('gd')]
+    #[RequiresFunction('imagewebp')]
     public function test_heic_upload_becomes_jpeg(): void
     {
         $this->requireHeic();
@@ -148,6 +152,8 @@ final class HeicTest extends TestCase
         $this->assertJpegAsset($lib, $lib->upload($this->upload((string) file_get_contents(self::FIXTURE), 'IMG_0001.HEIC', 'image/heic'), null));
     }
 
+    #[RequiresPhpExtension('gd')]
+    #[RequiresFunction('imagewebp')]
     public function test_heic_asset_is_editable(): void
     {
         $this->requireHeic();
@@ -162,6 +168,8 @@ final class HeicTest extends TestCase
         $this->assertSame([40, 20], array_slice((array) getimagesize($lib->absolute((string) $edited->master?->path)), 0, 2));
     }
 
+    #[RequiresPhpExtension('gd')]
+    #[RequiresFunction('imagewebp')]
     public function test_heic_replace_converts(): void
     {
         $this->requireHeic();
@@ -179,6 +187,8 @@ final class HeicTest extends TestCase
         $this->assertSame('a.png', $replaced->versions[0]->meta['original_name']);
     }
 
+    #[RequiresPhpExtension('gd')]
+    #[RequiresFunction('imagewebp')]
     public function test_portrait_heic_is_upright_once(): void
     {
         if (!(new ImagickHeicConverter())->available()) {
@@ -252,7 +262,7 @@ final class HeicTest extends TestCase
     public function test_heic_replace_refused_without_support_changes_nothing(): void
     {
         $lib = $this->lib(self::fake(false));
-        $asset = $lib->upload($this->upload($this->png(10, 10), 'a.png', 'image/png'), null);
+        $asset = $lib->upload($this->upload("notes\n", 'notes.txt', 'text/plain'), null);
         $files = $this->filesUnder($this->assetRoot . '/media');
 
         try {
@@ -301,5 +311,63 @@ final class HeicTest extends TestCase
             $this->assertSame('IMG_0003.HEIC: the HEIC/HEIF image could not be converted.', $e->getMessage());
         }
         $this->assertSame([], $this->filesUnder($this->assetRoot . '/media'));
+    }
+
+    /** The fixture with its image data zeroed: the header still pings as 20×40, but decoding it fails. */
+    private function undecodableFixture(): string
+    {
+        $bytes = (string) file_get_contents(self::FIXTURE);
+        $box = strpos($bytes, 'mdat') - 4;
+        $header = unpack('N', substr($bytes, $box, 4))[1] === 1 ? 16 : 8; // size 1: a 64-bit size follows
+
+        return substr($bytes, 0, $box + $header) . str_repeat("\x00", strlen($bytes) - $box - $header);
+    }
+
+    public function test_converter_refuses_too_large_before_decoding(): void
+    {
+        $this->requireHeic();
+        $broken = $this->undecodableFixture();
+        try {
+            (new ImagickHeicConverter())->toJpeg($broken);
+            $this->fail('expected the zeroed image data not to decode');
+        } catch (\RuntimeException $e) {
+            $this->assertNotInstanceOf(HeicTooLarge::class, $e);
+        }
+
+        // 800 pixels over a limit of 100: refused from the header, so the broken data is never decoded.
+        $this->expectException(HeicTooLarge::class);
+        (new ImagickHeicConverter(maxPixels: 100))->toJpeg($broken);
+    }
+
+    public function test_too_large_heic_refused_with_nothing_stored(): void
+    {
+        $this->requireHeic();
+        $lib = $this->lib(config: ['heic_max_pixels' => 100]);
+
+        try {
+            $lib->importFile(self::FIXTURE, 'IMG_0001.HEIC', null);
+            $this->fail('expected AssetUploadException');
+        } catch (AssetUploadException $e) {
+            $this->assertSame('IMG_0001.HEIC: the HEIC/HEIF image is too large to convert.', $e->getMessage());
+        }
+
+        $this->assertSame([], $this->filesUnder($this->assetRoot . '/media'));
+        $this->assertSame([], $lib->all());
+        $this->assertSame(800, (new \Imagick(self::FIXTURE))->getImageWidth() * (new \Imagick(self::FIXTURE))->getImageHeight());
+    }
+
+    public function test_replace_by_another_kind_names_the_uploaded_file(): void
+    {
+        $this->requireHeic();
+        $lib = $this->lib();
+        $asset = $lib->upload($this->upload("notes\n", 'notes.txt', 'text/plain'), null);
+
+        try {
+            $lib->replace($asset->id, $this->upload((string) file_get_contents(self::FIXTURE), 'IMG_0001.HEIC', 'image/heic'), null);
+            $this->fail('expected AssetUploadException');
+        } catch (AssetUploadException $e) {
+            $this->assertSame('IMG_0001.HEIC: a document can only be replaced by another document.', $e->getMessage());
+        }
+        $this->assertSame(1, $lib->find($asset->id)?->version);
     }
 }

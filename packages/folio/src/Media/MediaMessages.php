@@ -37,6 +37,7 @@ final class MediaMessages
         '/^(?<file>.+) is larger than the (?<limit>\d+(?:\.\d+)? (?:B|KB|MB)) limit\.$/s' => 'too_large',
         '/^(?<file>.+): HEIC\/HEIF images need Imagick with HEIC support on the server, which is missing\.$/s' => 'heic_unsupported',
         '/^(?<file>.+): the HEIC\/HEIF image could not be converted\.$/s' => 'heic_failed',
+        '/^(?<file>.+): the HEIC\/HEIF image is too large to convert\.$/s' => 'heic_too_large',
     ];
 
     /** A core message as the admin shows it. */

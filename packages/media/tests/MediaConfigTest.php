@@ -46,6 +46,7 @@ final class MediaConfigTest extends TestCase
             'storage' => 'sqlite',
             'max_bytes' => 1024,
             'max_pixels' => 2000,
+            'heic_max_pixels' => 5000,
             'warm_on_upload' => true,
             'allow_svg' => true,
             'widths' => [320, 640],
@@ -63,6 +64,8 @@ final class MediaConfigTest extends TestCase
         $this->assertSame('sqlite', $config->storage);
         $this->assertSame(1024, $config->maxBytes);
         $this->assertSame(2000, $config->maxPixels);
+        $this->assertSame(5000, $config->heicMaxPixels);
+        $this->assertSame(5000, $config->toArray()['heic_max_pixels']);
         $this->assertTrue($config->warmOnUpload);
         $this->assertTrue($config->allowSvg);
         $this->assertSame([320, 640], $config->widths);
@@ -141,6 +144,7 @@ final class MediaConfigTest extends TestCase
         $this->assertSame('json', $config->storage);
         $this->assertSame(20 * 1024 * 1024, $config->maxBytes);
         $this->assertSame(30_000_000, $config->maxPixels);
+        $this->assertSame(100_000_000, $config->heicMaxPixels);
         $this->assertFalse($config->warmOnUpload);
         $this->assertFalse($config->allowSvg);
         $this->assertNull($config->widths);

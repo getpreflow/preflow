@@ -25,6 +25,10 @@ final class MediaMessagesTest extends TestCase
                 'IMG_0001.HEIC: Das HEIC/HEIF-Foto konnte nicht umgewandelt werden.',
                 MediaMessages::text('IMG_0001.HEIC: the HEIC/HEIF image could not be converted.'),
             );
+            $this->assertSame(
+                'IMG_0001.HEIC: Das HEIC/HEIF-Foto ist zu gross zum Umwandeln.',
+                MediaMessages::text('IMG_0001.HEIC: the HEIC/HEIF image is too large to convert.'),
+            );
         } finally {
             FolioText::use($previous);
         }

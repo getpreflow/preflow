@@ -18,6 +18,7 @@ use Preflow\Media\Image\Format;
 use Preflow\Media\Image\Formats;
 use Preflow\Media\Image\Geometry;
 use Preflow\Media\Image\HeicConverter;
+use Preflow\Media\Image\HeicTooLarge;
 use Preflow\Media\Image\ImagickHeicConverter;
 use Preflow\Media\Image\Orientation;
 use Preflow\Media\Image\VariantGenerator;
@@ -1563,7 +1564,8 @@ final class MediaLibrary
     private function swapFile(string $id, string $bytes, string $name, ?string $by, array $restore, array $fields = []): Asset
     {
         $asset = $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
-        [$bytes, $name, $mime, $ext] = $this->intake($bytes, $name);
+        // Messages keep naming the file as it was sent ($name: IMG_1234.HEIC); the record gets the stored name (IMG_1234.jpg).
+        [$bytes, $storedName, $mime, $ext] = $this->intake($bytes, $name);
         if (Asset::kindOf($mime) !== $asset->kind()) {
             throw new AssetUploadException("{$name}: a {$asset->kind()} can only be replaced by another {$asset->kind()}.");
         }
@@ -1603,7 +1605,7 @@ final class MediaLibrary
         [$width, $height] = self::dimensions($target, $mime);
         $data = [
             'path' => $path,
-            'original_name' => mb_substr(basename(str_replace('\\', '/', $name)), 0, 255),
+            'original_name' => mb_substr(basename(str_replace('\\', '/', $storedName)), 0, 255),
             'mime' => $mime,
             'size' => strlen($bytes),
             'width' => $width,
@@ -2272,7 +2274,8 @@ final class MediaLibrary
      */
     private function store(string $bytes, string $name, ?string $by, bool $private = false, array $fields = []): Asset
     {
-        [$bytes, $name, $mime, $ext] = $this->intake($bytes, $name);
+        // Messages keep naming the file as it was sent ($name: IMG_1234.HEIC); the record gets the stored name (IMG_1234.jpg).
+        [$bytes, $storedName, $mime, $ext] = $this->intake($bytes, $name);
 
         $now = ($this->now)();
         $id = bin2hex(random_bytes(16));
@@ -2294,7 +2297,7 @@ final class MediaLibrary
         $asset = new Asset(
             id: $id,
             path: $path,
-            originalName: mb_substr(basename(str_replace('\\', '/', $name)), 0, 255),
+            originalName: mb_substr(basename(str_replace('\\', '/', $storedName)), 0, 255),
             mime: $mime,
             size: strlen($bytes),
             width: $width,
@@ -2508,19 +2511,23 @@ final class MediaLibrary
      * extension and the name's extension), so it is stored, measured and versioned as a JPEG;
      * without a HEIC decoder it is refused before anything is written.
      *
-     * @return array{0: string, 1: string, 2: string, 3: string} bytes, name, MIME type, extension
+     * @return array{0: string, 1: string, 2: string, 3: string} bytes, name to store, MIME type, extension
      * @throws AssetUploadException for a type that is not allowed, or a HEIC/HEIF that cannot be converted
+     *         (missing decoder, above config "heic_max_pixels", or undecodable); messages name the file as sent
      */
     private function intake(string $bytes, string $name): array
     {
         $mime = self::sniffMime($bytes);
+        $stored = $name;
         if ($mime === 'image/heic' || $mime === 'image/heif') {
-            $heic = $this->heic ?? new ImagickHeicConverter();
+            $heic = $this->heic ?? new ImagickHeicConverter((int) ($this->config['heic_max_pixels'] ?? ImagickHeicConverter::DEFAULT_MAX_PIXELS));
             if (!$heic->available()) {
                 throw new AssetUploadException("{$name}: HEIC/HEIF images need Imagick with HEIC support on the server, which is missing.");
             }
             try {
                 $bytes = $heic->toJpeg($bytes);
+            } catch (HeicTooLarge) {
+                throw new AssetUploadException("{$name}: the HEIC/HEIF image is too large to convert.");
             } catch (\RuntimeException) {
                 throw new AssetUploadException("{$name}: the HEIC/HEIF image could not be converted.");
             }
@@ -2528,7 +2535,7 @@ final class MediaLibrary
                 throw new AssetUploadException("{$name}: the HEIC/HEIF image could not be converted.");
             }
             $mime = 'image/jpeg';
-            $name = (string) preg_replace('/\.[^.\/\\\\]*$/', '', $name) . '.jpg';
+            $stored = (string) preg_replace('/\.[^.\/\\\\]*$/', '', $name) . '.jpg';
         }
         if ($mime === 'image/svg+xml' && ($this->config['allow_svg'] ?? false) !== true) {
             throw new AssetUploadException('SVG uploads are disabled.');
@@ -2538,7 +2545,7 @@ final class MediaLibrary
             throw new AssetUploadException("{$name}: files of type {$mime} are not allowed.");
         }
 
-        return [$bytes, $name, $mime, $ext];
+        return [$bytes, $stored, $mime, $ext];
     }
 
     private static function sniffMime(string $bytes): string

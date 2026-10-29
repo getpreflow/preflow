@@ -61,6 +61,8 @@ final readonly class MediaConfig
         /** Deleted assets ({bin_dir}/{id}/), a shared deploy dir like versions_dir; null: a delete removes them for good. */
         public ?string $binDir = null,
         public array $cleanup = self::CLEANUP_DEFAULTS,
+        /** HEIC/HEIF photos above this many pixels are refused before they are decoded (separate from maxPixels: 48 MP phone photos must pass). */
+        public int $heicMaxPixels = 100_000_000,
     ) {}
 
     public static function fromApp(Application $app, ?DebugCollector $debug = null): self
@@ -107,6 +109,7 @@ final readonly class MediaConfig
             ffprobe: is_string($values['ffprobe'] ?? null) && $values['ffprobe'] !== '' ? $values['ffprobe'] : null,
             binDir: is_string($values['bin_dir'] ?? null) && $values['bin_dir'] !== '' ? $values['bin_dir'] : null,
             cleanup: self::cleanup($values['cleanup'] ?? null),
+            heicMaxPixels: (int) ($values['heic_max_pixels'] ?? 100_000_000),
         );
         if ($config->colorProfileCmyk !== null && (!is_file($config->colorProfileCmyk) || !is_readable($config->colorProfileCmyk))) {
             throw new \RuntimeException("{$config->key('color_profile_cmyk')} ({$config->colorProfileCmyk}) is not a readable file.");
@@ -153,6 +156,7 @@ final readonly class MediaConfig
             'ffprobe' => $this->ffprobe,
             'bin_dir' => $this->binDir,
             'cleanup' => $this->cleanup,
+            'heic_max_pixels' => $this->heicMaxPixels,
         ];
     }
 

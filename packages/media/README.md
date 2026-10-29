@@ -70,6 +70,7 @@ return [
     'storage' => 'json',                  // a data driver name
     'max_bytes' => 20 * 1024 * 1024,
     'max_pixels' => 30_000_000,          // larger images get no variants
+    'heic_max_pixels' => 100_000_000,    // larger HEIC/HEIF photos are refused before decoding
     'warm_on_upload' => false,           // true: make the step widths during the upload too
     'allow_svg' => false,
     'widths' => [480, 768, 1024, 1600],   // default: the config/image.php preset widths
@@ -727,6 +728,12 @@ and replace.
   `{name}: HEIC/HEIF images need Imagick with HEIC support on the server, which is missing.`,
   and a file Imagick cannot decode with `{name}: the HEIC/HEIF image could not be converted.`
   Nothing is written in either case. HEIC sequences (bursts, live photos) stay refused.
+- **Size limit:** the header is read first, and a photo with more than `heic_max_pixels`
+  (default 100 million) is refused before it is decoded, with
+  `{name}: the HEIC/HEIF image is too large to convert.` This is separate from `max_pixels`,
+  which only decides whether an image gets variants: a 48 MP phone photo is converted and kept
+  even where `max_pixels` is lower. Messages name the file as it was sent (`IMG_1234.HEIC`).
+- Of a file with several images (a thumbnail, a depth map) the primary image is converted.
 - The JPEG (quality 92) **is** the asset's file: MIME `image/jpeg`, extension `.jpg`, and the
   original name's extension becomes `.jpg` (`IMG_1234.HEIC` is stored as `IMG_1234.jpg`), so
   a download matches its content. `max_bytes` still checks the uploaded HEIC.
@@ -743,7 +750,8 @@ and replace.
 - Another converter (a service, `heif-convert`, …) implements
   `Preflow\Media\Image\HeicConverter` (`available()`, `toJpeg(string $bytes): string`, which
   throws `\RuntimeException` for a file it cannot decode) and is passed to the `MediaLibrary`
-  constructor (`heic:`). The default is `ImagickHeicConverter`.
+  constructor (`heic:`). The default is `ImagickHeicConverter`, built with `heic_max_pixels`;
+  a converter of your own throws `Preflow\Media\Image\HeicTooLarge` for a file it refuses by size.
 
 ## SQL storage
 

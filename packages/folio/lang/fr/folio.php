@@ -398,6 +398,7 @@ return [
             'too_large' => ':file dépasse la limite de :limit.',
             'heic_unsupported' => ':file : les photos HEIC/HEIF ne peuvent pas être enregistrées ici, car Imagick sur le serveur ne prend pas en charge HEIC. Convertissez d\'abord la photo en JPEG.',
             'heic_failed' => ':file : la photo HEIC/HEIF n\'a pas pu être convertie.',
+            'heic_too_large' => ':file : la photo HEIC/HEIF est trop grande pour être convertie.',
         ],
     ],
     'cache' => [
