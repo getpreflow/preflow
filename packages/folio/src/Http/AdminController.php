@@ -125,7 +125,7 @@ final class AdminController
                 $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '',
                 locale: $this->requestLocale($request, $typeDef),
                 editUrl: $this->prefix . '/' . $type,
-                notice: self::restoredNotice($request),
+                notice: self::restoredNotice($request) ?? $this->confirmedNotice($request, $type),
             );
         }
 
@@ -439,7 +439,7 @@ final class AdminController
             $csrf,
             locale: $this->requestLocale($request, $this->registry->get($type)),
             editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit',
-            notice: self::restoredNotice($request) ?? self::confirmedNotice($request),
+            notice: self::restoredNotice($request) ?? $this->confirmedNotice($request, $type),
         );
     }
 
@@ -473,7 +473,7 @@ final class AdminController
         $path = is_string($path) && $path !== '' ? $path : null;
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
         $action = $this->prefix . '/' . $type . '/' . $id;
-        $editUrl = $action . '/edit';
+        $editUrl = $this->isSingleton($type) ? $this->prefix . '/' . $type : $action . '/edit';
         $heading = FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]);
         $done = new Response(302, ['Location' => $editUrl . '?locale=' . rawurlencode($locale) . '&confirmed=1']);
 
@@ -1453,10 +1453,11 @@ final class AdminController
         return $at !== false && $at->format('Y-m-d\TH:i') === $value && $at > new \DateTimeImmutable() ? $value : '';
     }
 
-    private static function confirmedNotice(ServerRequestInterface $request): ?string
+    /** Types with publishing are told to publish; others are already saved. */
+    private function confirmedNotice(ServerRequestInterface $request, string $type): ?string
     {
         return ($request->getQueryParams()['confirmed'] ?? null) === '1'
-            ? FolioText::get('folio.form.confirmed')
+            ? FolioText::get($this->publishes($type) ? 'folio.form.confirmed' : 'folio.form.confirmed_saved')
             : null;
     }
 

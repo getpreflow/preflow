@@ -89,6 +89,25 @@ final class StorageRefusalTest extends TestCase
         $this->assertSame('z', $this->stored('event', 'a')->get('slug'));
     }
 
+    /** A revision saved before fingerprints existed clears the working row's current ones (SQL leaves unnamed columns alone). */
+    public function testRestoreOfARevisionWithoutFingerprintsClearsThem(): void
+    {
+        $this->scaffoldEvents('sqlite');
+        $this->publisher()->publish($this->working('event', 'a', ['name' => 'A', 'slug' => 'x']), null);
+        $a = $this->stored('event', 'a');
+        $a->set('name', 'A2');
+        $a->set('_translated_from', ['de' => ['name' => 'aaaaaaaaaaaaaaaa']]);
+        $this->publisher()->publish($a, null);
+        $this->assertNotEmpty($this->stored('event', 'a')->get('_translated_from'));
+        $first = $this->publisher()->revisions('event', 'a')[1];
+        $this->assertArrayNotHasKey('_translated_from', $first->data);
+
+        $this->publisher()->restore('event', 'a', $first->id);
+
+        $this->assertSame('A', $this->stored('event', 'a')->get('name'));
+        $this->assertEmpty($this->stored('event', 'a')->get('_translated_from'));
+    }
+
     private function autosaveReportsATakenValue(string $storage): void
     {
         $this->scaffoldEvents($storage);

@@ -138,6 +138,7 @@ return [
         'outdated_texts' => ':count textes obsolètes',
         'still_correct' => 'Toujours correct',
         'confirmed' => 'Marqué comme toujours correct — publiez pour le mettre en ligne.',
+        'confirmed_saved' => 'Marqué comme toujours correct.',
     ],
     'publish' => [
         'incomplete' => ':language est incomplète : :texts',

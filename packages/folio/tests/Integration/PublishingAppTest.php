@@ -599,6 +599,32 @@ final class PublishingAppTest extends TestCase
         $this->assertStringContainsString('Marked as still correct', (string) $this->get('/folio/post/p1/edit?locale=de&confirmed=1')->getBody());
     }
 
+    public function test_still_correct_notice_on_a_type_without_publishing_does_not_say_publish(): void
+    {
+        $this->writeModel('memo', ['fields' => ['title' => ['type' => 'string', 'translatable' => true]]]);
+        $this->working('memo', 'm1', ['title' => ['en' => 'Hello', 'de' => 'Hallo']]);
+
+        $res = $this->post('/folio/memo/m1/_translations/confirm', ['locale' => 'de']);
+        $this->assertSame('/folio/memo/m1/edit?locale=de&confirmed=1', $res->getHeaderLine('Location'));
+        $body = (string) $this->get('/folio/memo/m1/edit?locale=de&confirmed=1')->getBody();
+
+        $this->assertStringContainsString('Marked as still correct.', $body);
+        $this->assertStringNotContainsString('publish', strtolower(substr($body, (int) strpos($body, 'Marked as still correct'), 60)));
+    }
+
+    public function test_still_correct_on_a_singleton_returns_to_its_page_with_the_notice(): void
+    {
+        $this->working('site', 'site', ['tagline' => ['en' => 'Hi', 'de' => 'Hallo']]);
+
+        $res = $this->post('/folio/site/site/_translations/confirm', ['locale' => 'de']);
+
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame('/folio/site?locale=de&confirmed=1', $res->getHeaderLine('Location'));
+        $page = $this->get('/folio/site?locale=de&confirmed=1');
+        $this->assertSame(200, $page->getStatusCode());
+        $this->assertStringContainsString('Marked as still correct', (string) $page->getBody());
+    }
+
     public function test_still_correct_with_a_stale_version_is_a_conflict(): void
     {
         $status = $this->app()->container()->get(\Preflow\Folio\Content\TranslationStatus::class);

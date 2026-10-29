@@ -138,6 +138,7 @@ return [
         'outdated_texts' => ':count Texte veraltet',
         'still_correct' => 'Stimmt noch',
         'confirmed' => 'Als noch korrekt markiert – veröffentliche, damit es live geht.',
+        'confirmed_saved' => 'Als noch korrekt markiert.',
     ],
     'publish' => [
         'incomplete' => ':language fehlt: :texts',

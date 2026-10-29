@@ -1580,7 +1580,7 @@ final class FaqFieldType implements FieldType, ReportsTranslatableTexts
     public function translatableTexts(mixed $value, array $config, Locales $locales): array
     {
         $texts = [];
-        foreach ($value as $i => $item) {
+        foreach ((array) $value as $i => $item) {
             $texts[] = TranslatableText::of("{$i}.question", 'Question ' . ($i + 1), $item['question'] ?? null, $locales);
         }
 
