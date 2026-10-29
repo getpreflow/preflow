@@ -203,6 +203,10 @@ final class Blocks
             if (!is_file($assetIdOrPath)) {
                 throw new \InvalidArgumentException("pdf_image: there is no file at '{$assetIdOrPath}'.");
             }
+            // Outside a PDF the file is inlined as base64, so anything but an image would leak (an .env, say).
+            if (@getimagesize($assetIdOrPath) === false && @mime_content_type($assetIdOrPath) !== 'image/svg+xml') {
+                throw new \InvalidArgumentException("pdf_image: the file at '{$assetIdOrPath}' is not an image.");
+            }
 
             return [$assetIdOrPath, null];
         }
@@ -235,10 +239,14 @@ final class Blocks
         return [$file, $library->url($asset)];
     }
 
-    /** A scaled JPEG copy in the temp dir, deleted when the render ends. */
+    /**
+     * A scaled JPEG copy, deleted when the render ends. It goes into mPDF's
+     * own temp folder, whose old files mPDF sweeps, so a copy a killed
+     * process left behind does not stay forever.
+     */
     private function scaledFile(string $file, int $maxPx, PdfConfig $config): string
     {
-        $dir = $config->tempDir;
+        $dir = $config->tempDir . '/mpdf';
         if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
             throw new \RuntimeException("The PDF temp dir '{$dir}' cannot be created.");
         }

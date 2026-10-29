@@ -127,6 +127,8 @@ final class BlocksTest extends TestCase
         // While mPDF ran, the big image was a 1200 px JPEG copy in the temp dir; the small one went in as it is.
         $this->assertCount(1, $engine->scaledCopies);
         [$copy] = $engine->scaledCopies;
+        // Under mPDF's own temp folder, which its clearOld() sweeps should a killed process leave the copy behind.
+        $this->assertStringStartsWith($this->config()->tempDir . '/mpdf/pdf-image-', $copy['path']);
         $this->assertSame([1200, 800, IMAGETYPE_JPEG], array_slice((array) getimagesize($copy['file']) ?: [], 0, 3));
         $this->assertStringContainsString('src="' . $copy['path'] . '"', $engine->html);
         $this->assertStringContainsString('style="width: 80mm;"', $engine->html);
@@ -150,6 +152,35 @@ final class BlocksTest extends TestCase
         }
         $this->assertCount(1, $failing->scaledCopies);
         $this->assertSame([], $this->tempImages());
+    }
+
+    #[DataProvider('engines')]
+    public function test_image_refuses_a_file_that_is_not_an_image(string $ext): void
+    {
+        $secret = $this->dir . '/.env';
+        file_put_contents($secret, "DB_PASSWORD=hunter2\n");
+        $body = $this->template($ext, 'leak', '{{ pdf_image(vars.file) }}', "@pdf_image(\$vars['file'])");
+        $doc = new BlocksDocument($body, ['file' => $secret]);
+
+        // In the preview the file would be inlined as base64; in the PDF mPDF would be handed it.
+        foreach (['preview' => fn () => $this->previewRenderer($ext)->html($doc), 'pdf' => fn () => $this->renderer($ext)->render($doc)] as $mode => $render) {
+            $thrown = null;
+            try {
+                $render();
+            } catch (\Throwable $e) {
+                $thrown = $e;
+            }
+            $this->assertNotNull($thrown, "{$mode}: a text file should be refused");
+            $message = $this->cause($thrown, \InvalidArgumentException::class)->getMessage();
+            $this->assertStringContainsString('is not an image', $message, $mode);
+            $this->assertStringNotContainsString('hunter2', $message, $mode);
+        }
+
+        // An SVG is an image, though GD cannot read it.
+        $svg = $this->dir . '/logo.svg';
+        file_put_contents($svg, '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>');
+        $html = $this->previewRenderer($ext)->html(new BlocksDocument($body, ['file' => $svg]));
+        $this->assertStringContainsString('src="data:image/svg+xml;base64,', $html);
     }
 
     public function test_private_asset_needs_opt_in(): void
@@ -340,7 +371,7 @@ final class BlocksTest extends TestCase
     /** @return list<string> images left in the temp dir */
     private function tempImages(): array
     {
-        return glob($this->dir . '/pdf/*.jpg') ?: [];
+        return glob($this->dir . '/pdf/{,mpdf/}*.jpg', GLOB_BRACE) ?: [];
     }
 
     private function mpdfFonts(): string
@@ -397,7 +428,7 @@ final class CapturingEngine implements PdfEngine
     public function render(string $html, PageSettings $page, string $headerHtml, string $footerHtml): string
     {
         $this->html = $html;
-        foreach (glob($this->tempDir . '/*.jpg') ?: [] as $path) {
+        foreach (glob($this->tempDir . '/{,mpdf/}*.jpg', GLOB_BRACE) ?: [] as $path) {
             $keep = $path . '.kept';
             copy($path, $keep);
             $this->scaledCopies[] = ['path' => $path, 'file' => $keep];
