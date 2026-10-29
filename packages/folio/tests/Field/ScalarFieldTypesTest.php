@@ -75,6 +75,36 @@ final class ScalarFieldTypesTest extends TestCase
         $type->rules(['step' => -1]);
     }
 
+    public function test_number_step_keeps_15_significant_digits(): void
+    {
+        $type = new NumberFieldType();
+        $check = static fn (array $rules, mixed $value) => (new \Preflow\Validation\Validator(
+            new \Preflow\Validation\RuleFactory(), ['f' => $rules], ['f' => $value],
+        ))->validate()->errors()['f'] ?? [];
+        $rules = $type->rules(['step' => '0.000123456789012345']);
+        $this->assertSame([], $check($rules, '0.00024691357802469'));
+        $this->assertSame(['Must be a multiple of 0.000123456789012345.'], $check($rules, '0.0002'));
+        $this->assertSame([], $check($type->rules(['step' => 1e20]), '200000000000000000000'));
+        // A float is read at 15 significant digits, so float noise does not count.
+        $this->assertStringContainsString('step="0.3"', $type->renderEditor(new FieldContext(name: 'qty', config: ['step' => 0.1 + 0.2])));
+        $this->assertStringContainsString('step="123456789012345"', $type->renderEditor(new FieldContext(name: 'qty', config: ['step' => '123456789012345'])));
+    }
+
+    public function test_number_step_refuses_more_than_15_significant_digits(): void
+    {
+        $type = new NumberFieldType();
+        foreach (['0.1234567890123456', '1234567890123456', 1234567890123456, '1.0000000000000001'] as $step) {
+            try {
+                $type->rules(['step' => $step]);
+                $this->fail('No exception for ' . var_export($step, true));
+            } catch (\LogicException $e) {
+                $this->assertSame('Number field option "step" may have at most 15 significant digits.', $e->getMessage());
+            }
+        }
+        $this->expectException(\LogicException::class);
+        $type->renderEditor(new FieldContext(name: 'qty', config: ['step' => '0.1234567890123456']));
+    }
+
     public function test_errors_render(): void
     {
         $html = (new StringFieldType())->renderEditor(new FieldContext(

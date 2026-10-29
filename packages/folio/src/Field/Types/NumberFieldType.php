@@ -63,6 +63,11 @@ final class NumberFieldType extends AbstractScalarFieldType implements \Preflow\
         if (is_int($step) || is_float($step) || (is_string($step) && is_numeric($step))) {
             $text = Step::decimal($step);
             if ($text !== null && $text !== '0' && !str_starts_with($text, '-')) {
+                // The step rule gets the step as a float, which holds 15 significant digits exactly.
+                if (strlen(trim(str_replace('.', '', $text), '0')) > 15) {
+                    throw new \LogicException('Number field option "step" may have at most 15 significant digits.');
+                }
+
                 return $text;
             }
         }

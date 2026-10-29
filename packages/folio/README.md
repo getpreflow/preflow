@@ -488,7 +488,10 @@ an error naming the type.
 (`2.3` is refused for `0.5`); `"any"` checks only numeric. Both checks judge a filled value only, so
 an optional number field can be saved empty; with `"validate": ["required"]` an empty value gets the
 required message alone. Without the option the browser takes whole numbers only and the server checks
-nothing (as before). Any other value is a configuration error.
+nothing (as before). Any other value is a configuration error, and so is a step with more than 15
+significant digits (`"0.1234567890123456"`): the check gets the step as a float, which holds no
+more exactly, so it would compare against a different step. Both throw a `LogicException`. A float
+step is read at 15 significant digits (`0.1 + 0.2` is `0.3`).
 
 Any field also takes:
 
