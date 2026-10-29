@@ -52,6 +52,19 @@ final class BladeEngineTest extends TestCase
         $this->assertSame('Hello, World!', $html);
     }
 
+    public function test_absolute_paths_render_their_own_file_when_names_collide(): void
+    {
+        mkdir($this->tmpDir . '/a');
+        mkdir($this->tmpDir . '/b');
+        file_put_contents($this->tmpDir . '/a/header.blade.php', 'Header A {{ $n }}');
+        file_put_contents($this->tmpDir . '/b/header.blade.php', 'Header B {{ $n }}');
+
+        // Both orders: whichever folder became a location first must not win the name.
+        $this->assertSame('Header A 1', $this->engine->render($this->tmpDir . '/a/header.blade.php', ['n' => 1]));
+        $this->assertSame('Header B 2', $this->engine->render($this->tmpDir . '/b/header.blade.php', ['n' => 2]));
+        $this->assertSame('Header A 3', $this->engine->render($this->tmpDir . '/a/header.blade.php', ['n' => 3]));
+    }
+
     public function test_escapes_output_by_default(): void
     {
         file_put_contents($this->tmpDir . '/escape.blade.php', '{{ $content }}');
