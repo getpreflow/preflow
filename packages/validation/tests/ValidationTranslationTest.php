@@ -37,6 +37,7 @@ final class ValidationTranslationTest extends TestCase
             'max chars' => [['f' => ['max:2']], ['f' => 'abc'], 'Must be at most 2 characters.', 'Darf höchstens 2 Zeichen lang sein.', 'Doit contenir au plus 2 caractères.'],
             'max number' => [['f' => ['max:2.5']], ['f' => 3], 'Must be at most 2.5.', 'Darf höchstens 2.5 sein.', 'Doit être inférieur ou égal à 2.5.'],
             'between' => [['f' => ['between:2,4']], ['f' => 9], 'Must be between 2 and 4.', 'Muss zwischen 2 und 4 liegen.', 'Doit être entre 2 et 4.'],
+            'step' => [['f' => ['step:0.5']], ['f' => 2.3], 'Must be a multiple of 0.5.', 'Muss ein Vielfaches von 0.5 sein.', 'Doit être un multiple de 0.5.'],
             'in' => [['f' => ['in:a,b']], ['f' => 'c'], 'Must be one of: a, b.', 'Muss eines davon sein: a, b.', 'Doit être l’une de ces valeurs : a, b.'],
             'regex' => [['f' => ['regex:/^a$/']], ['f' => 'b'], 'Format is invalid.', 'Das Format ist ungültig.', 'Le format n’est pas valide.'],
             'confirmed' => [['f' => ['confirmed']], ['f' => 'a', 'f_confirmation' => 'b'], 'Confirmation does not match.', 'Die Bestätigung stimmt nicht überein.', 'La confirmation ne correspond pas.'],

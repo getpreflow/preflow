@@ -44,6 +44,26 @@ final class ScalarFieldTypesTest extends TestCase
         $this->assertStringContainsString('type="number"', $html);
     }
 
+    public function test_number_step_renders_on_input(): void
+    {
+        $type = new NumberFieldType();
+        $this->assertStringContainsString('step="0.5"', $type->renderEditor(new FieldContext(name: 'qty', config: ['step' => 0.5])));
+        $this->assertStringContainsString('step="any"', $type->renderEditor(new FieldContext(name: 'qty', config: ['step' => 'any'])));
+        $this->assertStringNotContainsString('step=', $type->renderEditor(new FieldContext(name: 'qty')));
+    }
+
+    public function test_number_step_rules(): void
+    {
+        $type = new NumberFieldType();
+        $this->assertSame(['numeric', 'step:0.5'], $type->rules(['step' => 0.5]));
+        $this->assertSame(['numeric'], $type->rules(['step' => 'any']));
+        $this->assertSame([], $type->rules([]));
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('Number field option "step" must be a positive number or "any".');
+        $type->rules(['step' => -1]);
+    }
+
     public function test_errors_render(): void
     {
         $html = (new StringFieldType())->renderEditor(new FieldContext(

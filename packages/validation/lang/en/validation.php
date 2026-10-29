@@ -4,7 +4,7 @@
 // pass a translator). A site changes single keys in its own lang/en/validation.php; that file
 // only takes effect where a translator is passed (Folio's admin does; a site form must pass one).
 // Without a translator the validator answers with these English texts.
-// :min, :max are the rule's numbers; :values the allowed values, comma-separated.
+// :min, :max, :step are the rule's numbers; :values the allowed values, comma-separated.
 return [
     'required' => 'This field is required.',
     'email' => 'Must be a valid email address.',
@@ -20,6 +20,7 @@ return [
         'string' => 'Must be at most :max characters.',
     ],
     'between' => 'Must be between :min and :max.',
+    'step' => 'Must be a multiple of :step.',
     'in' => 'Must be one of: :values.',
     'regex' => 'Format is invalid.',
     'confirmed' => 'Confirmation does not match.',

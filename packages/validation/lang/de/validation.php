@@ -18,6 +18,7 @@ return [
         'string' => 'Darf höchstens :max Zeichen lang sein.',
     ],
     'between' => 'Muss zwischen :min und :max liegen.',
+    'step' => 'Muss ein Vielfaches von :step sein.',
     'in' => 'Muss eines davon sein: :values.',
     'regex' => 'Das Format ist ungültig.',
     'confirmed' => 'Die Bestätigung stimmt nicht überein.',

@@ -169,6 +169,30 @@ final class FolioAppTest extends TestCase
         $this->assertFalse($dm->findType('event', $id)->get('featured'));
     }
 
+    public function test_number_field_saves_decimal_on_step(): void
+    {
+        file_put_contents($this->dir . '/config/models/event.json', json_encode([
+            'key' => 'event', 'table' => 'event', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Events',
+            'fields' => [
+                'title' => ['type' => 'string'],
+                'price' => ['type' => 'number', 'step' => 0.5],
+            ],
+        ]));
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+
+        $res = $app->handle($f->createServerRequest('POST', '/folio/event')
+            ->withParsedBody(['title' => 'A', 'price' => '2.5']));
+        $this->assertNotSame(422, $res->getStatusCode());
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $this->assertEquals(2.5, $dm->queryType('event')->where('title', 'A')->first()->get('price'));
+
+        $res = $app->handle($f->createServerRequest('POST', '/folio/event')
+            ->withParsedBody(['title' => 'B', 'price' => '2.3']));
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('Must be a multiple of 0.5.', (string) $res->getBody());
+    }
+
     public function test_select_renders_stale_value_and_rejects_it_on_save(): void
     {
         $this->writeEventType();
