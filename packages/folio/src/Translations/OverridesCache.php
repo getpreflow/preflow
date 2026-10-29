@@ -10,7 +10,7 @@ use Preflow\Core\Cache\CacheStats;
 use Preflow\Folio\FolioText;
 
 /**
- * The admin overrides compiled per locale: storage/cache/folio-translations-{locale}.php, a
+ * The admin overrides compiled per locale: {cache_path}/folio-translations-{locale}.php (storage/cache by default), a
  * PHP file returning key => text (so OPcache keeps it). Written on the first admin request
  * that asks for the locale, removed by every save and by Settings → Cache (cache:clear). The
  * request that removes a file keeps what it reads again in memory only (its own flash message

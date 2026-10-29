@@ -96,7 +96,7 @@ final class FolioServiceProvider extends ServiceProvider
         $extensions = ExtensionRegistry::discover(
             $app->basePath(),
             debug: (bool) $app->config()->get('app.debug', false),
-            cacheFile: $app->basePath('storage/cache/folio-extensions.cache'),
+            cacheFile: $this->cacheDir($app) . '/folio-extensions.cache',
         );
         $container->instance(ExtensionRegistry::class, $extensions);
         // The members admin (the built-in extension "members", with preflow/members), when it is
@@ -186,17 +186,17 @@ final class FolioServiceProvider extends ServiceProvider
                 $components,
                 $app->basePath('app/Blocks'),
                 array_values((array) ($folioCfg['blocks']['classes'] ?? [])),
-                $app->basePath('storage/cache/folio-blocks.cache'),
+                $this->cacheDir($app) . '/folio-blocks.cache',
                 useCache: !$app->config()->get('app.debug', false),
             );
         });
 
         // Both caches rebuild themselves on the next request; Settings → Cache and cache:clear list them.
         $caches = $container->get(\Preflow\Core\Cache\CacheRegistry::class);
-        $caches->register(new \Preflow\Core\Cache\FileCache('folio.extensions', 'Folio extensions', $app->basePath('storage/cache/folio-extensions.cache')));
-        $caches->register(new \Preflow\Core\Cache\FileCache('folio.blocks', 'Folio blocks', $app->basePath('storage/cache/folio-blocks.cache')));
+        $caches->register(new \Preflow\Core\Cache\FileCache('folio.extensions', 'Folio extensions', $this->cacheDir($app) . '/folio-extensions.cache'));
+        $caches->register(new \Preflow\Core\Cache\FileCache('folio.blocks', 'Folio blocks', $this->cacheDir($app) . '/folio-blocks.cache'));
         // Admin text overrides (Settings → Translations), compiled per locale.
-        $overridesCache = new \Preflow\Folio\Translations\OverridesCache($app->basePath('storage/cache'));
+        $overridesCache = new \Preflow\Folio\Translations\OverridesCache($this->cacheDir($app));
         $container->instance(\Preflow\Folio\Translations\OverridesCache::class, $overridesCache);
         $caches->register($overridesCache);
         $container->singleton(\Preflow\Folio\Translations\StoredOverrides::class, fn (Container $c) => new \Preflow\Folio\Translations\StoredOverrides(
@@ -1474,5 +1474,24 @@ final class FolioServiceProvider extends ServiceProvider
             }
         }
         return [];
+    }
+
+    /**
+     * Where Folio keeps its cache files (config/folio.php 'cache_path'): an absolute path as it is, a relative
+     * one from the project root; storage/cache by default. No trailing slash.
+     */
+    private function cacheDir(Application $app): string
+    {
+        $path = $this->folioConfig($app)['cache_path'] ?? null;
+        if (!is_string($path) || trim($path) === '') {
+            return $app->basePath('storage/cache');
+        }
+        $path = rtrim($path, '/\\');
+        if ($path === '') {
+            return $app->basePath('storage/cache');
+        }
+        $absolute = str_starts_with($path, '/') || preg_match('~^[A-Za-z]:~', $path) === 1;
+
+        return $absolute ? $path : $app->basePath($path);
     }
 }

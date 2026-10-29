@@ -45,6 +45,19 @@ return [
 ];
 ```
 
+**Cache files:** Folio keeps `folio-extensions.cache`, `folio-blocks.cache` and
+`folio-translations-{locale}.php` in `storage/cache`. `config/folio.php` `'cache_path'` moves
+them: an absolute path is used as it is, a relative one is taken from the project root.
+Folio creates the directory when it writes. Core's own caches (`storage/cache/data`, compiled
+templates) are not affected. A test suite can point `cache_path` at a temp directory, so
+booting the app never writes into the project's cache:
+
+```php
+return [
+    'cache_path' => sys_get_temp_dir() . '/my-site-folio-cache',
+];
+```
+
 The admin login uses the session from `config/auth.php`. By default core starts it on
 every request, so public pages get a session cookie too. To keep public pages
 cookie-free, limit the session to the admin path:

@@ -158,6 +158,11 @@ final class FolioServiceProviderTest extends TestCase
             'key' => 'page', 'table' => 'page', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Pages',
             'fields' => ['title' => ['type' => 'string'], 'slug' => ['type' => 'string']],
         ]));
+        // One project extension, so the extension cache has something to hold (it is not written for none).
+        $w('app/Folio/CacheNotes/Extension.php', "<?php\nnamespace App\\Folio\\CacheNotes;\n#[\\Preflow\\Folio\\Extension\\Attributes\\FolioExtension(name: 'cache_notes', label: 'Cache notes')]\nfinal class Extension extends \\Preflow\\Folio\\Extension\\Extension {}\n");
+        if (!class_exists(\App\Folio\CacheNotes\Extension::class, false)) {
+            require $dir . '/app/Folio/CacheNotes/Extension.php';
+        }
         $app = Application::create($dir);
         $app->boot();
 
@@ -187,6 +192,69 @@ final class FolioServiceProviderTest extends TestCase
         $this->assertSame(25, $this->publishTimes(['publishing' => ['revisions' => null]], 25));
         $this->assertSame(25, $this->publishTimes(['publishing' => ['revisions' => 0]], 25));
         $this->assertSame(20, $this->publishTimes([], 25));
+    }
+
+    /** @return list<string> the folio-* files under a directory (recursive), as paths relative to it */
+    private function folioCacheFiles(string $dir): array
+    {
+        $found = [];
+        foreach (glob($dir . '/folio-*') ?: [] as $file) {
+            $found[] = basename($file);
+        }
+        sort($found);
+
+        return $found;
+    }
+
+    private function renderPages(\Preflow\Core\Application $app): void
+    {
+        $factory = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $this->assertSame(200, $app->handle($factory->createServerRequest('GET', '/folio'))->getStatusCode());
+        $app->handle($factory->createServerRequest('GET', '/'));
+    }
+
+    public function test_cache_path_moves_folio_caches(): void
+    {
+        $fc = sys_get_temp_dir() . '/folio_fc_' . bin2hex(random_bytes(5));
+        [$app, $dir] = $this->appWith(['cache_path' => $fc]);
+        $this->renderPages($app);
+
+        $this->assertFileExists($fc . '/folio-extensions.cache');
+        $this->assertFileExists($fc . '/folio-blocks.cache');
+        $this->assertSame([], $this->folioCacheFiles($dir . '/storage/cache'));
+
+        $paths = [];
+        foreach ($app->container()->get(\Preflow\Core\Cache\CacheRegistry::class)->all() as $source) {
+            if ($source instanceof \Preflow\Core\Cache\FileCache) {
+                $paths[$source->key()] = (new \ReflectionProperty($source, 'file'))->getValue($source);
+            }
+        }
+        $this->assertSame($fc . '/folio-extensions.cache', $paths['folio.extensions']);
+        $this->assertSame($fc . '/folio-blocks.cache', $paths['folio.blocks']);
+
+        $this->rrmdir($fc);
+        $this->rrmdir($dir);
+    }
+
+    public function test_relative_cache_path_is_from_project_root(): void
+    {
+        [$app, $dir] = $this->appWith(['cache_path' => 'var/folio/']);
+        $this->renderPages($app);
+
+        $this->assertFileExists($dir . '/var/folio/folio-extensions.cache');
+        $this->assertFileExists($dir . '/var/folio/folio-blocks.cache');
+        $this->assertSame([], $this->folioCacheFiles($dir . '/storage/cache'));
+        $this->rrmdir($dir);
+    }
+
+    public function test_default_cache_path_unchanged(): void
+    {
+        [$app, $dir] = $this->appWith([]);
+        $this->renderPages($app);
+
+        $this->assertFileExists($dir . '/storage/cache/folio-blocks.cache');
+        $this->assertFileExists($dir . '/storage/cache/folio-extensions.cache');
+        $this->rrmdir($dir);
     }
 
     private function rrmdir(string $dir): void
