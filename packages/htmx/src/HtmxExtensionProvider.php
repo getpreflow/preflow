@@ -10,7 +10,7 @@ use Preflow\View\TemplateExtensionProvider;
 final class HtmxExtensionProvider implements TemplateExtensionProvider
 {
     /**
-     * @param \Closure(): string|null $pathPrefix Put before every component URL, read
+     * @param (\Closure(): string)|null $pathPrefix Put before every component URL, read
      *        each time a URL is built (e.g. the page's locale prefix '/de').
      */
     public function __construct(

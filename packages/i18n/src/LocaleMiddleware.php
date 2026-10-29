@@ -28,8 +28,8 @@ final class LocaleMiddleware implements MiddlewareInterface
 
     /**
      * The locale prefix the current request's URL carried ('/de'; '/en' when the
-     * default locale was in the URL), or '' when it carried none. Set anew by
-     * every process() call, so a long-running worker never carries it over.
+     * default locale was in the URL), or '' when it carried none. Only set while
+     * process() runs; cleared on entry and restored when it returns or throws.
      */
     public function urlPrefix(): string
     {
@@ -38,7 +38,20 @@ final class LocaleMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
+        // Cleared on entry, restored on the way out (returned or thrown): renders after
+        // the response (deferred mail) and nested handles never see a stale prefix.
+        $previous = $this->urlPrefix;
         $this->urlPrefix = '';
+
+        try {
+            return $this->localize($request, $handler);
+        } finally {
+            $this->urlPrefix = $previous;
+        }
+    }
+
+    private function localize(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    {
         $locale = $this->defaultLocale;
         $strippedRequest = $request;
 

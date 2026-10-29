@@ -92,7 +92,7 @@ Available as `hd` in all templates once the extension is registered.
 
 #### Locale prefix
 
-Since 0.46, `HtmxExtensionProvider` takes an optional `pathPrefix` closure (`\Closure(): string`) that is put before every URL it builds (`actionUrl`, `post`, `get`, `on`). Preflow's core passes the locale prefix of the current request (`LocaleMiddleware::urlPrefix()`), so on a `/de/…` page component URLs are `/de/--component/…` and the action runs in German; the locale middleware strips `/de` again before the endpoint. Pages without a prefix, and apps without the i18n URL prefix strategy, keep `/--component/…`. A hand-written `hx-post="/--component/…"` loses the locale, so use `hd.actionUrl()`.
+Since 0.46, `HtmxExtensionProvider` takes an optional `pathPrefix` closure (`\Closure(): string`) that is put before every URL it builds (`actionUrl`, `post`, `get`, `on`). Preflow's core passes the locale prefix of the current request (`LocaleMiddleware::urlPrefix()`), so on a `/de/…` page component URLs are `/de/--component/…` and the action runs in German; the locale middleware strips `/de` again before the endpoint. Pages without a prefix, and apps without the i18n URL prefix strategy, keep `/--component/…`. A hand-written `hx-post="/--component/…"` loses the locale, so use `hd.actionUrl()`. Only `HtmxExtensionProvider` (the `hd.*` helpers in core apps) applies the prefix; the legacy `HdExtension` does not. Folio's admin preview under `/folio` carries no locale prefix, so it renders components without it.
 
 ```php
 new HtmxExtensionProvider($driver, $token, pathPrefix: fn (): string => $localeMiddleware->urlPrefix());

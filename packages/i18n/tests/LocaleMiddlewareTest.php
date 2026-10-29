@@ -233,4 +233,35 @@ final class LocaleMiddlewareTest extends TestCase
         $mw->process($this->createRequest('/blog'), $this->prefixProbe($mw, $seen));
         $this->assertSame('', $seen);
     }
+
+    public function test_url_prefix_is_empty_after_process_returns(): void
+    {
+        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
+
+        $mw->process($this->createRequest('/de/x'), $this->createHandler());
+
+        $this->assertSame('', $mw->urlPrefix());
+    }
+
+    public function test_nested_process_restores_the_outer_prefix(): void
+    {
+        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
+        $inner = null;
+        $outer = null;
+        $handler = new class($mw, $inner, $outer, $this->prefixProbe($mw, $inner)) implements RequestHandlerInterface {
+            public function __construct(private LocaleMiddleware $mw, private ?string &$inner, private ?string &$outer, private RequestHandlerInterface $probe) {}
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                $this->mw->process((new Psr17Factory())->createServerRequest('GET', '/x'), $this->probe);
+                $this->outer = $this->mw->urlPrefix();
+                return new Response(200);
+            }
+        };
+
+        $mw->process($this->createRequest('/de/x'), $handler);
+
+        $this->assertSame('', $inner);
+        $this->assertSame('/de', $outer);
+        $this->assertSame('', $mw->urlPrefix());
+    }
 }
