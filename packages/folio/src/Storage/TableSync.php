@@ -9,6 +9,7 @@ use Preflow\Data\Schema\RecordTables;
 use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Publishing\Publisher;
 use Preflow\Folio\Publishing\ShadowTypes;
@@ -31,7 +32,7 @@ use Preflow\Folio\Publishing\ShadowTypes;
 final class TableSync
 {
     /** System keys Folio writes besides a type's fields. */
-    private const array SYSTEM = ['_locales', '_order', ...Publisher::META];
+    private const array SYSTEM = ['_locales', TranslationStatus::KEY, '_order', ...Publisher::META];
 
     private readonly RecordTableSync $records;
 

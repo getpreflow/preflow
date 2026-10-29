@@ -9,13 +9,21 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\Locales;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Block\BlockRegistry;
 use Preflow\Folio\Content\DraftRecordFactory;
+use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\AssetFieldType;
+use Preflow\Folio\Field\Types\BlocksFieldType;
 use Preflow\Folio\Field\Types\StringFieldType;
+use Preflow\Folio\Field\Types\TextFieldType;
+use Preflow\Folio\Tests\Fixtures\Blocks\HeroBlock\HeroBlock;
+use Preflow\Folio\Tests\Fixtures\Blocks\TradeoffNoteBlock;
 
 final class DraftRecordFactoryTest extends TestCase
 {
+    private const A = 'aaaaaaaaaaaaaaaa';
+
     private string $dir;
 
     protected function setUp(): void
@@ -29,6 +37,7 @@ final class DraftRecordFactoryTest extends TestCase
                 'title' => ['type' => 'string', 'translatable' => true],
                 'status' => ['type' => 'string'],
                 'cover' => ['type' => 'asset', 'translatable' => true],
+                'sections' => ['type' => 'blocks'],
             ],
         ]));
     }
@@ -119,6 +128,74 @@ final class DraftRecordFactoryTest extends TestCase
         $this->assertSame('', (string) $record->get('cover'));
     }
 
+    public function test_saving_a_translation_stamps_its_fingerprint(): void
+    {
+        $record = $this->build(['title' => 'Hallo'], ['title' => ['en' => 'Hello']], 'de');
+
+        $this->assertSame(['de' => ['title' => $this->fingerprint('Hello')]], $record->get('_translated_from'));
+    }
+
+    public function test_saving_the_default_stamps_nothing(): void
+    {
+        $record = $this->build(['title' => 'Hello'], ['title' => ['en' => 'Hi', 'de' => 'Hallo']], 'en');
+
+        $this->assertNull($record->get('_translated_from'));
+    }
+
+    public function test_unchanged_translation_keeps_old_fingerprint(): void
+    {
+        $from = ['de' => ['title' => $this->fingerprint('Hello')]];
+
+        $onEnglish = $this->build(['title' => 'Hello!'], ['title' => ['en' => 'Hello', 'de' => 'Hallo'], '_translated_from' => $from], 'en');
+        $onGerman = $this->build(['title' => 'Hallo'], ['title' => ['en' => 'Hello!', 'de' => 'Hallo'], '_translated_from' => $from], 'de');
+
+        $this->assertSame($from, $onEnglish->get('_translated_from'));
+        $this->assertSame($from, $onGerman->get('_translated_from'), 'saving the same German text again is no new translation');
+        $this->assertSame(['title'], array_map(
+            static fn ($t) => $t->path,
+            (new TranslationStatus($this->registry()))->outdated($this->type(), $onEnglish, 'de'),
+        ));
+    }
+
+    public function test_changed_translation_takes_current_default(): void
+    {
+        $from = ['de' => ['title' => $this->fingerprint('Hello')]];
+
+        $record = $this->build(['title' => 'Hallo!'], ['title' => ['en' => 'Hello!', 'de' => 'Hallo'], '_translated_from' => json_encode($from)], 'de');
+
+        $this->assertSame(['de' => ['title' => $this->fingerprint('Hello!')]], $record->get('_translated_from'));
+    }
+
+    public function test_default_and_translation_written_together_take_new_default(): void
+    {
+        // A block added on the German tab writes the German text and the same English one.
+        $record = $this->build(['title' => 'Hallo', 'sections' => [
+            '_order' => [self::A],
+            self::A => ['_block' => 'hero', 'headline' => 'Neu'],
+        ]], ['title' => ['en' => 'Hello']], 'de');
+
+        $this->assertSame(['de' => 'Neu', 'en' => 'Neu'], $record->get('sections')[0]['headline']);
+        $this->assertSame($this->fingerprint('Neu'), $record->get('_translated_from')['de']['sections.' . self::A . '.headline']);
+    }
+
+    public function test_deleted_block_drops_its_fingerprints(): void
+    {
+        $existing = [
+            'title' => ['en' => 'Hello', 'de' => 'Hallo'],
+            'sections' => [['_uid' => self::A, '_block' => 'hero', 'headline' => ['en' => 'Head', 'de' => 'Kopf']]],
+            '_translated_from' => ['de' => ['title' => $this->fingerprint('Hello'), 'sections.' . self::A . '.headline' => $this->fingerprint('Head')]],
+        ];
+
+        $record = $this->build(['title' => 'Hello', 'sections' => ['_order' => []]], $existing, 'en');
+
+        $this->assertSame(['de' => ['title' => $this->fingerprint('Hello')]], $record->get('_translated_from'));
+    }
+
+    public function test_single_locale_writes_no_fingerprints(): void
+    {
+        $this->assertNull($this->build(['title' => 'Plain'], [], 'en', Locales::single('en'))->get('_translated_from'));
+    }
+
     /**
      * @param array<string, mixed> $body
      * @param array<string, mixed> $existing
@@ -137,10 +214,22 @@ final class DraftRecordFactoryTest extends TestCase
 
     private function factory(): DraftRecordFactory
     {
+        return new DraftRecordFactory($this->registry());
+    }
+
+    private function registry(): FieldTypeRegistry
+    {
         $registry = new FieldTypeRegistry();
         $registry->register(new StringFieldType());
+        $registry->register(new TextFieldType());
         $registry->register(new AssetFieldType($this->dir . '/uploads', '/folio/_uploads'));
+        $registry->register(new BlocksFieldType(new BlockRegistry([HeroBlock::class, TradeoffNoteBlock::class]), $registry));
 
-        return new DraftRecordFactory($registry);
+        return $registry;
+    }
+
+    private function fingerprint(string $text): string
+    {
+        return substr(hash('sha256', trim($text)), 0, 16);
     }
 }

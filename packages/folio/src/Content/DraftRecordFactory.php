@@ -24,6 +24,9 @@ use Psr\Http\Message\UploadedFileInterface;
  * Upload fields are always treated as shared across locales, even when marked
  * translatable (one file per record).
  *
+ * Saving a translation stamps its fingerprints (TranslationStatus::stamp()), so
+ * save, autosave and preview treat outdated translations alike.
+ *
  * Hidden and read-only fields ("hidden": true, "readonly": true) are never taken from
  * the form: the stored value is kept (a new record starts without one, unless a
  * BeforeSave hook sets it).
@@ -33,9 +36,14 @@ final class DraftRecordFactory
     /** @var array<string, list<string>> */
     private array $uploadErrors = [];
 
+    private readonly TranslationStatus $translations;
+
     public function __construct(
         private readonly FieldTypeRegistry $fieldTypes,
-    ) {}
+        ?TranslationStatus $translations = null,
+    ) {
+        $this->translations = $translations ?? new TranslationStatus($fieldTypes);
+    }
 
     /**
      * Uploads the last build() could not store, keyed by field (form errors).
@@ -147,7 +155,13 @@ final class DraftRecordFactory
 
         $data[$typeDef->idField] = $existing[$typeDef->idField] ?? null;
 
-        return DynamicRecord::fromArray($typeDef, $data);
+        // A translation saved here records the default text it was made from (outdated marks).
+        return $this->translations->stamp(
+            $typeDef,
+            DynamicRecord::fromArray($typeDef, $existing),
+            DynamicRecord::fromArray($typeDef, $data),
+            $locale,
+        );
     }
 
     /**

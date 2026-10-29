@@ -53,12 +53,12 @@ final class TableSyncTest extends TestCase
         $schema = new Schema($this->pdo);
         $this->assertFalse($schema->hasTable('memo__published'));
         $this->assertSame(
-            ['uuid', 'title', 'body', '_locales', '_order', '_version', '_publish_at', '_share_token', '_published_at', '_published_by'],
+            ['uuid', 'title', 'body', '_locales', '_translated_from', '_order', '_version', '_publish_at', '_share_token', '_published_at', '_published_by'],
             $schema->columns('post'),
         );
         $this->assertSame($schema->columns('post'), $schema->columns('post__published'));
         $this->assertSame(
-            ['uuid', 'record_id', 'seq', 'data', 'changed', 'created_at', 'created_by', '_locales', '_order', '_version', '_publish_at', '_share_token', '_published_at', '_published_by'],
+            ['uuid', 'record_id', 'seq', 'data', 'changed', 'created_at', 'created_by', '_locales', '_translated_from', '_order', '_version', '_publish_at', '_share_token', '_published_at', '_published_by'],
             $schema->columns('post__revisions'),
         );
         $info = $this->pdo->query('PRAGMA table_info("post")')->fetchAll(\PDO::FETCH_ASSOC);

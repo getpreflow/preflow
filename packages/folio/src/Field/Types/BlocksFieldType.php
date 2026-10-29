@@ -7,11 +7,14 @@ namespace Preflow\Folio\Field\Types;
 use Preflow\Data\LocaleValue;
 use Preflow\Data\Locales;
 use Preflow\Folio\Block\BlockRegistry;
+use Preflow\Folio\Content\TranslatableText;
+use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Field\BuildContext;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\HandlesUpload;
+use Preflow\Folio\Field\ReportsTranslatableTexts;
 use Preflow\Folio\Field\StructuredFieldType;
 use Preflow\Validation\ValidatorFactory;
 use Preflow\View\TemplateEngineInterface;
@@ -23,7 +26,7 @@ use Psr\Http\Message\UploadedFileInterface;
  * their own "blocks" fields; translatable leaves are locale maps, structure
  * is shared across locales. Unknown block keys are kept untouched.
  */
-final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\Folio\Field\DisplaysInAdmin
+final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\Folio\Field\DisplaysInAdmin, ReportsTranslatableTexts
 {
     private const UID = '/^[a-f0-9]{16}$/';
 
@@ -143,6 +146,43 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         }
 
         return $out;
+    }
+
+    /**
+     * The translatable leaves of every known block, walked like validateBlocks():
+     * "<uid>.<field>", nested "<uid>.<child>.<cuid>.<field>", labelled
+     * "Hero › Headline". Unknown blocks are skipped.
+     */
+    public function translatableTexts(mixed $value, array $config, Locales $locales): array
+    {
+        if (!$locales->isMultilingual()) {
+            return [];
+        }
+
+        $texts = [];
+        foreach ($this->fromStorage($value) as $block) {
+            $definition = $this->blocks->get((string) ($block['_block'] ?? ''));
+            if ($definition === null) {
+                continue;
+            }
+            $prefix = $block['_uid'];
+            $blockLabel = \Preflow\Folio\FolioText::label($definition->label);
+            foreach ($definition->fields as $name => $field) {
+                $type = $this->fieldTypes->get($field->type);
+                $label = $blockLabel . ' › ' . self::fieldLabel($field->label, $name);
+                if ($type instanceof ReportsTranslatableTexts) {
+                    foreach ($type->translatableTexts($type->fromStorage($block[$name] ?? null), $field->config, $locales) as $text) {
+                        $texts[] = $text->within($prefix . '.' . $name, $label);
+                    }
+                    continue;
+                }
+                if ($field->translatable && TranslationStatus::holdsText($type)) {
+                    $texts[] = TranslatableText::of($prefix . '.' . $name, $label, $block[$name] ?? null, $locales);
+                }
+            }
+        }
+
+        return $texts;
     }
 
     /**

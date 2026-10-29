@@ -446,7 +446,14 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(\Preflow\Folio\Publishing\PublishedCopies::class),
             ));
         }
-        $container->bind(DraftRecordFactory::class, fn (Container $c) => new DraftRecordFactory($c->get(FieldTypeRegistry::class)));
+        $container->singleton(\Preflow\Folio\Content\TranslationStatus::class, fn (Container $c) => new \Preflow\Folio\Content\TranslationStatus(
+            $c->get(FieldTypeRegistry::class),
+            $c->get(\Preflow\Folio\Content\DisplayLabels::class),
+        ));
+        $container->bind(DraftRecordFactory::class, fn (Container $c) => new DraftRecordFactory(
+            $c->get(FieldTypeRegistry::class),
+            $c->get(\Preflow\Folio\Content\TranslationStatus::class),
+        ));
         $container->bind(AdminController::class, fn (Container $c) => new AdminController(
             $c->get(TypeCatalog::class),
             $c->get(TypeRegistry::class),
