@@ -372,6 +372,15 @@ sending SQL MySQL would refuse. SQLite has no such limit.
 `string()` for anything indexed or unique. SQLite does not care, so a migration that indexes
 `text()` passes there and fails on MySQL.
 
+**Composite and unique indexes.** `$t->unique('player_token', 'game')` declares one unique index over
+the columns, in that order; `$t->index('a', 'b')` a plain one. Without arguments both mark the
+column just defined (`$t->string('slug')->unique()`). Names are `uniq_{table}_{columns}` and
+`idx_{table}_{columns}` (columns joined by `_`), shortened with a crc32 past 64 characters; a
+one-column `index()` keeps its name `idx_{table}_{column}`. Every column must exist and not be
+`text()`, checked before anything is created. Empty (`NULL`) values never collide in a unique index.
+On MySQL, `string()` columns compare case-insensitively (`utf8mb4_unicode_ci`), so `Ab` and `ab`
+collide there but not on SQLite.
+
 **Charset and collation.** Tables are created `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 COLLATE=utf8mb4_unicode_ci` (MariaDB 10.6 has no `utf8mb4_0900_*`), identifiers in backticks.
 Ids and keys (`uuid()` columns, primary `string()` columns, Folio record ids,

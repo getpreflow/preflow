@@ -80,6 +80,26 @@ final class MysqlMigrationsTest extends TestCase
         (new Schema($this->pdo))->create('t', fn (Table $t) => $t->uuid('id')->primary()->text('body')->index());
     }
 
+    public function test_composite_index_with_text_column_throws(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('Cannot index TEXT column "t.body" on MySQL');
+
+        (new Schema($this->pdo))->create('t', fn (Table $t) => $t->string('a')->text('body')->unique('a', 'body'));
+    }
+
+    public function test_composite_unique_on_mysql(): void
+    {
+        (new Schema($this->pdo))->create('t', fn (Table $t) => $t->string('player_token')->string('game')->unique('player_token', 'game'));
+        $insert = $this->pdo->prepare('INSERT INTO t (player_token, game) VALUES (?, ?)');
+        $insert->execute(['a', 'g1']);
+        $insert->execute(['a', 'g2']);
+
+        $this->assertContains('uniq_t_player_token_game', (new Schema($this->pdo))->indexes('t'));
+        $this->expectException(\PDOException::class);
+        $insert->execute(['a', 'g1']);
+    }
+
     public function test_ids_differing_in_case_or_accent_coexist(): void
     {
         (new Schema($this->pdo))->create('t', fn (Table $t) => $t->uuid('id')->primary()->string('name'));

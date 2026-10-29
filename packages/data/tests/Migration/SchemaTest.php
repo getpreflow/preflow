@@ -100,4 +100,54 @@ final class SchemaTest extends TestCase
         $this->assertSame(['id', 'note'], $this->schema->columns('t'));
         $this->assertNull($this->pdo->query('SELECT note FROM t')->fetchColumn());
     }
+
+    public function test_composite_unique_refuses_duplicate_pair(): void
+    {
+        $this->schema->create('t', fn (Table $t) => $t->string('player_token')->string('game')->unique('player_token', 'game'));
+        $insert = $this->pdo->prepare('INSERT INTO t (player_token, game) VALUES (?, ?)');
+        $insert->execute(['a', 'g1']);
+        $insert->execute(['a', 'g2']);
+
+        $this->assertContains('uniq_t_player_token_game', $this->schema->indexes('t'));
+        $this->expectException(\PDOException::class);
+        $insert->execute(['a', 'g1']);
+    }
+
+    public function test_composite_plain_index_is_created(): void
+    {
+        $this->schema->create('t', fn (Table $t) => $t->string('a')->string('b')->index('a', 'b'));
+        $insert = $this->pdo->prepare('INSERT INTO t (a, b) VALUES (?, ?)');
+        $insert->execute(['x', 'y']);
+        $insert->execute(['x', 'y']);
+
+        $this->assertContains('idx_t_a_b', $this->schema->indexes('t'));
+    }
+
+    public function test_unique_without_arguments_marks_last_column(): void
+    {
+        $this->schema->create('t', fn (Table $t) => $t->string('col')->unique());
+
+        $this->assertContains('uniq_t_col', $this->schema->indexes('t'));
+        $this->pdo->exec("INSERT INTO t (col) VALUES ('a')");
+        $this->expectException(\PDOException::class);
+        $this->pdo->exec("INSERT INTO t (col) VALUES ('a')");
+    }
+
+    public function test_index_without_arguments_unchanged(): void
+    {
+        $this->schema->create('t', fn (Table $t) => $t->string('col')->index());
+
+        $this->assertContains('idx_t_col', $this->schema->indexes('t'));
+    }
+
+    public function test_index_on_unknown_column_throws(): void
+    {
+        try {
+            $this->schema->create('t', fn (Table $t) => $t->string('a')->unique('nope'));
+            $this->fail('Expected LogicException');
+        } catch (\LogicException $e) {
+            $this->assertStringContainsString('t.nope', $e->getMessage());
+        }
+        $this->assertFalse($this->schema->hasTable('t'));
+    }
 }

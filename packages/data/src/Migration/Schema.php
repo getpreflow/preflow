@@ -24,17 +24,32 @@ final class Schema
 
         // Validate before touching the database, so a refused index never leaves a half-made table.
         $kinds = array_column($builder->columns(), 'kind', 'name');
-        foreach ($builder->getIndexes() as $column) {
-            if (!$this->grammar->canIndex($kinds[$column])) {
-                throw new \LogicException(
-                    "Cannot index TEXT column \"{$table}.{$column}\" on MySQL: use string() for indexed columns."
-                );
+        $definitions = $builder->getIndexDefinitions();
+        foreach ($definitions as $definition) {
+            foreach ($definition['columns'] as $column) {
+                if (!isset($kinds[$column])) {
+                    throw new \LogicException("Cannot index unknown column \"{$table}.{$column}\".");
+                }
+                if (!$this->grammar->canIndex($kinds[$column])) {
+                    throw new \LogicException(
+                        "Cannot index TEXT column \"{$table}.{$column}\" on MySQL: use string() for indexed columns."
+                    );
+                }
             }
         }
 
         // Built first too: the grammar may refuse a name (MySQL's 64-character limit).
         $create = $this->grammar->createTable($builder->getName(), $builder->columns());
-        $indexes = array_map(fn (string $column): string => $this->grammar->createIndex($table, $column), $builder->getIndexes());
+        $indexes = [];
+        foreach ($definitions as $definition) {
+            $columns = $definition['columns'];
+            if (count($columns) === 1 && !$definition['unique']) {
+                $indexes[] = $this->grammar->createIndex($table, $columns[0]);
+                continue;
+            }
+            $name = $this->grammar->indexName($definition['unique'] ? 'uniq' : 'idx', $table, implode('_', $columns));
+            $indexes[] = $this->grammar->createRecordIndex($name, $table, $columns, $definition['unique']);
+        }
 
         $this->pdo->exec($create);
         foreach ($indexes as $sql) {

@@ -6,8 +6,11 @@ namespace Preflow\Data\Migration;
 
 final class Table
 {
-    /** @var array<int, array{name: string, kind: string, length: ?int, nullable: bool, primary: bool, index: bool}> */
+    /** @var array<int, array{name: string, kind: string, length: ?int, nullable: bool, primary: bool, index: bool, unique: bool}> */
     private array $columns = [];
+
+    /** @var list<array{columns: list<string>, unique: bool}> */
+    private array $declared = [];
 
     public function __construct(
         private readonly string $name,
@@ -68,12 +71,16 @@ final class Table
         return $this;
     }
 
-    public function index(): self
+    /** Without arguments, indexes the last column; with columns, declares one index over them, in that order. */
+    public function index(string ...$columns): self
     {
-        if ($this->columns !== []) {
-            $this->columns[array_key_last($this->columns)]['index'] = true;
-        }
-        return $this;
+        return $this->markOrDeclare('index', $columns, false);
+    }
+
+    /** Without arguments, makes the last column unique; with columns, declares one unique index over them. */
+    public function unique(string ...$columns): self
+    {
+        return $this->markOrDeclare('unique', $columns, true);
     }
 
     /**
@@ -106,9 +113,42 @@ final class Table
         return $indexes;
     }
 
+    /**
+     * Every index to create: the column modifiers in column order, then the declared ones.
+     *
+     * @return list<array{columns: list<string>, unique: bool}>
+     */
+    public function getIndexDefinitions(): array
+    {
+        $definitions = [];
+        foreach ($this->columns as $col) {
+            if ($col['primary']) {
+                continue;
+            }
+            if ($col['index']) {
+                $definitions[] = ['columns' => [$col['name']], 'unique' => false];
+            }
+            if ($col['unique']) {
+                $definitions[] = ['columns' => [$col['name']], 'unique' => true];
+            }
+        }
+        return [...$definitions, ...$this->declared];
+    }
+
     public function getName(): string
     {
         return $this->name;
+    }
+
+    /** @param string[] $columns */
+    private function markOrDeclare(string $flag, array $columns, bool $unique): self
+    {
+        if ($columns !== []) {
+            $this->declared[] = ['columns' => array_values($columns), 'unique' => $unique];
+        } elseif ($this->columns !== []) {
+            $this->columns[array_key_last($this->columns)][$flag] = true;
+        }
+        return $this;
     }
 
     private function addColumn(string $name, string $kind, ?int $length = null): self
@@ -120,6 +160,7 @@ final class Table
             'nullable' => false,
             'primary' => false,
             'index' => false,
+            'unique' => false,
         ];
         return $this;
     }
