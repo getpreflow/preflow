@@ -248,6 +248,36 @@ final class PublisherTest extends TestCase
         $this->assertSame([5, 4, 3], array_map(static fn ($r) => $r->seq, $p->revisions('post', 'r1')));
     }
 
+    public function test_zero_keeps_every_revision(): void
+    {
+        $this->assertSame(range(25, 1), $this->seqsAfterPublishing(0, 25));
+    }
+
+    public function test_null_keeps_every_revision(): void
+    {
+        $this->assertSame(range(25, 1), $this->seqsAfterPublishing(null, 25));
+    }
+
+    public function test_negative_keep_throws(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('publishing.revisions must be 0 (keep all) or more.');
+        $this->publisher(keep: -1);
+    }
+
+    /** @return list<int> */
+    private function seqsAfterPublishing(?int $keep, int $times): array
+    {
+        $p = $this->publisher(keep: $keep);
+        for ($i = 1; $i <= $times; $i++) {
+            $post = $i === 1 ? $this->working('post', ['title' => 'T1']) : $this->reload('post');
+            $post->set('title', 'T' . $i);
+            $p->publish($post, null);
+        }
+
+        return array_map(static fn ($r) => $r->seq, $p->revisions('post', 'r1'));
+    }
+
     public function test_restore_copies_into_working_copy_only(): void
     {
         $p = $this->publisher();
@@ -646,7 +676,7 @@ final class PublisherTest extends TestCase
         $this->assertSame(4, (int) $this->reload('post')->get('_version'));
     }
 
-    private function publisher(int $keep = 20, bool $complete = false): Publisher
+    private function publisher(?int $keep = 20, bool $complete = false): Publisher
     {
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());

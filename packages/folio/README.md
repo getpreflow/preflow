@@ -668,6 +668,10 @@ header:
   'publishing' => ['revisions' => 20, 'preview_ttl' => 604800],
   ```
 
+  `0` or `null` keeps every revision (a missing key keeps 20; a negative number is a boot
+  error). Each publish reads the record's revisions to number the next one, so unlimited
+  history makes that read grow with every publish.
+
 **Scheduled publishing:** "Publish at" stores a date and time on the working copy.
 Publish what is due from cron:
 

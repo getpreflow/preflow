@@ -141,4 +141,62 @@ final class FolioServiceProviderTest extends TestCase
         $this->assertSame($c->get(\Preflow\Media\ImageTag::class), $c->get('Preflow\\Folio\\Assets\\ImageTag'));
         $this->assertSame($c->get(\Preflow\Media\Image\ImageWidths::class), $c->get('Preflow\\Folio\\Assets\\ImageWidths'));
     }
+
+    /** @param array<string, mixed> $folio */
+    private function appWith(array $folio): array
+    {
+        $dir = sys_get_temp_dir() . '/folio_sp_' . bin2hex(random_bytes(5));
+        $w = static function (string $rel, string $content) use ($dir): void {
+            @mkdir(dirname($dir . '/' . $rel), 0777, true);
+            file_put_contents($dir . '/' . $rel, $content);
+        };
+        $w('config/app.php', "<?php\nreturn ['name' => 'T', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-sp-test-key'];\n");
+        $w('config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json', 'models_path' => __DIR__ . '/models'];\n");
+        $w('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");
+        $w('config/folio.php', '<?php return ' . var_export($folio, true) . ";\n");
+        $w('config/models/page.json', json_encode([
+            'key' => 'page', 'table' => 'page', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Pages',
+            'fields' => ['title' => ['type' => 'string'], 'slug' => ['type' => 'string']],
+        ]));
+        $app = Application::create($dir);
+        $app->boot();
+
+        return [$app, $dir];
+    }
+
+    private function publishTimes(array $folio, int $times): int
+    {
+        [$app, $dir] = $this->appWith($folio);
+        $publisher = $app->container()->get(\Preflow\Folio\Publishing\Publisher::class);
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $def = $dm->getTypeRegistry()->get('page');
+        $record = \Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'r1', 'title' => 'T', 'slug' => 't']);
+        for ($i = 1; $i <= $times; $i++) {
+            $record->set('title', 'T' . $i);
+            $dm->saveType($record);
+            $publisher->publish($record, null);
+        }
+        $count = count($publisher->revisions('page', 'r1'));
+        $this->rrmdir($dir);
+
+        return $count;
+    }
+
+    public function test_revisions_null_in_config_means_keep_all(): void
+    {
+        $this->assertSame(25, $this->publishTimes(['publishing' => ['revisions' => null]], 25));
+        $this->assertSame(25, $this->publishTimes(['publishing' => ['revisions' => 0]], 25));
+        $this->assertSame(20, $this->publishTimes([], 25));
+    }
+
+    private function rrmdir(string $dir): void
+    {
+        foreach (scandir($dir) ?: [] as $e) {
+            if ($e === '.' || $e === '..') {
+                continue;
+            }
+            is_dir("$dir/$e") ? $this->rrmdir("$dir/$e") : @unlink("$dir/$e");
+        }
+        @rmdir($dir);
+    }
 }

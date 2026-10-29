@@ -41,11 +41,14 @@ final class Publisher
         private readonly DataManager $dm,
         private readonly TypeCatalog $catalog,
         private readonly RecordValidator $validator,
-        private readonly int $keepRevisions = 20,
+        private readonly ?int $keepRevisions = 20,
         ?\Closure $now = null,
         private readonly ?TranslationStatus $translations = null,
         private readonly bool $completeLanguages = false,
     ) {
+        if ($keepRevisions !== null && $keepRevisions < 0) {
+            throw new \InvalidArgumentException('publishing.revisions must be 0 (keep all) or more.');
+        }
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
     }
 
@@ -446,7 +449,10 @@ final class Publisher
             'created_by' => $by,
         ]), false);
 
-        foreach (array_slice($existing, max(0, $this->keepRevisions - 1)) as $old) {
+        if ($this->keepRevisions === null || $this->keepRevisions === 0) {
+            return;
+        }
+        foreach (array_slice($existing, $this->keepRevisions - 1) as $old) {
             $this->dm->deleteIn($revisionsDef, $old->id);
         }
     }

@@ -430,11 +430,16 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(FieldTypeRegistry::class),
             $c->get(DataManager::class),
         ));
+        // publishing.revisions: 0 or null keeps every revision; a missing key keeps 20.
+        $publishing = (array) ($folioConfig['publishing'] ?? []);
+        $keepRevisions = array_key_exists('revisions', $publishing)
+            ? ($publishing['revisions'] === null ? null : (int) $publishing['revisions'])
+            : 20;
         $container->singleton(\Preflow\Folio\Publishing\Publisher::class, fn (Container $c) => new \Preflow\Folio\Publishing\Publisher(
             $c->get(DataManager::class),
             $c->get(TypeCatalog::class),
             $c->get(\Preflow\Folio\Content\RecordValidator::class),
-            (int) ($folioConfig['publishing']['revisions'] ?? 20),
+            $keepRevisions,
             null,
             $c->get(\Preflow\Folio\Content\TranslationStatus::class),
             (bool) ($folioConfig['publishing']['complete_languages'] ?? false),
