@@ -705,6 +705,7 @@ After deploying:
 **Share preview links:**
 - **Copy preview link** creates a signed URL to the record's real page that shows the
   working copy to anyone holding it, without logging in.
+- Links work on every language tab (since 0.46): a German tab's link opens `/de/…`.
 - Links expire after `preview_ttl` seconds (7 days by default).
 - **Revoke all links** invalidates every earlier link for that record.
 - Responses carry `X-Robots-Tag: noindex` and `Cache-Control: private, no-store`.

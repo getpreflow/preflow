@@ -140,6 +140,24 @@ final class FrontendResolver
      */
     public function urlFor(DynamicRecord $record, string $locale): ?string
     {
+        $path = $this->pathFor($record, $locale);
+        if ($path === null) {
+            return null;
+        }
+        if ($locale === $record->getType()->locales->default) {
+            return $path;
+        }
+
+        return '/' . $locale . ($path !== '/' ? $path : '');
+    }
+
+    /**
+     * The record's path as the router sees it after the locale middleware has
+     * stripped the "/de" prefix: "/hallo", or "/" for the home record. Null in
+     * the same cases as urlFor().
+     */
+    public function pathFor(DynamicRecord $record, string $locale): ?string
+    {
         $route = $this->routeFor($record->getType()->key);
         $locales = $record->getType()->locales;
         if ($route === null || !$locales->has($locale)) {
@@ -175,11 +193,7 @@ final class FrontendResolver
             $path = trim($path, '/');
         }
 
-        if ($locale === $locales->default) {
-            return '/' . $path;
-        }
-
-        return '/' . $locale . ($path !== '' ? '/' . $path : '');
+        return '/' . $path;
     }
 
     public function routeFor(string $type): ?FrontendRoute

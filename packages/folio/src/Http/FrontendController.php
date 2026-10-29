@@ -152,7 +152,7 @@ final class FrontendController
      * A valid share-preview link shows the record's working copy to anyone
      * holding it: the token must verify, its nonce must match the record's
      * current _share_token (rotating it revokes links), and the request path
-     * must be the record's own URL. Anything else falls back to the public page.
+     * must be the record's own path in the request's language. Anything else falls back to the public page.
      * A gated type's link is for staff review: the reviewer must pass the gate too.
      */
     private function sharedPreview(ServerRequestInterface $request): ?ResponseInterface
@@ -175,8 +175,9 @@ final class FrontendController
         }
 
         $locale = $request->getAttribute('locale');
-        $url = $this->resolver->urlFor($working, is_string($locale) ? $locale : $working->getType()->locales->default);
-        if ($url === null || rtrim($url, '/') !== rtrim($request->getUri()->getPath(), '/')) {
+        // The locale middleware has already stripped the "/de" prefix from the request path.
+        $path = $this->resolver->pathFor($working, is_string($locale) ? $locale : $working->getType()->locales->default);
+        if ($path === null || (rtrim($path, '/') ?: '/') !== (rtrim($request->getUri()->getPath(), '/') ?: '/')) {
             return null;
         }
 

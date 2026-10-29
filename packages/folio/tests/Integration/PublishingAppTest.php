@@ -475,9 +475,41 @@ final class PublishingAppTest extends TestCase
         $this->assertStringContainsString('Copy preview link', (string) $this->get('/folio/post/p1/edit')->getBody());
     }
 
-    private function shareToken(string $id): string
+    public function test_share_link_on_german_tab_opens_german_draft(): void
     {
-        $body = (string) $this->post('/folio/post/' . $id . '/share', ['_locale' => 'en'])->getBody();
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello', 'de' => 'Hallo'], 'slug' => ['en' => 'hello', 'de' => 'hallo'], '_locales' => ['en', 'de']]);
+        $token = $this->shareToken('p1', 'de');
+
+        $res = $this->getWithPreview('/de/hallo', $token);
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('Hallo', (string) $res->getBody());
+        $this->assertSame('noindex', $res->getHeaderLine('X-Robots-Tag'));
+    }
+
+    public function test_share_link_on_default_locale_still_opens(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello', 'de' => 'Hallo'], 'slug' => ['en' => 'hello', 'de' => 'hallo'], '_locales' => ['en', 'de']]);
+        $token = $this->shareToken('p1', 'en');
+
+        $res = $this->getWithPreview('/hello', $token);
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringContainsString('Hello', (string) $res->getBody());
+    }
+
+    public function test_share_token_only_opens_its_own_locale_path(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello', 'de' => 'Hallo'], 'slug' => ['en' => 'hello', 'de' => 'hallo'], '_locales' => ['en', 'de']]);
+        $token = $this->shareToken('p1', 'de');
+
+        $this->assertSame(404, $this->getWithPreview('/hallo', $token)->getStatusCode());
+        $this->assertSame(404, $this->getWithPreview('/de/hello', $token)->getStatusCode());
+    }
+
+    private function shareToken(string $id, string $locale = 'en'): string
+    {
+        $body = (string) $this->post('/folio/post/' . $id . '/share', ['_locale' => $locale])->getBody();
         $this->assertSame(1, preg_match('/folio_preview=([A-Za-z0-9_.\-]+)/', $body, $m), $body);
 
         return $m[1];

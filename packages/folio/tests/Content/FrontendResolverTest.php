@@ -8,9 +8,11 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\Locales;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\FrontendConfigException;
 use Preflow\Folio\Content\FrontendResolver;
+use Preflow\Folio\Content\FrontendRoute;
 use Preflow\Folio\Content\TypeCatalog;
 
 final class FrontendResolverTest extends TestCase
@@ -157,6 +159,36 @@ final class FrontendResolverTest extends TestCase
         $this->assertSame('home', $resolver->match('')?->record->get('slug'));
         $this->assertNotNull($resolver->routeFor('page'));
         $this->assertNull($resolver->routeFor('article'));
+    }
+
+    public function test_path_for_is_the_path_after_the_locale_prefix_is_stripped(): void
+    {
+        file_put_contents($this->models . '/lpage.json', json_encode([
+            'key' => 'lpage', 'table' => 'lpage', 'storage' => 'json', 'id_field' => 'uuid',
+            'frontend' => ['route' => '/{slug}', 'home' => 'start'],
+            'publishing' => false,
+            'fields' => [
+                'title' => ['type' => 'string', 'translatable' => true],
+                'slug' => ['type' => 'string', 'translatable' => true],
+            ],
+        ]));
+        $type = (new TypeRegistry($this->models, new Locales(['en', 'de'], 'en')))->get('lpage');
+        $resolver = new FrontendResolver($this->dm, [FrontendRoute::fromConfig('lpage', ['route' => '/{slug}', 'home' => 'start'])]);
+
+        $record = DynamicRecord::fromArray($type, [
+            'uuid' => 'a', 'title' => ['en' => 'Hello', 'de' => 'Hallo'], 'slug' => ['en' => 'hello', 'de' => 'hallo'], '_locales' => ['en', 'de'],
+        ]);
+        $this->assertSame('/hallo', $resolver->pathFor($record, 'de'));
+        $this->assertSame('/hello', $resolver->pathFor($record, 'en'));
+        $this->assertSame('/de/hallo', $resolver->urlFor($record, 'de'));
+        $this->assertSame('/hello', $resolver->urlFor($record, 'en'));
+
+        $home = DynamicRecord::fromArray($type, [
+            'uuid' => 'b', 'title' => ['en' => 'Home', 'de' => 'Start'], 'slug' => ['en' => 'start', 'de' => 'start'], '_locales' => ['en', 'de'],
+        ]);
+        $this->assertSame('/', $resolver->pathFor($home, 'en'));
+        $this->assertSame('/', $resolver->pathFor($home, 'de'));
+        $this->assertSame('/de', $resolver->urlFor($home, 'de'));
     }
 
     /**
