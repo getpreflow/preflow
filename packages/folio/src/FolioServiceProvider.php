@@ -430,11 +430,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(FieldTypeRegistry::class),
             $c->get(DataManager::class),
         ));
-        // publishing.revisions: 0 or null keeps every revision; a missing key keeps 20.
-        $publishing = (array) ($folioConfig['publishing'] ?? []);
-        $keepRevisions = array_key_exists('revisions', $publishing)
-            ? ($publishing['revisions'] === null ? null : (int) $publishing['revisions'])
-            : 20;
+        $keepRevisions = self::keepRevisions((array) ($folioConfig['publishing'] ?? []));
         $container->singleton(\Preflow\Folio\Publishing\Publisher::class, fn (Container $c) => new \Preflow\Folio\Publishing\Publisher(
             $c->get(DataManager::class),
             $c->get(TypeCatalog::class),
@@ -1455,7 +1451,32 @@ final class FolioServiceProvider extends ServiceProvider
         return $app->basePath('config/models');
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * publishing.revisions: 0 or null keeps every revision; a missing key keeps 20. Checked at
+     * boot: a whole number (an int or a string of digits) of 0 or more, or null; anything else
+     * (a negative number, a float, text, a bool) throws.
+     *
+     * @param array<string, mixed> $publishing
+     */
+    private static function keepRevisions(array $publishing): ?int
+    {
+        if (!array_key_exists('revisions', $publishing)) {
+            return 20;
+        }
+        $value = $publishing['revisions'];
+        if ($value === null) {
+            return null;
+        }
+        if (is_string($value) && preg_match('/^-?\d+$/', $value) === 1) {
+            $value = (int) $value;
+        }
+        if (!is_int($value) || $value < 0) {
+            throw new \InvalidArgumentException('publishing.revisions must be 0 (keep all) or more.');
+        }
+
+        return $value;
+    }
+
     /**
      * Variant widths: config/folio.php assets.widths, else every width used by
      * the config/image.php presets, else a sensible ladder.
@@ -1464,6 +1485,7 @@ final class FolioServiceProvider extends ServiceProvider
      * @param array<string, mixed> $presets
      * @return list<int>
      */
+    /** @return array<string, mixed> */
     private function folioConfig(Application $app): array
     {
         $path = $app->basePath('config/folio.php');

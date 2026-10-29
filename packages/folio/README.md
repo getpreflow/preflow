@@ -683,8 +683,9 @@ header:
   'publishing' => ['revisions' => 20, 'preview_ttl' => 604800],
   ```
 
-  `0` or `null` keeps every revision (a missing key keeps 20; a negative number is a boot
-  error). Each publish reads the record's revisions to number the next one, so unlimited
+  `0` or `null` keeps every revision (a missing key keeps 20). Anything but a whole number
+  of 0 or more (an int or a string of digits) or `null` stops the boot with an
+  `InvalidArgumentException`: a negative number, a float, text or a bool. Each publish reads the record's revisions to number the next one, so unlimited
   history makes that read grow with every publish.
 
 **Scheduled publishing:** "Publish at" stores a date and time on the working copy.

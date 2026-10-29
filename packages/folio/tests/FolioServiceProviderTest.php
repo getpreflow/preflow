@@ -163,10 +163,50 @@ final class FolioServiceProviderTest extends TestCase
         if (!class_exists(\App\Folio\CacheNotes\Extension::class, false)) {
             require $dir . '/app/Folio/CacheNotes/Extension.php';
         }
+        $this->appDir = $dir;
         $app = Application::create($dir);
         $app->boot();
 
         return [$app, $dir];
+    }
+
+    /** The temp app appWith() made last, so a test whose boot throws can still remove it. */
+    private ?string $appDir = null;
+
+    /** @return \Throwable|null what booting with this publishing.revisions threw */
+    private function bootWithRevisions(mixed $revisions): ?\Throwable
+    {
+        try {
+            $this->appWith(['publishing' => ['revisions' => $revisions]]);
+
+            return null;
+        } catch (\Throwable $e) {
+            return $e;
+        } finally {
+            if ($this->appDir !== null) {
+                $this->rrmdir($this->appDir);
+                $this->appDir = null;
+            }
+        }
+    }
+
+    public function test_negative_revisions_is_a_boot_error(): void
+    {
+        foreach ([-1, '-3'] as $revisions) {
+            $e = $this->bootWithRevisions($revisions);
+            $this->assertInstanceOf(\InvalidArgumentException::class, $e, var_export($revisions, true));
+            $this->assertSame('publishing.revisions must be 0 (keep all) or more.', $e->getMessage());
+        }
+    }
+
+    public function test_revisions_must_be_a_whole_number_or_null(): void
+    {
+        foreach (['abc', '', 2.5, 20.0, true, false, ['x'], '1e2', ' 5'] as $revisions) {
+            $e = $this->bootWithRevisions($revisions);
+            $this->assertInstanceOf(\InvalidArgumentException::class, $e, var_export($revisions, true));
+            $this->assertSame('publishing.revisions must be 0 (keep all) or more.', $e->getMessage());
+        }
+        $this->assertSame(15, $this->publishTimes(['publishing' => ['revisions' => '15']], 17));
     }
 
     private function publishTimes(array $folio, int $times): int
