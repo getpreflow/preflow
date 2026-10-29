@@ -58,6 +58,10 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    `ReportsTranslatableTexts`), fingerprints in `_translated_from`, list badges and language tabs with counts,
    "still correct" in the form, and the opt-in `publishing.complete_languages` refusal. See
    `docs/superpowers/plans/2026-10-29-release-0.45-checklist.md`
+7. **Phase 3 gaps** — done in 0.46 (prepared, not released): number `step` (exact decimal `step:n` rule), share
+   links on every language, component actions keep the locale prefix, composite indexes in migrations,
+   `revisions: 0` keeps all, `cache_path`, HEIC/HEIF as JPEG (with `heic_max_pixels`). See
+   `docs/superpowers/plans/2026-10-29-release-0.46-checklist.md`
 
 **Rule (owner, 2026-10-26):** the framework holds abstractions, interfaces, hooks and generic mechanisms only;
 a feature one project needs is built in that project on top of them. A package's official admin UI lives in Folio
