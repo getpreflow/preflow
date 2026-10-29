@@ -49,6 +49,7 @@ final class ScalarFieldTypesTest extends TestCase
         $type = new NumberFieldType();
         $this->assertStringContainsString('step="0.5"', $type->renderEditor(new FieldContext(name: 'qty', config: ['step' => 0.5])));
         $this->assertStringContainsString('step="any"', $type->renderEditor(new FieldContext(name: 'qty', config: ['step' => 'any'])));
+        $this->assertStringContainsString('step="0.00001"', $type->renderEditor(new FieldContext(name: 'qty', config: ['step' => 0.00001])));
         $this->assertStringNotContainsString('step=', $type->renderEditor(new FieldContext(name: 'qty')));
     }
 

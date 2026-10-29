@@ -51,8 +51,11 @@ final class NumberFieldType extends AbstractScalarFieldType implements \Preflow\
         if ($step === 'any') {
             return 'any';
         }
-        if ((is_int($step) || is_float($step) || (is_string($step) && is_numeric($step))) && $step > 0) {
-            return (string) ($step + 0);
+        if (is_int($step) || is_float($step) || (is_string($step) && is_numeric($step))) {
+            $text = \Preflow\Validation\Rules\Step::decimal($step);
+            if ($text !== null && $text !== '0' && !str_starts_with($text, '-')) {
+                return $text;
+            }
         }
 
         throw new \LogicException('Number field option "step" must be a positive number or "any".');

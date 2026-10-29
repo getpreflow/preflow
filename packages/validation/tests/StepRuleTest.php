@@ -26,6 +26,16 @@ final class StepRuleTest extends TestCase
         $this->assertTrue($this->check(0.01, '19.99'));
     }
 
+    public function test_exact_on_large_values_and_exponents(): void
+    {
+        $this->assertInstanceOf(Message::class, $this->check(0.01, '10000000.005'));
+        $this->assertInstanceOf(Message::class, $this->check(1, 1000000000.5));
+        $this->assertTrue($this->check(0.5, '1e12'));
+        $this->assertInstanceOf(Message::class, $this->check(0.5, -1.7));
+        $this->assertTrue($this->check(0.00001, '0.00003'));
+        $this->assertSame(['step' => '0.00001'], $this->check(0.00001, '0.000035')->params);
+    }
+
     public function test_refuses_off_step(): void
     {
         $result = $this->check(0.5, 2.3);
