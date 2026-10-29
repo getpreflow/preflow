@@ -18,10 +18,20 @@ use Preflow\Data\TypeFieldDefinition;
  *
  * The fixture: 12 answers of 3 members over 4 steps. a12 has no step; a04, a06 and a10 have no
  * seconds; a03 took 7.5 seconds. grade differs only in case ('a', 'A'); topic is translatable.
+ * extra is a structured (non-relation) field: a01 and a02 share a map, a03 has another, a05 a
+ * list, the rest none.
  */
 trait AggregateScenarios
 {
     protected DataManager $dm;
+
+    /** The structured values; with a non-ASCII letter and a slash, which JSON text may escape. */
+    private const EXTRA = [
+        'a01' => ['extra' => ['hint' => true]],
+        'a02' => ['extra' => ['hint' => true]],
+        'a03' => ['extra' => ['note' => 'Rätsel/2']],
+        'a05' => ['extra' => ['b', 'a']],
+    ];
 
     abstract protected function storage(): string;
 
@@ -35,6 +45,7 @@ trait AggregateScenarios
             'seconds' => new TypeFieldDefinition('seconds', 'number'),
             'grade' => new TypeFieldDefinition('grade'),
             'topic' => new TypeFieldDefinition('topic', translatable: true),
+            'extra' => new TypeFieldDefinition('extra', 'json'),
         ], locales: new Locales(['de', 'en'], 'de'));
         (new RecordTableSync($this->dm))->sync($answer);
 
@@ -60,6 +71,7 @@ trait AggregateScenarios
             if ($step !== null) {
                 $row['step'] = $step;
             }
+            $row += self::EXTRA[$uuid] ?? [];
             $this->dm->saveType(DynamicRecord::fromArray($answer, $row), false);
         }
 
@@ -345,6 +357,31 @@ trait AggregateScenarios
 
         $right = $this->dm->queryIn($answer)->where('uuid', 'a02')->aggregate()->min('correct', 'all_right')->get();
         $this->assertSame([['all_right' => true]], $right);
+    }
+
+    /** A structured value is grouped and measured as the JSON text SQL stores it as. */
+    public function test_structured_values_count_as_their_json_text(): void
+    {
+        $answer = $this->answers();
+        $rows = $this->dm->queryIn($answer)->aggregate()->groupBy('extra')->count()->get();
+        $this->assertSame([
+            ['extra' => null, 'count' => 8],
+            ['extra' => '["b","a"]', 'count' => 1],
+            ['extra' => '{"hint":true}', 'count' => 2],
+            ['extra' => '{"note":"Rätsel\\/2"}', 'count' => 1],
+        ], $rows);
+
+        $measures = $this->dm->queryIn($answer)->aggregate()
+            ->groupBy('member')
+            ->countDistinct('extra', 'kinds')
+            ->min('extra', 'lowest')
+            ->max('extra', 'highest')
+            ->get();
+        $this->assertSame([
+            ['member' => 'm1', 'kinds' => 2, 'lowest' => '{"hint":true}', 'highest' => '{"note":"Rätsel\\/2"}'],
+            ['member' => 'm2', 'kinds' => 1, 'lowest' => '["b","a"]', 'highest' => '["b","a"]'],
+            ['member' => 'm3', 'kinds' => 0, 'lowest' => null, 'highest' => null],
+        ], $measures);
     }
 
     public function test_empty_input_gives_no_rows(): void

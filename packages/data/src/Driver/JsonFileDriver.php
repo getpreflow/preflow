@@ -252,7 +252,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         foreach ($items as $item) {
             $values = [];
             foreach ($aggregate->groups() as $field) {
-                $value = $this->value($item, $field, $query);
+                $value = $this->aggregateValue($item, $field, $query);
                 $values[$field] = isset($numeric[$field]) ? self::numberOrAsStored($value) : $value;
             }
             $key = self::key(array_values($values));
@@ -310,7 +310,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         $asNumbers = $numericField || in_array($measure['fn'], ['sum', 'avg'], true);
         $values = [];
         foreach ($items as $item) {
-            $value = $this->value($item, (string) $measure['field'], $query);
+            $value = $this->aggregateValue($item, (string) $measure['field'], $query);
             $value = $asNumbers ? self::number($value) : $value;
             if ($value !== null && is_scalar($value)) {
                 $values[] = $value;
@@ -325,6 +325,21 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             'max' => $values === [] ? null : array_reduce($values, static fn ($carry, $v) => $carry === null || self::compare($v, $carry) > 0 ? $v : $carry),
             default => throw new \InvalidArgumentException(sprintf('Unknown aggregate function "%s".', $measure['fn'])),
         };
+    }
+
+    /**
+     * A field's value as the SQL drivers hold it: a structured value (a map or list) is the
+     * JSON text PdoDriver stores it as, so it groups and compares the same on every storage.
+     *
+     * @param array<string, mixed> $item
+     */
+    private function aggregateValue(array $item, string $field, Query $query): mixed
+    {
+        $value = $this->value($item, $field, $query);
+
+        return $value === null || is_scalar($value)
+            ? $value
+            : json_encode($value, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     /**
