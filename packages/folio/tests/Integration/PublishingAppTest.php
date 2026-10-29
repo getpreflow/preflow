@@ -572,5 +572,74 @@ final class PublishingAppTest extends TestCase
         $this->assertStringContainsString('First', (string) $live->getBody());
         $this->assertStringNotContainsString('Second', (string) $live->getBody());
     }
-}
 
+    public function test_still_correct_clears_outdated_and_keeps_draft(): void
+    {
+        $status = $this->app()->container()->get(\Preflow\Folio\Content\TranslationStatus::class);
+        $def = $this->dm()->getTypeRegistry()->get('post');
+        $this->publisher()->publish($this->working('post', 'p1', [
+            'title' => ['en' => 'Hello', 'de' => 'Hallo'], 'slug' => ['en' => 'hello', 'de' => 'hallo'], '_locales' => ['en', 'de'],
+            '_translated_from' => ['de' => ['title' => $status->fingerprint('Hello'), 'slug' => $status->fingerprint('hello')]],
+        ]), null);
+        $draft = $this->stored('post', 'p1');
+        $draft->set('title', ['en' => 'Hello!', 'de' => 'Hallo']);
+        $this->publisher()->saveDraft($draft, null);
+        $version = (int) $this->stored('post', 'p1')->get('_version');
+        $this->assertSame(['title'], array_map(static fn ($t) => $t->path, $status->outdated($def, $this->stored('post', 'p1'), 'de')));
+
+        $res = $this->post('/folio/post/p1/_translations/confirm', ['locale' => 'de', 'path' => 'title', '_version' => (string) $version]);
+
+        $this->assertSame(302, $res->getStatusCode(), (string) $res->getBody());
+        $this->assertSame('/folio/post/p1/edit?locale=de&confirmed=1', $res->getHeaderLine('Location'));
+        $stored = $this->stored('post', 'p1');
+        $this->assertSame([], $status->outdated($def, $stored, 'de'));
+        $this->assertSame(\Preflow\Folio\Publishing\PublishState::Changed, $this->publisher()->state($stored));
+        $this->assertSame('Hello', $this->publisher()->snapshot('post', 'p1')?->get('title')['en'] ?? null, 'the live page is untouched');
+        $this->assertSame(['en' => 'Hello!', 'de' => 'Hallo'], $stored->get('title'));
+        $this->assertStringContainsString('Marked as still correct', (string) $this->get('/folio/post/p1/edit?locale=de&confirmed=1')->getBody());
+    }
+
+    public function test_still_correct_with_a_stale_version_is_a_conflict(): void
+    {
+        $status = $this->app()->container()->get(\Preflow\Folio\Content\TranslationStatus::class);
+        $this->working('post', 'p1', [
+            'title' => ['en' => 'Hello!', 'de' => 'Hallo'], 'slug' => ['en' => 'hello'], '_locales' => ['en', 'de'], '_version' => 3,
+            '_translated_from' => ['de' => ['title' => $status->fingerprint('Hello')]],
+        ]);
+
+        $res = $this->post('/folio/post/p1/_translations/confirm', ['locale' => 'de', 'path' => 'title', '_version' => '1']);
+
+        $this->assertSame(409, $res->getStatusCode());
+        $this->assertStringContainsString('Someone else changed this record', (string) $res->getBody());
+        $this->assertSame(['de' => ['title' => $status->fingerprint('Hello')]], $this->stored('post', 'p1')->get('_translated_from'));
+    }
+
+    public function test_still_correct_refuses_the_default_and_unknown_locales(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
+
+        $this->assertSame(404, $this->post('/folio/post/p1/_translations/confirm', ['locale' => 'en'])->getStatusCode());
+        $this->assertSame(404, $this->post('/folio/post/p1/_translations/confirm', ['locale' => 'xx'])->getStatusCode());
+        $this->assertSame(404, $this->post('/folio/post/nope/_translations/confirm', ['locale' => 'de'])->getStatusCode());
+    }
+
+    public function test_form_offers_still_correct_for_a_structured_field(): void
+    {
+        $status = $this->app()->container()->get(\Preflow\Folio\Content\TranslationStatus::class);
+        $this->working('post', 'p1', [
+            'title' => ['en' => 'Hello', 'de' => 'Hallo'], 'slug' => ['en' => 'hello', 'de' => 'hallo'], '_locales' => ['en', 'de'],
+            'sections' => [['_uid' => 'aaaaaaaaaaaaaaaa', '_block' => 'hero',
+                'headline' => ['en' => 'Head!', 'de' => 'Kopf'], 'intro' => ['en' => 'Intro!', 'de' => 'Einleitung']]],
+            '_translated_from' => ['de' => [
+                'sections.aaaaaaaaaaaaaaaa.headline' => $status->fingerprint('Head'),
+                'sections.aaaaaaaaaaaaaaaa.intro' => $status->fingerprint('Intro'),
+            ]],
+        ]);
+
+        $body = (string) $this->get('/folio/post/p1/edit?locale=de')->getBody();
+
+        $this->assertStringContainsString('2 texts outdated', $body);
+        $this->assertStringContainsString('name="path" value="sections"', $body);
+        $this->assertStringContainsString('title="de · 2 outdated"', $body);
+    }
+}

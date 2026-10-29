@@ -104,6 +104,7 @@ return [
         'previous_page' => 'Previous page',
         'next_page' => 'Next page',
         'missing' => ':locale · :count missing',
+        'outdated' => ':locale · :count outdated',
         'set_done' => 'Set :label: done (:count)',
         'failed' => ':message. :count failed: :records',
     ],
@@ -143,6 +144,10 @@ return [
         'conflict' => 'Someone else changed this record. Save again to overwrite, or reload to discard your edits.',
         'not_published' => 'Saved as draft — not published.',
         'restored' => 'Restored into the working copy — publish to make it live.',
+        'outdated' => 'The original text has changed since this was translated.',
+        'outdated_texts' => ':count texts outdated',
+        'still_correct' => 'Still correct',
+        'confirmed' => 'Marked as still correct — publish to make it live.',
     ],
     'publish' => [
         'incomplete' => ':language is missing :texts',

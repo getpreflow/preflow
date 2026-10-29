@@ -148,6 +148,7 @@ final class FolioPermissionsTest extends TestCase
             ['POST', '/folio/post/p1/move'],
             ['POST', '/folio/post/p1/autosave'],
             ['POST', '/folio/post/p1/discard'],
+            ['POST', '/folio/post/p1/_translations/confirm'],
             ['POST', '/folio/post/p1/unpublish'],
             ['POST', '/folio/post/p1/share'],
             ['POST', '/folio/post/p1/share/revoke'],
@@ -181,6 +182,20 @@ final class FolioPermissionsTest extends TestCase
         $this->as('viewer');
         $this->assertSame(403, $this->send($method, $uri, ['title' => 'X', 'slug' => 'x', '_locale' => 'en', 'direction' => 'up'])->getStatusCode());
         $this->assertSame(['en' => 'Draft'], $this->stored('post', 'p1')->get('title'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_confirm_needs_edit_permission(): void
+    {
+        $this->as('viewer');
+        $this->assertSame(403, $this->send('POST', '/folio/post/p1/_translations/confirm', ['locale' => 'de'])->getStatusCode());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_editor_may_confirm_a_translation(): void
+    {
+        $this->as('editor');
+        $this->assertSame(302, $this->send('POST', '/folio/post/p1/_translations/confirm', ['locale' => 'de'])->getStatusCode());
     }
 
     #[RunInSeparateProcess]

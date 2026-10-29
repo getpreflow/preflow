@@ -476,6 +476,7 @@ final class FolioServiceProvider extends ServiceProvider
             new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c)),
             pageAssets: $c->get(\Preflow\Folio\Extension\Screen\PageAssets::class),
             labels: $c->get(\Preflow\Folio\Content\DisplayLabels::class),
+            translations: $c->get(\Preflow\Folio\Content\TranslationStatus::class),
         ));
         $container->bind(\Preflow\Folio\Http\PublishingController::class, fn (Container $c) => new \Preflow\Folio\Http\PublishingController(
             $c->get(TypeCatalog::class),

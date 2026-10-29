@@ -139,6 +139,8 @@ final class TwoRolesTest extends TestCase
             $row('POST /folio/{type}/{id}/unpublish', "/folio/{$type}/{$id}/unpublish", [], 404);
             $row('POST /folio/{type}/{id}/discard', "/folio/{$type}/{$id}/discard", [], 404);
             $row('POST /folio/{type}/{id}/autosave', "/folio/{$type}/{$id}/autosave", $update, 404);
+            // Past the permission check: a language the site does not have (404).
+            $row('POST /folio/{type}/{id}/_translations/confirm', "/folio/{$type}/{$id}/_translations/confirm", ['locale' => 'xx'], 404);
             $row('POST /folio/{type}/{id}/revisions/{rev}/restore', "/folio/{$type}/{$id}/revisions/r1/restore", [], 404);
             $row('POST /folio/{type}/{id}/share', "/folio/{$type}/{$id}/share", [], 404);
             $row('POST /folio/{type}/{id}/share/revoke', "/folio/{$type}/{$id}/share/revoke", [], 404);

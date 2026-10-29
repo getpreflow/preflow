@@ -95,6 +95,7 @@ return [
         'previous_page' => 'Vorherige Seite',
         'next_page' => 'Nächste Seite',
         'missing' => ':locale · :count fehlen',
+        'outdated' => ':locale · :count veraltet',
         'set_done' => ':label setzen: erledigt (:count)',
         'failed' => ':message. :count fehlgeschlagen: :records',
     ],
@@ -133,6 +134,10 @@ return [
         'conflict' => 'Jemand anderes hat diesen Eintrag geändert. Speichere erneut, um zu überschreiben, oder lade neu, um deine Änderungen zu verwerfen.',
         'not_published' => 'Als Entwurf gespeichert – nicht veröffentlicht.',
         'restored' => 'In die Arbeitsversion übernommen – veröffentliche sie, damit sie live geht.',
+        'outdated' => 'Der Originaltext hat sich seit der Übersetzung geändert.',
+        'outdated_texts' => ':count Texte veraltet',
+        'still_correct' => 'Stimmt noch',
+        'confirmed' => 'Als noch korrekt markiert – veröffentliche, damit es live geht.',
     ],
     'publish' => [
         'incomplete' => ':language fehlt: :texts',

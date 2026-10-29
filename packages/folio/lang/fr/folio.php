@@ -95,6 +95,7 @@ return [
         'previous_page' => 'Page précédente',
         'next_page' => 'Page suivante',
         'missing' => ':locale · :count manquant(s)',
+        'outdated' => ':locale · :count obsolète(s)',
         'set_done' => 'Définir :label : terminé (:count)',
         'failed' => ':message. :count en échec : :records',
     ],
@@ -133,6 +134,10 @@ return [
         'conflict' => 'Quelqu’un d’autre a modifié cette entrée. Enregistrez à nouveau pour écraser, ou rechargez pour abandonner vos modifications.',
         'not_published' => 'Enregistré comme brouillon — non publié.',
         'restored' => 'Restauré dans la copie de travail — publiez pour la mettre en ligne.',
+        'outdated' => 'Le texte d’origine a changé depuis la traduction.',
+        'outdated_texts' => ':count textes obsolètes',
+        'still_correct' => 'Toujours correct',
+        'confirmed' => 'Marqué comme toujours correct — publiez pour le mettre en ligne.',
     ],
     'publish' => [
         'incomplete' => ':language est incomplète : :texts',

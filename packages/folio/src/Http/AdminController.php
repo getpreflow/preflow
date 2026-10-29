@@ -27,6 +27,7 @@ use Preflow\Folio\Publishing\PublishState;
 use Preflow\Folio\Publishing\Publisher;
 use Preflow\Folio\Publishing\VersionConflict;
 use Preflow\Folio\Content\FrontendResolver;
+use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Extension\AfterSave;
 use Preflow\Folio\Extension\Badge;
@@ -50,6 +51,7 @@ final class AdminController
     private readonly DraftRecordFactory $drafts;
     private readonly RecordValidator $validator;
     private readonly DisplayLabels $labels;
+    private readonly TranslationStatus $translations;
 
     /** System key holding the manual position of a record in an orderable list. */
     private const ORDER = '_order';
@@ -74,8 +76,10 @@ final class AdminController
         private ?ListExport $export = null,
         private readonly ?\Preflow\Folio\Extension\Screen\PageAssets $pageAssets = null,
         ?DisplayLabels $labels = null,
+        ?TranslationStatus $translations = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
+        $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
         $this->validator = $validator ?? new RecordValidator($fieldTypes, $dm);
     }
@@ -435,8 +439,50 @@ final class AdminController
             $csrf,
             locale: $this->requestLocale($request, $this->registry->get($type)),
             editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit',
-            notice: self::restoredNotice($request),
+            notice: self::restoredNotice($request) ?? self::confirmedNotice($request),
         );
+    }
+
+    /**
+     * "Still correct": the translations in a language (all, or those under "path") are marked as
+     * made from the current default texts. Saves the working copy with the version check; nothing
+     * is published.
+     */
+    public function confirmTranslation(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = (string) $request->getAttribute('type', '');
+        $id = (string) $request->getAttribute('id', '');
+        if (!$this->catalog->has($type)) {
+            return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
+        }
+        $typeDef = $this->registry->get($type);
+        $record = $this->dm->findType($type, $id);
+        $body = (array) $request->getParsedBody();
+        $locale = is_string($body['locale'] ?? null) ? $body['locale'] : '';
+        if ($record === null || !$typeDef->locales->has($locale) || $locale === $typeDef->locales->default) {
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+        }
+        $path = is_string($body['path'] ?? null) && $body['path'] !== '' ? $body['path'] : null;
+
+        $confirmed = $this->translations->confirm($typeDef, $record, $locale, $path);
+        $loaded = is_string($body['_version'] ?? null) && ctype_digit($body['_version']) ? (int) $body['_version'] : null;
+        try {
+            if ($this->publishes($type)) {
+                $this->publisher?->saveDraft($confirmed, $loaded);
+            } else {
+                $this->dm->saveType($confirmed, false);
+            }
+        } catch (VersionConflict $e) {
+            $values = $record->toArray();
+            $values['_version'] = $e->current;
+            $editUrl = $this->prefix . '/' . $type . '/' . $id . '/edit';
+
+            return $this->form($type, $values, $this->prefix . '/' . $type . '/' . $id, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), [],
+                $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '', 409, locale: $locale, editUrl: $editUrl,
+                notice: FolioText::get('folio.form.conflict'), reloadUrl: $editUrl . '?locale=' . rawurlencode($locale));
+        }
+
+        return new Response(302, ['Location' => $this->prefix . '/' . $type . '/' . $id . '/edit?locale=' . rawurlencode($locale) . '&confirmed=1']);
     }
 
     public function update(ServerRequestInterface $request): ResponseInterface
@@ -910,6 +956,16 @@ final class AdminController
         $fields = [];
         $editorAssets = [];
         $multipart = false;
+        $isNew = strtok($action, '?') === $this->prefix . '/' . $type;
+        $current = $multilingual && !$isNew ? DynamicRecord::fromArray($typeDef, $values) : null;
+        // Translations of this language made from a default text that has changed since, per field.
+        $outdated = [];
+        if ($current !== null && $locale !== $locales->default) {
+            foreach ($this->translations->outdated($typeDef, $current, $locale) as $text) {
+                $field = explode('.', $text->path, 2)[0];
+                $outdated[$field] = ['count' => ($outdated[$field]['count'] ?? 0) + 1, 'plain' => $text->path === $field];
+            }
+        }
         foreach ($typeDef->fields as $name => $fieldDef) {
             if ($name === $typeDef->idField || ($fieldDef->config['hidden'] ?? false) === true) {
                 continue;
@@ -991,6 +1047,11 @@ final class AdminController
             }
         }
 
+        foreach ($fields as &$entry) {
+            $entry['outdated'] = $outdated[$entry['name']] ?? null;
+        }
+        unset($entry);
+
         // Errors of other languages (keys "field.<locale>"), so a save that fails
         // because of another language's value says where to look.
         $localeErrors = [];
@@ -1015,16 +1076,19 @@ final class AdminController
         $languages = [];
         if ($multilingual) {
             foreach ($locales->available as $code) {
+                $missing = $current !== null ? count($this->translations->missing($typeDef, $current, $code)) : 0;
+                $late = $current !== null ? count($this->translations->outdated($typeDef, $current, $code)) : 0;
                 $languages[] = [
                     'code' => $code,
                     'name' => self::languageName($code),
                     'url' => ($editUrl ?? $action) . '?locale=' . rawurlencode($code),
                     'active' => $code === $locale,
+                    'missing' => $missing > 0 ? ['count' => $missing, 'text' => FolioText::get('folio.list.missing', ['locale' => $code, 'count' => $missing])] : null,
+                    'outdated' => $late > 0 ? ['count' => $late, 'text' => FolioText::get('folio.list.outdated', ['locale' => $code, 'count' => $late])] : null,
                 ];
             }
         }
 
-        $isNew = strtok($action, '?') === $this->prefix . '/' . $type;
         [$panels, $recordActions, $panelAssets] = $this->recordExtras($type, $typeDef, $values, $isNew, $csrf);
         $html = $this->engine->render('@folio/admin/form.twig', [
             'prefix' => $this->prefix,
@@ -1037,6 +1101,7 @@ final class AdminController
             'heading' => $heading,
             'record_title' => $editUrl !== null && !str_ends_with($editUrl, '/new') ? self::recordTitle($values, $locales) : null,
             'action' => $action,
+            'record_id' => isset($values[$typeDef->idField]) ? rawurlencode((string) $values[$typeDef->idField]) : '',
             'csrf' => $csrf,
             'fields' => $fields,
             'editor_assets' => array_keys($editorAssets + ($this->publishes($type) ? ['htmx.js' => true] : [])),
@@ -1136,29 +1201,27 @@ final class AdminController
     }
 
     /**
-     * One badge per locale the record is visible in; "de · 2 missing" when
-     * fields that are required in the default locale are empty in that locale.
+     * Badges per locale the record is visible in: the locale alone when finished, "de · 2 missing"
+     * for texts the default language has and the locale has not, "de · 1 outdated" for translations
+     * made from a default text that has changed since.
      *
-     * @return list<string>
+     * @return list<array{text: string, state: 'missing'|'outdated'|'ok'}>
      */
     private function languageBadges(TypeDefinition $typeDef, DynamicRecord $record): array
     {
-        $locales = $typeDef->locales;
-        $required = array_values(array_filter(
-            $typeDef->translatableFields(),
-            static fn (string $f) => in_array('required', $typeDef->fields[$f]->validate, true),
-        ));
-
         $badges = [];
         foreach ($record->availableLocales() as $locale) {
-            $missing = 0;
-            if ($locale !== $locales->default) {
-                foreach ($required as $field) {
-                    $value = LocaleValue::pick($record->get($field), $locales, $locale);
-                    $missing += ($value === null || $value === '') ? 1 : 0;
-                }
+            $missing = count($this->translations->missing($typeDef, $record, $locale));
+            $outdated = count($this->translations->outdated($typeDef, $record, $locale));
+            if ($missing > 0) {
+                $badges[] = ['text' => FolioText::get('folio.list.missing', ['locale' => $locale, 'count' => $missing]), 'state' => 'missing'];
             }
-            $badges[] = $missing > 0 ? FolioText::get('folio.list.missing', ['locale' => $locale, 'count' => $missing]) : $locale;
+            if ($outdated > 0) {
+                $badges[] = ['text' => FolioText::get('folio.list.outdated', ['locale' => $locale, 'count' => $outdated]), 'state' => 'outdated'];
+            }
+            if ($missing === 0 && $outdated === 0) {
+                $badges[] = ['text' => $locale, 'state' => 'ok'];
+            }
         }
 
         return $badges;
@@ -1356,6 +1419,13 @@ final class AdminController
         $at = \DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $value);
 
         return $at !== false && $at->format('Y-m-d\TH:i') === $value && $at > new \DateTimeImmutable() ? $value : '';
+    }
+
+    private static function confirmedNotice(ServerRequestInterface $request): ?string
+    {
+        return ($request->getQueryParams()['confirmed'] ?? null) === '1'
+            ? FolioText::get('folio.form.confirmed')
+            : null;
     }
 
     private static function restoredNotice(ServerRequestInterface $request): ?string

@@ -1517,8 +1517,8 @@ return ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url
   English"), and a collapsible reference shows the default-language text.
 - **Visible in** checkboxes set the record's `_locales`. The default language is always
   on.
-- The list shows a badge per language, e.g. `de · 2 missing` when fields required in
-  the default language are empty there.
+- The list shows a badge per language: `de · 2 missing`, `de · 1 outdated` or just `de`
+  (see "Missing and outdated" below). The form's language tabs carry the same counts.
 
 **Website:**
 - `/` and `/about` serve the default language; `/de/…` serves German, with translated
@@ -1541,6 +1541,56 @@ every language that has a value; errors are keyed `field.de`.
 
 Older values stored before a field became translatable keep working as the default
 language's value. Upload fields are always shared.
+
+### Missing and outdated
+
+Folio checks every translatable text of a record: translatable fields, the translatable
+fields of blocks (also nested ones) and the texts a custom field type reports.
+
+- **Missing:** the default language has a text and the language has none. Every such text
+  counts, required or not. Whitespace only is empty.
+- **Outdated:** the translation was saved from a default text that has changed since.
+  Saving a translation stamps the fingerprint (a short hash of the trimmed default text) in
+  the record's `_translated_from` (`{locale: {path: fingerprint}}`). A translation without a
+  fingerprint (saved before 0.45, imported) is never outdated. A single-locale app has
+  neither.
+- **In the admin:** the list badge and the form's language tabs show the counts. On a
+  language's tab an outdated field is marked, with a **Still correct** button that stamps
+  the current default text without changing the translation (for a field with block texts:
+  "3 texts outdated", one button for all of them). That saves the working copy as a draft
+  (a published record becomes "changed"); nothing is published, and a stale `_version` is a
+  conflict like any save. The route is `POST {prefix}/{type}/{id}/_translations/confirm`
+  (`locale`, optional `path`, `_version`) and needs the type's edit permission.
+- **Publishing:** outdated never blocks. With `'publishing' => ['complete_languages' => true]`
+  in `config/folio.php` a record is not published while a language it is visible in
+  (`_locales`) misses a text; the draft is saved and the error names the language and the
+  texts (`_translations.de`). Off by default. Scheduled publishing reports such a record
+  as failed.
+- **New column:** `_translated_from` is a TEXT column on SQL-backed record tables (and their
+  published and revisions tables); `preflow migrate` adds it.
+
+**Custom field types.** A field type that keeps locale maps inside its own value tells Folio
+about them by implementing `Preflow\Folio\Field\ReportsTranslatableTexts`. Paths and labels
+are relative to the field; Folio prefixes them with the field's name:
+
+```php
+final class FaqFieldType implements FieldType, ReportsTranslatableTexts
+{
+    // value: [['question' => ['en' => '…', 'de' => '…'], 'answer' => [...]], ...]
+    public function translatableTexts(mixed $value, array $config, Locales $locales): array
+    {
+        $texts = [];
+        foreach ($value as $i => $item) {
+            $texts[] = TranslatableText::of("{$i}.question", 'Question ' . ($i + 1), $item['question'] ?? null, $locales);
+        }
+
+        return $texts; // reported as "faq.0.question"
+    }
+}
+```
+
+Use a stable key in the path (an id, not the position) when items can be reordered, so a
+fingerprint follows its item.
 
 **SQL storage:** translatable values and the record's `_locales` list are stored as JSON
 text. A SQL-backed type needs a `_locales` (TEXT) column, and its translatable columns

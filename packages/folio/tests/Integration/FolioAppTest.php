@@ -862,7 +862,70 @@ final class FolioAppTest extends TestCase
         $body = (string) $this->get('/folio/page')->getBody();
 
         $this->assertStringContainsString('<th>Languages</th>', $body);
-        $this->assertStringContainsString('de · 2 missing', $body); // title and slug are required, both empty in de
+        $this->assertStringContainsString('de · 3 missing', $body); // every text the default language has: title, slug and body
+        $this->assertStringContainsString('folio-badge is-incomplete', $body);
+    }
+
+    public function test_list_shows_outdated_badge(): void
+    {
+        $this->outdatedPage();
+
+        $body = (string) $this->get('/folio/page')->getBody();
+
+        $this->assertStringContainsString('de · 1 outdated', $body);
+        $this->assertStringContainsString('folio-badge is-outdated', $body);
+        $this->assertStringNotContainsString('missing', $body);
+    }
+
+    public function test_list_marks_a_finished_translation_ok(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published', '_locales_submitted' => '1', '_locales' => ['de']]);
+        $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'de', 'title' => 'Über', 'slug' => 'ueber', 'body' => 'k', 'status' => 'published']);
+
+        $body = (string) $this->get('/folio/page')->getBody();
+
+        $this->assertMatchesRegularExpression('/<span class="folio-badge is-ok">de<\/span>/', $body);
+    }
+
+    public function test_form_marks_outdated_field_and_offers_still_correct(): void
+    {
+        $id = $this->outdatedPage();
+
+        $body = (string) $this->get('/folio/page/' . $id . '/edit?locale=de')->getBody();
+
+        $this->assertStringContainsString('folio-outdated', $body);
+        $this->assertStringContainsString('/folio/page/' . $id . '/_translations/confirm', $body);
+        $this->assertStringContainsString('name="path" value="title"', $body);
+        $this->assertStringContainsString('name="locale" value="de"', $body);
+        $this->assertStringContainsString('Still correct', $body);
+        $this->assertStringNotContainsString('name="path" value="slug"', $body);
+
+        $this->assertStringNotContainsString('folio-outdated', (string) $this->get('/folio/page/' . $id . '/edit')->getBody(), 'the default language has nothing outdated');
+    }
+
+    public function test_language_tab_shows_counts(): void
+    {
+        $this->enableGerman();
+        $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published', '_locales_submitted' => '1', '_locales' => ['de']]);
+
+        $body = (string) $this->get('/folio/page/' . $id . '/edit')->getBody();
+        $this->assertStringContainsString('title="de · 3 missing"', $body);
+
+        $outdated = (string) $this->get('/folio/page/' . $this->outdatedPage('Other') . '/edit')->getBody();
+        $this->assertStringContainsString('title="de · 1 outdated"', $outdated);
+    }
+
+    /** A page whose German translation was made from an English title that has changed since. */
+    private function outdatedPage(string $title = 'About'): string
+    {
+        $this->enableGerman();
+        $slug = strtolower($title);
+        $id = $this->createPage(['title' => $title, 'slug' => $slug, 'body' => 'b', 'status' => 'published', '_locales_submitted' => '1', '_locales' => ['de']]);
+        $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'de', 'title' => 'Über', 'slug' => 'ueber-' . $slug, 'body' => 'k', 'status' => 'published']);
+        $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'en', 'title' => $title . '!', 'slug' => $slug, 'body' => 'b', 'status' => 'published']);
+
+        return $id;
     }
 
     public function test_translated_slug_resolves_under_prefix(): void
