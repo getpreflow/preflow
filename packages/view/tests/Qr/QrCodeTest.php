@@ -64,6 +64,42 @@ final class QrCodeTest extends TestCase
         $this->assertNotFalse($noMargin);
     }
 
+    public function test_png_with_a_coloured_background_decodes_back_to_the_data(): void
+    {
+        $png = QrCode::png('coloured background', ['color' => '#000080', 'background' => '#ffff00']);
+
+        $this->assertSame(['80', 'ffff00'], $this->pngColours($png));
+        $this->assertSame('coloured background', $this->decode($png));
+    }
+
+    public function test_png_with_inverted_colours_decodes_back_to_the_data(): void
+    {
+        $png = QrCode::png('inverted', ['color' => '#fff', 'background' => '#000']);
+
+        $this->assertSame(['0', 'ffffff'], $this->pngColours($png));
+        $this->assertSame('inverted', $this->decode($png, invert: true));
+    }
+
+    public function test_svg_with_a_non_white_background_has_no_white_left(): void
+    {
+        $svg = QrCode::svg('hello', ['color' => '#000080', 'background' => '#ffff00']);
+
+        $this->assertDoesNotMatchRegularExpression('/#fff\b|#ffffff\b|\bwhite\b/i', $svg);
+        $this->assertStringContainsString('#ffff00', $svg);
+    }
+
+    public function test_rejects_invalid_svg_colours(): void
+    {
+        foreach (['color', 'background'] as $key) {
+            try {
+                QrCode::svg('x', [$key => 'red;}<script>']);
+                $this->fail("an invalid {$key} should have thrown");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('red;}<script>', $e->getMessage());
+            }
+        }
+    }
+
     public function test_rejects_unknown_ecc_level(): void
     {
         $this->expectException(\InvalidArgumentException::class);
@@ -111,5 +147,30 @@ final class QrCodeTest extends TestCase
                 $this->assertStringContainsString('composer require chillerlan/php-qrcode', $e->getMessage());
             }
         }
+    }
+
+    /**
+     * @return list<string> the distinct pixel colours as hex, sorted
+     */
+    private function pngColours(string $png): array
+    {
+        $image = imagecreatefromstring($png);
+        $colours = [];
+        for ($x = 0; $x < imagesx($image); $x++) {
+            for ($y = 0; $y < imagesy($image); $y++) {
+                $colours[dechex(imagecolorat($image, $x, $y))] = true;
+            }
+        }
+        $colours = array_keys($colours);
+        sort($colours);
+
+        return array_map('strval', $colours);
+    }
+
+    private function decode(string $png, bool $invert = false): string
+    {
+        $options = new QROptions(['readerUseImagickIfAvailable' => false, 'readerInvertColors' => $invert]);
+
+        return (string) (new Library($options))->readFromBlob($png);
     }
 }

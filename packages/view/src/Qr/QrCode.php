@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Preflow\View\Qr;
 
 use chillerlan\QRCode\Common\EccLevel;
-use chillerlan\QRCode\Data\QRMatrix;
+use chillerlan\QRCode\Output\QRMarkupSVG;
 use chillerlan\QRCode\Output\QROutputInterface;
 use chillerlan\QRCode\QRCode as Library;
 use chillerlan\QRCode\QROptions;
@@ -39,17 +39,22 @@ final class QrCode
     {
         self::requireLibrary();
         $o = self::normalise($options);
-        $svg = (string) (new Library(self::options($o, QROutputInterface::MARKUP_SVG)))->render($data);
 
-        // The library sizes the SVG by viewBox only; pin the pixel size.
-        $svg = preg_replace(
-            '/<svg\b/',
-            sprintf('<svg width="%1$d" height="%1$d"', $o['size']),
-            $svg,
-            1,
-        );
+        return self::render($data, $o, (string) $o['size']);
+    }
 
-        return (string) $svg;
+    /**
+     * The SVG with a CSS length of its own (e.g. "25mm") instead of a pixel
+     * size; pdf_qr prints it this way.
+     *
+     * @internal
+     * @param array{margin?: int, ecc?: string, color?: string, background?: string} $options
+     */
+    public static function sizedSvg(string $data, array $options, string $cssLength): string
+    {
+        self::requireLibrary();
+
+        return self::render($data, self::normalise($options), $cssLength);
     }
 
     /**
@@ -68,6 +73,23 @@ final class QrCode
         $options->scale = max(1, intdiv($o['size'], $modules));
 
         return (string) (new Library($options))->render($data);
+    }
+
+    /**
+     * @param array{size: int, margin: int, ecc: string, color: string, background: string} $o
+     */
+    private static function render(string $data, array $o, string $length): string
+    {
+        $svg = (string) (new Library(self::options($o, QROutputInterface::MARKUP_SVG)))->render($data);
+
+        // The library sizes the SVG by viewBox only; pin the size on its root element.
+        $length = htmlspecialchars($length, ENT_QUOTES);
+        $sized = preg_replace('/<svg\b/', "<svg width=\"{$length}\" height=\"{$length}\"", $svg, 1, $count);
+        if ($count !== 1) {
+            throw new \LogicException('The QR library returned no <svg> element to size.');
+        }
+
+        return (string) $sized;
     }
 
     /**
@@ -120,9 +142,21 @@ final class QrCode
      */
     private static function options(array $o, string $outputType): QROptions
     {
-        $colors = $outputType === QROutputInterface::MARKUP_SVG
-            ? [$o['color'], $o['background']]
-            : [self::rgb($o['color']), self::rgb($o['background'])];
+        if ($outputType === QROutputInterface::MARKUP_SVG) {
+            $dark = self::svgColour($o['color']);
+            $light = self::svgColour($o['background']);
+        } else {
+            $dark = self::rgb($o['color']);
+            $light = self::rgb($o['background']);
+        }
+
+        // Every module type gets a colour: the library paints the light ones
+        // (data, finder, timing, format, …) #fff by default, which would break a
+        // non-white background and make inverted colours unreadable.
+        $moduleValues = [];
+        foreach (QROutputInterface::DEFAULT_MODULE_VALUES as $type => $isDark) {
+            $moduleValues[$type] = $isDark ? $dark : $light;
+        }
 
         return new QROptions([
             'outputType' => $outputType,
@@ -130,19 +164,22 @@ final class QrCode
             'quietzoneSize' => $o['margin'],
             'outputBase64' => false,
             'svgAddXmlHeader' => false,
-            'bgColor' => $colors[1],
-            'moduleValues' => [
-                QRMatrix::M_DATA_DARK => $colors[0],
-                QRMatrix::M_FINDER_DARK => $colors[0],
-                QRMatrix::M_ALIGNMENT_DARK => $colors[0],
-                QRMatrix::M_TIMING_DARK => $colors[0],
-                QRMatrix::M_FORMAT_DARK => $colors[0],
-                QRMatrix::M_VERSION_DARK => $colors[0],
-                QRMatrix::M_DARKMODULE => $colors[0],
-                QRMatrix::M_FINDER_DOT => $colors[0],
-                QRMatrix::M_QUIETZONE => $colors[1],
-            ],
+            'bgColor' => $light,
+            'moduleValues' => $moduleValues,
         ]);
+    }
+
+    /**
+     * The library silently falls back to black and white for a colour it
+     * does not accept; refuse it instead, as the PNG path does.
+     */
+    private static function svgColour(string $css): string
+    {
+        if (!QRMarkupSVG::moduleValueIsValid($css)) {
+            throw new \InvalidArgumentException("SVG QR colours must be CSS colours like #000, rgb(0,0,0) or black; got '{$css}'.");
+        }
+
+        return $css;
     }
 
     /**

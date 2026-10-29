@@ -199,6 +199,9 @@ final class BlocksTest extends TestCase
         // The SVG Task 3 makes (which decodes back to the data) reached mPDF, sized in mm...
         $svg = QrCode::svg($url);
         $this->assertStringContainsString('<svg width="25mm" height="25mm"', $engine->html);
+        $root = new \DOMDocument();
+        $root->loadXML(substr($engine->html, (int) strpos($engine->html, '<svg'), (int) strpos($engine->html, '</svg>') + 6 - (int) strpos($engine->html, '<svg')));
+        $this->assertSame(['25mm', '25mm'], [$root->documentElement->getAttribute('width'), $root->documentElement->getAttribute('height')]);
         $this->assertStringContainsString(substr($svg, strpos($svg, '<path'), 300), $engine->html);
         // ...and mPDF drew it as vectors: one square subpath per module, none lost.
         preg_match_all('/<path\b[^>]*\bd="([^"]+)"/', $svg, $paths);

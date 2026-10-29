@@ -163,9 +163,8 @@ final class Blocks
             throw new \InvalidArgumentException("pdf_qr's size_mm must be above 0; got {$mm}.");
         }
         unset($options['size_mm'], $options['size']);
-        $size = self::number($mm) . 'mm';
 
-        return (string) preg_replace('/^<svg width="\d+" height="\d+"/', "<svg width=\"{$size}\" height=\"{$size}\"", QrCode::svg($data, $options), 1);
+        return QrCode::sizedSvg($data, $options, self::number($mm) . 'mm');
     }
 
     /**
