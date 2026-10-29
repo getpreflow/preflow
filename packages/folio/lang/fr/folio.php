@@ -134,6 +134,9 @@ return [
         'not_published' => 'Enregistré comme brouillon — non publié.',
         'restored' => 'Restauré dans la copie de travail — publiez pour la mettre en ligne.',
     ],
+    'publish' => [
+        'incomplete' => ':language est incomplète : :texts',
+    ],
     'revisions' => [
         'title' => 'Versions',
         'changed' => 'Modifié : :fields',

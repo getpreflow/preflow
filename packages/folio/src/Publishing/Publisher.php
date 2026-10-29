@@ -10,8 +10,11 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\QueryBuilder;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\RecordValidator;
+use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\FolioText;
 use Preflow\Validation\ValidationException;
+use Preflow\Validation\ValidationResult;
 
 /**
  * Working copy (what the admin edits, the type's own table) and published
@@ -40,6 +43,8 @@ final class Publisher
         private readonly RecordValidator $validator,
         private readonly int $keepRevisions = 20,
         ?\Closure $now = null,
+        private readonly ?TranslationStatus $translations = null,
+        private readonly bool $completeLanguages = false,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
     }
@@ -195,6 +200,7 @@ final class Publisher
     public function publish(DynamicRecord $working, ?string $by, ?int $loadedVersion = null): DynamicRecord
     {
         $this->validator->validate($working);
+        $this->requireCompleteLanguages($working);
 
         $def = $working->getType();
         $shadow = ShadowTypes::published($def);
@@ -232,6 +238,42 @@ final class Publisher
 
             return $this->writeSnapshot($working, $this->dm->findIn($shadow, (string) $working->getId()), $by);
         });
+    }
+
+    /**
+     * With folio.publishing.complete_languages, a record is not published while a language it
+     * is visible in lacks texts the default language has. Outdated translations never block.
+     *
+     * @throws ValidationException
+     */
+    private function requireCompleteLanguages(DynamicRecord $working): void
+    {
+        if (!$this->completeLanguages || $this->translations === null) {
+            return;
+        }
+
+        $def = $working->getType();
+        $errors = [];
+        foreach ($working->availableLocales() as $locale) {
+            if ($locale === $def->locales->default) {
+                continue;
+            }
+            $missing = $this->translations->missing($def, $working, $locale);
+            if ($missing === []) {
+                continue;
+            }
+            $labels = array_map(static fn ($t): string => $t->label, $missing);
+            $texts = implode(', ', array_slice($labels, 0, 5)) . (count($labels) > 5 ? ' … (+' . (count($labels) - 5) . ')' : '');
+            $errors['_translations.' . $locale] = [FolioText::get('folio.publish.incomplete', [
+                'language' => FolioText::get('folio.languages.' . $locale) !== 'folio.languages.' . $locale
+                    ? FolioText::get('folio.languages.' . $locale) : strtoupper($locale),
+                'texts' => $texts,
+            ])];
+        }
+
+        if ($errors !== []) {
+            throw new ValidationException(new ValidationResult($errors));
+        }
     }
 
     /** Copy a saved working copy to its snapshot and append a revision. */

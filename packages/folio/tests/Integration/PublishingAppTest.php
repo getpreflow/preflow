@@ -106,6 +106,21 @@ final class PublishingAppTest extends TestCase
         $this->assertStringContainsString('Live', (string) $this->get('/hello')->getBody());
     }
 
+    public function test_form_shows_incomplete_language_and_links_to_it(): void
+    {
+        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'publishing' => ['complete_languages' => true]];\n");
+        $this->working('post', 'p1', ['title' => ['en' => 'Hi'], 'slug' => ['en' => 'hi'], '_locales' => ['en', 'de']]);
+
+        $res = $this->post('/folio/post/p1', ['title' => 'Hi', 'slug' => 'hi', '_locale' => 'en', '_action' => 'publish']);
+
+        $body = (string) $res->getBody();
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('Saved as draft — not published.', $body);
+        $this->assertStringContainsString('?locale=de', $body);
+        $this->assertStringContainsString('German is missing Title', $body);
+        $this->assertNull($this->publisher()->snapshot('post', 'p1'));
+    }
+
     public function test_stale_version_is_refused(): void
     {
         $this->working('post', 'p1', ['title' => ['en' => 'Theirs'], 'slug' => ['en' => 'hello'], '_version' => 2]);

@@ -435,6 +435,9 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeCatalog::class),
             $c->get(\Preflow\Folio\Content\RecordValidator::class),
             (int) ($folioConfig['publishing']['revisions'] ?? 20),
+            null,
+            $c->get(\Preflow\Folio\Content\TranslationStatus::class),
+            (bool) ($folioConfig['publishing']['complete_languages'] ?? false),
         ));
         $container->singleton(\Preflow\Folio\Publishing\PublishedCopies::class, fn (Container $c) => new \Preflow\Folio\Publishing\PublishedCopies(
             $c->get(DataManager::class),

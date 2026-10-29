@@ -52,6 +52,18 @@ final class SchedulerTest extends TestCase
         $this->assertSame('2026-10-20T09:00', $this->stored('post', 'bad')->get('_publish_at'));
     }
 
+    public function test_incomplete_record_fails_and_keeps_schedule(): void
+    {
+        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'publishing' => ['complete_languages' => true], 'blocks' => ['classes' => []]];\n");
+        $this->working('post', 'half', ['title' => ['en' => 'Half'], 'slug' => ['en' => 'half'], '_locales' => ['en', 'de'], '_publish_at' => '2026-10-20T09:00']);
+
+        $result = $this->scheduler()->runDue(new \DateTimeImmutable('2026-10-20T10:00'));
+
+        $this->assertSame([], $result['published']);
+        $this->assertStringStartsWith('_translations.de: ', $result['failed']['post/half']);
+        $this->assertSame('2026-10-20T09:00', $this->stored('post', 'half')->get('_publish_at'));
+    }
+
     private function scheduler(): Scheduler
     {
         $c = $this->app()->container();

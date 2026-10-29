@@ -148,6 +148,31 @@ final class TranslationStatusTest extends TestCase
         $this->assertSame($this->translationStatus()->fingerprint('Hello'), $from['de']['title']);
     }
 
+    public function test_translatable_booleans_are_not_texts(): void
+    {
+        $this->writeModel('post', ['fields' => [
+            'title' => ['type' => 'string', 'translatable' => true],
+            'featured' => ['type' => 'boolean', 'translatable' => true],
+        ]]);
+        $record = $this->record(['title' => ['en' => 'Hello', 'de' => 'Hallo'], 'featured' => ['en' => true, 'de' => false]]);
+
+        $this->assertSame(['title'], $this->paths($this->translationStatus()->texts($this->def(), $record)));
+        $this->assertSame([], $this->paths($this->translationStatus()->missing($this->def(), $record, 'de')));
+    }
+
+    public function test_readonly_and_hidden_fields_are_not_texts(): void
+    {
+        $this->writeModel('post', ['fields' => [
+            'title' => ['type' => 'string', 'translatable' => true],
+            'code' => ['type' => 'string', 'translatable' => true, 'readonly' => true],
+            'internal' => ['type' => 'string', 'translatable' => true, 'hidden' => true],
+        ]]);
+        $record = $this->record(['title' => ['en' => 'Hello', 'de' => 'Hallo'], 'code' => ['en' => 'X'], 'internal' => ['en' => 'Y']]);
+
+        $this->assertSame(['title'], $this->paths($this->translationStatus()->texts($this->def(), $record)));
+        $this->assertSame([], $this->paths($this->translationStatus()->missing($this->def(), $record, 'de')));
+    }
+
     private function translationStatus(): TranslationStatus
     {
         return $this->app()->container()->get(TranslationStatus::class);

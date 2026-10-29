@@ -32,7 +32,7 @@
                 <p>{{ t('folio.form.other_languages') }}</p>
                 <ul>
                     {% for err in locale_errors %}
-                        <li><a href="{{ err.url }}">{{ err.language }}</a>: {{ err.field }} — {{ err.messages|join(' ') }}</li>
+                        <li><a href="{{ err.url }}">{{ err.language }}</a>: {% if err.field %}{{ err.field }} — {% endif %}{{ err.messages|join(' ') }}</li>
                     {% endfor %}
                 </ul>
             </div>

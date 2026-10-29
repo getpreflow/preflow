@@ -12,6 +12,7 @@ use Preflow\Folio\Field\HandlesUpload;
 use Preflow\Folio\Field\ReportsTranslatableTexts;
 use Preflow\Folio\Field\StructuredFieldType;
 use Preflow\Folio\Field\Types\AssetFieldType;
+use Preflow\Folio\Field\Types\BooleanFieldType;
 use Preflow\Folio\Field\Types\EnvFieldType;
 use Preflow\Form\FieldRenderer;
 
@@ -52,7 +53,8 @@ final class TranslationStatus
 
         $texts = [];
         foreach ($def->fields as $name => $field) {
-            if ($name === $def->idField) {
+            // A field an editor cannot fill in on the form has no translation to wait for.
+            if ($name === $def->idField || ($field->config['readonly'] ?? false) === true || ($field->config['hidden'] ?? false) === true) {
                 continue;
             }
             $type = $this->fieldTypes->get($field->type);
@@ -194,12 +196,13 @@ final class TranslationStatus
 
     /**
      * Whether a field type's translatable value is text to translate: not uploads or
-     * assets (shared across locales), structured values or environment variable names.
+     * assets (shared across locales), booleans (false is an answer, not a gap), structured values or environment variable names.
      */
     public static function holdsText(FieldType $type): bool
     {
         return !$type instanceof StructuredFieldType
             && !$type instanceof AssetFieldType
+            && !$type instanceof BooleanFieldType
             && !$type instanceof HandlesUpload
             && !$type instanceof EnvFieldType;
     }

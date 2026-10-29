@@ -144,6 +144,9 @@ return [
         'not_published' => 'Saved as draft — not published.',
         'restored' => 'Restored into the working copy — publish to make it live.',
     ],
+    'publish' => [
+        'incomplete' => ':language is missing :texts',
+    ],
     'revisions' => [
         'title' => 'Revisions',
         'changed' => 'Changed: :fields',

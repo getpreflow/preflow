@@ -8,8 +8,10 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\Locales;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\RecordValidator;
+use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\StringFieldType;
@@ -40,9 +42,10 @@ final class PublisherTest extends TestCase
         $this->model('memo', ['fields' => $fields]);
         $this->model('memo2', ['publishing' => true, 'fields' => $fields]);
         $this->model('post2', ['frontend' => ['route' => '/x/{slug}'], 'publishing' => false, 'fields' => $fields]);
+        $this->model('page', ['publishing' => true, 'fields' => ['title' => ['type' => 'string', 'translatable' => true, 'validate' => ['required']], 'body' => ['type' => 'text', 'translatable' => true]]]);
         $this->model('site', ['singleton' => true, 'fields' => $fields]);
 
-        $this->registry = new TypeRegistry($this->dir . '/models');
+        $this->registry = new TypeRegistry($this->dir . '/models', new Locales(['en', 'de'], 'en'));
         $this->dm = new DataManager(
             drivers: ['json' => new JsonFileDriver($this->dir . '/store')],
             defaultDriver: 'json',
@@ -259,6 +262,85 @@ final class PublisherTest extends TestCase
         $this->assertSame('A', $this->reload('post')->get('title'));
         $this->assertSame(PublishState::Changed, $p->state($this->reload('post')));
         $this->assertSame('B', $p->snapshot('post', 'r1')?->get('title'));
+    }
+
+    public function test_publish_refused_while_visible_locale_misses_texts(): void
+    {
+        $p = $this->publisher(complete: true);
+        $page = $this->working('page', ['title' => ['en' => 'Hi'], 'body' => ['en' => 'Text'], '_locales' => ['en', 'de']]);
+
+        try {
+            $p->publish($page, null);
+            $this->fail('expected a refusal');
+        } catch (ValidationException $e) {
+            $this->assertSame(['_translations.de'], array_keys($e->errors()));
+            $this->assertStringContainsString('Title, Body', $e->errors()['_translations.de'][0]);
+        }
+        $this->assertNull($p->snapshot('page', 'r1'));
+    }
+
+    public function test_refusal_lists_five_texts_and_counts_the_rest(): void
+    {
+        $this->model('long', ['publishing' => true, 'fields' => array_combine(
+            ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+            array_fill(0, 7, ['type' => 'string', 'translatable' => true]),
+        )]);
+        $page = DynamicRecord::fromArray($this->registry->get('long'), ['uuid' => 'r1', '_locales' => ['en', 'de']]
+            + array_fill_keys(['a', 'b', 'c', 'd', 'e', 'f', 'g'], ['en' => 'x']));
+
+        try {
+            $this->publisher(complete: true)->publish($page, null);
+            $this->fail('expected a refusal');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('A, B, C, D, E … (+2)', $e->errors()['_translations.de'][0]);
+        }
+    }
+
+    public function test_publish_allowed_when_locale_not_visible(): void
+    {
+        $page = $this->working('page', ['title' => ['en' => 'Hi'], '_locales' => ['en']]);
+
+        $this->publisher(complete: true)->publish($page, null);
+
+        $this->assertNotNull($this->publisher()->snapshot('page', 'r1'));
+    }
+
+    public function test_outdated_does_not_block_publishing(): void
+    {
+        $page = $this->working('page', [
+            'title' => ['en' => 'Hi', 'de' => 'Hallo'], '_locales' => ['en', 'de'],
+            '_translated_from' => ['de' => ['title' => 'aaaaaaaaaaaaaaaa']],
+        ]);
+
+        $this->publisher(complete: true)->publish($page, null);
+
+        $this->assertNotNull($this->publisher()->snapshot('page', 'r1'));
+    }
+
+    public function test_flag_off_keeps_todays_behaviour(): void
+    {
+        $page = $this->working('page', ['title' => ['en' => 'Hi'], '_locales' => ['en', 'de']]);
+
+        $this->publisher(complete: false)->publish($page, null);
+
+        $this->assertNotNull($this->publisher()->snapshot('page', 'r1'));
+    }
+
+    public function test_restore_brings_back_fingerprints(): void
+    {
+        $p = $this->publisher();
+        $a = ['de' => ['title' => 'aaaaaaaaaaaaaaaa']];
+        $b = ['de' => ['title' => 'bbbbbbbbbbbbbbbb']];
+        $p->publish($this->working('page', ['title' => ['en' => 'Hi', 'de' => 'Hallo'], '_translated_from' => $a]), null);
+        $page = $this->reload('page');
+        $page->set('_translated_from', $b);
+        $p->publish($page, null);
+        $this->assertSame($b, $this->reload('page')->get('_translated_from'));
+
+        $first = $p->revisions('page', 'r1')[1];
+        $p->restore('page', 'r1', $first->id);
+
+        $this->assertSame($a, $this->reload('page')->get('_translated_from'));
     }
 
     /** Storage whose next version-checked write is preceded by another writer's save. */
@@ -564,7 +646,7 @@ final class PublisherTest extends TestCase
         $this->assertSame(4, (int) $this->reload('post')->get('_version'));
     }
 
-    private function publisher(int $keep = 20): Publisher
+    private function publisher(int $keep = 20, bool $complete = false): Publisher
     {
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());
@@ -576,6 +658,8 @@ final class PublisherTest extends TestCase
             new RecordValidator($fieldTypes, $this->dm),
             $keep,
             fn (): \DateTimeImmutable => $this->now,
+            new TranslationStatus($fieldTypes),
+            $complete,
         );
     }
 

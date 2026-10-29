@@ -134,6 +134,9 @@ return [
         'not_published' => 'Als Entwurf gespeichert – nicht veröffentlicht.',
         'restored' => 'In die Arbeitsversion übernommen – veröffentliche sie, damit sie live geht.',
     ],
+    'publish' => [
+        'incomplete' => ':language fehlt: :texts',
+    ],
     'revisions' => [
         'title' => 'Versionen',
         'changed' => 'Geändert: :fields',

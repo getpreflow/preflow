@@ -999,13 +999,15 @@ final class AdminController
                 continue;
             }
             [$field, $code] = explode('.', $key, 2);
-            if ($code === $locale || !$locales->has($code) || !isset($typeDef->fields[$field])) {
+            // "_translations.<locale>": a language the record is visible in but has not finished.
+            $incomplete = $field === '_translations';
+            if ($code === $locale || !$locales->has($code) || (!$incomplete && !isset($typeDef->fields[$field]))) {
                 continue;
             }
             $localeErrors[] = [
                 'language' => self::languageName($code),
                 'url' => ($editUrl ?? $action) . '?locale=' . rawurlencode($code),
-                'field' => $this->labels->field($type, $field),
+                'field' => $incomplete ? '' : $this->labels->field($type, $field),
                 'messages' => (array) $messages,
             ];
         }
