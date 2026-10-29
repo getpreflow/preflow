@@ -178,4 +178,59 @@ final class LocaleMiddlewareTest extends TestCase
 
         $this->assertSame('de', $captured->getAttribute('locale'));
     }
+
+    private function prefixProbe(LocaleMiddleware $mw, ?string &$seen): RequestHandlerInterface
+    {
+        return new class($mw, $seen) implements RequestHandlerInterface {
+            public function __construct(private LocaleMiddleware $mw, private ?string &$seen) {}
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                $this->seen = $this->mw->urlPrefix();
+                return new Response(200);
+            }
+        };
+    }
+
+    public function test_url_prefix_is_the_stripped_locale(): void
+    {
+        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
+        $seen = null;
+
+        $mw->process($this->createRequest('/de/blog'), $this->prefixProbe($mw, $seen));
+        $this->assertSame('/de', $seen);
+
+        $mw->process($this->createRequest('/blog'), $this->prefixProbe($mw, $seen));
+        $this->assertSame('', $seen);
+
+        $mw->process($this->createRequest('/en/blog'), $this->prefixProbe($mw, $seen));
+        $this->assertSame('/en', $seen);
+
+        $mw->process($this->createRequest('/blog'), $this->prefixProbe($mw, $seen));
+        $this->assertSame('', $seen);
+
+        $none = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'none');
+        $none->process($this->createRequest('/de/blog'), $this->prefixProbe($none, $seen));
+        $this->assertSame('', $seen);
+    }
+
+    public function test_url_prefix_resets_after_a_request_that_threw(): void
+    {
+        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
+        $throwing = new class implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                throw new \RuntimeException('boom');
+            }
+        };
+
+        try {
+            $mw->process($this->createRequest('/de/blog'), $throwing);
+            $this->fail('expected the handler to throw');
+        } catch (\RuntimeException) {
+        }
+
+        $seen = null;
+        $mw->process($this->createRequest('/blog'), $this->prefixProbe($mw, $seen));
+        $this->assertSame('', $seen);
+    }
 }

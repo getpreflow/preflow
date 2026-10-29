@@ -11,6 +11,9 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 final class LocaleMiddleware implements MiddlewareInterface
 {
+    /** The locale prefix stripped from the current request's URL ('/de'), or ''. */
+    private string $urlPrefix = '';
+
     /**
      * @param string[] $availableLocales
      * @param string   $urlStrategy 'prefix' | 'none'
@@ -23,8 +26,19 @@ final class LocaleMiddleware implements MiddlewareInterface
         private readonly bool $cookie = false,
     ) {}
 
+    /**
+     * The locale prefix the current request's URL carried ('/de'; '/en' when the
+     * default locale was in the URL), or '' when it carried none. Set anew by
+     * every process() call, so a long-running worker never carries it over.
+     */
+    public function urlPrefix(): string
+    {
+        return $this->urlPrefix;
+    }
+
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
+        $this->urlPrefix = '';
         $locale = $this->defaultLocale;
         $strippedRequest = $request;
 
@@ -34,6 +48,7 @@ final class LocaleMiddleware implements MiddlewareInterface
             if ($result !== null) {
                 $locale = $result['locale'];
                 $strippedRequest = $result['request'];
+                $this->urlPrefix = '/' . $locale;
             }
         }
 

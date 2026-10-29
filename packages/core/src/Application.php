@@ -826,11 +826,20 @@ final class Application
             }
 
             // Register hd template functions
-            $htmxProvider = new \Preflow\Htmx\HtmxExtensionProvider($htmxDriver, $componentToken, assets: $htmxAssets);
+            // On a /de/… page component URLs are /de/--component/…, so actions run in that
+            // locale. Lazy: the locale middleware is registered later (bootI18n).
+            $container = $this->container;
+            $htmxProvider = new \Preflow\Htmx\HtmxExtensionProvider(
+                $htmxDriver,
+                $componentToken,
+                assets: $htmxAssets,
+                pathPrefix: fn (): string => $container->bound(\Preflow\I18n\LocaleMiddleware::class)
+                    ? $container->get(\Preflow\I18n\LocaleMiddleware::class)->urlPrefix()
+                    : '',
+            );
             $this->registerExtensionProvider($engine, $htmxProvider);
 
             // Component endpoint
-            $container = $this->container;
             $endpoint = new \Preflow\Htmx\ComponentEndpoint(
                 token: $componentToken,
                 renderer: $renderer,
@@ -926,13 +935,15 @@ final class Application
         // Locale middleware. No cookie by default with the prefix strategy (the URL
         // carries the locale), so sites can truthfully claim "no cookies".
         if ($localized && class_exists(\Preflow\I18n\LocaleMiddleware::class)) {
-            $this->addMiddleware(new \Preflow\I18n\LocaleMiddleware(
+            $localeMiddleware = new \Preflow\I18n\LocaleMiddleware(
                 $translator,
                 $available,
                 $locale,
                 $strategy,
                 (bool) ($i18nConfig['cookie'] ?? $strategy !== 'prefix'),
-            ));
+            );
+            $this->container->instance(\Preflow\I18n\LocaleMiddleware::class, $localeMiddleware);
+            $this->addMiddleware($localeMiddleware);
         }
     }
 

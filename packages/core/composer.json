@@ -17,7 +17,9 @@
     },
     "conflict": {
         "preflow/auth": "<0.38",
-        "preflow/data": "<0.28"
+        "preflow/data": "<0.28",
+        "preflow/htmx": "<0.46",
+        "preflow/i18n": "<0.46"
     },
     "autoload": {
         "psr-4": {

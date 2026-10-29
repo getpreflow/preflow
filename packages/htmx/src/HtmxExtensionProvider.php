@@ -9,11 +9,16 @@ use Preflow\View\TemplateExtensionProvider;
 
 final class HtmxExtensionProvider implements TemplateExtensionProvider
 {
+    /**
+     * @param \Closure(): string|null $pathPrefix Put before every component URL, read
+     *        each time a URL is built (e.g. the page's locale prefix '/de').
+     */
     public function __construct(
         private readonly HypermediaDriver $driver,
         private readonly ComponentToken $token,
         private readonly string $endpointPrefix = '/--component',
         private readonly ?HtmxAssets $assets = null,
+        private readonly ?\Closure $pathPrefix = null,
     ) {}
 
     /**
@@ -49,7 +54,7 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
      */
     public function actionUrl(string $action, string $componentClass, array $props = []): string
     {
-        return $this->endpointPrefix . '/action?token=' . urlencode($this->token->encode($componentClass, $props, $action));
+        return $this->endpoint() . '/action?token=' . urlencode($this->token->encode($componentClass, $props, $action));
     }
 
     /**
@@ -99,7 +104,7 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
     ): string {
         $this->assets?->require();
         $tokenStr = $this->token->encode($componentClass, $props, 'render');
-        $url = $this->endpointPrefix . '/render?token=' . urlencode($tokenStr);
+        $url = $this->endpoint() . '/render?token=' . urlencode($tokenStr);
 
         $attrs = $this->driver->listenAttrs($event, $url, $componentId);
 
@@ -134,10 +139,15 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
     ): string {
         $this->assets?->require();
         $tokenStr = $this->token->encode($componentClass, $props, $action);
-        $url = $this->endpointPrefix . '/action?token=' . urlencode($tokenStr);
+        $url = $this->endpoint() . '/action?token=' . urlencode($tokenStr);
 
         $attrs = $this->driver->actionAttrs($method, $url, $componentId, $swap, $extra);
 
         return (string) $attrs;
+    }
+
+    private function endpoint(): string
+    {
+        return ($this->pathPrefix !== null ? ($this->pathPrefix)() : '') . $this->endpointPrefix;
     }
 }

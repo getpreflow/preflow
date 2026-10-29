@@ -69,4 +69,21 @@ final class HtmxExtensionProviderTest extends TestCase
         $this->assertSame('save', $payload->action);
         $this->assertSame(['id' => 7], $payload->props);
     }
+
+    public function test_urls_start_with_the_path_prefix(): void
+    {
+        $driver = new HtmxDriver(new ResponseHeaders());
+        $token = new ComponentToken('test-secret-key-32-chars-long!!');
+        $prefixed = new HtmxExtensionProvider($driver, $token, pathPrefix: fn (): string => '/de');
+
+        $this->assertStringStartsWith('/de/--component/action?token=', $prefixed->actionUrl('save', \stdClass::class));
+        $this->assertStringContainsString('hx-post="/de/--component/action', $prefixed->post('save', \stdClass::class, 'C-1'));
+        $this->assertStringContainsString('hx-get="/de/--component/action', $prefixed->get('save', \stdClass::class, 'C-1'));
+        $this->assertStringContainsString('/de/--component/render', $prefixed->on('saved', \stdClass::class, 'C-1'));
+
+        $plain = new HtmxExtensionProvider($driver, $token);
+        $this->assertStringStartsWith('/--component/action?token=', $plain->actionUrl('save', \stdClass::class));
+        $this->assertStringContainsString('hx-post="/--component/action', $plain->post('save', \stdClass::class, 'C-1'));
+        $this->assertStringContainsString('"/--component/render', $plain->on('saved', \stdClass::class, 'C-1'));
+    }
 }
