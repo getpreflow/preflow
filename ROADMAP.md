@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.44.0** — 4445 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.45.0** — 4489 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -53,7 +53,7 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    - **holz-objekte.org album on the PDF part** (replace its direct mPDF use)
    - **Blade shared-finder partial-name collision** (pre-existing: Blade's shared view finder resolves a partial by
      name, so two directories with the same partial name can collide)
-6. **Phase 3 framework part: translation status** — done in 0.45 (prepared, not released): `TranslationStatus` finds
+6. **Phase 3 framework part: translation status** — released in 0.45: `TranslationStatus` finds
    missing and outdated translations per text (fields, block leaves, custom field types through
    `ReportsTranslatableTexts`), fingerprints in `_translated_from`, list badges and language tabs with counts,
    "still correct" in the form, and the opt-in `publishing.complete_languages` refusal. See
