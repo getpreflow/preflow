@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Preflow\Folio\Field\Types;
 
 use Preflow\Folio\Field\FieldContext;
+use Preflow\Validation\Rules\Numeric;
+use Preflow\Validation\Rules\Step;
+use Preflow\Validation\Rules\WhenFilled;
 
 final class NumberFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\HasColumnKind
 {
@@ -31,7 +34,11 @@ final class NumberFieldType extends AbstractScalarFieldType implements \Preflow\
         return $step === null ? [] : ['step' => $step];
     }
 
-    /** "step": a positive number or "any". Without it the browser takes whole numbers only. */
+    /**
+     * "step": a positive number or "any". Without it the browser takes whole numbers only.
+     * The numeric and step checks only judge a filled value: an optional field may be left
+     * empty, and "required" (from the field's "validate") still refuses an empty one.
+     */
     public function rules(array $config): array
     {
         $step = $this->step($config);
@@ -39,7 +46,9 @@ final class NumberFieldType extends AbstractScalarFieldType implements \Preflow\
             return [];
         }
 
-        return $step === 'any' ? ['numeric'] : ['numeric', 'step:' . $step];
+        return $step === 'any'
+            ? [new WhenFilled(new Numeric())]
+            : [new WhenFilled(new Numeric(), new Step((float) $step))];
     }
 
     private function step(array $config): ?string
@@ -52,7 +61,7 @@ final class NumberFieldType extends AbstractScalarFieldType implements \Preflow\
             return 'any';
         }
         if (is_int($step) || is_float($step) || (is_string($step) && is_numeric($step))) {
-            $text = \Preflow\Validation\Rules\Step::decimal($step);
+            $text = Step::decimal($step);
             if ($text !== null && $text !== '0' && !str_starts_with($text, '-')) {
                 return $text;
             }

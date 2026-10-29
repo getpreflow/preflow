@@ -56,8 +56,18 @@ final class ScalarFieldTypesTest extends TestCase
     public function test_number_step_rules(): void
     {
         $type = new NumberFieldType();
-        $this->assertSame(['numeric', 'step:0.5'], $type->rules(['step' => 0.5]));
-        $this->assertSame(['numeric'], $type->rules(['step' => 'any']));
+        $check = static fn (array $rules, mixed $value) => (new \Preflow\Validation\Validator(
+            new \Preflow\Validation\RuleFactory(), ['f' => $rules], ['f' => $value],
+        ))->validate()->errors()['f'] ?? [];
+        $half = $type->rules(['step' => 0.5]);
+        $this->assertSame([], $check($half, '2.5'));
+        $this->assertSame([], $check($half, ''));
+        $this->assertSame(['Must be a multiple of 0.5.'], $check($half, '2.3'));
+        $this->assertSame(['Must be a number.'], $check($half, 'abc'));
+        $any = $type->rules(['step' => 'any']);
+        $this->assertSame([], $check($any, ''));
+        $this->assertSame([], $check($any, '2.3'));
+        $this->assertSame(['Must be a number.'], $check($any, 'abc'));
         $this->assertSame([], $type->rules([]));
 
         $this->expectException(\LogicException::class);

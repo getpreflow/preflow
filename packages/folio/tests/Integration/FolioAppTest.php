@@ -193,6 +193,56 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('Must be a multiple of 0.5.', (string) $res->getBody());
     }
 
+    public function test_optional_number_field_with_step_saves_empty(): void
+    {
+        file_put_contents($this->dir . '/config/models/event.json', json_encode([
+            'key' => 'event', 'table' => 'event', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Events',
+            'fields' => [
+                'title' => ['type' => 'string'],
+                'price' => ['type' => 'number', 'step' => 0.5],
+                'weight' => ['type' => 'number', 'step' => 'any'],
+            ],
+        ]));
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+
+        $res = $app->handle($f->createServerRequest('POST', '/folio/event')
+            ->withParsedBody(['title' => 'Empty', 'price' => '', 'weight' => '']));
+        $this->assertNotSame(422, $res->getStatusCode(), (string) $res->getBody());
+        $record = $app->container()->get(\Preflow\Data\DataManager::class)->queryType('event')->where('title', 'Empty')->first();
+        $this->assertNotNull($record);
+        $this->assertEmpty($record->get('price'));
+        $this->assertEmpty($record->get('weight'));
+
+        $res = $app->handle($f->createServerRequest('POST', '/folio/event')
+            ->withParsedBody(['title' => 'Off', 'price' => '2.3', 'weight' => 'abc']));
+        $this->assertSame(422, $res->getStatusCode());
+        $body = (string) $res->getBody();
+        $this->assertStringContainsString('Must be a multiple of 0.5.', $body);
+        $this->assertStringContainsString('Must be a number.', $body);
+    }
+
+    public function test_required_number_field_with_step_posted_empty_fails_on_required_only(): void
+    {
+        file_put_contents($this->dir . '/config/models/event.json', json_encode([
+            'key' => 'event', 'table' => 'event', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Events',
+            'fields' => [
+                'title' => ['type' => 'string'],
+                'price' => ['type' => 'number', 'step' => 0.5, 'validate' => ['required']],
+            ],
+        ]));
+        $app = $this->app();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+
+        $res = $app->handle($f->createServerRequest('POST', '/folio/event')
+            ->withParsedBody(['title' => 'Empty', 'price' => '']));
+        $this->assertSame(422, $res->getStatusCode());
+        $body = (string) $res->getBody();
+        $this->assertStringContainsString('This field is required.', $body);
+        $this->assertStringNotContainsString('Must be a number.', $body);
+        $this->assertStringNotContainsString('Must be a multiple of', $body);
+    }
+
     public function test_select_renders_stale_value_and_rejects_it_on_save(): void
     {
         $this->writeEventType();

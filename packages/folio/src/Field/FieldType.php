@@ -38,10 +38,11 @@ interface FieldType
     public function renderFrontend(mixed $value, array $config): string;
 
     /**
-     * Validation rules this field type contributes, given its config.
+     * Validation rules this field type contributes, given its config: rule strings or
+     * ValidationRule instances (the number field wraps its checks in WhenFilled).
      *
      * @param array<string, mixed> $config
-     * @return array<string, list<string>>
+     * @return list<string|\Preflow\Validation\ValidationRule>
      */
     public function rules(array $config): array;
 

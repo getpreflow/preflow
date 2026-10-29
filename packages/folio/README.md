@@ -485,8 +485,10 @@ an error naming the type.
 
 `number` takes `"step": 0.5` (any positive number) or `"step": "any"` (since 0.46). The input gets that
 `step`, and with a number the server checks that the value is numeric and a multiple of the step
-(`2.3` is refused for `0.5`); `"any"` checks only numeric. Without the option the browser takes whole
-numbers only and the server checks nothing (as before). Any other value is a configuration error.
+(`2.3` is refused for `0.5`); `"any"` checks only numeric. Both checks judge a filled value only, so
+an optional number field can be saved empty; with `"validate": ["required"]` an empty value gets the
+required message alone. Without the option the browser takes whole numbers only and the server checks
+nothing (as before). Any other value is a configuration error.
 
 Any field also takes:
 
