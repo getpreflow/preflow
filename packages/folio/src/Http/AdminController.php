@@ -999,9 +999,9 @@ final class AdminController
                 continue;
             }
             [$field, $code] = explode('.', $key, 2);
-            // "_translations.<locale>": a language the record is visible in but has not finished.
+            // "_translations.<locale>": a language the record is visible in but has not finished (shown on its own tab too).
             $incomplete = $field === '_translations';
-            if ($code === $locale || !$locales->has($code) || (!$incomplete && !isset($typeDef->fields[$field]))) {
+            if (!$locales->has($code) || ($code === $locale && !$incomplete) || (!$incomplete && !isset($typeDef->fields[$field]))) {
                 continue;
             }
             $localeErrors[] = [
