@@ -134,7 +134,9 @@ directive `@qr_svg(...)`.
 ```
 
 Options: `size` (pixels, default 200, at least 21), `margin` (modules, default 2), `ecc` (`L`, `M`, `Q`, `H`;
-default `M`), `color` and `background` (any CSS colour for SVG). In PHP, `Preflow\View\Qr\QrCode::svg()` and
+default `M`), `color` and `background` (a CSS colour for SVG: hex, `rgb()`/`hsl()` or a name; anything else throws an
+`InvalidArgumentException`). Every light module takes the background colour, so a coloured or inverted code stays
+readable (check inverted ones with your scanner; not every reader handles them). In PHP, `Preflow\View\Qr\QrCode::svg()` and
 `QrCode::png()` (PNG colours must be hex; the size is rounded down to whole pixels per module). QR codes need the
 suggested package `chillerlan/php-qrcode` (`^5.0`); without it you get a `RuntimeException`: "QR codes need the
 chillerlan/php-qrcode library. Install it with: composer require chillerlan/php-qrcode".
@@ -211,10 +213,18 @@ Twig functions (Blade: `@pdf_...(...)`, all return safe HTML):
 | `pdf_qr($data, $options)` | an inline SVG QR code; `size_mm` (30) plus the `qr_svg` options |
 
 `pdf_image` takes an absolute file path or a media asset id (needs `preflow/media`) and nothing else: no URLs, no
-relative paths. It reads the file from the server, so it must never get user input. A private media asset needs
-`allow_private: true`. JPEG, PNG, GIF and WebP images longer than `max_px` are scaled to a JPEG in `temp_dir` for the
-render and removed afterwards; formats GD cannot read (for example AVIF) are not scaled, so keep them small. Images
-over 40 megapixels are refused.
+relative paths. It reads the file from the server, so it must never get user input. A path must be an image file
+(one `getimagesize()` reads, or an SVG); anything else throws an `InvalidArgumentException`. A private media asset
+needs `allow_private: true`. JPEG, PNG, GIF and WebP images longer than `max_px` are scaled to a JPEG in
+`temp_dir/mpdf` for the render and removed afterwards (mPDF sweeps old files there, should a process die first);
+formats GD cannot read (for example AVIF) are not scaled, so keep them small. An image that has to be scaled is
+refused when it is over 40 megapixels; a smaller one goes in as it is.
+
+### Security
+
+mPDF fetches what the template output points to: `<img src>`, CSS `url()` and similar, local files and URLs
+alike. Never print raw user-supplied URLs or paths into a `PdfDocument` template; pass images through `pdf_image`,
+which accepts image files only.
 
 ### CSS limits
 
