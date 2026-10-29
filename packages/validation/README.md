@@ -28,3 +28,6 @@ $rules = ['price' => ['required', new WhenFilled(new Numeric(), new Step(0.5))]]
 ```
 
 `numeric` alone keeps refusing `''`.
+
+`WhenFilled` is used as an object only: it has no string alias, and a rule string naming its class would
+build it without rules, so it would check nothing.
