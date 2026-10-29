@@ -42,7 +42,17 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    (`media:cleanup`, Folio's "Unused only" filter) that only knows the usages sources report; `VideoPreviewRenderer`
    (ffmpeg path configurable, a static build works, `media:previews` covers videos; a poster still wins);
    `importFile(…, private: true)`. See `docs/superpowers/plans/2026-10-28-release-0.43-checklist.md`
-5. **Reporting/export and certificates (PDF)** — its own spec (needed for BG Genius Phase 5)
+5. ~~**Reporting/export and certificates (PDF)**~~ — done in 0.44: aggregate queries (`QueryBuilder::aggregate()`:
+   group by, count, sum, avg, min, max, having; same rows on SQLite, MySQL and JSON), QR codes (`qr_svg`) and PDFs
+   from Twig or Blade templates (`PdfDocument`, `PdfRenderer`, mPDF engine, building blocks, configured fonts).
+   See `docs/superpowers/plans/2026-10-28-release-0.44-checklist.md`
+
+   Later, from this step:
+   - **Aggregates by time period** (group by day, month, year of a date field)
+   - **Grouping by multiple relations** (refused today)
+   - **holz-objekte.org album on the PDF part** (replace its direct mPDF use)
+   - **Blade shared-finder partial-name collision** (pre-existing: Blade's shared view finder resolves a partial by
+     name, so two directories with the same partial name can collide)
 
 **Rule (owner, 2026-10-26):** the framework holds abstractions, interfaces, hooks and generic mechanisms only;
 a feature one project needs is built in that project on top of them. A package's official admin UI lives in Folio

@@ -457,6 +457,70 @@ none and returns the one in use (the members core does this for its `member` typ
 
 Relations work across storages: a SQL type may point at a JSON type and back.
 
+## Aggregates
+
+`aggregate()` on a query builder groups the records its filters select and counts, sums, averages or finds the
+smallest or largest value per group. It works on typed models and on dynamic types, on SQLite, MySQL/MariaDB and
+JSON storage, and gives the same rows on all of them.
+
+```php
+$rows = $dm->queryIn($answerType)->where('correct', true)->aggregate()
+    ->groupBy('member')
+    ->count()                         // result name 'count' unless you pass another
+    ->countDistinct('step', 'steps')
+    ->sum('seconds', 'total')
+    ->avg('seconds', 'average')
+    ->min('seconds', 'fastest')
+    ->max('seconds', 'slowest')
+    ->having('count', '>=', 3)        // on a result name, a number
+    ->orderBy('total', SortDirection::Desc)
+    ->limit(10)->offset(0)
+    ->get();
+// [['member' => 'm1', 'count' => 3, 'steps' => 2, 'total' => 22.5, ...], ...]
+```
+
+The builder's `where()`, `whereAny()`, `search()`, `searchLoose()` and locale decide which records are grouped,
+as they are when `aggregate()` is called (later changes to the builder do not reach it). The builder's own
+`orderBy()`, `limit()` and `offset()` do not apply; the aggregate query has its own. Without `orderBy()` the rows come
+back by the group fields, ascending, and the group fields also break ties. Without `groupBy()` you get one row of
+totals, also when no record matches. Translatable group fields use the builder's locale.
+
+Rows are arrays keyed by the group fields and the result names. Fields are the ones of the type (or the model's
+`#[Field]` properties and its id); a field name is never SQL.
+
+**Null rules.**
+
+- `count()` counts rows, whatever their values.
+- `countDistinct`, `sum`, `avg`, `min` and `max` of a field skip null (and `''` for number fields).
+- `avg`, `min` and `max` of no values are `null`; `sum` of no values is `0`. Records with no value in a group field
+  form one group with `null`.
+- `having()` never matches a `null` result. In ordering, null comes first ascending and last descending.
+
+**Types.** `count` and `countDistinct` are `int`. Other numbers are `int` when integral (within 2^53), else `float`.
+Group values and `min`/`max` of boolean fields are PHP `bool` on every storage; those of text and date fields are
+strings as stored.
+
+**Case.** Text group values are case-sensitive everywhere: `'a'` and `'A'` are two groups. On MySQL/MariaDB the
+group fields (and `countDistinct`, `min`, `max`, `orderBy`, `having` on text) use a binary collation
+(`utf8mb4_bin`), so the rows match SQLite and JSON. The `where()` filters keep the table's collation, so a
+`where('grade', 'a')` still matches `'A'` on a `_ci` table. The binary comparison keeps MySQL from using an index
+for the GROUP BY; aggregates scan the filtered rows anyway.
+
+**Refused** (`\InvalidArgumentException`, when the method is called unless noted):
+
+- a field that does not exist, in `groupBy()` or a measure (this also refuses SQL fragments);
+- result names that are not `[A-Za-z_][A-Za-z0-9_]*`, are used twice, or (at `get()`) equal a group field;
+- `groupBy()` on a field that holds multiple relations (grouping by several relations is a later item);
+- `sum()` and `avg()` of a field that is not a number field;
+- `having()` on an unknown result name, on `min`/`max` of a non-number field, with an unknown operator (`=`, `!=`,
+  `<`, `<=`, `>`, `>=`) or a non-finite value;
+- at `get()`: an `orderBy()` name that is neither a result name nor a group field, and a query with neither group
+  nor measure;
+- negative limit or offset.
+
+A storage driver that does not implement `AggregatingStorage` gives a `\LogicException` naming the driver. A custom
+`Dialect` implementation must now provide `numericValue()` and `exactText()` (see the 0.44 notes).
+
 ## `whereAny` operators
 
 `whereAny()` takes a list of conditions of which at least one must hold (an OR-group).
