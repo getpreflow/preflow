@@ -96,10 +96,13 @@ final class ClaudeClient implements AiClient
 
     private function response(Message $message): AiResponse
     {
+        // Anthropic's input_tokens excludes cache reads and cache creation; TokenUsage::input means all input,
+        // so they are added back. Cache creation is folded into input at the normal price (an approximation).
+        $cacheRead = $message->usage->cacheReadInputTokens ?? 0;
         $usage = new TokenUsage(
-            $message->usage->inputTokens,
+            $message->usage->inputTokens + $cacheRead + ($message->usage->cacheCreationInputTokens ?? 0),
             $message->usage->outputTokens,
-            $message->usage->cacheReadInputTokens ?? 0,
+            $cacheRead,
         );
 
         $stop = match ($message->stopReason) {

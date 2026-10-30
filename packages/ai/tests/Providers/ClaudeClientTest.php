@@ -62,7 +62,7 @@ final class ClaudeClientTest extends TestCase
             'content' => [['type' => 'text', 'text' => '{"ok":true}']],
             'stop_reason' => 'end_turn',
             'stop_sequence' => null,
-            'usage' => ['input_tokens' => 120, 'output_tokens' => 30, 'cache_read_input_tokens' => 100],
+            'usage' => ['input_tokens' => 10, 'output_tokens' => 30, 'cache_read_input_tokens' => 990, 'cache_creation_input_tokens' => 5],
         ], $overrides);
 
         return new Response(200, ['Content-Type' => 'application/json'], json_encode($body, JSON_THROW_ON_ERROR));
@@ -137,9 +137,9 @@ final class ClaudeClientTest extends TestCase
         $this->assertSame(StopReason::Complete, $response->stop);
         $this->assertSame('{"ok":true}', $response->text);
         $this->assertSame(['ok' => true], $response->json());
-        $this->assertSame(120, $response->usage->input);
+        $this->assertSame(1005, $response->usage->input); // 10 + 990 cache read + 5 cache creation
         $this->assertSame(30, $response->usage->output);
-        $this->assertSame(100, $response->usage->cachedInput);
+        $this->assertSame(990, $response->usage->cachedInput);
         $this->assertSame('claude', $response->provider);
         $this->assertSame('claude-sonnet-5-5', $response->model);
         $this->assertNull($response->detail);
