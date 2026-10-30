@@ -65,8 +65,11 @@ final class Importer
      * removed and replaced rows are deleted before the incoming ones are written, so a unique
      * value (a slug) that moves to another id never collides. SQL storages run it in one
      * transaction per connection; other storages (JSON) get their earlier rows written back.
-     * A failure there throws a TransferException with code RECORDS_UNCHANGED and leaves the
-     * local records as they were; files are written after the records and are not undone.
+     * A failure there (reading the archive rows included) throws a TransferException with code
+     * RECORDS_UNCHANGED and leaves the local records as they were. The code is 0 when that can't
+     * be promised: a connection was already committed, the written-back rows failed, or the
+     * import ran inside a transaction the caller opened (the caller then rolls back, or not).
+     * Files are written after the records and are not undone.
      */
     public function apply(ImportPlan $plan): void
     {
@@ -98,20 +101,27 @@ final class Importer
         $tables = $this->set->tables();
         $changed = [];
         $work = [];
-        foreach ($plan->tables as $table => $diff) {
-            $table = (string) $table;
-            if ($diff['added'] === [] && $diff['changed'] === [] && $diff['removed'] === []) {
-                continue;
+        try {
+            foreach ($plan->tables as $table => $diff) {
+                $table = (string) $table;
+                if ($diff['added'] === [] && $diff['changed'] === [] && $diff['removed'] === []) {
+                    continue;
+                }
+                $changed[] = $table;
+                $def = $tables[$table];
+                $rows = [];
+                foreach ([...$diff['added'], ...$diff['changed']] as $id) {
+                    $row = json_decode((string) file_get_contents("{$plan->dir}/data/{$table}/{$id}.json"), true, 512, JSON_THROW_ON_ERROR);
+                    if (!is_array($row)) {
+                        throw new TransferException("Broken record in the export: {$table}/{$id}");
+                    }
+                    // As saveType() writes it: no empty text in number, yes/no or date columns.
+                    $rows[$id] = $this->dm->storageValues($def, $row);
+                }
+                $work[$table] = [$def, $this->dm->driver($def->storage), $diff, $rows];
             }
-            $changed[] = $table;
-            $def = $tables[$table];
-            $rows = [];
-            foreach ([...$diff['added'], ...$diff['changed']] as $id) {
-                $row = json_decode((string) file_get_contents("{$plan->dir}/data/{$table}/{$id}.json"), true, 512, JSON_THROW_ON_ERROR);
-                // As saveType() writes it: no empty text in number, yes/no or date columns.
-                $rows[$id] = $this->dm->storageValues($def, $row);
-            }
-            $work[$table] = [$def, $this->dm->driver($def->storage), $diff, $rows];
+        } catch (\Throwable $e) {
+            throw new TransferException($e->getMessage(), self::RECORDS_UNCHANGED, $e);
         }
         if ($work === []) {
             $this->set->imported([]);
@@ -121,19 +131,23 @@ final class Importer
 
         /** @var array<int, \PDO> $began */
         $began = [];
+        $committed = 0;
+        $joined = false; // a transaction the caller opened: its rollback is the caller's
         /** @var list<array{0: StorageDriver, 1: string, 2: string, 3: list<string>, 4: array<string, array<string, mixed>>}> $undo */
         $undo = [];
         try {
             foreach ($work as $table => [$def, $driver, $diff]) {
                 if ($driver instanceof PdoDriver) {
                     $pdo = $driver->pdo();
-                    if (!isset($began[spl_object_id($pdo)]) && !$pdo->inTransaction()) {
-                        $pdo->beginTransaction();
-                        $began[spl_object_id($pdo)] = $pdo;
+                    if (!isset($began[spl_object_id($pdo)])) {
+                        if ($pdo->inTransaction()) {
+                            $joined = true;
+                        } else {
+                            $pdo->beginTransaction();
+                            $began[spl_object_id($pdo)] = $pdo;
+                        }
                     }
-                    if ($pdo->inTransaction()) {
-                        continue;
-                    }
+                    continue;
                 }
                 // No transaction: keep the rows this import replaces or removes, to write them back.
                 $before = [];
@@ -158,6 +172,7 @@ final class Importer
 
             foreach ($began as $pdo) {
                 $pdo->commit();
+                $committed++;
             }
         } catch (\Throwable $e) {
             foreach ($began as $pdo) {
@@ -175,10 +190,14 @@ final class Importer
                     }
                 }
             } catch (\Throwable $undoFailed) {
-                throw new TransferException('Import stopped part-way and its records could not be put back (' . $undoFailed->getMessage() . '): ' . $e->getMessage(), 0, $e);
+                throw new TransferException('its records could not be put back (' . $undoFailed->getMessage() . '): ' . $e->getMessage(), 0, $e);
+            }
+            if ($committed > 0) {
+                throw new TransferException('another database was already committed: ' . $e->getMessage(), 0, $e);
             }
 
-            throw new TransferException($e->getMessage(), self::RECORDS_UNCHANGED, $e);
+            // In the caller's transaction the rows are still written until the caller rolls back.
+            throw new TransferException($e->getMessage(), $joined ? 0 : self::RECORDS_UNCHANGED, $e);
         }
         $this->set->imported($changed);
     }

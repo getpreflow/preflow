@@ -1518,6 +1518,8 @@ php preflow folio:pull production --only=data # records only (or --only=media)
   copy matches live.
 - **Records all or nothing:** the records are replaced in one go (removed and replaced rows
   first, so a slug that has another id live never collides); if that fails, no record changes.
+  A replaced record is written whole: on SQL, as on JSON, a column only the local models have is
+  empty after an import or pull.
 
 The same archive works without SSH, as a content backup and restore:
 

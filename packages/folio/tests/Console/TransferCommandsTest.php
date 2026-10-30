@@ -215,6 +215,7 @@ final class TransferCommandsTest extends TestCase
         $this->assertSame(1, $this->import([$file]));
 
         $this->assertStringContainsString('Import failed, nothing was changed', $this->text($this->err));
+        $this->assertMatchesRegularExpression('#Backup kept: \S+/storage/backups/import-\d{8}-\d{6}\.tar\.gz#', $this->text($this->err));
         $this->assertSame(['p1'], array_map(static fn ($r) => $r->getId(), $this->dm()->queryType('post')->get()->items()));
     }
 

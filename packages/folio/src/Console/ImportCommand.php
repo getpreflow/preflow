@@ -85,6 +85,7 @@ final class ImportCommand extends TransferCommand implements CommandInterface
             } catch (\Throwable $e) {
                 if ($e instanceof TransferException && $e->getCode() === Importer::RECORDS_UNCHANGED) {
                     $cmd->warn('Import failed, nothing was changed: ' . $e->getMessage());
+                    $cmd->warn('Backup kept: ' . $backup);
 
                     return 1;
                 }

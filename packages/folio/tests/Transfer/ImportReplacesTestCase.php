@@ -44,6 +44,28 @@ abstract class ImportReplacesTestCase extends TestCase
         return [$importer, $importer->read($archive, 'data')];
     }
 
+    /** An importer and its DataManager, from one app. @return array{0: Importer, 1: DataManager} */
+    protected function importerWithData(): array
+    {
+        $app = $this->app();
+        $dm = $app->container()->get(DataManager::class);
+
+        return [new Importer(ContentSet::fromApp($app), $dm), $dm];
+    }
+
+    /** Applies the plan and returns the TransferException it throws, or fails. */
+    protected function applyFailing(Importer $importer, \Preflow\Folio\Transfer\ImportPlan $plan): \Preflow\Folio\Transfer\TransferException
+    {
+        try {
+            $importer->apply($plan);
+        } catch (\Preflow\Folio\Transfer\TransferException $e) {
+            return $e;
+        } finally {
+            $plan->cleanup();
+        }
+        $this->fail('the import should have failed');
+    }
+
     protected function setUp(): void
     {
         $this->scaffoldPublishing($this->storage());
@@ -112,11 +134,24 @@ abstract class ImportReplacesTestCase extends TestCase
      */
     protected function gameArchive(array $rows)
     {
+        return $this->archive(['game' => $rows]);
+    }
+
+    /**
+     * A data archive with these tables, in this order.
+     *
+     * @param array<string, array<string, array<string, mixed>>> $tables table => id => row
+     * @return resource
+     */
+    protected function archive(array $tables)
+    {
         $s = fopen('php://temp', 'w+b');
         $w = new TarWriter($s);
-        $w->addString('folio-export.json', (string) json_encode(['format' => 1, 'only' => 'data', 'tables' => ['game' => count($rows)]]));
-        foreach ($rows as $id => $row) {
-            $w->addString("data/game/{$id}.json", (string) json_encode(['uuid' => $id] + $row));
+        $w->addString('folio-export.json', (string) json_encode(['format' => 1, 'only' => 'data', 'tables' => array_map('count', $tables)]));
+        foreach ($tables as $table => $rows) {
+            foreach ($rows as $id => $row) {
+                $w->addString("data/{$table}/{$id}.json", (string) json_encode(['uuid' => $id] + $row));
+            }
         }
         $w->close();
         rewind($s);
@@ -170,15 +205,23 @@ abstract class ImportReplacesTestCase extends TestCase
         ]);
 
         [$importer, $plan] = $this->failingImport($archive);
-        try {
-            $importer->apply($plan);
-            $this->fail('the import should have failed on z');
-        } catch (\Throwable $e) {
-            $this->assertStringNotContainsString('should have failed', $e->getMessage());
-        } finally {
-            $plan->cleanup();
-        }
+        $e = $this->applyFailing($importer, $plan);
 
+        $this->assertSame(Importer::RECORDS_UNCHANGED, $e->getCode());
+        $this->assertSame($local, $this->games());
+    }
+
+    public function test_a_row_that_cannot_be_read_back_changes_nothing(): void
+    {
+        $local = ['a' => ['title' => 'Local', 'slug' => 'x']];
+        $this->setGames($local);
+        [$importer] = $this->importerWithData();
+        $plan = $importer->read($this->gameArchive(['b' => ['title' => 'Live', 'slug' => 'x'], 'c' => ['title' => 'C', 'slug' => 'c']]), 'data');
+        file_put_contents("{$plan->dir}/data/game/c.json", '{broken'); // damaged after read() checked it
+
+        $e = $this->applyFailing($importer, $plan);
+
+        $this->assertSame(Importer::RECORDS_UNCHANGED, $e->getCode());
         $this->assertSame($local, $this->games());
     }
 
