@@ -12,5 +12,12 @@ interface RecordLease
     /** True when the caller now holds the record; false when someone else does. A claim lapses after $ttlSeconds. */
     public function claim(string $collection, string $id, int $ttlSeconds = 600): bool;
 
+    /**
+     * Pushes the expiry of the caller's own claim to $ttlSeconds from now, for work that may outlast
+     * the claim. False when the caller does not hold the record (any more).
+     */
+    public function renew(string $collection, string $id, int $ttlSeconds = 600): bool;
+
+    /** Frees the caller's own claim; a claim someone else took over in the meantime is left alone. */
     public function release(string $collection, string $id): void;
 }
