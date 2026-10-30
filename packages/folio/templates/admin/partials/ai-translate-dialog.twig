@@ -1,17 +1,22 @@
-{# The Translate button for this language tab, its dialog and the review row it puts under each
-   filled field (ai-translate.js). Only rendered while AI is on and the user may use it (ai_translate).
-   form.twig includes it on the line of its endif, so the form's markup without it stays byte for byte the same.
-   Settings → Translations and the media panel include it too, with ai_translate keys that change the copy and
-   the wiring: id (title id, one per dialog on a page), button, intro, scope_needed, filled (texts), scope (false: no
-   scope choice), estimate_url ('' : no estimate), form (CSS selector of what holds the inputs, default: the edit
-   form), marks (false: no _ai_unchecked / _ai_checked), extra (more fields to post). #}
+{# The Translate button for this language tab and its dialog. Only rendered while AI is on and the user may
+   use it (ai_translate). form.twig includes it on the line of its endif, so the form's markup without it stays
+   byte for byte the same.
+   The edit form sets queue_url: Confirm queues a background job for the record (ai-translate.js shows the answer's
+   message, and the cron hint when no worker runs); live (true: a type without publishing) adds the go-live
+   checkbox. Settings → Translations and the media panel set suggest_url instead: the texts fill their inputs, with
+   a review row under each (Accept / Discard). Their keys change the copy and the wiring: id (title id, one per
+   dialog on a page), button, intro, scope_needed, filled (texts), scope (false: no scope choice), estimate_url
+   ('' : no estimate), form (CSS selector of what holds the inputs, default: the edit form), extra (more fields to
+   post). #}
 {% set dialog_id = ai_translate.id ?? 'folio-ai-title' %}
+{% set queue = ai_translate.queue_url ?? '' %}
 <div class="folio-ai" data-ai-translate
-     data-suggest-url="{{ ai_translate.suggest_url }}"
-     {% if ai_translate.estimate_url ?? '' %}data-estimate-url="{{ ai_translate.estimate_url }}"
+     {% if queue %}data-queue-url="{{ queue }}"
+     data-msg-no-worker="{{ t('folio.ai_queue.no_worker') }}"
+     {% else %}data-suggest-url="{{ ai_translate.suggest_url }}"
+     {% endif %}{% if ai_translate.estimate_url ?? '' %}data-estimate-url="{{ ai_translate.estimate_url }}"
      {% endif %}data-locale="{{ ai_translate.locale }}"
      {% if ai_translate.form ?? '' %}data-ai-form="{{ ai_translate.form }}"
-     {% endif %}{% if (ai_translate.marks ?? true) == false %}data-ai-marks="none"
      {% endif %}{% if ai_translate.extra ?? [] %}data-extra="{{ ai_translate.extra|json_encode }}"
      {% endif %}     data-msg-estimating="{{ t('folio.ai_translate.estimating') }}"
      data-msg-estimate="{{ t('folio.ai_translate.estimate') }}"
@@ -41,11 +46,15 @@
                 <textarea rows="2" data-ai-note></textarea>
                 <small class="form-help">{{ t('folio.ai_translate.note_help') }}</small>
             </label>
+            {% if queue and (ai_translate.live ?? false) %}
+            <label class="folio-ai-live"><input type="checkbox" name="confirm_live" value="1" data-ai-confirm-live> {{ t('folio.ai_queue.confirm_live_label') }}</label>
+            {% endif %}
             <p class="folio-ai-estimate" data-ai-estimate aria-live="polite"></p>
         </div>
         <div class="folio-ai-body" data-ai-result hidden>
             <p data-ai-summary aria-live="polite"></p>
-            <div data-ai-failed hidden>
+            {% if queue %}<p class="folio-ai-hint" data-ai-hint hidden></p>
+            {% endif %}            <div data-ai-failed hidden>
                 <p>{{ t('folio.ai_translate.failed') }}</p>
                 <ul class="folio-ai-failed" data-ai-failed-list></ul>
             </div>
@@ -53,10 +62,11 @@
         <p class="folio-ai-error" data-ai-error role="alert" hidden></p>
         <div class="folio-ai-footer">
             <button type="button" class="btn btn-ghost" data-ai-close>{{ t('folio.ai_translate.cancel') }}</button>
-            <button type="button" class="btn btn-secondary" data-ai-accept-all hidden>{{ t('folio.ai_translate.accept_all') }}</button>
-            <button type="button" class="btn btn-primary" data-ai-start>{{ t('folio.ai_translate.start') }}</button>
+            {% if not queue %}<button type="button" class="btn btn-secondary" data-ai-accept-all hidden>{{ t('folio.ai_translate.accept_all') }}</button>
+            {% endif %}<button type="button" class="btn btn-primary" data-ai-start>{{ queue ? t('folio.ai_queue.button') : t('folio.ai_translate.start') }}</button>
         </div>
     </dialog>
+    {% if not queue %}
     <template data-ai-review-template>
         <div class="folio-ai-review" data-ai-review>
             <div class="folio-ai-review-part">
@@ -78,4 +88,5 @@
             </div>
         </div>
     </template>
+    {% endif %}
 </div>

@@ -180,6 +180,18 @@ return [
         'scope_needed_labels' => 'Ohne Text in dieser Sprache',
         'filled_labels' => ':count Texte eingefügt. Prüfe sie und speichere dann alle mit „Alle eingefügten speichern“.',
     ],
+    // The edit form's Translate button queues a background job (AI).
+    'ai_queue' => [
+        'button' => 'Übersetzung einreihen',
+        'intro' => 'KI übersetzt diesen Datensatz im Hintergrund, du kannst die Seite also verlassen. Die Texte werden als ungeprüft markiert gespeichert.',
+        'queued' => 'Eingereiht. Die Übersetzung wird als Entwurf zur Prüfung gespeichert; du kannst die Seite verlassen.',
+        'existing' => 'Diese Übersetzung ist schon eingereiht; du kannst die Seite verlassen.',
+        'queued_live' => 'Eingereiht. Dieser Typ hat keine Veröffentlichung: Die Übersetzung ist sofort öffentlich, sobald sie fertig ist.',
+        'confirm_live' => 'Dieser Typ hat keine Veröffentlichung: Die Übersetzung ist ohne Prüfung öffentlich. Bestätige das, bevor du sie einreihst.',
+        'confirm_live_label' => 'Mir ist klar, dass die Übersetzung ohne Prüfung öffentlich wird.',
+        'no_worker' => 'Im Moment bearbeitet nichts die eingereihten Übersetzungen: Sie warten, bis der Cronjob läuft. Bitte die Person, die die Website betreut, diese Zeile in die Crontab einzutragen: * * * * * cd <app> && php vendor/bin/preflow translate:work',
+        'pending' => 'Übersetzung (:language) eingereiht seit :since. Du kannst weiter bearbeiten; Änderungen in der Zwischenzeit bleiben erhalten.',
+    ],
     // The whole-type translation run (AI): plan with estimate, progress, results.
     'ai_run' => [
         'translate_all' => 'Alle übersetzen…',

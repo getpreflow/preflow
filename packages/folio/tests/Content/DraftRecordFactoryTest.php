@@ -204,50 +204,34 @@ final class DraftRecordFactoryTest extends TestCase
         $this->assertNull($record->get(TranslationStatus::MACHINE), 'nothing posted as AI-filled');
     }
 
-    public function test_posted_ai_unchecked_paths_marked_on_build(): void
+    public function test_posted_ai_paths_are_ignored(): void
     {
         $record = $this->build(
-            ['title' => 'Hallo', 'sections' => ['_order' => [self::A], self::A => ['_block' => 'hero', 'headline' => 'Kopf']], '_ai_unchecked' => ['title', 'sections.' . self::A . '.headline', 'gone', 7]],
-            ['title' => ['en' => 'Hello'], 'sections' => [['_uid' => self::A, '_block' => 'hero', 'headline' => ['en' => 'Head']]]],
+            ['title' => 'Hallo', '_ai_unchecked' => ['title'], '_ai_checked' => ['title']],
+            ['title' => ['en' => 'Hello']],
             'de',
         );
 
-        $this->assertSame(
-            ['de' => ['title' => $this->fingerprint('Hallo'), 'sections.' . self::A . '.headline' => $this->fingerprint('Kopf')]],
-            $record->get(TranslationStatus::MACHINE),
-        );
-        $this->assertSame(['title', 'sections.' . self::A . '.headline'], $this->unchecked($record, 'de'));
+        $this->assertNull($record->get(TranslationStatus::MACHINE), 'marks come only from translation jobs');
+        $this->assertSame([], $this->unchecked($record, 'de'));
     }
 
     public function test_resave_without_change_keeps_mark(): void
     {
-        $first = $this->build(['title' => 'Hallo', '_ai_unchecked' => ['title']], ['title' => ['en' => 'Hello']], 'de');
+        $saved = $this->build(['title' => 'Hallo'], ['title' => ['en' => 'Hello']], 'de');
+        $first = (new TranslationStatus($this->registry()))->markMachine($this->type(), $saved, 'de', ['title']); // as a translation job saves it
         $stored = ['title' => $first->get('title'), TranslationStatus::KEY => $first->get(TranslationStatus::KEY), TranslationStatus::SOURCES => $first->get(TranslationStatus::SOURCES), TranslationStatus::MACHINE => json_encode($first->get(TranslationStatus::MACHINE))];
 
         $resaved = $this->build(['title' => 'Hallo'], $stored, 'de');
         $otherLocale = $this->build(['title' => 'Hello'], $stored, 'en');
         $edited = $this->build(['title' => 'Hallo du'], $stored, 'de');
+        $posted = $this->build(['title' => 'Hallo', '_ai_checked' => ['title']], $stored, 'de');
 
         $this->assertSame(['title'], $this->unchecked($resaved, 'de'), 'a plain re-save keeps the mark');
         $this->assertSame(['title'], $this->unchecked($otherLocale, 'de'), 'saving another locale keeps it too');
+        $this->assertSame(['title'], $this->unchecked($posted, 'de'), 'a posted path does not clear it');
         $this->assertSame([], $this->unchecked($edited, 'de'), 'changing the text clears it');
         $this->assertSame([], $edited->get(TranslationStatus::MACHINE));
-    }
-
-    public function test_posted_ai_checked_paths_clear_marks_on_build(): void
-    {
-        $head = 'sections.' . self::A . '.headline';
-        $form = ['title' => 'Hallo', 'sections' => ['_order' => [self::A], self::A => ['_block' => 'hero', 'headline' => 'Kopf']]];
-        $first = $this->build($form + ['_ai_unchecked' => ['title', $head]], ['title' => ['en' => 'Hello'], 'sections' => [['_uid' => self::A, '_block' => 'hero', 'headline' => ['en' => 'Head']]]], 'de');
-        $stored = ['title' => $first->get('title'), 'sections' => $first->get('sections'), TranslationStatus::KEY => $first->get(TranslationStatus::KEY), TranslationStatus::SOURCES => $first->get(TranslationStatus::SOURCES), TranslationStatus::MACHINE => json_encode($first->get(TranslationStatus::MACHINE))];
-        $this->assertSame(['title', $head], $this->unchecked($first, 'de'));
-
-        // Accepted after the autosave marked it: the text is unchanged, the posted list clears the mark.
-        $accepted = $this->build($form + ['_ai_checked' => [$head, 'gone', 7]], $stored, 'de');
-        $otherLocale = $this->build(['title' => 'Hello', 'sections' => ['_order' => [self::A], self::A => ['_block' => 'hero', 'headline' => 'Head']], '_ai_checked' => ['title']], $stored, 'en');
-
-        $this->assertSame(['title'], $this->unchecked($accepted, 'de'));
-        $this->assertSame(['title', $head], $this->unchecked($otherLocale, 'de'), 'a save of another locale clears nothing in de');
     }
 
     /** @return list<string> */

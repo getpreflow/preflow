@@ -8,6 +8,7 @@ use Nyholm\Psr7\Response;
 use Preflow\Ai\Ai;
 use Preflow\Ai\AiUnavailable;
 use Preflow\Auth\Access\Access;
+use Preflow\Auth\Authenticatable;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeRegistry;
@@ -15,6 +16,7 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Data\Locales;
 use Preflow\Folio\FolioText;
 use Preflow\Folio\Translations\LabelUnits;
+use Preflow\Folio\Users\AuthorNames;
 use Preflow\I18n\Machine\Estimator;
 use Preflow\I18n\Machine\Job;
 use Preflow\I18n\Machine\JobRunner;
@@ -24,6 +26,7 @@ use Preflow\I18n\Machine\ReportsCost;
 use Preflow\I18n\Machine\Scope;
 use Preflow\I18n\Machine\TextSources;
 use Preflow\I18n\Machine\TranslationUnit;
+use Preflow\I18n\Machine\TranslationWorker;
 use Preflow\I18n\Machine\UnitStatus;
 use Preflow\Media\MediaLibrary;
 use Preflow\View\TemplateEngineInterface;
@@ -32,9 +35,10 @@ use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * The edit form's Translate button: what a record's translation into one language would cost
- * (estimate) and the AI texts for it (suggest). Units come from the type's TextSource, the same
- * code path whole-type runs use. Nothing is written: the form fills its inputs with the texts
- * and the editor reviews and saves them like typed ones.
+ * (estimate), and a background job that translates it (queue): the worker saves the texts as a
+ * run does, so the editor may leave the page. Units come from the type's TextSource, the same
+ * code path whole-type runs use. suggest answers the AI texts without writing anything, for
+ * screens that fill their own inputs (and the core API).
  *
  * The run screen translates a whole type (or the records ticked in the list) with the core
  * JobRunner: a plan with its estimate, then one record per step request while the progress
@@ -56,6 +60,9 @@ final class AiTranslateController
     /** Unfinished runs the run screen offers to continue. */
     private const UNFINISHED_SHOWN = 5;
 
+    /** Seconds without a worker run after which queued translations are taken to wait for nothing. */
+    private const WORKER_SILENCE = 300;
+
     public function __construct(
         private readonly TypeCatalog $catalog,
         private readonly TypeRegistry $registry,
@@ -72,6 +79,8 @@ final class AiTranslateController
         private readonly ?LabelUnits $labels = null,
         private readonly ?MediaLibrary $media = null,
         private readonly ?Locales $mediaLocales = null,
+        private readonly ?TranslationWorker $worker = null,
+        private readonly ?AuthorNames $authors = null,
     ) {}
 
     /** GET {type}/_ai/run?ids[]=…: languages, scope and note; without ids the whole type. */
@@ -232,6 +241,68 @@ final class AiTranslateController
     }
 
     /**
+     * Body: locale, scope (needed|all), note?, prefix?, confirm_live?. Queues a job for this record
+     * and language, which the worker (translate:work from cron) translates in the background; the
+     * texts are saved like a run's (working copies, or live for a type without publishing, which
+     * needs confirm_live=1). A job still pending for the same record, language and prefix is
+     * answered instead of a second one. Answers {job, state, existing, message, worker}; worker is
+     * false when the cron job has not run lately, so the dialog can say that nothing will happen.
+     */
+    public function queue(ServerRequestInterface $request): ResponseInterface
+    {
+        $target = $this->target($request);
+        if ($target instanceof ResponseInterface) {
+            return $target;
+        }
+        ['type' => $type, 'id' => $id, 'locale' => $locale, 'prefix' => $prefix] = $target;
+        $live = $this->sources->get($type)->writesLive();
+        $answer = fn (Job $job, bool $existing): ResponseInterface => self::json(200, [
+            'job' => $job->id,
+            'state' => $job->state,
+            'existing' => $existing,
+            'message' => FolioText::get(match (true) {
+                $existing => 'folio.ai_queue.existing',
+                $live => 'folio.ai_queue.queued_live',
+                default => 'folio.ai_queue.queued',
+            }),
+            'worker' => $this->workerRuns(),
+        ]);
+
+        $pending = $this->runner->pendingFor($type, $id, $locale, $prefix);
+        if ($pending !== null) {
+            return $answer($pending, true);
+        }
+        $body = self::body($request);
+        $confirmLive = ($body['confirm_live'] ?? null) === '1';
+        if ($live && !$confirmLive) {
+            return self::json(422, ['error' => FolioText::get('folio.ai_queue.confirm_live')]);
+        }
+        $note = trim(is_string($body['note'] ?? null) ? $body['note'] : '');
+        $job = $this->runner->plan($type, [$locale], $target['scope'], [$id], $note === '' ? null : $note, $prefix);
+
+        return $answer($this->runner->start($job->id, $confirmLive, $this->userName($request)), false);
+    }
+
+    /** The worker counts as running when it started within WORKER_SILENCE seconds (cron runs it every minute). */
+    private function workerRuns(): bool
+    {
+        $last = $this->worker?->lastRun();
+
+        return $last !== null && $last->getTimestamp() >= time() - self::WORKER_SILENCE;
+    }
+
+    /** The signed-in user as Folio shows authors (the account's name, else its e-mail); null without sign-in. */
+    private function userName(ServerRequestInterface $request): ?string
+    {
+        $user = $request->getAttribute(Authenticatable::class);
+        if (!$user instanceof Authenticatable) {
+            return null;
+        }
+
+        return $this->authors?->label($user->getAuthId()) ?? $user->getAuthId();
+    }
+
+    /**
      * Body: locale, scope (needed|all), note?, prefix?. Answers
      * {texts: {path: {text, source, previous, warnings}}, failed: {path: reason}, costUsd}.
      * A provider that cannot be used at all answers 503 with its message.
@@ -379,11 +450,36 @@ final class AiTranslateController
 
     /**
      * The record's units for the posted language and scope, limited to the posted prefix; or the
-     * error response (404 AI off, unknown type or record; 403 without ai.translate; 422 bad input).
+     * error response of target().
      *
      * @return list<TranslationUnit>|ResponseInterface
      */
     private function units(ServerRequestInterface $request): array|ResponseInterface
+    {
+        $target = $this->target($request);
+        if ($target instanceof ResponseInterface) {
+            return $target;
+        }
+        $units = $this->sources->get($target['type'])->units($target['id'], $target['locale'], $target['scope']);
+        $prefix = $target['prefix'];
+        if ($prefix !== null) {
+            $units = array_values(array_filter(
+                $units,
+                static fn (TranslationUnit $u): bool => $u->id === $prefix || str_starts_with($u->id, $prefix . '.'),
+            ));
+        }
+
+        return $units;
+    }
+
+    /**
+     * What the record endpoints act on: the route's type and record, the posted language, scope
+     * and prefix (null: the whole record); or the error response (404 AI off, unknown type or
+     * record; 403 without ai.translate; 422 bad input).
+     *
+     * @return array{type: string, id: string, locale: string, scope: Scope, prefix: ?string}|ResponseInterface
+     */
+    private function target(ServerRequestInterface $request): array|ResponseInterface
     {
         if (!$this->ai->enabled()) {
             return new Response(404, [], 'Not found');
@@ -410,17 +506,9 @@ final class AiTranslateController
         if ($this->dm->findType($type, $id) === null) {
             return self::json(404, ['error' => 'Record not found.']);
         }
-
-        $units = $this->sources->get($type)->units($id, $locale, $scope);
         $prefix = trim((string) ($body['prefix'] ?? ''));
-        if ($prefix !== '') {
-            $units = array_values(array_filter(
-                $units,
-                static fn (TranslationUnit $u): bool => $u->id === $prefix || str_starts_with($u->id, $prefix . '.'),
-            ));
-        }
 
-        return $units;
+        return ['type' => $type, 'id' => $id, 'locale' => $locale, 'scope' => $scope, 'prefix' => $prefix === '' ? null : $prefix];
     }
 
     /**

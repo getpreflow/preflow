@@ -23,6 +23,8 @@
 .folio-ai-note { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; font-size: 13px; font-weight: 620; }
 .folio-ai-note textarea { width: 100%; font: inherit; font-weight: 400; }
 .folio-ai-note .form-help { font-weight: 400; }
+.folio-ai-live { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 12px; font-size: 13px; }
+.folio-ai-hint { font-size: 13px; overflow-wrap: anywhere; }
 .folio-ai-estimate { min-height: 1.4em; margin: 0; font-size: 13px; color: var(--c-text-muted); }
 .folio-ai-failed { margin: 4px 0 0; padding-left: 18px; font-size: 13px; color: var(--c-text-muted); }
 .folio-ai-error { margin: 12px 0 0; padding: 8px 10px; border-radius: var(--r-sm); background: var(--c-danger-soft); color: var(--c-danger); font-size: 13px; }

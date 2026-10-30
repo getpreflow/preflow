@@ -21,6 +21,7 @@
             </div>
         {% endif %}
         {% if multilingual|default(false) %}
+            {%- if ai_pending|default([]) is not empty %}<div class="folio-notice folio-ai-pending" role="status">{% for line in ai_pending %}<p>{{ line }}</p>{% endfor %}</div>{% endif %}
             {%- if ai_translate|default(null) %}<div class="folio-languages-bar">{% endif %}
             <nav class="folio-languages" aria-label="{{ t('folio.form.editing_language') }}">
                 {% for lang in languages %}

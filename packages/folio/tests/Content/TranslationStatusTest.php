@@ -295,10 +295,12 @@ final class TranslationStatusTest extends TestCase
         ($this->app()->container()->get(\Preflow\Data\Migration\MigrationRegistry::class)->steps()['folio.tables'])();
         $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
 
-        $res = $this->post('/folio/post/p1/autosave', ['title' => 'Hallo', 'slug' => 'hallo', '_locale' => 'de', '_version' => '0', '_ai_unchecked' => ['title']]);
+        $res = $this->post('/folio/post/p1/autosave', ['title' => 'Hallo', 'slug' => 'hallo', '_locale' => 'de', '_version' => '0']);
 
         $this->assertSame(200, $res->getStatusCode());
         $status = $this->translationStatus();
+        // Marked as a translation job saves its texts.
+        $this->dm()->saveType($status->markMachine($this->def(), $this->stored('post', 'p1'), 'de', ['title']), false);
         $stored = $this->stored('post', 'p1');
         $this->assertSame('Hello', $status->previousSource($stored, 'de', 'title'));
         $this->assertSame('hello', $status->previousSource($stored, 'de', 'slug'));

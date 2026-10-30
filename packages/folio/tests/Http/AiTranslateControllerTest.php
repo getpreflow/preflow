@@ -14,11 +14,12 @@ use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Folio\Http\AiTranslateController;
 use Preflow\Folio\Tests\Support\AiScaffold;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\I18n\Machine\JobStore;
 use Psr\Http\Message\ResponseInterface;
 
 /**
- * The edit form's suggestion and estimate endpoints: units come from the type's text source,
- * nothing is written, and with AI off the routes do not exist.
+ * The edit form's estimate and queue endpoints and the suggestion endpoint: units come from the
+ * type's text source, the record is never written here, and with AI off the routes do not exist.
  */
 final class AiTranslateControllerTest extends TestCase
 {
@@ -184,20 +185,106 @@ final class AiTranslateControllerTest extends TestCase
         $this->assertSame(404, $this->call('/folio/nope/p1/_ai/suggest', ['locale' => 'de', 'scope' => 'needed'])->getStatusCode());
     }
 
-    /** The form's flow: the autosave right after the fill marks the texts, a later save posting the accepted path clears it. */
-    public function test_accept_after_autosave_clears_mark(): void
+    /** @return list<\Preflow\I18n\Machine\Job> */
+    private function jobs(): array
     {
-        $fields = ['title' => 'DE:Hello', 'slug' => 'DE:hello', '_locale' => 'de'];
-        $this->assertSame(200, $this->post('/folio/post/p1/autosave', $fields + ['_version' => '3', '_ai_unchecked' => ['title', 'slug']])->getStatusCode());
-        $status = $this->app()->container()->get(\Preflow\Folio\Content\TranslationStatus::class);
-        $def = $this->dm()->getTypeRegistry()->get('post');
-        $paths = fn (): array => array_map(static fn ($t): string => $t->path, $status->unchecked($def, $this->stored('post', 'p1'), 'de'));
-        $this->assertSame(['title', 'slug'], $paths());
+        return $this->aiApp()->container()->get(JobStore::class)->recent(50);
+    }
 
-        $version = (string) $this->stored('post', 'p1')->get('_version');
-        $this->assertSame(200, $this->post('/folio/post/p1/autosave', $fields + ['_version' => $version, '_ai_unchecked' => ['slug'], '_ai_checked' => ['title']])->getStatusCode());
+    #[RunInSeparateProcess]
+    public function test_queue_plans_and_queues_one_record(): void
+    {
+        $before = $this->stored('post', 'p1')->toArray();
+        $this->staff('translator');
 
-        $this->assertSame(['slug'], $paths());
+        $res = $this->call('/folio/post/p1/_ai/queue', ['locale' => 'de', 'scope' => 'needed', 'note' => 'Keep it short']);
+
+        $this->assertSame(200, $res->getStatusCode(), (string) $res->getBody());
+        $data = self::json($res);
+        $this->assertSame('queued', $data['state']);
+        $this->assertFalse($data['existing']);
+        $this->assertSame(\Preflow\Folio\FolioText::get('folio.ai_queue.queued'), $data['message']);
+        $job = $this->session->container()->get(JobStore::class)->get($data['job']);
+        $this->assertNotNull($job);
+        $this->assertSame(['p1'], array_map('strval', array_keys($job->items)));
+        $this->assertSame(['de'], $job->locales);
+        $this->assertSame('Keep it short', $job->note);
+        $this->assertSame('translator@site.test', $job->queuedBy);
+        $this->assertNotNull($job->queuedAt);
+        $this->assertCount(0, $this->fake->requests(), 'queuing asks no AI');
+        $this->assertSame($before, $this->stored('post', 'p1')->toArray(), 'nothing written to the record');
+    }
+
+    public function test_queue_twice_returns_the_pending_job(): void
+    {
+        $first = self::json($this->call('/folio/post/p1/_ai/queue', ['locale' => 'de', 'scope' => 'needed']));
+        $second = self::json($this->call('/folio/post/p1/_ai/queue', ['locale' => 'de', 'scope' => 'all']));
+
+        $this->assertFalse($first['existing']);
+        $this->assertTrue($second['existing']);
+        $this->assertSame($first['job'], $second['job']);
+        $this->assertSame(\Preflow\Folio\FolioText::get('folio.ai_queue.existing'), $second['message']);
+        $this->assertCount(1, $this->jobs());
+    }
+
+    public function test_queue_live_type_needs_confirmation(): void
+    {
+        $this->writeModel('faq', ['label' => 'FAQ', 'fields' => ['question' => ['type' => 'string', 'translatable' => true]]]);
+        $this->working('faq', 'f1', ['question' => ['en' => 'Why?']]);
+
+        $refused = $this->call('/folio/faq/f1/_ai/queue', ['locale' => 'de', 'scope' => 'needed']);
+        $this->assertSame(422, $refused->getStatusCode());
+        $this->assertSame(\Preflow\Folio\FolioText::get('folio.ai_queue.confirm_live'), self::json($refused)['error']);
+        $this->assertCount(0, $this->jobs());
+
+        $res = $this->call('/folio/faq/f1/_ai/queue', ['locale' => 'de', 'scope' => 'needed', 'confirm_live' => '1']);
+        $this->assertSame(200, $res->getStatusCode(), (string) $res->getBody());
+        $job = $this->aiApp()->container()->get(JobStore::class)->get(self::json($res)['job']);
+        $this->assertTrue($job?->confirmedLive);
+    }
+
+    public function test_queue_with_prefix(): void
+    {
+        $data = self::json($this->call('/folio/post/p1/_ai/queue', ['locale' => 'de', 'scope' => 'needed', 'prefix' => 'sections']));
+
+        $this->assertSame('sections', $this->aiApp()->container()->get(JobStore::class)->get($data['job'])?->prefix);
+        $other = self::json($this->call('/folio/post/p1/_ai/queue', ['locale' => 'de', 'scope' => 'needed']));
+        $this->assertFalse($other['existing'], 'a job for part of the record is not one for all of it');
+    }
+
+    public function test_queue_404_when_ai_off(): void
+    {
+        $this->aiConfig(false);
+
+        $this->assertSame(404, $this->post('/folio/post/p1/_ai/queue', ['locale' => 'de', 'scope' => 'needed'])->getStatusCode());
+    }
+
+    public function test_queue_422_and_404_for_bad_input(): void
+    {
+        $this->assertSame(422, $this->call('/folio/post/p1/_ai/queue', ['locale' => 'en', 'scope' => 'needed'])->getStatusCode());
+        $this->assertSame(422, $this->call('/folio/post/p1/_ai/queue', ['locale' => 'de', 'scope' => 'some'])->getStatusCode());
+        $this->assertSame(404, $this->call('/folio/post/nope/_ai/queue', ['locale' => 'de', 'scope' => 'needed'])->getStatusCode());
+        $this->assertCount(0, $this->jobs());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_queue_403_without_permission(): void
+    {
+        $this->staff('editor');
+
+        $this->assertSame(403, $this->call('/folio/post/p1/_ai/queue', ['locale' => 'de', 'scope' => 'needed'])->getStatusCode(), 'edit without ai.translate');
+        $this->assertCount(0, $this->jobs());
+    }
+
+    public function test_queue_reports_no_worker(): void
+    {
+        $this->assertFalse(self::json($this->call('/folio/post/p1/_ai/queue', ['locale' => 'de', 'scope' => 'needed']))['worker'], 'no heartbeat');
+
+        $this->write('storage/ai/worker.json', (string) json_encode(['last_run' => (new \DateTimeImmutable('-10 minutes'))->format(\DATE_ATOM)]));
+        $this->assertFalse(self::json($this->call('/folio/post/p1/_ai/queue', ['locale' => 'de', 'scope' => 'needed']))['worker'], 'last run too long ago');
+
+        $this->write('storage/ai/worker.json', (string) json_encode(['last_run' => (new \DateTimeImmutable('-1 minute'))->format(\DATE_ATOM)]));
+        $this->assertTrue(self::json($this->call('/folio/post/p1/_ai/queue', ['locale' => 'de', 'scope' => 'needed']))['worker']);
     }
 
     #[RunInSeparateProcess]

@@ -766,7 +766,6 @@ final class AssetLibraryController
                 'id' => 'folio-ai-title-' . $code,
                 'button' => FolioText::get('folio.ai_translate.button_alt', ['language' => $language]),
                 'form' => '.folio-asset-form',
-                'marks' => false,
                 'extra' => [],
                 'scope' => false,
                 'intro' => FolioText::get('folio.ai_translate.intro_alt'),

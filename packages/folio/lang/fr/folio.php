@@ -180,6 +180,18 @@ return [
         'scope_needed_labels' => 'Without a text in this language',
         'filled_labels' => ':count texts filled in. Review them, then save them all with Save all filled.',
     ],
+    // The edit form's Translate button queues a background job (AI).
+    'ai_queue' => [
+        'button' => 'Queue translation',
+        'intro' => 'AI translates this record in the background, so you can leave this page. The texts are saved marked as not checked.',
+        'queued' => 'Queued. The translation is saved as a draft for review; you can leave this page.',
+        'existing' => 'This translation is already queued; you can leave this page.',
+        'queued_live' => 'Queued. This type has no publishing: the translation goes live as soon as it is done.',
+        'confirm_live' => 'This type has no publishing: the translation goes live without review. Confirm that before queuing it.',
+        'confirm_live_label' => 'I understand that the translation goes live without review.',
+        'no_worker' => 'Nothing is translating queued jobs at the moment: the translation waits until the cron job runs. Ask whoever runs the site to add this line to the crontab: * * * * * cd <app> && php vendor/bin/preflow translate:work',
+        'pending' => ':language translation queued since :since. You can keep editing; changes made meanwhile are kept.',
+    ],
     // The whole-type translation run (AI): plan with estimate, progress, results.
     'ai_run' => [
         'translate_all' => 'Translate all…',

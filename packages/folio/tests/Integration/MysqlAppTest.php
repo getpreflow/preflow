@@ -168,10 +168,12 @@ final class MysqlAppTest extends TestCase
         $this->migrateStep();
         $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
 
-        $res = $this->post('/folio/post/p1/autosave', ['title' => 'Hallo', 'slug' => 'hallo', '_locale' => 'de', '_version' => '0', '_ai_unchecked' => ['title']]);
+        $res = $this->post('/folio/post/p1/autosave', ['title' => 'Hallo', 'slug' => 'hallo', '_locale' => 'de', '_version' => '0']);
 
         $this->assertSame(200, $res->getStatusCode());
         $status = $this->app()->container()->get(\Preflow\Folio\Content\TranslationStatus::class);
+        // Marked as a translation job saves its texts.
+        $this->dm()->saveType($status->markMachine($this->dm()->getTypeRegistry()->get('post'), $this->stored('post', 'p1'), 'de', ['title']), false);
         $stored = $this->stored('post', 'p1');
         $this->assertSame('Hello', $status->previousSource($stored, 'de', 'title'));
         $unchecked = $status->unchecked($this->dm()->getTypeRegistry()->get('post'), $stored, 'de');
@@ -196,11 +198,13 @@ final class MysqlAppTest extends TestCase
         $this->assertSame(302, $this->post('/folio/post', ['title' => 'Hello', 'slug' => 'hello', '_locale' => 'en', '_locales_submitted' => '1', '_locales' => ['de'], '_action' => 'publish'])->getStatusCode());
         $id = (string) $this->dm()->queryType('post')->first()?->getId();
         $this->assertSame(302, $this->post('/folio/post/' . $id, ['title' => 'Hallo', 'slug' => 'hallo', '_locale' => 'de', '_version' => (string) $this->stored('post', $id)->get('_version'), '_action' => 'publish'])->getStatusCode());
-        $this->assertSame(302, $this->post('/folio/post/' . $id, ['title' => 'Hallo du', 'slug' => 'hallo', '_locale' => 'de', '_version' => (string) $this->stored('post', $id)->get('_version'), '_ai_unchecked' => ['title'], '_action' => 'publish'])->getStatusCode());
+        $this->assertSame(302, $this->post('/folio/post/' . $id, ['title' => 'Hallo du', 'slug' => 'hallo', '_locale' => 'de', '_version' => (string) $this->stored('post', $id)->get('_version'), '_action' => 'publish'])->getStatusCode());
 
         $this->assertStringContainsString('<h1>Hallo du</h1>', (string) $this->get('/de/hallo')->getBody());
         $status = $this->app()->container()->get(\Preflow\Folio\Content\TranslationStatus::class);
         $this->assertSame('Hello', $status->previousSource($this->stored('post', $id), 'de', 'title'));
+        // A mark (as a translation job saves it) is kept in the added column.
+        $this->dm()->saveType($status->markMachine($this->dm()->getTypeRegistry()->get('post'), $this->stored('post', $id), 'de', ['title']), false);
         $this->assertCount(1, $status->unchecked($this->dm()->getTypeRegistry()->get('post'), $this->stored('post', $id), 'de'));
     }
 

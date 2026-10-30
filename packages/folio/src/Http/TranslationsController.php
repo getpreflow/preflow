@@ -131,7 +131,6 @@ final class TranslationsController
             'locale' => $locale,
             'language' => LocaleNames::native($locale),
             'form' => '.folio-translations',
-            'marks' => false,
             'extra' => ['group' => $group, 'q' => $q, 'page' => $page],
             'intro' => FolioText::get('folio.ai_translate.intro_labels'),
             'scope_needed' => FolioText::get('folio.ai_translate.scope_needed_labels'),

@@ -1,4 +1,4 @@
-/* Folio AI translation: the pure parts of the edit form's Translate button (no DOM), so node can
+/* Folio AI translation: the pure parts of the Translate buttons (no DOM), so node can
    test them (packages/folio/tests/js). The browser gets window.FolioAiTranslateCore. */
 (function (root, factory) {
     'use strict';
@@ -20,22 +20,16 @@
     }
 
     /**
-     * The paths to post as _ai_unchecked[]: filled by AI, not accepted, and still holding the AI
-     * text (an edited text counts as checked). entries: [{path, accepted, ai, value}], where ai is
-     * the field's value right after it was filled and value its value now.
+     * The edit form's Confirm: posts params to the queue url (post(url, params) answers the JSON) and
+     * resolves with what the dialog shows: the answer's message, and noWorker when no worker has run
+     * lately (the job would wait for nothing). Nothing is filled in: the worker saves the texts.
      */
-    function uncheckedPaths(entries) {
-        return entries
-            .filter(function (e) { return !e.accepted && e.ai !== null && e.ai !== undefined && e.value === e.ai; })
-            .map(function (e) { return e.path; });
-    }
-
-    /**
-     * The paths to post as _ai_checked[]: AI texts the editor accepted. The server clears their
-     * marks, also one an autosave set while they were still unchecked.
-     */
-    function checkedPaths(entries) {
-        return entries.filter(function (e) { return e.accepted; }).map(function (e) { return e.path; });
+    function queue(post, url, params, noWorker) {
+        return post(url, params).then(function (data) {
+            var lines = [String(data.message || '')];
+            if (data.worker === false) { lines.push(String(noWorker)); }
+            return { job: data.job, existing: data.existing === true, lines: lines };
+        });
     }
 
     /**
@@ -108,5 +102,5 @@
         return out;
     }
 
-    return { pathToName: pathToName, uncheckedPaths: uncheckedPaths, checkedPaths: checkedPaths, discardValue: discardValue, format: format, formatCost: formatCost, wordDiff: wordDiff };
+    return { pathToName: pathToName, queue: queue, discardValue: discardValue, format: format, formatCost: formatCost, wordDiff: wordDiff };
 }));

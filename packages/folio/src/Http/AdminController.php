@@ -80,6 +80,7 @@ final class AdminController
         ?TranslationStatus $translations = null,
         private readonly ?\Preflow\Ai\Ai $ai = null,
         private readonly ?ReviewIndexUpdater $review = null,
+        private readonly ?\Preflow\I18n\Machine\JobRunner $jobs = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
@@ -1165,6 +1166,7 @@ final class AdminController
         if ($aiTranslate !== null) {
             $editorAssets += ['ai-translate.css' => true, 'ai-translate-core.js' => true, 'ai-translate.js' => true];
         }
+        $aiPending = $isNew ? [] : $this->aiPending($type, $typeDef, $values);
         $html = $this->engine->render('@folio/admin/form.twig', [
             'prefix' => $this->prefix,
             'type' => $type,
@@ -1201,6 +1203,7 @@ final class AdminController
             'record_actions' => $recordActions,
             'page_assets' => $panelAssets,
             'ai_translate' => $aiTranslate,
+            'ai_pending' => $aiPending,
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
@@ -1212,7 +1215,7 @@ final class AdminController
      * language (the source), or the user lacks ai.translate or the type's edit permission.
      *
      * @param array<string, mixed> $values
-     * @return array{estimate_url: string, suggest_url: string, locale: string, language: string}|null
+     * @return array{estimate_url: string, queue_url: string, locale: string, language: string, intro: string, live: bool}|null
      */
     private function aiTranslate(string $type, TypeDefinition $typeDef, array $values, string $locale, bool $isNew, bool $multilingual): ?array
     {
@@ -1225,10 +1228,45 @@ final class AdminController
 
         return [
             'estimate_url' => $base . 'estimate',
-            'suggest_url' => $base . 'suggest',
+            'queue_url' => $base . 'queue',
             'locale' => $locale,
             'language' => self::languageName($locale),
+            'intro' => FolioText::get('folio.ai_queue.intro'),
+            // Without publishing the texts go live: the dialog asks for that confirmation.
+            'live' => !$this->publishes($type),
         ];
+    }
+
+    /**
+     * One line per language a queued translation job will still translate this record into
+     * (the job states those languages; the form does not block editing, the job's version check
+     * protects edits). None while AI is off.
+     *
+     * @param array<string, mixed> $values
+     * @return list<string>
+     */
+    private function aiPending(string $type, TypeDefinition $typeDef, array $values): array
+    {
+        $id = $values[$typeDef->idField] ?? null;
+        if (!($this->ai?->enabled() ?? false) || $this->jobs === null || !is_string($id) || $id === '' || !$typeDef->locales->isMultilingual()) {
+            return [];
+        }
+        $lines = [];
+        $format = new AdminFormat();
+        foreach ($typeDef->locales->available as $code) {
+            if ($code === $typeDef->locales->default) {
+                continue;
+            }
+            $job = $this->jobs->pendingFor($type, $id, $code);
+            if ($job !== null) {
+                $lines[] = FolioText::get('folio.ai_queue.pending', [
+                    'language' => self::languageName($code),
+                    'since' => $format->date($job->queuedAt, 'datetime') ?: '—',
+                ]);
+            }
+        }
+
+        return $lines;
     }
 
     /**

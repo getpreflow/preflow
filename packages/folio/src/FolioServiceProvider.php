@@ -505,6 +505,7 @@ final class FolioServiceProvider extends ServiceProvider
             translations: $c->get(\Preflow\Folio\Content\TranslationStatus::class),
             ai: $c->get(\Preflow\Ai\Ai::class),
             review: $c->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
+            jobs: $c->get(\Preflow\I18n\Machine\JobRunner::class),
         ));
         $container->bind(\Preflow\Folio\Http\AiTranslateController::class, fn (Container $c) => new \Preflow\Folio\Http\AiTranslateController(
             $c->get(TypeCatalog::class),
@@ -522,6 +523,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Translations\LabelUnits::class),
             $c->get(\Preflow\Media\MediaLibrary::class),
             $locales ?? \Preflow\Data\Locales::single('en'),
+            $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
+            new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c)),
         ));
         $container->bind(\Preflow\Folio\Http\AiSettingsController::class, fn (Container $c) => new \Preflow\Folio\Http\AiSettingsController(
             $c->get(\Preflow\Ai\Ai::class),

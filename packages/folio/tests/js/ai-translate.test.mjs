@@ -13,28 +13,6 @@ test('path_to_name', () => {
     assert.equal(core.pathToName('faq.0.question'), 'faq[0][question]');
 });
 
-test('unchecked_hidden_inputs_only_for_unaccepted_unchanged', () => {
-    const entries = [
-        { path: 'title', accepted: false, ai: 'Hallo', value: 'Hallo' }, // filled, untouched: not checked
-        { path: 'slug', accepted: true, ai: 'hallo', value: 'hallo' }, // accepted: checked
-        { path: 'body', accepted: false, ai: 'Text', value: 'Text, edited' }, // edited: checked
-        { path: 'sections.a.headline', accepted: false, ai: '<div>Kopf</div>', value: '<div>Kopf</div>' },
-        { path: 'pending', accepted: false, ai: null, value: '' }, // not filled yet
-    ];
-    assert.deepEqual(core.uncheckedPaths(entries), ['title', 'sections.a.headline']);
-    assert.deepEqual(core.uncheckedPaths([]), []);
-});
-
-test('checked_hidden_inputs_only_for_accepted', () => {
-    const entries = [
-        { path: 'title', accepted: true, ai: 'Hallo', value: 'Hallo' },
-        { path: 'slug', accepted: false, ai: 'hallo', value: 'hallo' },
-        { path: 'body', accepted: true, ai: 'Text', value: 'Text, edited after accepting' },
-    ];
-    assert.deepEqual(core.checkedPaths(entries), ['title', 'body']);
-    assert.deepEqual(core.uncheckedPaths(entries), ['slug'], 'an accepted path is never also unchecked');
-});
-
 test('discard_restores_value_before_fill', () => {
     // The stored translation was "Alt", the editor had typed "Neu, ungespeichert" before translating.
     assert.equal(core.discardValue({ before: 'Neu, ungespeichert', previous: 'Alt' }), 'Neu, ungespeichert');
@@ -65,4 +43,23 @@ test('format_and_cost', () => {
     assert.equal(core.formatCost(0.0004), '< $0.01');
     assert.equal(core.formatCost(0), '$0.00');
     assert.equal(core.formatCost(1.234), '$1.23');
+});
+
+test('queue mode posts and shows the message without filling inputs', async () => {
+    const calls = [];
+    const post = (url, params) => {
+        calls.push({ url, params });
+        return Promise.resolve({ job: 'j1', state: 'queued', existing: false, message: 'Queued.', worker: false, texts: { title: { text: 'DE:Hello' } } });
+    };
+    const params = { locale: 'de', scope: 'needed', note: '', confirm_live: '1' };
+
+    const result = await core.queue(post, '/folio/post/p1/_ai/queue', params, 'No worker: * * * * * cd <app> && php vendor/bin/preflow translate:work');
+
+    assert.deepEqual(calls, [{ url: '/folio/post/p1/_ai/queue', params }], 'one request, to the queue endpoint');
+    assert.deepEqual(result, { job: 'j1', existing: false, lines: ['Queued.', 'No worker: * * * * * cd <app> && php vendor/bin/preflow translate:work'] });
+    assert.equal('texts' in result, false, 'nothing to fill in');
+
+    const running = await core.queue(() => Promise.resolve({ job: 'j1', state: 'queued', existing: true, message: 'Already queued.', worker: true }), '/q', {}, 'No worker');
+    assert.deepEqual(running.lines, ['Already queued.'], 'no cron hint while the worker runs');
+    assert.equal(running.existing, true);
 });

@@ -1,22 +1,18 @@
-/* Folio AI translation: the edit form's Translate button, also the one of Settings → Translations
+/* Folio AI translation: the edit form's Translate button, and the one of Settings → Translations
  * and of the media panel. Vanilla, no build step.
  *
- * The dialog asks the scope and a note and shows the estimate; Translate fetches the texts
- * (POST …/_ai/suggest, nothing is saved) and fills the form's inputs: path a.b.c is the input
- * a[b][c], a rich-text field is filled through its Trix editor. Under each filled field a review
- * row shows the default-language text, the previous translation with the changed words marked,
- * warnings, and Accept / Discard (Discard puts back what the field held right before the fill).
+ * The dialog asks the scope and a note and shows the estimate. On the edit form (data-queue-url)
+ * Confirm queues a background job for the record (POST …/_ai/queue): the dialog shows the answer's
+ * message, plus the cron hint (data-msg-no-worker) when no worker runs; nothing is filled in, the
+ * worker saves the texts. A type without publishing asks the go-live checkbox first (confirm_live).
  *
- * The form carries one hidden _ai_unchecked[] per path that was filled, not accepted and still
- * holds the AI text, and one _ai_checked[] per accepted path, kept current on every change, so a
- * save (or the autosave the filling triggers like any typing) marks exactly the first as not
- * checked and clears the marks of the second (also ones an earlier autosave set).
- *
- * The other two screens set attributes on the root: data-ai-form (CSS selector of what holds the
- * inputs; the edit form when absent), data-extra (JSON, more fields to post), data-ai-marks="none"
- * (labels and alt texts have no "not checked" state: nothing is marked, Accept / Discard still work),
- * no data-estimate-url (no estimate). An input names its text by data-ai-path, else by its name
- * (path a.b is a[b]).
+ * The other two screens (data-suggest-url) fetch the texts (POST …/_ai/suggest, nothing is saved)
+ * and fill their inputs: path a.b.c is the input a[b][c], a rich-text field is filled through its
+ * Trix editor. Under each filled field a review row shows the default-language text, the previous
+ * translation with the changed words marked, warnings, and Accept / Discard (Discard puts back what
+ * the field held right before the fill). They set more attributes on the root: data-ai-form (CSS
+ * selector of what holds the inputs), data-extra (JSON, more fields to post), no data-estimate-url
+ * (no estimate). An input names its text by data-ai-path, else by its name (path a.b is a[b]).
  */
 (function () {
     'use strict';
@@ -44,11 +40,12 @@
         var closeBtn = dialog.querySelector('[data-ai-close]');
         var acceptAllBtn = dialog.querySelector('[data-ai-accept-all]');
         var template = root.querySelector('[data-ai-review-template]');
+        var hintEl = dialog.querySelector('[data-ai-hint]');
+        var confirmLive = dialog.querySelector('[data-ai-confirm-live]');
+        var queueUrl = root.getAttribute('data-queue-url');
         var closeLabel = closeBtn.textContent;
-        var entries = {}; // path => {path, el, editor, ai, before, accepted, row}; accepted ones stay (posted as _ai_checked[])
+        var entries = {}; // path => {path, el, editor, before, row}: filled texts not accepted or discarded yet
         var estimateRequest = 0;
-        var holder = null;
-        var marks = root.getAttribute('data-ai-marks') !== 'none';
         var extra = {};
         try { extra = JSON.parse(root.getAttribute('data-extra') || '{}') || {}; } catch (e) { extra = {}; }
 
@@ -105,7 +102,7 @@
         function open() {
             setupPart.hidden = false;
             resultPart.hidden = true;
-            acceptAllBtn.hidden = true;
+            if (acceptAllBtn) { acceptAllBtn.hidden = true; }
             startBtn.hidden = false;
             startBtn.disabled = false;
             closeBtn.textContent = closeLabel;
@@ -118,24 +115,50 @@
             if (typeof dialog.close === 'function') { dialog.close(); } else { dialog.removeAttribute('open'); }
         }
 
+        function params() {
+            var p = { locale: root.getAttribute('data-locale'), scope: scope(), note: dialog.querySelector('[data-ai-note]').value };
+            Object.keys(extra).forEach(function (k) { p[k] = extra[k]; });
+            return p;
+        }
+
+        function failed(e) {
+            startBtn.disabled = false;
+            estimateEl.textContent = '';
+            showError(msg('error', { message: e.message }));
+        }
+
         function translate() {
             startBtn.disabled = true;
             showError('');
             estimateEl.textContent = msg('working');
-            var params = { locale: root.getAttribute('data-locale'), scope: scope(), note: dialog.querySelector('[data-ai-note]').value };
-            Object.keys(extra).forEach(function (k) { params[k] = extra[k]; });
-            post(root.getAttribute('data-suggest-url'), params).then(function (data) {
+            post(root.getAttribute('data-suggest-url'), params()).then(function (data) {
                 var missing = [];
                 var filled = 0;
                 Object.keys(data.texts || {}).forEach(function (path) {
                     if (fill(path, data.texts[path])) { filled++; } else { missing.push(path); }
                 });
-                sync();
                 showResult(filled, data.failed || {}, missing);
-            }).catch(function (e) {
+            }).catch(failed);
+        }
+
+        /** The edit form: queue the record's translation; the server's 422 asks for the go-live checkbox. */
+        function enqueue() {
+            startBtn.disabled = true;
+            showError('');
+            var p = params();
+            if (confirmLive && confirmLive.checked) { p.confirm_live = '1'; }
+            core.queue(post, queueUrl, p, msg('no-worker')).then(function (result) {
+                setupPart.hidden = true;
+                resultPart.hidden = false;
+                startBtn.hidden = true;
+                closeBtn.textContent = root.getAttribute('data-msg-close') || closeLabel;
+                resultPart.querySelector('[data-ai-summary]').textContent = result.lines[0];
+                hintEl.textContent = result.lines.length > 1 ? result.lines[1] : '';
+                hintEl.hidden = result.lines.length < 2;
+                resultPart.querySelector('[data-ai-failed]').hidden = true;
+            }).catch(function (e) { // nothing was translated: the server's reason as it is (e.g. confirm the go-live)
                 startBtn.disabled = false;
-                estimateEl.textContent = '';
-                showError(msg('error', { message: e.message }));
+                showError(e.message);
             });
         }
 
@@ -201,20 +224,9 @@
             // Discard puts back what the field held right before the first fill (unsaved typing included).
             var before = entries[path] ? entries[path].before : el.value;
             if (entries[path]) { forget(entries[path]); }
-            var entry = { path: path, el: el, editor: editor, ai: null, before: before, accepted: false, row: null };
+            var entry = { path: path, el: el, editor: editor, before: before, row: null };
             entries[path] = entry;
-            if (entry.editor) {
-                // Trix writes its input when it renders: take the AI text as Trix stores it once that
-                // happened (its first change event, or the next tick), not a later edit.
-                var filledAt = Date.now();
-                var settle = function () {
-                    if (entries[path] === entry && !entry.accepted && Date.now() - filledAt < 1000) { entry.ai = el.value; sync(); }
-                };
-                entry.editor.addEventListener('trix-change', settle, { once: true });
-                setTimeout(settle, 0);
-            }
             setValue(entry, data.text);
-            entry.ai = el.value;
             entry.row = reviewRow(entry, data);
             var host = (entry.editor || el).closest('.form-group, td');
             if (host) {
@@ -248,18 +260,15 @@
             return row;
         }
 
-        /** Accepted: posted as _ai_checked[] from now on; the change event lets the autosave send it. */
+        /** Accepted: the text stays in its field, the review row goes; the change event marks the field changed. */
         function accept(entry) {
-            entry.accepted = true;
-            removeRow(entry);
-            sync();
+            forget(entry);
             entry.el.dispatchEvent(new Event('change', { bubbles: true }));
         }
 
         function discard(entry) {
             forget(entry);
             setValue(entry, core.discardValue(entry));
-            sync();
         }
 
         function removeRow(entry) {
@@ -272,56 +281,24 @@
             removeRow(entry);
         }
 
-        function all() {
-            return Object.keys(entries).map(function (p) { return entries[p]; });
-        }
-
         function pending() {
-            return all().filter(function (e) { return !e.accepted; });
-        }
-
-        /** Rewrites the hidden _ai_unchecked[] and _ai_checked[] inputs from the current values. */
-        function sync() {
-            if (!marks) { return; }
-            var states = all().map(function (e) {
-                return { path: e.path, accepted: e.accepted, ai: e.ai, value: e.el.value };
-            });
-            var lists = { '_ai_unchecked[]': core.uncheckedPaths(states), '_ai_checked[]': core.checkedPaths(states) };
-            if (holder === null) {
-                if (states.length === 0) { return; }
-                holder = document.createElement('div');
-                holder.hidden = true;
-                holder.setAttribute('data-ai-marks', '');
-                form.appendChild(holder);
-            }
-            holder.textContent = '';
-            Object.keys(lists).forEach(function (name) {
-                lists[name].forEach(function (path) {
-                    var input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = name;
-                    input.value = path;
-                    holder.appendChild(input);
-                });
-            });
+            return Object.keys(entries).map(function (p) { return entries[p]; });
         }
 
         root.querySelector('[data-ai-open]').addEventListener('click', open);
         closeBtn.addEventListener('click', close);
-        startBtn.addEventListener('click', translate);
-        acceptAllBtn.addEventListener('click', function () {
-            var accepted = pending();
-            accepted.forEach(function (e) { e.accepted = true; removeRow(e); });
-            sync();
-            if (accepted.length > 0) { accepted[0].el.dispatchEvent(new Event('change', { bubbles: true })); }
-            close();
-        });
+        startBtn.addEventListener('click', queueUrl ? enqueue : translate);
+        if (acceptAllBtn) {
+            acceptAllBtn.addEventListener('click', function () {
+                var accepted = pending();
+                accepted.forEach(forget);
+                if (accepted.length > 0) { accepted[0].el.dispatchEvent(new Event('change', { bubbles: true })); }
+                close();
+            });
+        }
         Array.prototype.forEach.call(dialog.querySelectorAll('input[name="folio_ai_scope"]'), function (radio) {
             radio.addEventListener('change', estimate);
         });
-        // Typing in a filled field makes it checked: keep the hidden list current before any save.
-        ['input', 'change', 'trix-change'].forEach(function (type) { form.addEventListener(type, sync, true); });
-        form.addEventListener('submit', sync, true);
     }
 
     function plain(html) {

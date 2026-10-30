@@ -132,6 +132,7 @@ final class FolioRoutes
             // The edit form's Translate button (AiTranslateController); no other route has the "_ai" segment.
             $defs[] = ['POST', $prefix . '/{type}/{id}/_ai/estimate', 'estimate', self::AI];
             $defs[] = ['POST', $prefix . '/{type}/{id}/_ai/suggest',  'suggest',  self::AI];
+            $defs[] = ['POST', $prefix . '/{type}/{id}/_ai/queue',    'queue',    self::AI];
             // The whole-type run screen. Job routes carry the type: its edit permission guards them,
             // and a job is only ever reached through the type it translates.
             $defs[] = ['GET',  $prefix . '/{type}/_ai/run',             'runForm', self::AI];

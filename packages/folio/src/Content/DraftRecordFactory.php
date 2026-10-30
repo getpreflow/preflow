@@ -25,12 +25,8 @@ use Psr\Http\Message\UploadedFileInterface;
  * translatable (one file per record).
  *
  * Saving a translation stamps its fingerprints (TranslationStatus::stamp()), so
- * save, autosave and preview treat outdated translations alike. Texts the form filled
- * with machine translations the editor did not accept are posted as paths in
- * _ai_unchecked[]; they are saved with a "not checked" mark (TranslationStatus::markMachine()).
- * Those the editor accepted are posted in _ai_checked[] and lose their mark
- * (TranslationStatus::clearMachine()), also one an earlier autosave set.
- * The form is staff-only behind its permission, so the lists are trusted as posted.
+ * save, autosave and preview treat outdated translations alike. Machine marks come only
+ * from translation jobs (the form posts none); a mark stays while its text is unchanged.
  *
  * Hidden and read-only fields ("hidden": true, "readonly": true) are never taken from
  * the form: the stored value is kept (a new record starts without one, unless a
@@ -161,33 +157,12 @@ final class DraftRecordFactory
         $data[$typeDef->idField] = $existing[$typeDef->idField] ?? null;
 
         // A translation saved here records the default text it was made from (outdated marks).
-        $record = $this->translations->stamp(
+        return $this->translations->stamp(
             $typeDef,
             DynamicRecord::fromArray($typeDef, $existing),
             DynamicRecord::fromArray($typeDef, $data),
             $locale,
         );
-
-        $unchecked = self::aiPaths($submitted, '_ai_unchecked');
-        if ($unchecked !== []) {
-            $record = $this->translations->markMachine($typeDef, $record, $locale, $unchecked);
-        }
-        $checked = self::aiPaths($submitted, '_ai_checked');
-
-        return $checked === [] || $locale === $typeDef->locales->default ? $record : $this->translations->clearMachine($record, $locale, $checked);
-    }
-
-    /**
-     * The posted paths of machine-filled texts: not accepted (_ai_unchecked[]) or accepted (_ai_checked[]).
-     *
-     * @param array<string, mixed> $submitted
-     * @return list<string>
-     */
-    private static function aiPaths(array $submitted, string $key): array
-    {
-        $posted = $submitted[$key] ?? [];
-
-        return array_values(array_filter(is_array($posted) ? $posted : [$posted], static fn ($p): bool => is_string($p) && $p !== ''));
     }
 
     /**
