@@ -1003,6 +1003,74 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('title="de · 1 outdated"', $outdated);
     }
 
+    public function test_form_shows_unchecked_note_and_accept_button(): void
+    {
+        $id = $this->uncheckedPage();
+
+        $body = (string) $this->get('/folio/page/' . $id . '/edit?locale=de')->getBody();
+
+        $this->assertStringContainsString('folio-unchecked', $body);
+        $this->assertStringContainsString('Machine-translated, not checked yet', $body);
+        $this->assertStringContainsString('/folio/page/' . $id . '/_translations/confirm', $body);
+        $this->assertStringContainsString('name="_confirm_path" value="title"', $body);
+        $this->assertStringNotContainsString('name="_confirm_path" value="slug"', $body);
+        $this->assertStringNotContainsString('folio-unchecked', (string) $this->get('/folio/page/' . $id . '/edit')->getBody(), 'the default language has nothing unchecked');
+
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page/' . $id . '/_translations/confirm')
+            ->withAttribute('type', 'page')->withAttribute('id', $id)
+            ->withParsedBody(['_locale' => 'de', 'title' => 'Über', 'slug' => 'ueber-about', 'body' => 'k', 'status' => 'published', '_confirm_path' => 'title']));
+        $this->assertSame(302, $res->getStatusCode(), (string) $res->getBody());
+        $this->assertStringNotContainsString('folio-unchecked', (string) $this->get('/folio/page/' . $id . '/edit?locale=de')->getBody(), 'accepting clears the note');
+    }
+
+    public function test_list_badge_and_filter_unchecked(): void
+    {
+        $this->uncheckedPage('Machine');
+        $this->enableGermanPage('Plain');
+
+        $all = (string) $this->get('/folio/page')->getBody();
+        $this->assertStringContainsString('de · 1 not checked', $all);
+        $this->assertStringContainsString('folio-badge is-unchecked', $all);
+        $this->assertStringContainsString('href="/folio/page?unchecked=1"', $all);
+        $this->assertStringContainsString('Plain', $all);
+
+        $filtered = (string) $this->get('/folio/page?unchecked=1')->getBody();
+        $this->assertStringContainsString('Machine', $filtered);
+        $this->assertStringNotContainsString('Plain', $filtered);
+        $this->assertStringContainsString('folio-filter-chip', $filtered);
+    }
+
+    public function test_tab_count_includes_unchecked(): void
+    {
+        $id = $this->uncheckedPage();
+
+        $body = (string) $this->get('/folio/page/' . $id . '/edit')->getBody();
+
+        $this->assertStringContainsString('folio-count is-unchecked" title="1 not checked"', $body);
+    }
+
+    /** A page whose German title is still exactly what the machine wrote. */
+    private function uncheckedPage(string $title = 'About'): string
+    {
+        $id = $this->enableGermanPage($title);
+        $record = $this->dm()->findType('page', $id);
+        $record->set('_machine_translated', ['de' => ['title' => \Preflow\I18n\Machine\MachineMarks::fingerprint('Über')]]);
+        $this->dm()->saveType($record, false);
+
+        return $id;
+    }
+
+    /** A page translated into German by hand (nothing outdated, nothing unchecked). */
+    private function enableGermanPage(string $title): string
+    {
+        $this->enableGerman();
+        $slug = strtolower($title);
+        $id = $this->createPage(['title' => $title, 'slug' => $slug, 'body' => 'b', 'status' => 'published', '_locales_submitted' => '1', '_locales' => ['de']]);
+        $this->postPage('/folio/page/' . $id, $id, ['_locale' => 'de', 'title' => 'Über', 'slug' => 'ueber-' . $slug, 'body' => 'k', 'status' => 'published']);
+
+        return $id;
+    }
+
     /** A page whose German translation was made from an English title that has changed since. */
     private function outdatedPage(string $title = 'About'): string
     {

@@ -38,6 +38,7 @@ final readonly class ListQuery
         public ?string $sort,
         public bool $desc,
         public int $page,
+        public bool $unchecked,
         private TypeDefinition $def,
         private array $listConfig,
         private string $locale,
@@ -106,7 +107,10 @@ final readonly class ListQuery
 
         $page = is_scalar($params['page'] ?? null) ? min(max(1, (int) $params['page']), self::MAX_PAGE) : 1;
 
-        return new self($q, $filters, $sort, $desc, $page, $def, $listConfig, $locale);
+        // "unchecked=1": only records holding machine translations nobody has checked yet.
+        $unchecked = ($params['unchecked'] ?? null) === '1' && $def->translatableFields() !== [];
+
+        return new self($q, $filters, $sort, $desc, $page, $unchecked, $def, $listConfig, $locale);
     }
 
     /** Search, filters, order and the requested page on the query. */
@@ -161,8 +165,11 @@ final readonly class ListQuery
      * Runs the query for the requested page; a page past the end gives the last page instead.
      * The returned result's currentPage is the page actually shown.
      */
-    public function fetch(QueryBuilder $qb): PaginatedResult
+    public function fetch(QueryBuilder $qb, ?\Closure $isUnchecked = null): PaginatedResult
     {
+        if ($this->unchecked && $isUnchecked !== null) {
+            return $this->fetchUnchecked($qb, $isUnchecked);
+        }
         $this->apply($qb);
         $result = $qb->paginate(self::PER_PAGE, $this->page);
         if ($this->page > $result->lastPage) {
@@ -170,6 +177,26 @@ final readonly class ListQuery
         }
 
         return $result;
+    }
+
+    /**
+     * The "unchecked" filter: whether a record holds machine translations nobody has checked yet
+     * lives in a JSON value no storage driver can query, so the matches of the other filters are
+     * read and narrowed here, then paged.
+     *
+     * @param \Closure(\Preflow\Data\DynamicRecord): bool $isUnchecked
+     */
+    private function fetchUnchecked(QueryBuilder $qb, \Closure $isUnchecked): PaginatedResult
+    {
+        $this->apply($qb);
+        $qb->limit(self::MAX_PAGE * self::PER_PAGE)->offset(0);
+        $items = array_values(array_filter($qb->get()->items(), $isUnchecked));
+
+        $total = count($items);
+        $last = max(1, (int) ceil($total / self::PER_PAGE));
+        $page = min($this->page, $last);
+
+        return new PaginatedResult(array_slice($items, ($page - 1) * self::PER_PAGE, self::PER_PAGE), $total, self::PER_PAGE, $page);
     }
 
     /**
@@ -185,6 +212,9 @@ final readonly class ListQuery
         }
         if ($this->filters !== []) {
             $query['f'] = $this->filters;
+        }
+        if ($this->unchecked) {
+            $query['unchecked'] = '1';
         }
         if ($this->sort !== null) {
             $query['sort'] = ($this->desc ? '-' : '') . $this->sort;

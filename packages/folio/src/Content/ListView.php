@@ -95,6 +95,13 @@ final class ListView
             $filters[] = $filter;
         }
 
+        if ($query->unchecked) {
+            $without = $params;
+            unset($without['unchecked']);
+            $label = \Preflow\Folio\FolioText::get('folio.list.unchecked_only');
+            $chips[] = ['field' => 'unchecked', 'label' => $label, 'name' => $label, 'remove' => $href($without)];
+        }
+
         $headers = [];
         foreach ($columns as $name => $label) {
             $dir = $query->sort === $name ? ($query->desc ? 'desc' : 'asc') : null;
@@ -134,7 +141,7 @@ final class ListView
             'chips' => $chips,
             'headers' => $headers,
             'sorted' => $query->sort !== null,
-            'filtered' => $query->q !== '' || $query->filters !== [],
+            'filtered' => $query->q !== '' || $query->filters !== [] || $query->unchecked,
             'total' => $result->total,
             'from' => $from,
             'to' => $from === 0 ? 0 : $from + count($result->items) - 1,

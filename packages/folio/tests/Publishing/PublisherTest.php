@@ -17,6 +17,7 @@ use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\StringFieldType;
 use Preflow\Folio\Field\Types\TextFieldType;
 use Preflow\Folio\Publishing\PublishState;
+use Preflow\I18n\Machine\MachineMarks;
 use Preflow\Folio\Publishing\Publisher;
 use Preflow\Folio\Publishing\VersionConflict;
 use Preflow\Validation\RuleFactory;
@@ -356,6 +357,61 @@ final class PublisherTest extends TestCase
         $this->assertNotNull($this->publisher()->snapshot('page', 'r1'));
     }
 
+    /** A page whose German title is still exactly what the machine wrote. */
+    private function pageWithUncheckedTitle(): DynamicRecord
+    {
+        return $this->working('page', [
+            'title' => ['en' => 'Hi', 'de' => 'Hallo'], 'body' => ['en' => 'Text', 'de' => 'Inhalt'], '_locales' => ['en', 'de'],
+            '_machine_translated' => ['de' => ['title' => MachineMarks::fingerprint('Hallo')]],
+        ]);
+    }
+
+    public function test_publish_refused_with_unchecked_when_setting_on(): void
+    {
+        $p = $this->publisher(checked: true);
+
+        try {
+            $p->publish($this->pageWithUncheckedTitle(), null);
+            $this->fail('expected a refusal');
+        } catch (ValidationException $e) {
+            $this->assertSame(['_unchecked.de'], array_keys($e->errors()));
+            $this->assertSame('German has machine translations not checked yet: Title', $e->errors()['_unchecked.de'][0]);
+        }
+        $this->assertNull($p->snapshot('page', 'r1'));
+    }
+
+    public function test_publish_allowed_when_checked_or_locale_not_visible(): void
+    {
+        $p = $this->publisher(checked: true);
+        $page = $this->pageWithUncheckedTitle();
+        $page->set('title', ['en' => 'Hi', 'de' => 'Hallo, von Hand']); // an edit counts as checked
+        $p->publish($page, null);
+        $this->assertNotNull($p->snapshot('page', 'r1'));
+
+        $hidden = $this->pageWithUncheckedTitle();
+        $hidden->set('_locales', ['en']);
+        $p->publish($hidden, null);
+        $this->assertSame('Hi', $p->snapshot('page', 'r1')->get('title')['en']);
+    }
+
+    public function test_publish_allowed_and_notice_when_off(): void
+    {
+        $p = $this->publisher();
+        $page = $this->pageWithUncheckedTitle();
+
+        $p->publish($page, null);
+
+        $this->assertNotNull($p->snapshot('page', 'r1'));
+        $this->assertSame('Published with 1 machine translations not checked yet (German).', $p->uncheckedNotice($page));
+    }
+
+    public function test_no_notice_without_unchecked_texts(): void
+    {
+        $page = $this->working('page', ['title' => ['en' => 'Hi', 'de' => 'Hallo'], '_locales' => ['en', 'de']]);
+
+        $this->assertNull($this->publisher()->uncheckedNotice($page));
+    }
+
     public function test_restore_brings_back_fingerprints(): void
     {
         $p = $this->publisher();
@@ -676,7 +732,7 @@ final class PublisherTest extends TestCase
         $this->assertSame(4, (int) $this->reload('post')->get('_version'));
     }
 
-    private function publisher(?int $keep = 20, bool $complete = false): Publisher
+    private function publisher(?int $keep = 20, bool $complete = false, bool $checked = false): Publisher
     {
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());
@@ -690,6 +746,7 @@ final class PublisherTest extends TestCase
             fn (): \DateTimeImmutable => $this->now,
             new TranslationStatus($fieldTypes),
             $complete,
+            $checked,
         );
     }
 

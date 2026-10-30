@@ -10,6 +10,7 @@ use Preflow\Data\LocaleValue;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Field\AcceptsTranslatedTexts;
 use Preflow\Folio\Field\FieldTypeRegistry;
+use Preflow\Folio\Field\ReportsTranslatableTexts;
 use Preflow\Folio\Publishing\Publisher;
 use Preflow\Folio\Publishing\PublishState;
 use Preflow\Folio\Publishing\VersionConflict;
@@ -135,10 +136,15 @@ final class FolioTextSource implements TextSource
             return new WriteOutcome(WriteOutcomeStatus::Skipped, "Record \"{$id}\" not found.");
         }
 
-        $known = array_flip(self::paths($this->texts($def, $record)));
+        // Only texts with a default-language text can be translated: nothing is written for the others.
+        $from = $def->locales->default;
+        $known = array_flip(self::paths(array_filter(
+            $this->texts($def, $record),
+            static fn (TranslatableText $t): bool => $t->in($from) !== null,
+        )));
         $data = $record->toArray();
         $structured = [];
-        $written = [];
+        $expected = []; // path => the text that must be there after the write
         foreach ($texts as $path => $text) {
             $path = (string) $path;
             if (!isset($known[$path]) || !is_string($text) || trim($text) === '') {
@@ -151,10 +157,10 @@ final class FolioTextSource implements TextSource
                 $map = LocaleValue::map($data[$field] ?? null, $def->locales);
                 $map[$to] = $type->toStorage($type->normalizeInput($text, $config));
                 $data[$field] = $map;
-                $written[] = $path;
+                $expected[$path] = (string) $map[$to];
             } elseif ($type instanceof AcceptsTranslatedTexts) {
                 $structured[$field][substr($path, strlen($field) + 1)] = $text;
-                $written[] = $path;
+                $expected[$path] = $text;
             }
         }
         foreach ($structured as $field => $given) {
@@ -162,11 +168,24 @@ final class FolioTextSource implements TextSource
             \assert($type instanceof AcceptsTranslatedTexts);
             $data[$field] = $type->toStorage($type->withTranslatedTexts($type->fromStorage($data[$field] ?? null), $given, $to, $def->fields[$field]->config, $def->locales));
         }
+        // A path counts as written only when its text is really there afterwards: a field type that
+        // reports a path but cannot accept it would otherwise get a human translation marked as machine-made.
+        $candidate = DynamicRecord::fromArray($def, $data);
+        $now = [];
+        foreach ($this->texts($def, $candidate) as $text) {
+            $now[$text->path] = $text->in($to);
+        }
+        $written = [];
+        foreach ($expected as $path => $text) {
+            if (isset($now[$path]) && trim($now[$path]) === trim($text)) {
+                $written[] = (string) $path;
+            }
+        }
         if ($written === []) {
             return new WriteOutcome(WriteOutcomeStatus::Skipped, 'No text to write.');
         }
 
-        $after = $this->translations->stamp($def, $record, DynamicRecord::fromArray($def, $data), $to);
+        $after = $this->translations->stamp($def, $record, $candidate, $to);
         $after = $this->translations->markMachine($def, $after, $to, $written);
 
         if ($this->writesLive()) {
@@ -217,8 +236,24 @@ final class FolioTextSource implements TextSource
     {
         return array_values(array_filter(
             $this->translations->texts($def, $record),
-            fn (TranslatableText $t): bool => ($this->fieldAi($def, self::topField($t->path))['translate'] ?? true) !== false,
+            fn (TranslatableText $t): bool => ($this->fieldAi($def, self::topField($t->path))['translate'] ?? true) !== false
+                && $this->canBeWritten($def, self::topField($t->path)),
         ));
+    }
+
+    /**
+     * Whether a translation of a field's texts can be stored: a field type that reports texts
+     * (ReportsTranslatableTexts) but cannot take translated ones back (AcceptsTranslatedTexts)
+     * is left out, so no paid call is made for a text that could never be written.
+     */
+    private function canBeWritten(TypeDefinition $def, string $field): bool
+    {
+        if (!isset($def->fields[$field])) {
+            return true;
+        }
+        $type = $this->fieldTypes->get($def->fields[$field]->type);
+
+        return !$type instanceof ReportsTranslatableTexts || $type instanceof AcceptsTranslatedTexts;
     }
 
     /**

@@ -121,6 +121,23 @@ final class PublishingAppTest extends TestCase
         $this->assertNull($this->publisher()->snapshot('post', 'p1'));
     }
 
+    public function test_setting_refuses_publishing_with_unchecked_machine_translations(): void
+    {
+        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'publishing' => ['checked_translations' => true]];\n");
+        $this->working('post', 'p1', [
+            'title' => ['en' => 'Hi', 'de' => 'Hallo'], 'slug' => ['en' => 'hi', 'de' => 'hallo'], '_locales' => ['en', 'de'],
+            '_machine_translated' => ['de' => ['title' => \Preflow\I18n\Machine\MachineMarks::fingerprint('Hallo')]],
+        ]);
+
+        $res = $this->post('/folio/post/p1', ['title' => 'Hi', 'slug' => 'hi', '_locale' => 'en', '_action' => 'publish']);
+
+        $body = (string) $res->getBody();
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('German has machine translations not checked yet: Title', $body);
+        $this->assertStringContainsString('?locale=de', $body);
+        $this->assertNull($this->publisher()->snapshot('post', 'p1'));
+    }
+
     public function test_publishing_from_the_incomplete_language_shows_the_reason(): void
     {
         $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'publishing' => ['complete_languages' => true]];\n");

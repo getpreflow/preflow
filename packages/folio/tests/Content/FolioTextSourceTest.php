@@ -264,6 +264,58 @@ final class FolioTextSourceTest extends TestCase
         $this->assertSame(PublishState::Changed, $this->publisher()->state($working));
     }
 
+    public function test_units_skip_fields_that_report_texts_but_cannot_accept_them(): void
+    {
+        $this->factsArticle();
+
+        $units = $this->byId($this->source('article')->units('a1', 'de', Scope::All));
+
+        $this->assertSame(['title'], array_keys($units), 'no paid call for a text that could never be written');
+    }
+
+    public function test_write_never_marks_a_path_the_field_cannot_accept(): void
+    {
+        $this->factsArticle('deaf_facts', 'DeafFactsFieldType');
+
+        $outcome = $this->source('article')->write('a1', 'de', ['facts.f1.text' => 'Neu']);
+
+        $this->assertSame(WriteOutcomeStatus::Skipped, $outcome->status);
+        $stored = $this->stored('article', 'a1');
+        $this->assertSame('Menschlich', $stored->get('facts')[0]['text']['de'], 'the human translation stays');
+        $this->assertEmpty($stored->get(TranslationStatus::MACHINE));
+
+        $this->source('article')->write('a1', 'de', ['title' => 'Hallo', 'facts.f1.text' => 'Neu']);
+        $marks = $this->stored('article', 'a1')->get(TranslationStatus::MACHINE);
+        $this->assertSame(['title'], array_keys($marks['de']));
+    }
+
+    public function test_write_ignores_paths_without_a_default_text(): void
+    {
+        $this->working('article', 'a1', ['title' => ['en' => 'Hello']]); // no summary in English
+
+        $outcome = $this->source('article')->write('a1', 'de', ['summary' => 'Zusammenfassung']);
+
+        $this->assertSame(WriteOutcomeStatus::Skipped, $outcome->status);
+        $this->assertNull($this->stored('article', 'a1')->get('summary'));
+    }
+
+    private function factsArticle(string $type = 'facts', string $class = 'FactsFieldType'): void
+    {
+        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'field_types' => [\\Preflow\\Folio\\Tests\\Fixtures\\Field\\{$class}::class]];\n");
+        $this->writeModel('article', [
+            'label' => 'Articles',
+            'publishing' => true,
+            'fields' => [
+                'title' => ['type' => 'string', 'translatable' => true],
+                'facts' => ['type' => $type, 'translatable' => true],
+            ],
+        ]);
+        $this->working('article', 'a1', [
+            'title' => ['en' => 'Hello'],
+            'facts' => [['id' => 'f1', 'text' => ['en' => 'Fact', 'de' => 'Menschlich']]],
+        ]);
+    }
+
     private function source(string $type): TextSource
     {
         return $this->app()->container()->get(TextSources::class)->get($type);

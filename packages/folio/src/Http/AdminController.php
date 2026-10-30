@@ -139,7 +139,10 @@ final class AdminController
         $states = $this->publishes($type) ? $this->publisher->states($type) : null;
 
         $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default);
-        $result = $query->fetch($this->dm->queryType($type));
+        $result = $query->fetch(
+            $this->dm->queryType($type),
+            $multilingual ? fn (DynamicRecord $record): bool => $this->hasUnchecked($typeDef, $record) : null,
+        );
         $records = array_values($result->items);
         $relations = new RelationLabels($this->dm, $this->labeler);
         // Relation columns (only when "list.columns" names them): the page's labels in one query per target.
@@ -175,7 +178,7 @@ final class AdminController
 
                     return (string) $value;
                 }, $extraColumns),
-                'languages' => $multilingual ? $this->languageBadges($typeDef, $record) : [],
+                'languages' => $multilingual ? $this->languageBadges($typeDef, $record, $this->prefix . '/' . $type . '?unchecked=1') : [],
                 'state' => $states !== null ? ($states[(string) $record->getId()] ?? PublishState::Draft) : null,
             ];
         }
@@ -998,6 +1001,14 @@ final class AdminController
                 $outdated[$field] = ['count' => ($outdated[$field]['count'] ?? 0) + 1, 'plain' => $text->path === $field];
             }
         }
+        // Machine translations of this language nobody has checked yet, per field.
+        $unchecked = [];
+        if ($current !== null && $locale !== $locales->default) {
+            foreach ($this->translations->unchecked($typeDef, $current, $locale) as $text) {
+                $field = explode('.', $text->path, 2)[0];
+                $unchecked[$field] = ['count' => ($unchecked[$field]['count'] ?? 0) + 1, 'plain' => $text->path === $field];
+            }
+        }
         foreach ($typeDef->fields as $name => $fieldDef) {
             if ($name === $typeDef->idField || ($fieldDef->config['hidden'] ?? false) === true) {
                 continue;
@@ -1081,6 +1092,7 @@ final class AdminController
 
         foreach ($fields as &$entry) {
             $entry['outdated'] = $outdated[$entry['name']] ?? null;
+            $entry['unchecked'] = $unchecked[$entry['name']] ?? null;
         }
         unset($entry);
 
@@ -1092,8 +1104,8 @@ final class AdminController
                 continue;
             }
             [$field, $code] = explode('.', $key, 2);
-            // "_translations.<locale>": a language the record is visible in but has not finished (shown on its own tab too).
-            $incomplete = $field === '_translations';
+            // "_translations.<locale>" / "_unchecked.<locale>": a language the record is visible in but has not finished or checked (shown on its own tab too).
+            $incomplete = $field === '_translations' || $field === '_unchecked';
             if (!$locales->has($code) || ($code === $locale && !$incomplete) || (!$incomplete && !isset($typeDef->fields[$field]))) {
                 continue;
             }
@@ -1110,6 +1122,7 @@ final class AdminController
             foreach ($locales->available as $code) {
                 $missing = $current !== null ? count($this->translations->missing($typeDef, $current, $code)) : 0;
                 $late = $current !== null ? count($this->translations->outdated($typeDef, $current, $code)) : 0;
+                $unchecked = $current !== null ? count($this->translations->unchecked($typeDef, $current, $code)) : 0;
                 $languages[] = [
                     'code' => $code,
                     'name' => self::languageName($code),
@@ -1117,6 +1130,7 @@ final class AdminController
                     'active' => $code === $locale,
                     'missing' => $missing > 0 ? ['count' => $missing, 'text' => FolioText::get('folio.list.missing', ['locale' => $code, 'count' => $missing])] : null,
                     'outdated' => $late > 0 ? ['count' => $late, 'text' => FolioText::get('folio.list.outdated', ['locale' => $code, 'count' => $late])] : null,
+                    'unchecked' => $unchecked > 0 ? ['count' => $unchecked, 'text' => FolioText::get('folio.list.unchecked', ['count' => $unchecked])] : null,
                 ];
             }
         }
@@ -1232,26 +1246,43 @@ final class AdminController
         }
     }
 
+    /** Whether the record holds a machine translation nobody has checked yet, in any language. */
+    private function hasUnchecked(TypeDefinition $typeDef, DynamicRecord $record): bool
+    {
+        foreach ($typeDef->locales->available as $locale) {
+            if ($locale !== $typeDef->locales->default && $this->translations->unchecked($typeDef, $record, $locale) !== []) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * Badges per locale the record is visible in: the locale alone when finished, "de · 2 missing"
      * for texts the default language has and the locale has not, "de · 1 outdated" for translations
-     * made from a default text that has changed since.
+     * made from a default text that has changed since, "de · 2 not checked" for machine
+     * translations nobody has checked yet (linking to the list narrowed to such records).
      *
-     * @return list<array{text: string, state: 'missing'|'outdated'|'ok'}>
+     * @return list<array{text: string, state: 'missing'|'outdated'|'unchecked'|'ok', href?: string}>
      */
-    private function languageBadges(TypeDefinition $typeDef, DynamicRecord $record): array
+    private function languageBadges(TypeDefinition $typeDef, DynamicRecord $record, string $uncheckedUrl): array
     {
         $badges = [];
         foreach ($record->availableLocales() as $locale) {
             $missing = count($this->translations->missing($typeDef, $record, $locale));
             $outdated = count($this->translations->outdated($typeDef, $record, $locale));
+            $unchecked = count($this->translations->unchecked($typeDef, $record, $locale));
             if ($missing > 0) {
                 $badges[] = ['text' => FolioText::get('folio.list.missing', ['locale' => $locale, 'count' => $missing]), 'state' => 'missing'];
             }
             if ($outdated > 0) {
                 $badges[] = ['text' => FolioText::get('folio.list.outdated', ['locale' => $locale, 'count' => $outdated]), 'state' => 'outdated'];
             }
-            if ($missing === 0 && $outdated === 0) {
+            if ($unchecked > 0) {
+                $badges[] = ['text' => $locale . ' · ' . FolioText::get('folio.list.unchecked', ['count' => $unchecked]), 'state' => 'unchecked', 'href' => $uncheckedUrl];
+            }
+            if ($missing === 0 && $outdated === 0 && $unchecked === 0) {
                 $badges[] = ['text' => $locale, 'state' => 'ok'];
             }
         }
@@ -1376,6 +1407,10 @@ final class AdminController
             try {
                 // Checked against the version the draft save just wrote: a save landing in between conflicts.
                 $this->publisher?->publish($record, self::userId($request), (int) $record->get('_version'));
+                $notice = $this->publisher?->uncheckedNotice($record);
+                if ($notice !== null) {
+                    self::flash($request, 'warning', $notice);
+                }
             } catch (VersionConflict $e) {
                 $this->customizations?->runHooks(AfterSave::class, $record); // the working copy was saved
                 $values = $record->toArray();

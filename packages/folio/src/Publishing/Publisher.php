@@ -45,6 +45,7 @@ final class Publisher
         ?\Closure $now = null,
         private readonly ?TranslationStatus $translations = null,
         private readonly bool $completeLanguages = false,
+        private readonly bool $checkedTranslations = false,
     ) {
         if ($keepRevisions !== null && $keepRevisions < 0) {
             throw new \InvalidArgumentException('publishing.revisions must be 0 (keep all) or more.');
@@ -204,6 +205,7 @@ final class Publisher
     {
         $this->validator->validate($working);
         $this->requireCompleteLanguages($working);
+        $this->requireCheckedTranslations($working);
 
         $def = $working->getType();
         $shadow = ShadowTypes::published($def);
@@ -265,18 +267,87 @@ final class Publisher
             if ($missing === []) {
                 continue;
             }
-            $labels = array_map(static fn ($t): string => $t->label, $missing);
-            $texts = implode(', ', array_slice($labels, 0, 5)) . (count($labels) > 5 ? ' … (+' . (count($labels) - 5) . ')' : '');
             $errors['_translations.' . $locale] = [FolioText::get('folio.publish.incomplete', [
-                'language' => FolioText::get('folio.languages.' . $locale) !== 'folio.languages.' . $locale
-                    ? FolioText::get('folio.languages.' . $locale) : strtoupper($locale),
-                'texts' => $texts,
+                'language' => self::languageName($locale),
+                'texts' => self::labelList($missing),
             ])];
         }
 
         if ($errors !== []) {
             throw new ValidationException(new ValidationResult($errors));
         }
+    }
+
+    /**
+     * With folio.publishing.checked_translations, a record is not published while a language it is
+     * visible in holds machine translations nobody has checked yet. Keyed "_unchecked.<locale>", so the
+     * form points at the language like it does for a missing one.
+     *
+     * @throws ValidationException
+     */
+    private function requireCheckedTranslations(DynamicRecord $working): void
+    {
+        if (!$this->checkedTranslations || $this->translations === null) {
+            return;
+        }
+
+        $def = $working->getType();
+        $errors = [];
+        foreach ($working->availableLocales() as $locale) {
+            $unchecked = $this->translations->unchecked($def, $working, $locale);
+            if ($unchecked !== []) {
+                $errors['_unchecked.' . $locale] = [FolioText::get('folio.publish.unchecked', [
+                    'language' => self::languageName($locale),
+                    'texts' => self::labelList($unchecked),
+                ])];
+            }
+        }
+
+        if ($errors !== []) {
+            throw new ValidationException(new ValidationResult($errors));
+        }
+    }
+
+    /**
+     * The warning to show after publishing a record that still holds machine translations nobody
+     * has checked (in the languages it is visible in); null when there are none.
+     */
+    public function uncheckedNotice(DynamicRecord $working): ?string
+    {
+        if ($this->translations === null) {
+            return null;
+        }
+
+        $def = $working->getType();
+        $count = 0;
+        $languages = [];
+        foreach ($working->availableLocales() as $locale) {
+            $unchecked = $this->translations->unchecked($def, $working, $locale);
+            if ($unchecked !== []) {
+                $count += count($unchecked);
+                $languages[] = self::languageName($locale);
+            }
+        }
+
+        return $count === 0 ? null : FolioText::get('folio.publish.unchecked_warning', [
+            'count' => $count,
+            'language' => implode(', ', $languages),
+        ]);
+    }
+
+    private static function languageName(string $locale): string
+    {
+        $name = FolioText::get('folio.languages.' . $locale);
+
+        return $name !== 'folio.languages.' . $locale ? $name : strtoupper($locale);
+    }
+
+    /** @param list<\Preflow\Folio\Content\TranslatableText> $texts the first five labels, then "(+N)" */
+    private static function labelList(array $texts): string
+    {
+        $labels = array_map(static fn ($t): string => $t->label, $texts);
+
+        return implode(', ', array_slice($labels, 0, 5)) . (count($labels) > 5 ? ' … (+' . (count($labels) - 5) . ')' : '');
     }
 
     /** Copy a saved working copy to its snapshot and append a revision. */

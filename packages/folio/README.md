@@ -1598,7 +1598,11 @@ fields of blocks (also nested ones) and the texts a custom field type reports.
   in `config/folio.php` a record is not published while a language it is visible in
   (`_locales`) misses a text; the draft is saved and the error names the language and the
   texts (`_translations.de`). Off by default. Scheduled publishing reports such a record
-  as failed.
+  as failed. Machine translations nobody has checked yet (see `unchecked()`) show as a note
+  with an accept button per field, a count on the language tab and a badge in the list (it
+  links to the list narrowed with `?unchecked=1`). They never block publishing unless
+  `'publishing' => ['checked_translations' => true]` is set: then the publish is refused
+  (`_unchecked.de`); without it the editor is warned after publishing. Off by default.
 - **New column:** `_translated_from` is a TEXT column on SQL-backed record tables (and their
   published and revisions tables); `preflow migrate` adds it.
 

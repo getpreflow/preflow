@@ -447,6 +447,7 @@ final class FolioServiceProvider extends ServiceProvider
             null,
             $c->get(\Preflow\Folio\Content\TranslationStatus::class),
             (bool) ($folioConfig['publishing']['complete_languages'] ?? false),
+            (bool) ($folioConfig['publishing']['checked_translations'] ?? false),
         ));
         $container->singleton(\Preflow\Folio\Publishing\PublishedCopies::class, fn (Container $c) => new \Preflow\Folio\Publishing\PublishedCopies(
             $c->get(DataManager::class),

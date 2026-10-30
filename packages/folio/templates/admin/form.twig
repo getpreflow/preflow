@@ -23,7 +23,7 @@
         {% if multilingual|default(false) %}
             <nav class="folio-languages" aria-label="{{ t('folio.form.editing_language') }}">
                 {% for lang in languages %}
-                    <a class="folio-language{% if lang.active %} is-active{% endif %}" href="{{ lang.url }}"{% if lang.active %} aria-current="true"{% endif %}>{{ lang.name }}{% if lang.missing %} <span class="folio-count is-incomplete" title="{{ lang.missing.text }}">{{ lang.missing.count }}</span>{% endif %}{% if lang.outdated %} <span class="folio-count is-outdated" title="{{ lang.outdated.text }}">{{ lang.outdated.count }}</span>{% endif %}</a>
+                    <a class="folio-language{% if lang.active %} is-active{% endif %}" href="{{ lang.url }}"{% if lang.active %} aria-current="true"{% endif %}>{{ lang.name }}{% if lang.missing %} <span class="folio-count is-incomplete" title="{{ lang.missing.text }}">{{ lang.missing.count }}</span>{% endif %}{% if lang.outdated %} <span class="folio-count is-outdated" title="{{ lang.outdated.text }}">{{ lang.outdated.count }}</span>{% endif %}{% if lang.unchecked %} <span class="folio-count is-unchecked" title="{{ lang.unchecked.text }}">{{ lang.unchecked.count }}</span>{% endif %}</a>
                 {% endfor %}
             </nav>
         {% endif %}
@@ -80,6 +80,12 @@
                     {% if field.outdated %}
                         <p class="folio-outdated">
                             <span>{{ field.outdated.plain ? t('folio.form.outdated') : t('folio.form.outdated_texts', {count: field.outdated.count}) }}</span>
+                            {% if can_save ?? true %}<button type="submit" formaction="{{ prefix }}/{{ type }}/{{ record_id }}/_translations/confirm" name="_confirm_path" value="{{ field.name }}" class="btn btn-ghost">{{ t('folio.form.still_correct') }}</button>{% endif %}
+                        </p>
+                    {% endif %}
+                    {% if field.unchecked %}
+                        <p class="folio-unchecked">
+                            <span>{{ t('folio.form.unchecked') }}{% if not field.unchecked.plain %} ({{ field.unchecked.count }}){% endif %}</span>
                             {% if can_save ?? true %}<button type="submit" formaction="{{ prefix }}/{{ type }}/{{ record_id }}/_translations/confirm" name="_confirm_path" value="{{ field.name }}" class="btn btn-ghost">{{ t('folio.form.still_correct') }}</button>{% endif %}
                         </p>
                     {% endif %}
