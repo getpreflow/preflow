@@ -65,17 +65,20 @@ final class JobRunner
      */
     public function start(string $jobId, bool $confirmLive = false, ?string $by = null): Job
     {
-        $job = $this->load($jobId);
-        if ($job->state === 'planned' || $job->state === 'stopped' || $job->state === 'running') {
-            $job->state = 'queued';
-            $job->message = null;
-            $job->queuedAt = ($this->now !== null ? ($this->now)() : new \DateTimeImmutable())->format(\DATE_ATOM);
-            $job->queuedBy = $by ?? $job->queuedBy;
-            $job->confirmedLive = $job->confirmedLive || $confirmLive;
-            $this->store->save($job);
-        }
+        $at = ($this->now !== null ? ($this->now)() : new \DateTimeImmutable())->format(\DATE_ATOM);
 
-        return $job;
+        return $this->update($jobId, static function (Job $job) use ($confirmLive, $by, $at): void {
+            if ($job->state === 'planned' || $job->state === 'stopped' || $job->state === 'running') {
+                $job->state = 'queued';
+                $job->message = null;
+                $job->queuedAt = $at;
+                $job->queuedBy = $by ?? $job->queuedBy;
+            }
+            // A confirmation counts on a job that is already queued too; a finished job is left alone.
+            if ($job->state !== 'done') {
+                $job->confirmedLive = $job->confirmedLive || $confirmLive;
+            }
+        });
     }
 
     /**
@@ -83,9 +86,13 @@ final class JobRunner
      * for a later step) and releasing each claim when its item is through. Does nothing for a
      * stopped or finished job; a job writing live content without confirmation is stopped before
      * anything is written. The job is "running" while a step works and "queued" again after it,
-     * until nothing is pending. An error
-     * other than AiUnavailable fails only the item it happened on, so one bad record never
-     * blocks the run. A stop saved while an item is being processed wins over this step.
+     * until nothing is pending. An error other than AiUnavailable fails only the item it happened
+     * on, so one bad record never blocks the run. A stop saved while an item is being processed
+     * wins over this step.
+     *
+     * Every save merges into the stored job under its lock: a step writes only the items it
+     * processed and the cost of its own requests, so a browser and the cron worker stepping the same
+     * job never undo each other's results.
      *
      * @throws AiUnavailable after the job has been stopped and saved; items done so far stay done
      */
@@ -98,23 +105,42 @@ final class JobRunner
 
         $source = $this->sources->get($job->collection);
         if ($source->writesLive() && !$job->confirmedLive) {
-            $job->state = 'stopped';
-            $job->message = 'Confirm that the translations go live before starting.';
-            $this->store->save($job);
-
-            return $job;
-        }
-
-        $job->state = 'running';
-        if ($this->translator instanceof ReportsCost) {
-            $this->translator->reportCostTo(static function (?float $usd) use ($job): void {
-                if ($usd === null) {
-                    $job->costUnknown = true;
-                } else {
-                    $job->costUsd += $usd;
+            return $this->update($jobId, static function (Job $job): void {
+                if ($job->state !== 'stopped' && $job->state !== 'done' && !$job->confirmedLive) {
+                    $job->state = 'stopped';
+                    $job->message = 'Confirm that the translations go live before starting.';
                 }
             });
         }
+
+        // Visible to other processes before any work starts.
+        $job = $this->update($jobId, static function (Job $job): void {
+            if ($job->state !== 'stopped' && $job->state !== 'done') {
+                $job->state = 'running';
+            }
+        });
+        if ($job->state !== 'running') {
+            return $job;
+        }
+
+        // Cost of this step's own requests not yet merged into the stored job.
+        $cost = 0.0;
+        $costUnknown = false;
+        if ($this->translator instanceof ReportsCost) {
+            $this->translator->reportCostTo(static function (?float $usd) use (&$cost, &$costUnknown): void {
+                if ($usd === null) {
+                    $costUnknown = true;
+                } else {
+                    $cost += $usd;
+                }
+            });
+        }
+        $mergeCost = static function (Job $job) use (&$cost, &$costUnknown): void {
+            $job->costUsd += $cost;
+            $job->costUnknown = $job->costUnknown || $costUnknown;
+            $cost = 0.0;
+            $costUnknown = false;
+        };
 
         try {
             $taken = 0;
@@ -125,39 +151,56 @@ final class JobRunner
                 if (!$this->lease->claim($job->collection, $id)) {
                     continue;
                 }
-                $taken++;
                 try {
-                    $job->items[$id] = $this->processItem($source, $job, $id);
-                } catch (AiUnavailable $e) {
-                    throw $e;
-                } catch (\Throwable $e) {
-                    $job->items[$id] = ['status' => 'failed', 'message' => $e->getMessage()] + $job->items[$id];
+                    // Another driver may have finished it between our read and our claim.
+                    $current = $this->store->get($jobId) ?? $job;
+                    if (($current->items[$id]['status'] ?? null) !== 'pending') {
+                        continue;
+                    }
+                    $taken++;
+                    try {
+                        $item = $this->processItem($source, $current, $id);
+                    } catch (AiUnavailable $e) {
+                        throw $e;
+                    } catch (\Throwable $e) {
+                        $item = ['status' => 'failed', 'message' => $e->getMessage()] + $current->items[$id];
+                    }
+                    $job = $this->update($jobId, static function (Job $stored) use ($id, $item, $mergeCost): void {
+                        $stored->items[$id] = $item;
+                        $mergeCost($stored);
+                        // A stop saved meanwhile wins: the item is kept, then the run ends.
+                        if ($stored->state === 'stopped' && $stored->pending() === []) {
+                            $stored->state = 'done';
+                        }
+                    });
                 } finally {
                     $this->lease->release($job->collection, $id);
                 }
-                if ($this->store->get($jobId)?->state === 'stopped') {
-                    // Stopped (from another request) while this item was in hand: keep the item, then stop.
-                    $job->state = $job->pending() === [] ? 'done' : 'stopped';
-                    $this->store->save($job);
-
+                if ($job->state === 'stopped' || $job->state === 'done') {
                     return $job;
                 }
-                $this->store->save($job);
             }
-            $job->state = $job->pending() === [] ? 'done' : 'queued';
-            $this->store->save($job);
+
+            return $this->update($jobId, static function (Job $stored) use ($mergeCost): void {
+                $mergeCost($stored);
+                if ($stored->state === 'running' || $stored->state === 'queued') {
+                    $stored->state = $stored->pending() === [] ? 'done' : 'queued';
+                }
+            });
         } catch (AiUnavailable $e) {
-            $job->state = 'stopped';
-            $job->message = $e->getMessage();
-            $this->store->save($job);
+            $this->update($jobId, static function (Job $stored) use ($e, $mergeCost): void {
+                $mergeCost($stored);
+                if ($stored->state !== 'done') {
+                    $stored->state = 'stopped';
+                    $stored->message = $e->getMessage();
+                }
+            });
             throw $e;
         } finally {
             if ($this->translator instanceof ReportsCost) {
                 $this->translator->reportCostTo(null);
             }
         }
-
-        return $job;
     }
 
     /**
@@ -213,13 +256,17 @@ final class JobRunner
 
     public function stop(string $jobId): Job
     {
-        $job = $this->load($jobId);
-        if ($job->state !== 'done') {
-            $job->state = 'stopped';
-            $this->store->save($job);
-        }
+        return $this->update($jobId, static function (Job $job): void {
+            if ($job->state !== 'done') {
+                $job->state = 'stopped';
+            }
+        });
+    }
 
-        return $job;
+    /** @param \Closure(Job): void $change */
+    private function update(string $jobId, \Closure $change): Job
+    {
+        return $this->store->update($jobId, $change) ?? throw new \InvalidArgumentException("Unknown job \"{$jobId}\".");
     }
 
     private function load(string $jobId): Job

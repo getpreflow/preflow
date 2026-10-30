@@ -44,7 +44,7 @@ final class JobRunnerTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (array_merge(glob($this->dir . '/*') ?: [], glob($this->dir . '/leases/*') ?: []) as $f) {
+        foreach (array_merge(glob($this->dir . '/*') ?: [], glob($this->dir . '/.*.lock') ?: [], glob($this->dir . '/leases/*') ?: []) as $f) {
             @unlink($f);
         }
         @rmdir($this->dir . '/leases');
@@ -496,5 +496,60 @@ final class JobRunnerTest extends TestCase
         $runner->stop($stopped->id);
 
         $this->assertSame([$queued->id], array_map(static fn (Job $j): string => $j->id, $runner->active()));
+    }
+
+    public function test_two_drivers_stepping_one_job_keep_each_others_items_and_costs(): void
+    {
+        $priced = static fn (AiRequest $r) => FakeAiClient::json(
+            array_map(static fn (array $i): array => ['n' => $i['n'], 'text' => 'DE:' . $i['text']], self::items($r)),
+            new TokenUsage(1000, 500),
+        );
+        $browser = $this->runner([$priced, $priced]);
+        $job = $browser->plan('games', ['de'], Scope::Needed, ['1', '2']);
+        $browser->start($job->id);
+        // The cron worker has its own runner on the same store and lease.
+        $cron = $this->runner([$priced, $priced]);
+        $this->source->onWrite = function (string $id) use ($cron, $job): void {
+            $this->source->onWrite = null;
+            if ($id === '1') {
+                $cron->step($job->id, 1); // record 1 is claimed by the browser: the cron takes 2
+            }
+        };
+
+        $browser->step($job->id, 1);
+
+        $saved = (new FileJobStore($this->dir))->get($job->id);
+        $this->assertSame(['done', 'done'], array_column($saved->items, 'status'));
+        $this->assertSame('done', $saved->state);
+        $this->assertEqualsWithDelta(2 * 0.007, $saved->costUsd, 1e-9, 'neither driver\'s cost is lost or counted twice');
+        $this->assertSame(['1:de', '2:de'], $this->source->writes, 'nothing translated twice');
+    }
+
+    public function test_running_is_saved_before_work_starts(): void
+    {
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['1']);
+        $runner->start($job->id);
+        $seen = null;
+        $this->source->onWrite = function () use ($job, &$seen): void {
+            $seen = (new FileJobStore($this->dir))->get($job->id)->state;
+        };
+
+        $runner->step($job->id);
+
+        $this->assertSame('running', $seen);
+    }
+
+    public function test_start_records_the_live_confirmation_on_a_job_already_queued(): void
+    {
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+        $runner->start($job->id);
+
+        $job = $runner->start($job->id, confirmLive: true);
+
+        $this->assertSame('queued', $job->state);
+        $this->assertTrue($job->confirmedLive);
+        $this->assertTrue((new FileJobStore($this->dir))->get($job->id)->confirmedLive);
     }
 }

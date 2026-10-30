@@ -29,6 +29,29 @@ final class FileJobStore implements JobStore
         }
     }
 
+    public function update(string $id, \Closure $change): ?Job
+    {
+        if (!self::safe($id) || !is_dir($this->dir)) {
+            return null;
+        }
+        $lock = fopen($this->path($id) . '.lock', 'c');
+        if ($lock === false || !flock($lock, LOCK_EX)) {
+            throw new \RuntimeException("Cannot lock job {$id}.");
+        }
+        try {
+            $job = $this->get($id);
+            if ($job !== null) {
+                $change($job);
+                $this->save($job);
+            }
+
+            return $job;
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
     public function get(string $id): ?Job
     {
         if (!self::safe($id) || !is_file($this->path($id))) {

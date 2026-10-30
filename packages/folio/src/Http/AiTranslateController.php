@@ -107,7 +107,7 @@ final class AiTranslateController
             'total' => count($job->items),
             'start_url' => $this->jobUrl($type, $job, 'start'),
             // A planned or stopped run of a live type asks the confirmation again, as Start does.
-            'confirm' => $live && !self::inProgress($job),
+            'confirm' => $live && !$job->confirmedLive,
         ], $this->runner->unfinished($type, self::UNFINISHED_SHOWN));
     }
 
