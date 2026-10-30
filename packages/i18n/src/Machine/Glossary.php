@@ -91,7 +91,11 @@ final class Glossary
 
         // Letters/digits as boundaries, not \b: \b misbehaves next to terms that start or end in a non-word character.
         // Whitespace inside a term matches any run of whitespace (double space, line break).
-        $words = preg_split('/\s+/u', trim($entry->term)) ?: [];
+        $words = preg_split('/\s+/u', trim($entry->term), -1, PREG_SPLIT_NO_EMPTY);
+        if ($words === false || $words === []) {
+            // The split fails on invalid UTF-8; an empty pattern body would match every text.
+            return false;
+        }
         $body = implode('\s+', array_map(static fn (string $w): string => preg_quote($w, '/'), $words));
         $pattern = '/(?<![\p{L}\p{N}])' . $body . '(?![\p{L}\p{N}])/iu';
 

@@ -61,6 +61,10 @@ final class FolioServiceProvider extends ServiceProvider
         if (!$container->hasProvider(\Preflow\Ai\AiServiceProvider::class)) {
             $container->registerProvider(new \Preflow\Ai\AiServiceProvider());
         }
+        // Machine translation from the i18n core, built on the AI core above.
+        if (!$container->hasProvider(\Preflow\I18n\Machine\MachineServiceProvider::class)) {
+            $container->registerProvider(new \Preflow\I18n\Machine\MachineServiceProvider());
+        }
         $app = $container->get(Application::class);
         $modelsPath = $this->modelsPath($app);
         $prefix = $this->prefix($app);

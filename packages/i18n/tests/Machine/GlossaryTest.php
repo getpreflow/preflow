@@ -99,4 +99,12 @@ final class GlossaryTest extends TestCase
         $this->assertCount(1, $glossary->relevant([$this->unit("A worker\nplacement game")], 'de'));
         $this->assertSame([], $glossary->relevant([$this->unit('A workerplacement game')], 'de'));
     }
+
+    public function test_term_that_cannot_be_split_never_applies(): void
+    {
+        // Invalid UTF-8 makes the /u split fail; an empty pattern body would match every text.
+        $glossary = new Glossary([new GlossaryEntry("\xff\xfe", ['de' => 'x'])]);
+        $this->assertSame([], $glossary->relevant([$this->unit('Any text!')], 'de'));
+        $this->assertSame([], $glossary->mismatches($this->unit('Any text!'), 'Ein Text'));
+    }
 }
