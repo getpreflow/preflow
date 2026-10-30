@@ -1635,6 +1635,68 @@ must be wide enough for the JSON map. JSON-file storage needs no setup.
 `folio_alternate_links()` emits absolute URLs when the request has a host, which
 search engines require.
 
+### Translate with AI
+
+With AI on (`config/ai.php` `enabled` and the provider's key, see `preflow/ai`), each language
+tab except the default gets a **Translate** button, for users with the `ai.translate`
+permission ("Use AI translation") and the type's edit permission. With AI off there is no
+button, the form's markup is unchanged and the endpoints below answer 404.
+
+- The dialog asks which texts (**Missing and outdated**, or **All**) and an optional one-off
+  note, and shows the estimate for this record.
+- **Translate** fills the form's fields: top-level fields, block texts (also nested ones) and
+  the texts of custom field types. Rich text is filled through its editor. Nothing is saved;
+  the autosave picks the change up like typing.
+- Under each filled field a review row shows the default-language text, the previous
+  translation with the changed words marked, and warnings (e.g. a glossary term not used).
+  **Accept** keeps the text as checked, **Discard** puts the previous value back. Editing the
+  AI text counts as checking it. **Accept all** is in the dialog.
+- On save, texts filled by AI, not accepted and not edited are saved as not checked (the form
+  posts their paths as `_ai_unchecked[]`).
+
+The endpoints, for other admin screens (both POST, with the CSRF token, never writing):
+
+- `{prefix}/{type}/{id}/_ai/estimate` with `locale`, `scope` (`needed` or `all`) and an
+  optional `prefix`: `{units, requests, costUsd}` (`costUsd` is null when the model has no
+  price).
+- `{prefix}/{type}/{id}/_ai/suggest` with `locale`, `scope`, optional `note` and `prefix`:
+  `{texts: {path: {text, source, previous, warnings}}, failed: {path: reason}, costUsd}`.
+  `prefix` limits the texts to paths under it (`flow` gives `flow` and `flow.…`). When the
+  provider cannot be used at all (quota, billing, outage) it answers 503 with `{error}`.
+
+Without `ai.translate` they answer 403. The `ai.settings` permission ("AI settings") is
+declared too.
+
+#### Trying it without a key
+
+Bind an `Ai` whose client is `Preflow\Ai\Testing\FakeAiClient` in a provider listed after
+Folio, on your machine only. This one answers every text with "[de] " and the text:
+
+```php
+// app/FakeAiProvider.php (local only; list it after FolioServiceProvider in config/providers.php)
+final class FakeAiProvider extends \Preflow\Core\Container\ServiceProvider
+{
+    public function register(\Preflow\Core\Container\Container $container): void
+    {
+        $container->singleton(\Preflow\Ai\Ai::class, static fn ($c) => new \Preflow\Ai\Ai(
+            ['enabled' => true, 'provider' => 'claude', 'models' => ['claude' => 'claude-sonnet-5-5'], 'keys' => ['claude' => 'FAKE']],
+            $c->get(\Preflow\Ai\Usage\UsageLog::class),
+            $c->get(\Preflow\Ai\Usage\Pricing::class),
+            static fn (): string => 'fake', // the "key"
+            static fn () => new \Preflow\Ai\Testing\FakeAiClient([static function (\Preflow\Ai\AiRequest $r) {
+                $items = json_decode(substr($r->prompt, (int) strrpos($r->prompt, "\n")), true); // the texts: the prompt's last line
+
+                return \Preflow\Ai\Testing\FakeAiClient::json(array_map(static fn (array $i) => ['n' => $i['n'], 'text' => '[de] ' . $i['text']], $items));
+            }], 'claude-sonnet-5-5'),
+        ));
+    }
+}
+```
+
+Then open a record's German tab, click **Translate**, review (edit one text, discard
+another), save, and reopen the tab: the AI texts you left as they were show "Machine-translated,
+not checked yet".
+
 ## Admin languages
 
 Folio's own screens, the staff mails and the admin parts of rbac, members and codes come in

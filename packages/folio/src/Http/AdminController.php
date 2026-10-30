@@ -77,6 +77,7 @@ final class AdminController
         private readonly ?\Preflow\Folio\Extension\Screen\PageAssets $pageAssets = null,
         ?DisplayLabels $labels = null,
         ?TranslationStatus $translations = null,
+        private readonly ?\Preflow\Ai\Ai $ai = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
@@ -1136,6 +1137,10 @@ final class AdminController
         }
 
         [$panels, $recordActions, $panelAssets] = $this->recordExtras($type, $typeDef, $values, $isNew, $csrf);
+        $aiTranslate = $this->aiTranslate($type, $typeDef, $values, $locale, $isNew, $multilingual);
+        if ($aiTranslate !== null) {
+            $editorAssets += ['ai-translate.css' => true, 'ai-translate-core.js' => true, 'ai-translate.js' => true];
+        }
         $html = $this->engine->render('@folio/admin/form.twig', [
             'prefix' => $this->prefix,
             'type' => $type,
@@ -1171,9 +1176,35 @@ final class AdminController
             'panels' => $panels,
             'record_actions' => $recordActions,
             'page_assets' => $panelAssets,
+            'ai_translate' => $aiTranslate,
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
+    }
+
+    /**
+     * The Translate button's settings for a stored record's translation tab, or null when the
+     * button is not shown: AI is off, the type has nothing to translate, the tab is the default
+     * language (the source), or the user lacks ai.translate or the type's edit permission.
+     *
+     * @param array<string, mixed> $values
+     * @return array{estimate_url: string, suggest_url: string, locale: string, language: string}|null
+     */
+    private function aiTranslate(string $type, TypeDefinition $typeDef, array $values, string $locale, bool $isNew, bool $multilingual): ?array
+    {
+        if (!($this->ai?->enabled() ?? false) || $isNew || !$multilingual || !$typeDef->locales->isMultilingual()
+            || $locale === $typeDef->locales->default || !isset($values[$typeDef->idField])
+            || !$this->can('ai.translate') || !$this->can($type . '.edit')) {
+            return null;
+        }
+        $base = $this->prefix . '/' . $type . '/' . rawurlencode((string) $values[$typeDef->idField]) . '/_ai/';
+
+        return [
+            'estimate_url' => $base . 'estimate',
+            'suggest_url' => $base . 'suggest',
+            'locale' => $locale,
+            'language' => self::languageName($locale),
+        ];
     }
 
     /**

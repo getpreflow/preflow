@@ -55,6 +55,7 @@ final class TwoRolesTest extends TestCase
     protected function tearDown(): void
     {
         spl_autoload_unregister($this->autoload);
+        putenv('RBAC_AI_TEST_KEY');
         $this->removeScaffold();
     }
 
@@ -141,6 +142,9 @@ final class TwoRolesTest extends TestCase
             $row('POST /folio/{type}/{id}/autosave', "/folio/{$type}/{$id}/autosave", $update, 404);
             // Past the permission check: a language the site does not have (404).
             $row('POST /folio/{type}/{id}/_translations/confirm', "/folio/{$type}/{$id}/_translations/confirm", ['locale' => 'xx'], 404);
+            // Past the permission check: this single-language site has nothing to translate (404).
+            $row('POST /folio/{type}/{id}/_ai/estimate', "/folio/{$type}/{$id}/_ai/estimate", ['locale' => 'de', 'scope' => 'needed'], 404);
+            $row('POST /folio/{type}/{id}/_ai/suggest', "/folio/{$type}/{$id}/_ai/suggest", ['locale' => 'de', 'scope' => 'needed'], 404);
             $row('POST /folio/{type}/{id}/revisions/{rev}/restore', "/folio/{$type}/{$id}/revisions/r1/restore", [], 404);
             $row('POST /folio/{type}/{id}/share', "/folio/{$type}/{$id}/share", [], 404);
             $row('POST /folio/{type}/{id}/share/revoke', "/folio/{$type}/{$id}/share/revoke", [], 404);
@@ -202,6 +206,9 @@ final class TwoRolesTest extends TestCase
         ], true) . ";\n");
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key', 'url' => 'https://site.test'];\n");
         $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'folio@site.test']]];\n");
+        // AI on (its key from a test env var), so Folio registers the AI routes and the table covers them.
+        putenv('RBAC_AI_TEST_KEY=test-key');
+        $this->write('config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'claude', 'models' => ['claude' => 'claude-sonnet-5-5'], 'keys' => ['claude' => 'RBAC_AI_TEST_KEY']];\n");
 
         $this->install();
         $this->role('r-super', 'staff', 'super_admin', ['*']);

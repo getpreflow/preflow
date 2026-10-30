@@ -21,12 +21,13 @@
             </div>
         {% endif %}
         {% if multilingual|default(false) %}
+            {%- if ai_translate|default(null) %}<div class="folio-languages-bar">{% endif %}
             <nav class="folio-languages" aria-label="{{ t('folio.form.editing_language') }}">
                 {% for lang in languages %}
                     <a class="folio-language{% if lang.active %} is-active{% endif %}" href="{{ lang.url }}"{% if lang.active %} aria-current="true"{% endif %}>{{ lang.name }}{% if lang.missing %} <span class="folio-count is-incomplete" title="{{ lang.missing.text }}">{{ lang.missing.count }}</span>{% endif %}{% if lang.outdated %} <span class="folio-count is-outdated" title="{{ lang.outdated.text }}">{{ lang.outdated.count }}</span>{% endif %}{% if lang.unchecked %} <span class="folio-count is-unchecked" title="{{ lang.unchecked.text }}">{{ lang.unchecked.count }}</span>{% endif %}</a>
                 {% endfor %}
             </nav>
-        {% endif %}
+        {% if ai_translate|default(null) %}{% include '@folio/admin/partials/ai-translate-dialog.twig' %}</div>{% endif %}{% endif %}
         {% if locale_errors|default([]) is not empty %}
             <div class="folio-locale-errors" role="alert">
                 <p>{{ t('folio.form.other_languages') }}</p>

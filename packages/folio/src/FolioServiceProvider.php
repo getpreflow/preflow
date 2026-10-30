@@ -487,6 +487,17 @@ final class FolioServiceProvider extends ServiceProvider
             pageAssets: $c->get(\Preflow\Folio\Extension\Screen\PageAssets::class),
             labels: $c->get(\Preflow\Folio\Content\DisplayLabels::class),
             translations: $c->get(\Preflow\Folio\Content\TranslationStatus::class),
+            ai: $c->get(\Preflow\Ai\Ai::class),
+        ));
+        $container->bind(\Preflow\Folio\Http\AiTranslateController::class, fn (Container $c) => new \Preflow\Folio\Http\AiTranslateController(
+            $c->get(TypeCatalog::class),
+            $c->get(TypeRegistry::class),
+            $c->get(DataManager::class),
+            $c->get(\Preflow\I18n\Machine\TextSources::class),
+            $c->get(\Preflow\I18n\Machine\MachineTranslator::class),
+            $c->get(\Preflow\I18n\Machine\Estimator::class),
+            $c->get(\Preflow\Ai\Ai::class),
+            $c->get(\Preflow\Auth\Access\Access::class),
         ));
         $container->bind(\Preflow\Folio\Http\PublishingController::class, fn (Container $c) => new \Preflow\Folio\Http\PublishingController(
             $c->get(TypeCatalog::class),
@@ -1166,7 +1177,13 @@ final class FolioServiceProvider extends ServiceProvider
                 $authEnabled = file_exists($app->basePath('config/auth.php'));
                 // Screens first: their routes must win over the admin's {type} routes.
                 $collection->addMany($screens->routes($this->prefix($app), $authEnabled));
-                $collection->addMany(FolioRoutes::admin($this->prefix($app), $authEnabled, $authEnabled && self::recordProviders($container) !== []));
+                $collection->addMany(FolioRoutes::admin(
+                    $this->prefix($app),
+                    $authEnabled,
+                    $authEnabled && self::recordProviders($container) !== [],
+                    // The AI endpoints exist only while AI is on (config/ai.php and the key).
+                    $container->get(\Preflow\Ai\Ai::class)->enabled(),
+                ));
                 $collection->add(FolioRoutes::frontend());
             }
         }
@@ -1228,6 +1245,9 @@ final class FolioServiceProvider extends ServiceProvider
         $registry->declare('folio.extensions', 'Extensions', 'Folio');
         $registry->declare('folio.cache', 'Cache', 'Folio');
         $registry->declare('translations.edit', 'Translations', 'Folio');
+        // Declared with AI off too, so roles may list them before AI is switched on.
+        $registry->declare('ai.translate', 'Use AI translation', 'AI');
+        $registry->declare('ai.settings', 'AI settings', 'AI');
         foreach ($container->get(TypeCatalog::class)->all() as $listing) {
             $registry->declarePattern($listing->key . '.*');
             foreach (['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'] as $action => $verb) {
@@ -1399,6 +1419,10 @@ final class FolioServiceProvider extends ServiceProvider
             'cropper.js' => 'vendor/cropper.min.js',
             'image-editor.css' => 'image-editor.css',
             'image-editor.js' => 'image-editor.js',
+            // The edit form's Translate button and review (only on its page, while AI is on).
+            'ai-translate.css' => 'ai-translate.css',
+            'ai-translate-core.js' => 'ai-translate-core.js',
+            'ai-translate.js' => 'ai-translate.js',
             'icons.svg' => 'icons.svg',
             // The vendored htmx build from preflow/htmx (block picker fragments).
             'htmx.js' => dirname((string) (new \ReflectionClass(\Preflow\Htmx\HtmxAssets::class))->getFileName(), 2) . '/assets/htmx.min.js',

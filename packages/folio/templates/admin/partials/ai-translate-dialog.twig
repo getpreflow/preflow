@@ -1,0 +1,71 @@
+{# The Translate button for this language tab, its dialog and the review row it puts under each
+   filled field (ai-translate.js). Only rendered while AI is on and the user may use it (ai_translate).
+   form.twig includes it on the line of its endif, so the form's markup without it stays byte for byte the same. #}
+<div class="folio-ai" data-ai-translate
+     data-suggest-url="{{ ai_translate.suggest_url }}"
+     data-estimate-url="{{ ai_translate.estimate_url }}"
+     data-locale="{{ ai_translate.locale }}"
+     data-msg-estimating="{{ t('folio.ai_translate.estimating') }}"
+     data-msg-estimate="{{ t('folio.ai_translate.estimate') }}"
+     data-msg-estimate-unpriced="{{ t('folio.ai_translate.estimate_unpriced') }}"
+     data-msg-nothing="{{ t('folio.ai_translate.nothing') }}"
+     data-msg-working="{{ t('folio.ai_translate.working') }}"
+     data-msg-filled="{{ t('folio.ai_translate.filled') }}"
+     data-msg-missing-input="{{ t('folio.ai_translate.missing_input') }}"
+     data-msg-error="{{ t('folio.ai_translate.error') }}"
+     data-msg-close="{{ t('folio.ai_translate.close') }}">
+    <button type="button" class="btn btn-secondary btn-sm folio-ai-open" data-ai-open aria-haspopup="dialog">
+        {{ t('folio.ai_translate.button') }}
+    </button>
+    <dialog class="folio-ai-dialog" data-ai-dialog aria-labelledby="folio-ai-title">
+        <h2 class="folio-ai-title" id="folio-ai-title">{{ t('folio.ai_translate.title', {language: ai_translate.language}) }}</h2>
+        <div class="folio-ai-body" data-ai-setup>
+            <p class="folio-ai-intro">{{ t('folio.ai_translate.intro') }}</p>
+            <fieldset class="folio-ai-scope">
+                <legend>{{ t('folio.ai_translate.scope') }}</legend>
+                <label><input type="radio" name="folio_ai_scope" value="needed" checked> {{ t('folio.ai_translate.scope_needed') }}</label>
+                <label><input type="radio" name="folio_ai_scope" value="all"> {{ t('folio.ai_translate.scope_all') }}</label>
+            </fieldset>
+            <label class="folio-ai-note">
+                <span>{{ t('folio.ai_translate.note') }}</span>
+                <textarea rows="2" data-ai-note></textarea>
+                <small class="form-help">{{ t('folio.ai_translate.note_help') }}</small>
+            </label>
+            <p class="folio-ai-estimate" data-ai-estimate aria-live="polite"></p>
+        </div>
+        <div class="folio-ai-body" data-ai-result hidden>
+            <p data-ai-summary aria-live="polite"></p>
+            <div data-ai-failed hidden>
+                <p>{{ t('folio.ai_translate.failed') }}</p>
+                <ul class="folio-ai-failed" data-ai-failed-list></ul>
+            </div>
+        </div>
+        <p class="folio-ai-error" data-ai-error role="alert" hidden></p>
+        <div class="folio-ai-footer">
+            <button type="button" class="btn btn-ghost" data-ai-close>{{ t('folio.ai_translate.cancel') }}</button>
+            <button type="button" class="btn btn-secondary" data-ai-accept-all hidden>{{ t('folio.ai_translate.accept_all') }}</button>
+            <button type="button" class="btn btn-primary" data-ai-start>{{ t('folio.ai_translate.start') }}</button>
+        </div>
+    </dialog>
+    <template data-ai-review-template>
+        <div class="folio-ai-review" data-ai-review>
+            <div class="folio-ai-review-part">
+                <span class="folio-ai-review-label">{{ t('folio.ai_translate.source', {language: default_language}) }}</span>
+                <p class="folio-ai-review-text" data-ai-source></p>
+            </div>
+            <div class="folio-ai-review-part" data-ai-previous-part hidden>
+                <span class="folio-ai-review-label">{{ t('folio.ai_translate.previous') }}</span>
+                <p class="folio-ai-review-text folio-ai-diff" data-ai-previous></p>
+            </div>
+            <div class="folio-ai-review-part folio-ai-review-warnings" data-ai-warnings-part hidden>
+                <span class="folio-ai-review-label">{{ t('folio.ai_translate.warnings') }}</span>
+                <ul data-ai-warnings></ul>
+            </div>
+            <div class="folio-ai-review-actions">
+                <span class="folio-ai-review-hint">{{ t('folio.ai_translate.ai_text') }}</span>
+                <button type="button" class="btn btn-secondary btn-sm" data-ai-accept>{{ t('folio.ai_translate.accept') }}</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-ai-discard>{{ t('folio.ai_translate.discard') }}</button>
+            </div>
+        </div>
+    </template>
+</div>

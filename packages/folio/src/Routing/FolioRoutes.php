@@ -26,12 +26,14 @@ final class FolioRoutes
     private const LOCALE_MW = 'Preflow\\Folio\\Http\\AdminLocaleMiddleware';
     private const PERMISSION_MW = 'Preflow\\Folio\\Http\\FolioPermissionMiddleware';
     private const EXTENSION_ASSETS = 'Preflow\\Folio\\Http\\ExtensionAssetController';
+    private const AI = 'Preflow\\Folio\\Http\\AiTranslateController';
 
     /**
      * @param bool $passwords the forgot-password and set-password pages and the own account page (record users behind the default guard)
+     * @param bool $ai the AI translation endpoints (only while AI is on: otherwise they do not exist and answer 404)
      * @return RouteEntry[]
      */
-    public static function admin(string $prefix, bool $authEnabled = false, bool $passwords = false): array
+    public static function admin(string $prefix, bool $authEnabled = false, bool $passwords = false, bool $ai = false): array
     {
         $prefix = '/' . trim($prefix, '/');
 
@@ -105,6 +107,11 @@ final class FolioRoutes
             ['POST', $prefix . '/{type}/{id}/move',    'reorder'],
             ['POST', $prefix . '/{type}/{id}/_action/{name}', 'recordAction'],
         ]);
+        if ($ai) {
+            // The edit form's Translate button (AiTranslateController); no other route has the "_ai" segment.
+            $defs[] = ['POST', $prefix . '/{type}/{id}/_ai/estimate', 'estimate', self::AI];
+            $defs[] = ['POST', $prefix . '/{type}/{id}/_ai/suggest',  'suggest',  self::AI];
+        }
 
         $entries = [];
         foreach ($defs as $def) {

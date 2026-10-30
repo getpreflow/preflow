@@ -1,0 +1,48 @@
+/* Folio AI translation: the Translate button beside the language tabs, its dialog and the review
+   row under each filled field (ai-translate.js). Uses admin.css's tokens. */
+.folio-languages-bar { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; margin-bottom: 20px; }
+.folio-languages-bar .folio-languages { margin-bottom: 0; }
+.folio-ai-open { align-self: center; }
+/* .btn and the review parts set display; the script hides them with the hidden attribute. */
+.folio-ai [hidden], .folio-ai-review [hidden] { display: none !important; }
+
+.folio-ai-dialog {
+  width: min(520px, calc(100vw - 32px));
+  padding: 20px 22px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface-raised);
+  color: var(--c-text);
+  box-shadow: var(--shadow-lg);
+}
+.folio-ai-dialog::backdrop { background: var(--c-overlay); }
+.folio-ai-title { margin: 0 0 12px; font-size: 16px; font-weight: 650; }
+.folio-ai-intro { margin: 0 0 14px; font-size: 13px; color: var(--c-text-muted); }
+.folio-ai-scope { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 14px; padding: 0; border: 0; font-size: 13px; }
+.folio-ai-scope legend { margin-bottom: 6px; padding: 0; font-weight: 620; }
+.folio-ai-note { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; font-size: 13px; font-weight: 620; }
+.folio-ai-note textarea { width: 100%; font: inherit; font-weight: 400; }
+.folio-ai-note .form-help { font-weight: 400; }
+.folio-ai-estimate { min-height: 1.4em; margin: 0; font-size: 13px; color: var(--c-text-muted); }
+.folio-ai-failed { margin: 4px 0 0; padding-left: 18px; font-size: 13px; color: var(--c-text-muted); }
+.folio-ai-error { margin: 12px 0 0; padding: 8px 10px; border-radius: var(--r-sm); background: var(--c-danger-soft); color: var(--c-danger); font-size: 13px; }
+.folio-ai-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+.folio-ai-review {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--c-border);
+  border-left: 3px solid var(--c-warning);
+  border-radius: var(--r-sm);
+  background: var(--c-warning-soft);
+  font-size: 12px;
+}
+.folio-ai-review-label { display: block; margin-bottom: 2px; font-weight: 620; color: var(--c-text-muted); }
+.folio-ai-review-text { margin: 0; white-space: pre-wrap; color: var(--c-text); }
+.folio-ai-review-warnings ul { margin: 0; padding-left: 18px; color: var(--c-warning); }
+.folio-ai-diff del { background: var(--c-danger-soft); color: var(--c-danger); text-decoration: line-through; }
+.folio-ai-diff ins { background: var(--c-success-soft); color: var(--c-success); text-decoration: none; }
+.folio-ai-review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.folio-ai-review-hint { margin-right: auto; color: var(--c-text-muted); }
