@@ -82,6 +82,21 @@ final class PublishingAppTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_dashboard_lists_only_jobs_of_types_the_user_may_view(): void
+    {
+        $this->aiConfig(true);
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
+        $runner = $this->app()->container()->get(\Preflow\I18n\Machine\JobRunner::class);
+        $runner->start($runner->plan('post', ['de'], \Preflow\I18n\Machine\Scope::Needed, ['p1'])->id, false, 'Anna');
+        $runner->start($runner->plan('site', ['fr'], \Preflow\I18n\Machine\Scope::Needed, ['site'])->id, false, 'Ben');
+        $this->staff('translator'); // post.view, no site.view
+
+        $body = $this->dashboard();
+        $this->assertStringContainsString('Queued by Anna', $body);
+        $this->assertStringNotContainsString('Queued by Ben', $body, 'a job on a type the user may not view');
+    }
+
+    #[RunInSeparateProcess]
     public function test_dashboard_shows_why_a_job_stopped(): void
     {
         $this->aiConfig(true);

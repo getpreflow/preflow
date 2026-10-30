@@ -119,7 +119,7 @@ final class AdminController
     /**
      * The dashboard's "Waiting for review" section, or null when AI is off or the user lacks ai.translate:
      * records with unchecked machine translations (only types the user may view and that still exist),
-     * grouped by type, and the jobs that are queued, running or stopped.
+     * grouped by type, and the jobs that are queued, running or stopped (also only of types the user may view).
      *
      * @return array{groups: list<array{label: string, rows: list<array{title: string, url: string, languages: list<string>}>}>, more: int, jobs: list<array<string, mixed>>, no_worker: bool}|null
      */
@@ -159,7 +159,14 @@ final class AdminController
         $format = new AdminFormat();
         $jobs = [];
         $queued = false;
-        foreach ($this->jobs?->active(10) ?? [] as $job) {
+        foreach ($this->jobs?->active(50) ?? [] as $job) {
+            // Like the review rows: a job shows its records' type and progress, so only to who may view the type.
+            if (!$this->can($job->collection . '.view')) {
+                continue;
+            }
+            if (count($jobs) >= 10) {
+                break;
+            }
             $queued = $queued || $job->state === 'queued';
             $jobs[] = [
                 'type' => $this->catalog->has($job->collection) ? $this->labels->type($job->collection) : $job->collection,
