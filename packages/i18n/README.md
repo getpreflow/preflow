@@ -463,7 +463,9 @@ keep a browser open. Add this line to the crontab of the server:
 
 `translate:work [--seconds=N]` works the queued jobs, oldest first, one record at a time, and
 stops after N seconds (default 50) so the next minute's run does not overlap. It prints one line
-per record and a total with the cost. With AI switched off it does nothing and prints nothing.
+per record and a total with the cost, but only when it worked records or stopped: an idle run
+prints nothing, so cron does not send a mail every minute. With AI switched off it does nothing
+and prints nothing.
 A job still marked running (its browser was closed or its process died) is continued. If AI
 cannot be used, the job is stopped with the reason and the run ends. `TranslationWorker::lastRun()`
 tells when the worker last started, so a screen can show whether the cron job runs at all.

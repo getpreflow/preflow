@@ -11,7 +11,8 @@ use Preflow\I18n\Machine\TranslationWorker;
 
 /**
  * preflow translate:work [--seconds=N]: works the queued machine-translation jobs for N seconds
- * (default 50). Meant for a cron job every minute; says nothing and exits 0 when AI is off.
+ * (default 50). Meant for a cron job every minute, and cron mails whatever a job prints: it says
+ * nothing when AI is off or there was nothing to do, only when records were worked or the run stopped.
  */
 final class TranslateWorkCommand implements CommandInterface
 {
@@ -48,7 +49,7 @@ final class TranslateWorkCommand implements CommandInterface
         $report = $container->get(TranslationWorker::class)->work($seconds, static function (string $line): void {
             echo $line, "\n";
         });
-        if ($quiet) {
+        if ($quiet || ($report->records === 0 && $report->stoppedBecause === null)) {
             return 0;
         }
 

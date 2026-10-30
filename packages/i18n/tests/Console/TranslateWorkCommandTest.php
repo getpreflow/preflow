@@ -37,7 +37,7 @@ final class TranslateWorkCommandTest extends TestCase
     }
 
     /** @return array{0: int, 1: string, 2: FileJobStore} */
-    private function work(bool $enabled, array $args = []): array
+    private function work(bool $enabled, array $args = [], bool $queue = true): array
     {
         $dir = $this->tmp();
         $store = new FileJobStore($dir . '/ai/jobs');
@@ -45,8 +45,10 @@ final class TranslateWorkCommandTest extends TestCase
         $sources = new TextSources();
         $sources->add('games', fn () => new ArrayTextSource(['1' => ['title' => 'One'], '2' => ['title' => 'Two']]));
         $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), $store, new FileRecordLease($dir . '/ai/leases'));
-        $job = $runner->plan('games', ['de'], Scope::Needed);
-        $runner->start($job->id);
+        if ($queue) {
+            $job = $runner->plan('games', ['de'], Scope::Needed);
+            $runner->start($job->id);
+        }
 
         ob_start();
         $code = (new TranslateWorkCommand(static function () use ($dir, $ai, $store, $runner): Application {
@@ -69,6 +71,15 @@ final class TranslateWorkCommandTest extends TestCase
         $this->assertStringContainsString("games 1 de: done\n", $out);
         $this->assertStringContainsString("games 2 de: done\n", $out);
         $this->assertMatchesRegularExpression('/^2 records, \$\d+\.\d{4}/m', $out);
+    }
+
+    public function test_an_idle_run_prints_nothing(): void
+    {
+        // cron mails any output, so a run every minute with nothing to do must stay silent.
+        [$code, $out] = $this->work(true, ['--seconds=5'], queue: false);
+
+        $this->assertSame(0, $code);
+        $this->assertSame('', $out);
     }
 
     public function test_ai_off_exits_zero_silently(): void

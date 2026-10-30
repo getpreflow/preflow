@@ -1880,7 +1880,8 @@ publishing a record and saving a translation fail. JSON-file storage needs nothi
 Background translation. See `docs/superpowers/plans/2026-10-30-release-0.48-checklist.md`.
 
 - **Add the cron line** on every site with AI on: `* * * * * cd <app> && php vendor/bin/preflow translate:work`.
-  Without it, queued jobs wait (the run screen still works while its page is open).
+  Without it, queued jobs wait (the run screen still works while its page is open). The command
+  prints only when it worked records or stopped, so cron mails nothing on idle minutes.
 - **`publishing.checked_translations` is ignored.** Publishing clears the "not checked" marks of
   the languages the record is visible in; the warning after publishing is gone.
 - **Run `php vendor/bin/preflow folio:review-index` once** to fill the review index for the
