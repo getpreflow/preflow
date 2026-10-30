@@ -173,11 +173,20 @@ The owner asked for this in the translation package.
 Today `TranslationStatus` and `TranslatableText` live in `preflow/folio` (`Content/`), and so does
 `ReportsTranslatableTexts`, because field types are Folio's.
 
-- The record-level translator ("which texts of this record need translating, as units; write results
-  back by path") belongs next to `TranslationStatus` in Folio's content core (`Preflow\Folio\Content`),
-  not in a controller, so a project can call it from a console command or cron without Folio's UI.
-- **(my call)** This does not move `TranslationStatus` out of Folio. Moving it to `preflow/data` would
-  drag the field-type contracts with it, and that is a bigger refactor than this feature needs.
+- **Decoupling (owner, 2026-10-30): core features must not depend on Folio.** The record-level and
+  whole-type logic therefore lives in `preflow/i18n`, behind a small interface. Folio only adapts to it.
+  - i18n defines a text source: "the items of a collection", "the units of one item for a target
+    language and scope", and "write these translated texts back by path, marking them machine-made".
+  - The job runner sits on that interface: it lists items, translates them in batches, writes back, and
+    keeps job state, the cost estimate and the per-item results.
+  - The "not checked" marker logic (fingerprint of the AI text, compared with the current text) is a
+    core helper in i18n. Where it is stored is up to the source.
+- Folio implements the text source for its records, using `TranslationStatus` and the field types
+  (`Preflow\Folio\Content`, no UI code). Folio's screens only call the core runner.
+- Without Folio, a project implements the same interface for its own data, for example from a console
+  command or cron.
+- **(my call)** `TranslationStatus` itself stays in Folio. Moving it to `preflow/data` would drag the
+  field-type contracts with it, and that is a bigger refactor than this feature needs.
 - Writing back by path for structured fields needs a counterpart to `ReportsTranslatableTexts`: a field
   type that reports texts must also accept translated texts by path (for blocks/matrix in Folio, for
   `flow` in BG Genius).
@@ -286,7 +295,7 @@ empty values, or everything with "redo all".
 - Works on cyon shared hosting: no workers, no long requests; outbound HTTPS only.
 - AI disabled unless `ai.enabled` is true and a key is present. With AI off, no button, no bulk action,
   and no error anywhere.
-- Tests never call a real provider: a fake `AiClient` in `preflow/testing` (my call). One opt-in smoke
+- Tests never call a real provider: a fake `AiClient` (`Preflow\Ai\Testing\FakeAiClient`, shipped in `preflow/ai`) (my call). One opt-in smoke
   test against real providers, skipped without keys.
 - Release follows the usual routine: version bump, sites upgraded and deployed (they get the package,
   AI stays off).
