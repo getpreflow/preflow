@@ -39,6 +39,23 @@ final class MachineServiceProvider extends ServiceProvider
             $c->get(Ai::class),
             self::batchChars($c),
         ));
+        $container->singleton(TextSources::class, static fn (): TextSources => new TextSources());
+        $container->singleton(JobStore::class, static fn (Container $c): JobStore => new FileJobStore(self::storage($c) . '/jobs'));
+        $container->singleton(JobRunner::class, static fn (Container $c): JobRunner => new JobRunner(
+            $c->get(TextSources::class),
+            $c->get(MachineTranslator::class),
+            $c->get(Estimator::class),
+            $c->get(JobStore::class),
+        ));
+    }
+
+    /** Same location rule as the AI core: relative to the app, default storage/ai. */
+    private static function storage(Container $c): string
+    {
+        $storage = self::config($c)['storage'] ?? 'storage/ai';
+        $storage = is_string($storage) && $storage !== '' ? $storage : 'storage/ai';
+
+        return str_starts_with($storage, '/') ? $storage : $c->get(Application::class)->basePath($storage);
     }
 
     /** @return array<string, mixed> config/ai.php; a missing file means AI is off */

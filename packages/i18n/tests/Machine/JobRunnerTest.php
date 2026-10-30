@@ -1,0 +1,209 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\I18n\Tests\Machine;
+
+use PHPUnit\Framework\TestCase;
+use Preflow\Ai\AiRequest;
+use Preflow\Ai\AiUnavailable;
+use Preflow\Ai\Testing\FakeAiClient;
+use Preflow\Ai\TokenUsage;
+use Preflow\I18n\Machine\AiTranslator;
+use Preflow\I18n\Machine\Estimator;
+use Preflow\I18n\Machine\FileJobStore;
+use Preflow\I18n\Machine\Job;
+use Preflow\I18n\Machine\JobRunner;
+use Preflow\I18n\Machine\JobStore;
+use Preflow\I18n\Machine\Scope;
+use Preflow\I18n\Machine\TextSources;
+use Preflow\I18n\Machine\WriteOutcome;
+use Preflow\I18n\Machine\WriteOutcomeStatus;
+use Preflow\I18n\Tests\Machine\Support\ArrayTextSource;
+
+final class JobRunnerTest extends TestCase
+{
+    use MachineTestKit;
+
+    private string $dir;
+    private ArrayTextSource $source;
+
+    protected function setUp(): void
+    {
+        $this->dir = sys_get_temp_dir() . '/jobrunner_' . bin2hex(random_bytes(4));
+        $this->source = new ArrayTextSource([
+            '1' => ['title' => 'One', 'text' => 'First text'],
+            '2' => ['title' => 'Two'],
+            '3' => ['title' => 'Three'],
+        ]);
+    }
+
+    protected function tearDown(): void
+    {
+        foreach (glob($this->dir . '/*') ?: [] as $f) {
+            @unlink($f);
+        }
+        @rmdir($this->dir);
+    }
+
+    /** @param list<mixed> $script */
+    private function runner(array $script, ?JobStore $store = null): JobRunner
+    {
+        $fake = new FakeAiClient($script);
+        $ai = $this->ai($fake);
+        $sources = new TextSources();
+        $sources->add('games', fn () => $this->source);
+
+        return new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), $store ?? new FileJobStore($this->dir));
+    }
+
+    public function test_plan_estimates_without_writing(): void
+    {
+        $fake = new FakeAiClient([self::echo()]);
+        $runner = $this->runner([self::echo()]);
+
+        $job = $runner->plan('games', ['de', 'fr'], Scope::Needed, null, 'be brief');
+
+        $this->assertSame('planned', $job->state);
+        $this->assertSame(8, $job->estimate->units, '4 texts x 2 locales');
+        $this->assertSame(['1', '2', '3'], $job->pending());
+        $this->assertSame('pending', $job->items['1']['status']);
+        $this->assertSame([], $this->source->writes);
+        $this->assertSame([], $this->source->translations);
+        $this->assertSame(0.0, $job->costUsd);
+        $this->assertSame(1, preg_match('/\A[0-9a-f]{16}\z/', $job->id));
+        $this->assertSame([], $fake->requests());
+    }
+
+    public function test_step_translates_one_item_per_call_and_finishes(): void
+    {
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+
+        $job = $runner->step($job->id);
+        $this->assertSame('running', $job->state);
+        $this->assertSame('done', $job->items['1']['status']);
+        $this->assertSame(2, $job->items['1']['translated']);
+        $this->assertSame('pending', $job->items['2']['status']);
+        $this->assertSame('DE:First text', $this->source->translations['1']['de']['text']);
+
+        $job = $runner->step($job->id);
+        $job = $runner->step($job->id);
+        $this->assertSame('done', $job->state);
+        $this->assertSame(['1:de', '2:de', '3:de'], $this->source->writes);
+        $this->assertSame('done', $runner->step($job->id)->state, 'a finished job stays finished');
+        $this->assertCount(3, $this->source->writes);
+    }
+
+    public function test_step_can_take_several_items_and_costs_are_summed(): void
+    {
+        // Sonnet 5.5: 2.00 in / 10.00 out per million tokens; the fake model id is unpriced, so the configured model prices it.
+        $priced = static fn (AiRequest $r) => FakeAiClient::json(
+            array_map(static fn (array $i): array => ['n' => $i['n'], 'text' => 'DE:' . $i['text']], self::items($r)),
+            new TokenUsage(1000, 500),
+        );
+        $runner = $this->runner([$priced]);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+
+        $job = $runner->step($job->id, 2);
+
+        $this->assertSame('running', $job->state);
+        $this->assertEqualsWithDelta(2 * 0.007, $job->costUsd, 1e-9, 'one request per item, 1000 in + 500 out each');
+
+        $job = $runner->step($job->id, 5);
+        $this->assertSame('done', $job->state);
+        $this->assertEqualsWithDelta(3 * 0.007, $job->costUsd, 1e-9);
+    }
+
+    public function test_conflict_reported_and_run_continues(): void
+    {
+        $this->source->outcomes['2'] = new WriteOutcome(WriteOutcomeStatus::Conflict, 'edited meanwhile', true);
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+
+        $job = $runner->step($job->id, 3);
+
+        $this->assertSame('done', $job->state);
+        $this->assertSame('conflict', $job->items['2']['status']);
+        $this->assertSame('edited meanwhile', $job->items['2']['message']);
+        $this->assertTrue($job->items['2']['draft_changes']);
+        $this->assertSame('done', $job->items['3']['status']);
+        $this->assertSame(0, $job->items['2']['translated']);
+    }
+
+    public function test_failed_units_not_written_item_counts_failed(): void
+    {
+        // Answers only n=1 of every request: with one text per item that is fine, with two the second has no answer.
+        $partial = static fn (AiRequest $r) => FakeAiClient::json([['n' => 1, 'text' => 'DE:' . self::items($r)[0]['text']]]);
+        $runner = $this->runner([$partial]);
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['1']);
+
+        $job = $runner->step($job->id);
+
+        $this->assertSame('failed', $job->items['1']['status']);
+        $this->assertSame(1, $job->items['1']['failed']);
+        $this->assertSame(1, $job->items['1']['translated']);
+        $this->assertSame('no answer', $job->items['1']['message']);
+        $this->assertArrayHasKey('title', $this->source->translations['1']['de']);
+        $this->assertArrayNotHasKey('text', $this->source->translations['1']['de']);
+        $this->assertSame('done', $job->state);
+    }
+
+    public function test_unavailable_stops_job_and_keeps_done_items(): void
+    {
+        $runner = $this->runner([self::echo(), new AiUnavailable('no key')]);
+        $store = new FileJobStore($this->dir);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+        $runner->step($job->id);
+
+        try {
+            $runner->step($job->id);
+            $this->fail('AiUnavailable expected');
+        } catch (AiUnavailable) {
+        }
+
+        $saved = $store->get($job->id);
+        $this->assertSame('stopped', $saved->state);
+        $this->assertSame('no key', $saved->message);
+        $this->assertSame('done', $saved->items['1']['status']);
+        $this->assertSame('pending', $saved->items['2']['status']);
+    }
+
+    public function test_stop_then_step_does_nothing(): void
+    {
+        $fake = new FakeAiClient([self::echo()]);
+        $ai = $this->ai($fake);
+        $sources = new TextSources();
+        $sources->add('games', fn () => $this->source);
+        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), new FileJobStore($this->dir));
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+
+        $this->assertSame('stopped', $runner->stop($job->id)->state);
+        $job = $runner->step($job->id, 3);
+
+        $this->assertSame('stopped', $job->state);
+        $this->assertSame('pending', $job->items['1']['status']);
+        $this->assertSame([], $fake->requests());
+        $this->assertSame([], $this->source->writes);
+    }
+
+    public function test_item_with_no_units_skipped(): void
+    {
+        $this->source->items['2'] = [];
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+
+        $job = $runner->step($job->id, 3);
+
+        $this->assertSame('skipped', $job->items['2']['status']);
+        $this->assertSame('nothing to translate', $job->items['2']['message']);
+        $this->assertSame('done', $job->state);
+        $this->assertNotContains('2:de', $this->source->writes);
+    }
+
+    public function test_unknown_job_is_an_error(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->runner([self::echo()])->step('nope');
+    }
+}

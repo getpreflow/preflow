@@ -8,7 +8,13 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Ai\AiUnavailable;
 use Preflow\Core\Application;
 use Preflow\I18n\Machine\AiTranslator;
+use Preflow\I18n\Machine\Estimate;
 use Preflow\I18n\Machine\Estimator;
+use Preflow\I18n\Machine\Job;
+use Preflow\I18n\Machine\JobRunner;
+use Preflow\I18n\Machine\JobStore;
+use Preflow\I18n\Machine\Scope;
+use Preflow\I18n\Machine\TextSources;
 use Preflow\I18n\Machine\MachineServiceProvider;
 use Preflow\I18n\Machine\MachineTranslator;
 use Preflow\I18n\Machine\TranslationSettings;
@@ -63,5 +69,20 @@ final class MachineServiceProviderTest extends TestCase
         }
 
         $this->assertSame(4, $app->container()->get(Estimator::class)->estimate($units)->requests);
+    }
+
+    public function test_binds_sources_and_job_runner_with_jobs_under_storage(): void
+    {
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['storage' => 'var/ai'];\n");
+        $app = Application::create($this->dir);
+        $app->boot();
+        $c = $app->container();
+
+        $this->assertSame($c->get(TextSources::class), $c->get(TextSources::class));
+        $this->assertInstanceOf(JobRunner::class, $c->get(JobRunner::class));
+
+        $job = new Job('j1', 'games', ['de'], Scope::Needed, null, new Estimate(0, 0, 0, 0, null, 0));
+        $c->get(JobStore::class)->save($job);
+        $this->assertFileExists($this->dir . '/var/ai/jobs/j1.json');
     }
 }

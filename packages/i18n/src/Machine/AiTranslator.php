@@ -20,13 +20,21 @@ use Preflow\Ai\Tuning;
  * halves and retried down to single units, so one problematic text costs only itself. Each
  * answer is checked: markup must survive, and glossary terms not honoured become warnings.
  */
-final class AiTranslator implements MachineTranslator
+final class AiTranslator implements MachineTranslator, ReportsCost
 {
+    /** @var (\Closure(float): void)|null */
+    private ?\Closure $costListener = null;
+
     public function __construct(
         private readonly Ai $ai,
         private readonly TranslationSettings $settings,
         private readonly int $batchChars = 12000,
     ) {}
+
+    public function reportCostTo(?\Closure $listener): void
+    {
+        $this->costListener = $listener;
+    }
 
     public function translate(string $text, string $to, ?Tuning $tuning = null, ?string $from = null, TextFormat $format = TextFormat::Plain): string
     {
@@ -140,6 +148,7 @@ final class AiTranslator implements MachineTranslator
         } catch (AiRequestFailed $e) {
             return [null, null, $e->getMessage()];
         }
+        $this->reportCost($response);
 
         if ($response->stop !== StopReason::Complete) {
             $detail = $response->detail !== null && $response->detail !== '' ? ' (' . $response->detail . ')' : '';
@@ -199,5 +208,16 @@ final class AiTranslator implements MachineTranslator
         foreach ($batch as $i => $unit) {
             $results[$i] = new TranslationResult($unit->id, UnitStatus::Failed, null, error: $reason);
         }
+    }
+
+    /** Priced like the usage log: by the model the provider reports, else by the configured one; unpriced counts as 0. */
+    private function reportCost(AiResponse $response): void
+    {
+        if ($this->costListener === null) {
+            return;
+        }
+        $pricing = $this->ai->pricing();
+        $cost = $pricing->cost($response->model, $response->usage) ?? $pricing->cost($this->ai->status()->model, $response->usage) ?? 0.0;
+        ($this->costListener)($cost);
     }
 }
