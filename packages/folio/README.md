@@ -1815,6 +1815,14 @@ Then open a record's German tab, click **Translate**, review (accept one text, e
 another, discard a third), save, and reopen the tab: only the AI texts you left as they were show
 "Machine-translated, not checked yet".
 
+#### Upgrading to 0.47
+
+**SQL sites: run `preflow migrate` after upgrading.** Every save in a second language now
+stores the source text next to the fingerprint (`_translated_source`) and the machine-made marks
+(`_machine_translated`), also with AI off. On SQL storage these are new TEXT columns on each
+record table and its published and revisions tables; until `preflow migrate` adds them,
+publishing a record and saving a translation fail. JSON-file storage needs nothing.
+
 ## Admin languages
 
 Folio's own screens, the staff mails and the admin parts of rbac, members and codes come in

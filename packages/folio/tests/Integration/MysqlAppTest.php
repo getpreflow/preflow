@@ -178,6 +178,32 @@ final class MysqlAppTest extends TestCase
         $this->assertSame(['title'], array_map(static fn ($t) => $t->path, $unchecked));
     }
 
+    /**
+     * A site upgraded to 0.47 has tables without the translation-source and machine-mark columns
+     * until `preflow migrate` adds them; after that, publishing and re-saving a translation work.
+     */
+    public function test_tables_from_before_0_47_take_translations_after_migrate(): void
+    {
+        $this->migrateStep();
+        $pdo = MysqlTestDatabase::pdo();
+        foreach (['post', 'post__published'] as $table) {
+            $pdo->exec("ALTER TABLE `{$table}` DROP COLUMN `_translated_source`, DROP COLUMN `_machine_translated`");
+        }
+
+        $lines = $this->migrateStep();
+
+        $this->assertNotSame([], $lines, 'migrate adds the missing columns');
+        $this->assertSame(302, $this->post('/folio/post', ['title' => 'Hello', 'slug' => 'hello', '_locale' => 'en', '_locales_submitted' => '1', '_locales' => ['de'], '_action' => 'publish'])->getStatusCode());
+        $id = (string) $this->dm()->queryType('post')->first()?->getId();
+        $this->assertSame(302, $this->post('/folio/post/' . $id, ['title' => 'Hallo', 'slug' => 'hallo', '_locale' => 'de', '_version' => (string) $this->stored('post', $id)->get('_version'), '_action' => 'publish'])->getStatusCode());
+        $this->assertSame(302, $this->post('/folio/post/' . $id, ['title' => 'Hallo du', 'slug' => 'hallo', '_locale' => 'de', '_version' => (string) $this->stored('post', $id)->get('_version'), '_ai_unchecked' => ['title'], '_action' => 'publish'])->getStatusCode());
+
+        $this->assertStringContainsString('<h1>Hallo du</h1>', (string) $this->get('/de/hallo')->getBody());
+        $status = $this->app()->container()->get(\Preflow\Folio\Content\TranslationStatus::class);
+        $this->assertSame('Hello', $status->previousSource($this->stored('post', $id), 'de', 'title'));
+        $this->assertCount(1, $status->unchecked($this->dm()->getTypeRegistry()->get('post'), $this->stored('post', $id), 'de'));
+    }
+
     public function test_reorder_swaps_positions_without_renumbering(): void
     {
         $this->migrateStep();

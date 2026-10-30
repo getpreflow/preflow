@@ -70,6 +70,9 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    labels and media alt texts, Settings → AI, and the `ai.translate` and `ai.settings` permissions. AI stays off
    until `config/ai.php` is enabled and a key is set. Release, split repository and site upgrades wait for the
    owner. See `docs/superpowers/specs/2026-10-30-ai-translation-design.md`
+   **Upgrading:** SQL sites run `preflow migrate` after upgrading: the new `_translated_source` and
+   `_machine_translated` columns are written on every translation save, with AI off too, and publishing
+   fails until they exist. Each site's deploy must run it.
 
 **Rule (owner, 2026-10-26):** the framework holds abstractions, interfaces, hooks and generic mechanisms only;
 a feature one project needs is built in that project on top of them. A package's official admin UI lives in Folio
