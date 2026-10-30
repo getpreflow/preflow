@@ -23,10 +23,12 @@ final class Job
         public Estimate $estimate,
         /** 'planned' | 'running' | 'stopped' | 'done' */
         public string $state = 'planned',
-        /** Actual cost in USD of this job's own requests; unpriced models count as 0. */
+        /** Actual cost in USD of this job's own priced requests (see $costUnknown). */
         public float $costUsd = 0.0,
         /** Why the job stopped, when it did not stop by request. */
         public ?string $message = null,
+        /** A request had no price (the model is not in the price table): $costUsd is then a lower bound. */
+        public bool $costUnknown = false,
     ) {}
 
     /** @return list<string> ids still to do */
@@ -50,6 +52,7 @@ final class Job
             'items' => $this->items,
             'estimate' => get_object_vars($this->estimate),
             'cost_usd' => $this->costUsd,
+            'cost_unknown' => $this->costUnknown,
         ];
     }
 
@@ -74,6 +77,7 @@ final class Job
             (string) ($d['state'] ?? 'planned'),
             (float) ($d['cost_usd'] ?? 0.0),
             isset($d['message']) ? (string) $d['message'] : null,
+            (bool) ($d['cost_unknown'] ?? false),
         );
         $job->items = (array) ($d['items'] ?? []);
 

@@ -11,6 +11,10 @@ use Preflow\Ai\TokenUsage;
  * Sizes a run before it starts, so the admin can show what it will cost. Tokens are counted
  * as a quarter of the characters, which is close enough for European languages. The estimate
  * leaves out project tuning and glossary lines, which are small next to the texts.
+ *
+ * Translation requests ask for low reasoning (AiRequest::$lowReasoning): Gemini then does not
+ * think at all, Claude at effort "low" thinks little or not at all. So no allowance for thinking
+ * tokens is added; on Claude a run can cost a little more than estimated.
  */
 final class Estimator
 {

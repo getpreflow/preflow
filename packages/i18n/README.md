@@ -268,6 +268,12 @@ How a batch works:
 - A request the provider withholds (blocked, cut off, refused, broken JSON) is split in halves and
   retried down to single units. A text that still fails is reported as failed, never dropped.
   A Gemini recitation block gets one more try with a request to word it freely.
+- A request that gets no answer at all (a timeout, a 5xx or 429 after the provider's own retry)
+  is not split: halves would fail the same way. Its units fail once with the reason. When the
+  next request fails that way too, the call throws `AiUnavailable` ("not reachable"), so a run
+  stops instead of sending request after request to a provider that is down.
+- Requests ask for low reasoning (`AiRequest::$lowReasoning`): translating needs little, and
+  thinking tokens are billed as output.
 - Each answer is checked (see `MarkupCheck`). A result that fails the check counts as failed.
 
 ### TranslationUnit
@@ -375,6 +381,9 @@ under a collection key in `TextSources`:
   or outdated, `Scope::All` everything with a source text;
 - `write($id, $to, $texts)`: store the translated texts (unit id to text) and return a
   `WriteOutcome` (`Written`, `Conflict` when someone changed the item meanwhile, or `Skipped`).
+  A write must never replace a text that changed since `units()` read it (the model may take
+  minutes, and a person may save meanwhile): refuse the whole write as `Conflict`, or leave such
+  texts out and name them in `WriteOutcome::$leftAlone`.
   A source should mark the texts as machine-made and must never publish. `MachineMarks` helps
   with that: it keeps a fingerprint of each AI text, so a text counts as not checked only while
   it is exactly what the machine wrote;
@@ -392,7 +401,8 @@ short:
 - `stop($jobId)` keeps what is done.
 
 The job (`Job`) is a small JSON file with a state (`planned`, `running`, `stopped`, `done`), the
-estimate, the real cost so far and one status per item (`pending`, `done`, `failed`, `conflict`,
+estimate, the real cost so far (`costUnknown` is true once a request had no price, so `costUsd`
+is only part of it) and one status per item (`pending`, `done`, `failed`, `conflict`,
 `skipped`).
 
 A cron script for data that has nothing to do with Folio. `PhraseSource` is your own

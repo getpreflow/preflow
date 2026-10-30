@@ -10,6 +10,10 @@ namespace Preflow\I18n\Machine;
  */
 interface ReportsCost
 {
-    /** @param (\Closure(float): void)|null $listener called with the USD cost of every answered request; null stops it */
+    /**
+     * @param (\Closure(?float): void)|null $listener called with the USD cost of every answered request, or
+     *                                               null when its model has no price (the total is then unknown);
+     *                                               null stops it
+     */
     public function reportCostTo(?\Closure $listener): void;
 }

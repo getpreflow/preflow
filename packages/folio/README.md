@@ -1695,7 +1695,8 @@ The endpoints, for other admin screens (both POST, with the CSRF token, never wr
   optional `prefix`: `{units, requests, costUsd}` (`costUsd` is null when the model has no
   price).
 - `{prefix}/{type}/{id}/_ai/suggest` with `locale`, `scope`, optional `note` and `prefix`:
-  `{texts: {path: {text, source, previous, warnings}}, failed: {path: reason}, costUsd}`.
+  `{texts: {path: {text, source, previous, warnings}}, failed: {path: reason}, costUsd}`
+  (`costUsd` is null when a request's model has no price; the run screen then shows "—").
   `prefix` limits the texts to paths under it (`flow` gives `flow` and `flow.…`). When the
   provider cannot be used at all (quota, billing, outage) it answers 503 with `{error}`.
 

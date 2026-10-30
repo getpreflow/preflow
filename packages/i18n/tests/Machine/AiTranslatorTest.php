@@ -295,25 +295,87 @@ final class AiTranslatorTest extends TestCase
         $this->assertSame([8, 4, 2, 2, 1, 1, 4], array_map(static fn ($r) => count(self::items($r)), $fake->requests()));
     }
 
-    public function test_failed_request_and_truncation_split_too(): void
+    public function test_truncation_and_a_broken_answer_split(): void
     {
         $fake = new FakeAiClient([
-            new AiRequestFailed('timeout'),
             self::stopped(StopReason::Truncated),
+            self::stopped(StopReason::Refused, 'cyber'),
             self::echo(),
         ]);
 
         $results = $this->translator($fake)->translateUnits([$this->unit('a', 'One'), $this->unit('b', 'Two')]);
 
         $this->assertSame(UnitStatus::Failed, $results[0]->status);
-        $this->assertStringContainsString('truncated', $results[0]->error);
+        $this->assertStringContainsString('refused', $results[0]->error);
         $this->assertSame('DE:Two', $results[1]->text);
+        $this->assertSame([2, 1, 1], array_map(static fn ($r) => count(self::items($r)), $fake->requests()));
+    }
+
+    public function test_a_request_without_an_answer_fails_its_units_once_without_splitting(): void
+    {
+        $fake = new FakeAiClient([new AiRequestFailed('Claude returned HTTP 529: Overloaded'), self::echo()]);
+        $units = [$this->unit('a', 'One'), $this->unit('b', 'Two'), $this->unit('c', 'Three', 'fr')];
+
+        $results = $this->translator($fake)->translateUnits($units);
+
+        $this->assertSame([UnitStatus::Failed, UnitStatus::Failed, UnitStatus::Translated], array_map(static fn ($r) => $r->status, $results));
+        $this->assertSame('Claude returned HTTP 529: Overloaded', $results[0]->error);
+        $this->assertSame('Claude returned HTTP 529: Overloaded', $results[1]->error);
+        $this->assertSame([2, 1], array_map(static fn ($r) => count(self::items($r)), $fake->requests()), 'no halves for a provider error');
 
         $single = new FakeAiClient([new AiRequestFailed('rate limited')]);
         $result = $this->translator($single)->translateUnits([$this->unit('a', 'One')])[0];
         $this->assertSame(UnitStatus::Failed, $result->status);
         $this->assertStringContainsString('rate limited', $result->error);
         $this->assertCount(1, $single->requests());
+    }
+
+    public function test_two_requests_in_a_row_without_an_answer_mean_the_provider_is_not_reachable(): void
+    {
+        $fake = new FakeAiClient([new AiRequestFailed('timeout'), new AiRequestFailed('timeout'), self::echo()]);
+        $units = [$this->unit('a', 'A', 'de'), $this->unit('b', 'B', 'fr'), $this->unit('c', 'C', 'it')];
+
+        try {
+            $this->translator($fake)->translateUnits($units);
+            $this->fail('AiUnavailable expected');
+        } catch (AiUnavailable $e) {
+            $this->assertStringContainsString('not reachable', $e->getMessage());
+            $this->assertStringContainsString('timeout', $e->getMessage());
+        }
+        $this->assertCount(2, $fake->requests(), 'the run stops instead of trying every batch');
+
+        // An answer in between resets the count; so does a new call.
+        $mixed = new FakeAiClient([new AiRequestFailed('timeout'), self::echo(), new AiRequestFailed('timeout'), self::echo()]);
+        $results = $this->translator($mixed)->translateUnits([...$units, $this->unit('d', 'D', 'es')]);
+        $this->assertSame([UnitStatus::Failed, UnitStatus::Translated, UnitStatus::Failed, UnitStatus::Translated], array_map(static fn ($r) => $r->status, $results));
+
+        $again = new FakeAiClient([new AiRequestFailed('timeout'), self::echo()]);
+        $translator = $this->translator($again);
+        $translator->translateUnits([$this->unit('a', 'A')]);
+        $this->assertSame(UnitStatus::Translated, $translator->translateUnits([$this->unit('a', 'A')])[0]->status);
+    }
+
+    public function test_requests_ask_for_low_reasoning(): void
+    {
+        $fake = new FakeAiClient([self::echo()]);
+
+        $this->translator($fake)->translateUnits([$this->unit('a', 'A'), $this->unit('b', 'B', 'fr')]);
+
+        $this->assertSame([true, true], array_map(static fn (AiRequest $r) => $r->lowReasoning, $fake->requests()));
+    }
+
+    public function test_an_unpriced_request_reports_an_unknown_cost(): void
+    {
+        $fake = new FakeAiClient([self::echo()]);
+        $translator = new AiTranslator($this->ai($fake, ['models' => ['claude' => 'unpriced-model']]), $this->settings());
+        $reported = [];
+        $translator->reportCostTo(static function (?float $usd) use (&$reported): void {
+            $reported[] = $usd;
+        });
+
+        $translator->translateUnits([$this->unit('a', 'A')]);
+
+        $this->assertSame([null], $reported, 'null, never 0.0: the run shows the cost as unknown');
     }
 
     public function test_recitation_single_unit_retried_at_temperature_one(): void

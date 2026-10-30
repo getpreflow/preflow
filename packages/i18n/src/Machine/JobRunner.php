@@ -10,7 +10,8 @@ use Preflow\Ai\AiUnavailable;
  * Runs a translation job one item at a time, so a request or cron tick stays short and a failure
  * costs one item. Texts are written only for units that came back Translated; a failed unit leaves
  * the stored text alone. The job's cost is the sum of what its own requests cost, taken from the
- * translator (see ReportsCost); a translator that does not report leaves it at 0.
+ * translator (see ReportsCost); a request without a price marks it unknown, and a translator that
+ * does not report leaves it at 0.
  */
 final class JobRunner
 {
@@ -82,8 +83,12 @@ final class JobRunner
         $job->state = 'running';
         $source = $this->sources->get($job->collection);
         if ($this->translator instanceof ReportsCost) {
-            $this->translator->reportCostTo(static function (float $usd) use ($job): void {
-                $job->costUsd += $usd;
+            $this->translator->reportCostTo(static function (?float $usd) use ($job): void {
+                if ($usd === null) {
+                    $job->costUnknown = true;
+                } else {
+                    $job->costUsd += $usd;
+                }
             });
         }
 

@@ -181,6 +181,19 @@ final class AiRunTest extends TestCase
         $this->assertStringContainsString('<html', (string) $page->getBody(), 'without htmx the whole page');
     }
 
+    public function test_an_unpriced_run_shows_its_cost_as_unknown(): void
+    {
+        $this->aiModel = 'unpriced-model';
+        $id = self::jobId($this->estimate());
+        $this->request('POST', "/folio/post/_ai/jobs/{$id}/start", [], true);
+
+        $html = (string) $this->step($id)->getBody();
+
+        $this->assertTrue($this->job($id)->costUnknown);
+        $this->assertStringContainsString('cost so far —', $html);
+        $this->assertStringNotContainsString('$0.00', $html);
+    }
+
     public function test_stop_keeps_done_records(): void
     {
         $id = self::jobId($this->estimate());

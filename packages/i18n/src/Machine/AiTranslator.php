@@ -10,20 +10,31 @@ use Preflow\Ai\AiRequest;
 use Preflow\Ai\AiRequestFailed;
 use Preflow\Ai\AiResponse;
 use Preflow\Ai\AiResponseInvalid;
+use Preflow\Ai\AiUnavailable;
 use Preflow\Ai\StopReason;
 use Preflow\Ai\Tuning;
 
 /**
  * Translates units in batched JSON requests through the configured AI provider.
  *
- * A request that the provider withholds (blocked, truncated, refused or failed) is split in
- * halves and retried down to single units, so one problematic text costs only itself. Each
- * answer is checked: markup must survive, and glossary terms not honoured become warnings.
+ * An answer about the content (blocked, truncated, refused, or not the JSON asked for) splits the
+ * request in halves, retried down to single units, so one problematic text costs only itself. A
+ * request that never got an answer (timeout, 5xx, 429 after the provider's own retry) is not
+ * split, since halves would only fail the same way: its units fail once with the reason, and a
+ * second such request in a row means the provider is not reachable (AiUnavailable), so a run
+ * stops instead of piling up requests. Each answer is checked: markup must survive, and glossary
+ * terms not honoured become warnings. Requests ask for low reasoning: translating needs little.
  */
 final class AiTranslator implements MachineTranslator, ReportsCost
 {
-    /** @var (\Closure(float): void)|null */
+    /** Requests in a row that got no answer before the provider counts as not reachable. */
+    private const UNREACHABLE_AFTER = 2;
+
+    /** @var (\Closure(?float): void)|null */
     private ?\Closure $costListener = null;
+
+    /** Requests in a row, within one run(), that got no answer. */
+    private int $unanswered = 0;
 
     public function __construct(
         private readonly Ai $ai,
@@ -65,6 +76,7 @@ final class AiTranslator implements MachineTranslator, ReportsCost
         // Before anything else: with AI off the whole run stops here (AiUnavailable).
         $client = $this->ai->client();
         $glossary = $this->settings->glossary();
+        $this->unanswered = 0;
 
         $results = [];
         foreach (TranslationPrompt::batches($units, $this->batchChars) as $batch) {
@@ -87,6 +99,13 @@ final class AiTranslator implements MachineTranslator, ReportsCost
     {
         [$response, $items, $reason] = $this->send($client, $batch, $base, $glossary, $note, null);
 
+        if ($response === null) {
+            // No answer at all: halves would fail the same way, so the units fail once.
+            $this->fail($batch, (string) $reason, $results);
+
+            return;
+        }
+
         if ($reason !== null && count($batch) > 1) {
             // Nothing in this request was answered, so the halves re-send no answered unit.
             $half = intdiv(count($batch) + 1, 2);
@@ -97,7 +116,7 @@ final class AiTranslator implements MachineTranslator, ReportsCost
         }
 
         // Gemini withholds text that resembles known sources; a freer wording usually gets through.
-        if ($reason !== null && $response?->stop === StopReason::Blocked && strtoupper((string) $response->detail) === 'RECITATION') {
+        if ($reason !== null && $response->stop === StopReason::Blocked && strtoupper((string) $response->detail) === 'RECITATION') {
             [, $items, $reason] = $this->send($client, $batch, $base->with(TranslationPrompt::RECITATION_RETRY), $glossary, $note, 1.0);
         }
 
@@ -115,7 +134,11 @@ final class AiTranslator implements MachineTranslator, ReportsCost
      * A broken answer (invalid JSON, not a list) counts as a failed request like a blocked one, so
      * it is split and retried too: a long batch is where a model most often garbles the JSON.
      *
+     * No response with a reason means the request got no answer (AiRequestFailed: timeout, 5xx,
+     * 429 after the provider's retry); the second such request in a row throws AiUnavailable.
+     *
      * @return array{0: ?AiResponse, 1: ?list<mixed>, 2: ?string} the response, the decoded items, and the reason when the request as a whole failed
+     * @throws AiUnavailable when the provider did not answer UNREACHABLE_AFTER requests in a row
      */
     private function send(AiClient $client, array $batch, Tuning $base, Glossary $glossary, ?string $note, ?float $temperature): array
     {
@@ -141,13 +164,19 @@ final class AiTranslator implements MachineTranslator, ReportsCost
             $temperature,
             // The answer repeats every text translated, plus JSON; a lone long text needs more than the default.
             min(32000, max(8000, (int) ceil($chars / 2))),
+            lowReasoning: true,
         );
 
         try {
             $response = $client->complete($request);
         } catch (AiRequestFailed $e) {
+            if (++$this->unanswered >= self::UNREACHABLE_AFTER) {
+                throw new AiUnavailable('The AI provider is not reachable: ' . $e->getMessage(), 0, $e);
+            }
+
             return [null, null, $e->getMessage()];
         }
+        $this->unanswered = 0;
         $this->reportCost($response);
 
         if ($response->stop !== StopReason::Complete) {
@@ -210,14 +239,14 @@ final class AiTranslator implements MachineTranslator, ReportsCost
         }
     }
 
-    /** Priced like the usage log: by the model the provider reports, else by the configured one; unpriced counts as 0. */
+    /** Priced like the usage log: by the model the provider reports, else by the configured one; null when neither has a price. */
     private function reportCost(AiResponse $response): void
     {
         if ($this->costListener === null) {
             return;
         }
         $pricing = $this->ai->pricing();
-        $cost = $pricing->cost($response->model, $response->usage) ?? $pricing->cost($this->ai->status()->model, $response->usage) ?? 0.0;
+        $cost = $pricing->cost($response->model, $response->usage) ?? $pricing->cost($this->ai->status()->model, $response->usage);
         ($this->costListener)($cost);
     }
 }

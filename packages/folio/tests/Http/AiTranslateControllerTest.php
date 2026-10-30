@@ -93,6 +93,17 @@ final class AiTranslateControllerTest extends TestCase
         $this->assertSame(3, (int) $after['_version']);
     }
 
+    public function test_suggest_cost_is_null_when_the_model_has_no_price(): void
+    {
+        $this->aiModel = 'unpriced-model';
+
+        $data = self::json($this->call('/folio/post/p1/_ai/suggest', ['locale' => 'de', 'scope' => 'needed']));
+
+        $this->assertNotEmpty($data['texts']);
+        $this->assertArrayHasKey('costUsd', $data);
+        $this->assertNull($data['costUsd'], 'unknown, not $0.00');
+    }
+
     public function test_scope_all_sends_current_translation_as_previous(): void
     {
         $this->working('post', 'p1', ['title' => ['en' => 'Hello', 'de' => 'Hallo'], 'slug' => ['en' => 'hello', 'de' => 'hallo']]);

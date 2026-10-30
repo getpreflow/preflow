@@ -29,6 +29,9 @@ trait AiScaffold
 
     private ?FakeAiClient $fake = null;
 
+    /** The configured model; one without a price ('unpriced-model') makes costs unknown. */
+    private string $aiModel = 'claude-sonnet-5-5';
+
     private ?Application $session = null;
 
     private string $token = '';
@@ -55,10 +58,10 @@ trait AiScaffold
         $app = Application::create($this->dir);
         $app->boot();
         $c = $app->container();
-        $this->fake = new FakeAiClient($this->script === [] ? [self::echo()] : $this->script, 'claude-sonnet-5-5');
+        $this->fake = new FakeAiClient($this->script === [] ? [self::echo()] : $this->script, $this->aiModel);
         $fake = $this->fake;
         $ai = new Ai(
-            ['enabled' => true, 'provider' => 'claude', 'models' => ['claude' => 'claude-sonnet-5-5'], 'keys' => ['claude' => self::aiKeyEnv()]],
+            ['enabled' => true, 'provider' => 'claude', 'models' => ['claude' => $this->aiModel], 'keys' => ['claude' => self::aiKeyEnv()]],
             $c->get(UsageLog::class),
             $c->get(Pricing::class),
             static fn (string $name): ?string => getenv($name) === false ? null : (string) getenv($name),

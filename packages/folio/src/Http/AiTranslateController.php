@@ -289,9 +289,14 @@ final class AiTranslateController
             return self::json(200, ['texts' => new \stdClass(), 'failed' => new \stdClass(), 'costUsd' => 0.0]);
         }
         $cost = 0.0;
+        $unpriced = false;
         if ($this->translator instanceof ReportsCost) {
-            $this->translator->reportCostTo(static function (float $usd) use (&$cost): void {
-                $cost += $usd;
+            $this->translator->reportCostTo(static function (?float $usd) use (&$cost, &$unpriced): void {
+                if ($usd === null) {
+                    $unpriced = true;
+                } else {
+                    $cost += $usd;
+                }
             });
         }
         try {
@@ -326,7 +331,8 @@ final class AiTranslateController
             }
         }
 
-        return self::json(200, ['texts' => (object) $texts, 'failed' => (object) $failed, 'costUsd' => round($cost, 6)]);
+        // null: a request had no price, so the cost is not known (never shown as $0.00).
+        return self::json(200, ['texts' => (object) $texts, 'failed' => (object) $failed, 'costUsd' => $unpriced ? null : round($cost, 6)]);
     }
 
     /**
@@ -514,7 +520,8 @@ final class AiTranslateController
             'error' => $error,
             'done' => count($finished),
             'total' => count($job->items),
-            'cost' => self::cost($job->costUsd) ?? self::cost(0.0),
+            // A request without a price makes the total unknown: "—", never a misleading $0.00.
+            'cost' => $job->costUnknown ? '—' : self::cost($job->costUsd),
             'rows' => array_map(static fn (string $id, array $item): array => $row($id, $item), array_map('strval', array_keys($shown)), $shown),
             'recent_only' => $running && count($finished) > count($shown),
             'problems' => $problems,

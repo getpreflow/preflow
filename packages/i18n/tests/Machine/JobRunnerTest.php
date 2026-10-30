@@ -115,6 +115,23 @@ final class JobRunnerTest extends TestCase
         $this->assertEqualsWithDelta(3 * 0.007, $job->costUsd, 1e-9);
     }
 
+    public function test_an_unpriced_request_makes_the_cost_unknown_and_it_is_kept(): void
+    {
+        $this->fake = new FakeAiClient([self::echo()]);
+        $ai = $this->ai($this->fake, ['models' => ['claude' => 'unpriced-model']]);
+        $sources = new TextSources();
+        $sources->add('games', fn () => $this->source);
+        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), new FileJobStore($this->dir));
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+        $this->assertFalse($job->costUnknown);
+
+        $job = $runner->step($job->id);
+
+        $this->assertTrue($job->costUnknown);
+        $this->assertSame(0.0, $job->costUsd);
+        $this->assertTrue((new FileJobStore($this->dir))->get($job->id)?->costUnknown, 'stored with the job');
+    }
+
     public function test_conflict_reported_and_run_continues(): void
     {
         $this->source->outcomes['2'] = new WriteOutcome(WriteOutcomeStatus::Conflict, 'edited meanwhile', true);
