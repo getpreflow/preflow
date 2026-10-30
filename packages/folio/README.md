@@ -1713,8 +1713,11 @@ keeps what is done; **Continue** picks up the rest, also after the provider stop
 (quota, billing), whose message is shown.
 
 - The page has to stay open while the job runs: each step is a request from the page, and
-  there is no background worker. Close it and the job stops after the record in hand; what is
-  done stays done (the state is kept in `storage/ai/jobs/`).
+  there is no background worker, so the run only moves while this page is open. Press **Stop**
+  before you leave: what is done stays done, and **Continue** picks up the rest. If you close the
+  page without stopping, the run stays marked as running and cannot be continued from the screen;
+  plan a new run instead, which skips texts that are already translated (the state is kept in
+  `storage/ai/jobs/`).
 - Publishing types get working copies, with the texts marked as not checked; nothing is
   published. Records whose working copy already had other changes are listed separately.
   An AI write never publishes, never changes a record's **Visible in** languages, and cancels a
