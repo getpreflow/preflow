@@ -229,7 +229,7 @@ return [
         'stop' => 'Anhalten',
         'cost' => 'bisherige Kosten :cost',
         'running' => 'Übersetze, einen Eintrag nach dem anderen … Lass diese Seite offen, solange es läuft; Anhalten behält, was fertig ist.',
-        'running_background' => 'Die Übersetzung läuft im Hintergrund, Datensatz für Datensatz. Du kannst diese Seite verlassen: die Arbeit geht ohne sie weiter. Mit Stopp bleibt, was fertig ist.',
+        'running_background' => 'Die Übersetzung läuft im Hintergrund, Datensatz für Datensatz. Du kannst diese Seite verlassen: die Arbeit geht ohne sie weiter. Mit Anhalten bleibt, was fertig ist.',
         'finished' => 'Fertig.',
         'stopped' => 'Angehalten.',
         'stalled' => 'Der letzte Schritt wurde nicht fertig (die Verbindung brach ab oder der Server beendete die Anfrage). Was erledigt ist, bleibt erledigt.',

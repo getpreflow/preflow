@@ -353,4 +353,11 @@ final class AiTranslateControllerTest extends TestCase
         $this->assertSame(200, $res->getStatusCode(), (string) $res->getBody());
         $this->assertGreaterThan(0, $asked);
     }
+
+    public function test_the_german_background_hint_names_the_stop_button(): void
+    {
+        $de = require dirname(__DIR__, 2) . '/lang/de/folio.php';
+
+        $this->assertStringContainsString($de['ai_run']['stop'], $de['ai_run']['running_background']);
+    }
 }
