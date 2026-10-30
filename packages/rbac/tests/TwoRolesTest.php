@@ -155,6 +155,7 @@ final class TwoRolesTest extends TestCase
             // Past the permission check: this single-language site has nothing to translate (404).
             $row('POST /folio/{type}/{id}/_ai/estimate', "/folio/{$type}/{$id}/_ai/estimate", ['locale' => 'de', 'scope' => 'needed'], 404);
             $row('POST /folio/{type}/{id}/_ai/suggest', "/folio/{$type}/{$id}/_ai/suggest", ['locale' => 'de', 'scope' => 'needed'], 404);
+            $row('POST /folio/{type}/{id}/_ai/queue', "/folio/{$type}/{$id}/_ai/queue", ['locale' => 'de', 'scope' => 'needed'], 404);
             $row('GET /folio/{type}/_ai/run', "/folio/{$type}/_ai/run", [], 404);
             $row('POST /folio/{type}/_ai/run', "/folio/{$type}/_ai/run", ['step' => 'estimate', 'locales' => ['de'], 'scope' => 'needed'], 404);
             $row('POST /folio/{type}/_ai/jobs/{job}/start', "/folio/{$type}/_ai/jobs/nojob/start", [], 404);

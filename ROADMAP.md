@@ -74,6 +74,15 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    `_machine_translated` columns are written on every translation save, with AI off too, and publishing
    fails until they exist. Each site's deploy must run it.
 
+9. **AI translation in the background (0.48)** — built, not released: a record's Translate queues a job that
+   `translate:work` (cron, every minute) works in short steps, with a lease per record so nothing is paid twice
+   (`preflow/i18n`: queue, `TranslationWorker`, `ReviewIndex`); the Folio run screen is a status page; the dashboard
+   has a "Waiting for review" section; publishing clears the "not checked" marks of the visible languages, and
+   `publishing.checked_translations` is removed. See `docs/superpowers/specs/2026-10-30-ai-translation-background-design.md`
+   and `docs/superpowers/plans/2026-10-30-release-0.48-checklist.md`
+   **Upgrading:** sites with AI on add the cron line `* * * * * cd <app> && php vendor/bin/preflow translate:work`,
+   and run `php vendor/bin/preflow folio:review-index` once. No `preflow migrate` needed.
+
 **Rule (owner, 2026-10-26):** the framework holds abstractions, interfaces, hooks and generic mechanisms only;
 a feature one project needs is built in that project on top of them. A package's official admin UI lives in Folio
 (as media's library does); custom admin needs use userland Folio extensions. Steps 1 and 2 include an audit of

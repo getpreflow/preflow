@@ -1690,55 +1690,82 @@ tab except the default gets a **Translate** button, for users with the `ai.trans
 permission ("Use AI translation") and the type's edit permission. With AI off there is no
 button, the form's markup is unchanged and the endpoints below answer 404.
 
-- The dialog asks which texts (**Missing and outdated**, or **All**) and an optional one-off
-  note, and shows the estimate for this record.
-- **Translate** fills the form's fields: top-level fields, block texts (also nested ones) and
-  the texts of custom field types. Rich text is filled through its editor. Nothing is saved;
-  the autosave picks the change up like typing.
-- Under each filled field a review row shows the default-language text, the previous
-  translation with the changed words marked, and warnings (e.g. a glossary term not used).
-  **Accept** keeps the text as checked, **Discard** puts back what the field held right before
-  the fill (unsaved typing included). Editing the AI text counts as checking it. **Accept all**
-  is in the dialog.
-- On save, texts filled by AI, not accepted and not edited are saved as not checked (the form
-  posts their paths as `_ai_unchecked[]`). Accepted ones are posted as `_ai_checked[]`, which
-  clears their mark, also one the autosave set before you accepted.
+**On a record, Translate queues a background job.** The dialog asks which texts (**Missing and
+outdated**, or **All**) and an optional one-off note, and shows the estimate for this record.
+**Confirm** queues a job for this record and language and says "Queued". You can leave the page.
 
-The endpoints, for other admin screens (both POST, with the CSRF token, never writing):
+- A cron job works the queue (`php vendor/bin/preflow translate:work`, see "Background
+  translation" in the `preflow/i18n` README). The worker translates everything the record
+  holds, also structured fields edited on their own screens, and saves the result as a
+  working copy (a draft) with the texts marked "not checked". The live version is untouched.
+- While a job for the record is queued or running, the edit form says so. It does not block
+  editing; the version check protects what you typed.
+- Queuing the same record and language again while a job is pending answers with the pending
+  job, not a second one.
+- A type without publishing writes live: the dialog asks you to tick "the translations go live
+  without review", and the server refuses to queue without it.
+- If the worker has not run in the last five minutes, the dialog, the status page and the
+  dashboard say so, with the cron line to add.
+- **Review is publishing.** Open the edit view, read the German tab, fix what needs fixing and
+  publish. Publishing clears the "not checked" marks of the languages the record is visible in.
+  There is no per-text accept on the record form.
+
+Interface labels (Settings → Translations) and media alt texts still fill their inputs at once
+and show a review row under each text: **Accept** keeps the text as checked, **Discard** puts
+back what the field held, and editing the text counts as checking it. They answer in seconds,
+so they need no queue. On Settings → Translations, when the selected language is the source
+language, the screen asks you to choose a language to translate into.
+
+The endpoints (all POST, with the CSRF token):
 
 - `{prefix}/{type}/{id}/_ai/estimate` with `locale`, `scope` (`needed` or `all`) and an
   optional `prefix`: `{units, requests, costUsd}` (`costUsd` is null when the model has no
-  price).
-- `{prefix}/{type}/{id}/_ai/suggest` with `locale`, `scope`, optional `note` and `prefix`:
-  `{texts: {path: {text, source, previous, warnings}}, failed: {path: reason}, costUsd}`
-  (`costUsd` is null when a request's model has no price; the run screen then shows "—").
-  `prefix` limits the texts to paths under it (`flow` gives `flow` and `flow.…`). When the
-  provider cannot be used at all (quota, billing, outage) it answers 503 with `{error}`.
+  price). Never writes.
+- `{prefix}/{type}/{id}/_ai/queue` with `locale`, `scope`, optional `note`, `prefix` and
+  `confirm_live=1`: `{job, state, existing, message, worker}`. `prefix` limits the texts to
+  paths under it (`flow` gives `flow` and `flow.…`). `worker` is false when the cron job has not
+  run lately.
+- `{prefix}/translations/_ai/suggest` and `{prefix}/assets/{id}/_ai/suggest` fill labels and alt
+  texts and never write. (`{prefix}/{type}/{id}/_ai/suggest` still answers the texts of one
+  record, for other admin screens; the record form does not use it any more.)
 
 Without `ai.translate` they answer 403. The `ai.settings` permission ("AI settings") is
 declared too.
+
+#### Waiting for review (dashboard)
+
+With AI on, the dashboard has a **Waiting for review** section for users with `ai.translate`:
+
+- Translation jobs that are queued, running or failed: what, since when, who queued it, the
+  progress, the cost so far and the failure reason.
+- Records with unchecked texts, grouped by type: the record's label, the languages, the number
+  of texts, and a link to the edit view on that language tab. A row shows only if the user may
+  view that type.
+- The notice about a missing worker.
+
+The records come from the review index (see "Review index" above), so the dashboard does not
+load every record.
 
 #### Translating a whole type
 
 Under the same conditions the list has **Translate all…** in its header and **Translate…** in
 the bulk bar (the ticked records). The run screen asks for the languages, the texts (needed or
-all) and a note, then shows the plan: "N records, M texts, K requests, about $X". **Start** runs
-the job one record per request while the page shows the progress (done / total, the cost so
-far, each record's status, failed and changed-meanwhile records with their reason). **Stop**
-keeps what is done; **Continue** picks up the rest, also after the provider stopped the run
-(quota, billing), whose message is shown.
+all) and a note, then shows the plan: "N records, M texts, K requests, about $X". **Start** queues
+one job. The cron worker translates it one record per step, so the page can be closed.
 
-- The page has to stay open while the job runs: each step is a request from the page, and
-  there is no background worker, so the run only moves while this page is open. **Stop** keeps
-  what is done, and **Continue** picks up the rest. A run whose page was closed, or whose last
-  step never came back, is not lost: the run screen (**Translate all…**) lists the type's
-  unfinished runs (not started, left running, stopped; the newest five) with **Continue**. When a
-  step fails while the page is open (the connection dropped, the server ended the request), the
+- The run screen is a status page: done / total, the cost so far, each record's status, failed
+  and changed-meanwhile records with their reason. **Stop** keeps what is done; **Continue**
+  picks up the rest, also after the provider stopped the run (quota, billing), whose message is
+  shown. While the page is open it may also drive steps itself, so a site without cron still
+  gets work done. The worker and the page never translate the same record at once (a lease per
+  record), so nothing is paid twice.
+- The run screen (**Translate all…**) lists the type's unfinished runs (not started, queued,
+  stopped; the newest five) with **Continue**. When a step fails while the page is open, the
   progress says "The last step didn't finish" and offers **Continue** in place. The state is kept
   in `storage/ai/jobs/`.
-- Each suggestion and step request keeps running when the browser goes away
-  (`ignore_user_abort`) and raises a shorter PHP time limit to 300 seconds where the host allows
-  it; the provider clients give up on a request after 120 seconds.
+- Each step request keeps running when the browser goes away (`ignore_user_abort`) and raises a
+  shorter PHP time limit to 300 seconds where the host allows it; the provider clients give up
+  on a request after 120 seconds.
 - Publishing types get working copies, with the texts marked as not checked; nothing is
   published. Records whose working copy already had other changes are listed separately.
   An AI write never publishes, never changes a record's **Visible in** languages, and cancels a
@@ -1836,9 +1863,9 @@ final class FakeAiProvider extends \Preflow\Core\Container\ServiceProvider
 }
 ```
 
-Then open a record's German tab, click **Translate**, review (accept one text, edit
-another, discard a third), save, and reopen the tab: only the AI texts you left as they were show
-"Machine-translated, not checked yet".
+Then open a record's German tab and click **Translate**. The job is queued; run
+`php vendor/bin/preflow translate:work` by hand to work it. Reopen the tab: the AI texts show
+"Machine-translated, not checked yet" until you publish the record.
 
 #### Upgrading to 0.47
 
@@ -1847,6 +1874,18 @@ stores the source text next to the fingerprint (`_translated_source`) and the ma
 (`_machine_translated`), also with AI off. On SQL storage these are new TEXT columns on each
 record table and its published and revisions tables; until `preflow migrate` adds them,
 publishing a record and saving a translation fail. JSON-file storage needs nothing.
+
+#### Upgrading to 0.48
+
+Background translation. See `docs/superpowers/plans/2026-10-30-release-0.48-checklist.md`.
+
+- **Add the cron line** on every site with AI on: `* * * * * cd <app> && php vendor/bin/preflow translate:work`.
+  Without it, queued jobs wait (the run screen still works while its page is open).
+- **`publishing.checked_translations` is ignored.** Publishing clears the "not checked" marks of
+  the languages the record is visible in; the warning after publishing is gone.
+- **Run `php vendor/bin/preflow folio:review-index` once** to fill the review index for the
+  records that already have unchecked texts.
+- No new SQL columns; `preflow migrate` is not needed for this release.
 
 ## Admin languages
 
