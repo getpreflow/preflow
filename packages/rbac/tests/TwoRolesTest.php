@@ -145,6 +145,11 @@ final class TwoRolesTest extends TestCase
             // Past the permission check: this single-language site has nothing to translate (404).
             $row('POST /folio/{type}/{id}/_ai/estimate', "/folio/{$type}/{$id}/_ai/estimate", ['locale' => 'de', 'scope' => 'needed'], 404);
             $row('POST /folio/{type}/{id}/_ai/suggest', "/folio/{$type}/{$id}/_ai/suggest", ['locale' => 'de', 'scope' => 'needed'], 404);
+            $row('GET /folio/{type}/_ai/run', "/folio/{$type}/_ai/run", [], 404);
+            $row('POST /folio/{type}/_ai/run', "/folio/{$type}/_ai/run", ['step' => 'estimate', 'locales' => ['de'], 'scope' => 'needed'], 404);
+            $row('POST /folio/{type}/_ai/jobs/{job}/start', "/folio/{$type}/_ai/jobs/nojob/start", [], 404);
+            $row('POST /folio/{type}/_ai/jobs/{job}/step', "/folio/{$type}/_ai/jobs/nojob/step", [], 404);
+            $row('POST /folio/{type}/_ai/jobs/{job}/stop', "/folio/{$type}/_ai/jobs/nojob/stop", [], 404);
             $row('POST /folio/{type}/{id}/revisions/{rev}/restore', "/folio/{$type}/{$id}/revisions/r1/restore", [], 404);
             $row('POST /folio/{type}/{id}/share', "/folio/{$type}/{$id}/share", [], 404);
             $row('POST /folio/{type}/{id}/share/revoke', "/folio/{$type}/{$id}/share/revoke", [], 404);

@@ -4,6 +4,7 @@
 {% block actions %}
     {# The whole filtered and sorted list (not just this page); the bulk bar exports the ticked rows.
        The live search keeps the view in the URL (admin.js), so a click takes the query from there. #}
+    {% if ai_run_url|default(null) and has_records %}<a class="btn btn-secondary" href="{{ ai_run_url }}">{{ t('folio.ai_run.translate_all') }}</a>{% endif %}
     {% if export_url|default(null) and has_records %}<a class="btn btn-secondary" href="{{ export_url }}{{ list_query ? '?' ~ list_query }}" data-folio-export-all="{{ export_url }}">{{ t('folio.common.export') }}</a>{% endif %}
     {% if can(type ~ '.create') %}<a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>{{ t('folio.common.new') }}</a>{% endif %}
 {% endblock %}

@@ -50,7 +50,25 @@ final class JobRunner
     }
 
     /**
-     * Processes the next pending items. Does nothing for a stopped or finished job.
+     * Sets a planned or stopped job running again (clearing why it stopped); a finished job is
+     * returned as it is. Items done before a stop stay done: the run continues with the pending ones.
+     */
+    public function start(string $jobId): Job
+    {
+        $job = $this->load($jobId);
+        if ($job->state === 'planned' || $job->state === 'stopped') {
+            $job->state = 'running';
+            $job->message = null;
+            $this->store->save($job);
+        }
+
+        return $job;
+    }
+
+    /**
+     * Processes the next pending items. Does nothing for a stopped or finished job. An error
+     * other than AiUnavailable fails only the item it happened on, so one bad record never
+     * blocks the run. A stop saved while an item is being processed wins over this step.
      *
      * @throws AiUnavailable after the job has been stopped and saved; items done so far stay done
      */
@@ -71,7 +89,20 @@ final class JobRunner
 
         try {
             foreach (array_slice($job->pending(), 0, max(1, $maxItems)) as $id) {
-                $job->items[$id] = $this->processItem($source, $job, $id);
+                try {
+                    $job->items[$id] = $this->processItem($source, $job, $id);
+                } catch (AiUnavailable $e) {
+                    throw $e;
+                } catch (\Throwable $e) {
+                    $job->items[$id] = ['status' => 'failed', 'message' => $e->getMessage()] + $job->items[$id];
+                }
+                if ($this->store->get($jobId)?->state === 'stopped') {
+                    // Stopped (from another request) while this item was in hand: keep the item, then stop.
+                    $job->state = $job->pending() === [] ? 'done' : 'stopped';
+                    $this->store->save($job);
+
+                    return $job;
+                }
                 $this->store->save($job);
             }
             if ($job->pending() === []) {

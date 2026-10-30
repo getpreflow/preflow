@@ -27,6 +27,7 @@ final class JobRunnerTest extends TestCase
 
     private string $dir;
     private ArrayTextSource $source;
+    private FakeAiClient $fake;
 
     protected function setUp(): void
     {
@@ -49,8 +50,8 @@ final class JobRunnerTest extends TestCase
     /** @param list<mixed> $script */
     private function runner(array $script, ?JobStore $store = null): JobRunner
     {
-        $fake = new FakeAiClient($script);
-        $ai = $this->ai($fake);
+        $this->fake = new FakeAiClient($script);
+        $ai = $this->ai($this->fake);
         $sources = new TextSources();
         $sources->add('games', fn () => $this->source);
 
@@ -59,7 +60,6 @@ final class JobRunnerTest extends TestCase
 
     public function test_plan_estimates_without_writing(): void
     {
-        $fake = new FakeAiClient([self::echo()]);
         $runner = $this->runner([self::echo()]);
 
         $job = $runner->plan('games', ['de', 'fr'], Scope::Needed, null, 'be brief');
@@ -72,7 +72,7 @@ final class JobRunnerTest extends TestCase
         $this->assertSame([], $this->source->translations);
         $this->assertSame(0.0, $job->costUsd);
         $this->assertSame(1, preg_match('/\A[0-9a-f]{16}\z/', $job->id));
-        $this->assertSame([], $fake->requests());
+        $this->assertSame([], $this->fake->requests(), 'the runner\'s own client sent nothing');
     }
 
     public function test_step_translates_one_item_per_call_and_finishes(): void
@@ -205,5 +205,89 @@ final class JobRunnerTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
         $this->runner([self::echo()])->step('nope');
+    }
+
+    public function test_start_runs_planned_and_stopped_jobs_and_clears_the_stop_message(): void
+    {
+        $runner = $this->runner([self::echo(), new AiUnavailable('no key'), self::echo()]);
+        $store = new FileJobStore($this->dir);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+
+        $this->assertSame('running', $runner->start($job->id)->state);
+        $this->assertSame('running', $store->get($job->id)->state, 'saved');
+        $runner->step($job->id);
+        try {
+            $runner->step($job->id);
+            $this->fail('AiUnavailable expected');
+        } catch (AiUnavailable) {
+        }
+        $this->assertSame('no key', $store->get($job->id)->message);
+
+        $job = $runner->start($job->id);
+
+        $this->assertSame('running', $job->state);
+        $this->assertNull($job->message);
+        $this->assertSame('done', $job->items['1']['status'], 'items done before the stop stay done');
+        $job = $runner->step($job->id, 5);
+        $this->assertSame('done', $job->state);
+        $this->assertSame('done', $job->items['2']['status']);
+    }
+
+    public function test_start_leaves_a_done_job_unchanged(): void
+    {
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+        $runner->step($job->id, 3);
+
+        $this->assertSame('done', $runner->start($job->id)->state);
+        $this->assertSame('done', (new FileJobStore($this->dir))->get($job->id)->state);
+    }
+
+    public function test_translator_error_fails_the_item_and_the_run_continues(): void
+    {
+        $runner = $this->runner([new \RuntimeException('Bad answer from the provider.'), self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+
+        $job = $runner->step($job->id, 3);
+
+        $this->assertSame('failed', $job->items['1']['status']);
+        $this->assertSame('Bad answer from the provider.', $job->items['1']['message']);
+        $this->assertSame('done', $job->items['2']['status']);
+        $this->assertSame('done', $job->items['3']['status']);
+        $this->assertSame('done', $job->state);
+    }
+
+    public function test_write_error_fails_the_item_and_the_run_continues(): void
+    {
+        $this->source->throws['2'] = new \RuntimeException('Disk full.');
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+
+        $job = $runner->step($job->id);
+        $job = $runner->step($job->id);
+
+        $this->assertSame('failed', $job->items['2']['status']);
+        $this->assertSame('Disk full.', $job->items['2']['message']);
+        $this->assertSame('running', $job->state, 'one bad record does not block the run');
+        $this->assertSame('done', $runner->step($job->id)->state);
+    }
+
+    public function test_a_stop_during_a_step_wins(): void
+    {
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+        $runner->start($job->id);
+        // Someone presses Stop while the first item is being written.
+        $this->source->onWrite = static function () use ($runner, $job): void {
+            $runner->stop($job->id);
+        };
+
+        $job = $runner->step($job->id, 3);
+
+        $this->assertSame('stopped', $job->state);
+        $this->assertSame('done', $job->items['1']['status'], 'the item in hand is kept');
+        $this->assertSame('pending', $job->items['2']['status']);
+        $this->assertSame('stopped', (new FileJobStore($this->dir))->get($job->id)->state);
+        $this->assertSame(['1:de'], $this->source->writes);
     }
 }

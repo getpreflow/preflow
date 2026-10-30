@@ -1669,6 +1669,29 @@ The endpoints, for other admin screens (both POST, with the CSRF token, never wr
 Without `ai.translate` they answer 403. The `ai.settings` permission ("AI settings") is
 declared too.
 
+#### Translating a whole type
+
+Under the same conditions the list has **Translate all…** in its header and **Translate…** in
+the bulk bar (the ticked records). The run screen asks for the languages, the texts (needed or
+all) and a note, then shows the plan: "N records, M texts, K requests, about $X". **Start** runs
+the job one record per request while the page shows the progress (done / total, the cost so
+far, each record's status, failed and changed-meanwhile records with their reason). **Stop**
+keeps what is done; **Continue** picks up the rest, also after the provider stopped the run
+(quota, billing), whose message is shown.
+
+- Publishing types get working copies, with the texts marked as not checked; nothing is
+  published. Records whose working copy already had other changes are listed separately.
+- A type without publishing writes live: Start stays disabled until "the translations go live
+  without review" is ticked, and the server refuses a start without it.
+- The results end with "Review: N records with unchecked texts", a link to the list filtered
+  to records with unchecked texts.
+
+The routes (all ask `ai.translate` and the type's edit permission; POSTs need the CSRF token):
+`GET|POST {prefix}/{type}/_ai/run` (form; `step=estimate` plans the job), and
+`POST {prefix}/{type}/_ai/jobs/{job}/start|step|stop`, which answer the progress partial for
+htmx and the whole screen otherwise. A job is only reachable through the type it translates.
+Jobs are stored in `storage/ai/jobs/{id}.json`.
+
 #### Trying it without a key
 
 Bind an `Ai` whose client is `Preflow\Ai\Testing\FakeAiClient` in a provider listed after

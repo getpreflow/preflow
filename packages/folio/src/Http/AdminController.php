@@ -219,6 +219,8 @@ final class AdminController
             'publishing' => $states !== null,
             'csrf' => $csrf,
             'bulk' => $this->bulkBar($type, $typeDef, $listConfig),
+            // "Translate all…" (header) and "Translate…" (bulk bar): the AI run screen.
+            'ai_run_url' => $this->aiRunUrl($type, $typeDef),
             // The Export button (header: the whole filtered list; bulk bar: the ticked rows), only with OpenSpout installed.
             'export_url' => $this->exporter()->available() ? $this->prefix . '/' . $type . '/_export' : null,
             // The view to return to after a bulk action (search, filters, sort, page).
@@ -835,10 +837,11 @@ final class AdminController
      * for those who may delete; null when none is left (no tick column either).
      *
      * @param array<string, mixed> $listConfig
-     * @return array{fields: list<array{label: string, url: string, options: array<string, string>}>, actions: list<array{label: string, url: string, confirm: ?string}>, delete: ?array{url: string, plan: string}}|null
+     * @return array{fields: list<array{label: string, url: string, options: array<string, string>}>, actions: list<array{label: string, url: string, confirm: ?string}>, translate: ?string, delete: ?array{url: string, plan: string}}|null
      */
     private function bulkBar(string $type, TypeDefinition $typeDef, array $listConfig): ?array
     {
+        $translate = $this->aiRunUrl($type, $typeDef);
         $base = $this->prefix . '/' . $type . '/_bulk/';
         $fields = [];
         $actions = [];
@@ -854,7 +857,24 @@ final class AdminController
         }
         $delete = $this->can($type . '.delete') ? ['url' => $base . 'delete', 'plan' => $this->prefix . '/' . $type . '/_delete-plan'] : null;
 
-        return $fields === [] && $actions === [] && $delete === null ? null : ['fields' => $fields, 'actions' => $actions, 'delete' => $delete];
+        return $fields === [] && $actions === [] && $translate === null && $delete === null
+            ? null
+            : ['fields' => $fields, 'actions' => $actions, 'translate' => $translate, 'delete' => $delete];
+    }
+
+    /**
+     * The AI run screen of a type ({type}/_ai/run), or null when it is not offered: the same
+     * conditions as the edit form's Translate button (AI on, something to translate into another
+     * language, ai.translate and the type's edit permission).
+     */
+    private function aiRunUrl(string $type, TypeDefinition $typeDef): ?string
+    {
+        if (!($this->ai?->enabled() ?? false) || $typeDef->translatableFields() === [] || !$typeDef->locales->isMultilingual()
+            || !$this->can('ai.translate') || !$this->can($type . '.edit')) {
+            return null;
+        }
+
+        return $this->prefix . '/' . $type . '/_ai/run';
     }
 
     /**

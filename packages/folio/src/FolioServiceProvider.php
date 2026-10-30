@@ -497,6 +497,10 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\I18n\Machine\MachineTranslator::class),
             $c->get(\Preflow\I18n\Machine\Estimator::class),
             $c->get(\Preflow\Ai\Ai::class),
+            $c->get(\Preflow\I18n\Machine\JobRunner::class),
+            $c->get(\Preflow\I18n\Machine\JobStore::class),
+            $c->get(TemplateEngineInterface::class),
+            $prefix,
             $c->get(\Preflow\Auth\Access\Access::class),
         ));
         $container->bind(\Preflow\Folio\Http\PublishingController::class, fn (Container $c) => new \Preflow\Folio\Http\PublishingController(

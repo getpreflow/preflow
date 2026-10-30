@@ -22,6 +22,12 @@ final class ArrayTextSource implements TextSource
     /** @var array<string, WriteOutcome> id => forced outcome */
     public array $outcomes = [];
 
+    /** @var array<string, \Throwable> id => thrown by write() */
+    public array $throws = [];
+
+    /** Called on every write, before it is stored. */
+    public ?\Closure $onWrite = null;
+
     /** @param array<string, array<string,string>> $items */
     public function __construct(public array $items) {}
 
@@ -61,6 +67,12 @@ final class ArrayTextSource implements TextSource
     public function write(string $id, string $to, array $texts): WriteOutcome
     {
         $this->writes[] = $id . ':' . $to;
+        if ($this->onWrite !== null) {
+            ($this->onWrite)($id, $to);
+        }
+        if (isset($this->throws[$id])) {
+            throw $this->throws[$id];
+        }
         if (isset($this->outcomes[$id])) {
             return $this->outcomes[$id];
         }

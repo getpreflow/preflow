@@ -1532,6 +1532,15 @@
         window.location.href = url + (url.indexOf('?') === -1 ? '?' : '&') + ids.join('&');
     }
 
+    // A confirmation checkbox (data-folio-enables="<button id>") enables its button only while ticked,
+    // e.g. the AI run's "go live without review" (the server asks for the box as well).
+    function onEnablesChange(e) {
+        var box = e.target;
+        if (!box || !box.matches || !box.matches('input[type="checkbox"][data-folio-enables]')) { return; }
+        var target = document.getElementById(box.getAttribute('data-folio-enables'));
+        if (target) { target.disabled = !box.checked; }
+    }
+
     // "Clear" is a reset button: it unticks the rows (form-associated) with or without JS.
     function onBulkReset(e) {
         var bar = e.target;
@@ -1547,6 +1556,7 @@
         document.addEventListener('change', onBulkChange);
         document.addEventListener('reset', onBulkReset);
         document.addEventListener('click', onBulkExport);
+        document.addEventListener('change', onEnablesChange);
         // Back/forward may restore ticked boxes: show the bar for them.
         window.addEventListener('pageshow', function () { initBulk(document); });
         document.addEventListener('click', onBlockClick);

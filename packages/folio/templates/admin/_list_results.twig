@@ -46,6 +46,8 @@
                 </details>
             {% endfor %}
             {% for action in bulk.actions %}<button type="submit" class="btn btn-sm" formaction="{{ action.url }}"{% if action.confirm %} data-confirm="{{ action.confirm }}"{% endif %}>{{ action.label }}</button>{% endfor %}
+            {# The AI run screen for the ticked rows: a POST of ids[] shows its form (the token stays out of the URL). #}
+            {% if bulk.translate|default(null) %}<button type="submit" class="btn btn-sm" formaction="{{ bulk.translate }}">{{ t('folio.ai_run.translate_selected') }}</button>{% endif %}
             {# Needs JS: it sends the ticked ids to the export URL (a GET download), so the CSRF token never goes into a URL. #}
             {% if export_url|default(null) %}<button type="button" class="btn btn-sm" data-folio-export="{{ export_url }}{{ list_query ? '?' ~ list_query }}" hidden>{{ t('folio.common.export') }}</button>{% endif %}
             {% if bulk.delete %}<button type="submit" class="btn btn-sm" data-tone="danger" formaction="{{ bulk.delete.url }}" data-delete-plan="{{ bulk.delete.plan }}" data-confirm="{{ t('folio.list.confirm_bulk_delete') }}">{{ t('folio.common.delete') }}</button>{% endif %}

@@ -1,0 +1,73 @@
+{# A translation job's progress (AiTranslateController). While the job runs, the partial posts
+   itself to the step route (one record per request) and swaps in the answer; a finished or
+   stopped job's partial does not poll. Record titles and messages are data: always escaped. #}
+<div id="folio-ai-progress" class="folio-ai-progress" aria-live="polite"{% if running %} hx-post="{{ step_url }}" hx-trigger="load delay:300ms" hx-swap="outerHTML" hx-include="find [name=_csrf_token]"{% endif %}>
+    <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+    {% if error %}<div class="folio-alert folio-alert-error" role="alert"><p>{{ error }}</p></div>{% endif %}
+    <p class="folio-ai-progress-count">
+        <progress max="{{ total }}" value="{{ done }}"></progress>
+        <span>{{ done }} / {{ total }}</span> · <span>{{ t('folio.ai_run.cost', {cost: cost|e}) }}</span>
+    </p>
+    {% if running %}
+        <p>{{ t('folio.ai_run.running') }}</p>
+        <form method="post" action="{{ stop_url }}" hx-post="{{ stop_url }}" hx-target="#folio-ai-progress" hx-swap="outerHTML">
+            <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+            <button type="submit" class="btn btn-secondary">{{ t('folio.ai_run.stop') }}</button>
+        </form>
+    {% elseif state == 'done' %}
+        <div class="folio-alert folio-alert-success" role="status"><p>{{ t('folio.ai_run.finished') }}</p></div>
+    {% elseif state == 'stopped' %}
+        <div class="folio-notice" role="status"><p>{{ t('folio.ai_run.stopped') }}{% if message %} {{ message }}{% endif %}</p></div>
+    {% endif %}
+    {% if can_continue or state == 'planned' %}
+        <form method="post" action="{{ start_url }}" hx-post="{{ start_url }}" hx-target="#folio-ai-progress" hx-swap="outerHTML">
+            <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+            {% if live %}<p><label class="form-radio"><input type="checkbox" name="confirm_live" value="1" data-folio-enables="folio-ai-continue"> {{ t('folio.ai_run.confirm_live') }}</label></p>{% endif %}
+            <button type="submit" class="btn btn-primary" id="folio-ai-continue" data-folio-ai-start{% if live %} disabled{% endif %}>{{ state == 'planned' ? t('folio.ai_run.start') : t('folio.ai_run.continue') }}</button>
+        </form>
+    {% endif %}
+
+    {% if problems is not empty %}
+        <section class="folio-ai-progress-section" data-folio-ai-problems>
+            <h2>{{ t('folio.ai_run.problems') }}</h2>
+            <ul>
+                {% for item in problems %}<li><a href="{{ item.url }}">{{ item.title }}</a> — {{ t('folio.ai_run.status.' ~ item.status) }}{% if item.message %}: {{ item.message }}{% endif %}</li>{% endfor %}
+            </ul>
+        </section>
+    {% endif %}
+
+    {% if rows is not empty %}
+        <section class="folio-ai-progress-section">
+            <h2>{{ recent_only ? t('folio.ai_run.latest') : t('folio.ai_run.records_heading') }}</h2>
+            <div class="folio-table-wrap">
+            <table class="folio-table">
+                <thead><tr><th>{{ t('folio.ai_run.record') }}</th><th>{{ t('folio.ai_run.status_heading') }}</th><th>{{ t('folio.ai_run.translated') }}</th><th>{{ t('folio.ai_run.message') }}</th></tr></thead>
+                <tbody>
+                {% for item in rows %}
+                    <tr>
+                        <td><a href="{{ item.url }}">{{ item.title }}</a></td>
+                        <td><span class="folio-badge{% if item.status == 'done' %} is-ok{% elseif item.status == 'skipped' %}{% else %} is-incomplete{% endif %}">{{ t('folio.ai_run.status.' ~ item.status) }}</span></td>
+                        <td>{{ item.translated|default(0) }}</td>
+                        <td>{{ item.message|default('') }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </section>
+    {% endif %}
+
+    {% if drafts is not empty %}
+        <section class="folio-ai-progress-section" data-folio-ai-draft-changes>
+            <h2>{{ t('folio.ai_run.draft_changes') }}</h2>
+            <p class="form-help">{{ t('folio.ai_run.draft_changes_help') }}</p>
+            <ul>
+                {% for item in drafts %}<li><a href="{{ item.url }}">{{ item.title }}</a></li>{% endfor %}
+            </ul>
+        </section>
+    {% endif %}
+
+    {% if review > 0 %}
+        <p class="folio-ai-progress-review"><a href="{{ review_url }}">{{ t('folio.ai_run.review', {}, review) }}</a></p>
+    {% endif %}
+</div>

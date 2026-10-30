@@ -1659,3 +1659,14 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   font-weight: 600;
   letter-spacing: 0.04em;
 }
+
+/* ---- AI translation run (ai/run.twig, ai/run-progress.twig) ---- */
+.folio-ai-run { max-width: 880px; }
+.folio-ai-run-fieldset { padding: 0; border: 0; }
+.folio-ai-run-fieldset legend { padding: 0; margin-bottom: 8px; }
+.folio-ai-progress-count { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; font-variant-numeric: tabular-nums; }
+.folio-ai-progress-count progress { flex: 1 1 240px; height: 8px; }
+.folio-ai-progress-section { margin-top: 22px; }
+.folio-ai-progress-section h2 { margin: 0 0 8px; font-size: 15px; font-weight: 650; }
+.folio-ai-progress-section ul { margin: 0; padding-left: 18px; }
+.folio-ai-progress-review { margin-top: 22px; font-weight: 620; }

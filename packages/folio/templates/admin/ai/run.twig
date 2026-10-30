@@ -1,0 +1,60 @@
+{% extends "@folio/admin/_layout.twig" %}
+{# The whole-type translation run (AiTranslateController): the form, then the plan's summary with
+   Start, then the progress (run-progress.twig, which htmx swaps in and keeps polling). #}
+{% block title %}Folio — {{ t('folio.ai_run.title', {label: label|e}) }}{% endblock %}
+{% block page_title %}{{ t('folio.ai_run.title', {label: label|e}) }}{% endblock %}
+{% block actions %}<a class="btn btn-secondary" href="{{ prefix }}/{{ type }}">{{ t('folio.ai_run.back', {label: label|e}) }}</a>{% endblock %}
+{% block content %}
+<div class="folio-ai-run" id="folio-ai-run">
+    {% if error %}<div class="folio-alert folio-alert-error" role="alert"><p>{{ error }}</p></div>{% endif %}
+    {% if progress %}
+        {% include '@folio/admin/ai/run-progress.twig' with progress only %}
+    {% elseif summary %}
+        <div class="folio-notice" role="status">
+            <p>{{ summary.text }}</p>
+            <p>{{ t('folio.ai_run.into') }} {{ summary.languages|join(', ') }}</p>
+        </div>
+        {% if summary.texts == 0 %}
+            <p>{{ t('folio.ai_run.nothing') }}</p>
+        {% else %}
+            <p class="form-help">{{ summary.live ? t('folio.ai_run.writes_live') : t('folio.ai_run.writes_drafts') }}</p>
+            {# With htmx the progress replaces this summary and keeps polling; without, the page reloads. #}
+            <form method="post" action="{{ summary.start_url }}" hx-post="{{ summary.start_url }}" hx-target="#folio-ai-run" hx-swap="innerHTML">
+                <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                {% if summary.live %}
+                    <p><label class="form-radio"><input type="checkbox" name="confirm_live" value="1" data-folio-enables="folio-ai-start"> {{ t('folio.ai_run.confirm_live') }}</label></p>
+                {% endif %}
+                <div class="folio-form-buttons">
+                    <a class="btn btn-ghost" href="{{ prefix }}/{{ type }}">{{ t('folio.common.cancel') }}</a>
+                    <button type="submit" class="btn btn-primary" id="folio-ai-start" data-folio-ai-start{% if summary.live %} disabled{% endif %}>{{ t('folio.ai_run.start') }}</button>
+                </div>
+            </form>
+        {% endif %}
+    {% else %}
+        <form class="folio-form" method="post" action="{{ action }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+            <input type="hidden" name="step" value="estimate">
+            {% for id in ids %}<input type="hidden" name="ids[]" value="{{ id }}">{% endfor %}
+            <p class="folio-notice">{{ ids is empty ? t('folio.ai_run.all_records') : t('folio.ai_run.selected_records', {}, ids|length) }}</p>
+            <fieldset class="form-group folio-ai-run-fieldset">
+                <legend class="form-label">{{ t('folio.ai_run.languages') }}</legend>
+                {% for code, name in languages %}<label class="form-radio"><input type="checkbox" name="locales[]" value="{{ code }}"{% if code in locales %} checked{% endif %}> {{ name }}</label>{% endfor %}
+            </fieldset>
+            <fieldset class="form-group folio-ai-run-fieldset">
+                <legend class="form-label">{{ t('folio.ai_translate.scope') }}</legend>
+                <label class="form-radio"><input type="radio" name="scope" value="needed"{% if scope != 'all' %} checked{% endif %}> {{ t('folio.ai_translate.scope_needed') }}</label>
+                <label class="form-radio"><input type="radio" name="scope" value="all"{% if scope == 'all' %} checked{% endif %}> {{ t('folio.ai_translate.scope_all') }}</label>
+            </fieldset>
+            <div class="form-group">
+                <label class="form-label" for="folio-ai-run-note">{{ t('folio.ai_translate.note') }}</label>
+                <textarea id="folio-ai-run-note" name="note" rows="3">{{ note }}</textarea>
+                <small class="form-help">{{ t('folio.ai_translate.note_help') }}</small>
+            </div>
+            <div class="folio-form-buttons">
+                <a class="btn btn-ghost" href="{{ prefix }}/{{ type }}">{{ t('folio.common.cancel') }}</a>
+                <button type="submit" class="btn btn-primary">{{ t('folio.ai_run.estimate') }}</button>
+            </div>
+        </form>
+    {% endif %}
+</div>
+{% endblock %}
