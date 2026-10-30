@@ -42,17 +42,19 @@ final class TranslateWorkCommand implements CommandInterface
 
             return 1;
         }
-        if (!$container->get(Ai::class)->enabled()) {
-            return 0;
-        }
+        // Always run the worker: it writes the heartbeat even with AI off. Then there is nothing to say.
+        $quiet = !$container->get(Ai::class)->enabled();
 
         $report = $container->get(TranslationWorker::class)->work($seconds, static function (string $line): void {
             echo $line, "\n";
         });
+        if ($quiet) {
+            return 0;
+        }
 
         $cost = '$' . number_format($report->costUsd, 4);
         if ($report->costUnknown) {
-            $cost .= '+ (price unknown for some requests)';
+            $cost .= ' (some prices unknown)';
         }
         echo "{$report->records} records, {$cost}\n";
         if ($report->stoppedBecause !== null) {

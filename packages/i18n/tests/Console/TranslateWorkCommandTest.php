@@ -78,5 +78,6 @@ final class TranslateWorkCommandTest extends TestCase
         $this->assertSame(0, $code);
         $this->assertSame('', $out);
         $this->assertSame('queued', $store->recent(1)[0]->state);
+        $this->assertFileExists($this->tmp() . '/ai/worker.json', 'the heartbeat is written even with AI off');
     }
 }
