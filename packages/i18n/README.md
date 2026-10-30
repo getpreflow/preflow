@@ -394,7 +394,10 @@ short:
 
 - `plan($collection, $locales, $scope, $ids = null, $note = null)` counts the units, estimates
   the cost and saves a job; nothing is written to the source;
-- `start($jobId)` sets it running (also after a stop);
+- `start($jobId)` sets it running (also after a stop, and takes up a job still marked running
+  whose driver went away);
+- `unfinished($collection, $max = 5)` lists the collection's jobs that are not done, newest
+  first (`JobStore::recent()`), so a screen can offer to continue them;
 - `step($jobId, $maxItems = 1)` does the next pending items and saves the state. One item that
   fails is recorded and does not stop the run. `AiUnavailable` stops the job (state `stopped`,
   with the message) and is rethrown;

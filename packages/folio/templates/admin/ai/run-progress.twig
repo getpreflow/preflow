@@ -10,6 +10,15 @@
     </p>
     {% if running %}
         <p>{{ t('folio.ai_run.running') }}</p>
+        {# Shown by admin.js when a step's request fails (error status, no connection, timeout): the
+           polling has stopped then, and Continue takes the running job up again. #}
+        <div class="folio-alert folio-alert-error" role="alert" data-folio-ai-stalled hidden>
+            <p>{{ t('folio.ai_run.stalled') }}</p>
+            <form method="post" action="{{ start_url }}" hx-post="{{ start_url }}" hx-target="#folio-ai-progress" hx-swap="outerHTML">
+                <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                <button type="submit" class="btn btn-primary">{{ t('folio.ai_run.continue') }}</button>
+            </form>
+        </div>
         <form method="post" action="{{ stop_url }}" hx-post="{{ stop_url }}" hx-target="#folio-ai-progress" hx-swap="outerHTML">
             <input type="hidden" name="_csrf_token" value="{{ csrf }}">
             <button type="submit" class="btn btn-secondary">{{ t('folio.ai_run.stop') }}</button>

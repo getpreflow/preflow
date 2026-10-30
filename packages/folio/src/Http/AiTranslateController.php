@@ -49,6 +49,12 @@ final class AiTranslateController
     /** The longest list of finished items the progress shows while the job runs (it is re-rendered every step). */
     private const RECENT_ITEMS = 10;
 
+    /** Seconds a suggestion or a run step may take: two tries of the provider clients' 120 s timeout fit. */
+    private const TIME_LIMIT = 300;
+
+    /** Unfinished runs the run screen offers to continue. */
+    private const UNFINISHED_SHOWN = 5;
+
     public function __construct(
         private readonly TypeCatalog $catalog,
         private readonly TypeRegistry $registry,
@@ -75,7 +81,33 @@ final class AiTranslateController
             return $type;
         }
 
-        return $this->page($request, $type, ['ids' => self::ids($request->getQueryParams()['ids'] ?? null)]);
+        return $this->page($request, $type, [
+            'ids' => self::ids($request->getQueryParams()['ids'] ?? null),
+            'unfinished' => $this->unfinished($type),
+        ]);
+    }
+
+    /**
+     * The type's runs that are not done, newest first, each with what Continue needs: a run left
+     * running when its page was closed (or its last step never came back) can be taken up again.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function unfinished(string $type): array
+    {
+        $languages = $this->languages($type);
+        $live = $this->sources->get($type)->writesLive();
+
+        return array_map(fn (Job $job): array => [
+            'id' => $job->id,
+            'state' => $job->state,
+            'languages' => implode(', ', array_map(static fn (string $l): string => $languages[$l] ?? $l, $job->locales)),
+            'done' => count($job->items) - count($job->pending()),
+            'total' => count($job->items),
+            'start_url' => $this->jobUrl($type, $job, 'start'),
+            // A planned or stopped run of a live type asks the confirmation again, as Start does.
+            'confirm' => $live && $job->state !== 'running',
+        ], $this->runner->unfinished($type, self::UNFINISHED_SHOWN));
     }
 
     /**
@@ -128,7 +160,8 @@ final class AiTranslateController
     }
 
     /**
-     * POST {type}/_ai/jobs/{job}/start: runs a planned job, or continues a stopped one. A type
+     * POST {type}/_ai/jobs/{job}/start: runs a planned job, continues a stopped one, or takes up
+     * one still marked running (its page was closed). Starting a planned or stopped run of a type
      * that writes live needs confirm_live=1 (the screen's checkbox).
      */
     public function start(ServerRequestInterface $request): ResponseInterface
@@ -157,6 +190,7 @@ final class AiTranslateController
             return $job;
         }
         if ($job->state === 'running') {
+            self::allowLongRequest();
             try {
                 $job = $this->runner->step($job->id, 1);
             } catch (AiUnavailable) {
@@ -288,6 +322,7 @@ final class AiTranslateController
         if ($units === []) {
             return self::json(200, ['texts' => new \stdClass(), 'failed' => new \stdClass(), 'costUsd' => 0.0]);
         }
+        self::allowLongRequest();
         $cost = 0.0;
         $unpriced = false;
         if ($this->translator instanceof ReportsCost) {
@@ -464,6 +499,7 @@ final class AiTranslateController
             'error' => null,
             'summary' => null,
             'progress' => null,
+            'unfinished' => [],
         ]));
     }
 
@@ -575,13 +611,33 @@ final class AiTranslateController
         return is_array($body) ? $body : [];
     }
 
-    /** @param array<string, mixed> $data */
+    /**
+     * The answers carry model output, which is not always valid UTF-8: a broken byte becomes
+     * U+FFFD instead of a failed response.
+     *
+     * @param array<string, mixed> $data
+     */
     private static function json(int $status, array $data): ResponseInterface
     {
         return new Response(
             $status,
             ['Content-Type' => 'application/json; charset=UTF-8', 'Cache-Control' => 'no-store'],
-            json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION),
+            json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_INVALID_UTF8_SUBSTITUTE),
         );
+    }
+
+    /**
+     * A translation request can take minutes. A closed tab must not cut it off halfway (the
+     * provider bills it anyway, and a step half-written is worse than one finished), and a host's
+     * short PHP time limit is raised to TIME_LIMIT where it may be. A limit that is already longer
+     * (or none, 0) is left alone; where set_time_limit is disabled, nothing changes.
+     */
+    private static function allowLongRequest(): void
+    {
+        ignore_user_abort(true);
+        $limit = (int) ini_get('max_execution_time');
+        if ($limit !== 0 && $limit < self::TIME_LIMIT) {
+            @set_time_limit(self::TIME_LIMIT);
+        }
     }
 }

@@ -263,6 +263,44 @@ final class JobRunnerTest extends TestCase
         $this->assertSame('done', $job->items['2']['status']);
     }
 
+    public function test_start_takes_up_a_job_left_running(): void
+    {
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+        $runner->start($job->id);
+        $runner->step($job->id); // then the page was closed: the job stays "running"
+
+        $job = $runner->start($job->id);
+
+        $this->assertSame('running', $job->state);
+        $job = $runner->step($job->id, 5);
+        $this->assertSame('done', $job->state);
+        $this->assertSame(['done', 'done', 'done'], array_column($job->items, 'status'));
+    }
+
+    public function test_unfinished_lists_the_collections_open_jobs_newest_first(): void
+    {
+        $store = new FileJobStore($this->dir);
+        $runner = $this->runner([self::echo()], $store);
+        $done = $runner->plan('games', ['de'], Scope::Needed);
+        $runner->step($done->id, 5);
+        $planned = $runner->plan('games', ['de'], Scope::Needed);
+        $stopped = $runner->plan('games', ['fr'], Scope::Needed);
+        $runner->stop($stopped->id);
+        $running = $runner->plan('games', ['it'], Scope::Needed);
+        $runner->start($running->id);
+        $other = new Job('0123456789abcdef', 'cards', ['de'], Scope::Needed, null, $planned->estimate);
+        $store->save($other);
+        foreach ([$done->id => 50, $planned->id => 10, $stopped->id => 20, $running->id => 30, $other->id => 40] as $id => $at) {
+            touch($this->dir . '/' . $id . '.json', 1_700_000_000 + $at);
+        }
+
+        $ids = array_map(static fn (Job $j): string => $j->id, $runner->unfinished('games'));
+
+        $this->assertSame([$running->id, $stopped->id, $planned->id], $ids, 'not done, this collection only, newest first');
+        $this->assertCount(2, $runner->unfinished('games', 2));
+    }
+
     public function test_start_leaves_a_done_job_unchanged(): void
     {
         $runner = $this->runner([self::echo()]);

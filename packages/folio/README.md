@@ -1714,11 +1714,16 @@ keeps what is done; **Continue** picks up the rest, also after the provider stop
 (quota, billing), whose message is shown.
 
 - The page has to stay open while the job runs: each step is a request from the page, and
-  there is no background worker, so the run only moves while this page is open. Press **Stop**
-  before you leave: what is done stays done, and **Continue** picks up the rest. If you close the
-  page without stopping, the run stays marked as running and cannot be continued from the screen;
-  plan a new run instead, which skips texts that are already translated (the state is kept in
-  `storage/ai/jobs/`).
+  there is no background worker, so the run only moves while this page is open. **Stop** keeps
+  what is done, and **Continue** picks up the rest. A run whose page was closed, or whose last
+  step never came back, is not lost: the run screen (**Translate all…**) lists the type's
+  unfinished runs (not started, left running, stopped; the newest five) with **Continue**. When a
+  step fails while the page is open (the connection dropped, the server ended the request), the
+  progress says "The last step didn't finish" and offers **Continue** in place. The state is kept
+  in `storage/ai/jobs/`.
+- Each suggestion and step request keeps running when the browser goes away
+  (`ignore_user_abort`) and raises a shorter PHP time limit to 300 seconds where the host allows
+  it; the provider clients give up on a request after 120 seconds.
 - Publishing types get working copies, with the texts marked as not checked; nothing is
   published. Records whose working copy already had other changes are listed separately.
   An AI write never publishes, never changes a record's **Visible in** languages, and cancels a

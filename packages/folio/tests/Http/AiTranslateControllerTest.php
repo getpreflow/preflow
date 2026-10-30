@@ -104,6 +104,16 @@ final class AiTranslateControllerTest extends TestCase
         $this->assertNull($data['costUsd'], 'unknown, not $0.00');
     }
 
+    public function test_invalid_utf8_in_a_reason_is_replaced_not_a_failed_response(): void
+    {
+        $this->script = [new \Preflow\Ai\AiRequestFailed("Gemini returned HTTP 500: bad \xB1 byte")];
+
+        $res = $this->call('/folio/post/p1/_ai/suggest', ['locale' => 'de', 'scope' => 'needed']);
+
+        $this->assertSame(200, $res->getStatusCode(), (string) $res->getBody());
+        $this->assertSame("Gemini returned HTTP 500: bad \u{FFFD} byte", self::json($res)['failed']['title']);
+    }
+
     public function test_scope_all_sends_current_translation_as_previous(): void
     {
         $this->working('post', 'p1', ['title' => ['en' => 'Hello', 'de' => 'Hallo'], 'slug' => ['en' => 'hello', 'de' => 'hallo']]);

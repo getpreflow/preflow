@@ -1051,6 +1051,17 @@
         });
     }
 
+    // ---- AI run: a step that did not come back --------------------------------
+    // htmx swaps nothing for an error status, a dropped connection or a timeout, so the progress
+    // would stop polling without a word. Show why, with Continue (start takes a running job up again).
+
+    function onRunStepFailed(e) {
+        var elt = e.detail && e.detail.elt;
+        if (!elt || elt.id !== 'folio-ai-progress') { return; }
+        var stalled = elt.querySelector('[data-folio-ai-stalled]');
+        if (stalled) { stalled.hidden = false; }
+    }
+
     // Cards added by htmx: run the same per-element setup as on page load.
     function onHtmxLoad(e) {
         var root = e.detail && e.detail.elt ? e.detail.elt : null;
@@ -1623,6 +1634,9 @@
         document.addEventListener('htmx:beforeRequest', onBeforeRequest);
         document.addEventListener('htmx:responseError', onAutosaveError);
         document.addEventListener('htmx:sendError', onAutosaveError);
+        ['htmx:responseError', 'htmx:sendError', 'htmx:timeout'].forEach(function (name) {
+            document.addEventListener(name, onRunStepFailed);
+        });
         document.addEventListener('htmx:load', onHtmxLoad);
         document.addEventListener('folio:error', onFolioError);
         document.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);

@@ -58,4 +58,17 @@ final class FileJobStoreTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $store->save($job);
     }
+
+    public function test_recent_lists_the_last_saved_jobs_first(): void
+    {
+        $store = new FileJobStore($this->dir);
+        foreach (['aaaa', 'bbbb', 'cccc'] as $i => $id) {
+            $store->save(new Job($id, 'games', ['de'], Scope::Needed, null, new Estimate(0, 0, 0, 0, null, 0)));
+            touch($this->dir . '/' . $id . '.json', 1_700_000_000 + [10, 30, 20][$i]);
+        }
+
+        $this->assertSame(['bbbb', 'cccc', 'aaaa'], array_map(static fn (Job $j): string => $j->id, $store->recent(5)));
+        $this->assertSame(['bbbb', 'cccc'], array_map(static fn (Job $j): string => $j->id, $store->recent(2)));
+        $this->assertSame([], (new FileJobStore($this->dir . '/none'))->recent(5));
+    }
 }

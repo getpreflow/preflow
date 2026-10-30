@@ -50,14 +50,18 @@ final class JobRunner
         return $job;
     }
 
+    /** How many of the newest jobs unfinished() looks through. */
+    private const RECENT_JOBS = 50;
+
     /**
-     * Sets a planned or stopped job running again (clearing why it stopped); a finished job is
-     * returned as it is. Items done before a stop stay done: the run continues with the pending ones.
+     * Sets a planned or stopped job running (clearing why it stopped), and takes up a job still
+     * marked running whose page was closed or whose step never came back; a finished job is
+     * returned as it is. Items done before stay done: the run continues with the pending ones.
      */
     public function start(string $jobId): Job
     {
         $job = $this->load($jobId);
-        if ($job->state === 'planned' || $job->state === 'stopped') {
+        if ($job->state === 'planned' || $job->state === 'stopped' || $job->state === 'running') {
             $job->state = 'running';
             $job->message = null;
             $this->store->save($job);
@@ -126,6 +130,22 @@ final class JobRunner
         }
 
         return $job;
+    }
+
+    /**
+     * The collection's jobs that are not done (planned, running or stopped), newest first, so a
+     * run whose page was closed can be continued. Looks through the RECENT_JOBS newest jobs.
+     *
+     * @return list<Job>
+     */
+    public function unfinished(string $collection, int $max = 5): array
+    {
+        $jobs = array_filter(
+            $this->store->recent(self::RECENT_JOBS),
+            static fn (Job $job): bool => $job->collection === $collection && $job->state !== 'done',
+        );
+
+        return array_slice(array_values($jobs), 0, $max);
     }
 
     public function stop(string $jobId): Job

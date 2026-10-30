@@ -194,6 +194,50 @@ final class AiRunTest extends TestCase
         $this->assertStringNotContainsString('$0.00', $html);
     }
 
+    public function test_progress_offers_continue_when_a_step_does_not_come_back(): void
+    {
+        $id = self::jobId($this->estimate());
+
+        $html = (string) $this->request('POST', "/folio/post/_ai/jobs/{$id}/start", [], true)->getBody();
+
+        $this->assertMatchesRegularExpression("#data-folio-ai-stalled hidden>\\s*<p>The last step didn't finish#", $html, 'admin.js shows it on a failed step');
+        $this->assertMatchesRegularExpression('#data-folio-ai-stalled hidden>.*hx-post="/folio/post/_ai/jobs/' . $id . '/start".*Continue#s', $html);
+    }
+
+    public function test_a_run_left_running_is_listed_on_the_run_screen_and_continues(): void
+    {
+        $id = self::jobId($this->estimate());
+        $this->request('POST', "/folio/post/_ai/jobs/{$id}/start", [], true);
+        $this->step($id); // then the page was closed
+
+        $screen = (string) $this->request('GET', '/folio/post/_ai/run')->getBody();
+
+        $this->assertMatchesRegularExpression('#data-folio-ai-unfinished.*action="/folio/post/_ai/jobs/' . $id . '/start".*Left running.*German · 1 / 2 records.*Continue#s', $screen);
+        $start = $this->request('POST', "/folio/post/_ai/jobs/{$id}/start", [], true);
+        $this->assertTrue(self::polls($start), 'Continue takes the running job up');
+        $this->step($id);
+        $this->assertSame('done', $this->job($id)->state);
+        $this->assertStringNotContainsString('data-folio-ai-unfinished', (string) $this->request('GET', '/folio/post/_ai/run')->getBody(), 'a finished run is not offered');
+    }
+
+    public function test_a_step_survives_a_closed_tab_and_a_short_time_limit(): void
+    {
+        $id = self::jobId($this->estimate());
+        $this->request('POST', "/folio/post/_ai/jobs/{$id}/start", [], true);
+        ignore_user_abort(false);
+        $limit = ini_get('max_execution_time');
+        ini_set('max_execution_time', '30');
+        try {
+            $this->step($id);
+
+            $this->assertSame(1, ignore_user_abort());
+            $this->assertSame('300', ini_get('max_execution_time'));
+        } finally {
+            set_time_limit((int) $limit);
+            ignore_user_abort(false);
+        }
+    }
+
     public function test_stop_keeps_done_records(): void
     {
         $id = self::jobId($this->estimate());

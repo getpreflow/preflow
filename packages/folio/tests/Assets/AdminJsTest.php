@@ -263,4 +263,12 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString("if (submitted === saveAll) { return; }", $js, 'saving all leaves without asking');
         $this->assertStringContainsString('initTranslationsSaveAll();', $js);
     }
+
+    public function test_a_failed_run_step_shows_continue(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString("['htmx:responseError', 'htmx:sendError', 'htmx:timeout'].forEach", $js);
+        $this->assertStringContainsString("if (!elt || elt.id !== 'folio-ai-progress') { return; }", $js);
+        $this->assertStringContainsString("elt.querySelector('[data-folio-ai-stalled]')", $js);
+    }
 }

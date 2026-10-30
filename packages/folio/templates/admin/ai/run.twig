@@ -31,6 +31,25 @@
             </form>
         {% endif %}
     {% else %}
+        {% if unfinished|default([]) is not empty %}
+            <section class="folio-ai-progress-section" data-folio-ai-unfinished>
+                <h2>{{ t('folio.ai_run.unfinished') }}</h2>
+                <p class="form-help">{{ t('folio.ai_run.unfinished_help') }}</p>
+                <ul>
+                    {% for job in unfinished %}
+                        <li>
+                            <form method="post" action="{{ job.start_url }}" hx-post="{{ job.start_url }}" hx-target="#folio-ai-run" hx-swap="innerHTML" class="folio-row-actions">
+                                <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                                <span class="folio-badge">{{ t('folio.ai_run.job_state.' ~ job.state) }}</span>
+                                <span>{{ t('folio.ai_run.unfinished_row', {languages: job.languages|e, done: job.done, total: job.total}) }}</span>
+                                {% if job.confirm %}<label class="form-radio"><input type="checkbox" name="confirm_live" value="1" data-folio-enables="folio-ai-continue-{{ job.id }}"> {{ t('folio.ai_run.confirm_live') }}</label>{% endif %}
+                                <button type="submit" class="btn btn-secondary btn-sm" id="folio-ai-continue-{{ job.id }}" data-folio-ai-start{% if job.confirm %} disabled{% endif %}>{{ t('folio.ai_run.continue') }}</button>
+                            </form>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </section>
+        {% endif %}
         <form class="folio-form" method="post" action="{{ action }}">
             <input type="hidden" name="_csrf_token" value="{{ csrf }}">
             <input type="hidden" name="step" value="estimate">
