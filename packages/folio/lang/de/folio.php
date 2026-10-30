@@ -200,7 +200,7 @@ return [
         'continue' => 'Fortsetzen',
         'stop' => 'Anhalten',
         'cost' => 'bisherige Kosten :cost',
-        'running' => 'Übersetze, einen Eintrag nach dem anderen … Du kannst die Seite verlassen; Anhalten behält das Erledigte.',
+        'running' => 'Übersetze, einen Eintrag nach dem anderen … Lass diese Seite offen, solange es läuft; Anhalten behält, was fertig ist.',
         'finished' => 'Fertig.',
         'stopped' => 'Angehalten.',
         'problems' => 'Nicht übersetzt',

@@ -210,7 +210,7 @@ return [
         'continue' => 'Continue',
         'stop' => 'Stop',
         'cost' => 'cost so far :cost',
-        'running' => 'Translating, one record at a time… You can leave this page; Stop keeps what is done.',
+        'running' => 'Translating, one record at a time… Keep this page open while it runs; Stop keeps what is done.',
         'finished' => 'Finished.',
         'stopped' => 'Stopped.',
         'problems' => 'Not translated',
