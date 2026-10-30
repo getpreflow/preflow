@@ -64,6 +64,9 @@
         <testsuite name="Rbac">
             <directory>packages/rbac/tests</directory>
         </testsuite>
+        <testsuite name="Ai">
+            <directory>packages/ai/tests</directory>
+        </testsuite>
         <testsuite name="Codes">
             <directory>packages/codes/tests</directory>
         </testsuite>
@@ -92,6 +95,7 @@
             <directory>packages/notify/src</directory>
             <directory>packages/roles/src</directory>
             <directory>packages/rbac/src</directory>
+            <directory>packages/ai/src</directory>
             <directory>packages/codes/src</directory>
             <directory>packages/media/src</directory>
             <directory>packages/members/src</directory>
