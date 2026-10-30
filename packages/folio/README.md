@@ -1516,6 +1516,8 @@ php preflow folio:pull production --only=data # records only (or --only=media)
   nothing.
 - **Local-only content:** records and files that exist only locally are removed, so the
   copy matches live.
+- **Records all or nothing:** the records are replaced in one go (removed and replaced rows
+  first, so a slug that has another id live never collides); if that fails, no record changes.
 
 The same archive works without SSH, as a content backup and restore:
 

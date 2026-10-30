@@ -197,6 +197,27 @@ final class TransferCommandsTest extends TestCase
         $this->assertFileExists($this->dir . '/storage/data/post/x.json'); // nothing applied without a backup
     }
 
+    public function test_a_record_the_storage_refuses_changes_nothing_and_says_so(): void
+    {
+        $this->removeScaffold();
+        $this->scaffoldPublishing('sqlite');
+        ($this->app()->container()->get(\Preflow\Data\Migration\MigrationRegistry::class)->steps()['folio.tables'])();
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
+        $file = $this->dir . '/x.tar';
+        $s = fopen($file, 'w+b');
+        $w = new \Preflow\Folio\Transfer\TarWriter($s);
+        $w->addString('folio-export.json', (string) json_encode(['format' => 1, 'only' => 'data', 'tables' => ['post' => 2]]));
+        $w->addString('data/post/p2.json', (string) json_encode(['uuid' => 'p2', 'title' => '{"en":"Live"}']));
+        $w->addString('data/post/p3.json', (string) json_encode(['uuid' => 'p3', 'no_such_column' => 1]));
+        $w->close();
+        fclose($s);
+
+        $this->assertSame(1, $this->import([$file]));
+
+        $this->assertStringContainsString('Import failed, nothing was changed', $this->text($this->err));
+        $this->assertSame(['p1'], array_map(static fn ($r) => $r->getId(), $this->dm()->queryType('post')->get()->items()));
+    }
+
     private function dmSave(string $table, string $file, array $row): void
     {
         $this->app()->container()->get(\Preflow\Data\DataManager::class)->driver('json')->save($table, $file, $row);

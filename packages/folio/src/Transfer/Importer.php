@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Preflow\Folio\Transfer;
 
 use Preflow\Data\DataManager;
+use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\Query;
+use Preflow\Data\StorageDriver;
 
 /**
  * Reads a content archive into a temporary directory, validating every entry
@@ -16,6 +18,9 @@ final class Importer
 {
     /** Record ids an archive can carry (file names; no leading dot, so globbing sees them; ":" for "{locale}:{key}" of the translation overrides). */
     public const ID = '/^[A-Za-z0-9_-][A-Za-z0-9._:-]*$/';
+
+    /** TransferException code: the import failed while writing records and changed none. */
+    public const RECORDS_UNCHANGED = 1;
 
     public function __construct(
         private readonly ContentSet $set,
@@ -55,26 +60,17 @@ final class Importer
         }
     }
 
+    /**
+     * Records first, then files. The records of all tables are replaced together: each table's
+     * removed and replaced rows are deleted before the incoming ones are written, so a unique
+     * value (a slug) that moves to another id never collides. SQL storages run it in one
+     * transaction per connection; other storages (JSON) get their earlier rows written back.
+     * A failure there throws a TransferException with code RECORDS_UNCHANGED and leaves the
+     * local records as they were; files are written after the records and are not undone.
+     */
     public function apply(ImportPlan $plan): void
     {
-        $tables = $this->set->tables();
-        $changed = [];
-        foreach ($plan->tables as $table => $diff) {
-            if ($diff['added'] !== [] || $diff['changed'] !== [] || $diff['removed'] !== []) {
-                $changed[] = (string) $table;
-            }
-            $def = $tables[$table];
-            $driver = $this->dm->driver($def->storage);
-            foreach ([...$diff['added'], ...$diff['changed']] as $id) {
-                $row = json_decode((string) file_get_contents("{$plan->dir}/data/{$table}/{$id}.json"), true, 512, JSON_THROW_ON_ERROR);
-                // As saveType() writes it: no empty text in number, yes/no or date columns.
-                $driver->save($table, $id, $this->dm->storageValues($def, $row), $def->idField);
-            }
-            foreach ($diff['removed'] as $id) {
-                $driver->delete($table, $id, $def->idField);
-            }
-        }
-        $this->set->imported($changed);
+        $this->applyRecords($plan);
 
         $roots = $this->set->fileRoots();
         foreach ($plan->files as $root => $diff) {
@@ -95,6 +91,96 @@ final class Importer
             }
             self::pruneEmptyDirs($target);
         }
+    }
+
+    private function applyRecords(ImportPlan $plan): void
+    {
+        $tables = $this->set->tables();
+        $changed = [];
+        $work = [];
+        foreach ($plan->tables as $table => $diff) {
+            $table = (string) $table;
+            if ($diff['added'] === [] && $diff['changed'] === [] && $diff['removed'] === []) {
+                continue;
+            }
+            $changed[] = $table;
+            $def = $tables[$table];
+            $rows = [];
+            foreach ([...$diff['added'], ...$diff['changed']] as $id) {
+                $row = json_decode((string) file_get_contents("{$plan->dir}/data/{$table}/{$id}.json"), true, 512, JSON_THROW_ON_ERROR);
+                // As saveType() writes it: no empty text in number, yes/no or date columns.
+                $rows[$id] = $this->dm->storageValues($def, $row);
+            }
+            $work[$table] = [$def, $this->dm->driver($def->storage), $diff, $rows];
+        }
+        if ($work === []) {
+            $this->set->imported([]);
+
+            return;
+        }
+
+        /** @var array<int, \PDO> $began */
+        $began = [];
+        /** @var list<array{0: StorageDriver, 1: string, 2: string, 3: list<string>, 4: array<string, array<string, mixed>>}> $undo */
+        $undo = [];
+        try {
+            foreach ($work as $table => [$def, $driver, $diff]) {
+                if ($driver instanceof PdoDriver) {
+                    $pdo = $driver->pdo();
+                    if (!isset($began[spl_object_id($pdo)]) && !$pdo->inTransaction()) {
+                        $pdo->beginTransaction();
+                        $began[spl_object_id($pdo)] = $pdo;
+                    }
+                    if ($pdo->inTransaction()) {
+                        continue;
+                    }
+                }
+                // No transaction: keep the rows this import replaces or removes, to write them back.
+                $before = [];
+                foreach ([...$diff['changed'], ...$diff['removed']] as $id) {
+                    $row = $driver->findOne($table, $id, $def->idField);
+                    if ($row !== null) {
+                        $before[$id] = $row;
+                    }
+                }
+                $undo[] = [$driver, $table, $def->idField, $diff['added'], $before];
+            }
+
+            foreach ($work as $table => [$def, $driver, $diff, $rows]) {
+                // Deleted first: a unique value the archive gives another id is free when it is written.
+                foreach ([...$diff['removed'], ...$diff['changed']] as $id) {
+                    $driver->delete($table, $id, $def->idField);
+                }
+                foreach ($rows as $id => $row) {
+                    $driver->save($table, (string) $id, $row, $def->idField);
+                }
+            }
+
+            foreach ($began as $pdo) {
+                $pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            foreach ($began as $pdo) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+            }
+            try {
+                foreach ($undo as [$driver, $table, $idField, $added, $before]) {
+                    foreach ([...$added, ...array_keys($before)] as $id) {
+                        $driver->delete($table, (string) $id, $idField);
+                    }
+                    foreach ($before as $id => $row) {
+                        $driver->save($table, (string) $id, $row, $idField);
+                    }
+                }
+            } catch (\Throwable $undoFailed) {
+                throw new TransferException('Import stopped part-way and its records could not be put back (' . $undoFailed->getMessage() . '): ' . $e->getMessage(), 0, $e);
+            }
+
+            throw new TransferException($e->getMessage(), self::RECORDS_UNCHANGED, $e);
+        }
+        $this->set->imported($changed);
     }
 
     /**

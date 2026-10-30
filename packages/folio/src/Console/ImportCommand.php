@@ -83,6 +83,11 @@ final class ImportCommand extends TransferCommand implements CommandInterface
             try {
                 $importer->apply($plan);
             } catch (\Throwable $e) {
+                if ($e instanceof TransferException && $e->getCode() === Importer::RECORDS_UNCHANGED) {
+                    $cmd->warn('Import failed, nothing was changed: ' . $e->getMessage());
+
+                    return 1;
+                }
                 $cmd->warn('Import stopped part-way: ' . $e->getMessage());
                 $cmd->warn('Local content is now mixed. Restore it with: php preflow folio:import ' . $backup);
 
