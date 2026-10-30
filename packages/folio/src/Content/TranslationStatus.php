@@ -14,7 +14,9 @@ use Preflow\Folio\Field\StructuredFieldType;
 use Preflow\Folio\Field\Types\AssetFieldType;
 use Preflow\Folio\Field\Types\BooleanFieldType;
 use Preflow\Folio\Field\Types\EnvFieldType;
+use Preflow\Folio\Field\Types\RichTextFieldType;
 use Preflow\Form\FieldRenderer;
+use Preflow\I18n\Machine\MachineMarks;
 
 /**
  * Which translatable texts of a record a language misses or holds outdated.
@@ -27,11 +29,23 @@ use Preflow\Form\FieldRenderer;
  * since. A translation without a fingerprint is never outdated. Fingerprints are
  * stamped when a translation is saved (stamp(), from DraftRecordFactory) and
  * confirmed by an editor (confirm()).
+ *
+ * Next to each fingerprint, _translated_source keeps the default text itself, so a
+ * translator can be shown what changed (previousSource()); records stamped before it
+ * existed simply have none. Machine-made texts carry a mark in _machine_translated
+ * (MachineMarks: the fingerprint of the text as the machine wrote it), so they count as
+ * not checked (unchecked()) until a person edits or confirms them.
  */
 final class TranslationStatus
 {
     /** The record key holding the fingerprints: {locale: {path: fingerprint}}. */
     public const string KEY = '_translated_from';
+
+    /** The record key holding the default texts the translations were made from: {locale: {path: text}}. */
+    public const string SOURCES = '_translated_source';
+
+    /** The record key holding the marks of machine-made texts not checked yet (MachineMarks shape). */
+    public const string MACHINE = '_machine_translated';
 
     public function __construct(
         private readonly FieldTypeRegistry $fieldTypes,
@@ -66,7 +80,7 @@ final class TranslationStatus
                 continue;
             }
             if (isset($translatable[$name]) && self::holdsText($type)) {
-                $texts[] = TranslatableText::of($name, $this->label($def, $name), $record->get($name), $locales);
+                $texts[] = TranslatableText::of($name, $this->label($def, $name), $record->get($name), $locales, format: self::format($type));
             }
         }
 
@@ -99,7 +113,7 @@ final class TranslationStatus
     public function outdated(TypeDefinition $def, DynamicRecord $record, string $locale): array
     {
         $default = $def->locales->default;
-        $stamped = self::fingerprints($record)[$locale] ?? [];
+        $stamped = self::entries($record, self::KEY)[$locale] ?? [];
         if ($locale === $default || $stamped === []) {
             return [];
         }
@@ -112,6 +126,58 @@ final class TranslationStatus
         ));
     }
 
+    /**
+     * Texts $locale has that are still exactly what the machine wrote: not checked by a person yet.
+     *
+     * @return list<TranslatableText>
+     */
+    public function unchecked(TypeDefinition $def, DynamicRecord $record, string $locale): array
+    {
+        $marks = self::entries($record, self::MACHINE);
+        if (($marks[$locale] ?? []) === []) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $this->texts($def, $record),
+            static fn (TranslatableText $t): bool => $t->in($locale) !== null
+                && MachineMarks::isUnchecked($marks, $locale, $t->path, $t->in($locale)),
+        ));
+    }
+
+    /**
+     * The default text the translation at $path in $locale was made from, as stored when it was
+     * saved or confirmed; null when none was stored (e.g. stamped before sources were kept).
+     */
+    public function previousSource(DynamicRecord $record, string $locale, string $path): ?string
+    {
+        return self::entries($record, self::SOURCES)[$locale][$path] ?? null;
+    }
+
+    /**
+     * Marks the texts at $paths in $locale as machine-made, with their current texts, so they count
+     * as not checked until edited or confirmed. Paths that are no text of the record, or that
+     * $locale has no text for, are ignored. Returns an updated copy; nothing is saved.
+     *
+     * @param list<string> $paths
+     */
+    public function markMachine(TypeDefinition $def, DynamicRecord $record, string $locale, array $paths): DynamicRecord
+    {
+        $wanted = array_flip(array_filter($paths, 'is_string'));
+        $marks = self::entries($record, self::MACHINE);
+        foreach ($this->texts($def, $record) as $text) {
+            $now = $text->in($locale);
+            if (isset($wanted[$text->path]) && $now !== null) {
+                $marks = MachineMarks::mark($marks, $locale, $text->path, $now);
+            }
+        }
+
+        $copy = clone $record;
+        self::put($copy, self::MACHINE, $marks);
+
+        return $copy;
+    }
+
     /** The fingerprint of a default text (trimmed). */
     public function fingerprint(?string $defaultText): string
     {
@@ -121,30 +187,39 @@ final class TranslationStatus
     /**
      * Marks the translations in $locale as made from the current default texts ("still
      * correct"): all of them, or those under $pathPrefix (the path itself or below it).
-     * Only texts $locale has are confirmed. Returns an updated copy; nothing is saved.
+     * Only texts $locale has are confirmed; they take the current default text as their source
+     * and count as checked (their machine marks are cleared). Returns an updated copy; nothing is saved.
      */
     public function confirm(TypeDefinition $def, DynamicRecord $record, string $locale, ?string $pathPrefix = null): DynamicRecord
     {
         $default = $def->locales->default;
-        $fingerprints = self::fingerprints($record);
+        $fingerprints = self::entries($record, self::KEY);
+        $sources = self::entries($record, self::SOURCES);
+        $marks = self::entries($record, self::MACHINE);
         foreach ($this->texts($def, $record) as $text) {
             if ($text->in($locale) === null || ($pathPrefix !== null && !self::under($text->path, $pathPrefix))) {
                 continue;
             }
             $fingerprints[$locale][$text->path] = $this->fingerprint($text->in($default));
+            $sources = self::withSource($sources, $locale, $text->path, $text->in($default));
+            $marks = MachineMarks::clear($marks, $locale, $text->path);
         }
 
         $copy = clone $record;
         $copy->set(self::KEY, $fingerprints);
+        self::put($copy, self::SOURCES, $sources);
+        self::put($copy, self::MACHINE, $marks);
 
         return $copy;
     }
 
     /**
      * The record as saved in $locale: each translation that changed from $before takes the
-     * fingerprint of the default text it is saved with ($after's, so a default written in
-     * the same request counts), a cleared one loses it, and fingerprints of texts that no
-     * longer exist (deleted blocks) are dropped. Saving the default locale stamps nothing.
+     * fingerprint and source of the default text it is saved with ($after's, so a default
+     * written in the same request counts), a cleared one loses them, and fingerprints and
+     * sources of texts that no longer exist (deleted blocks) are dropped. Saving the default
+     * locale stamps nothing. Machine marks of texts changed since the machine wrote them (in
+     * any locale) are dropped, so an edit counts as checked and a plain re-save does not.
      * Sets them on $after and returns it.
      */
     public function stamp(TypeDefinition $def, DynamicRecord $before, DynamicRecord $after, string $locale): DynamicRecord
@@ -158,7 +233,8 @@ final class TranslationStatus
         foreach ($this->texts($def, $after) as $text) {
             $texts[$text->path] = $text;
         }
-        $fingerprints = self::fingerprints($after);
+        $fingerprints = self::entries($after, self::KEY);
+        $sources = self::entries($after, self::SOURCES);
 
         if ($locale !== $locales->default && $locales->has($locale)) {
             $previous = [];
@@ -172,24 +248,22 @@ final class TranslationStatus
                 }
                 if ($now === null) {
                     unset($fingerprints[$locale][$path]);
+                    $sources = self::withSource($sources, $locale, $path, null);
                 } else {
                     $fingerprints[$locale][$path] = $this->fingerprint($text->in($locales->default));
+                    $sources = self::withSource($sources, $locale, $path, $text->in($locales->default));
                 }
             }
         }
 
-        foreach ($fingerprints as $stampedLocale => $entries) {
-            $entries = array_intersect_key($entries, $texts);
-            if ($entries === []) {
-                unset($fingerprints[$stampedLocale]);
-            } else {
-                $fingerprints[$stampedLocale] = $entries;
-            }
-        }
+        $marks = MachineMarks::prune(
+            self::entries($after, self::MACHINE),
+            static fn (string $markedLocale, string $path): ?string => isset($texts[$path]) ? $texts[$path]->in($markedLocale) : null,
+        );
 
-        if ($fingerprints !== [] || $after->get(self::KEY) !== null) {
-            $after->set(self::KEY, $fingerprints);
-        }
+        self::put($after, self::KEY, self::existing($fingerprints, $texts));
+        self::put($after, self::SOURCES, self::existing($sources, $texts));
+        self::put($after, self::MACHINE, $marks);
 
         return $after;
     }
@@ -207,14 +281,21 @@ final class TranslationStatus
             && !$type instanceof EnvFieldType;
     }
 
+    /** The markup a field type's text carries: rich text is HTML, everything else plain. */
+    public static function format(FieldType $type): string
+    {
+        return $type instanceof RichTextFieldType ? 'html' : 'plain';
+    }
+
     /**
-     * The stored fingerprints (SQL drivers return them as JSON text).
+     * A stored {locale: {path: string}} map: fingerprints, sources or machine marks (SQL drivers
+     * return them as JSON text).
      *
      * @return array<string, array<string, string>>
      */
-    private static function fingerprints(DynamicRecord $record): array
+    private static function entries(DynamicRecord $record, string $key): array
     {
-        $raw = $record->get(self::KEY);
+        $raw = $record->get($key);
         if (is_string($raw) && $raw !== '') {
             $raw = json_decode($raw, true);
         }
@@ -228,6 +309,60 @@ final class TranslationStatus
         }
 
         return $out;
+    }
+
+    /**
+     * Sets a {locale: {path: string}} map on the record, unless there is nothing to store and
+     * nothing stored (records that never had a translation keep no empty key).
+     *
+     * @param array<string, array<string, string>> $entries
+     */
+    private static function put(DynamicRecord $record, string $key, array $entries): void
+    {
+        if ($entries !== [] || $record->get($key) !== null) {
+            $record->set($key, $entries);
+        }
+    }
+
+    /**
+     * Only the entries of paths that are still texts of the record, without empty locales.
+     *
+     * @param array<string, array<string, string>> $entries
+     * @param array<string, TranslatableText> $texts by path
+     * @return array<string, array<string, string>>
+     */
+    private static function existing(array $entries, array $texts): array
+    {
+        foreach ($entries as $locale => $paths) {
+            $paths = array_intersect_key($paths, $texts);
+            if ($paths === []) {
+                unset($entries[$locale]);
+            } else {
+                $entries[$locale] = $paths;
+            }
+        }
+
+        return $entries;
+    }
+
+    /**
+     * $sources with the default text $path in $locale was made from; none when it is empty.
+     *
+     * @param array<string, array<string, string>> $sources
+     * @return array<string, array<string, string>>
+     */
+    private static function withSource(array $sources, string $locale, string $path, ?string $defaultText): array
+    {
+        if ($defaultText === null) {
+            unset($sources[$locale][$path]);
+            if (($sources[$locale] ?? null) === []) {
+                unset($sources[$locale]);
+            }
+        } else {
+            $sources[$locale][$path] = $defaultText;
+        }
+
+        return $sources;
     }
 
     private static function under(string $path, string $prefix): bool

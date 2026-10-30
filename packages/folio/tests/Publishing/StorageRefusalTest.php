@@ -89,7 +89,7 @@ final class StorageRefusalTest extends TestCase
         $this->assertSame('z', $this->stored('event', 'a')->get('slug'));
     }
 
-    /** A revision saved before fingerprints existed clears the working row's current ones (SQL leaves unnamed columns alone). */
+    /** A revision saved before fingerprints, sources and machine marks existed clears the working row's current ones (SQL leaves unnamed columns alone). */
     public function testRestoreOfARevisionWithoutFingerprintsClearsThem(): void
     {
         $this->scaffoldEvents('sqlite');
@@ -97,15 +97,22 @@ final class StorageRefusalTest extends TestCase
         $a = $this->stored('event', 'a');
         $a->set('name', 'A2');
         $a->set('_translated_from', ['de' => ['name' => 'aaaaaaaaaaaaaaaa']]);
+        $a->set('_translated_source', ['de' => ['name' => 'A2']]);
+        $a->set('_machine_translated', ['de' => ['name' => 'bbbbbbbbbbbbbbbb']]);
         $this->publisher()->publish($a, null);
         $this->assertNotEmpty($this->stored('event', 'a')->get('_translated_from'));
+        $this->assertNotEmpty($this->stored('event', 'a')->get('_translated_source'));
+        $this->assertNotEmpty($this->stored('event', 'a')->get('_machine_translated'));
         $first = $this->publisher()->revisions('event', 'a')[1];
         $this->assertArrayNotHasKey('_translated_from', $first->data);
+        $this->assertArrayNotHasKey('_translated_source', $first->data);
 
         $this->publisher()->restore('event', 'a', $first->id);
 
         $this->assertSame('A', $this->stored('event', 'a')->get('name'));
         $this->assertEmpty($this->stored('event', 'a')->get('_translated_from'));
+        $this->assertEmpty($this->stored('event', 'a')->get('_translated_source'));
+        $this->assertEmpty($this->stored('event', 'a')->get('_machine_translated'));
     }
 
     private function autosaveReportsATakenValue(string $storage): void

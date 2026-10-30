@@ -12,7 +12,9 @@ use Preflow\Data\Locales;
  * leaf ("sections.{uid}.headline", nested "sections.{uid}.{child}.{cuid}.{leaf}")
  * or a text a custom field type reports ("{field}.{its own path}"). Paths are
  * stable across saves and reordering; the label is for people
- * ("Sections › Hero › Headline").
+ * ("Sections › Hero › Headline"). A structured field may report a kind ("quiz-option",
+ * "feedback") so tuning can target it; the format ("plain", "html", "markdown") tells a
+ * translator which markup the text carries and must keep.
  */
 final readonly class TranslatableText
 {
@@ -21,10 +23,12 @@ final readonly class TranslatableText
         public string $path,
         public string $label,
         public array $values,
+        public ?string $kind = null,
+        public string $format = 'plain',
     ) {}
 
     /** A text from a stored value (a locale map, or a plain value as the default locale's text). */
-    public static function of(string $path, string $label, mixed $raw, Locales $locales): self
+    public static function of(string $path, string $label, mixed $raw, Locales $locales, ?string $kind = null, string $format = 'plain'): self
     {
         $map = LocaleValue::map($raw, $locales);
         $values = [];
@@ -32,7 +36,7 @@ final readonly class TranslatableText
             $values[$locale] = self::text($map[$locale] ?? null);
         }
 
-        return new self($path, $label, $values);
+        return new self($path, $label, $values, $kind, $format);
     }
 
     /** A stored value as text: null when empty (null, '' or only whitespace). */
@@ -54,9 +58,9 @@ final readonly class TranslatableText
         return $this->values[$locale] ?? null;
     }
 
-    /** The same text under "{prefix}.{path}", labelled "{label} › {its label}". */
+    /** The same text under "{prefix}.{path}", labelled "{label} › {its label}" (kind and format kept). */
     public function within(string $pathPrefix, string $labelPrefix): self
     {
-        return new self($pathPrefix . '.' . $this->path, $labelPrefix . ' › ' . $this->label, $this->values);
+        return new self($pathPrefix . '.' . $this->path, $labelPrefix . ' › ' . $this->label, $this->values, $this->kind, $this->format);
     }
 }

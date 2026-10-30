@@ -25,7 +25,10 @@ use Psr\Http\Message\UploadedFileInterface;
  * translatable (one file per record).
  *
  * Saving a translation stamps its fingerprints (TranslationStatus::stamp()), so
- * save, autosave and preview treat outdated translations alike.
+ * save, autosave and preview treat outdated translations alike. Texts the form filled
+ * with machine translations the editor did not accept are posted as paths in
+ * _ai_unchecked[]; they are saved with a "not checked" mark (TranslationStatus::markMachine()).
+ * The form is staff-only behind its permission, so the list is trusted as posted.
  *
  * Hidden and read-only fields ("hidden": true, "readonly": true) are never taken from
  * the form: the stored value is kept (a new record starts without one, unless a
@@ -156,12 +159,29 @@ final class DraftRecordFactory
         $data[$typeDef->idField] = $existing[$typeDef->idField] ?? null;
 
         // A translation saved here records the default text it was made from (outdated marks).
-        return $this->translations->stamp(
+        $record = $this->translations->stamp(
             $typeDef,
             DynamicRecord::fromArray($typeDef, $existing),
             DynamicRecord::fromArray($typeDef, $data),
             $locale,
         );
+
+        $unchecked = self::aiUnchecked($submitted);
+
+        return $unchecked === [] ? $record : $this->translations->markMachine($typeDef, $record, $locale, $unchecked);
+    }
+
+    /**
+     * The posted paths of machine-filled texts the editor did not accept (_ai_unchecked[]).
+     *
+     * @param array<string, mixed> $submitted
+     * @return list<string>
+     */
+    private static function aiUnchecked(array $submitted): array
+    {
+        $posted = $submitted['_ai_unchecked'] ?? [];
+
+        return array_values(array_filter(is_array($posted) ? $posted : [$posted], static fn ($p): bool => is_string($p) && $p !== ''));
     }
 
     /**

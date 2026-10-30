@@ -196,6 +196,53 @@ final class DraftRecordFactoryTest extends TestCase
         $this->assertNull($this->build(['title' => 'Plain'], [], 'en', Locales::single('en'))->get('_translated_from'));
     }
 
+    public function test_saving_a_translation_stores_its_source_text(): void
+    {
+        $record = $this->build(['title' => 'Hallo'], ['title' => ['en' => 'Hello']], 'de');
+
+        $this->assertSame(['de' => ['title' => 'Hello']], $record->get(TranslationStatus::SOURCES));
+        $this->assertNull($record->get(TranslationStatus::MACHINE), 'nothing posted as AI-filled');
+    }
+
+    public function test_posted_ai_unchecked_paths_marked_on_build(): void
+    {
+        $record = $this->build(
+            ['title' => 'Hallo', 'sections' => ['_order' => [self::A], self::A => ['_block' => 'hero', 'headline' => 'Kopf']], '_ai_unchecked' => ['title', 'sections.' . self::A . '.headline', 'gone', 7]],
+            ['title' => ['en' => 'Hello'], 'sections' => [['_uid' => self::A, '_block' => 'hero', 'headline' => ['en' => 'Head']]]],
+            'de',
+        );
+
+        $this->assertSame(
+            ['de' => ['title' => $this->fingerprint('Hallo'), 'sections.' . self::A . '.headline' => $this->fingerprint('Kopf')]],
+            $record->get(TranslationStatus::MACHINE),
+        );
+        $this->assertSame(['title', 'sections.' . self::A . '.headline'], $this->unchecked($record, 'de'));
+    }
+
+    public function test_resave_without_change_keeps_mark(): void
+    {
+        $first = $this->build(['title' => 'Hallo', '_ai_unchecked' => ['title']], ['title' => ['en' => 'Hello']], 'de');
+        $stored = ['title' => $first->get('title'), TranslationStatus::KEY => $first->get(TranslationStatus::KEY), TranslationStatus::SOURCES => $first->get(TranslationStatus::SOURCES), TranslationStatus::MACHINE => json_encode($first->get(TranslationStatus::MACHINE))];
+
+        $resaved = $this->build(['title' => 'Hallo'], $stored, 'de');
+        $otherLocale = $this->build(['title' => 'Hello'], $stored, 'en');
+        $edited = $this->build(['title' => 'Hallo du'], $stored, 'de');
+
+        $this->assertSame(['title'], $this->unchecked($resaved, 'de'), 'a plain re-save keeps the mark');
+        $this->assertSame(['title'], $this->unchecked($otherLocale, 'de'), 'saving another locale keeps it too');
+        $this->assertSame([], $this->unchecked($edited, 'de'), 'changing the text clears it');
+        $this->assertSame([], $edited->get(TranslationStatus::MACHINE));
+    }
+
+    /** @return list<string> */
+    private function unchecked(\Preflow\Data\DynamicRecord $record, string $locale): array
+    {
+        return array_map(
+            static fn ($t) => $t->path,
+            (new TranslationStatus($this->registry()))->unchecked($this->type(), $record, $locale),
+        );
+    }
+
     /**
      * @param array<string, mixed> $body
      * @param array<string, mixed> $existing

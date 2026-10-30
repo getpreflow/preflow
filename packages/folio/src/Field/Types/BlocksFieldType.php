@@ -177,7 +177,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                     continue;
                 }
                 if ($field->translatable && TranslationStatus::holdsText($type)) {
-                    $texts[] = TranslatableText::of($prefix . '.' . $name, $label, $block[$name] ?? null, $locales);
+                    $texts[] = TranslatableText::of($prefix . '.' . $name, $label, $block[$name] ?? null, $locales, format: TranslationStatus::format($type));
                 }
             }
         }

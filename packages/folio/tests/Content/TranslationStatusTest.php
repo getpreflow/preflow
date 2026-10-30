@@ -173,6 +173,130 @@ final class TranslationStatusTest extends TestCase
         $this->assertSame([], $this->paths($this->translationStatus()->missing($this->def(), $record, 'de')));
     }
 
+    public function test_stamp_stores_source_text_next_to_fingerprint(): void
+    {
+        $status = $this->translationStatus();
+        $before = $this->record(['title' => ['en' => 'Hello'], 'body' => ['en' => 'Body', 'de' => 'Rumpf']]);
+        $after = $this->record(['title' => ['en' => 'Hello', 'de' => 'Hallo'], 'body' => ['en' => 'Body', 'de' => 'Rumpf']]);
+
+        $stamped = $status->stamp($this->def(), $before, $after, 'de');
+
+        $this->assertSame(['de' => ['title' => $status->fingerprint('Hello')]], $stamped->get(TranslationStatus::KEY));
+        $this->assertSame(['de' => ['title' => 'Hello']], $stamped->get(TranslationStatus::SOURCES), 'unchanged texts get no source');
+        $this->assertSame('Hello', $status->previousSource($stamped, 'de', 'title'));
+        $this->assertNull($status->previousSource($stamped, 'de', 'body'));
+
+        $asSqlText = $this->record(['title' => ['en' => 'Hello!', 'de' => 'Hallo'], TranslationStatus::SOURCES => json_encode(['de' => ['title' => 'Hello']])]);
+        $this->assertSame('Hello', $status->previousSource($asSqlText, 'de', 'title'), 'stored as JSON text');
+
+        $cleared = $status->stamp($this->def(), $stamped, $this->record([
+            'title' => ['en' => 'Hello'],
+            TranslationStatus::KEY => $stamped->get(TranslationStatus::KEY),
+            TranslationStatus::SOURCES => $stamped->get(TranslationStatus::SOURCES),
+        ]), 'de');
+        $this->assertSame([], $cleared->get(TranslationStatus::SOURCES), 'a cleared translation loses its source');
+        $this->assertNull($status->previousSource($cleared, 'de', 'title'));
+    }
+
+    public function test_stamp_drops_sources_of_vanished_texts(): void
+    {
+        $status = $this->translationStatus();
+        $sources = ['de' => ['title' => 'Hello', 'sections.' . self::A . '.headline' => 'Head']];
+        $record = $this->record(['title' => ['en' => 'Hello', 'de' => 'Hallo'], TranslationStatus::SOURCES => $sources]);
+
+        $stamped = $status->stamp($this->def(), $record, clone $record, 'en');
+
+        $this->assertSame(['de' => ['title' => 'Hello']], $stamped->get(TranslationStatus::SOURCES));
+    }
+
+    public function test_confirm_sets_source_and_clears_machine_marks(): void
+    {
+        $status = $this->translationStatus();
+        $record = $status->markMachine($this->def(), $this->record([
+            'title' => ['en' => 'New', 'de' => 'Neu'],
+            'body' => ['en' => 'Body', 'de' => 'Rumpf'],
+            TranslationStatus::SOURCES => ['de' => ['title' => 'Old', 'body' => 'Old body']],
+        ]), 'de', ['title', 'body']);
+        $this->assertSame(['title', 'body'], $this->paths($status->unchecked($this->def(), $record, 'de')));
+
+        $titleOnly = $status->confirm($this->def(), $record, 'de', 'title');
+
+        $this->assertSame(['title' => 'New', 'body' => 'Old body'], $titleOnly->get(TranslationStatus::SOURCES)['de']);
+        $this->assertSame(['body'], $this->paths($status->unchecked($this->def(), $titleOnly, 'de')));
+        $this->assertSame([], $this->paths($status->unchecked($this->def(), $status->confirm($this->def(), $record, 'de'), 'de')));
+        $this->assertSame(['title', 'body'], $this->paths($status->unchecked($this->def(), $record, 'de')), 'the given record is left alone');
+    }
+
+    public function test_unchecked_until_edited(): void
+    {
+        $status = $this->translationStatus();
+        $def = $this->def();
+        $record = $status->markMachine($def, $this->record(['title' => ['en' => 'Hello', 'de' => 'Hallo'], 'body' => ['en' => 'Body']]), 'de', ['title', 'body', 'nope']);
+
+        $this->assertSame(['title'], $this->paths($status->unchecked($def, $record, 'de')), 'only texts the locale has are marked; unknown paths are ignored');
+        $this->assertSame([], $this->paths($status->unchecked($def, $record, 'en')));
+
+        $resaved = $status->stamp($def, $record, $this->record(['title' => ['en' => 'Hello', 'de' => 'Hallo'], TranslationStatus::MACHINE => $record->get(TranslationStatus::MACHINE)]), 'de');
+        $this->assertSame(['title'], $this->paths($status->unchecked($def, $resaved, 'de')), 'the same text again stays unchecked');
+
+        $edited = $status->stamp($def, $resaved, $this->record(['title' => ['en' => 'Hello', 'de' => 'Hallo!'], TranslationStatus::MACHINE => $resaved->get(TranslationStatus::MACHINE)]), 'de');
+        $this->assertSame([], $this->paths($status->unchecked($def, $edited, 'de')));
+        $this->assertSame([], $edited->get(TranslationStatus::MACHINE), 'the stale mark is pruned');
+
+        $asSqlText = $this->record(['title' => ['en' => 'Hello', 'de' => 'Hallo'], TranslationStatus::MACHINE => json_encode($record->get(TranslationStatus::MACHINE))]);
+        $this->assertSame(['title'], $this->paths($status->unchecked($def, $asSqlText, 'de')), 'stored as JSON text');
+    }
+
+    public function test_rich_text_reported_as_html(): void
+    {
+        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'blocks' => ['classes' => [\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\QuoteBlock::class]]];\n");
+        $this->writeModel('post', ['fields' => [
+            'title' => ['type' => 'string', 'translatable' => true],
+            'content' => ['type' => 'richtext', 'translatable' => true],
+            'sections' => ['type' => 'blocks'],
+        ]]);
+        $record = $this->record(['title' => ['en' => 'Hello'], 'content' => ['en' => '<p>Hi</p>'], 'sections' => [
+            ['_uid' => self::A, '_block' => 'quote', 'text' => ['en' => '<p>Said</p>']],
+        ]]);
+
+        $formats = [];
+        foreach ($this->translationStatus()->texts($this->def(), $record) as $text) {
+            $formats[$text->path] = $text->format;
+        }
+
+        $this->assertSame(['title' => 'plain', 'content' => 'html', 'sections.' . self::A . '.text' => 'html'], $formats);
+    }
+
+    public function test_within_keeps_kind_and_format(): void
+    {
+        $text = (new TranslatableText('opt', 'Option', ['en' => 'A'], 'quiz-option', 'html'))->within('flow.s1', 'Flow');
+        $plain = new TranslatableText('t', 'T', []);
+
+        $this->assertSame(['flow.s1.opt', 'Flow › Option', 'quiz-option', 'html'], [$text->path, $text->label, $text->kind, $text->format]);
+        $this->assertSame([null, 'plain'], [$plain->kind, $plain->format]);
+    }
+
+    public function test_new_keys_persist_on_sql(): void
+    {
+        $this->removeScaffold();
+        $this->scaffoldPublishing('sqlite');
+        ($this->app()->container()->get(\Preflow\Data\Migration\MigrationRegistry::class)->steps()['folio.tables'])();
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
+
+        $res = $this->post('/folio/post/p1/autosave', ['title' => 'Hallo', 'slug' => 'hallo', '_locale' => 'de', '_version' => '0', '_ai_unchecked' => ['title']]);
+
+        $this->assertSame(200, $res->getStatusCode());
+        $status = $this->translationStatus();
+        $stored = $this->stored('post', 'p1');
+        $this->assertSame('Hello', $status->previousSource($stored, 'de', 'title'));
+        $this->assertSame('hello', $status->previousSource($stored, 'de', 'slug'));
+        $this->assertSame(['title'], $this->paths($status->unchecked($this->def(), $stored, 'de')));
+
+        $version = (string) $stored->get('_version');
+        $this->assertSame(200, $this->post('/folio/post/p1/autosave', ['title' => 'Hallo', 'slug' => 'hallo', '_locale' => 'de', '_version' => $version])->getStatusCode());
+        $this->assertSame(['title'], $this->paths($status->unchecked($this->def(), $this->stored('post', 'p1'), 'de')), 'a re-save keeps the mark');
+    }
+
     private function translationStatus(): TranslationStatus
     {
         return $this->app()->container()->get(TranslationStatus::class);

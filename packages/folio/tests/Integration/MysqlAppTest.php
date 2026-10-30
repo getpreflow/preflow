@@ -163,6 +163,21 @@ final class MysqlAppTest extends TestCase
         $this->assertStringContainsString('<h1>Hallo</h1>', (string) $this->get('/de/hallo')->getBody());
     }
 
+    public function test_translation_sources_and_machine_marks_persist_on_mysql(): void
+    {
+        $this->migrateStep();
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
+
+        $res = $this->post('/folio/post/p1/autosave', ['title' => 'Hallo', 'slug' => 'hallo', '_locale' => 'de', '_version' => '0', '_ai_unchecked' => ['title']]);
+
+        $this->assertSame(200, $res->getStatusCode());
+        $status = $this->app()->container()->get(\Preflow\Folio\Content\TranslationStatus::class);
+        $stored = $this->stored('post', 'p1');
+        $this->assertSame('Hello', $status->previousSource($stored, 'de', 'title'));
+        $unchecked = $status->unchecked($this->dm()->getTypeRegistry()->get('post'), $stored, 'de');
+        $this->assertSame(['title'], array_map(static fn ($t) => $t->path, $unchecked));
+    }
+
     public function test_reorder_swaps_positions_without_renumbering(): void
     {
         $this->migrateStep();

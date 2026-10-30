@@ -503,10 +503,12 @@ final class Publisher
                 $data[$key] = $value;
             }
         }
-        // A snapshot from before fingerprints existed has no key; SQL leaves unnamed columns as they are,
-        // which would keep the working row's current fingerprints.
-        if (!array_key_exists(TranslationStatus::KEY, $data)) {
-            $data[TranslationStatus::KEY] = null;
+        // A snapshot from before fingerprints, sources or machine marks existed has no such key; SQL leaves
+        // unnamed columns as they are, which would keep the working row's current ones.
+        foreach ([TranslationStatus::KEY, TranslationStatus::SOURCES, TranslationStatus::MACHINE] as $key) {
+            if (!array_key_exists($key, $data)) {
+                $data[$key] = null;
+            }
         }
         $data[$def->idField] = $id;
         $data['_version'] = (int) ($working?->get('_version') ?? 0) + 1;

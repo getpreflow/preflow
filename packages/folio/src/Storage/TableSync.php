@@ -32,7 +32,7 @@ use Preflow\Folio\Publishing\ShadowTypes;
 final class TableSync
 {
     /** System keys Folio writes besides a type's fields. */
-    private const array SYSTEM = ['_locales', TranslationStatus::KEY, '_order', ...Publisher::META];
+    private const array SYSTEM = ['_locales', TranslationStatus::KEY, TranslationStatus::SOURCES, TranslationStatus::MACHINE, '_order', ...Publisher::META];
 
     private readonly RecordTableSync $records;
 
