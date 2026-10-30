@@ -9,6 +9,7 @@ use Preflow\Data\Locales;
 use Preflow\Folio\Block\BlockRegistry;
 use Preflow\Folio\Content\TranslatableText;
 use Preflow\Folio\Content\TranslationStatus;
+use Preflow\Folio\Field\AcceptsTranslatedTexts;
 use Preflow\Folio\Field\BuildContext;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
@@ -26,7 +27,7 @@ use Psr\Http\Message\UploadedFileInterface;
  * their own "blocks" fields; translatable leaves are locale maps, structure
  * is shared across locales. Unknown block keys are kept untouched.
  */
-final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\Folio\Field\DisplaysInAdmin, ReportsTranslatableTexts
+final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\Folio\Field\DisplaysInAdmin, ReportsTranslatableTexts, AcceptsTranslatedTexts
 {
     private const UID = '/^[a-f0-9]{16}$/';
 
@@ -183,6 +184,58 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         }
 
         return $texts;
+    }
+
+    /**
+     * Sets translations at the paths translatableTexts() reports: "<uid>.<field>" leaves as locale
+     * maps (the text normalized as a form save would), deeper paths through a nested field that
+     * accepts them. Unknown blocks, fields and paths are left alone, as are structure and order.
+     */
+    public function withTranslatedTexts(mixed $value, array $texts, string $locale, array $config, Locales $locales): mixed
+    {
+        $blocks = $this->fromStorage($value);
+        if (!$locales->isMultilingual() || !$locales->has($locale)) {
+            return $blocks;
+        }
+
+        // uid => field => [rest path ('' for the leaf itself) => text]
+        $byBlock = [];
+        foreach ($texts as $path => $text) {
+            $parts = explode('.', (string) $path, 3);
+            if (count($parts) >= 2 && is_string($text)) {
+                $byBlock[$parts[0]][$parts[1]][$parts[2] ?? ''] = $text;
+            }
+        }
+
+        foreach ($blocks as $i => $block) {
+            $definition = $this->blocks->get((string) ($block['_block'] ?? ''));
+            if ($definition === null || !isset($byBlock[$block['_uid']])) {
+                continue;
+            }
+            foreach ($byBlock[$block['_uid']] as $name => $given) {
+                $field = $definition->fields[$name] ?? null;
+                if ($field === null) {
+                    continue;
+                }
+                $type = $this->fieldTypes->get($field->type);
+                if ($type instanceof AcceptsTranslatedTexts) {
+                    $nested = array_filter($given, static fn (string $rest): bool => $rest !== '', ARRAY_FILTER_USE_KEY);
+                    $before = $type->fromStorage($block[$name] ?? null);
+                    $after = $nested === [] ? $before : $type->withTranslatedTexts($before, $nested, $locale, $field->config, $locales);
+                    if ($after !== $before) {
+                        $blocks[$i][$name] = $type->toStorage($after);
+                    }
+                    continue;
+                }
+                if (isset($given['']) && $field->translatable && TranslationStatus::holdsText($type)) {
+                    $map = LocaleValue::map($block[$name] ?? null, $locales);
+                    $map[$locale] = $type->toStorage($type->normalizeInput($given[''], $field->config));
+                    $blocks[$i][$name] = $map;
+                }
+            }
+        }
+
+        return $blocks;
     }
 
     /**

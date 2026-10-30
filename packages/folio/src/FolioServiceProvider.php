@@ -922,6 +922,7 @@ final class FolioServiceProvider extends ServiceProvider
         // Set here, not in the AdminNav factory: Customizations validate extensions and resolve only now.
         $container->get(\Preflow\Folio\Http\AdminNav::class)->setBadges(static fn (string $type): ?int => $customizations->navBadge($type));
         $this->declarePermissions($container, $app);
+        $this->registerTextSources($container);
 
         // Settings → Extensions, once there is an extension (sites without any keep today's sidebar).
         if ($container->get(ExtensionRegistry::class)->all() !== []) {
@@ -1184,6 +1185,32 @@ final class FolioServiceProvider extends ServiceProvider
             'private_permission' => is_string($assets['private_permission'] ?? null) ? $assets['private_permission'] : 'folio.dashboard',
             'private_login' => is_string($assets['private_login'] ?? null) && $assets['private_login'] !== '' ? $assets['private_login'] : null,
         ];
+    }
+
+    /**
+     * One machine-translation text source per type of a multilingual app (types share the app's
+     * locales), so the core job runner can translate Folio records. Lazy: no type definition is
+     * read and no source is built until a run asks for it.
+     */
+    private function registerTextSources(Container $container): void
+    {
+        if (!($this->locales($container)?->isMultilingual() ?? false)) {
+            return;
+        }
+        $sources = $container->get(\Preflow\I18n\Machine\TextSources::class);
+        foreach ($container->get(TypeCatalog::class)->all() as $listing) {
+            $key = $listing->key;
+            $sources->add($key, static fn (): \Preflow\Folio\Content\FolioTextSource => new \Preflow\Folio\Content\FolioTextSource(
+                $key,
+                $container->get(TypeCatalog::class),
+                $container->get(DataManager::class),
+                $container->get(\Preflow\Folio\Content\TranslationStatus::class),
+                $container->get(FieldTypeRegistry::class),
+                $container->get(\Preflow\Folio\Publishing\Publisher::class),
+                new RecordLabeler(),
+                $container->get(\Preflow\I18n\Machine\TranslationSettings::class),
+            ));
+        }
     }
 
     /**

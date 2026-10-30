@@ -247,6 +247,18 @@ final class TranslationStatusTest extends TestCase
         $this->assertSame(['title'], $this->paths($status->unchecked($def, $asSqlText, 'de')), 'stored as JSON text');
     }
 
+    public function test_mark_machine_leaves_default_locale_alone(): void
+    {
+        $status = $this->translationStatus();
+        $record = $this->record(['title' => ['en' => 'Hello', 'de' => 'Hallo']]);
+
+        $marked = $status->markMachine($this->def(), $record, 'en', ['title']);
+
+        $this->assertNotSame($record, $marked, 'a copy, as for any other locale');
+        $this->assertSame($record->toArray(), $marked->toArray(), 'the default text is the source, never machine-made');
+        $this->assertSame([], $this->paths($status->unchecked($this->def(), $marked, 'en')));
+    }
+
     public function test_rich_text_reported_as_html(): void
     {
         $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'blocks' => ['classes' => [\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\QuoteBlock::class]]];\n");

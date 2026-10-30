@@ -155,14 +155,27 @@ final class TranslationStatus
     }
 
     /**
+     * The fingerprint stamped for the translation at $path in $locale: of the default text it was
+     * made from; null when none was stamped.
+     */
+    public function stampedFingerprint(DynamicRecord $record, string $locale, string $path): ?string
+    {
+        return self::entries($record, self::KEY)[$locale][$path] ?? null;
+    }
+
+    /**
      * Marks the texts at $paths in $locale as machine-made, with their current texts, so they count
      * as not checked until edited or confirmed. Paths that are no text of the record, or that
-     * $locale has no text for, are ignored. Returns an updated copy; nothing is saved.
+     * $locale has no text for, are ignored, as is the default locale (its texts are the sources,
+     * never translations). Returns an updated copy; nothing is saved.
      *
      * @param list<string> $paths
      */
     public function markMachine(TypeDefinition $def, DynamicRecord $record, string $locale, array $paths): DynamicRecord
     {
+        if ($locale === $def->locales->default) {
+            return clone $record;
+        }
         $wanted = array_flip(array_filter($paths, 'is_string'));
         $marks = self::entries($record, self::MACHINE);
         foreach ($this->texts($def, $record) as $text) {
