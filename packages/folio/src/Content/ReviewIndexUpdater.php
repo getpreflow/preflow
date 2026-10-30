@@ -15,7 +15,8 @@ use Preflow\I18n\Machine\ReviewIndex;
  * than the default.
  *
  * The index is a cache: writes that bypass Folio (imports, project code) leave it stale until the
- * record's next Folio save or a rebuild (folio:review-index).
+ * record's next Folio save or a rebuild (folio:review-index). For the same reason refresh() and
+ * forget() never fail the save they follow: an index that cannot be written is logged, not thrown.
  */
 final class ReviewIndexUpdater
 {
@@ -33,17 +34,26 @@ final class ReviewIndexUpdater
         if (!$record->getType()->locales->isMultilingual()) {
             return;
         }
-        $counts = $this->counts($record);
-        if ($counts === []) {
-            $this->forget($record->getType()->key, (string) $record->getId());
+        $type = $record->getType()->key;
+        $id = (string) $record->getId();
+        $this->safely($type, $id, function () use ($record, $type, $id): void {
+            $counts = $this->counts($record);
+            if ($counts === []) {
+                $this->drop($type, $id);
 
-            return;
-        }
-        $this->index->put($record->getType()->key, (string) $record->getId(), ($this->title)($record), $counts);
+                return;
+            }
+            $this->index->put($type, $id, ($this->title)($record), $counts);
+        });
     }
 
     /** Drops a record (deleted, or left without unchecked texts). */
     public function forget(string $type, string $id): void
+    {
+        $this->safely($type, $id, fn () => $this->drop($type, $id));
+    }
+
+    private function drop(string $type, string $id): void
     {
         // Most saves concern records that are not listed: a read spares them the locked rewrite.
         foreach ($this->index->entries() as $entry) {
@@ -52,6 +62,16 @@ final class ReviewIndexUpdater
 
                 return;
             }
+        }
+    }
+
+    /** Runs an index update; a failure is logged, never thrown into the save it follows. */
+    private function safely(string $type, string $id, \Closure $update): void
+    {
+        try {
+            $update();
+        } catch (\Throwable $e) {
+            error_log("Folio: could not update the review index for {$type}/{$id}: " . $e->getMessage());
         }
     }
 

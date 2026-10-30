@@ -412,6 +412,39 @@ final class PublisherTest extends TestCase
         $this->assertSame(['fr' => 1], $entries[0]->counts);
     }
 
+    public function test_an_index_that_cannot_be_written_never_fails_a_publish(): void
+    {
+        file_put_contents($this->dir . '/blocker', ''); // a file where the index directory should be
+        $p = $this->publisher(review: $this->updater(new FileReviewIndex($this->dir . '/blocker/review.json')));
+        $log = ini_set('error_log', $this->dir . '/php-error.log');
+
+        try {
+            $p->saveDraft($this->pageWithMachineTitles(), null);
+            $p->publish($this->reload('page'), 'me', 1);
+        } finally {
+            ini_set('error_log', (string) $log);
+        }
+
+        $this->assertNotNull($p->snapshot('page', 'r1'));
+        $this->assertStringContainsString('review index', (string) file_get_contents($this->dir . '/php-error.log'));
+    }
+
+    public function test_a_stale_publish_leaves_the_marks_of_the_record_as_they_were(): void
+    {
+        $p = $this->publisher();
+        $this->dm->saveType($this->working('page', ['title' => ['en' => 'Theirs'], '_version' => 2]), false);
+        $mine = $this->pageWithMachineTitles();
+        $marks = $mine->get('_machine_translated');
+
+        try {
+            $p->publish($mine, 'me', 1);
+            $this->fail('expected VersionConflict');
+        } catch (VersionConflict) {
+        }
+
+        $this->assertSame($marks, $mine->get('_machine_translated'));
+    }
+
     public function test_save_draft_refreshes_the_index(): void
     {
         $index = new FileReviewIndex($this->dir . '/review.json');

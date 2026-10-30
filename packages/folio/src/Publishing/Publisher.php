@@ -215,7 +215,18 @@ final class Publisher
         $this->requireCompleteLanguages($working);
         $marksBefore = $working->toArray()[TranslationStatus::MACHINE] ?? null;
         $this->clearVisibleMarks($working);
+        try {
+            return $this->write($working, $by, $loadedVersion);
+        } catch (\Throwable $e) {
+            // The publish failed: the record keeps the marks it came with, as it keeps its schedule.
+            $marksBefore !== null ? $working->set(TranslationStatus::MACHINE, $marksBefore) : $working->remove(TranslationStatus::MACHINE);
+            throw $e;
+        }
+    }
 
+    /** publish() after the checks: the working copy and the snapshot. */
+    private function write(DynamicRecord $working, ?string $by, ?int $loadedVersion): DynamicRecord
+    {
         $def = $working->getType();
         $shadow = ShadowTypes::published($def);
 
@@ -244,13 +255,11 @@ final class Publisher
 
         $next = $changed ? $loadedVersion + 1 : $loadedVersion;
 
-        $snapshot = $this->transaction([$def, $shadow], function () use ($working, $shadow, $by, $loadedVersion, $next, $marksBefore): DynamicRecord {
+        $snapshot = $this->transaction([$def, $shadow], function () use ($working, $shadow, $by, $loadedVersion, $next): DynamicRecord {
             $schedule = $working->toArray();
             $working->set('_publish_at', '');
             if (!$this->dm->saveTypeIfVersion($working, $loadedVersion, $next, validate: false)) {
-                // Left as it was: its schedule and its marks.
                 array_key_exists('_publish_at', $schedule) ? $working->set('_publish_at', $schedule['_publish_at']) : $working->remove('_publish_at');
-                $marksBefore !== null ? $working->set(TranslationStatus::MACHINE, $marksBefore) : $working->remove(TranslationStatus::MACHINE);
                 throw new VersionConflict($this->storedVersion($working));
             }
 
