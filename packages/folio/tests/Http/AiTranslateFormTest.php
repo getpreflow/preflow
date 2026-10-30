@@ -71,6 +71,7 @@ final class AiTranslateFormTest extends TestCase
         $without = $this->get('/folio/post/p1/edit?locale=de');
         $this->assertSame(200, $without->getStatusCode());
         $this->aiConfig(false);
+        putenv(self::aiKeyEnv()); // AI off means neither the switch nor a key: a key alone still lists Settings → AI
         $off = $this->get('/folio/post/p1/edit?locale=de');
 
         $this->assertSame(self::normalized((string) $without->getBody()), self::normalized((string) $off->getBody()));

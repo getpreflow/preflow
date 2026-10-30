@@ -86,13 +86,13 @@ trait AiScaffold
     /**
      * Folio with sign-in and roles, signed in as $role; later requests go through $this->session
      * (the login lives in-process). Roles: editor (post edit, no AI), reader (AI, no post edit),
-     * translator (post edit and AI).
+     * translator (post edit and AI), aiadmin (AI settings only).
      */
     private function staff(string $role): void
     {
         $hash = password_hash('secret', PASSWORD_DEFAULT);
         $users = [];
-        foreach (['editor', 'reader', 'translator'] as $name) {
+        foreach (['editor', 'reader', 'translator', 'aiadmin'] as $name) {
             $users[] = ['email' => "{$name}@site.test", 'password_hash' => $hash, 'roles' => [$name]];
         }
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
@@ -105,6 +105,7 @@ trait AiScaffold
             'editor' => ['folio.dashboard', 'post.view', 'post.edit'],
             'reader' => ['folio.dashboard', 'post.view', 'ai.translate'],
             'translator' => ['folio.dashboard', 'post.view', 'post.edit', 'ai.translate'],
+            'aiadmin' => ['folio.dashboard', 'ai.settings'],
         ]], true) . ";\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Roles\\RolesServiceProvider::class];\n");
 

@@ -105,6 +105,28 @@ final class TranslationSettings
     }
 
     /**
+     * What the admin stored for each level (without the config defaults), so a screen can show
+     * the edit as the value and the default as its placeholder.
+     *
+     * @return array<string, list<string>>
+     */
+    public function edited(): array
+    {
+        return $this->stored();
+    }
+
+    /**
+     * The config/ai.php default of one level; empty for field and kind levels, whose defaults live
+     * in the model JSON.
+     *
+     * @return list<string>
+     */
+    public function defaultFor(string $levelKey): array
+    {
+        return str_contains($levelKey, '.') ? [] : $this->configDefault($levelKey);
+    }
+
+    /**
      * @param list<string> $instructions an empty list (after trimming) removes the stored edit
      */
     public function saveLevel(string $levelKey, array $instructions): void

@@ -503,6 +503,16 @@ final class FolioServiceProvider extends ServiceProvider
             $prefix,
             $c->get(\Preflow\Auth\Access\Access::class),
         ));
+        $container->bind(\Preflow\Folio\Http\AiSettingsController::class, fn (Container $c) => new \Preflow\Folio\Http\AiSettingsController(
+            $c->get(\Preflow\Ai\Ai::class),
+            $c->get(\Preflow\Ai\Usage\UsageLog::class),
+            $c->get(\Preflow\I18n\Machine\TranslationSettings::class),
+            $c->get(TypeCatalog::class),
+            $c->get(TypeRegistry::class),
+            $c->get(ContentLocale::class),
+            $c->get(TemplateEngineInterface::class),
+            $prefix,
+        ));
         $container->bind(\Preflow\Folio\Http\PublishingController::class, fn (Container $c) => new \Preflow\Folio\Http\PublishingController(
             $c->get(TypeCatalog::class),
             $c->get(\Preflow\Folio\Publishing\Publisher::class),
@@ -948,6 +958,10 @@ final class FolioServiceProvider extends ServiceProvider
         $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.translations'), rtrim($this->prefix($app), '/') . '/translations', 'ui-settings', 'translations.edit', 920);
         // Settings → Cache, on every site (Folio registers its own caches).
         $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.cache'), rtrim($this->prefix($app), '/') . '/cache', 'ui-settings', 'folio.cache', 950);
+        // Settings → AI, while AI is switched on or a key is present (so a missing key or switch can be seen and fixed).
+        if (self::aiSettingsVisible($container)) {
+            $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.ai'), rtrim($this->prefix($app), '/') . '/ai', 'ui-settings', 'ai.settings', 960);
+        }
         // Extension screens in the sidebar (filtered by their permission).
         foreach ($screens->all() as $screen) {
             $container->get(\Preflow\Folio\Http\AdminNav::class)->add(
@@ -1187,10 +1201,19 @@ final class FolioServiceProvider extends ServiceProvider
                     $authEnabled && self::recordProviders($container) !== [],
                     // The AI endpoints exist only while AI is on (config/ai.php and the key).
                     $container->get(\Preflow\Ai\Ai::class)->enabled(),
+                    self::aiSettingsVisible($container),
                 ));
                 $collection->add(FolioRoutes::frontend());
             }
         }
+    }
+
+    /** Whether the Settings → AI screens exist: the owner's switch in config/ai.php is on or the provider's key is present. */
+    private static function aiSettingsVisible(Container $container): bool
+    {
+        $ai = $container->get(\Preflow\Ai\Ai::class);
+
+        return $ai->switchedOn() || $ai->status()->keyPresent;
     }
 
     /**

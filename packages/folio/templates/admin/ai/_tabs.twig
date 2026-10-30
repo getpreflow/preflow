@@ -1,0 +1,5 @@
+<nav class="folio-list-toolbar" aria-label="{{ t('folio.nav.ai') }}">
+    <a class="btn {{ tab == 'status' ? 'btn-secondary' : 'btn-ghost' }} btn-sm" href="{{ prefix }}/ai"{% if tab == 'status' %} aria-current="page"{% endif %}>{{ t('folio.ai_settings.tab_status') }}</a>
+    <a class="btn {{ tab == 'tuning' ? 'btn-secondary' : 'btn-ghost' }} btn-sm" href="{{ prefix }}/ai/tuning"{% if tab == 'tuning' %} aria-current="page"{% endif %}>{{ t('folio.ai_settings.tab_tuning') }}</a>
+    <a class="btn {{ tab == 'glossary' ? 'btn-secondary' : 'btn-ghost' }} btn-sm" href="{{ prefix }}/ai/glossary"{% if tab == 'glossary' %} aria-current="page"{% endif %}>{{ t('folio.ai_settings.tab_glossary') }}</a>
+</nav>

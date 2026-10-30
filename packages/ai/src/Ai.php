@@ -55,7 +55,16 @@ final class Ai
 
     public function enabled(): bool
     {
-        return ($this->config['enabled'] ?? false) === true && $this->key() !== null;
+        return $this->switchedOn() && $this->key() !== null;
+    }
+
+    /**
+     * The owner's switch in config/ai.php alone, whether or not a key exists. The settings
+     * screens use it to stay reachable when the switch is on but the key is missing.
+     */
+    public function switchedOn(): bool
+    {
+        return ($this->config['enabled'] ?? false) === true;
     }
 
     public function status(): AiStatus

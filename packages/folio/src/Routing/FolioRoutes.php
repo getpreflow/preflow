@@ -27,13 +27,15 @@ final class FolioRoutes
     private const PERMISSION_MW = 'Preflow\\Folio\\Http\\FolioPermissionMiddleware';
     private const EXTENSION_ASSETS = 'Preflow\\Folio\\Http\\ExtensionAssetController';
     private const AI = 'Preflow\\Folio\\Http\\AiTranslateController';
+    private const AI_SETTINGS = 'Preflow\\Folio\\Http\\AiSettingsController';
 
     /**
      * @param bool $passwords the forgot-password and set-password pages and the own account page (record users behind the default guard)
      * @param bool $ai the AI translation endpoints (only while AI is on: otherwise they do not exist and answer 404)
+     * @param bool $aiSettings the Settings → AI screens (while AI is switched on or a key is present)
      * @return RouteEntry[]
      */
-    public static function admin(string $prefix, bool $authEnabled = false, bool $passwords = false, bool $ai = false): array
+    public static function admin(string $prefix, bool $authEnabled = false, bool $passwords = false, bool $ai = false, bool $aiSettings = false): array
     {
         $prefix = '/' . trim($prefix, '/');
 
@@ -107,6 +109,18 @@ final class FolioRoutes
             ['POST', $prefix . '/{type}/{id}/move',    'reorder'],
             ['POST', $prefix . '/{type}/{id}/_action/{name}', 'recordAction'],
         ]);
+        if ($aiSettings) {
+            // Literal paths, so they win over the {type} routes that follow them.
+            $at = array_search(['GET',  $prefix . '/translations',        'index', self::TRANSLATIONS], $defs, true);
+            array_splice($defs, $at === false ? count($defs) : $at, 0, [
+                ['GET',  $prefix . '/ai',          'status',       self::AI_SETTINGS],
+                ['POST', $prefix . '/ai/test',     'test',         self::AI_SETTINGS],
+                ['GET',  $prefix . '/ai/tuning',   'tuning',       self::AI_SETTINGS],
+                ['POST', $prefix . '/ai/tuning',   'saveTuning',   self::AI_SETTINGS],
+                ['GET',  $prefix . '/ai/glossary', 'glossary',     self::AI_SETTINGS],
+                ['POST', $prefix . '/ai/glossary', 'saveGlossary', self::AI_SETTINGS],
+            ]);
+        }
         if ($ai) {
             // The edit form's Translate button (AiTranslateController); no other route has the "_ai" segment.
             $defs[] = ['POST', $prefix . '/{type}/{id}/_ai/estimate', 'estimate', self::AI];

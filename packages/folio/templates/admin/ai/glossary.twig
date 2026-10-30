@@ -1,0 +1,48 @@
+{% extends "@folio/admin/_layout.twig" %}
+{# The glossary (AiSettingsController): per term a fixed rendering per language (text, or "keep" to leave the term as it is), the types it applies to and a note. #}
+{% block title %}Folio — {{ t('folio.ai_settings.tab_glossary') }}{% endblock %}
+{% block page_title %}{{ t('folio.nav.ai') }}{% endblock %}
+{% block content %}
+    {% include '@folio/admin/ai/_tabs.twig' %}
+    <div class="folio-notice" role="status"><p>{{ t('folio.ai_settings.glossary_intro') }}</p></div>
+    <form class="folio-form" method="post" action="{{ prefix }}/ai/glossary">
+        <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+        <div class="folio-table-wrap">
+        <table class="folio-table">
+            <thead><tr>
+                <th>{{ t('folio.ai_settings.term') }}</th>
+                {% for code, name in languages %}<th>{{ name }}</th>{% endfor %}
+                <th>{{ t('folio.ai_settings.types') }}</th>
+                <th>{{ t('folio.ai_settings.note') }}</th>
+                <th>{{ t('folio.ai_settings.remove') }}</th>
+            </tr></thead>
+            <tbody>
+            {% for row in rows %}
+                {% set i = loop.index0 %}
+                <tr>
+                    <td><input type="text" name="rows[{{ i }}][term]" value="{{ row.term }}" aria-label="{{ t('folio.ai_settings.term') }}"></td>
+                    {% for code, name in languages %}
+                        <td>
+                            <input type="text" name="rows[{{ i }}][tr][{{ code }}]" value="{{ row.cells[code].text }}" aria-label="{{ name }}">
+                            <label class="form-radio"><input type="checkbox" name="rows[{{ i }}][keep][{{ code }}]" value="1"{% if row.cells[code].keep %} checked{% endif %}> {{ t('folio.ai_settings.keep') }}</label>
+                        </td>
+                    {% endfor %}
+                    <td>
+                        <select name="rows[{{ i }}][types][]" multiple aria-label="{{ t('folio.ai_settings.types') }}">
+                            {% for key, label in types %}<option value="{{ key }}"{% if key in row.types %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                        </select>
+                        <small class="form-help">{{ t('folio.ai_settings.types_help') }}</small>
+                    </td>
+                    <td><input type="text" name="rows[{{ i }}][note]" value="{{ row.note }}" aria-label="{{ t('folio.ai_settings.note') }}"></td>
+                    <td><label class="form-radio"><input type="checkbox" name="rows[{{ i }}][remove]" value="1"> {{ t('folio.ai_settings.remove') }}</label></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        <div class="folio-form-buttons">
+            <button type="submit" name="action" value="add" class="btn btn-secondary">{{ t('folio.ai_settings.add_row') }}</button>
+            <button type="submit" name="action" value="save" class="btn btn-primary">{{ t('folio.common.save') }}</button>
+        </div>
+    </form>
+{% endblock %}

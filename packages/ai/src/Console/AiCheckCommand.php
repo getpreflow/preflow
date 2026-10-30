@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Ai\Console;
 
-use Preflow\Ai\AiRequest;
-use Preflow\Ai\AiRequestFailed;
-use Preflow\Ai\AiResponseInvalid;
-use Preflow\Ai\AiUnavailable;
+use Preflow\Ai\AiCheck;
+use Preflow\Ai\AiCheckResult;
 use Preflow\DevTools\Command\CommandInterface;
 
 /**
@@ -40,28 +38,21 @@ final class AiCheckCommand implements CommandInterface
             return 1;
         }
 
-        try {
-            $response = $ai->client()->complete(new AiRequest(
-                'ai-check',
-                'Reply with exactly this JSON and nothing else: {"ok":true}',
-                temperature: 0.0,
-                maxOutputTokens: 200,
-            ));
-            $data = $response->json();
-        } catch (AiUnavailable | AiRequestFailed | AiResponseInvalid $e) {
-            $this->error('The test request failed: ' . $e->getMessage() . "\n");
+        $result = (new AiCheck($ai))->run();
+        if ($result->state === AiCheckResult::FAILED) {
+            $this->error('The test request failed: ' . $result->message . "\n");
 
             return 1;
         }
-
-        $cost = $ai->pricing()->cost($response->model, $response->usage);
-        echo sprintf(
-            "Tokens:   %d in, %d out, cost %s\n",
-            $response->usage->input,
-            $response->usage->output,
-            $cost === null ? 'unknown (no price for this model)' : '$' . number_format($cost, 6),
-        );
-        if (!is_array($data) || ($data['ok'] ?? null) !== true) {
+        if ($result->usage !== null) {
+            echo sprintf(
+                "Tokens:   %d in, %d out, cost %s\n",
+                $result->usage->input,
+                $result->usage->output,
+                $result->cost === null ? 'unknown (no price for this model)' : '$' . number_format($result->cost, 6),
+            );
+        }
+        if (!$result->ok()) {
             $this->error("The model answered, but not with {\"ok\":true}.\n");
 
             return 1;

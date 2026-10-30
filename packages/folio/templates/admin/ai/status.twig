@@ -1,0 +1,49 @@
+{% extends "@folio/admin/_layout.twig" %}
+{# Settings → AI (AiSettingsController): connection status, the Test button and the usage of two months. The key is never shown, only whether it exists. #}
+{% block title %}Folio — {{ t('folio.nav.ai') }}{% endblock %}
+{% block page_title %}{{ t('folio.nav.ai') }}{% endblock %}
+{% block content %}
+    {% include '@folio/admin/ai/_tabs.twig' %}
+    {% if switched_on and not key_present %}
+        <div class="folio-alert folio-alert-error" role="alert"><p>{{ t('folio.ai_settings.key_missing') }}</p></div>
+    {% elseif key_present and not switched_on %}
+        <div class="folio-notice" role="status"><p>{{ t('folio.ai_settings.switched_off') }}</p></div>
+    {% endif %}
+    <div class="folio-table-wrap">
+    <table class="folio-table">
+        <tbody>
+            <tr><th scope="row">{{ t('folio.ai_settings.provider') }}</th><td>{{ provider }}</td></tr>
+            <tr><th scope="row">{{ t('folio.ai_settings.model') }}</th><td>{{ model }}</td></tr>
+            <tr><th scope="row">{{ t('folio.ai_settings.key') }}</th><td>{{ key_present ? t('folio.common.yes') : t('folio.common.no') }}</td></tr>
+            <tr><th scope="row">{{ t('folio.ai_settings.enabled') }}</th><td>{{ switched_on ? t('folio.common.yes') : t('folio.common.no') }}</td></tr>
+        </tbody>
+    </table>
+    </div>
+    {% if test %}
+        <div class="folio-alert folio-alert-{{ test.ok ? 'success' : 'error' }}" role="{{ test.ok ? 'status' : 'alert' }}"><p>{{ test.text }}</p></div>
+    {% endif %}
+    <form method="post" action="{{ prefix }}/ai/test">
+        <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+        <button type="submit" class="btn btn-secondary"{% if not active %} disabled{% endif %}>{{ t('folio.ai_settings.test') }}</button>
+        <small class="form-help">{{ t('folio.ai_settings.test_help') }}</small>
+    </form>
+    {% for month in months %}
+        <section>
+            <h2>{{ month.title }} <small>({{ month.label }})</small></h2>
+            {% if month.rows is empty %}
+                <p class="folio-help">{{ t('folio.ai_settings.no_usage') }}</p>
+            {% else %}
+            <div class="folio-table-wrap">
+            <table class="folio-table">
+                <thead><tr><th>{{ t('folio.ai_settings.purpose') }}</th><th>{{ t('folio.ai_settings.model') }}</th><th>{{ t('folio.ai_settings.calls') }}</th><th>{{ t('folio.ai_settings.tokens_in') }}</th><th>{{ t('folio.ai_settings.tokens_out') }}</th><th>{{ t('folio.ai_settings.cost') }}</th></tr></thead>
+                <tbody>
+                {% for row in month.rows %}
+                    <tr><td>{{ row.purpose }}</td><td>{{ row.model }}</td><td>{{ folio_number(row.calls) }}</td><td>{{ folio_number(row.input) }}</td><td>{{ folio_number(row.output) }}</td><td>{{ row.cost }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% endif %}
+        </section>
+    {% endfor %}
+{% endblock %}

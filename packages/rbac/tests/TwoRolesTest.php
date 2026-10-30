@@ -93,6 +93,12 @@ final class TwoRolesTest extends TestCase
             ['GET /folio/cache', '/folio/cache', [], [200, 403, 403]],
             ['POST /folio/cache/clear', '/folio/cache/clear', ['key' => 'nothing'], [404, 403, 403]],
             ['POST /folio/cache/opcache-reset', '/folio/cache/opcache-reset', [], [302, 403, 403]],
+            ['GET /folio/ai', '/folio/ai', [], [200, 403, 403]],
+            ['POST /folio/ai/test', '/folio/ai/test', [], [200, 403, 403]], // the unknown provider fails without a request; the page shows why
+            ['GET /folio/ai/tuning', '/folio/ai/tuning', [], [200, 403, 403]],
+            ['POST /folio/ai/tuning', '/folio/ai/tuning', ['levels' => ['project' => '']], [302, 403, 403]], // nothing stored
+            ['GET /folio/ai/glossary', '/folio/ai/glossary', [], [200, 403, 403]],
+            ['POST /folio/ai/glossary', '/folio/ai/glossary', ['action' => 'save', 'rows' => []], [302, 403, 403]],
             ['GET /folio/translations', '/folio/translations', [], [200, 403, 403]],
             ['POST /folio/translations', '/folio/translations', ['locale' => 'en', 'key' => 'folio.common.save', 'text' => ''], [302, 403, 403]], // an empty text: nothing stored
             ['POST /folio/translations/reset', '/folio/translations/reset', ['locale' => 'en', 'key' => 'folio.common.save'], [302, 403, 403]],
@@ -212,8 +218,9 @@ final class TwoRolesTest extends TestCase
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key', 'url' => 'https://site.test'];\n");
         $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'folio@site.test']]];\n");
         // AI on (its key from a test env var), so Folio registers the AI routes and the table covers them.
+        // The provider is unknown on purpose: the Test button then fails before any request leaves the machine.
         putenv('RBAC_AI_TEST_KEY=test-key');
-        $this->write('config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'claude', 'models' => ['claude' => 'claude-sonnet-5-5'], 'keys' => ['claude' => 'RBAC_AI_TEST_KEY']];\n");
+        $this->write('config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'nonesuch', 'models' => ['nonesuch' => 'none'], 'keys' => ['nonesuch' => 'RBAC_AI_TEST_KEY']];\n");
 
         $this->install();
         $this->role('r-super', 'staff', 'super_admin', ['*']);
@@ -311,7 +318,7 @@ final class TwoRolesTest extends TestCase
         $this->as($account);
 
         $expected = [
-            'super' => ['/folio', '/folio/page', '/folio/member', '/folio/team', '/folio/assets', '/folio/rbac_role', '/folio/staff', '/folio/moderation_settings', '/folio/queue', '/folio/extensions', '/folio/translations', '/folio/cache'],
+            'super' => ['/folio', '/folio/page', '/folio/member', '/folio/team', '/folio/assets', '/folio/rbac_role', '/folio/staff', '/folio/moderation_settings', '/folio/queue', '/folio/extensions', '/folio/translations', '/folio/cache', '/folio/ai'],
             'content' => ['/folio', '/folio/page', '/folio/member', '/folio/team', '/folio/assets', '/folio/queue'],
             'plain' => [],
         ][$account];

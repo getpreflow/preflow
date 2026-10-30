@@ -1,0 +1,29 @@
+{% extends "@folio/admin/_layout.twig" %}
+{# Translation instructions per level (AiSettingsController): a textarea per level, one instruction per line. Config defaults show as placeholders; emptying a field brings the default back. #}
+{% block title %}Folio — {{ t('folio.ai_settings.tab_tuning') }}{% endblock %}
+{% block page_title %}{{ t('folio.nav.ai') }}{% endblock %}
+{% block content %}
+    {% include '@folio/admin/ai/_tabs.twig' %}
+    <div class="folio-notice" role="status"><p>{{ t('folio.ai_settings.tuning_intro') }}</p></div>
+    {% if error %}<div class="folio-alert folio-alert-error" role="alert"><p>{{ error }}</p></div>{% endif %}
+    <form class="folio-form" method="post" action="{{ prefix }}/ai/tuning">
+        <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+        {% for row in rows %}
+            <div class="form-group">
+                <label class="form-label" for="folio-tuning-{{ loop.index }}">{{ row.label }} <code>{{ row.key }}</code></label>
+                <textarea id="folio-tuning-{{ loop.index }}" name="levels[{{ row.key }}]" rows="3" placeholder="{{ row.placeholder }}">{{ row.value }}</textarea>
+            </div>
+        {% endfor %}
+        <fieldset class="form-group">
+            <legend class="form-label">{{ t('folio.ai_settings.add_field_level') }}</legend>
+            <label class="form-label" for="folio-tuning-new-key">{{ t('folio.ai_settings.new_key') }}</label>
+            <input type="text" id="folio-tuning-new-key" name="new_key" value="{{ new_key }}" placeholder="post.body:heading" autocomplete="off">
+            <small class="form-help">{{ t('folio.ai_settings.new_key_help') }}</small>
+            <label class="form-label" for="folio-tuning-new-text">{{ t('folio.ai_settings.new_text') }}</label>
+            <textarea id="folio-tuning-new-text" name="new_text" rows="3">{{ new_text }}</textarea>
+        </fieldset>
+        <div class="folio-form-buttons">
+            <button type="submit" class="btn btn-primary">{{ t('folio.common.save') }}</button>
+        </div>
+    </form>
+{% endblock %}
