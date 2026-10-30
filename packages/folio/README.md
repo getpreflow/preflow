@@ -1886,6 +1886,13 @@ Background translation. See `docs/superpowers/plans/2026-10-30-release-0.48-chec
   the languages the record is visible in; the warning after publishing is gone.
 - **Run `php vendor/bin/preflow folio:review-index` once** to fill the review index for the
   records that already have unchecked texts.
+- **`Publisher`'s constructor changed.** The 8th parameter, `bool $checkedTranslations`, is replaced by
+  `?ReviewIndexUpdater $review`. Code that builds a `Publisher` itself and passes that argument by position must
+  drop the bool (or pass a `ReviewIndexUpdater`); named arguments `checkedTranslations:` fail. Folio's own wiring
+  needs nothing.
+- **Before adding the cron line, look at `storage/ai/jobs`.** Runs that 0.47 left "running" (a closed run page)
+  are continued by the worker on its first minute, and paid for. Stop the ones you do not want first (the run
+  screen's Stop, or set `"state": "stopped"` in the job's JSON file).
 - No new SQL columns; `preflow migrate` is not needed for this release.
 
 ## Admin languages
