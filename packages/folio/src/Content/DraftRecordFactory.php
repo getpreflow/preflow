@@ -28,7 +28,9 @@ use Psr\Http\Message\UploadedFileInterface;
  * save, autosave and preview treat outdated translations alike. Texts the form filled
  * with machine translations the editor did not accept are posted as paths in
  * _ai_unchecked[]; they are saved with a "not checked" mark (TranslationStatus::markMachine()).
- * The form is staff-only behind its permission, so the list is trusted as posted.
+ * Those the editor accepted are posted in _ai_checked[] and lose their mark
+ * (TranslationStatus::clearMachine()), also one an earlier autosave set.
+ * The form is staff-only behind its permission, so the lists are trusted as posted.
  *
  * Hidden and read-only fields ("hidden": true, "readonly": true) are never taken from
  * the form: the stored value is kept (a new record starts without one, unless a
@@ -166,20 +168,24 @@ final class DraftRecordFactory
             $locale,
         );
 
-        $unchecked = self::aiUnchecked($submitted);
+        $unchecked = self::aiPaths($submitted, '_ai_unchecked');
+        if ($unchecked !== []) {
+            $record = $this->translations->markMachine($typeDef, $record, $locale, $unchecked);
+        }
+        $checked = self::aiPaths($submitted, '_ai_checked');
 
-        return $unchecked === [] ? $record : $this->translations->markMachine($typeDef, $record, $locale, $unchecked);
+        return $checked === [] || $locale === $typeDef->locales->default ? $record : $this->translations->clearMachine($record, $locale, $checked);
     }
 
     /**
-     * The posted paths of machine-filled texts the editor did not accept (_ai_unchecked[]).
+     * The posted paths of machine-filled texts: not accepted (_ai_unchecked[]) or accepted (_ai_checked[]).
      *
      * @param array<string, mixed> $submitted
      * @return list<string>
      */
-    private static function aiUnchecked(array $submitted): array
+    private static function aiPaths(array $submitted, string $key): array
     {
-        $posted = $submitted['_ai_unchecked'] ?? [];
+        $posted = $submitted[$key] ?? [];
 
         return array_values(array_filter(is_array($posted) ? $posted : [$posted], static fn ($p): bool => is_string($p) && $p !== ''));
     }

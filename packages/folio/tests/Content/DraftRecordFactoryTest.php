@@ -234,6 +234,22 @@ final class DraftRecordFactoryTest extends TestCase
         $this->assertSame([], $edited->get(TranslationStatus::MACHINE));
     }
 
+    public function test_posted_ai_checked_paths_clear_marks_on_build(): void
+    {
+        $head = 'sections.' . self::A . '.headline';
+        $form = ['title' => 'Hallo', 'sections' => ['_order' => [self::A], self::A => ['_block' => 'hero', 'headline' => 'Kopf']]];
+        $first = $this->build($form + ['_ai_unchecked' => ['title', $head]], ['title' => ['en' => 'Hello'], 'sections' => [['_uid' => self::A, '_block' => 'hero', 'headline' => ['en' => 'Head']]]], 'de');
+        $stored = ['title' => $first->get('title'), 'sections' => $first->get('sections'), TranslationStatus::KEY => $first->get(TranslationStatus::KEY), TranslationStatus::SOURCES => $first->get(TranslationStatus::SOURCES), TranslationStatus::MACHINE => json_encode($first->get(TranslationStatus::MACHINE))];
+        $this->assertSame(['title', $head], $this->unchecked($first, 'de'));
+
+        // Accepted after the autosave marked it: the text is unchanged, the posted list clears the mark.
+        $accepted = $this->build($form + ['_ai_checked' => [$head, 'gone', 7]], $stored, 'de');
+        $otherLocale = $this->build(['title' => 'Hello', 'sections' => ['_order' => [self::A], self::A => ['_block' => 'hero', 'headline' => 'Head']], '_ai_checked' => ['title']], $stored, 'en');
+
+        $this->assertSame(['title'], $this->unchecked($accepted, 'de'));
+        $this->assertSame(['title', $head], $this->unchecked($otherLocale, 'de'), 'a save of another locale clears nothing in de');
+    }
+
     /** @return list<string> */
     private function unchecked(\Preflow\Data\DynamicRecord $record, string $locale): array
     {

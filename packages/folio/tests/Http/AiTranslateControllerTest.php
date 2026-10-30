@@ -160,6 +160,34 @@ final class AiTranslateControllerTest extends TestCase
         $this->assertSame(404, $this->call('/folio/nope/p1/_ai/suggest', ['locale' => 'de', 'scope' => 'needed'])->getStatusCode());
     }
 
+    /** The form's flow: the autosave right after the fill marks the texts, a later save posting the accepted path clears it. */
+    public function test_accept_after_autosave_clears_mark(): void
+    {
+        $fields = ['title' => 'DE:Hello', 'slug' => 'DE:hello', '_locale' => 'de'];
+        $this->assertSame(200, $this->post('/folio/post/p1/autosave', $fields + ['_version' => '3', '_ai_unchecked' => ['title', 'slug']])->getStatusCode());
+        $status = $this->app()->container()->get(\Preflow\Folio\Content\TranslationStatus::class);
+        $def = $this->dm()->getTypeRegistry()->get('post');
+        $paths = fn (): array => array_map(static fn ($t): string => $t->path, $status->unchecked($def, $this->stored('post', 'p1'), 'de'));
+        $this->assertSame(['title', 'slug'], $paths());
+
+        $version = (string) $this->stored('post', 'p1')->get('_version');
+        $this->assertSame(200, $this->post('/folio/post/p1/autosave', $fields + ['_version' => $version, '_ai_unchecked' => ['slug'], '_ai_checked' => ['title']])->getStatusCode());
+
+        $this->assertSame(['slug'], $paths());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_post_without_csrf_token_refused(): void
+    {
+        $this->staff('translator');
+        $request = (new Psr17Factory())->createServerRequest('POST', '/folio/post/p1/_ai/suggest')->withParsedBody(['locale' => 'de', 'scope' => 'needed']);
+
+        $this->assertSame(403, $this->session->handle($request)->getStatusCode());
+        $this->assertSame(403, $this->session->handle($request->withUri($request->getUri()->withPath('/folio/post/p1/_ai/estimate')))->getStatusCode());
+        $this->assertCount(0, $this->fake->requests());
+        $this->assertSame(200, $this->call('/folio/post/p1/_ai/suggest', ['locale' => 'de', 'scope' => 'needed'])->getStatusCode(), 'with the token it passes');
+    }
+
     #[RunInSeparateProcess]
     public function test_403_without_permission(): void
     {

@@ -25,6 +25,23 @@ test('unchecked_hidden_inputs_only_for_unaccepted_unchanged', () => {
     assert.deepEqual(core.uncheckedPaths([]), []);
 });
 
+test('checked_hidden_inputs_only_for_accepted', () => {
+    const entries = [
+        { path: 'title', accepted: true, ai: 'Hallo', value: 'Hallo' },
+        { path: 'slug', accepted: false, ai: 'hallo', value: 'hallo' },
+        { path: 'body', accepted: true, ai: 'Text', value: 'Text, edited after accepting' },
+    ];
+    assert.deepEqual(core.checkedPaths(entries), ['title', 'body']);
+    assert.deepEqual(core.uncheckedPaths(entries), ['slug'], 'an accepted path is never also unchecked');
+});
+
+test('discard_restores_value_before_fill', () => {
+    // The stored translation was "Alt", the editor had typed "Neu, ungespeichert" before translating.
+    assert.equal(core.discardValue({ before: 'Neu, ungespeichert', previous: 'Alt' }), 'Neu, ungespeichert');
+    assert.equal(core.discardValue({ before: '', previous: 'Alt' }), '', 'an empty field stays empty');
+    assert.equal(core.discardValue({ before: null }), '');
+});
+
 test('word_diff', () => {
     assert.deepEqual(core.wordDiff('Setze einen Arbeiter', 'Setze zwei Arbeiter'), [
         { op: 'same', text: 'Setze ' },

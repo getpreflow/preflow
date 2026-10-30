@@ -191,6 +191,26 @@ final class TranslationStatus
         return $copy;
     }
 
+    /**
+     * Clears the machine marks of the texts at $paths in $locale: the editor accepted them as they
+     * are (a mark an earlier autosave set would otherwise stay, since an unchanged text keeps its
+     * mark). Returns an updated copy; nothing is saved.
+     *
+     * @param list<string> $paths
+     */
+    public function clearMachine(DynamicRecord $record, string $locale, array $paths): DynamicRecord
+    {
+        $marks = self::entries($record, self::MACHINE);
+        foreach (array_filter($paths, 'is_string') as $path) {
+            $marks = MachineMarks::clear($marks, $locale, $path);
+        }
+
+        $copy = clone $record;
+        self::put($copy, self::MACHINE, $marks);
+
+        return $copy;
+    }
+
     /** The fingerprint of a default text (trimmed). */
     public function fingerprint(?string $defaultText): string
     {

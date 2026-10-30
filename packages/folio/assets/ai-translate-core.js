@@ -30,6 +30,22 @@
             .map(function (e) { return e.path; });
     }
 
+    /**
+     * The paths to post as _ai_checked[]: AI texts the editor accepted. The server clears their
+     * marks, also one an autosave set while they were still unchecked.
+     */
+    function checkedPaths(entries) {
+        return entries.filter(function (e) { return e.accepted; }).map(function (e) { return e.path; });
+    }
+
+    /**
+     * What Discard puts back: the field's value right before the AI filled it (entry.before), never
+     * the stored translation, so text typed but not saved yet is not lost.
+     */
+    function discardValue(entry) {
+        return entry.before === null || entry.before === undefined ? '' : String(entry.before);
+    }
+
     /** ":name" placeholders filled from params. */
     function format(text, params) {
         var out = String(text);
@@ -92,5 +108,5 @@
         return out;
     }
 
-    return { pathToName: pathToName, uncheckedPaths: uncheckedPaths, format: format, formatCost: formatCost, wordDiff: wordDiff };
+    return { pathToName: pathToName, uncheckedPaths: uncheckedPaths, checkedPaths: checkedPaths, discardValue: discardValue, format: format, formatCost: formatCost, wordDiff: wordDiff };
 }));

@@ -4,11 +4,12 @@
  * (POST …/_ai/suggest, nothing is saved) and fills the form's inputs: path a.b.c is the input
  * a[b][c], a rich-text field is filled through its Trix editor. Under each filled field a review
  * row shows the default-language text, the previous translation with the changed words marked,
- * warnings, and Accept / Discard (Discard puts the previous value back).
+ * warnings, and Accept / Discard (Discard puts back what the field held right before the fill).
  *
  * The form carries one hidden _ai_unchecked[] per path that was filled, not accepted and still
- * holds the AI text, kept current on every change, so a save (or the autosave the filling
- * triggers like any typing) marks exactly those as not checked.
+ * holds the AI text, and one _ai_checked[] per accepted path, kept current on every change, so a
+ * save (or the autosave the filling triggers like any typing) marks exactly the first as not
+ * checked and clears the marks of the second (also ones an earlier autosave set).
  */
 (function () {
     'use strict';
@@ -35,7 +36,7 @@
         var acceptAllBtn = dialog.querySelector('[data-ai-accept-all]');
         var template = root.querySelector('[data-ai-review-template]');
         var closeLabel = closeBtn.textContent;
-        var entries = {}; // path => {path, el, editor, ai, previous, accepted, row}
+        var entries = {}; // path => {path, el, editor, ai, before, accepted, row}; accepted ones stay (posted as _ai_checked[])
         var estimateRequest = 0;
         var holder = null;
 
@@ -179,15 +180,18 @@
         function fill(path, data) {
             var el = inputFor(path);
             if (!el) { return false; }
+            var editor = editorFor(el);
+            // Discard puts back what the field held right before the first fill (unsaved typing included).
+            var before = entries[path] ? entries[path].before : el.value;
             if (entries[path]) { forget(entries[path]); }
-            var entry = { path: path, el: el, editor: editorFor(el), ai: null, previous: data.previous, accepted: false, row: null };
+            var entry = { path: path, el: el, editor: editor, ai: null, before: before, accepted: false, row: null };
             entries[path] = entry;
             if (entry.editor) {
                 // Trix writes its input when it renders: take the AI text as Trix stores it once that
                 // happened (its first change event, or the next tick), not a later edit.
                 var filledAt = Date.now();
                 var settle = function () {
-                    if (entries[path] === entry && Date.now() - filledAt < 1000) { entry.ai = el.value; sync(); }
+                    if (entries[path] === entry && !entry.accepted && Date.now() - filledAt < 1000) { entry.ai = el.value; sync(); }
                 };
                 entry.editor.addEventListener('trix-change', settle, { once: true });
                 setTimeout(settle, 0);
@@ -222,47 +226,60 @@
             return row;
         }
 
+        /** Accepted: posted as _ai_checked[] from now on; the change event lets the autosave send it. */
         function accept(entry) {
             entry.accepted = true;
-            forget(entry);
+            removeRow(entry);
             sync();
+            entry.el.dispatchEvent(new Event('change', { bubbles: true }));
         }
 
         function discard(entry) {
             forget(entry);
-            setValue(entry, entry.previous === null || entry.previous === undefined ? '' : entry.previous);
+            setValue(entry, core.discardValue(entry));
             sync();
         }
 
-        function forget(entry) {
+        function removeRow(entry) {
             if (entry.row && entry.row.parentNode) { entry.row.parentNode.removeChild(entry.row); }
-            if (entries[entry.path] === entry) { delete entries[entry.path]; }
             acceptAllBtn.hidden = pending().length === 0;
         }
 
-        function pending() {
-            return Object.keys(entries).map(function (p) { return entries[p]; }).filter(function (e) { return !e.accepted; });
+        function forget(entry) {
+            if (entries[entry.path] === entry) { delete entries[entry.path]; }
+            removeRow(entry);
         }
 
-        /** Rewrites the hidden _ai_unchecked[] inputs from the current values. */
+        function all() {
+            return Object.keys(entries).map(function (p) { return entries[p]; });
+        }
+
+        function pending() {
+            return all().filter(function (e) { return !e.accepted; });
+        }
+
+        /** Rewrites the hidden _ai_unchecked[] and _ai_checked[] inputs from the current values. */
         function sync() {
-            var paths = core.uncheckedPaths(pending().map(function (e) {
+            var states = all().map(function (e) {
                 return { path: e.path, accepted: e.accepted, ai: e.ai, value: e.el.value };
-            }));
+            });
+            var lists = { '_ai_unchecked[]': core.uncheckedPaths(states), '_ai_checked[]': core.checkedPaths(states) };
             if (holder === null) {
-                if (paths.length === 0) { return; }
+                if (states.length === 0) { return; }
                 holder = document.createElement('div');
                 holder.hidden = true;
-                holder.setAttribute('data-ai-unchecked', '');
+                holder.setAttribute('data-ai-marks', '');
                 form.appendChild(holder);
             }
             holder.textContent = '';
-            paths.forEach(function (path) {
-                var input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = '_ai_unchecked[]';
-                input.value = path;
-                holder.appendChild(input);
+            Object.keys(lists).forEach(function (name) {
+                lists[name].forEach(function (path) {
+                    var input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = name;
+                    input.value = path;
+                    holder.appendChild(input);
+                });
             });
         }
 
@@ -270,8 +287,10 @@
         closeBtn.addEventListener('click', close);
         startBtn.addEventListener('click', translate);
         acceptAllBtn.addEventListener('click', function () {
-            pending().forEach(function (e) { e.accepted = true; forget(e); });
+            var accepted = pending();
+            accepted.forEach(function (e) { e.accepted = true; removeRow(e); });
             sync();
+            if (accepted.length > 0) { accepted[0].el.dispatchEvent(new Event('change', { bubbles: true })); }
             close();
         });
         Array.prototype.forEach.call(dialog.querySelectorAll('input[name="folio_ai_scope"]'), function (radio) {

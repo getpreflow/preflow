@@ -1649,10 +1649,12 @@ button, the form's markup is unchanged and the endpoints below answer 404.
   the autosave picks the change up like typing.
 - Under each filled field a review row shows the default-language text, the previous
   translation with the changed words marked, and warnings (e.g. a glossary term not used).
-  **Accept** keeps the text as checked, **Discard** puts the previous value back. Editing the
-  AI text counts as checking it. **Accept all** is in the dialog.
+  **Accept** keeps the text as checked, **Discard** puts back what the field held right before
+  the fill (unsaved typing included). Editing the AI text counts as checking it. **Accept all**
+  is in the dialog.
 - On save, texts filled by AI, not accepted and not edited are saved as not checked (the form
-  posts their paths as `_ai_unchecked[]`).
+  posts their paths as `_ai_unchecked[]`). Accepted ones are posted as `_ai_checked[]`, which
+  clears their mark, also one the autosave set before you accepted.
 
 The endpoints, for other admin screens (both POST, with the CSRF token, never writing):
 
@@ -1693,9 +1695,9 @@ final class FakeAiProvider extends \Preflow\Core\Container\ServiceProvider
 }
 ```
 
-Then open a record's German tab, click **Translate**, review (edit one text, discard
-another), save, and reopen the tab: the AI texts you left as they were show "Machine-translated,
-not checked yet".
+Then open a record's German tab, click **Translate**, review (accept one text, edit
+another, discard a third), save, and reopen the tab: only the AI texts you left as they were show
+"Machine-translated, not checked yet".
 
 ## Admin languages
 
