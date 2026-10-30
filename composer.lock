@@ -3051,11 +3051,11 @@
         },
         {
             "name": "preflow/ai",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/ai",
-                "reference": "ffb189faf6b523708b3e07b55ea4faefeed597af"
+                "reference": "240cb85e524162911e441e3156bb07c403d9bd07"
             },
             "require": {
                 "anthropic-ai/sdk": "^1.2",
@@ -3069,7 +3069,12 @@
                 "preflow/core": "<0.38"
             },
             "require-dev": {
-                "phpunit/phpunit": "^11.0"
+                "phpunit/phpunit": "^11.0",
+                "preflow/devtools": "^0.34 || @dev"
+            },
+            "suggest": {
+                "preflow/devtools": "The ai:check and ai:usage commands",
+                "preflow/i18n": "Admin UI texts of this package"
             },
             "type": "library",
             "extra": {
@@ -3079,7 +3084,11 @@
                             "path": "lang",
                             "scope": "admin"
                         }
-                    }
+                    },
+                    "commands": [
+                        "Preflow\\Ai\\Console\\AiCheckCommand",
+                        "Preflow\\Ai\\Console\\AiUsageCommand"
+                    ]
                 }
             },
             "autoload": {
@@ -3103,7 +3112,7 @@
         },
         {
             "name": "preflow/auth",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/auth",
@@ -3140,7 +3149,7 @@
         },
         {
             "name": "preflow/blade",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/blade",
@@ -3178,7 +3187,7 @@
         },
         {
             "name": "preflow/codes",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/codes",
@@ -3234,7 +3243,7 @@
         },
         {
             "name": "preflow/components",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/components",
@@ -3270,7 +3279,7 @@
         },
         {
             "name": "preflow/core",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/core",
@@ -3316,7 +3325,7 @@
         },
         {
             "name": "preflow/data",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/data",
@@ -3357,7 +3366,7 @@
         },
         {
             "name": "preflow/devtools",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/devtools",
@@ -3400,15 +3409,16 @@
         },
         {
             "name": "preflow/folio",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/folio",
-                "reference": "99fa7ef70f744dc8fc14df9a6bdcd68dc5f82ac2"
+                "reference": "d2112eab4340b0d1902a3739818a7444a14cc7ca"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
                 "php": ">=8.4",
+                "preflow/ai": "^0.47 || @dev",
                 "preflow/auth": "^0.38 || @dev",
                 "preflow/components": "^0.1 || @dev",
                 "preflow/core": "^0.34 || @dev",
@@ -3416,7 +3426,7 @@
                 "preflow/devtools": "^0.20 || @dev",
                 "preflow/form": "^0.1 || @dev",
                 "preflow/htmx": "^0.1 || @dev",
-                "preflow/i18n": "^0.39 || @dev",
+                "preflow/i18n": "^0.47 || @dev",
                 "preflow/media": "^0.43 || @dev",
                 "preflow/notify": "^0.25 || @dev",
                 "preflow/routing": "^0.1 || @dev",
@@ -3425,11 +3435,12 @@
                 "symfony/html-sanitizer": "^7.0"
             },
             "conflict": {
+                "preflow/ai": "<0.47",
                 "preflow/auth": "<0.38",
                 "preflow/codes": "<0.40",
                 "preflow/core": "<0.34",
                 "preflow/data": "<0.42",
-                "preflow/i18n": "<0.39",
+                "preflow/i18n": "<0.47",
                 "preflow/media": "<0.43",
                 "preflow/members": "<0.39",
                 "preflow/notify": "<0.25",
@@ -3482,7 +3493,7 @@
         },
         {
             "name": "preflow/form",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/form",
@@ -3518,7 +3529,7 @@
         },
         {
             "name": "preflow/htmx",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/htmx",
@@ -3555,15 +3566,19 @@
         },
         {
             "name": "preflow/i18n",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/i18n",
-                "reference": "9830a4163ac0ebd9f400edc3d863ca016c3c3ddd"
+                "reference": "92e4c4b85c65883159e76d1943e5808837c2c3b7"
             },
             "require": {
                 "php": ">=8.4",
+                "preflow/ai": "^0.47 || @dev",
                 "preflow/core": "^0.1 || @dev"
+            },
+            "conflict": {
+                "preflow/ai": "<0.47"
             },
             "require-dev": {
                 "nyholm/psr7": "^1.8",
@@ -3602,7 +3617,7 @@
         },
         {
             "name": "preflow/media",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/media",
@@ -3663,7 +3678,7 @@
         },
         {
             "name": "preflow/members",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/members",
@@ -3737,7 +3752,7 @@
         },
         {
             "name": "preflow/notify",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/notify",
@@ -3782,7 +3797,7 @@
         },
         {
             "name": "preflow/rbac",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/rbac",
@@ -3845,7 +3860,7 @@
         },
         {
             "name": "preflow/roles",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/roles",
@@ -3882,7 +3897,7 @@
         },
         {
             "name": "preflow/routing",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/routing",
@@ -3917,7 +3932,7 @@
         },
         {
             "name": "preflow/testing",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/testing",
@@ -3961,7 +3976,7 @@
         },
         {
             "name": "preflow/twig",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/twig",
@@ -4002,7 +4017,7 @@
         },
         {
             "name": "preflow/validation",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/validation",
@@ -4051,7 +4066,7 @@
         },
         {
             "name": "preflow/view",
-            "version": "dev-feat/ai-translation",
+            "version": "dev-main",
             "dist": {
                 "type": "path",
                 "url": "packages/view",
