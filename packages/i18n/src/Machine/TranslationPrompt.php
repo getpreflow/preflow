@@ -49,6 +49,8 @@ final class TranslationPrompt
             '"label", "kind" and "format" describe where an item is used; a "hint" holds instructions for that item only.',
             'An item with "previous" and "current" was translated before: its source changed from "previous" to "text". '
                 . 'Adapt "current" to that change and keep its wording everywhere else.',
+            'An item with "current" but no "previous" already has a translation whose source is unknown: '
+                . 'adapt "current" to the text, keep its wording where it still fits.',
             'Answer only with the JSON array: one object {"n": …, "text": …} per item, with the item\'s n and its translation.',
         ];
     }

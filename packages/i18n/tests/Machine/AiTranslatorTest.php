@@ -202,6 +202,19 @@ final class AiTranslatorTest extends TestCase
         $this->assertStringContainsString('"current"', $request->tuning->system());
     }
 
+    public function test_a_current_translation_without_previous_source_is_adapted_not_replaced(): void
+    {
+        $fake = new FakeAiClient([self::echo()]);
+        $unit = new TranslationUnit(id: 'title', label: 'Title', source: 'Take two cards', to: 'de', from: 'en', current: 'Nimm zwei Karten');
+
+        $this->translator($fake)->translateUnits([$unit]);
+
+        $request = $fake->requests()[0];
+        $this->assertSame('Nimm zwei Karten', self::items($request)[0]['current']);
+        $this->assertArrayNotHasKey('previous', self::items($request)[0]);
+        $this->assertStringContainsString('adapt "current" to the text, keep its wording where it still fits', $request->tuning->system());
+    }
+
     public function test_groups_by_language_pair_and_type_results_in_input_order(): void
     {
         $fake = new FakeAiClient([self::echo()]);
