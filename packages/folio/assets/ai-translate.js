@@ -1,4 +1,5 @@
-/* Folio AI translation: the edit form's Translate button. Vanilla, no build step.
+/* Folio AI translation: the edit form's Translate button, also the one of Settings → Translations
+ * and of the media panel. Vanilla, no build step.
  *
  * The dialog asks the scope and a note and shows the estimate; Translate fetches the texts
  * (POST …/_ai/suggest, nothing is saved) and fills the form's inputs: path a.b.c is the input
@@ -10,6 +11,12 @@
  * holds the AI text, and one _ai_checked[] per accepted path, kept current on every change, so a
  * save (or the autosave the filling triggers like any typing) marks exactly the first as not
  * checked and clears the marks of the second (also ones an earlier autosave set).
+ *
+ * The other two screens set attributes on the root: data-ai-form (CSS selector of what holds the
+ * inputs; the edit form when absent), data-extra (JSON, more fields to post), data-ai-marks="none"
+ * (labels and alt texts have no "not checked" state: nothing is marked, Accept / Discard still work),
+ * no data-estimate-url (no estimate). An input names its text by data-ai-path, else by its name
+ * (path a.b is a[b]).
  */
 (function () {
     'use strict';
@@ -17,12 +24,14 @@
     var core = window.FolioAiTranslateCore;
 
     function init() {
-        var root = document.querySelector('[data-ai-translate]');
-        var dialog = root ? root.querySelector('[data-ai-dialog]') : null;
-        var localeInput = document.querySelector('form input[name="_locale"]'); // the edit form (record action forms have none)
-        var form = localeInput ? localeInput.form : null;
-        if (!root || !dialog || !form || !core) { return; }
-        setup(root, form);
+        Array.prototype.forEach.call(document.querySelectorAll('[data-ai-translate]'), function (root) {
+            var dialog = root.querySelector('[data-ai-dialog]');
+            var selector = root.getAttribute('data-ai-form');
+            var localeInput = document.querySelector('form input[name="_locale"]'); // the edit form (record action forms have none)
+            var form = selector ? document.querySelector(selector) : (localeInput ? localeInput.form : null);
+            if (!dialog || !form || !core) { return; }
+            setup(root, form);
+        });
     }
 
     function setup(root, form) {
@@ -39,6 +48,9 @@
         var entries = {}; // path => {path, el, editor, ai, before, accepted, row}; accepted ones stay (posted as _ai_checked[])
         var estimateRequest = 0;
         var holder = null;
+        var marks = root.getAttribute('data-ai-marks') !== 'none';
+        var extra = {};
+        try { extra = JSON.parse(root.getAttribute('data-extra') || '{}') || {}; } catch (e) { extra = {}; }
 
         function msg(name, params) {
             return core.format(root.getAttribute('data-msg-' + name) || '', params);
@@ -52,7 +64,7 @@
         function post(url, params) {
             var body = new FormData();
             Object.keys(params).forEach(function (k) { body.append(k, params[k]); });
-            var token = form.querySelector('input[name="_csrf_token"]');
+            var token = form.querySelector('input[name="_csrf_token"]') || document.querySelector('input[name="_csrf_token"]');
             if (token) { body.append('_csrf_token', token.value); }
             return fetch(url, { method: 'POST', body: body, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
                 .then(function (res) {
@@ -69,6 +81,11 @@
         }
 
         function estimate() {
+            if (!root.getAttribute('data-estimate-url')) { // nothing to estimate: the dialog goes straight to Translate
+                estimateEl.textContent = '';
+                startBtn.disabled = false;
+                return;
+            }
             var mine = ++estimateRequest;
             estimateEl.textContent = msg('estimating');
             post(root.getAttribute('data-estimate-url'), { locale: root.getAttribute('data-locale'), scope: scope() })
@@ -105,11 +122,9 @@
             startBtn.disabled = true;
             showError('');
             estimateEl.textContent = msg('working');
-            post(root.getAttribute('data-suggest-url'), {
-                locale: root.getAttribute('data-locale'),
-                scope: scope(),
-                note: dialog.querySelector('[data-ai-note]').value,
-            }).then(function (data) {
+            var params = { locale: root.getAttribute('data-locale'), scope: scope(), note: dialog.querySelector('[data-ai-note]').value };
+            Object.keys(extra).forEach(function (k) { params[k] = extra[k]; });
+            post(root.getAttribute('data-suggest-url'), params).then(function (data) {
                 var missing = [];
                 var filled = 0;
                 Object.keys(data.texts || {}).forEach(function (path) {
@@ -146,9 +161,11 @@
 
         /** The input named after the path (a rich-text field's is the hidden input its editor writes to). */
         function inputFor(path) {
+            var named = form.querySelector('[data-ai-path="' + cssEscape(path) + '"]'); // a text whose key is no form field name
+            if (named) { return named; }
             var name = core.pathToName(path);
             var found = null;
-            Array.prototype.forEach.call(form.elements, function (el) {
+            Array.prototype.forEach.call(form.elements || form.querySelectorAll('input, textarea, select'), function (el) {
                 if (found === null && el.name === name && el.type !== 'file') { found = el; }
             });
             return found;
@@ -162,8 +179,8 @@
 
         function labelFor(path) {
             var input = inputFor(path);
-            var group = input ? input.closest('.form-group') : null;
-            var label = group ? group.querySelector('label') : null;
+            var group = input ? input.closest('.form-group, label.folio-field') : null;
+            var label = group ? (group.tagName === 'LABEL' ? group : group.querySelector('label')) : null;
             return label && label.textContent.trim() !== '' ? label.textContent.trim().replace(/\s*\*$/, '') : path;
         }
 
@@ -199,8 +216,13 @@
             setValue(entry, data.text);
             entry.ai = el.value;
             entry.row = reviewRow(entry, data);
-            var group = (entry.editor || el).closest('.form-group') || el.parentNode;
-            group.appendChild(entry.row);
+            var host = (entry.editor || el).closest('.form-group, td');
+            if (host) {
+                host.appendChild(entry.row);
+            } else { // the media panel's label wraps its input: the row goes after the label
+                var wrap = el.closest('label');
+                (wrap || el).parentNode.insertBefore(entry.row, (wrap || el).nextSibling);
+            }
             return true;
         }
 
@@ -260,6 +282,7 @@
 
         /** Rewrites the hidden _ai_unchecked[] and _ai_checked[] inputs from the current values. */
         function sync() {
+            if (!marks) { return; }
             var states = all().map(function (e) {
                 return { path: e.path, accepted: e.accepted, ai: e.ai, value: e.el.value };
             });

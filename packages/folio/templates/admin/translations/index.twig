@@ -23,6 +23,9 @@
         </label>
         <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.common.search') }}</button>
     </form>
+    {% if ai_translate|default(null) and rows is not empty %}
+        {% include '@folio/admin/partials/ai-translate-dialog.twig' %}
+    {% endif %}
     {% if site_texts %}
         <p class="folio-help">{{ t('folio.translations.site_texts') }}</p>
     {% endif %}
@@ -48,9 +51,9 @@
                         <label class="folio-sr" for="folio-translation-{{ loop.index }}">{{ t('folio.translations.override_label', {key: row.key}) }}</label>
                         {% set text = row.override ?? '' %}
                         {% if text matches '/\\n/' or (row.delivered ?? '')|length > 80 %}
-                            <textarea id="folio-translation-{{ loop.index }}" name="text" rows="3">{{ text }}</textarea>
+                            <textarea id="folio-translation-{{ loop.index }}" name="text" rows="3" data-ai-path="{{ row.key }}">{{ text }}</textarea>
                         {% else %}
-                            <input type="text" id="folio-translation-{{ loop.index }}" name="text" value="{{ text }}">
+                            <input type="text" id="folio-translation-{{ loop.index }}" name="text" data-ai-path="{{ row.key }}" value="{{ text }}">
                         {% endif %}
                         <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.common.save') }}</button>
                         {% if row.override is not null %}

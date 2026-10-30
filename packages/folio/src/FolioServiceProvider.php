@@ -305,16 +305,25 @@ final class FolioServiceProvider extends ServiceProvider
             (bool) ($folioCfg['extensions']['allow_admin_changes'] ?? $app->config()->get('app.debug', false)),
         ));
 
+        // One EditableTexts for the screen and the AI button's units (LabelUnits): they list the same rows.
+        $container->singleton(\Preflow\Folio\Translations\EditableTexts::class, fn (Container $c) => new \Preflow\Folio\Translations\EditableTexts(
+            self::translator($c, $app),
+            $c->bound(\Preflow\I18n\DerivedKeys::class) ? $c->get(\Preflow\I18n\DerivedKeys::class) : null,
+            $locales ?? \Preflow\Data\Locales::single('en'),
+        ));
+        $container->bind(\Preflow\Folio\Translations\LabelUnits::class, fn (Container $c) => new \Preflow\Folio\Translations\LabelUnits(
+            $c->get(\Preflow\Folio\Translations\EditableTexts::class),
+            $c->get(\Preflow\Folio\Translations\StoredOverrides::class),
+            $c->get(\Preflow\Folio\Http\InterfaceLocales::class),
+        ));
         $container->bind(\Preflow\Folio\Http\TranslationsController::class, fn (Container $c) => new \Preflow\Folio\Http\TranslationsController(
             $c->get(\Preflow\Folio\Translations\StoredOverrides::class),
-            new \Preflow\Folio\Translations\EditableTexts(
-                self::translator($c, $app),
-                $c->bound(\Preflow\I18n\DerivedKeys::class) ? $c->get(\Preflow\I18n\DerivedKeys::class) : null,
-                $locales ?? \Preflow\Data\Locales::single('en'),
-            ),
+            $c->get(\Preflow\Folio\Translations\EditableTexts::class),
             $c->get(\Preflow\Folio\Http\InterfaceLocales::class),
             $c->get(TemplateEngineInterface::class),
             $prefix,
+            $c->get(\Preflow\Ai\Ai::class),
+            $c->get(\Preflow\Auth\Access\Access::class),
         ));
         $container->bind(\Preflow\Folio\Http\CacheController::class, fn (Container $c) => new \Preflow\Folio\Http\CacheController(
             $c->get(\Preflow\Core\Cache\CacheRegistry::class),
@@ -340,6 +349,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Media\MediaConfig::class),
             $c->get(\Preflow\Media\Image\Formats::class),
             $c->get(\Preflow\Media\Cleanup\AssetCleanup::class),
+            $c->get(\Preflow\Ai\Ai::class),
+            $c->get(\Preflow\Auth\Access\Access::class),
         ));
 
         // Request-scoped: public renders read published snapshots, admin routes switch it to working copies.
@@ -502,6 +513,9 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TemplateEngineInterface::class),
             $prefix,
             $c->get(\Preflow\Auth\Access\Access::class),
+            $c->get(\Preflow\Folio\Translations\LabelUnits::class),
+            $c->get(\Preflow\Media\MediaLibrary::class),
+            $locales ?? \Preflow\Data\Locales::single('en'),
         ));
         $container->bind(\Preflow\Folio\Http\AiSettingsController::class, fn (Container $c) => new \Preflow\Folio\Http\AiSettingsController(
             $c->get(\Preflow\Ai\Ai::class),

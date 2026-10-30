@@ -173,6 +173,12 @@ return [
         'warnings' => 'Check',
         'accept' => 'Accept',
         'discard' => 'Discard',
+        'button_alt' => 'Translate into :language',
+        'intro_alt' => 'AI translates the alt text of the default language. Nothing is saved until you save.',
+        'filled_alt' => 'Alt text filled in. Review it in the field, then save.',
+        'intro_labels' => 'AI translates the texts on this page from English. Nothing is saved until you save a text with its Save button.',
+        'scope_needed_labels' => 'Without a text in this language',
+        'filled_labels' => ':count texts filled in. Review each, then save it with its Save button.',
     ],
     // The whole-type translation run (AI): plan with estimate, progress, results.
     'ai_run' => [

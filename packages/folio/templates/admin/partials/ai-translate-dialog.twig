@@ -1,31 +1,41 @@
 {# The Translate button for this language tab, its dialog and the review row it puts under each
    filled field (ai-translate.js). Only rendered while AI is on and the user may use it (ai_translate).
-   form.twig includes it on the line of its endif, so the form's markup without it stays byte for byte the same. #}
+   form.twig includes it on the line of its endif, so the form's markup without it stays byte for byte the same.
+   Settings → Translations and the media panel include it too, with ai_translate keys that change the copy and
+   the wiring: id (title id, one per dialog on a page), button, intro, scope_needed, filled (texts), scope (false: no
+   scope choice), estimate_url ('' : no estimate), form (CSS selector of what holds the inputs, default: the edit
+   form), marks (false: no _ai_unchecked / _ai_checked), extra (more fields to post). #}
+{% set dialog_id = ai_translate.id ?? 'folio-ai-title' %}
 <div class="folio-ai" data-ai-translate
      data-suggest-url="{{ ai_translate.suggest_url }}"
-     data-estimate-url="{{ ai_translate.estimate_url }}"
-     data-locale="{{ ai_translate.locale }}"
-     data-msg-estimating="{{ t('folio.ai_translate.estimating') }}"
+     {% if ai_translate.estimate_url ?? '' %}data-estimate-url="{{ ai_translate.estimate_url }}"
+     {% endif %}data-locale="{{ ai_translate.locale }}"
+     {% if ai_translate.form ?? '' %}data-ai-form="{{ ai_translate.form }}"
+     {% endif %}{% if (ai_translate.marks ?? true) == false %}data-ai-marks="none"
+     {% endif %}{% if ai_translate.extra ?? [] %}data-extra="{{ ai_translate.extra|json_encode }}"
+     {% endif %}     data-msg-estimating="{{ t('folio.ai_translate.estimating') }}"
      data-msg-estimate="{{ t('folio.ai_translate.estimate') }}"
      data-msg-estimate-unpriced="{{ t('folio.ai_translate.estimate_unpriced') }}"
      data-msg-nothing="{{ t('folio.ai_translate.nothing') }}"
      data-msg-working="{{ t('folio.ai_translate.working') }}"
-     data-msg-filled="{{ t('folio.ai_translate.filled') }}"
+     data-msg-filled="{{ ai_translate.filled ?? t('folio.ai_translate.filled') }}"
      data-msg-missing-input="{{ t('folio.ai_translate.missing_input') }}"
      data-msg-error="{{ t('folio.ai_translate.error') }}"
      data-msg-close="{{ t('folio.ai_translate.close') }}">
     <button type="button" class="btn btn-secondary btn-sm folio-ai-open" data-ai-open aria-haspopup="dialog">
-        {{ t('folio.ai_translate.button') }}
+        {{ ai_translate.button ?? t('folio.ai_translate.button') }}
     </button>
-    <dialog class="folio-ai-dialog" data-ai-dialog aria-labelledby="folio-ai-title">
-        <h2 class="folio-ai-title" id="folio-ai-title">{{ t('folio.ai_translate.title', {language: ai_translate.language}) }}</h2>
+    <dialog class="folio-ai-dialog" data-ai-dialog aria-labelledby="{{ dialog_id }}">
+        <h2 class="folio-ai-title" id="{{ dialog_id }}">{{ t('folio.ai_translate.title', {language: ai_translate.language}) }}</h2>
         <div class="folio-ai-body" data-ai-setup>
-            <p class="folio-ai-intro">{{ t('folio.ai_translate.intro') }}</p>
+            <p class="folio-ai-intro">{{ ai_translate.intro ?? t('folio.ai_translate.intro') }}</p>
+            {% if (ai_translate.scope ?? true) != false %}
             <fieldset class="folio-ai-scope">
                 <legend>{{ t('folio.ai_translate.scope') }}</legend>
-                <label><input type="radio" name="folio_ai_scope" value="needed" checked> {{ t('folio.ai_translate.scope_needed') }}</label>
+                <label><input type="radio" name="folio_ai_scope" value="needed" checked> {{ ai_translate.scope_needed ?? t('folio.ai_translate.scope_needed') }}</label>
                 <label><input type="radio" name="folio_ai_scope" value="all"> {{ t('folio.ai_translate.scope_all') }}</label>
             </fieldset>
+            {% endif %}
             <label class="folio-ai-note">
                 <span>{{ t('folio.ai_translate.note') }}</span>
                 <textarea rows="2" data-ai-note></textarea>

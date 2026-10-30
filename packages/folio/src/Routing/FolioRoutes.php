@@ -122,6 +122,12 @@ final class FolioRoutes
             ]);
         }
         if ($ai) {
+            // Literal paths in front of the generic {type}/{id}/_ai/suggest: the translations screen's and the media panel's buttons.
+            $at = array_search(['GET',  $prefix . '/translations',        'index', self::TRANSLATIONS], $defs, true);
+            array_splice($defs, $at === false ? count($defs) : $at, 0, [
+                ['POST', $prefix . '/translations/_ai/suggest', 'suggestLabels', self::AI],
+                ['POST', $prefix . '/assets/{id}/_ai/suggest',  'suggestAlt',    self::AI],
+            ]);
             // The edit form's Translate button (AiTranslateController); no other route has the "_ai" segment.
             $defs[] = ['POST', $prefix . '/{type}/{id}/_ai/estimate', 'estimate', self::AI];
             $defs[] = ['POST', $prefix . '/{type}/{id}/_ai/suggest',  'suggest',  self::AI];

@@ -66,6 +66,8 @@ final class AssetLibraryController
         private readonly MediaConfig $media,
         private readonly Formats $formats,
         private readonly AssetCleanup $cleanup,
+        private readonly ?\Preflow\Ai\Ai $ai = null,
+        private readonly ?\Preflow\Auth\Access\Access $access = null,
     ) {}
 
     /** The image crop's ratios besides "Free" and the box presets' own: label => width / height. */
@@ -701,6 +703,10 @@ final class AssetLibraryController
             ? array_values(array_filter($this->library->all(), static fn (Asset $a) => $a->kind() === 'image'))
             : [];
         [$fields, $fieldAssets] = $this->extraEditors($asset);
+        $aiTranslate = $this->aiTranslate($asset);
+        if ($aiTranslate !== []) {
+            array_push($fieldAssets, 'ai-translate.css', 'ai-translate-core.js', 'ai-translate.js');
+        }
         $context = [
             'prefix' => $this->prefix,
             'types' => $this->catalog->all(),
@@ -717,6 +723,8 @@ final class AssetLibraryController
             'original_url' => $this->library->originalUrl($asset),
             'delivered' => self::size($this->library->deliveryAsset($asset) ?? $asset),
             'locales' => $this->locales->available,
+            'ai_translate' => $aiTranslate,
+            'default_language' => \Preflow\I18n\LocaleNames::native($this->locales->default),
             'posters' => array_map(fn (Asset $a) => $this->item($a), $posters),
             'usage' => array_map($this->usageRow(...), $usage ?? $this->usage->of($asset->id)),
             'copies' => $asset->isCopy() ? [] : array_map($this->copyRow(...), $this->library->copies($asset->id)),
@@ -728,6 +736,45 @@ final class AssetLibraryController
         ] + $this->backContext($request);
 
         return $this->html($this->engine->render('@folio/admin/assets/panel_page.twig', $context), $status);
+    }
+
+    /**
+     * The Translate buttons of the alt texts, one per language but the default (its alt text is
+     * the source); none while AI is off, the user lacks ai.translate or assets.edit, or the
+     * asset has no alt text in the default language to translate from.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function aiTranslate(Asset $asset): array
+    {
+        if (!($this->ai?->enabled() ?? false) || !$this->locales->isMultilingual()
+            || !($this->access?->can('ai.translate') ?? true) || !($this->access?->can('assets.edit') ?? true)
+            || trim($asset->alt[$this->locales->default] ?? '') === '') {
+            return [];
+        }
+        $buttons = [];
+        foreach ($this->locales->available as $code) {
+            if ($code === $this->locales->default) {
+                continue;
+            }
+            $language = \Preflow\I18n\LocaleNames::native($code);
+            $buttons[] = [
+                'suggest_url' => $this->prefix . '/assets/' . rawurlencode($asset->id) . '/_ai/suggest',
+                'estimate_url' => '',
+                'locale' => $code,
+                'language' => $language,
+                'id' => 'folio-ai-title-' . $code,
+                'button' => FolioText::get('folio.ai_translate.button_alt', ['language' => $language]),
+                'form' => '.folio-asset-form',
+                'marks' => false,
+                'extra' => [],
+                'scope' => false,
+                'intro' => FolioText::get('folio.ai_translate.intro_alt'),
+                'filled' => FolioText::get('folio.ai_translate.filled_alt'),
+            ];
+        }
+
+        return $buttons;
     }
 
     /** @return array<string, mixed> a row of an original's Copies panel: the copy, its maker, where it is used, whether the original changed since */

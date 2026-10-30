@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
+use Preflow\Ai\Ai;
+use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
 use Preflow\Folio\FolioText;
 use Preflow\Folio\Translations\EditableTexts;
@@ -31,6 +33,8 @@ final class TranslationsController
         private readonly InterfaceLocales $locales,
         private readonly TemplateEngineInterface $engine,
         private readonly string $prefix,
+        private readonly ?Ai $ai = null,
+        private readonly ?Access $access = null,
     ) {}
 
     /** GET {prefix}/translations?group=…&locale=…&q=…&page=… */
@@ -84,7 +88,41 @@ final class TranslationsController
                 'next' => $page < $lastPage ? $this->url($view + ['page' => $page + 1]) : null,
             ],
             'csrf' => $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '',
+            'ai_translate' => $this->aiTranslate($group, $locale, $q, $page),
+            'default_language' => LocaleNames::native($this->texts->sourceLocale($locale) ?? 'en'),
+            'editor_assets' => $this->aiOn() ? ['ai-translate.css', 'ai-translate-core.js', 'ai-translate.js'] : [],
         ]));
+    }
+
+    private function aiOn(): bool
+    {
+        return ($this->ai?->enabled() ?? false) && ($this->access?->can('ai.translate') ?? true);
+    }
+
+    /**
+     * The Translate button's settings for the shown page, or null: AI is off, the user lacks
+     * ai.translate, or the language is the source (English has nothing to translate it from).
+     *
+     * @return array<string, mixed>|null
+     */
+    private function aiTranslate(string $group, string $locale, string $q, int $page): ?array
+    {
+        if (!$this->aiOn() || $this->texts->sourceLocale($locale) === null) {
+            return null;
+        }
+
+        return [
+            'suggest_url' => $this->prefix . '/translations/_ai/suggest',
+            'estimate_url' => '',
+            'locale' => $locale,
+            'language' => LocaleNames::native($locale),
+            'form' => '.folio-translations',
+            'marks' => false,
+            'extra' => ['group' => $group, 'q' => $q, 'page' => $page],
+            'intro' => FolioText::get('folio.ai_translate.intro_labels'),
+            'scope_needed' => FolioText::get('folio.ai_translate.scope_needed_labels'),
+            'filled' => FolioText::get('folio.ai_translate.filled_labels'),
+        ];
     }
 
     /** POST {prefix}/translations: locale, key, text (empty: back to the delivered text). */
@@ -151,8 +189,12 @@ final class TranslationsController
         ])]);
     }
 
-    /** @param array{key: string, delivered: ?string, site: ?string, override: ?string} $row */
-    private static function matches(string $q, array $row): bool
+    /**
+     * The search over a row's key and texts: the screen's, and the same for the AI button's units.
+     *
+     * @param array{key: string, delivered: ?string, site: ?string, override: ?string} $row
+     */
+    public static function matches(string $q, array $row): bool
     {
         foreach ([$row['key'], $row['delivered'], $row['site'], $row['override']] as $text) {
             if ($text !== null && mb_stripos($text, $q) !== false) {

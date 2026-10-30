@@ -173,6 +173,12 @@ return [
         'warnings' => 'Prüfen',
         'accept' => 'Übernehmen',
         'discard' => 'Verwerfen',
+        'button_alt' => 'Übersetzen in :language',
+        'intro_alt' => 'KI übersetzt den Alternativtext der Standardsprache. Gespeichert wird erst beim Speichern.',
+        'filled_alt' => 'Alternativtext eingefügt. Prüfe ihn im Feld und speichere dann.',
+        'intro_labels' => 'KI übersetzt die Texte dieser Seite aus dem Englischen. Gespeichert wird ein Text erst, wenn du ihn mit seinem Speichern-Knopf speicherst.',
+        'scope_needed_labels' => 'Ohne Text in dieser Sprache',
+        'filled_labels' => ':count Texte eingefügt. Prüfe jeden und speichere ihn mit seinem Speichern-Knopf.',
     ],
     // The whole-type translation run (AI): plan with estimate, progress, results.
     'ai_run' => [

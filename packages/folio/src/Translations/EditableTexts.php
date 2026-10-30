@@ -209,6 +209,41 @@ final class EditableTexts
         return isset($this->rows($group, $locale)[$key]);
     }
 
+    /**
+     * The language the AI translates a locale's labels from: English, the screen's reference
+     * column; for English itself the translator's fallback language when that is another one.
+     */
+    public function sourceLocale(string $locale): ?string
+    {
+        if ($locale !== 'en') {
+            return 'en';
+        }
+        $fallback = $this->translator->getFallbackLocale();
+
+        return $fallback !== 'en' ? $fallback : null;
+    }
+
+    /**
+     * The text the locale itself has for a key (the site's file, else the delivered one), without
+     * the fallback language an editable group's visitors would get instead: what "translated"
+     * means for Needed. Null when the key is not offered or the locale has no text of its own.
+     */
+    public function ownText(string $key, string $locale): ?string
+    {
+        $group = (string) strstr($key, '.', true);
+        if ($this->isEditableGroup($group)) {
+            if (!isset($this->rows($group, $locale)[$key])) {
+                return null;
+            }
+            $text = $this->translator->packageEntries($group, $locale)[$key] ?? $this->translator->siteEntries($group, $locale)[$key] ?? null;
+        } else {
+            $row = $this->rows($group, $locale)[$key] ?? null;
+            $text = $row === null ? null : ($row['site'] ?? $row['delivered']);
+        }
+
+        return $text === null || trim($text) === '' ? null : $text;
+    }
+
     /** A text an override may not hold: markup. */
     public static function markup(?string $text): bool
     {

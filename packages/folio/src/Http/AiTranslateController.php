@@ -11,7 +11,9 @@ use Preflow\Auth\Access\Access;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Data\Locales;
 use Preflow\Folio\FolioText;
+use Preflow\Folio\Translations\LabelUnits;
 use Preflow\I18n\Machine\Estimator;
 use Preflow\I18n\Machine\Job;
 use Preflow\I18n\Machine\JobRunner;
@@ -22,6 +24,7 @@ use Preflow\I18n\Machine\Scope;
 use Preflow\I18n\Machine\TextSources;
 use Preflow\I18n\Machine\TranslationUnit;
 use Preflow\I18n\Machine\UnitStatus;
+use Preflow\Media\MediaLibrary;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -59,6 +62,9 @@ final class AiTranslateController
         private readonly TemplateEngineInterface $engine,
         private readonly string $prefix,
         private readonly ?Access $access = null,
+        private readonly ?LabelUnits $labels = null,
+        private readonly ?MediaLibrary $media = null,
+        private readonly ?Locales $mediaLocales = null,
     ) {}
 
     /** GET {type}/_ai/run?ids[]=…: languages, scope and note; without ids the whole type. */
@@ -195,11 +201,93 @@ final class AiTranslateController
         if ($units instanceof ResponseInterface) {
             return $units;
         }
+
+        return $this->suggestions($units, trim((string) (self::body($request)['note'] ?? '')));
+    }
+
+    /**
+     * Body: group, locale, scope (needed|all), q?, page?, note?. The suggestion for the texts of
+     * one page of Settings → Translations (the page the editor sees, so each has its input);
+     * same answer as suggest. Permission: ai.translate and translations.edit.
+     */
+    public function suggestLabels(ServerRequestInterface $request): ResponseInterface
+    {
+        if (!$this->ai->enabled() || $this->labels === null) {
+            return new Response(404, [], 'Not found');
+        }
+        if (!($this->access?->can('ai.translate') ?? true) || !($this->access?->can('translations.edit') ?? true)) {
+            return self::json(403, ['error' => 'Forbidden.']);
+        }
+        $body = self::body($request);
+        $scope = Scope::tryFrom((string) ($body['scope'] ?? Scope::Needed->value));
+        if ($scope === null) {
+            return self::json(422, ['error' => 'The scope is "needed" or "all".']);
+        }
+        $units = $this->labels->forPage(
+            (string) ($body['group'] ?? ''),
+            (string) ($body['locale'] ?? ''),
+            trim((string) ($body['q'] ?? '')),
+            (int) ($body['page'] ?? 1),
+            $scope,
+        );
+        if ($units === null) {
+            return self::json(422, ['error' => 'Choose a group and a language to translate into.']);
+        }
+
+        return $this->suggestions($units, trim((string) ($body['note'] ?? '')));
+    }
+
+    /**
+     * Body: locale, note?. The alt text of the asset in the default language, translated into the
+     * locale (unit "alt.<locale>", the panel's input alt[<locale>]); same answer as suggest.
+     * Permission: ai.translate and assets.edit. The asset's title is one text for all languages,
+     * so there is nothing to translate it into.
+     */
+    public function suggestAlt(ServerRequestInterface $request): ResponseInterface
+    {
+        if (!$this->ai->enabled() || $this->media === null || $this->mediaLocales === null) {
+            return new Response(404, [], 'Not found');
+        }
+        if (!($this->access?->can('ai.translate') ?? true) || !($this->access?->can('assets.edit') ?? true)) {
+            return self::json(403, ['error' => 'Forbidden.']);
+        }
+        $asset = $this->media->find((string) $request->getAttribute('id', ''));
+        if ($asset === null) {
+            return self::json(404, ['error' => 'Asset not found.']);
+        }
+        $body = self::body($request);
+        $locale = (string) ($body['locale'] ?? '');
+        $default = $this->mediaLocales->default;
+        if (!$this->mediaLocales->has($locale) || $locale === $default) {
+            return self::json(422, ['error' => 'Choose a language to translate into.']);
+        }
+
+        $source = trim($asset->alt[$default] ?? '');
+        $units = $source === '' ? [] : [new TranslationUnit(
+            id: 'alt.' . $locale,
+            label: 'Alt text',
+            source: $source,
+            to: $locale,
+            from: $default,
+            kind: 'alt',
+            current: trim($asset->alt[$locale] ?? '') === '' ? null : $asset->alt[$locale],
+            context: ['asset' => $asset->label()],
+        )];
+
+        return $this->suggestions($units, trim((string) ($body['note'] ?? '')));
+    }
+
+    /**
+     * Translates the units and answers {texts: {id: {text, source, previous, warnings}}, failed: {id: reason}, costUsd};
+     * a provider that cannot be used at all answers 503 with its message. Nothing is written.
+     *
+     * @param list<TranslationUnit> $units
+     */
+    private function suggestions(array $units, string $note): ResponseInterface
+    {
         if ($units === []) {
             return self::json(200, ['texts' => new \stdClass(), 'failed' => new \stdClass(), 'costUsd' => 0.0]);
         }
-
-        $note = trim((string) (self::body($request)['note'] ?? ''));
         $cost = 0.0;
         if ($this->translator instanceof ReportsCost) {
             $this->translator->reportCostTo(static function (float $usd) use (&$cost): void {

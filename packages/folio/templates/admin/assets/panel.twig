@@ -87,6 +87,10 @@
             </div>
         </div>
         <div class="folio-asset-column">
+            {# The dialogs sit outside the form: their fields are not part of the save. #}
+            {% for button in ai_translate|default([]) %}
+                {% include '@folio/admin/partials/ai-translate-dialog.twig' with {ai_translate: button} %}
+            {% endfor %}
             <form method="post" action="{{ prefix }}/assets/{{ asset.id }}{{ back_q }}" class="folio-asset-form">
                 <fieldset class="folio-fields"{% if not can('assets.edit') %} disabled{% endif %}>
                 <input type="hidden" name="_csrf_token" value="{{ csrf }}">

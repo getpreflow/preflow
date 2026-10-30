@@ -102,6 +102,9 @@ final class TwoRolesTest extends TestCase
             ['GET /folio/translations', '/folio/translations', [], [200, 403, 403]],
             ['POST /folio/translations', '/folio/translations', ['locale' => 'en', 'key' => 'folio.common.save', 'text' => ''], [302, 403, 403]], // an empty text: nothing stored
             ['POST /folio/translations/reset', '/folio/translations/reset', ['locale' => 'en', 'key' => 'folio.common.save'], [302, 403, 403]],
+            // Past the permission check (and ai.translate, which content_admin lacks): a group this site does not have (422), an asset that does not exist (404).
+            ['POST /folio/translations/_ai/suggest', '/folio/translations/_ai/suggest', ['group' => 'nothing', 'locale' => 'de', 'scope' => 'needed'], [422, 403, 403]],
+            ['POST /folio/assets/{id}/_ai/suggest', '/folio/assets/missing/_ai/suggest', ['locale' => 'de'], [404, 403, 403]],
             ['GET /folio/queue', '/folio/queue', [], [200, 200, 403]],
             ['POST /folio/queue/{id}/approve', '/folio/queue/m1/approve', [], [302, 302, 403]],
         ];
