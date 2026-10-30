@@ -46,7 +46,7 @@ final class Ai
 
             return is_string($value) ? $value : null;
         };
-        $this->clientFactory = $clientFactory ?? static fn (string $provider, string $model, string $key): AiClient => match ($provider) {
+        $this->clientFactory = $clientFactory ?? static fn (string $provider, string $model, #[\SensitiveParameter] string $key): AiClient => match ($provider) {
             'claude' => ClaudeClient::fromKey($key, $model),
             'gemini' => new GeminiClient($key, $model),
             default => throw new AiUnavailable("Unknown AI provider \"{$provider}\"."),

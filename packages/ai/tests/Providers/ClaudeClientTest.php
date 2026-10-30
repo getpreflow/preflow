@@ -264,4 +264,56 @@ final class ClaudeClientTest extends TestCase
         $this->assertSame('claude-haiku-5-5', $this->sentBody()['model']);
         $this->assertSame('Bearer ' . self::KEY, $this->sent[0]->getHeaderLine('Authorization'));
     }
+
+    public function test_low_reasoning_sends_effort_low_beside_the_schema(): void
+    {
+        $schema = ['type' => 'object', 'properties' => ['ok' => ['type' => 'boolean']], 'required' => ['ok'], 'additionalProperties' => false];
+
+        $this->client([self::message()])->complete(new AiRequest('translate', 'Hello', schema: $schema, lowReasoning: true));
+
+        $body = $this->sentBody();
+        $this->assertSame(['effort' => 'low', 'format' => ['type' => 'json_schema', 'schema' => $schema]], $body['output_config']);
+        $this->assertArrayNotHasKey('thinking', $body, 'Sonnet 5.5 refuses thinking {type: disabled}; effort bounds it');
+    }
+
+    public function test_low_reasoning_without_a_schema(): void
+    {
+        $this->client([self::message()])->complete(new AiRequest('translate', 'Hello', lowReasoning: true));
+
+        $this->assertSame(['effort' => 'low'], $this->sentBody()['output_config']);
+    }
+
+    public function test_from_key_gives_up_after_120_seconds_and_retries_once(): void
+    {
+        $options = ClaudeClient::requestOptions();
+        $this->assertSame(120.0, $options->timeout);
+        $this->assertSame(1, $options->maxRetries);
+        $this->assertInstanceOf(\Symfony\Component\HttpClient\Psr18Client::class, $options->transporter, 'the transport enforces the timeout; the SDK does not');
+
+        $failing = new class ($this->sent) implements ClientInterface {
+            /** @param list<RequestInterface> $sent */
+            public function __construct(private array &$sent) {}
+
+            public function sendRequest(RequestInterface $request): ResponseInterface
+            {
+                $this->sent[] = $request;
+
+                return new Response(529, ['Content-Type' => 'application/json', 'retry-after-ms' => '1'], '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}');
+            }
+        };
+        try {
+            ClaudeClient::fromKey(self::KEY, 'claude-sonnet-5-5', $failing)->complete(new AiRequest('translate', 'Hello'));
+            $this->fail('expected AiRequestFailed');
+        } catch (AiRequestFailed $e) {
+            $this->assertStringContainsString('HTTP 529', $e->getMessage());
+        }
+        $this->assertCount(2, $this->sent, 'one try and one retry');
+    }
+
+    public function test_the_key_is_a_sensitive_parameter(): void
+    {
+        $param = (new \ReflectionMethod(ClaudeClient::class, 'fromKey'))->getParameters()[0];
+
+        $this->assertNotEmpty($param->getAttributes(\SensitiveParameter::class));
+    }
 }

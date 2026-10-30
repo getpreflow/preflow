@@ -339,4 +339,26 @@ final class GeminiClientTest extends TestCase
         $this->assertStringEndsWith('/models/gemini-2.5-pro:generateContent', (string) $this->sent[0]->getUri());
         $this->assertSame('gemini-2.5-pro', $response->model);
     }
+
+    public function test_low_reasoning_turns_thinking_off(): void
+    {
+        $this->client([self::reply()])->complete(new AiRequest('translate', 'Hello', lowReasoning: true));
+
+        $this->assertSame(['thinkingBudget' => 0], $this->sentBody()['generationConfig']['thinkingConfig']);
+    }
+
+    public function test_thinking_is_left_to_the_model_by_default(): void
+    {
+        $this->client([self::reply()])->complete(new AiRequest('translate', 'Hello'));
+
+        $this->assertArrayNotHasKey('thinkingConfig', $this->sentBody()['generationConfig']);
+    }
+
+    public function test_the_key_is_a_sensitive_parameter(): void
+    {
+        $param = (new \ReflectionMethod(GeminiClient::class, '__construct'))->getParameters()[0];
+
+        $this->assertSame('apiKey', $param->getName());
+        $this->assertNotEmpty($param->getAttributes(\SensitiveParameter::class));
+    }
 }

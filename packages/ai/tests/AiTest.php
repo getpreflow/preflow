@@ -145,4 +145,15 @@ final class AiTest extends TestCase
         $this->assertTrue($log->entries[0]->failed);
         $this->assertSame(0, $log->entries[0]->usage->input);
     }
+
+    public function test_the_default_client_factory_marks_the_key_sensitive(): void
+    {
+        $ai = new Ai([], $this->log(), Pricing::withOverrides([]));
+        $factory = (new \ReflectionProperty(Ai::class, 'clientFactory'))->getValue($ai);
+
+        $key = (new \ReflectionFunction($factory))->getParameters()[2];
+
+        $this->assertSame('key', $key->getName());
+        $this->assertNotEmpty($key->getAttributes(\SensitiveParameter::class), 'kept out of stack traces');
+    }
 }

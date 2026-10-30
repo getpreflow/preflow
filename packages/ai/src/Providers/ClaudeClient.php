@@ -11,6 +11,7 @@ use Anthropic\Messages\CacheControlEphemeral;
 use Anthropic\Messages\JSONOutputFormat;
 use Anthropic\Messages\Message;
 use Anthropic\Messages\OutputConfig;
+use Anthropic\Messages\OutputConfig\Effort;
 use Anthropic\Messages\TextBlockParam;
 use Anthropic\RequestOptions;
 use Preflow\Ai\AiClient;
@@ -21,27 +22,47 @@ use Preflow\Ai\AiUnavailable;
 use Preflow\Ai\StopReason;
 use Preflow\Ai\TokenUsage;
 use Psr\Http\Client\ClientInterface;
+use Symfony\Component\HttpClient\HttpClient;
+use Symfony\Component\HttpClient\Psr18Client;
 
 /**
  * Claude through the official SDK. Retries on rate limits, overload and connection errors
  * are the SDK's own; this class only maps the request and the outcome.
+ *
+ * On shared hosting a web request has a few minutes at most, so a request is given up after
+ * TIMEOUT_SECONDS and retried once (MAX_RETRIES), not the SDK's default of two retries on a 600 s
+ * timeout. The SDK does not enforce timeouts itself (RequestOptions::$timeout is advisory); the
+ * transport does, so fromKey() builds one with the limit.
  */
 final class ClaudeClient implements AiClient
 {
     /** Statuses that mean the key or the account cannot be used, so retrying the next request is pointless. */
     private const UNAVAILABLE_STATUSES = [401, 402, 403];
 
+    public const int TIMEOUT_SECONDS = 120;
+
+    public const int MAX_RETRIES = 1;
+
     public function __construct(
         private readonly Client $sdk,
         private readonly string $model = 'claude-sonnet-5-5',
     ) {}
 
-    /** @param ClientInterface|null $http PSR-18 client; null lets the SDK discover one */
-    public static function fromKey(string $apiKey, string $model, ?ClientInterface $http = null): self
+    /** @param ClientInterface|null $http PSR-18 client; null builds one that gives up after TIMEOUT_SECONDS */
+    public static function fromKey(#[\SensitiveParameter] string $apiKey, string $model, ?ClientInterface $http = null): self
     {
-        $options = $http === null ? null : RequestOptions::with(transporter: $http);
+        return new self(new Client(apiKey: $apiKey, requestOptions: self::requestOptions($http)), $model);
+    }
 
-        return new self(new Client(apiKey: $apiKey, requestOptions: $options), $model);
+    /** The SDK options fromKey() uses: the timeout, one retry, and the transport that enforces the timeout. */
+    public static function requestOptions(?ClientInterface $http = null): RequestOptions
+    {
+        $http ??= new Psr18Client(HttpClient::create([
+            'timeout' => self::TIMEOUT_SECONDS,
+            'max_duration' => self::TIMEOUT_SECONDS,
+        ]));
+
+        return RequestOptions::with(timeout: self::TIMEOUT_SECONDS, maxRetries: self::MAX_RETRIES, transporter: $http);
     }
 
     public function complete(AiRequest $request): AiResponse
@@ -51,9 +72,7 @@ final class ClaudeClient implements AiClient
                 maxTokens: $request->maxOutputTokens,
                 messages: [['role' => 'user', 'content' => $request->prompt]],
                 model: $this->model,
-                outputConfig: $request->schema === null
-                    ? null
-                    : OutputConfig::with(format: JSONOutputFormat::with(schema: $request->schema)),
+                outputConfig: $this->outputConfig($request),
                 system: $this->system($request),
             );
         } catch (APIStatusException $e) {
@@ -76,6 +95,23 @@ final class ClaudeClient implements AiClient
     public function model(): string
     {
         return $this->model;
+    }
+
+    /**
+     * Low reasoning is effort "low": current Claude models think adaptively, and some refuse
+     * thinking {type: disabled} (Sonnet 5.5, Opus 5.5 answer it with a 400), while effort is
+     * accepted by all of them and is what bounds the thinking tokens.
+     */
+    private function outputConfig(AiRequest $request): ?OutputConfig
+    {
+        if ($request->schema === null && !$request->lowReasoning) {
+            return null;
+        }
+
+        return OutputConfig::with(
+            effort: $request->lowReasoning ? Effort::LOW : null,
+            format: $request->schema === null ? null : JSONOutputFormat::with(schema: $request->schema),
+        );
     }
 
     /**

@@ -78,7 +78,12 @@ GEMINI_API_KEY=...
 The differences between providers stay inside them: how JSON is enforced, whether a temperature
 is accepted, refusals and Gemini's recitation block (which comes back as `StopReason::Blocked`, so
 a caller can split the batch and retry). Gemini retries once after two seconds on a rate limit
-(429) or a server error (5xx).
+(429) or a server error (5xx); Claude's SDK retries once too. Both give up on a request after
+120 seconds, so one try and its retry fit what shared hosting allows a web request.
+
+`AiRequest::$lowReasoning` asks for as little thinking as the model allows, for plain work such as
+translation: Claude gets effort `low` (`output_config.effort`; current Claude models refuse
+`thinking: disabled`), Gemini `thinkingConfig.thinkingBudget: 0`.
 
 Claude requests mark the tuning (the stable system part) for prompt caching, so the later
 requests of a batch read it from the cache at a fraction of the price.

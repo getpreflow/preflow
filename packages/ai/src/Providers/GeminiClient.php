@@ -17,6 +17,7 @@ use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamFactoryInterface;
+use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Component\HttpClient\Psr18Client;
 
 /**
@@ -38,6 +39,9 @@ final class GeminiClient implements AiClient
 
     private const MAX_RAW_BODY = 200;
 
+    /** A web request on shared hosting has a few minutes at most; one try plus one retry must fit. */
+    public const int TIMEOUT_SECONDS = 120;
+
     private readonly ClientInterface $http;
     private readonly RequestFactoryInterface $requests;
     private readonly StreamFactoryInterface $streams;
@@ -47,7 +51,7 @@ final class GeminiClient implements AiClient
 
     /** @param (\Closure(int):void)|null $sleeper receives the seconds to wait before the retry; injectable so tests never sleep */
     public function __construct(
-        private readonly string $apiKey,
+        #[\SensitiveParameter] private readonly string $apiKey,
         private readonly string $model = 'gemini-2.5-flash',
         ?ClientInterface $http = null,
         ?RequestFactoryInterface $requests = null,
@@ -55,7 +59,10 @@ final class GeminiClient implements AiClient
         ?\Closure $sleeper = null,
     ) {
         $factory = new Psr17Factory();
-        $this->http = $http ?? new Psr18Client();
+        $this->http = $http ?? new Psr18Client(HttpClient::create([
+            'timeout' => self::TIMEOUT_SECONDS,
+            'max_duration' => self::TIMEOUT_SECONDS,
+        ]));
         $this->requests = $requests ?? $factory;
         $this->streams = $streams ?? $factory;
         $this->sleeper = $sleeper ?? static function (int $seconds): void {
@@ -101,6 +108,10 @@ final class GeminiClient implements AiClient
         if ($request->schema !== null) {
             $config['responseMimeType'] = 'application/json';
             $config['responseSchema'] = self::withoutAdditionalProperties($request->schema);
+        }
+        if ($request->lowReasoning) {
+            // 2.5 Flash thinks by default and bills the thoughts as output; 0 switches thinking off.
+            $config['thinkingConfig'] = ['thinkingBudget' => 0];
         }
 
         $body = [];
