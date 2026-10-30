@@ -41,11 +41,13 @@ final class MachineServiceProvider extends ServiceProvider
         ));
         $container->singleton(TextSources::class, static fn (): TextSources => new TextSources());
         $container->singleton(JobStore::class, static fn (Container $c): JobStore => new FileJobStore(self::storage($c) . '/jobs'));
+        $container->singleton(RecordLease::class, static fn (Container $c): RecordLease => new FileRecordLease(self::storage($c) . '/leases'));
         $container->singleton(JobRunner::class, static fn (Container $c): JobRunner => new JobRunner(
             $c->get(TextSources::class),
             $c->get(MachineTranslator::class),
             $c->get(Estimator::class),
             $c->get(JobStore::class),
+            $c->get(RecordLease::class),
         ));
     }
 

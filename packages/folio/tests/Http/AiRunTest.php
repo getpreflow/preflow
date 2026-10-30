@@ -138,7 +138,7 @@ final class AiRunTest extends TestCase
 
         $started = $this->request('POST', "/folio/faq/_ai/jobs/{$id}/start", ['confirm_live' => '1'], true);
         $this->assertSame(200, $started->getStatusCode(), (string) $started->getBody());
-        $this->assertSame('running', $this->job($id)->state);
+        $this->assertSame('queued', $this->job($id)->state);
         $this->step($id, 'faq');
         $this->assertSame('DE:Why?', $this->stored('faq', 'f1')->toArray()['question']['de']);
     }
@@ -155,7 +155,7 @@ final class AiRunTest extends TestCase
         $this->assertStringContainsString('hx-post="/folio/post/_ai/jobs/' . $id . '/step"', (string) $start->getBody());
         $this->assertTrue(self::polls($start));
         $this->assertStringNotContainsString('<html', (string) $start->getBody(), 'htmx gets the partial');
-        $this->assertSame('running', $this->job($id)->state);
+        $this->assertSame('queued', $this->job($id)->state);
         $this->assertArrayNotHasKey('de', $this->stored('post', 'p1')->toArray()['title']);
 
         $first = $this->step($id);

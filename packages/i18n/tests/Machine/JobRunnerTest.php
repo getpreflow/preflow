@@ -12,6 +12,7 @@ use Preflow\Ai\TokenUsage;
 use Preflow\I18n\Machine\AiTranslator;
 use Preflow\I18n\Machine\Estimator;
 use Preflow\I18n\Machine\FileJobStore;
+use Preflow\I18n\Machine\FileRecordLease;
 use Preflow\I18n\Machine\Job;
 use Preflow\I18n\Machine\JobRunner;
 use Preflow\I18n\Machine\JobStore;
@@ -28,10 +29,12 @@ final class JobRunnerTest extends TestCase
     private string $dir;
     private ArrayTextSource $source;
     private FakeAiClient $fake;
+    private FileRecordLease $lease;
 
     protected function setUp(): void
     {
         $this->dir = sys_get_temp_dir() . '/jobrunner_' . bin2hex(random_bytes(4));
+        $this->lease = new FileRecordLease($this->dir . '/leases');
         $this->source = new ArrayTextSource([
             '1' => ['title' => 'One', 'text' => 'First text'],
             '2' => ['title' => 'Two'],
@@ -41,9 +44,10 @@ final class JobRunnerTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (glob($this->dir . '/*') ?: [] as $f) {
+        foreach (array_merge(glob($this->dir . '/*') ?: [], glob($this->dir . '/leases/*') ?: []) as $f) {
             @unlink($f);
         }
+        @rmdir($this->dir . '/leases');
         @rmdir($this->dir);
     }
 
@@ -55,7 +59,7 @@ final class JobRunnerTest extends TestCase
         $sources = new TextSources();
         $sources->add('games', fn () => $this->source);
 
-        return new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), $store ?? new FileJobStore($this->dir));
+        return new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), $store ?? new FileJobStore($this->dir), $this->lease);
     }
 
     public function test_plan_estimates_without_writing(): void
@@ -81,7 +85,7 @@ final class JobRunnerTest extends TestCase
         $job = $runner->plan('games', ['de'], Scope::Needed);
 
         $job = $runner->step($job->id);
-        $this->assertSame('running', $job->state);
+        $this->assertSame('queued', $job->state);
         $this->assertSame('done', $job->items['1']['status']);
         $this->assertSame(2, $job->items['1']['translated']);
         $this->assertSame('pending', $job->items['2']['status']);
@@ -107,7 +111,7 @@ final class JobRunnerTest extends TestCase
 
         $job = $runner->step($job->id, 2);
 
-        $this->assertSame('running', $job->state);
+        $this->assertSame('queued', $job->state);
         $this->assertEqualsWithDelta(2 * 0.007, $job->costUsd, 1e-9, 'one request per item, 1000 in + 500 out each');
 
         $job = $runner->step($job->id, 5);
@@ -121,7 +125,7 @@ final class JobRunnerTest extends TestCase
         $ai = $this->ai($this->fake, ['models' => ['claude' => 'unpriced-model']]);
         $sources = new TextSources();
         $sources->add('games', fn () => $this->source);
-        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), new FileJobStore($this->dir));
+        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), new FileJobStore($this->dir), $this->lease);
         $job = $runner->plan('games', ['de'], Scope::Needed);
         $this->assertFalse($job->costUnknown);
 
@@ -205,7 +209,7 @@ final class JobRunnerTest extends TestCase
         $ai = $this->ai($fake);
         $sources = new TextSources();
         $sources->add('games', fn () => $this->source);
-        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), new FileJobStore($this->dir));
+        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), new FileJobStore($this->dir), $this->lease);
         $job = $runner->plan('games', ['de'], Scope::Needed);
 
         $this->assertSame('stopped', $runner->stop($job->id)->state);
@@ -243,8 +247,8 @@ final class JobRunnerTest extends TestCase
         $store = new FileJobStore($this->dir);
         $job = $runner->plan('games', ['de'], Scope::Needed);
 
-        $this->assertSame('running', $runner->start($job->id)->state);
-        $this->assertSame('running', $store->get($job->id)->state, 'saved');
+        $this->assertSame('queued', $runner->start($job->id)->state);
+        $this->assertSame('queued', $store->get($job->id)->state, 'saved');
         $runner->step($job->id);
         try {
             $runner->step($job->id);
@@ -255,7 +259,7 @@ final class JobRunnerTest extends TestCase
 
         $job = $runner->start($job->id);
 
-        $this->assertSame('running', $job->state);
+        $this->assertSame('queued', $job->state);
         $this->assertNull($job->message);
         $this->assertSame('done', $job->items['1']['status'], 'items done before the stop stay done');
         $job = $runner->step($job->id, 5);
@@ -272,7 +276,7 @@ final class JobRunnerTest extends TestCase
 
         $job = $runner->start($job->id);
 
-        $this->assertSame('running', $job->state);
+        $this->assertSame('queued', $job->state);
         $job = $runner->step($job->id, 5);
         $this->assertSame('done', $job->state);
         $this->assertSame(['done', 'done', 'done'], array_column($job->items, 'status'));
@@ -336,7 +340,7 @@ final class JobRunnerTest extends TestCase
 
         $this->assertSame('failed', $job->items['2']['status']);
         $this->assertSame('Disk full.', $job->items['2']['message']);
-        $this->assertSame('running', $job->state, 'one bad record does not block the run');
+        $this->assertSame('queued', $job->state, 'one bad record does not block the run');
         $this->assertSame('done', $runner->step($job->id)->state);
     }
 
@@ -357,5 +361,140 @@ final class JobRunnerTest extends TestCase
         $this->assertSame('pending', $job->items['2']['status']);
         $this->assertSame('stopped', (new FileJobStore($this->dir))->get($job->id)->state);
         $this->assertSame(['1:de'], $this->source->writes);
+    }
+
+    public function test_start_queues_and_records_who(): void
+    {
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+
+        $job = $runner->start($job->id, by: 'anna');
+
+        $this->assertSame('queued', $job->state);
+        $this->assertSame('anna', $job->queuedBy);
+        $this->assertNotNull($job->queuedAt);
+        $this->assertSame('queued', (new FileJobStore($this->dir))->get($job->id)->state);
+    }
+
+    public function test_step_returns_to_queued_while_items_remain(): void
+    {
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['1', '2']);
+        $runner->start($job->id);
+
+        $job = $runner->step($job->id, 1);
+
+        $this->assertSame('queued', $job->state);
+        $this->assertSame(['done', 'pending'], array_column($job->items, 'status'));
+    }
+
+    public function test_a_claimed_record_is_skipped_not_waited_for(): void
+    {
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['1', '2']);
+        $runner->start($job->id);
+        $this->assertTrue($this->lease->claim('games', '1'));
+
+        $job = $runner->step($job->id, 1);
+
+        $this->assertSame('pending', $job->items['1']['status']);
+        $this->assertSame('done', $job->items['2']['status']);
+        $this->assertSame('queued', $job->state);
+        $this->assertSame(['2:de'], $this->source->writes);
+        $sent = implode("\n", array_map(static fn (AiRequest $r): string => json_encode($r), $this->fake->requests()));
+        $this->assertStringNotContainsString('First text', $sent);
+        $this->assertStringNotContainsString('One', $sent);
+    }
+
+    public function test_the_claim_is_released_after_a_step_even_on_error(): void
+    {
+        $this->source->throws['1'] = new \RuntimeException('Disk full.');
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['1']);
+        $runner->start($job->id);
+
+        $runner->step($job->id);
+
+        $this->assertTrue($this->lease->claim('games', '1'), 'released');
+    }
+
+    public function test_prefix_limits_units_and_estimate(): void
+    {
+        $this->source->items = ['1' => ['title' => 'One', 'flow.a' => 'Alpha', 'flow.b' => 'Beta', 'flowers' => 'Rose']];
+        $runner = $this->runner([self::echo()]);
+
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['1'], null, 'flow');
+
+        $this->assertSame(2, $job->estimate->units);
+        $this->assertSame('flow', $job->prefix);
+        $runner->start($job->id);
+        $runner->step($job->id);
+        $this->assertSame(['flow.a' => 'DE:Alpha', 'flow.b' => 'DE:Beta'], $this->source->translations['1']['de']);
+        $sent = implode("\n", array_map(static fn (AiRequest $r): string => json_encode($r), $this->fake->requests()));
+        $this->assertStringNotContainsString('One', $sent);
+        $this->assertStringNotContainsString('Rose', $sent);
+    }
+
+    public function test_live_source_without_confirmation_writes_nothing(): void
+    {
+        $this->source->live = true;
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+        $runner->start($job->id);
+
+        $job = $runner->step($job->id);
+
+        $this->assertSame('stopped', $job->state);
+        $this->assertSame('Confirm that the translations go live before starting.', $job->message);
+        $this->assertSame([], $this->source->writes);
+        $this->assertSame([], $this->fake->requests());
+
+        $runner->start($job->id, confirmLive: true);
+        $this->assertTrue($runner->start($job->id)->confirmedLive, 'starting again never unsets it');
+        $job = $runner->step($job->id);
+        $this->assertSame('queued', $job->state);
+        $this->assertSame(['1:de'], $this->source->writes);
+    }
+
+    public function test_a_deleted_record_fails_only_its_item(): void
+    {
+        $this->source->unitsThrow['1'] = new \RuntimeException('Record is gone.');
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['2']);
+        $job->items = ['1' => $job->items['2'], '2' => $job->items['2']];
+        (new FileJobStore($this->dir))->save($job);
+        $runner->start($job->id);
+
+        $job = $runner->step($job->id, 5);
+
+        $this->assertSame('failed', $job->items['1']['status']);
+        $this->assertSame('Record is gone.', $job->items['1']['message']);
+        $this->assertSame('done', $job->items['2']['status']);
+        $this->assertSame('done', $job->state);
+    }
+
+    public function test_pending_for_finds_the_queued_job(): void
+    {
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['1']);
+        $this->assertNull($runner->pendingFor('games', '1', 'de'), 'planned is not queued');
+        $runner->start($job->id);
+
+        $this->assertSame($job->id, $runner->pendingFor('games', '1', 'de')?->id);
+        $this->assertNull($runner->pendingFor('games', '1', 'fr'));
+        $this->assertNull($runner->pendingFor('games', '1', 'de', 'flow'));
+        $this->assertNull($runner->pendingFor('games', '2', 'de'));
+    }
+
+    public function test_active_lists_queued_running_and_stopped_with_a_message(): void
+    {
+        $runner = $this->runner([self::echo()]);
+        $queued = $runner->plan('games', ['de'], Scope::Needed);
+        $runner->start($queued->id);
+        $planned = $runner->plan('games', ['fr'], Scope::Needed);
+        $stopped = $runner->plan('games', ['it'], Scope::Needed);
+        $runner->stop($stopped->id);
+
+        $this->assertSame([$queued->id], array_map(static fn (Job $j): string => $j->id, $runner->active()));
     }
 }

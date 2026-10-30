@@ -107,7 +107,7 @@ final class AiTranslateController
             'total' => count($job->items),
             'start_url' => $this->jobUrl($type, $job, 'start'),
             // A planned or stopped run of a live type asks the confirmation again, as Start does.
-            'confirm' => $live && $job->state !== 'running',
+            'confirm' => $live && !self::inProgress($job),
         ], $this->runner->unfinished($type, self::UNFINISHED_SHOWN));
     }
 
@@ -176,7 +176,7 @@ final class AiTranslateController
             return $this->progress($request, $job, FolioText::get('folio.ai_run.confirm_required'), 422);
         }
 
-        return $this->progress($request, $this->runner->start($job->id));
+        return $this->progress($request, $this->runner->start($job->id, (self::body($request)['confirm_live'] ?? null) === '1'));
     }
 
     /**
@@ -190,7 +190,7 @@ final class AiTranslateController
         if ($job instanceof ResponseInterface) {
             return $job;
         }
-        if ($job->state === 'running') {
+        if (self::inProgress($job)) {
             self::allowLongRequest($request);
             try {
                 $job = $this->runner->step($job->id, 1);
@@ -200,6 +200,12 @@ final class AiTranslateController
         }
 
         return $this->progress($request, $job);
+    }
+
+    /** Queued or running: the browser keeps stepping it. */
+    private static function inProgress(Job $job): bool
+    {
+        return $job->state === 'queued' || $job->state === 'running';
     }
 
     /** POST {type}/_ai/jobs/{job}/stop: records done so far stay done; Start continues later. */
@@ -547,7 +553,7 @@ final class AiTranslateController
                 $review++;
             }
         }
-        $running = $job->state === 'running';
+        $running = self::inProgress($job);
         $shown = $running ? array_slice($finished, -self::RECENT_ITEMS, null, true) : $finished;
 
         return [

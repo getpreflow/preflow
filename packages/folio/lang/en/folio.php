@@ -224,7 +224,7 @@ return [
         'unfinished' => 'Unfinished runs',
         'unfinished_help' => 'Continue picks up where a run stopped, also one whose page was closed while it ran.',
         'unfinished_row' => ':languages · :done / :total records',
-        'job_state' => ['planned' => 'Not started', 'running' => 'Left running', 'stopped' => 'Stopped'],
+        'job_state' => ['planned' => 'Not started', 'queued' => 'Left running', 'running' => 'Left running', 'stopped' => 'Stopped'],
         'problems' => 'Not translated',
         'latest' => 'Latest records',
         'records_heading' => 'Records',

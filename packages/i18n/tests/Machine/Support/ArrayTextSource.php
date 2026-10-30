@@ -25,6 +25,12 @@ final class ArrayTextSource implements TextSource
     /** @var array<string, \Throwable> id => thrown by write() */
     public array $throws = [];
 
+    /** @var array<string, \Throwable> id => thrown by units() (the record is gone) */
+    public array $unitsThrow = [];
+
+    /** What writesLive() answers. */
+    public bool $live = false;
+
     /** Called on every write, before it is stored. */
     public ?\Closure $onWrite = null;
 
@@ -53,6 +59,9 @@ final class ArrayTextSource implements TextSource
 
     public function units(string $id, string $to, Scope $scope): array
     {
+        if (isset($this->unitsThrow[$id])) {
+            throw $this->unitsThrow[$id];
+        }
         $units = [];
         foreach ($this->items[$id] ?? [] as $path => $text) {
             if ($scope === Scope::Needed && isset($this->translations[$id][$to][$path])) {
@@ -85,6 +94,6 @@ final class ArrayTextSource implements TextSource
 
     public function writesLive(): bool
     {
-        return true;
+        return $this->live;
     }
 }
