@@ -83,6 +83,12 @@
             <directory>tools/tests</directory>
         </testsuite>
     </testsuites>
+    <groups>
+        <exclude>
+            <!-- Live provider smoke tests make billed calls; opt in via the live group on the command line -->
+            <group>live</group>
+        </exclude>
+    </groups>
     <source>
         <include>
             <directory>packages/components/src</directory>
