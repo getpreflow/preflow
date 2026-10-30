@@ -386,6 +386,13 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
 .folio-card-label { font-weight: 620; font-size: 15px; }
 .folio-card-count { color: var(--c-text-muted); font-size: 13px; }
 
+/* ---- dashboard: translations waiting for review ---- */
+.folio-review { margin-top: 28px; }
+.folio-review-title { font-size: 16px; font-weight: 620; margin: 0 0 12px; }
+.folio-review-type { font-size: 13px; font-weight: 620; color: var(--c-text-muted); margin: 16px 0 6px; }
+.folio-review-list, .folio-review-jobs { list-style: none; margin: 0; padding: 0; }
+.folio-review-list li, .folio-review-jobs li { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--c-border); }
+
 /* ---- tables ---- */
 .folio-table-wrap {
   overflow-x: auto;

@@ -176,6 +176,15 @@ final class AiLabelsAndMediaTest extends TestCase
         $this->assertStringContainsString('/folio/assets/' . $asset->id . '/_ai/suggest', $panel);
     }
 
+    public function test_source_language_says_choose_a_target(): void
+    {
+        $app = $this->aiApp();
+        $get = static fn (string $uri): string => (string) $app->handle((new Psr17Factory())->createServerRequest('GET', $uri))->getBody();
+
+        $this->assertStringContainsString('Choose another language', $get('/folio/translations?group=shop&locale=en'));
+        $this->assertStringNotContainsString('Choose another language', $get('/folio/translations?group=shop&locale=de'));
+    }
+
     public function test_hidden_and_404_when_ai_off(): void
     {
         $asset = $this->asset();

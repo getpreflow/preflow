@@ -103,6 +103,7 @@ final class TranslationsController
             'errors' => $errors,
             'values' => $values,
             'ai_translate' => $this->aiTranslate($group, $locale, $q, $page),
+            'choose_target' => $this->aiOn() && $this->texts->sourceLocale($locale) === null,
             'default_language' => LocaleNames::native($this->texts->sourceLocale($locale) ?? 'en'),
             'editor_assets' => $this->aiOn() ? ['ai-translate.css', 'ai-translate-core.js', 'ai-translate.js'] : [],
         ]));

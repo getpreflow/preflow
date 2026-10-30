@@ -78,6 +78,15 @@ return [
         'records' => ':count record|:count records',
         'assets' => 'Assets',
         'assets_hint' => 'Images, videos and files',
+        'review' => [
+            'title' => 'Waiting for review',
+            'empty' => 'Nothing is waiting for review.',
+            'more' => ':count more records are waiting.',
+            'progress' => ':done of :total records',
+            'cost' => 'Cost so far :cost',
+            'by' => 'Queued by :name',
+            'since' => 'since :since',
+        ],
     ],
     // A type's list: search, filters, bulk bar, table, pager.
     'list' => [
@@ -661,6 +670,7 @@ return [
     // Settings → Translations (the admins' overrides of interface texts).
     'translations' => [
         'intro' => 'Change the interface texts for one language. A changed text replaces the delivered one in the admin for everyone using that language; Reset brings the delivered text back. Plain text only.',
+        'choose_target' => 'English is the language the texts are translated from. Choose another language to translate them.',
         'group' => 'Group',
         'group_site' => 'Site (model labels)',
         'search_label' => 'Search keys and texts',

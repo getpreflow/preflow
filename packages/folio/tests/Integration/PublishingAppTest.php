@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Integration;
 
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
+use Nyholm\Psr7\Factory\Psr17Factory;
+use Preflow\Folio\Tests\Support\AiScaffold;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 
 final class PublishingAppTest extends TestCase
 {
     use PublishingScaffold;
+    use AiScaffold;
 
     protected function setUp(): void
     {
@@ -18,7 +22,73 @@ final class PublishingAppTest extends TestCase
 
     protected function tearDown(): void
     {
+        putenv(self::aiKeyEnv());
         $this->removeScaffold();
+    }
+
+    private function dashboard(): string
+    {
+        $res = ($this->session ?? $this->aiApp())->handle((new Psr17Factory())->createServerRequest('GET', '/folio'));
+        return (string) $res->getBody();
+    }
+
+    #[RunInSeparateProcess]
+    public function test_dashboard_lists_records_waiting_for_review(): void
+    {
+        $this->aiConfig(true);
+        $index = $this->app()->container()->get(\Preflow\I18n\Machine\ReviewIndex::class);
+        $index->put('post', 'p1', 'Hello <b>', ['fr' => 1, 'de' => 3]);
+        $index->put('site', 'site', 'Secret title', ['de' => 1]);
+        $this->staff('translator'); // post.view and ai.translate, no site.view
+
+        $body = $this->dashboard();
+
+        $this->assertStringContainsString('Waiting for review', $body);
+        $this->assertStringContainsString('Hello &lt;b&gt;', $body);
+        $this->assertStringContainsString('German (3)', $body);
+        $this->assertStringContainsString('French (1)', $body);
+        $this->assertStringContainsString('/folio/post/p1/edit?locale=de', $body, 'the first language by code');
+        $this->assertStringNotContainsString('Secret title', $body, 'a type the user may not view');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_dashboard_says_when_nothing_waits_for_review(): void
+    {
+        $this->aiConfig(true);
+        $this->staff('translator');
+
+        $this->assertStringContainsString('Nothing is waiting for review.', $this->dashboard());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_dashboard_shows_active_jobs_and_no_worker_line(): void
+    {
+        $this->aiConfig(true);
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
+        $runner = $this->app()->container()->get(\Preflow\I18n\Machine\JobRunner::class);
+        $job = $runner->plan('post', ['de'], \Preflow\I18n\Machine\Scope::Needed, ['p1']);
+        $runner->start($job->id, false, 'Anna');
+        $this->staff('translator');
+
+        $body = $this->dashboard();
+        $this->assertStringContainsString('Posts · German', $body);
+        $this->assertStringContainsString('German', $body);
+        $this->assertStringContainsString('0 of 1', $body);
+        $this->assertStringContainsString('Waiting', $body);
+        $this->assertStringContainsString('Anna', $body);
+        $this->assertStringContainsString('translate:work', $body, 'no worker has run');
+
+        $this->write('storage/ai/worker.json', (string) json_encode(['last_run' => (new \DateTimeImmutable('-1 minute'))->format(\DATE_ATOM)]));
+        $this->assertStringNotContainsString('translate:work', $this->dashboard());
+    }
+
+    public function test_dashboard_has_no_review_section_when_ai_off(): void
+    {
+        $this->app()->container()->get(\Preflow\I18n\Machine\ReviewIndex::class)->put('post', 'p1', 'Hello', ['de' => 1]);
+
+        $body = (string) $this->get('/folio')->getBody();
+        $this->assertStringNotContainsString('Waiting for review', $body);
+        $this->assertStringNotContainsString('Nothing is waiting for review.', $body);
     }
 
     public function test_public_site_reads_snapshot_preview_reads_working_copy(): void

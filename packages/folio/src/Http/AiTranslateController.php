@@ -60,9 +60,6 @@ final class AiTranslateController
     /** Unfinished runs the run screen offers to continue. */
     private const UNFINISHED_SHOWN = 5;
 
-    /** Seconds without a worker run after which queued translations are taken to wait for nothing. */
-    private const WORKER_SILENCE = 300;
-
     public function __construct(
         private readonly TypeCatalog $catalog,
         private readonly TypeRegistry $registry,
@@ -290,12 +287,9 @@ final class AiTranslateController
         return $answer($this->runner->start($job->id, $confirmLive, $this->userName($request)), false);
     }
 
-    /** The worker counts as running when it started within WORKER_SILENCE seconds (cron runs it every minute). */
     private function workerRuns(): bool
     {
-        $last = $this->worker?->lastRun();
-
-        return $last !== null && $last->getTimestamp() >= time() - self::WORKER_SILENCE;
+        return WorkerWatch::runs($this->worker);
     }
 
     /** The signed-in user as Folio shows authors (the account's name, else its e-mail); null without sign-in. */
@@ -692,7 +686,7 @@ final class AiTranslateController
     }
 
     /** USD as the edit form's estimate shows it; null when the model has no price. */
-    private static function cost(?float $usd): ?string
+    public static function cost(?float $usd): ?string
     {
         if ($usd === null) {
             return null;

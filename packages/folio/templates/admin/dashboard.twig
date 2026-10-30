@@ -1,5 +1,35 @@
 {% extends "@folio/admin/_layout.twig" %}
-{% block title %}Folio — {{ t('folio.dashboard.title') }}{% endblock %}
+{% block title %}Folio — {{ t('folio.dashboard.title') }}    {% if review %}
+    <section class="folio-review" aria-labelledby="folio-review-title">
+        <h2 id="folio-review-title" class="folio-review-title">{{ t('folio.dashboard.review.title') }}</h2>
+        {% if review.jobs is not empty %}
+        <ul class="folio-review-jobs">
+            {% for job in review.jobs %}
+            <li>
+                <strong>{{ job.type }} · {{ job.languages }}</strong>
+                <span class="folio-help">{{ t('folio.dashboard.review.progress', {done: job.done, total: job.total}) }}{% if job.cost is not null %} · {{ t('folio.dashboard.review.cost', {cost: job.cost}) }}{% endif %}</span>
+                <span class="folio-badge">{{ t('folio.job_state.' ~ job.state) }}</span>
+                {% if job.message %}<span class="folio-help">{{ job.message }}</span>{% endif %}
+                <span class="folio-help">{% if job.by %}{{ t('folio.dashboard.review.by', {name: job.by}) }}{% endif %}{% if job.since %} {{ t('folio.dashboard.review.since', {since: job.since}) }}{% endif %}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% if review.no_worker %}<div class="folio-notice" role="status"><p>{{ t('folio.ai_queue.no_worker') }}</p></div>{% endif %}
+        {% endif %}
+        {% for group in review.groups %}
+        <h3 class="folio-review-type">{{ group.label }}</h3>
+        <ul class="folio-review-list">
+            {% for row in group.rows %}
+            <li><a href="{{ row.url }}">{{ row.title }}</a> <span class="folio-help">{{ row.languages|join(', ') }}</span></li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="folio-help">{{ t('folio.dashboard.review.empty') }}</p>
+        {% endfor %}
+        {% if review.more > 0 %}<p class="folio-help">{{ t('folio.dashboard.review.more', {count: review.more}) }}</p>{% endif %}
+    </section>
+    {% endif %}
+{% endblock %}
 {% block page_title %}{{ t('folio.dashboard.title') }}{% endblock %}
 {% block content %}
     <div class="folio-card-grid">

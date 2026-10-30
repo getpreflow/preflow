@@ -26,6 +26,9 @@
     {% if ai_translate|default(null) and rows is not empty %}
         {% include '@folio/admin/partials/ai-translate-dialog.twig' %}
     {% endif %}
+    {% if choose_target|default(false) %}
+        <p class="folio-help">{{ t('folio.translations.choose_target') }}</p>
+    {% endif %}
     {% if site_texts %}
         <p class="folio-help">{{ t('folio.translations.site_texts') }}</p>
     {% endif %}

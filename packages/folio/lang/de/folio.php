@@ -70,6 +70,15 @@ return [
         'records' => ':count Eintrag|:count Einträge',
         'assets' => 'Medien',
         'assets_hint' => 'Bilder, Videos und Dateien',
+        'review' => [
+            'title' => 'Wartet auf Prüfung',
+            'empty' => 'Nichts wartet auf Prüfung.',
+            'more' => ':count weitere Einträge warten.',
+            'progress' => ':done von :total Einträgen',
+            'cost' => 'Bisherige Kosten :cost',
+            'by' => 'Eingereiht von :name',
+            'since' => 'seit :since',
+        ],
     ],
     'list' => [
         'search_label' => ':label durchsuchen',
@@ -641,6 +650,7 @@ return [
     // Settings → Translations (the admins' overrides of interface texts).
     'translations' => [
         'intro' => 'Ändere hier die Texte der Oberfläche für eine Sprache. Ein geänderter Text ersetzt den mitgelieferten im Admin für alle, die diese Sprache nutzen; „Zurücksetzen“ stellt den mitgelieferten Text wieder her. Nur reiner Text.',
+        'choose_target' => 'Aus Englisch werden die Texte übersetzt. Wähle eine andere Sprache, um sie zu übersetzen.',
         'group' => 'Gruppe',
         'group_site' => 'Website (Bezeichnungen der Modelle)',
         'search_label' => 'Schlüssel und Texte durchsuchen',

@@ -81,6 +81,8 @@ final class AdminController
         private readonly ?\Preflow\Ai\Ai $ai = null,
         private readonly ?ReviewIndexUpdater $review = null,
         private readonly ?\Preflow\I18n\Machine\JobRunner $jobs = null,
+        private readonly ?\Preflow\I18n\Machine\ReviewIndex $reviewIndex = null,
+        private readonly ?\Preflow\I18n\Machine\TranslationWorker $worker = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
@@ -107,7 +109,77 @@ final class AdminController
             'prefix' => $this->prefix,
             'types' => $this->catalog->all(),
             'cards' => $cards,
+            'review' => $this->reviewSection(),
         ]));
+    }
+
+    /** Rows shown in the dashboard's review list; the rest is counted ("+N more"). */
+    private const REVIEW_ROWS = 50;
+
+    /**
+     * The dashboard's "Waiting for review" section, or null when AI is off or the user lacks ai.translate:
+     * records with unchecked machine translations (only types the user may view and that still exist),
+     * grouped by type, and the jobs that are queued, running or stopped.
+     *
+     * @return array{groups: list<array{label: string, rows: list<array{title: string, url: string, languages: list<string>}>}>, more: int, jobs: list<array<string, mixed>>, no_worker: bool}|null
+     */
+    private function reviewSection(): ?array
+    {
+        if (!($this->ai?->enabled() ?? false) || !$this->can('ai.translate') || $this->reviewIndex === null) {
+            return null;
+        }
+
+        $groups = [];
+        $shown = 0;
+        $more = 0;
+        foreach ($this->reviewIndex->entries() as $entry) {
+            if (!$this->catalog->has($entry->collection) || !$this->can($entry->collection . '.view')) {
+                continue;
+            }
+            if ($shown >= self::REVIEW_ROWS) {
+                $more++;
+                continue;
+            }
+            $shown++;
+            $counts = $entry->counts;
+            ksort($counts);
+            $languages = [];
+            foreach ($counts as $locale => $count) {
+                $languages[] = self::languageName((string) $locale) . ' (' . $count . ')';
+            }
+            $locale = (string) array_key_first($counts);
+            $groups[$entry->collection]['label'] = $this->labels->type($entry->collection);
+            $groups[$entry->collection]['rows'][] = [
+                'title' => $entry->title,
+                'languages' => $languages,
+                'url' => $this->prefix . '/' . $entry->collection . '/' . rawurlencode($entry->id) . '/edit' . ($locale === '' ? '' : '?locale=' . rawurlencode($locale)),
+            ];
+        }
+
+        $format = new AdminFormat();
+        $jobs = [];
+        $queued = false;
+        foreach ($this->jobs?->active(10) ?? [] as $job) {
+            $queued = $queued || $job->state === 'queued';
+            $jobs[] = [
+                'type' => $this->catalog->has($job->collection) ? $this->labels->type($job->collection) : $job->collection,
+                'languages' => implode(', ', array_map(self::languageName(...), $job->locales)),
+                'done' => count($job->items) - count($job->pending()),
+                'total' => count($job->items),
+                'cost' => $job->costUnknown ? '—' : AiTranslateController::cost($job->costUsd),
+                'state' => $job->state,
+                'message' => $job->state === 'stopped' ? $job->message : null,
+                'by' => $job->queuedBy,
+                'since' => $format->date($job->queuedAt, 'datetime'),
+            ];
+        }
+
+        return [
+            'groups' => array_values($groups),
+            'more' => $more,
+            'jobs' => $jobs,
+            'no_worker' => $queued && !WorkerWatch::runs($this->worker),
+        ];
     }
 
     public function list(ServerRequestInterface $request): ResponseInterface

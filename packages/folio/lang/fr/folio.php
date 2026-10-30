@@ -70,6 +70,15 @@ return [
         'records' => '{0} :count entrée|{1} :count entrée|[2,*] :count entrées',
         'assets' => 'Médias',
         'assets_hint' => 'Images, vidéos et fichiers',
+        'review' => [
+            'title' => 'En attente de relecture',
+            'empty' => 'Rien n’attend de relecture.',
+            'more' => ':count autres entrées attendent.',
+            'progress' => ':done sur :total entrées',
+            'cost' => 'Coût à ce jour :cost',
+            'by' => 'Mis en file par :name',
+            'since' => 'depuis :since',
+        ],
     ],
     'list' => [
         'search_label' => 'Rechercher dans :label',
@@ -641,6 +650,7 @@ return [
     // Settings → Translations (the admins' overrides of interface texts).
     'translations' => [
         'intro' => 'Modifiez ici les textes de l’interface pour une langue. Un texte modifié remplace le texte livré dans l’administration pour toutes les personnes qui utilisent cette langue ; « Réinitialiser » rétablit le texte livré. Texte brut uniquement.',
+        'choose_target' => 'Les textes sont traduits à partir de l’anglais. Choisissez une autre langue pour les traduire.',
         'group' => 'Groupe',
         'group_site' => 'Site (libellés des modèles)',
         'search_label' => 'Rechercher dans les clés et les textes',

@@ -506,6 +506,8 @@ final class FolioServiceProvider extends ServiceProvider
             ai: $c->get(\Preflow\Ai\Ai::class),
             review: $c->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
             jobs: $c->get(\Preflow\I18n\Machine\JobRunner::class),
+            reviewIndex: $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
+            worker: $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
         ));
         $container->bind(\Preflow\Folio\Http\AiTranslateController::class, fn (Container $c) => new \Preflow\Folio\Http\AiTranslateController(
             $c->get(TypeCatalog::class),
