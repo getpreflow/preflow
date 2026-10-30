@@ -118,6 +118,7 @@ final class FolioServiceProviderTest extends TestCase
         $c = $app->container();
 
         $this->assertTrue($c->hasProvider(\Preflow\Media\MediaServiceProvider::class));
+        $this->assertTrue($c->hasProvider(\Preflow\Ai\AiServiceProvider::class));
         $this->assertInstanceOf(\Preflow\Folio\Media\ContentLocaleProvider::class, $c->get(\Preflow\Media\LocaleProvider::class));
         $this->assertSame(['folio', 'media', 'copies'], $c->get(\Preflow\Media\Usage\AssetUsage::class)->sourceNames()); // poster use and copies asked last
 

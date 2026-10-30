@@ -12,7 +12,8 @@
         "psr/http-client": "^1"
     },
     "require-dev": {
-        "phpunit/phpunit": "^11.0"
+        "phpunit/phpunit": "^11.0",
+        "preflow/devtools": "^0.34 || @dev"
     },
     "conflict": {
         "preflow/core": "<0.38"
@@ -34,7 +35,15 @@
                     "path": "lang",
                     "scope": "admin"
                 }
-            }
+            },
+            "commands": [
+                "Preflow\\Ai\\Console\\AiCheckCommand",
+                "Preflow\\Ai\\Console\\AiUsageCommand"
+            ]
         }
+    },
+    "suggest": {
+        "preflow/devtools": "The ai:check and ai:usage commands",
+        "preflow/i18n": "Admin UI texts of this package"
     }
 }

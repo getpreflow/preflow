@@ -30,7 +30,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/auth' => '<0.38', 'preflow/codes' => '<0.40', 'preflow/core' => '<0.34', 'preflow/data' => '<0.42', 'preflow/i18n' => '<0.39', 'preflow/media' => '<0.43', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/validation' => '<0.46'],
+            ['preflow/ai' => '<0.47', 'preflow/auth' => '<0.38', 'preflow/codes' => '<0.40', 'preflow/core' => '<0.34', 'preflow/data' => '<0.42', 'preflow/i18n' => '<0.39', 'preflow/media' => '<0.43', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/validation' => '<0.46'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; members and codes are suggested, not required.

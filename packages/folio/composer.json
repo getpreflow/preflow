@@ -5,6 +5,7 @@
     "license": "MIT",
     "require": {
         "php": ">=8.4",
+        "preflow/ai": "^0.47 || @dev",
         "preflow/core": "^0.34 || @dev",
         "preflow/data": "^0.42 || @dev",
         "preflow/view": "^0.1 || @dev",
@@ -30,6 +31,7 @@
         "preflow/members": "Member accounts; Folio adds their admin (the built-in extension \"members\", which needs preflow/rbac)"
     },
     "conflict": {
+        "preflow/ai": "<0.47",
         "preflow/auth": "<0.38",
         "preflow/codes": "<0.40",
         "preflow/core": "<0.34",

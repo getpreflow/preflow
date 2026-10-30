@@ -57,6 +57,10 @@ final class FolioServiceProvider extends ServiceProvider
         if (!$container->hasProvider(\Preflow\Media\MediaServiceProvider::class)) {
             $container->registerProvider(new \Preflow\Media\MediaServiceProvider());
         }
+        // The AI core likewise: Folio's AI features adapt its services, which stay off until config/ai.php enables them.
+        if (!$container->hasProvider(\Preflow\Ai\AiServiceProvider::class)) {
+            $container->registerProvider(new \Preflow\Ai\AiServiceProvider());
+        }
         $app = $container->get(Application::class);
         $modelsPath = $this->modelsPath($app);
         $prefix = $this->prefix($app);
