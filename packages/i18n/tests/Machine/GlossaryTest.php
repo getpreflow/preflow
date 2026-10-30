@@ -80,4 +80,23 @@ final class GlossaryTest extends TestCase
         $this->assertSame('Meeple', $rows[0]['term']);
         $this->assertNull($rows[0]['translations']['de']);
     }
+
+    public function test_empty_term_entries_are_skipped(): void
+    {
+        $glossary = new Glossary([new GlossaryEntry('  ', ['de' => 'x']), new GlossaryEntry('', ['de' => 'y'])]);
+        $this->assertSame([], $glossary->relevant([$this->unit('Any text')], 'de'));
+        $this->assertSame([], $glossary->mismatches($this->unit('Any text'), 'Ein Text'));
+        $this->assertSame([], $glossary->toArray());
+
+        $fromRows = Glossary::fromArray([['term' => ' ', 'translations' => ['de' => 'x']], ['translations' => ['de' => 'z']]]);
+        $this->assertSame([], $fromRows->toArray());
+    }
+
+    public function test_whitespace_inside_term_matches_any_whitespace_run(): void
+    {
+        $glossary = new Glossary([new GlossaryEntry('Worker Placement', ['de' => 'Arbeitereinsatz'])]);
+        $this->assertCount(1, $glossary->relevant([$this->unit('A worker  placement game')], 'de'));
+        $this->assertCount(1, $glossary->relevant([$this->unit("A worker\nplacement game")], 'de'));
+        $this->assertSame([], $glossary->relevant([$this->unit('A workerplacement game')], 'de'));
+    }
 }

@@ -7,8 +7,21 @@ namespace Preflow\I18n\Machine;
 /** Project terms that must be translated one fixed way (or left alone). */
 final class Glossary
 {
-    /** @param list<GlossaryEntry> $entries */
-    public function __construct(private readonly array $entries) {}
+    /** @var list<GlossaryEntry> */
+    private readonly array $entries;
+
+    /**
+     * Entries with an empty term are dropped: an empty pattern would match every text.
+     *
+     * @param list<GlossaryEntry> $entries
+     */
+    public function __construct(array $entries)
+    {
+        $this->entries = array_values(array_filter(
+            $entries,
+            static fn (GlossaryEntry $e): bool => trim($e->term) !== '',
+        ));
+    }
 
     /**
      * @param list<TranslationUnit> $units
@@ -63,7 +76,7 @@ final class Glossary
     public static function fromArray(array $rows): self
     {
         return new self(array_map(static fn (array $r): GlossaryEntry => new GlossaryEntry(
-            (string) $r['term'],
+            (string) ($r['term'] ?? ''),
             (array) ($r['translations'] ?? []),
             array_values((array) ($r['types'] ?? [])),
             isset($r['note']) ? (string) $r['note'] : null,
@@ -77,7 +90,10 @@ final class Glossary
         }
 
         // Letters/digits as boundaries, not \b: \b misbehaves next to terms that start or end in a non-word character.
-        $pattern = '/(?<![\p{L}\p{N}])' . preg_quote($entry->term, '/') . '(?![\p{L}\p{N}])/iu';
+        // Whitespace inside a term matches any run of whitespace (double space, line break).
+        $words = preg_split('/\s+/u', trim($entry->term)) ?: [];
+        $body = implode('\s+', array_map(static fn (string $w): string => preg_quote($w, '/'), $words));
+        $pattern = '/(?<![\p{L}\p{N}])' . $body . '(?![\p{L}\p{N}])/iu';
 
         return preg_match($pattern, $unit->source) === 1;
     }
