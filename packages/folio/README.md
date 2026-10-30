@@ -1602,7 +1602,8 @@ fields of blocks (also nested ones) and the texts a custom field type reports.
   with an accept button per field, a count on the language tab and a badge in the list (it
   links to the list narrowed with `?unchecked=1`). They never block publishing unless
   `'publishing' => ['checked_translations' => true]` is set: then the publish is refused
-  (`_unchecked.de`); without it the editor is warned after publishing. Off by default.
+  (`_unchecked.de`); without it the editor is warned after publishing (and `folio:publish`,
+  the bulk publish, prints a warning per record). Off by default.
 - **New column:** `_translated_from` is a TEXT column on SQL-backed record tables (and their
   published and revisions tables); `preflow migrate` adds it.
 

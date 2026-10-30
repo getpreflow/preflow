@@ -57,6 +57,20 @@ final class PublishCommandsTest extends TestCase
         $this->assertNull($this->publisher()->snapshot('post', 'due'));
     }
 
+    public function test_publish_command_warns_about_unchecked_machine_texts(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello', 'de' => 'hallo'], '_locales' => ['en', 'de']]);
+        $this->app()->container()->get(\Preflow\I18n\Machine\TextSources::class)->get('post')->write('p1', 'de', ['title' => 'Hallo']);
+        $this->working('post', 'p2', ['title' => ['en' => 'Other'], 'slug' => ['en' => 'other']]);
+
+        [$code, $out] = $this->runCommand(new PublishCommand(fn () => $this->app()), ['post', '--all']);
+
+        $this->assertSame(0, $code);
+        $this->assertStringContainsString('Published post/p1', $out);
+        $this->assertMatchesRegularExpression('~Warning post/p1: .*1.*German~', $out);
+        $this->assertStringNotContainsString('Warning post/p2', $out);
+    }
+
     public function test_publish_command_publishes_every_record(): void
     {
         $this->working('post', 'a', ['title' => ['en' => 'A'], 'slug' => ['en' => 'a'], 'status' => 'published']);
