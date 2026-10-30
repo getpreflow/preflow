@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.46.1** — 4567 tests, 22 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.47.0** — 4830 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -62,14 +62,14 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    links on every language, component actions keep the locale prefix, composite indexes in migrations,
    `revisions: 0` keeps all, `cache_path`, HEIC/HEIF as JPEG (with `heic_max_pixels`). See
    `docs/superpowers/plans/2026-10-29-release-0.46-checklist.md`
-8. **AI connection and auto-translate (0.47)** — built, not released: `preflow/ai` (Claude and Gemini behind
+8. **AI connection and auto-translate (0.47)** — released in 0.47: `preflow/ai` (Claude and Gemini behind
    `AiClient`, keys from the environment, a price table, a usage log without text, `ai:check`, `ai:usage`,
    `FakeAiClient`); machine translation in `preflow/i18n` (`MachineTranslator`, layered tuning, a glossary,
    `MarkupCheck`, `Estimator`, `TextSource` and `JobRunner` for any data); and in Folio a Translate button with
    side-by-side review, whole-type runs as drafts, "not checked" markers (`publishing.checked_translations`),
    labels and media alt texts, Settings → AI, and the `ai.translate` and `ai.settings` permissions. AI stays off
-   until `config/ai.php` is enabled and a key is set. Release, split repository and site upgrades wait for the
-   owner. See `docs/superpowers/specs/2026-10-30-ai-translation-design.md`
+   until `config/ai.php` is enabled and a key is set. See `docs/superpowers/specs/2026-10-30-ai-translation-design.md`
+   and `docs/superpowers/plans/2026-10-30-release-0.47-checklist.md`
    **Upgrading:** SQL sites run `preflow migrate` after upgrading: the new `_translated_source` and
    `_machine_translated` columns are written on every translation save, with AI off too, and publishing
    fails until they exist. Each site's deploy must run it.
