@@ -77,7 +77,7 @@ final class AiTranslator implements MachineTranslator
      */
     private function translateBatch(AiClient $client, array $batch, Tuning $base, Glossary $glossary, ?string $note, array &$results): void
     {
-        [$response, $reason] = $this->send($client, $batch, $base, $glossary, $note, null);
+        [$response, $items, $reason] = $this->send($client, $batch, $base, $glossary, $note, null);
 
         if ($reason !== null && count($batch) > 1) {
             // Nothing in this request was answered, so the halves re-send no answered unit.
@@ -90,21 +90,24 @@ final class AiTranslator implements MachineTranslator
 
         // Gemini withholds text that resembles known sources; a freer wording usually gets through.
         if ($reason !== null && $response?->stop === StopReason::Blocked && strtoupper((string) $response->detail) === 'RECITATION') {
-            [$response, $reason] = $this->send($client, $batch, $base->with(TranslationPrompt::RECITATION_RETRY), $glossary, $note, 1.0);
+            [, $items, $reason] = $this->send($client, $batch, $base->with(TranslationPrompt::RECITATION_RETRY), $glossary, $note, 1.0);
         }
 
-        if ($reason !== null || $response === null) {
+        if ($reason !== null || $items === null) {
             $this->fail($batch, $reason ?? 'no answer', $results);
 
             return;
         }
 
-        $this->collect($batch, $response, $glossary, $results);
+        $this->collect($batch, $items, $glossary, $results);
     }
 
     /**
      * @param array<int, TranslationUnit> $batch
-     * @return array{0: ?AiResponse, 1: ?string} the response, and the reason when the request as a whole failed
+     * A broken answer (invalid JSON, not a list) counts as a failed request like a blocked one, so
+     * it is split and retried too: a long batch is where a model most often garbles the JSON.
+     *
+     * @return array{0: ?AiResponse, 1: ?list<mixed>, 2: ?string} the response, the decoded items, and the reason when the request as a whole failed
      */
     private function send(AiClient $client, array $batch, Tuning $base, Glossary $glossary, ?string $note, ?float $temperature): array
     {
@@ -135,37 +138,34 @@ final class AiTranslator implements MachineTranslator
         try {
             $response = $client->complete($request);
         } catch (AiRequestFailed $e) {
-            return [null, $e->getMessage()];
+            return [null, null, $e->getMessage()];
         }
 
         if ($response->stop !== StopReason::Complete) {
             $detail = $response->detail !== null && $response->detail !== '' ? ' (' . $response->detail . ')' : '';
 
-            return [$response, $response->stop->value . $detail];
+            return [$response, null, $response->stop->value . $detail];
         }
 
-        return [$response, null];
+        try {
+            $data = $response->json();
+        } catch (AiResponseInvalid $e) {
+            return [$response, null, $e->getMessage()];
+        }
+        if (!is_array($data) || !array_is_list($data)) {
+            return [$response, null, 'the answer is not a list'];
+        }
+
+        return [$response, $data, null];
     }
 
     /**
      * @param array<int, TranslationUnit> $batch
+     * @param list<mixed> $data the decoded answer
      * @param array<int, TranslationResult> $results
      */
-    private function collect(array $batch, AiResponse $response, Glossary $glossary, array &$results): void
+    private function collect(array $batch, array $data, Glossary $glossary, array &$results): void
     {
-        try {
-            $data = $response->json();
-        } catch (AiResponseInvalid $e) {
-            $this->fail($batch, $e->getMessage(), $results);
-
-            return;
-        }
-        if (!is_array($data) || !array_is_list($data)) {
-            $this->fail($batch, 'the answer is not a list', $results);
-
-            return;
-        }
-
         // The first answer for each n counts; unknown and repeated numbers are ignored.
         $byN = [];
         foreach ($data as $item) {

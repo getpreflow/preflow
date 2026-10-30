@@ -11,6 +11,7 @@ use Preflow\Ai\AiResponse;
 use Preflow\Ai\AiUnavailable;
 use Preflow\Ai\StopReason;
 use Preflow\Ai\Testing\FakeAiClient;
+use Preflow\Ai\TokenUsage;
 use Preflow\Ai\Tuning;
 use Preflow\I18n\Machine\AiTranslator;
 use Preflow\I18n\Machine\TextFormat;
@@ -89,14 +90,29 @@ final class AiTranslatorTest extends TestCase
         $this->assertCount(1, $fake->requests(), 'a missing item is not retried');
     }
 
-    public function test_non_list_answer_fails_the_whole_request(): void
+    public function test_non_list_answer_is_split_and_retried(): void
     {
-        $fake = new FakeAiClient([FakeAiClient::json(['n' => 1, 'text' => 'Eins'])]);
+        $fake = new FakeAiClient([FakeAiClient::json(['n' => 1, 'text' => 'Eins']), self::echo()]);
 
         $results = $this->translator($fake)->translateUnits([$this->unit('a', 'One'), $this->unit('b', 'Two')]);
 
-        $this->assertSame([UnitStatus::Failed, UnitStatus::Failed], array_map(static fn ($r) => $r->status, $results));
-        $this->assertNotNull($results[0]->error);
+        $this->assertSame(['a' => 'DE:One', 'b' => 'DE:Two'], self::texts($results));
+        $this->assertSame([2, 1, 1], array_map(static fn ($r) => count(self::items($r)), $fake->requests()));
+    }
+
+    public function test_single_unit_with_invalid_answers_fails_with_reason(): void
+    {
+        $broken = new AiResponse('{"n": 1, "text": ', StopReason::Complete, new TokenUsage(), 'fake', 'fake-model');
+        $fake = new FakeAiClient([$broken]);
+
+        $result = $this->translator($fake)->translateUnits([$this->unit('a', 'One')])[0];
+
+        $this->assertSame(UnitStatus::Failed, $result->status);
+        $this->assertStringContainsString('not valid JSON', $result->error);
+        $this->assertCount(1, $fake->requests());
+
+        $notList = $this->translator(new FakeAiClient([FakeAiClient::json('Eins')]))->translateUnits([$this->unit('a', 'One')])[0];
+        $this->assertSame('the answer is not a list', $notList->error);
     }
 
     public function test_markup_violation_fails_unit(): void
