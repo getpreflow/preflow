@@ -1006,6 +1006,51 @@
         });
     }
 
+    // ---- Settings → Translations: "Save all filled" -------------------------
+    // Each row is its own form, so saving one row reloads the page over every other filled one.
+    // The save-all form posts every row whose text differs from the saved one (keys[] + texts[]),
+    // and the page asks before leaving while such rows are unsaved. A row the server refused
+    // carries data-unsaved: its text is the posted one, not the saved one.
+
+    function initTranslationsSaveAll() {
+        var saveAll = document.querySelector('[data-translations-save-all]');
+        var table = document.querySelector('.folio-translations');
+        if (!saveAll || !table) { return; }
+        var submitted = null;
+        var changed = function () {
+            return Array.prototype.filter.call(table.querySelectorAll('input[data-ai-path], textarea[data-ai-path]'), function (el) {
+                return el.value !== el.defaultValue || el.hasAttribute('data-unsaved');
+            });
+        };
+        var refresh = function () { saveAll.hidden = changed().length === 0; };
+        table.addEventListener('input', refresh);
+        table.addEventListener('change', refresh);
+        saveAll.addEventListener('submit', function () {
+            saveAll.querySelectorAll('[data-save-all-row]').forEach(function (el) { el.remove(); });
+            changed().forEach(function (el) {
+                [['keys[]', el.getAttribute('data-ai-path')], ['texts[]', el.value]].forEach(function (pair) {
+                    var input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = pair[0];
+                    input.value = pair[1];
+                    input.setAttribute('data-save-all-row', '');
+                    saveAll.appendChild(input);
+                });
+            });
+        });
+        // As initUnsavedGuard: a cancelled data-confirm is defaultPrevented and keeps the guard.
+        document.addEventListener('submit', function (e) {
+            if (!e.defaultPrevented) { submitted = e.target; }
+        });
+        window.addEventListener('beforeunload', function (e) {
+            if (submitted === saveAll) { return; }
+            var unsaved = changed().filter(function (el) { return el.form !== submitted; });
+            if (unsaved.length === 0) { return; }
+            e.preventDefault();
+            e.returnValue = '';
+        });
+    }
+
     // Cards added by htmx: run the same per-element setup as on page load.
     function onHtmxLoad(e) {
         var root = e.detail && e.detail.elt ? e.detail.elt : null;
@@ -1591,6 +1636,7 @@
         document.addEventListener('click', onRelationClick);
         initSplit();
         initUnsavedGuard();
+        initTranslationsSaveAll();
     }
 
     if (document.readyState === 'loading') {

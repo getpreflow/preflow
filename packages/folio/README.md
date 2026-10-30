@@ -1777,7 +1777,11 @@ Edits are stored in `storage/ai/settings.json`, apart from `config/ai.php`.
 Folio's own pieces get the same button, with the same review and the `ai.translate` permission:
 
 - **Settings → Translations:** a **Translate** button for the shown page of labels fills empty
-  values as unsaved input (or every value with "all"). You review and save as usual.
+  values as unsaved input (or every value with "all"). Review them, then **Save all filled**
+  saves every filled or changed row of the page in one go (a row's own Save button still saves
+  just that row and reloads the page). A text with markup or wrong placeholders is refused on its
+  own: it stays in its field with the reason under it, the others are saved. While filled rows
+  are unsaved, leaving the page asks first.
 - **Media:** the asset panel has a button for the **alt text** of each language, translated from
   the default-language alt text. Titles are not translated, because an asset has one title for
   all languages.

@@ -176,9 +176,9 @@ return [
         'button_alt' => 'Translate into :language',
         'intro_alt' => 'AI translates the alt text of the default language. Nothing is saved until you save.',
         'filled_alt' => 'Alt text filled in. Review it in the field, then save.',
-        'intro_labels' => 'AI translates the texts on this page from English. Nothing is saved until you save a text with its Save button.',
+        'intro_labels' => 'AI translates the texts on this page from English. Nothing is saved until you save: all at once with Save all filled, or one text with its Save button.',
         'scope_needed_labels' => 'Without a text in this language',
-        'filled_labels' => ':count texts filled in. Review each, then save it with its Save button.',
+        'filled_labels' => ':count texts filled in. Review them, then save them all with Save all filled.',
     ],
     // The whole-type translation run (AI): plan with estimate, progress, results.
     'ai_run' => [
@@ -644,6 +644,10 @@ return [
         'placeholder_missing' => 'Garde l’espace réservé :placeholder : il est rempli quand le texte est utilisé.',
         'placeholder_unknown' => 'L’espace réservé :placeholder n’est pas rempli ici.',
         'empty' => 'Aucun texte ne correspond.',
+        'save_all' => 'Enregistrer tous les textes remplis',
+        'save_all_help' => 'Enregistre chaque texte de cette page rempli ou modifié.',
+        'save_all_refused' => ':count textes n’ont pas été enregistrés ; la raison figure sous chacun. Les autres sont enregistrés.',
+        'saved_all' => ':count textes enregistrés.',
     ],
     'locale' => [
         'not_offered' => 'Cette langue n’est pas proposée.',

@@ -139,6 +139,53 @@ final class TranslationOverridesTest extends TestCase
         $this->assertSame([], $this->overrides()->all('xx'));
     }
 
+    /** "Save all filled": every posted row in one request, so saving one row no longer reloads the page over the others. */
+    #[RunInSeparateProcess]
+    public function test_save_all_stores_every_posted_text_in_one_request(): void
+    {
+        $this->people();
+        $this->signIn('ada@site.test');
+        $screen = $this->html('/folio/translations?group=folio&locale=de&q=common.s');
+        $this->assertStringContainsString('action="/folio/translations/save-all"', $screen);
+        $this->assertMatchesRegularExpression('~data-translations-save-all hidden>~', $screen, 'shown by admin.js once a row changes');
+
+        $response = $this->post('/folio/translations/save-all', [
+            'locale' => 'de', 'group' => 'folio', 'q' => 'common.s',
+            'keys' => ['folio.common.save', 'folio.common.search'],
+            'texts' => ['Sichern', 'Finden'],
+        ]);
+
+        $this->assertSame(302, $response->getStatusCode());
+        $this->assertSame('/folio/translations?group=folio&locale=de&q=common.s', $response->getHeaderLine('Location'));
+        $this->assertSame(['folio.common.save' => 'Sichern', 'folio.common.search' => 'Finden'], $this->overrides()->all('de'));
+        $this->assertStringContainsString('2 Texte gespeichert.', $this->html('/folio/translations?group=folio&locale=de&q=common.s'));
+
+        // An empty text brings the delivered one back, as a single save does.
+        $this->post('/folio/translations/save-all', ['locale' => 'de', 'keys' => ['folio.common.search'], 'texts' => ['']]);
+        $this->assertSame(['folio.common.save' => 'Sichern'], $this->overrides()->all('de'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_save_all_refuses_markup_per_row_and_keeps_the_rest(): void
+    {
+        $this->people();
+        $this->signIn('ada@site.test');
+
+        $response = $this->post('/folio/translations/save-all', [
+            'locale' => 'de', 'group' => 'folio', 'q' => 'common.s',
+            'keys' => ['folio.common.save', 'folio.common.search', 'folio.format.date'],
+            'texts' => ['Sichern <b>jetzt</b>', 'Finden', 'Y'],
+        ]);
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame(['folio.common.search' => 'Finden'], $this->overrides()->all('de'), 'the valid text is stored, the refused ones are not');
+        $body = (string) $response->getBody();
+        $this->assertMatchesRegularExpression('~name="text" data-ai-path="folio\.common\.save" data-unsaved value="Sichern &lt;b&gt;jetzt&lt;/b&gt;">~', $body, 'the refused text stays in its field');
+        $this->assertStringContainsString('<div class="form-error">Nur reiner Text', $body);
+        $this->assertStringContainsString('2 Texte wurden nicht gespeichert', $body);
+        $this->assertStringNotContainsString('data-translations-save-all hidden', $body, 'the button is there to try again');
+    }
+
     /** The keys of the listed rows, comma-separated. */
     private function listed(string $uri): string
     {
@@ -229,7 +276,7 @@ final class TranslationOverridesTest extends TestCase
     #[RunInSeparateProcess]
     public function test_the_screen_needs_translations_edit_and_a_csrf_token(): void
     {
-        foreach (['index', 'save', 'reset'] as $action) {
+        foreach (['index', 'save', 'reset', 'saveAll'] as $action) {
             $this->assertSame('translations.edit', FolioPermissionMiddleware::rule('Preflow\\Folio\\Http\\TranslationsController@' . $action));
         }
         $this->write('config/roles.php', "<?php\nreturn " . var_export(['staff' => ['admin' => ['*'], 'editor' => ['folio.dashboard', 'page.*']]], true) . ";\n");
@@ -242,6 +289,7 @@ final class TranslationOverridesTest extends TestCase
         $this->assertSame(403, $this->send('GET', '/folio/translations')->getStatusCode());
         $this->assertSame(403, $this->post('/folio/translations', ['locale' => 'en', 'key' => 'folio.common.save', 'text' => 'x'])->getStatusCode());
         $this->assertSame(403, $this->post('/folio/translations/reset', ['locale' => 'en', 'key' => 'folio.common.save'])->getStatusCode());
+        $this->assertSame(403, $this->post('/folio/translations/save-all', ['locale' => 'en', 'keys' => ['folio.common.save'], 'texts' => ['x']])->getStatusCode());
         $this->assertStringNotContainsString('href="/folio/translations"', $this->html('/folio'));
         $this->assertSame([], $this->overrides()->all('en'));
 

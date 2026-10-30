@@ -92,6 +92,7 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'TranslationsController@index' => 'translations.edit',
         'TranslationsController@save' => 'translations.edit',
         'TranslationsController@reset' => 'translations.edit',
+        'TranslationsController@saveAll' => 'translations.edit',
         'BlockEditorController@newBlock' => '*.edit|create',
         'BlockEditorController@duplicate' => '*.edit|create',
         'AccountController@show' => self::SIGNED_IN,

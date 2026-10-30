@@ -40,7 +40,19 @@ final class TranslationsController
     /** GET {prefix}/translations?group=…&locale=…&q=…&page=… */
     public function index(ServerRequestInterface $request): ResponseInterface
     {
-        $query = $request->getQueryParams();
+        return $this->screen($request, $request->getQueryParams());
+    }
+
+    /**
+     * The screen for $query. After a "Save all filled" with refused texts, $errors (key => message)
+     * shows under each refused row and $values (key => posted text) keeps what was typed there.
+     *
+     * @param array<string, mixed> $query
+     * @param array<string, string> $errors
+     * @param array<string, string> $values
+     */
+    private function screen(ServerRequestInterface $request, array $query, array $errors = [], array $values = [], int $status = 200): ResponseInterface
+    {
         $groups = $this->texts->groups();
         $group = is_string($query['group'] ?? null) && in_array($query['group'], $groups, true)
             ? $query['group']
@@ -69,7 +81,7 @@ final class TranslationsController
             $pages[] = ['n' => $n, 'current' => $n === $page, 'href' => $this->url($view + ['page' => $n])];
         }
 
-        return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->engine->render('@folio/admin/translations/index.twig', [
+        return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $this->engine->render('@folio/admin/translations/index.twig', [
             'prefix' => $this->prefix,
             'groups' => $groups,
             'site_group' => EditableTexts::SITE,
@@ -88,6 +100,8 @@ final class TranslationsController
                 'next' => $page < $lastPage ? $this->url($view + ['page' => $page + 1]) : null,
             ],
             'csrf' => $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '',
+            'errors' => $errors,
+            'values' => $values,
             'ai_translate' => $this->aiTranslate($group, $locale, $q, $page),
             'default_language' => LocaleNames::native($this->texts->sourceLocale($locale) ?? 'en'),
             'editor_assets' => $this->aiOn() ? ['ai-translate.css', 'ai-translate-core.js', 'ai-translate.js'] : [],
@@ -140,53 +154,121 @@ final class TranslationsController
         return $this->store($request, null);
     }
 
+    /**
+     * POST {prefix}/translations/save-all: locale, keys[] and texts[] (pairs by position), plus the
+     * view (group, q, page). "Save all filled": every row the AI filled or someone changed, in one
+     * request, so saving one row no longer reloads the page over the others. Each text goes through
+     * the same checks as a single save; the valid ones are stored, a refused one stays in its field
+     * with the reason under it (422).
+     */
+    public function saveAll(ServerRequestInterface $request): ResponseInterface
+    {
+        $body = (array) $request->getParsedBody();
+        $locale = is_string($body['locale'] ?? null) ? $body['locale'] : '';
+        $keys = is_array($body['keys'] ?? null) ? array_values($body['keys']) : [];
+        $texts = is_array($body['texts'] ?? null) ? array_values($body['texts']) : [];
+        $user = $request->getAttribute(Authenticatable::class);
+        $by = $user instanceof Authenticatable ? (string) $user->getAuthId() : null;
+
+        $saved = 0;
+        $errors = $values = [];
+        foreach ($keys as $i => $key) {
+            if (!is_string($key) || !is_string($texts[$i] ?? null)) {
+                continue;
+            }
+            $text = str_replace("\r\n", "\n", $texts[$i]);
+            $checked = $this->check($locale, $key, trim($text) === '' ? null : $text);
+            if (is_string($checked['error'])) {
+                $errors[$key] = $checked['error'];
+                $values[$key] = $text;
+                continue;
+            }
+            $this->overrides->set($locale, $key, $checked['text'], $by);
+            $saved++;
+        }
+
+        $view = $this->view($body, $locale, (string) strstr(is_string($keys[0] ?? null) ? $keys[0] : '', '.', true));
+        if ($errors !== []) {
+            return $this->screen($request, $view, $errors, $values, 422);
+        }
+        self::flash($request, FolioText::get('folio.translations.saved_all', ['count' => $saved]));
+
+        return new Response(302, ['Location' => $this->url($view)]);
+    }
+
     private function store(ServerRequestInterface $request, ?string $text): ResponseInterface
     {
         $body = (array) $request->getParsedBody();
         $locale = is_string($body['locale'] ?? null) ? $body['locale'] : '';
         $key = is_string($body['key'] ?? null) ? $body['key'] : '';
-        $group = (string) strstr($key, '.', true);
-        if (!in_array($locale, $this->texts->locales($group, $this->locales->all()), true)) {
-            return self::refuse(FolioText::get('folio.locale.not_offered'));
+        $checked = $this->check($locale, $key, $text);
+        if (is_string($checked['error'])) {
+            return self::refuse($checked['error']);
         }
-        if (!$this->texts->editable($key, $locale)) {
-            return self::refuse(FolioText::get('folio.translations.not_editable'));
-        }
-        if ($text !== null) {
-            if (mb_strlen($text) > StoredOverrides::MAX_LENGTH) {
-                return self::refuse(FolioText::get('folio.translations.too_long', ['max' => StoredOverrides::MAX_LENGTH]));
-            }
-            // Plain text only: it is printed unescaped, also inside HTML attributes.
-            $text = StoredOverrides::validText($text);
-            if ($text === null) {
-                return self::refuse(FolioText::get('folio.translations.no_markup'));
-            }
-            if ($this->texts->isEditableGroup($group)) {
-                // Its texts are filled in by code (a mail's :link): the same placeholders, no more, no less.
-                $needed = $this->texts->placeholders($key, $locale);
-                $used = EditableTexts::placeholdersIn($text);
-                foreach (array_diff($needed, $used) as $name) {
-                    return self::refuse(FolioText::get('folio.translations.placeholder_missing', ['placeholder' => ':' . $name]));
-                }
-                foreach (array_diff($used, $needed) as $name) {
-                    return self::refuse(FolioText::get('folio.translations.placeholder_unknown', ['placeholder' => ':' . $name]));
-                }
-            }
-        }
+        $text = $checked['text'];
 
         $user = $request->getAttribute(Authenticatable::class);
         $this->overrides->set($locale, $key, $text, $user instanceof Authenticatable ? (string) $user->getAuthId() : null);
         self::flash($request, FolioText::get($text === null ? 'folio.translations.reset_done' : 'folio.translations.saved', ['key' => $key]));
 
-        $group = is_string($body['group'] ?? null) && in_array($body['group'], $this->texts->groups(), true) ? $body['group'] : $group;
-        $page = (int) ($body['page'] ?? 1);
+        return new Response(302, ['Location' => $this->url($this->view($body, $locale, (string) strstr($key, '.', true)))]);
+    }
 
-        return new Response(302, ['Location' => $this->url([
-            'group' => $group,
+    /**
+     * The view to go back to after a save: the posted group (else $group), language, search and page.
+     *
+     * @param array<mixed> $body
+     * @return array{group: string, locale: string, q: string, page: int}
+     */
+    private function view(array $body, string $locale, string $group): array
+    {
+        return [
+            'group' => is_string($body['group'] ?? null) && in_array($body['group'], $this->texts->groups(), true) ? $body['group'] : $group,
             'locale' => $locale,
             'q' => is_string($body['q'] ?? null) ? trim($body['q']) : '',
-            'page' => $page,
-        ])]);
+            'page' => (int) ($body['page'] ?? 1),
+        ];
+    }
+
+    /**
+     * Whether $text (null: back to the delivered text) may be stored for $key in $locale, and the
+     * text to store.
+     *
+     * @return array{error: ?string, text: ?string}
+     */
+    private function check(string $locale, string $key, ?string $text): array
+    {
+        $group = (string) strstr($key, '.', true);
+        if (!in_array($locale, $this->texts->locales($group, $this->locales->all()), true)) {
+            return ['error' => FolioText::get('folio.locale.not_offered'), 'text' => null];
+        }
+        if (!$this->texts->editable($key, $locale)) {
+            return ['error' => FolioText::get('folio.translations.not_editable'), 'text' => null];
+        }
+        if ($text === null) {
+            return ['error' => null, 'text' => null];
+        }
+        if (mb_strlen($text) > StoredOverrides::MAX_LENGTH) {
+            return ['error' => FolioText::get('folio.translations.too_long', ['max' => StoredOverrides::MAX_LENGTH]), 'text' => null];
+        }
+        // Plain text only: it is printed unescaped, also inside HTML attributes.
+        $text = StoredOverrides::validText($text);
+        if ($text === null) {
+            return ['error' => FolioText::get('folio.translations.no_markup'), 'text' => null];
+        }
+        if ($this->texts->isEditableGroup($group)) {
+            // Its texts are filled in by code (a mail's :link): the same placeholders, no more, no less.
+            $needed = $this->texts->placeholders($key, $locale);
+            $used = EditableTexts::placeholdersIn($text);
+            foreach (array_diff($needed, $used) as $name) {
+                return ['error' => FolioText::get('folio.translations.placeholder_missing', ['placeholder' => ':' . $name]), 'text' => null];
+            }
+            foreach (array_diff($used, $needed) as $name) {
+                return ['error' => FolioText::get('folio.translations.placeholder_unknown', ['placeholder' => ':' . $name]), 'text' => null];
+            }
+        }
+
+        return ['error' => null, 'text' => $text];
     }
 
     /**

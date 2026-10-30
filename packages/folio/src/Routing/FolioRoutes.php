@@ -83,6 +83,7 @@ final class FolioRoutes
             ['GET',  $prefix . '/translations',        'index', self::TRANSLATIONS],
             ['POST', $prefix . '/translations',        'save', self::TRANSLATIONS],
             ['POST', $prefix . '/translations/reset',  'reset', self::TRANSLATIONS],
+            ['POST', $prefix . '/translations/save-all', 'saveAll', self::TRANSLATIONS],
             // Enabled extensions' assets/ files (public, like _assets/{file}); before the generic {type} routes.
             ['GET',  $prefix . '/_assets/x/{extension}/{...path}', 'serve', self::EXTENSION_ASSETS],
             ['GET',  $prefix . '/_relation/{type}',    'relationOptions'], // before the generic {type} routes

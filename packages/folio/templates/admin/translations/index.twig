@@ -32,6 +32,17 @@
     {% if rows is empty %}
         <p class="folio-help">{{ t('folio.translations.empty') }}</p>
     {% else %}
+    {# "Save all filled" (admin.js): posts every row whose text differs from the saved one, in one request.
+       Shown once a row changes (an AI fill or typing), or right away after some texts were refused. #}
+    <form method="post" action="{{ prefix }}/translations/save-all" class="folio-row-actions folio-translations-save-all" data-translations-save-all{% if errors|default([]) is empty %} hidden{% endif %}>
+        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+        <input type="hidden" name="locale" value="{{ view.locale }}">
+        <input type="hidden" name="group" value="{{ view.group }}">
+        <input type="hidden" name="q" value="{{ view.q }}">
+        <input type="hidden" name="page" value="{{ page }}">
+        <button type="submit" class="btn btn-primary btn-sm">{{ t('folio.translations.save_all') }}</button>
+        <span class="folio-help">{{ errors|default([]) is empty ? t('folio.translations.save_all_help') : t('folio.translations.save_all_refused', {count: errors|length}) }}</span>
+    </form>
     <div class="folio-table-wrap">
     <table class="folio-table folio-translations">
         <thead><tr><th>{{ t('folio.translations.key') }}</th><th>{{ t('folio.translations.delivered') }}</th><th>{{ t('folio.translations.override') }}</th></tr></thead>
@@ -49,16 +60,18 @@
                         <input type="hidden" name="page" value="{{ page }}">
                         <input type="hidden" name="key" value="{{ row.key }}">
                         <label class="folio-sr" for="folio-translation-{{ loop.index }}">{{ t('folio.translations.override_label', {key: row.key}) }}</label>
-                        {% set text = row.override ?? '' %}
+                        {% set refused = values[row.key] is defined %}
+                        {% set text = refused ? values[row.key] : (row.override ?? '') %}
                         {% if text matches '/\\n/' or (row.delivered ?? '')|length > 80 %}
-                            <textarea id="folio-translation-{{ loop.index }}" name="text" rows="3" data-ai-path="{{ row.key }}">{{ text }}</textarea>
+                            <textarea id="folio-translation-{{ loop.index }}" name="text" rows="3" data-ai-path="{{ row.key }}"{% if refused %} data-unsaved{% endif %}>{{ text }}</textarea>
                         {% else %}
-                            <input type="text" id="folio-translation-{{ loop.index }}" name="text" data-ai-path="{{ row.key }}" value="{{ text }}">
+                            <input type="text" id="folio-translation-{{ loop.index }}" name="text" data-ai-path="{{ row.key }}"{% if refused %} data-unsaved{% endif %} value="{{ text }}">
                         {% endif %}
                         <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.common.save') }}</button>
                         {% if row.override is not null %}
                             <button type="submit" class="btn btn-ghost btn-sm" formaction="{{ prefix }}/translations/reset">{{ t('folio.translations.reset') }}</button>
                         {% endif %}
+                        {% if errors[row.key] is defined %}<div class="form-error">{{ errors[row.key] }}</div>{% endif %}
                     </form>
                 </td>
             </tr>

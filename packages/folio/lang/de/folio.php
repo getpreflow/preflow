@@ -176,9 +176,9 @@ return [
         'button_alt' => 'Übersetzen in :language',
         'intro_alt' => 'KI übersetzt den Alternativtext der Standardsprache. Gespeichert wird erst beim Speichern.',
         'filled_alt' => 'Alternativtext eingefügt. Prüfe ihn im Feld und speichere dann.',
-        'intro_labels' => 'KI übersetzt die Texte dieser Seite aus dem Englischen. Gespeichert wird ein Text erst, wenn du ihn mit seinem Speichern-Knopf speicherst.',
+        'intro_labels' => 'KI übersetzt die Texte dieser Seite aus dem Englischen. Gespeichert wird erst, wenn du speicherst: alle auf einmal mit „Alle eingefügten speichern“ oder einen Text mit seinem Speichern-Knopf.',
         'scope_needed_labels' => 'Ohne Text in dieser Sprache',
-        'filled_labels' => ':count Texte eingefügt. Prüfe jeden und speichere ihn mit seinem Speichern-Knopf.',
+        'filled_labels' => ':count Texte eingefügt. Prüfe sie und speichere dann alle mit „Alle eingefügten speichern“.',
     ],
     // The whole-type translation run (AI): plan with estimate, progress, results.
     'ai_run' => [
@@ -644,6 +644,10 @@ return [
         'placeholder_missing' => 'Behalte den Platzhalter :placeholder: Er wird beim Verwenden des Textes ausgefüllt.',
         'placeholder_unknown' => 'Der Platzhalter :placeholder wird hier nicht ausgefüllt.',
         'empty' => 'Keine passenden Texte.',
+        'save_all' => 'Alle eingefügten speichern',
+        'save_all_help' => 'Speichert jeden Text dieser Seite, der eingefügt oder geändert wurde.',
+        'save_all_refused' => ':count Texte wurden nicht gespeichert; der Grund steht jeweils darunter. Die anderen sind gespeichert.',
+        'saved_all' => ':count Texte gespeichert.',
     ],
     'locale' => [
         'not_offered' => 'Diese Sprache wird nicht angeboten.',

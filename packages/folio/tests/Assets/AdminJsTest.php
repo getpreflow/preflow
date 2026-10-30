@@ -253,5 +253,14 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString("el.name === 'ids[]' && el.checked", $js);
         $this->assertStringNotContainsString('.style.', substr($js, (int) strpos($js, 'function bulkUpdate')), 'no inline styles (CSP)');
     }
-}
 
+    public function test_translations_save_all_posts_changed_rows_and_guards_them(): void
+    {
+        $js = $this->js();
+        $this->assertStringContainsString('function initTranslationsSaveAll()', $js);
+        $this->assertStringContainsString("[['keys[]', el.getAttribute('data-ai-path')], ['texts[]', el.value]]", $js);
+        $this->assertStringContainsString("el.value !== el.defaultValue || el.hasAttribute('data-unsaved')", $js, 'filled, typed or refused rows count');
+        $this->assertStringContainsString("if (submitted === saveAll) { return; }", $js, 'saving all leaves without asking');
+        $this->assertStringContainsString('initTranslationsSaveAll();', $js);
+    }
+}
