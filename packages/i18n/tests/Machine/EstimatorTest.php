@@ -37,10 +37,11 @@ final class EstimatorTest extends TestCase
         $this->assertSame(440, $estimate->characters);
         // de: 10 × 40 chars at 200 per request = 2 requests; fr: 1.
         $this->assertSame(3, $estimate->requests);
-        $this->assertSame((int) ceil(1.3 * 110), $estimate->outputTokens);
+        // 440 characters at two a token.
+        $this->assertSame((int) ceil(1.3 * 220), $estimate->outputTokens);
         // Each request: the source tokens plus the system prompt, JSON wrapping and 200 overhead.
-        $this->assertGreaterThan(110 + 3 * 200, $estimate->inputTokens);
-        $this->assertLessThan(110 + 3 * 200 + 3 * 1000, $estimate->inputTokens);
+        $this->assertGreaterThan(220 + 3 * 200, $estimate->inputTokens);
+        $this->assertLessThan(220 + 3 * 200 + 3 * 2000, $estimate->inputTokens);
         $this->assertEqualsWithDelta(
             Pricing::withOverrides([])->cost('claude-sonnet-5-5', new TokenUsage($estimate->inputTokens, $estimate->outputTokens)),
             $estimate->costUsd,

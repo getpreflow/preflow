@@ -162,8 +162,9 @@ final class AiTranslator implements MachineTranslator, ReportsCost
             $tuning,
             TranslationPrompt::SCHEMA,
             $temperature,
-            // The answer repeats every text translated, plus JSON; a lone long text needs more than the default.
-            min(32000, max(8000, (int) ceil($chars / 2))),
+            // The answer repeats every text translated, plus JSON. German with markup came to about two
+            // tokens for three characters; a token per character leaves room, and a cut answer costs a retry.
+            min(32000, max(8000, $chars)),
             lowReasoning: true,
         );
 

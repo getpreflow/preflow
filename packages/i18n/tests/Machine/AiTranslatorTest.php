@@ -443,4 +443,15 @@ final class AiTranslatorTest extends TestCase
         $this->expectExceptionMessageMatches('/refused/');
         $refused->translate('Hello', 'de');
     }
+
+    public function test_a_full_batch_has_room_for_its_whole_answer(): void
+    {
+        // German of a 12,000-character batch with markup came back at 7,500 to 8,000 tokens: the old
+        // floor of 8,000 cut answers off, and every cut answer was paid again in halves.
+        $fake = new FakeAiClient([FakeAiClient::json([['n' => 1, 'text' => 'Eins'], ['n' => 2, 'text' => 'Zwei']])]);
+
+        $this->translator($fake)->translateUnits([$this->unit('a', str_repeat('a', 6000)), $this->unit('b', str_repeat('b', 5900))]);
+
+        $this->assertGreaterThanOrEqual(11900, $fake->requests()[0]->maxOutputTokens);
+    }
 }
