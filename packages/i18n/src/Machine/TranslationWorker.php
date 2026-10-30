@@ -12,7 +12,8 @@ use Preflow\Ai\AiUnavailable;
  * steps queued and running jobs (oldest first, one record per step) until nothing moves any more
  * or the time budget is used. A job still marked running is continued, since its driver may have
  * crashed; the record lease keeps two drivers off the same record. Every run leaves a heartbeat
- * so an admin screen can tell whether the cron job runs at all, also when AI is off.
+ * so an admin screen can tell whether the cron job runs at all, also when AI is off. An error in
+ * one job is logged (error_log) and the run goes on with the next job.
  */
 final class TranslationWorker
 {
@@ -54,8 +55,22 @@ final class TranslationWorker
                         $before = $job;
                         try {
                             $job = $this->runner->step($job->id);
-                        } catch (\InvalidArgumentException) {
-                            break; // the job was removed meanwhile
+                        } catch (AiUnavailable $e) {
+                            throw $e;
+                        } catch (\InvalidArgumentException $e) {
+                            // The job was removed meanwhile, or its collection has no text source any
+                            // more: stopped with the reason, so it is not tried again on every run.
+                            $this->jobs->update($job->id, static function (Job $stored) use ($e): void {
+                                if ($stored->state !== 'done') {
+                                    $stored->state = 'stopped';
+                                    $stored->message = $e->getMessage();
+                                }
+                            });
+                            break;
+                        } catch (\Throwable $e) {
+                            // One broken job must not hold up the others; it is tried again on the next run.
+                            error_log(sprintf('translate:work: job %s (%s) failed: %s: %s', $job->id, $job->collection, $e::class, $e->getMessage()));
+                            break;
                         }
                         $cost += $job->costUsd - $before->costUsd;
                         $unknown = $unknown || $job->costUnknown;

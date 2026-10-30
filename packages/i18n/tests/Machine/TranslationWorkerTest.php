@@ -25,6 +25,7 @@ final class TranslationWorkerTest extends TestCase
     private FileJobStore $store;
     private ArrayTextSource $source;
     private int $clock = 1_800_000_000;
+    private TextSources $sources;
 
     protected function setUp(): void
     {
@@ -38,7 +39,7 @@ final class TranslationWorkerTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (array_merge(glob($this->dir . '/jobs/*') ?: [], glob($this->dir . '/jobs/.*.lock') ?: [], glob($this->dir . '/leases/*') ?: [], glob($this->dir . '/*.json') ?: []) as $f) {
+        foreach (array_merge(glob($this->dir . '/jobs/*') ?: [], glob($this->dir . '/jobs/.*.lock') ?: [], glob($this->dir . '/leases/*') ?: [], glob($this->dir . '/*.json') ?: [], glob($this->dir . '/*.log') ?: []) as $f) {
             @unlink($f);
         }
         @rmdir($this->dir . '/jobs');
@@ -58,16 +59,16 @@ final class TranslationWorkerTest extends TestCase
         };
         $fake = new FakeAiClient(array_map($advance, $script));
         $ai = $this->ai($fake, [], $enabled);
-        $sources = new TextSources();
+        $this->sources = $sources = new TextSources();
         $sources->add('games', fn () => $this->source);
         $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), $this->store, new FileRecordLease($this->dir . '/leases'));
 
         return new TranslationWorker($runner, $this->store, $ai, $this->dir . '/worker.json', fn () => new \DateTimeImmutable('@' . $this->clock));
     }
 
-    private function queued(JobRunner $runner, string $at): string
+    private function queued(JobRunner $runner, string $at, string $collection = 'games'): string
     {
-        $job = $runner->plan('games', ['de'], Scope::Needed);
+        $job = $runner->plan($collection, ['de'], Scope::Needed);
         $runner->start($job->id);
         $this->store->update($job->id, static function ($j) use ($at): void {
             $j->queuedAt = $at;
@@ -118,6 +119,47 @@ final class TranslationWorkerTest extends TestCase
         $this->assertSame('stopped', $this->store->get($first)->state);
         $this->assertSame('no key', $this->store->get($first)->message);
         $this->assertSame('queued', $this->store->get($second)->state);
+    }
+
+    public function test_an_error_in_one_job_is_logged_and_the_next_job_is_worked(): void
+    {
+        $worker = $this->worker([self::echo()], runner: $runner);
+        $this->sources->add('broken', fn () => $this->source);
+        $broken = $this->queued($runner, '2026-10-30T10:00:00+00:00', 'broken');
+        $this->sources->add('broken', static fn () => throw new \RuntimeException('Database is down.'));
+        $games = $this->queued($runner, '2026-10-30T11:00:00+00:00');
+
+        $log = $this->dir . '/error.log';
+        $previous = ini_set('error_log', $log);
+        try {
+            $report = $worker->work(1000);
+        } finally {
+            ini_set('error_log', (string) $previous);
+        }
+
+        $this->assertNull($report->stoppedBecause);
+        $this->assertSame(2, $report->records);
+        $this->assertSame('done', $this->store->get($games)->state);
+        $this->assertSame('queued', $this->store->get($broken)->state, 'tried again on the next run');
+        $this->assertStringContainsString('Database is down.', (string) file_get_contents($log));
+        $this->assertStringContainsString($broken, (string) file_get_contents($log));
+    }
+
+    public function test_a_job_whose_collection_is_gone_is_stopped_with_a_message(): void
+    {
+        $worker = $this->worker([self::echo()], runner: $runner);
+        $gone = $this->queued($runner, '2026-10-30T10:00:00+00:00');
+        $this->store->update($gone, static function ($j): void {
+            $j->collection = 'recipes';
+        });
+        $games = $this->queued($runner, '2026-10-30T11:00:00+00:00');
+
+        $report = $worker->work(1000);
+
+        $this->assertSame(2, $report->records);
+        $this->assertSame('done', $this->store->get($games)->state);
+        $this->assertSame('stopped', $this->store->get($gone)->state);
+        $this->assertStringContainsString('recipes', (string) $this->store->get($gone)->message);
     }
 
     public function test_continues_a_047_running_job(): void
