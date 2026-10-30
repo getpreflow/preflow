@@ -32,6 +32,11 @@ interface TextSource
     /**
      * Stores texts (unit id => text) for $to as machine-made, marking them unchecked. Never publishes.
      *
+     * Guarantee: a write never replaces a text that changed since units() read it. A translation
+     * takes seconds to minutes, and a person may save the item meanwhile; their text wins. A source
+     * either refuses the whole write (Conflict) or leaves such texts out and names them in
+     * WriteOutcome::$leftAlone (and its message).
+     *
      * @param array<string,string> $texts
      */
     public function write(string $id, string $to, array $texts): WriteOutcome;

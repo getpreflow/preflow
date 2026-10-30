@@ -131,6 +131,19 @@ final class JobRunnerTest extends TestCase
         $this->assertSame(0, $job->items['2']['translated']);
     }
 
+    public function test_texts_left_alone_by_the_source_are_not_counted_and_named(): void
+    {
+        $this->source->outcomes['1'] = new WriteOutcome(WriteOutcomeStatus::Written, 'Changed since it was read, left alone: text.', false, ['text']);
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+
+        $job = $runner->step($job->id);
+
+        $this->assertSame('done', $job->items['1']['status']);
+        $this->assertSame(1, $job->items['1']['translated'], 'the title only');
+        $this->assertSame('Changed since it was read, left alone: text.', $job->items['1']['message']);
+    }
+
     public function test_failed_units_not_written_item_counts_failed(): void
     {
         // Answers only n=1 of every request: with one text per item that is fine, with two the second has no answer.

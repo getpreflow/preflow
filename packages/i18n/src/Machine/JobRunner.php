@@ -172,8 +172,12 @@ final class JobRunner
 
             $outcome = $source->write($id, $locale, $texts);
             $item['draft_changes'] = $item['draft_changes'] || $outcome->hadDraftChanges;
+            if ($outcome->status === WriteOutcomeStatus::Written && $outcome->leftAlone !== []) {
+                // Texts someone changed while the model worked keep that person's version.
+                $item['message'] ??= $outcome->message;
+            }
             match ($outcome->status) {
-                WriteOutcomeStatus::Written => $item['translated'] += count($texts),
+                WriteOutcomeStatus::Written => $item['translated'] += count(array_diff_key($texts, array_flip($outcome->leftAlone))),
                 WriteOutcomeStatus::Conflict => $conflict ??= $outcome->message ?? 'changed meanwhile',
                 WriteOutcomeStatus::Skipped => $skipped ??= $outcome->message ?? 'skipped by the source',
             };

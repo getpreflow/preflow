@@ -191,6 +191,86 @@ final class FolioTextSourceTest extends TestCase
         $this->assertSame(4, (int) $stored->get('_version'));
     }
 
+    public function test_a_save_between_units_and_write_is_a_conflict_and_the_human_text_survives(): void
+    {
+        $this->working('article', 'a1', ['title' => ['en' => 'Hello'], 'summary' => ['en' => 'Sum']]);
+        $source = $this->source('article');
+        $this->assertCount(2, $source->units('a1', 'de', Scope::Needed));
+
+        // Someone saves while the model works: a German title of their own.
+        $theirs = $this->stored('article', 'a1');
+        $theirs->set('title', ['en' => 'Hello', 'de' => 'Grüss dich']);
+        $this->publisher()->saveDraft($theirs, (int) $theirs->get('_version'));
+
+        $outcome = $source->write('a1', 'de', ['title' => 'Hallo', 'summary' => 'Summe']);
+
+        $this->assertSame(WriteOutcomeStatus::Conflict, $outcome->status, 'written with the version units() saw');
+        $stored = $this->stored('article', 'a1');
+        $this->assertSame(['en' => 'Hello', 'de' => 'Grüss dich'], $stored->get('title'));
+        $this->assertSame(['en' => 'Sum'], $stored->get('summary'), 'nothing of the run was written');
+    }
+
+    public function test_a_save_of_another_field_between_units_and_write_is_a_conflict(): void
+    {
+        $this->working('article', 'a1', ['title' => ['en' => 'Hello'], 'summary' => ['en' => 'Sum']]);
+        $source = $this->source('article');
+        $source->units('a1', 'de', Scope::Needed);
+
+        $theirs = $this->stored('article', 'a1');
+        $theirs->set('summary', ['en' => 'Sum, edited']);
+        $this->publisher()->saveDraft($theirs, (int) $theirs->get('_version'));
+
+        $this->assertSame(WriteOutcomeStatus::Conflict, $source->write('a1', 'de', ['title' => 'Hallo'])->status);
+        $this->assertSame(['en' => 'Hello'], $this->stored('article', 'a1')->get('title'));
+    }
+
+    public function test_units_of_two_languages_then_two_writes_both_land(): void
+    {
+        $this->writeModel('article', [
+            'label' => 'Articles',
+            'publishing' => true,
+            'fields' => ['title' => ['type' => 'string', 'translatable' => true]],
+        ]);
+        $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de', 'fr'], 'fallback' => 'en'];\n");
+        $this->working('article', 'a1', ['title' => ['en' => 'Hello']]);
+        $source = $this->source('article');
+        $source->units('a1', 'de', Scope::Needed);
+        $source->units('a1', 'fr', Scope::Needed);
+
+        $this->assertSame(WriteOutcomeStatus::Written, $source->write('a1', 'de', ['title' => 'Hallo'])->status);
+        $this->assertSame(WriteOutcomeStatus::Written, $source->write('a1', 'fr', ['title' => 'Bonjour'])->status, 'its own write is not a conflict');
+        $this->assertSame(['en' => 'Hello', 'de' => 'Hallo', 'fr' => 'Bonjour'], $this->stored('article', 'a1')->get('title'));
+    }
+
+    public function test_without_a_version_check_a_text_changed_since_units_is_left_alone(): void
+    {
+        $this->writeModel('memo', [
+            'label' => 'Memos',
+            'publishing' => false,
+            'fields' => ['text' => ['type' => 'string', 'translatable' => true], 'more' => ['type' => 'string', 'translatable' => true]],
+        ]);
+        $this->working('memo', 'm1', ['text' => ['en' => 'Note'], 'more' => ['en' => 'More']]);
+        $source = $this->source('memo');
+        $this->assertCount(2, $source->units('m1', 'de', Scope::Needed));
+        $this->working('memo', 'm1', ['text' => ['en' => 'Note', 'de' => 'Meine Notiz'], 'more' => ['en' => 'More']]);
+
+        $outcome = $source->write('m1', 'de', ['text' => 'Notiz', 'more' => 'Mehr']);
+
+        $this->assertSame(WriteOutcomeStatus::Written, $outcome->status);
+        $this->assertSame(['text'], $outcome->leftAlone);
+        $this->assertStringContainsString('text', (string) $outcome->message);
+        $stored = $this->stored('memo', 'm1');
+        $this->assertSame(['en' => 'Note', 'de' => 'Meine Notiz'], $stored->get('text'), 'the human text survives');
+        $this->assertSame(['en' => 'More', 'de' => 'Mehr'], $stored->get('more'));
+        $this->assertSame(['more'], array_keys($stored->get(TranslationStatus::MACHINE)['de']), 'only the written text is marked machine-made');
+
+        $source->units('m1', 'de', Scope::All);
+        $this->working('memo', 'm1', ['text' => ['en' => 'Note', 'de' => 'Andere'], 'more' => ['en' => 'More', 'de' => 'Noch mehr']]);
+        $all = $source->write('m1', 'de', ['text' => 'Notiz', 'more' => 'Mehr']);
+        $this->assertSame(WriteOutcomeStatus::Conflict, $all->status, 'every text changed: nothing written');
+        $this->assertSame(['text', 'more'], $all->leftAlone);
+    }
+
     public function test_had_draft_changes_flag(): void
     {
         $this->working('article', 'a1', ['title' => ['en' => 'Hello'], 'summary' => ['en' => 'Sum']]);
