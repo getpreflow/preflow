@@ -9,7 +9,13 @@
         <span>{{ done }} / {{ total }}</span> · <span>{{ t('folio.ai_run.cost', {cost: cost|e}) }}</span>
     </p>
     {% if running %}
-        <p>{{ t('folio.ai_run.running') }}</p>
+        {# The page keeps stepping while open (the record lease keeps it and the worker apart); whether it may be left depends on the worker. #}
+        {% if worker %}
+            <p>{{ t('folio.ai_run.running_background') }}</p>
+        {% else %}
+            <p>{{ t('folio.ai_run.running') }}</p>
+            <p class="form-help">{{ t('folio.ai_queue.no_worker') }}</p>
+        {% endif %}
         {# Shown by admin.js when a step's request fails (error status, no connection, timeout): the
            polling has stopped then, and Continue takes the running job up again. #}
         <div class="folio-alert folio-alert-error" role="alert" data-folio-ai-stalled hidden>

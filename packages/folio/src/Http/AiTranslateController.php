@@ -98,8 +98,8 @@ final class AiTranslateController
     }
 
     /**
-     * The type's runs that are not done, newest first, each with what Continue needs: a run left
-     * running when its page was closed (or its last step never came back) can be taken up again.
+     * The type's runs that are not done, newest first, each with what Continue needs: a run that
+     * waits for the worker, or whose page was closed, can be taken up again.
      *
      * @return list<array<string, mixed>>
      */
@@ -115,8 +115,8 @@ final class AiTranslateController
             'done' => count($job->items) - count($job->pending()),
             'total' => count($job->items),
             'start_url' => $this->jobUrl($type, $job, 'start'),
-            // A planned or stopped run of a live type asks the confirmation again, as Start does.
-            'confirm' => $live && !$job->confirmedLive,
+            // A planned or stopped run of a live type asks for the confirmation until it was given once.
+            'confirm' => self::needsLiveConfirmation($job, $live),
         ], $this->runner->unfinished($type, self::UNFINISHED_SHOWN));
     }
 
@@ -170,8 +170,9 @@ final class AiTranslateController
     }
 
     /**
-     * POST {type}/_ai/jobs/{job}/start: runs a planned job, continues a stopped one, or takes up
-     * one still marked running (its page was closed). Starting a planned or stopped run of a type
+     * POST {type}/_ai/jobs/{job}/start: queues a planned job, continues a stopped one, or takes up
+     * one still marked running (its page was closed). The worker translates a queued job; the page
+     * that shows it keeps stepping meanwhile. Starting a planned or stopped run of a type
      * that writes live needs confirm_live=1 (the screen's checkbox).
      */
     public function start(ServerRequestInterface $request): ResponseInterface
@@ -180,12 +181,18 @@ final class AiTranslateController
         if ($job instanceof ResponseInterface) {
             return $job;
         }
-        $startable = $job->state === 'planned' || $job->state === 'stopped';
-        if ($startable && $this->sources->get($job->collection)->writesLive() && (self::body($request)['confirm_live'] ?? null) !== '1') {
+        $confirmed = (self::body($request)['confirm_live'] ?? null) === '1';
+        if (self::needsLiveConfirmation($job, $this->sources->get($job->collection)->writesLive()) && !$confirmed) {
             return $this->progress($request, $job, FolioText::get('folio.ai_run.confirm_required'), 422);
         }
 
-        return $this->progress($request, $this->runner->start($job->id, (self::body($request)['confirm_live'] ?? null) === '1'));
+        return $this->progress($request, $this->runner->start($job->id, $confirmed, $this->userName($request)));
+    }
+
+    /** A planned or stopped run of a type that writes live waits for the checkbox, unless the job was confirmed before. */
+    private static function needsLiveConfirmation(Job $job, bool $live): bool
+    {
+        return $live && !$job->confirmedLive && ($job->state === 'planned' || $job->state === 'stopped');
     }
 
     /**
@@ -647,6 +654,7 @@ final class AiTranslateController
         return [
             'state' => $job->state,
             'running' => $running,
+            'worker' => $this->workerRuns(),
             'message' => $job->message,
             'error' => $error,
             'done' => count($finished),

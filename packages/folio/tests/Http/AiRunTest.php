@@ -11,6 +11,7 @@ use Preflow\Ai\AiUnavailable;
 use Preflow\Folio\Tests\Support\AiScaffold;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\I18n\Machine\FileJobStore;
+use Preflow\I18n\Machine\FileRecordLease;
 use Preflow\I18n\Machine\Job;
 use Psr\Http\Message\ResponseInterface;
 
@@ -181,6 +182,56 @@ final class AiRunTest extends TestCase
         $this->assertStringContainsString('<html', (string) $page->getBody(), 'without htmx the whole page');
     }
 
+    public function test_start_queues_the_job(): void
+    {
+        $id = self::jobId($this->estimate());
+
+        $start = $this->request('POST', "/folio/post/_ai/jobs/{$id}/start", [], true);
+
+        $this->assertSame(200, $start->getStatusCode());
+        $job = $this->job($id);
+        $this->assertSame('queued', $job->state);
+        $this->assertNotNull($job->queuedAt);
+        $this->assertCount(0, $this->fake->requests(), 'starting translates nothing');
+        $this->assertStringContainsString('Waiting', (string) $this->request('GET', '/folio/post/_ai/run')->getBody());
+    }
+
+    public function test_step_skips_a_record_the_worker_holds(): void
+    {
+        $id = self::jobId($this->estimate());
+        $this->request('POST', "/folio/post/_ai/jobs/{$id}/start", [], true);
+        $this->assertTrue((new FileRecordLease($this->dir . '/storage/ai/leases'))->claim('post', 'p1'));
+
+        $res = $this->step($id);
+
+        $this->assertSame(200, $res->getStatusCode(), (string) $res->getBody());
+        $this->assertSame(['pending', 'done'], array_column($this->job($id)->items, 'status'), 'p1 is left to the worker');
+        $this->assertArrayNotHasKey('de', $this->stored('post', 'p1')->toArray()['title']);
+        $this->assertTrue(self::polls($res), 'the page keeps polling');
+    }
+
+    public function test_status_page_without_worker_shows_the_cron_line(): void
+    {
+        $id = self::jobId($this->estimate());
+
+        $html = (string) $this->request('POST', "/folio/post/_ai/jobs/{$id}/start", [], true)->getBody();
+
+        $this->assertStringContainsString('Keep this page open', $html);
+        $this->assertStringContainsString('translate:work', $html);
+    }
+
+    public function test_status_page_with_recent_worker_says_page_can_be_left(): void
+    {
+        $this->write('storage/ai/worker.json', (string) json_encode(['last_run' => (new \DateTimeImmutable('-1 minute'))->format(\DATE_ATOM)]));
+        $id = self::jobId($this->estimate());
+
+        $html = (string) $this->request('POST', "/folio/post/_ai/jobs/{$id}/start", [], true)->getBody();
+
+        $this->assertStringContainsString('You can leave this page', $html);
+        $this->assertStringNotContainsString('translate:work', $html);
+        $this->assertTrue(self::polls($this->step($id)), 'the open page still drives steps');
+    }
+
     public function test_an_unpriced_run_shows_its_cost_as_unknown(): void
     {
         $this->aiModel = 'unpriced-model';
@@ -212,7 +263,7 @@ final class AiRunTest extends TestCase
 
         $screen = (string) $this->request('GET', '/folio/post/_ai/run')->getBody();
 
-        $this->assertMatchesRegularExpression('#data-folio-ai-unfinished.*action="/folio/post/_ai/jobs/' . $id . '/start".*Left running.*German · 1 / 2 records.*Continue#s', $screen);
+        $this->assertMatchesRegularExpression('#data-folio-ai-unfinished.*action="/folio/post/_ai/jobs/' . $id . '/start".*Waiting.*German · 1 / 2 records.*Continue#s', $screen);
         $start = $this->request('POST', "/folio/post/_ai/jobs/{$id}/start", [], true);
         $this->assertTrue(self::polls($start), 'Continue takes the running job up');
         $this->step($id);
