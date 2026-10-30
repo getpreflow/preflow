@@ -66,11 +66,6 @@ final class PublishCommand implements CommandInterface
             try {
                 $publisher->publish($record, 'cli');
                 echo "Published {$key}\n";
-                // As after a publish from the form: machine texts nobody checked went live.
-                $notice = $publisher->uncheckedNotice($record);
-                if ($notice !== null) {
-                    echo "Warning {$key}: {$notice}\n";
-                }
             } catch (ValidationException $e) {
                 $failed = true;
                 echo "Failed {$key}: " . Scheduler::firstMessage($e) . "\n";

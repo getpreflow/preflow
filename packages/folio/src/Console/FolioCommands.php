@@ -17,6 +17,7 @@ final class FolioCommands
         return [
             PublishScheduledCommand::class,
             PublishCommand::class,
+            ReviewIndexCommand::class,
             AssetsVariantsCommand::class,
             AssetsImportCommand::class,
             ExportCommand::class,

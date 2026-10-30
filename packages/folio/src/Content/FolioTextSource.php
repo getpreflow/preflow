@@ -58,6 +58,7 @@ final class FolioTextSource implements TextSource
         private readonly ?Publisher $publisher,
         private readonly RecordLabeler $labeler,
         private readonly TranslationSettings $settings,
+        private readonly ?ReviewIndexUpdater $review = null,
     ) {}
 
     public function collection(): string
@@ -218,6 +219,7 @@ final class FolioTextSource implements TextSource
 
         if ($this->writesLive()) {
             $this->dm->saveType($after, false);
+            $this->review?->refresh($after);
             unset($this->seen[$id][$to]);
 
             return new WriteOutcome(WriteOutcomeStatus::Written, $leftMessage, false, $leftAlone);

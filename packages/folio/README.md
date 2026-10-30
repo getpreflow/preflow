@@ -1602,10 +1602,22 @@ fields of blocks (also nested ones) and the texts a custom field type reports.
   texts (`_translations.de`). Off by default. Scheduled publishing reports such a record
   as failed. Machine translations nobody has checked yet (see `unchecked()`) show as a note
   with an accept button per field, a count on the language tab and a badge in the list (it
-  links to the list narrowed with `?unchecked=1`). They never block publishing unless
-  `'publishing' => ['checked_translations' => true]` is set: then the publish is refused
-  (`_unchecked.de`); without it the editor is warned after publishing (and `folio:publish`,
-  the bulk publish, prints a warning per record). Off by default.
+  links to the list narrowed with `?unchecked=1`). **Publishing is the check:** publishing a
+  record (form, bulk, `folio:publish`, the scheduler) clears the "not checked" marks of the
+  languages it is visible in (**Visible in**, `_locales`), in the working copy and the
+  published copy. Languages it is not visible in keep their marks: an AI write never ticks
+  **Visible in**, so German nobody has looked at stays marked when the record is published for
+  an English fix. Clearing marks is a change of the working copy, so its `_version` goes up.
+  The 0.47 setting `'publishing' => ['checked_translations' => true]` and the warning after
+  publishing are gone; a config that still sets the key is ignored.
+- **Review index:** the records with unchecked texts are kept in a small index (the core
+  `Preflow\I18n\Machine\ReviewIndex`, `storage/ai/review.json`): per record its type, id,
+  label and the number of unchecked texts per language. Folio's saves, publishes, discards,
+  restores and deletes and the translation worker keep it current, so a dashboard can list the
+  records without loading every record. It is a cache: writes that bypass Folio (imports,
+  project code) leave it stale until the record's next Folio save, or until
+  `php preflow folio:review-index` rebuilds it from all records of the types with translatable
+  texts.
 - **New column:** `_translated_from` is a TEXT column on SQL-backed record tables (and their
   published and revisions tables); `preflow migrate` adds it.
 

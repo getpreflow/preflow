@@ -10,6 +10,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\QueryBuilder;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\RecordValidator;
+use Preflow\Folio\Content\ReviewIndexUpdater;
 use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\FolioText;
@@ -45,7 +46,7 @@ final class Publisher
         ?\Closure $now = null,
         private readonly ?TranslationStatus $translations = null,
         private readonly bool $completeLanguages = false,
-        private readonly bool $checkedTranslations = false,
+        private readonly ?ReviewIndexUpdater $review = null,
     ) {
         if ($keepRevisions !== null && $keepRevisions < 0) {
             throw new \InvalidArgumentException('publishing.revisions must be 0 (keep all) or more.');
@@ -164,6 +165,8 @@ final class Publisher
                 throw new VersionConflict($current);
             }
             if ($this->dm->saveTypeIfVersion($working, $current, $current + 1, validate: false)) {
+                $this->review?->refresh($working);
+
                 return;
             }
             if ($loadedVersion !== null || $attempt >= self::SAVE_ATTEMPTS) {
@@ -198,6 +201,11 @@ final class Publisher
      * Without it (null) the working copy is written unchecked, as the scheduler, the CLI and
      * importers (records built without _version) need.
      *
+     * Publishing is the check of machine translations: the machine marks of the languages the
+     * record is visible in (_locales) are cleared, in the working copy and the snapshot, before
+     * the content comparison (so clearing them counts as a change and bumps the version). The
+     * marks of languages it is not visible in stay: nobody looked at those.
+     *
      * @throws ValidationException
      * @throws VersionConflict
      */
@@ -205,7 +213,8 @@ final class Publisher
     {
         $this->validator->validate($working);
         $this->requireCompleteLanguages($working);
-        $this->requireCheckedTranslations($working);
+        $marksBefore = $working->toArray()[TranslationStatus::MACHINE] ?? null;
+        $this->clearVisibleMarks($working);
 
         $def = $working->getType();
         $shadow = ShadowTypes::published($def);
@@ -227,22 +236,41 @@ final class Publisher
             // '' rather than null: SQL drivers skip null values, so null would never clear it.
             $working->set('_publish_at', '');
             $this->dm->saveType($working, false);
+            $snapshot = $this->writeSnapshot($working, $previous, $by);
+            $this->review?->refresh($working);
 
-            return $this->writeSnapshot($working, $previous, $by);
+            return $snapshot;
         }
 
         $next = $changed ? $loadedVersion + 1 : $loadedVersion;
 
-        return $this->transaction([$def, $shadow], function () use ($working, $shadow, $by, $loadedVersion, $next): DynamicRecord {
+        $snapshot = $this->transaction([$def, $shadow], function () use ($working, $shadow, $by, $loadedVersion, $next, $marksBefore): DynamicRecord {
             $schedule = $working->toArray();
             $working->set('_publish_at', '');
             if (!$this->dm->saveTypeIfVersion($working, $loadedVersion, $next, validate: false)) {
+                // Left as it was: its schedule and its marks.
                 array_key_exists('_publish_at', $schedule) ? $working->set('_publish_at', $schedule['_publish_at']) : $working->remove('_publish_at');
+                $marksBefore !== null ? $working->set(TranslationStatus::MACHINE, $marksBefore) : $working->remove(TranslationStatus::MACHINE);
                 throw new VersionConflict($this->storedVersion($working));
             }
 
             return $this->writeSnapshot($working, $this->dm->findIn($shadow, (string) $working->getId()), $by);
         });
+        $this->review?->refresh($working);
+
+        return $snapshot;
+    }
+
+    /** Clears the machine marks of the languages $working is visible in, on $working itself. */
+    private function clearVisibleMarks(DynamicRecord $working): void
+    {
+        if ($this->translations === null) {
+            return;
+        }
+        $cleared = $this->translations->clearLocales($working, $working->availableLocales())->toArray();
+        if (array_key_exists(TranslationStatus::MACHINE, $cleared)) {
+            $working->set(TranslationStatus::MACHINE, $cleared[TranslationStatus::MACHINE]);
+        }
     }
 
     /**
@@ -276,63 +304,6 @@ final class Publisher
         if ($errors !== []) {
             throw new ValidationException(new ValidationResult($errors));
         }
-    }
-
-    /**
-     * With folio.publishing.checked_translations, a record is not published while a language it is
-     * visible in holds machine translations nobody has checked yet. Keyed "_unchecked.<locale>", so the
-     * form points at the language like it does for a missing one.
-     *
-     * @throws ValidationException
-     */
-    private function requireCheckedTranslations(DynamicRecord $working): void
-    {
-        if (!$this->checkedTranslations || $this->translations === null) {
-            return;
-        }
-
-        $def = $working->getType();
-        $errors = [];
-        foreach ($working->availableLocales() as $locale) {
-            $unchecked = $this->translations->unchecked($def, $working, $locale);
-            if ($unchecked !== []) {
-                $errors['_unchecked.' . $locale] = [FolioText::get('folio.publish.unchecked', [
-                    'language' => self::languageName($locale),
-                    'texts' => self::labelList($unchecked),
-                ])];
-            }
-        }
-
-        if ($errors !== []) {
-            throw new ValidationException(new ValidationResult($errors));
-        }
-    }
-
-    /**
-     * The warning to show after publishing a record that still holds machine translations nobody
-     * has checked (in the languages it is visible in); null when there are none.
-     */
-    public function uncheckedNotice(DynamicRecord $working): ?string
-    {
-        if ($this->translations === null) {
-            return null;
-        }
-
-        $def = $working->getType();
-        $count = 0;
-        $languages = [];
-        foreach ($working->availableLocales() as $locale) {
-            $unchecked = $this->translations->unchecked($def, $working, $locale);
-            if ($unchecked !== []) {
-                $count += count($unchecked);
-                $languages[] = self::languageName($locale);
-            }
-        }
-
-        return $count === 0 ? null : FolioText::get('folio.publish.unchecked_warning', [
-            'count' => $count,
-            'language' => implode(', ', $languages),
-        ]);
     }
 
     private static function languageName(string $locale): string
@@ -592,6 +563,7 @@ final class Publisher
         } elseif (!$this->dm->saveTypeIfVersion($record, $loadedVersion, validate: false)) {
             throw new VersionConflict($this->storedVersion($record));
         }
+        $this->review?->refresh($record);
 
         return $record;
     }

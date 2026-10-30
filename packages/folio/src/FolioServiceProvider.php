@@ -458,7 +458,12 @@ final class FolioServiceProvider extends ServiceProvider
             null,
             $c->get(\Preflow\Folio\Content\TranslationStatus::class),
             (bool) ($folioConfig['publishing']['complete_languages'] ?? false),
-            (bool) ($folioConfig['publishing']['checked_translations'] ?? false),
+            $c->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
+        ));
+        $container->singleton(\Preflow\Folio\Content\ReviewIndexUpdater::class, fn (Container $c) => new \Preflow\Folio\Content\ReviewIndexUpdater(
+            $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
+            $c->get(\Preflow\Folio\Content\TranslationStatus::class),
+            (new RecordLabeler())->label(...),
         ));
         $container->singleton(\Preflow\Folio\Publishing\PublishedCopies::class, fn (Container $c) => new \Preflow\Folio\Publishing\PublishedCopies(
             $c->get(DataManager::class),
@@ -499,6 +504,7 @@ final class FolioServiceProvider extends ServiceProvider
             labels: $c->get(\Preflow\Folio\Content\DisplayLabels::class),
             translations: $c->get(\Preflow\Folio\Content\TranslationStatus::class),
             ai: $c->get(\Preflow\Ai\Ai::class),
+            review: $c->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
         ));
         $container->bind(\Preflow\Folio\Http\AiTranslateController::class, fn (Container $c) => new \Preflow\Folio\Http\AiTranslateController(
             $c->get(TypeCatalog::class),
@@ -1268,6 +1274,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $container->get(\Preflow\Folio\Publishing\Publisher::class),
                 new RecordLabeler(),
                 $container->get(\Preflow\I18n\Machine\TranslationSettings::class),
+                $container->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
             ));
         }
     }

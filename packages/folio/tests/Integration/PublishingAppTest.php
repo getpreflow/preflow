@@ -121,21 +121,38 @@ final class PublishingAppTest extends TestCase
         $this->assertNull($this->publisher()->snapshot('post', 'p1'));
     }
 
-    public function test_setting_refuses_publishing_with_unchecked_machine_translations(): void
+    public function test_publish_has_no_unchecked_warning_and_ignores_the_old_setting(): void
     {
+        // The 0.47 setting is gone; a config that still sets it loads without an error.
         $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'publishing' => ['checked_translations' => true]];\n");
         $this->working('post', 'p1', [
             'title' => ['en' => 'Hi', 'de' => 'Hallo'], 'slug' => ['en' => 'hi', 'de' => 'hallo'], '_locales' => ['en', 'de'],
             '_machine_translated' => ['de' => ['title' => \Preflow\I18n\Machine\MachineMarks::fingerprint('Hallo')]],
         ]);
+        $this->app()->container()->get(\Preflow\I18n\Machine\ReviewIndex::class)->put('post', 'p1', 'Hi', ['de' => 1]);
 
         $res = $this->post('/folio/post/p1', ['title' => 'Hi', 'slug' => 'hi', '_locale' => 'en', '_action' => 'publish']);
 
-        $body = (string) $res->getBody();
-        $this->assertSame(422, $res->getStatusCode());
-        $this->assertStringContainsString('German has machine translations not checked yet: Title', $body);
-        $this->assertStringContainsString('?locale=de', $body);
-        $this->assertNull($this->publisher()->snapshot('post', 'p1'));
+        $this->assertSame(302, $res->getStatusCode(), (string) $res->getBody());
+        $this->assertSame('Hallo', $this->publisher()->snapshot('post', 'p1')?->get('title')['de'] ?? null);
+        $this->assertSame([], $this->stored('post', 'p1')->get('_machine_translated'), 'publishing is the check');
+        $this->assertSame([], $this->app()->container()->get(\Preflow\I18n\Machine\ReviewIndex::class)->entries());
+        $this->assertStringNotContainsString('not checked yet', (string) $this->get('/folio/post')->getBody());
+    }
+
+    public function test_delete_forgets_review_entry(): void
+    {
+        $this->working('post', 'p1', [
+            'title' => ['en' => 'Hi', 'de' => 'Hallo'], 'slug' => ['en' => 'hi'], '_locales' => ['en'],
+            '_machine_translated' => ['de' => ['title' => \Preflow\I18n\Machine\MachineMarks::fingerprint('Hallo')]],
+        ]);
+        $index = $this->app()->container()->get(\Preflow\I18n\Machine\ReviewIndex::class);
+        $index->put('post', 'p1', 'Hi', ['de' => 1]);
+        $index->put('post', 'p2', 'Other', ['de' => 2]);
+
+        $this->assertSame(302, $this->post('/folio/post/p1/delete')->getStatusCode());
+
+        $this->assertSame(['p2'], array_map(static fn ($e): string => $e->id, $index->entries()));
     }
 
     public function test_publishing_from_the_incomplete_language_shows_the_reason(): void

@@ -53,6 +53,9 @@
     },
     "extra": {
         "preflow": {
+            "commands": [
+                "Preflow\\Folio\\Console\\ReviewIndexCommand"
+            ],
             "translations": {
                 "folio": { "path": "lang", "scope": "admin" },
                 "codes": { "path": "lang", "scope": "admin" }

@@ -57,7 +57,7 @@ final class PublishCommandsTest extends TestCase
         $this->assertNull($this->publisher()->snapshot('post', 'due'));
     }
 
-    public function test_publish_command_warns_about_unchecked_machine_texts(): void
+    public function test_publish_command_clears_the_marks_without_a_warning(): void
     {
         $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello', 'de' => 'hallo'], '_locales' => ['en', 'de']]);
         $this->app()->container()->get(\Preflow\I18n\Machine\TextSources::class)->get('post')->write('p1', 'de', ['title' => 'Hallo']);
@@ -67,8 +67,8 @@ final class PublishCommandsTest extends TestCase
 
         $this->assertSame(0, $code);
         $this->assertStringContainsString('Published post/p1', $out);
-        $this->assertMatchesRegularExpression('~Warning post/p1: .*1.*German~', $out);
-        $this->assertStringNotContainsString('Warning post/p2', $out);
+        $this->assertStringNotContainsString('Warning', $out);
+        $this->assertSame([], $this->stored('post', 'p1')->get('_machine_translated'));
     }
 
     public function test_publish_command_publishes_every_record(): void

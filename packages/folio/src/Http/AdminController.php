@@ -20,6 +20,7 @@ use Preflow\Folio\Content\ListExport;
 use Preflow\Folio\Content\RecordDeleter;
 use Preflow\Folio\Content\RecordId;
 use Preflow\Folio\Content\RecordLabeler;
+use Preflow\Folio\Content\ReviewIndexUpdater;
 use Preflow\Folio\Content\RelationLabels;
 use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\RecordValidator;
@@ -78,6 +79,7 @@ final class AdminController
         ?DisplayLabels $labels = null,
         ?TranslationStatus $translations = null,
         private readonly ?\Preflow\Ai\Ai $ai = null,
+        private readonly ?ReviewIndexUpdater $review = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
@@ -511,6 +513,7 @@ final class AdminController
                 $this->publisher->saveDraft($confirmed, $loaded);
             } else {
                 $this->dm->saveType($confirmed, false);
+                $this->review?->refresh($confirmed);
             }
         } catch (VersionConflict $e) {
             $values = $current->toArray();
@@ -688,6 +691,7 @@ final class AdminController
             $this->publisher,
             $this->customizations !== null ? $this->customizations->runHooks(...) : null,
             $this->labels,
+            $this->review,
         );
     }
 
@@ -1125,8 +1129,8 @@ final class AdminController
                 continue;
             }
             [$field, $code] = explode('.', $key, 2);
-            // "_translations.<locale>" / "_unchecked.<locale>": a language the record is visible in but has not finished or checked (shown on its own tab too).
-            $incomplete = $field === '_translations' || $field === '_unchecked';
+            // "_translations.<locale>": a language the record is visible in but has not finished (shown on its own tab too).
+            $incomplete = $field === '_translations';
             if (!$locales->has($code) || ($code === $locale && !$incomplete) || (!$incomplete && !isset($typeDef->fields[$field]))) {
                 continue;
             }
@@ -1367,6 +1371,7 @@ final class AdminController
     {
         $this->validator->validate($record);
         $this->dm->saveType($record, false);
+        $this->review?->refresh($record);
         $this->customizations?->runHooks(AfterSave::class, $record);
     }
 
@@ -1458,10 +1463,6 @@ final class AdminController
             try {
                 // Checked against the version the draft save just wrote: a save landing in between conflicts.
                 $this->publisher?->publish($record, self::userId($request), (int) $record->get('_version'));
-                $notice = $this->publisher?->uncheckedNotice($record);
-                if ($notice !== null) {
-                    self::flash($request, 'warning', $notice);
-                }
             } catch (VersionConflict $e) {
                 $this->customizations?->runHooks(AfterSave::class, $record); // the working copy was saved
                 $values = $record->toArray();

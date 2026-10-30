@@ -236,8 +236,6 @@ return [
     ],
     'publish' => [
         'incomplete' => ':language est incomplète : :texts',
-        'unchecked' => ':language has machine translations not checked yet: :texts',
-        'unchecked_warning' => 'Published with :count machine translations not checked yet (:language).',
     ],
     'revisions' => [
         'title' => 'Versions',

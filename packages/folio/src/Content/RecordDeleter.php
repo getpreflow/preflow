@@ -51,6 +51,7 @@ final class RecordDeleter
         private readonly ?Publisher $publisher = null,
         private readonly ?\Closure $hooks = null,
         ?DisplayLabels $labels = null,
+        private readonly ?ReviewIndexUpdater $review = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog);
     }
@@ -144,6 +145,9 @@ final class RecordDeleter
                 }
             }
         });
+        foreach ($deletes as $record) {
+            $this->review?->forget($record->getType()->key, (string) $record->getId());
+        }
 
         foreach ($saves as $record) {
             $this->hook(AfterSave::class, $record);

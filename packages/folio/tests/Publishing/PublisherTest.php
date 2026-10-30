@@ -10,13 +10,16 @@ use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
 use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\RecordValidator;
+use Preflow\Folio\Content\ReviewIndexUpdater;
 use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\StringFieldType;
 use Preflow\Folio\Field\Types\TextFieldType;
 use Preflow\Folio\Publishing\PublishState;
+use Preflow\I18n\Machine\FileReviewIndex;
 use Preflow\I18n\Machine\MachineMarks;
 use Preflow\Folio\Publishing\Publisher;
 use Preflow\Folio\Publishing\VersionConflict;
@@ -46,7 +49,7 @@ final class PublisherTest extends TestCase
         $this->model('page', ['publishing' => true, 'fields' => ['title' => ['type' => 'string', 'translatable' => true, 'validate' => ['required']], 'body' => ['type' => 'text', 'translatable' => true]]]);
         $this->model('site', ['singleton' => true, 'fields' => $fields]);
 
-        $this->registry = new TypeRegistry($this->dir . '/models', new Locales(['en', 'de'], 'en'));
+        $this->registry = new TypeRegistry($this->dir . '/models', new Locales(['en', 'de', 'fr'], 'en'));
         $this->dm = new DataManager(
             drivers: ['json' => new JsonFileDriver($this->dir . '/store')],
             defaultDriver: 'json',
@@ -357,59 +360,74 @@ final class PublisherTest extends TestCase
         $this->assertNotNull($this->publisher()->snapshot('page', 'r1'));
     }
 
-    /** A page whose German title is still exactly what the machine wrote. */
-    private function pageWithUncheckedTitle(): DynamicRecord
+    /** A page visible in English and German whose German and French titles are still exactly what the machine wrote. */
+    private function pageWithMachineTitles(): DynamicRecord
     {
         return $this->working('page', [
-            'title' => ['en' => 'Hi', 'de' => 'Hallo'], 'body' => ['en' => 'Text', 'de' => 'Inhalt'], '_locales' => ['en', 'de'],
-            '_machine_translated' => ['de' => ['title' => MachineMarks::fingerprint('Hallo')]],
+            'title' => ['en' => 'Hi', 'de' => 'Hallo', 'fr' => 'Salut'], 'body' => ['en' => 'Text'], '_locales' => ['en', 'de'],
+            '_machine_translated' => ['de' => ['title' => MachineMarks::fingerprint('Hallo')], 'fr' => ['title' => MachineMarks::fingerprint('Salut')]],
         ]);
     }
 
-    public function test_publish_refused_with_unchecked_when_setting_on(): void
-    {
-        $p = $this->publisher(checked: true);
-
-        try {
-            $p->publish($this->pageWithUncheckedTitle(), null);
-            $this->fail('expected a refusal');
-        } catch (ValidationException $e) {
-            $this->assertSame(['_unchecked.de'], array_keys($e->errors()));
-            $this->assertSame('German has machine translations not checked yet: Title', $e->errors()['_unchecked.de'][0]);
-        }
-        $this->assertNull($p->snapshot('page', 'r1'));
-    }
-
-    public function test_publish_allowed_when_checked_or_locale_not_visible(): void
-    {
-        $p = $this->publisher(checked: true);
-        $page = $this->pageWithUncheckedTitle();
-        $page->set('title', ['en' => 'Hi', 'de' => 'Hallo, von Hand']); // an edit counts as checked
-        $p->publish($page, null);
-        $this->assertNotNull($p->snapshot('page', 'r1'));
-
-        $hidden = $this->pageWithUncheckedTitle();
-        $hidden->set('_locales', ['en']);
-        $p->publish($hidden, null);
-        $this->assertSame('Hi', $p->snapshot('page', 'r1')->get('title')['en']);
-    }
-
-    public function test_publish_allowed_and_notice_when_off(): void
+    public function test_publish_clears_marks_of_visible_locales(): void
     {
         $p = $this->publisher();
-        $page = $this->pageWithUncheckedTitle();
 
-        $p->publish($page, null);
+        $p->publish($this->pageWithMachineTitles(), null);
 
-        $this->assertNotNull($p->snapshot('page', 'r1'));
-        $this->assertSame('Published with 1 machine translations not checked yet (German).', $p->uncheckedNotice($page));
+        // French is not visible: nobody published it, so it still waits for a person.
+        $fr = ['fr' => ['title' => MachineMarks::fingerprint('Salut')]];
+        $this->assertSame($fr, $this->reload('page')->get('_machine_translated'));
+        $this->assertSame($fr, $p->snapshot('page', 'r1')?->get('_machine_translated'));
     }
 
-    public function test_no_notice_without_unchecked_texts(): void
+    public function test_form_publish_with_a_loaded_version_clears_marks_and_succeeds(): void
     {
-        $page = $this->working('page', ['title' => ['en' => 'Hi', 'de' => 'Hallo'], '_locales' => ['en', 'de']]);
+        $p = $this->publisher();
+        $p->saveDraft($this->pageWithMachineTitles(), null);
+        $loaded = $this->reload('page');
+        $this->assertSame(1, (int) $loaded->get('_version'));
 
-        $this->assertNull($this->publisher()->uncheckedNotice($page));
+        $p->publish($loaded, 'me', 1);
+
+        $this->assertSame(['fr'], array_keys($this->reload('page')->get('_machine_translated')));
+        $this->assertSame(['fr'], array_keys($p->snapshot('page', 'r1')?->get('_machine_translated') ?? []));
+        $this->assertSame(2, (int) $this->reload('page')->get('_version'), 'cleared marks are a change of the working copy');
+        $this->assertSame(2, (int) $loaded->get('_version'), 'the record carries the version written');
+        $this->assertSame(PublishState::Published, $p->state($this->reload('page')));
+    }
+
+    public function test_publish_with_marks_keeps_the_index_entry_for_hidden_locales(): void
+    {
+        $index = new FileReviewIndex($this->dir . '/review.json');
+        $p = $this->publisher(review: $this->updater($index));
+        $p->saveDraft($this->pageWithMachineTitles(), null);
+        $this->assertSame(['de' => 1, 'fr' => 1], $index->entries()[0]->counts);
+
+        $p->publish($this->reload('page'), null);
+
+        $entries = $index->entries();
+        $this->assertCount(1, $entries);
+        $this->assertSame(['page', 'r1', 'Hi'], [$entries[0]->collection, $entries[0]->id, $entries[0]->title]);
+        $this->assertSame(['fr' => 1], $entries[0]->counts);
+    }
+
+    public function test_save_draft_refreshes_the_index(): void
+    {
+        $index = new FileReviewIndex($this->dir . '/review.json');
+        $p = $this->publisher(review: $this->updater($index));
+        $page = $this->working('page', [
+            'title' => ['en' => 'Hi', 'de' => 'Hallo'], '_locales' => ['en'],
+            '_machine_translated' => ['de' => ['title' => MachineMarks::fingerprint('Hallo')]],
+        ]);
+
+        $p->saveDraft($page, null);
+        $this->assertSame(['de' => 1], $index->entries()[0]->counts ?? null);
+
+        $edited = $this->reload('page');
+        $edited->set('title', ['en' => 'Hi', 'de' => 'Hallo, von Hand']); // an edit counts as checked
+        $p->saveDraft($edited, null);
+        $this->assertSame([], $index->entries());
     }
 
     public function test_restore_brings_back_fingerprints(): void
@@ -732,11 +750,9 @@ final class PublisherTest extends TestCase
         $this->assertSame(4, (int) $this->reload('post')->get('_version'));
     }
 
-    private function publisher(?int $keep = 20, bool $complete = false, bool $checked = false): Publisher
+    private function publisher(?int $keep = 20, bool $complete = false, ?ReviewIndexUpdater $review = null): Publisher
     {
-        $fieldTypes = new FieldTypeRegistry();
-        $fieldTypes->register(new StringFieldType());
-        $fieldTypes->register(new TextFieldType());
+        $fieldTypes = $this->fieldTypes();
 
         return new Publisher(
             $this->dm,
@@ -746,8 +762,22 @@ final class PublisherTest extends TestCase
             fn (): \DateTimeImmutable => $this->now,
             new TranslationStatus($fieldTypes),
             $complete,
-            $checked,
+            $review,
         );
+    }
+
+    private function fieldTypes(): FieldTypeRegistry
+    {
+        $fieldTypes = new FieldTypeRegistry();
+        $fieldTypes->register(new StringFieldType());
+        $fieldTypes->register(new TextFieldType());
+
+        return $fieldTypes;
+    }
+
+    private function updater(FileReviewIndex $index): ReviewIndexUpdater
+    {
+        return new ReviewIndexUpdater($index, new TranslationStatus($this->fieldTypes()), (new RecordLabeler())->label(...));
     }
 
     /** @param array<string, mixed> $data */

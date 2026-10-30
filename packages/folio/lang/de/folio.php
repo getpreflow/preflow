@@ -236,8 +236,6 @@ return [
     ],
     'publish' => [
         'incomplete' => ':language fehlt: :texts',
-        'unchecked' => ':language hat ungeprüfte maschinelle Übersetzungen: :texts',
-        'unchecked_warning' => 'Veröffentlicht mit :count ungeprüften maschinellen Übersetzungen (:language).',
     ],
     'revisions' => [
         'title' => 'Versionen',

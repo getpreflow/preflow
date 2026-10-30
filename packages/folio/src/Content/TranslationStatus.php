@@ -34,7 +34,8 @@ use Preflow\I18n\Machine\MachineMarks;
  * translator can be shown what changed (previousSource()); records stamped before it
  * existed simply have none. Machine-made texts carry a mark in _machine_translated
  * (MachineMarks: the fingerprint of the text as the machine wrote it), so they count as
- * not checked (unchecked()) until a person edits or confirms them.
+ * not checked (unchecked()) until a person edits or confirms them, or publishes the record in
+ * that language (clearLocales(), from Publisher::publish()).
  */
 final class TranslationStatus
 {
@@ -203,6 +204,25 @@ final class TranslationStatus
         $marks = self::entries($record, self::MACHINE);
         foreach (array_filter($paths, 'is_string') as $path) {
             $marks = MachineMarks::clear($marks, $locale, $path);
+        }
+
+        $copy = clone $record;
+        self::put($copy, self::MACHINE, $marks);
+
+        return $copy;
+    }
+
+    /**
+     * Clears every machine mark of $locales: a person published the record in those languages,
+     * which counts as checking them. Returns an updated copy; nothing is saved.
+     *
+     * @param list<string> $locales
+     */
+    public function clearLocales(DynamicRecord $record, array $locales): DynamicRecord
+    {
+        $marks = self::entries($record, self::MACHINE);
+        foreach (array_filter($locales, 'is_string') as $locale) {
+            $marks = MachineMarks::clear($marks, $locale);
         }
 
         $copy = clone $record;
