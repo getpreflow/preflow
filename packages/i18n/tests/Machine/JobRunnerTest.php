@@ -16,6 +16,7 @@ use Preflow\I18n\Machine\FileRecordLease;
 use Preflow\I18n\Machine\Job;
 use Preflow\I18n\Machine\JobRunner;
 use Preflow\I18n\Machine\JobStore;
+use Preflow\I18n\Machine\RecordLease;
 use Preflow\I18n\Machine\Scope;
 use Preflow\I18n\Machine\TextSources;
 use Preflow\I18n\Machine\WriteOutcome;
@@ -404,6 +405,30 @@ final class JobRunnerTest extends TestCase
         $sent = implode("\n", array_map(static fn (AiRequest $r): string => json_encode($r), $this->fake->requests()));
         $this->assertStringNotContainsString('First text', $sent);
         $this->assertStringNotContainsString('One', $sent);
+    }
+
+    public function test_the_claim_is_renewed_between_languages(): void
+    {
+        // A record with many languages can outlast one lease term; renewing keeps another worker off it.
+        $lease = new class implements RecordLease {
+            /** @var list<string> */
+            public array $calls = [];
+            public function claim(string $collection, string $id, int $ttlSeconds = 600): bool { $this->calls[] = "claim {$id}"; return true; }
+            public function renew(string $collection, string $id, int $ttlSeconds = 600): bool { $this->calls[] = "renew {$id}"; return true; }
+            public function release(string $collection, string $id): void { $this->calls[] = "release {$id}"; }
+        };
+        $this->fake = new FakeAiClient([self::echo()]);
+        $ai = $this->ai($this->fake);
+        $sources = new TextSources();
+        $sources->add('games', fn () => $this->source);
+        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), new FileJobStore($this->dir), $lease);
+        $job = $runner->plan('games', ['de', 'fr', 'it'], Scope::Needed, ['1']);
+        $runner->start($job->id);
+
+        $runner->step($job->id);
+
+        $this->assertSame(['claim 1', 'renew 1', 'renew 1', 'release 1'], $lease->calls);
+        $this->assertSame(['1:de', '1:fr', '1:it'], $this->source->writes);
     }
 
     public function test_the_claim_is_released_after_a_step_even_on_error(): void

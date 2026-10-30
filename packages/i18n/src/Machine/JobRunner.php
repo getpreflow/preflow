@@ -282,7 +282,13 @@ final class JobRunner
         $conflict = null;
         $skipped = null;
 
+        $later = false;
         foreach ($job->locales as $locale) {
+            // One language can take minutes: renewing keeps the record ours for the next one.
+            if ($later) {
+                $this->lease->renew($job->collection, $id);
+            }
+            $later = true;
             $units = self::withinPrefix($source->units($id, $locale, $job->scope), $job->prefix);
             if ($units === []) {
                 continue;
