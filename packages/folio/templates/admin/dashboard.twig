@@ -1,5 +1,24 @@
 {% extends "@folio/admin/_layout.twig" %}
-{% block title %}Folio — {{ t('folio.dashboard.title') }}    {% if review %}
+{% block title %}Folio — {{ t('folio.dashboard.title') }}{% endblock %}
+{% block page_title %}{{ t('folio.dashboard.title') }}{% endblock %}
+{% block content %}
+    <div class="folio-card-grid">
+        {% for card in cards|filter(c => can(c.key ~ '.view')) %}
+            <a class="folio-card" href="{{ prefix }}/{{ card.key }}">
+                <span class="folio-card-icon"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-file"></use></svg></span>
+                <span class="folio-card-label">{{ card.label }}</span>
+                <span class="folio-card-count">{{ t('folio.dashboard.records', {}, card.count) }}</span>
+            </a>
+        {% endfor %}
+        {% if can('assets.view') %}
+        <a class="folio-card" href="{{ prefix }}/assets">
+            <span class="folio-card-icon"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-library"></use></svg></span>
+            <span class="folio-card-label">{{ t('folio.dashboard.assets') }}</span>
+            <span class="folio-card-count">{{ t('folio.dashboard.assets_hint') }}</span>
+        </a>
+        {% endif %}
+    </div>
+    {% if review %}
     <section class="folio-review" aria-labelledby="folio-review-title">
         <h2 id="folio-review-title" class="folio-review-title">{{ t('folio.dashboard.review.title') }}</h2>
         {% if review.jobs is not empty %}
@@ -8,7 +27,7 @@
             <li>
                 <strong>{{ job.type }} · {{ job.languages }}</strong>
                 <span class="folio-help">{{ t('folio.dashboard.review.progress', {done: job.done, total: job.total}) }}{% if job.cost is not null %} · {{ t('folio.dashboard.review.cost', {cost: job.cost}) }}{% endif %}</span>
-                <span class="folio-badge">{{ t('folio.job_state.' ~ job.state) }}</span>
+                <span class="folio-badge">{{ t('folio.ai_run.job_state.' ~ job.state) }}</span>
                 {% if job.message %}<span class="folio-help">{{ job.message }}</span>{% endif %}
                 <span class="folio-help">{% if job.by %}{{ t('folio.dashboard.review.by', {name: job.by}) }}{% endif %}{% if job.since %} {{ t('folio.dashboard.review.since', {since: job.since}) }}{% endif %}</span>
             </li>
@@ -29,23 +48,4 @@
         {% if review.more > 0 %}<p class="folio-help">{{ t('folio.dashboard.review.more', {count: review.more}) }}</p>{% endif %}
     </section>
     {% endif %}
-{% endblock %}
-{% block page_title %}{{ t('folio.dashboard.title') }}{% endblock %}
-{% block content %}
-    <div class="folio-card-grid">
-        {% for card in cards|filter(c => can(c.key ~ '.view')) %}
-            <a class="folio-card" href="{{ prefix }}/{{ card.key }}">
-                <span class="folio-card-icon"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-file"></use></svg></span>
-                <span class="folio-card-label">{{ card.label }}</span>
-                <span class="folio-card-count">{{ t('folio.dashboard.records', {}, card.count) }}</span>
-            </a>
-        {% endfor %}
-        {% if can('assets.view') %}
-        <a class="folio-card" href="{{ prefix }}/assets">
-            <span class="folio-card-icon"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-library"></use></svg></span>
-            <span class="folio-card-label">{{ t('folio.dashboard.assets') }}</span>
-            <span class="folio-card-count">{{ t('folio.dashboard.assets_hint') }}</span>
-        </a>
-        {% endif %}
-    </div>
 {% endblock %}

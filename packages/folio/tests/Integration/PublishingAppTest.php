@@ -49,6 +49,9 @@ final class PublishingAppTest extends TestCase
         $this->assertStringContainsString('French (1)', $body);
         $this->assertStringContainsString('/folio/post/p1/edit?locale=de', $body, 'the first language by code');
         $this->assertStringNotContainsString('Secret title', $body, 'a type the user may not view');
+        $this->assertGreaterThan(strpos($body, 'folio-card-grid'), strpos($body, 'class="folio-review"'), 'the section follows the cards in the page body');
+        preg_match('~<title>(.*?)</title>~s', $body, $title);
+        $this->assertStringNotContainsString('Waiting for review', $title[1] ?? '', 'not in the <title>');
     }
 
     #[RunInSeparateProcess]
@@ -71,15 +74,41 @@ final class PublishingAppTest extends TestCase
         $this->staff('translator');
 
         $body = $this->dashboard();
-        $this->assertStringContainsString('Posts · German', $body);
-        $this->assertStringContainsString('German', $body);
-        $this->assertStringContainsString('0 of 1', $body);
-        $this->assertStringContainsString('Waiting', $body);
-        $this->assertStringContainsString('Anna', $body);
+        $this->assertMatchesRegularExpression('~<ul class="folio-review-jobs">\s*<li>\s*<strong>Posts · German</strong>.*?0 of 1 records.*?<span class="folio-badge">Waiting</span>.*?Queued by Anna~s', $body);
         $this->assertStringContainsString('translate:work', $body, 'no worker has run');
 
         $this->write('storage/ai/worker.json', (string) json_encode(['last_run' => (new \DateTimeImmutable('-1 minute'))->format(\DATE_ATOM)]));
         $this->assertStringNotContainsString('translate:work', $this->dashboard());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_dashboard_shows_why_a_job_stopped(): void
+    {
+        $this->aiConfig(true);
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
+        $c = $this->app()->container();
+        $job = $c->get(\Preflow\I18n\Machine\JobRunner::class)->plan('post', ['de'], \Preflow\I18n\Machine\Scope::Needed, ['p1']);
+        $job->state = 'stopped';
+        $job->message = 'The provider refused the request';
+        $c->get(\Preflow\I18n\Machine\JobStore::class)->save($job);
+        $this->staff('translator');
+
+        $this->assertMatchesRegularExpression('~<span class="folio-badge">Stopped</span>\s*<span class="folio-help">The provider refused the request</span>~', $this->dashboard());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_dashboard_limits_review_rows_and_counts_the_rest(): void
+    {
+        $this->aiConfig(true);
+        $index = $this->app()->container()->get(\Preflow\I18n\Machine\ReviewIndex::class);
+        for ($i = 1; $i <= 52; $i++) {
+            $index->put('post', 'p' . $i, 'Record ' . $i, ['de' => 1]);
+        }
+        $this->staff('translator');
+
+        $body = $this->dashboard();
+        $this->assertSame(50, substr_count($body, '/edit?locale=de'));
+        $this->assertStringContainsString('2 more records are waiting.', $body);
     }
 
     public function test_dashboard_has_no_review_section_when_ai_off(): void

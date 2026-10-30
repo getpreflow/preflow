@@ -236,7 +236,7 @@ return [
         'unfinished' => 'Unfertige Läufe',
         'unfinished_help' => '„Fortsetzen“ macht dort weiter, wo ein Lauf aufgehört hat, auch wenn seine Seite während des Laufs geschlossen wurde.',
         'unfinished_row' => ':languages · :done / :total Einträge',
-        'job_state' => ['planned' => 'Nicht gestartet', 'queued' => 'Wartet', 'running' => 'Arbeitet', 'stopped' => 'Angehalten'],
+        'job_state' => ['planned' => 'Nicht gestartet', 'queued' => 'Wartet', 'running' => 'Arbeitet', 'stopped' => 'Angehalten', 'done' => 'Fertig'],
         'problems' => 'Nicht übersetzt',
         'latest' => 'Zuletzt bearbeitet',
         'records_heading' => 'Einträge',
