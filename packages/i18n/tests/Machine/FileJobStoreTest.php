@@ -71,4 +71,32 @@ final class FileJobStoreTest extends TestCase
         $this->assertSame(['bbbb', 'cccc'], array_map(static fn (Job $j): string => $j->id, $store->recent(2)));
         $this->assertSame([], (new FileJobStore($this->dir . '/none'))->recent(5));
     }
+
+    public function test_new_fields_round_trip(): void
+    {
+        $job = new Job('j2', 'games', ['de'], Scope::Needed, null, new Estimate(0, 0, 0, 0, null, 0), 'queued', prefix: 'flow', confirmedLive: true, queuedBy: 'anna', queuedAt: '2026-10-30T12:00:00+00:00');
+        $store = new FileJobStore($this->dir);
+        $store->save($job);
+
+        $loaded = $store->get('j2');
+        $this->assertSame('queued', $loaded->state);
+        $this->assertSame('flow', $loaded->prefix);
+        $this->assertTrue($loaded->confirmedLive);
+        $this->assertSame('anna', $loaded->queuedBy);
+        $this->assertSame('2026-10-30T12:00:00+00:00', $loaded->queuedAt);
+    }
+
+    public function test_a_047_running_job_loads_as_confirmed(): void
+    {
+        mkdir($this->dir, 0775, true);
+        file_put_contents($this->dir . '/old1.json', json_encode([
+            'id' => 'old1', 'collection' => 'games', 'locales' => ['de'], 'scope' => 'needed', 'note' => null,
+            'state' => 'running', 'message' => null, 'items' => [], 'estimate' => [], 'cost_usd' => 0.0, 'cost_unknown' => false,
+        ]));
+
+        $job = (new FileJobStore($this->dir))->get('old1');
+        $this->assertSame('running', $job->state);
+        $this->assertNull($job->prefix);
+        $this->assertTrue($job->confirmedLive);
+    }
 }

@@ -21,7 +21,7 @@ final class Job
         public Scope $scope,
         public ?string $note,
         public Estimate $estimate,
-        /** 'planned' | 'running' | 'stopped' | 'done' */
+        /** 'planned' | 'queued' | 'running' | 'stopped' | 'done' */
         public string $state = 'planned',
         /** Actual cost in USD of this job's own priced requests (see $costUnknown). */
         public float $costUsd = 0.0,
@@ -29,6 +29,13 @@ final class Job
         public ?string $message = null,
         /** A request had no price (the model is not in the price table): $costUsd is then a lower bound. */
         public bool $costUnknown = false,
+        /** Key prefix the translated fields are written under (null: the collection's default). */
+        public ?string $prefix = null,
+        /** Someone confirmed that this run may write to live content. */
+        public bool $confirmedLive = false,
+        public ?string $queuedBy = null,
+        /** ISO 8601 */
+        public ?string $queuedAt = null,
     ) {}
 
     /** @return list<string> ids still to do */
@@ -53,6 +60,10 @@ final class Job
             'estimate' => get_object_vars($this->estimate),
             'cost_usd' => $this->costUsd,
             'cost_unknown' => $this->costUnknown,
+            'prefix' => $this->prefix,
+            'confirmed_live' => $this->confirmedLive,
+            'queued_by' => $this->queuedBy,
+            'queued_at' => $this->queuedAt,
         ];
     }
 
@@ -60,6 +71,7 @@ final class Job
     public static function fromArray(array $d): self
     {
         $e = $d['estimate'] ?? [];
+        $state = (string) ($d['state'] ?? 'planned');
         $job = new self(
             (string) $d['id'],
             (string) $d['collection'],
@@ -74,10 +86,15 @@ final class Job
                 isset($e['costUsd']) ? (float) $e['costUsd'] : null,
                 (int) ($e['requests'] ?? 0),
             ),
-            (string) ($d['state'] ?? 'planned'),
+            $state,
             (float) ($d['cost_usd'] ?? 0.0),
             isset($d['message']) ? (string) $d['message'] : null,
             (bool) ($d['cost_unknown'] ?? false),
+            isset($d['prefix']) ? (string) $d['prefix'] : null,
+            // A 0.47 job already running was started under the rule that confirmed live writes up front.
+            (bool) ($d['confirmed_live'] ?? $state === 'running'),
+            isset($d['queued_by']) ? (string) $d['queued_by'] : null,
+            isset($d['queued_at']) ? (string) $d['queued_at'] : null,
         );
         $job->items = (array) ($d['items'] ?? []);
 
