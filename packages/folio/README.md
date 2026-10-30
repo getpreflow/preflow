@@ -1132,9 +1132,11 @@ final class Overview
   `assets` to the record's edit form. Attribute entries come first, order is kept and
   duplicates are dropped.
 - **Entries:** `'file.js'` (own extension; the path may have subfolders, `'vendor/lib.js'`),
-  `'@folio/htmx.js'` or `'@folio/trix'` (Folio's own files; these two are all `@folio/`
-  offers; `trix` is `trix.css` plus `trix.js`), `'@other/file.css'` (the file of another
-  enabled extension). A missing file, an unknown `@folio/` name or a disabled extension
+  `'@folio/htmx.js'`, `'@folio/trix'` or `'@folio/ai-translate'` (Folio's own files; these
+  three are all `@folio/` offers; `trix` is `trix.css` plus `trix.js`; `ai-translate` is
+  `ai-translate.css`, the review row's styles, plus `ai-translate-core.js`, the DOM-free
+  helpers as `window.FolioAiTranslateCore`, for a screen with its own Translate button on the
+  suggestion endpoints), `'@other/file.css'` (the file of another enabled extension). A missing file, an unknown `@folio/` name or a disabled extension
   throws an `ExtensionException` naming the screen method or panel, so a file deleted after
   a deploy fails loudly instead of printing a dead tag.
 - **htmx and modules:** use `@folio/htmx.js` rather than shipping your own htmx (only it

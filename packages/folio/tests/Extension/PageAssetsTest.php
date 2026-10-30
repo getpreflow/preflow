@@ -25,6 +25,8 @@ final class PageAssetsTest extends TestCase
             'htmx.js' => 'htmx.js',
             'trix.css' => 'trix.css',
             'trix.js' => 'trix.js',
+            'ai-translate.css' => 'ai-translate.css',
+            'ai-translate-core.js' => 'ai-translate-core.js',
         ]);
         $this->pages = new PageAssets(
             new ExtensionAssets($this->assetsSite(), '/folio'),
@@ -36,6 +38,8 @@ final class PageAssetsTest extends TestCase
         $this->siteWrite('htmx.js', 'htmx');
         $this->siteWrite('trix.css', 'trix css');
         $this->siteWrite('trix.js', 'trix js');
+        $this->siteWrite('ai-translate.css', 'ai css');
+        $this->siteWrite('ai-translate-core.js', 'ai core');
     }
 
     protected function tearDown(): void
@@ -69,6 +73,17 @@ final class PageAssetsTest extends TestCase
         $this->assertCount(1, $r['scripts']);
         $this->assertStringContainsString('/folio/_assets/trix.css?v=', $r['styles'][0]);
         $this->assertStringContainsString('/folio/_assets/trix.js?v=', $r['scripts'][0]);
+        $this->assertFalse($r['htmx']);
+    }
+
+    public function test_folio_ai_translate_is_the_review_styles_and_the_core_helpers(): void
+    {
+        $r = $this->pages->resolve('shop', ['@folio/ai-translate'], 'Screen X::index');
+
+        $this->assertCount(1, $r['styles']);
+        $this->assertCount(1, $r['scripts']);
+        $this->assertMatchesRegularExpression('#^/folio/_assets/ai-translate\.css\?v=[0-9a-f]{12}$#', $r['styles'][0]);
+        $this->assertMatchesRegularExpression('#^/folio/_assets/ai-translate-core\.js\?v=[0-9a-f]{12}$#', $r['scripts'][0]);
         $this->assertFalse($r['htmx']);
     }
 

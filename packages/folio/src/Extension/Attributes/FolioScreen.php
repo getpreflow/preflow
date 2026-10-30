@@ -22,7 +22,7 @@ final class FolioScreen
         public readonly string $section = 'settings',
         public readonly int $order = 100,
         public readonly ?string $permission = null,
-        /** @var list<string> files the page needs: 'file.js', '@folio/htmx.js', '@folio/trix', '@other/file.css' */
+        /** @var list<string> files the page needs: 'file.js', '@folio/htmx.js', '@folio/trix', '@folio/ai-translate', '@other/file.css' */
         public readonly array $assets = [],
     ) {}
 }

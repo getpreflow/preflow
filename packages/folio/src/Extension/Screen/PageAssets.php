@@ -11,8 +11,9 @@ use Preflow\Folio\Http\AdminAssetUrls;
 
 /**
  * Turns the asset entries a screen lists (#[FolioScreen(assets:)] and ScreenView::$assets)
- * into versioned URLs for the admin layout: 'file.js' (own extension), '@folio/htmx.js' or
- * '@folio/trix' (Folio's own files), '@other/file.css' (another enabled extension).
+ * into versioned URLs for the admin layout: 'file.js' (own extension), '@folio/htmx.js',
+ * '@folio/trix' or '@folio/ai-translate' (Folio's own files), '@other/file.css' (another enabled
+ * extension).
  */
 final class PageAssets
 {
@@ -20,6 +21,9 @@ final class PageAssets
     private const FOLIO = [
         'htmx.js' => ['htmx.js'],
         'trix' => ['trix.css', 'trix.js'],
+        // The AI review's styles and its DOM-free helpers (window.FolioAiTranslateCore), for a
+        // screen that builds its own Translate button on the suggestion endpoints.
+        'ai-translate' => ['ai-translate.css', 'ai-translate-core.js'],
     ];
 
     public function __construct(
