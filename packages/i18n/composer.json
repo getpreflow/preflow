@@ -32,7 +32,8 @@
     "extra": {
         "preflow": {
             "commands": [
-                "Preflow\\I18n\\Console\\TranslationsCheckCommand"
+                "Preflow\\I18n\\Console\\TranslationsCheckCommand",
+                "Preflow\\I18n\\Console\\TranslateWorkCommand"
             ]
         }
     }

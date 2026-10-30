@@ -452,6 +452,22 @@ if ($job->state === 'done') {
 Texts written this way are machine translations that nobody has checked, so decide for your own
 data how a person gets to review them before they go live.
 
+### Background translation
+
+Jobs that were started (`JobRunner::start()`) are queued and worked by a cron job, so nobody has to
+keep a browser open. Add this line to the crontab of the server:
+
+```
+* * * * * cd <app> && php vendor/bin/preflow translate:work
+```
+
+`translate:work [--seconds=N]` works the queued jobs, oldest first, one record at a time, and
+stops after N seconds (default 50) so the next minute's run does not overlap. It prints one line
+per record and a total with the cost. With AI switched off it does nothing and prints nothing.
+A job still marked running (its browser was closed or its process died) is continued. If AI
+cannot be used, the job is stopped with the reason and the run ends. `TranslationWorker::lastRun()`
+tells when the worker last started, so a screen can show whether the cron job runs at all.
+
 ### Without a key
 
 Tests can swap the provider for `Preflow\Ai\Testing\FakeAiClient`; see the `preflow/ai` README.

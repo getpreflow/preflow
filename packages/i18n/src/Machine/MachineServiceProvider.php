@@ -49,6 +49,12 @@ final class MachineServiceProvider extends ServiceProvider
             $c->get(JobStore::class),
             $c->get(RecordLease::class),
         ));
+        $container->singleton(TranslationWorker::class, static fn (Container $c): TranslationWorker => new TranslationWorker(
+            $c->get(JobRunner::class),
+            $c->get(JobStore::class),
+            $c->get(Ai::class),
+            self::storage($c) . '/worker.json',
+        ));
     }
 
     /** Same location rule as the AI core: relative to the app, default storage/ai. */
