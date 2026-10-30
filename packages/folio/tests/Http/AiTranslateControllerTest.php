@@ -7,8 +7,11 @@ namespace Preflow\Folio\Tests\Http;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
+use Preflow\Ai\AiRequest;
 use Preflow\Ai\AiUnavailable;
 use Preflow\Ai\Testing\FakeAiClient;
+use Preflow\Core\Http\Session\SessionInterface;
+use Preflow\Folio\Http\AiTranslateController;
 use Preflow\Folio\Tests\Support\AiScaffold;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
@@ -232,5 +235,35 @@ final class AiTranslateControllerTest extends TestCase
         $res = $this->call('/folio/post/p1/_ai/suggest', ['locale' => 'de', 'scope' => 'needed']);
         $this->assertSame(200, $res->getStatusCode(), (string) $res->getBody());
         $this->assertSame('DE:Hello', self::json($res)['texts']['title']['text']);
+    }
+
+    public function test_suggest_releases_the_session_before_asking_the_provider(): void
+    {
+        // A file session stays locked while it is open: every other request of the same browser
+        // would wait for the minutes a translation takes.
+        $closed = false;
+        $session = $this->createMock(SessionInterface::class);
+        $session->expects($this->once())->method('close')->willReturnCallback(static function () use (&$closed): void {
+            $closed = true;
+        });
+        $echo = self::echo();
+        $asked = 0;
+        $this->script = [function (AiRequest $r) use (&$closed, &$asked, $echo) {
+            $asked++;
+            $this->assertTrue($closed, 'the session is closed before the provider is asked');
+
+            return $echo($r);
+        }];
+        $controller = $this->aiApp()->container()->get(AiTranslateController::class);
+        $request = (new Psr17Factory())->createServerRequest('POST', '/folio/post/p1/_ai/suggest')
+            ->withParsedBody(['locale' => 'de', 'scope' => 'needed'])
+            ->withAttribute('type', 'post')
+            ->withAttribute('id', 'p1')
+            ->withAttribute(SessionInterface::class, $session);
+
+        $res = $controller->suggest($request);
+
+        $this->assertSame(200, $res->getStatusCode(), (string) $res->getBody());
+        $this->assertGreaterThan(0, $asked);
     }
 }

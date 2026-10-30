@@ -8,6 +8,7 @@ use Nyholm\Psr7\Response;
 use Preflow\Ai\Ai;
 use Preflow\Ai\AiUnavailable;
 use Preflow\Auth\Access\Access;
+use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\TypeCatalog;
@@ -190,7 +191,7 @@ final class AiTranslateController
             return $job;
         }
         if ($job->state === 'running') {
-            self::allowLongRequest();
+            self::allowLongRequest($request);
             try {
                 $job = $this->runner->step($job->id, 1);
             } catch (AiUnavailable) {
@@ -236,7 +237,7 @@ final class AiTranslateController
             return $units;
         }
 
-        return $this->suggestions($units, trim((string) (self::body($request)['note'] ?? '')));
+        return $this->suggestions($request, $units, trim((string) (self::body($request)['note'] ?? '')));
     }
 
     /**
@@ -268,7 +269,7 @@ final class AiTranslateController
             return self::json(422, ['error' => 'Choose a group and a language to translate into.']);
         }
 
-        return $this->suggestions($units, trim((string) ($body['note'] ?? '')));
+        return $this->suggestions($request, $units, trim((string) ($body['note'] ?? '')));
     }
 
     /**
@@ -308,7 +309,7 @@ final class AiTranslateController
             context: ['asset' => $asset->label()],
         )];
 
-        return $this->suggestions($units, trim((string) ($body['note'] ?? '')));
+        return $this->suggestions($request, $units, trim((string) ($body['note'] ?? '')));
     }
 
     /**
@@ -317,12 +318,12 @@ final class AiTranslateController
      *
      * @param list<TranslationUnit> $units
      */
-    private function suggestions(array $units, string $note): ResponseInterface
+    private function suggestions(ServerRequestInterface $request, array $units, string $note): ResponseInterface
     {
         if ($units === []) {
             return self::json(200, ['texts' => new \stdClass(), 'failed' => new \stdClass(), 'costUsd' => 0.0]);
         }
-        self::allowLongRequest();
+        self::allowLongRequest($request);
         $cost = 0.0;
         $unpriced = false;
         if ($this->translator instanceof ReportsCost) {
@@ -631,9 +632,17 @@ final class AiTranslateController
      * provider bills it anyway, and a step half-written is worse than one finished), and a host's
      * short PHP time limit is raised to TIME_LIMIT where it may be. A limit that is already longer
      * (or none, 0) is left alone; where set_time_limit is disabled, nothing changes.
+     *
+     * The session is closed first: a file session stays locked while it is open, and every other
+     * request of the same browser (pages, assets, autosave) would wait until the translation ends.
+     * Nothing after this point writes to the session.
      */
-    private static function allowLongRequest(): void
+    private static function allowLongRequest(ServerRequestInterface $request): void
     {
+        $session = $request->getAttribute(SessionInterface::class);
+        if ($session instanceof SessionInterface) {
+            $session->close();
+        }
         ignore_user_abort(true);
         $limit = (int) ini_get('max_execution_time');
         if ($limit !== 0 && $limit < self::TIME_LIMIT) {
