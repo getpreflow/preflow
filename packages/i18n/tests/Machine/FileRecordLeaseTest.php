@@ -47,4 +47,26 @@ final class FileRecordLeaseTest extends TestCase
         $t += 2;
         $this->assertTrue($lease->claim('game', 'g1'));
     }
+
+    public function test_an_empty_lease_file_counts_as_held(): void
+    {
+        $lease = new FileRecordLease($this->dir);
+        $this->assertTrue($lease->claim('game', 'g1'));
+        file_put_contents($this->dir . '/' . sha1("game\0g1"), '');
+
+        $this->assertFalse($lease->claim('game', 'g1'));
+    }
+
+    public function test_a_takeover_is_exclusive(): void
+    {
+        $t = 1_700_000_000;
+        $now = static function () use (&$t): int { return $t; };
+        $first = new FileRecordLease($this->dir, $now);
+        $second = new FileRecordLease($this->dir, $now);
+
+        $this->assertTrue($first->claim('game', 'g1'));
+        $t += 601;
+        $this->assertTrue($first->claim('game', 'g1'));
+        $this->assertFalse($second->claim('game', 'g1'));
+    }
 }

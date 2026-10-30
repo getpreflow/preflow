@@ -35,14 +35,25 @@ final class FileRecordLease implements RecordLease
             return true;
         }
 
-        $stored = @file_get_contents($path);
-        if ($stored === false || (int) $stored > $now) {
-            // Still held (or released between the two calls: the next attempt gets it).
+        // Takeovers are serialised by a lock file, and the expiry is re-read under it, so of two
+        // workers that both saw the expired claim only the first one takes it.
+        $lock = @fopen($path . '.lock', 'c');
+        if ($lock === false || !flock($lock, LOCK_EX)) {
             return false;
         }
+        try {
+            clearstatcache(true, $path);
+            $stored = @file_get_contents($path);
+            // Empty or unreadable: the holder is between creating the file and writing its expiry, so it is held.
+            if ($stored === false || !ctype_digit(trim($stored)) || (int) $stored > $now) {
+                return false;
+            }
 
-        // Expired: take it over.
-        return file_put_contents($path, $expiry) !== false;
+            return file_put_contents($path, $expiry) !== false;
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
     }
 
     public function release(string $collection, string $id): void
