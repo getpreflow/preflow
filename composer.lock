@@ -3570,7 +3570,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/i18n",
-                "reference": "92e4c4b85c65883159e76d1943e5808837c2c3b7"
+                "reference": "c8f03a49ae07ba5bc11060ee18670a062acdc4ec"
             },
             "require": {
                 "php": ">=8.4",
@@ -3592,7 +3592,8 @@
             "extra": {
                 "preflow": {
                     "commands": [
-                        "Preflow\\I18n\\Console\\TranslationsCheckCommand"
+                        "Preflow\\I18n\\Console\\TranslationsCheckCommand",
+                        "Preflow\\I18n\\Console\\TranslateWorkCommand"
                     ]
                 }
             },

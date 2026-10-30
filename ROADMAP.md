@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.47.1** — 4832 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.48.0** — 4903 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -74,7 +74,7 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    `_machine_translated` columns are written on every translation save, with AI off too, and publishing
    fails until they exist. Each site's deploy must run it.
 
-9. **AI translation in the background (0.48)** — built, not released: a record's Translate queues a job that
+9. **AI translation in the background (0.48)** — released in 0.48: a record's Translate queues a job that
    `translate:work` (cron, every minute) works in short steps, with a lease per record so nothing is paid twice
    (`preflow/i18n`: queue, `TranslationWorker`, `ReviewIndex`); the Folio run screen is a status page; the dashboard
    has a "Waiting for review" section; publishing clears the "not checked" marks of the visible languages, and
