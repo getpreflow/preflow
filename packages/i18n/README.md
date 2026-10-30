@@ -18,6 +18,8 @@ composer require preflow/i18n
 - ICU-style pluralization with exact, range, and simple two-form rules
 - PSR-15 middleware for locale detection (URL prefix → cookie → Accept-Language)
 - Twig functions for global and component-scoped translations
+- Machine translation through the AI connection (`preflow/ai`): single texts, batches, whole
+  collections, with tuning, a glossary and a cost estimate (see "Machine translation" below)
 
 ## Configuration
 
@@ -219,3 +221,224 @@ $twig->addExtension(new TranslationExtension($translator));
 ```
 
 `tc()` converts the component name from PascalCase to kebab-case and uses it as the translation group.
+
+## Machine translation
+
+Machine translation fills missing translations with AI, and keeps a human in the loop. It sits on
+the AI connection in `preflow/ai` (this package requires it), so read that README first for
+`config/ai.php`, keys and costs. Everything here works without Folio. With AI off, the classes
+still load and resolve; only calling the translator throws `AiUnavailable`.
+
+### Setup
+
+List the providers in `config/providers.php`. Apps with Folio get them from Folio. Apps without
+Folio add both:
+
+```php
+return [
+    Preflow\Ai\AiServiceProvider::class,
+    Preflow\I18n\Machine\MachineServiceProvider::class,
+];
+```
+
+`MachineServiceProvider` binds `MachineTranslator`, `Estimator`, `TextSources`, `JobStore`
+(files in `{storage}/jobs`), `JobRunner` and `TranslationSettings`, all from `config/ai.php`.
+
+### MachineTranslator
+
+```php
+$translator = $container->get(Preflow\I18n\Machine\MachineTranslator::class);
+
+// One text, on the fly. Throws AiUnavailable (AI off or unusable) or TranslationFailed.
+$de = $translator->translate('Welcome back, {name}!', to: 'de', from: 'en');
+
+// Many texts. One TranslationResult per unit, in the same order.
+$results = $translator->translateUnits($units, note: 'This is a game for children.');
+```
+
+`translate()` takes an optional `Tuning` and a `TextFormat` (`Plain`, `Html` or `Markdown`).
+`translateUnits()` never throws for one bad text: that unit comes back with status `Failed` and
+an `error`, and the others are still delivered. Only `AiUnavailable` (no key, no credit, provider
+down) ends the whole call. A `note` is a one-off instruction for this call.
+
+How a batch works:
+
+- Units go to the model as numbered JSON items, grouped by language and type into requests of at
+  most `translation.batch_chars` characters (default 12000).
+- A request the provider withholds (blocked, cut off, refused, broken JSON) is split in halves and
+  retried down to single units. A text that still fails is reported as failed, never dropped.
+  A Gemini recitation block gets one more try with a request to word it freely.
+- Each answer is checked (see `MarkupCheck`). A result that fails the check counts as failed.
+
+### TranslationUnit
+
+A `TranslationUnit` is one piece of text to translate, whatever it came from. It does not know
+about records. Its main fields:
+
+- `id`: a path, unique within one item (`title`, `sections.2.body`).
+- `label`: what a person sees, such as "Step 3 › Option B".
+- `source`, `from`, `to`: the text, its language and the target language.
+- `format`: `TextFormat::Plain` (default), `Html` or `Markdown`.
+- `kind`: an optional tag such as `quiz-option`, so tuning can target a kind of text.
+- `previousSource` and `current`: for a text that is outdated, the source the translation was
+  made from and the translation itself. The model then adapts the current translation to the
+  change and keeps the existing wording elsewhere.
+- `context`: short facts for the model, such as `['type' => 'Game', 'record' => 'Cascadia']`.
+- `tuning`: instructions for this unit only, already worked out by the source.
+- `type`: the collection key, used for glossary type limits and for the type tuning level.
+
+### MarkupCheck
+
+A model sometimes drops a tag or rewrites a placeholder. That would break a page, so such a
+result is rejected as failed instead of stored. `MarkupCheck::matches($source, $result, $format)`
+is true when:
+
+- the `{placeholders}` and `:placeholders` of the source are all still in the result, no more and
+  no fewer (their order may change, because grammar does);
+- for `Html`, the tags are the same, in the same order, opening and closing;
+- for `Plain`, the result is not HTML (unless the source was);
+- for `Markdown`, the placeholder rule only.
+
+### Tuning
+
+Tuning is a list of instructions (plus an optional answer template) that goes with every
+request. It is layered, from general to specific, and later levels are added after earlier ones:
+
+| Level | Key | Where the default lives |
+|---|---|---|
+| Project | `project` | `config/ai.php` `tuning` |
+| Language | `lang:{locale}` | `config/ai.php` `translation.languages` |
+| Type | `{type}` | `config/ai.php` `translation.types` |
+| Field | `{type}.{field}` | the field in the model JSON: `"ai": {"tuning": "…"}` |
+| Kind | `{type}.{field}:{kind}` | the field in the model JSON: `"ai": {"kinds": {"kind": "…"}}` |
+| One-off | | the `note` of a call or a run |
+
+```php
+'tuning' => ['Our product is called "Foo"; never translate it.'],
+'translation' => [
+    'languages' => ['de' => ['Address the reader with "du".']],
+    'types'     => ['game' => ['Keep the tone playful.']],
+],
+```
+
+An admin can edit any level on a settings screen (Folio: Settings → AI → Tuning). Those edits are
+stored apart in `{storage}/settings.json`, and a stored edit **replaces** the default of that one
+level and leaves the others alone. Saving an empty edit removes it, which brings the default
+back. Defaults are in git and edits are not, so a deploy never overwrites an edit. Field and kind
+instructions travel with their item as a hint; the other levels go into the system part, so the
+provider can cache them across a batch.
+
+`TranslationSettings` reads all this: `tuning($to, $type)`, `unitTuning(...)`, `glossary()`,
+`levels()` and `saveLevel()`.
+
+### Glossary
+
+The glossary holds terms that must be translated one fixed way, or not at all.
+
+```php
+'glossary' => [
+    ['term' => 'Meeple', 'translations' => ['de' => 'Meeple', 'fr' => null], 'types' => ['game'], 'note' => 'A game piece'],
+    ['term' => 'Worker Placement', 'translations' => ['de' => 'Arbeitereinsatz']],
+],
+```
+
+- `translations` is per target language. A value is the rendering to use. `null` means keep the
+  term as it is in that language.
+- The term is found by whole word and ignoring case, with Unicode letters and digits as the word
+  edges ("Meeple" does not match "Meeples"). Spaces inside a term match any run of spaces.
+- `types` limits an entry to some collections; empty means all. `note` is passed to the model.
+- Only entries whose term occurs in a batch (and that have a rendering for the target language)
+  are sent, so a big glossary costs nothing on texts it does not touch.
+- After translating, a unit whose source has the term but whose result lacks the required
+  rendering gets a warning `glossary:{term}`. It is still a usable result; people see the
+  warning in the review.
+
+An admin's stored glossary (Folio: Settings → AI → Glossary) replaces the config one as a whole
+once it has rows.
+
+### Estimator
+
+`Estimator::estimate($units)` tells before any call what a run will send and cost: `units`,
+`characters`, `inputTokens`, `outputTokens`, `requests` and `costUsd` (null when the model has
+no price). It counts a quarter of the characters as tokens and sizes the very batches a run would
+send. It leaves out the tuning and glossary lines, which are small next to the texts. Treat it as
+close, not exact.
+
+### Translating collections: TextSource and JobRunner
+
+To translate many items (a Folio type, or your own data), implement `TextSource` and register it
+under a collection key in `TextSources`:
+
+- `collection()`, `label()`: the key and a name for people;
+- `items()` and `title($id)`: the ids of all items and a title for each;
+- `units($id, $to, Scope $scope)`: the units of one item. `Scope::Needed` is only what is missing
+  or outdated, `Scope::All` everything with a source text;
+- `write($id, $to, $texts)`: store the translated texts (unit id to text) and return a
+  `WriteOutcome` (`Written`, `Conflict` when someone changed the item meanwhile, or `Skipped`).
+  A source should mark the texts as machine-made and must never publish. `MachineMarks` helps
+  with that: it keeps a fingerprint of each AI text, so a text counts as not checked only while
+  it is exactly what the machine wrote;
+- `writesLive()`: true when a write is public at once (no publishing step).
+
+`JobRunner` runs a job over a source one item at a time, so a web request or a cron tick stays
+short:
+
+- `plan($collection, $locales, $scope, $ids = null, $note = null)` counts the units, estimates
+  the cost and saves a job; nothing is written to the source;
+- `start($jobId)` sets it running (also after a stop);
+- `step($jobId, $maxItems = 1)` does the next pending items and saves the state. One item that
+  fails is recorded and does not stop the run. `AiUnavailable` stops the job (state `stopped`,
+  with the message) and is rethrown;
+- `stop($jobId)` keeps what is done.
+
+The job (`Job`) is a small JSON file with a state (`planned`, `running`, `stopped`, `done`), the
+estimate, the real cost so far and one status per item (`pending`, `done`, `failed`, `conflict`,
+`skipped`).
+
+A cron script for data that has nothing to do with Folio. `PhraseSource` is your own
+`TextSource`.
+
+```php
+<?php
+// bin/translate-phrases.php, run by cron: */5 * * * * php /path/to/bin/translate-phrases.php
+require __DIR__ . '/../vendor/autoload.php';
+
+use Preflow\Ai\AiUnavailable;
+use Preflow\Core\Application;
+use Preflow\I18n\Machine\{JobRunner, Scope, TextSources};
+
+$root = dirname(__DIR__);
+$app = Application::create($root);
+$app->boot();
+$c = $app->container();
+$c->get(TextSources::class)->add('phrases', static fn () => new PhraseSource($root . '/data/phrases.json'));
+$runner = $c->get(JobRunner::class);
+
+$marker = $root . '/storage/ai/phrases.job';        // the id of the job in progress
+$id = is_file($marker) ? trim((string) file_get_contents($marker)) : null;
+if ($id === null) {
+    $job = $runner->plan('phrases', ['de', 'fr'], Scope::Needed);
+    if (($job->estimate->costUsd ?? 0.0) > 2.0) {    // a safety net: never start a big run unseen
+        fwrite(STDERR, "Estimated cost too high: {$job->estimate->costUsd}\n");
+        exit(1);
+    }
+    file_put_contents($marker, $id = $job->id);
+    $runner->start($id);
+}
+try {
+    $job = $runner->step($id, maxItems: 5);          // short: a few items per tick
+} catch (AiUnavailable $e) {
+    fwrite(STDERR, $e->getMessage() . "\n");
+    exit(1);
+}
+if ($job->state === 'done') {
+    unlink($marker);
+}
+```
+
+Texts written this way are machine translations that nobody has checked, so decide for your own
+data how a person gets to review them before they go live.
+
+### Without a key
+
+Tests can swap the provider for `Preflow\Ai\Testing\FakeAiClient`; see the `preflow/ai` README.

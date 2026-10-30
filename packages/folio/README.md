@@ -1629,6 +1629,39 @@ final class FaqFieldType implements FieldType, ReportsTranslatableTexts
 Use a stable key in the path (an id, not the position) when items can be reordered, so a
 fingerprint follows its item.
 
+**Taking part in AI translation.** Reporting texts is only half of it. To let AI translate the
+texts of your field, the field type must also implement
+`Preflow\Folio\Field\AcceptsTranslatedTexts`, the way back: Folio hands it translated texts by
+path and it returns the field value with them set. Only the field type knows how its value is
+built, so only it can do that.
+
+```php
+final class FaqFieldType implements FieldType, ReportsTranslatableTexts, AcceptsTranslatedTexts
+{
+    // translatableTexts() as above. $texts is path => text, with the paths you reported ("0.question").
+    public function withTranslatedTexts(mixed $value, array $texts, string $locale, array $config, Locales $locales): mixed
+    {
+        $items = (array) $value;
+        foreach ($texts as $path => $text) {
+            [$i, $key] = explode('.', (string) $path, 2) + [1 => ''];
+            if (isset($items[(int) $i][$key])) {
+                $map = LocaleValue::map($items[(int) $i][$key], $locales);
+                $map[$locale] = $text;
+                $items[(int) $i][$key] = $map; // only this language changes
+            }
+        }
+
+        return $items;
+    }
+}
+```
+
+Set only `$locale`, leave every other language and every other text as it is, and ignore paths
+you do not know. A field type that reports texts but does not implement `AcceptsTranslatedTexts`
+is left out of AI translation, so no money is spent on a text that could never be stored. A
+text may also carry a kind (`TranslatableText::of($path, $label, $raw, $locales, 'faq-answer')`),
+which lets tuning target it (see "Field options" below).
+
 **SQL storage:** translatable values and the record's `_locales` list are stored as JSON
 text. A SQL-backed type needs a `_locales` (TEXT) column, and its translatable columns
 must be wide enough for the JSON map. JSON-file storage needs no setup.
@@ -1679,8 +1712,14 @@ far, each record's status, failed and changed-meanwhile records with their reaso
 keeps what is done; **Continue** picks up the rest, also after the provider stopped the run
 (quota, billing), whose message is shown.
 
+- The page has to stay open while the job runs: each step is a request from the page, and
+  there is no background worker. Close it and the job stops after the record in hand; what is
+  done stays done (the state is kept in `storage/ai/jobs/`).
 - Publishing types get working copies, with the texts marked as not checked; nothing is
   published. Records whose working copy already had other changes are listed separately.
+  An AI write never publishes, never changes a record's **Visible in** languages, and cancels a
+  pending **Publish at** (as a save by someone who may not publish does), so machine text cannot
+  go live on a timer without a person looking at it.
 - A type without publishing writes live: Start stays disabled until "the translations go live
   without review" is ticked, and the server refuses a start without it.
 - The results end with "Review: N records with unchecked texts", a link to the list filtered
@@ -1691,6 +1730,57 @@ The routes (all ask `ai.translate` and the type's edit permission; POSTs need th
 `POST {prefix}/{type}/_ai/jobs/{job}/start|step|stop`, which answer the progress partial for
 htmx and the whole screen otherwise. A job is only reachable through the type it translates.
 Jobs are stored in `storage/ai/jobs/{id}.json`.
+
+#### Field options
+
+A model's field can tune or leave out AI translation with an `ai` block in its JSON:
+
+```json
+"body": { "type": "richtext", "translatable": true, "ai": { "tuning": "Keep the tone playful." } },
+"faq": { "type": "faq", "ai": { "kinds": { "faq-answer": "Short; no full stop." } } },
+"internal_code": { "type": "string", "translatable": true, "ai": { "translate": false } }
+```
+
+- `translate: false` leaves the field out of AI translation (button, whole-type runs, estimate).
+  You can still translate it by hand. Only the model JSON sets this; the Settings screens cannot
+  override it.
+- `tuning` is an instruction for this field (a string, or a list of strings).
+- `kinds` maps a text kind to an instruction. A structured field of your own (see
+  "Custom field types" above) can tag each text with a kind, for example `faq-answer`, and the
+  instruction then applies to those texts only.
+
+These are the defaults. A text saved in Settings → AI → Tuning under the key `{type}.{field}`
+or `{type}.{field}:{kind}` replaces the default of that level and leaves the others alone.
+
+#### Settings → AI
+
+The **AI** entry in the Settings section needs the `ai.settings` permission. It stays visible
+while `enabled` is true even without a key, so an admin can see why nothing works ("switched
+on: yes, key: no"). It has three screens:
+
+- **Status:** provider, model, whether a key is present (never the key), a **Test** button that
+  sends one tiny request, and the calls, tokens and cost of this and last month per purpose and
+  model. A model with no price shows "—", not 0.
+- **Tuning:** the instructions per level: project, each language, each translatable type, and
+  any field or kind level you add by key. The config default shows as the placeholder; saving a
+  text replaces the default of that level, and saving it empty brings the default back.
+- **Glossary:** the fixed terms with their rendering per language, a "keep as is" choice, the types
+  they are limited to and a note.
+
+Edits are stored in `storage/ai/settings.json`, apart from `config/ai.php`.
+
+#### Labels and media
+
+Folio's own pieces get the same button, with the same review and the `ai.translate` permission:
+
+- **Settings → Translations:** a **Translate** button for the shown page of labels fills empty
+  values as unsaved input (or every value with "all"). You review and save as usual.
+- **Media:** the asset panel has a button for the **alt text** of each language, translated from
+  the default-language alt text. Titles are not translated, because an asset has one title for
+  all languages.
+
+Labels and alt texts have no "outdated" or "not checked" tracking: their stores keep no
+fingerprints, and both screens are reviewed in full anyway.
 
 #### Trying it without a key
 

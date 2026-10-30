@@ -62,6 +62,14 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    links on every language, component actions keep the locale prefix, composite indexes in migrations,
    `revisions: 0` keeps all, `cache_path`, HEIC/HEIF as JPEG (with `heic_max_pixels`). See
    `docs/superpowers/plans/2026-10-29-release-0.46-checklist.md`
+8. **AI connection and auto-translate (0.47)** — built, not released: `preflow/ai` (Claude and Gemini behind
+   `AiClient`, keys from the environment, a price table, a usage log without text, `ai:check`, `ai:usage`,
+   `FakeAiClient`); machine translation in `preflow/i18n` (`MachineTranslator`, layered tuning, a glossary,
+   `MarkupCheck`, `Estimator`, `TextSource` and `JobRunner` for any data); and in Folio a Translate button with
+   side-by-side review, whole-type runs as drafts, "not checked" markers (`publishing.checked_translations`),
+   labels and media alt texts, Settings → AI, and the `ai.translate` and `ai.settings` permissions. AI stays off
+   until `config/ai.php` is enabled and a key is set. Release, split repository and site upgrades wait for the
+   owner. See `docs/superpowers/specs/2026-10-30-ai-translation-design.md`
 
 **Rule (owner, 2026-10-26):** the framework holds abstractions, interfaces, hooks and generic mechanisms only;
 a feature one project needs is built in that project on top of them. A package's official admin UI lives in Folio
