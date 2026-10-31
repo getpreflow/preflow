@@ -1,0 +1,8 @@
+{# A record a translation job is working on right now: its title, the language and how many of
+   its texts are through (JobRunner stores it per item). Titles are data: t() escapes its parameters. #}
+{%- set texts = t('folio.ai_run.item_progress', {done: item.done, total: item.total}, item.total) %}
+<span class="folio-ai-item-progress">
+    <span>{{ t('folio.ai_run.item_now', {title: item.title, language: item.language}) }}</span>
+    <progress max="{{ item.total }}" value="{{ item.done }}" aria-label="{{ texts }}"></progress>
+    <span class="folio-help">{{ texts }}</span>
+</span>

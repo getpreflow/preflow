@@ -96,6 +96,17 @@ final class AdminController
             return $override->handle($request);
         }
 
+        // The review section refreshing itself while a job is queued or running: the section alone,
+        // without counting every type's records again each time.
+        if ($request->getHeaderLine('HX-Request') === 'true' && ($request->getQueryParams()['review'] ?? '') === '1') {
+            $review = $this->reviewSection();
+
+            return $this->html($review === null ? '' : $this->engine->render('@folio/admin/partials/dashboard-review.twig', [
+                'prefix' => $this->prefix,
+                'review' => $review,
+            ]));
+        }
+
         $cards = [];
         foreach ($this->catalog->all() as $listing) {
             $cards[] = [
@@ -105,11 +116,14 @@ final class AdminController
             ];
         }
 
+        $review = $this->reviewSection();
+
         return $this->html($this->engine->render('@folio/admin/dashboard.twig', [
             'prefix' => $this->prefix,
             'types' => $this->catalog->all(),
             'cards' => $cards,
-            'review' => $this->reviewSection(),
+            'review' => $review,
+            'editor_assets' => ($review['polling'] ?? false) ? ['htmx.js'] : [],
         ]));
     }
 
@@ -120,8 +134,10 @@ final class AdminController
      * The dashboard's "Waiting for review" section, or null when AI is off or the user lacks ai.translate:
      * records with unchecked machine translations (only types the user may view and that still exist),
      * grouped by type, and the jobs that are queued, running or stopped (also only of types the user may view).
+     * A job's records being translated right now come with their progress (JobRunner stores it per
+     * item); while a shown job is queued or running, the section refreshes itself ("polling").
      *
-     * @return array{groups: list<array{label: string, rows: list<array{title: string, url: string, languages: list<string>}>}>, more: int, jobs: list<array<string, mixed>>, no_worker: bool}|null
+     * @return array{groups: list<array{label: string, rows: list<array{title: string, url: string, languages: list<string>}>}>, more: int, jobs: list<array<string, mixed>>, no_worker: bool, polling: bool}|null
      */
     private function reviewSection(): ?array
     {
@@ -158,7 +174,7 @@ final class AdminController
 
         $format = new AdminFormat();
         $jobs = [];
-        $queued = false;
+        $queued = $polling = false;
         foreach ($this->jobs?->active(50) ?? [] as $job) {
             // Like the review rows: a job shows its records' type and progress, so only to who may view the type.
             if (!$this->can($job->collection . '.view')) {
@@ -168,6 +184,7 @@ final class AdminController
                 break;
             }
             $queued = $queued || $job->state === 'queued';
+            $polling = $polling || $job->state === 'queued' || $job->state === 'running';
             $jobs[] = [
                 'type' => $this->catalog->has($job->collection) ? $this->labels->type($job->collection) : $job->collection,
                 'languages' => implode(', ', array_map(self::languageName(...), $job->locales)),
@@ -178,6 +195,7 @@ final class AdminController
                 'message' => $job->state === 'stopped' ? $job->message : null,
                 'by' => $job->queuedBy,
                 'since' => $format->date($job->queuedAt, 'datetime'),
+                'current' => $job->state === 'running' || $job->state === 'queued' ? $this->itemsInProgress($job) : [],
             ];
         }
 
@@ -186,7 +204,34 @@ final class AdminController
             'more' => $more,
             'jobs' => $jobs,
             'no_worker' => $queued && !WorkerWatch::runs($this->worker),
+            'polling' => $polling,
         ];
+    }
+
+    /**
+     * The records of a running job being translated right now, with how far their language has
+     * come: what JobRunner stores on a pending item while a driver works on it.
+     *
+     * @return list<array{title: string, language: string, done: int, total: int}>
+     */
+    private function itemsInProgress(\Preflow\I18n\Machine\Job $job): array
+    {
+        $current = [];
+        foreach ($job->items as $id => $item) {
+            $progress = $item['progress'] ?? null;
+            if ($item['status'] !== 'pending' || !is_array($progress) || (int) ($progress['total'] ?? 0) <= 0) {
+                continue;
+            }
+            $record = $this->catalog->has($job->collection) ? $this->dm->findType($job->collection, (string) $id) : null;
+            $current[] = [
+                'title' => $record === null ? (string) $id : $this->labeler->label($record),
+                'language' => self::languageName((string) ($progress['locale'] ?? '')),
+                'done' => min((int) ($progress['done'] ?? 0), (int) $progress['total']),
+                'total' => (int) $progress['total'],
+            ];
+        }
+
+        return $current;
     }
 
     public function list(ServerRequestInterface $request): ResponseInterface
@@ -1317,9 +1362,10 @@ final class AdminController
     }
 
     /**
-     * One line per language a queued translation job will still translate this record into
-     * (the job states those languages; the form does not block editing, the job's version check
-     * protects edits). None while AI is off.
+     * One line per language a queued translation job will still translate this record into, with
+     * how many texts are through while it is being translated (the job states those languages;
+     * the form does not block editing: texts changed meanwhile are left alone by the job's write).
+     * None while AI is off.
      *
      * @param array<string, mixed> $values
      * @return list<string>
@@ -1337,7 +1383,15 @@ final class AdminController
                 continue;
             }
             $job = $this->jobs->pendingFor($type, $id, $code);
-            if ($job !== null) {
+            // How far it is while a driver translates this record into this language right now.
+            $progress = $job?->items[$id]['progress'] ?? null;
+            if ($job !== null && is_array($progress) && ($progress['locale'] ?? null) === $code && (int) ($progress['total'] ?? 0) > 0) {
+                $lines[] = FolioText::get('folio.ai_queue.pending_running', [
+                    'language' => self::languageName($code),
+                    'done' => min((int) ($progress['done'] ?? 0), (int) $progress['total']),
+                    'total' => (int) $progress['total'],
+                ]);
+            } elseif ($job !== null) {
                 $lines[] = FolioText::get('folio.ai_queue.pending', [
                     'language' => self::languageName($code),
                     'since' => $format->date($job->queuedAt, 'datetime') ?: '—',

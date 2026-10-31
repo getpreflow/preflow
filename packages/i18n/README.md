@@ -406,7 +406,10 @@ short:
 The job (`Job`) is a small JSON file with a state (`planned`, `running`, `stopped`, `done`), the
 estimate, the real cost so far (`costUnknown` is true once a request had no price, so `costUsd`
 is only part of it) and one status per item (`pending`, `done`, `failed`, `conflict`,
-`skipped`).
+`skipped`). While an item is translated by a translator that implements `ReportsProgress`
+(`AiTranslator` does: after each request), the item carries
+`progress => {locale, done, total}` for the language in hand; it goes away when the item is
+through.
 
 A cron script for data that has nothing to do with Folio. `PhraseSource` is your own
 `TextSource`.

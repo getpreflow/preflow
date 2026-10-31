@@ -141,6 +141,22 @@ final class AiTranslateFormTest extends TestCase
         $this->assertStringContainsString(htmlspecialchars($line), $this->editForm('en'), 'shown on every language tab');
     }
 
+    public function test_form_shows_how_far_a_running_translation_is(): void
+    {
+        $this->aiConfig(true);
+        $app = $this->aiApp();
+        $runner = $app->container()->get(JobRunner::class);
+        $job = $runner->start($runner->plan('post', ['de'], Scope::Needed, ['p1'])->id);
+        $app->container()->get(\Preflow\I18n\Machine\JobStore::class)->update($job->id, static function (\Preflow\I18n\Machine\Job $j): void {
+            $j->state = 'running';
+            $j->items['p1']['progress'] = ['locale' => 'de', 'done' => 120, 'total' => 410];
+        });
+
+        $line = FolioText::get('folio.ai_queue.pending_running', ['language' => FolioText::get('folio.languages.de'), 'done' => 120, 'total' => 410]);
+        $this->assertStringContainsString('120 of 410 texts', $line);
+        $this->assertStringContainsString(htmlspecialchars($line), $this->editForm('de'));
+    }
+
     public function test_posted_ai_paths_are_ignored(): void
     {
         $this->aiConfig(true);

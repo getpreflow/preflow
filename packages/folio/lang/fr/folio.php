@@ -200,9 +200,12 @@ return [
         'confirm_live_label' => 'I understand that the translation goes live without review.',
         'no_worker' => 'Nothing is translating queued jobs at the moment: the translation waits until the cron job runs. Ask whoever runs the site to add this line to the crontab: * * * * * cd <app> && php vendor/bin/preflow translate:work',
         'pending' => ':language translation queued since :since. You can keep editing; changes made meanwhile are kept.',
+        'pending_running' => ':language translation running: :done of :total texts. You can keep editing; changes made meanwhile are kept.',
     ],
     // The whole-type translation run (AI): plan with estimate, progress, results.
     'ai_run' => [
+        'item_now' => 'Translating :title (:language)',
+        'item_progress' => ':done of :total text|:done of :total texts',
         'translate_all' => 'Translate all…',
         'translate_selected' => 'Translate…',
         'title' => 'Translate :label',

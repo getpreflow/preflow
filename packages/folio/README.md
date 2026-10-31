@@ -1698,8 +1698,11 @@ outdated**, or **All**) and an optional one-off note, and shows the estimate for
   translation" in the `preflow/i18n` README). The worker translates everything the record
   holds, also structured fields edited on their own screens, and saves the result as a
   working copy (a draft) with the texts marked "not checked". The live version is untouched.
-- While a job for the record is queued or running, the edit form says so. It does not block
-  editing; the version check protects what you typed.
+- While a job for the record is queued or running, the edit form says so, and while the record
+  is being translated, how far it is ("120 of 410 texts"). It does not block editing: saves
+  made meanwhile are kept. The job starts from the record as it is when it writes, leaves alone
+  every text that changed since it read it (yours wins), and a text whose English changed
+  meanwhile is written but shows as outdated.
 - Queuing the same record and language again while a job is pending answers with the pending
   job, not a second one.
 - A type without publishing writes live: the dialog asks you to tick "the translations go live
@@ -1737,7 +1740,10 @@ declared too.
 With AI on, the dashboard has a **Waiting for review** section for users with `ai.translate`:
 
 - Translation jobs that are queued, running or failed: what, since when, who queued it, the
-  progress, the cost so far and the failure reason.
+  progress, the cost so far and the failure reason. The record a job is translating right now
+  shows with its own progress bar ("120 of 410 texts"); the run screen shows it too. While a
+  job is queued or running, the section refreshes itself every 5 seconds
+  (`GET {prefix}?review=1` with htmx: the section alone) and stops when none is.
 - Records with unchecked texts, grouped by type: the record's label, the languages, the number
   of texts, and a link to the edit view on that language tab. A row shows only if the user may
   view that type.

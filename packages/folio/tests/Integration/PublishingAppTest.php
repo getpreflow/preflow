@@ -26,10 +26,68 @@ final class PublishingAppTest extends TestCase
         $this->removeScaffold();
     }
 
-    private function dashboard(): string
+    private function dashboard(string $uri = '/folio', bool $htmx = false): string
     {
-        $res = ($this->session ?? $this->aiApp())->handle((new Psr17Factory())->createServerRequest('GET', '/folio'));
+        $request = (new Psr17Factory())->createServerRequest('GET', $uri);
+        if ($htmx) {
+            $request = $request->withHeader('HX-Request', 'true');
+        }
+        $res = ($this->session ?? $this->aiApp())->handle($request);
         return (string) $res->getBody();
+    }
+
+    #[RunInSeparateProcess]
+    public function test_dashboard_shows_a_running_records_progress_and_refreshes_itself(): void
+    {
+        $this->aiConfig(true);
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello <b>'], 'slug' => ['en' => 'hello']]);
+        $this->working('post', 'p2', ['title' => ['en' => 'Other'], 'slug' => ['en' => 'other']]);
+        $c = $this->app()->container();
+        $runner = $c->get(\Preflow\I18n\Machine\JobRunner::class);
+        $job = $runner->plan('post', ['de'], \Preflow\I18n\Machine\Scope::Needed, ['p1', 'p2']);
+        $runner->start($job->id, false, 'Anna');
+        $c->get(\Preflow\I18n\Machine\JobStore::class)->update($job->id, static function (\Preflow\I18n\Machine\Job $j): void {
+            $j->state = 'running';
+            $j->items['p1']['progress'] = ['locale' => 'de', 'done' => 120, 'total' => 410];
+        });
+        $this->staff('translator');
+
+        $body = $this->dashboard();
+
+        $this->assertMatchesRegularExpression('~<span class="folio-badge">Working</span>~', $body);
+        $this->assertStringContainsString('Hello &lt;b&gt;', $body, 'the record in hand, escaped');
+        $this->assertStringNotContainsString('Hello <b>', $body);
+        $this->assertStringContainsString('120 of 410 texts', $body);
+        $this->assertMatchesRegularExpression('~<progress[^>]*max="410"[^>]*value="120"[^>]*aria-label="[^"]+"~', $body);
+        $this->assertStringNotContainsString('Other', $body, 'only the record being translated');
+        $this->assertMatchesRegularExpression('~<section id="folio-review"[^>]*hx-get="/folio\?review=1"[^>]*hx-trigger="every 5s"~', $body);
+        $this->assertStringContainsString('htmx', $body, 'htmx is loaded for the refresh');
+
+        $partial = $this->dashboard('/folio?review=1', true);
+        $this->assertStringStartsWith('<section id="folio-review"', ltrim($partial), 'the refresh gets the section alone');
+        $this->assertStringContainsString('120 of 410 texts', $partial);
+        $this->assertStringNotContainsString('folio-card-grid', $partial);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_dashboard_stops_refreshing_when_no_job_is_queued_or_running(): void
+    {
+        $this->aiConfig(true);
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
+        $c = $this->app()->container();
+        $job = $c->get(\Preflow\I18n\Machine\JobRunner::class)->plan('post', ['de'], \Preflow\I18n\Machine\Scope::Needed, ['p1']);
+        $job->state = 'stopped';
+        $job->message = 'The provider refused the request';
+        $c->get(\Preflow\I18n\Machine\JobStore::class)->save($job);
+        $this->staff('translator');
+
+        $body = $this->dashboard();
+        $this->assertStringContainsString('The provider refused the request', $body);
+        $this->assertStringNotContainsString('hx-trigger', $body);
+
+        $partial = $this->dashboard('/folio?review=1', true);
+        $this->assertStringNotContainsString('hx-trigger', $partial, 'the last refresh ends the polling');
+        $this->assertStringContainsString('id="folio-review"', $partial);
     }
 
     #[RunInSeparateProcess]
@@ -75,6 +133,7 @@ final class PublishingAppTest extends TestCase
 
         $body = $this->dashboard();
         $this->assertMatchesRegularExpression('~<ul class="folio-review-jobs">\s*<li>\s*<strong>Posts · German</strong>.*?0 of 1 records.*?<span class="folio-badge">Waiting</span>.*?Queued by Anna~s', $body);
+        $this->assertStringContainsString('hx-trigger="every 5s"', $body, 'a queued job refreshes the section');
         $this->assertStringContainsString('translate:work', $body, 'no worker has run');
 
         $this->write('storage/ai/worker.json', (string) json_encode(['last_run' => (new \DateTimeImmutable('-1 minute'))->format(\DATE_ATOM)]));

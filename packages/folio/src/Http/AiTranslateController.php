@@ -624,11 +624,24 @@ final class AiTranslateController
             ] + $item;
         };
 
-        $finished = $problems = $drafts = [];
+        $finished = $problems = $drafts = $current = [];
         $review = 0;
+        $languages = null;
         foreach ($job->items as $id => $item) {
             $id = (string) $id; // numeric ids come back as int keys
             if ($item['status'] === 'pending') {
+                // A record a driver (this page or the worker) is translating right now: how far it is.
+                $progress = $item['progress'] ?? null;
+                if (is_array($progress) && (int) ($progress['total'] ?? 0) > 0) {
+                    $locale = (string) ($progress['locale'] ?? '');
+                    $languages ??= $this->languages($type);
+                    $current[] = [
+                        'title' => $titles[$id] ??= $source->title($id),
+                        'language' => $languages[$locale] ?? strtoupper($locale),
+                        'done' => min((int) ($progress['done'] ?? 0), (int) $progress['total']),
+                        'total' => (int) $progress['total'],
+                    ];
+                }
                 continue;
             }
             $finished[$id] = $item;
@@ -648,6 +661,7 @@ final class AiTranslateController
         return [
             'state' => $job->state,
             'running' => $running,
+            'current' => $running ? $current : [],
             'worker' => $this->workerRuns(),
             'message' => $job->message,
             'error' => $error,

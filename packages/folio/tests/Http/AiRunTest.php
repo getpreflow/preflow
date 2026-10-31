@@ -210,6 +210,31 @@ final class AiRunTest extends TestCase
         $this->assertTrue(self::polls($res), 'the page keeps polling');
     }
 
+    public function test_progress_shows_the_record_the_worker_is_translating(): void
+    {
+        $id = self::jobId($this->estimate());
+        $this->request('POST', "/folio/post/_ai/jobs/{$id}/start", [], true);
+        // The worker holds p1 and is 120 texts into it.
+        $worker = new FileRecordLease($this->dir . '/storage/ai/leases');
+        $this->assertTrue($worker->claim('post', 'p1'));
+        (new FileJobStore($this->dir . '/storage/ai/jobs'))->update($id, static function (Job $job): void {
+            $job->items['p1']['progress'] = ['locale' => 'de', 'done' => 120, 'total' => 410];
+        });
+
+        $html = (string) $this->step($id)->getBody();
+
+        $this->assertStringContainsString('Translating Hello (German)', $html);
+        $this->assertStringContainsString('120 of 410 texts', $html);
+        $this->assertMatchesRegularExpression('~<progress[^>]*max="410"[^>]*value="120"~', $html);
+        $this->assertStringNotContainsString('Translating World', $html, 'a finished record shows its result instead');
+
+        $worker->release('post', 'p1');
+        $done = (string) $this->step($id)->getBody();
+        $this->assertStringContainsString('2 / 2', $done);
+        $this->assertStringContainsString('cost so far &lt; $0.01', $done, 'escaped once');
+        $this->assertStringNotContainsString('Translating Hello', $done, 'gone once the record is through');
+    }
+
     public function test_status_page_without_worker_shows_the_cron_line(): void
     {
         $id = self::jobId($this->estimate());

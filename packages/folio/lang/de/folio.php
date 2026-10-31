@@ -200,9 +200,12 @@ return [
         'confirm_live_label' => 'Mir ist klar, dass die Übersetzung ohne Prüfung öffentlich wird.',
         'no_worker' => 'Im Moment bearbeitet nichts die eingereihten Übersetzungen: Sie warten, bis der Cronjob läuft. Bitte die Person, die die Website betreut, diese Zeile in die Crontab einzutragen: * * * * * cd <app> && php vendor/bin/preflow translate:work',
         'pending' => 'Übersetzung (:language) eingereiht seit :since. Du kannst weiter bearbeiten; Änderungen in der Zwischenzeit bleiben erhalten.',
+        'pending_running' => 'Übersetzung (:language) läuft: :done von :total Texten. Du kannst weiter bearbeiten; Änderungen in der Zwischenzeit bleiben erhalten.',
     ],
     // The whole-type translation run (AI): plan with estimate, progress, results.
     'ai_run' => [
+        'item_now' => 'Übersetze :title (:language)',
+        'item_progress' => ':done von :total Text|:done von :total Texten',
         'translate_all' => 'Alle übersetzen…',
         'translate_selected' => 'Übersetzen…',
         'title' => ':label übersetzen',

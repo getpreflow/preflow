@@ -6,8 +6,9 @@
     {% if error %}<div class="folio-alert folio-alert-error" role="alert"><p>{{ error }}</p></div>{% endif %}
     <p class="folio-ai-progress-count">
         <progress max="{{ total }}" value="{{ done }}"></progress>
-        <span>{{ done }} / {{ total }}</span> · <span>{{ t('folio.ai_run.cost', {cost: cost|e}) }}</span>
+        <span>{{ done }} / {{ total }}</span> · <span>{{ t('folio.ai_run.cost', {cost: cost}) }}</span>
     </p>
+    {% for item in current|default([]) %}<p class="folio-ai-progress-current">{% include '@folio/admin/partials/ai-item-progress.twig' %}</p>{% endfor %}
     {% if running %}
         {# The page keeps stepping while open (the record lease keeps it and the worker apart); whether it may be left depends on the worker. #}
         {% if worker %}

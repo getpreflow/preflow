@@ -1673,6 +1673,10 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-ai-run-fieldset legend { padding: 0; margin-bottom: 8px; }
 .folio-ai-progress-count { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; font-variant-numeric: tabular-nums; }
 .folio-ai-progress-count progress { flex: 1 1 240px; height: 8px; }
+/* A record a job is translating right now: "Translating … (German)", a thin bar, "120 of 410 texts". */
+.folio-ai-progress-current { margin: 0 0 14px; }
+.folio-ai-item-progress { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; flex-basis: 100%; font-variant-numeric: tabular-nums; }
+.folio-ai-item-progress progress { flex: 0 1 200px; height: 6px; }
 .folio-ai-progress-section { margin-top: 22px; }
 .folio-ai-progress-section h2 { margin: 0 0 8px; font-size: 15px; font-weight: 650; }
 .folio-ai-progress-section ul { margin: 0; padding-left: 18px; }

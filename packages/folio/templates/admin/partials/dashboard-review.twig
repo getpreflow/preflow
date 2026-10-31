@@ -1,0 +1,32 @@
+{# The dashboard's "Waiting for review" section (AdminController::reviewSection). While a job is
+   queued or running, it fetches itself again every 5 s (GET ?review=1, the section alone); the
+   answer without a queued or running job has no trigger, which ends the polling. #}
+<section id="folio-review" class="folio-review" aria-labelledby="folio-review-title"{% if review.polling %} hx-get="{{ prefix }}?review=1" hx-trigger="every 5s" hx-select="#folio-review" hx-swap="outerHTML"{% endif %}>
+    <h2 id="folio-review-title" class="folio-review-title">{{ t('folio.dashboard.review.title') }}</h2>
+    {% if review.jobs is not empty %}
+    <ul class="folio-review-jobs">
+        {% for job in review.jobs %}
+        <li>
+            <strong>{{ job.type }} · {{ job.languages }}</strong>
+            <span class="folio-help">{{ t('folio.dashboard.review.progress', {done: job.done, total: job.total}) }}{% if job.cost is not null %} · {{ t('folio.dashboard.review.cost', {cost: job.cost}) }}{% endif %}</span>
+            <span class="folio-badge">{{ t('folio.ai_run.job_state.' ~ job.state) }}</span>
+            {% if job.message %}<span class="folio-help">{{ job.message }}</span>{% endif %}
+            <span class="folio-help">{% if job.by %}{{ t('folio.dashboard.review.by', {name: job.by}) }}{% endif %}{% if job.since %} {{ t('folio.dashboard.review.since', {since: job.since}) }}{% endif %}</span>
+            {% for item in job.current|default([]) %}{% include '@folio/admin/partials/ai-item-progress.twig' %}{% endfor %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% if review.no_worker %}<div class="folio-notice" role="status"><p>{{ t('folio.ai_queue.no_worker') }}</p></div>{% endif %}
+    {% endif %}
+    {% for group in review.groups %}
+    <h3 class="folio-review-type">{{ group.label }}</h3>
+    <ul class="folio-review-list">
+        {% for row in group.rows %}
+        <li><a href="{{ row.url }}">{{ row.title }}</a> <span class="folio-help">{{ row.languages|join(', ') }}</span></li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="folio-help">{{ t('folio.dashboard.review.empty') }}</p>
+    {% endfor %}
+    {% if review.more > 0 %}<p class="folio-help">{{ t('folio.dashboard.review.more', {count: review.more}) }}</p>{% endif %}
+</section>
