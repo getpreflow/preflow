@@ -193,6 +193,15 @@ final class AdminCssTest extends TestCase
         $this->assertMatchesRegularExpression('/\.folio-table tbody th \{[^}]*padding: 10px 16px;[^}]*text-align: left;/', $css);
     }
 
+    public function test_sub_headings_stay_inside_the_admin_and_ok_badges_are_success(): void
+    {
+        $css = $this->css();
+        $this->assertMatchesRegularExpression('/:where\(\.folio-shell, \.folio-drawer-body\) h3 \{/', $css);
+        $this->assertDoesNotMatchRegularExpression('/^h3 \{/m', $css);
+        // "done" in an AI run and a complete language in a list read as success, like a published record.
+        $this->assertStringContainsString('.folio-badge.is-published, .folio-badge.is-ok { background: var(--c-success-soft); color: var(--c-success); }', $css);
+    }
+
     public function test_row_actions_outside_tables_are_a_row_and_respect_hidden(): void
     {
         $css = $this->css();

@@ -83,7 +83,8 @@ a:hover { color: var(--c-accent-hover); }
 
 h1 { font-size: 1.0625rem; font-weight: 650; letter-spacing: -.01em; margin: 0; }
 h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
-h3 { font-size: .875rem; font-weight: 620; margin: 0 0 6px; }
+/* Sub-headings inside admin pages and panels (zero extra specificity, so component classes win). */
+:where(.folio-shell, .folio-drawer-body) h3 { font-size: .875rem; font-weight: 620; margin: 0 0 6px; }
 h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 
 :where(a, button, summary, [tabindex]):focus-visible {
@@ -834,7 +835,7 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
   color: var(--c-text-muted);
 }
 .folio-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.folio-badge.is-published { background: var(--c-success-soft); color: var(--c-success); }
+.folio-badge.is-published, .folio-badge.is-ok { background: var(--c-success-soft); color: var(--c-success); }
 .folio-badge.is-changed,
 .folio-badge.is-incomplete { background: var(--c-warning-soft); color: var(--c-warning); }
 .folio-badge.is-unchecked, .folio-count.is-unchecked { background: var(--c-warning-soft); color: var(--c-warning); }
