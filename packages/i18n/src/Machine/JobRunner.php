@@ -365,15 +365,21 @@ final class JobRunner
             return $this->translator->translateUnits($units, $note);
         }
         $store = function (int $done, int $total) use ($jobId, $id, $locale): void {
-            $this->store->update($jobId, static function (Job $stored) use ($id, $locale, $done, $total): void {
-                if (($stored->items[$id]['status'] ?? null) !== 'pending') {
-                    return;
-                }
-                $stored->items[$id]['progress'] = ['locale' => $locale, 'done' => $done, 'total' => $total];
-                if ($stored->state === 'queued') {
-                    $stored->state = 'running';
-                }
-            });
+            // Progress is for display only: a failed write (lock, disk) is logged and never fails
+            // the item, whose paid translations are still to be written.
+            try {
+                $this->store->update($jobId, static function (Job $stored) use ($id, $locale, $done, $total): void {
+                    if (($stored->items[$id]['status'] ?? null) !== 'pending') {
+                        return;
+                    }
+                    $stored->items[$id]['progress'] = ['locale' => $locale, 'done' => $done, 'total' => $total];
+                    if ($stored->state === 'queued') {
+                        $stored->state = 'running';
+                    }
+                });
+            } catch (\Throwable $e) {
+                error_log("Translation job {$jobId}: progress of \"{$id}\" not stored: " . $e->getMessage());
+            }
         };
         $store(0, count($units));
         $this->translator->reportProgressTo($store);

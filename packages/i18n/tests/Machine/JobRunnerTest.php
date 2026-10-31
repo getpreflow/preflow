@@ -602,6 +602,64 @@ final class JobRunnerTest extends TestCase
         $this->assertSame('done', $job->state);
     }
 
+    public function test_a_progress_write_that_fails_never_costs_the_item(): void
+    {
+        $inner = new FileJobStore($this->dir);
+        // Fails every write that would store progress, as a lock or disk error would.
+        $store = new class ($inner) implements JobStore {
+            public int $refused = 0;
+
+            public function __construct(private readonly JobStore $inner) {}
+
+            public function save(Job $job): void
+            {
+                $this->inner->save($job);
+            }
+
+            public function get(string $id): ?Job
+            {
+                return $this->inner->get($id);
+            }
+
+            public function update(string $id, \Closure $change): ?Job
+            {
+                $probe = $this->inner->get($id);
+                if ($probe !== null) {
+                    $change($probe);
+                    foreach ($probe->items as $item) {
+                        if (isset($item['progress'])) {
+                            $this->refused++;
+                            throw new \RuntimeException("Cannot lock job {$id}.");
+                        }
+                    }
+                }
+
+                return $this->inner->update($id, $change);
+            }
+
+            public function recent(int $limit): array
+            {
+                return $this->inner->recent($limit);
+            }
+        };
+        $runner = $this->runner([self::echo()], $store, 5);
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['1']);
+        $runner->start($job->id);
+        $log = ini_set('error_log', $this->dir . '/php-error.log');
+
+        try {
+            $job = $runner->step($job->id);
+        } finally {
+            ini_set('error_log', (string) $log);
+        }
+
+        $this->assertGreaterThan(0, $store->refused, 'progress writes were tried and failed');
+        $this->assertSame('done', $job->items['1']['status'], 'progress is display only: the paid results stay');
+        $this->assertSame(2, $job->items['1']['translated']);
+        $this->assertSame('DE:First text', $this->source->translations['1']['de']['text']);
+        $this->assertStringContainsString('Cannot lock job', (string) @file_get_contents($this->dir . '/php-error.log'), 'logged, not silent');
+    }
+
     public function test_progress_never_revives_a_stopped_job(): void
     {
         $store = new FileJobStore($this->dir);
