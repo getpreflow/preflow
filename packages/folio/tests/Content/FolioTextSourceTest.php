@@ -160,38 +160,46 @@ final class FolioTextSourceTest extends TestCase
         $this->assertSame(PublishState::Changed, $this->publisher()->state($working));
     }
 
-    public function test_version_conflict_is_conflict_outcome(): void
+    public function test_a_save_racing_the_write_is_retried_once_and_the_write_lands(): void
+    {
+        $this->working('article', 'a1', ['title' => ['en' => 'Hello'], 'summary' => ['en' => 'Sum'], '_version' => 3]);
+        $source = $this->racingSource($racing);
+        $source->units('a1', 'de', Scope::Needed);
+        // Lands between write()'s read and its save, as an autosave of another field would.
+        $racing->raceOnce(function (): void {
+            $this->working('article', 'a1', ['title' => ['en' => 'Hello'], 'summary' => ['en' => 'Sum, edited'], '_version' => 4]);
+        });
+
+        $outcome = $source->write('a1', 'de', ['title' => 'Hallo']);
+
+        $this->assertSame(WriteOutcomeStatus::Written, $outcome->status, 'retried once from a fresh read');
+        $stored = $this->stored('article', 'a1');
+        $this->assertSame(['en' => 'Hello', 'de' => 'Hallo'], $stored->get('title'));
+        $this->assertSame(['en' => 'Sum, edited'], $stored->get('summary'), 'their save is kept');
+        $this->assertSame(5, (int) $stored->get('_version'));
+    }
+
+    public function test_a_save_racing_the_write_twice_is_a_conflict_outcome(): void
     {
         $this->working('article', 'a1', ['title' => ['en' => 'Hello'], '_version' => 3]);
-        $app = $this->app();
-        $c = $app->container();
-        $dm = $c->get(DataManager::class);
-        $racing = new RacingDriver($dm->driver('json'));
-        $racing->raceOnce(function (): void {
+        $source = $this->racingSource($racing);
+        $racing->raceOnce(function () use ($racing): void {
             $this->working('article', 'a1', ['title' => ['en' => 'Theirs'], '_version' => 4]);
+            $racing->raceOnce(function (): void {
+                $this->working('article', 'a1', ['title' => ['en' => 'Theirs again'], '_version' => 5]);
+            });
         });
-        $racingDm = new DataManager(['json' => $racing, 'default' => $dm->driver('default')], 'default', $dm->getTypeRegistry());
-        $source = new FolioTextSource(
-            'article',
-            $c->get(TypeCatalog::class),
-            $racingDm,
-            $c->get(TranslationStatus::class),
-            $c->get(FieldTypeRegistry::class),
-            new Publisher($racingDm, $c->get(TypeCatalog::class), $c->get(RecordValidator::class)),
-            new RecordLabeler(),
-            $c->get(TranslationSettings::class),
-        );
 
         $outcome = $source->write('a1', 'de', ['title' => 'Hallo']);
 
         $this->assertSame(WriteOutcomeStatus::Conflict, $outcome->status);
         $this->assertNotNull($outcome->message);
         $stored = $this->stored('article', 'a1');
-        $this->assertSame(['en' => 'Theirs'], $stored->get('title'), 'their save is kept, never overwritten');
-        $this->assertSame(4, (int) $stored->get('_version'));
+        $this->assertSame(['en' => 'Theirs again'], $stored->get('title'), 'their save is kept, never overwritten');
+        $this->assertSame(5, (int) $stored->get('_version'));
     }
 
-    public function test_a_save_between_units_and_write_is_a_conflict_and_the_human_text_survives(): void
+    public function test_a_human_text_saved_between_units_and_write_is_left_alone_and_the_rest_is_written(): void
     {
         $this->working('article', 'a1', ['title' => ['en' => 'Hello'], 'summary' => ['en' => 'Sum']]);
         $source = $this->source('article');
@@ -204,24 +212,62 @@ final class FolioTextSourceTest extends TestCase
 
         $outcome = $source->write('a1', 'de', ['title' => 'Hallo', 'summary' => 'Summe']);
 
-        $this->assertSame(WriteOutcomeStatus::Conflict, $outcome->status, 'written with the version units() saw');
+        $this->assertSame(WriteOutcomeStatus::Written, $outcome->status);
+        $this->assertSame(['title'], $outcome->leftAlone);
         $stored = $this->stored('article', 'a1');
-        $this->assertSame(['en' => 'Hello', 'de' => 'Grüss dich'], $stored->get('title'));
-        $this->assertSame(['en' => 'Sum'], $stored->get('summary'), 'nothing of the run was written');
+        $this->assertSame(['en' => 'Hello', 'de' => 'Grüss dich'], $stored->get('title'), 'the human text wins');
+        $this->assertSame(['en' => 'Sum', 'de' => 'Summe'], $stored->get('summary'));
+        $this->assertSame(['summary'], array_keys($stored->get(TranslationStatus::MACHINE)['de']), 'only the written text is marked machine-made');
     }
 
-    public function test_a_save_of_another_field_between_units_and_write_is_a_conflict(): void
+    public function test_a_save_of_another_field_between_units_and_write_does_not_lose_the_translation(): void
+    {
+        $this->working('article', 'a1', ['title' => ['en' => 'Hello'], 'summary' => ['en' => 'Sum'], 'secret' => ['en' => 'Secret']]);
+        $source = $this->source('article');
+        $source->units('a1', 'de', Scope::Needed);
+
+        // The edit form's autosave: a field the run does not translate.
+        $theirs = $this->stored('article', 'a1');
+        $theirs->set('secret', ['en' => 'Secret, edited']);
+        $this->publisher()->saveDraft($theirs, (int) $theirs->get('_version'));
+        $version = (int) $this->stored('article', 'a1')->get('_version');
+
+        $outcome = $source->write('a1', 'de', ['title' => 'Hallo', 'summary' => 'Summe']);
+
+        $this->assertSame(WriteOutcomeStatus::Written, $outcome->status);
+        $this->assertSame([], $outcome->leftAlone);
+        $stored = $this->stored('article', 'a1');
+        $this->assertSame(['en' => 'Hello', 'de' => 'Hallo'], $stored->get('title'));
+        $this->assertSame(['en' => 'Sum', 'de' => 'Summe'], $stored->get('summary'));
+        $this->assertSame(['en' => 'Secret, edited'], $stored->get('secret'), 'their save is kept');
+        $this->assertSame($version + 1, (int) $stored->get('_version'));
+        $this->assertSame(['title', 'summary'], array_keys($stored->get(TranslationStatus::MACHINE)['de']));
+        $this->assertSame([], $this->translationStatus()->outdated($stored->getType(), $stored, 'de'));
+    }
+
+    public function test_a_source_text_changed_between_units_and_write_is_written_and_shows_as_outdated(): void
     {
         $this->working('article', 'a1', ['title' => ['en' => 'Hello'], 'summary' => ['en' => 'Sum']]);
         $source = $this->source('article');
         $source->units('a1', 'de', Scope::Needed);
 
         $theirs = $this->stored('article', 'a1');
-        $theirs->set('summary', ['en' => 'Sum, edited']);
+        $theirs->set('title', ['en' => 'Hello there']);
         $this->publisher()->saveDraft($theirs, (int) $theirs->get('_version'));
 
-        $this->assertSame(WriteOutcomeStatus::Conflict, $source->write('a1', 'de', ['title' => 'Hallo'])->status);
-        $this->assertSame(['en' => 'Hello'], $this->stored('article', 'a1')->get('title'));
+        $outcome = $source->write('a1', 'de', ['title' => 'Hallo', 'summary' => 'Summe']);
+
+        $this->assertSame(WriteOutcomeStatus::Written, $outcome->status);
+        $stored = $this->stored('article', 'a1');
+        $this->assertSame(['en' => 'Hello there', 'de' => 'Hallo'], $stored->get('title'));
+        $status = $this->translationStatus();
+        $this->assertSame(
+            ['title'],
+            array_map(static fn (TranslatableText $t): string => $t->path, $status->outdated($stored->getType(), $stored, 'de')),
+            'translated from the English units() read, so it needs another look',
+        );
+        $this->assertSame('Hello', $status->previousSource($stored, 'de', 'title'));
+        $this->assertSame('Sum', $status->previousSource($stored, 'de', 'summary'));
     }
 
     public function test_units_of_two_languages_then_two_writes_both_land(): void
@@ -394,6 +440,26 @@ final class FolioTextSourceTest extends TestCase
             'title' => ['en' => 'Hello'],
             'facts' => [['id' => 'f1', 'text' => ['en' => 'Fact', 'de' => 'Menschlich']]],
         ]);
+    }
+
+    /** An article source on a RacingDriver, to stage a save between write()'s read and its save. */
+    private function racingSource(?RacingDriver &$racing): FolioTextSource
+    {
+        $c = $this->app()->container();
+        $dm = $c->get(DataManager::class);
+        $racing = new RacingDriver($dm->driver('json'));
+        $racingDm = new DataManager(['json' => $racing, 'default' => $dm->driver('default')], 'default', $dm->getTypeRegistry());
+
+        return new FolioTextSource(
+            'article',
+            $c->get(TypeCatalog::class),
+            $racingDm,
+            $c->get(TranslationStatus::class),
+            $c->get(FieldTypeRegistry::class),
+            new Publisher($racingDm, $c->get(TypeCatalog::class), $c->get(RecordValidator::class)),
+            new RecordLabeler(),
+            $c->get(TranslationSettings::class),
+        );
     }
 
     private function source(string $type): TextSource

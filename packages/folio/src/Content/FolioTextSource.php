@@ -35,19 +35,26 @@ use Preflow\Validation\ValidationException;
  * cancelled, as a save by someone who may not publish cancels it, so machine texts never go live
  * unreviewed. Types without publishing are saved directly (writesLive()).
  *
- * A run reads units, waits seconds to minutes for the model, then writes. So that a save made in
- * that time is never overwritten, units() remembers the record's version and the target texts it
- * saw: write() saves with that version (a save in between is a Conflict), and leaves out any text
- * that no longer is what units() saw (for types without publishing, which have no version check).
+ * A run reads units, waits seconds to minutes for the model, then writes. A save made in that time
+ * (an autosave of the edit form, another field, a person's own translation) is never overwritten
+ * and never costs the run its translation: units() remembers the target texts it saw, and write()
+ * starts from the record as it is now and leaves out any text that no longer is what units() saw
+ * (leftAlone, the person's text wins). A text whose default text changed meanwhile is written but
+ * stamped with the default text units() sent, so it shows as outdated. The version check of the
+ * save only guards the moment between write()'s own read and its save; a save landing there makes
+ * write() start over once from a fresh read, and a second one is a Conflict.
  * The memory lives in this instance, which TextSources keeps for the request a run step runs in.
  */
 final class FolioTextSource implements TextSource
 {
-    /** @var array<string, int> record id => _version when units() last read it */
-    private array $versions = [];
-
     /** @var array<string, array<string, array<string, ?string>>> record id => locale => path => target text units() saw */
     private array $seen = [];
+
+    /** @var array<string, array<string, array<string, string>>> record id => locale => path => default text units() sent */
+    private array $sent = [];
+
+    /** Times write() reads and saves again when a save lands between its read and its save. */
+    private const int RACE_RETRIES = 1;
 
     public function __construct(
         private readonly string $typeKey,
@@ -104,8 +111,8 @@ final class FolioTextSource implements TextSource
         $context = ['type' => $this->label(), 'record' => $this->labeler->label($record)];
         $revisions = null; // read once, and only when an outdated text has no stored source
         $units = [];
-        $this->versions[$id] = (int) ($record->get('_version') ?? 0);
         $this->seen[$id][$to] = [];
+        $this->sent[$id][$to] = [];
         foreach ($this->texts($def, $record) as $text) {
             $source = $text->in($from);
             if ($source === null) {
@@ -122,6 +129,7 @@ final class FolioTextSource implements TextSource
             }
             $field = self::topField($text->path);
             $this->seen[$id][$to][$text->path] = $text->in($to);
+            $this->sent[$id][$to][$text->path] = $source;
             $units[] = new TranslationUnit(
                 id: $text->path,
                 label: $text->label,
@@ -147,6 +155,37 @@ final class FolioTextSource implements TextSource
         if (!$this->translatesInto($def, $to)) {
             return new WriteOutcome(WriteOutcomeStatus::Skipped, "\"{$to}\" is not a language to translate into.");
         }
+
+        // A save landing between the read and the save below: start over from a fresh read, once.
+        for ($attempt = 0; ; $attempt++) {
+            try {
+                $outcome = $this->writeOnce($def, $id, $to, $texts);
+            } catch (VersionConflict $e) {
+                if ($attempt < self::RACE_RETRIES) {
+                    continue;
+                }
+                $hadDraftChanges = ($record = $this->dm->findType($this->typeKey, $id)) !== null
+                    && $this->publisher?->state($record) === PublishState::Changed;
+
+                return new WriteOutcome(WriteOutcomeStatus::Conflict, $e->getMessage(), $hadDraftChanges);
+            }
+            if ($outcome->status === WriteOutcomeStatus::Written) {
+                unset($this->seen[$id][$to], $this->sent[$id][$to]);
+            }
+
+            return $outcome;
+        }
+    }
+
+    /**
+     * One read-and-save of write(): starts from the record as stored now and saves against the
+     * version just read, so only a save landing in between conflicts.
+     *
+     * @param array<string, string> $texts
+     * @throws VersionConflict when a save landed between this read and this save
+     */
+    private function writeOnce(TypeDefinition $def, string $id, string $to, array $texts): WriteOutcome
+    {
         $record = $this->dm->findType($this->typeKey, $id);
         if ($record === null) {
             return new WriteOutcome(WriteOutcomeStatus::Skipped, "Record \"{$id}\" not found.");
@@ -216,11 +255,21 @@ final class FolioTextSource implements TextSource
 
         $after = $this->translations->stamp($def, $record, $candidate, $to);
         $after = $this->translations->markMachine($def, $after, $to, $written);
+        // A default text changed while the model worked: the translation is of the one sent, so
+        // it is stamped with that one and shows as outdated instead of passing for current.
+        $sent = array_intersect_key($this->sent[$id][$to] ?? [], array_flip($written));
+        $current = [];
+        foreach ($this->texts($def, $after) as $text) {
+            $current[$text->path] = $text->in($from);
+        }
+        $sent = array_filter($sent, static fn (string $source, string $path): bool => trim($source) !== trim($current[$path] ?? ''), ARRAY_FILTER_USE_BOTH);
+        if ($sent !== []) {
+            $after = $this->translations->madeFrom($after, $to, $sent);
+        }
 
         if ($this->writesLive()) {
             $this->dm->saveType($after, false);
             $this->review?->refresh($after);
-            unset($this->seen[$id][$to]);
 
             return new WriteOutcome(WriteOutcomeStatus::Written, $leftMessage, false, $leftAlone);
         }
@@ -230,20 +279,13 @@ final class FolioTextSource implements TextSource
         if (($record->get('_publish_at') ?? '') !== '') {
             $after->set('_publish_at', '');
         }
-        // The version units() saw, not the one just read: a save in between must be a conflict.
-        $version = $this->versions[$id] ?? (int) ($record->get('_version') ?? 0);
+        // The version just read: what changed since units() read the record is already taken care
+        // of above (texts left alone, kept fields), so only a save landing from here on conflicts.
         try {
-            $this->publisher->saveDraft($after, $version);
-        } catch (VersionConflict $e) {
-            return new WriteOutcome(WriteOutcomeStatus::Conflict, $e->getMessage(), $hadDraftChanges);
+            $this->publisher->saveDraft($after, (int) ($record->get('_version') ?? 0));
         } catch (ValidationException $e) {
             return new WriteOutcome(WriteOutcomeStatus::Skipped, self::firstError($e), $hadDraftChanges);
         }
-        // This write is the newest version now; another locale's units of the same read stay valid.
-        if (isset($this->versions[$id])) {
-            $this->versions[$id] = $version + 1;
-        }
-        unset($this->seen[$id][$to]);
 
         return new WriteOutcome(WriteOutcomeStatus::Written, $leftMessage, $hadDraftChanges, $leftAlone);
     }

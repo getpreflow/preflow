@@ -231,6 +231,30 @@ final class TranslationStatus
         return $copy;
     }
 
+    /**
+     * Records that the translations at the given paths in $locale were made from the given default
+     * texts, which may differ from the record's current ones: a machine run whose source changed
+     * while the model worked stamps what it sent, so the translation shows as outdated. Returns an
+     * updated copy; nothing is saved.
+     *
+     * @param array<string, string> $defaultTexts path => the default text translated
+     */
+    public function madeFrom(DynamicRecord $record, string $locale, array $defaultTexts): DynamicRecord
+    {
+        $fingerprints = self::entries($record, self::KEY);
+        $sources = self::entries($record, self::SOURCES);
+        foreach ($defaultTexts as $path => $text) {
+            $fingerprints[$locale][(string) $path] = $this->fingerprint($text);
+            $sources = self::withSource($sources, $locale, (string) $path, $text);
+        }
+
+        $copy = clone $record;
+        self::put($copy, self::KEY, $fingerprints);
+        self::put($copy, self::SOURCES, $sources);
+
+        return $copy;
+    }
+
     /** The fingerprint of a default text (trimmed). */
     public function fingerprint(?string $defaultText): string
     {
