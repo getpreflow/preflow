@@ -699,6 +699,28 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .form-radio, .form-check, .folio-visibility-option { display: inline-flex; align-items: center; gap: 8px; margin-right: 16px; font-weight: 450; }
 :is(.form-radio, .form-check, .folio-visibility-option) > input { flex: none; margin: 0; }
 
+/* Field groups (radio and checkbox lists, relations, roles): fieldsets keep the grouping for
+   assistive tech, but show no border and the legend reads as the field label above. The legend
+   is floated full width (the reliable way across browsers to lay it out as a plain block that
+   honours its margin); whatever follows clears it. Zero specificity on the fieldset, so a
+   package's legend class (.rbac-legend) or the hidden chips legend still wins. */
+:where(fieldset.form-group) { border: 0; padding: 0; margin-inline: 0; min-width: 0; }
+:where(fieldset.form-group) > legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin-bottom: 7px;
+  font-size: 13px;
+  font-weight: 620;
+  color: var(--c-text);
+}
+:where(fieldset.form-group) > legend ~ * { clear: left; }
+
+/* Boolean: the box inline with its label (label weight kept), help and error below. */
+.folio-boolean > .form-check { display: inline-flex; align-items: center; gap: 9px; margin: 0; font-weight: 620; cursor: pointer; }
+.folio-boolean > .form-help { margin-top: 4px; padding-left: 25px; }
+.folio-boolean > .form-error { padding-left: 25px; }
+
 /* Sticky publishing bar: sticks to the bottom of whatever scrolls the form
    (the page, or the preview's form pane) and reflows for narrow forms. */
 .folio-form-actions {
@@ -1515,19 +1537,12 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   overflow: hidden; clip-path: inset(50%); white-space: nowrap;
 }
 .folio-chips-group > .form-help { display: block; margin-top: 6px; }
-.folio-chips-group .folio-chip { max-width: 100%; }
-.folio-chips-group .folio-chip-label { min-width: 0; overflow-wrap: anywhere; }
+/* Long option labels wrap inside the chip instead of overflowing the field. */
+.folio-chips .folio-chip { max-width: 100%; }
+.folio-chips .folio-chip-label { min-width: 0; overflow-wrap: anywhere; }
 .folio-chip input { flex: none; }
 
-/* Multi relation: a fieldset of checkbox chips (same vocabulary as the rbac permission chips). */
-.folio-relation-multi { border: 0; padding: 0; margin-inline: 0; min-width: 0; }
-.folio-relation-multi > legend {
-  padding: 0;
-  margin-bottom: 7px;
-  font-size: 13px;
-  font-weight: 620;
-  color: var(--c-text);
-}
+/* Relations, radio groups and roles: fieldsets of chips under the label (see "Field groups" above). */
 .folio-relation-filter { margin-bottom: 10px; max-width: 280px; }
 .folio-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .folio-chip {
@@ -1554,6 +1569,10 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   color: var(--c-accent-text);
 }
 .folio-chip:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--c-focus-ring); }
+/* Disabled (a denied role, or every box in a read-only fieldset[disabled]): readable, visibly inert. */
+.folio-chip:has(input:disabled) { color: var(--c-text-muted); background: var(--c-surface-2); border-color: var(--c-border); cursor: default; }
+.folio-chip:has(input:disabled:checked) { background: var(--c-neutral-soft); border-color: var(--c-border-strong); }
+.folio-chip:has(input:disabled) input { cursor: default; }
 .folio-chip[hidden] { display: none; }
 .folio-chip-remove { border: 0; background: none; color: inherit; cursor: pointer; padding: 0 2px; font: inherit; line-height: 1; }
 .folio-chip-remove:hover { color: var(--c-danger); }
@@ -1570,7 +1589,8 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-relation-result:hover, .folio-relation-result:focus-visible { background: var(--c-row-hover); }
 .folio-relation-more { color: var(--c-text-muted); }
 .folio-relation-empty { padding: 6px 8px; color: var(--c-text-muted); }
-.folio-relation-multi.has-error .folio-chip { border-color: var(--c-danger); }
+/* Beats the checked chip's accent border, so every chip of a failed field shows the error. */
+.form-group.has-error .folio-chip { border-color: var(--c-danger); }
 
 .folio-preview-frame {
   flex: 1 1 auto;

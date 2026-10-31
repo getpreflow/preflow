@@ -146,4 +146,24 @@ final class AdminCssTest extends TestCase
         $this->assertStringContainsString('.folio-sort:hover .folio-sort-mark.is-idle, .folio-sort:focus-visible .folio-sort-mark.is-idle', $css);
         $this->assertMatchesRegularExpression('/\.folio-sort \{[^}]*cursor: pointer;/', $css);
     }
+
+    public function test_field_groups_have_the_label_above_and_no_border(): void
+    {
+        $css = $this->css();
+        // Radio/checkbox groups and relation fields are fieldsets: borderless, the legend laid out like a
+        // field label (floated full width, so every browser places it as a plain block above the options).
+        $this->assertMatchesRegularExpression('/:where\(fieldset\.form-group\) \{[^}]*border: 0;[^}]*padding: 0;/', $css);
+        $this->assertMatchesRegularExpression('/:where\(fieldset\.form-group\) > legend \{[^}]*float: left;[^}]*width: 100%;[^}]*padding: 0;[^}]*font-weight: 620;/', $css);
+        $this->assertMatchesRegularExpression('/:where\(fieldset\.form-group\) > legend ~ \* \{ clear: left; \}/', $css);
+        // A boolean: the box inline with its label, the label keeps the field-label weight.
+        $this->assertMatchesRegularExpression('/\.folio-boolean > \.form-check \{[^}]*display: inline-flex;[^}]*font-weight: 620;/', $css);
+    }
+
+    public function test_chips_look_disabled_in_read_only_forms(): void
+    {
+        $css = $this->css();
+        // input:disabled also matches every box inside a fieldset[disabled].
+        $this->assertMatchesRegularExpression('/\.folio-chip:has\(input:disabled\) \{[^}]*color: var\(--c-text-muted\);[^}]*cursor: default;/', $css);
+        $this->assertStringContainsString('.form-group.has-error .folio-chip { border-color: var(--c-danger); }', $css);
+    }
 }

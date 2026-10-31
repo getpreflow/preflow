@@ -15,7 +15,7 @@ use Preflow\Rbac\RoleStore;
 use Preflow\Rbac\StaffManagers;
 
 /**
- * A user's roles ("rbac_roles"): checkboxes of the roles of the user type's population
+ * A user's roles ("rbac_roles"): checkbox chips (Folio's .folio-chips) of the roles of the user type's population
  * ("users" of the type) or of the field's "population". The value is a list of role names;
  * a stored role no longer defined stays checked under its name, so saving keeps it.
  * On a staff account (StaffRules) a role whose patterns the signed-in user doesn't cover
@@ -57,12 +57,14 @@ final class RolesFieldType implements FieldType
 
         $html = '<fieldset class="form-group rbac-roles' . ($ctx->errors !== [] ? ' has-error' : '') . '"><legend>' . $e($ctx->label ?? 'Roles') . '</legend>'
             . "\n" . '<input type="hidden" name="' . $name . '" value="">'; // none checked still posts an empty list
+        $html .= "\n" . '<div class="folio-chips">';
         foreach ($roles as $role => $label) {
             $denied = $held !== null && !PermissionCoverage::coversAll($held, $patterns[(string) $role] ?? []);
-            $html .= "\n" . '<label class="form-radio"' . ($denied ? ' title="' . $e($this->messages->get('matrix.denied')) . '"' : '') . '><input type="checkbox" name="' . $name . '" value="' . $e((string) $role) . '"'
+            $html .= "\n" . '<label class="folio-chip"' . ($denied ? ' title="' . $e($this->messages->get('matrix.denied')) . '"' : '') . '><input type="checkbox" name="' . $name . '" value="' . $e((string) $role) . '"'
                 . ($denied ? ' disabled data-rbac-denied' : '')
-                . (in_array((string) $role, $selected, true) ? ' checked' : '') . '> ' . $e($label) . '</label>';
+                . (in_array((string) $role, $selected, true) ? ' checked' : '') . '><span class="folio-chip-label">' . $e($label) . '</span></label>';
         }
+        $html .= "\n" . '</div>';
         if ($population === null) {
             $html .= "\n" . '<div class="form-help">' . $e($this->messages->get('roles_field.no_population')) . '</div>';
         }

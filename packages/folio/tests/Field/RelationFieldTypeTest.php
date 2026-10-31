@@ -218,6 +218,8 @@ final class RelationFieldTypeTest extends TestCase
         $this->assertStringContainsString('data-folio-relation-remote', $html);
         $this->assertStringContainsString('data-folio-relation-url="/folio/_relation/author"', $html);
         $this->assertStringContainsString('<input type="hidden" name="writer" value="a2">', $html);
+        // Label above (a borderless group's legend), the linked record as a chip, the search below it.
+        $this->assertMatchesRegularExpression('#<fieldset class="form-group folio-relation folio-relation-remote" data-folio-relation-remote data-folio-relation-name="writer">\s*<legend>Writer</legend>\s*<div class="folio-chips" data-folio-relation-selected>\s*<span class="folio-chip" data-folio-relation-item>.*</div>\s*<input type="search"#s', $html);
         $this->assertStringContainsString('Bob', $html);
         $this->assertStringNotContainsString('Person 100', $html);
         $this->assertStringNotContainsString('Ann', $html);

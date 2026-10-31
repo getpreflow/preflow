@@ -27,22 +27,28 @@ final class BooleanFieldType extends AbstractScalarFieldType implements \Preflow
         return 'checkbox';
     }
 
+    /**
+     * The box sits inline in its label (label text after it), help and the first error below:
+     * a lone checkbox on a line of its own under a label line reads as a missing control.
+     */
     public function renderEditor(FieldContext $ctx): string
     {
-        $options = [
-            'type' => 'checkbox',
-            'value' => $this->normalizeInput($ctx->value, $ctx->config) ? '1' : '',
-            'help' => $ctx->help ?? '',
-            'errors' => $ctx->errors,
-            'attrs' => ['value' => '1'],
-        ];
-        if ($ctx->label !== null) {
-            $options['label'] = $ctx->label;
+        $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+        $name = $e($ctx->name);
+        $checked = $this->normalizeInput($ctx->value, $ctx->config) ? ' checked' : '';
+
+        $html = '<input type="hidden" name="' . $name . '" value="0">'
+            . '<div class="form-group folio-boolean' . ($ctx->errors !== [] ? ' has-error' : '') . '">' . "\n"
+            . '  <label class="form-check" for="' . $name . '"><input type="checkbox" name="' . $name . '" id="' . $name . '" value="1"' . $checked . '>'
+            . '<span class="folio-boolean-label">' . $e($ctx->label ?? $this->renderer->humanize($ctx->name)) . '</span></label>' . "\n";
+        if ($ctx->help !== null && $ctx->help !== '') {
+            $html .= '  <small class="form-help">' . $e($ctx->help) . '</small>' . "\n";
+        }
+        if ($ctx->errors !== []) {
+            $html .= '  <div class="form-error">' . $e((string) (array_values($ctx->errors)[0] ?? '')) . '</div>' . "\n";
         }
 
-        $hidden = '<input type="hidden" name="' . htmlspecialchars($ctx->name, ENT_QUOTES, 'UTF-8') . '" value="0">';
-
-        return $hidden . $this->renderer->renderField($ctx->name, $options);
+        return $html . '</div>';
     }
 
     public function normalizeInput(mixed $raw, array $config): bool

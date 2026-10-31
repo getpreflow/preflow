@@ -45,6 +45,29 @@ final class ChoiceFieldTypesTest extends TestCase
         $this->assertStringNotContainsString(' checked', $unchecked);
     }
 
+    public function test_boolean_editor_puts_the_checkbox_inline_with_its_label(): void
+    {
+        $html = (new BooleanFieldType())->renderEditor(new FieldContext(name: 'active', label: 'Active', value: true, help: 'An inactive account can\'t sign in.'));
+
+        // The hidden "0" still precedes the box, so unchecking posts active=0.
+        $this->assertStringStartsWith('<input type="hidden" name="active" value="0">', $html);
+        // One label holds the box and the field's label text: no label line with a lone box below it.
+        $this->assertMatchesRegularExpression(
+            '#<div class="form-group folio-boolean">\s*<label class="form-check" for="active"><input type="checkbox" name="active" id="active" value="1" checked><span class="folio-boolean-label">Active</span></label>\s*<small class="form-help">An inactive account can&\#039;t sign in\.</small>\s*</div>#',
+            $html,
+        );
+        $this->assertSame(1, substr_count($html, '<label'));
+    }
+
+    public function test_boolean_editor_shows_errors_below(): void
+    {
+        $html = (new BooleanFieldType())->renderEditor(new FieldContext(name: 'terms', label: 'Terms', value: false, errors: ['Accept the terms.']));
+
+        $this->assertStringContainsString('<div class="form-group folio-boolean has-error">', $html);
+        $this->assertStringContainsString('<input type="checkbox" name="terms" id="terms" value="1">', $html);
+        $this->assertStringContainsString('<div class="form-error">Accept the terms.</div>', $html);
+    }
+
     public function test_boolean_frontend_is_yes_no(): void
     {
         $this->assertSame('Yes', (new BooleanFieldType())->renderFrontend(true, []));
@@ -112,6 +135,22 @@ final class ChoiceFieldTypesTest extends TestCase
         $this->assertStringContainsString('type="radio"', $html);
         $this->assertMatchesRegularExpression('/value="m"[^>]*checked/', $html);
         $this->assertStringNotContainsString('<select', $html);
+    }
+
+    public function test_select_radio_display_is_a_labelled_group_of_chips(): void
+    {
+        $html = (new SelectFieldType())->renderEditor(new FieldContext(
+            name: 'size',
+            label: 'Size',
+            value: 'm',
+            config: ['options' => ['s' => 'Small', 'm' => 'Medium'], 'display' => 'radio'],
+        ));
+
+        // The group's name is its legend (styled as the field label above, no border); posted names unchanged.
+        $this->assertStringContainsString('<fieldset class="form-group folio-choice-group"><legend>Size</legend>', $html);
+        $this->assertStringContainsString('<div class="folio-chips">', $html);
+        $this->assertStringContainsString('<label class="folio-chip"><input type="radio" name="size" value="s"><span class="folio-chip-label">Small</span></label>', $html);
+        $this->assertStringContainsString('<label class="folio-chip"><input type="radio" name="size" value="m" checked><span class="folio-chip-label">Medium</span></label>', $html);
     }
 
     public function test_text_monospace_option(): void

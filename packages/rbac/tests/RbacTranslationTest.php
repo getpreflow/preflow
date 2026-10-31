@@ -72,10 +72,10 @@ final class RbacTranslationTest extends TestCase
         $this->as('admin');
 
         $edit = html_entity_decode((string) $this->send('GET', '/folio/staff/s-1/edit')->getBody(), ENT_QUOTES);
-        foreach (['Compte', 'Pas encore de mot de passe', 'Envoyer l’invitation', 'Désactiver', '> Administrateur</label>'] as $text) {
+        foreach (['Compte', 'Pas encore de mot de passe', 'Envoyer l’invitation', 'Désactiver', '>Administrateur</span></label>'] as $text) {
             $this->assertStringContainsString($text, $edit);
         }
-        foreach (['No password yet', 'Send invitation', '>Disable<', '> Administrator</label>'] as $english) {
+        foreach (['No password yet', 'Send invitation', '>Disable<', '>Administrator</span></label>'] as $english) {
             $this->assertStringNotContainsString($english, $edit);
         }
 

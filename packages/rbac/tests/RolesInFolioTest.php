@@ -92,12 +92,12 @@ final class RolesInFolioTest extends TestCase
 
         $form = (string) $this->send('GET', '/folio/member/new')->getBody();
         $this->assertMatchesRegularExpression(
-            '#<legend>Roles</legend>\s*<input type="hidden" name="roles\[\]" value="">\s*<label class="form-radio"><input type="checkbox" name="roles\[\]" value="member"> Member</label>\s*<label class="form-radio"><input type="checkbox" name="roles\[\]" value="supporter"> Supporter</label>\s*</fieldset>#',
+            '#<fieldset class="form-group rbac-roles"><legend>Roles</legend>\s*<input type="hidden" name="roles\[\]" value="">\s*<div class="folio-chips">\s*<label class="folio-chip"><input type="checkbox" name="roles\[\]" value="member"><span class="folio-chip-label">Member</span></label>\s*<label class="folio-chip"><input type="checkbox" name="roles\[\]" value="supporter"><span class="folio-chip-label">Supporter</span></label>\s*</div>\s*</fieldset>#',
             $form,
         );
         // A type without "users" takes the field config's "population".
         $this->assertMatchesRegularExpression(
-            '#<legend>Member roles</legend>\s*<input type="hidden" name="member_roles\[\]" value="">\s*<label class="form-radio"><input type="checkbox" name="member_roles\[\]" value="member"> Member</label>\s*<label class="form-radio"><input type="checkbox" name="member_roles\[\]" value="supporter"> Supporter</label>\s*</fieldset>#',
+            '#<fieldset class="form-group rbac-roles"><legend>Member roles</legend>\s*<input type="hidden" name="member_roles\[\]" value="">\s*<div class="folio-chips">\s*<label class="folio-chip"><input type="checkbox" name="member_roles\[\]" value="member"><span class="folio-chip-label">Member</span></label>\s*<label class="folio-chip"><input type="checkbox" name="member_roles\[\]" value="supporter"><span class="folio-chip-label">Supporter</span></label>\s*</div>\s*</fieldset>#',
             (string) $this->send('GET', '/folio/team/new')->getBody(),
         );
 
@@ -106,7 +106,7 @@ final class RolesInFolioTest extends TestCase
         $this->assertSame(['supporter'], $member->get('roles'));
 
         $edit = (string) $this->send('GET', '/folio/member/' . $member->getId() . '/edit')->getBody();
-        $this->assertStringContainsString('<input type="checkbox" name="roles[]" value="supporter" checked> Supporter', $edit);
+        $this->assertStringContainsString('<input type="checkbox" name="roles[]" value="supporter" checked><span class="folio-chip-label">Supporter</span>', $edit);
     }
 
     /** @return array<string, array{array<string, mixed>, string}> */
@@ -134,7 +134,7 @@ final class RolesInFolioTest extends TestCase
 
         [, $name] = explode('.', $field);
         $form = (string) $this->send('GET', '/folio/team/new')->getBody();
-        $this->assertStringContainsString('<input type="checkbox" name="' . $name . '[]" value="admin"> Administrator', $form);
+        $this->assertStringContainsString('<input type="checkbox" name="' . $name . '[]" value="admin"><span class="folio-chip-label">Administrator</span>', $form);
     }
 
     #[RunInSeparateProcess]
