@@ -391,6 +391,59 @@ final class AiTranslatorTest extends TestCase
         $this->assertSame([null], $reported, 'null, never 0.0: the run shows the cost as unknown');
     }
 
+    public function test_progress_is_reported_after_each_batch(): void
+    {
+        $fake = new FakeAiClient([self::echo()]);
+        $translator = $this->translator($fake, batchChars: 12000);
+        $reported = [];
+        $translator->reportProgressTo(static function (int $done, int $total) use (&$reported): void {
+            $reported[] = [$done, $total];
+        });
+        $units = [];
+        for ($i = 0; $i < 300; $i++) {
+            $units[] = $this->unit('u' . $i, str_pad((string) $i, 100, '.'));
+        }
+
+        $translator->translateUnits($units);
+
+        $this->assertCount(count($fake->requests()), $reported, 'once per request');
+        $done = array_column($reported, 0);
+        $this->assertSame($done, array_values(array_unique($done)), 'growing');
+        $this->assertSame([300, 300], end($reported));
+        $this->assertSame([300], array_values(array_unique(array_column($reported, 1))));
+
+        $reported = [];
+        $translator->translateUnits([$this->unit('a', 'One'), $this->unit('b', 'Two')]);
+        $this->assertSame([[2, 2]], $reported, 'each call counts its own units');
+
+        $translator->reportProgressTo(null);
+        $reported = [];
+        $translator->translateUnits([$this->unit('a', 'One')]);
+        $this->assertSame([], $reported, 'null stops it');
+    }
+
+    public function test_split_retries_count_as_they_finish(): void
+    {
+        $echo = self::echo();
+        $fake = new FakeAiClient([static function (AiRequest $r) use ($echo): AiResponse {
+            return in_array('unit 3', array_column(self::items($r), 'text'), true) ? self::stopped(StopReason::Blocked, 'SAFETY') : $echo($r);
+        }]);
+        $translator = $this->translator($fake);
+        $reported = [];
+        $translator->reportProgressTo(static function (int $done, int $total) use (&$reported): void {
+            $reported[] = [$done, $total];
+        });
+        $units = [];
+        for ($i = 1; $i <= 8; $i++) {
+            $units[] = $this->unit('u' . $i, 'unit ' . $i);
+        }
+
+        $translator->translateUnits($units);
+
+        // Finished: 1-2, 3 (failed), 4, 5-8; the failing requests in between count nothing.
+        $this->assertSame([[2, 8], [3, 8], [4, 8], [8, 8]], $reported);
+    }
+
     public function test_recitation_single_unit_retried_at_temperature_one(): void
     {
         $fake = new FakeAiClient([self::stopped(StopReason::Blocked, 'RECITATION'), self::echo()]);

@@ -24,8 +24,9 @@ use Preflow\Ai\Tuning;
  * second such request in a row means the provider is not reachable (AiUnavailable), so a run
  * stops instead of piling up requests. Each answer is checked: markup must survive, and glossary
  * terms not honoured become warnings. Requests ask for low reasoning: translating needs little.
+ * Progress (ReportsProgress) counts units as their request finishes, a split half as it finishes.
  */
-final class AiTranslator implements MachineTranslator, ReportsCost
+final class AiTranslator implements MachineTranslator, ReportsCost, ReportsProgress
 {
     /** Requests in a row that got no answer before the provider counts as not reachable. */
     private const UNREACHABLE_AFTER = 2;
@@ -33,8 +34,15 @@ final class AiTranslator implements MachineTranslator, ReportsCost
     /** @var (\Closure(?float): void)|null */
     private ?\Closure $costListener = null;
 
+    /** @var (\Closure(int, int): void)|null */
+    private ?\Closure $progressListener = null;
+
     /** Requests in a row, within one run(), that got no answer. */
     private int $unanswered = 0;
+
+    /** Units of the current run() through so far, and in it. */
+    private int $done = 0;
+    private int $total = 0;
 
     public function __construct(
         private readonly Ai $ai,
@@ -45,6 +53,11 @@ final class AiTranslator implements MachineTranslator, ReportsCost
     public function reportCostTo(?\Closure $listener): void
     {
         $this->costListener = $listener;
+    }
+
+    public function reportProgressTo(?\Closure $listener): void
+    {
+        $this->progressListener = $listener;
     }
 
     public function translate(string $text, string $to, ?Tuning $tuning = null, ?string $from = null, TextFormat $format = TextFormat::Plain): string
@@ -77,6 +90,8 @@ final class AiTranslator implements MachineTranslator, ReportsCost
         $client = $this->ai->client();
         $glossary = $this->settings->glossary();
         $this->unanswered = 0;
+        $this->done = 0;
+        $this->total = count($units);
 
         $results = [];
         foreach (TranslationPrompt::batches($units, $this->batchChars) as $batch) {
@@ -227,6 +242,7 @@ final class AiTranslator implements MachineTranslator, ReportsCost
                 ),
             };
         }
+        $this->reportProgress(count($batch));
     }
 
     /**
@@ -237,6 +253,16 @@ final class AiTranslator implements MachineTranslator, ReportsCost
     {
         foreach ($batch as $i => $unit) {
             $results[$i] = new TranslationResult($unit->id, UnitStatus::Failed, null, error: $reason);
+        }
+        $this->reportProgress(count($batch));
+    }
+
+    /** $units more are through (translated or failed): tells the listener, if any. */
+    private function reportProgress(int $units): void
+    {
+        $this->done += $units;
+        if ($this->progressListener !== null) {
+            ($this->progressListener)($this->done, $this->total);
         }
     }
 

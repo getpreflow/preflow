@@ -12,6 +12,11 @@ use Preflow\Ai\AiUnavailable;
  * the stored text alone. The job's cost is the sum of what its own requests cost, taken from the
  * translator (see ReportsCost); a request without a price marks it unknown, and a translator that
  * does not report leaves it at 0.
+ *
+ * While an item is translated, a translator that reports progress (ReportsProgress) has it stored
+ * on that item as "progress" => {locale, done, total}: before the first request and after each
+ * one, so a screen can show "120 of 410 texts" for a record that takes minutes. It is the
+ * progress of the language in hand and goes away when the item is through (its counts take over).
  */
 final class JobRunner
 {
@@ -161,6 +166,10 @@ final class JobRunner
                     try {
                         $item = $this->processItem($source, $current, $id);
                     } catch (AiUnavailable $e) {
+                        // The item stays pending for a later run, without a progress that no longer moves.
+                        $this->update($jobId, static function (Job $stored) use ($id): void {
+                            unset($stored->items[$id]['progress']);
+                        });
                         throw $e;
                     } catch (\Throwable $e) {
                         $item = ['status' => 'failed', 'message' => $e->getMessage()] + $current->items[$id];
@@ -297,7 +306,7 @@ final class JobRunner
 
             $texts = [];
             $firstError = null;
-            foreach ($this->translator->translateUnits($units, $job->note) as $result) {
+            foreach ($this->translateWithProgress($job->id, $id, $locale, $units, $job->note) as $result) {
                 $item['warnings'] += count($result->warnings);
                 if ($result->status === UnitStatus::Translated && $result->text !== null) {
                     $texts[$result->id] = $result->text;
@@ -338,6 +347,41 @@ final class JobRunner
         }
 
         return $item;
+    }
+
+    /**
+     * Translates one item's units in one language, storing the translator's progress on the item
+     * as it goes (see the class comment). Each write merges only that item's progress under the
+     * job's lock, and only while the item is still pending: another driver's items, a stop and a
+     * finished item are never touched. A job some other driver set back to "queued" at the end of
+     * its own step shows "running" again, since this one is still working on it.
+     *
+     * @param list<TranslationUnit> $units
+     * @return list<TranslationResult>
+     */
+    private function translateWithProgress(string $jobId, string $id, string $locale, array $units, ?string $note): array
+    {
+        if (!$this->translator instanceof ReportsProgress) {
+            return $this->translator->translateUnits($units, $note);
+        }
+        $store = function (int $done, int $total) use ($jobId, $id, $locale): void {
+            $this->store->update($jobId, static function (Job $stored) use ($id, $locale, $done, $total): void {
+                if (($stored->items[$id]['status'] ?? null) !== 'pending') {
+                    return;
+                }
+                $stored->items[$id]['progress'] = ['locale' => $locale, 'done' => $done, 'total' => $total];
+                if ($stored->state === 'queued') {
+                    $stored->state = 'running';
+                }
+            });
+        };
+        $store(0, count($units));
+        $this->translator->reportProgressTo($store);
+        try {
+            return $this->translator->translateUnits($units, $note);
+        } finally {
+            $this->translator->reportProgressTo(null);
+        }
     }
 
     /**

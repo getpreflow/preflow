@@ -10,7 +10,11 @@ namespace Preflow\I18n\Machine;
  */
 final class Job
 {
-    /** @var array<string, array{status: string, translated: int, failed: int, warnings: int, message: ?string, draft_changes: bool}> */
+    /**
+     * "progress" is there only while a driver translates the item (see JobRunner).
+     *
+     * @var array<string, array{status: string, translated: int, failed: int, warnings: int, message: ?string, draft_changes: bool, progress?: array{locale: string, done: int, total: int}}>
+     */
     public array $items = [];
 
     public function __construct(

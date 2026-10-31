@@ -53,14 +53,14 @@ final class JobRunnerTest extends TestCase
     }
 
     /** @param list<mixed> $script */
-    private function runner(array $script, ?JobStore $store = null): JobRunner
+    private function runner(array $script, ?JobStore $store = null, int $batchChars = 12000): JobRunner
     {
         $this->fake = new FakeAiClient($script);
         $ai = $this->ai($this->fake);
         $sources = new TextSources();
         $sources->add('games', fn () => $this->source);
 
-        return new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), $store ?? new FileJobStore($this->dir), $this->lease);
+        return new JobRunner($sources, new AiTranslator($ai, $this->settings(), $batchChars), new Estimator($ai), $store ?? new FileJobStore($this->dir), $this->lease);
     }
 
     public function test_plan_estimates_without_writing(): void
@@ -202,6 +202,7 @@ final class JobRunnerTest extends TestCase
         $this->assertSame('no key', $saved->message);
         $this->assertSame('done', $saved->items['1']['status']);
         $this->assertSame('pending', $saved->items['2']['status']);
+        $this->assertArrayNotHasKey('progress', $saved->items['2'], 'no progress left standing on an item nobody works on');
     }
 
     public function test_stop_then_step_does_nothing(): void
@@ -563,6 +564,65 @@ final class JobRunnerTest extends TestCase
         $runner->step($job->id);
 
         $this->assertSame('running', $seen);
+    }
+
+    public function test_progress_is_stored_per_item_while_it_is_translated_and_cleared_when_done(): void
+    {
+        $store = new FileJobStore($this->dir);
+        $echo = self::echo();
+        $seen = [];
+        $jobId = null;
+        // A batch budget so small that "One" and "First text" go in two requests.
+        $runner = $this->runner([static function (AiRequest $r) use ($store, $echo, &$seen, &$jobId): \Preflow\Ai\AiResponse {
+            $job = $store->get($jobId);
+            $seen[] = [$job->items['1']['progress'] ?? null, $job->state];
+            if (count($seen) === 1) {
+                // Meanwhile another driver finishes record 2 and ends its own step.
+                $store->update($jobId, static function (Job $j): void {
+                    $j->items['2'] = ['status' => 'done', 'translated' => 7, 'failed' => 0, 'warnings' => 0, 'message' => null, 'draft_changes' => false];
+                    $j->state = 'queued';
+                });
+            }
+
+            return $echo($r);
+        }], $store, 5);
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['1', '2']);
+        $jobId = $job->id;
+        $runner->start($job->id);
+
+        $job = $runner->step($job->id);
+
+        $this->assertSame([
+            [['locale' => 'de', 'done' => 0, 'total' => 2], 'running'],
+            [['locale' => 'de', 'done' => 1, 'total' => 2], 'running'],
+        ], $seen, 'stored before the first request and after each one; the job shows running while it is worked on');
+        $this->assertSame('done', $job->items['1']['status']);
+        $this->assertArrayNotHasKey('progress', $job->items['1'], 'a finished item has its counts instead');
+        $this->assertSame(['status' => 'done', 'translated' => 7], array_intersect_key($job->items['2'], ['status' => 1, 'translated' => 1]), 'the other driver\'s item is never clobbered');
+        $this->assertSame('done', $job->state);
+    }
+
+    public function test_progress_never_revives_a_stopped_job(): void
+    {
+        $store = new FileJobStore($this->dir);
+        $echo = self::echo();
+        $jobId = null;
+        $runner = $this->runner([static function (AiRequest $r) use ($store, $echo, &$jobId): \Preflow\Ai\AiResponse {
+            $store->update($jobId, static function (Job $j): void {
+                $j->state = 'stopped';
+            });
+
+            return $echo($r);
+        }], $store, 5);
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['1', '2']);
+        $jobId = $job->id;
+        $runner->start($job->id);
+
+        $runner->step($job->id);
+
+        $saved = $store->get($job->id);
+        $this->assertSame('stopped', $saved->state);
+        $this->assertSame('pending', $saved->items['2']['status']);
     }
 
     public function test_start_records_the_live_confirmation_on_a_job_already_queued(): void
