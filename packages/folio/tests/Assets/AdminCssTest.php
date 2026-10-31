@@ -87,6 +87,22 @@ final class AdminCssTest extends TestCase
         }
     }
 
+    public function test_dark_surface_steps_stay_distinguishable(): void
+    {
+        // Hover on raised surfaces (menus, filter panel) and neutral badges must not vanish.
+        $css = $this->css();
+        $dark = [];
+        foreach (['--c-surface', '--c-surface-raised', '--c-row-hover', '--c-neutral-soft'] as $token) {
+            $this->assertMatchesRegularExpression('/' . preg_quote($token, '/') . ': light-dark\(#[0-9a-f]{6}, (#[0-9a-f]{6})\);/', $css);
+            preg_match('/' . preg_quote($token, '/') . ': light-dark\(#[0-9a-f]{6}, (#[0-9a-f]{6})\);/', $css, $m);
+            $dark[$token] = $m[1];
+        }
+        $this->assertSame($dark, array_unique($dark));
+        // Lighter is higher on dark: hover sits above the raised surface it appears on.
+        $this->assertGreaterThan(hexdec(substr($dark['--c-surface-raised'], 1)), hexdec(substr($dark['--c-row-hover'], 1)));
+        $this->assertStringContainsString('--c-text-subtle: light-dark(#8e8e86, #90929b);', $css);
+    }
+
     public function test_controls_share_one_base_style_inside_every_admin_root(): void
     {
         $css = $this->css();
@@ -106,9 +122,11 @@ final class AdminCssTest extends TestCase
     public function test_single_selects_draw_their_own_chevron_inside_the_field(): void
     {
         $css = $this->css();
-        $this->assertMatchesRegularExpression('/:where\(select:not\(\[multiple\]\)\) \{[^}]*appearance: none;[^}]*padding-right: 34px;[^}]*background-image:\s+linear-gradient\(/', $css);
-        // No data: URI: the chevron must not depend on the site's img-src.
-        $this->assertStringNotContainsString('url("data:', $css);
+        // A stroked SVG chevron on top, the CSS-only caret below it for sites whose img-src blocks data:.
+        $this->assertMatchesRegularExpression('/:where\(select:not\(\[multiple\]\)\) \{[^}]*--folio-chevron: url\("data:image\/svg\+xml,[^"]*stroke-width=\'1\.5\'[^}]*appearance: none;[^}]*padding-right: 34px;[^}]*background-image:\s+var\(--folio-chevron\),\s+linear-gradient\(/', $css);
+        // light-dark() cannot reach into a data: URI: the dark chevron follows both theme switches.
+        $this->assertMatchesRegularExpression('/:where\(:root\[data-theme="dark"\]\) [^{]*select:not\(\[multiple\]\)\) \{ --folio-chevron: url\("data:image\/svg\+xml,[^"]*%23a3a5ad/', $css);
+        $this->assertMatchesRegularExpression('/@media \(prefers-color-scheme: dark\) \{\s*:where\(:root:not\(\[data-theme="light"\]\)\) [^{]*select:not\(\[multiple\]\)\) \{ --folio-chevron: url\("data:image\/svg\+xml,[^"]*%23a3a5ad/', $css);
         // Container rules must not reset the background (that would drop the chevron) or the right padding.
         $plain = (string) preg_replace('#/\*.*?\*/#s', '', $css);
         preg_match_all('/([^{}]+)\{([^{}]*)\}/', $plain, $rules, PREG_SET_ORDER);

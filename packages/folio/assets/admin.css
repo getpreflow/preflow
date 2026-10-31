@@ -23,14 +23,14 @@
   --c-sidebar-bg: light-dark(#fbfbfa, #232428);
   --c-surface: light-dark(#ffffff, #2a2b2f);
   --c-surface-2: light-dark(#f8f8f6, #2e2f33);
-  --c-surface-raised: light-dark(#ffffff, #35363b);
+  --c-surface-raised: light-dark(#ffffff, #333439);
   --c-input: light-dark(#ffffff, #25262a);
   --c-border: light-dark(#e6e6e2, #36373c);
   --c-border-strong: light-dark(#d3d3cd, #47494f);
-  --c-row-hover: light-dark(#f2f2ef, #323338);
+  --c-row-hover: light-dark(#f2f2ef, #3a3b41);
   --c-text: light-dark(#1a1a17, #e9e9ec);
   --c-text-muted: light-dark(#64645d, #a3a5ad);
-  --c-text-subtle: light-dark(#8e8e86, #80828b);
+  --c-text-subtle: light-dark(#8e8e86, #90929b);
 
   --c-accent: light-dark(#047857, #3fcf98);
   --c-accent-hover: light-dark(#065f46, #6fe2b4);
@@ -45,7 +45,7 @@
   --c-warning-soft: light-dark(#fcf2e0, #3d3421);
   --c-success: light-dark(#047857, #3fcf98);
   --c-success-soft: light-dark(#e6f4ee, #203a31);
-  --c-neutral-soft: light-dark(#eeeeea, #35363b);
+  --c-neutral-soft: light-dark(#eeeeea, #37383d);
   /* A strong inverted surface (the list's bulk bar): dark with light text in both themes. */
   --c-inverse: light-dark(#262622, #46484e);
   --c-inverse-fg: light-dark(#f6f6f4, #f4f4f6);
@@ -600,19 +600,33 @@ form:has(> .folio-form-actions) { container-type: inline-size; }
 }
 :where(.folio-shell, .folio-drawer-body, .folio-auth) ::placeholder { color: var(--c-text-subtle); opacity: 1; }
 :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(textarea) { line-height: 1.5; resize: vertical; }
-/* Single selects: Folio draws the chevron (two gradient halves, no image, so no img-src
-   needed and it follows the theme); the right padding keeps text clear of it. */
+/* Single selects: Folio draws the chevron; the right padding keeps text clear of it.
+   Top layer: a thin stroked SVG chevron (data: URI, one per theme and for disabled,
+   since light-dark() cannot reach inside a URI). Its tile is filled with the field's
+   own background, so it hides the layer below. Below: a small CSS-only caret
+   (two gradient halves) that shows only when a site's CSP img-src blocks data:
+   images and the SVG layer never loads. Keep the tile fills in step with
+   --c-input and --c-surface-2 (the disabled fill). */
 :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple])) {
+  --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%23ffffff'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%2364645d' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   appearance: none;
   padding-right: 34px;
   background-image:
+    var(--folio-chevron),
     linear-gradient(45deg, transparent 50%, var(--c-text-muted) 50%),
     linear-gradient(135deg, var(--c-text-muted) 50%, transparent 50%);
-  background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%;
-  background-size: 5px 5px;
+  background-position: calc(100% - 11px) 50%, calc(100% - 17px) 50%, calc(100% - 12px) 50%;
+  background-size: 12px 8px, 5px 5px, 5px 5px;
   background-repeat: no-repeat;
   text-overflow: ellipsis;
   cursor: pointer;
+}
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple]):disabled) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%23f8f8f6'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%2364645d' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+:where(:root[data-theme="dark"]) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple])) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%2325262a'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3a5ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+:where(:root[data-theme="dark"]) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple]):disabled) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%232e2f33'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3a5ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+@media (prefers-color-scheme: dark) {
+  :where(:root:not([data-theme="light"])) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple])) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%2325262a'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3a5ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+  :where(:root:not([data-theme="light"])) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple]):disabled) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%232e2f33'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3a5ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 }
 :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select[multiple]) { padding: 4px; overflow-y: auto; }
 :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select[multiple] option) { padding: 3px 7px; border-radius: var(--r-xs); }
