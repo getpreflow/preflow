@@ -161,7 +161,7 @@ final class PublishingAppTest extends TestCase
         $body = $this->dashboard();
         $this->assertMatchesRegularExpression('~<ul class="folio-review-jobs">\s*<li>\s*<strong>Posts · German</strong>.*?0 of 1 records.*?<span class="folio-badge">Waiting</span>.*?Queued by Anna~s', $body);
         $this->assertStringContainsString('hx-trigger="every 5s"', $body, 'a queued job refreshes the section');
-        $this->assertStringContainsString('translate:work', $body, 'no worker has run');
+        $this->assertStringContainsString('cd ' . $this->dir . ' &amp;&amp; php vendor/bin/preflow translate:work', $body, 'no worker has run: the cron line names the app');
 
         $this->write('storage/ai/worker.json', (string) json_encode(['last_run' => (new \DateTimeImmutable('-1 minute'))->format(\DATE_ATOM)]));
         $this->assertStringNotContainsString('translate:work', $this->dashboard());

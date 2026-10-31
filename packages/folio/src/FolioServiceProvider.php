@@ -1034,6 +1034,9 @@ final class FolioServiceProvider extends ServiceProvider
             // The interface language of the admin request (AdminLocaleMiddleware updates it) and the
             // offered languages with their own names (the sidebar switch, the account page).
             $engine->addGlobal('interface_locale', $container->get(\Preflow\Folio\Http\InterfaceLocales::class)->default());
+            // The app's directory, absolute: the cron line of the no-worker hint (folio.ai_queue.no_worker, :path).
+            $base = $app->basePath();
+            $engine->addGlobal('folio_app_path', str_starts_with($base, '/') ? $base : (realpath($base) ?: $base));
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_interface_locales',
                 callable: fn (): array => $container->get(\Preflow\Folio\Http\InterfaceLocales::class)->names(),

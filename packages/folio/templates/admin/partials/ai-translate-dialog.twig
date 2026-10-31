@@ -12,7 +12,7 @@
 {% set queue = ai_translate.queue_url ?? '' %}
 <div class="folio-ai" data-ai-translate
      {% if queue %}data-queue-url="{{ queue }}"
-     data-msg-no-worker="{{ t('folio.ai_queue.no_worker') }}"
+     data-msg-no-worker="{{ t('folio.ai_queue.no_worker', {path: folio_app_path|default('')})|e }}"
      {% else %}data-suggest-url="{{ ai_translate.suggest_url }}"
      {% endif %}{% if ai_translate.estimate_url ?? '' %}data-estimate-url="{{ ai_translate.estimate_url }}"
      {% endif %}data-locale="{{ ai_translate.locale }}"

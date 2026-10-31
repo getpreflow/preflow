@@ -16,7 +16,7 @@
         </li>
         {% endfor %}
     </ul>
-    {% if review.no_worker %}<div class="folio-notice" role="status"><p>{{ t('folio.ai_queue.no_worker') }}</p></div>{% endif %}
+    {% if review.no_worker %}<div class="folio-notice" role="status"><p>{{ t('folio.ai_queue.no_worker', {path: folio_app_path|default('')})|e }}</p></div>{% endif %}
     {% endif %}
     {% for group in review.groups %}
     <h3 class="folio-review-type">{{ group.label }}</h3>

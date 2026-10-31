@@ -15,7 +15,7 @@
             <p>{{ t('folio.ai_run.running_background') }}</p>
         {% else %}
             <p>{{ t('folio.ai_run.running') }}</p>
-            <p class="form-help">{{ t('folio.ai_queue.no_worker') }}</p>
+            <p class="form-help">{{ t('folio.ai_queue.no_worker', {path: folio_app_path|default('')})|e }}</p>
         {% endif %}
         {# Shown by admin.js when a step's request fails (error status, no connection, timeout): the
            polling has stopped then, and Continue takes the running job up again. #}

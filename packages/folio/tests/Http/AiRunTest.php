@@ -242,7 +242,7 @@ final class AiRunTest extends TestCase
         $html = (string) $this->request('POST', "/folio/post/_ai/jobs/{$id}/start", [], true)->getBody();
 
         $this->assertStringContainsString('Keep this page open', $html);
-        $this->assertStringContainsString('translate:work', $html);
+        $this->assertStringContainsString('* * * * * cd ' . $this->dir . ' &amp;&amp; php vendor/bin/preflow translate:work', $html, 'a usable cron line');
     }
 
     public function test_status_page_with_recent_worker_says_page_can_be_left(): void

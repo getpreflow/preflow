@@ -198,7 +198,7 @@ return [
         'queued_live' => 'Eingereiht. Dieser Typ hat keine Veröffentlichung: Die Übersetzung ist sofort öffentlich, sobald sie fertig ist.',
         'confirm_live' => 'Dieser Typ hat keine Veröffentlichung: Die Übersetzung ist ohne Prüfung öffentlich. Bestätige das, bevor du sie einreihst.',
         'confirm_live_label' => 'Mir ist klar, dass die Übersetzung ohne Prüfung öffentlich wird.',
-        'no_worker' => 'Im Moment bearbeitet nichts die eingereihten Übersetzungen: Sie warten, bis der Cronjob läuft. Bitte die Person, die die Website betreut, diese Zeile in die Crontab einzutragen: * * * * * cd <app> && php vendor/bin/preflow translate:work',
+        'no_worker' => 'Im Moment bearbeitet nichts die eingereihten Übersetzungen: Sie warten, bis der Cronjob läuft. Bitte die Person, die die Website betreut, diese Zeile in die Crontab einzutragen: * * * * * cd :path && php vendor/bin/preflow translate:work',
         'pending' => 'Übersetzung (:language) eingereiht seit :since. Du kannst weiter bearbeiten; Änderungen in der Zwischenzeit bleiben erhalten.',
         'pending_running' => 'Übersetzung (:language) läuft: :done von :total Texten. Du kannst weiter bearbeiten; Änderungen in der Zwischenzeit bleiben erhalten.',
     ],

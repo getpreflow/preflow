@@ -208,7 +208,7 @@ return [
         'queued_live' => 'Queued. This type has no publishing: the translation goes live as soon as it is done.',
         'confirm_live' => 'This type has no publishing: the translation goes live without review. Confirm that before queuing it.',
         'confirm_live_label' => 'I understand that the translation goes live without review.',
-        'no_worker' => 'Nothing is translating queued jobs at the moment: the translation waits until the cron job runs. Ask whoever runs the site to add this line to the crontab: * * * * * cd <app> && php vendor/bin/preflow translate:work',
+        'no_worker' => 'Nothing is translating queued jobs at the moment: the translation waits until the cron job runs. Ask whoever runs the site to add this line to the crontab: * * * * * cd :path && php vendor/bin/preflow translate:work',
         'pending' => ':language translation queued since :since. You can keep editing; changes made meanwhile are kept.',
         'pending_running' => ':language translation running: :done of :total texts. You can keep editing; changes made meanwhile are kept.',
     ],

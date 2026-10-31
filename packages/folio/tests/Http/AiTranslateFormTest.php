@@ -90,6 +90,7 @@ final class AiTranslateFormTest extends TestCase
         $de = $this->editForm('de');
         $this->assertStringContainsString('data-ai-translate', $de);
         $this->assertStringContainsString('data-queue-url="/folio/post/p1/_ai/queue"', $de);
+        $this->assertStringContainsString('cd ' . $this->dir . ' &amp;&amp; php vendor/bin/preflow translate:work', $de, 'the cron hint names the app');
         $this->assertStringNotContainsString('data-suggest-url', $de, 'the record form no longer fills its inputs');
         $this->assertStringNotContainsString('data-ai-review-template', $de);
         $this->assertStringNotContainsString('name="confirm_live"', $de, 'posts are saved as working copies');
