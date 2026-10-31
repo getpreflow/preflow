@@ -32,10 +32,13 @@ final class TranslationPrompt
 
     /**
      * The general translation rules: the only prompt prose, so tests and reviewers find it here.
+     * With the project's protected token patterns (TranslationSettings::protectedTokens()), one
+     * more rule names them, since the model cannot know a project's own syntax.
      *
+     * @param list<string> $protectedTokens
      * @return list<string>
      */
-    public static function rules(string $from, string $to): array
+    public static function rules(string $from, string $to, array $protectedTokens = []): array
     {
         $target = self::language($to);
         $direction = $from === ''
@@ -45,6 +48,11 @@ final class TranslationPrompt
         return [
             $direction,
             'Keep HTML tags, Markdown and placeholders such as {name} or :count exactly as they are; translate only the words around them.',
+            ...($protectedTokens === [] ? [] : [
+                'The text holds the project\'s own tokens, matching these regular expressions: ' . implode(' ', $protectedTokens) . '. '
+                    . 'Never drop, add or change such a token. Where a pattern has a capture group, keep what it captures exactly as it is '
+                    . '(the rest of the token may be translated); otherwise keep the whole token unchanged.',
+            ]),
             'Never translate proper names, brand names or game names.',
             '"label", "kind" and "format" describe where an item is used; a "hint" holds instructions for that item only.',
             'An item with "previous" and "current" was translated before: its source changed from "previous" to "text". '

@@ -121,4 +121,22 @@ final class TranslationSettingsTest extends TestCase
             'game.flow' => ['X'],
         ], $settings->levels());
     }
+
+    public function test_protected_tokens_from_config(): void
+    {
+        $settings = new TranslationSettings(['translation' => ['protected_tokens' => ['/\{\{glossary:(\w+)\}\}/', ' ', 42, '/\[\[\w+\]\]/']]], $this->store());
+
+        $this->assertSame(['/\{\{glossary:(\w+)\}\}/', '/\[\[\w+\]\]/'], $settings->protectedTokens(), 'blank and non-string entries are not patterns');
+        $this->assertSame([], (new TranslationSettings([], $this->store()))->protectedTokens());
+        $this->assertSame(['/x/'], (new TranslationSettings(['translation' => ['protected_tokens' => '/x/']], $this->store()))->protectedTokens(), 'one pattern as a string');
+    }
+
+    public function test_an_invalid_protected_token_pattern_fails_loudly_naming_the_key(): void
+    {
+        $settings = new TranslationSettings(['translation' => ['protected_tokens' => ['/ok/', '/{{glossary:(\w+/']]], $this->store());
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('translation.protected_tokens');
+        $settings->protectedTokens();
+    }
 }

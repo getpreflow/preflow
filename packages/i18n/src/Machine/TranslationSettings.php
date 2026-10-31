@@ -78,6 +78,38 @@ final class TranslationSettings
     }
 
     /**
+     * The regular expressions of the project's own tokens that a machine translation must keep
+     * (config/ai.php translation.protected_tokens: a list, or one pattern as a string). See
+     * MarkupCheck for how they are compared. Blank and non-string entries are skipped.
+     *
+     * @return list<string>
+     * @throws \InvalidArgumentException when a pattern is not a valid regular expression: a broken
+     *                                   pattern would otherwise let every token through unchecked
+     */
+    public function protectedTokens(): array
+    {
+        $patterns = $this->translationConfig()['protected_tokens'] ?? [];
+        $out = [];
+        foreach (is_array($patterns) ? $patterns : [$patterns] as $i => $pattern) {
+            if (!is_string($pattern) || trim($pattern) === '') {
+                continue;
+            }
+            $pattern = trim($pattern);
+            if (@preg_match($pattern, '') === false) {
+                throw new \InvalidArgumentException(sprintf(
+                    'config/ai.php translation.protected_tokens[%s]: "%s" is not a valid regular expression (%s).',
+                    $i,
+                    $pattern,
+                    preg_last_error_msg(),
+                ));
+            }
+            $out[] = $pattern;
+        }
+
+        return $out;
+    }
+
+    /**
      * Every level key with its instructions, for the Settings screen: the config defaults with
      * stored edits applied, plus stored levels that have no default (field levels live in the
      * model JSON, so only edited ones show up here).

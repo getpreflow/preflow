@@ -41,4 +41,42 @@ final class MarkupCheckTest extends TestCase
         $this->assertFalse(MarkupCheck::matches('Hello', '<b>Hallo</b>', TextFormat::Plain));
         $this->assertTrue(MarkupCheck::matches('<b>Hello</b>', '<b>Hallo</b>', TextFormat::Plain));
     }
+
+    private const GLOSSARY = '/\{\{glossary:(\w+)(?:\|[^}]*)?\}\}/';
+
+    public function test_protected_token_key_kept_passes(): void
+    {
+        $this->assertTrue(MarkupCheck::matches('Take a {{glossary:meeple}} and {{glossary:dice}}', 'Nimm {{glossary:dice}} und {{glossary:meeple}}', TextFormat::Plain, [self::GLOSSARY]));
+    }
+
+    public function test_protected_token_dropped_fails(): void
+    {
+        $this->assertFalse(MarkupCheck::matches('Take a {{glossary:meeple}}', 'Nimm einen Meeple', TextFormat::Plain, [self::GLOSSARY]));
+        $this->assertFalse(MarkupCheck::matches('{{glossary:a}} {{glossary:a}}', '{{glossary:a}}', TextFormat::Plain, [self::GLOSSARY]), 'a multiset: each one counts');
+        $this->assertFalse(MarkupCheck::matches('Take one', 'Nimm {{glossary:meeple}}', TextFormat::Plain, [self::GLOSSARY]), 'none may be added');
+    }
+
+    public function test_protected_token_key_changed_fails(): void
+    {
+        $this->assertFalse(MarkupCheck::matches('Take a {{glossary:meeple}}', 'Nimm einen {{glossary:figur}}', TextFormat::Plain, [self::GLOSSARY]));
+    }
+
+    public function test_protected_token_shown_text_may_change_or_be_added(): void
+    {
+        $this->assertTrue(MarkupCheck::matches('{{glossary:meeple|the meeples}}', '{{glossary:meeple|die Meeples}}', TextFormat::Plain, [self::GLOSSARY]));
+        $this->assertTrue(MarkupCheck::matches('{{glossary:meeple}}', '{{glossary:meeple|Meeples}}', TextFormat::Plain, [self::GLOSSARY]));
+        $this->assertTrue(MarkupCheck::matches('<p>{{glossary:meeple|a}}</p>', '<p>{{glossary:meeple|b}}</p>', TextFormat::Html, [self::GLOSSARY]));
+    }
+
+    public function test_protected_token_without_a_group_compares_the_whole_match(): void
+    {
+        $pattern = '/\[\[[a-z]+\]\]/';
+        $this->assertTrue(MarkupCheck::matches('Hi [[user]]', 'Hallo [[user]]', TextFormat::Plain, [$pattern]));
+        $this->assertFalse(MarkupCheck::matches('Hi [[user]]', 'Hallo [[nutzer]]', TextFormat::Plain, [$pattern]));
+    }
+
+    public function test_without_protected_tokens_nothing_changes(): void
+    {
+        $this->assertTrue(MarkupCheck::matches('Take a {{glossary:meeple}}', 'Nimm einen Meeple', TextFormat::Plain));
+    }
 }

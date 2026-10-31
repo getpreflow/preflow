@@ -135,6 +135,48 @@ final class AiTranslatorTest extends TestCase
         $this->assertArrayNotHasKey('format', self::items($fake->requests()[0])[0], 'plain is the default and not sent');
     }
 
+    public function test_a_result_that_alters_a_protected_token_fails_that_unit(): void
+    {
+        $fake = new FakeAiClient([FakeAiClient::json([
+            ['n' => 1, 'text' => 'Nimm einen {{glossary:figur|Meeple}}'],
+            ['n' => 2, 'text' => 'Wirf die {{glossary:dice|Würfel}}'],
+        ])]);
+        $pattern = '/\{\{glossary:(\w+)(?:\|[^}]*)?\}\}/';
+
+        $results = $this->translator($fake, ['translation' => ['protected_tokens' => [$pattern]]])->translateUnits([
+            $this->unit('a', 'Take a {{glossary:meeple}}'),
+            $this->unit('b', 'Roll the {{glossary:dice|dice}}'),
+        ]);
+
+        $this->assertSame(UnitStatus::Failed, $results[0]->status);
+        $this->assertSame('markup changed', $results[0]->error);
+        $this->assertSame(UnitStatus::Translated, $results[1]->status, 'the shown text may be translated');
+        $system = $fake->requests()[0]->tuning->system();
+        $this->assertStringContainsString($pattern, $system, 'the model is told which tokens to keep');
+    }
+
+    public function test_an_invalid_protected_token_pattern_stops_before_any_request(): void
+    {
+        $fake = new FakeAiClient([self::echo()]);
+
+        try {
+            $this->translator($fake, ['translation' => ['protected_tokens' => ['/(unclosed/']]])->translateUnits([$this->unit('a', 'Hello')]);
+            $this->fail('InvalidArgumentException expected');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('translation.protected_tokens[0]', $e->getMessage());
+        }
+        $this->assertSame([], $fake->requests(), 'nothing paid for');
+    }
+
+    public function test_without_protected_tokens_the_prompt_has_no_token_rule(): void
+    {
+        $fake = new FakeAiClient([self::echo()]);
+
+        $this->translator($fake)->translateUnits([$this->unit('a', 'Hello')]);
+
+        $this->assertStringNotContainsString('regular expression', $fake->requests()[0]->tuning->system());
+    }
+
     public function test_glossary_terms_in_system_and_mismatch_warning(): void
     {
         $fake = new FakeAiClient([FakeAiClient::json([['n' => 1, 'text' => 'Setze einen Meeple für Arbeiter']])]);

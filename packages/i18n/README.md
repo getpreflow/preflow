@@ -296,14 +296,39 @@ about records. Its main fields:
 ### MarkupCheck
 
 A model sometimes drops a tag or rewrites a placeholder. That would break a page, so such a
-result is rejected as failed instead of stored. `MarkupCheck::matches($source, $result, $format)`
-is true when:
+result is rejected as failed instead of stored.
+`MarkupCheck::matches($source, $result, $format, $protectedTokens = [])` is true when:
 
 - the `{placeholders}` and `:placeholders` of the source are all still in the result, no more and
   no fewer (their order may change, because grammar does);
 - for `Html`, the tags are the same, in the same order, opening and closing;
 - for `Plain`, the result is not HTML (unless the source was);
-- for `Markdown`, the placeholder rule only.
+- for `Markdown`, the placeholder rule only;
+- for each protected token pattern, the source and the result hold the same matches, in any order.
+
+#### Protected tokens
+
+A project's own token syntax can be protected the same way. List regular expressions in
+`config/ai.php`:
+
+```php
+'translation' => [
+    // {{glossary:key}} and {{glossary:key|shown text}}: the key must stay, the shown text may be translated
+    'protected_tokens' => ['/\{\{glossary:(\w+)(?:\|[^}]*)?\}\}/'],
+],
+```
+
+- A pattern **with a capture group 1** compares only what the group captures. Above, a result
+  must keep every key (`meeple` stays `meeple`). It may translate the shown text, or add one.
+- A pattern **without a group** compares the whole match, so the token must come back unchanged.
+- Each match counts: dropping, adding or changing one fails the unit with `markup changed`,
+  like a lost tag.
+- The patterns also go into the prompt as one rule, so the model knows what to keep.
+- An invalid pattern throws an `InvalidArgumentException` naming
+  `translation.protected_tokens[i]` on the first translation. It never lets tokens through
+  unchecked.
+
+`TranslationSettings::protectedTokens()` reads them.
 
 ### Tuning
 

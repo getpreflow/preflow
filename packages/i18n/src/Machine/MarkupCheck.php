@@ -7,15 +7,27 @@ namespace Preflow\I18n\Machine;
 /**
  * Guards against a model dropping or inventing markup: a broken tag or lost
  * placeholder would corrupt the page, so such a result is rejected, not stored.
+ *
+ * A project can protect tokens of its own syntax too (config/ai.php
+ * translation.protected_tokens, see TranslationSettings::protectedTokens()): for each
+ * pattern, source and result must hold the same matches, in any order. With a capture
+ * group 1 only what it captures is compared, so the rest of a token (a shown text) may be
+ * translated, or added.
  */
 final class MarkupCheck
 {
     private const PLACEHOLDERS = '/\{\w+\}|(?<![\w:]):[A-Za-z_]\w*/';
 
-    public static function matches(string $source, string $result, TextFormat $format): bool
+    /** @param list<string> $protectedTokens valid regular expressions (TranslationSettings checks them) */
+    public static function matches(string $source, string $result, TextFormat $format, array $protectedTokens = []): bool
     {
         if (self::placeholders($source) !== self::placeholders($result)) {
             return false;
+        }
+        foreach ($protectedTokens as $pattern) {
+            if (self::protectedParts($pattern, $source) !== self::protectedParts($pattern, $result)) {
+                return false;
+            }
         }
 
         return match ($format) {
@@ -32,6 +44,16 @@ final class MarkupCheck
     {
         preg_match_all(self::PLACEHOLDERS, $text, $m);
         $found = $m[0];
+        sort($found);
+
+        return $found;
+    }
+
+    /** @return list<string> sorted: capture group 1 of each match when the pattern has one, else the whole match */
+    private static function protectedParts(string $pattern, string $text): array
+    {
+        preg_match_all($pattern, $text, $m, PREG_SET_ORDER);
+        $found = array_map(static fn (array $match): string => array_key_exists(1, $match) ? $match[1] : $match[0], $m);
         sort($found);
 
         return $found;

@@ -22,8 +22,9 @@ use Preflow\Ai\Tuning;
  * request that never got an answer (timeout, 5xx, 429 after the provider's own retry) is not
  * split, since halves would only fail the same way: its units fail once with the reason, and a
  * second such request in a row means the provider is not reachable (AiUnavailable), so a run
- * stops instead of piling up requests. Each answer is checked: markup must survive, and glossary
- * terms not honoured become warnings. Requests ask for low reasoning: translating needs little.
+ * stops instead of piling up requests. Each answer is checked: markup and the project's protected
+ * tokens must survive (MarkupCheck), and glossary terms not honoured become warnings. Requests
+ * ask for low reasoning: translating needs little.
  * Progress (ReportsProgress) counts units as their request finishes, a split half as it finishes.
  */
 final class AiTranslator implements MachineTranslator, ReportsCost, ReportsProgress
@@ -39,6 +40,9 @@ final class AiTranslator implements MachineTranslator, ReportsCost, ReportsProgr
 
     /** Requests in a row, within one run(), that got no answer. */
     private int $unanswered = 0;
+
+    /** @var list<string> the project's protected token patterns, read at the start of run() */
+    private array $protectedTokens = [];
 
     /** Units of the current run() through so far, and in it. */
     private int $done = 0;
@@ -89,6 +93,8 @@ final class AiTranslator implements MachineTranslator, ReportsCost, ReportsProgr
         // Before anything else: with AI off the whole run stops here (AiUnavailable).
         $client = $this->ai->client();
         $glossary = $this->settings->glossary();
+        // Checked here, before any request: a broken pattern stops the call instead of letting tokens through.
+        $this->protectedTokens = $this->settings->protectedTokens();
         $this->unanswered = 0;
         $this->done = 0;
         $this->total = count($units);
@@ -96,7 +102,7 @@ final class AiTranslator implements MachineTranslator, ReportsCost, ReportsProgr
         $results = [];
         foreach (TranslationPrompt::batches($units, $this->batchChars) as $batch) {
             $first = reset($batch);
-            $base = new Tuning(TranslationPrompt::rules($first->from, $first->to))
+            $base = new Tuning(TranslationPrompt::rules($first->from, $first->to, $this->protectedTokens))
                 ->merge($this->settings->tuning($first->to, $first->type))
                 ->merge($extra);
             $this->translateBatch($client, $batch, $base, $glossary, $note, $results);
@@ -233,7 +239,7 @@ final class AiTranslator implements MachineTranslator, ReportsCost, ReportsProgr
             $text = $byN[++$n] ?? null;
             $results[$i] = match (true) {
                 $text === null => new TranslationResult($unit->id, UnitStatus::Failed, null, error: 'no answer'),
-                !MarkupCheck::matches($unit->source, $text, $unit->format) => new TranslationResult($unit->id, UnitStatus::Failed, null, error: 'markup changed'),
+                !MarkupCheck::matches($unit->source, $text, $unit->format, $this->protectedTokens) => new TranslationResult($unit->id, UnitStatus::Failed, null, error: 'markup changed'),
                 default => new TranslationResult(
                     $unit->id,
                     UnitStatus::Translated,
