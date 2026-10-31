@@ -99,4 +99,18 @@ final class FileJobStoreTest extends TestCase
         $this->assertNull($job->prefix);
         $this->assertTrue($job->confirmedLive);
     }
+
+    public function test_every_save_stamps_the_time_of_the_last_change(): void
+    {
+        $job = new Job('abc123def4567890', 'games', ['de'], Scope::Needed, null, new Estimate(1, 1, 1, 1, null, 1));
+        $store = new FileJobStore($this->dir);
+        $before = new \DateTimeImmutable('-1 second');
+
+        $store->save($job);
+        $saved = $store->get($job->id);
+
+        $this->assertNotNull($saved->updatedAt);
+        $this->assertGreaterThanOrEqual($before, new \DateTimeImmutable($saved->updatedAt));
+        $this->assertNull(Job::fromArray(['id' => 'x', 'collection' => 'c'])->updatedAt, 'a 0.48.0 job has none');
+    }
 }

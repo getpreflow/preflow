@@ -135,7 +135,8 @@ final class AdminController
      * records with unchecked machine translations (only types the user may view and that still exist),
      * grouped by type, and the jobs that are queued, running or stopped (also only of types the user may view).
      * A job's records being translated right now come with their progress (JobRunner stores it per
-     * item); while a shown job is queued or running, the section refreshes itself ("polling").
+     * item); while a shown job is queued or running and has changed in the last 10 minutes, the
+     * section refreshes itself ("polling").
      *
      * @return array{groups: list<array{label: string, rows: list<array{title: string, url: string, languages: list<string>}>}>, more: int, jobs: list<array<string, mixed>>, no_worker: bool, polling: bool}|null
      */
@@ -184,7 +185,7 @@ final class AdminController
                 break;
             }
             $queued = $queued || $job->state === 'queued';
-            $polling = $polling || $job->state === 'queued' || $job->state === 'running';
+            $polling = $polling || (($job->state === 'queued' || $job->state === 'running') && !self::stale($job));
             $jobs[] = [
                 'type' => $this->catalog->has($job->collection) ? $this->labels->type($job->collection) : $job->collection,
                 'languages' => implode(', ', array_map(self::languageName(...), $job->locales)),
@@ -206,6 +207,26 @@ final class AdminController
             'no_worker' => $queued && !WorkerWatch::runs($this->worker),
             'polling' => $polling,
         ];
+    }
+
+    /** Seconds without any change after which a queued or running job no longer keeps the dashboard polling. */
+    private const STALE_JOB_SECONDS = 600;
+
+    /**
+     * Whether a queued or running job has not changed for STALE_JOB_SECONDS (its driver went away,
+     * or no worker runs): polling it would only repeat the same answer. A job without a stamp
+     * (saved before 0.48.1) counts as stale, so it never keeps a page polling forever.
+     */
+    private static function stale(\Preflow\I18n\Machine\Job $job): bool
+    {
+        if ($job->updatedAt === null) {
+            return true;
+        }
+        try {
+            return new \DateTimeImmutable($job->updatedAt) < new \DateTimeImmutable('-' . self::STALE_JOB_SECONDS . ' seconds');
+        } catch (\Exception) {
+            return true;
+        }
     }
 
     /**

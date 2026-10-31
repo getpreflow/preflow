@@ -40,6 +40,8 @@ final class Job
         public ?string $queuedBy = null,
         /** ISO 8601 */
         public ?string $queuedAt = null,
+        /** ISO 8601: when the store last saved the job (any change, progress too); null for jobs saved before 0.48.1. */
+        public ?string $updatedAt = null,
     ) {}
 
     /** @return list<string> ids still to do */
@@ -68,6 +70,7 @@ final class Job
             'confirmed_live' => $this->confirmedLive,
             'queued_by' => $this->queuedBy,
             'queued_at' => $this->queuedAt,
+            'updated_at' => $this->updatedAt,
         ];
     }
 
@@ -99,6 +102,7 @@ final class Job
             (bool) ($d['confirmed_live'] ?? $state === 'running'),
             isset($d['queued_by']) ? (string) $d['queued_by'] : null,
             isset($d['queued_at']) ? (string) $d['queued_at'] : null,
+            isset($d['updated_at']) ? (string) $d['updated_at'] : null,
         );
         $job->items = (array) ($d['items'] ?? []);
 

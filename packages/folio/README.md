@@ -1743,7 +1743,8 @@ With AI on, the dashboard has a **Waiting for review** section for users with `a
   progress, the cost so far and the failure reason. The record a job is translating right now
   shows with its own progress bar ("120 of 410 texts"); the run screen shows it too. While a
   job is queued or running, the section refreshes itself every 5 seconds
-  (`GET {prefix}?review=1` with htmx: the section alone) and stops when none is.
+  (`GET {prefix}?review=1` with htmx: the section alone). It stops when none is, or when the
+  active jobs have not changed for 10 minutes (their driver went away or no worker runs).
 - Records with unchecked texts, grouped by type: the record's label, the languages, the number
   of texts, and a link to the edit view on that language tab. A row shows only if the user may
   view that type.

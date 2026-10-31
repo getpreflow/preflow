@@ -70,6 +70,33 @@ final class PublishingAppTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_dashboard_stops_refreshing_when_a_running_job_has_not_moved_for_ten_minutes(): void
+    {
+        $this->aiConfig(true);
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
+        $c = $this->app()->container();
+        $runner = $c->get(\Preflow\I18n\Machine\JobRunner::class);
+        $job = $runner->plan('post', ['de'], \Preflow\I18n\Machine\Scope::Needed, ['p1']);
+        $runner->start($job->id, false, 'Anna');
+        $c->get(\Preflow\I18n\Machine\JobStore::class)->update($job->id, static function (\Preflow\I18n\Machine\Job $j): void {
+            $j->state = 'running';
+            $j->items['p1']['progress'] = ['locale' => 'de', 'done' => 120, 'total' => 410];
+        });
+        $this->staff('translator');
+        $this->assertStringContainsString('hx-trigger="every 5s"', $this->dashboard(), 'moving: polls');
+
+        // Its driver went away 11 minutes ago: nothing has changed since.
+        $file = $this->dir . '/storage/ai/jobs/' . $job->id . '.json';
+        $data = json_decode((string) file_get_contents($file), true);
+        $data['updated_at'] = (new \DateTimeImmutable('-11 minutes'))->format(\DATE_ATOM);
+        file_put_contents($file, json_encode($data));
+
+        $body = $this->dashboard();
+        $this->assertStringContainsString('120 of 410 texts', $body, 'still shown');
+        $this->assertStringNotContainsString('hx-trigger', $body, 'but no longer polled');
+    }
+
+    #[RunInSeparateProcess]
     public function test_dashboard_stops_refreshing_when_no_job_is_queued_or_running(): void
     {
         $this->aiConfig(true);
