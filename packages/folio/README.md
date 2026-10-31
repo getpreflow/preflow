@@ -1142,6 +1142,13 @@ final class Overview
 - **htmx and modules:** use `@folio/htmx.js` rather than shipping your own htmx (only it
   gets the `htmx-config` nonce meta). ES modules must be named `.mjs`: a `.js` file with
   `import` loads as a classic script and fails.
+- **Asset picker:** `Folio.chooseAssets(options, onPicked)` (from `admin.js`, on every admin
+  page) opens the asset library as a picker in the drawer, with its search and upload, like
+  an asset field's *Choose*. `options`: `multiple` (default `false`), `private` (`true` lists
+  and uploads private assets only, `false` public ones only, default `null`: no filter), `url`
+  (default `{prefix}/assets?picker=1&multiple=0|1[&private=0|1]`). `onPicked(items)` gets
+  `[{id, thumb, label}]` (ids checked as 32 hex characters; `thumb` may be empty). A single
+  pick closes the drawer; with `multiple` it calls back once per pick until the drawer closes.
 - **Tags:** `.css` becomes `<link rel="stylesheet">` in the `<head>`; `.js` becomes
   `<script src defer nonce>`; `.mjs` becomes `<script type="module" nonce>`. Other served
   types (`map`, `svg`, `png`, `webp`, `woff2`, `json`) are not added to the page: load them

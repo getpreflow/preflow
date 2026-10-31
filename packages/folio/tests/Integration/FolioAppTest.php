@@ -290,6 +290,7 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('/folio/_assets/admin.css?v=', $body); // versioned link
         $this->assertStringContainsString('id="folio-theme-toggle"', $body);
         $this->assertStringContainsString("localStorage.getItem('folio-theme')", $body); // no-flash script
+        $this->assertStringContainsString('<body data-folio-prefix="/folio">', $body, 'Folio.chooseAssets builds the picker URL from it');
     }
 
     public function test_no_extensions_keeps_todays_sidebar(): void

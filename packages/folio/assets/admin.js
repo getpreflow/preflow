@@ -27,6 +27,7 @@
 
     var activeMatrix = null;   // the matrix root that opened the current drawer
     var drawerEl = null;       // the current drawer overlay element
+    var activePicker = null;   // {multiple, onPicked} of the asset picker in the drawer
 
     function closeDrawer() {
         if (drawerEl && drawerEl.parentNode) {
@@ -34,6 +35,7 @@
         }
         drawerEl = null;
         activeMatrix = null;
+        activePicker = null;
     }
 
     function openDrawer(url) {
@@ -187,10 +189,38 @@
             .catch(function () { ctrl.addRow(type, id, id); });
     }
 
-    // Asset fields: "Choose" opens the library as a picker in the drawer; picked
-    // assets become hidden {name}_ids[] inputs with a thumbnail.
-    var activeAssetField = null;
+    // The asset library as a picker in the drawer: Folio.chooseAssets(options, onPicked).
+    // options: multiple (default false), private (true: private assets only, false: public only,
+    // default null: no filter), url (the picker URL, default {prefix}/assets?picker=1&...).
+    // onPicked(items) gets [{id, thumb, label}] with ids checked; single mode closes after one pick.
+    function chooseAssets(options, onPicked) {
+        options = options || {};
+        var url = options.url ? String(options.url) : null;
+        if (url === null) {
+            var prefix = (document.body && document.body.getAttribute('data-folio-prefix')) || '';
+            url = prefix.replace(/\/+$/, '') + '/assets?picker=1&multiple=' + (options.multiple ? '1' : '0');
+            if (options.private === true || options.private === false) { url += '&private=' + (options.private ? '1' : '0'); }
+        }
+        openDrawer(url);
+        activePicker = { multiple: options.multiple === true, onPicked: onPicked };
+    }
+    window.Folio = window.Folio || {};
+    window.Folio.chooseAssets = chooseAssets;
 
+    function onAssetsPicked(data) {
+        var picker = activePicker;
+        if (!picker) { return; }
+        var items = [];
+        (Array.isArray(data.items) ? data.items : []).forEach(function (item) {
+            var id = String((item && item.id) || '');
+            if (/^[a-f0-9]{32}$/.test(id)) { items.push({ id: id, thumb: String(item.thumb || ''), label: String(item.label || '') }); }
+        });
+        if (!picker.multiple) { closeDrawer(); }
+        if (items.length && typeof picker.onPicked === 'function') { picker.onPicked(items); }
+    }
+
+    // Asset fields: "Choose" opens the picker; picked assets become hidden {name}_ids[] inputs
+    // with a thumbnail.
     function assetItem(field, id, thumb, label) {
         var li = document.createElement('li');
         li.className = 'folio-asset-item';
@@ -220,20 +250,16 @@
         return li;
     }
 
-    function onAssetsPicked(data) {
-        var field = activeAssetField;
-        if (!field || !field.isConnected) { return; }
+    function fillAssetField(field, items) {
+        if (!field.isConnected) { return; }
         var list = field.querySelector('.folio-asset-selection');
         var multiple = field.getAttribute('data-multiple') === '1';
-        (data.items || []).forEach(function (item) {
-            var id = String(item.id || '');
-            if (!/^[a-f0-9]{32}$/.test(id)) { return; }
+        items.forEach(function (item) {
             if (!multiple) { list.innerHTML = ''; }
-            var dupe = list.querySelector('input[value="' + id + '"]');
-            if (!dupe) { list.appendChild(assetItem(field, id, String(item.thumb || ''), String(item.label || ''))); }
+            var dupe = list.querySelector('input[value="' + item.id + '"]');
+            if (!dupe) { list.appendChild(assetItem(field, item.id, item.thumb, item.label)); }
         });
         notifyChange(field);
-        if (!multiple) { closeDrawer(); activeAssetField = null; }
     }
 
     function onAssetFieldClick(e) {
@@ -241,8 +267,9 @@
         if (choose) {
             var field = choose.closest('[data-folio-asset-field]');
             if (field && field.getAttribute('data-picker-url')) {
-                openDrawer(field.getAttribute('data-picker-url'));
-                activeAssetField = field;
+                chooseAssets({ url: field.getAttribute('data-picker-url'), multiple: field.getAttribute('data-multiple') === '1' }, function (items) {
+                    fillAssetField(field, items);
+                });
             }
             e.preventDefault();
             return;

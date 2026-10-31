@@ -193,6 +193,8 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('[data-folio-asset-remove]', $js);
         $this->assertStringContainsString("data.source === 'folio-assets'", $js);
         $this->assertStringContainsString('e.origin !== window.location.origin', $js);
+        // The picker for extension scripts (behaviour: tests/js/choose-assets.test.mjs).
+        $this->assertStringContainsString('window.Folio.chooseAssets = chooseAssets;', $js);
     }
 
     public function test_htmx_403_message_is_shown_as_a_toast(): void
