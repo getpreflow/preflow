@@ -74,6 +74,52 @@ final class AdminCssTest extends TestCase
         $this->assertStringContainsString('color: var(--c-inverse-danger);', $css);
     }
 
+    public function test_dark_side_uses_the_soft_graphite_palette(): void
+    {
+        $css = $this->css();
+        foreach ([
+            '--c-bg' => '#1e1f22', '--c-sidebar-bg' => '#232428', '--c-surface' => '#2a2b2f',
+            '--c-input' => '#25262a', '--c-border' => '#36373c', '--c-border-strong' => '#47494f',
+            '--c-text' => '#e9e9ec', '--c-text-muted' => '#a3a5ad', '--c-accent' => '#3fcf98',
+            '--c-accent-fg' => '#062a1d', '--c-accent-soft' => '#203a31', '--c-accent-text' => '#6fe2b4',
+        ] as $token => $dark) {
+            $this->assertMatchesRegularExpression('/' . preg_quote($token, '/') . ': light-dark\(#[0-9a-f]{6}, ' . $dark . '\);/', $css, $token);
+        }
+    }
+
+    public function test_controls_share_one_base_style_inside_every_admin_root(): void
+    {
+        $css = $this->css();
+        // One rule for every admin root (shell, drawer, sign-in), zero specificity so
+        // container rules (widths, margins) still win; never reaches site previews (iframes).
+        $roots = ':where(.folio-shell, .folio-drawer-body, .folio-auth)';
+        $this->assertMatchesRegularExpression(
+            '/' . preg_quote($roots, '/') . ' :where\(\s*input:not\(\[type="checkbox"\], \[type="radio"\], \[type="file"\], \[type="hidden"\][^)]*\),\s*textarea,\s*select\s*\) \{[^}]*min-height: var\(--h-control\);[^}]*border-radius: var\(--r-sm\);/',
+            $css,
+        );
+        foreach ([':hover', ':focus', ':disabled'] as $state) {
+            $this->assertStringContainsString($state, $css);
+        }
+        $this->assertStringContainsString($roots . ' ::placeholder', $css);
+    }
+
+    public function test_single_selects_draw_their_own_chevron_inside_the_field(): void
+    {
+        $css = $this->css();
+        $this->assertMatchesRegularExpression('/:where\(select:not\(\[multiple\]\)\) \{[^}]*appearance: none;[^}]*padding-right: 34px;[^}]*background-image:\s+linear-gradient\(/', $css);
+        // No data: URI: the chevron must not depend on the site's img-src.
+        $this->assertStringNotContainsString('url("data:', $css);
+        // Container rules must not reset the background (that would drop the chevron) or the right padding.
+        $plain = (string) preg_replace('#/\*.*?\*/#s', '', $css);
+        preg_match_all('/([^{}]+)\{([^{}]*)\}/', $plain, $rules, PREG_SET_ORDER);
+        foreach ($rules as [, $selector, $body]) {
+            $selector = trim($selector);
+            if (!str_starts_with($selector, ':where(.folio-shell') && preg_match('/(?<![\w-])select(?![\w-])/', $selector) === 1) {
+                $this->assertDoesNotMatchRegularExpression('/(?<![\w-])(background|padding):/', $body, trim($selector));
+            }
+        }
+    }
+
     public function test_sortable_headers_show_an_idle_mark(): void
     {
         $css = $this->css();

@@ -1,4 +1,4 @@
-/* Folio admin — calm, warm-neutral surfaces, emerald accent.
+/* Folio admin — calm neutral surfaces (soft graphite in dark mode), emerald accent.
    One token set: every colour is light-dark(light, dark) and follows
    color-scheme, which is the OS default unless [data-theme] forces one.
    Components only read tokens and never branch on the theme. */
@@ -19,44 +19,44 @@
   --h-button-sm: 28px;
   --h-list-head: 42px;
 
-  --c-bg: light-dark(#f6f6f4, #141413);
-  --c-sidebar-bg: light-dark(#fbfbfa, #181816);
-  --c-surface: light-dark(#ffffff, #1d1d1b);
-  --c-surface-2: light-dark(#f8f8f6, #232321);
-  --c-surface-raised: light-dark(#ffffff, #2a2a27);
-  --c-input: light-dark(#ffffff, #171716);
-  --c-border: light-dark(#e6e6e2, #2e2e2b);
-  --c-border-strong: light-dark(#d3d3cd, #44443f);
-  --c-row-hover: light-dark(#f2f2ef, #252523);
-  --c-text: light-dark(#1a1a17, #ecece8);
-  --c-text-muted: light-dark(#64645d, #a7a79f);
-  --c-text-subtle: light-dark(#8e8e86, #7d7d76);
+  --c-bg: light-dark(#f6f6f4, #1e1f22);
+  --c-sidebar-bg: light-dark(#fbfbfa, #232428);
+  --c-surface: light-dark(#ffffff, #2a2b2f);
+  --c-surface-2: light-dark(#f8f8f6, #2e2f33);
+  --c-surface-raised: light-dark(#ffffff, #35363b);
+  --c-input: light-dark(#ffffff, #25262a);
+  --c-border: light-dark(#e6e6e2, #36373c);
+  --c-border-strong: light-dark(#d3d3cd, #47494f);
+  --c-row-hover: light-dark(#f2f2ef, #323338);
+  --c-text: light-dark(#1a1a17, #e9e9ec);
+  --c-text-muted: light-dark(#64645d, #a3a5ad);
+  --c-text-subtle: light-dark(#8e8e86, #80828b);
 
-  --c-accent: light-dark(#047857, #34d399);
-  --c-accent-hover: light-dark(#065f46, #6ee7b7);
-  --c-accent-fg: light-dark(#ffffff, #052e1f);
-  --c-accent-soft: light-dark(#e6f4ee, #17322a);
-  --c-accent-text: light-dark(#047857, #5fe0ae);
+  --c-accent: light-dark(#047857, #3fcf98);
+  --c-accent-hover: light-dark(#065f46, #6fe2b4);
+  --c-accent-fg: light-dark(#ffffff, #062a1d);
+  --c-accent-soft: light-dark(#e6f4ee, #203a31);
+  --c-accent-text: light-dark(#047857, #6fe2b4);
 
   --c-danger: light-dark(#c42121, #f87171);
   --c-danger-fg: light-dark(#ffffff, #2a0b0b);
-  --c-danger-soft: light-dark(#fcebea, #3a1d1c);
+  --c-danger-soft: light-dark(#fcebea, #432a2b);
   --c-warning: light-dark(#9a5a06, #fbbf24);
-  --c-warning-soft: light-dark(#fcf2e0, #382c13);
-  --c-success: light-dark(#047857, #34d399);
-  --c-success-soft: light-dark(#e6f4ee, #17322a);
-  --c-neutral-soft: light-dark(#eeeeea, #2b2b28);
+  --c-warning-soft: light-dark(#fcf2e0, #3d3421);
+  --c-success: light-dark(#047857, #3fcf98);
+  --c-success-soft: light-dark(#e6f4ee, #203a31);
+  --c-neutral-soft: light-dark(#eeeeea, #35363b);
   /* A strong inverted surface (the list's bulk bar): dark with light text in both themes. */
-  --c-inverse: light-dark(#262622, #3a3a35);
-  --c-inverse-fg: light-dark(#f6f6f4, #f4f4f0);
+  --c-inverse: light-dark(#262622, #46484e);
+  --c-inverse-fg: light-dark(#f6f6f4, #f4f4f6);
   --c-inverse-danger: light-dark(#ffb4ab, #ffb4ab);
 
-  --c-focus-ring: light-dark(rgb(4 120 87 / .28), rgb(52 211 153 / .38));
-  --c-overlay: light-dark(rgb(24 24 20 / .42), rgb(0 0 0 / .62));
+  --c-focus-ring: light-dark(rgb(4 120 87 / .28), rgb(63 207 152 / .36));
+  --c-overlay: light-dark(rgb(24 24 20 / .42), rgb(12 12 14 / .58));
 
-  --shadow-sm: 0 1px 2px light-dark(rgb(20 20 16 / .05), rgb(0 0 0 / .4));
-  --shadow-md: 0 2px 4px light-dark(rgb(20 20 16 / .04), rgb(0 0 0 / .3)), 0 6px 16px light-dark(rgb(20 20 16 / .07), rgb(0 0 0 / .35));
-  --shadow-lg: 0 8px 24px light-dark(rgb(20 20 16 / .10), rgb(0 0 0 / .5)), 0 2px 6px light-dark(rgb(20 20 16 / .05), rgb(0 0 0 / .3));
+  --shadow-sm: 0 1px 2px light-dark(rgb(20 20 16 / .05), rgb(0 0 0 / .28));
+  --shadow-md: 0 2px 4px light-dark(rgb(20 20 16 / .04), rgb(0 0 0 / .22)), 0 6px 16px light-dark(rgb(20 20 16 / .07), rgb(0 0 0 / .28));
+  --shadow-lg: 0 8px 24px light-dark(rgb(20 20 16 / .10), rgb(0 0 0 / .4)), 0 2px 6px light-dark(rgb(20 20 16 / .05), rgb(0 0 0 / .22));
 }
 
 :root[data-theme="light"] { color-scheme: light; }
@@ -445,18 +445,8 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
   position: absolute; left: 10px; top: 50%; width: 15px; height: 15px;
   transform: translateY(-50%); color: var(--c-text-subtle); pointer-events: none;
 }
-.folio-list-toolbar input, .folio-list-toolbar select {
-  min-height: var(--h-button-sm);
-  padding: 4px 9px;
-  font: inherit;
-  font-size: 13.5px;
-  color: var(--c-text);
-  background: var(--c-input);
-  border: 1px solid var(--c-border-strong);
-  border-radius: var(--r-sm);
-}
+.folio-list-toolbar input, .folio-list-toolbar select { min-height: var(--h-button-sm); padding-block: 4px; font-size: 13.5px; }
 .folio-list-search input { width: 100%; min-height: var(--h-control); padding-left: 32px; }
-.folio-list-toolbar :is(input, select):focus { outline: none; border-color: var(--c-accent); box-shadow: 0 0 0 3px var(--c-focus-ring); }
 .folio-list-submit[hidden] { display: none; }
 .folio-filter-menu { position: relative; }
 .folio-filter-menu summary { list-style: none; }
@@ -566,7 +556,68 @@ form:has(> .folio-form-actions) { container-type: inline-size; }
 }
 .form-required { color: var(--c-danger); margin-left: 2px; }
 
-.form-group input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+/* Base control style: one look for every text-like input, textarea and select inside an admin root
+   (the shell, the drawer page, the sign-in pages), whatever wraps it: package and
+   extension screens get it too. Site previews are iframes and never see it.
+   Zero specificity (:where), so container rules below only add what differs
+   (width, margins, toolbar sizes); they must not set border, background or
+   padding-right, or the states and the select chevron would be lost. */
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(
+  input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [type="color"], [type="range"], [type="submit"], [type="button"], [type="reset"], [type="image"]),
+  textarea,
+  select
+) {
+  max-width: 100%;
+  min-height: var(--h-control);
+  margin: 0;
+  padding: 7px 11px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  color: var(--c-text);
+  background-color: var(--c-input);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  box-shadow: none;
+  transition: border-color .12s, box-shadow .12s;
+}
+/* States: the same control set as above. */
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [type="color"], [type="range"], [type="submit"], [type="button"], [type="reset"], [type="image"]), textarea, select):where(:hover:not(:disabled, :focus)) { border-color: var(--c-text-subtle); }
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [type="color"], [type="range"], [type="submit"], [type="button"], [type="reset"], [type="image"]), textarea, select):where(:focus) {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px var(--c-focus-ring);
+}
+/* Read-only forms (fieldset disabled) stay readable: muted text on a quieter fill. */
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [type="color"], [type="range"], [type="submit"], [type="button"], [type="reset"], [type="image"]), textarea, select):where(:disabled) {
+  color: var(--c-text-muted);
+  -webkit-text-fill-color: var(--c-text-muted);
+  background-color: var(--c-surface-2);
+  border-color: var(--c-border);
+  opacity: 1;
+  cursor: not-allowed;
+}
+:where(.folio-shell, .folio-drawer-body, .folio-auth) ::placeholder { color: var(--c-text-subtle); opacity: 1; }
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(textarea) { line-height: 1.5; resize: vertical; }
+/* Single selects: Folio draws the chevron (two gradient halves, no image, so no img-src
+   needed and it follows the theme); the right padding keeps text clear of it. */
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple])) {
+  appearance: none;
+  padding-right: 34px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--c-text-muted) 50%),
+    linear-gradient(135deg, var(--c-text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select[multiple]) { padding: 4px; overflow-y: auto; }
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select[multiple] option) { padding: 3px 7px; border-radius: var(--r-xs); }
+
+.form-group input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]),
 .form-group textarea,
 .form-group select,
 .folio-field input,
@@ -576,40 +627,13 @@ form:has(> .folio-form-actions) { container-type: inline-size; }
 .folio-translations input[type="text"],
 .folio-translations textarea,
 .folio-share-url,
-.folio-publish-at input,
 .folio-auth-card input {
   display: block;
   width: 100%;
-  max-width: 100%;
-  min-height: var(--h-control);
-  padding: 7px 11px;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 400;
-  color: var(--c-text);
-  background: var(--c-input);
-  border: 1px solid var(--c-border-strong);
-  border-radius: var(--r-sm);
-  transition: border-color .12s, box-shadow .12s;
-}
-.form-group :is(input, textarea, select):hover,
-.folio-field :is(input, select):hover,
-.folio-assets-toolbar :is(input, select):hover,
-.folio-auth-card input:hover { border-color: var(--c-text-subtle); }
-.form-group :is(input, textarea, select):focus,
-.folio-field :is(input, select):focus,
-.folio-assets-toolbar :is(input, select):focus,
-.folio-share-url:focus,
-.folio-publish-at input:focus,
-.folio-auth-card input:focus {
-  outline: none;
-  border-color: var(--c-accent);
-  box-shadow: 0 0 0 3px var(--c-focus-ring);
 }
 .folio-field input, .folio-field select { margin-top: 7px; }
-::placeholder { color: var(--c-text-subtle); opacity: 1; }
 
-.form-group textarea { min-height: 120px; resize: vertical; line-height: 1.55; }
+.form-group textarea { min-height: 120px; line-height: 1.55; }
 .form-group textarea.folio-input-mono { font-family: var(--font-mono); font-size: 13px; tab-size: 4; }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--c-accent); width: 16px; height: 16px; }
 
@@ -635,8 +659,10 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .has-error input,
 .has-error textarea,
 .has-error select { border-color: var(--c-danger) !important; }
+.has-error :is(input, textarea, select):focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-danger) 30%, transparent); }
 
-.form-radio, .folio-visibility-option { display: inline-flex; align-items: center; gap: 8px; margin-right: 16px; font-weight: 450; }
+.form-radio, .form-check, .folio-visibility-option { display: inline-flex; align-items: center; gap: 8px; margin-right: 16px; font-weight: 450; }
+:is(.form-radio, .form-check, .folio-visibility-option) > input { flex: none; margin: 0; }
 
 /* Sticky publishing bar: sticks to the bottom of whatever scrolls the form
    (the page, or the preview's form pane) and reflows for narrow forms. */
@@ -957,16 +983,7 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 }
 .folio-matrix-label { flex: 1; min-width: 0; font-weight: 560; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folio-matrix-controls, .folio-matrix-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.folio-matrix-controls select, .folio-matrix-add select {
-  min-height: var(--h-button-sm);
-  padding: 2px 8px;
-  font: inherit;
-  font-size: 13px;
-  color: var(--c-text);
-  background: var(--c-input);
-  border: 1px solid var(--c-border-strong);
-  border-radius: var(--r-xs);
-}
+.folio-matrix-controls select, .folio-matrix-add select { min-height: var(--h-button-sm); padding-block: 2px; font-size: 13px; }
 [data-matrix-create] { margin-left: 4px; }
 [data-matrix-view] { margin: 0 4px; }
 .folio-relation-item { display: flex; align-items: center; gap: 8px; }
@@ -1297,7 +1314,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-auth-card .btn-primary { width: 100%; min-height: 40px; margin-top: 8px; font-size: 14px; }
 .folio-auth-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 0 12px; font-size: 13px; }
 .folio-auth-check { display: inline-flex; align-items: center; gap: 8px; color: var(--c-text-muted); cursor: pointer; }
-.folio-auth-card input[type="checkbox"] { display: inline-block; width: 16px; height: 16px; min-height: 0; padding: 0; box-shadow: none; }
+.folio-auth-card input[type="checkbox"] { display: inline-block; width: 16px; }
 .folio-auth-link { margin-left: auto; color: var(--c-accent); font-size: 13px; text-decoration: none; }
 .folio-auth-link:hover { text-decoration: underline; text-underline-offset: 2px; }
 .folio-auth-back { margin: 18px 0 0; text-align: center; font-size: 13px; }
