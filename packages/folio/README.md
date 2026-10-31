@@ -247,6 +247,25 @@ the stylesheet link and the small theme scripts are plain markup in
 CSP. If you override `_layout.twig`, keep the nonces and the
 `<meta name="csp-nonce">` tag (the rich-text editor reads it).
 
+### Styling extension screens
+
+Screens inside the admin shell get the control styling for free: plain `input`, `select`,
+`textarea` and `button` elements already look like Folio's. Three reusable pieces cover the
+common layouts:
+
+- **Checkbox chips** for a small multi-select (about a dozen options at most):
+  `{% include '@folio/admin/partials/checkbox-chips.twig' with {name: 'types', options: types, selected: chosen, label: 'Types', help: 'Optional hint'} only %}`.
+  `options` maps value to label, `selected` is a list of values, `label` names the group for
+  assistive tech (it is visually hidden), `help` is optional. The boxes post as `name[]`;
+  with nothing checked no key is posted, so your handler decides what that means.
+- **`.folio-toolbar`** is a wrapping row for filters and buttons above a list. Inside it,
+  `.folio-toolbar-fields` is a `<form>` that fills the free space and `.folio-toolbar-field`
+  pairs an inline `<label>` with its control. On narrow screens the row wraps into full-width
+  controls.
+- **`.folio-table-form`** goes on a table that holds form controls in its cells: cells get
+  even padding and the controls fill them. Use `.folio-cell-check` on a narrow checkbox or
+  radio column.
+
 ## Type options
 
 Besides `fields`, a type JSON can carry two optional blocks, plus the flags `singleton`

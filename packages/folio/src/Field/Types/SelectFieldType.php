@@ -97,18 +97,24 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
         return $out;
     }
 
-    /** @param array<string, string> $options */
+    /**
+     * Radios as chips in a borderless group: the legend is laid out as the field label above.
+     *
+     * @param array<string, string> $options
+     */
     private function radios(FieldContext $ctx, array $options, string $value): string
     {
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $legend = $ctx->label ?? $this->renderer->humanize($ctx->name);
 
-        $html = '<fieldset class="form-group' . ($ctx->errors !== [] ? ' has-error' : '') . '"><legend>' . $e($legend) . '</legend>';
+        $html = '<fieldset class="form-group folio-choice-group' . ($ctx->errors !== [] ? ' has-error' : '') . '"><legend>' . $e($legend) . '</legend>'
+            . '<div class="folio-chips">';
         foreach ($options as $optValue => $optLabel) {
-            $html .= '<label class="form-radio"><input type="radio" name="' . $e($ctx->name) . '" value="' . $e((string) $optValue) . '"'
+            $html .= '<label class="folio-chip"><input type="radio" name="' . $e($ctx->name) . '" value="' . $e((string) $optValue) . '"'
                 . ((string) $optValue === $value ? ' checked' : '')
-                . ($ctx->required ? ' required' : '') . '> ' . $e($optLabel) . '</label>';
+                . ($ctx->required ? ' required' : '') . '><span class="folio-chip-label">' . $e($optLabel) . '</span></label>';
         }
+        $html .= '</div>';
         foreach ($ctx->errors as $error) {
             $html .= '<div class="form-error">' . $e((string) $error) . '</div>';
         }

@@ -134,6 +134,10 @@ final class MatrixFieldTypeTest extends TestCase
         $this->assertStringContainsString('name="blocks[0][_type]" value="note"', $html);
         $this->assertStringContainsString('name="blocks[0][id]" value="n1"', $html);
         $this->assertStringContainsString('First note', $html); // resolved label
+        // The row's controls are Folio buttons (ghost; Remove in the danger tone), not bare browser buttons.
+        $this->assertStringContainsString('<button type="button" class="btn btn-ghost" data-matrix-up>', $html);
+        $this->assertStringContainsString('<button type="button" class="btn btn-ghost" data-matrix-down>', $html);
+        $this->assertStringContainsString('<button type="button" class="btn btn-ghost" data-tone="danger" data-matrix-remove>', $html);
     }
 
     public function test_normalize_filters_disallowed_and_reindexes(): void

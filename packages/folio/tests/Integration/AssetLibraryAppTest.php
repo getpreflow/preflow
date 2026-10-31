@@ -65,7 +65,8 @@ final class AssetLibraryAppTest extends TestCase
         $this->assertStringContainsString('Readme.txt', $docs);
         $this->assertStringNotContainsString('IMG_001.png', $docs);
 
-        $this->assertStringContainsString('folio-asset-list', (string) $this->get('/folio/assets?view=list')->getBody());
+        // The list view's table sits in the same bordered card as every other Folio table.
+        $this->assertMatchesRegularExpression('#<div class="folio-table-wrap">\s*<table class="folio-table folio-asset-list">#', (string) $this->get('/folio/assets?view=list')->getBody());
     }
 
     public function test_panel_saves_metadata(): void

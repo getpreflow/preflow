@@ -1,0 +1,10 @@
+{# A small multi-select as checkbox chips (real checkboxes, posted as name[]). Params: name, options (value => label), selected (list), label (group name for assistive tech), help (optional). Nothing checked posts no key; callers decide what that means. #}
+<fieldset class="folio-chips-group">
+    <legend>{{ label }}</legend>
+    <div class="folio-chips">
+        {% for value, text in options %}
+            <label class="folio-chip"><input type="checkbox" name="{{ name }}[]" value="{{ value }}"{% if value in selected %} checked{% endif %}><span class="folio-chip-label">{{ text }}</span></label>
+        {% endfor %}
+    </div>
+    {% if help|default('') != '' %}<small class="form-help">{{ help }}</small>{% endif %}
+</fieldset>

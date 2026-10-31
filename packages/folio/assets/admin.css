@@ -1,4 +1,4 @@
-/* Folio admin — calm, warm-neutral surfaces, emerald accent.
+/* Folio admin — calm neutral surfaces (soft graphite in dark mode), emerald accent.
    One token set: every colour is light-dark(light, dark) and follows
    color-scheme, which is the OS default unless [data-theme] forces one.
    Components only read tokens and never branch on the theme. */
@@ -19,44 +19,44 @@
   --h-button-sm: 28px;
   --h-list-head: 42px;
 
-  --c-bg: light-dark(#f6f6f4, #141413);
-  --c-sidebar-bg: light-dark(#fbfbfa, #181816);
-  --c-surface: light-dark(#ffffff, #1d1d1b);
-  --c-surface-2: light-dark(#f8f8f6, #232321);
-  --c-surface-raised: light-dark(#ffffff, #2a2a27);
-  --c-input: light-dark(#ffffff, #171716);
-  --c-border: light-dark(#e6e6e2, #2e2e2b);
-  --c-border-strong: light-dark(#d3d3cd, #44443f);
-  --c-row-hover: light-dark(#f2f2ef, #252523);
-  --c-text: light-dark(#1a1a17, #ecece8);
-  --c-text-muted: light-dark(#64645d, #a7a79f);
-  --c-text-subtle: light-dark(#8e8e86, #7d7d76);
+  --c-bg: light-dark(#f6f6f4, #1e1f22);
+  --c-sidebar-bg: light-dark(#fbfbfa, #232428);
+  --c-surface: light-dark(#ffffff, #2a2b2f);
+  --c-surface-2: light-dark(#f8f8f6, #2e2f33);
+  --c-surface-raised: light-dark(#ffffff, #333439);
+  --c-input: light-dark(#ffffff, #25262a);
+  --c-border: light-dark(#e6e6e2, #36373c);
+  --c-border-strong: light-dark(#d3d3cd, #47494f);
+  --c-row-hover: light-dark(#f2f2ef, #3a3b41);
+  --c-text: light-dark(#1a1a17, #e9e9ec);
+  --c-text-muted: light-dark(#64645d, #a3a5ad);
+  --c-text-subtle: light-dark(#8e8e86, #90929b);
 
-  --c-accent: light-dark(#047857, #34d399);
-  --c-accent-hover: light-dark(#065f46, #6ee7b7);
-  --c-accent-fg: light-dark(#ffffff, #052e1f);
-  --c-accent-soft: light-dark(#e6f4ee, #17322a);
-  --c-accent-text: light-dark(#047857, #5fe0ae);
+  --c-accent: light-dark(#047857, #3fcf98);
+  --c-accent-hover: light-dark(#065f46, #6fe2b4);
+  --c-accent-fg: light-dark(#ffffff, #062a1d);
+  --c-accent-soft: light-dark(#e6f4ee, #203a31);
+  --c-accent-text: light-dark(#047857, #6fe2b4);
 
   --c-danger: light-dark(#c42121, #f87171);
   --c-danger-fg: light-dark(#ffffff, #2a0b0b);
-  --c-danger-soft: light-dark(#fcebea, #3a1d1c);
+  --c-danger-soft: light-dark(#fcebea, #432a2b);
   --c-warning: light-dark(#9a5a06, #fbbf24);
-  --c-warning-soft: light-dark(#fcf2e0, #382c13);
-  --c-success: light-dark(#047857, #34d399);
-  --c-success-soft: light-dark(#e6f4ee, #17322a);
-  --c-neutral-soft: light-dark(#eeeeea, #2b2b28);
+  --c-warning-soft: light-dark(#fcf2e0, #3d3421);
+  --c-success: light-dark(#047857, #3fcf98);
+  --c-success-soft: light-dark(#e6f4ee, #203a31);
+  --c-neutral-soft: light-dark(#eeeeea, #37383d);
   /* A strong inverted surface (the list's bulk bar): dark with light text in both themes. */
-  --c-inverse: light-dark(#262622, #3a3a35);
-  --c-inverse-fg: light-dark(#f6f6f4, #f4f4f0);
+  --c-inverse: light-dark(#262622, #46484e);
+  --c-inverse-fg: light-dark(#f6f6f4, #f4f4f6);
   --c-inverse-danger: light-dark(#ffb4ab, #ffb4ab);
 
-  --c-focus-ring: light-dark(rgb(4 120 87 / .28), rgb(52 211 153 / .38));
-  --c-overlay: light-dark(rgb(24 24 20 / .42), rgb(0 0 0 / .62));
+  --c-focus-ring: light-dark(rgb(4 120 87 / .28), rgb(63 207 152 / .36));
+  --c-overlay: light-dark(rgb(24 24 20 / .42), rgb(12 12 14 / .58));
 
-  --shadow-sm: 0 1px 2px light-dark(rgb(20 20 16 / .05), rgb(0 0 0 / .4));
-  --shadow-md: 0 2px 4px light-dark(rgb(20 20 16 / .04), rgb(0 0 0 / .3)), 0 6px 16px light-dark(rgb(20 20 16 / .07), rgb(0 0 0 / .35));
-  --shadow-lg: 0 8px 24px light-dark(rgb(20 20 16 / .10), rgb(0 0 0 / .5)), 0 2px 6px light-dark(rgb(20 20 16 / .05), rgb(0 0 0 / .3));
+  --shadow-sm: 0 1px 2px light-dark(rgb(20 20 16 / .05), rgb(0 0 0 / .28));
+  --shadow-md: 0 2px 4px light-dark(rgb(20 20 16 / .04), rgb(0 0 0 / .22)), 0 6px 16px light-dark(rgb(20 20 16 / .07), rgb(0 0 0 / .28));
+  --shadow-lg: 0 8px 24px light-dark(rgb(20 20 16 / .10), rgb(0 0 0 / .4)), 0 2px 6px light-dark(rgb(20 20 16 / .05), rgb(0 0 0 / .22));
 }
 
 :root[data-theme="light"] { color-scheme: light; }
@@ -83,6 +83,9 @@ a:hover { color: var(--c-accent-hover); }
 
 h1 { font-size: 1.0625rem; font-weight: 650; letter-spacing: -.01em; margin: 0; }
 h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
+/* Sub-headings inside admin pages and panels (zero extra specificity, so component classes win). */
+:where(.folio-shell, .folio-drawer-body) h3 { font-size: .875rem; font-weight: 620; margin: 0 0 6px; }
+h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 
 :where(a, button, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--c-accent);
@@ -365,7 +368,7 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
   align-items: center;
   padding: 18px;
   border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   background: var(--c-surface);
   box-shadow: var(--shadow-sm);
   color: var(--c-text);
@@ -388,7 +391,7 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
 
 /* ---- dashboard: translations waiting for review ---- */
 .folio-review { margin-top: 28px; }
-.folio-review-title { font-size: 16px; font-weight: 620; margin: 0 0 12px; }
+.folio-review-title { margin: 0 0 12px; }
 .folio-review-type { font-size: 13px; font-weight: 620; color: var(--c-text-muted); margin: 16px 0 6px; }
 .folio-review-list, .folio-review-jobs { list-style: none; margin: 0; padding: 0; }
 .folio-review-list li, .folio-review-jobs li { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--c-border); }
@@ -397,7 +400,7 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
 .folio-table-wrap {
   overflow-x: auto;
   border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   background: var(--c-surface);
   box-shadow: var(--shadow-sm);
 }
@@ -416,12 +419,20 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
   border-bottom: 1px solid var(--c-border);
 }
 .folio-table tbody td { padding: 10px 16px; border-bottom: 1px solid var(--c-border); vertical-align: middle; }
-.folio-table tbody tr:last-child td { border-bottom: 0; }
+/* A key/value table (Settings → AI) heads its rows with th scope=row: aligned like the cells, label weight. */
+.folio-table tbody th { padding: 10px 16px; border-bottom: 1px solid var(--c-border); text-align: left; vertical-align: middle; font-weight: 560; }
+.folio-table tbody tr:last-child :is(td, th) { border-bottom: 0; }
 .folio-table tbody tr { transition: background-color .1s; }
 .folio-table tbody tr:hover { background: var(--c-row-hover); }
 .folio-row-link { color: var(--c-text); font-weight: 580; }
 .folio-row-link:hover { color: var(--c-accent-text); }
-.folio-table .folio-row-actions { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
+/* A row of small actions (buttons, a checkbox, a hint): in a table cell right-aligned, elsewhere
+   (AI run's unfinished jobs, the Translations "Save all filled" bar) left-aligned. */
+.folio-row-actions { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 0; }
+.folio-row-actions[hidden] { display: none; }
+.folio-row-actions > .form-error { flex-basis: 100%; margin-top: 0; }
+.folio-translations-save-all { margin-bottom: 12px; }
+.folio-table .folio-row-actions { gap: 4px; justify-content: flex-end; }
 .folio-table .folio-row-actions form { display: inline-flex; margin: 0; }
 
 .folio-empty {
@@ -432,31 +443,47 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
   text-align: center;
   color: var(--c-text-muted);
   border: 1px dashed var(--c-border-strong);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   background: var(--c-surface);
 }
+.folio-muted { color: var(--c-text-muted); }
+/* What follows a table (Save buttons, a test result, the next section) keeps a little air. */
+.folio-table-wrap + :is(form, .folio-form-buttons, .folio-alert, .folio-notice) { margin-top: 16px; }
+/* Section spacing (AI status months); the asset pages' panels sit directly under their tabs and keep that 16px gap. */
+:where(.folio-content) > section:not(.folio-asset-panel, .folio-image-editor) { margin-top: 28px; }
 .folio-empty p { margin: 0; }
 .folio-empty-icon { width: 32px; height: 32px; color: var(--c-text-subtle); }
 
 /* ---- list: search, filter chips, sort, pager ---- */
-.folio-list-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
-.folio-list-search { position: relative; flex: 1; min-width: 12rem; max-width: 26rem; }
+/* One toolbar pattern for list toolbars, filter bars and tab rows: a wrapping flex row, centred, with
+   every control and button at --h-control (36px, like the form fields; the controls get that from the
+   base above, so no size override here). Direct children only, so a dialog or panel inside the
+   toolbar keeps its own buttons. .folio-toolbar-field pairs an inline label with its control;
+   .folio-toolbar-fields is a form that fills the row's free space, so a sibling such as the Translate button
+   (margin-left: auto) sits at the right when there is room. */
+.folio-list-toolbar, .folio-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; }
+.folio-toolbar-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; flex: 1 1 auto; min-width: 0; }
+.folio-toolbar-field { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.folio-toolbar-field > label { font-size: 13px; font-weight: 550; color: var(--c-text-muted); white-space: nowrap; }
+.folio-toolbar-field > select { min-width: 0; }
+.folio-toolbar > .folio-ai { margin-left: auto; }
+:is(.folio-list-toolbar, .folio-toolbar, .folio-toolbar-fields) > .btn,
+:is(.folio-list-toolbar, .folio-toolbar) > form > .btn,
+:is(.folio-list-toolbar, .folio-toolbar) > details > summary.btn,
+.folio-toolbar > .folio-ai > .folio-ai-open { min-height: var(--h-control); padding: 0 14px; font-size: 13.5px; }
+.folio-list-search { position: relative; flex: 1 1 12rem; min-width: 12rem; max-width: 26rem; }
 .folio-list-search .folio-icon {
   position: absolute; left: 10px; top: 50%; width: 15px; height: 15px;
   transform: translateY(-50%); color: var(--c-text-subtle); pointer-events: none;
 }
-.folio-list-toolbar input, .folio-list-toolbar select {
-  min-height: var(--h-button-sm);
-  padding: 4px 9px;
-  font: inherit;
-  font-size: 13.5px;
-  color: var(--c-text);
-  background: var(--c-input);
-  border: 1px solid var(--c-border-strong);
-  border-radius: var(--r-sm);
+.folio-list-search input { width: 100%; padding-left: 32px; }
+/* Narrow: the filter bar's fields and buttons become full-width rows. */
+@media (max-width: 560px) {
+  .folio-toolbar > *, .folio-toolbar-fields, .folio-toolbar-fields > * { flex: 1 1 100%; max-width: none; }
+  .folio-toolbar-field > select, .folio-toolbar-field > input { flex: 1 1 auto; min-width: 0; }
+  .folio-toolbar > .folio-ai { margin-left: 0; }
+  .folio-toolbar > .folio-ai > .folio-ai-open, .folio-toolbar-fields > .btn { width: 100%; }
 }
-.folio-list-search input { width: 100%; min-height: var(--h-control); padding-left: 32px; }
-.folio-list-toolbar :is(input, select):focus { outline: none; border-color: var(--c-accent); box-shadow: 0 0 0 3px var(--c-focus-ring); }
 .folio-list-submit[hidden] { display: none; }
 .folio-filter-menu { position: relative; }
 .folio-filter-menu summary { list-style: none; }
@@ -516,7 +543,7 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
   box-sizing: border-box;
   min-height: calc(var(--h-list-head) + 1px);
   margin: 0; padding: 6px 10px 6px 44px;
-  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  border-radius: var(--r) var(--r) 0 0;
 }
 .folio-table thead .folio-bulk-cell input { position: relative; z-index: 3; accent-color: var(--c-accent); }
 .folio-bulk-bar[hidden] { display: none; }
@@ -565,8 +592,98 @@ form:has(> .folio-form-actions) { container-type: inline-size; }
   color: var(--c-text);
 }
 .form-required { color: var(--c-danger); margin-left: 2px; }
+/* A second label in one group (AI tuning's "add a field level"): spaced like the next field. */
+.form-group > :is(input, textarea, select, .form-help) + .form-label { margin-top: 16px; }
 
-.form-group input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+/* Base control style: one look for every text-like input, textarea and select inside an admin root
+   (the shell, the drawer page, the sign-in pages), whatever wraps it: package and
+   extension screens get it too. Site previews are iframes and never see it.
+   Zero specificity (:where), so container rules below only add what differs
+   (width, margins, toolbar sizes); they must not set border, background or
+   padding-right, or the states and the select chevron would be lost. */
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(
+  input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [type="color"], [type="range"], [type="submit"], [type="button"], [type="reset"], [type="image"]),
+  textarea,
+  select
+) {
+  max-width: 100%;
+  min-height: var(--h-control);
+  margin: 0;
+  padding: 7px 11px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  color: var(--c-text);
+  background-color: var(--c-input);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  box-shadow: none;
+  transition: border-color .12s, box-shadow .12s;
+}
+/* States: the same control set as above. */
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [type="color"], [type="range"], [type="submit"], [type="button"], [type="reset"], [type="image"]), textarea, select):where(:hover:not(:disabled, :focus)) { border-color: var(--c-text-subtle); }
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [type="color"], [type="range"], [type="submit"], [type="button"], [type="reset"], [type="image"]), textarea, select):where(:focus) {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px var(--c-focus-ring);
+}
+/* Read-only forms (fieldset disabled) stay readable: muted text on a quieter fill. */
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [type="color"], [type="range"], [type="submit"], [type="button"], [type="reset"], [type="image"]), textarea, select):where(:disabled) {
+  color: var(--c-text-muted);
+  -webkit-text-fill-color: var(--c-text-muted);
+  background-color: var(--c-surface-2);
+  border-color: var(--c-border);
+  opacity: 1;
+  cursor: not-allowed;
+}
+:where(.folio-shell, .folio-drawer-body, .folio-auth) ::placeholder { color: var(--c-text-subtle); opacity: 1; }
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(textarea) { line-height: 1.5; resize: vertical; }
+/* Single selects: Folio draws the chevron; the right padding keeps text clear of it.
+   Top layer: a thin stroked SVG chevron (data: URI, one per theme and for disabled,
+   since light-dark() cannot reach inside a URI). Its tile is filled with the field's
+   own background, so it hides the layer below. Below: a small CSS-only caret
+   (two gradient halves) that shows only when a site's CSP img-src blocks data:
+   images and the SVG layer never loads. Keep the tile fills in step with
+   --c-input and --c-surface-2 (the disabled fill). */
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple])) {
+  --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%23ffffff'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%2364645d' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  appearance: none;
+  padding-right: 34px;
+  background-image:
+    var(--folio-chevron),
+    linear-gradient(45deg, transparent 50%, var(--c-text-muted) 50%),
+    linear-gradient(135deg, var(--c-text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 11px) 50%, calc(100% - 17px) 50%, calc(100% - 12px) 50%;
+  background-size: 12px 8px, 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple]):disabled) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%23f8f8f6'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%2364645d' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+:where(:root[data-theme="dark"]) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple])) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%2325262a'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3a5ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+:where(:root[data-theme="dark"]) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple]):disabled) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%232e2f33'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3a5ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+@media (prefers-color-scheme: dark) {
+  :where(:root:not([data-theme="light"])) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple])) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%2325262a'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3a5ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+  :where(:root:not([data-theme="light"])) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple]):disabled) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%232e2f33'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3a5ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+}
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select[multiple]) { padding: 4px; overflow-y: auto; }
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select[multiple] option) { padding: 3px 7px; border-radius: var(--r-xs); }
+/* Progress bars (AI runs): a thin rounded track with the accent fill, in both themes. Height comes from the context. */
+:where(.folio-shell, .folio-drawer-body) :where(progress) {
+  appearance: none;
+  height: 8px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--c-neutral-soft);
+  color: var(--c-accent);
+  overflow: hidden;
+}
+:where(.folio-shell, .folio-drawer-body) :where(progress)::-webkit-progress-bar { background: var(--c-neutral-soft); border-radius: 999px; }
+:where(.folio-shell, .folio-drawer-body) :where(progress)::-webkit-progress-value { background: var(--c-accent); border-radius: 999px; }
+:where(.folio-shell, .folio-drawer-body) :where(progress)::-moz-progress-bar { background: var(--c-accent); border-radius: 999px; }
+
+.form-group input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]),
 .form-group textarea,
 .form-group select,
 .folio-field input,
@@ -576,40 +693,13 @@ form:has(> .folio-form-actions) { container-type: inline-size; }
 .folio-translations input[type="text"],
 .folio-translations textarea,
 .folio-share-url,
-.folio-publish-at input,
 .folio-auth-card input {
   display: block;
   width: 100%;
-  max-width: 100%;
-  min-height: var(--h-control);
-  padding: 7px 11px;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 400;
-  color: var(--c-text);
-  background: var(--c-input);
-  border: 1px solid var(--c-border-strong);
-  border-radius: var(--r-sm);
-  transition: border-color .12s, box-shadow .12s;
-}
-.form-group :is(input, textarea, select):hover,
-.folio-field :is(input, select):hover,
-.folio-assets-toolbar :is(input, select):hover,
-.folio-auth-card input:hover { border-color: var(--c-text-subtle); }
-.form-group :is(input, textarea, select):focus,
-.folio-field :is(input, select):focus,
-.folio-assets-toolbar :is(input, select):focus,
-.folio-share-url:focus,
-.folio-publish-at input:focus,
-.folio-auth-card input:focus {
-  outline: none;
-  border-color: var(--c-accent);
-  box-shadow: 0 0 0 3px var(--c-focus-ring);
 }
 .folio-field input, .folio-field select { margin-top: 7px; }
-::placeholder { color: var(--c-text-subtle); opacity: 1; }
 
-.form-group textarea { min-height: 120px; resize: vertical; line-height: 1.55; }
+.form-group textarea { min-height: 120px; }
 .form-group textarea.folio-input-mono { font-family: var(--font-mono); font-size: 13px; tab-size: 4; }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--c-accent); width: 16px; height: 16px; }
 
@@ -635,8 +725,40 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .has-error input,
 .has-error textarea,
 .has-error select { border-color: var(--c-danger) !important; }
+.has-error :is(input, textarea, select):focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-danger) 30%, transparent); }
 
-.form-radio, .folio-visibility-option { display: inline-flex; align-items: center; gap: 8px; margin-right: 16px; font-weight: 450; }
+.form-radio, .form-check, .folio-visibility-option { display: inline-flex; align-items: center; gap: 8px; margin-right: 16px; font-weight: 450; }
+:is(.form-radio, .form-check, .folio-visibility-option) > input { flex: none; margin: 0; }
+
+/* Field groups (radio and checkbox lists, relations, roles): fieldsets keep the grouping for
+   assistive tech, but show no border and the legend reads as the field label above. The legend
+   is floated full width (the reliable way across browsers to lay it out as a plain block that
+   honours its margin); whatever follows clears it. Zero specificity on the fieldset, so a
+   package's legend class (.rbac-legend) or the hidden chips legend still wins. */
+:where(fieldset.form-group) { border: 0; padding: 0; margin-inline: 0; min-width: 0; }
+:where(fieldset.form-group) > legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin-bottom: 7px;
+  font-size: 13px;
+  font-weight: 620;
+  color: var(--c-text);
+}
+:where(fieldset.form-group) > legend ~ * { clear: left; }
+
+/* Boolean: the box inline with its label (label weight kept), help and error below. */
+.folio-boolean > .form-check { display: inline-flex; align-items: center; gap: 9px; margin: 0; font-weight: 620; cursor: pointer; }
+.folio-boolean > .form-help { margin-top: 4px; padding-left: 25px; }
+.folio-boolean > .form-error { padding-left: 25px; }
+/* A native checkbox shows no border colour: on error the label turns red and the box gets a red ring. */
+.folio-boolean.has-error > .form-check { color: var(--c-danger); }
+.folio-boolean.has-error > .form-check > input { outline: 2px solid var(--c-danger); outline-offset: 1px; border-radius: 3px; }
+/* Keyboard focus in the error state: keep a visible ring on top of the red outline. */
+.folio-boolean.has-error > .form-check > input:focus-visible { box-shadow: 0 0 0 4px var(--c-focus-ring); }
+/* Read-only form (fieldset[disabled]): the label is muted and no longer looks clickable. */
+.folio-boolean > .form-check:has(input:disabled) { color: var(--c-text-muted); cursor: default; }
+.folio-boolean > .form-check > input:disabled { cursor: default; }
 
 /* Sticky publishing bar: sticks to the bottom of whatever scrolls the form
    (the page, or the preview's form pane) and reflows for narrow forms. */
@@ -716,7 +838,7 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
   color: var(--c-text-muted);
 }
 .folio-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.folio-badge.is-published { background: var(--c-success-soft); color: var(--c-success); }
+.folio-badge.is-published, .folio-badge.is-ok { background: var(--c-success-soft); color: var(--c-success); }
 .folio-badge.is-changed,
 .folio-badge.is-incomplete { background: var(--c-warning-soft); color: var(--c-warning); }
 .folio-badge.is-unchecked, .folio-count.is-unchecked { background: var(--c-warning-soft); color: var(--c-warning); }
@@ -766,14 +888,14 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .folio-visibility legend { float: left; margin-right: 8px; font-size: 13px; font-weight: 620; }
 .folio-shared, .folio-fallback-hint { margin: -14px 0 18px; font-size: 12px; color: var(--c-text-subtle); }
 .folio-outdated { display: flex; align-items: center; gap: 8px; margin: -14px 0 18px; font-size: 12px; color: var(--c-accent-text); }
-.folio-outdated .btn { padding: 2px 8px; font-size: 12px; }
+.folio-outdated .btn { min-height: 24px; padding: 0 8px; font-size: 12px; }
 .folio-unchecked { display: flex; align-items: center; gap: 8px; margin: -14px 0 18px; font-size: 12px; color: var(--c-warning); }
-.folio-unchecked .btn { padding: 2px 8px; font-size: 12px; }
+.folio-unchecked .btn { min-height: 24px; padding: 0 8px; font-size: 12px; }
 .folio-reference { margin: -12px 0 20px; font-size: 13px; color: var(--c-text-muted); }
 .folio-reference summary { cursor: pointer; }
 
 /* ---- blocks editor ---- */
-.folio-blocks { margin-bottom: 26px; }
+.folio-blocks { margin-bottom: 22px; }
 .folio-blocks-head { margin-bottom: 8px; }
 .folio-blocks-head .form-label { margin-bottom: 2px; }
 .folio-blocks-head .form-help { margin-top: 0; }
@@ -784,6 +906,7 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
   border: 1px solid var(--c-border);
   border-radius: var(--r);
   background: var(--c-surface);
+  box-shadow: var(--shadow-sm);
   transition: border-color .12s, box-shadow .12s;
 }
 .folio-block-card:hover { border-color: var(--c-border-strong); }
@@ -795,7 +918,7 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
   100% { box-shadow: none; }
 }
 .folio-block-card.is-unknown { border-style: dashed; background: var(--c-surface-2); }
-.folio-block-body .folio-block-card { background: var(--c-surface-2); }
+.folio-block-body .folio-block-card { background: var(--c-surface-2); box-shadow: none; }
 .folio-block-body .folio-block-card.is-open { box-shadow: none; }
 
 .folio-block-head { display: flex; align-items: center; gap: 2px; min-height: 46px; padding: 5px 6px 5px 3px; }
@@ -898,6 +1021,7 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
   border: 1px solid var(--c-border);
   border-radius: var(--r);
   background: var(--c-surface);
+  box-shadow: var(--shadow-sm);
 }
 .folio-revisions summary {
   display: flex;
@@ -938,6 +1062,7 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
   border: 1px solid var(--c-border);
   border-radius: var(--r);
   background: var(--c-surface);
+  box-shadow: var(--shadow-sm);
 }
 .folio-share p { margin: 0; }
 .folio-share-label { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 14rem; font-size: 13px; font-weight: 560; color: var(--c-text-muted); }
@@ -950,23 +1075,15 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  padding: 6px 6px 6px 12px;
+  padding: 4px 4px 4px 12px;
   border: 1px solid var(--c-border);
   border-radius: var(--r-sm);
   background: var(--c-surface);
 }
 .folio-matrix-label { flex: 1; min-width: 0; font-weight: 560; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folio-matrix-controls, .folio-matrix-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.folio-matrix-controls select, .folio-matrix-add select {
-  min-height: var(--h-button-sm);
-  padding: 2px 8px;
-  font: inherit;
-  font-size: 13px;
-  color: var(--c-text);
-  background: var(--c-input);
-  border: 1px solid var(--c-border-strong);
-  border-radius: var(--r-xs);
-}
+/* Selects and buttons of a matrix row share the control height. */
+.folio-matrix-controls button, .folio-matrix-add .btn { min-height: var(--h-control); }
 [data-matrix-create] { margin-left: 4px; }
 [data-matrix-view] { margin: 0 4px; }
 .folio-relation-item { display: flex; align-items: center; gap: 8px; }
@@ -1017,10 +1134,13 @@ html trix-toolbar .trix-input--dialog { color: var(--c-text); background: var(--
   margin-bottom: 18px;
   padding: 10px;
   border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   background: var(--c-surface);
   box-shadow: var(--shadow-sm);
 }
+/* Buttons in the library toolbar line up with its fields (36px, like the list toolbars). */
+:is(.folio-assets-search, .folio-assets-upload) > .btn, .folio-assets-toolbar > .btn { min-height: var(--h-control); }
+.folio-assets-unused { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 520; color: var(--c-text-muted); cursor: pointer; }
 .folio-assets-search { display: flex; flex-wrap: wrap; gap: 8px; flex: 1; min-width: 16rem; margin: 0; }
 .folio-assets-search input[type="search"] { flex: 1; width: auto; min-width: 10rem; }
 .folio-assets-search select { width: auto; }
@@ -1119,7 +1239,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   max-width: 1100px;
   padding: 20px;
   border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   background: var(--c-surface);
   box-shadow: var(--shadow-sm);
 }
@@ -1147,6 +1267,8 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 }
 .folio-asset-form { display: grid; gap: 14px; }
 .folio-asset-form .btn { justify-self: start; }
+/* Extra fields (form groups) take the form's grid gap, not their own bottom margin as well. */
+.folio-asset-form .form-group { margin-bottom: 0; }
 .folio-asset-meta, .folio-help { font-size: 12.5px; color: var(--c-text-muted); }
 .folio-pagination { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 20px; }
 
@@ -1297,7 +1419,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-auth-card .btn-primary { width: 100%; min-height: 40px; margin-top: 8px; font-size: 14px; }
 .folio-auth-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 0 12px; font-size: 13px; }
 .folio-auth-check { display: inline-flex; align-items: center; gap: 8px; color: var(--c-text-muted); cursor: pointer; }
-.folio-auth-card input[type="checkbox"] { display: inline-block; width: 16px; height: 16px; min-height: 0; padding: 0; box-shadow: none; }
+.folio-auth-card input[type="checkbox"] { display: inline-block; width: 16px; }
 .folio-auth-link { margin-left: auto; color: var(--c-accent); font-size: 13px; text-decoration: none; }
 .folio-auth-link:hover { text-decoration: underline; text-underline-offset: 2px; }
 .folio-auth-back { margin: 18px 0 0; text-align: center; font-size: 13px; }
@@ -1455,15 +1577,18 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-segmented button[aria-selected="true"] { background: var(--c-surface-raised); color: var(--c-text); box-shadow: var(--shadow-sm); }
 .folio-segmented .folio-icon { width: 15px; height: 15px; }
 
-/* Multi relation: a fieldset of checkbox chips (same vocabulary as the rbac permission chips). */
-.folio-relation-multi { border: 0; padding: 0; margin-inline: 0; min-width: 0; }
-.folio-relation-multi > legend {
-  padding: 0;
-  margin-bottom: 7px;
-  font-size: 13px;
-  font-weight: 620;
-  color: var(--c-text);
+/* Checkbox chips (partials/checkbox-chips.twig): a small multi-select as a wrapping group of real checkboxes. */
+.folio-chips-group { border: 0; padding: 0; margin: 0; min-width: 0; }
+.folio-chips-group > legend {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
 }
+.folio-chips-group > .form-help { display: block; margin-top: 6px; }
+/* Long option labels wrap inside the chip instead of overflowing the field. */
+.folio-chips .folio-chip { max-width: 100%; }
+.folio-chips .folio-chip-label { min-width: 0; overflow-wrap: anywhere; }
+
+/* Relations, radio groups and roles: fieldsets of chips under the label (see "Field groups" above). */
 .folio-relation-filter { margin-bottom: 10px; max-width: 280px; }
 .folio-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .folio-chip {
@@ -1471,7 +1596,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   align-items: center;
   gap: 7px;
   min-height: 30px;
-  padding: 0 12px 0 10px;
+  padding: 4px 12px 4px 10px;
   margin: 0;
   border: 1px solid var(--c-border);
   border-radius: 999px;
@@ -1483,13 +1608,17 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   transition: background-color .1s, border-color .1s, color .1s;
 }
 .folio-chip:hover { background: var(--c-row-hover); }
-.folio-chip input { width: 14px; height: 14px; margin: 0; }
+.folio-chip input { flex: none; width: 14px; height: 14px; margin: 0; }
 .folio-chip:has(input:checked) {
   background: var(--c-accent-soft);
   border-color: color-mix(in srgb, var(--c-accent) 35%, transparent);
   color: var(--c-accent-text);
 }
 .folio-chip:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--c-focus-ring); }
+/* Disabled (a denied role, or every box in a read-only fieldset[disabled]): readable, visibly inert. */
+.folio-chip:has(input:disabled) { color: var(--c-text-muted); background: var(--c-surface-2); border-color: var(--c-border); cursor: default; }
+.folio-chip:has(input:disabled:checked) { background: var(--c-neutral-soft); border-color: var(--c-border-strong); }
+.folio-chip:has(input:disabled) input { cursor: default; }
 .folio-chip[hidden] { display: none; }
 .folio-chip-remove { border: 0; background: none; color: inherit; cursor: pointer; padding: 0 2px; font: inherit; line-height: 1; }
 .folio-chip-remove:hover { color: var(--c-danger); }
@@ -1506,7 +1635,10 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-relation-result:hover, .folio-relation-result:focus-visible { background: var(--c-row-hover); }
 .folio-relation-more { color: var(--c-text-muted); }
 .folio-relation-empty { padding: 6px 8px; color: var(--c-text-muted); }
-.folio-relation-multi.has-error .folio-chip { border-color: var(--c-danger); }
+/* Beats the checked chip's accent border, so every chip of a failed field shows the error; the second
+   selector out-ranks the disabled looks too (.folio-chip:has(input:disabled:checked) is 0,3,1). */
+.form-group.has-error .folio-chip { border-color: var(--c-danger); }
+.form-group.has-error .folio-chip:has(input:disabled) { border-color: var(--c-danger); }
 
 .folio-preview-frame {
   flex: 1 1 auto;
@@ -1602,13 +1734,25 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 
 /* ---- extension panels and record actions ---- */
 .folio-actions form { margin: 0; }
-.folio-panel { border: 1px solid var(--c-border); border-radius: var(--r); background: var(--c-surface); padding: 12px 16px; }
+.folio-panel { border: 1px solid var(--c-border); border-radius: var(--r); background: var(--c-surface); box-shadow: var(--shadow-sm); padding: 12px 16px; }
 .folio-panel-title { margin: 0 0 8px; font-size: 14px; font-weight: 620; }
 .folio-panel-body { font-size: 13.5px; }
 
 /* ---- Settings → Cache ---- */
 .folio-cache-opcache { margin-top: 28px; }
-.folio-cache-opcache h2 { margin: 0; font-size: 15px; font-weight: 620; }
+.folio-cache-opcache h2 { margin: 0; }
+
+/* ---- tables with form controls (glossary): even cells, controls fill them ---- */
+.folio-table-form thead th, .folio-table-form tbody td { padding-inline: 12px; }
+.folio-table-form tbody td { vertical-align: top; min-width: 9rem; }
+.folio-table-form td > :is(input, textarea, select) { display: block; width: 100%; }
+.folio-table-form td > :is(input, select) + .form-radio,
+.folio-table-form td > :is(input, select) + .form-help { margin-top: 6px; }
+.folio-table-form .form-radio, .folio-table-form .form-help { display: flex; margin-right: 0; font-size: 13px; }
+.folio-table-form .form-help { color: var(--c-text-muted); }
+/* A lone checkbox: header and box centred, the box on the line of the row's inputs. */
+.folio-table-form th.folio-cell-check, .folio-table-form td.folio-cell-check { min-width: 0; width: 1%; text-align: center; white-space: nowrap; }
+.folio-table-form td.folio-cell-check .form-radio { justify-content: center; min-height: var(--h-control); margin: 0; }
 
 /* ---- Settings → Translations ---- */
 .folio-translations td { vertical-align: top; }
@@ -1670,6 +1814,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 /* ---- AI translation run (ai/run.twig, ai/run-progress.twig) ---- */
 .folio-ai-run { max-width: 880px; }
 .folio-ai-run-fieldset { padding: 0; border: 0; }
+.folio-ai-tuning-new > legend { font-size: .875rem; font-weight: 620; margin-bottom: 10px; }
 .folio-ai-run-fieldset legend { padding: 0; margin-bottom: 8px; }
 .folio-ai-progress-count { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; font-variant-numeric: tabular-nums; }
 .folio-ai-progress-count progress { flex: 1 1 240px; height: 8px; }

@@ -21,6 +21,15 @@ final class AdminJsTest extends TestCase
         foreach (['data-folio-matrix', 'data-matrix-add', 'data-matrix-remove', 'data-matrix-up', 'data-matrix-down'] as $hook) {
             $this->assertStringContainsString($hook, $js);
         }
+        // Rows added in the browser get the same Folio buttons as the server's rows (MatrixFieldType).
+        $this->assertStringContainsString('<button type="button" class="btn btn-ghost" data-matrix-up>', $js);
+        $this->assertStringContainsString('<button type="button" class="btn btn-ghost" data-matrix-down>', $js);
+        $this->assertStringContainsString('<button type="button" class="btn btn-ghost" data-tone="danger" data-matrix-remove>', $js);
+    }
+
+    public function test_drawer_close_is_a_folio_button(): void
+    {
+        $this->assertStringContainsString("close.className = 'btn btn-secondary btn-sm folio-drawer-close';", $this->js());
     }
 
     public function test_addrow_builds_view_select_from_options(): void

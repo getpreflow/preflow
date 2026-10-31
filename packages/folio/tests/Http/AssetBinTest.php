@@ -74,6 +74,7 @@ final class AssetBinTest extends TestCase
         $body = (string) $bin->getBody();
         $this->assertStringContainsString('photo.png', $body);
         $this->assertStringContainsString('action="/folio/assets/bin/' . $asset->id . '/restore"', $body);
+        $this->assertMatchesRegularExpression('#<div class="folio-table-wrap">\s*<table class="folio-table folio-asset-list">#', $body);
 
         $res = $this->post('/folio/assets/bin/' . $asset->id . '/restore');
 

@@ -5,7 +5,7 @@
   max-width: 1000px;
   padding: 20px;
   border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   background: var(--c-surface);
   box-shadow: var(--shadow-sm);
 }
