@@ -28,7 +28,7 @@ final class BooleanFieldType extends AbstractScalarFieldType implements \Preflow
     }
 
     /**
-     * The box sits inline in its label (label text after it), help and the first error below:
+     * The box sits inline in its label (label text after it), help and every error below:
      * a lone checkbox on a line of its own under a label line reads as a missing control.
      */
     public function renderEditor(FieldContext $ctx): string
@@ -44,8 +44,8 @@ final class BooleanFieldType extends AbstractScalarFieldType implements \Preflow
         if ($ctx->help !== null && $ctx->help !== '') {
             $html .= '  <small class="form-help">' . $e($ctx->help) . '</small>' . "\n";
         }
-        if ($ctx->errors !== []) {
-            $html .= '  <div class="form-error">' . $e((string) (array_values($ctx->errors)[0] ?? '')) . '</div>' . "\n";
+        foreach ($ctx->errors as $error) {
+            $html .= '  <div class="form-error">' . $e((string) $error) . '</div>' . "\n";
         }
 
         return $html . '</div>';

@@ -83,6 +83,8 @@ a:hover { color: var(--c-accent-hover); }
 
 h1 { font-size: 1.0625rem; font-weight: 650; letter-spacing: -.01em; margin: 0; }
 h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
+h3 { font-size: .875rem; font-weight: 620; margin: 0 0 6px; }
+h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 
 :where(a, button, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--c-accent);
@@ -365,7 +367,7 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
   align-items: center;
   padding: 18px;
   border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   background: var(--c-surface);
   box-shadow: var(--shadow-sm);
   color: var(--c-text);
@@ -388,7 +390,7 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
 
 /* ---- dashboard: translations waiting for review ---- */
 .folio-review { margin-top: 28px; }
-.folio-review-title { font-size: 16px; font-weight: 620; margin: 0 0 12px; }
+.folio-review-title { margin: 0 0 12px; }
 .folio-review-type { font-size: 13px; font-weight: 620; color: var(--c-text-muted); margin: 16px 0 6px; }
 .folio-review-list, .folio-review-jobs { list-style: none; margin: 0; padding: 0; }
 .folio-review-list li, .folio-review-jobs li { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--c-border); }
@@ -397,7 +399,7 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
 .folio-table-wrap {
   overflow-x: auto;
   border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   background: var(--c-surface);
   box-shadow: var(--shadow-sm);
 }
@@ -416,12 +418,20 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
   border-bottom: 1px solid var(--c-border);
 }
 .folio-table tbody td { padding: 10px 16px; border-bottom: 1px solid var(--c-border); vertical-align: middle; }
-.folio-table tbody tr:last-child td { border-bottom: 0; }
+/* A key/value table (Settings → AI) heads its rows with th scope=row: aligned like the cells, label weight. */
+.folio-table tbody th { padding: 10px 16px; border-bottom: 1px solid var(--c-border); text-align: left; vertical-align: middle; font-weight: 560; }
+.folio-table tbody tr:last-child :is(td, th) { border-bottom: 0; }
 .folio-table tbody tr { transition: background-color .1s; }
 .folio-table tbody tr:hover { background: var(--c-row-hover); }
 .folio-row-link { color: var(--c-text); font-weight: 580; }
 .folio-row-link:hover { color: var(--c-accent-text); }
-.folio-table .folio-row-actions { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
+/* A row of small actions (buttons, a checkbox, a hint): in a table cell right-aligned, elsewhere
+   (AI run's unfinished jobs, the Translations "Save all filled" bar) left-aligned. */
+.folio-row-actions { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 0; }
+.folio-row-actions[hidden] { display: none; }
+.folio-row-actions > .form-error { flex-basis: 100%; margin-top: 0; }
+.folio-translations-save-all { margin-bottom: 12px; }
+.folio-table .folio-row-actions { gap: 4px; justify-content: flex-end; }
 .folio-table .folio-row-actions form { display: inline-flex; margin: 0; }
 
 .folio-empty {
@@ -432,9 +442,13 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
   text-align: center;
   color: var(--c-text-muted);
   border: 1px dashed var(--c-border-strong);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   background: var(--c-surface);
 }
+.folio-muted { color: var(--c-text-muted); }
+/* What follows a table (Save buttons, a test result, the next section) keeps a little air. */
+.folio-table-wrap + :is(form, .folio-form-buttons, .folio-alert, .folio-notice) { margin-top: 16px; }
+:where(.folio-content) > section { margin-top: 28px; }
 .folio-empty p { margin: 0; }
 .folio-empty-icon { width: 32px; height: 32px; color: var(--c-text-subtle); }
 
@@ -527,7 +541,7 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
   box-sizing: border-box;
   min-height: calc(var(--h-list-head) + 1px);
   margin: 0; padding: 6px 10px 6px 44px;
-  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  border-radius: var(--r) var(--r) 0 0;
 }
 .folio-table thead .folio-bulk-cell input { position: relative; z-index: 3; accent-color: var(--c-accent); }
 .folio-bulk-bar[hidden] { display: none; }
@@ -576,6 +590,8 @@ form:has(> .folio-form-actions) { container-type: inline-size; }
   color: var(--c-text);
 }
 .form-required { color: var(--c-danger); margin-left: 2px; }
+/* A second label in one group (AI tuning's "add a field level"): spaced like the next field. */
+.form-group > :is(input, textarea, select, .form-help) + .form-label { margin-top: 16px; }
 
 /* Base control style: one look for every text-like input, textarea and select inside an admin root
    (the shell, the drawer page, the sign-in pages), whatever wraps it: package and
@@ -651,6 +667,19 @@ form:has(> .folio-form-actions) { container-type: inline-size; }
 }
 :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select[multiple]) { padding: 4px; overflow-y: auto; }
 :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select[multiple] option) { padding: 3px 7px; border-radius: var(--r-xs); }
+/* Progress bars (AI runs): a thin rounded track with the accent fill, in both themes. Height comes from the context. */
+:where(.folio-shell, .folio-drawer-body) :where(progress) {
+  appearance: none;
+  height: 8px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--c-neutral-soft);
+  color: var(--c-accent);
+  overflow: hidden;
+}
+:where(.folio-shell, .folio-drawer-body) :where(progress)::-webkit-progress-bar { background: var(--c-neutral-soft); border-radius: 999px; }
+:where(.folio-shell, .folio-drawer-body) :where(progress)::-webkit-progress-value { background: var(--c-accent); border-radius: 999px; }
+:where(.folio-shell, .folio-drawer-body) :where(progress)::-moz-progress-bar { background: var(--c-accent); border-radius: 999px; }
 
 .form-group input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]),
 .form-group textarea,
@@ -720,6 +749,12 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .folio-boolean > .form-check { display: inline-flex; align-items: center; gap: 9px; margin: 0; font-weight: 620; cursor: pointer; }
 .folio-boolean > .form-help { margin-top: 4px; padding-left: 25px; }
 .folio-boolean > .form-error { padding-left: 25px; }
+/* A native checkbox shows no border colour: on error the label turns red and the box gets a red ring. */
+.folio-boolean.has-error > .form-check { color: var(--c-danger); }
+.folio-boolean.has-error > .form-check > input { outline: 2px solid var(--c-danger); outline-offset: 1px; border-radius: 3px; }
+/* Read-only form (fieldset[disabled]): the label is muted and no longer looks clickable. */
+.folio-boolean > .form-check:has(input:disabled) { color: var(--c-text-muted); cursor: default; }
+.folio-boolean > .form-check > input:disabled { cursor: default; }
 
 /* Sticky publishing bar: sticks to the bottom of whatever scrolls the form
    (the page, or the preview's form pane) and reflows for narrow forms. */
@@ -849,14 +884,14 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .folio-visibility legend { float: left; margin-right: 8px; font-size: 13px; font-weight: 620; }
 .folio-shared, .folio-fallback-hint { margin: -14px 0 18px; font-size: 12px; color: var(--c-text-subtle); }
 .folio-outdated { display: flex; align-items: center; gap: 8px; margin: -14px 0 18px; font-size: 12px; color: var(--c-accent-text); }
-.folio-outdated .btn { padding: 2px 8px; font-size: 12px; }
+.folio-outdated .btn { min-height: 24px; padding: 0 8px; font-size: 12px; }
 .folio-unchecked { display: flex; align-items: center; gap: 8px; margin: -14px 0 18px; font-size: 12px; color: var(--c-warning); }
-.folio-unchecked .btn { padding: 2px 8px; font-size: 12px; }
+.folio-unchecked .btn { min-height: 24px; padding: 0 8px; font-size: 12px; }
 .folio-reference { margin: -12px 0 20px; font-size: 13px; color: var(--c-text-muted); }
 .folio-reference summary { cursor: pointer; }
 
 /* ---- blocks editor ---- */
-.folio-blocks { margin-bottom: 26px; }
+.folio-blocks { margin-bottom: 22px; }
 .folio-blocks-head { margin-bottom: 8px; }
 .folio-blocks-head .form-label { margin-bottom: 2px; }
 .folio-blocks-head .form-help { margin-top: 0; }
@@ -867,6 +902,7 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
   border: 1px solid var(--c-border);
   border-radius: var(--r);
   background: var(--c-surface);
+  box-shadow: var(--shadow-sm);
   transition: border-color .12s, box-shadow .12s;
 }
 .folio-block-card:hover { border-color: var(--c-border-strong); }
@@ -878,7 +914,7 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
   100% { box-shadow: none; }
 }
 .folio-block-card.is-unknown { border-style: dashed; background: var(--c-surface-2); }
-.folio-block-body .folio-block-card { background: var(--c-surface-2); }
+.folio-block-body .folio-block-card { background: var(--c-surface-2); box-shadow: none; }
 .folio-block-body .folio-block-card.is-open { box-shadow: none; }
 
 .folio-block-head { display: flex; align-items: center; gap: 2px; min-height: 46px; padding: 5px 6px 5px 3px; }
@@ -981,6 +1017,7 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
   border: 1px solid var(--c-border);
   border-radius: var(--r);
   background: var(--c-surface);
+  box-shadow: var(--shadow-sm);
 }
 .folio-revisions summary {
   display: flex;
@@ -1021,6 +1058,7 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
   border: 1px solid var(--c-border);
   border-radius: var(--r);
   background: var(--c-surface);
+  box-shadow: var(--shadow-sm);
 }
 .folio-share p { margin: 0; }
 .folio-share-label { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 14rem; font-size: 13px; font-weight: 560; color: var(--c-text-muted); }
@@ -1092,10 +1130,13 @@ html trix-toolbar .trix-input--dialog { color: var(--c-text); background: var(--
   margin-bottom: 18px;
   padding: 10px;
   border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   background: var(--c-surface);
   box-shadow: var(--shadow-sm);
 }
+/* Buttons in the library toolbar line up with its fields (36px, like the list toolbars). */
+:is(.folio-assets-search, .folio-assets-upload) > .btn, .folio-assets-toolbar > .btn { min-height: var(--h-control); }
+.folio-assets-unused { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 520; color: var(--c-text-muted); cursor: pointer; }
 .folio-assets-search { display: flex; flex-wrap: wrap; gap: 8px; flex: 1; min-width: 16rem; margin: 0; }
 .folio-assets-search input[type="search"] { flex: 1; width: auto; min-width: 10rem; }
 .folio-assets-search select { width: auto; }
@@ -1194,7 +1235,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   max-width: 1100px;
   padding: 20px;
   border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   background: var(--c-surface);
   box-shadow: var(--shadow-sm);
 }
@@ -1222,6 +1263,8 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 }
 .folio-asset-form { display: grid; gap: 14px; }
 .folio-asset-form .btn { justify-self: start; }
+/* Extra fields (form groups) take the form's grid gap, not their own bottom margin as well. */
+.folio-asset-form .form-group { margin-bottom: 0; }
 .folio-asset-meta, .folio-help { font-size: 12.5px; color: var(--c-text-muted); }
 .folio-pagination { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 20px; }
 
@@ -1589,8 +1632,10 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-relation-result:hover, .folio-relation-result:focus-visible { background: var(--c-row-hover); }
 .folio-relation-more { color: var(--c-text-muted); }
 .folio-relation-empty { padding: 6px 8px; color: var(--c-text-muted); }
-/* Beats the checked chip's accent border, so every chip of a failed field shows the error. */
+/* Beats the checked chip's accent border, so every chip of a failed field shows the error; the second
+   selector out-ranks the disabled looks too (.folio-chip:has(input:disabled:checked) is 0,3,1). */
 .form-group.has-error .folio-chip { border-color: var(--c-danger); }
+.form-group.has-error .folio-chip:has(input:disabled) { border-color: var(--c-danger); }
 
 .folio-preview-frame {
   flex: 1 1 auto;
@@ -1686,13 +1731,13 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 
 /* ---- extension panels and record actions ---- */
 .folio-actions form { margin: 0; }
-.folio-panel { border: 1px solid var(--c-border); border-radius: var(--r); background: var(--c-surface); padding: 12px 16px; }
+.folio-panel { border: 1px solid var(--c-border); border-radius: var(--r); background: var(--c-surface); box-shadow: var(--shadow-sm); padding: 12px 16px; }
 .folio-panel-title { margin: 0 0 8px; font-size: 14px; font-weight: 620; }
 .folio-panel-body { font-size: 13.5px; }
 
 /* ---- Settings → Cache ---- */
 .folio-cache-opcache { margin-top: 28px; }
-.folio-cache-opcache h2 { margin: 0; font-size: 15px; font-weight: 620; }
+.folio-cache-opcache h2 { margin: 0; }
 
 /* ---- tables with form controls (glossary): even cells, controls fill them ---- */
 .folio-table-form thead th, .folio-table-form tbody td { padding-inline: 12px; }

@@ -68,6 +68,35 @@ final class ChoiceFieldTypesTest extends TestCase
         $this->assertStringContainsString('<div class="form-error">Accept the terms.</div>', $html);
     }
 
+    public function test_boolean_editor_shows_every_error(): void
+    {
+        $html = (new BooleanFieldType())->renderEditor(new FieldContext(name: 'terms', label: 'Terms', value: false, errors: ['Accept the terms.', 'Ask your <b>admin</b>.']));
+
+        $this->assertStringContainsString('<div class="form-error">Accept the terms.</div>', $html);
+        $this->assertStringContainsString('<div class="form-error">Ask your &lt;b&gt;admin&lt;/b&gt;.</div>', $html);
+        $this->assertSame(2, substr_count($html, 'class="form-error"'));
+    }
+
+    public function test_boolean_in_a_disabled_fieldset_is_inert_through_its_label(): void
+    {
+        // A read-only form wraps the fields in fieldset[disabled]: the box is disabled by the fieldset, not by itself,
+        // and it sits inside label.form-check, so admin.css can mute that label (.form-check:has(input:disabled)).
+        $html = '<fieldset class="folio-fields" disabled>'
+            . (new BooleanFieldType())->renderEditor(new FieldContext(name: 'active', label: 'Active', value: true))
+            . '</fieldset>';
+        $doc = new \DOMDocument();
+        $doc->loadHTML('<!DOCTYPE html><html><body>' . $html . '</body></html>', LIBXML_NOERROR);
+        $xpath = new \DOMXPath($doc);
+
+        $boxes = $xpath->query('//fieldset[@disabled]//div[contains(concat(" ", @class, " "), " folio-boolean ")]/label[@class="form-check"]/input[@type="checkbox"][@name="active"]');
+        $this->assertNotFalse($boxes);
+        $this->assertSame(1, $boxes->length);
+        $box = $boxes->item(0);
+        $this->assertInstanceOf(\DOMElement::class, $box);
+        $this->assertFalse($box->hasAttribute('disabled'));
+        $this->assertTrue($box->hasAttribute('checked'));
+    }
+
     public function test_boolean_frontend_is_yes_no(): void
     {
         $this->assertSame('Yes', (new BooleanFieldType())->renderFrontend(true, []));
@@ -151,6 +180,22 @@ final class ChoiceFieldTypesTest extends TestCase
         $this->assertStringContainsString('<div class="folio-chips">', $html);
         $this->assertStringContainsString('<label class="folio-chip"><input type="radio" name="size" value="s"><span class="folio-chip-label">Small</span></label>', $html);
         $this->assertStringContainsString('<label class="folio-chip"><input type="radio" name="size" value="m" checked><span class="folio-chip-label">Medium</span></label>', $html);
+    }
+
+    public function test_select_radio_display_marks_the_group_and_lists_every_error(): void
+    {
+        $html = (new SelectFieldType())->renderEditor(new FieldContext(
+            name: 'size',
+            label: 'Size',
+            value: 'm',
+            config: ['options' => ['s' => 'Small', 'm' => 'Medium'], 'display' => 'radio'],
+            errors: ['Pick a size.', 'Medium is sold out.'],
+        ));
+
+        // .form-group.has-error turns every chip's border red (admin.css), the messages follow the chips.
+        $this->assertStringContainsString('<fieldset class="form-group folio-choice-group has-error"><legend>Size</legend>', $html);
+        $this->assertMatchesRegularExpression('#</div><div class="form-error">Pick a size\.</div><div class="form-error">Medium is sold out\.</div></fieldset>$#', $html);
+        $this->assertStringContainsString('<input type="radio" name="size" value="m" checked>', $html);
     }
 
     public function test_text_monospace_option(): void

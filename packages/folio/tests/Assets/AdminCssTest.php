@@ -166,4 +166,46 @@ final class AdminCssTest extends TestCase
         $this->assertMatchesRegularExpression('/\.folio-chip:has\(input:disabled\) \{[^}]*color: var\(--c-text-muted\);[^}]*cursor: default;/', $css);
         $this->assertStringContainsString('.form-group.has-error .folio-chip { border-color: var(--c-danger); }', $css);
     }
+
+    public function test_a_failed_group_keeps_the_red_border_on_disabled_chips(): void
+    {
+        // .folio-chip:has(input:disabled:checked) is (0,3,1) and would beat .form-group.has-error .folio-chip (0,3,0).
+        $this->assertMatchesRegularExpression('/\.form-group\.has-error \.folio-chip:has\(input:disabled\)[^{]*\{ border-color: var\(--c-danger\); \}/', $this->css());
+    }
+
+    public function test_boolean_shows_its_error_and_its_disabled_state(): void
+    {
+        $css = $this->css();
+        // A native checkbox shows no border colour: the label turns red and the box gets a red outline.
+        $this->assertMatchesRegularExpression('/\.folio-boolean\.has-error > \.form-check \{[^}]*color: var\(--c-danger\);/', $css);
+        $this->assertMatchesRegularExpression('/\.folio-boolean\.has-error > \.form-check > input \{[^}]*outline: 2px solid var\(--c-danger\);/', $css);
+        // In a read-only form (fieldset[disabled]) the label is muted and no longer looks clickable.
+        $this->assertMatchesRegularExpression('/\.folio-boolean > \.form-check:has\(input:disabled\) \{[^}]*color: var\(--c-text-muted\);[^}]*cursor: default;/', $css);
+    }
+
+    public function test_progress_bars_and_row_headers_are_styled(): void
+    {
+        $css = $this->css();
+        $this->assertMatchesRegularExpression('/:where\(\.folio-shell, \.folio-drawer-body\) :where\(progress\) \{[^}]*appearance: none;/', $css);
+        $this->assertStringContainsString('::-webkit-progress-value', $css);
+        $this->assertStringContainsString('::-moz-progress-bar', $css);
+        // A key/value table (Settings → AI) has th scope=row in the body: aligned like the cells, not centred.
+        $this->assertMatchesRegularExpression('/\.folio-table tbody th \{[^}]*padding: 10px 16px;[^}]*text-align: left;/', $css);
+    }
+
+    public function test_row_actions_outside_tables_are_a_row_and_respect_hidden(): void
+    {
+        $css = $this->css();
+        $this->assertMatchesRegularExpression('/(?<![\w-])\.folio-row-actions \{[^}]*display: flex;/', $css);
+        // Without this, display: flex would show the "Save all filled" bar that admin.js keeps [hidden].
+        $this->assertStringContainsString('.folio-row-actions[hidden] { display: none; }', $css);
+    }
+
+    public function test_in_page_surfaces_share_one_radius_and_soft_shadow(): void
+    {
+        $plain = (string) preg_replace('#/\*.*?\*/#s', '', $this->css());
+        foreach (['.folio-card', '.folio-table-wrap', '.folio-panel', '.folio-asset-panel', '.folio-assets-toolbar', '.folio-revisions', '.folio-share'] as $surface) {
+            $this->assertMatchesRegularExpression('/(?<![\w-])' . preg_quote($surface, '/') . ' \{[^}]*border: 1px solid var\(--c-border\);[^}]*border-radius: var\(--r\);[^}]*box-shadow: var\(--shadow-sm\);/', $plain, $surface);
+        }
+    }
 }

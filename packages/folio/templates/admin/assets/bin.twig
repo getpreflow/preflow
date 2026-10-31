@@ -14,6 +14,7 @@
         <div class="folio-empty"><p>{{ t('folio.assets.bin_empty') }}</p></div>
     {% else %}
         <p class="folio-help folio-assets-count">{{ t('folio.assets.bin_count', {}, total) }}</p>
+        <div class="folio-table-wrap">
         <table class="folio-table folio-asset-list">
             <thead><tr><th>{{ t('folio.assets.name') }}</th><th>{{ t('folio.assets.kind') }}</th><th>{{ t('folio.assets.size') }}</th><th>{{ t('folio.assets.binned_at') }}</th><th></th></tr></thead>
             <tbody>
@@ -33,6 +34,7 @@
             {% endfor %}
             </tbody>
         </table>
+        </div>
         {% if pages > 1 %}
             <nav class="folio-pagination" aria-label="{{ t('folio.list.pages') }}">
                 {% for p in 1..pages %}

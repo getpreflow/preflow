@@ -250,9 +250,9 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
             . '<span class="folio-matrix-label">' . $e($label) . ' <em>(' . $e($type) . ')</em></span>'
             . $viewSelect
             . '<span class="folio-matrix-controls">'
-            . '<button type="button" data-matrix-up>' . $e(\Preflow\Folio\FolioText::get('folio.fields.up')) . '</button>'
-            . '<button type="button" data-matrix-down>' . $e(\Preflow\Folio\FolioText::get('folio.fields.down')) . '</button>'
-            . '<button type="button" data-matrix-remove>' . $e(\Preflow\Folio\FolioText::get('folio.common.remove')) . '</button>'
+            . '<button type="button" class="btn btn-ghost" data-matrix-up>' . $e(\Preflow\Folio\FolioText::get('folio.fields.up')) . '</button>'
+            . '<button type="button" class="btn btn-ghost" data-matrix-down>' . $e(\Preflow\Folio\FolioText::get('folio.fields.down')) . '</button>'
+            . '<button type="button" class="btn btn-ghost" data-tone="danger" data-matrix-remove>' . $e(\Preflow\Folio\FolioText::get('folio.common.remove')) . '</button>'
             . '</span></div>' . "\n";
     }
 

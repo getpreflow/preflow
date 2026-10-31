@@ -46,7 +46,7 @@
         panel.className = 'folio-drawer-panel';
         var close = document.createElement('button');
         close.type = 'button';
-        close.className = 'folio-drawer-close';
+        close.className = 'btn btn-secondary btn-sm folio-drawer-close';
         close.textContent = folioT('close');
         close.addEventListener('click', closeDrawer);
         var frame = document.createElement('iframe');
@@ -115,9 +115,9 @@
                 '<span class="folio-matrix-label">' + esc(label) + ' <em>(' + esc(type) + ')</em></span>' +
                 viewSelect +
                 '<span class="folio-matrix-controls">' +
-                '<button type="button" data-matrix-up>' + esc(folioT('up')) + '</button>' +
-                '<button type="button" data-matrix-down>' + esc(folioT('down')) + '</button>' +
-                '<button type="button" data-matrix-remove>' + esc(folioT('remove')) + '</button>' +
+                '<button type="button" class="btn btn-ghost" data-matrix-up>' + esc(folioT('up')) + '</button>' +
+                '<button type="button" class="btn btn-ghost" data-matrix-down>' + esc(folioT('down')) + '</button>' +
+                '<button type="button" class="btn btn-ghost" data-tone="danger" data-matrix-remove>' + esc(folioT('remove')) + '</button>' +
                 '</span>';
             rowsEl.appendChild(row);
             notifyChange(root);
