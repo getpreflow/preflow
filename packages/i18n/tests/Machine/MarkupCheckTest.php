@@ -79,4 +79,25 @@ final class MarkupCheckTest extends TestCase
     {
         $this->assertTrue(MarkupCheck::matches('Take a {{glossary:meeple}}', 'Nimm einen Meeple', TextFormat::Plain));
     }
+
+    public function test_a_pattern_with_a_group_compares_the_group_also_where_it_did_not_take_part(): void
+    {
+        // The source token has no key ("ab", the group does not take part); the result's has one ("abc").
+        $this->assertFalse(MarkupCheck::matches('ab', 'abc', TextFormat::Plain, ['/(ab)?c|ab/']));
+        $this->assertTrue(MarkupCheck::matches('Take ab', 'Nimm ab', TextFormat::Plain, ['/(ab)?c|ab/']));
+    }
+
+    public function test_a_pattern_that_cannot_run_fails_the_check(): void
+    {
+        $jit = ini_get('pcre.jit');
+        $limit = ini_get('pcre.backtrack_limit');
+        ini_set('pcre.jit', '0');
+        ini_set('pcre.backtrack_limit', '1');
+        try {
+            $this->assertFalse(MarkupCheck::matches('aaaaaaaaaab', 'aaaaaaaaaab', TextFormat::Markdown, ['/(a+)+b/']), 'an error is not a pass');
+        } finally {
+            ini_set('pcre.jit', (string) $jit);
+            ini_set('pcre.backtrack_limit', (string) $limit);
+        }
+    }
 }

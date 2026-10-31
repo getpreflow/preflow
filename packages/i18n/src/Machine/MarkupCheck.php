@@ -25,7 +25,9 @@ final class MarkupCheck
             return false;
         }
         foreach ($protectedTokens as $pattern) {
-            if (self::protectedParts($pattern, $source) !== self::protectedParts($pattern, $result)) {
+            $expected = self::protectedParts($pattern, $source);
+            // A pattern that cannot run (backtrack limit, bad UTF-8) proves nothing: the check fails.
+            if ($expected === null || $expected !== self::protectedParts($pattern, $result)) {
                 return false;
             }
         }
@@ -49,11 +51,19 @@ final class MarkupCheck
         return $found;
     }
 
-    /** @return list<string> sorted: capture group 1 of each match when the pattern has one, else the whole match */
-    private static function protectedParts(string $pattern, string $text): array
+    /**
+     * Whether the pattern has a group 1 is decided once for the pattern, not per match: a match
+     * where the group did not take part counts as an empty key, never as its whole text.
+     *
+     * @return list<string>|null sorted: group 1 of each match when the pattern has one, else the whole
+     *                           match; null when the pattern could not run
+     */
+    private static function protectedParts(string $pattern, string $text): ?array
     {
-        preg_match_all($pattern, $text, $m, PREG_SET_ORDER);
-        $found = array_map(static fn (array $match): string => array_key_exists(1, $match) ? $match[1] : $match[0], $m);
+        if (@preg_match_all($pattern, $text, $m, PREG_PATTERN_ORDER | PREG_UNMATCHED_AS_NULL) === false) {
+            return null;
+        }
+        $found = array_map(static fn (?string $part): string => $part ?? '', count($m) > 1 ? $m[1] : $m[0]);
         sort($found);
 
         return $found;

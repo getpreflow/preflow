@@ -95,12 +95,15 @@ final class TranslationSettings
                 continue;
             }
             $pattern = trim($pattern);
+            error_clear_last();
             if (@preg_match($pattern, '') === false) {
+                // The compile error comes as a warning; preg_last_error_msg() only says "Internal error".
+                $error = preg_replace('/^preg_match\(\): /', '', error_get_last()['message'] ?? preg_last_error_msg());
                 throw new \InvalidArgumentException(sprintf(
                     'config/ai.php translation.protected_tokens[%s]: "%s" is not a valid regular expression (%s).',
                     $i,
                     $pattern,
-                    preg_last_error_msg(),
+                    $error,
                 ));
             }
             $out[] = $pattern;

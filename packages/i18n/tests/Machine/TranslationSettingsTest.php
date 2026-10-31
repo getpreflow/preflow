@@ -135,8 +135,12 @@ final class TranslationSettingsTest extends TestCase
     {
         $settings = new TranslationSettings(['translation' => ['protected_tokens' => ['/ok/', '/{{glossary:(\w+/']]], $this->store());
 
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('translation.protected_tokens');
-        $settings->protectedTokens();
+        try {
+            $settings->protectedTokens();
+            $this->fail('InvalidArgumentException expected');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('translation.protected_tokens[1]', $e->getMessage());
+            $this->assertStringContainsString('missing closing parenthesis', $e->getMessage(), 'the compile error, not "Internal error"');
+        }
     }
 }
