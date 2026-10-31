@@ -43,6 +43,10 @@ test('a pick calls back with the valid items and closes the drawer in single mod
     assert.deepEqual(calls, [], 'another origin is ignored');
     assert.ok(drawer(w));
 
+    w.receive({ source: 'folio-assets', items: [{ id: ID }] }, undefined, { notTheDrawer: true });
+    assert.deepEqual(calls, [], 'a window other than the drawer frame is ignored, even on the same origin');
+    assert.ok(drawer(w));
+
     w.receive({ source: 'folio-assets', items: [
         { id: '../x', thumb: '/t', label: 'Bad' },
         { id: ID, thumb: '/media/t.webp', label: 'Box' },

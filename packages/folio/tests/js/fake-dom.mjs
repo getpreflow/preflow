@@ -20,6 +20,8 @@ class Element {
         this.value = '';
         this.src = '';
         this.alt = '';
+        // A frame's window: what a message event from that frame carries as its source.
+        if (this.tagName === 'IFRAME') { this.contentWindow = { frame: this }; }
     }
     get id() { return this.getAttribute('id') || ''; }
     set id(v) { this.setAttribute('id', v); }
@@ -149,8 +151,10 @@ export function createWindow({ origin = 'https://site.test', body = {} } = {}) {
         location: { origin, href: origin + '/folio' },
         addEventListener: (name, fn) => { (window.listeners[name] = window.listeners[name] || []).push(fn); },
         removeEventListener() {},
-        /** A message event as postMessage from a frame delivers it. */
-        receive: (data, fromOrigin = origin) => { (window.listeners.message || []).forEach((fn) => fn({ data, origin: fromOrigin })); },
+        /** A message event as postMessage delivers it; by default it comes from the first open iframe (the drawer). */
+        receive: (data, fromOrigin = origin, source = document.documentElement.querySelector('iframe')?.contentWindow ?? null) => {
+            (window.listeners.message || []).forEach((fn) => fn({ data, origin: fromOrigin, source }));
+        },
         Event, CustomEvent, console, setTimeout, clearTimeout, JSON, Math, Date,
         localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     };

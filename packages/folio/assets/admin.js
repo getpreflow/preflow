@@ -166,8 +166,17 @@
         });
     }
 
+    // Messages count only from Folio's own frames: the drawer and the preview. A same-origin
+    // window elsewhere (another tab, a popup, a frame on a site page) cannot steer the editor.
+    function fromOwnFrame(source) {
+        if (!source) { return false; }
+        var drawerFrame = drawerEl ? drawerEl.querySelector('iframe') : null;
+        if (drawerFrame && drawerFrame.contentWindow === source) { return true; }
+        return !!(preview && preview.frame && preview.frame.contentWindow === source);
+    }
+
     function onMessage(e) {
-        if (e.origin !== window.location.origin) { return; }
+        if (e.origin !== window.location.origin || !fromOwnFrame(e.source)) { return; }
         var data = e.data;
         if (data && typeof data === 'object' && data.source === 'folio-assets') { onAssetsPicked(data); return; }
         if (data && typeof data === 'object' && data.source === 'folio-preview') { onPreviewMessage(data); return; }
