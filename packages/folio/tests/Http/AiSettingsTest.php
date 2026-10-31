@@ -198,7 +198,29 @@ final class AiSettingsTest extends TestCase
         $this->assertStringContainsString('<td class="folio-cell-check">', $html);
         $this->assertMatchesRegularExpression('#name="rows\[0\]\[keep\]\[de\]" value="1" checked#', $html);
         $this->assertStringContainsString('value="Brett"', $html);
-        $this->assertMatchesRegularExpression('#<option value="post" selected>#', $html);
+        $this->assertStringNotContainsString('<select name="rows[0][types][]"', $html);
+        $this->assertStringNotContainsString(' multiple', $html);
+        $this->assertMatchesRegularExpression('#<label class="folio-chip"><input type="checkbox" name="rows\[0\]\[types\]\[\]" value="post" checked>#', $html);
+        $this->assertDoesNotMatchRegularExpression('#name="rows\[1\]\[types\]\[\]" value="post" checked#', $html);
+        $this->assertStringContainsString('<fieldset class="folio-chips-group"', $html);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_glossary_saves_two_types_and_an_empty_selection_means_all(): void
+    {
+        $this->call('POST', '/folio/ai/glossary', ['action' => 'save', 'rows' => [
+            ['term' => 'Meeple', 'types' => ['post', 'page']],
+            ['term' => 'Board'],
+            ['term' => 'Dice', 'types' => []],
+        ]]);
+
+        $rows = $this->settings()->glossary()->toArray();
+        $this->assertSame(['post', 'page'], $rows[0]['types']);
+        $this->assertSame([], $rows[1]['types']);
+        $this->assertSame([], $rows[2]['types']);
+
+        $html = (string) $this->call('GET', '/folio/ai/glossary')->getBody();
+        $this->assertMatchesRegularExpression('#name="rows\[0\]\[types\]\[\]" value="page" checked#', $html);
     }
 
     #[RunInSeparateProcess]

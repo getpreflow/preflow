@@ -28,10 +28,7 @@
                         </td>
                     {% endfor %}
                     <td>
-                        <select name="rows[{{ i }}][types][]" multiple aria-label="{{ t('folio.ai_settings.types') }}">
-                            {% for key, label in types %}<option value="{{ key }}"{% if key in row.types %} selected{% endif %}>{{ label }}</option>{% endfor %}
-                        </select>
-                        <small class="form-help">{{ t('folio.ai_settings.types_help') }}</small>
+                        {% include '@folio/admin/partials/checkbox-chips.twig' with {name: 'rows[' ~ i ~ '][types]', options: types, selected: row.types, label: t('folio.ai_settings.types'), help: t('folio.ai_settings.types_help')} only %}
                     </td>
                     <td><input type="text" name="rows[{{ i }}][note]" value="{{ row.note }}" aria-label="{{ t('folio.ai_settings.note') }}"></td>
                     <td class="folio-cell-check"><label class="form-radio"><input type="checkbox" name="rows[{{ i }}][remove]" value="1"> {{ t('folio.ai_settings.remove') }}</label></td>

@@ -1508,6 +1508,17 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-segmented button[aria-selected="true"] { background: var(--c-surface-raised); color: var(--c-text); box-shadow: var(--shadow-sm); }
 .folio-segmented .folio-icon { width: 15px; height: 15px; }
 
+/* Checkbox chips (partials/checkbox-chips.twig): a small multi-select as a wrapping group of real checkboxes. */
+.folio-chips-group { border: 0; padding: 0; margin: 0; min-width: 0; }
+.folio-chips-group > legend {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.folio-chips-group > .form-help { display: block; margin-top: 6px; }
+.folio-chips-group .folio-chip { max-width: 100%; }
+.folio-chips-group .folio-chip-label { min-width: 0; overflow-wrap: anywhere; }
+.folio-chip input { flex: none; }
+
 /* Multi relation: a fieldset of checkbox chips (same vocabulary as the rbac permission chips). */
 .folio-relation-multi { border: 0; padding: 0; margin-inline: 0; min-width: 0; }
 .folio-relation-multi > legend {
@@ -1671,7 +1682,6 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-table-form td > :is(input, select) + .form-help { margin-top: 6px; }
 .folio-table-form .form-radio, .folio-table-form .form-help { display: flex; margin-right: 0; font-size: 13px; }
 .folio-table-form .form-help { color: var(--c-text-muted); }
-.folio-table-form select[multiple] { min-height: 7rem; }
 /* A lone checkbox: header and box centred, the box on the line of the row's inputs. */
 .folio-table-form th.folio-cell-check, .folio-table-form td.folio-cell-check { min-width: 0; width: 1%; text-align: center; white-space: nowrap; }
 .folio-table-form td.folio-cell-check .form-radio { justify-content: center; min-height: var(--h-control); margin: 0; }
