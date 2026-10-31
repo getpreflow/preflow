@@ -18,7 +18,8 @@ Requires PHP 8.4+ and Twig 3.
 | `PreflowExtension` | `{% apply css %}`, `{% apply js %}`, `{{ head() }}`, `{{ assets() }}` |
 | `ComponentExtension` | `{{ component('Name', {props}) }}` — renders Preflow components |
 | `HdExtension` | `{{ hd.post(...) }}`, `{{ hd.get(...) }}` — hypermedia action helpers |
-| `TranslationExtension` | `{{ t('key') }}`, `{{ tc('key', 'Component') }}` — i18n helpers |
+
+`{{ t() }}` and `{{ tc() }}` come from preflow/i18n (`TranslationExtensionProvider`, registered by the application), which escapes parameters.
 
 ## TwigEngine
 
