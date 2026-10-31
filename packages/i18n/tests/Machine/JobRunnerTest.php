@@ -602,6 +602,117 @@ final class JobRunnerTest extends TestCase
         $this->assertSame('done', $job->state);
     }
 
+    public function test_a_running_item_shows_the_cost_of_its_requests_so_far_and_it_is_not_counted_twice(): void
+    {
+        $store = new FileJobStore($this->dir);
+        $jobId = null;
+        $seen = [];
+        $priced = static fn (AiRequest $r) => FakeAiClient::json(
+            array_map(static fn (array $i): array => ['n' => $i['n'], 'text' => 'DE:' . $i['text']], self::items($r)),
+            new TokenUsage(1000, 500),
+        );
+        // A batch budget so small that "One" and "First text" go in two requests.
+        $runner = $this->runner([
+            static function (AiRequest $r) use ($priced): \Preflow\Ai\AiResponse {
+                return $priced($r);
+            },
+            static function (AiRequest $r) use ($store, $priced, &$seen, &$jobId): \Preflow\Ai\AiResponse {
+                $seen[] = $store->get($jobId)->costUsd;
+
+                return $priced($r);
+            },
+        ], $store, 5);
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['1']);
+        $jobId = $job->id;
+
+        $job = $runner->step($job->id);
+
+        $this->assertCount(1, $seen);
+        $this->assertEqualsWithDelta(0.007, $seen[0], 1e-9, 'the first request is on the running job before the second starts');
+        $this->assertEqualsWithDelta(2 * 0.007, $job->costUsd, 1e-9, 'every request exactly once');
+        $this->assertEqualsWithDelta(2 * 0.007, $store->get($job->id)->costUsd, 1e-9);
+    }
+
+    public function test_an_unpriced_request_marks_a_running_job_cost_unknown(): void
+    {
+        $store = new FileJobStore($this->dir);
+        $jobId = null;
+        $seen = [];
+        $echo = self::echo();
+        $this->fake = new FakeAiClient([
+            $echo,
+            static function (AiRequest $r) use ($store, $echo, &$seen, &$jobId): \Preflow\Ai\AiResponse {
+                $seen[] = $store->get($jobId)->costUnknown;
+
+                return $echo($r);
+            },
+        ]);
+        $ai = $this->ai($this->fake, ['models' => ['claude' => 'unpriced-model']]);
+        $sources = new TextSources();
+        $sources->add('games', fn () => $this->source);
+        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings(), 5), new Estimator($ai), $store, $this->lease);
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['1']);
+        $jobId = $job->id;
+
+        $runner->step($job->id);
+
+        $this->assertSame([true], $seen, 'unknown while the item is still being translated');
+    }
+
+    public function test_cost_of_a_failed_progress_write_is_merged_by_the_next_one(): void
+    {
+        $inner = new FileJobStore($this->dir);
+        // Refuses the second progress write only (the first request's cost rides on it).
+        $store = new class ($inner) implements JobStore {
+            private int $progressWrites = 0;
+
+            public function __construct(private readonly JobStore $inner) {}
+
+            public function save(Job $job): void
+            {
+                $this->inner->save($job);
+            }
+
+            public function get(string $id): ?Job
+            {
+                return $this->inner->get($id);
+            }
+
+            public function update(string $id, \Closure $change): ?Job
+            {
+                $probe = $this->inner->get($id);
+                if ($probe !== null) {
+                    $change($probe);
+                    if (isset($probe->items['1']['progress']) && ++$this->progressWrites === 2) {
+                        throw new \RuntimeException("Cannot lock job {$id}.");
+                    }
+                }
+
+                return $this->inner->update($id, $change);
+            }
+
+            public function recent(int $limit): array
+            {
+                return $this->inner->recent($limit);
+            }
+        };
+        $priced = static fn (AiRequest $r) => FakeAiClient::json(
+            array_map(static fn (array $i): array => ['n' => $i['n'], 'text' => 'DE:' . $i['text']], self::items($r)),
+            new TokenUsage(1000, 500),
+        );
+        $runner = $this->runner([$priced], $store, 5);
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['1']);
+        $log = ini_set('error_log', $this->dir . '/php-error.log');
+
+        try {
+            $job = $runner->step($job->id);
+        } finally {
+            ini_set('error_log', (string) $log);
+        }
+
+        $this->assertEqualsWithDelta(2 * 0.007, $job->costUsd, 1e-9, 'nothing lost with the failed write, nothing counted twice');
+    }
+
     public function test_a_progress_write_that_fails_never_costs_the_item(): void
     {
         $inner = new FileJobStore($this->dir);

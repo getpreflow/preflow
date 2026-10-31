@@ -146,6 +146,15 @@ final class JobRunner
             $cost = 0.0;
             $costUnknown = false;
         };
+        // For the progress writes: what is unmerged is read first and cleared only once a write has
+        // stored it, so a failed write loses nothing.
+        $unmergedCost = static function () use (&$cost, &$costUnknown): array {
+            return [$cost, $costUnknown];
+        };
+        $costMerged = static function () use (&$cost, &$costUnknown): void {
+            $cost = 0.0;
+            $costUnknown = false;
+        };
 
         try {
             $taken = 0;
@@ -164,7 +173,7 @@ final class JobRunner
                     }
                     $taken++;
                     try {
-                        $item = $this->processItem($source, $current, $id);
+                        $item = $this->processItem($source, $current, $id, $unmergedCost, $costMerged);
                     } catch (AiUnavailable $e) {
                         // The item stays pending for a later run, without a progress that no longer moves.
                         $this->update($jobId, static function (Job $stored) use ($id): void {
@@ -283,8 +292,12 @@ final class JobRunner
         return $this->store->get($jobId) ?? throw new \InvalidArgumentException("Unknown job \"{$jobId}\".");
     }
 
-    /** @return array{status: string, translated: int, failed: int, warnings: int, message: ?string, draft_changes: bool} */
-    private function processItem(TextSource $source, Job $job, string $id): array
+    /**
+     * @param \Closure(): array{0: float, 1: bool} $unmergedCost cost of this step's requests not yet in the stored job
+     * @param \Closure(): void $costMerged clears that cost, once stored
+     * @return array{status: string, translated: int, failed: int, warnings: int, message: ?string, draft_changes: bool}
+     */
+    private function processItem(TextSource $source, Job $job, string $id, \Closure $unmergedCost, \Closure $costMerged): array
     {
         $item = ['status' => 'done', 'translated' => 0, 'failed' => 0, 'warnings' => 0, 'message' => null, 'draft_changes' => false];
         $hadUnits = false;
@@ -306,7 +319,7 @@ final class JobRunner
 
             $texts = [];
             $firstError = null;
-            foreach ($this->translateWithProgress($job->id, $id, $locale, $units, $job->note) as $result) {
+            foreach ($this->translateWithProgress($job->id, $id, $locale, $units, $job->note, $unmergedCost, $costMerged) as $result) {
                 $item['warnings'] += count($result->warnings);
                 if ($result->status === UnitStatus::Translated && $result->text !== null) {
                     $texts[$result->id] = $result->text;
@@ -354,29 +367,41 @@ final class JobRunner
      * as it goes (see the class comment). Each write merges only that item's progress under the
      * job's lock, and only while the item is still pending: another driver's items, a stop and a
      * finished item are never touched. A job some other driver set back to "queued" at the end of
-     * its own step shows "running" again, since this one is still working on it.
+     * its own step shows "running" again, since this one is still working on it. The same write
+     * carries the cost of the requests so far, so a running job shows what it has cost.
      *
      * @param list<TranslationUnit> $units
+     * @param \Closure(): array{0: float, 1: bool} $unmergedCost
+     * @param \Closure(): void $costMerged
      * @return list<TranslationResult>
      */
-    private function translateWithProgress(string $jobId, string $id, string $locale, array $units, ?string $note): array
+    private function translateWithProgress(string $jobId, string $id, string $locale, array $units, ?string $note, \Closure $unmergedCost, \Closure $costMerged): array
     {
         if (!$this->translator instanceof ReportsProgress) {
             return $this->translator->translateUnits($units, $note);
         }
-        $store = function (int $done, int $total) use ($jobId, $id, $locale): void {
+        $store = function (int $done, int $total) use ($jobId, $id, $locale, $unmergedCost, $costMerged): void {
             // Progress is for display only: a failed write (lock, disk) is logged and never fails
-            // the item, whose paid translations are still to be written.
+            // the item, whose paid translations are still to be written. Its cost stays unmerged
+            // for the next write.
+            [$usd, $unknown] = $unmergedCost();
+            $applied = false;
             try {
-                $this->store->update($jobId, static function (Job $stored) use ($id, $locale, $done, $total): void {
+                $this->store->update($jobId, static function (Job $stored) use ($id, $locale, $done, $total, $usd, $unknown, &$applied): void {
                     if (($stored->items[$id]['status'] ?? null) !== 'pending') {
                         return;
                     }
+                    $stored->costUsd += $usd;
+                    $stored->costUnknown = $stored->costUnknown || $unknown;
                     $stored->items[$id]['progress'] = ['locale' => $locale, 'done' => $done, 'total' => $total];
                     if ($stored->state === 'queued') {
                         $stored->state = 'running';
                     }
+                    $applied = true;
                 });
+                if ($applied) {
+                    $costMerged();
+                }
             } catch (\Throwable $e) {
                 error_log("Translation job {$jobId}: progress of \"{$id}\" not stored: " . $e->getMessage());
             }
