@@ -8,13 +8,13 @@
     <form class="folio-form" method="post" action="{{ prefix }}/ai/glossary">
         <input type="hidden" name="_csrf_token" value="{{ csrf }}">
         <div class="folio-table-wrap">
-        <table class="folio-table">
+        <table class="folio-table folio-table-form">
             <thead><tr>
                 <th>{{ t('folio.ai_settings.term') }}</th>
                 {% for code, name in languages %}<th>{{ name }}</th>{% endfor %}
                 <th>{{ t('folio.ai_settings.types') }}</th>
                 <th>{{ t('folio.ai_settings.note') }}</th>
-                <th>{{ t('folio.ai_settings.remove') }}</th>
+                <th class="folio-cell-check">{{ t('folio.ai_settings.remove') }}</th>
             </tr></thead>
             <tbody>
             {% for row in rows %}
@@ -34,7 +34,7 @@
                         <small class="form-help">{{ t('folio.ai_settings.types_help') }}</small>
                     </td>
                     <td><input type="text" name="rows[{{ i }}][note]" value="{{ row.note }}" aria-label="{{ t('folio.ai_settings.note') }}"></td>
-                    <td><label class="form-radio"><input type="checkbox" name="rows[{{ i }}][remove]" value="1"> {{ t('folio.ai_settings.remove') }}</label></td>
+                    <td class="folio-cell-check"><label class="form-radio"><input type="checkbox" name="rows[{{ i }}][remove]" value="1"> {{ t('folio.ai_settings.remove') }}</label></td>
                 </tr>
             {% endfor %}
             </tbody>

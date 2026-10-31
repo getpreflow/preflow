@@ -3,29 +3,35 @@
 {% block page_title %}{{ t('folio.nav.translations') }}{% endblock %}
 {% block content %}
     <div class="folio-notice" role="status"><p>{{ t('folio.translations.intro') }}</p></div>
-    {# One GET form: group, language and search stay in the URL. #}
-    <form class="folio-list-toolbar" method="get" action="{{ prefix }}/translations" role="search">
-        <label for="folio-translations-group">{{ t('folio.translations.group') }}</label>
-        <select id="folio-translations-group" name="group">
-            {% for g in groups %}
-                <option value="{{ g }}"{% if g == view.group %} selected{% endif %}>{{ g == site_group ? t('folio.translations.group_site') : g }}</option>
-            {% endfor %}
-        </select>
-        <label for="folio-translations-locale">{{ t('folio.layout.language') }}</label>
-        <select id="folio-translations-locale" name="locale">
-            {% for code, name in locales %}
-                <option value="{{ code }}"{% if code == view.locale %} selected{% endif %}>{{ name }}</option>
-            {% endfor %}
-        </select>
-        <label class="folio-list-search">
-            <span class="folio-sr">{{ t('folio.translations.search_label') }}</span>
-            <input type="search" name="q" value="{{ view.q }}" placeholder="{{ t('folio.common.search_placeholder') }}" autocomplete="off">
-        </label>
-        <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.common.search') }}</button>
-    </form>
-    {% if ai_translate|default(null) and rows is not empty %}
-        {% include '@folio/admin/partials/ai-translate-dialog.twig' %}
-    {% endif %}
+    <div class="folio-toolbar">
+        {# One GET form: group, language and search stay in the URL. #}
+        <form class="folio-toolbar-fields" method="get" action="{{ prefix }}/translations" role="search">
+            <span class="folio-toolbar-field">
+                <label for="folio-translations-group">{{ t('folio.translations.group') }}</label>
+                <select id="folio-translations-group" name="group">
+                    {% for g in groups %}
+                        <option value="{{ g }}"{% if g == view.group %} selected{% endif %}>{{ g == site_group ? t('folio.translations.group_site') : g }}</option>
+                    {% endfor %}
+                </select>
+            </span>
+            <span class="folio-toolbar-field">
+                <label for="folio-translations-locale">{{ t('folio.layout.language') }}</label>
+                <select id="folio-translations-locale" name="locale">
+                    {% for code, name in locales %}
+                        <option value="{{ code }}"{% if code == view.locale %} selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                </select>
+            </span>
+            <label class="folio-list-search">
+                <span class="folio-sr">{{ t('folio.translations.search_label') }}</span>
+                <input type="search" name="q" value="{{ view.q }}" placeholder="{{ t('folio.common.search_placeholder') }}" autocomplete="off">
+            </label>
+            <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.common.search') }}</button>
+        </form>
+        {% if ai_translate|default(null) and rows is not empty %}
+            {% include '@folio/admin/partials/ai-translate-dialog.twig' %}
+        {% endif %}
+    </div>
     {% if choose_target|default(false) %}
         <p class="folio-help">{{ t('folio.translations.choose_target') }}</p>
     {% endif %}

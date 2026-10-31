@@ -194,6 +194,8 @@ final class AiSettingsTest extends TestCase
 
         $html = (string) $this->call('GET', '/folio/ai/glossary')->getBody();
         $this->assertStringContainsString('value="Meeple"', $html);
+        $this->assertStringContainsString('class="folio-table folio-table-form"', $html);
+        $this->assertStringContainsString('<td class="folio-cell-check">', $html);
         $this->assertMatchesRegularExpression('#name="rows\[0\]\[keep\]\[de\]" value="1" checked#', $html);
         $this->assertStringContainsString('value="Brett"', $html);
         $this->assertMatchesRegularExpression('#<option value="post" selected>#', $html);

@@ -439,14 +439,35 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
 .folio-empty-icon { width: 32px; height: 32px; color: var(--c-text-subtle); }
 
 /* ---- list: search, filter chips, sort, pager ---- */
-.folio-list-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
-.folio-list-search { position: relative; flex: 1; min-width: 12rem; max-width: 26rem; }
+/* One toolbar pattern for list toolbars, filter bars and tab rows: a wrapping flex row, centred, with
+   every control and button at --h-control (36px, like the form fields; the controls get that from the
+   base above, so no size override here). Direct children only, so a dialog or panel inside the
+   toolbar keeps its own buttons. .folio-toolbar-field pairs an inline label with its control;
+   .folio-toolbar-fields (display: contents) lets a form's fields share the row with a sibling such as the
+   Translate button, which sits at the right when there is room. */
+.folio-list-toolbar, .folio-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; }
+.folio-toolbar-fields { display: contents; }
+.folio-toolbar-field { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.folio-toolbar-field > label { font-size: 13px; font-weight: 550; color: var(--c-text-muted); white-space: nowrap; }
+.folio-toolbar-field > select { min-width: 0; }
+.folio-toolbar > .folio-ai { margin-left: auto; }
+:is(.folio-list-toolbar, .folio-toolbar, .folio-toolbar-fields) > .btn,
+:is(.folio-list-toolbar, .folio-toolbar) > form > .btn,
+:is(.folio-list-toolbar, .folio-toolbar) > details > summary.btn,
+.folio-toolbar > .folio-ai > .folio-ai-open { min-height: var(--h-control); padding: 0 14px; font-size: 13.5px; }
+.folio-list-search { position: relative; flex: 1 1 12rem; min-width: 12rem; max-width: 26rem; }
 .folio-list-search .folio-icon {
   position: absolute; left: 10px; top: 50%; width: 15px; height: 15px;
   transform: translateY(-50%); color: var(--c-text-subtle); pointer-events: none;
 }
-.folio-list-toolbar input, .folio-list-toolbar select { min-height: var(--h-button-sm); padding-block: 4px; font-size: 13.5px; }
-.folio-list-search input { width: 100%; min-height: var(--h-control); padding-left: 32px; }
+.folio-list-search input { width: 100%; padding-left: 32px; }
+/* Narrow: the filter bar's fields and buttons become full-width rows. */
+@media (max-width: 560px) {
+  .folio-toolbar > *, .folio-toolbar-fields > * { flex: 1 1 100%; max-width: none; }
+  .folio-toolbar-field > select, .folio-toolbar-field > input { flex: 1 1 auto; min-width: 0; }
+  .folio-toolbar > .folio-ai { margin-left: 0; }
+  .folio-toolbar > .folio-ai > .folio-ai-open, .folio-toolbar-fields > .btn { width: 100%; }
+}
 .folio-list-submit[hidden] { display: none; }
 .folio-filter-menu { position: relative; }
 .folio-filter-menu summary { list-style: none; }
@@ -997,7 +1018,6 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 }
 .folio-matrix-label { flex: 1; min-width: 0; font-weight: 560; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folio-matrix-controls, .folio-matrix-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.folio-matrix-controls select, .folio-matrix-add select { min-height: var(--h-button-sm); padding-block: 2px; font-size: 13px; }
 [data-matrix-create] { margin-left: 4px; }
 [data-matrix-view] { margin: 0 4px; }
 .folio-relation-item { display: flex; align-items: center; gap: 8px; }
@@ -1640,6 +1660,19 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 /* ---- Settings → Cache ---- */
 .folio-cache-opcache { margin-top: 28px; }
 .folio-cache-opcache h2 { margin: 0; font-size: 15px; font-weight: 620; }
+
+/* ---- tables with form controls (glossary): even cells, controls fill them ---- */
+.folio-table-form thead th, .folio-table-form tbody td { padding-inline: 12px; }
+.folio-table-form tbody td { vertical-align: top; min-width: 9rem; }
+.folio-table-form td > :is(input, textarea, select) { display: block; width: 100%; }
+.folio-table-form td > :is(input, select) + .form-radio,
+.folio-table-form td > :is(input, select) + .form-help { margin-top: 6px; }
+.folio-table-form .form-radio, .folio-table-form .form-help { display: flex; margin-right: 0; font-size: 13px; }
+.folio-table-form .form-help { color: var(--c-text-muted); }
+.folio-table-form select[multiple] { min-height: 7rem; }
+/* A lone checkbox: header and box centred, the box on the line of the row's inputs. */
+.folio-table-form th.folio-cell-check, .folio-table-form td.folio-cell-check { min-width: 0; width: 1%; text-align: center; white-space: nowrap; }
+.folio-table-form td.folio-cell-check .form-radio { justify-content: center; min-height: var(--h-control); margin: 0; }
 
 /* ---- Settings → Translations ---- */
 .folio-translations td { vertical-align: top; }

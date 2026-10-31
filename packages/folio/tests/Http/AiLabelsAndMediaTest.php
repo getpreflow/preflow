@@ -169,6 +169,8 @@ final class AiLabelsAndMediaTest extends TestCase
         $this->assertStringContainsString('data-ai-translate', $labels);
         $this->assertStringContainsString('/folio/translations/_ai/suggest', $labels);
         $this->assertStringContainsString('data-ai-path="shop.hello"', $labels);
+        // The filter bar is one toolbar row and the Translate button sits in it, not on a line of its own.
+        $this->assertMatchesRegularExpression('#<div class="folio-toolbar">.*<form class="folio-toolbar-fields".*</form>\s*<div class="folio-ai" data-ai-translate#s', $labels);
         $this->assertStringNotContainsString('data-ai-translate', $get('/folio/translations?group=shop&locale=en'), 'no button for the source language');
 
         $panel = $get('/folio/assets/' . $asset->id);
