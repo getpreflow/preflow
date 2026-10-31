@@ -14,8 +14,8 @@
                 <textarea id="folio-tuning-{{ loop.index }}" name="levels[{{ row.key }}]" rows="3" placeholder="{{ row.placeholder }}">{{ row.value }}</textarea>
             </div>
         {% endfor %}
-        <fieldset class="form-group">
-            <legend class="form-label">{{ t('folio.ai_settings.add_field_level') }}</legend>
+        <fieldset class="form-group folio-ai-tuning-new">
+            <legend>{{ t('folio.ai_settings.add_field_level') }}</legend>
             <label class="form-label" for="folio-tuning-new-key">{{ t('folio.ai_settings.new_key') }}</label>
             <input type="text" id="folio-tuning-new-key" name="new_key" value="{{ new_key }}" placeholder="post.body:heading" autocomplete="off">
             <small class="form-help">{{ t('folio.ai_settings.new_key_help') }}</small>

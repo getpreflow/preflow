@@ -449,7 +449,8 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 .folio-muted { color: var(--c-text-muted); }
 /* What follows a table (Save buttons, a test result, the next section) keeps a little air. */
 .folio-table-wrap + :is(form, .folio-form-buttons, .folio-alert, .folio-notice) { margin-top: 16px; }
-:where(.folio-content) > section { margin-top: 28px; }
+/* Section spacing (AI status months); the asset pages' panels sit directly under their tabs and keep that 16px gap. */
+:where(.folio-content) > section:not(.folio-asset-panel, .folio-image-editor) { margin-top: 28px; }
 .folio-empty p { margin: 0; }
 .folio-empty-icon { width: 32px; height: 32px; color: var(--c-text-subtle); }
 
@@ -698,7 +699,7 @@ form:has(> .folio-form-actions) { container-type: inline-size; }
 }
 .folio-field input, .folio-field select { margin-top: 7px; }
 
-.form-group textarea { min-height: 120px; line-height: 1.55; }
+.form-group textarea { min-height: 120px; }
 .form-group textarea.folio-input-mono { font-family: var(--font-mono); font-size: 13px; tab-size: 4; }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--c-accent); width: 16px; height: 16px; }
 
@@ -753,6 +754,8 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 /* A native checkbox shows no border colour: on error the label turns red and the box gets a red ring. */
 .folio-boolean.has-error > .form-check { color: var(--c-danger); }
 .folio-boolean.has-error > .form-check > input { outline: 2px solid var(--c-danger); outline-offset: 1px; border-radius: 3px; }
+/* Keyboard focus in the error state: keep a visible ring on top of the red outline. */
+.folio-boolean.has-error > .form-check > input:focus-visible { box-shadow: 0 0 0 4px var(--c-focus-ring); }
 /* Read-only form (fieldset[disabled]): the label is muted and no longer looks clickable. */
 .folio-boolean > .form-check:has(input:disabled) { color: var(--c-text-muted); cursor: default; }
 .folio-boolean > .form-check > input:disabled { cursor: default; }
@@ -1584,7 +1587,6 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 /* Long option labels wrap inside the chip instead of overflowing the field. */
 .folio-chips .folio-chip { max-width: 100%; }
 .folio-chips .folio-chip-label { min-width: 0; overflow-wrap: anywhere; }
-.folio-chip input { flex: none; }
 
 /* Relations, radio groups and roles: fieldsets of chips under the label (see "Field groups" above). */
 .folio-relation-filter { margin-bottom: 10px; max-width: 280px; }
@@ -1594,7 +1596,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   align-items: center;
   gap: 7px;
   min-height: 30px;
-  padding: 0 12px 0 10px;
+  padding: 4px 12px 4px 10px;
   margin: 0;
   border: 1px solid var(--c-border);
   border-radius: 999px;
@@ -1606,7 +1608,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   transition: background-color .1s, border-color .1s, color .1s;
 }
 .folio-chip:hover { background: var(--c-row-hover); }
-.folio-chip input { width: 14px; height: 14px; margin: 0; }
+.folio-chip input { flex: none; width: 14px; height: 14px; margin: 0; }
 .folio-chip:has(input:checked) {
   background: var(--c-accent-soft);
   border-color: color-mix(in srgb, var(--c-accent) 35%, transparent);
@@ -1812,6 +1814,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 /* ---- AI translation run (ai/run.twig, ai/run-progress.twig) ---- */
 .folio-ai-run { max-width: 880px; }
 .folio-ai-run-fieldset { padding: 0; border: 0; }
+.folio-ai-tuning-new > legend { font-size: .875rem; font-weight: 620; margin-bottom: 10px; }
 .folio-ai-run-fieldset legend { padding: 0; margin-bottom: 8px; }
 .folio-ai-progress-count { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; font-variant-numeric: tabular-nums; }
 .folio-ai-progress-count progress { flex: 1 1 240px; height: 8px; }
