@@ -443,10 +443,10 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
    every control and button at --h-control (36px, like the form fields; the controls get that from the
    base above, so no size override here). Direct children only, so a dialog or panel inside the
    toolbar keeps its own buttons. .folio-toolbar-field pairs an inline label with its control;
-   .folio-toolbar-fields (display: contents) lets a form's fields share the row with a sibling such as the
-   Translate button, which sits at the right when there is room. */
+   .folio-toolbar-fields is a form that fills the row's free space, so a sibling such as the Translate button
+   (margin-left: auto) sits at the right when there is room. */
 .folio-list-toolbar, .folio-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; }
-.folio-toolbar-fields { display: contents; }
+.folio-toolbar-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; flex: 1 1 auto; min-width: 0; }
 .folio-toolbar-field { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .folio-toolbar-field > label { font-size: 13px; font-weight: 550; color: var(--c-text-muted); white-space: nowrap; }
 .folio-toolbar-field > select { min-width: 0; }
@@ -463,7 +463,7 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
 .folio-list-search input { width: 100%; padding-left: 32px; }
 /* Narrow: the filter bar's fields and buttons become full-width rows. */
 @media (max-width: 560px) {
-  .folio-toolbar > *, .folio-toolbar-fields > * { flex: 1 1 100%; max-width: none; }
+  .folio-toolbar > *, .folio-toolbar-fields, .folio-toolbar-fields > * { flex: 1 1 100%; max-width: none; }
   .folio-toolbar-field > select, .folio-toolbar-field > input { flex: 1 1 auto; min-width: 0; }
   .folio-toolbar > .folio-ai { margin-left: 0; }
   .folio-toolbar > .folio-ai > .folio-ai-open, .folio-toolbar-fields > .btn { width: 100%; }
@@ -1011,13 +1011,15 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  padding: 6px 6px 6px 12px;
+  padding: 4px 4px 4px 12px;
   border: 1px solid var(--c-border);
   border-radius: var(--r-sm);
   background: var(--c-surface);
 }
 .folio-matrix-label { flex: 1; min-width: 0; font-weight: 560; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folio-matrix-controls, .folio-matrix-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* Selects and buttons of a matrix row share the control height. */
+.folio-matrix-controls button, .folio-matrix-add .btn { min-height: var(--h-control); }
 [data-matrix-create] { margin-left: 4px; }
 [data-matrix-view] { margin: 0 4px; }
 .folio-relation-item { display: flex; align-items: center; gap: 8px; }
