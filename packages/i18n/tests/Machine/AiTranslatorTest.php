@@ -141,7 +141,7 @@ final class AiTranslatorTest extends TestCase
             ['n' => 1, 'text' => 'Nimm einen {{glossary:figur|Meeple}}'],
             ['n' => 2, 'text' => 'Wirf die {{glossary:dice|Würfel}}'],
         ])]);
-        $pattern = '/\{\{glossary:(\w+)(?:\|[^}]*)?\}\}/';
+        $pattern = '/\{\{glossary:(\w+)(?:\|[^{}\r\n]*)?\}\}/';
 
         $results = $this->translator($fake, ['translation' => ['protected_tokens' => [$pattern]]])->translateUnits([
             $this->unit('a', 'Take a {{glossary:meeple}}'),

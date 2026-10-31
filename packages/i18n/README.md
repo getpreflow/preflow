@@ -313,8 +313,9 @@ A project's own token syntax can be protected the same way. List regular express
 
 ```php
 'translation' => [
-    // {{glossary:key}} and {{glossary:key|shown text}}: the key must stay, the shown text may be translated
-    'protected_tokens' => ['/\{\{glossary:(\w+)(?:\|[^}]*)?\}\}/'],
+    // {{glossary:key}} and {{glossary:key|shown text}}: the key must stay, the shown text may be translated.
+    // The shown text excludes braces and line breaks, so an unclosed one cannot swallow the next token.
+    'protected_tokens' => ['/\{\{glossary:(\w+)(?:\|[^{}\r\n]*)?\}\}/'],
 ],
 ```
 

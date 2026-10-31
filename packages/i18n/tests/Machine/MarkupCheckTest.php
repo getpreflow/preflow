@@ -42,7 +42,7 @@ final class MarkupCheckTest extends TestCase
         $this->assertTrue(MarkupCheck::matches('<b>Hello</b>', '<b>Hallo</b>', TextFormat::Plain));
     }
 
-    private const GLOSSARY = '/\{\{glossary:(\w+)(?:\|[^}]*)?\}\}/';
+    private const GLOSSARY = '/\{\{glossary:(\w+)(?:\|[^{}\r\n]*)?\}\}/';
 
     public function test_protected_token_key_kept_passes(): void
     {
@@ -66,6 +66,12 @@ final class MarkupCheckTest extends TestCase
         $this->assertTrue(MarkupCheck::matches('{{glossary:meeple|the meeples}}', '{{glossary:meeple|die Meeples}}', TextFormat::Plain, [self::GLOSSARY]));
         $this->assertTrue(MarkupCheck::matches('{{glossary:meeple}}', '{{glossary:meeple|Meeples}}', TextFormat::Plain, [self::GLOSSARY]));
         $this->assertTrue(MarkupCheck::matches('<p>{{glossary:meeple|a}}</p>', '<p>{{glossary:meeple|b}}</p>', TextFormat::Html, [self::GLOSSARY]));
+    }
+
+    public function test_a_shown_text_never_swallows_a_following_token(): void
+    {
+        // An unclosed shown text must not reach into the next token and hide that it was dropped.
+        $this->assertFalse(MarkupCheck::matches('{{glossary:a|Cards and then {{glossary:b}}', '{{glossary:a|Karten und dann}}', TextFormat::Plain, [self::GLOSSARY]));
     }
 
     public function test_protected_token_without_a_group_compares_the_whole_match(): void
