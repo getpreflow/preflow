@@ -1193,14 +1193,15 @@ final class Application
             }
 
             // 'remember' => ['cookie' => …, 'days' => …, 'path' => …] gives a session guard a
-            // remember-me cookie (Secure when APP_SECURE is set); without it there is none.
+            // remember-me cookie; without it there is none. Its Secure flag is the entry's own 'secure', else
+            // the session's (auth.session.secure, as the session cookie), else APP_SECURE.
             $remember = (array) ($guardConfig['remember'] ?? []);
             if ($remember !== [] && $guardClass === \Preflow\Auth\SessionGuard::class) {
                 if (!$this->container->has(\Preflow\Auth\Remember\RememberMe::class)) {
                     throw new \RuntimeException("Guard \"{$name}\" remembers users: that needs preflow/data configured (config/data.php).");
                 }
                 $remember += ['cookie' => 'remember_' . $name, 'days' => 30, 'path' => '/'];
-                $remember['secure'] = (bool) (getenv('APP_SECURE') ?: false);
+                $remember['secure'] = (bool) ($remember['secure'] ?? $authConfig['session']['secure'] ?? (getenv('APP_SECURE') ?: false));
             }
 
             $guard = match ($guardClass) {

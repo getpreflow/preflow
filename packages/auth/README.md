@@ -200,7 +200,7 @@ $guard->login($user, $request, remember: true);   // also queues the cookie
   `config/data.php` has one, else the default). A site whose default storage is JSON but
   which migrates the auth tables into SQLite needs `'auth' => 'sqlite'` under `aliases` in
   `config/data.php`; the same alias holds the tokens (`auth_tokens`). It is `HttpOnly`, `SameSite=Lax`, and
-  `Secure` when `APP_SECURE` is set.
+  `Secure` by the entry's own `'secure'` in `remember`, else `session.secure` of `config/auth.php`, else when `APP_SECURE` is set.
 - When a request has a session but nobody is signed in on the guard,
   `ResolveUserMiddleware` signs the user in from the cookie. Every session guard does this,
   so a member stays remembered beside a signed-in staff user. Pages without a session never
