@@ -30,6 +30,15 @@ final class MarkdownConverterTest extends TestCase
         );
     }
 
+    public function test_an_element_matching_several_removed_kinds_is_removed_once(): void
+    {
+        // An icon is both <svg> and aria-hidden: PHP's querySelectorAll lists it twice.
+        $html = '<p><svg class="icon" aria-hidden="true"><path d="M0 0"/></svg> Tools</p>'
+            . '<button hidden aria-hidden="true">x</button><p>End.</p>';
+
+        $this->assertSame("Tools\n\nEnd.", $this->md($html));
+    }
+
     public function test_paragraphs(): void
     {
         $this->assertSame("First.\n\nSecond.", $this->md('<p>First.</p><p>Second.</p>'));

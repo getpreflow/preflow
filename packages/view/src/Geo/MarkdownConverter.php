@@ -59,8 +59,11 @@ final class MarkdownConverter
             return '';
         }
 
+        // An element matching several selectors (an aria-hidden <svg>) is listed once per match.
         foreach ($root->querySelectorAll(self::REMOVE) as $element) {
-            $element->remove();
+            if ($element->parentNode !== null) {
+                $element->remove();
+            }
         }
 
         return trim(implode("\n\n", $this->blocks($root)));
