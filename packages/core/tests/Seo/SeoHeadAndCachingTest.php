@@ -405,6 +405,14 @@ final class SeoHeadAndCachingTest extends TestCase
         $request = (new Psr17Factory())->createServerRequest('GET', 'https://site.test/');
         $this->assertTrue($middleware(['X-Powered-By: PHP'])->process($request, $handler)->hasHeader('ETag'));
         $this->assertFalse($middleware(['Set-Cookie: PHPSESSID=abc; path=/'])->process($request, $handler)->hasHeader('ETag'));
+        // So does a private Cache-Control PHP queued natively (header(), session_start()'s cache limiter).
+        foreach (['Cache-Control: private, max-age=0', 'cache-control: no-store, no-cache, must-revalidate'] as $sent) {
+            $response = $middleware(['X-Powered-By: PHP', $sent])->process($request, $handler);
+            $this->assertFalse($response->hasHeader('ETag'), $sent);
+            // The cards stay: the session limiter queues no-store on every page that starts a session.
+            $this->assertStringContainsString('og:url', (string) $response->getBody(), $sent);
+        }
+        $this->assertTrue($middleware(['Cache-Control: public, max-age=60'])->process($request, $handler)->hasHeader('ETag'));
     }
 
     #[RunInSeparateProcess]

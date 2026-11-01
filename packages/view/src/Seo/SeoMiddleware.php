@@ -158,7 +158,9 @@ final class SeoMiddleware implements MiddlewareInterface
             'noindex' => $page->noindex || PageSignals::noindexHeader($response) || PageSignals::noindexMeta($html),
         ]);
         // A private page (a members' area, a gated page) isn't previewed or described to crawlers.
-        $cards = !self::isPrivate($response);
+        // Only the response's own header: PHP's session cache limiter queues `no-store` natively on every
+        // page that starts a session, which would take the cards off every page of such a site.
+        $cards = !self::isPrivate($response->getHeaderLine('Cache-Control'));
 
         $siteName = $this->config->name ?? (($defaults?->title ?? '') !== '' ? $defaults->title : $this->appName);
         $home = $path === $this->homePath($locale) || $path === $this->homePath($locale) . '/';
@@ -239,11 +241,13 @@ final class SeoMiddleware implements MiddlewareInterface
 
     private function isPersonal(ServerRequestInterface $request, ResponseInterface $response): bool
     {
-        if (self::isPrivate($response) || $response->hasHeader('Set-Cookie')) {
+        if (self::isPrivate($response->getHeaderLine('Cache-Control')) || $response->hasHeader('Set-Cookie')) {
             return true;
         }
+        // Headers PHP queued natively (setcookie(), header(), session_start()) reach the client too.
         foreach (($this->sentHeaders)() as $header) {
-            if (stripos($header, 'set-cookie:') === 0) {
+            if (stripos($header, 'set-cookie:') === 0
+                || (stripos($header, 'cache-control:') === 0 && self::isPrivate(substr($header, strlen('cache-control:'))))) {
                 return true;
             }
         }
@@ -253,10 +257,10 @@ final class SeoMiddleware implements MiddlewareInterface
         return $session !== false && $session !== '' && self::hasCookie($request, $session);
     }
 
-    /** Whether the response is meant for one visitor only (`Cache-Control: private` or `no-store`). */
-    private static function isPrivate(ResponseInterface $response): bool
+    /** Whether a Cache-Control value means one visitor only (`private` or `no-store`). */
+    private static function isPrivate(string $cacheControl): bool
     {
-        $cacheControl = strtolower($response->getHeaderLine('Cache-Control'));
+        $cacheControl = strtolower($cacheControl);
 
         return str_contains($cacheControl, 'private') || str_contains($cacheControl, 'no-store');
     }
