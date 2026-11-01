@@ -297,7 +297,7 @@ final class TranslationOverridesTest extends TestCase
         $this->signIn('ada@site.test');
         $this->assertSame(200, $this->send('GET', '/folio/translations')->getStatusCode());
         $this->assertStringContainsString('href="/folio/translations"', $this->html('/folio'), 'Settings → Translations');
-        $noToken = $this->flow->handle((new Psr17Factory())->createServerRequest('POST', '/folio/translations', ['REMOTE_ADDR' => $this->remoteAddr])
+        $noToken = $this->flow->handle((new Psr17Factory())->createServerRequest('POST', '/folio/translations', ['REMOTE_ADDR' => $this->remoteAddr])->withHeader('Sec-Fetch-Site', 'same-origin')->withCookieParams([session_name() => session_id()])
             ->withParsedBody(['locale' => 'en', 'key' => 'folio.common.save', 'text' => 'x']));
         $this->assertSame(403, $noToken->getStatusCode(), 'CSRF');
         $this->assertSame([], $this->overrides()->all('en'));

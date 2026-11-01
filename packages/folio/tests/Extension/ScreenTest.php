@@ -111,7 +111,7 @@ final class ScreenTest extends TestCase
         $this->members();
         $this->as('admin');
 
-        $without = $this->session->handle((new Psr17Factory())->createServerRequest('POST', '/folio/approvals/m1/approve')->withParsedBody([]));
+        $without = $this->session->handle((new Psr17Factory())->createServerRequest('POST', '/folio/approvals/m1/approve')->withHeader('Sec-Fetch-Site', 'same-origin')->withCookieParams([session_name() => session_id()])->withParsedBody([]));
         $this->assertSame(403, $without->getStatusCode());
 
         $with = $this->send('POST', '/folio/approvals/m1/approve');
@@ -392,7 +392,7 @@ final class ScreenTest extends TestCase
         $page = (string) $this->session->handle($f->createServerRequest('GET', '/folio/login'))->getBody();
         preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
         $this->token = $m[1] ?? '';
-        $login = $this->session->handle($f->createServerRequest('POST', '/folio/login')->withParsedBody([
+        $login = $this->session->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             '_csrf_token' => $this->token, 'email' => "{$role}@site.test", 'password' => 'secret',
         ]));
         $this->assertSame(302, $login->getStatusCode());
@@ -401,6 +401,13 @@ final class ScreenTest extends TestCase
     private function send(string $method, string $uri): ResponseInterface
     {
         $req = (new Psr17Factory())->createServerRequest($method, $uri);
+        if ($method !== 'GET') {
+            // As a browser posts a form of the site: same origin, with the session cookie.
+            $req = $req->withHeader('Sec-Fetch-Site', 'same-origin');
+            if (session_id() !== '') {
+                $req = $req->withCookieParams([session_name() => session_id()]);
+            }
+        }
         if ($method === 'POST') {
             $req = $req->withParsedBody(['_csrf_token' => $this->token]);
         }

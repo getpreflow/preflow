@@ -144,7 +144,7 @@ final class CodesInFolioTest extends TestCase
         $page = (string) $this->app()->handle($f->createServerRequest('GET', '/folio/login'))->getBody();
         preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
         $this->token = $m[1] ?? '';
-        $login = $this->app()->handle($f->createServerRequest('POST', '/folio/login')->withParsedBody([
+        $login = $this->app()->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             '_csrf_token' => $this->token, 'email' => 'admin@site.test', 'password' => 'secret',
         ]));
         $this->assertSame(302, $login->getStatusCode());
@@ -154,6 +154,13 @@ final class CodesInFolioTest extends TestCase
     private function send(string $method, string $uri, array $body = []): ResponseInterface
     {
         $req = (new Psr17Factory())->createServerRequest($method, $uri);
+        if ($method !== 'GET') {
+            // As a browser posts a form of the site: same origin, with the session cookie.
+            $req = $req->withHeader('Sec-Fetch-Site', 'same-origin');
+            if (session_id() !== '') {
+                $req = $req->withCookieParams([session_name() => session_id()]);
+            }
+        }
         if ($method === 'POST') {
             $req = $req->withParsedBody(['_csrf_token' => $this->token] + $body);
         }

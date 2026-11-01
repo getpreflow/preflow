@@ -151,7 +151,7 @@ final class AssetLibraryAppTest extends TestCase
     public function test_refused_field_upload_shows_in_the_form(): void
     {
         $f = new Psr17Factory();
-        $res = $this->app()->handle($f->createServerRequest('POST', '/folio/post')
+        $res = $this->app()->handle($f->createServerRequest('POST', '/folio/post')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'T', 'slug' => 'hello', '_locale' => 'en'])
             ->withUploadedFiles(['cover' => $f->createUploadedFile($f->createStream("notes\n"), 6, UPLOAD_ERR_OK, 'notes.txt')]));
 
@@ -171,7 +171,7 @@ final class AssetLibraryAppTest extends TestCase
      */
     private function uploadFiles(array $files, array $body = []): ResponseInterface
     {
-        return $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/assets')
+        return $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/assets')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody($body)
             ->withUploadedFiles(['files' => $files]));
     }

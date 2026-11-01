@@ -172,7 +172,7 @@ final class CacheScreenTest extends TestCase
         $this->signIn();
         $this->write('storage/cache/folio-blocks.cache', 'blocks');
 
-        $res = $this->session->handle((new Psr17Factory())->createServerRequest('POST', '/folio/cache/clear')->withParsedBody(['key' => 'folio.blocks']));
+        $res = $this->session->handle((new Psr17Factory())->createServerRequest('POST', '/folio/cache/clear')->withHeader('Sec-Fetch-Site', 'same-origin')->withCookieParams([session_name() => session_id()])->withParsedBody(['key' => 'folio.blocks']));
 
         $this->assertSame(403, $res->getStatusCode());
         $this->assertFileExists($this->dir . '/storage/cache/folio-blocks.cache');
@@ -203,7 +203,10 @@ final class CacheScreenTest extends TestCase
             $app->container()->instance(OpcacheStatus::class, $opcache);
         }
 
-        return $app->handle((new Psr17Factory())->createServerRequest($method, $uri));
+        $request = (new Psr17Factory())->createServerRequest($method, $uri);
+
+        // As a browser posts a form of the site.
+        return $app->handle($method === 'GET' ? $request : $request->withHeader('Sec-Fetch-Site', 'same-origin'));
     }
 
     private function opcache(bool $enabled, bool $resets = true): OpcacheStatus
@@ -248,7 +251,7 @@ final class CacheScreenTest extends TestCase
         $page = (string) $this->session->handle($f->createServerRequest('GET', '/folio/login'))->getBody();
         preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
         $this->token = $m[1] ?? '';
-        $login = $this->session->handle($f->createServerRequest('POST', '/folio/login')->withParsedBody([
+        $login = $this->session->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             '_csrf_token' => $this->token, 'email' => 'admin@site.test', 'password' => 'secret',
         ]));
         $this->assertSame(302, $login->getStatusCode());
@@ -258,6 +261,13 @@ final class CacheScreenTest extends TestCase
     private function send(string $method, string $uri, array $body = []): ResponseInterface
     {
         $req = (new Psr17Factory())->createServerRequest($method, $uri);
+        if ($method !== 'GET') {
+            // As a browser posts a form of the site: same origin, with the session cookie.
+            $req = $req->withHeader('Sec-Fetch-Site', 'same-origin');
+            if (session_id() !== '') {
+                $req = $req->withCookieParams([session_name() => session_id()]);
+            }
+        }
         if ($method === 'POST') {
             $req = $req->withParsedBody(['_csrf_token' => $this->token] + $body);
         }

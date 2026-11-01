@@ -272,7 +272,7 @@ final class AssetLibraryRelease2Test extends TestCase
 
     private function replace(string $id, UploadedFileInterface $file): ResponseInterface
     {
-        return $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/assets/' . $id . '/replace')
+        return $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/assets/' . $id . '/replace')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withUploadedFiles(['file' => $file]));
     }
 

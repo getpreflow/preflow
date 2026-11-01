@@ -65,7 +65,7 @@ final class AiLabelsAndMediaTest extends TestCase
     /** @param array<string, mixed> $body */
     private function call(string $uri, array $body): ResponseInterface
     {
-        $request = (new Psr17Factory())->createServerRequest('POST', $uri)->withParsedBody($body + ['_csrf_token' => $this->token]);
+        $request = (new Psr17Factory())->createServerRequest('POST', $uri)->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody($body + ['_csrf_token' => $this->token]);
 
         return ($this->session ?? $this->aiApp())->handle($request);
     }

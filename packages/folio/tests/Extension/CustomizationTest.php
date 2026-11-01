@@ -261,7 +261,7 @@ final class CustomizationTest extends TestCase
         $this->as('admin');
         $this->seed('contact', 'c1', ['name' => 'Ada', 'status' => 'new']);
 
-        $res = $this->session->handle((new Psr17Factory())->createServerRequest('POST', '/folio/contact/c1/_action/approve')->withParsedBody([]));
+        $res = $this->session->handle((new Psr17Factory())->createServerRequest('POST', '/folio/contact/c1/_action/approve')->withHeader('Sec-Fetch-Site', 'same-origin')->withCookieParams([session_name() => session_id()])->withParsedBody([]));
         $this->assertSame(403, $res->getStatusCode());
         $this->assertSame('new', $this->stored('contact', 'c1')?->get('status'));
     }
@@ -647,7 +647,7 @@ final class CustomizationTest extends TestCase
 
         // CSRF like every POST.
         $this->seedAs('admin');
-        $res = $this->session->handle((new Psr17Factory())->createServerRequest('POST', '/folio/contact/_bulk/delete')->withParsedBody(['ids' => ['c1']]));
+        $res = $this->session->handle((new Psr17Factory())->createServerRequest('POST', '/folio/contact/_bulk/delete')->withHeader('Sec-Fetch-Site', 'same-origin')->withCookieParams([session_name() => session_id()])->withParsedBody(['ids' => ['c1']]));
         $this->assertSame(403, $res->getStatusCode());
         $this->assertNotNull($this->stored('contact', 'c1'));
     }
@@ -935,7 +935,7 @@ final class CustomizationTest extends TestCase
         $page = (string) $this->session->handle($f->createServerRequest('GET', '/folio/login'))->getBody();
         preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
         $this->token = $m[1] ?? '';
-        $login = $this->session->handle($f->createServerRequest('POST', '/folio/login')->withParsedBody([
+        $login = $this->session->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             '_csrf_token' => $this->token, 'email' => "{$role}@site.test", 'password' => 'secret',
         ]));
         $this->assertSame(302, $login->getStatusCode());
@@ -945,6 +945,13 @@ final class CustomizationTest extends TestCase
     private function send(string $method, string $uri, array $body = []): ResponseInterface
     {
         $req = (new Psr17Factory())->createServerRequest($method, $uri);
+        if ($method !== 'GET') {
+            // As a browser posts a form of the site: same origin, with the session cookie.
+            $req = $req->withHeader('Sec-Fetch-Site', 'same-origin');
+            if (session_id() !== '') {
+                $req = $req->withCookieParams([session_name() => session_id()]);
+            }
+        }
         if ($method === 'POST') {
             $req = $req->withParsedBody(['_csrf_token' => $this->token] + $body);
         }

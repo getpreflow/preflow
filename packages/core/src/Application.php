@@ -151,7 +151,7 @@ final class Application
     public function boot(): void
     {
         $debug = DebugLevel::from((int) $this->config->get('app.debug', 0));
-        $secretKey = $this->config->get('app.key', 'preflow-default-key-change-me!!');
+        $secretKey = $this->config->get('app.key', \Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY);
 
         // Wall-clock values (dates in content, scheduled publishing) use the app's
         // zone, in web requests and the CLI alike. Unknown names keep php.ini's zone.
@@ -183,7 +183,7 @@ final class Application
         $this->bootI18n();
         $this->bootNotify();
         $this->bootSession();
-        $this->bootCsrf();
+        $this->bootCsrf($debug, new \Preflow\Core\Http\Csrf\StatelessCsrfToken((string) $secretKey));
         $this->bootAuth();
 
         // Register user service providers
@@ -1299,21 +1299,47 @@ final class Application
         return $this->authConfigCache ??= (array) require $this->basePath('config/auth.php');
     }
 
-    private function bootCsrf(): void
+    /**
+     * CSRF on every request, with or without a session (config/csrf.php). The sign-in path
+     * registry and the stateless token are bound before the providers run, so packages can
+     * add their login forms and print the token.
+     */
+    private function bootCsrf(DebugLevel $debug, \Preflow\Core\Http\Csrf\StatelessCsrfToken $stateless): void
     {
-        if (!class_exists(\Preflow\Core\Http\Csrf\CsrfMiddleware::class)) {
-            return;
-        }
+        $config = \Preflow\Core\Http\Csrf\CsrfConfig::fromFile($this->basePath('config/csrf.php'));
 
-        if (!$this->container->has(\Preflow\Core\Http\Session\SessionInterface::class)) {
-            return;
+        $signIn = new \Preflow\Core\Http\Csrf\CsrfSignInPaths();
+        foreach ($config->signInPaths as $path) {
+            $signIn->add($path);
         }
+        $this->container->instance(\Preflow\Core\Http\Csrf\CsrfSignInPaths::class, $signIn);
+        $this->container->instance(\Preflow\Core\Http\Csrf\StatelessCsrfToken::class, $stateless);
+
+        $appUrl = $this->config->get('app.url');
 
         // A site's ExpiredSessionHandler is bound by its providers, which run after this:
         // the middleware looks it up when a POST's session turns out to have expired.
         $this->addMiddleware(new \Preflow\Core\Http\Csrf\CsrfMiddleware(
+            config: $config,
+            origin: new \Preflow\Core\Http\Csrf\OriginCheck(is_string($appUrl) && $appUrl !== '' ? $appUrl : null, $config->trustedOrigins),
+            stateless: $stateless,
+            signIn: $signIn,
+            sessionCookie: $this->sessionCookieName(),
+            router: fn (): ?RouterInterface => $this->router,
             expiredSessionHandler: new \Preflow\Core\Http\Csrf\ContainerExpiredSessionHandler($this->container),
+            expiredResponder: null,
+            warn: $debug->isDebug() ? $this->csrfWarning(...) : null,
         ));
+    }
+
+    /** Debug-mode CSRF warnings: to the bound logger (a provider may bind it after boot), else the PHP log. */
+    private function csrfWarning(string $message): void
+    {
+        if ($this->container->has(\Psr\Log\LoggerInterface::class)) {
+            $this->container->get(\Psr\Log\LoggerInterface::class)->warning($message);
+            return;
+        }
+        error_log($message);
     }
 
     /** Build the config-named user providers now that all services exist: a bad class fails during boot. */
@@ -1517,7 +1543,12 @@ final class Application
 
         if ($this->container->has(\Preflow\View\TemplateEngineInterface::class)) {
             $engine = $this->container->get(\Preflow\View\TemplateEngineInterface::class);
-            $authProvider = new \Preflow\Auth\AuthExtensionProvider($authManager, $session, $access);
+            $authProvider = new \Preflow\Auth\AuthExtensionProvider(
+                $authManager,
+                $session,
+                $access,
+                $this->container->get(\Preflow\Core\Http\Csrf\StatelessCsrfToken::class),
+            );
             $this->registerExtensionProvider($engine, $authProvider);
         }
     }

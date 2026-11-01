@@ -55,10 +55,17 @@ final class CsrfExpiredSessionBootTest extends TestCase
         $this->assertSame(403, $response->getStatusCode());
     }
 
-    /** @param array<string, string> $body */
+    /**
+     * As a browser sends it: from a page of the site, with the (old) session cookie.
+     *
+     * @param array<string, string> $body
+     */
     private function post(array $body): \Psr\Http\Message\ServerRequestInterface
     {
-        return (new Psr17Factory())->createServerRequest('POST', '/objects/1/edit')->withParsedBody($body);
+        return (new Psr17Factory())->createServerRequest('POST', '/objects/1/edit')
+            ->withHeader('Sec-Fetch-Site', 'same-origin')
+            ->withCookieParams(['csrf_expired_test' => 'id-of-the-old-session'])
+            ->withParsedBody($body);
     }
 
     private function app(bool $withProvider): string

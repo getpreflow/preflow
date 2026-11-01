@@ -44,6 +44,13 @@ final class AiSettingsTest extends TestCase
     private function call(string $method, string $uri, array $body = []): ResponseInterface
     {
         $request = (new Psr17Factory())->createServerRequest($method, $uri);
+        if ($method !== 'GET') {
+            // As a browser posts a form of the site: same origin, with the session cookie.
+            $request = $request->withHeader('Sec-Fetch-Site', 'same-origin');
+            if (session_id() !== '') {
+                $request = $request->withCookieParams([session_name() => session_id()]);
+            }
+        }
         if ($method === 'POST') {
             $request = $request->withParsedBody($body + ['_csrf_token' => $this->token]);
         }

@@ -120,7 +120,7 @@ final class FrontendGateTest extends TestCase
         $page = (string) $this->app()->handle($f->createServerRequest('GET', '/folio/login'))->getBody();
         preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
         $this->token = $m[1] ?? '';
-        $login = $this->app()->handle($f->createServerRequest('POST', '/folio/login')->withParsedBody([
+        $login = $this->app()->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             '_csrf_token' => $this->token, 'email' => 'admin@site.test', 'password' => 'secret',
         ]));
         $this->assertSame(302, $login->getStatusCode());
@@ -232,7 +232,7 @@ final class FrontendGateTest extends TestCase
         $this->assertSame('private, no-store', $res->getHeaderLine('Cache-Control'));
 
         // Folio's live preview renders gated types too (admin route, not the frontend gate).
-        $preview = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/resource/r1/preview')->withParsedBody([
+        $preview = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/resource/r1/preview')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             '_csrf_token' => $this->token, 'title' => 'Draft guide', 'slug' => 'guide', '_locale' => 'en',
         ]));
         $this->assertSame(200, $preview->getStatusCode());

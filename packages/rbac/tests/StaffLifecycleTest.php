@@ -99,7 +99,7 @@ final class StaffLifecycleTest extends TestCase
         preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
         $this->token = $m[1] ?? '';
 
-        return $this->session->handle($f->createServerRequest('POST', '/folio/login')->withParsedBody([
+        return $this->session->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             '_csrf_token' => $this->token, 'email' => $email, 'password' => $password,
         ] + ($remember ? ['remember' => '1'] : [])));
     }
@@ -342,7 +342,7 @@ final class StaffLifecycleTest extends TestCase
     {
         $this->lifecycleSite();
         $admin = $this->container()->get(\Preflow\Rbac\Types\StaffAdmin::class);
-        $request = (new Psr17Factory())->createServerRequest('POST', '/folio/staff/s-help/_action/disable');
+        $request = (new Psr17Factory())->createServerRequest('POST', '/folio/staff/s-help/_action/disable')->withHeader('Sec-Fetch-Site', 'same-origin');
         $stale = $this->stored('staff', 's-help'); // read when the action's request began
         $meanwhile = $this->stored('staff', 's-help');
         $meanwhile->set('roles', []); // a role removed by another request

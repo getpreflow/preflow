@@ -300,7 +300,7 @@ final class AssetBinTest extends TestCase
         $page = (string) $app->handle($f->createServerRequest('GET', '/folio/login'))->getBody();
         preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
         $token = $m[1] ?? '';
-        $login = $app->handle($f->createServerRequest('POST', '/folio/login')->withParsedBody([
+        $login = $app->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             '_csrf_token' => $token, 'email' => "{$role}@site.test", 'password' => 'secret',
         ]));
         $this->assertSame(302, $login->getStatusCode());
@@ -312,6 +312,13 @@ final class AssetBinTest extends TestCase
     private function as(array $session, string $method, string $uri): \Psr\Http\Message\ResponseInterface
     {
         $req = (new Psr17Factory())->createServerRequest($method, $uri);
+        if ($method !== 'GET') {
+            // As a browser posts a form of the site: same origin, with the session cookie.
+            $req = $req->withHeader('Sec-Fetch-Site', 'same-origin');
+            if (session_id() !== '') {
+                $req = $req->withCookieParams([session_name() => session_id()]);
+            }
+        }
         if ($method === 'POST') {
             $req = $req->withParsedBody(['_csrf_token' => $session[1]]);
         }
