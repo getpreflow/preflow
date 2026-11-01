@@ -35,6 +35,20 @@ final class CsrfConfigTest extends TestCase
         $this->assertSame(['/login'], $config->signInPaths);
     }
 
+    public function test_exempt_adds_to_the_component_prefix(): void
+    {
+        $file = sys_get_temp_dir() . '/csrf_config_' . bin2hex(random_bytes(4)) . '.php';
+        file_put_contents($file, "<?php\nreturn ['exempt' => ['/hooks/']];\n");
+
+        try {
+            $config = CsrfConfig::fromFile($file);
+        } finally {
+            unlink($file);
+        }
+
+        $this->assertSame(['/--component/', '/hooks/'], $config->exempt);
+    }
+
     public function test_sign_in_paths_match_exactly_ignoring_a_trailing_slash(): void
     {
         $paths = new CsrfSignInPaths();

@@ -6,10 +6,11 @@
 // session the signed token csrf_field() prints (it needs a real app.key).
 // Without this file the defaults below apply.
 return [
-    // Path prefixes without a check. Keep '/--component/' (component actions
-    // carry signed tokens). Mark controller routes with #[CsrfExempt('why')]
-    // instead; this list is for file routes and paths outside the router.
-    // 'exempt' => ['/--component/'],
+    // More path prefixes without a check; '/--component/' (component actions,
+    // signed tokens of their own) is always exempt. Mark controller routes
+    // with #[CsrfExempt('why')] instead; this list is for file routes and
+    // paths outside the router.
+    // 'exempt' => [],
 
     // Other origins allowed to post here, as https://host[:port], for example
     // a stage host posting to production. A sibling subdomain isn't trusted

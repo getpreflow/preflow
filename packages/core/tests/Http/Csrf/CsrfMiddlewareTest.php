@@ -48,6 +48,25 @@ final class CsrfMiddlewareTest extends TestCase
         $this->assertSame(200, $this->middleware()->process($request, $this->app())->getStatusCode());
     }
 
+    public function test_component_prefix_is_exempt_whatever_the_config_lists(): void
+    {
+        $middleware = new CsrfMiddleware(
+            new CsrfConfig(exempt: ['/hooks/']),
+            new OriginCheck('https://example.com'),
+            $this->stateless(),
+            new CsrfSignInPaths(),
+            self::COOKIE,
+            null,
+            null,
+            null,
+        );
+
+        foreach (['/--component/action', '/hooks/stripe'] as $path) {
+            $this->assertSame(200, $middleware->process($this->post($path, ['Sec-Fetch-Site' => 'cross-site']), $this->app())->getStatusCode());
+        }
+        $this->assertRefused('origin', fn () => $middleware->process($this->post('/contact', ['Sec-Fetch-Site' => 'cross-site']), $this->app()));
+    }
+
     // --- 2. API clients ---
 
     public function test_authorization_without_cookie_passes(): void
@@ -159,18 +178,16 @@ final class CsrfMiddlewareTest extends TestCase
 
     public function test_cookieless_visitor_on_session_path_is_treated_as_public(): void
     {
-        $session = new ArraySession();
-        $session->start();
         $middleware = $this->middleware();
 
-        // The session middleware started a session, but the browser sent no session cookie.
-        $sameOrigin = $this->withSession($this->post('/members/profile', ['Sec-Fetch-Site' => 'same-origin']), $session, cookie: false);
+        // The session middleware started a (new) session each time, but the browser sent no session cookie.
+        $sameOrigin = $this->withSession($this->post('/members/profile', ['Sec-Fetch-Site' => 'same-origin']), $this->newSession(), cookie: false);
         $this->assertSame(200, $middleware->process($sameOrigin, $this->app())->getStatusCode());
 
-        $noSignal = $this->withSession($this->post('/members/profile', [], ['_csrf_token' => $this->stateless()->issue()]), $session, cookie: false);
+        $noSignal = $this->withSession($this->post('/members/profile', [], ['_csrf_token' => $this->stateless()->issue()]), $this->newSession(), cookie: false);
         $this->assertSame(200, $middleware->process($noSignal, $this->app())->getStatusCode());
 
-        $nothing = $this->withSession($this->post('/members/profile'), $session, cookie: false);
+        $nothing = $this->withSession($this->post('/members/profile'), $this->newSession(), cookie: false);
         $this->assertRefused('no-signal', fn () => $middleware->process($nothing, $this->app()));
     }
 
@@ -192,6 +209,18 @@ final class CsrfMiddlewareTest extends TestCase
             $this->app(),
         ));
         $this->assertRefused('origin', fn () => $middleware->process($post(['Origin' => 'https://evil.test'], ['_csrf_token' => $token]), $this->app()));
+    }
+
+    public function test_live_session_without_its_cookie_is_still_checked_on_its_token(): void
+    {
+        // Resumed by other means than the configured cookie (trans_sid, a custom session, a worker runtime).
+        $session = $this->liveSession();
+        $token = CsrfToken::fromSession($session)?->getValue();
+        $post = fn (array $body) => $this->withSession($this->post('/account', ['Sec-Fetch-Site' => 'same-origin'], $body), $session, cookie: false);
+
+        $this->assertRefused('token', fn () => $this->middleware()->process($post([]), $this->app()));
+        $this->assertRefused('token', fn () => $this->middleware()->process($post(['_csrf_token' => $this->stateless()->issue()]), $this->app()));
+        $this->assertSame(200, $this->middleware()->process($post(['_csrf_token' => $token]), $this->app())->getStatusCode());
     }
 
     // --- 7. a new session (the one the form came from is gone, or the page was public) ---

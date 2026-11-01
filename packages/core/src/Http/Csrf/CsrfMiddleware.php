@@ -91,8 +91,9 @@ final class CsrfMiddleware implements MiddlewareInterface
 
         $submitted = $this->extractSubmittedToken($request) ?? '';
 
-        // No session, or no session cookie: nothing in the visitor's name to forge.
-        if ($session === null || !$this->hasSessionCookie($request)) {
+        // No session, or a new one without its cookie: nothing in the visitor's name to forge.
+        // A session that held a token is checked on it, however it was resumed.
+        if ($session === null || (!$sessionHadToken && !$this->hasSessionCookie($request))) {
             if ($verdict === OriginVerdict::Pass) {
                 return $handler->handle($request);
             }
@@ -144,7 +145,7 @@ final class CsrfMiddleware implements MiddlewareInterface
 
     private function isExempt(string $path): bool
     {
-        foreach ($this->config->exempt as $prefix) {
+        foreach ([CsrfConfig::COMPONENT_PREFIX, ...$this->config->exempt] as $prefix) {
             if ($prefix !== '' && str_starts_with($path, $prefix)) {
                 return true;
             }
