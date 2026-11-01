@@ -221,6 +221,19 @@ final class FolioServiceProvider extends ServiceProvider
                 static fn (\Psr\Http\Message\ServerRequestInterface $sub, \Closure $next): \Psr\Http\Message\ResponseInterface => $contentLocale->scoped($next),
             );
         }
+        // GEO's llms.txt lists the published pages and takes its name and summary from the site singleton.
+        $geo = $container->bound(\Preflow\View\Geo\GeoConfig::class) ? $container->get(\Preflow\View\Geo\GeoConfig::class) : null;
+        if ($geo?->enabled() && $container->bound(\Preflow\View\Geo\GeoEntries::class)) {
+            $entries = $container->get(\Preflow\View\Geo\GeoEntries::class);
+            $entries->source(static fn (string $locale): array => (new \Preflow\Folio\Geo\FolioGeoEntries(
+                $geo,
+                $container->get(TypeCatalog::class),
+                $container->get(\Preflow\Folio\Publishing\Publisher::class),
+                $container->get(FrontendResolver::class),
+            ))($locale));
+            $entries->site(static fn (string $locale): array => $container->get(\Preflow\Folio\Content\Singletons::class)
+                ->record('site')?->localized($locale)->toArray() ?? []);
+        }
 
         // Media library (preflow/media): its config, library, usage, locale and image tag. Folio adapts it:
         // its content locale, its records as a usage source, the legacy upload URL and the old class names.

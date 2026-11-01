@@ -18,7 +18,8 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Markdown views of public pages: `/about.md`, `/index.md` (home), `/de/index.md`,
- * or a page URL asked for with `Accept: text/markdown`.
+ * or a page URL asked for with `Accept: text/markdown`; and `/llms.txt` and
+ * `/llms-full.txt` (`/de/llms.txt`… for the other locales) from GeoEntries.
  *
  * The page is rendered internally as an anonymous visitor would see it (no
  * cookies, no session, no query) and converted; pages that aren't a plain 200
@@ -37,6 +38,10 @@ final class GeoMiddleware implements MiddlewareInterface
      * @param ?RenderScopes  $scopes wrap each internal render (request-scoped state set and put back)
      * @param ?\Closure(\Throwable): void $report gets render failures that aren't HTTP answers (404, 403…)
      * @param bool           $debug  rethrow those failures, so the error page shows them
+     * @param ?GeoEntries    $entries the pages llms.txt lists (none: no llms.txt)
+     * @param string         $appName llms.txt's name when neither the config nor the site fields give one
+     * @param list<string>   $locales the locales with their own llms.txt under `/{locale}/`
+     * @param string         $defaultLocale the locale of `/llms.txt`
      */
     public function __construct(
         private readonly GeoConfig $config,
@@ -47,6 +52,10 @@ final class GeoMiddleware implements MiddlewareInterface
         private readonly ?RenderScopes $scopes = null,
         private readonly ?\Closure $report = null,
         private readonly bool $debug = false,
+        private readonly ?GeoEntries $entries = null,
+        private readonly string $appName = '',
+        private readonly array $locales = [],
+        private readonly string $defaultLocale = '',
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -59,6 +68,11 @@ final class GeoMiddleware implements MiddlewareInterface
             || str_starts_with($path, '/--component')
         ) {
             return $handler->handle($request);
+        }
+
+        $llms = $this->llmsFile($path);
+        if ($llms !== null) {
+            return $this->llmsResponse($request, $handler, ...$llms);
         }
 
         $page = self::pagePath($path);
@@ -130,16 +144,119 @@ final class GeoMiddleware implements MiddlewareInterface
     {
         $markdown = $this->config->excludes($page) ? null : $this->render($request, $handler, $page);
 
-        // Anonymous and cacheable: no cookie leaves, not even one PHP's session queued natively.
-        if (!headers_sent()) {
-            header_remove('Set-Cookie');
-        }
+        $this->dropNativeCookies();
 
         $headers = ['Vary' => 'Accept', 'X-Content-Type-Options' => 'nosniff'];
 
         return $markdown === null
             ? new Response(404, ['Content-Type' => 'text/plain; charset=utf-8'] + $headers, "Not Found\n")
             : new Response(200, ['Content-Type' => 'text/markdown; charset=utf-8'] + $headers, $markdown);
+    }
+
+    /**
+     * The llms file a path names: `/llms.txt`, `/llms-full.txt`, or either under
+     * `/{locale}/` for a non-default locale.
+     *
+     * @return ?array{string, bool} the locale, and whether it is the full file
+     */
+    private function llmsFile(string $path): ?array
+    {
+        if ($this->entries === null || preg_match('#^(?:/([^/]+))?/llms(-full)?\.txt$#', $path, $m) !== 1) {
+            return null;
+        }
+        $prefix = $m[1] ?? '';
+        $locale = $prefix === '' ? $this->defaultLocale : $prefix;
+        if ($prefix !== '' && ($locale === $this->defaultLocale || !in_array($locale, $this->locales, true))) {
+            return null;
+        }
+
+        return [$locale, ($m[2] ?? '') !== ''];
+    }
+
+    private function llmsResponse(ServerRequestInterface $request, RequestHandlerInterface $handler, string $locale, bool $full): ResponseInterface
+    {
+        $headers = ['Content-Type' => 'text/plain; charset=utf-8', 'X-Content-Type-Options' => 'nosniff'];
+        if ($full && !$this->config->full) {
+            $this->dropNativeCookies();
+
+            return new Response(404, $headers, "Not Found\n");
+        }
+
+        $origin = $this->origin($request);
+        $entries = [];
+        foreach ($this->entries?->for($locale) ?? [] as $entry) {
+            $entry = $entry->withUrl($this->absolute($entry->url, $origin));
+            $path = $this->localPath($entry->url, $origin);
+            if ($path === null || !$this->config->excludes($path)) {
+                $entries[] = $entry;
+            }
+        }
+
+        $site = $this->entries?->siteFields($locale) ?? [];
+        $name = $this->config->name ?? $this->siteText($site, 'name') ?? $this->appName;
+        $summary = $this->config->summary ?? $this->siteText($site, 'summary') ?? '';
+        $txt = new LlmsTxt();
+
+        if ($full) {
+            $pages = [];
+            foreach ($entries as $entry) {
+                $path = $entry->full ? $this->localPath($entry->url, $origin) : null;
+                $markdown = $path !== null ? $this->render($request, $handler, $path) : null;
+                if ($markdown !== null) {
+                    $pages[] = ['entry' => $entry, 'markdown' => self::withoutHeader($markdown)];
+                }
+            }
+            $body = $txt->full($name, $summary, $pages);
+        } else {
+            $others = [];
+            if ($locale === $this->defaultLocale) {
+                foreach ($this->locales as $other) {
+                    if ($other !== $this->defaultLocale) {
+                        $others[] = ['locale' => $other, 'url' => $origin . '/' . $other . '/llms.txt'];
+                    }
+                }
+            }
+            $body = $txt->index($name, $summary, $entries, $others);
+        }
+
+        $this->dropNativeCookies();
+
+        return new Response(200, $headers, $body);
+    }
+
+    /** @param array<string, mixed> $site */
+    private function siteText(array $site, string $key): ?string
+    {
+        $field = $this->config->siteFields[$key] ?? null;
+        $value = $field !== null ? ($site[$field] ?? null) : null;
+        $text = is_scalar($value) ? trim(html_entity_decode(strip_tags((string) $value), ENT_QUOTES | ENT_HTML5, 'UTF-8')) : '';
+
+        return $text !== '' ? $text : null;
+    }
+
+    /** The path of a URL on this site (same origin), or null for another site's. */
+    private function localPath(string $url, string $origin): ?string
+    {
+        if ($origin === '' || !str_starts_with($url, $origin) || !in_array($url[strlen($origin)] ?? '/', ['/', '?', '#'], true)) {
+            return null;
+        }
+        $path = (string) parse_url(substr($url, strlen($origin)) ?: '/', PHP_URL_PATH);
+
+        return $path !== '' ? $path : '/';
+    }
+
+    /** A page's Markdown without the title and `Source:` lines render() puts first. */
+    private static function withoutHeader(string $markdown): string
+    {
+        return (string) preg_replace('/\A(?:# [^\n]*\n\n)?Source: [^\n]*\n\n?/', '', $markdown);
+    }
+
+    /** Anonymous and cacheable: no cookie leaves, not even one PHP's session queued natively. */
+    private function dropNativeCookies(): void
+    {
+        if (!headers_sent()) {
+            header_remove('Set-Cookie');
+        }
     }
 
     /** A clean GET for $path: no cookies, credentials, query or attributes, and no session. */

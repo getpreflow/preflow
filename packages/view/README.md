@@ -120,6 +120,151 @@ if ($child->hasCss() || $child->hasJs()) {
 }
 ```
 
+## GEO: Markdown for AI search
+
+GEO (generative engine optimisation) gives AI assistants and search engines a clean Markdown version of your public
+pages, and a map of them in `/llms.txt` ([llmstxt.org](https://llmstxt.org)). It is off until you turn it on; while
+it is off, nothing about your pages changes.
+
+### Turning it on
+
+Create `config/geo.php`:
+
+```php
+<?php
+
+return [
+    'enabled' => true,
+    // The heading and summary of llms.txt. Leave them null to take them from Folio's "site"
+    // singleton (the fields named in site_fields, in each language), else the app name.
+    'name' => null,
+    'summary' => null,
+    'site_fields' => ['name' => 'name', 'summary' => 'meta_description'],
+    // Folio types whose published records llms.txt lists, and a boolean field that keeps a record out.
+    'types' => ['page'],
+    'noindex_field' => null,
+    // Serve /llms-full.txt (every listed page's Markdown in one file).
+    'full' => true,
+    // Pages without a Markdown view; also left out of llms.txt.
+    'exclude' => ['/thank-you'],
+];
+```
+
+Then every public page has a Markdown view:
+
+- `/about.md` (or `/about` asked for with `Accept: text/markdown`), `/index.md` for the home page, `/de/index.md`
+  for the German home page.
+- The page is rendered as an anonymous visitor sees it: no cookies, no session, so nothing personal ends up in it.
+- Pages that don't answer 200 (redirects too), are `noindex` (`<meta name="robots" content="noindex">` or an
+  `X-Robots-Tag` header), Folio previews and excluded paths have none: their `.md` URL is a 404.
+- HTML pages that have one point to it with `<link rel="alternate" type="text/markdown">` and a `Link` header.
+
+### What ends up in the Markdown
+
+By default the page's `<main>` element (else `<body>`) is converted: headings, paragraphs, links and images with
+`alt` text (as absolute URLs), lists, tables, quotes and code. Navigation, header and footer outside `<main>` drop
+out, and so do scripts, styles, SVG, form controls, hidden elements and anything you mark with `data-geo="skip"`:
+
+```twig
+<div class="share-buttons" data-geo="skip">…</div>
+```
+
+When a component's HTML doesn't tell the whole story (an interactive player, a chart, data in attributes), write
+its Markdown yourself in a geo block. It takes the place of that component's HTML in the Markdown view and prints
+nothing in the HTML page:
+
+```twig
+{% apply geo %}
+## {{ game.title }}
+
+- Players: {{ game.players }}
+- Playing time: {{ game.minutes }} minutes
+
+{{ game.summary }}
+{% endapply %}
+```
+
+In Blade:
+
+```blade
+@geo
+## {{ $game->title }}
+- Players: {{ $game->players }}
+@endgeo
+```
+
+Values you print inside a block come out as plain text (HTML entities decoded). A parent component's block covers
+its children; an empty block leaves the component out. A block in a page or layout template outside any component
+comes before the page's converted HTML; to have only the block, mark the page's own HTML `data-geo="skip"`.
+
+### llms.txt and llms-full.txt
+
+`/llms.txt` lists your pages, grouped by section, each linking to its Markdown view:
+
+```markdown
+# Game Club
+
+> Board games, explained.
+
+## Pages
+
+- [Welcome](https://club.test/index.md)
+- [About us](https://club.test/about.md): Who we are
+
+## Other languages
+
+- [de](https://club.test/de/llms.txt)
+```
+
+Each language has its own (`/de/llms.txt`); the default language's file links the others. `/llms-full.txt` (and
+`/de/llms-full.txt`) holds the Markdown of every listed page in the same order, each under its title and source
+URL; `'full' => false` turns it off. Pages without a Markdown view (404, noindex…) are left out of it.
+
+With Folio, the published records of the `types` in your config are listed in each language: title from the
+`title` field (else `name`, else the first list column), description from `meta_description`, and the record's URL
+in that language. The home page comes first. Types behind a frontend permission are never listed.
+
+### Adding, changing and ordering entries
+
+Records with their own detail pages (games, gallery objects…) and pages outside Folio are added through
+`GeoEntries`, from one of your service providers. A source gets the language and returns `GeoEntry` objects; a
+filter gets the whole list and returns the list you want:
+
+```php
+use Preflow\View\Geo\GeoEntries;
+use Preflow\View\Geo\GeoEntry;
+
+public function register(Container $container): void
+{
+    $geo = $container->get(GeoEntries::class);
+
+    // Each game's detail page in its own section: listed in llms.txt, kept out of llms-full.txt.
+    $geo->source(fn (string $locale): array => array_map(
+        fn (Game $game): GeoEntry => new GeoEntry(
+            title: $game->title($locale),
+            url: $game->url($locale),       // absolute, or a path on this site: "/de/spiele/schach"
+            description: $game->teaser($locale),
+            section: 'Games',
+            full: false,
+        ),
+        $container->get(GameRepository::class)->published(),
+    ));
+
+    // Drop the not-found page, and put the guide's chapters in reading order.
+    $chapters = ['Getting started' => 1, 'Rules' => 2, 'Strategy' => 3];
+    $geo->filter(fn (array $entries, string $locale): array => array_map(
+        fn (GeoEntry $e): GeoEntry => isset($chapters[$e->title])
+            ? new GeoEntry($e->title, $e->url, $e->description, 'Guide', $chapters[$e->title])
+            : $e,
+        array_filter($entries, fn (GeoEntry $e): bool => !str_ends_with($e->url, '/not-found')),
+    ));
+}
+```
+
+`new GeoEntry(title, url, description = '', section = 'Pages', order = 100, full = true)`. Entries are sorted by
+section, in the order the sections first appear (the home page's section, `order` 0, first), then by `order`, then
+by title. Filters run after all sources, in the order they were registered.
+
 ## QR codes
 
 `qr_svg($data, $options)` returns an inline SVG (safe HTML, no escaping). In Twig it is a function, in Blade the

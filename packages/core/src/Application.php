@@ -556,6 +556,9 @@ final class Application
         $this->container->instance(\Preflow\View\Geo\GeoCollector::class, $geo);
         // Packages with request-scoped state add a wrapper here (bootGeo adds the core one)
         $this->container->instance(\Preflow\View\Geo\RenderScopes::class, new \Preflow\View\Geo\RenderScopes());
+        // GEO settings and llms.txt's pages: here, so providers can read the one and add to the other
+        $this->container->instance(\Preflow\View\Geo\GeoConfig::class, \Preflow\View\Geo\GeoConfig::fromFile($this->basePath('config/geo.php')));
+        $this->container->instance(\Preflow\View\Geo\GeoEntries::class, new \Preflow\View\Geo\GeoEntries());
 
         $pagesDir = $this->basePath('app/pages');
         $templateDirs = is_dir($pagesDir) ? [$pagesDir] : [];
@@ -1035,7 +1038,8 @@ final class Application
     }
 
     /**
-     * GEO (config/geo.php): Markdown views of public pages. Prepended to the
+     * GEO (config/geo.php): Markdown views of public pages, llms.txt and
+     * llms-full.txt (from GeoEntries, per locale). Prepended to the
      * pipeline, so it sees each request before JSON body, security headers,
      * locale, session, CSRF and auth middleware, and its internal renders pass
      * through all of them as fresh anonymous requests.
@@ -1044,12 +1048,12 @@ final class Application
     {
         if (!$this->container->bound(\Preflow\View\Geo\GeoCollector::class)
             || !$this->container->bound(\Preflow\View\AssetCollector::class)
-            || !$this->container->bound(\Preflow\View\Geo\RenderScopes::class)) {
+            || !$this->container->bound(\Preflow\View\Geo\RenderScopes::class)
+            || !$this->container->bound(\Preflow\View\Geo\GeoConfig::class)) {
             return;
         }
 
-        $config = \Preflow\View\Geo\GeoConfig::fromFile($this->basePath('config/geo.php'));
-        $this->container->instance(\Preflow\View\Geo\GeoConfig::class, $config);
+        $config = $this->container->get(\Preflow\View\Geo\GeoConfig::class);
         $geo = $this->container->get(\Preflow\View\Geo\GeoCollector::class);
         $converter = new \Preflow\View\Geo\MarkdownConverter($geo);
         $this->container->instance(\Preflow\View\Geo\MarkdownConverter::class, $converter);
@@ -1076,6 +1080,14 @@ final class Application
             error_log($message . ' in ' . $e->getFile() . ':' . $e->getLine());
         };
 
+        // Every locale has its llms.txt: the default at /llms.txt, the others under their URL prefix.
+        $i18nPath = $this->basePath('config/i18n.php');
+        $i18n = file_exists($i18nPath) ? (array) require $i18nPath : [];
+        $defaultLocale = (string) ($i18n['default'] ?? $this->config->get('app.locale', 'en'));
+        $locales = ($i18n['url_strategy'] ?? 'prefix') === 'prefix'
+            ? array_values(array_map('strval', (array) ($i18n['available'] ?? [$defaultLocale])))
+            : [$defaultLocale];
+
         $appUrl = $this->config->get('app.url');
         $middleware = new \Preflow\View\Geo\GeoMiddleware(
             $config,
@@ -1086,6 +1098,10 @@ final class Application
             $scopes,
             $report,
             $debug->isDebug(),
+            $this->container->get(\Preflow\View\Geo\GeoEntries::class),
+            (string) $this->config->get('app.name', ''),
+            $locales,
+            $defaultLocale,
         );
         $this->container->instance(\Preflow\View\Geo\GeoMiddleware::class, $middleware);
         $this->pipeline->prepend($middleware);
