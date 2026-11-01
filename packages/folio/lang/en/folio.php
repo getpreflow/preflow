@@ -163,6 +163,17 @@ return [
         'confirmed' => 'Marked as still correct — publish to make it live.',
         'confirmed_saved' => 'Marked as still correct.',
     ],
+    // The editor's "SEO & sharing" section (with SEO on: records with a frontend route and the site).
+    'seo' => [
+        'title' => 'SEO & sharing',
+        'share_title' => 'Share title',
+        'share_description' => 'Share description',
+        'image' => 'Share image',
+        'noindex' => 'Hide from search engines',
+        'exclude_sitemap' => 'Leave out of sitemap',
+        'exclude_llms' => 'Leave out of AI index (llms.txt)',
+        'help' => 'Used when the page is shared and by search engines; empty fields use the page\'s own content.',
+    ],
     // The edit form's Translate button (AI) and its review.
     'ai_translate' => [
         'button' => 'Translate',

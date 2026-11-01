@@ -13,6 +13,7 @@ use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Publishing\Publisher;
 use Preflow\Folio\Publishing\ShadowTypes;
+use Preflow\Folio\Seo\SeoSection;
 
 /**
  * Tables of SQL-stored Folio types, from their model JSON (the `folio.tables`
@@ -32,7 +33,7 @@ use Preflow\Folio\Publishing\ShadowTypes;
 final class TableSync
 {
     /** System keys Folio writes besides a type's fields. */
-    private const array SYSTEM = ['_locales', TranslationStatus::KEY, TranslationStatus::SOURCES, TranslationStatus::MACHINE, '_order', ...Publisher::META];
+    private const array SYSTEM = ['_locales', TranslationStatus::KEY, TranslationStatus::SOURCES, TranslationStatus::MACHINE, '_order', SeoSection::KEY, ...Publisher::META];
 
     private readonly RecordTableSync $records;
 

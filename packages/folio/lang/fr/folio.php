@@ -153,6 +153,16 @@ return [
         'confirmed' => 'Marqué comme toujours correct — publiez pour le mettre en ligne.',
         'confirmed_saved' => 'Marqué comme toujours correct.',
     ],
+    'seo' => [
+        'title' => 'SEO et partage',
+        'share_title' => 'Titre de partage',
+        'share_description' => 'Description de partage',
+        'image' => 'Image de partage',
+        'noindex' => 'Masquer aux moteurs de recherche',
+        'exclude_sitemap' => 'Exclure du plan du site',
+        'exclude_llms' => 'Exclure de l’index IA (llms.txt)',
+        'help' => 'Utilisé lors du partage de la page et par les moteurs de recherche ; les champs vides reprennent le contenu de la page.',
+    ],
     // The edit form's Translate button (AI) and its review.
     'ai_translate' => [
         'button' => 'Translate',

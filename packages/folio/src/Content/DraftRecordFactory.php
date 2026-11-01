@@ -13,6 +13,7 @@ use Preflow\Folio\Field\StructuredFieldType;
 use Preflow\Folio\Field\HandlesUpload;
 use Preflow\Folio\Field\Types\AssetFieldType;
 use Preflow\Folio\Field\Types\EnvFieldType;
+use Preflow\Folio\Seo\SeoSection;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\UploadedFileInterface;
 
@@ -143,6 +144,10 @@ final class DraftRecordFactory
             $data[$name] = $value;
         }
 
+        if (isset($submitted['_seo_submitted'])) {
+            $data[SeoSection::KEY] = $this->seo($typeDef, $submitted, $existing, $uploads, $locale, $translatable !== [], $writeUploads);
+        }
+
         // System keys (e.g. _order) are not form fields; keep them.
         foreach ($existing as $key => $value) {
             if (is_string($key) && str_starts_with($key, '_') && !array_key_exists($key, $data)) {
@@ -180,6 +185,48 @@ final class DraftRecordFactory
             : ($existing['_locales'] ?? []); // as stored (SQL drivers: JSON text); availableLocales() decodes
 
         return DynamicRecord::fromArray($typeDef, ['_locales' => $chosen])->availableLocales();
+    }
+
+    /**
+     * The "SEO & sharing" section (_seo[...] with a _seo_submitted marker): its share image
+     * resolved like an asset field's selection, its texts for the edited locale (the default
+     * one for a type without translations). All defaults store nothing, so saving an
+     * untouched section leaves a published record published.
+     *
+     * @param array<string, mixed> $submitted
+     * @param array<string, mixed> $existing
+     * @param array<string, mixed> $uploads
+     * @return array<string, mixed>|null
+     */
+    private function seo(TypeDefinition $typeDef, array $submitted, array $existing, array $uploads, string $locale, bool $translatable, bool $writeUploads): ?array
+    {
+        $posted = is_array($submitted[SeoSection::KEY] ?? null) ? $submitted[SeoSection::KEY] : [];
+        $stored = SeoSection::fromValue($existing[SeoSection::KEY] ?? null);
+        $assetType = $this->fieldTypes->has('asset') ? $this->fieldTypes->get('asset') : null;
+        $image = $stored->image();
+        if ($assetType instanceof AssetFieldType) {
+            $selection = $posted['image_ids'] ?? null;
+            $image = $assetType->resolve(
+                is_array($selection) ? array_values($selection) : null,
+                $image,
+                self::uploadedFiles(is_array($uploads[SeoSection::KEY] ?? null) ? ($uploads[SeoSection::KEY]['image'] ?? null) : null),
+                SeoSection::IMAGE_CONFIG,
+                $writeUploads,
+                null,
+            );
+            if (($errors = $assetType->drainErrors()) !== []) {
+                $this->uploadErrors[SeoSection::KEY] = $errors;
+            }
+        }
+
+        $value = SeoSection::fromSubmission(
+            ['image' => $image] + $posted,
+            $stored->toArray(),
+            $translatable ? $locale : $typeDef->locales->default,
+            $translatable,
+        );
+
+        return SeoSection::fromValue($value)->isEmpty() ? null : $value;
     }
 
     /**
