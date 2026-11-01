@@ -142,9 +142,12 @@ final class MembersServiceProvider extends ServiceProvider
         MemberType::define($container);
         self::access($container);
         self::routes($container);
-        // The member login: a form left open past the session's end still signs in (CSRF).
+        // CSRF sign-in paths: a login form left open past the session's end still signs in, and a
+        // public page's registration form (stateless token) may post there. Neither uses a member's authority.
         if ($container->bound(CsrfSignInPaths::class)) {
-            $container->get(CsrfSignInPaths::class)->add($container->get(MembersConfig::class)->path() . '/login');
+            $base = rtrim($container->get(MembersConfig::class)->path(), '/');
+            $container->get(CsrfSignInPaths::class)->add($base . '/login');
+            $container->get(CsrfSignInPaths::class)->add($base . '/register');
         }
     }
 

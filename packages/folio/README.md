@@ -70,7 +70,8 @@ cookie-free, limit the session to the admin path:
 ```
 
 Requests outside those prefixes get no session, but they are still checked for CSRF:
-`csrf_field()` prints a stateless token there (see the CSRF section of `preflow/core`).
+`csrf_field()` prints a stateless token there (with a real `app.key`; see the CSRF section of
+`preflow/core`).
 
 The staff login (`{path}/login`, from `config/folio.php` `path`) is a CSRF sign-in path: a
 login form left open until the session expired still signs in when the browser's origin
