@@ -392,6 +392,21 @@ final class SeoHeadAndCachingTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_304_repeats_geos_vary_accept(): void
+    {
+        file_put_contents($this->dir . '/config/geo.php', "<?php\nreturn ['enabled' => true];\n");
+
+        $page = $this->get('/about');
+        $this->assertContains('accept', array_map('trim', explode(',', strtolower($page->getHeaderLine('Vary')))));
+
+        // RFC 9110 15.4.5: a 304 sends the Vary the 200 would have.
+        $notModified = $this->get('/about', ['If-None-Match' => $page->getHeaderLine('ETag')]);
+        $this->assertSame(304, $notModified->getStatusCode());
+        $this->assertContains('accept', array_map('trim', explode(',', strtolower($notModified->getHeaderLine('Vary')))));
+        $this->assertSame($page->getHeaderLine('ETag'), $notModified->getHeaderLine('ETag'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_geo_still_outermost(): void
     {
         file_put_contents($this->dir . '/config/geo.php', "<?php\nreturn ['enabled' => true];\n");

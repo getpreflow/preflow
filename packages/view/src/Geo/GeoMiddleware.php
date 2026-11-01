@@ -347,6 +347,11 @@ final class GeoMiddleware implements MiddlewareInterface
     private function linkAlternate(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
     {
         $path = $request->getUri()->getPath();
+        // A 304 (SEO's ETag) sends the Vary its 200 would have (RFC 9110 15.4.5); its Link needs the
+        // page's body to tell (a noindex meta tag), so the client keeps the one it has.
+        if ($response->getStatusCode() === 304 && !$this->config->excludes($path)) {
+            return self::varyAccept($response);
+        }
         if (
             $response->getStatusCode() !== 200
             || !$this->isHtml($response)
