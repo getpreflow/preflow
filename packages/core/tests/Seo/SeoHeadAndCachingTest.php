@@ -161,11 +161,15 @@ final class SeoHeadAndCachingTest extends TestCase
         $this->assertSame('Who we are', $graph[0]['description']);
         $this->assertSame(['@id' => 'https://site.test/#website'], $graph[0]['isPartOf']);
 
-        // A page that says nothing still gets its URL, locale and WebPage node.
+        // A page that says nothing still gets its URL, locale, its <title> as title and a WebPage node.
         $plain = (string) $this->get('/plain')->getBody();
         $this->assertStringContainsString('<meta property="og:url" content="https://site.test/plain">', $plain);
-        $this->assertStringNotContainsString('og:title', $plain);
+        $this->assertStringContainsString('<meta property="og:title" content="Plain">', $plain);
         $this->assertSame(['WebPage'], $this->types($plain));
+
+        // No <title> either: no og:title.
+        $this->page('untitled', '<html><head></head><body><p>Untitled</p></body></html>');
+        $this->assertStringNotContainsString('og:title', (string) $this->get('/untitled')->getBody());
     }
 
     #[RunInSeparateProcess]
@@ -206,6 +210,19 @@ final class SeoHeadAndCachingTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_private_pages_get_no_cards_or_json_ld(): void
+    {
+        foreach (['/private', '/no-store'] as $path) {
+            $html = (string) $this->get($path)->getBody();
+            $this->assertStringContainsString('<meta name="robots" content="max-image-preview:large">', $html, $path);
+            $this->assertStringContainsString('<meta name="theme-color" content="#112233">', $html, $path);
+            $this->assertStringNotContainsString('og:', $html, $path);
+            $this->assertStringNotContainsString('twitter:', $html, $path);
+            $this->assertStringNotContainsString('ld+json', $html, $path);
+        }
+    }
+
+    #[RunInSeparateProcess]
     public function test_site_defaults_from_seo_site(): void
     {
         $this->seo("['enabled' => true]");
@@ -213,6 +230,11 @@ final class SeoHeadAndCachingTest extends TestCase
             title: 'Site ' . $locale,
             description: 'Board games in ' . $locale,
             image: ['url' => 'https://cdn.test/share.jpg', 'width' => 1200, 'height' => 630, 'alt' => 'Our club'],
+            // Page-level fields a site default must never pass on to a page.
+            locale: 'fr',
+            alternateLocales: ['it'],
+            ogType: 'article',
+            schemas: [['@type' => 'Thing', 'name' => 'Leaked']],
         );
         file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [" . var_export(SeoSiteProvider::class, true) . "];\n");
 
@@ -221,13 +243,25 @@ final class SeoHeadAndCachingTest extends TestCase
         $this->assertStringContainsString('<meta property="og:description" content="Board games in en">', $plain);
         $this->assertStringContainsString('<meta property="og:image" content="https://cdn.test/share.jpg">', $plain);
         $this->assertStringContainsString('<meta property="og:image:width" content="1200">', $plain);
+        // The defaults' title is the site's name, not the page's: the page's own <title> is.
+        $this->assertStringContainsString('<meta property="og:title" content="Plain">', $plain);
+        $this->assertStringContainsString('<meta property="og:type" content="website">', $plain);
+        $this->assertStringContainsString('<meta property="og:locale" content="en">', $plain);
+        $this->assertStringNotContainsString('og:locale:alternate', $plain);
+        $plainGraph = $this->graph($plain);
+        $this->assertSame(['WebPage'], array_column($plainGraph, '@type'));
+        $this->assertSame('Plain', $plainGraph[0]['name']);
+        $this->assertSame('en', $plainGraph[0]['inLanguage']);
 
         $about = (string) $this->get('/about')->getBody();
         $this->assertStringContainsString('<meta property="og:description" content="Who we are">', $about);
         $this->assertStringContainsString('<meta property="og:image" content="https://site.test/img/share.jpg">', $about);
 
+        $this->assertStringContainsString('<meta property="og:title" content="About us">', $about);
+
         $graph = $this->graph((string) $this->get('/de/')->getBody());
         $this->assertSame('Site de', $graph[0]['name']);
+        $this->assertSame('Home', $graph[1]['name']);
         // No owner configured: the WebSite names no publisher.
         $this->assertSame(['WebSite', 'WebPage'], array_column($graph, '@type'));
         $this->assertArrayNotHasKey('publisher', $graph[0]);
@@ -288,6 +322,18 @@ final class SeoHeadAndCachingTest extends TestCase
         // Another cookie isn't the session's.
         $this->assertTrue($this->get('/about', ['Cookie' => 'theme=dark'])->hasHeader('ETag'));
 
+        // The session cookie is the one config/auth.php names, not PHP's default.
+        file_put_contents($this->dir . '/config/auth.php', "<?php\nreturn ["
+            . "'default_guard' => 'session',"
+            . "'guards' => ['session' => ['class' => \\Preflow\\Auth\\SessionGuard::class, 'provider' => 'config']],"
+            . "'providers' => ['config' => ['class' => \\Preflow\\Auth\\ConfigUserProvider::class, 'users' => []]],"
+            . "'password_hasher' => \\Preflow\\Auth\\NativePasswordHasher::class,"
+            . "'session' => ['cookie' => 'club_session', 'paths' => ['/account']],"
+            . "];\n");
+        $this->assertFalse($this->get('/about', ['Cookie' => 'club_session=visitor'])->hasHeader('ETag'));
+        $this->assertTrue($this->get('/about', ['Cookie' => session_name() . '=visitor'])->hasHeader('ETag'));
+        unlink($this->dir . '/config/auth.php');
+
         // A cookie PHP queued natively (a session started during the request) counts too.
         $handler = new class implements RequestHandlerInterface {
             public function handle(ServerRequestInterface $request): ResponseInterface
@@ -308,7 +354,7 @@ final class SeoHeadAndCachingTest extends TestCase
             'App',
             false,
             static fn (): \DateTimeImmutable => new \DateTimeImmutable('2026-11-01'),
-            static fn (): array => $sent,
+            sentHeaders: static fn (): array => $sent,
         );
         $request = (new Psr17Factory())->createServerRequest('GET', 'https://site.test/');
         $this->assertTrue($middleware(['X-Powered-By: PHP'])->process($request, $handler)->hasHeader('ETag'));

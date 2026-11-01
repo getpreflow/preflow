@@ -184,4 +184,15 @@ final class HeadTagsTest extends TestCase
         $this->assertSame('Short text', HeadTags::description("  Short \n\t text "));
         $this->assertSame('Zürich & Genf', HeadTags::description('<em>Zürich</em> &amp; Genf'));
     }
+
+    public function test_without_cards_only_robots_and_theme_color(): void
+    {
+        $html = HeadTags::inject(self::PAGE, $this->meta(), 'Example', ['' => '#112233'], $this->graph($this->meta()), cards: false);
+
+        $this->assertStringContainsString('<meta name="robots" content="max-image-preview:large">', $html);
+        $this->assertStringContainsString('<meta name="theme-color" content="#112233">', $html);
+        $this->assertStringNotContainsString('og:', $html);
+        $this->assertStringNotContainsString('twitter:', $html);
+        $this->assertStringNotContainsString('ld+json', $html);
+    }
 }

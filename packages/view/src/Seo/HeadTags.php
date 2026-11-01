@@ -14,8 +14,9 @@ final class HeadTags
     /**
      * @param array<string, string> $themeColor SeoConfig::$themeColor
      * @param array<array>          $graph      JSON-LD nodes; none prints no script
+     * @param bool                  $cards      false: robots and theme-color only (a private page: no previews, no structured data)
      */
-    public static function inject(string $html, PageMeta $meta, string $siteName, array $themeColor, array $graph): string
+    public static function inject(string $html, PageMeta $meta, string $siteName, array $themeColor, array $graph, bool $cards = true): string
     {
         $close = stripos($html, '</head>');
         if ($close === false) {
@@ -39,8 +40,8 @@ final class HeadTags
             }
         }
 
-        // A page kept out of search gets no preview cards or structured data.
-        if (!$meta->noindex) {
+        // A page kept out of search, or a private one, gets no preview cards or structured data.
+        if (!$meta->noindex && $cards) {
             $og = [
                 'og:site_name' => $siteName,
                 'og:title' => $meta->title,

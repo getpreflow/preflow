@@ -34,6 +34,7 @@ final class SeoMiddleware implements MiddlewareInterface
      * @param string       $appName       the site name when neither the config nor SeoSite give one
      * @param bool         $llms          whether llms.txt is served (GEO on), for robots.txt's pointer
      * @param \Closure(): \DateTimeImmutable $now security.txt's Expires counts from it
+     * @param ?string      $sessionCookie the session cookie's name (config); session_name() when null
      * @param ?\Closure(): list<string> $sentHeaders headers PHP queued natively; headers_list() by default
      */
     public function __construct(
@@ -49,6 +50,7 @@ final class SeoMiddleware implements MiddlewareInterface
         private readonly string $appName,
         private readonly bool $llms,
         private readonly \Closure $now,
+        private readonly ?string $sessionCookie = null,
         ?\Closure $sentHeaders = null,
     ) {
         $this->sentHeaders = $sentHeaders ?? static fn (): array => headers_list();
@@ -88,18 +90,18 @@ final class SeoMiddleware implements MiddlewareInterface
         return match (true) {
             $path === '/robots.txt' && $this->config->robotsEnabled => self::text(
                 'text/plain; charset=utf-8',
-                RobotsTxt::render($this->config, $this->site->disallowed(), $this->origin($request), $this->llms),
+                RobotsTxt::render($this->config, $this->site->disallowed(), PageSignals::origin($this->appUrl, $request), $this->llms),
             ),
             $path === '/sitemap.xml' && $this->config->sitemap => self::text(
                 'application/xml; charset=UTF-8',
-                Sitemap::xml($this->sitemapPages(), $this->origin($request), $this->defaultLocale),
+                Sitemap::xml($this->sitemapPages(), PageSignals::origin($this->appUrl, $request), $this->defaultLocale),
             ),
             $path === '/.well-known/security.txt' && $contact !== null => self::text(
                 'text/plain; charset=utf-8',
-                SecurityTxt::render($contact, $this->config->securityPolicy, $this->locales, $this->origin($request), ($this->now)()),
+                SecurityTxt::render($contact, $this->config->securityPolicy, $this->locales, PageSignals::origin($this->appUrl, $request), ($this->now)()),
             ),
             $path === '/security.txt' && $contact !== null => new Response(301, [
-                'Location' => $this->origin($request) . '/.well-known/security.txt',
+                'Location' => PageSignals::origin($this->appUrl, $request) . '/.well-known/security.txt',
                 'Cache-Control' => self::CACHE_CONTROL,
             ]),
             default => null,
@@ -133,25 +135,33 @@ final class SeoMiddleware implements MiddlewareInterface
             return $response;
         }
 
-        $origin = $this->origin($request);
+        $origin = PageSignals::origin($this->appUrl, $request);
         $path = $request->getUri()->getPath();
         $locale = $this->localeOf($path);
         $defaults = $this->site->defaultsFor($locale);
-        $meta = self::merged($this->context->get() ?? new PageMeta(), $defaults);
-        $meta = $meta->with([
-            'url' => $meta->url !== '' ? self::absolute($meta->url, $origin) : $origin . $path,
-            'locale' => $meta->locale !== '' ? $meta->locale : $locale,
-            'image' => $meta->image !== null && ($meta->image['url'] ?? '') !== ''
-                ? ['url' => self::absolute($meta->image['url'], $origin)] + $meta->image
+        $page = $this->context->get() ?? new PageMeta();
+        // From the site only what describes the site: description and share image. Its title is the site's name.
+        $description = $page->description !== '' ? $page->description : ($defaults?->description ?? '');
+        $image = $page->image ?? $defaults?->image;
+        $meta = $page->with([
+            'title' => $page->title !== '' ? $page->title : self::documentTitle($html),
+            'description' => $description,
+            'url' => $page->url !== '' ? PageSignals::absolute($page->url, $origin) : $origin . $path,
+            'locale' => $page->locale !== '' ? $page->locale : $locale,
+            'image' => $image !== null && ($image['url'] ?? '') !== ''
+                ? ['url' => PageSignals::absolute($image['url'], $origin)] + $image
                 : null,
             // A page kept out of search by its own tag or by header gets no cards either.
-            'noindex' => $meta->noindex || self::noindexHeader($response) || self::noindexMeta($html),
+            'noindex' => $page->noindex || PageSignals::noindexHeader($response) || PageSignals::noindexMeta($html),
         ]);
+        // A private page (a members' area, a gated page) isn't previewed or described to crawlers.
+        $cards = !self::isPrivate($response);
 
         $siteName = $this->config->name ?? (($defaults?->title ?? '') !== '' ? $defaults->title : $this->appName);
-        $graph = $meta->noindex ? [] : $this->graph($meta, $siteName, $origin, $path === $this->homePath($locale) || $path === $this->homePath($locale) . '/');
+        $home = $path === $this->homePath($locale) || $path === $this->homePath($locale) . '/';
+        $graph = $meta->noindex || !$cards ? [] : $this->graph($meta, $siteName, $origin, $home);
 
-        $tagged = HeadTags::inject($html, $meta, $siteName, $this->config->themeColor, $graph);
+        $tagged = HeadTags::inject($html, $meta, $siteName, $this->config->themeColor, $graph, $cards);
         if ($tagged === $html) {
             return $response;
         }
@@ -159,21 +169,16 @@ final class SeoMiddleware implements MiddlewareInterface
         return $response->withoutHeader('Content-Length')->withBody(Stream::create($tagged));
     }
 
-    /** The page's meta with what it leaves empty taken from the site defaults. */
-    private static function merged(PageMeta $page, ?PageMeta $defaults): PageMeta
+    /** The text of the page's own `<title>`, or '' when it has none. */
+    private static function documentTitle(string $html): string
     {
-        if ($defaults === null) {
-            return $page;
+        $head = substr($html, 0, (int) stripos($html, '</head>'));
+        if (preg_match('~<title\b[^>]*>(.*?)</title>~is', $head, $m) !== 1) {
+            return '';
         }
+        $text = html_entity_decode(strip_tags($m[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
-        $changes = [];
-        foreach (get_object_vars($page) as $key => $value) {
-            if (($value === '' || $value === null || $value === []) && $key !== 'url') {
-                $changes[$key] = $defaults->{$key};
-            }
-        }
-
-        return $page->with($changes);
+        return trim(preg_replace('~[\s\x{00A0}]+~u', ' ', $text) ?? $text);
     }
 
     /**
@@ -231,11 +236,7 @@ final class SeoMiddleware implements MiddlewareInterface
 
     private function isPersonal(ServerRequestInterface $request, ResponseInterface $response): bool
     {
-        $cacheControl = strtolower($response->getHeaderLine('Cache-Control'));
-        if (str_contains($cacheControl, 'private') || str_contains($cacheControl, 'no-store')) {
-            return true;
-        }
-        if ($response->hasHeader('Set-Cookie')) {
+        if (self::isPrivate($response) || $response->hasHeader('Set-Cookie')) {
             return true;
         }
         foreach (($this->sentHeaders)() as $header) {
@@ -244,9 +245,17 @@ final class SeoMiddleware implements MiddlewareInterface
             }
         }
 
-        $session = session_name();
+        $session = $this->sessionCookie ?? session_name();
 
         return $session !== false && $session !== '' && self::hasCookie($request, $session);
+    }
+
+    /** Whether the response is meant for one visitor only (`Cache-Control: private` or `no-store`). */
+    private static function isPrivate(ResponseInterface $response): bool
+    {
+        $cacheControl = strtolower($response->getHeaderLine('Cache-Control'));
+
+        return str_contains($cacheControl, 'private') || str_contains($cacheControl, 'no-store');
     }
 
     private static function hasCookie(ServerRequestInterface $request, string $name): bool
@@ -302,68 +311,5 @@ final class SeoMiddleware implements MiddlewareInterface
     private static function isHtml(ResponseInterface $response): bool
     {
         return str_starts_with(strtolower(trim($response->getHeaderLine('Content-Type'))), 'text/html');
-    }
-
-    private static function noindexHeader(ResponseInterface $response): bool
-    {
-        foreach ($response->getHeader('X-Robots-Tag') as $value) {
-            if (self::noindexes($value)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /** Whether the page has a `<meta name="robots">` that forbids indexing. */
-    private static function noindexMeta(string $html): bool
-    {
-        preg_match_all('/<meta\b[^>]*>/i', $html, $tags);
-        foreach ($tags[0] as $tag) {
-            if (
-                preg_match('/\bname\s*=\s*(["\']?)robots\1(?=[\s>\/])/i', $tag) === 1
-                && preg_match('/\bcontent\s*=\s*(["\'])(.*?)\1/is', $tag, $content) === 1
-                && self::noindexes($content[2])
-            ) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /** Whether a robots directive list contains noindex (or none). */
-    private static function noindexes(string $directives): bool
-    {
-        $tokens = preg_split('/[\s,:]+/', strtolower($directives), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-
-        return in_array('noindex', $tokens, true) || in_array('none', $tokens, true);
-    }
-
-    /** The configured app.url's origin when it is absolute, else the request's. */
-    private function origin(ServerRequestInterface $request): string
-    {
-        $parts = $this->appUrl !== null && trim($this->appUrl) !== '' ? parse_url(trim($this->appUrl)) : false;
-        if (is_array($parts) && isset($parts['scheme'], $parts['host']) && in_array(strtolower($parts['scheme']), ['http', 'https'], true)) {
-            return strtolower($parts['scheme']) . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '');
-        }
-
-        $uri = $request->getUri();
-
-        return $uri->getHost() !== ''
-            ? $uri->getScheme() . '://' . $uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '')
-            : '';
-    }
-
-    private static function absolute(string $url, string $origin): string
-    {
-        if (preg_match('/^[a-z][a-z0-9+.-]*:/i', $url) === 1) {
-            return $url;
-        }
-        if (str_starts_with($url, '//')) {
-            return (parse_url($origin, PHP_URL_SCHEME) ?: 'https') . ':' . $url;
-        }
-
-        return $origin . '/' . ltrim($url, '/');
     }
 }

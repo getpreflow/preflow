@@ -11,6 +11,7 @@ use Nyholm\Psr7\Stream;
 use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\Http\Session\SessionMiddleware;
 use Preflow\View\AssetCollector;
+use Preflow\View\Seo\PageSignals;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -104,7 +105,7 @@ final class GeoMiddleware implements MiddlewareInterface
      */
     public function render(ServerRequestInterface $request, RequestHandlerInterface $handler, string $path): ?string
     {
-        $origin = $this->origin($request);
+        $origin = PageSignals::origin($this->appUrl, $request);
         $sub = $this->subRequest($request, $path);
 
         $this->collector->reset();
@@ -204,10 +205,10 @@ final class GeoMiddleware implements MiddlewareInterface
             return new Response(404, $headers, "Not Found\n");
         }
 
-        $origin = $this->origin($request);
+        $origin = PageSignals::origin($this->appUrl, $request);
         $entries = [];
         foreach ($this->entries?->for($locale) ?? [] as $entry) {
-            $entry = $entry->withUrl($this->absolute($entry->url, $origin));
+            $entry = $entry->withUrl(PageSignals::absolute($entry->url, $origin));
             $path = $this->localPath($entry->url, $origin);
             if ($path === null || !$this->config->excludes($path)) {
                 $entries[] = $entry;
@@ -315,19 +316,19 @@ final class GeoMiddleware implements MiddlewareInterface
 
     private function markdownOf(ResponseInterface $response, string $path, string $origin): ?string
     {
-        if ($response->getStatusCode() !== 200 || !$this->isHtml($response) || $this->noindexHeader($response)) {
+        if ($response->getStatusCode() !== 200 || !$this->isHtml($response) || PageSignals::noindexHeader($response)) {
             return null;
         }
 
         $html = (string) $response->getBody();
-        if ($this->noindexMeta($html)) {
+        if (PageSignals::noindexMeta($html)) {
             return null;
         }
 
         $document = HTMLDocument::createFromString($html, LIBXML_NOERROR, 'UTF-8');
         $title = trim((string) preg_replace('/\s+/', ' ', $document->querySelector('title')?->textContent ?? ''));
         $canonical = trim((string) $document->querySelector('link[rel~="canonical"][href]')?->getAttribute('href'));
-        $source = $canonical !== '' ? $this->absolute($canonical, $origin) : $origin . $path;
+        $source = $canonical !== '' ? PageSignals::absolute($canonical, $origin) : $origin . $path;
 
         // Blocks a page or layout template declares outside components lead the converted page
         // (a page that wants only its block marks its own HTML data-geo="skip").
@@ -351,17 +352,17 @@ final class GeoMiddleware implements MiddlewareInterface
             || !$this->isHtml($response)
             || $request->getHeaderLine('HX-Request') === 'true'
             || $this->config->excludes($path)
-            || $this->noindexHeader($response)
+            || PageSignals::noindexHeader($response)
         ) {
             return $response;
         }
 
         $html = (string) $response->getBody();
-        if ($this->noindexMeta($html)) {
+        if (PageSignals::noindexMeta($html)) {
             return $response;
         }
 
-        $url = $this->origin($request) . self::markdownUrl($path);
+        $url = PageSignals::origin($this->appUrl, $request) . self::markdownUrl($path);
         $response = self::varyAccept($response->withAddedHeader('Link', '<' . $url . '>; rel="alternate"; type="text/markdown"'));
 
         $headAt = stripos($html, '</head>');
@@ -430,68 +431,5 @@ final class GeoMiddleware implements MiddlewareInterface
     private function isHtml(ResponseInterface $response): bool
     {
         return str_starts_with(strtolower(trim($response->getHeaderLine('Content-Type'))), 'text/html');
-    }
-
-    private function noindexHeader(ResponseInterface $response): bool
-    {
-        foreach ($response->getHeader('X-Robots-Tag') as $value) {
-            if ($this->noindexes($value)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /** Whether the page has a `<meta name="robots">` that forbids indexing. */
-    private function noindexMeta(string $html): bool
-    {
-        preg_match_all('/<meta\b[^>]*>/i', $html, $tags);
-        foreach ($tags[0] as $tag) {
-            if (
-                preg_match('/\bname\s*=\s*(["\']?)robots\1(?=[\s>\/])/i', $tag) === 1
-                && preg_match('/\bcontent\s*=\s*(["\'])(.*?)\1/is', $tag, $content) === 1
-                && $this->noindexes($content[2])
-            ) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /** Whether a robots directive list contains noindex (or none). */
-    private function noindexes(string $directives): bool
-    {
-        $tokens = preg_split('/[\s,:]+/', strtolower($directives), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-
-        return in_array('noindex', $tokens, true) || in_array('none', $tokens, true);
-    }
-
-    /** The configured app.url's origin when it is absolute, else the request's. */
-    private function origin(ServerRequestInterface $request): string
-    {
-        $parts = $this->appUrl !== null && trim($this->appUrl) !== '' ? parse_url(trim($this->appUrl)) : false;
-        if (is_array($parts) && isset($parts['scheme'], $parts['host']) && in_array(strtolower($parts['scheme']), ['http', 'https'], true)) {
-            return strtolower($parts['scheme']) . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '');
-        }
-
-        $uri = $request->getUri();
-
-        return $uri->getHost() !== ''
-            ? $uri->getScheme() . '://' . $uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '')
-            : '';
-    }
-
-    private function absolute(string $url, string $origin): string
-    {
-        if (preg_match('/^[a-z][a-z0-9+.-]*:/i', $url) === 1) {
-            return $url;
-        }
-        if (str_starts_with($url, '//')) {
-            return (parse_url($origin, PHP_URL_SCHEME) ?: 'https') . ':' . $url;
-        }
-
-        return $origin . '/' . ltrim($url, '/');
     }
 }

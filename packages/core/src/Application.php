@@ -1113,9 +1113,24 @@ final class Application
             (string) $this->config->get('app.name', ''),
             $geo->enabled(),
             static fn (): \DateTimeImmutable => new \DateTimeImmutable(),
+            $this->sessionCookieName(),
         );
         $this->container->instance(\Preflow\View\Seo\SeoMiddleware::class, $middleware);
         $this->pipeline->prepend($middleware);
+    }
+
+    /**
+     * The session cookie's name from config/auth.php (`session.cookie`), as
+     * NativeSession sets it; null leaves it to session_name().
+     */
+    private function sessionCookieName(): ?string
+    {
+        if (!file_exists($this->basePath('config/auth.php'))) {
+            return null;
+        }
+        $cookie = $this->authConfig()['session']['cookie'] ?? null;
+
+        return is_string($cookie) && $cookie !== '' ? $cookie : null;
     }
 
     /**
