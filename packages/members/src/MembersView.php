@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Members;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Http\OldInput;
 use Preflow\Data\Locales;
 use Preflow\I18n\Translator;
 use Preflow\View\AssetCollector;
@@ -31,6 +32,7 @@ final class MembersView
         private readonly Locales $locales,
         private readonly Translator $translator,
         private readonly ?PageLocale $pageLocale = null,
+        private readonly ?OldInput $oldInput = null,
     ) {}
 
     /**
@@ -49,6 +51,7 @@ final class MembersView
         // translator stays on the default locale, which is right for a one-language site.
         $this->translator->setLocale($locale);
         $this->pageLocale?->set($locale);
+        $vars = $this->withFlashedInput($vars);
 
         $html = $this->engine->render('@members/' . $template . '.twig', $vars + [
             'locale' => $locale,
@@ -69,6 +72,29 @@ final class MembersView
             'Content-Type' => 'text/html; charset=UTF-8',
             'Cache-Control' => self::CACHE,
         ], $this->assets->injectInto($html));
+    }
+
+    /**
+     * A form sent back after an expired session shows the fields it kept (old / old_email),
+     * unless the controller passed its own.
+     *
+     * @param array<string, mixed> $vars
+     * @return array<string, mixed>
+     */
+    private function withFlashedInput(array $vars): array
+    {
+        $flashed = $this->oldInput?->all() ?? [];
+        if ($flashed === []) {
+            return $vars;
+        }
+        if (($vars['old'] ?? []) === []) {
+            $vars['old'] = $flashed;
+        }
+        if (($vars['old_email'] ?? '') === '' && is_string($flashed['email'] ?? null)) {
+            $vars['old_email'] = $flashed['email'];
+        }
+
+        return $vars;
     }
 
     /** For an htmx request: the browser navigates to $location; there is nothing to swap in. */

@@ -53,8 +53,12 @@ final class OriginCheck
             : OriginVerdict::Refuse;
     }
 
-    /** Reduces a URL to scheme://host[:port] (lowercase, default port dropped); null when it has none. */
-    private static function normalize(string $url): ?string
+    /**
+     * Reduces a URL to scheme://host[:port] (lowercase, default port dropped); null when it has none.
+     *
+     * @internal also used by ExpiredSessionResponder
+     */
+    public static function normalize(string $url): ?string
     {
         $parts = parse_url(trim($url));
         if ($parts === false || !isset($parts['scheme'], $parts['host'])) {

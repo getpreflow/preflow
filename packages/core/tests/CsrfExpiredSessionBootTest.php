@@ -11,6 +11,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
+use Preflow\Core\Http\OldInput;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Core\Tests\Fixtures\ExpiredSessionHandlerProvider;
 
@@ -45,14 +46,19 @@ final class CsrfExpiredSessionBootTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_without_a_handler_an_expired_session_is_a_403(): void
+    public function test_without_a_handler_an_expired_session_sends_the_form_back(): void
     {
         $app = Application::create($this->app(withProvider: false));
         $app->boot();
 
-        $response = $app->handle($this->post(['_csrf_token' => 'token-of-the-old-session']));
+        $response = $app->handle($this->post(['_csrf_token' => 'token-of-the-old-session', 'title' => 'typed']));
 
-        $this->assertSame(403, $response->getStatusCode());
+        // The framework's default answer: not applied, sent back (no Referer: home) with the fields kept.
+        $this->assertSame(303, $response->getStatusCode());
+        $this->assertSame('/', $response->getHeaderLine('Location'));
+        $session = $app->container()->get(SessionInterface::class);
+        $this->assertSame('Your session had expired. Please send the form again.', $session->getFlash('warning'));
+        $this->assertSame(['title' => 'typed'], $app->container()->get(OldInput::class)->all());
     }
 
     /**

@@ -16,6 +16,7 @@ use Preflow\Core\Config\Config;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\Exceptions\ContainerException;
 use Preflow\Core\Container\ServiceProvider;
+use Preflow\Core\Http\OldInput;
 use Preflow\Data\DataManager;
 use Preflow\Data\DeletePlan;
 use Preflow\Data\DynamicRecord;
@@ -120,6 +121,7 @@ final class MembersServiceProvider extends ServiceProvider
             $c->get(Locales::class),
             $c->get(Translator::class),
             $c->bound(PageLocale::class) ? $c->get(PageLocale::class) : null,
+            $c->bound(OldInput::class) ? $c->get(OldInput::class) : null,
         ));
         $container->singleton(Admission::class, static function (Container $c): Admission {
             $class = $c->get(MembersConfig::class)->admission();

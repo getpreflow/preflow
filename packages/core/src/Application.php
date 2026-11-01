@@ -170,6 +170,14 @@ final class Application
         // JSON body parsing — must run before session, CSRF, and auth middleware
         $this->pipeline->pipe(new \Preflow\Core\Http\JsonBodyMiddleware());
 
+        // Fields kept from a form sent back after an expired session; read from the session when asked
+        $container = $this->container;
+        $this->container->instance(\Preflow\Core\Http\OldInput::class, new \Preflow\Core\Http\OldInput(
+            static fn (): ?\Preflow\Core\Http\Session\SessionInterface => $container->bound(\Preflow\Core\Http\Session\SessionInterface::class)
+                ? $container->get(\Preflow\Core\Http\Session\SessionInterface::class)
+                : null,
+        ));
+
         // Auto-discover installed packages and wire them up
         $this->bootDataLayer($collector);
         $this->bootViewLayer($debug);
@@ -696,7 +704,7 @@ final class Application
         }
 
         $engine = $this->container->get(\Preflow\View\TemplateEngineInterface::class);
-        $validationProvider = new \Preflow\Validation\ValidationExtensionProvider();
+        $validationProvider = new \Preflow\Validation\ValidationExtensionProvider($this->container->get(\Preflow\Core\Http\OldInput::class));
         $this->container->instance(\Preflow\Validation\ValidationExtensionProvider::class, $validationProvider);
         $this->registerExtensionProvider($engine, $validationProvider);
     }
@@ -795,6 +803,7 @@ final class Application
             new \Preflow\Form\FieldRenderer(),
             new \Preflow\Form\GroupRenderer(),
             new \Preflow\Form\ModelIntrospector(),
+            $this->container->get(\Preflow\Core\Http\OldInput::class),
         );
 
         // Wire in hypermedia driver if available
@@ -1317,6 +1326,15 @@ final class Application
 
         $appUrl = $this->config->get('app.url');
 
+        // Without a site handler: the form goes back with its fields kept, never applied.
+        $container = $this->container;
+        $responder = new \Preflow\Core\Http\Csrf\ExpiredSessionResponder(
+            (string) $this->config->get('app.locale', 'en'),
+            static fn (): ?object => class_exists(\Preflow\I18n\Translator::class) && $container->bound(\Preflow\I18n\Translator::class)
+                ? $container->get(\Preflow\I18n\Translator::class)
+                : null,
+        );
+
         // A site's ExpiredSessionHandler is bound by its providers, which run after this:
         // the middleware looks it up when a POST's session turns out to have expired.
         $this->addMiddleware(new \Preflow\Core\Http\Csrf\CsrfMiddleware(
@@ -1327,7 +1345,7 @@ final class Application
             sessionCookie: $this->sessionCookieName(),
             router: fn (): ?RouterInterface => $this->router,
             expiredSessionHandler: new \Preflow\Core\Http\Csrf\ContainerExpiredSessionHandler($this->container),
-            expiredResponder: null,
+            expiredResponder: $responder(...),
             warn: $debug->isDebug() ? $this->csrfWarning(...) : null,
         ));
     }

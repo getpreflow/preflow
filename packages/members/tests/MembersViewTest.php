@@ -7,9 +7,12 @@ namespace Preflow\Members\Tests;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Http\OldInput;
+use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Members\MembersView;
 use Preflow\Members\Tests\Support\Dom;
 use Preflow\Members\Tests\Support\MembersScaffold;
+use Preflow\Testing\ArraySession;
 use Psr\Http\Message\ResponseInterface;
 
 /** The member pages: templates through the site's layout, site overrides first, copy through t(). */
@@ -235,6 +238,29 @@ TWIG);
         $this->assertSame('Ada', Dom::first($site, '//input[@name="name"]')?->getAttribute('value'));
         $this->assertSame('Please check the highlighted fields.', Dom::text($site, '//div[@role="alert"]'));
         $this->assertSame('Please enter your name.', Dom::text($site, '//p[contains(@class,"field-error")]'));
+    }
+
+    public function test_register_form_shows_flashed_input(): void
+    {
+        $this->site();
+        // A POST whose session had expired kept its fields for the page it was sent back to.
+        $session = new ArraySession();
+        $session->start();
+        OldInput::keep($session, ['name' => 'Ada', 'email' => 'ada@b.test', 'password' => 'secret', 'consent' => '1']);
+        $session->ageFlash();
+        $this->container()->instance(SessionInterface::class, $session);
+
+        $html = $this->html('register', ['open' => true]);
+        $this->assertSame('Ada', Dom::first($html, '//input[@name="name"]')?->getAttribute('value'));
+        $this->assertSame('ada@b.test', Dom::first($html, '//input[@name="email"]')?->getAttribute('value'));
+        $this->assertSame('', (string) Dom::first($html, '//input[@name="password"]')?->getAttribute('value'));
+        $this->assertTrue((bool) Dom::first($html, '//input[@name="consent"]')?->hasAttribute('checked'));
+        $this->assertSame('ada@b.test', Dom::first($this->html('login'), '//input[@name="email"]')?->getAttribute('value'));
+
+        // The controller's own input wins.
+        $own = $this->html('register', ['open' => true, 'old' => ['name' => 'Grace']]);
+        $this->assertSame('Grace', Dom::first($own, '//input[@name="name"]')?->getAttribute('value'));
+        $this->assertSame('', (string) Dom::first($own, '//input[@name="email"]')?->getAttribute('value'));
     }
 
     public function test_the_privacy_link_comes_from_the_config_in_the_page_locale(): void
