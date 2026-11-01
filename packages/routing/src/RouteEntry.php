@@ -17,6 +17,7 @@ final readonly class RouteEntry
      * @param string[] $paramNames Parameter names extracted from pattern
      * @param string   $regex      Compiled regex for matching
      * @param bool     $isCatchAll Whether this route has a catch-all segment
+     * @param bool     $csrfExempt Whether the route is exempt from the CSRF check
      */
     public function __construct(
         public string $pattern,
@@ -27,5 +28,6 @@ final readonly class RouteEntry
         public array $paramNames = [],
         public string $regex = '',
         public bool $isCatchAll = false,
+        public bool $csrfExempt = false,
     ) {}
 }

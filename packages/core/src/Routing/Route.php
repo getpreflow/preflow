@@ -16,5 +16,6 @@ final readonly class Route
         public array $parameters = [],
         public array $middleware = [],
         public ?string $action = null,
+        public bool $csrfExempt = false,
     ) {}
 }

@@ -13,6 +13,8 @@ use Preflow\Routing\Attributes\Route as RouteAttr;
 use Preflow\Routing\Attributes\Get;
 use Preflow\Routing\Attributes\Post;
 use Preflow\Routing\Router;
+use Preflow\Routing\RouteCollection;
+use Preflow\Core\Http\Csrf\CsrfExempt;
 
 #[RouteAttr('/api/items')]
 class ItemController
@@ -25,6 +27,14 @@ class ItemController
 
     #[Post('/')]
     public function store(): void {}
+}
+
+#[RouteAttr('/hook')]
+#[CsrfExempt('Signed webhook')]
+class ExemptHookController
+{
+    #[Post('/')]
+    public function receive(): void {}
 }
 
 final class RouterTest extends TestCase
@@ -168,5 +178,29 @@ final class RouterTest extends TestCase
         $route = $router->match((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('GET', '/about'));
 
         $this->assertStringEndsWith('about.blade.php', $route->handler);
+    }
+
+    public function test_match_carries_csrf_exempt(): void
+    {
+        $router = new Router(
+            pagesDir: $this->pagesDir,
+            controllers: [ExemptHookController::class, ItemController::class],
+        );
+
+        $this->assertTrue($router->match($this->createRequest('POST', '/hook'))->csrfExempt);
+        $this->assertFalse($router->match($this->createRequest('POST', '/api/items'))->csrfExempt);
+    }
+
+    public function test_route_cache_round_trips_csrf_exempt(): void
+    {
+        $router = new Router(pagesDir: $this->pagesDir, controllers: [ExemptHookController::class]);
+        $data = $router->getCollection()->toArray();
+        $restored = RouteCollection::fromArray($data);
+
+        $this->assertTrue($restored->all()[0]->csrfExempt);
+
+        // Caches written before the flag existed load as not exempt.
+        unset($data[0]['csrfExempt']);
+        $this->assertFalse(RouteCollection::fromArray($data)->all()[0]->csrfExempt);
     }
 }

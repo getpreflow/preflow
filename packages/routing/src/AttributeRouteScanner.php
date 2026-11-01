@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Routing;
 
+use Preflow\Core\Http\Csrf\CsrfExempt;
 use Preflow\Core\Routing\RouteMode;
 use Preflow\Routing\Attributes\HttpMethod;
 use Preflow\Routing\Attributes\Middleware;
@@ -31,6 +32,12 @@ final class AttributeRouteScanner
         $classMiddleware = $routeAttr->middleware;
         foreach ($ref->getAttributes(Middleware::class) as $mwAttr) {
             $classMiddleware = array_merge($classMiddleware, $mwAttr->newInstance()->middleware);
+        }
+
+        // newInstance() runs the attribute's reason check
+        $classExempt = $ref->getAttributes(CsrfExempt::class) !== [];
+        foreach ($ref->getAttributes(CsrfExempt::class) as $exemptAttr) {
+            $exemptAttr->newInstance();
         }
 
         $entries = [];
@@ -64,6 +71,12 @@ final class AttributeRouteScanner
                 $methodMiddleware = array_merge($methodMiddleware, $mwAttr->newInstance()->middleware);
             }
 
+            $methodExempt = $classExempt;
+            foreach ($method->getAttributes(CsrfExempt::class) as $exemptAttr) {
+                $exemptAttr->newInstance();
+                $methodExempt = true;
+            }
+
             // Extract params and build regex
             $paramNames = [];
             $isCatchAll = false;
@@ -78,6 +91,7 @@ final class AttributeRouteScanner
                 paramNames: $paramNames,
                 regex: $regex,
                 isCatchAll: $isCatchAll,
+                csrfExempt: $methodExempt,
             );
         }
 

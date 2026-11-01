@@ -47,6 +47,7 @@ final class Router implements RouterInterface
             handler: $entry->handler,
             parameters: $result['params'],
             middleware: $entry->middleware,
+            csrfExempt: $entry->csrfExempt,
         );
     }
 
