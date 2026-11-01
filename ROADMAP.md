@@ -254,7 +254,9 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   Graph, Twitter card, theme-color and JSON-LD tags, `/robots.txt`, `/sitemap.xml`, `/.well-known/security.txt`,
   ETag/304; `seo()` / `@seo`, the `PublicPages` list shared with GEO, `SchemaRegistry` for a site's own types, the
   media library's `share` format, Folio's "SEO & sharing" section per record; see the SEO section in
-  `packages/view/README.md`)
+  `packages/view/README.md`). **Upgrading:** SQL sites run `preflow migrate` after upgrading and before turning
+  SEO on: the section is stored in the new `_seo` column, which every editor save writes once the section shows
+  (SEO on), and saving fails until it exists. Each site's deploy must run it.
 - **301 redirects on slug change:** Folio remembers a page's old paths and redirects them; a redirects list in
   Settings for hand-made entries
 - ~~**GEO (generative engine optimisation):** `llms.txt` and plain-text/Markdown views of pages for AI search.

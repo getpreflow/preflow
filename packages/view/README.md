@@ -336,6 +336,9 @@ return [
 ];
 ```
 
+With Folio on SQL storage, run `preflow migrate` before turning SEO on: the "SEO & sharing" section is stored in a
+new `_seo` column, and saving a record in the editor fails until it exists.
+
 What a page gets:
 
 - `<meta name="robots" content="max-image-preview:large">`, or `noindex` for a page hidden from search engines.
@@ -375,15 +378,20 @@ values are merged over what a Folio record set.
 {% do seo({
     title: game.title,
     description: game.teaser,
-    image: share_image,          {# a URL, or MediaLibrary::shareImage()'s array #}
+    image: game.cover_url,       {# an image URL; or the array MediaLibrary::shareImage() returns #}
     og_type: 'article',
     noindex: false,
     schema: {'@type': 'Game', name: game.title},
 }) %}
 ```
 
+`image` takes a URL as it is (no size or alt). For the media library's 1200×630 share crop with its size and alt
+text, the controller passes `MediaLibrary::shareImage($assetId, $locale)` to the template (say as `share_image`),
+which gives it on: `image: share_image`.
+
 In Blade: `@seo(['title' => $game->title, 'description' => $game->teaser])`. In PHP, set or merge the request's
-`Preflow\View\Seo\SeoContext` (`set(new PageMeta(...))`, `merge([...])`).
+`Preflow\View\Seo\SeoContext` (`set(new PageMeta(...))`, `merge([...])`). An unknown key in a template's `seo()` is
+ignored (debug mode logs it); `PageMeta::with()` and `merge()` in PHP reject one.
 
 ### The public pages: sitemap and llms.txt
 
