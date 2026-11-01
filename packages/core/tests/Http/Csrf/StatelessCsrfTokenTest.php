@@ -17,6 +17,15 @@ final class StatelessCsrfTokenTest extends TestCase
         return new StatelessCsrfToken($key, static fn (): int => $time);
     }
 
+    /** A token correctly signed with the given key for the slot of $time. */
+    private function forge(int $time, string $key): string
+    {
+        $slot = intdiv($time, self::DAY);
+        $mac = hash_hmac('sha256', "v1|$slot|preflow.csrf", $key, true);
+
+        return 'v1.' . $slot . '.' . rtrim(strtr(base64_encode($mac), '+/', '-_'), '=');
+    }
+
     public function test_current_and_previous_slot_verify(): void
     {
         $now = 100 * self::DAY + 500;
@@ -80,10 +89,11 @@ final class StatelessCsrfTokenTest extends TestCase
     public function test_empty_and_default_key_disable_it(): void
     {
         foreach (['', StatelessCsrfToken::DEFAULT_KEY] as $key) {
-            $disabled = new StatelessCsrfToken($key);
+            $disabled = $this->at(1_000_000, $key);
 
             $this->assertFalse($disabled->enabled());
             $this->assertFalse($disabled->verify($this->at(1_000_000)->issue()));
+            $this->assertFalse($disabled->verify($this->forge(1_000_000, $key)));
 
             try {
                 $disabled->issue();
