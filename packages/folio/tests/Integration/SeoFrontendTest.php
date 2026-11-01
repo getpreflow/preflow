@@ -244,4 +244,28 @@ final class SeoFrontendTest extends TestCase
         $this->assertStringNotContainsString('twitter:card', (string) $admin->getBody());
         $this->assertStringNotContainsString('name="robots"', (string) $admin->getBody());
     }
+
+    #[RunInSeparateProcess]
+    public function test_a_home_page_has_one_url_in_sitemap_head_and_llms(): void
+    {
+        $this->save('page', 'home', ['title' => ['en' => 'Welcome', 'de' => 'Willkommen'], 'slug' => ['en' => 'home', 'de' => 'start'], '_locales' => ['de']]);
+
+        $de = $this->body('/de');
+        // og:url is the page's canonical URL (FrontendResolver::urlFor, as its canonical and hreflang links).
+        $this->assertSame(1, preg_match('~<meta property="og:url" content="([^"]+)">~', $de, $m), 'no og:url');
+        $canonical = $m[1];
+        $this->assertSame('https://club.test/de', $canonical);
+
+        // The sitemap lists the German home page at its canonical URL, hreflang alternates alike.
+        $sitemap = $this->body('/sitemap.xml');
+        $this->assertStringContainsString('<loc>' . $canonical . '</loc>', $sitemap);
+        $this->assertStringContainsString('<xhtml:link rel="alternate" hreflang="de" href="' . $canonical . '"/>', $sitemap);
+        $this->assertStringNotContainsString('https://club.test/de/<', $sitemap);
+        $this->assertStringNotContainsString('https://club.test/de/"', $sitemap);
+
+        // llms.txt still links the home pages' Markdown as index.md.
+        $this->assertStringContainsString('[Welcome](https://club.test/index.md)', $this->body('/llms.txt'));
+        $this->assertStringContainsString('[Willkommen](https://club.test/de/index.md)', $this->body('/de/llms.txt'));
+        $this->assertStringContainsString('Source: https://club.test/de', $this->body('/de/index.md'));
+    }
 }

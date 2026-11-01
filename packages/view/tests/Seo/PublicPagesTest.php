@@ -84,4 +84,20 @@ final class PublicPagesTest extends TestCase
         $this->assertSame(5, $entries[0]->order);
         $this->assertFalse($entries[0]->full);
     }
+
+    public function test_geo_entries_list_a_home_page_with_a_slash_for_its_index_md(): void
+    {
+        $pages = new PublicPages();
+        $pages->source(fn (string $l) => [
+            new PublicPage('Start', '/de', order: 0),
+            new PublicPage('Home', 'https://site.test', order: 0, section: 'Other'),
+            new PublicPage('About', '/de/about'),
+        ]);
+
+        // The sitemap keeps the canonical URL; llms.txt links "/de/index.md".
+        $this->assertSame(['/de', '/de/about', 'https://site.test'], array_map(fn ($p) => $p->url, $pages->sitemap('de')));
+        $entries = (new GeoEntries($pages))->for('de');
+        $this->assertSame(['/de/', '/de/about', 'https://site.test/'], array_map(fn ($e) => $e->url, $entries));
+        $this->assertSame('/de/index.md', $entries[0]->markdownUrl());
+    }
 }

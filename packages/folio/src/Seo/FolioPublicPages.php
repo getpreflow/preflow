@@ -92,11 +92,13 @@ final class FolioPublicPages
 
         $title = $titleField !== null ? FolioPageMeta::text($values->get($titleField)) : '';
         $home = $this->resolver->pathFor($record, $locale) === '/';
+        // The URLs the page itself names as canonical and hreflang ("/de" for a home page);
+        // GeoEntries adds the slash llms.txt needs for "/de/index.md".
         $alternates = [];
         foreach ($record->getType()->locales->available as $code) {
             $alternate = $this->resolver->urlFor($record, $code);
             if ($alternate !== null) {
-                $alternates[$code] = $home ? rtrim($alternate, '/') . '/' : $alternate;
+                $alternates[$code] = $alternate;
             }
         }
         $publishedAt = $record->get('_published_at');
@@ -104,7 +106,7 @@ final class FolioPublicPages
 
         return new PublicPage(
             title: $title !== '' ? $title : $url,
-            url: $home ? rtrim($url, '/') . '/' : $url, // "/de/", whose Markdown is "/de/index.md"
+            url: $url,
             description: isset($record->getType()->fields['meta_description']) ? FolioPageMeta::text($values->get('meta_description')) : '',
             order: $home ? 0 : 100,
             lastmod: is_string($publishedAt) && $publishedAt !== '' ? $publishedAt : null,

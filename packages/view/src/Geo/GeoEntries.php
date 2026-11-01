@@ -71,7 +71,7 @@ final class GeoEntries
     public function for(string $locale): array
     {
         $entries = array_map(
-            static fn (PublicPage $p): GeoEntry => new GeoEntry($p->title, $p->url, $p->description, $p->section, $p->order, $p->llmsFull),
+            static fn (PublicPage $p): GeoEntry => new GeoEntry($p->title, self::url($p), $p->description, $p->section, $p->order, $p->llmsFull),
             $this->pages?->llms($locale) ?? [],
         );
         foreach ($this->sources as $source) {
@@ -84,6 +84,15 @@ final class GeoEntries
         }
 
         return PageOrder::sort($entries);
+    }
+
+    /**
+     * A public page's URL in llms.txt: a home page (order 0) keeps its canonical URL ("/de") in the
+     * sitemap, but its Markdown is "/de/index.md", so it is listed as "/de/".
+     */
+    private static function url(PublicPage $page): string
+    {
+        return $page->order === 0 ? rtrim($page->url, '/') . '/' : $page->url;
     }
 
     private static function entry(mixed $entry): GeoEntry

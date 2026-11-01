@@ -272,7 +272,7 @@ final class FolioPublicPagesTest extends TestCase
             '/|s',
         ], $this->sortedPages($app, 'en'));
         // Records not visible in German are left out there.
-        $this->assertSame(['/de/events/game-night|s', '/de/news/news|s', '/de/posts/first|s', '/de/ueber-uns|s', '/de/|s'], $this->sortedPages($app, 'de'));
+        $this->assertSame(['/de/events/game-night|s', '/de/news/news|s', '/de/posts/first|s', '/de/ueber-uns|s', '/de|s'], $this->sortedPages($app, 'de'));
     }
 
     #[RunInSeparateProcess]
@@ -287,7 +287,8 @@ final class FolioPublicPagesTest extends TestCase
         $this->assertSame($snapshot->get('_published_at'), $about->lastmod);
         $this->assertNotNull($about->lastmod);
         $this->assertSame(['en' => '/about', 'de' => '/de/ueber-uns'], $about->alternates);
-        $this->assertSame(['en' => '/', 'de' => '/de/'], $this->page($app, '/de/', 'de')->alternates);
+        // Home pages at their canonical URLs, as the page's own hreflang and canonical name them.
+        $this->assertSame(['en' => '/', 'de' => '/de'], $this->page($app, '/de', 'de')->alternates);
         // A page in one language has no alternates.
         $this->assertSame([], $this->page($app, '/english')->alternates);
     }
