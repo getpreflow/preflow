@@ -16,6 +16,7 @@ use Preflow\Core\Config\Config;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\Exceptions\ContainerException;
 use Preflow\Core\Container\ServiceProvider;
+use Preflow\Core\Http\Csrf\CsrfSignInPaths;
 use Preflow\Core\Http\OldInput;
 use Preflow\Data\DataManager;
 use Preflow\Data\DeletePlan;
@@ -41,7 +42,8 @@ use Preflow\View\TemplateEngineInterface;
  * resources/members/ is put in front of the package templates (@members) when it exists. Boot
  * checks that the admission class is one, defines the member type when nothing has
  * (MemberType), lets admitted members have members.access (declared at register) when no permission
- * package decides (MemberAccess) and adds the member pages' routes under the members path.
+ * package decides (MemberAccess), adds the member pages' routes under the members path and
+ * registers its login as a CSRF sign-in path.
  * Neither Folio nor rbac is needed; with them, Folio carries the admin and rbac decides access.
  */
 final class MembersServiceProvider extends ServiceProvider
@@ -140,6 +142,10 @@ final class MembersServiceProvider extends ServiceProvider
         MemberType::define($container);
         self::access($container);
         self::routes($container);
+        // The member login: a form left open past the session's end still signs in (CSRF).
+        if ($container->bound(CsrfSignInPaths::class)) {
+            $container->get(CsrfSignInPaths::class)->add($container->get(MembersConfig::class)->path() . '/login');
+        }
     }
 
     /**

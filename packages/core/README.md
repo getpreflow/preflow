@@ -20,7 +20,7 @@ Requires PHP 8.4+.
 | `ErrorHandler` | Dev (rich HTML) / prod (minimal) error pages |
 | `Kernel` | Dual-mode (Component/Action) request dispatcher |
 | `Application` | Bootstrap entry point |
-| `CsrfMiddleware` | CSRF check, with an `ExpiredSessionHandler` hook for expired sessions |
+| `CsrfMiddleware` | CSRF check on every unsafe request (origin, session or stateless token), `#[CsrfExempt]`, expired-session handling |
 | HTTP exceptions | `NotFoundHttpException`, `ForbiddenHttpException`, `UnauthorizedHttpException` |
 | Route contracts | `Route`, `RouteMode`, `RouterInterface` |
 
@@ -267,26 +267,129 @@ boot.
 
 ### CSRF
 
-`CsrfMiddleware` runs when a session exists (`config/auth.php` `session`). Every `POST`, `PUT`,
-`PATCH` and `DELETE` must carry the session's token, as the `_csrf_token` form field
-(`csrf_field()`) or the `X-CSRF-Token` header; `GET`, `HEAD`, `OPTIONS` and `/--component/`
-are not checked. A failure is a 403, in one of two kinds:
+`CsrfMiddleware` checks every `POST`, `PUT`, `PATCH` and `DELETE`, with or without a session.
+`GET`, `HEAD` and `OPTIONS` are never checked. A form carries the token as the `_csrf_token`
+field (`csrf_field()`), JavaScript as the `X-CSRF-Token` header (`csrf_token()`). Every request
+gets a `Preflow\Core\Http\Csrf\CsrfToken` attribute, which packages that print `{{ csrf }}`
+themselves (Folio, rbac, the form builder) read.
 
-- **`ForbiddenHttpException('CSRF token mismatch.')`:** no token, or a wrong one while the
-  session holds a token (a forged request, a stale tab of the same session).
-- **`Preflow\Core\Http\Csrf\CsrfSessionExpiredException`** (extends `ForbiddenHttpException`,
-  message `CSRF token mismatch: session expired.`): the session held no token before this
-  request but the request carried one. Typically the session ended while a form was open, and
-  the new session (a remember cookie may already have signed the visitor in again) cannot
-  match the old token. Existing catches of `ForbiddenHttpException` still catch it.
+**Layer 1: the origin.** The first signal the browser sent decides:
 
-Site middleware runs inside the CSRF check, so it cannot catch either. To answer the expired
-case before the app runs (keep what was typed, send the visitor to the sign-in), bind a
+1. `Sec-Fetch-Site`: `same-origin` passes; `same-site`, `cross-site` and `none` are refused
+   (unless the `Origin` is one of `csrf.trusted_origins`).
+2. else `Origin`: passes when it is the site's origin (`app.url`), the request's own scheme and
+   host, or a trusted origin; `null` counts as no signal.
+3. else `Referer`: the same comparison on its origin.
+4. no signal at all: the token decides alone.
+
+A refused origin is refused with any token. Behind a proxy that terminates TLS, set `app.url`
+to the public address (`https://example.com`): the request itself then looks like
+`http://…`, and only `app.url` tells the check which origin is the site's.
+
+**Layer 2: the token.** Which one applies is decided by the request:
+
+| The request | Check |
+|---|---|
+| no session cookie (a public page; a browser that blocks cookies) | the origin passes, or a valid stateless token when there is no origin signal |
+| a live session | the origin does not refuse **and** the session's token matches |
+| a session cookie, but the session is new (expired, or an old cookie) | a stateless token with a passing origin (a public page posting into a session path); a session token is the expired case below |
+
+A session that held a token is always checked on that token, also when the request came
+without its cookie.
+
+**Stateless token.** Pages without a session (sites with `auth.session.paths`) print a signed
+token: HMAC-SHA256 with `app.key` over a 24-hour time slot, valid in the current and the
+previous slot, so a page left open works for at least a day. It is not tied to the visitor (no
+cookie, no address), so the page stays cacheable; it is only the fallback for browsers that
+send no origin signal. With an empty `app.key` or the framework's built-in default key it is
+never issued nor accepted (such requests are refused), and debug mode logs a warning: set
+`app.key`.
+
+**Not checked:**
+
+- requests with an `Authorization` header and no cookie (API clients: nothing ambient to use);
+- `/--component/` (component actions carry signed tokens of their own);
+- routes marked `#[CsrfExempt('why')]`, on a controller class (all its routes) or one route
+  method. The reason is required:
+
+```php
+use Preflow\Core\Http\Csrf\CsrfExempt;
+use Preflow\Routing\Attributes\Post;
+use Preflow\Routing\Attributes\Route;
+
+#[Route('/hooks')]
+#[CsrfExempt('Stripe webhook, verified by its signature')]
+final class StripeWebhookController
+{
+    #[Post('/stripe')]
+    public function receive(ServerRequestInterface $request): ResponseInterface { /* … */ }
+}
+```
+
+- path prefixes in `csrf.exempt`, only for routes that cannot carry the attribute (file
+  routes in `app/pages`, paths outside the router).
+
+To find the attribute the middleware matches the route of an unsafe request (once; the Kernel
+dispatches that match instead of matching again). A middleware added later that rewrites the
+URI of a POST therefore no longer changes which route runs: the Kernel dispatches the route
+the CSRF check matched.
+
+**Config** (`config/csrf.php`, optional; a missing file means the defaults):
+
+```php
+return [
+    'exempt' => [],          // path prefixes without a check, added to '/--component/'
+    'trusted_origins' => [], // other origins allowed to post, e.g. 'https://stage.example.com'
+    'sign_in_paths' => [],   // sign-in forms of the site; packages register their own
+];
+```
+
+Paths in `exempt` and `sign_in_paths` are compared without the locale prefix (`/de/login`
+is `/login`); sign-in paths match exactly (a trailing slash is ignored), exempt paths as
+prefixes.
+
+**Failures** are a 403, in one of two kinds:
+
+- **`ForbiddenHttpException('CSRF check failed: …')`:** a refused origin, no token or a wrong
+  one on a live session, or no origin signal and no valid stateless token.
+- **`Preflow\Core\Http\Csrf\CsrfSessionExpiredException`** (extends `ForbiddenHttpException`):
+  the session expired and the request has no passing origin (see below).
+
+#### Expired sessions
+
+The session existed when the form was rendered, but not any more (it carries a session token
+the new session cannot match). With a refused or missing origin it is the 403 above.
+With a passing origin:
+
+1. **Sign-in forms** pass, with the new session and its fresh token: the posted password is
+   the proof, and login CSRF is stopped by the origin check. Folio registers
+   `{folio path}/login`, members `{members path}/login`; a site adds its own in
+   `csrf.sign_in_paths`, a package in its provider:
+
+   ```php
+   $container->get(\Preflow\Core\Http\Csrf\CsrfSignInPaths::class)->add('/shop/login');
+   ```
+
+2. **Any other form:** the site's `ExpiredSessionHandler` answers first (below). Without one,
+   or when it returns `null`, the framework's answer: the request is **not applied**. A form
+   gets a 303 back to the page it came from (the `Referer` when it is a page of this site,
+   else `/`) with a `warning` flash ("Your session had expired. Please send the form again.",
+   in en/de/fr/it, or the site's `csrf.session_expired` translation) and the posted fields kept
+   as old input, so the form shows them again (`Preflow\Core\Http\OldInput`, read by
+   validation's `old()`, the form builder and members; never kept: `_csrf_token`, fields whose
+   name contains `password`, uploaded files). htmx gets a 204 with `HX-Refresh: true`, a JSON
+   client (`Accept: application/json`) a 409 `{"error":"session_expired"}`.
+
+Nothing runs in the visitor's name: a remember-me cookie could sign them in again, so the data
+waits for one more click from a page with a fresh token.
+
+Site middleware runs inside the CSRF check, so it cannot catch these. To answer the expired
+case your own way (keep a draft, send the visitor to the sign-in), bind a
 `Preflow\Core\Http\Csrf\ExpiredSessionHandler` in a service provider. It gets the request
 (with the new session as the `SessionInterface` attribute and its fresh `CsrfToken`) and
-returns a response to send instead of the 403, or `null` for the 403. It is called for the
-expired case only, never for a mismatch on a live session, a missing token, safe methods or
-exempt paths.
+returns a response to send, or `null` for the framework's answer. It is called for the
+expired case with a passing origin only, never for a sign-in path, a mismatch on a live
+session, a missing token, safe methods or exempt routes.
 
 ```php
 use Preflow\Core\Http\Csrf\ExpiredSessionHandler;
@@ -297,9 +400,8 @@ final class KeepDraftOnExpiry implements ExpiredSessionHandler
     public function handle(ServerRequestInterface $request): ?ResponseInterface
     {
         $path = $request->getUri()->getPath();
-        if (!preg_match('#^/account/posts/\d+/edit$#D', $path)
-            || $request->getHeaderLine('Sec-Fetch-Site') !== 'same-origin') {
-            return null; // the plain 403
+        if (!preg_match('#^/account/posts/\d+/edit$#D', $path)) {
+            return null; // the framework's answer
         }
         // Keep the values to PREFILL the form after sign-in; never save them from here.
         $request->getAttribute(SessionInterface::class)
@@ -313,12 +415,19 @@ final class KeepDraftOnExpiry implements ExpiredSessionHandler
 $container->singleton(ExpiredSessionHandler::class, KeepDraftOnExpiry::class);
 ```
 
-**Security rule:** the request is not verified; nobody can say who sent it. Never apply posted
-data from an expired-session request (no save, no state change, no mail). At most keep it in
-the new session to prefill the form after the visitor signs in again, and let them submit it
-once more with a valid token. Limit the handler to your own forms' paths and same-origin
-requests (`Sec-Fetch-Site`, else `Origin`), and drop `_csrf_token` and secrets before keeping
-anything.
+**Security rule:** the request is not verified as the visitor's. Never apply posted data from
+an expired-session request (no save, no state change, no mail). At most keep it to prefill the
+form after the visitor signs in again, and let them submit it once more with a valid token.
+Drop `_csrf_token` and secrets before keeping anything.
+
+#### Upgrading
+
+Unsafe requests without a session were not checked before. A public POST endpoint called by a
+server (a webhook, a payment provider, a cron job over HTTP) sends no origin signal and no
+token, so it is now refused: mark its route `#[CsrfExempt('…')]`, or list a file route or a
+path outside the router in `csrf.exempt`, before upgrading. Forms of the site keep working on
+modern browsers (the origin passes); `csrf_field()` now prints a token on public pages too.
+Set a real `app.key`, or browsers that send no origin headers cannot post public forms.
 
 ### Caches
 

@@ -303,8 +303,16 @@ final class DashboardController
 
 | Function | Returns |
 |---|---|
-| `csrf_token()` | Raw token string — useful for `fetch()` headers or meta tags |
-| `csrf_field()` | Complete `<input type="hidden" name="_token" value="...">` element |
+| `csrf_token()` | Raw token string — useful for `fetch()` headers (`X-CSRF-Token`) or meta tags |
+| `csrf_field()` | Complete `<input type="hidden" name="_csrf_token" value="...">` element |
+
+Both work with or without a session. With one they print the session's token. Without one (a
+public page on a site with `session.paths`) they print the stateless token: signed with
+`app.key`, the same for every visitor, valid for at least a day, so the page stays cookie-free
+and cacheable. Use `csrf_field()` in every form, public ones included (a contact form, a like
+button): browsers that send no origin headers need it. With an empty `app.key` or the built-in
+default key there is no stateless token, and both print an empty string on public pages. See
+the CSRF section of `preflow/core` for how requests are checked.
 
 ```twig
 {# In a form #}
