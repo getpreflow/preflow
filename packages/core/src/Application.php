@@ -558,7 +558,10 @@ final class Application
         $this->container->instance(\Preflow\View\Geo\RenderScopes::class, new \Preflow\View\Geo\RenderScopes());
         // GEO settings and llms.txt's pages: here, so providers can read the one and add to the other
         $this->container->instance(\Preflow\View\Geo\GeoConfig::class, \Preflow\View\Geo\GeoConfig::fromFile($this->basePath('config/geo.php')));
-        $this->container->instance(\Preflow\View\Geo\GeoEntries::class, new \Preflow\View\Geo\GeoEntries());
+        // The public pages the sitemap and llms.txt both list
+        $publicPages = new \Preflow\View\Seo\PublicPages();
+        $this->container->instance(\Preflow\View\Seo\PublicPages::class, $publicPages);
+        $this->container->instance(\Preflow\View\Geo\GeoEntries::class, new \Preflow\View\Geo\GeoEntries($publicPages));
 
         $pagesDir = $this->basePath('app/pages');
         $templateDirs = is_dir($pagesDir) ? [$pagesDir] : [];
