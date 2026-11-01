@@ -12,6 +12,12 @@ use Psr\Http\Server\RequestHandlerInterface;
 final class SessionMiddleware implements MiddlewareInterface
 {
     /**
+     * Request attribute: true runs the request without a session (no start, no
+     * cookie, nobody signed in), as for an internal anonymous render.
+     */
+    public const string WITHOUT_SESSION = 'preflow.session.without';
+
+    /**
      * @param list<string>|null $paths path prefixes that get a session; null means every request.
      *                                 Other requests get none: no session start, no cookie.
      */
@@ -22,7 +28,7 @@ final class SessionMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        if (!$this->applies($request->getUri()->getPath())) {
+        if ($request->getAttribute(self::WITHOUT_SESSION) === true || !$this->applies($request->getUri()->getPath())) {
             return $handler->handle($request);
         }
 

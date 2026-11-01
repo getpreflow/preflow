@@ -193,6 +193,9 @@ final class Application
         // Load user-defined middleware from config/middleware.php
         $this->bootMiddleware();
 
+        // GEO Markdown views — prepended, so it runs before every other middleware
+        $this->bootGeo();
+
         // Error handler
         $renderer = $debug->isDebug()
             ? new DevErrorRenderer($collector, $this->nonceProvider())
@@ -1027,6 +1030,101 @@ final class Application
                 : $this->container->make($class);
             $this->addMiddleware($mw);
         }
+    }
+
+    /**
+     * GEO (config/geo.php): Markdown views of public pages. Prepended to the
+     * pipeline, so it sees each request before JSON body, security headers,
+     * locale, session, CSRF and auth middleware, and its internal renders pass
+     * through all of them as fresh anonymous requests.
+     */
+    private function bootGeo(): void
+    {
+        if (!$this->container->bound(\Preflow\View\Geo\GeoCollector::class)
+            || !$this->container->bound(\Preflow\View\AssetCollector::class)) {
+            return;
+        }
+
+        $config = \Preflow\View\Geo\GeoConfig::fromFile($this->basePath('config/geo.php'));
+        $this->container->instance(\Preflow\View\Geo\GeoConfig::class, $config);
+        $geo = $this->container->get(\Preflow\View\Geo\GeoCollector::class);
+        $converter = new \Preflow\View\Geo\MarkdownConverter($geo);
+        $this->container->instance(\Preflow\View\Geo\MarkdownConverter::class, $converter);
+
+        if (!$config->enabled()) {
+            return;
+        }
+
+        $appUrl = $this->config->get('app.url');
+        $middleware = new \Preflow\View\Geo\GeoMiddleware(
+            $config,
+            $geo,
+            $converter,
+            $this->container->get(\Preflow\View\AssetCollector::class),
+            is_string($appUrl) ? $appUrl : null,
+            [$this->anonymousRenderScope()],
+        );
+        $this->container->instance(\Preflow\View\Geo\GeoMiddleware::class, $middleware);
+        $this->pipeline->prepend($middleware);
+    }
+
+    /**
+     * Wraps an internal GEO render: the request context names the rendered page,
+     * the visitor's session data is hidden (templates read the session directly,
+     * e.g. flash()), and the translator locale and signed-in users are put back
+     * afterwards, so nothing passes between the request and its renders.
+     *
+     * @return \Closure(ServerRequestInterface, \Closure(): ResponseInterface): ResponseInterface
+     */
+    private function anonymousRenderScope(): \Closure
+    {
+        $container = $this->container;
+
+        return static function (ServerRequestInterface $sub, \Closure $next) use ($container): ResponseInterface {
+            $context = $container->bound(RequestContext::class) ? $container->get(RequestContext::class) : null;
+            $container->instance(RequestContext::class, new RequestContext($sub->getUri()->getPath(), 'GET'));
+
+            $translator = $container->bound(\Preflow\I18n\Translator::class)
+                ? $container->get(\Preflow\I18n\Translator::class)
+                : null;
+            $locale = $translator?->getLocale();
+
+            $auth = $container->bound(\Preflow\Auth\AuthManager::class)
+                ? $container->get(\Preflow\Auth\AuthManager::class)
+                : null;
+            $users = $auth?->users() ?? [];
+            $guard = $auth?->guardName();
+
+            $hadSession = isset($_SESSION);
+            $session = $_SESSION ?? null;
+            if ($hadSession) {
+                $_SESSION = ['_flash' => ['current' => [], 'previous' => []]];
+            }
+
+            try {
+                return $next();
+            } finally {
+                if ($hadSession) {
+                    $_SESSION = $session;
+                } else {
+                    unset($_SESSION);
+                }
+                if ($auth !== null) {
+                    $auth->setUser($guard !== null ? ($users[$guard] ?? null) : null, $guard);
+                    foreach ($users as $name => $user) {
+                        if ($name !== $guard) {
+                            $auth->addUser($user, $name);
+                        }
+                    }
+                }
+                if ($translator !== null && $locale !== null) {
+                    $translator->setLocale($locale);
+                }
+                if ($context !== null) {
+                    $container->instance(RequestContext::class, $context);
+                }
+            }
+        };
     }
 
     private function bootSession(): void

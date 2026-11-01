@@ -1,0 +1,350 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\View\Geo;
+
+use Dom\HTMLDocument;
+use Nyholm\Psr7\Response;
+use Nyholm\Psr7\ServerRequest;
+use Nyholm\Psr7\Stream;
+use Preflow\Core\Http\Session\SessionMiddleware;
+use Preflow\View\AssetCollector;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\MiddlewareInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+
+/**
+ * Markdown views of public pages: `/about.md`, `/index.md` (home), `/de/index.md`,
+ * or a page URL asked for with `Accept: text/markdown`.
+ *
+ * The page is rendered internally as an anonymous visitor would see it (no
+ * cookies, no session, no query) and converted; pages that aren't a plain 200
+ * HTML page, are noindex or are excluded answer 404. HTML pages get a
+ * `rel="alternate"` link to their Markdown, in the head and as a `Link` header.
+ * Runs outermost, so the internal render passes through session, auth and
+ * locale middleware like a fresh request.
+ */
+final class GeoMiddleware implements MiddlewareInterface
+{
+    /** Request headers an internal render keeps; everything else (cookies, credentials, language) is dropped. */
+    private const KEPT_HEADERS = ['X-Forwarded-Proto', 'X-Forwarded-Host', 'X-Forwarded-Port'];
+
+    /**
+     * @param ?string $appUrl the configured app.url; its origin makes links absolute (else the request's)
+     * @param list<\Closure(ServerRequestInterface, \Closure(): ResponseInterface): ResponseInterface> $scopes
+     *        wrap each internal render, e.g. to set and restore request-scoped services
+     */
+    public function __construct(
+        private readonly GeoConfig $config,
+        private readonly GeoCollector $collector,
+        private readonly MarkdownConverter $converter,
+        private readonly AssetCollector $assets,
+        private readonly ?string $appUrl = null,
+        private readonly array $scopes = [],
+    ) {}
+
+    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    {
+        $method = $request->getMethod();
+        $path = $request->getUri()->getPath();
+        if (
+            !$this->config->enabled()
+            || ($method !== 'GET' && $method !== 'HEAD')
+            || str_starts_with($path, '/--component')
+        ) {
+            return $handler->handle($request);
+        }
+
+        $page = self::pagePath($path);
+        if ($page === null && $this->prefersMarkdown($request)) {
+            $page = $path;
+        }
+        if ($page !== null) {
+            return $this->markdownResponse($request, $handler, $page);
+        }
+
+        return $this->linkAlternate($request, $handler->handle($request));
+    }
+
+    /**
+     * The Markdown of one page path, or null when it has none (not 200 HTML,
+     * noindex, failed). Rendered anonymously through $handler with its own
+     * assets and geo blocks, so several renders in one request stay independent.
+     */
+    public function render(ServerRequestInterface $request, RequestHandlerInterface $handler, string $path): ?string
+    {
+        $origin = $this->origin($request);
+        $sub = $this->subRequest($request, $path);
+
+        $this->collector->reset();
+        $this->collector->capture(true);
+        try {
+            $response = $this->assets->isolate(fn (): ResponseInterface => $this->scoped($sub, $handler));
+
+            return $this->markdownOf($response, $path, $origin);
+        } catch (\Throwable) {
+            return null;
+        } finally {
+            $this->collector->capture(false);
+            $this->collector->reset();
+        }
+    }
+
+    /** The Markdown URL of a page path: `/about` → `/about.md`, `/` → `/index.md`, `/de/` → `/de/index.md`. */
+    public static function markdownUrl(string $path): string
+    {
+        return str_ends_with($path, '/') ? $path . 'index.md' : $path . '.md';
+    }
+
+    /** The page path of a Markdown URL, or null when $path isn't one. */
+    private static function pagePath(string $path): ?string
+    {
+        if (!str_ends_with($path, '.md')) {
+            return null;
+        }
+        if (str_ends_with($path, '/index.md')) {
+            return substr($path, 0, -strlen('index.md'));
+        }
+
+        $page = substr($path, 0, -3);
+
+        return $page === '' || str_ends_with($page, '/') ? null : $page;
+    }
+
+    private function markdownResponse(ServerRequestInterface $request, RequestHandlerInterface $handler, string $page): ResponseInterface
+    {
+        $markdown = $this->config->excludes($page) ? null : $this->render($request, $handler, $page);
+
+        // Anonymous and cacheable: no cookie leaves, not even one PHP's session queued natively.
+        if (!headers_sent()) {
+            header_remove('Set-Cookie');
+        }
+
+        $headers = ['Vary' => 'Accept', 'X-Content-Type-Options' => 'nosniff'];
+
+        return $markdown === null
+            ? new Response(404, ['Content-Type' => 'text/plain; charset=utf-8'] + $headers, "Not Found\n")
+            : new Response(200, ['Content-Type' => 'text/markdown; charset=utf-8'] + $headers, $markdown);
+    }
+
+    /** A clean GET for $path: no cookies, credentials, query or attributes, and no session. */
+    private function subRequest(ServerRequestInterface $request, string $path): ServerRequestInterface
+    {
+        $uri = $request->getUri()->withPath($path)->withQuery('')->withFragment('');
+
+        $headers = ['Accept' => 'text/html'];
+        foreach (self::KEPT_HEADERS as $name) {
+            if ($request->hasHeader($name)) {
+                $headers[$name] = $request->getHeader($name);
+            }
+        }
+
+        $server = array_filter(
+            $request->getServerParams(),
+            static fn (string $key): bool => !str_starts_with($key, 'HTTP_')
+                && !in_array($key, ['PHP_AUTH_USER', 'PHP_AUTH_PW', 'PHP_AUTH_DIGEST', 'AUTH_TYPE', 'REMOTE_USER'], true),
+            ARRAY_FILTER_USE_KEY,
+        );
+        $server = ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => $path, 'QUERY_STRING' => ''] + $server;
+
+        return (new ServerRequest('GET', $uri, $headers, null, $request->getProtocolVersion(), $server))
+            ->withAttribute(SessionMiddleware::WITHOUT_SESSION, true);
+    }
+
+    /** Handle $sub inside every scope, the first scope outermost. */
+    private function scoped(ServerRequestInterface $sub, RequestHandlerInterface $handler): ResponseInterface
+    {
+        $run = static fn (): ResponseInterface => $handler->handle($sub);
+        foreach (array_reverse($this->scopes) as $scope) {
+            $next = $run;
+            $run = static fn (): ResponseInterface => $scope($sub, $next);
+        }
+
+        return $run();
+    }
+
+    private function markdownOf(ResponseInterface $response, string $path, string $origin): ?string
+    {
+        if ($response->getStatusCode() !== 200 || !$this->isHtml($response) || $this->noindexHeader($response)) {
+            return null;
+        }
+
+        $html = (string) $response->getBody();
+        if ($this->noindexMeta($html)) {
+            return null;
+        }
+
+        $document = HTMLDocument::createFromString($html, LIBXML_NOERROR, 'UTF-8');
+        $title = trim((string) preg_replace('/\s+/', ' ', $document->querySelector('title')?->textContent ?? ''));
+        $canonical = trim((string) $document->querySelector('link[rel~="canonical"][href]')?->getAttribute('href'));
+        $source = $canonical !== '' ? $this->absolute($canonical, $origin) : $origin . $path;
+
+        // A page template's own geo block stands for the whole page; otherwise the page is converted.
+        $pageBlocks = $this->collector->pageBlocks();
+        $body = $pageBlocks !== []
+            ? implode("\n\n", array_filter($pageBlocks, static fn (string $block): bool => $block !== ''))
+            : $this->converter->convert($html, $origin);
+
+        $markdown = ($title !== '' ? '# ' . $title . "\n\n" : '') . 'Source: ' . $source . "\n";
+
+        return $body === '' ? $markdown : $markdown . "\n" . $body . "\n";
+    }
+
+    /** Add the Markdown alternate to a public HTML page: `Link` header and `<link>` in the head. */
+    private function linkAlternate(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    {
+        $path = $request->getUri()->getPath();
+        if (
+            $response->getStatusCode() !== 200
+            || !$this->isHtml($response)
+            || $request->getHeaderLine('HX-Request') === 'true'
+            || $this->config->excludes($path)
+            || $this->noindexHeader($response)
+        ) {
+            return $response;
+        }
+
+        $html = (string) $response->getBody();
+        if ($this->noindexMeta($html)) {
+            return $response;
+        }
+
+        $url = $this->origin($request) . self::markdownUrl($path);
+        $response = $response->withAddedHeader('Link', '<' . $url . '>; rel="alternate"; type="text/markdown"');
+        if (!in_array('accept', array_map('trim', explode(',', strtolower($response->getHeaderLine('Vary')))), true)) {
+            $response = $response->withAddedHeader('Vary', 'Accept');
+        }
+
+        $headAt = stripos($html, '</head>');
+        if ($headAt === false) {
+            return $response;
+        }
+        $tag = '<link rel="alternate" type="text/markdown" href="' . htmlspecialchars($url, ENT_QUOTES | ENT_HTML5) . '">';
+
+        return $response
+            ->withoutHeader('Content-Length')
+            ->withBody(Stream::create(substr_replace($html, $tag, $headAt, 0)));
+    }
+
+    /** Whether the client ranks text/markdown above text/html (it must name text/markdown itself). */
+    private function prefersMarkdown(ServerRequestInterface $request): bool
+    {
+        $accept = $request->getHeaderLine('Accept');
+        if (stripos($accept, 'text/markdown') === false) {
+            return false;
+        }
+
+        $ranges = [];
+        foreach (explode(',', $accept) as $index => $part) {
+            $params = explode(';', $part);
+            $type = strtolower(trim((string) array_shift($params)));
+            $q = 1.0;
+            foreach ($params as $param) {
+                if (preg_match('/^\s*q\s*=\s*([0-9.]+)\s*$/i', $param, $m) === 1) {
+                    $q = (float) $m[1];
+                }
+            }
+            $ranges[] = ['type' => $type, 'q' => $q, 'index' => $index];
+        }
+
+        $markdown = $this->quality($ranges, ['text/markdown']);
+        if ($markdown === null || $markdown['q'] <= 0.0) {
+            return false;
+        }
+        $html = $this->quality($ranges, ['text/html', 'text/*', '*/*']);
+
+        return $html === null
+            || $markdown['q'] > $html['q']
+            || ($markdown['q'] === $html['q'] && $markdown['index'] < $html['index']);
+    }
+
+    /**
+     * The first range matching the most specific of $types.
+     *
+     * @param list<array{type: string, q: float, index: int}> $ranges
+     * @param list<string> $types most specific first
+     * @return ?array{type: string, q: float, index: int}
+     */
+    private function quality(array $ranges, array $types): ?array
+    {
+        foreach ($types as $type) {
+            foreach ($ranges as $range) {
+                if ($range['type'] === $type) {
+                    return $range;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function isHtml(ResponseInterface $response): bool
+    {
+        return str_starts_with(strtolower(trim($response->getHeaderLine('Content-Type'))), 'text/html');
+    }
+
+    private function noindexHeader(ResponseInterface $response): bool
+    {
+        foreach ($response->getHeader('X-Robots-Tag') as $value) {
+            if ($this->noindexes($value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Whether the page has a `<meta name="robots">` that forbids indexing. */
+    private function noindexMeta(string $html): bool
+    {
+        preg_match_all('/<meta\b[^>]*>/i', $html, $tags);
+        foreach ($tags[0] as $tag) {
+            if (
+                preg_match('/\bname\s*=\s*(["\']?)robots\1(?=[\s>\/])/i', $tag) === 1
+                && preg_match('/\bcontent\s*=\s*(["\'])(.*?)\1/is', $tag, $content) === 1
+                && $this->noindexes($content[2])
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Whether a robots directive list contains noindex (or none). */
+    private function noindexes(string $directives): bool
+    {
+        $tokens = preg_split('/[\s,:]+/', strtolower($directives), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return in_array('noindex', $tokens, true) || in_array('none', $tokens, true);
+    }
+
+    /** The configured app.url's origin when it is absolute, else the request's. */
+    private function origin(ServerRequestInterface $request): string
+    {
+        $parts = $this->appUrl !== null && trim($this->appUrl) !== '' ? parse_url(trim($this->appUrl)) : false;
+        if (is_array($parts) && isset($parts['scheme'], $parts['host']) && in_array(strtolower($parts['scheme']), ['http', 'https'], true)) {
+            return strtolower($parts['scheme']) . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '');
+        }
+
+        $uri = $request->getUri();
+
+        return $uri->getHost() !== ''
+            ? $uri->getScheme() . '://' . $uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '')
+            : '';
+    }
+
+    private function absolute(string $url, string $origin): string
+    {
+        if (preg_match('/^[a-z][a-z0-9+.-]*:/i', $url) === 1) {
+            return $url;
+        }
+        if (str_starts_with($url, '//')) {
+            return (parse_url($origin, PHP_URL_SCHEME) ?: 'https') . ':' . $url;
+        }
+
+        return $origin . '/' . ltrim($url, '/');
+    }
+}

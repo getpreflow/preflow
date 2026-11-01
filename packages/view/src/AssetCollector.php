@@ -233,6 +233,29 @@ final class AssetCollector
         return new self($this->nonceGenerator, $this->isProd);
     }
 
+    /**
+     * Run $render with empty registries on this same instance (the engines hold
+     * it), then put the previous state back: a sub-render (a page rendered for
+     * its Markdown) neither sees the request's assets nor leaves its own behind.
+     *
+     * @template T
+     * @param callable(): T $render
+     * @return T
+     */
+    public function isolate(callable $render): mixed
+    {
+        $saved = [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags, $this->cssScope, $this->printed];
+        $this->cssRegistry = $this->jsHead = $this->jsBody = $this->jsInline = $this->headTags = [];
+        $this->cssScope = null;
+        $this->printed = ['css' => [], 'jsHead' => [], 'jsBody' => [], 'headTags' => []];
+
+        try {
+            return $render();
+        } finally {
+            [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags, $this->cssScope, $this->printed] = $saved;
+        }
+    }
+
     public function hasCss(): bool
     {
         return $this->cssRegistry !== [];

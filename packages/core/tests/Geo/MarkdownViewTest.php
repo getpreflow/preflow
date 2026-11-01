@@ -1,0 +1,361 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Core\Tests\Geo;
+
+require_once __DIR__ . '/../Fixtures/Geo/GeoComponents.php';
+require_once __DIR__ . '/../Fixtures/Geo/GeoTestRoutes.php';
+
+use Nyholm\Psr7\Factory\Psr17Factory;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use PHPUnit\Framework\TestCase;
+use Preflow\Core\Application;
+use Preflow\Core\Tests\Fixtures\Geo\GeoMdCard;
+use Preflow\Core\Tests\Fixtures\Geo\GeoMdPlain;
+use Preflow\Core\Tests\Fixtures\Geo\GeoTestRoutes;
+use Psr\Http\Message\ResponseInterface;
+
+/** Markdown views of public pages: /page.md, /index.md and Accept: text/markdown (config/geo.php). */
+final class MarkdownViewTest extends TestCase
+{
+    private string $dir;
+
+    private const KEY = 'geo-markdown-test-key-0123456789ab';
+
+    protected function setUp(): void
+    {
+        $this->dir = sys_get_temp_dir() . '/geo_md_' . bin2hex(random_bytes(4));
+        @mkdir($this->dir . '/config', 0777, true);
+        @mkdir($this->dir . '/app/pages', 0777, true);
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name'=>'t','debug'=>0,'engine'=>'twig','key'=>'" . self::KEY . "','url'=>'https://site.test'];\n");
+        file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['default'=>'en','available'=>['en','de'],'fallback'=>'en','url_strategy'=>'prefix','cookie'=>true];\n");
+        file_put_contents($this->dir . '/config/middleware.php', "<?php\nreturn [" . var_export(GeoTestRoutes::class, true) . "];\n");
+        $this->geo("['enabled' => true, 'exclude' => ['/secret']]");
+
+        $card = addslashes(GeoMdCard::class);
+        $plain = addslashes(GeoMdPlain::class);
+        $page = static fn (string $title, string $main, string $head = ''): string =>
+            '<html><head><title>' . $title . '</title>' . $head . '</head><body><nav><a href="/nav">Navigation</a></nav>'
+            . '<main>' . $main . '</main><footer>Footer text</footer></body></html>';
+
+        $this->page('index', $page('Home {{ current_locale() }}', '<h1>Welcome {{ current_locale() }}</h1><p>Read <a href="/about">about us</a>.</p>'));
+        $this->page('about', $page(
+            'About us',
+            '<h1>About</h1><p>We play games.</p>'
+            . '{{ component("' . $card . '", {title: "Alpha"}) }}'
+            . '{{ component("' . $plain . '") }}'
+            . '<img src="/img/logo.png" alt="Our logo"><img src="/img/deco.png" alt="">',
+        ));
+        $this->page('noindex', $page('No index', '<p>Do not index</p>', '<meta name="robots" content="noindex, follow">'));
+        $this->page('secret', $page('Secret', '<p>Excluded page</p>'));
+        $this->page('record', $page(
+            'Record',
+            '<p>Page HTML body</p>{{ component("' . $card . '", {title: "Inner"}) }}'
+            . '{% apply geo %}## Facts' . "\n" . '- Players: 2{% endapply %}',
+        ));
+        $this->page('page-a', $page('Page A', '<p>Page A text</p>{{ component("' . $card . '", {title: "A"}) }}'));
+        $this->page('page-b', $page('Page B', '<p>Page B text</p>'));
+    }
+
+    protected function tearDown(): void
+    {
+        GeoTestRoutes::$app = null;
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->dir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+        foreach ($it as $f) {
+            $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
+        }
+        @rmdir($this->dir);
+    }
+
+    private function page(string $name, string $twig): void
+    {
+        file_put_contents($this->dir . '/app/pages/' . $name . '.twig', $twig);
+    }
+
+    private function geo(?string $config): void
+    {
+        $path = $this->dir . '/config/geo.php';
+        if ($config === null) {
+            @unlink($path);
+            return;
+        }
+        file_put_contents($path, "<?php\nreturn {$config};\n");
+    }
+
+    private function app(): Application
+    {
+        $app = Application::create($this->dir);
+        $app->boot();
+        GeoTestRoutes::$app = $app;
+
+        return $app;
+    }
+
+    /** @param array<string, string> $headers */
+    private function get(Application $app, string $path, array $headers = [], string $method = 'GET'): ResponseInterface
+    {
+        $request = (new Psr17Factory())->createServerRequest($method, 'http://localhost' . $path);
+        foreach ($headers as $name => $value) {
+            $request = $request->withHeader($name, $value);
+        }
+
+        return $app->handle($request);
+    }
+
+    private function assertNoMarkdown(ResponseInterface $response, string $path): void
+    {
+        $this->assertSame(404, $response->getStatusCode(), $path);
+        $this->assertStringStartsWith('text/plain', $response->getHeaderLine('Content-Type'), $path);
+        $this->assertSame([], $response->getHeader('Set-Cookie'), $path);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_md_url_returns_the_pages_markdown(): void
+    {
+        $res = $this->get($this->app(), '/about.md');
+        $md = (string) $res->getBody();
+
+        $this->assertSame(200, $res->getStatusCode(), $md);
+        $this->assertSame('text/markdown; charset=utf-8', $res->getHeaderLine('Content-Type'));
+        $this->assertSame('Accept', $res->getHeaderLine('Vary'));
+        $this->assertSame([], $res->getHeader('Set-Cookie'));
+        $this->assertStringStartsWith("# About us\n\nSource: https://site.test/about\n\n# About\n\nWe play games.", $md);
+        $this->assertStringContainsString('## Card Alpha', $md);
+        $this->assertStringNotContainsString('Card HTML', $md);
+        $this->assertStringContainsString('[a relative link](https://site.test/contact)', $md);
+        $this->assertStringContainsString('![Our logo](https://site.test/img/logo.png)', $md);
+        $this->assertStringNotContainsString('deco.png', $md);
+        $this->assertStringNotContainsString('Navigation', $md);
+        $this->assertStringNotContainsString('Footer', $md);
+        $this->assertStringNotContainsString('color: red', $md);
+
+        $head = $this->get($this->app(), '/about.md', method: 'HEAD');
+        $this->assertSame(200, $head->getStatusCode());
+        $this->assertSame('text/markdown; charset=utf-8', $head->getHeaderLine('Content-Type'));
+        $this->assertSame('', (string) $head->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_accept_text_markdown_on_the_page_url(): void
+    {
+        $app = $this->app();
+
+        $md = $this->get($app, '/about', ['Accept' => 'text/markdown']);
+        $this->assertSame(200, $md->getStatusCode());
+        $this->assertSame('text/markdown; charset=utf-8', $md->getHeaderLine('Content-Type'));
+        $this->assertStringStartsWith('# About us', (string) $md->getBody());
+
+        $preferred = $this->get($app, '/about', ['Accept' => 'text/markdown, text/html;q=0.9']);
+        $this->assertSame('text/markdown; charset=utf-8', $preferred->getHeaderLine('Content-Type'));
+
+        foreach (['text/markdown;q=0.5, text/html', 'text/html,application/xhtml+xml,*/*;q=0.8', '*/*'] as $accept) {
+            $html = $this->get($app, '/about', ['Accept' => $accept]);
+            $this->assertStringStartsWith('text/html', $html->getHeaderLine('Content-Type'), $accept);
+        }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_home_is_index_md(): void
+    {
+        $app = $this->app();
+
+        $en = $this->get($app, '/index.md');
+        $this->assertSame(200, $en->getStatusCode(), (string) $en->getBody());
+        $this->assertStringStartsWith("# Home en\n\nSource: https://site.test/\n\n# Welcome en", (string) $en->getBody());
+        $this->assertStringContainsString('[about us](https://site.test/about)', (string) $en->getBody());
+
+        $de = $this->get($app, '/de/index.md');
+        $this->assertSame(200, $de->getStatusCode(), (string) $de->getBody());
+        $this->assertStringStartsWith("# Home de\n\nSource: https://site.test/de/\n\n# Welcome de", (string) $de->getBody());
+    }
+
+    /**
+     * A session guard over one member, and a page that shows who is signed in and the flash.
+     *
+     * @param array<string, mixed> $session extra auth.session settings
+     */
+    private function memberSetup(array $session = []): string
+    {
+        file_put_contents($this->dir . '/config/auth.php', "<?php\nreturn " . var_export([
+            'default_guard' => 'session',
+            'guards' => ['session' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'users']],
+            'providers' => ['users' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [
+                ['id' => 'member', 'email' => 'member@site.test', 'password_hash' => '', 'roles' => []],
+            ]]],
+            'session' => ['cookie' => 'geo_test', 'secure' => false] + $session,
+        ], true) . ";\n");
+        $this->page('member', '<html><head><title>Member</title></head><body><main><p>Public text</p>'
+            . '{% if auth_check() %}<p>Signed in as member</p>{% endif %}<p>{{ flash("success") }}</p></main></body></html>');
+
+        return (string) (new \Preflow\Auth\ConfigUserProvider([['email' => 'member@site.test', 'password_hash' => '']]))
+            ->findByCredentials(['email' => 'member@site.test'])?->getAuthId();
+    }
+
+    #[RunInSeparateProcess]
+    public function test_signed_in_visitor_gets_the_anonymous_view_without_set_cookie(): void
+    {
+        $userId = $this->memberSetup();
+        $app = $this->app();
+        $this->assertSame(PHP_SESSION_ACTIVE, session_status());
+        $_SESSION['_auth_user_id'] = $userId;
+        $_SESSION['_flash'] = ['current' => ['success' => 'Welcome back, member'], 'previous' => []];
+        $cookie = ['Cookie' => 'geo_test=' . session_id(), 'Authorization' => 'Bearer secret'];
+
+        $md = $this->get($app, '/member.md', $cookie);
+        $body = (string) $md->getBody();
+
+        $this->assertSame(200, $md->getStatusCode(), $body);
+        $this->assertSame([], $md->getHeader('Set-Cookie'));
+        $this->assertStringContainsString('Public text', $body);
+        $this->assertStringNotContainsString('Signed in', $body);
+        $this->assertStringNotContainsString('Welcome back', $body);
+        // The visitor's own session is untouched by the internal render.
+        $this->assertSame($userId, $_SESSION['_auth_user_id']);
+        $this->assertSame('Welcome back, member', $_SESSION['_flash']['current']['success']);
+
+        // The same visitor's HTML page shows them signed in, and the pipeline sets cookies there.
+        $html = $this->get($app, '/member', $cookie);
+        $this->assertStringContainsString('Signed in as member', (string) $html->getBody());
+        $this->assertStringContainsString('Welcome back, member', (string) $html->getBody());
+        $this->assertNotSame([], $html->getHeader('Set-Cookie'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_internal_render_starts_no_session_from_the_visitors_cookie(): void
+    {
+        // session.paths: no session at boot; the session middleware would start one from the cookie.
+        $userId = $this->memberSetup(['paths' => ['/']]);
+        session_name('geo_test');
+        session_start();
+        $_SESSION['_auth_user_id'] = $userId;
+        $_SESSION['_flash'] = ['current' => [], 'previous' => []];
+        $sessionId = session_id();
+        session_write_close();
+        $_SESSION = [];
+        $_COOKIE['geo_test'] = $sessionId;
+        $app = $this->app();
+        $this->assertSame(PHP_SESSION_NONE, session_status());
+
+        $body = (string) $this->get($app, '/member.md', ['Cookie' => 'geo_test=' . $sessionId])->getBody();
+
+        $this->assertStringContainsString('Public text', $body);
+        $this->assertStringNotContainsString('Signed in', $body);
+        $this->assertSame(PHP_SESSION_NONE, session_status());
+
+        // Proof the cookie signs the visitor in on the HTML page.
+        $html = (string) $this->get($app, '/member', ['Cookie' => 'geo_test=' . $sessionId])->getBody();
+        $this->assertStringContainsString('Signed in as member', $html);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_noindex_meta_header_redirect_and_404_pages_have_no_markdown(): void
+    {
+        $app = $this->app();
+
+        foreach (['/noindex.md', '/hidden.md', '/old.md', '/missing.md'] as $path) {
+            $this->assertNoMarkdown($this->get($app, $path), $path);
+        }
+        $this->assertNoMarkdown($this->get($app, '/noindex', ['Accept' => 'text/markdown']), 'Accept on /noindex');
+
+        foreach (['/noindex', '/hidden'] as $path) {
+            $html = $this->get($app, $path);
+            $this->assertSame(200, $html->getStatusCode(), $path);
+            $this->assertSame([], $html->getHeader('Link'), $path);
+            $this->assertStringNotContainsString('text/markdown', (string) $html->getBody(), $path);
+        }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_excluded_path_is_404(): void
+    {
+        $app = $this->app();
+
+        $this->assertNoMarkdown($this->get($app, '/secret.md'), '/secret.md');
+        $this->assertNoMarkdown($this->get($app, '/secret', ['Accept' => 'text/markdown']), 'Accept on /secret');
+
+        $html = $this->get($app, '/secret');
+        $this->assertSame(200, $html->getStatusCode());
+        $this->assertSame([], $html->getHeader('Link'));
+        $this->assertStringNotContainsString('text/markdown', (string) $html->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_html_pages_link_their_markdown_alternate(): void
+    {
+        $app = $this->app();
+
+        $about = $this->get($app, '/about');
+        $this->assertSame(['<https://site.test/about.md>; rel="alternate"; type="text/markdown"'], $about->getHeader('Link'));
+        $this->assertStringContainsString('<link rel="alternate" type="text/markdown" href="https://site.test/about.md">', (string) $about->getBody());
+        $this->assertSame(1, substr_count((string) $about->getBody(), 'type="text/markdown"'));
+        $this->assertMatchesRegularExpression('#type="text/markdown" href="https://site.test/about.md">.*</head>#s', (string) $about->getBody());
+        $this->assertContains('Accept', array_map('trim', explode(',', $about->getHeaderLine('Vary'))));
+
+        $home = $this->get($app, '/?x=1');
+        $this->assertSame(['<https://site.test/index.md>; rel="alternate"; type="text/markdown"'], $home->getHeader('Link'));
+
+        $de = $this->get($app, '/de/');
+        $this->assertStringContainsString('href="https://site.test/de/index.md"', (string) $de->getBody());
+
+        $this->assertSame([], $this->get($app, '/missing')->getHeader('Link'));
+        $this->assertSame([], $this->get($app, '/old')->getHeader('Link'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_disabled_geo_changes_nothing(): void
+    {
+        $normalize = static fn (ResponseInterface $r): string => (string) preg_replace('#[A-Za-z0-9+/]{22}==#', 'NONCE', (string) $r->getBody());
+
+        $this->geo(null);
+        $plainApp = $this->app();
+        $plain = $this->get($plainApp, '/about');
+        $plainMissing = $this->get($plainApp, '/about.md');
+
+        $this->geo("['enabled' => false]");
+        $app = $this->app();
+        $html = $this->get($app, '/about');
+        $md = $this->get($app, '/about.md');
+
+        $this->assertSame($normalize($plain), $normalize($html));
+        $this->assertSame([], $html->getHeader('Link'));
+        $this->assertStringNotContainsString('text/markdown', (string) $html->getBody());
+        $this->assertSame($plain->getHeaderLine('Vary'), $html->getHeaderLine('Vary'));
+
+        $this->assertSame(404, $md->getStatusCode());
+        $this->assertSame($plainMissing->getHeaderLine('Content-Type'), $md->getHeaderLine('Content-Type'));
+        $this->assertStringStartsWith('text/html', $md->getHeaderLine('Content-Type'));
+
+        $accept = $this->get($app, '/about', ['Accept' => 'text/markdown']);
+        $this->assertStringStartsWith('text/html', $accept->getHeaderLine('Content-Type'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_page_template_geo_block_outside_components_is_used(): void
+    {
+        $res = $this->get($this->app(), '/record.md');
+        $md = (string) $res->getBody();
+
+        $this->assertSame(200, $res->getStatusCode(), $md);
+        // The page's own block stands for the whole page: its HTML and components are not converted.
+        $this->assertSame("# Record\n\nSource: https://site.test/record\n\n## Facts\n- Players: 2\n", $md);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_two_renders_in_one_request_are_independent(): void
+    {
+        $res = $this->get($this->app(), '/__two');
+        $data = json_decode((string) $res->getBody(), true);
+
+        $this->assertIsArray($data, (string) $res->getBody());
+        $this->assertStringContainsString('## Card A', $data['a']);
+        $this->assertStringContainsString('Page A text', $data['a']);
+        $this->assertSame($data['alone'], $data['b']);
+        $this->assertStringContainsString('Page B text', $data['b']);
+        $this->assertStringNotContainsString('Card', $data['b']);
+        // The request's own assets survive the renders, and none of theirs stay behind.
+        $this->assertStringContainsString('.outer', $data['css']);
+        $this->assertStringNotContainsString('.card', $data['css']);
+        $this->assertFalse($data['capturing']);
+    }
+}

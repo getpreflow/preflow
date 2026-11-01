@@ -145,4 +145,16 @@ final class MiddlewarePipelineTest extends TestCase
         $this->assertSame('inner', $response->getHeaderLine('X-Inner'));
         $this->assertTrue($capturedRequest->getAttribute('modified'));
     }
+
+    public function test_prepended_middleware_runs_first(): void
+    {
+        $pipeline = new MiddlewarePipeline();
+        $pipeline->pipe(new ShortCircuitMiddleware());
+        $pipeline->prepend(new AddHeaderMiddleware('X-First', 'yes'));
+
+        $response = $pipeline->process($this->createRequest(), fn () => new Response(200));
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertSame('yes', $response->getHeaderLine('X-First'));
+    }
 }
