@@ -253,10 +253,12 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   Product, Event), filled from a record or a page
 - **301 redirects on slug change:** Folio remembers a page's old paths and redirects them; a redirects list in
   Settings for hand-made entries
-- **GEO (generative engine optimisation):** `llms.txt` and plain-text/Markdown views of pages for AI search.
+- ~~**GEO (generative engine optimisation):** `llms.txt` and plain-text/Markdown views of pages for AI search.
   Owner's idea: an `{% apply geo %}` block in component templates, like `{% apply css %}`, holding the
   component's Markdown; the blocks of a page are collected in render order and served as `/page.md` and for
-  `Accept: text/markdown`, and listed in `llms.txt`
+  `Accept: text/markdown`, and listed in `llms.txt`~~ — done in 0.49.0 (`config/geo.php`, `{% apply geo %}` /
+  `@geo`, `data-geo="skip"`, `.md` views of public pages, `/llms.txt` and `/llms-full.txt` per locale from Folio's
+  published pages plus the `GeoEntries` hook; see the GEO section in `packages/view/README.md`)
 - **An SEO audit command:** `preflow seo:audit` checks pages for a missing title or description, duplicate titles,
   missing `alt` texts, broken internal links and `hreflang` pairs without their counterpart
 

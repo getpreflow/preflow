@@ -193,6 +193,9 @@ final class Application
         // Load user-defined middleware from config/middleware.php
         $this->bootMiddleware();
 
+        // GEO Markdown views — prepended, so it runs before every other middleware
+        $this->bootGeo($debug);
+
         // Error handler
         $renderer = $debug->isDebug()
             ? new DevErrorRenderer($collector, $this->nonceProvider())
@@ -548,6 +551,15 @@ final class Application
         $this->container->instance(\Preflow\View\AssetCollector::class, $assets);
         $this->container->instance(\Preflow\View\NonceGenerator::class, $nonce);
 
+        // Markdown declared with {% apply geo %} / @geo; records only while GEO captures
+        $geo = new \Preflow\View\Geo\GeoCollector();
+        $this->container->instance(\Preflow\View\Geo\GeoCollector::class, $geo);
+        // Packages with request-scoped state add a wrapper here (bootGeo adds the core one)
+        $this->container->instance(\Preflow\View\Geo\RenderScopes::class, new \Preflow\View\Geo\RenderScopes());
+        // GEO settings and llms.txt's pages: here, so providers can read the one and add to the other
+        $this->container->instance(\Preflow\View\Geo\GeoConfig::class, \Preflow\View\Geo\GeoConfig::fromFile($this->basePath('config/geo.php')));
+        $this->container->instance(\Preflow\View\Geo\GeoEntries::class, new \Preflow\View\Geo\GeoEntries());
+
         $pagesDir = $this->basePath('app/pages');
         $templateDirs = is_dir($pagesDir) ? [$pagesDir] : [];
 
@@ -559,7 +571,7 @@ final class Application
         }
 
         $engineName = $this->config->get('app.engine', 'twig');
-        $engine = $this->createTemplateEngine($engineName, $templateDirs, $assets, $debug);
+        $engine = $this->createTemplateEngine($engineName, $templateDirs, $assets, $debug, $geo);
 
         if ($engine === null) {
             return;
@@ -608,6 +620,7 @@ final class Application
         array $templateDirs,
         \Preflow\View\AssetCollector $assets,
         DebugLevel $debug,
+        ?\Preflow\View\Geo\GeoCollector $geo = null,
     ): ?\Preflow\View\TemplateEngineInterface {
         return match ($name) {
             'twig' => class_exists(\Preflow\Twig\TwigEngine::class)
@@ -615,17 +628,22 @@ final class Application
                     templateDirs: $templateDirs,
                     assetCollector: $assets,
                     debug: $debug->isDebug(),
+                    geoCollector: $geo,
                 )
                 : null,
             'blade' => class_exists(\Preflow\Blade\BladeEngine::class)
-                ? $this->createBladeEngine($templateDirs, $assets, $debug)
+                ? $this->createBladeEngine($templateDirs, $assets, $debug, $geo)
                 : null,
             default => throw new \RuntimeException("Unknown template engine: {$name}. Supported: twig, blade"),
         };
     }
 
-    private function createBladeEngine(array $templateDirs, \Preflow\View\AssetCollector $assets, DebugLevel $debug): \Preflow\Blade\BladeEngine
-    {
+    private function createBladeEngine(
+        array $templateDirs,
+        \Preflow\View\AssetCollector $assets,
+        DebugLevel $debug,
+        ?\Preflow\View\Geo\GeoCollector $geo = null,
+    ): \Preflow\Blade\BladeEngine {
         // Passed explicitly so the engine and the registry use the same folder.
         $cachePath = $this->absolutePath('storage/cache/blade');
 
@@ -640,6 +658,7 @@ final class Application
             assetCollector: $assets,
             debug: $debug->isDebug(),
             cachePath: $cachePath,
+            geoCollector: $geo,
         );
     }
 
@@ -780,7 +799,10 @@ final class Application
         $assets = $this->container->has(\Preflow\View\AssetCollector::class)
             ? $this->container->get(\Preflow\View\AssetCollector::class)
             : null;
-        $renderer = new \Preflow\Components\ComponentRenderer($engine, $errorBoundary, $collector, $assets);
+        $geo = $this->container->has(\Preflow\View\Geo\GeoCollector::class)
+            ? $this->container->get(\Preflow\View\Geo\GeoCollector::class)
+            : null;
+        $renderer = new \Preflow\Components\ComponentRenderer($engine, $errorBoundary, $collector, $assets, $geo);
         $this->container->instance(\Preflow\Components\ComponentRenderer::class, $renderer);
 
         // Auto-discover components
@@ -1013,6 +1035,131 @@ final class Application
                 : $this->container->make($class);
             $this->addMiddleware($mw);
         }
+    }
+
+    /**
+     * GEO (config/geo.php): Markdown views of public pages, llms.txt and
+     * llms-full.txt (from GeoEntries, per locale). Prepended to the
+     * pipeline, so it sees each request before JSON body, security headers,
+     * locale, session, CSRF and auth middleware, and its internal renders pass
+     * through all of them as fresh anonymous requests.
+     */
+    private function bootGeo(DebugLevel $debug): void
+    {
+        if (!$this->container->bound(\Preflow\View\Geo\GeoCollector::class)
+            || !$this->container->bound(\Preflow\View\AssetCollector::class)
+            || !$this->container->bound(\Preflow\View\Geo\RenderScopes::class)
+            || !$this->container->bound(\Preflow\View\Geo\GeoConfig::class)) {
+            return;
+        }
+
+        $config = $this->container->get(\Preflow\View\Geo\GeoConfig::class);
+        $geo = $this->container->get(\Preflow\View\Geo\GeoCollector::class);
+        $converter = new \Preflow\View\Geo\MarkdownConverter($geo);
+        $this->container->instance(\Preflow\View\Geo\MarkdownConverter::class, $converter);
+
+        if (!$config->enabled()) {
+            return;
+        }
+
+        // The core scope runs outermost, around the ones packages added during their registration.
+        $scopes = new \Preflow\View\Geo\RenderScopes();
+        $scopes->add($this->anonymousRenderScope());
+        $packageScopes = $this->container->get(\Preflow\View\Geo\RenderScopes::class);
+        $scopes->add(static fn (ServerRequestInterface $sub, \Closure $next): ResponseInterface => $packageScopes->run($sub, $next));
+
+        // Render failures that aren't HTTP answers: rethrown in debug (the error page shows them), logged otherwise.
+        $container = $this->container;
+        $report = static function (\Throwable $e) use ($container): void {
+            $message = 'GEO: a page could not be rendered as Markdown: ' . $e::class . ': ' . $e->getMessage();
+            if ($container->bound(\Psr\Log\LoggerInterface::class)) {
+                $container->get(\Psr\Log\LoggerInterface::class)->error($message, ['exception' => $e]);
+
+                return;
+            }
+            error_log($message . ' in ' . $e->getFile() . ':' . $e->getLine());
+        };
+
+        // Every locale has its llms.txt: the default at /llms.txt, the others under their URL prefix.
+        $i18nPath = $this->basePath('config/i18n.php');
+        $i18n = file_exists($i18nPath) ? (array) require $i18nPath : [];
+        $defaultLocale = (string) ($i18n['default'] ?? $this->config->get('app.locale', 'en'));
+        $locales = ($i18n['url_strategy'] ?? 'prefix') === 'prefix'
+            ? array_values(array_map('strval', (array) ($i18n['available'] ?? [$defaultLocale])))
+            : [$defaultLocale];
+
+        $appUrl = $this->config->get('app.url');
+        $middleware = new \Preflow\View\Geo\GeoMiddleware(
+            $config,
+            $geo,
+            $converter,
+            $this->container->get(\Preflow\View\AssetCollector::class),
+            is_string($appUrl) ? $appUrl : null,
+            $scopes,
+            $report,
+            $debug->isDebug(),
+            $this->container->get(\Preflow\View\Geo\GeoEntries::class),
+            (string) $this->config->get('app.name', ''),
+            $locales,
+            $defaultLocale,
+        );
+        $this->container->instance(\Preflow\View\Geo\GeoMiddleware::class, $middleware);
+        $this->pipeline->prepend($middleware);
+    }
+
+    /**
+     * Wraps an internal GEO render: the request context names the rendered page,
+     * the visitor's session data is hidden (templates read the session directly,
+     * e.g. flash(); a shutdown hook restores it even after a fatal error), nobody
+     * is signed in during it, and the translator locale and signed-in users are
+     * put back afterwards, so nothing passes between the request and its renders.
+     *
+     * @return \Closure(ServerRequestInterface, \Closure(): ResponseInterface): ResponseInterface
+     */
+    private function anonymousRenderScope(): \Closure
+    {
+        $container = $this->container;
+        $sessionData = new \Preflow\Core\Http\Session\SessionDataGuard();
+
+        return static function (ServerRequestInterface $sub, \Closure $next) use ($container, $sessionData): ResponseInterface {
+            $context = $container->bound(RequestContext::class) ? $container->get(RequestContext::class) : null;
+            $container->instance(RequestContext::class, new RequestContext($sub->getUri()->getPath(), 'GET'));
+
+            $translator = $container->bound(\Preflow\I18n\Translator::class)
+                ? $container->get(\Preflow\I18n\Translator::class)
+                : null;
+            $locale = $translator?->getLocale();
+
+            $auth = $container->bound(\Preflow\Auth\AuthManager::class)
+                ? $container->get(\Preflow\Auth\AuthManager::class)
+                : null;
+            $users = $auth?->users() ?? [];
+            $guard = $auth?->guardName();
+
+            $sessionData->hide();
+            // Nobody is signed in for the render, even when it is called from inside the pipeline.
+            $auth?->setUser(null);
+
+            try {
+                return $next();
+            } finally {
+                $sessionData->restore();
+                if ($auth !== null) {
+                    $auth->setUser($guard !== null ? ($users[$guard] ?? null) : null, $guard);
+                    foreach ($users as $name => $user) {
+                        if ($name !== $guard) {
+                            $auth->addUser($user, $name);
+                        }
+                    }
+                }
+                if ($translator !== null && $locale !== null) {
+                    $translator->setLocale($locale);
+                }
+                if ($context !== null) {
+                    $container->instance(RequestContext::class, $context);
+                }
+            }
+        };
     }
 
     private function bootSession(): void

@@ -7,6 +7,7 @@ namespace Preflow\Blade\Tests;
 use PHPUnit\Framework\TestCase;
 use Preflow\Blade\BladeEngine;
 use Preflow\View\AssetCollector;
+use Preflow\View\Geo\GeoCollector;
 use Preflow\View\NonceGenerator;
 use Preflow\View\TemplateFunctionDefinition;
 
@@ -172,6 +173,36 @@ final class BladeEngineTest extends TestCase
 
         $css = $this->assets->renderCss();
         $this->assertStringContainsString('.test { color: red; }', $css);
+    }
+
+    public function test_geo_directive_outputs_nothing_and_records_trimmed_markdown(): void
+    {
+        $geo = new GeoCollector();
+        $geo->capture(true);
+        $engine = new BladeEngine([$this->tmpDir], $this->assets, cachePath: $this->tmpDir . '/cache', geoCollector: $geo);
+        file_put_contents($this->tmpDir . '/geo.blade.php', "<p>Page</p>@geo\n  ## {{ \$name }}\n@endgeo");
+
+        $html = $engine->render('geo', ['name' => "Tom & Jerry's <b>"]);
+
+        $this->assertSame('<p>Page</p>', trim($html));
+        $this->assertSame(["## Tom & Jerry's <b>"], $geo->pageBlocks());
+    }
+
+    public function test_geo_directive_records_nothing_while_not_capturing(): void
+    {
+        $geo = new GeoCollector();
+        $engine = new BladeEngine([$this->tmpDir], $this->assets, cachePath: $this->tmpDir . '/cache', geoCollector: $geo);
+        file_put_contents($this->tmpDir . '/geo-off.blade.php', '<p>Page</p>@geo ## Title @endgeo');
+
+        $this->assertSame('<p>Page</p>', trim($engine->render('geo-off')));
+        $this->assertSame([], $geo->pageBlocks());
+    }
+
+    public function test_geo_directive_without_collector_outputs_nothing(): void
+    {
+        file_put_contents($this->tmpDir . '/geo-none.blade.php', '<p>Page</p>@geo ## Title @endgeo');
+
+        $this->assertSame('<p>Page</p>', trim($this->engine->render('geo-none')));
     }
 
     public function test_qr_svg_function_renders_svg(): void

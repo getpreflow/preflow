@@ -39,6 +39,15 @@ final class SessionPathsTest extends TestCase
         }
     }
 
+    public function test_a_request_marked_without_session_gets_none(): void
+    {
+        $session = new ArraySession();
+        $captured = $this->run_('/hello', $session, null, withoutSession: true);
+
+        $this->assertFalse($session->isStarted());
+        $this->assertNull($captured->getAttribute(SessionInterface::class));
+    }
+
     public function test_prefix_match_is_segment_wise(): void
     {
         $session = new ArraySession();
@@ -77,7 +86,7 @@ final class SessionPathsTest extends TestCase
     }
 
     /** @param list<string>|null $paths */
-    private function run_(string $path, SessionInterface $session, ?array $paths): ServerRequestInterface
+    private function run_(string $path, SessionInterface $session, ?array $paths, bool $withoutSession = false): ServerRequestInterface
     {
         $handler = new class implements RequestHandlerInterface {
             public ?ServerRequestInterface $captured = null;
@@ -89,7 +98,11 @@ final class SessionPathsTest extends TestCase
                 return new Response(200);
             }
         };
-        (new SessionMiddleware($session, $paths))->process((new Psr17Factory())->createServerRequest('GET', $path), $handler);
+        $request = (new Psr17Factory())->createServerRequest('GET', $path);
+        if ($withoutSession) {
+            $request = $request->withAttribute(SessionMiddleware::WITHOUT_SESSION, true);
+        }
+        (new SessionMiddleware($session, $paths))->process($request, $handler);
 
         return $handler->captured ?? throw new \RuntimeException('handler not reached');
     }

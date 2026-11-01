@@ -12,6 +12,7 @@ use Illuminate\View\Engines\EngineResolver;
 use Illuminate\View\Factory;
 use Illuminate\View\FileViewFinder;
 use Preflow\View\AssetCollector;
+use Preflow\View\Geo\GeoCollector;
 use Preflow\View\TemplateFunctionDefinition;
 use Preflow\View\TemplateEngineInterface;
 
@@ -29,6 +30,7 @@ final class BladeEngine implements TemplateEngineInterface
         AssetCollector $assetCollector,
         bool $debug = false,
         ?string $cachePath = null,
+        ?GeoCollector $geoCollector = null,
     ) {
         $filesystem = new Filesystem();
         $cachePath ??= sys_get_temp_dir() . '/preflow_blade_cache';
@@ -51,6 +53,7 @@ final class BladeEngine implements TemplateEngineInterface
 
         // Share the asset collector so compiled templates can access it
         $this->viewFactory->share('__assetCollector', $assetCollector);
+        $this->viewFactory->share('__geoCollector', $geoCollector);
     }
 
     public function render(string $template, array $context = []): string
@@ -125,6 +128,18 @@ final class BladeEngine implements TemplateEngineInterface
 
         $this->compiler->directive('endcss', function () {
             return '<?php $__assetCollector->addCss(ob_get_clean()); ?>';
+        });
+
+        // @geo / @endgeo: Markdown for the geo collector; printed values are decoded to plain text
+        $this->compiler->directive('geo', function () {
+            return '<?php ob_start(); ?>';
+        });
+
+        $this->compiler->directive('endgeo', function () {
+            return '<?php $__geoMarkdown = ob_get_clean(); '
+                . 'if ($__geoCollector?->capturing()) { '
+                . "\$__geoCollector->add(html_entity_decode(\$__geoMarkdown, ENT_QUOTES | ENT_HTML5, 'UTF-8')); "
+                . '} unset($__geoMarkdown); ?>';
         });
     }
 }

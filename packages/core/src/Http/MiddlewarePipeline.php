@@ -20,6 +20,13 @@ final class MiddlewarePipeline
         return $this;
     }
 
+    /** Add a middleware in front of all others: it sees the request first. */
+    public function prepend(MiddlewareInterface $middleware): self
+    {
+        array_unshift($this->middleware, $middleware);
+        return $this;
+    }
+
     /**
      * @param callable(ServerRequestInterface): ResponseInterface $coreHandler
      */

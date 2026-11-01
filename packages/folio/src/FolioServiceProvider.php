@@ -213,7 +213,27 @@ final class FolioServiceProvider extends ServiceProvider
         ));
 
         // One request-scoped content locale shared by the frontend, preview and field types.
-        $container->instance(ContentLocale::class, new ContentLocale($locales ?? \Preflow\Data\Locales::single('en')));
+        $contentLocale = new ContentLocale($locales ?? \Preflow\Data\Locales::single('en'));
+        $container->instance(ContentLocale::class, $contentLocale);
+        // GEO renders pages internally (Markdown views): each keeps its content locale to itself.
+        if ($container->bound(\Preflow\View\Geo\RenderScopes::class)) {
+            $container->get(\Preflow\View\Geo\RenderScopes::class)->add(
+                static fn (\Psr\Http\Message\ServerRequestInterface $sub, \Closure $next): \Psr\Http\Message\ResponseInterface => $contentLocale->scoped($next),
+            );
+        }
+        // GEO's llms.txt lists the published pages and takes its name and summary from the site singleton.
+        $geo = $container->bound(\Preflow\View\Geo\GeoConfig::class) ? $container->get(\Preflow\View\Geo\GeoConfig::class) : null;
+        if ($geo?->enabled() && $container->bound(\Preflow\View\Geo\GeoEntries::class)) {
+            $entries = $container->get(\Preflow\View\Geo\GeoEntries::class);
+            $entries->source(static fn (string $locale): array => (new \Preflow\Folio\Geo\FolioGeoEntries(
+                $geo,
+                $container->get(TypeCatalog::class),
+                $container->get(\Preflow\Folio\Publishing\Publisher::class),
+                $container->get(FrontendResolver::class),
+            ))($locale));
+            $entries->site(static fn (string $locale): array => $container->get(\Preflow\Folio\Content\Singletons::class)
+                ->record('site')?->localized($locale)->toArray() ?? []);
+        }
 
         // Media library (preflow/media): its config, library, usage, locale and image tag. Folio adapts it:
         // its content locale, its records as a usage source, the legacy upload URL and the old class names.

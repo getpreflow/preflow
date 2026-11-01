@@ -33,6 +33,44 @@ final class AssetCollectorTest extends TestCase
         $this->assertSame(2, substr_count($head, '<meta name="x">'));
     }
 
+    public function test_isolate_renders_with_empty_registries_and_restores_the_request_state(): void
+    {
+        $collector = $this->collector();
+        $collector->addCss('.outer { color: blue; }');
+        $collector->addHeadTag('<meta name="outer">', 'outer');
+        $collector->renderHead();
+
+        $inner = $collector->isolate(function () use ($collector): string {
+            $collector->addCss('.inner { color: red; }');
+
+            return $collector->renderHead();
+        });
+
+        $this->assertStringContainsString('.inner', $inner);
+        $this->assertStringNotContainsString('.outer', $inner);
+        $this->assertStringNotContainsString('name="outer"', $inner);
+        $this->assertStringContainsString('.outer', $collector->renderCss());
+        $this->assertStringNotContainsString('.inner', $collector->renderCss());
+        $this->assertSame('', $collector->renderHead(), 'what was printed before stays printed');
+    }
+
+    public function test_isolate_restores_after_an_exception(): void
+    {
+        $collector = $this->collector();
+        $collector->addCss('.outer { color: blue; }');
+
+        try {
+            $collector->isolate(function () use ($collector): void {
+                $collector->addCss('.inner { color: red; }');
+                throw new \RuntimeException('render failed');
+            });
+        } catch (\RuntimeException) {
+        }
+
+        $this->assertStringContainsString('.outer', $collector->renderCss());
+        $this->assertStringNotContainsString('.inner', $collector->renderCss());
+    }
+
     public function test_add_css_and_render(): void
     {
         $c = $this->collector();

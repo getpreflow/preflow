@@ -11,6 +11,7 @@ use Preflow\View\AssetCollector;
 use Preflow\View\JsPosition;
 use Preflow\View\NonceGenerator;
 use Preflow\Twig\PreflowExtension;
+use Preflow\View\Geo\GeoCollector;
 
 final class PreflowExtensionTest extends TestCase
 {
@@ -142,5 +143,56 @@ final class PreflowExtensionTest extends TestCase
         // Body JS in <body>, CSS NOT in <body>
         $this->assertMatchesRegularExpression('/<body>.*appInit\(\).*<\/body>/s', $result);
         $this->assertDoesNotMatchRegularExpression('/<body>.*body \{ margin: 0; \}.*<\/body>/s', $result);
+    }
+
+    private function geoTwig(GeoCollector $geo): Environment
+    {
+        $twig = new Environment(new ArrayLoader([]), ['autoescape' => 'html']);
+        $twig->addExtension(new PreflowExtension($this->assets, $geo));
+        return $twig;
+    }
+
+    public function test_apply_geo_filter_outputs_nothing_and_records_trimmed_markdown(): void
+    {
+        $geo = new GeoCollector();
+        $geo->capture(true);
+
+        $result = $this->geoTwig($geo)
+            ->createTemplate("<p>Page</p>{% apply geo %}\n  ## {{ title }}\n{% endapply %}")
+            ->render(['title' => 'About']);
+
+        $this->assertSame('<p>Page</p>', $result);
+        $this->assertSame(['## About'], $geo->pageBlocks());
+    }
+
+    public function test_apply_geo_filter_records_printed_values_as_plain_text(): void
+    {
+        $geo = new GeoCollector();
+        $geo->capture(true);
+
+        $this->geoTwig($geo)
+            ->createTemplate('{% apply geo %}{{ name }}{% endapply %}')
+            ->render(['name' => "Tom & Jerry's <b>"]);
+
+        $this->assertSame(["Tom & Jerry's <b>"], $geo->pageBlocks());
+    }
+
+    public function test_apply_geo_filter_records_nothing_while_not_capturing(): void
+    {
+        $geo = new GeoCollector();
+
+        $result = $this->geoTwig($geo)
+            ->createTemplate('<p>Page</p>{% apply geo %}## Title{% endapply %}')
+            ->render();
+
+        $this->assertSame('<p>Page</p>', $result);
+        $this->assertSame([], $geo->pageBlocks());
+    }
+
+    public function test_apply_geo_filter_without_collector_outputs_nothing(): void
+    {
+        $result = $this->render('<p>Page</p>{% apply geo %}## Title{% endapply %}');
+
+        $this->assertSame('<p>Page</p>', $result);
     }
 }
