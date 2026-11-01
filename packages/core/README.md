@@ -295,10 +295,10 @@ to the public address (`https://example.com`): the request itself then looks lik
 
 | The request | Check |
 |---|---|
-| no session; or a new session without its cookie, and no cookie at all or no session token (a public page; a browser that blocks cookies) | the origin passes, or a valid stateless token when there is no origin signal |
+| no session; or a new session without its cookie, and no cookie at all or no session token (a public page; a browser that blocks cookies) | the origin passes (no token needed: such a request comes only from the site's own pages); or, when there is no origin signal, a valid stateless token and no cookie at all (with any cookie, such as a remember-me one, it is refused) |
 | a live session | the origin does not refuse **and** the session's token matches; on a sign-in path a public page's valid stateless token with a passing origin also passes |
 | a new session with its cookie (expired, or an old cookie) | a stateless token with a passing origin (a public page posting into a session path); a session token is the expired case below |
-| a new session without its cookie, but other cookies and a session token | the expired case below (the browser dropped the session cookie and kept a remember-me cookie) |
+| a new session without its cookie, but other cookies and a session token | the expired case below (the browser dropped the session cookie and kept a remember-me cookie). A browser that keeps other cookies but never sends the session cookie (a `Secure` session cookie on a plain-http stage) gets this answer on every form but the sign-in ones |
 
 A session that held a token is always checked on that token, also when the request came
 without its cookie.
@@ -357,7 +357,7 @@ prefixes of whole segments (`/hooks` covers `/hooks` and `/hooks/stripe`, not `/
 **Failures** are a 403, in one of two kinds:
 
 - **`ForbiddenHttpException('CSRF check failed: …')`:** a refused origin, no token or a wrong
-  one on a live session, or no origin signal and no valid stateless token.
+  one on a live session, or no origin signal and no valid stateless token (or cookies with it).
 - **`Preflow\Core\Http\Csrf\CsrfSessionExpiredException`** (extends `ForbiddenHttpException`):
   the session expired and the request has no passing origin (see below).
 

@@ -17,8 +17,8 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * Checks every unsafe request, with or without a session: the origin first (a refused origin
  * is refused with any token), then the session token, or without a session the stateless token
- * when the browser sent no origin signal. Sets the CsrfToken attribute when there is a token
- * (a session, or a usable app.key). The attribute is taken once per request: after
+ * when the browser sent no origin signal and no cookie. Sets the CsrfToken attribute when there
+ * is a token (a session, or a usable app.key). The attribute is taken once per request: after
  * SessionInterface::invalidate() later in the same request it still holds the removed token,
  * so a page rendered then must read CsrfToken::generate($session) instead.
  */
@@ -74,7 +74,7 @@ final class CsrfMiddleware implements MiddlewareInterface
         }
 
         // API clients: without a cookie there is nothing ambient for a forged request to use.
-        if ($request->hasHeader('Authorization') && $request->getCookieParams() === [] && !$request->hasHeader('Cookie')) {
+        if ($request->hasHeader('Authorization') && !$this->hasCookies($request)) {
             return $handler->handle($request);
         }
 
@@ -101,6 +101,11 @@ final class CsrfMiddleware implements MiddlewareInterface
         if ($session === null || (!$sessionHadToken && !$this->hasSessionCookie($request) && !$this->staleSessionToken($request, $submitted))) {
             if ($verdict === OriginVerdict::Pass) {
                 return $handler->handle($request);
+            }
+            // The public token proves nothing about the page; a cookie (remember-me) could act in
+            // the visitor's name, so without an origin signal only a cookieless request may use it.
+            if ($this->hasCookies($request)) {
+                throw $this->refuse('no-signal');
             }
             $this->warnIfDisabled();
             if (!$this->stateless->verify($submitted)) {
@@ -187,7 +192,12 @@ final class CsrfMiddleware implements MiddlewareInterface
     {
         return $submitted !== ''
             && !StatelessCsrfToken::looksStateless($submitted)
-            && ($request->getCookieParams() !== [] || $request->hasHeader('Cookie'));
+            && $this->hasCookies($request);
+    }
+
+    private function hasCookies(ServerRequestInterface $request): bool
+    {
+        return $request->getCookieParams() !== [] || $request->hasHeader('Cookie');
     }
 
     private function hasSessionCookie(ServerRequestInterface $request): bool

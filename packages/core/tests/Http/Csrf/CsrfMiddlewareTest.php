@@ -212,6 +212,27 @@ final class CsrfMiddlewareTest extends TestCase
         $this->assertRefused('no-signal', fn () => $middleware->process($nothing, $this->app()));
     }
 
+    public function test_public_token_without_signal_is_refused_when_the_request_carries_cookies(): void
+    {
+        // A remember-me cookie would sign the member in again; the public token proves nothing about the page.
+        $middleware = $this->middleware();
+        $remembered = fn (array $headers = []) => $this->withSession(
+            $this->post('/members/profile', $headers, ['_csrf_token' => $this->stateless()->issue()]),
+            $this->newSession(),
+            cookie: false,
+        );
+
+        $this->assertRefused('no-signal', fn () => $middleware->process($remembered()->withCookieParams(['site_remember' => 'member-1|secret']), $this->app()));
+        $this->assertRefused('no-signal', fn () => $middleware->process($remembered(['Cookie' => 'site_remember=x']), $this->app()));
+
+        // A passing origin is enough, as before.
+        $sameOrigin = $remembered(['Sec-Fetch-Site' => 'same-origin'])->withCookieParams(['site_remember' => 'member-1|secret']);
+        $this->assertSame(200, $middleware->process($sameOrigin, $this->app())->getStatusCode());
+
+        // No cookies at all: the public token still decides.
+        $this->assertSame(200, $middleware->process($remembered(), $this->app())->getStatusCode());
+    }
+
     // --- 6. a live session ---
 
     public function test_live_session_needs_session_token_and_origin(): void

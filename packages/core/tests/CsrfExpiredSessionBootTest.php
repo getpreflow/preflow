@@ -12,6 +12,7 @@ use Nyholm\Psr7\Response;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
+use Preflow\Core\Http\Csrf\StatelessCsrfToken;
 use Preflow\Core\Http\OldInput;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Core\Tests\Fixtures\ExpiredSessionHandlerProvider;
@@ -89,6 +90,20 @@ final class CsrfExpiredSessionBootTest extends TestCase
 
         $this->assertSame(303, $response->getStatusCode());
         $this->assertSame(['title' => 'typed'], $app->container()->get(OldInput::class)->all());
+        $this->assertFalse($this->routeRan, 'never applied');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_public_token_with_remember_me_and_no_origin_signal_is_refused(): void
+    {
+        $app = $this->booted(withProvider: true);
+        $publicToken = $app->container()->get(StatelessCsrfToken::class)->issue();
+
+        $response = $app->handle((new Psr17Factory())->createServerRequest('POST', '/objects/1/edit')
+            ->withCookieParams(['site_remember' => 'member-1|secret'])
+            ->withParsedBody(['_csrf_token' => $publicToken, 'title' => 'forged']));
+
+        $this->assertSame(403, $response->getStatusCode());
         $this->assertFalse($this->routeRan, 'never applied');
     }
 
