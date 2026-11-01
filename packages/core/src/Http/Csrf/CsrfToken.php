@@ -6,6 +6,11 @@ namespace Preflow\Core\Http\Csrf;
 
 use Preflow\Core\Http\Session\SessionInterface;
 
+/**
+ * The token a page prints (the request attribute CsrfMiddleware sets). A value object: after
+ * SessionInterface::invalidate() in the same request the attribute still holds the removed
+ * token; call generate() on the session for the new one.
+ */
 final class CsrfToken
 {
     private const SESSION_KEY = '_csrf_token';

@@ -28,15 +28,22 @@ final class ExpiredSessionResponder
         'it' => 'La sessione era scaduta. Invia di nuovo il modulo.',
     ];
 
+    private readonly ?string $appOrigin;
+
     /**
      * @param string    $defaultLocale app.locale, when the request carries none
      * @param ?\Closure $translator    fn(): ?\Preflow\I18n\Translator; a site's text for
      *                                 csrf.session_expired wins over the built-in one
+     * @param ?string   $appUrl        app.url: its origin counts as this site's (behind a TLS proxy
+     *                                 the request itself looks like http://...)
      */
     public function __construct(
         private readonly string $defaultLocale = 'en',
         private readonly ?\Closure $translator = null,
-    ) {}
+        ?string $appUrl = null,
+    ) {
+        $this->appOrigin = $appUrl !== null ? OriginCheck::normalize($appUrl) : null;
+    }
 
     public function __invoke(ServerRequestInterface $request): ResponseInterface
     {
@@ -77,12 +84,13 @@ final class ExpiredSessionResponder
         return self::MESSAGES[$language] ?? self::MESSAGES['en'];
     }
 
-    /** The Referer's path and query when it is a page of this origin, else the home page. */
+    /** The Referer's path and query when it is a page of this site (app.url or the request's origin), else the home page. */
     private function back(ServerRequestInterface $request): string
     {
         $referer = $request->getHeaderLine('Referer');
+        $source = OriginCheck::normalize($referer);
         $own = OriginCheck::normalize((string) $request->getUri()->withPath('')->withQuery('')->withFragment(''));
-        if ($own === null || OriginCheck::normalize($referer) !== $own) {
+        if ($source === null || ($source !== $own && $source !== $this->appOrigin)) {
             return '/';
         }
 

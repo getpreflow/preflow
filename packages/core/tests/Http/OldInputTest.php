@@ -34,6 +34,26 @@ final class OldInputTest extends TestCase
         $this->assertSame('none', $old->get('email', 'none'));
     }
 
+    public function test_a_large_body_is_not_kept(): void
+    {
+        $session = new ArraySession();
+        $session->start();
+        $old = new OldInput(static fn () => $session);
+
+        // Anyone can reach the expired-session answer: a big body must not fill a session.
+        OldInput::keep($session, ['name' => 'Ada', 'text' => str_repeat('x', 70 * 1024)]);
+        $session->ageFlash();
+        $this->assertSame([], $old->all());
+
+        OldInput::keep($session, ['rows' => array_fill(0, 20000, 'a')]);
+        $session->ageFlash();
+        $this->assertSame([], $old->all());
+
+        OldInput::keep($session, ['text' => str_repeat('x', 60 * 1024)]);
+        $session->ageFlash();
+        $this->assertSame(60 * 1024, strlen($old->get('text')));
+    }
+
     public function test_empty_without_a_started_session(): void
     {
         $this->assertSame([], (new OldInput(static fn () => null))->all());

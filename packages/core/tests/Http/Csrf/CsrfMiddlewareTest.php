@@ -67,6 +67,27 @@ final class CsrfMiddlewareTest extends TestCase
         $this->assertRefused('origin', fn () => $middleware->process($this->post('/contact', ['Sec-Fetch-Site' => 'cross-site']), $this->app()));
     }
 
+    public function test_exempt_prefixes_match_whole_path_segments(): void
+    {
+        $middleware = new CsrfMiddleware(
+            new CsrfConfig(exempt: ['/hooks']),
+            new OriginCheck('https://example.com'),
+            $this->stateless(),
+            new CsrfSignInPaths(),
+            self::COOKIE,
+            null,
+            null,
+            null,
+        );
+
+        foreach (['/hooks', '/hooks/', '/hooks/stripe', '/--component/render'] as $path) {
+            $this->assertSame(200, $middleware->process($this->post($path, ['Sec-Fetch-Site' => 'cross-site']), $this->app())->getStatusCode(), $path);
+        }
+        foreach (['/hookshot', '/hooks-admin/delete', '/--componentx'] as $path) {
+            $this->assertRefused('origin', fn () => $middleware->process($this->post($path, ['Sec-Fetch-Site' => 'cross-site']), $this->app()));
+        }
+    }
+
     // --- 2. API clients ---
 
     public function test_authorization_without_cookie_passes(): void
@@ -211,6 +232,32 @@ final class CsrfMiddlewareTest extends TestCase
         $this->assertRefused('origin', fn () => $middleware->process($post(['Origin' => 'https://evil.test'], ['_csrf_token' => $token]), $this->app()));
     }
 
+    public function test_empty_token_field_does_not_hide_the_header(): void
+    {
+        $session = $this->liveSession();
+        $token = (string) CsrfToken::fromSession($session)?->getValue();
+        $request = $this->withSession($this->post('/account', ['Sec-Fetch-Site' => 'same-origin', 'X-CSRF-Token' => $token], ['_csrf_token' => '']), $session);
+
+        $this->assertSame(200, $this->middleware()->process($request, $this->app())->getStatusCode());
+    }
+
+    public function test_live_session_accepts_a_public_pages_stateless_token_on_sign_in_paths_only(): void
+    {
+        // A visitor with a session posts the form of a public page (a registration on the home page).
+        $session = $this->liveSession();
+        $middleware = $this->middleware(signIn: ['/members/register']);
+        $post = fn (string $path, array $headers) => $this->withSession($this->post($path, $headers, ['_csrf_token' => $this->stateless()->issue()]), $session);
+
+        $captured = null;
+        $this->assertSame(200, $middleware->process($post('/members/register', ['Sec-Fetch-Site' => 'same-origin']), $this->app($captured))->getStatusCode());
+        $this->assertSame(CsrfToken::fromSession($session)?->getValue(), $captured?->getAttribute(CsrfToken::class)?->getValue());
+
+        // Not without a passing origin, and nowhere else: there it is the session token.
+        $this->assertRefused('token', fn () => $middleware->process($post('/members/register', []), $this->app()));
+        $this->assertRefused('token', fn () => $middleware->process($post('/members/profile', ['Sec-Fetch-Site' => 'same-origin']), $this->app()));
+        $this->assertRefused('origin', fn () => $middleware->process($post('/members/register', ['Sec-Fetch-Site' => 'cross-site']), $this->app()));
+    }
+
     public function test_live_session_without_its_cookie_is_still_checked_on_its_token(): void
     {
         // Resumed by other means than the configured cookie (trans_sid, a custom session, a worker runtime).
@@ -331,6 +378,62 @@ final class CsrfMiddlewareTest extends TestCase
         }
 
         $this->assertSame([], $handler->calls);
+    }
+
+    public function test_session_token_without_session_cookie_but_with_other_cookies_is_the_expired_case(): void
+    {
+        // The session cookie ran out in the browser (its lifetime) while the remember-me cookie
+        // stayed: the form posts its old session token without the session cookie.
+        $request = fn (string $path, array $headers = ['Sec-Fetch-Site' => 'same-origin']) => $this->post($path, $headers, [
+            '_csrf_token' => self::OLD_SESSION_TOKEN,
+            'title' => 'typed',
+        ])->withAttribute(SessionInterface::class, $this->newSession())->withCookieParams(['site_remember' => 'member-1|secret']);
+
+        // The site's handler answers; the app never runs.
+        $handler = $this->expiredHandler(new Response(303, ['Location' => '/login']));
+        $captured = null;
+        $response = $this->middleware(signIn: ['/members/login'], handler: $handler)->process($request('/objects/1/edit'), $this->app($captured));
+        $this->assertSame(303, $response->getStatusCode());
+        $this->assertNull($captured);
+        $this->assertCount(1, $handler->calls);
+
+        // Without a handler, the framework's responder.
+        $responded = 0;
+        $responder = function () use (&$responded): ResponseInterface {
+            $responded++;
+            return new Response(303, ['Location' => '/objects/1/edit']);
+        };
+        $response = $this->middleware(responder: $responder)->process($request('/objects/1/edit'), $this->app($captured));
+        $this->assertSame(303, $response->getStatusCode());
+        $this->assertSame(1, $responded);
+        $this->assertNull($captured);
+
+        // A Cookie header alone counts too.
+        $headerOnly = $this->post('/objects/1/edit', ['Sec-Fetch-Site' => 'same-origin', 'Cookie' => 'site_remember=x'], ['_csrf_token' => self::OLD_SESSION_TOKEN])
+            ->withAttribute(SessionInterface::class, $this->newSession());
+        $this->assertSame(303, $this->middleware(responder: $responder)->process($headerOnly, $this->app($captured))->getStatusCode());
+        $this->assertNull($captured);
+
+        // Without an origin signal: the expired exception.
+        $e = $this->catch(fn () => $this->middleware(handler: $handler)->process($request('/objects/1/edit', []), $this->app()));
+        $this->assertInstanceOf(CsrfSessionExpiredException::class, $e);
+
+        // A sign-in path passes (the posted password is the proof).
+        $this->assertSame(200, $this->middleware(signIn: ['/members/login'], handler: $handler)->process($request('/members/login'), $this->app())->getStatusCode());
+        $this->assertCount(1, $handler->calls);
+    }
+
+    public function test_session_token_without_any_cookie_stays_public(): void
+    {
+        // A browser that blocks cookies sends none: nothing ambient to act in the visitor's name.
+        $request = $this->post('/objects/1/edit', ['Sec-Fetch-Site' => 'same-origin'], ['_csrf_token' => self::OLD_SESSION_TOKEN])
+            ->withAttribute(SessionInterface::class, $this->newSession());
+        $this->assertSame(200, $this->middleware()->process($request, $this->app())->getStatusCode());
+
+        // Other cookies with a public page's stateless token: public as well.
+        $stateless = $this->post('/objects/1/edit', ['Sec-Fetch-Site' => 'same-origin'], ['_csrf_token' => $this->stateless()->issue()])
+            ->withAttribute(SessionInterface::class, $this->newSession())->withCookieParams(['site_remember' => 'x']);
+        $this->assertSame(200, $this->middleware()->process($stateless, $this->app())->getStatusCode());
     }
 
     // --- the CsrfToken request attribute ---

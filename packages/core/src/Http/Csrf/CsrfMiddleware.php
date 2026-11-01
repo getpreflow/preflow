@@ -17,7 +17,10 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * Checks every unsafe request, with or without a session: the origin first (a refused origin
  * is refused with any token), then the session token, or without a session the stateless token
- * when the browser sent no origin signal. Sets the CsrfToken attribute on every request.
+ * when the browser sent no origin signal. Sets the CsrfToken attribute when there is a token
+ * (a session, or a usable app.key). The attribute is taken once per request: after
+ * SessionInterface::invalidate() later in the same request it still holds the removed token,
+ * so a page rendered then must read CsrfToken::generate($session) instead.
  */
 final class CsrfMiddleware implements MiddlewareInterface
 {
@@ -92,8 +95,10 @@ final class CsrfMiddleware implements MiddlewareInterface
         $submitted = $this->extractSubmittedToken($request) ?? '';
 
         // No session, or a new one without its cookie: nothing in the visitor's name to forge.
-        // A session that held a token is checked on it, however it was resumed.
-        if ($session === null || (!$sessionHadToken && !$this->hasSessionCookie($request))) {
+        // A session that held a token is checked on it, however it was resumed. A session token
+        // sent with other cookies but without the session's is an expired session (the browser
+        // dropped the session cookie and kept the remember-me one), not a public post.
+        if ($session === null || (!$sessionHadToken && !$this->hasSessionCookie($request) && !$this->staleSessionToken($request, $submitted))) {
             if ($verdict === OriginVerdict::Pass) {
                 return $handler->handle($request);
             }
@@ -105,10 +110,15 @@ final class CsrfMiddleware implements MiddlewareInterface
         }
 
         if ($sessionHadToken) {
-            if ($token === null || !hash_equals($token->getValue(), $submitted)) {
-                throw $this->refuse('token');
+            if ($token !== null && hash_equals($token->getValue(), $submitted)) {
+                return $handler->handle($request);
             }
-            return $handler->handle($request);
+            // A public page's form (stateless token) posting into a sign-in form: no authority
+            // of the session is used there. Everywhere else a live session needs its own token.
+            if ($verdict === OriginVerdict::Pass && $this->signIn->matches($path) && $this->stateless->verify($submitted)) {
+                return $handler->handle($request);
+            }
+            throw $this->refuse('token');
         }
 
         // A new session: the form came from a public page (stateless token), or its session expired.
@@ -146,7 +156,12 @@ final class CsrfMiddleware implements MiddlewareInterface
     private function isExempt(string $path): bool
     {
         foreach ([CsrfConfig::COMPONENT_PREFIX, ...$this->config->exempt] as $prefix) {
-            if ($prefix !== '' && str_starts_with($path, $prefix)) {
+            if ($prefix === '') {
+                continue;
+            }
+            // Whole segments: '/hooks' covers /hooks and /hooks/stripe, not /hookshot.
+            $prefix = rtrim($prefix, '/');
+            if ($path === $prefix || str_starts_with($path, $prefix . '/')) {
                 return true;
             }
         }
@@ -165,6 +180,14 @@ final class CsrfMiddleware implements MiddlewareInterface
         } catch (NotFoundHttpException) {
             return null; // not exempt; the kernel answers 404 once the check passes
         }
+    }
+
+    /** A session-shaped token (not a stateless one) on a request that carries cookies. */
+    private function staleSessionToken(ServerRequestInterface $request, string $submitted): bool
+    {
+        return $submitted !== ''
+            && !StatelessCsrfToken::looksStateless($submitted)
+            && ($request->getCookieParams() !== [] || $request->hasHeader('Cookie'));
     }
 
     private function hasSessionCookie(ServerRequestInterface $request): bool
@@ -192,10 +215,14 @@ final class CsrfMiddleware implements MiddlewareInterface
     {
         $body = $request->getParsedBody();
 
-        if (is_array($body) && isset($body[self::FORM_FIELD]) && is_scalar($body[self::FORM_FIELD])) {
-            return (string) $body[self::FORM_FIELD];
+        $field = is_array($body) && isset($body[self::FORM_FIELD]) && is_scalar($body[self::FORM_FIELD])
+            ? (string) $body[self::FORM_FIELD]
+            : '';
+        if ($field !== '') {
+            return $field;
         }
 
+        // An empty field (a form printed without a token) does not hide the header.
         $header = $request->getHeaderLine(self::HEADER_NAME);
         if ($header !== '') {
             return $header;

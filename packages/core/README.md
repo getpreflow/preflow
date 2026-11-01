@@ -273,7 +273,10 @@ field (`csrf_field()`), JavaScript as the `X-CSRF-Token` header (`csrf_token()`)
 that has a token (a session, or a real `app.key` for the stateless token) gets a
 `Preflow\Core\Http\Csrf\CsrfToken` attribute, which packages that print `{{ csrf }}`
 themselves (Folio, rbac, the form builder) read. Without a session and with an empty or the
-built-in default `app.key` there is no attribute: code reading it must handle `null`.
+built-in default `app.key` there is no attribute: code reading it must handle `null`. The
+attribute is set once per request: after `SessionInterface::invalidate()` (a sign-in, a
+sign-out) it still holds the removed token, so a page rendered in that same request takes
+`CsrfToken::generate($session)` instead.
 
 **Layer 1: the origin.** The first signal the browser sent decides:
 
@@ -292,9 +295,10 @@ to the public address (`https://example.com`): the request itself then looks lik
 
 | The request | Check |
 |---|---|
-| no session cookie (a public page; a browser that blocks cookies) | the origin passes, or a valid stateless token when there is no origin signal |
-| a live session | the origin does not refuse **and** the session's token matches |
-| a session cookie, but the session is new (expired, or an old cookie) | a stateless token with a passing origin (a public page posting into a session path); a session token is the expired case below |
+| no session; or a new session without its cookie, and no cookie at all or no session token (a public page; a browser that blocks cookies) | the origin passes, or a valid stateless token when there is no origin signal |
+| a live session | the origin does not refuse **and** the session's token matches; on a sign-in path a public page's valid stateless token with a passing origin also passes |
+| a new session with its cookie (expired, or an old cookie) | a stateless token with a passing origin (a public page posting into a session path); a session token is the expired case below |
+| a new session without its cookie, but other cookies and a session token | the expired case below (the browser dropped the session cookie and kept a remember-me cookie) |
 
 A session that held a token is always checked on that token, also when the request came
 without its cookie.
@@ -348,7 +352,7 @@ return [
 
 Paths in `exempt` and `sign_in_paths` are compared without the locale prefix (`/de/login`
 is `/login`); sign-in paths match exactly (a trailing slash is ignored), exempt paths as
-prefixes.
+prefixes of whole segments (`/hooks` covers `/hooks` and `/hooks/stripe`, not `/hookshot`).
 
 **Failures** are a 403, in one of two kinds:
 
@@ -365,7 +369,7 @@ With a passing origin:
 
 1. **Sign-in forms** pass, with the new session and its fresh token: the posted password is
    the proof, and login CSRF is stopped by the origin check. Folio registers
-   `{folio path}/login`, members `{members path}/login`; a site adds its own in
+   `{folio path}/login`, members `{members path}/login` and `{members path}/register`; a site adds its own in
    `csrf.sign_in_paths`, a package in its provider:
 
    ```php
@@ -374,12 +378,12 @@ With a passing origin:
 
 2. **Any other form:** the site's `ExpiredSessionHandler` answers first (below). Without one,
    or when it returns `null`, the framework's answer: the request is **not applied**. A form
-   gets a 303 back to the page it came from (the `Referer` when it is a page of this site,
-   else `/`) with a `warning` flash ("Your session had expired. Please send the form again.",
+   gets a 303 back to the page it came from (the `Referer` when its origin is `app.url` or the
+   request's own, else `/`) with a `warning` flash ("Your session had expired. Please send the form again.",
    in en/de/fr/it, or the site's `csrf.session_expired` translation) and the posted fields kept
    as old input, so the form shows them again (`Preflow\Core\Http\OldInput`, read by
    validation's `old()`, the form builder and members; never kept: `_csrf_token`, fields whose
-   name contains `password`, uploaded files). htmx gets a 204 with `HX-Refresh: true`, a JSON
+   name contains `password`, uploaded files, and nothing when the kept fields exceed 64 KB). htmx gets a 204 with `HX-Refresh: true`, a JSON
    client (`Accept: application/json`) a 409 `{"error":"session_expired"}`.
 
 Nothing runs in the visitor's name: a remember-me cookie could sign them in again, so the data
@@ -430,6 +434,11 @@ token, so it is now refused: mark its route `#[CsrfExempt('…')]`, or list a fi
 path outside the router in `csrf.exempt`, before upgrading. Forms of the site keep working on
 modern browsers (the origin passes); `csrf_field()` now prints a token on public pages too.
 Set a real `app.key`, or browsers that send no origin headers cannot post public forms.
+
+Browser POSTs that come from another site are refused now, also on public paths: the browser
+sends `Sec-Fetch-Site: cross-site` (a payment provider's return URL that posts back, an OAuth or
+SAML `form_post` callback). Mark such routes `#[CsrfExempt('…')]` too, or list their origin in
+`csrf.trusted_origins` when it is a fixed one.
 
 ### Caches
 

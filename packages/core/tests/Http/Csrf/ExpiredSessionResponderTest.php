@@ -58,6 +58,19 @@ final class ExpiredSessionResponderTest extends TestCase
         $this->assertSame('/evil.test/x', $responder($this->post(['Referer' => 'https://site.test/\\evil.test/x']))->getHeaderLine('Location'));
     }
 
+    public function test_referer_of_the_app_url_goes_back_behind_a_tls_proxy(): void
+    {
+        // The proxy forwards http://internal:8080, the browser sent the public page as Referer.
+        $responder = new ExpiredSessionResponder('en', null, 'https://example.com');
+        $request = fn (string $referer) => (new Psr17Factory())->createServerRequest('POST', 'http://internal:8080/contact')
+            ->withHeader('Referer', $referer)
+            ->withAttribute(SessionInterface::class, $this->session);
+
+        $this->assertSame('/contact?topic=help', $responder($request('https://example.com/contact?topic=help'))->getHeaderLine('Location'));
+        $this->assertSame('/contact', $responder($request('http://internal:8080/contact'))->getHeaderLine('Location'));
+        $this->assertSame('/', $responder($request('https://evil.test/contact'))->getHeaderLine('Location'));
+    }
+
     public function test_htmx_gets_refresh(): void
     {
         $response = (new ExpiredSessionResponder('en'))($this->post(['HX-Request' => 'true', 'Referer' => 'https://site.test/contact']));

@@ -1325,6 +1325,7 @@ final class Application
         $this->container->instance(\Preflow\Core\Http\Csrf\StatelessCsrfToken::class, $stateless);
 
         $appUrl = $this->config->get('app.url');
+        $appUrl = is_string($appUrl) && $appUrl !== '' ? $appUrl : null;
 
         // Without a site handler: the form goes back with its fields kept, never applied.
         $container = $this->container;
@@ -1333,13 +1334,14 @@ final class Application
             static fn (): ?object => class_exists(\Preflow\I18n\Translator::class) && $container->bound(\Preflow\I18n\Translator::class)
                 ? $container->get(\Preflow\I18n\Translator::class)
                 : null,
+            $appUrl,
         );
 
         // A site's ExpiredSessionHandler is bound by its providers, which run after this:
         // the middleware looks it up when a POST's session turns out to have expired.
         $this->addMiddleware(new \Preflow\Core\Http\Csrf\CsrfMiddleware(
             config: $config,
-            origin: new \Preflow\Core\Http\Csrf\OriginCheck(is_string($appUrl) && $appUrl !== '' ? $appUrl : null, $config->trustedOrigins),
+            origin: new \Preflow\Core\Http\Csrf\OriginCheck($appUrl, $config->trustedOrigins),
             stateless: $stateless,
             signIn: $signIn,
             sessionCookie: $this->sessionCookieName(),
