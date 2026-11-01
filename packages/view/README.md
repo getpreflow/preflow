@@ -156,7 +156,9 @@ Then every public page has a Markdown view:
   for the German home page.
 - The page is rendered as an anonymous visitor sees it: no cookies, no session, so nothing personal ends up in it.
 - Pages that don't answer 200 (redirects too), are `noindex` (`<meta name="robots" content="noindex">` or an
-  `X-Robots-Tag` header), Folio previews and excluded paths have none: their `.md` URL is a 404.
+  `X-Robots-Tag` header), Folio previews and excluded paths have none: their `.md` URL is a 404. Asked for with
+  `Accept: text/markdown`, they (and redirects, JSON, files…) answer as they always do.
+- The Markdown, `/llms.txt` and `/llms-full.txt` are sent with `Cache-Control: public, max-age=3600`.
 - HTML pages that have one point to it with `<link rel="alternate" type="text/markdown">` and a `Link` header.
 
 ### What ends up in the Markdown
@@ -197,6 +199,18 @@ Values you print inside a block come out as plain text (HTML entities decoded). 
 its children; an empty block leaves the component out. A block in a page or layout template outside any component
 comes before the page's converted HTML; to have only the block, mark the page's own HTML `data-geo="skip"`.
 
+This is the case for Folio record detail templates (a game, a gallery object): they are not components, so their
+geo block is a page-level block and comes **in addition to** the converted HTML of the template. When the block
+should stand alone, mark the template's own HTML `data-geo="skip"`:
+
+```twig
+{% apply geo %}
+## {{ record.title }}
+- Players: {{ record.players }}
+{% endapply %}
+<article class="game-detail" data-geo="skip">…</article>
+```
+
 ### llms.txt and llms-full.txt
 
 `/llms.txt` lists your pages, grouped by section, each linking to its Markdown view:
@@ -222,7 +236,8 @@ URL; `'full' => false` turns it off. Pages without a Markdown view (404, noindex
 
 With Folio, the published records of the `types` in your config are listed in each language: title from the
 `title` field (else `name`, else the first list column), description from `meta_description`, and the record's URL
-in that language. The home page comes first. Types behind a frontend permission are never listed.
+in that language. The home page comes first. Types behind a frontend permission are never listed. The index does
+not render pages to find a `noindex`, so `noindex_field` is what keeps a record out of llms.txt.
 
 ### Adding, changing and ordering entries
 

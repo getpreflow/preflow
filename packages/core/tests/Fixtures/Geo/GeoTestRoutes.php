@@ -16,7 +16,7 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Routes for MarkdownViewTest that page templates can't express: a redirect,
- * a page sent with X-Robots-Tag: noindex, and /__two, which renders two pages
+ * a JSON route, a page sent with X-Robots-Tag: noindex, and /__two, which renders two pages
  * through GeoMiddleware::render() in one request and reports what it saw.
  */
 final class GeoTestRoutes implements MiddlewareInterface
@@ -27,6 +27,7 @@ final class GeoTestRoutes implements MiddlewareInterface
     {
         return match ($request->getUri()->getPath()) {
             '/old' => new Response(302, ['Location' => '/about']),
+            '/data.json' => new Response(200, ['Content-Type' => 'application/json'], '{"ok":true}'),
             '/hidden' => new Response(200, ['Content-Type' => 'text/html; charset=UTF-8', 'X-Robots-Tag' => 'noindex'], '<html><head><title>Hidden</title></head><body><main><p>Hidden page</p></main></body></html>'),
             '/__two' => $this->two($request, $handler),
             default => $handler->handle($request),

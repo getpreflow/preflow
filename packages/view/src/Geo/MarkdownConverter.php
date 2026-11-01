@@ -14,8 +14,10 @@ use Dom\Text;
  *
  * Takes the page's `<main>` (else `<body>`), drops scripts, styles, form
  * controls and hidden parts, and writes headings, paragraphs, lists, tables,
- * code, links and images. Links and images get absolute URLs; images without
- * alt text are left out. `<preflow-geo>` placeholders become the Markdown the
+ * code, links and images. Links and images get absolute URLs; only web, mail
+ * and phone links and web images are kept, images without alt text are left
+ * out. A link around blocks (a card) keeps them as blocks and goes on their
+ * first heading or text. `<preflow-geo>` placeholders become the Markdown the
  * collector stored for them, verbatim.
  */
 final class MarkdownConverter
@@ -31,8 +33,14 @@ final class MarkdownConverter
         'summary', 'table', 'ul',
     ];
 
-    /** Elements that keep their inline meaning even around blocks (a card link stays one link). */
-    private const INLINE = ['a', 'b', 'code', 'em', 'i', 'strong'];
+    /** Elements that keep their inline meaning even around blocks. */
+    private const INLINE = ['b', 'code', 'em', 'i', 'strong'];
+
+    /** URL schemes a link keeps; any other link is left as its text. */
+    private const LINK_SCHEMES = ['http', 'https', 'mailto', 'tel'];
+
+    /** URL schemes an image keeps; any other image (a `data:` blob…) is left out. */
+    private const IMAGE_SCHEMES = ['http', 'https'];
 
     private string $baseUrl = '';
 
@@ -112,6 +120,8 @@ final class MarkdownConverter
             case 'preflow-geo':
                 $markdown = trim($this->placeholder($element));
                 return $markdown === '' ? [] : [$markdown];
+            case 'a':
+                return $this->linkedBlocks($element);
             default:
                 return $this->blocks($element);
         }
@@ -125,6 +135,10 @@ final class MarkdownConverter
         }
         if (in_array($name, self::INLINE, true)) {
             return false;
+        }
+        if ($name === 'a') {
+            // A card link (image, title, text): its content stays apart as blocks.
+            return $element->querySelector(implode(', ', self::BLOCKS) . ', img') !== null;
         }
 
         return $element->querySelector(implode(', ', self::BLOCKS)) !== null;
@@ -196,14 +210,9 @@ final class MarkdownConverter
     private function link(Element $element): string
     {
         $text = $this->children($element);
-        $href = trim((string) $element->getAttribute('href'));
+        $href = $this->href($element);
 
-        if (
-            trim($text) === ''
-            || $href === ''
-            || str_starts_with($href, '#')
-            || preg_match('/^javascript:/i', $href) === 1
-        ) {
+        if (trim($text) === '' || $href === null) {
             return $text;
         }
 
@@ -218,11 +227,80 @@ final class MarkdownConverter
     {
         $alt = trim((string) preg_replace('/\s+/', ' ', (string) $element->getAttribute('alt')));
         $src = trim((string) $element->getAttribute('src'));
-        if ($alt === '' || $src === '') {
+        if ($alt === '' || $src === '' || !$this->allowedScheme($src, self::IMAGE_SCHEMES)) {
             return '';
         }
 
         return '![' . $this->escape($alt) . '](' . $this->url($src) . ')';
+    }
+
+    /**
+     * The blocks of a link that holds blocks (a card). The link goes on its first
+     * heading, else its first text block, else its first image; a link that isn't
+     * kept leaves the blocks as they are.
+     *
+     * @return list<string>
+     */
+    private function linkedBlocks(Element $element): array
+    {
+        $blocks = $this->blocks($element);
+        $href = $this->href($element);
+        if ($href === null) {
+            return $blocks;
+        }
+        $url = $this->url($href);
+
+        foreach ($blocks as $i => $block) {
+            if (preg_match('/^(#{1,6} )(.+)$/', $block, $m) === 1) {
+                $blocks[$i] = $m[1] . '[' . $m[2] . '](' . $url . ')';
+
+                return $blocks;
+            }
+        }
+        foreach (['isTextBlock', 'isImageBlock'] as $kind) {
+            foreach ($blocks as $i => $block) {
+                if ($this->$kind($block)) {
+                    // Only the first line of a paragraph with line breaks: a link label is one line.
+                    $lines = explode("  \n", $block, 2);
+                    $lines[0] = '[' . $lines[0] . '](' . $url . ')';
+                    $blocks[$i] = implode("  \n", $lines);
+
+                    return $blocks;
+                }
+            }
+        }
+
+        return $blocks;
+    }
+
+    /** Whether a block is a paragraph of text (not a list, quote, table, code, rule or images only). */
+    private function isTextBlock(string $block): bool
+    {
+        return !str_contains($block, "\n\n")
+            && preg_match('/^(?:[#>|]|- |\d+\. |```|---$)/', $block) !== 1
+            && !$this->isImageBlock($block);
+    }
+
+    /** Whether a block is one or more images and nothing else. */
+    private function isImageBlock(string $block): bool
+    {
+        return preg_match('/^(?:!\[(?:\\\\.|[^\]\\\\])*\]\([^)\s]*\) ?)+$/', $block) === 1;
+    }
+
+    /** A link's href when the link is kept: not empty, not a fragment, a web, mail or phone URL or a relative one. */
+    private function href(Element $element): ?string
+    {
+        $href = trim((string) $element->getAttribute('href'));
+
+        return $href === '' || str_starts_with($href, '#') || !$this->allowedScheme($href, self::LINK_SCHEMES)
+            ? null
+            : $href;
+    }
+
+    /** @param list<string> $schemes */
+    private function allowedScheme(string $url, array $schemes): bool
+    {
+        return preg_match('/^([a-z][a-z0-9+.-]*):/i', $url, $m) !== 1 || in_array(strtolower($m[1]), $schemes, true);
     }
 
     private function placeholder(Element $element): string

@@ -1110,9 +1110,9 @@ final class Application
     /**
      * Wraps an internal GEO render: the request context names the rendered page,
      * the visitor's session data is hidden (templates read the session directly,
-     * e.g. flash(); a shutdown hook restores it even after a fatal error), and the
-     * translator locale and signed-in users are put back afterwards, so nothing
-     * passes between the request and its renders.
+     * e.g. flash(); a shutdown hook restores it even after a fatal error), nobody
+     * is signed in during it, and the translator locale and signed-in users are
+     * put back afterwards, so nothing passes between the request and its renders.
      *
      * @return \Closure(ServerRequestInterface, \Closure(): ResponseInterface): ResponseInterface
      */
@@ -1137,6 +1137,8 @@ final class Application
             $guard = $auth?->guardName();
 
             $sessionData->hide();
+            // Nobody is signed in for the render, even when it is called from inside the pipeline.
+            $auth?->setUser(null);
 
             try {
                 return $next();

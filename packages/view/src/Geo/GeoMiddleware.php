@@ -22,8 +22,9 @@ use Psr\Http\Server\RequestHandlerInterface;
  * `/llms-full.txt` (`/de/llms.txt`… for the other locales) from GeoEntries.
  *
  * The page is rendered internally as an anonymous visitor would see it (no
- * cookies, no session, no query) and converted; pages that aren't a plain 200
- * HTML page, are noindex or are excluded answer 404. HTML pages get a
+ * cookies, no session, no query) and converted; for pages that aren't a plain
+ * 200 HTML page, are noindex or are excluded, the `.md` URL answers 404 and an
+ * `Accept: text/markdown` request gets the normal response. HTML pages get a
  * `rel="alternate"` link to their Markdown, in the head and as a `Link` header.
  * Runs outermost, so the internal render passes through session, auth and
  * locale middleware like a fresh request.
@@ -32,6 +33,9 @@ final class GeoMiddleware implements MiddlewareInterface
 {
     /** Request headers an internal render keeps; everything else (cookies, credentials, language) is dropped. */
     private const KEPT_HEADERS = ['X-Forwarded-Proto', 'X-Forwarded-Host', 'X-Forwarded-Port'];
+
+    /** Markdown and llms files are the same for every visitor, so a CDN or browser may keep them an hour. */
+    private const CACHE_CONTROL = 'public, max-age=3600';
 
     /**
      * @param ?string       $appUrl the configured app.url; its origin makes links absolute (else the request's)
@@ -76,11 +80,17 @@ final class GeoMiddleware implements MiddlewareInterface
         }
 
         $page = self::pagePath($path);
-        if ($page === null && $this->prefersMarkdown($request)) {
-            $page = $path;
-        }
         if ($page !== null) {
-            return $this->markdownResponse($request, $handler, $page);
+            return $this->markdownResponse($this->markdown($request, $handler, $page));
+        }
+
+        if ($this->prefersMarkdown($request)) {
+            $markdown = $this->markdown($request, $handler, $path);
+            if ($markdown !== null) {
+                return $this->markdownResponse($markdown);
+            }
+            // No Markdown view (a redirect, JSON, a 404…): the response the client would get anyway.
+            return self::varyAccept($this->linkAlternate($request, $handler->handle($request)));
         }
 
         return $this->linkAlternate($request, $handler->handle($request));
@@ -140,17 +150,29 @@ final class GeoMiddleware implements MiddlewareInterface
         return $page === '' || str_ends_with($page, '/') ? null : $page;
     }
 
-    private function markdownResponse(ServerRequestInterface $request, RequestHandlerInterface $handler, string $page): ResponseInterface
+    /** A page's Markdown, or null when it is excluded or has none. */
+    private function markdown(ServerRequestInterface $request, RequestHandlerInterface $handler, string $page): ?string
     {
-        $markdown = $this->config->excludes($page) ? null : $this->render($request, $handler, $page);
+        return $this->config->excludes($page) ? null : $this->render($request, $handler, $page);
+    }
 
+    private function markdownResponse(?string $markdown): ResponseInterface
+    {
         $this->dropNativeCookies();
 
         $headers = ['Vary' => 'Accept', 'X-Content-Type-Options' => 'nosniff'];
 
         return $markdown === null
             ? new Response(404, ['Content-Type' => 'text/plain; charset=utf-8'] + $headers, "Not Found\n")
-            : new Response(200, ['Content-Type' => 'text/markdown; charset=utf-8'] + $headers, $markdown);
+            : new Response(200, ['Content-Type' => 'text/markdown; charset=utf-8', 'Cache-Control' => self::CACHE_CONTROL] + $headers, $markdown);
+    }
+
+    /** $response with `Accept` in its `Vary` header. */
+    private static function varyAccept(ResponseInterface $response): ResponseInterface
+    {
+        $vary = array_map('trim', explode(',', strtolower($response->getHeaderLine('Vary'))));
+
+        return in_array('accept', $vary, true) ? $response : $response->withAddedHeader('Vary', 'Accept');
     }
 
     /**
@@ -221,7 +243,7 @@ final class GeoMiddleware implements MiddlewareInterface
 
         $this->dropNativeCookies();
 
-        return new Response(200, $headers, $body);
+        return new Response(200, ['Cache-Control' => self::CACHE_CONTROL] + $headers, $body);
     }
 
     /** @param array<string, mixed> $site */
@@ -310,7 +332,7 @@ final class GeoMiddleware implements MiddlewareInterface
         // Blocks a page or layout template declares outside components lead the converted page
         // (a page that wants only its block marks its own HTML data-geo="skip").
         $parts = array_filter(
-            [...$this->collector->pageBlocks(), $this->converter->convert($html, $origin)],
+            [...$this->collector->pageBlocks(), $this->converter->convert($html, $origin . $path)],
             static fn (string $part): bool => $part !== '',
         );
         $body = implode("\n\n", $parts);
@@ -340,10 +362,7 @@ final class GeoMiddleware implements MiddlewareInterface
         }
 
         $url = $this->origin($request) . self::markdownUrl($path);
-        $response = $response->withAddedHeader('Link', '<' . $url . '>; rel="alternate"; type="text/markdown"');
-        if (!in_array('accept', array_map('trim', explode(',', strtolower($response->getHeaderLine('Vary')))), true)) {
-            $response = $response->withAddedHeader('Vary', 'Accept');
-        }
+        $response = self::varyAccept($response->withAddedHeader('Link', '<' . $url . '>; rel="alternate"; type="text/markdown"'));
 
         $headAt = stripos($html, '</head>');
         if ($headAt === false) {

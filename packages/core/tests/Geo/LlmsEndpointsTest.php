@@ -107,6 +107,8 @@ final class LlmsEndpointsTest extends TestCase
         $this->assertSame(200, $response->getStatusCode(), $path . ': ' . $body);
         $this->assertSame('text/plain; charset=utf-8', $response->getHeaderLine('Content-Type'), $path);
         $this->assertSame([], $response->getHeader('Set-Cookie'), $path);
+        // A CDN or browser can absorb repeat hits (llms-full.txt renders every listed page).
+        $this->assertSame('public, max-age=3600', $response->getHeaderLine('Cache-Control'), $path);
 
         return $body;
     }

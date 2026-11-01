@@ -63,6 +63,87 @@ final class MarkdownConverterTest extends TestCase
         );
     }
 
+    public function test_only_web_mail_and_phone_links_are_kept(): void
+    {
+        $html = '<p><a href="http://a.test/">Http</a> <a href="ftp://a.test/f">Ftp</a> <a href="data:text/html,x">Data</a> '
+            . '<a href="vbscript:x">Vb</a> <a href="sms:+41">Sms</a> <a href="JavaScript:x">Js</a> <a href="page">Rel</a></p>';
+
+        $this->assertSame(
+            '[Http](http://a.test/) Ftp Data Vb Sms Js [Rel](https://site.test/page)',
+            $this->md($html),
+        );
+    }
+
+    public function test_data_and_other_non_web_images_are_dropped(): void
+    {
+        $html = '<p><img src="data:image/png;base64,iVBORw0KGgo=" alt="Inline"> <img src="file:///etc/x.png" alt="File">'
+            . ' <img src="HTTPS://cdn.test/a.png" alt="Web"> <img src="b.png" alt="Rel"></p>';
+
+        $this->assertSame('![Web](HTTPS://cdn.test/a.png) ![Rel](https://site.test/b.png)', $this->md($html));
+    }
+
+    public function test_linked_cards_become_blocks_with_the_link_on_their_heading(): void
+    {
+        $card = static fn (string $slug, string $title, string $text): string =>
+            '<a class="card" href="/forces/' . $slug . '"><article><img src="/i/' . $slug . '.jpg" alt="' . $title . ' photo">'
+            . '<h3>' . $title . '</h3><p>' . $text . '</p><span class="more">Read more</span></article></a>';
+        $html = '<h2>Forces</h2><div class="grid">' . $card('one', 'Force one', 'First description.')
+            . $card('two', 'Force two', 'Second description.') . '</div>';
+
+        $this->assertSame(
+            "## Forces\n\n"
+            . "![Force one photo](https://site.test/i/one.jpg)\n\n### [Force one](https://site.test/forces/one)\n\nFirst description.\n\nRead more\n\n"
+            . "![Force two photo](https://site.test/i/two.jpg)\n\n### [Force two](https://site.test/forces/two)\n\nSecond description.\n\nRead more",
+            $this->md($html),
+        );
+    }
+
+    public function test_game_card_without_heading_links_its_first_text_block(): void
+    {
+        // Shaped like a game card: cover, title and designer in divs, badges, a footer with a call to action.
+        $card = '<a href="/play/river-towns" class="game-card">'
+            . '<div class="game-card__cover"><img src="/media/river.jpg" alt="Cover of River Towns"></div>'
+            . '<div class="game-card__body"><div class="game-card__title">River Towns</div>'
+            . '<div class="game-card__designer">Ada Example</div>'
+            . '<div class="game-card__meta"><span class="badge"><i class="fa-solid fa-brain"></i> Light</span> '
+            . '<span class="badge"><i class="fa-solid fa-users"></i> 2–4</span> '
+            . '<span class="badge"><i class="fa-solid fa-clock"></i> 15 min</span></div></div>'
+            . '<div class="game-card__footer"><span class="steps"><i class="fa-solid fa-layer-group"></i> 3 layers, 12 steps</span>'
+            . "\n    " . '<span class="cta">Learn it <i class="fa-solid fa-arrow-right"></i></span></div></a>';
+        $empty = '<a href="/play/no-cover" class="game-card"><div class="game-card__cover"><i class="fa-solid fa-dice"></i></div>'
+            . '<div class="game-card__body"><div class="game-card__title">No Cover</div></div></a>';
+
+        $this->assertSame(
+            "![Cover of River Towns](https://site.test/media/river.jpg)\n\n[River Towns](https://site.test/play/river-towns)\n\n"
+            . "Ada Example\n\nLight 2–4 15 min\n\n3 layers, 12 steps Learn it\n\n"
+            . "[No Cover](https://site.test/play/no-cover)",
+            $this->md('<div class="games">' . $card . $empty . '</div>'),
+        );
+    }
+
+    public function test_gallery_item_link_in_a_list(): void
+    {
+        // Shaped like a gallery list item: rank, thumbnail without alt, title and maker in spans.
+        $item = static fn (int $n, string $title, string $maker): string =>
+            '<li class="gallery-item" id="item-' . $n . '"><a href="/gallery/' . $n . '#item-' . $n . '" hx-get="/gallery/' . $n . '">'
+            . '<span class="item-rank">' . $n . '.</span> <span class="item-thumb"><img src="/m/' . $n . '.jpg" alt="" loading="lazy"></span> '
+            . '<span class="item-text"><strong class="item-title">' . $title . '</strong> <span class="item-builder">' . $maker . '</span></span>'
+            . '</a></li>';
+
+        $this->assertSame(
+            "- [1\\. **Oak bowl** Bea Sample](https://site.test/gallery/1#item-1)\n- [2\\. **Ash stool** Cy Muster](https://site.test/gallery/2#item-2)",
+            $this->md('<ul class="gallery">' . $item(1, 'Oak bowl', 'Bea Sample') . $item(2, 'Ash stool', 'Cy Muster') . '</ul>'),
+        );
+    }
+
+    public function test_linked_block_with_a_non_web_href_keeps_its_blocks_unlinked(): void
+    {
+        $this->assertSame(
+            "### Title\n\nText",
+            $this->md('<a href="javascript:void(0)"><div><h3>Title</h3><p>Text</p></div></a>'),
+        );
+    }
+
     public function test_lists(): void
     {
         $html = '<ul><li>One</li><li>Two<ul><li>Two a</li><li>Two b<ol><li>Deep</li></ol></li></ul></li></ul>'

@@ -61,6 +61,12 @@ final class MarkdownViewTest extends TestCase
         $this->page('broken', $page('Broken', '{{ component("No\\\\Such\\\\Component") }}'));
         $this->page('page-a', $page('Page A', '<p>Page A text</p>{{ component("' . $card . '", {title: "A"}) }}'));
         $this->page('page-b', $page('Page B', '<p>Page B text</p>'));
+        @mkdir($this->dir . '/app/pages/blog', 0777, true);
+        $this->page('blog/post', $page(
+            'Post',
+            '<p><a href="details">Details</a> <a href="/rooted">Rooted</a> <a href="https://other.test/x">Other</a>'
+            . ' <img src="pics/a.png" alt="A picture"></p>',
+        ));
     }
 
     protected function tearDown(): void
@@ -124,6 +130,7 @@ final class MarkdownViewTest extends TestCase
         $this->assertSame(200, $res->getStatusCode(), $md);
         $this->assertSame('text/markdown; charset=utf-8', $res->getHeaderLine('Content-Type'));
         $this->assertSame('Accept', $res->getHeaderLine('Vary'));
+        $this->assertSame('public, max-age=3600', $res->getHeaderLine('Cache-Control'));
         $this->assertSame([], $res->getHeader('Set-Cookie'));
         $this->assertStringStartsWith("# About us\n\nSource: https://site.test/about\n\n# About\n\nWe play games.", $md);
         $this->assertStringContainsString('## Card Alpha', $md);
@@ -261,7 +268,96 @@ final class MarkdownViewTest extends TestCase
         foreach (['/noindex.md', '/hidden.md', '/old.md', '/missing.md'] as $path) {
             $this->assertNoMarkdown($this->get($app, $path), $path);
         }
-        $this->assertNoMarkdown($this->get($app, '/noindex', ['Accept' => 'text/markdown']), 'Accept on /noindex');
+
+        foreach (['/noindex', '/hidden'] as $path) {
+            // Asked for with Accept, a page without Markdown answers as usual.
+            foreach ([[], ['Accept' => 'text/markdown']] as $headers) {
+                $html = $this->get($app, $path, $headers);
+                $this->assertSame(200, $html->getStatusCode(), $path);
+                $this->assertStringStartsWith('text/html', $html->getHeaderLine('Content-Type'), $path);
+                $this->assertSame([], $html->getHeader('Link'), $path);
+                $this->assertStringNotContainsString('text/markdown', (string) $html->getBody(), $path);
+            }
+        }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_accept_markdown_without_a_markdown_view_gets_the_normal_response(): void
+    {
+        $app = $this->app();
+        $accept = ['Accept' => 'text/markdown, text/html;q=0.9, */*;q=0.8'];
+
+        $old = $this->get($app, '/old', $accept);
+        $this->assertSame(302, $old->getStatusCode());
+        $this->assertSame('/about', $old->getHeaderLine('Location'));
+
+        $json = $this->get($app, '/data.json', $accept);
+        $this->assertSame(200, $json->getStatusCode());
+        $this->assertSame('application/json', $json->getHeaderLine('Content-Type'));
+        $this->assertSame('{"ok":true}', (string) $json->getBody());
+
+        $missing = $this->get($app, '/missing', $accept);
+        $this->assertSame(404, $missing->getStatusCode());
+        $this->assertStringStartsWith('text/html', $missing->getHeaderLine('Content-Type'));
+
+        // (The 404 is the error page, built outside the middleware, the same whatever the Accept header.)
+        foreach (['/old' => $old, '/data.json' => $json] as $path => $response) {
+            $this->assertContains('Accept', array_map('trim', explode(',', $response->getHeaderLine('Vary'))), $path);
+        }
+
+        // Only the .md URL is a 404.
+        $this->assertNoMarkdown($this->get($app, '/old.md'), '/old.md');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_relative_links_resolve_against_the_page_url(): void
+    {
+        $md = (string) $this->get($this->app(), '/blog/post.md')->getBody();
+
+        $this->assertStringContainsString('[Details](https://site.test/blog/details)', $md);
+        $this->assertStringContainsString('[Rooted](https://site.test/rooted)', $md);
+        $this->assertStringContainsString('[Other](https://other.test/x)', $md);
+        $this->assertStringContainsString('![A picture](https://site.test/blog/pics/a.png)', $md);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_internal_render_runs_with_nobody_signed_in(): void
+    {
+        $userId = $this->memberSetup();
+        $app = $this->app();
+        $auth = $app->container()->get(\Preflow\Auth\AuthManager::class);
+        $member = (new \Preflow\Auth\ConfigUserProvider([['id' => 'member', 'email' => 'member@site.test', 'password_hash' => '']]))
+            ->findById($userId);
+        $this->assertNotNull($member);
+        $auth->setUser($member, 'session');
+
+        // A render called from inside the pipeline, with a handler that skips the auth middleware.
+        $seen = new \ArrayObject();
+        $handler = new class ($auth, $seen) implements \Psr\Http\Server\RequestHandlerInterface {
+            public function __construct(private readonly \Preflow\Auth\AuthManager $auth, private readonly \ArrayObject $seen) {}
+
+            public function handle(\Psr\Http\Message\ServerRequestInterface $request): ResponseInterface
+            {
+                $this->seen['user'] = $this->auth->user();
+                $this->seen['users'] = $this->auth->users();
+
+                return new \Nyholm\Psr7\Response(200, ['Content-Type' => 'text/html'], '<html><head><title>X</title></head><body><main><p>X</p></main></body></html>');
+            }
+        };
+        $geo = $app->container()->get(\Preflow\View\Geo\GeoMiddleware::class);
+        $outer = (new Psr17Factory())->createServerRequest('GET', 'http://localhost/member');
+
+        $this->assertStringStartsWith('# X', (string) $geo->render($outer, $handler, '/member'));
+        $this->assertNull($seen['user']);
+        $this->assertSame([], $seen['users']);
+        $this->assertSame($member, $auth->user());
+        $this->assertSame('session', $auth->guardName());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_noindex_html_pages_have_no_alternate_link(): void
+    {
+        $app = $this->app();
 
         foreach (['/noindex', '/hidden'] as $path) {
             $html = $this->get($app, $path);
@@ -277,7 +373,10 @@ final class MarkdownViewTest extends TestCase
         $app = $this->app();
 
         $this->assertNoMarkdown($this->get($app, '/secret.md'), '/secret.md');
-        $this->assertNoMarkdown($this->get($app, '/secret', ['Accept' => 'text/markdown']), 'Accept on /secret');
+        $accept = $this->get($app, '/secret', ['Accept' => 'text/markdown']);
+        $this->assertSame(200, $accept->getStatusCode());
+        $this->assertStringContainsString('Excluded page', (string) $accept->getBody());
+        $this->assertSame([], $accept->getHeader('Link'));
 
         $html = $this->get($app, '/secret');
         $this->assertSame(200, $html->getStatusCode());
