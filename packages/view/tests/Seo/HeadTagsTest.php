@@ -116,6 +116,17 @@ final class HeadTagsTest extends TestCase
         $this->assertOnce('<meta property="og:title" content="About us">', $html);
     }
 
+    public function test_json_ld_anywhere_in_the_page_counts(): void
+    {
+        // A component in the body can print its own structured data; the page's graph then stays out.
+        $page = "<html><head><title>T</title></head><body><script type='application/ld+json'>{\"@type\":\"Event\"}</script></body></html>";
+        $meta = $this->meta();
+        $html = HeadTags::inject($page, $meta, 'Example', [], $this->graph($meta));
+
+        $this->assertSame(1, substr_count($html, 'application/ld+json'));
+        $this->assertOnce('<meta property="og:title" content="About us">', $html); // the meta tags only look in the head
+    }
+
     public function test_page_image_suppresses_all_image_tags(): void
     {
         $page = "<html><head><meta property=\"og:image\" content=\"https://example.com/own.jpg\"></head><body></body></html>";

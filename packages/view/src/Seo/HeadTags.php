@@ -7,7 +7,8 @@ namespace Preflow\View\Seo;
 /**
  * Adds robots, theme-color, Open Graph, Twitter card and JSON-LD tags to a
  * page's <head>. A tag the page already has (same `name`/`property` inside
- * <head>) is left alone, so layouts and components can always override.
+ * <head>; JSON-LD anywhere in the page) is left alone, so layouts and
+ * components can always override.
  */
 final class HeadTags
 {
@@ -80,8 +81,9 @@ final class HeadTags
                 $hasImage = isset($existing['og:image']) || ($image['url'] ?? '') !== '';
                 $tags[] = self::meta('name', 'twitter:card', $hasImage ? 'summary_large_image' : 'summary');
             }
-            // Data, never executed, so it needs no CSP nonce.
-            if ($graph !== [] && preg_match('~<script\b[^>]*\btype\s*=\s*["\']?application/ld\+json~i', $head) !== 1) {
+            // Data, never executed, so it needs no CSP nonce. Structured data a component printed
+            // in the body counts as the page's own too.
+            if ($graph !== [] && preg_match('~<script\b[^>]*\btype\s*=\s*["\']?application/ld\+json~i', $html) !== 1) {
                 $tags[] = '<script type="application/ld+json">' . JsonLd::encode($graph) . '</script>';
             }
         }

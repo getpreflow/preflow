@@ -342,7 +342,8 @@ What a page gets:
 - `og:title`, `og:description`, `og:image` (with width, height and alt), `og:url`, `og:type`, `og:site_name`,
   `og:locale` and its alternates, and `twitter:card` (`summary_large_image` with an image).
 - JSON-LD: the `WebSite` and its owner on each language's home page, a `WebPage` on every page, and the nodes the
-  page or its type adds (below).
+  page or its type adds (below). A page that prints its own `application/ld+json` (in the head or the body) gets
+  none of ours.
 - Pages that are `noindex` (their own robots meta, an `X-Robots-Tag` header, or the record's setting) and private
   responses (`Cache-Control: private` or `no-store`: members' pages, gated Folio pages, share previews) get no cards
   and no JSON-LD. Paths in robots.txt's Disallow that a package adds (Folio's admin) get no tags at all.
