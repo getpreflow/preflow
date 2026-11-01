@@ -1314,7 +1314,8 @@ final class AdminController
             $editorAssets += ['ai-translate.css' => true, 'ai-translate-core.js' => true, 'ai-translate.js' => true];
         }
         $aiPending = $isNew ? [] : $this->aiPending($type, $typeDef, $values);
-        $seoSection = $this->seoSection($type, $values, $locale, $errors[SeoSection::KEY] ?? [], $locales);
+        // A type without translations keeps its share texts under the default language (DraftRecordFactory).
+        $seoSection = $this->seoSection($type, $values, $locale, $multilingual ? $locale : $locales->default, $errors[SeoSection::KEY] ?? [], $locales);
         $multipart = $multipart || $seoSection !== null; // the share image may be uploaded
         $html = $this->engine->render('@folio/admin/form.twig', [
             'prefix' => $this->prefix,
@@ -1361,13 +1362,14 @@ final class AdminController
 
     /**
      * The "SEO & sharing" section's values, or null when it is not shown: SEO is off, or the
-     * type has no frontend route and is not the site singleton. Texts are the edited locale's.
+     * type has no frontend route and is not the site singleton. Texts are in $textLocale (the
+     * edited one, or the default for a type without translations).
      *
      * @param array<string, mixed> $values
      * @param list<string>         $errors the share image's refused uploads
      * @return array{open: bool, title: string, description: string, image: ?string, noindex: bool, exclude_sitemap: bool, exclude_llms: bool}|null
      */
-    private function seoSection(string $type, array $values, string $locale, array $errors, \Preflow\Data\Locales $locales): ?array
+    private function seoSection(string $type, array $values, string $locale, string $textLocale, array $errors, \Preflow\Data\Locales $locales): ?array
     {
         if (!($this->seo?->enabled() ?? false)
             || ($this->frontend->routeFor($type) === null && !($type === 'site' && $this->isSingleton($type)))) {
@@ -1378,8 +1380,8 @@ final class AdminController
 
         return [
             'open' => !$seo->isEmpty(),
-            'title' => $seo->title($locale),
-            'description' => $seo->description($locale),
+            'title' => $seo->title($textLocale),
+            'description' => $seo->description($textLocale),
             // The asset field's own editor (picker and upload), posting _seo[image_ids][] and _seo[image].
             'image' => $assetType?->renderEditor(new FieldContext(
                 name: SeoSection::KEY . '[image]',

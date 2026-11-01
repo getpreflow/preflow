@@ -158,6 +158,42 @@ class FolioRecordReferencesSqlTest extends TestCase
         }
     }
 
+    public function test_share_image_reference_on_sql(): void
+    {
+        $fields = ['title' => ['type' => 'string'], 'slug' => ['type' => 'string']];
+        $this->model('event', ['frontend' => ['route' => '/events/{slug}'], 'publishing' => true, 'fields' => $fields]);
+        // Its table predates the _seo column (not migrated yet): it holds no share image.
+        $this->model('venue', ['frontend' => ['route' => '/venues/{slug}'], 'publishing' => false, 'fields' => $fields]);
+        $registry = new TypeRegistry($this->dir . '/models', new Locales(['en', 'de'], 'en'));
+        $dm = new DataManager(drivers: ['sql' => $this->dm->driver('sql')], defaultDriver: 'sql', typeRegistry: $registry);
+        $event = $registry->get('event');
+        $sync = new RecordTableSync($dm);
+        $sync->sync($event, ['_seo']);
+        $sync->sync(ShadowTypes::published($event), ['_seo']);
+        $sync->sync(ShadowTypes::revisions($event));
+        $sync->sync($registry->get('venue'));
+        $save = static fn (\Preflow\Data\TypeDefinition $def, string $id, array $data) => $dm->saveType(DynamicRecord::fromArray($def, ['uuid' => $id] + $data), false);
+        $save($event, 'e1', ['title' => 'Game night', '_seo' => ['image' => self::ID]]);
+        $save($event, 'e2', ['title' => 'Draft dropped it', '_seo' => ['image' => self::OTHER]]);
+        $save(ShadowTypes::published($event), 'e2', ['title' => 'Draft dropped it', '_seo' => ['image' => self::ID]]);
+        $save($event, 'e3', ['title' => 'Other', '_seo' => ['title' => ['en' => self::ID]]]); // the id, but not as the image
+        $save($registry->get('venue'), 'v1', ['title' => self::ID]);
+        $collector = new DebugCollector();
+        $logged = new DataManager(drivers: ['sql' => $this->driverOn($collector)], defaultDriver: 'sql', typeRegistry: $registry);
+
+        $usage = (new FolioRecordReferences($this->walker(), $logged, new TypeCatalog($this->dir . '/models'), $registry, '/folio'))->usagesOf(self::ID);
+
+        $this->assertEquals([
+            new AssetUsageEntry('Game night', '/folio/event/e1/edit', 'folio'),
+            new AssetUsageEntry('Draft dropped it', '/folio/event/e2/edit', 'folio', 'published version'),
+        ], $usage);
+        $sql = array_map(static fn (array $q): string => (string) $q['sql'], $collector->getQueries());
+        foreach ($sql as $statement) {
+            $this->assertStringNotContainsString('"tag"', $statement, 'a type without asset fields or a route is not read');
+            $this->assertStringContainsString(' LIKE ?', $statement, 'every read is prefiltered');
+        }
+    }
+
     /** The same connection, logging into $collector. */
     protected function driverOn(DebugCollector $collector): PdoDriver
     {

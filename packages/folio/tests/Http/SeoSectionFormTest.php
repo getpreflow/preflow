@@ -143,6 +143,21 @@ final class SeoSectionFormTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_type_without_translations_shows_its_texts_in_every_language(): void
+    {
+        $this->writeModel('event', ['frontend' => ['route' => '/events/{slug}'], 'fields' => ['title' => ['type' => 'string'], 'slug' => ['type' => 'string']]]);
+        $this->seoOn();
+        $this->migrate();
+        // Saved under the default language, whichever language the form was in.
+        $this->working('event', 'e1', ['title' => 'Game night', 'slug' => 'game-night', '_seo' => ['title' => ['en' => 'Share EN'], 'description' => ['en' => 'About EN']]]);
+
+        $body = (string) $this->get('/folio/event/e1/edit?locale=de')->getBody();
+
+        $this->assertMatchesRegularExpression('~name="_seo\[title\]"[^>]*value="Share EN"|value="Share EN"[^>]*name="_seo\[title\]"~', $body);
+        $this->assertStringContainsString('About EN', $body);
+    }
+
+    #[RunInSeparateProcess]
     public function test_a_form_without_the_section_keeps_the_stored_one(): void
     {
         $this->seoOn();

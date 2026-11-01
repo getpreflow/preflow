@@ -268,6 +268,23 @@ final class SeoHeadAndCachingTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_no_head_tags_under_disallowed_paths(): void
+    {
+        SeoSiteProvider::$disallow = ['/plain/', '/ab*t'];
+        file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [" . var_export(SeoSiteProvider::class, true) . "];\n");
+
+        // "/plain" is the "/plain/" directory without its slash; "/about" matches the wildcard.
+        foreach (['/plain', '/about'] as $path) {
+            $html = (string) $this->get($path)->getBody();
+            $this->assertStringContainsString('<title>', $html, $path);
+            foreach (['name="robots"', 'theme-color', 'og:', 'twitter:', 'ld+json'] as $tag) {
+                $this->assertStringNotContainsString($tag, $html, $path . ': ' . $tag);
+            }
+        }
+        $this->assertStringContainsString('twitter:card', (string) $this->get('/inner')->getBody()); // other paths keep theirs
+    }
+
+    #[RunInSeparateProcess]
     public function test_works_without_folio(): void
     {
         $this->assertStringContainsString('<meta property="og:site_name" content="Game Club">', (string) $this->get('/plain')->getBody());

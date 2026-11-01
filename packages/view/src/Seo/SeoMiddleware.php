@@ -76,7 +76,10 @@ final class SeoMiddleware implements MiddlewareInterface
             return $response;
         }
 
-        $response = $this->withHeadTags($request, $response);
+        // Paths kept from crawlers (an admin) get no head tags.
+        if (!$this->isDisallowed($request->getUri()->getPath())) {
+            $response = $this->withHeadTags($request, $response);
+        }
 
         return $method === 'GET' || $method === 'HEAD' ? $this->withEtag($request, $response) : $response;
     }
@@ -285,6 +288,24 @@ final class SeoMiddleware implements MiddlewareInterface
         $opaque = static fn (string $tag): string => preg_replace('~^W/~i', '', trim($tag)) ?? '';
         foreach (explode(',', $ifNoneMatch) as $candidate) {
             if ($opaque($candidate) === $opaque($etag)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether $path is under one of the paths a site keeps from crawlers (SeoSite::disallow()),
+     * read as robots.txt reads them: a prefix, `*` for any characters, a closing `$` for the end.
+     * A path that is a disallowed directory without its slash ("/folio" for "/folio/") counts too.
+     */
+    private function isDisallowed(string $path): bool
+    {
+        foreach ($this->site->disallowed() as $rule) {
+            $end = str_ends_with($rule, '$');
+            $pattern = '~^' . str_replace('\\*', '.*', preg_quote($end ? substr($rule, 0, -1) : $rule, '~')) . ($end ? '$' : '') . '~';
+            if (preg_match($pattern, $path) === 1 || (!$end && str_ends_with($rule, '/') && $path . '/' === $rule)) {
                 return true;
             }
         }

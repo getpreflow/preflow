@@ -247,6 +247,32 @@ final class FolioRecordReferencesTest extends TestCase
         $this->assertNotContains('tag', $reads);
     }
 
+    public function test_share_image_counts_and_blocks_a_delete(): void
+    {
+        file_put_contents($this->assetRoot . '/models/tag.json', json_encode([
+            'key' => 'tag', 'table' => 'tag', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Tags',
+            'fields' => ['title' => ['type' => 'string']],
+        ]));
+        $this->registry = new TypeRegistry($this->assetRoot . '/models');
+        $this->dm = new DataManager(drivers: ['json' => new JsonFileDriver($this->assetRoot . '/store')], defaultDriver: 'json', typeRegistry: $this->registry);
+        $usage = new AssetUsage();
+        $library = $this->library(usage: $usage);
+        $usage->register($this->usage());
+        $asset = $library->upload($this->upload($this->png(10, 10), 'a.png'), null);
+        $this->dm->saveType(DynamicRecord::fromArray($this->registry->get('page'), ['uuid' => 'p1', 'title' => 'About', '_seo' => ['image' => $asset->id]]), false);
+        // A type without a route has no "SEO & sharing" section: whatever it stores is no share image.
+        $this->dm->saveType(DynamicRecord::fromArray($this->registry->get('tag'), ['uuid' => 't1', 'title' => 'Tag', '_seo' => ['image' => $asset->id]]), false);
+
+        $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio')], $this->usage()->usagesOf($asset->id));
+        try {
+            $library->delete($asset->id);
+            $this->fail('delete() should refuse an asset a page shares with');
+        } catch (AssetInUseException $e) {
+            $this->assertCount(1, $e->usages);
+        }
+        $this->assertNotNull($library->find($asset->id));
+    }
+
     /** @return array<string, mixed> */
     private function pageData(): array
     {

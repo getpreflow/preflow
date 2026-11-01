@@ -245,12 +245,16 @@ The base exists (`TokenGuard`, `PersonalAccessToken`, `AuthMiddleware`). Missing
 Owner (2026-10-26). What exists today: canonical links and `hreflang` alternates (0.35), `noindex` on the
 member pages. Later, as generic mechanisms (a site's own wording and data stay in the site):
 
-- **`sitemap.xml` and `robots.txt`:** generated from the routes and Folio's published pages (per locale, with
-  `hreflang`), a hook for a site's own entries; `robots.txt` from config, pointing at the sitemap
-- **Meta and Open Graph helpers:** title, description, image (a media preset), `og:*` and Twitter cards from one
-  template helper; a Folio SEO panel on publishing types (title, description, image, noindex per page and locale)
-- **Structured data (JSON-LD):** helpers for the common types (Organization, WebSite, Article, BreadcrumbList,
-  Product, Event), filled from a record or a page
+- ~~**`sitemap.xml` and `robots.txt`:** generated from the routes and Folio's published pages (per locale, with
+  `hreflang`), a hook for a site's own entries; `robots.txt` from config, pointing at the sitemap~~
+- ~~**Meta and Open Graph helpers:** title, description, image (a media preset), `og:*` and Twitter cards from one
+  template helper; a Folio SEO panel on publishing types (title, description, image, noindex per page and locale)~~
+- ~~**Structured data (JSON-LD):** helpers for the common types (Organization, WebSite, Article, BreadcrumbList,
+  Product, Event), filled from a record or a page~~ — SEO basics done in 0.50.0 (`config/seo.php`: robots, Open
+  Graph, Twitter card, theme-color and JSON-LD tags, `/robots.txt`, `/sitemap.xml`, `/.well-known/security.txt`,
+  ETag/304; `seo()` / `@seo`, the `PublicPages` list shared with GEO, `SchemaRegistry` for a site's own types, the
+  media library's `share` format, Folio's "SEO & sharing" section per record; see the SEO section in
+  `packages/view/README.md`)
 - **301 redirects on slug change:** Folio remembers a page's old paths and redirects them; a redirects list in
   Settings for hand-made entries
 - ~~**GEO (generative engine optimisation):** `llms.txt` and plain-text/Markdown views of pages for AI search.

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Tests\Geo;
+namespace Preflow\Folio\Tests\Seo;
 
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -12,9 +12,14 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Publishing\Publisher;
 use Preflow\View\Geo\GeoEntries;
 use Preflow\View\Geo\GeoEntry;
+use Preflow\View\Seo\PublicPage;
+use Preflow\View\Seo\PublicPages;
 
-/** Folio's published pages as GEO entries (llms.txt), per locale. */
-final class FolioGeoEntriesTest extends TestCase
+/**
+ * Folio's published pages as public pages, per locale: the sitemap channel with
+ * SEO on, the llms.txt channel (through GeoEntries) with GEO on.
+ */
+final class FolioPublicPagesTest extends TestCase
 {
     private string $dir;
 
@@ -86,6 +91,12 @@ final class FolioGeoEntriesTest extends TestCase
     }
 
     /** @param array<string, mixed> $config */
+    private function seo(array $config): void
+    {
+        $this->write('config/seo.php', "<?php\nreturn " . var_export($config, true) . ";\n");
+    }
+
+    /** @param array<string, mixed> $config */
     private function model(string $key, array $config): void
     {
         $this->write("config/models/{$key}.json", (string) json_encode(['key' => $key, 'table' => $key, 'storage' => 'json', 'id_field' => 'uuid'] + $config));
@@ -117,6 +128,25 @@ final class FolioGeoEntriesTest extends TestCase
             static fn (GeoEntry $e): string => implode('|', [$e->section, $e->order, $e->title, $e->url, $e->description]),
             $app->container()->get(GeoEntries::class)->for($locale),
         );
+    }
+
+    /** @return list<string> "url|channels" per public page; channels: s(itemap), l(lms), f(ull) */
+    private function pages(Application $app, string $locale): array
+    {
+        return array_map(
+            static fn (PublicPage $p): string => $p->url . '|' . ($p->sitemap ? 's' : '') . ($p->llms ? 'l' : '') . ($p->llmsFull ? 'f' : ''),
+            $app->container()->get(PublicPages::class)->for($locale),
+        );
+    }
+
+    private function page(Application $app, string $url, string $locale = 'en'): PublicPage
+    {
+        foreach ($app->container()->get(PublicPages::class)->for($locale) as $page) {
+            if ($page->url === $url) {
+                return $page;
+            }
+        }
+        $this->fail("No public page {$url}");
     }
 
     private function content(Application $app): void
@@ -222,5 +252,94 @@ final class FolioGeoEntriesTest extends TestCase
 
         $this->assertSame([], $this->entries($app, 'en'));
         $this->assertSame([], $app->container()->get(GeoEntries::class)->siteFields('en'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_with_seo_every_public_routed_type_is_in_the_sitemap(): void
+    {
+        $this->geo(['enabled' => false, 'noindex_field' => 'noindex']); // honoured with GEO off too
+        $this->seo(['enabled' => true]);
+        $app = $this->app();
+        $this->content($app);
+
+        // Not the gated "secret", not the draft, not the page flagged by GEO's noindex_field.
+        $this->assertSame([
+            '/about|s',
+            '/english|s',
+            '/events/game-night|s',
+            '/news/news|s',
+            '/posts/first|s',
+            '/|s',
+        ], $this->sortedPages($app, 'en'));
+        // Records not visible in German are left out there.
+        $this->assertSame(['/de/events/game-night|s', '/de/news/news|s', '/de/posts/first|s', '/de/ueber-uns|s', '/de/|s'], $this->sortedPages($app, 'de'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_lastmod_and_alternates(): void
+    {
+        $this->seo(['enabled' => true]);
+        $app = $this->app();
+        $this->content($app);
+
+        $about = $this->page($app, '/about');
+        $snapshot = $app->container()->get(Publisher::class)->snapshot('page', 'p-about');
+        $this->assertSame($snapshot->get('_published_at'), $about->lastmod);
+        $this->assertNotNull($about->lastmod);
+        $this->assertSame(['en' => '/about', 'de' => '/de/ueber-uns'], $about->alternates);
+        $this->assertSame(['en' => '/', 'de' => '/de/'], $this->page($app, '/de/', 'de')->alternates);
+        // A page in one language has no alternates.
+        $this->assertSame([], $this->page($app, '/english')->alternates);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_flags_per_channel(): void
+    {
+        $this->seo(['enabled' => true]);
+        $this->geo(['enabled' => true, 'types' => ['page'], 'noindex_field' => 'noindex']);
+        $app = $this->app();
+        $this->content($app);
+        $this->publish($app, 'page', 'p-no-sitemap', ['title' => ['en' => 'A'], 'slug' => ['en' => 'a'], '_seo' => ['sitemap' => false]]);
+        $this->publish($app, 'page', 'p-no-llms', ['title' => ['en' => 'B'], 'slug' => ['en' => 'b'], '_seo' => ['llms' => false]]);
+        $this->publish($app, 'page', 'p-noindex', ['title' => ['en' => 'C'], 'slug' => ['en' => 'c'], '_seo' => ['noindex' => true]]);
+        // As SQL drivers return it: JSON text.
+        $this->publish($app, 'page', 'p-json', ['title' => ['en' => 'D'], 'slug' => ['en' => 'd'], '_seo' => '{"sitemap":false,"llms":false}']);
+
+        $pages = $this->sortedPages($app, 'en');
+
+        $this->assertContains('/a|lf', $pages);
+        $this->assertContains('/b|s', $pages);
+        $this->assertContains('/d|', $pages);
+        $this->assertNotContains('/c|slf', $pages);
+        $this->assertSame([], array_filter($pages, static fn (string $p): bool => str_starts_with($p, '/c|')));
+        // Types GEO doesn't list stay in the sitemap only.
+        $this->assertContains('/posts/first|s', $pages);
+        $this->assertContains('/about|slf', $pages);
+
+        $llms = $this->entries($app, 'en');
+        $this->assertContains('Pages|100|A|/a|', $llms);
+        $this->assertNotContains('Pages|100|B|/b|', $llms);
+        $this->assertNotContains('Pages|100|C|/c|', $llms);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_listed_types_narrow_the_sitemap(): void
+    {
+        $this->seo(['enabled' => true, 'listed_types' => ['post', 'secret']]);
+        $this->geo(['enabled' => true, 'types' => ['page'], 'noindex_field' => 'noindex']);
+        $app = $this->app();
+        $this->content($app);
+
+        // Pages stay in llms.txt only; the gated type is never listed.
+        $this->assertSame(['/about|lf', '/english|lf', '/posts/first|s', '/|lf'], $this->sortedPages($app, 'en'));
+    }
+
+    /** @return list<string> pages() sorted by URL */
+    private function sortedPages(Application $app, string $locale): array
+    {
+        $pages = $this->pages($app, $locale);
+        sort($pages);
+
+        return $pages;
     }
 }
