@@ -79,11 +79,20 @@ final class VariantGenerator
         return $variants;
     }
 
-    /** Whether variants can be made for this source type in this format. */
+    /**
+     * Whether variants can be made for this source type in this format. "jpg" is for box
+     * files only: plain width variants stay avif and webp.
+     */
     public function supports(string $mime, string $format): bool
     {
         return $this->backend !== null && in_array($mime, self::SOURCE_TYPES, true)
-            && in_array($format, ['avif', 'webp'], true) && $this->backend->supports($format);
+            && in_array($format, ['avif', 'webp', 'jpg'], true) && $this->backend->supports(self::backendFormat($format));
+    }
+
+    /** The backend's name for a file extension (box files for og:image cards are .jpg). */
+    private static function backendFormat(string $format): string
+    {
+        return $format === 'jpg' ? 'jpeg' : $format;
     }
 
     /**
@@ -92,7 +101,7 @@ final class VariantGenerator
      */
     public function generateOne(string $dir, string $relativeSource, string $mime, int $width, string $format): ?string
     {
-        if (!$this->supports($mime, $format) || $width < 1) {
+        if ($format === 'jpg' || !$this->supports($mime, $format) || $width < 1) {
             return null;
         }
         $backend = $this->backendFor(rtrim($dir, '/') . '/' . $relativeSource);
@@ -166,12 +175,12 @@ final class VariantGenerator
             return false;
         }
         $backend = $this->backendFor(rtrim($dir, '/') . '/' . $relativeSource);
-        if ($backend === null || !$backend->supports($format)) {
+        if ($backend === null || !$backend->supports(self::backendFormat($format))) {
             return false;
         }
         $dest = rtrim($dir, '/') . '/' . $relativeDest;
         $tmp = $dest . '.tmp-' . bin2hex(random_bytes(4)) . '.' . $format;
-        $ok = ($backend->writeVariants(rtrim($dir, '/') . '/' . $relativeSource, [['dest' => $tmp, 'width' => $width, 'format' => $format, 'crop' => $crop]], $this->quality)[0] ?? false) === true;
+        $ok = ($backend->writeVariants(rtrim($dir, '/') . '/' . $relativeSource, [['dest' => $tmp, 'width' => $width, 'format' => self::backendFormat($format), 'crop' => $crop]], $this->quality)[0] ?? false) === true;
         if (!$ok || !@rename($tmp, $dest)) {
             @unlink($tmp);
 
@@ -181,16 +190,16 @@ final class VariantGenerator
         return true;
     }
 
-    /** Deletes the box files ({stem}-{preset}-{key}-{w}.{avif|webp}) of the delivery's stem; its plain, edit and preview files stay. */
+    /** Deletes the box files ({stem}-{preset}-{key}-{w}.{avif|webp|jpg}) of the delivery's stem; its plain, edit and preview files stay. */
     public function removeBoxes(Asset $delivery, string $dir): void
     {
         $base = rtrim($dir, '/') . '/' . preg_replace('/\.[a-z0-9]+$/', '', $delivery->path);
         $stem = basename($base) . '-';
-        foreach (['avif', 'webp'] as $format) {
+        foreach (['avif', 'webp', 'jpg'] as $format) {
             foreach (glob(dirname($base) . '/' . $stem . '*.' . $format) ?: [] as $file) {
                 $rest = substr(basename($file), strlen($stem));
                 if (preg_match('/^(edit|preview|oriented)-|^v\d+-/', $rest) !== 1
-                    && preg_match('/^([a-z][a-z0-9-]*)-([0-9a-f]{8})-([1-9]\d*)\.(avif|webp)$/', $rest, $m) === 1
+                    && preg_match('/^([a-z][a-z0-9-]*)-([0-9a-f]{8})-([1-9]\d*)\.(avif|webp|jpg)$/', $rest, $m) === 1
                     && !in_array($m[1], ['edit', 'preview', 'oriented'], true)) {
                     @unlink($file);
                 }

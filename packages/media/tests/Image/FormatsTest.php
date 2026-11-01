@@ -19,7 +19,14 @@ final class FormatsTest extends TestCase
         $this->assertTrue($format->isBox());
         $this->assertSame(1.0, $format->ratio());
         $this->assertSame([200, 400], $format->widths);
-        $this->assertSame(['cover-thumb'], array_keys($formats->boxes()));
+        $this->assertSame(['cover-thumb', 'share'], array_keys($formats->boxes()));
+    }
+
+    public function test_share_preset_is_built_in(): void
+    {
+        $share = Formats::fromConfig([])->get('share');
+        $this->assertSame([1200, 630, 'cover', [1200]], [$share->width, $share->height, $share->fit, $share->widths]);
+        $this->assertSame(1600, Formats::fromConfig(['share' => ['width' => 1600, 'height' => 840, 'fit' => 'cover']])->get('share')->width);
     }
 
     public function test_a_name_that_only_looks_like_a_version_is_fine(): void
@@ -35,7 +42,7 @@ final class FormatsTest extends TestCase
         $this->assertSame('max', $format->fit);
         $this->assertFalse($format->isBox());
         $this->assertNull($format->ratio());
-        $this->assertSame([], $formats->boxes());
+        $this->assertSame(['share'], array_keys($formats->boxes())); // only the built-in
         $this->assertNull($formats->get('nope'));
     }
 

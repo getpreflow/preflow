@@ -6,7 +6,7 @@ namespace Preflow\Media\Image;
 
 interface ImageBackend
 {
-    /** Whether the backend can write the format ("webp" or "avif"). */
+    /** Whether the backend can write the format ("webp", "avif" or "jpeg"). */
     public function supports(string $format): bool;
 
     /**

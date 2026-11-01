@@ -80,7 +80,7 @@ final class AssetEditorTest extends TestCase
         $this->assertStringContainsString('src="' . $this->lib()->url($plan->base . '-' . $plan->width . '.webp') . '"', $body);
         $this->assertStringContainsString('120×80, contain', $body);
         $this->assertStringNotContainsString('data-preset="hero"', $body); // a width-only preset is no box
-        $this->assertSame(1, preg_match_all('/data-editor-adjust/', $body), 'Adjust only for the cover preset');
+        $this->assertSame(2, preg_match_all('/data-editor-adjust/', $body), 'Adjust only for the cover presets: cover-thumb and the built-in share');
         $this->assertMatchesRegularExpression('#<script src="[^"]*cropper\.js[^"]*" defer>#', $body);
         $this->assertMatchesRegularExpression('#<script src="[^"]*image-editor\.js[^"]*" defer>#', $body);
         $this->assertMatchesRegularExpression('#<link rel="stylesheet" href="[^"]*cropper\.css[^"]*">#', $body);
