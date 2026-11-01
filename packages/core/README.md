@@ -270,8 +270,10 @@ boot.
 `CsrfMiddleware` checks every `POST`, `PUT`, `PATCH` and `DELETE`, with or without a session.
 `GET`, `HEAD` and `OPTIONS` are never checked. A form carries the token as the `_csrf_token`
 field (`csrf_field()`), JavaScript as the `X-CSRF-Token` header (`csrf_token()`). Every request
-gets a `Preflow\Core\Http\Csrf\CsrfToken` attribute, which packages that print `{{ csrf }}`
-themselves (Folio, rbac, the form builder) read.
+that has a token (a session, or a real `app.key` for the stateless token) gets a
+`Preflow\Core\Http\Csrf\CsrfToken` attribute, which packages that print `{{ csrf }}`
+themselves (Folio, rbac, the form builder) read. Without a session and with an empty or the
+built-in default `app.key` there is no attribute: code reading it must handle `null`.
 
 **Layer 1: the origin.** The first signal the browser sent decides:
 
