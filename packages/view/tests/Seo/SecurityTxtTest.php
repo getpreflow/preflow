@@ -28,4 +28,12 @@ final class SecurityTxtTest extends TestCase
         $this->assertStringStartsWith("Contact: https://example.com/contact\nExpires: 2027-04-30T10:00:00Z\n", $text);
         $this->assertStringNotContainsString('Policy:', $text);
     }
+
+    public function test_preferred_languages_follow_the_given_locales(): void
+    {
+        $now = new \DateTimeImmutable('2026-11-01 12:00:00', new \DateTimeZone('UTC'));
+
+        $this->assertStringContainsString("Expires: 2027-04-30T12:00:00Z\nPreferred-Languages: fr, it\nCanonical:", SecurityTxt::render('a@b.c', null, ['fr', 'it'], 'https://x.y', $now));
+        $this->assertStringNotContainsString('Preferred-Languages', SecurityTxt::render('a@b.c', null, [], 'https://x.y', $now));
+    }
 }
