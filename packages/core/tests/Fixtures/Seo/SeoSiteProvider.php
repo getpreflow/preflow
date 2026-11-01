@@ -20,6 +20,9 @@ final class SeoSiteProvider extends ServiceProvider
     /** @var list<string> */
     public static array $disallow = [];
 
+    /** @var list<string> */
+    public static array $allow = [];
+
     /** @var ?\Closure(string): iterable<PublicPage> */
     public static ?\Closure $pages = null;
 
@@ -32,6 +35,9 @@ final class SeoSiteProvider extends ServiceProvider
         foreach (self::$disallow as $path) {
             $site->disallow($path);
         }
+        foreach (self::$allow as $path) {
+            $site->allow($path);
+        }
         if (self::$pages !== null) {
             $container->get(PublicPages::class)->source(self::$pages);
         }
@@ -41,6 +47,7 @@ final class SeoSiteProvider extends ServiceProvider
     {
         self::$defaults = null;
         self::$disallow = [];
+        self::$allow = [];
         self::$pages = null;
     }
 }

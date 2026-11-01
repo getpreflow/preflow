@@ -285,6 +285,19 @@ final class SeoHeadAndCachingTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_allowed_paths_under_a_disallowed_one_keep_their_head_tags(): void
+    {
+        SeoSiteProvider::$disallow = ['/ab*'];
+        SeoSiteProvider::$allow = ['/about'];
+        file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [" . var_export(SeoSiteProvider::class, true) . "];\n");
+
+        $this->assertStringContainsString('twitter:card', (string) $this->get('/about')->getBody());
+        $robots = (string) $this->get('/robots.txt')->getBody();
+        $this->assertStringContainsString("Allow: /\nAllow: /about\nDisallow: /--component/\n", $robots);
+        $this->assertStringContainsString("Disallow: /ab*\n", $robots);
+    }
+
+    #[RunInSeparateProcess]
     public function test_works_without_folio(): void
     {
         $this->assertStringContainsString('<meta property="og:site_name" content="Game Club">', (string) $this->get('/plain')->getBody());

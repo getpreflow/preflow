@@ -250,7 +250,13 @@ final class FolioServiceProvider extends ServiceProvider
             ));
             $site = $container->get(\Preflow\View\Seo\SeoSite::class);
             $site->defaults(static fn (string $locale): \Preflow\View\Seo\PageMeta => $container->get(\Preflow\Folio\Seo\FolioPageMeta::class)->siteDefaults($locale));
-            $site->disallow(rtrim($prefix, '/') . '/'); // the admin: kept from crawlers, no share cards
+            // The admin: kept from crawlers, no share cards; its legacy upload URLs are images public pages show.
+            // Folio at "/" would disallow the whole site, so nothing is kept out there.
+            $admin = rtrim($prefix, '/');
+            if ($admin !== '') {
+                $site->disallow($admin . '/');
+                $site->allow($admin . '/_uploads/');
+            }
         }
 
         // Media library (preflow/media): its config, library, usage, locale and image tag. Folio adapts it:

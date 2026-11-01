@@ -41,6 +41,7 @@ final class SeoEndpointsTest extends TestCase
 
         SeoSiteProvider::reset();
         SeoSiteProvider::$disallow = ['/admin/'];
+        SeoSiteProvider::$allow = ['/admin/public/'];
         SeoSiteProvider::$pages = static fn (string $locale): array => $locale === 'de'
             ? [new PublicPage('Start', '/de/', alternates: ['en' => '/', 'de' => '/de/'])]
             : [
@@ -94,7 +95,8 @@ final class SeoEndpointsTest extends TestCase
         $body = $this->assertServed($this->get('/robots.txt'), 'text/plain; charset=utf-8', '/robots.txt');
 
         $config = SeoConfig::fromArray(['enabled' => true]);
-        $this->assertSame(RobotsTxt::render($config, ['/admin/'], 'https://site.test', false), $body);
+        $this->assertSame(RobotsTxt::render($config, ['/admin/'], 'https://site.test', false, ['/admin/public/']), $body);
+        $this->assertStringContainsString("User-agent: *\nAllow: /\nAllow: /admin/public/\n", $body);
         $this->assertStringContainsString("Disallow: /admin/\n", $body);
         $this->assertStringContainsString("Sitemap: https://site.test/sitemap.xml\n", $body);
 

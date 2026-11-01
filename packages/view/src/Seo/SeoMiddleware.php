@@ -93,7 +93,7 @@ final class SeoMiddleware implements MiddlewareInterface
         return match (true) {
             $path === '/robots.txt' && $this->config->robotsEnabled => self::text(
                 'text/plain; charset=utf-8',
-                RobotsTxt::render($this->config, $this->site->disallowed(), PageSignals::origin($this->appUrl, $request), $this->llms),
+                RobotsTxt::render($this->config, $this->site->disallowed(), PageSignals::origin($this->appUrl, $request), $this->llms, $this->site->allowed()),
             ),
             $path === '/sitemap.xml' && $this->config->sitemap => self::text(
                 'application/xml; charset=UTF-8',
@@ -296,21 +296,36 @@ final class SeoMiddleware implements MiddlewareInterface
     }
 
     /**
-     * Whether $path is under one of the paths a site keeps from crawlers (SeoSite::disallow()),
-     * read as robots.txt reads them: a prefix, `*` for any characters, a closing `$` for the end.
-     * A path that is a disallowed directory without its slash ("/folio" for "/folio/") counts too.
+     * Whether $path is under one of the paths a site keeps from crawlers (SeoSite::disallow())
+     * and not under one of their exceptions (SeoSite::allow()).
      */
     private function isDisallowed(string $path): bool
     {
+        foreach ($this->site->allowed() as $rule) {
+            if (self::underRule($path, $rule)) {
+                return false;
+            }
+        }
         foreach ($this->site->disallowed() as $rule) {
-            $end = str_ends_with($rule, '$');
-            $pattern = '~^' . str_replace('\\*', '.*', preg_quote($end ? substr($rule, 0, -1) : $rule, '~')) . ($end ? '$' : '') . '~';
-            if (preg_match($pattern, $path) === 1 || (!$end && str_ends_with($rule, '/') && $path . '/' === $rule)) {
+            if (self::underRule($path, $rule)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Whether a robots.txt rule covers $path, read as robots.txt reads it: a prefix, `*` for any
+     * characters, a closing `$` for the end. A path that is the rule's directory without its slash
+     * ("/folio" for "/folio/") counts too.
+     */
+    private static function underRule(string $path, string $rule): bool
+    {
+        $end = str_ends_with($rule, '$');
+        $pattern = '~^' . str_replace('\\*', '.*', preg_quote($end ? substr($rule, 0, -1) : $rule, '~')) . ($end ? '$' : '') . '~';
+
+        return preg_match($pattern, $path) === 1 || (!$end && str_ends_with($rule, '/') && $path . '/' === $rule);
     }
 
     /** The locale a path is in: its prefix when that is one of the other locales, else the default. */

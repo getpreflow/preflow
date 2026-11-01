@@ -480,7 +480,8 @@ $schemas->owner(fn (string $locale): array => ['type' => 'Person', 'name' => 'Ad
 ### Site defaults without Folio
 
 Folio gives the site name, description and share image from its `site` singleton and keeps its admin out of
-robots.txt. A site without Folio can do the same from a provider:
+robots.txt (all but its legacy `/_uploads/` images, which public pages show). A site without Folio can do the
+same from a provider:
 
 ```php
 use Preflow\View\Seo\PageMeta;
@@ -493,6 +494,7 @@ $site->defaults(fn (string $locale): PageMeta => new PageMeta(
     image: ['url' => '/img/share.jpg', 'width' => 1200, 'height' => 630, 'alt' => 'Our club room'],
 ));
 $site->disallow('/admin/');                     // in robots.txt, and no head tags there
+$site->allow('/admin/uploads/');               // an exception under it (Allow:), head tags as usual
 ```
 
 ## QR codes

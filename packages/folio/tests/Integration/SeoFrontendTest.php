@@ -235,6 +235,8 @@ final class SeoFrontendTest extends TestCase
 
         $robots = $this->body('/robots.txt');
         $this->assertStringContainsString("Disallow: /folio/\n", $robots);
+        // Legacy content images under the admin path are shown on public pages.
+        $this->assertStringContainsString("Allow: /\nAllow: /folio/_uploads/\n", $robots);
         $this->assertStringContainsString("Sitemap: https://club.test/sitemap.xml\n", $robots);
 
         // Folio's own pages get no share cards.
@@ -267,5 +269,18 @@ final class SeoFrontendTest extends TestCase
         $this->assertStringContainsString('[Welcome](https://club.test/index.md)', $this->body('/llms.txt'));
         $this->assertStringContainsString('[Willkommen](https://club.test/de/index.md)', $this->body('/de/llms.txt'));
         $this->assertStringContainsString('Source: https://club.test/de', $this->body('/de/index.md'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_folio_at_the_root_keeps_nothing_from_crawlers(): void
+    {
+        foreach (['/', ''] as $path) {
+            $this->write('config/folio.php', "<?php\nreturn ['path' => " . var_export($path, true) . "];\n");
+            $site = $this->app()->container()->get(\Preflow\View\Seo\SeoSite::class);
+
+            $this->assertSame([], $site->disallowed(), var_export($path, true));
+            $this->assertSame([], $site->allowed(), var_export($path, true));
+        }
+        $this->assertStringNotContainsString("Disallow: /\n", $this->body('/robots.txt'));
     }
 }

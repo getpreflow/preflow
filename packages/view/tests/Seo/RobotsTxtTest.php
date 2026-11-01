@@ -61,4 +61,20 @@ T;
         $this->assertStringNotContainsString('llms.txt', $text);
         $this->assertStringEndsWith("Allow: /\nDisallow: /--component/\nDisallow: /*/--component/\n", $text);
     }
+
+    public function test_allowed_paths_follow_allow_root_in_each_group_that_allows(): void
+    {
+        $text = RobotsTxt::render(new SeoConfig(disallow: ['/--component/']), ['/folio/'], 'https://example.com', false, ['/folio/_uploads/']);
+
+        $allowed = "Allow: /\nAllow: /folio/_uploads/\nDisallow: /--component/\nDisallow: /folio/\n";
+        $this->assertStringContainsString("User-agent: *\n" . $allowed, $text);
+        $this->assertStringContainsString("User-agent: Perplexity-User\n" . $allowed, $text);
+        $this->assertStringContainsString("User-agent: meta-externalagent\n" . $allowed, $text);
+        $this->assertSame(3, substr_count($text, 'Allow: /folio/_uploads/'));
+
+        // Training crawlers kept out entirely get no exceptions.
+        $blocked = RobotsTxt::render(new SeoConfig(aiTraining: false), ['/folio/'], 'https://example.com', false, ['/folio/_uploads/']);
+        $this->assertStringContainsString("User-agent: meta-externalagent\nDisallow: /\n", $blocked);
+        $this->assertSame(2, substr_count($blocked, 'Allow: /folio/_uploads/'));
+    }
 }
