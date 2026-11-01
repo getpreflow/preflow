@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Form;
 
+use Preflow\Core\Http\OldInput;
 use Preflow\Validation\ErrorBag;
 use Preflow\View\FormHypermediaDriver;
 use Preflow\View\TemplateExtensionProvider;
@@ -23,6 +24,8 @@ final class FormExtensionProvider implements TemplateExtensionProvider
         private readonly FieldRenderer $fieldRenderer,
         private readonly GroupRenderer $groupRenderer,
         private readonly ModelIntrospector $introspector,
+        /** Input kept from an earlier request (after an expired session); the own input wins per field. */
+        private readonly ?OldInput $flashed = null,
     ) {}
 
     public function setErrorBag(ErrorBag $errorBag): void
@@ -80,8 +83,9 @@ final class FormExtensionProvider implements TemplateExtensionProvider
         if ($this->errorBag !== null && !isset($options['errorBag'])) {
             $defaults['errorBag'] = $this->errorBag;
         }
-        if ($this->oldInput !== [] && !isset($options['oldInput'])) {
-            $defaults['oldInput'] = $this->oldInput;
+        $oldInput = $this->oldInput + ($this->flashed?->all() ?? []);
+        if ($oldInput !== [] && !isset($options['oldInput'])) {
+            $defaults['oldInput'] = $oldInput;
         }
         if ($this->driver !== null && !isset($options['driver'])) {
             $defaults['driver'] = $this->driver;

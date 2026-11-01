@@ -78,7 +78,7 @@ final class StorageRefusalTest extends TestCase
         $this->working('event', 'b', ['name' => 'B', 'slug' => 'x']);
         $session = $this->session();
 
-        $request = (new Psr17Factory())->createServerRequest('POST', '/folio/event/a/discard')
+        $request = (new Psr17Factory())->createServerRequest('POST', '/folio/event/a/discard')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withAttribute('type', 'event')->withAttribute('id', 'a')
             ->withAttribute(SessionInterface::class, $session);
         $response = $this->app()->container()->get(PublishingController::class)->discard($request);
@@ -161,7 +161,7 @@ final class StorageRefusalTest extends TestCase
         $first = $this->publisher()->revisions('event', 'a')[1];
         $session = $this->session();
 
-        $request = (new Psr17Factory())->createServerRequest('POST', "/folio/event/a/revisions/{$first->id}/restore")
+        $request = (new Psr17Factory())->createServerRequest('POST', "/folio/event/a/revisions/{$first->id}/restore")->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withAttribute('type', 'event')->withAttribute('id', 'a')->withAttribute('rev', $first->id)
             ->withAttribute(SessionInterface::class, $session);
         $response = $this->app()->container()->get(PublishingController::class)->restore($request);

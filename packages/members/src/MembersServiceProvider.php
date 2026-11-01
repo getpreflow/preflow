@@ -16,6 +16,8 @@ use Preflow\Core\Config\Config;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\Exceptions\ContainerException;
 use Preflow\Core\Container\ServiceProvider;
+use Preflow\Core\Http\Csrf\CsrfSignInPaths;
+use Preflow\Core\Http\OldInput;
 use Preflow\Data\DataManager;
 use Preflow\Data\DeletePlan;
 use Preflow\Data\DynamicRecord;
@@ -40,7 +42,8 @@ use Preflow\View\TemplateEngineInterface;
  * resources/members/ is put in front of the package templates (@members) when it exists. Boot
  * checks that the admission class is one, defines the member type when nothing has
  * (MemberType), lets admitted members have members.access (declared at register) when no permission
- * package decides (MemberAccess) and adds the member pages' routes under the members path.
+ * package decides (MemberAccess), adds the member pages' routes under the members path and
+ * registers its login as a CSRF sign-in path.
  * Neither Folio nor rbac is needed; with them, Folio carries the admin and rbac decides access.
  */
 final class MembersServiceProvider extends ServiceProvider
@@ -120,6 +123,7 @@ final class MembersServiceProvider extends ServiceProvider
             $c->get(Locales::class),
             $c->get(Translator::class),
             $c->bound(PageLocale::class) ? $c->get(PageLocale::class) : null,
+            $c->bound(OldInput::class) ? $c->get(OldInput::class) : null,
         ));
         $container->singleton(Admission::class, static function (Container $c): Admission {
             $class = $c->get(MembersConfig::class)->admission();
@@ -138,6 +142,13 @@ final class MembersServiceProvider extends ServiceProvider
         MemberType::define($container);
         self::access($container);
         self::routes($container);
+        // CSRF sign-in paths: a login form left open past the session's end still signs in, and a
+        // public page's registration form (stateless token) may post there. Neither uses a member's authority.
+        if ($container->bound(CsrfSignInPaths::class)) {
+            $base = rtrim($container->get(MembersConfig::class)->path(), '/');
+            $container->get(CsrfSignInPaths::class)->add($base . '/login');
+            $container->get(CsrfSignInPaths::class)->add($base . '/register');
+        }
     }
 
     /**

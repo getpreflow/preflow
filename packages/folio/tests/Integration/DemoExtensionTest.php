@@ -77,7 +77,7 @@ final class DemoExtensionTest extends TestCase
         $this->assertStringContainsString('5 characters', $edit);
         $this->assertStringContainsString('action="/folio/note/n1/_action/shout"', $edit);
 
-        $res = $app->handle((new Psr17Factory())->createServerRequest('POST', '/folio/note/n1/_action/shout')->withParsedBody(['_csrf_token' => $token]));
+        $res = $app->handle((new Psr17Factory())->createServerRequest('POST', '/folio/note/n1/_action/shout')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody(['_csrf_token' => $token]));
         $this->assertSame(302, $res->getStatusCode());
         $this->assertSame('QUIET', $dm->findType('note', 'n1')?->get('name'));
     }
@@ -88,7 +88,7 @@ final class DemoExtensionTest extends TestCase
         $page = (string) $app->handle($f->createServerRequest('GET', '/folio/login'))->getBody();
         preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
         $token = $m[1] ?? '';
-        $login = $app->handle($f->createServerRequest('POST', '/folio/login')->withParsedBody([
+        $login = $app->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             '_csrf_token' => $token, 'email' => 'admin@folio.test', 'password' => 'folio-admin',
         ]));
         $this->assertSame(302, $login->getStatusCode());

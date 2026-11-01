@@ -89,7 +89,7 @@ final class ScreenAssetsAppTest extends TestCase
         $f = new Psr17Factory();
         $page = (string) $app->handle($f->createServerRequest('GET', '/folio/login'))->getBody();
         preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
-        $login = $app->handle($f->createServerRequest('POST', '/folio/login')->withParsedBody([
+        $login = $app->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             '_csrf_token' => $m[1] ?? '', 'email' => 'admin@site.test', 'password' => 'secret',
         ]));
         $this->assertSame(302, $login->getStatusCode());

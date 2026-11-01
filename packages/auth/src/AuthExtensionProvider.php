@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Auth;
 
 use Preflow\Core\Http\Csrf\CsrfToken;
+use Preflow\Core\Http\Csrf\StatelessCsrfToken;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\View\TemplateFunctionDefinition;
 use Preflow\View\TemplateExtensionProvider;
@@ -15,6 +16,8 @@ final class AuthExtensionProvider implements TemplateExtensionProvider
         private readonly AuthManager $authManager,
         private readonly ?SessionInterface $session = null,
         private readonly ?Access\Access $access = null,
+        /** prints a signed token on pages without a session */
+        private readonly ?StatelessCsrfToken $stateless = null,
     ) {}
 
     public function getTemplateFunctions(): array
@@ -60,11 +63,13 @@ final class AuthExtensionProvider implements TemplateExtensionProvider
 
     private function csrfValue(): string
     {
-        if ($this->session === null) {
-            return '';
+        $token = $this->session !== null ? CsrfToken::fromSession($this->session) : null;
+        if ($token !== null) {
+            return $token->getValue();
         }
-        $token = CsrfToken::fromSession($this->session);
-        return $token?->getValue() ?? '';
+
+        // No session on this page (a public path): the stateless token, when app.key allows it.
+        return $this->stateless?->enabled() === true ? $this->stateless->issue() : '';
     }
 
     private function csrfField(): string

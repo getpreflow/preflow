@@ -43,6 +43,13 @@ final class AiRunTest extends TestCase
     private function request(string $method, string $uri, array $body = [], bool $htmx = false): ResponseInterface
     {
         $request = (new Psr17Factory())->createServerRequest($method, $uri);
+        if ($method !== 'GET') {
+            // As a browser posts a form of the site: same origin, with the session cookie.
+            $request = $request->withHeader('Sec-Fetch-Site', 'same-origin');
+            if (session_id() !== '') {
+                $request = $request->withCookieParams([session_name() => session_id()]);
+            }
+        }
         parse_str((string) parse_url($uri, PHP_URL_QUERY), $query);
         $request = $request->withQueryParams($query);
         if ($method === 'POST') {
@@ -400,7 +407,7 @@ final class AiRunTest extends TestCase
         $this->assertSame(200, $res->getStatusCode(), (string) $res->getBody());
         $id = self::jobId($res);
 
-        $start = (new Psr17Factory())->createServerRequest('POST', "/folio/post/_ai/jobs/{$id}/start")->withHeader('HX-Request', 'true');
+        $start = (new Psr17Factory())->createServerRequest('POST', "/folio/post/_ai/jobs/{$id}/start")->withHeader('Sec-Fetch-Site', 'same-origin')->withCookieParams([session_name() => session_id()])->withHeader('HX-Request', 'true');
         $this->assertSame(403, $this->session->handle($start)->getStatusCode(), 'no token, no start');
 
         $started = $this->request('POST', "/folio/post/_ai/jobs/{$id}/start", [], true);

@@ -1002,6 +1002,10 @@ final class FolioServiceProvider extends ServiceProvider
         }
 
         $app = $container->get(Application::class);
+        // The staff login: a form left open past the session's end still signs in (CSRF).
+        if ($container->bound(\Preflow\Core\Http\Csrf\CsrfSignInPaths::class)) {
+            $container->get(\Preflow\Core\Http\Csrf\CsrfSignInPaths::class)->add(rtrim($this->prefix($app), '/') . '/login');
+        }
         self::requireRbacForMembers($container->get(ExtensionRegistry::class));
         // The codes admin's purpose select lists the purposes of config/codes.php (preflow/codes' Codes).
         if (self::codesAdmin($container->get(ExtensionRegistry::class)) && $container->bound(\Preflow\Codes\Codes::class)) {

@@ -163,7 +163,15 @@ default locale without a prefix):
   its column) and an accepted confirmation goes there once instead of `landing`. The
   confirmation clears it, also when the owner decides.
 - Every form needs the CSRF token (`csrf_field()` in the templates); every page is
-  `private, no-store`.
+  `private, no-store`. The login and the registration (`{path}/login`, `{path}/register`, in
+  any locale: `/de/konto/login` is `/konto/login`) are CSRF sign-in paths: a login form left
+  open until the session expired still signs in when the browser's origin check passes. Other
+  member forms whose session expired are sent back with a warning and their fields kept
+  (passwords excepted), never applied; the package pages show the `warning` flash above the
+  form (a site's own templates read `warning`). A public page outside the session paths may
+  post into these two (a registration form on the home page): `csrf_field()` prints the
+  stateless token there (with a real `app.key`), which they accept with a passing origin, also
+  from a visitor who has a session. Every other member form needs the session's own token.
 - Flash notices: `members.notice` (e.g. "Your account is deleted.") is shown by the package
   pages of the register controller; a site whose `register` is its own page reads it there.
   `members.account` is the account page's own.

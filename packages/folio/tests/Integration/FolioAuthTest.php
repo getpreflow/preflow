@@ -114,7 +114,7 @@ final class FolioAuthTest extends TestCase
         $this->assertStringContainsString('name="remember" value="1"', $page);
         $this->assertStringNotContainsString('/folio/forgot', $page, 'no record users: no forgot link');
         preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
-        $login = $app->handle($f->createServerRequest('POST', '/folio/login')->withParsedBody([
+        $login = $app->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             '_csrf_token' => $m[1] ?? '', 'email' => 'admin@site.test', 'password' => 'secret', 'remember' => '1',
         ]));
 
@@ -142,7 +142,7 @@ final class FolioAuthTest extends TestCase
         $this->assertNotSame('', $token);
 
         // Submit correct credentials.
-        $login = $app->handle($f->createServerRequest('POST', '/folio/login')->withParsedBody([
+        $login = $app->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             '_csrf_token' => $token, 'email' => 'admin@site.test', 'password' => 'secret',
         ]));
         $this->assertSame(302, $login->getStatusCode());
@@ -153,7 +153,7 @@ final class FolioAuthTest extends TestCase
         $this->assertSame(200, $dash->getStatusCode());
 
         // Logout, then the admin redirects again.
-        $out = $app->handle($f->createServerRequest('POST', '/folio/logout')->withParsedBody(['_csrf_token' => $token]));
+        $out = $app->handle($f->createServerRequest('POST', '/folio/logout')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody(['_csrf_token' => $token]));
         $this->assertSame(302, $out->getStatusCode());
         $this->assertSame('/folio/login', $out->getHeaderLine('Location'));
     }

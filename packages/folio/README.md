@@ -69,8 +69,14 @@ cookie-free, limit the session to the admin path:
 ],
 ```
 
-Requests outside those prefixes get no session and therefore no CSRF check either, so
-a public form needs its own protection.
+Requests outside those prefixes get no session, but they are still checked for CSRF:
+`csrf_field()` prints a stateless token there (with a real `app.key`; see the CSRF section of
+`preflow/core`).
+
+The staff login (`{path}/login`, from `config/folio.php` `path`) is a CSRF sign-in path: a
+login form left open until the session expired still signs in when the browser's origin
+check passes (the password is the proof), instead of failing with a 403. Other admin forms
+whose session expired are sent back with a warning and their fields kept, never applied.
 
 ### 3. Define a content type
 

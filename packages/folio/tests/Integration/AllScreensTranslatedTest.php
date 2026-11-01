@@ -380,6 +380,13 @@ final class AllScreensTranslatedTest extends TestCase
     private function request(string $method, string $uri, array $body = [], array $headers = []): ResponseInterface
     {
         $request = (new Psr17Factory())->createServerRequest($method, $uri, ['REMOTE_ADDR' => '203.0.113.7']);
+        if ($method !== 'GET') {
+            // As a browser posts a form of the site: same origin, with the session cookie.
+            $request = $request->withHeader('Sec-Fetch-Site', 'same-origin');
+            if (session_id() !== '') {
+                $request = $request->withCookieParams([session_name() => session_id()]);
+            }
+        }
         parse_str((string) parse_url($uri, PHP_URL_QUERY), $query);
         $request = $request->withQueryParams($query);
         foreach ($headers as $name => $value) {

@@ -69,8 +69,15 @@ TWIG);
     private function send(string $method, string $uri, array $body = [], array $cookies = []): ResponseInterface
     {
         $request = (new Psr17Factory())->createServerRequest($method, $uri, ['REMOTE_ADDR' => $this->remoteAddr]);
+        if ($method !== 'GET') {
+            // As a browser posts a form of the site: same origin, with the session cookie.
+            $request = $request->withHeader('Sec-Fetch-Site', 'same-origin');
+            if (session_id() !== '') {
+                $request = $request->withCookieParams([session_name() => session_id()]);
+            }
+        }
         if ($cookies !== []) {
-            $request = $request->withCookieParams($cookies);
+            $request = $request->withCookieParams($cookies + $request->getCookieParams());
         }
 
         return $this->flow->handle($body === [] ? $request : $request->withParsedBody($body));

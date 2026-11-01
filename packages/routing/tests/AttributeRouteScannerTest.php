@@ -12,6 +12,7 @@ use Preflow\Routing\Attributes\Get;
 use Preflow\Routing\Attributes\Post;
 use Preflow\Routing\Attributes\Delete;
 use Preflow\Routing\Attributes\Middleware;
+use Preflow\Core\Http\Csrf\CsrfExempt;
 
 #[Route('/api/posts')]
 class TestApiController
@@ -47,6 +48,36 @@ class CatchAllController
 {
     #[Get('/{preset}/{path...}')]
     public function serve(): void {}
+}
+
+#[Route('/hooks')]
+#[CsrfExempt('Signed webhook')]
+class ExemptClassController
+{
+    #[Post('/a')]
+    public function a(): void {}
+
+    #[Post('/b')]
+    public function b(): void {}
+}
+
+#[Route('/mixed')]
+class ExemptMethodController
+{
+    #[Post('/open')]
+    #[CsrfExempt('Third-party callback')]
+    public function open(): void {}
+
+    #[Post('/closed')]
+    public function closed(): void {}
+}
+
+#[Route('/bad')]
+class ExemptNoReasonController
+{
+    #[Post('/x')]
+    #[CsrfExempt('  ')]
+    public function x(): void {}
 }
 
 final class AttributeRouteScannerTest extends TestCase
@@ -159,5 +190,33 @@ final class AttributeRouteScannerTest extends TestCase
         preg_match($entry->regex, '/img/cover-thumb/games/cuvee/cover.jpg', $matches);
         $this->assertSame('cover-thumb', $matches['preset']);
         $this->assertSame('games/cuvee/cover.jpg', $matches['path']);
+    }
+
+    public function test_csrf_exempt_on_class_marks_all_routes(): void
+    {
+        $entries = (new AttributeRouteScanner())->scanClass(ExemptClassController::class);
+
+        $this->assertCount(2, $entries);
+        foreach ($entries as $entry) {
+            $this->assertTrue($entry->csrfExempt);
+        }
+    }
+
+    public function test_csrf_exempt_on_method_marks_that_route_only(): void
+    {
+        $entries = (new AttributeRouteScanner())->scanClass(ExemptMethodController::class);
+        $byPattern = [];
+        foreach ($entries as $entry) {
+            $byPattern[$entry->pattern] = $entry->csrfExempt;
+        }
+
+        $this->assertTrue($byPattern['/mixed/open']);
+        $this->assertFalse($byPattern['/mixed/closed']);
+    }
+
+    public function test_csrf_exempt_requires_a_reason(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        (new AttributeRouteScanner())->scanClass(ExemptNoReasonController::class);
     }
 }

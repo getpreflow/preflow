@@ -87,7 +87,7 @@ final class FolioPermissionsTest extends TestCase
         $page = (string) $this->session->handle($f->createServerRequest('GET', '/folio/login'))->getBody();
         preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
         $this->token = $m[1] ?? '';
-        $login = $this->session->handle($f->createServerRequest('POST', '/folio/login')->withParsedBody([
+        $login = $this->session->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             '_csrf_token' => $this->token, 'email' => "{$role}@site.test", 'password' => 'secret',
         ]));
         $this->assertSame(302, $login->getStatusCode());
@@ -97,6 +97,13 @@ final class FolioPermissionsTest extends TestCase
     private function send(string $method, string $uri, array $body = [], array $headers = []): ResponseInterface
     {
         $req = (new Psr17Factory())->createServerRequest($method, $uri);
+        if ($method !== 'GET') {
+            // As a browser posts a form of the site: same origin, with the session cookie.
+            $req = $req->withHeader('Sec-Fetch-Site', 'same-origin');
+            if (session_id() !== '') {
+                $req = $req->withCookieParams([session_name() => session_id()]);
+            }
+        }
         foreach ($headers as $k => $v) {
             $req = $req->withHeader($k, $v);
         }
@@ -208,7 +215,7 @@ final class FolioPermissionsTest extends TestCase
 
         $f = new Psr17Factory();
         $png = (string) file_get_contents($this->pngFile(40, 10));
-        $replace = $this->session->handle($f->createServerRequest('POST', '/folio/assets/' . $asset->id . '/replace')
+        $replace = $this->session->handle($f->createServerRequest('POST', '/folio/assets/' . $asset->id . '/replace')->withHeader('Sec-Fetch-Site', 'same-origin')->withCookieParams([session_name() => session_id()])
             ->withParsedBody(['_csrf_token' => $this->token])
             ->withUploadedFiles(['file' => $f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'new.png')]));
         $this->assertSame(403, $replace->getStatusCode());
@@ -233,7 +240,7 @@ final class FolioPermissionsTest extends TestCase
 
         $f = new Psr17Factory();
         $png = (string) file_get_contents($this->pngFile(40, 10));
-        $res = $this->session->handle($f->createServerRequest('POST', '/folio/assets/' . $asset->id . '/replace')
+        $res = $this->session->handle($f->createServerRequest('POST', '/folio/assets/' . $asset->id . '/replace')->withHeader('Sec-Fetch-Site', 'same-origin')->withCookieParams([session_name() => session_id()])
             ->withParsedBody([])
             ->withUploadedFiles(['file' => $f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'new.png')]));
 
@@ -241,7 +248,7 @@ final class FolioPermissionsTest extends TestCase
         $this->assertSame([1, 20], [$lib->find($asset->id)?->version, $lib->find($asset->id)?->width]);
 
         // With the token, the same request replaces.
-        $ok = $this->session->handle($f->createServerRequest('POST', '/folio/assets/' . $asset->id . '/replace')
+        $ok = $this->session->handle($f->createServerRequest('POST', '/folio/assets/' . $asset->id . '/replace')->withHeader('Sec-Fetch-Site', 'same-origin')->withCookieParams([session_name() => session_id()])
             ->withParsedBody(['_csrf_token' => $this->token])
             ->withUploadedFiles(['file' => $f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'new.png')]));
         $this->assertSame(302, $ok->getStatusCode());
@@ -400,7 +407,7 @@ final class FolioPermissionsTest extends TestCase
         $f = new Psr17Factory();
         $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
         $file = $f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'cover.png', 'image/png');
-        $req = $f->createServerRequest('POST', $uri)->withParsedBody($body + ['_csrf_token' => $this->token])->withUploadedFiles(['cover' => $file]);
+        $req = $f->createServerRequest('POST', $uri)->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody($body + ['_csrf_token' => $this->token])->withUploadedFiles(['cover' => $file]);
 
         return $this->session->handle($req);
     }

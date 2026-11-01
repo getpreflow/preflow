@@ -14,7 +14,8 @@ use Psr\Http\Message\ResponseInterface;
 
 /**
  * A temp app with a publishing "post" type (frontend "/{slug}", en/de) and a
- * "site" singleton. No auth, so admin POSTs need no session or CSRF token.
+ * "site" singleton. No auth, so admin POSTs need no session or CSRF token
+ * (they come from the same origin, as a browser's would).
  */
 trait PublishingScaffold
 {
@@ -130,7 +131,7 @@ trait PublishingScaffold
     /** @param array<string, mixed> $body */
     private function post(string $uri, array $body = []): ResponseInterface
     {
-        return $this->app()->handle((new Psr17Factory())->createServerRequest('POST', $uri)->withParsedBody($body));
+        return $this->app()->handle((new Psr17Factory())->createServerRequest('POST', $uri)->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody($body));
     }
 
     /**
@@ -156,7 +157,7 @@ trait PublishingScaffold
             $c->get(\Preflow\Folio\Content\RecordValidator::class),
         ));
 
-        return $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', $uri)->withParsedBody($body));
+        return $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', $uri)->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody($body));
     }
 
     private function dm(): DataManager

@@ -41,6 +41,13 @@ final class InterfaceLocaleTest extends TestCase
             $this->send('GET', '/folio/login');
         }
         $request = (new Psr17Factory())->createServerRequest($method, $uri, ['REMOTE_ADDR' => $this->remoteAddr]);
+        if ($method !== 'GET') {
+            // As a browser posts a form of the site: same origin, with the session cookie.
+            $request = $request->withHeader('Sec-Fetch-Site', 'same-origin');
+            if (session_id() !== '') {
+                $request = $request->withCookieParams([session_name() => session_id()]);
+            }
+        }
         foreach ($headers as $name => $value) {
             $request = $request->withHeader($name, $value);
         }

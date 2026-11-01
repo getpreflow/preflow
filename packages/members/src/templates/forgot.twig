@@ -12,7 +12,7 @@
   {% if error %}<div class="members-errors" role="alert">{{ t('members.errors.' ~ error) }}</div>{% endif %}
   <div class="field">
     <label for="f-email">{{ t('members.form.email') }}</label>
-    <input id="f-email" name="email" type="email" autocomplete="email" required>
+    <input id="f-email" name="email" type="email" autocomplete="email" required value="{{ old_email }}">
   </div>
   <button class="btn btn-primary members-submit" type="submit">{{ t('members.forgot.submit') }}</button>
 </form>

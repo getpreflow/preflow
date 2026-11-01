@@ -152,7 +152,7 @@ trait RbacAppScaffold
         $page = (string) $this->session->handle($f->createServerRequest('GET', '/folio/login'))->getBody();
         preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
         $this->token = $m[1] ?? '';
-        $login = $this->session->handle($f->createServerRequest('POST', '/folio/login')->withParsedBody([
+        $login = $this->session->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             '_csrf_token' => $this->token, 'email' => "{$user}@site.test", 'password' => 'secret',
         ]));
         $this->assertSame(302, $login->getStatusCode());
@@ -163,7 +163,10 @@ trait RbacAppScaffold
     {
         $req = (new Psr17Factory())->createServerRequest($method, $uri);
         if ($method === 'POST') {
-            $req = $req->withParsedBody(['_csrf_token' => $this->token] + $body);
+            // As a browser posts a form of the site: same origin, with the session cookie.
+            $req = $req->withHeader('Sec-Fetch-Site', 'same-origin')
+                ->withCookieParams(session_id() !== '' ? [session_name() => session_id()] : [])
+                ->withParsedBody(['_csrf_token' => $this->token] + $body);
         }
 
         return $this->session->handle($req);

@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Preflow\Form\Tests;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Http\OldInput;
 use Preflow\Form\FieldRenderer;
 use Preflow\Form\FormBuilder;
 use Preflow\Form\FormExtensionProvider;
 use Preflow\Form\GroupRenderer;
 use Preflow\Form\ModelIntrospector;
 use Preflow\View\TemplateExtensionProvider;
+use Preflow\Testing\ArraySession;
 use Preflow\View\TemplateFunctionDefinition;
 
 final class FormExtensionProviderTest extends TestCase
@@ -73,5 +75,21 @@ final class FormExtensionProviderTest extends TestCase
         $this->assertNotNull($formEnd);
         $result = ($formEnd->callable)();
         $this->assertSame('</form>', $result);
+    }
+
+    public function test_field_value_falls_back_to_flashed_input(): void
+    {
+        $session = new ArraySession();
+        $session->start();
+        OldInput::keep($session, ['name' => 'Ada', 'city' => 'Bern']);
+        $session->ageFlash();
+
+        $provider = new FormExtensionProvider(new FieldRenderer(), new GroupRenderer(), new ModelIntrospector(), new OldInput(static fn () => $session));
+        $provider->setOldInput(['name' => 'Grace']);
+        $formBegin = array_values(array_filter($provider->getTemplateFunctions(), fn (TemplateFunctionDefinition $f) => $f->name === 'form_begin'))[0];
+        $form = ($formBegin->callable)(['action' => '/test']);
+
+        $this->assertStringContainsString('value="Grace"', $form->field('name'));
+        $this->assertStringContainsString('value="Bern"', $form->field('city'));
     }
 }

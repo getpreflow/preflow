@@ -10,6 +10,7 @@ use Preflow\Auth\AuthManager;
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\GuardInterface;
 use Preflow\Auth\Tests\Fixtures\TestUser;
+use Preflow\Core\Http\Csrf\StatelessCsrfToken;
 use Preflow\Testing\ArraySession;
 use Preflow\View\TemplateFunctionDefinition;
 use Psr\Http\Message\ServerRequestInterface;
@@ -163,6 +164,47 @@ final class AuthExtensionProviderTest extends TestCase
 
         $this->assertNotNull($fn);
         $this->assertSame('', ($fn->callable)());
+    }
+
+    public function test_csrf_field_prints_the_stateless_token_without_session(): void
+    {
+        $stateless = new StatelessCsrfToken('a-real-application-key-of-32-bytes');
+        $provider = new AuthExtensionProvider($this->makeManager(), null, null, $stateless);
+
+        $functions = $provider->getTemplateFunctions();
+        $token = ($this->findFunction($functions, 'csrf_token')->callable)();
+        $field = ($this->findFunction($functions, 'csrf_field')->callable)();
+
+        $this->assertTrue($stateless->verify($token));
+        $this->assertStringContainsString('name="_csrf_token"', $field);
+        $this->assertStringContainsString('value="' . $token . '"', $field);
+    }
+
+    public function test_csrf_field_prints_the_stateless_token_when_the_session_has_none(): void
+    {
+        // A session path list: the session object exists but wasn't started on this public page.
+        $stateless = new StatelessCsrfToken('a-real-application-key-of-32-bytes');
+        $provider = new AuthExtensionProvider($this->makeManager(), new ArraySession(), null, $stateless);
+
+        $token = ($this->findFunction($provider->getTemplateFunctions(), 'csrf_token')->callable)();
+
+        $this->assertTrue($stateless->verify($token));
+    }
+
+    public function test_csrf_field_prefers_the_session_token(): void
+    {
+        $session = new ArraySession();
+        $session->set('_csrf_token', 'abc123testtoken');
+        $provider = new AuthExtensionProvider($this->makeManager(), $session, null, new StatelessCsrfToken('a-real-application-key-of-32-bytes'));
+
+        $this->assertSame('abc123testtoken', ($this->findFunction($provider->getTemplateFunctions(), 'csrf_token')->callable)());
+    }
+
+    public function test_csrf_field_is_empty_without_session_when_the_key_is_the_default(): void
+    {
+        $provider = new AuthExtensionProvider($this->makeManager(), null, null, new StatelessCsrfToken(StatelessCsrfToken::DEFAULT_KEY));
+
+        $this->assertSame('', ($this->findFunction($provider->getTemplateFunctions(), 'csrf_field')->callable)());
     }
 
     public function test_csrf_field_is_safe(): void

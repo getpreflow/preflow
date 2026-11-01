@@ -11,7 +11,7 @@
 
 <section class="members-form">
   <div class="section-inner">
-    {% if notice %}<p class="members-note" role="status">{{ notice }}</p>{% endif %}
+    {% if warning|default('') %}<p class="members-note" role="alert">{{ warning }}</p>{% endif %}{% if notice %}<p class="members-note" role="status">{{ notice }}</p>{% endif %}
     {% if open %}
     <form class="members-card" method="post" action="{{ base }}/register" novalidate>
       {% if next|default('') %}<input type="hidden" name="next" value="{{ next }}">{% endif %}{{ csrf_field() }}

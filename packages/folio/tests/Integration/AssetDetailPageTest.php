@@ -142,7 +142,7 @@ final class AssetDetailPageTest extends TestCase
         $this->assertStringNotContainsString('evil', $body);
         $this->assertStringNotContainsString('javascript', $body);
 
-        $res = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/assets/' . $asset->id)
+        $res = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/assets/' . $asset->id)->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withQueryParams(['back' => $back])
             ->withParsedBody(['alt' => ['en' => 'x'], '_csrf_token' => $this->token]));
         $this->assertSame('/folio/assets/' . $asset->id . '?saved=1', $res->getHeaderLine('Location'));
@@ -155,7 +155,7 @@ final class AssetDetailPageTest extends TestCase
         $asset = $this->quadrant();
         $back = '/folio/assets?kind=image&page=2';
 
-        $res = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/assets/' . $asset->id . '?back=' . rawurlencode($back))
+        $res = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/assets/' . $asset->id . '?back=' . rawurlencode($back))->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withQueryParams(['back' => $back])
             ->withParsedBody(['alt' => ['en' => 'Quadrants'], '_csrf_token' => $this->token]));
 
@@ -189,7 +189,7 @@ final class AssetDetailPageTest extends TestCase
         $asset = $this->quadrant();
         $back = '/folio/assets?kind=image';
 
-        $res = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/assets/' . $asset->id . '/delete')
+        $res = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/assets/' . $asset->id . '/delete')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withQueryParams(['back' => $back])
             ->withParsedBody(['_csrf_token' => $this->token]));
 
@@ -198,7 +198,7 @@ final class AssetDetailPageTest extends TestCase
         $this->assertNull($this->lib()->find($asset->id));
 
         $other = $this->quadrant();
-        $res = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/assets/' . $other->id . '/delete')
+        $res = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/assets/' . $other->id . '/delete')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withQueryParams(['back' => 'https://evil.example/'])
             ->withParsedBody(['_csrf_token' => $this->token]));
         $this->assertSame('/folio/assets', $res->getHeaderLine('Location'));
@@ -212,7 +212,7 @@ final class AssetDetailPageTest extends TestCase
         $back = '/folio/assets?kind=image';
         $suffix = '&back=' . rawurlencode($back);
         $f = new Psr17Factory();
-        $post = fn (string $uri, array $files = []) => $this->app()->handle($f->createServerRequest('POST', $uri)
+        $post = fn (string $uri, array $files = []) => $this->app()->handle($f->createServerRequest('POST', $uri)->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withQueryParams(['back' => $back])
             ->withParsedBody(['_csrf_token' => $this->token])
             ->withUploadedFiles($files));
@@ -249,7 +249,7 @@ final class AssetDetailPageTest extends TestCase
         $this->assertStringContainsString('action="/folio/assets/' . $asset->id . '/edit' . $q . '"', $body);
         $this->assertMatchesRegularExpression('#<a [^>]*href="/folio/assets\?kind=image"[^>]*>← Assets</a>#', $body);
 
-        $res = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/assets/' . $asset->id . '/edit')
+        $res = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/assets/' . $asset->id . '/edit')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withQueryParams(['back' => $back])
             ->withParsedBody(['op' => 'rotate-right', '_csrf_token' => $this->token]));
         $this->assertSame('/folio/assets/' . $asset->id . '/edit?done=rotated&back=' . rawurlencode($back), $res->getHeaderLine('Location'));
@@ -311,7 +311,7 @@ final class AssetDetailPageTest extends TestCase
         $page = (string) $this->app()->handle($f->createServerRequest('GET', '/folio/login'))->getBody();
         preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
         $this->token = $m[1] ?? '';
-        $login = $this->app()->handle($f->createServerRequest('POST', '/folio/login')->withParsedBody([
+        $login = $this->app()->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             '_csrf_token' => $this->token, 'email' => "{$role}@site.test", 'password' => 'secret',
         ]));
         $this->assertSame(302, $login->getStatusCode());
@@ -321,6 +321,13 @@ final class AssetDetailPageTest extends TestCase
     private function send(string $method, string $uri, array $body = []): ResponseInterface
     {
         $req = (new Psr17Factory())->createServerRequest($method, $uri);
+        if ($method !== 'GET') {
+            // As a browser posts a form of the site: same origin, with the session cookie.
+            $req = $req->withHeader('Sec-Fetch-Site', 'same-origin');
+            if (session_id() !== '') {
+                $req = $req->withCookieParams([session_name() => session_id()]);
+            }
+        }
         if ($method === 'POST') {
             $req = $req->withParsedBody($body + ['_csrf_token' => $this->token]);
         }

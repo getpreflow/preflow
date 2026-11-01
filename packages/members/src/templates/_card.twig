@@ -10,7 +10,7 @@
 <section class="members-status">
   <div class="section-inner">
     <div class="members-status__card">
-      {% block card %}{% endblock %}
+      {% if warning|default('') %}<p class="members-status__note" role="alert">{{ warning }}</p>{% endif %}{% block card %}{% endblock %}
     </div>
   </div>
 </section>

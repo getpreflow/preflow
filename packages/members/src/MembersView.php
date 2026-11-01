@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Preflow\Members;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Http\OldInput;
 use Preflow\Data\Locales;
 use Preflow\I18n\Translator;
+use Preflow\Members\Http\Input;
 use Preflow\View\AssetCollector;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -31,12 +33,14 @@ final class MembersView
         private readonly Locales $locales,
         private readonly Translator $translator,
         private readonly ?PageLocale $pageLocale = null,
+        private readonly ?OldInput $oldInput = null,
     ) {}
 
     /**
      * Template variables every page gets (a page's own $vars win): locale, alternates, viewer,
      * layout, base (the member pages' URL: locale prefix and path), landing, register (the register link), password_min,
-     * validity.confirm / validity.reset, privacy_url (config privacy_url in the page locale), and empty defaults for the form state (notice, error,
+     * validity.confirm / validity.reset, privacy_url (config privacy_url in the page locale), warning (the session's "warning"
+     * flash, e.g. a form sent back after an expired session), and empty defaults for the form state (notice, error,
      * errors, old, next, next_query: "?next=..." for the links between login and register, ...), so a template never trips over an unset variable in debug mode.
      *
      * @param array<string, mixed> $vars
@@ -49,6 +53,7 @@ final class MembersView
         // translator stays on the default locale, which is right for a one-language site.
         $this->translator->setLocale($locale);
         $this->pageLocale?->set($locale);
+        $vars = $this->withFlashedInput($vars) + ['warning' => Input::flash($request, 'warning')];
 
         $html = $this->engine->render('@members/' . $template . '.twig', $vars + [
             'locale' => $locale,
@@ -69,6 +74,29 @@ final class MembersView
             'Content-Type' => 'text/html; charset=UTF-8',
             'Cache-Control' => self::CACHE,
         ], $this->assets->injectInto($html));
+    }
+
+    /**
+     * A form sent back after an expired session shows the fields it kept (old / old_email),
+     * unless the controller passed its own.
+     *
+     * @param array<string, mixed> $vars
+     * @return array<string, mixed>
+     */
+    private function withFlashedInput(array $vars): array
+    {
+        $flashed = $this->oldInput?->all() ?? [];
+        if ($flashed === []) {
+            return $vars;
+        }
+        if (($vars['old'] ?? []) === []) {
+            $vars['old'] = $flashed;
+        }
+        if (($vars['old_email'] ?? '') === '' && is_string($flashed['email'] ?? null)) {
+            $vars['old_email'] = $flashed['email'];
+        }
+
+        return $vars;
     }
 
     /** For an htmx request: the browser navigates to $location; there is nothing to swap in. */

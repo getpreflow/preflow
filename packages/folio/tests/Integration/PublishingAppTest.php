@@ -561,7 +561,7 @@ final class PublishingAppTest extends TestCase
     {
         $this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 'hello']]);
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $request = $f->createServerRequest('POST', '/folio/post/p1/autosave')
+        $request = $f->createServerRequest('POST', '/folio/post/p1/autosave')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'T', 'slug' => 'hello', '_locale' => 'en'])
             ->withUploadedFiles(['cover' => $f->createUploadedFile($f->createStream('PNGDATA'), 7, UPLOAD_ERR_OK, 'pic.png', 'image/png')]);
 

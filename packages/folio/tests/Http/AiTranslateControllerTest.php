@@ -51,7 +51,7 @@ final class AiTranslateControllerTest extends TestCase
     /** @param array<string, mixed> $body */
     private function call(string $uri, array $body): ResponseInterface
     {
-        $request = (new Psr17Factory())->createServerRequest('POST', $uri)->withParsedBody($body + ['_csrf_token' => $this->token]);
+        $request = (new Psr17Factory())->createServerRequest('POST', $uri)->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody($body + ['_csrf_token' => $this->token]);
 
         return ($this->session ?? $this->aiApp())->handle($request);
     }
@@ -291,7 +291,7 @@ final class AiTranslateControllerTest extends TestCase
     public function test_post_without_csrf_token_refused(): void
     {
         $this->staff('translator');
-        $request = (new Psr17Factory())->createServerRequest('POST', '/folio/post/p1/_ai/suggest')->withParsedBody(['locale' => 'de', 'scope' => 'needed']);
+        $request = (new Psr17Factory())->createServerRequest('POST', '/folio/post/p1/_ai/suggest')->withHeader('Sec-Fetch-Site', 'same-origin')->withCookieParams([session_name() => session_id()])->withParsedBody(['locale' => 'de', 'scope' => 'needed']);
 
         $this->assertSame(403, $this->session->handle($request)->getStatusCode());
         $this->assertSame(403, $this->session->handle($request->withUri($request->getUri()->withPath('/folio/post/p1/_ai/estimate')))->getStatusCode());
@@ -342,7 +342,7 @@ final class AiTranslateControllerTest extends TestCase
             return $echo($r);
         }];
         $controller = $this->aiApp()->container()->get(AiTranslateController::class);
-        $request = (new Psr17Factory())->createServerRequest('POST', '/folio/post/p1/_ai/suggest')
+        $request = (new Psr17Factory())->createServerRequest('POST', '/folio/post/p1/_ai/suggest')->withHeader('Sec-Fetch-Site', 'same-origin')->withCookieParams([session_name() => session_id()])
             ->withParsedBody(['locale' => 'de', 'scope' => 'needed'])
             ->withAttribute('type', 'post')
             ->withAttribute('id', 'p1')

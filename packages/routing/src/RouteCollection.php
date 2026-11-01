@@ -61,6 +61,7 @@ final class RouteCollection
             'paramNames' => $e->paramNames,
             'regex' => $e->regex,
             'isCatchAll' => $e->isCatchAll,
+            'csrfExempt' => $e->csrfExempt,
         ], $this->entries);
     }
 
@@ -80,6 +81,7 @@ final class RouteCollection
                 paramNames: $item['paramNames'],
                 regex: $item['regex'],
                 isCatchAll: $item['isCatchAll'],
+                csrfExempt: $item['csrfExempt'] ?? false,
             ));
         }
         return $collection;

@@ -52,7 +52,11 @@ final class Kernel
                 if ($this->componentEndpoint !== null && str_starts_with($req->getUri()->getPath(), '/--component')) {
                     return ($this->componentEndpoint)($req);
                 }
-                $route = $this->router->match($req);
+                // Middleware that already matched (CSRF) leaves the route on the request.
+                $route = $req->getAttribute(Route::class);
+                if (!$route instanceof Route) {
+                    $route = $this->router->match($req);
+                }
                 // Route middleware (e.g. permission checks) can read the matched handler and parameters.
                 $req = $req->withAttribute(Route::class, $route);
                 $this->collector?->setRoute($route->mode->value, $route->handler, $route->parameters);

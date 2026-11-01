@@ -18,9 +18,10 @@ use Psr\Http\Message\ResponseInterface;
  * Debug is enabled so Twig runs with strict_variables — this is what catches
  * template defects (e.g. missing-key access on a new record's empty values).
  *
- * No config/auth.php is scaffolded, so no session is started and CsrfMiddleware
- * is a no-op; the POST therefore needs no CSRF token. (CSRF token emission is
- * covered separately and exercised by the example app.)
+ * No config/auth.php is scaffolded, so no session is started; POSTs carry
+ * Sec-Fetch-Site: same-origin as a browser sends it, which passes the CSRF
+ * check without a token. (CSRF token emission is covered separately and
+ * exercised by the example app.)
  */
 final class FolioAppTest extends TestCase
 {
@@ -53,7 +54,7 @@ final class FolioAppTest extends TestCase
     {
         // Seed one record so the count is non-zero and deterministic.
         $app = $this->app();
-        $app->handle((new Psr17Factory())->createServerRequest('POST', '/folio/page')
+        $app->handle((new Psr17Factory())->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'Seed', 'slug' => 'seed', 'body' => 'B', 'status' => 'published']));
 
         $body = (string) $app->handle((new Psr17Factory())->createServerRequest('GET', '/folio'))->getBody();
@@ -104,7 +105,7 @@ final class FolioAppTest extends TestCase
         $app = $this->app();
 
         $create = $app->handle(
-            (new Psr17Factory())->createServerRequest('POST', '/folio/page')
+            (new Psr17Factory())->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')
                 ->withParsedBody([
                     'title'  => 'About Us',
                     'slug'   => 'about',
@@ -147,23 +148,23 @@ final class FolioAppTest extends TestCase
         $this->writeEventType();
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $app->handle($f->createServerRequest('POST', '/folio/event')
+        $app->handle($f->createServerRequest('POST', '/folio/event')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'E', 'featured' => '1', 'state' => 'a']));
         $dm = $app->container()->get(\Preflow\Data\DataManager::class);
         $id = $dm->queryType('event')->where('title', 'E')->first()->getId();
         $this->assertTrue((bool) $dm->findType('event', $id)->get('featured'));
 
         // unchecked box: only the hidden "0" is submitted
-        $app->handle($f->createServerRequest('POST', '/folio/event/' . $id)
+        $app->handle($f->createServerRequest('POST', '/folio/event/' . $id)->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withAttribute('type', 'event')->withAttribute('id', $id)
             ->withParsedBody(['title' => 'E', 'featured' => '0', 'state' => 'a']));
         $this->assertFalse($dm->findType('event', $id)->get('featured'));
 
         // field absent from the body altogether
-        $app->handle($f->createServerRequest('POST', '/folio/event/' . $id)
+        $app->handle($f->createServerRequest('POST', '/folio/event/' . $id)->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withAttribute('type', 'event')->withAttribute('id', $id)
             ->withParsedBody(['title' => 'E', 'featured' => '1', 'state' => 'a']));
-        $app->handle($f->createServerRequest('POST', '/folio/event/' . $id)
+        $app->handle($f->createServerRequest('POST', '/folio/event/' . $id)->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withAttribute('type', 'event')->withAttribute('id', $id)
             ->withParsedBody(['title' => 'E', 'state' => 'a']));
         $this->assertFalse($dm->findType('event', $id)->get('featured'));
@@ -181,13 +182,13 @@ final class FolioAppTest extends TestCase
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
 
-        $res = $app->handle($f->createServerRequest('POST', '/folio/event')
+        $res = $app->handle($f->createServerRequest('POST', '/folio/event')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'A', 'price' => '2.5']));
         $this->assertNotSame(422, $res->getStatusCode());
         $dm = $app->container()->get(\Preflow\Data\DataManager::class);
         $this->assertEquals(2.5, $dm->queryType('event')->where('title', 'A')->first()->get('price'));
 
-        $res = $app->handle($f->createServerRequest('POST', '/folio/event')
+        $res = $app->handle($f->createServerRequest('POST', '/folio/event')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'B', 'price' => '2.3']));
         $this->assertSame(422, $res->getStatusCode());
         $this->assertStringContainsString('Must be a multiple of 0.5.', (string) $res->getBody());
@@ -206,7 +207,7 @@ final class FolioAppTest extends TestCase
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
 
-        $res = $app->handle($f->createServerRequest('POST', '/folio/event')
+        $res = $app->handle($f->createServerRequest('POST', '/folio/event')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'Empty', 'price' => '', 'weight' => '']));
         $this->assertNotSame(422, $res->getStatusCode(), (string) $res->getBody());
         $record = $app->container()->get(\Preflow\Data\DataManager::class)->queryType('event')->where('title', 'Empty')->first();
@@ -214,7 +215,7 @@ final class FolioAppTest extends TestCase
         $this->assertEmpty($record->get('price'));
         $this->assertEmpty($record->get('weight'));
 
-        $res = $app->handle($f->createServerRequest('POST', '/folio/event')
+        $res = $app->handle($f->createServerRequest('POST', '/folio/event')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'Off', 'price' => '2.3', 'weight' => 'abc']));
         $this->assertSame(422, $res->getStatusCode());
         $body = (string) $res->getBody();
@@ -234,7 +235,7 @@ final class FolioAppTest extends TestCase
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
 
-        $res = $app->handle($f->createServerRequest('POST', '/folio/event')
+        $res = $app->handle($f->createServerRequest('POST', '/folio/event')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'Empty', 'price' => '']));
         $this->assertSame(422, $res->getStatusCode());
         $body = (string) $res->getBody();
@@ -256,7 +257,7 @@ final class FolioAppTest extends TestCase
             ->withAttribute('type', 'event')->withAttribute('id', 'ev1'))->getBody();
         $this->assertStringContainsString('<option value="archived" selected>archived (no longer an option)</option>', $form);
 
-        $res = $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/event/ev1')
+        $res = $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/event/ev1')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withAttribute('type', 'event')->withAttribute('id', 'ev1')
             ->withParsedBody(['title' => 'Old', 'state' => 'archived']));
         $this->assertSame(422, $res->getStatusCode());
@@ -265,7 +266,7 @@ final class FolioAppTest extends TestCase
     public function test_type_rules_are_enforced_on_save(): void
     {
         $this->writeEventType(); // state has no "validate" in the JSON; select adds in:a,b itself
-        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/event')
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/event')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'E', 'state' => 'zzz']));
 
         $this->assertSame(422, $res->getStatusCode());
@@ -378,7 +379,7 @@ final class FolioAppTest extends TestCase
     public function test_list_shows_row_with_edit_and_delete_actions(): void
     {
         $app = $this->app();
-        $app->handle((new Psr17Factory())->createServerRequest('POST', '/folio/page')
+        $app->handle((new Psr17Factory())->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'Listed', 'slug' => 'listed', 'body' => 'B', 'status' => 'published']));
 
         $body = (string) $app->handle((new Psr17Factory())->createServerRequest('GET', '/folio/page'))->getBody();
@@ -407,7 +408,7 @@ final class FolioAppTest extends TestCase
         $app = $this->app();
         // page model requires title, slug, status(in:draft,published). Omit title.
         $res = $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
-            ->createServerRequest('POST', '/folio/page')
+            ->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => '', 'slug' => 'x', 'body' => 'b', 'status' => 'draft']));
 
         $this->assertSame(422, $res->getStatusCode());
@@ -421,7 +422,7 @@ final class FolioAppTest extends TestCase
     {
         $app = $this->app();
         $res = $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
-            ->createServerRequest('POST', '/folio/page')
+            ->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'Valid', 'slug' => 'valid', 'body' => 'b', 'status' => 'published']));
         $this->assertSame(302, $res->getStatusCode());
     }
@@ -430,7 +431,7 @@ final class FolioAppTest extends TestCase
     {
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $app->handle($f->createServerRequest('POST', '/folio/page')->withParsedBody([
+        $app->handle($f->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             'title' => 'Post', 'slug' => 'post',
             'body' => '<p>safe</p><script>alert(1)</script>', 'status' => 'published',
         ]));
@@ -457,7 +458,7 @@ final class FolioAppTest extends TestCase
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
         $png = $this->pngBytes();
 
-        $res = $app->handle($f->createServerRequest('POST', '/folio/page')
+        $res = $app->handle($f->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'A', 'slug' => 'a', 'body' => 'b', 'status' => 'published'])
             ->withUploadedFiles(['cover' => $f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'pic.png', 'image/png')]));
         $this->assertSame(302, $res->getStatusCode());
@@ -475,7 +476,7 @@ final class FolioAppTest extends TestCase
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
         $png = $this->pngBytes();
-        $app->handle($f->createServerRequest('POST', '/folio/page')
+        $app->handle($f->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'Img', 'slug' => 'img', 'body' => 'b', 'status' => 'published'])
             ->withUploadedFiles(['cover' => $f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'pic.png', 'image/png')]));
 
@@ -488,7 +489,7 @@ final class FolioAppTest extends TestCase
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
         $png = $this->pngBytes();
-        $app->handle($f->createServerRequest('POST', '/folio/page')
+        $app->handle($f->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'R', 'slug' => 'r', 'body' => 'b', 'status' => 'published'])
             ->withUploadedFiles(['cover' => $f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'pic.png', 'image/png')]));
 
@@ -498,7 +499,7 @@ final class FolioAppTest extends TestCase
         $this->assertNotSame('', (string) $record->get('cover'));
 
         // The editor posts its selection: only the empty marker means "nothing selected".
-        $app->handle($f->createServerRequest('POST', '/folio/page/' . $id)
+        $app->handle($f->createServerRequest('POST', '/folio/page/' . $id)->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withAttribute('type', 'page')->withAttribute('id', $id)
             ->withParsedBody(['title' => 'R', 'slug' => 'r', 'body' => 'b', 'status' => 'published', 'cover_ids' => ['']]));
 
@@ -521,7 +522,7 @@ final class FolioAppTest extends TestCase
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
 
         // create a target author
-        $app->handle($f->createServerRequest('POST', '/folio/author')
+        $app->handle($f->createServerRequest('POST', '/folio/author')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['name' => 'Ada Lovelace']));
         $dm = $app->container()->get(\Preflow\Data\DataManager::class);
         $authorId = $dm->queryType('author')->first()->getId();
@@ -532,7 +533,7 @@ final class FolioAppTest extends TestCase
         $this->assertStringContainsString('Ada Lovelace', $newForm);
 
         // create a page selecting that author, then the edit form shows it selected
-        $app->handle($f->createServerRequest('POST', '/folio/page')
+        $app->handle($f->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'Rel', 'slug' => 'rel', 'body' => 'b', 'status' => 'published', 'author' => $authorId]));
         $pageId = $dm->queryType('page')->where('slug', 'rel')->first()->getId();
 
@@ -545,7 +546,7 @@ final class FolioAppTest extends TestCase
     {
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $app->handle($f->createServerRequest('POST', '/folio/note')->withParsedBody(['name' => 'Note A']));
+        $app->handle($f->createServerRequest('POST', '/folio/note')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody(['name' => 'Note A']));
 
         $body = (string) $app->handle($f->createServerRequest('GET', '/folio/page/new'))->getBody();
         $this->assertStringContainsString('data-folio-matrix', $body);
@@ -557,11 +558,11 @@ final class FolioAppTest extends TestCase
     {
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $app->handle($f->createServerRequest('POST', '/folio/note')->withParsedBody(['name' => 'Block Note']));
+        $app->handle($f->createServerRequest('POST', '/folio/note')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody(['name' => 'Block Note']));
         $dm = $app->container()->get(\Preflow\Data\DataManager::class);
         $noteId = $dm->queryType('note')->first()->getId();
 
-        $app->handle($f->createServerRequest('POST', '/folio/page')->withParsedBody([
+        $app->handle($f->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             'title' => 'Composed', 'slug' => 'composed', 'body' => 'b', 'status' => 'published',
             'blocks' => [['_type' => 'note', 'id' => $noteId]],
         ]));
@@ -588,7 +589,7 @@ final class FolioAppTest extends TestCase
     {
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $res = $app->handle($f->createServerRequest('POST', '/folio/note?_drawer=1')
+        $res = $app->handle($f->createServerRequest('POST', '/folio/note?_drawer=1')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['name' => 'Drawer Note']));
 
         $this->assertSame(200, $res->getStatusCode());
@@ -603,7 +604,7 @@ final class FolioAppTest extends TestCase
     {
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $app->handle($f->createServerRequest('POST', '/folio/note')->withParsedBody(['name' => 'Labeled Note']));
+        $app->handle($f->createServerRequest('POST', '/folio/note')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody(['name' => 'Labeled Note']));
         $id = $app->container()->get(\Preflow\Data\DataManager::class)
             ->queryType('note')->where('name', 'Labeled Note')->first()->getId();
 
@@ -618,11 +619,11 @@ final class FolioAppTest extends TestCase
     {
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $app->handle($f->createServerRequest('POST', '/folio/note')->withParsedBody(['name' => 'Viewed Note']));
+        $app->handle($f->createServerRequest('POST', '/folio/note')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody(['name' => 'Viewed Note']));
         $dm = $app->container()->get(\Preflow\Data\DataManager::class);
         $noteId = $dm->queryType('note')->where('name', 'Viewed Note')->first()->getId();
 
-        $app->handle($f->createServerRequest('POST', '/folio/page')->withParsedBody([
+        $app->handle($f->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             'title' => 'Views', 'slug' => 'views', 'body' => 'b', 'status' => 'published',
             'blocks' => [
                 ['_type' => 'note', 'id' => $noteId],                    // default view
@@ -639,11 +640,11 @@ final class FolioAppTest extends TestCase
     {
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $app->handle($f->createServerRequest('POST', '/folio/note')->withParsedBody(['name' => 'RT Note']));
+        $app->handle($f->createServerRequest('POST', '/folio/note')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody(['name' => 'RT Note']));
         $dm = $app->container()->get(\Preflow\Data\DataManager::class);
         $noteId = $dm->queryType('note')->where('name', 'RT Note')->first()->getId();
 
-        $app->handle($f->createServerRequest('POST', '/folio/page')->withParsedBody([
+        $app->handle($f->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             'title' => 'RT', 'slug' => 'rt', 'body' => 'b', 'status' => 'published',
             'blocks' => [
                 ['_type' => 'note', 'id' => $noteId, 'view' => 'card'],  // declared -> kept
@@ -662,7 +663,7 @@ final class FolioAppTest extends TestCase
     {
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $res = $app->handle($f->createServerRequest('POST', '/folio/page/preview')->withParsedBody([
+        $res = $app->handle($f->createServerRequest('POST', '/folio/page/preview')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             'title' => 'Live Draft', 'slug' => 'live-draft', 'body' => 'b', 'status' => 'draft',
         ]));
 
@@ -676,13 +677,13 @@ final class FolioAppTest extends TestCase
     {
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $app->handle($f->createServerRequest('POST', '/folio/page')->withParsedBody([
+        $app->handle($f->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             'title' => 'Orig', 'slug' => 'orig', 'body' => 'b', 'status' => 'published',
         ]));
         $dm = $app->container()->get(\Preflow\Data\DataManager::class);
         $id = $dm->queryType('page')->where('slug', 'orig')->first()->getId();
 
-        $res = $app->handle($f->createServerRequest('POST', '/folio/page/' . $id . '/preview')
+        $res = $app->handle($f->createServerRequest('POST', '/folio/page/' . $id . '/preview')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'Edited', 'slug' => 'orig', 'body' => 'b', 'status' => 'published']));
 
         $this->assertStringContainsString('Edited', (string) $res->getBody());          // draft shown
@@ -737,7 +738,7 @@ final class FolioAppTest extends TestCase
     public function test_public_render_has_no_field_markers(): void
     {
         $app = $this->app();
-        $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page')
+        $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'Pub', 'slug' => 'pub', 'body' => 'b', 'status' => 'published']));
 
         $body = (string) $this->get('/pub')->getBody();
@@ -850,7 +851,7 @@ final class FolioAppTest extends TestCase
         $this->postItem(['title' => 'B item']);
         $id = $this->itemId('A item');
 
-        $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/item/' . $id)
+        $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/item/' . $id)->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withAttribute('type', 'item')->withAttribute('id', $id)
             ->withParsedBody(['title' => 'A item']));
 
@@ -982,7 +983,7 @@ final class FolioAppTest extends TestCase
     {
         $id = $this->outdatedPage();
 
-        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page/' . $id . '/_translations/confirm')
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page/' . $id . '/_translations/confirm')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withAttribute('type', 'page')->withAttribute('id', $id)
             ->withParsedBody(['_locale' => 'de', 'title' => 'Über uns', 'slug' => 'ueber-about', 'body' => 'k', 'status' => 'published', '_confirm_path' => 'title']));
 
@@ -1017,7 +1018,7 @@ final class FolioAppTest extends TestCase
         $this->assertStringNotContainsString('name="_confirm_path" value="slug"', $body);
         $this->assertStringNotContainsString('folio-unchecked', (string) $this->get('/folio/page/' . $id . '/edit')->getBody(), 'the default language has nothing unchecked');
 
-        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page/' . $id . '/_translations/confirm')
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page/' . $id . '/_translations/confirm')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withAttribute('type', 'page')->withAttribute('id', $id)
             ->withParsedBody(['_locale' => 'de', 'title' => 'Über', 'slug' => 'ueber-about', 'body' => 'k', 'status' => 'published', '_confirm_path' => 'title']));
         $this->assertSame(302, $res->getStatusCode(), (string) $res->getBody());
@@ -1178,7 +1179,7 @@ final class FolioAppTest extends TestCase
     {
         // Stored before the type became translatable: plain scalars.
         $app = $this->app();
-        $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page')
+        $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'Legacy', 'slug' => 'legacy', 'body' => 'b', 'status' => 'published']));
         $this->enableGerman();
 
@@ -1203,9 +1204,9 @@ final class FolioAppTest extends TestCase
         $note['fields']['name']['translatable'] = true;
         file_put_contents($this->dir . '/config/models/note.json', json_encode($note));
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $this->app()->handle($f->createServerRequest('POST', '/folio/note')->withParsedBody(['name' => 'English note']));
+        $this->app()->handle($f->createServerRequest('POST', '/folio/note')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody(['name' => 'English note']));
         $noteId = (string) $this->dm()->queryType('note')->first()->getId();
-        $this->app()->handle($f->createServerRequest('POST', '/folio/note/' . $noteId)
+        $this->app()->handle($f->createServerRequest('POST', '/folio/note/' . $noteId)->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withAttribute('type', 'note')->withAttribute('id', $noteId)->withParsedBody(['_locale' => 'de', 'name' => 'Deutsche Notiz']));
         $id = $this->createPage(['title' => 'Composed', 'slug' => 'composed', 'body' => 'b', 'status' => 'published',
             'blocks' => [['_type' => 'note', 'id' => $noteId]], '_locales_submitted' => '1', '_locales' => ['de']]);
@@ -1263,7 +1264,7 @@ final class FolioAppTest extends TestCase
         $this->enableBlocks();
         $uid = 'aaaaaaaaaaaaaaaa';
 
-        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page')
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
                 'sections' => ['_order' => [$uid], $uid => ['_block' => 'hero', 'headline' => '']]]));
 
@@ -1352,7 +1353,7 @@ final class FolioAppTest extends TestCase
         $this->enableBlocks();
         $uid = 'aaaaaaaaaaaaaaaa';
 
-        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page')
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
                 'sections' => ['_order' => [$uid], $uid => ['_block' => 'hero', 'headline' => '']]]));
 
@@ -1619,8 +1620,8 @@ final class FolioAppTest extends TestCase
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
 
         $this->assertSame(404, $this->get('/folio/site/new')->getStatusCode());
-        $this->assertSame(404, $this->app()->handle($f->createServerRequest('POST', '/folio/site')->withParsedBody(['name' => 'X']))->getStatusCode());
-        $this->assertSame(404, $this->app()->handle($f->createServerRequest('POST', '/folio/site/site/delete')
+        $this->assertSame(404, $this->app()->handle($f->createServerRequest('POST', '/folio/site')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody(['name' => 'X']))->getStatusCode());
+        $this->assertSame(404, $this->app()->handle($f->createServerRequest('POST', '/folio/site/site/delete')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withAttribute('type', 'site')->withAttribute('id', 'site'))->getStatusCode());
         $this->assertNotNull($this->dm()->findType('site', 'site'));
     }
@@ -1667,7 +1668,7 @@ final class FolioAppTest extends TestCase
     /** @param array<string, mixed> $body */
     private function postSite(array $body): ResponseInterface
     {
-        return $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/site/site')
+        return $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/site/site')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withAttribute('type', 'site')->withAttribute('id', 'site')->withParsedBody($body));
     }
 
@@ -1743,7 +1744,7 @@ final class FolioAppTest extends TestCase
 
         // The card's current (unsaved) values are posted along.
         $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
-            ->createServerRequest('POST', '/folio/_blocks/duplicate?' . http_build_query(['name' => 'sections', 'uid' => $a, 'locale' => 'en', 'depth' => 0, 'type' => 'page', 'id' => $id]))
+            ->createServerRequest('POST', '/folio/_blocks/duplicate?' . http_build_query(['name' => 'sections', 'uid' => $a, 'locale' => 'en', 'depth' => 0, 'type' => 'page', 'id' => $id]))->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['sections' => [$a => ['_block' => 'hero', 'headline' => 'Edited copy', 'intro' => 'I',
                 'tradeoff' => ['_order' => [$c], $c => ['_block' => 'tradeoff_note', 'chose' => 'note']]]]]));
         $body = (string) $res->getBody();
@@ -1761,9 +1762,9 @@ final class FolioAppTest extends TestCase
         $this->enableBlocks();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
 
-        $this->assertSame(400, $this->app()->handle($f->createServerRequest('POST', '/folio/_blocks/duplicate?name=' . rawurlencode('x"><b>') . '&uid=aaaaaaaaaaaaaaaa'))->getStatusCode());
-        $this->assertSame(400, $this->app()->handle($f->createServerRequest('POST', '/folio/_blocks/duplicate?name=sections&uid=nope'))->getStatusCode());
-        $this->assertSame(404, $this->app()->handle($f->createServerRequest('POST', '/folio/_blocks/duplicate?name=sections&uid=aaaaaaaaaaaaaaaa')
+        $this->assertSame(400, $this->app()->handle($f->createServerRequest('POST', '/folio/_blocks/duplicate?name=' . rawurlencode('x"><b>') . '&uid=aaaaaaaaaaaaaaaa')->withHeader('Sec-Fetch-Site', 'same-origin'))->getStatusCode());
+        $this->assertSame(400, $this->app()->handle($f->createServerRequest('POST', '/folio/_blocks/duplicate?name=sections&uid=nope')->withHeader('Sec-Fetch-Site', 'same-origin'))->getStatusCode());
+        $this->assertSame(404, $this->app()->handle($f->createServerRequest('POST', '/folio/_blocks/duplicate?name=sections&uid=aaaaaaaaaaaaaaaa')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['sections' => ['aaaaaaaaaaaaaaaa' => ['_block' => 'nope']]]))->getStatusCode());
     }
 
@@ -1819,7 +1820,7 @@ final class FolioAppTest extends TestCase
     {
         $app = $this->app();
         $f = new \Nyholm\Psr7\Factory\Psr17Factory();
-        $body = (string) $app->handle($f->createServerRequest('POST', '/folio/page/preview')->withParsedBody([
+        $body = (string) $app->handle($f->createServerRequest('POST', '/folio/page/preview')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
             'title' => 'Marked', 'slug' => 'marked', 'body' => 'hello', 'status' => 'draft',
         ]))->getBody();
         $this->assertStringContainsString('data-folio-field="title"', $body);
@@ -1972,7 +1973,7 @@ final class FolioAppTest extends TestCase
         $this->postItem(['title' => 'B item']);
         $id = $this->itemId('B item');
 
-        $res = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/item/' . $id . '/move')
+        $res = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/item/' . $id . '/move')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['direction' => 'up', 'page' => '2']));
 
         $this->assertSame('/folio/item?page=2', $res->getHeaderLine('Location'));
@@ -2155,7 +2156,7 @@ final class FolioAppTest extends TestCase
     /** @param array<string, mixed> $body */
     private function createPage(array $body): string
     {
-        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page')->withParsedBody($body));
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody($body));
         $this->assertSame(302, $res->getStatusCode(), (string) $res->getBody());
 
         return (string) $this->dm()->queryType('page')->where('title', $body['title'])->first()->getId();
@@ -2164,7 +2165,7 @@ final class FolioAppTest extends TestCase
     /** @param array<string, mixed> $body */
     private function postPage(string $uri, string $id, array $body): ResponseInterface
     {
-        return $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', $uri)
+        return $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', $uri)->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withAttribute('type', 'page')->withAttribute('id', $id)->withParsedBody($body));
     }
 
@@ -2190,7 +2191,7 @@ final class FolioAppTest extends TestCase
     /** @param array<string, string> $body */
     private function postItem(array $body): void
     {
-        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/item')
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/item')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody($body));
         $this->assertSame(302, $res->getStatusCode());
     }
@@ -2203,7 +2204,7 @@ final class FolioAppTest extends TestCase
 
     private function move(string $id, string $direction): void
     {
-        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/item/' . $id . '/move')
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/item/' . $id . '/move')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withAttribute('type', 'item')->withAttribute('id', $id)
             ->withParsedBody(['direction' => $direction]));
         $this->assertSame(302, $res->getStatusCode());

@@ -361,7 +361,7 @@ final class PrivateAssetsTest extends TestCase
         // An upload from the private picker is private.
         preg_match('/name="_csrf_token" value="([^"]+)"/', $onlyPrivate, $m);
         $f = new Psr17Factory();
-        $res = $this->app()->handle($f->createServerRequest('POST', '/folio/assets')
+        $res = $this->app()->handle($f->createServerRequest('POST', '/folio/assets')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody(['_csrf_token' => $m[1] ?? '', 'picker' => '1', 'multiple' => '0', 'private' => '1'])
             ->withUploadedFiles(['files' => [$this->file($this->pdf(), 'New.pdf')]]));
         $this->assertSame(302, $res->getStatusCode());

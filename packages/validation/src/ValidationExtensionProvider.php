@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Validation;
 
+use Preflow\Core\Http\OldInput;
 use Preflow\View\TemplateExtensionProvider;
 use Preflow\View\TemplateFunctionDefinition;
 
@@ -13,6 +14,9 @@ final class ValidationExtensionProvider implements TemplateExtensionProvider
 
     /** @var array<string, mixed> */
     private array $oldInput = [];
+
+    /** @param ?OldInput $flashed input kept from an earlier request (after an expired session); read after the own input */
+    public function __construct(private readonly ?OldInput $flashed = null) {}
 
     public function setErrorBag(ErrorBag $errorBag): void
     {
@@ -47,7 +51,7 @@ final class ValidationExtensionProvider implements TemplateExtensionProvider
             new TemplateFunctionDefinition(
                 name: 'old',
                 callable: fn (string $field, mixed $default = null): mixed =>
-                    $this->oldInput[$field] ?? $default,
+                    $this->oldInput[$field] ?? $this->flashed?->get($field) ?? $default,
             ),
         ];
     }
