@@ -193,6 +193,9 @@ final class Application
         // Load user-defined middleware from config/middleware.php
         $this->bootMiddleware();
 
+        // SEO files, head tags and ETag — prepended, then GEO is prepended around it
+        $this->bootSeo();
+
         // GEO Markdown views — prepended, so it runs before every other middleware
         $this->bootGeo($debug);
 
@@ -562,6 +565,13 @@ final class Application
         $publicPages = new \Preflow\View\Seo\PublicPages();
         $this->container->instance(\Preflow\View\Seo\PublicPages::class, $publicPages);
         $this->container->instance(\Preflow\View\Geo\GeoEntries::class, new \Preflow\View\Geo\GeoEntries($publicPages));
+        // SEO settings, the page meta templates and controllers fill, and what sites register (JSON-LD builders, defaults)
+        $seoConfig = \Preflow\View\Seo\SeoConfig::fromFile($this->basePath('config/seo.php'));
+        $seoContext = new \Preflow\View\Seo\SeoContext();
+        $this->container->instance(\Preflow\View\Seo\SeoConfig::class, $seoConfig);
+        $this->container->instance(\Preflow\View\Seo\SeoContext::class, $seoContext);
+        $this->container->instance(\Preflow\View\Seo\SchemaRegistry::class, new \Preflow\View\Seo\SchemaRegistry());
+        $this->container->instance(\Preflow\View\Seo\SeoSite::class, new \Preflow\View\Seo\SeoSite());
 
         $pagesDir = $this->basePath('app/pages');
         $templateDirs = is_dir($pagesDir) ? [$pagesDir] : [];
@@ -574,7 +584,8 @@ final class Application
         }
 
         $engineName = $this->config->get('app.engine', 'twig');
-        $engine = $this->createTemplateEngine($engineName, $templateDirs, $assets, $debug, $geo);
+        // seo() in templates is a no-op while SEO is off
+        $engine = $this->createTemplateEngine($engineName, $templateDirs, $assets, $debug, $geo, $seoConfig->enabled() ? $seoContext : null);
 
         if ($engine === null) {
             return;
@@ -624,6 +635,7 @@ final class Application
         \Preflow\View\AssetCollector $assets,
         DebugLevel $debug,
         ?\Preflow\View\Geo\GeoCollector $geo = null,
+        ?\Preflow\View\Seo\SeoContext $seo = null,
     ): ?\Preflow\View\TemplateEngineInterface {
         return match ($name) {
             'twig' => class_exists(\Preflow\Twig\TwigEngine::class)
@@ -632,10 +644,11 @@ final class Application
                     assetCollector: $assets,
                     debug: $debug->isDebug(),
                     geoCollector: $geo,
+                    seoContext: $seo,
                 )
                 : null,
             'blade' => class_exists(\Preflow\Blade\BladeEngine::class)
-                ? $this->createBladeEngine($templateDirs, $assets, $debug, $geo)
+                ? $this->createBladeEngine($templateDirs, $assets, $debug, $geo, $seo)
                 : null,
             default => throw new \RuntimeException("Unknown template engine: {$name}. Supported: twig, blade"),
         };
@@ -646,6 +659,7 @@ final class Application
         \Preflow\View\AssetCollector $assets,
         DebugLevel $debug,
         ?\Preflow\View\Geo\GeoCollector $geo = null,
+        ?\Preflow\View\Seo\SeoContext $seo = null,
     ): \Preflow\Blade\BladeEngine {
         // Passed explicitly so the engine and the registry use the same folder.
         $cachePath = $this->absolutePath('storage/cache/blade');
@@ -662,6 +676,7 @@ final class Application
             debug: $debug->isDebug(),
             cachePath: $cachePath,
             geoCollector: $geo,
+            seoContext: $seo,
         );
     }
 
@@ -1041,6 +1056,69 @@ final class Application
     }
 
     /**
+     * The site's locales and its default: every available locale when they
+     * have URL prefixes (i18n url_strategy "prefix"), else only the default.
+     *
+     * @return array{list<string>, string}
+     */
+    private function siteLocales(): array
+    {
+        $i18nPath = $this->basePath('config/i18n.php');
+        $i18n = file_exists($i18nPath) ? (array) require $i18nPath : [];
+        $defaultLocale = (string) ($i18n['default'] ?? $this->config->get('app.locale', 'en'));
+        $locales = ($i18n['url_strategy'] ?? 'prefix') === 'prefix'
+            ? array_values(array_map('strval', (array) ($i18n['available'] ?? [$defaultLocale])))
+            : [$defaultLocale];
+
+        return [$locales, $defaultLocale];
+    }
+
+    /**
+     * SEO (config/seo.php): robots.txt, sitemap.xml and security.txt, head
+     * tags and JSON-LD on HTML pages, ETag and 304 for pages that are the
+     * same for everyone. Prepended to the pipeline just before GEO, so GEO
+     * stays outermost and its internal renders pass through SEO too; each
+     * render gets its own SeoContext.
+     */
+    private function bootSeo(): void
+    {
+        if (!$this->container->bound(\Preflow\View\Seo\SeoConfig::class)) {
+            return;
+        }
+
+        $config = $this->container->get(\Preflow\View\Seo\SeoConfig::class);
+        if (!$config->enabled()) {
+            return;
+        }
+
+        $context = $this->container->get(\Preflow\View\Seo\SeoContext::class);
+        $this->container->get(\Preflow\View\Geo\RenderScopes::class)->add(
+            static fn (ServerRequestInterface $sub, \Closure $next): ResponseInterface => $context->scoped($next),
+        );
+
+        [$locales, $defaultLocale] = $this->siteLocales();
+        $appUrl = $this->config->get('app.url');
+        $geo = $this->container->get(\Preflow\View\Geo\GeoConfig::class);
+
+        $middleware = new \Preflow\View\Seo\SeoMiddleware(
+            $config,
+            $context,
+            $this->container->get(\Preflow\View\Seo\PublicPages::class),
+            $this->container->get(\Preflow\View\Seo\SchemaRegistry::class),
+            $this->container->get(\Preflow\View\Seo\SeoSite::class),
+            $this->container->get(\Preflow\View\NonceGenerator::class),
+            is_string($appUrl) ? $appUrl : null,
+            $locales,
+            $defaultLocale,
+            (string) $this->config->get('app.name', ''),
+            $geo->enabled(),
+            static fn (): \DateTimeImmutable => new \DateTimeImmutable(),
+        );
+        $this->container->instance(\Preflow\View\Seo\SeoMiddleware::class, $middleware);
+        $this->pipeline->prepend($middleware);
+    }
+
+    /**
      * GEO (config/geo.php): Markdown views of public pages, llms.txt and
      * llms-full.txt (from GeoEntries, per locale). Prepended to the
      * pipeline, so it sees each request before JSON body, security headers,
@@ -1084,12 +1162,7 @@ final class Application
         };
 
         // Every locale has its llms.txt: the default at /llms.txt, the others under their URL prefix.
-        $i18nPath = $this->basePath('config/i18n.php');
-        $i18n = file_exists($i18nPath) ? (array) require $i18nPath : [];
-        $defaultLocale = (string) ($i18n['default'] ?? $this->config->get('app.locale', 'en'));
-        $locales = ($i18n['url_strategy'] ?? 'prefix') === 'prefix'
-            ? array_values(array_map('strval', (array) ($i18n['available'] ?? [$defaultLocale])))
-            : [$defaultLocale];
+        [$locales, $defaultLocale] = $this->siteLocales();
 
         $appUrl = $this->config->get('app.url');
         $middleware = new \Preflow\View\Geo\GeoMiddleware(

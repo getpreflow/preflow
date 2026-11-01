@@ -9,6 +9,7 @@ use Preflow\Blade\BladeEngine;
 use Preflow\View\AssetCollector;
 use Preflow\View\Geo\GeoCollector;
 use Preflow\View\NonceGenerator;
+use Preflow\View\Seo\SeoContext;
 use Preflow\View\TemplateFunctionDefinition;
 
 final class BladeEngineTest extends TestCase
@@ -213,5 +214,29 @@ final class BladeEngineTest extends TestCase
         file_put_contents($this->tmpDir . '/qr.blade.php', "@qr_svg('https://x.test')");
 
         $this->assertStringContainsString('<svg', $this->engine->render('qr'));
+    }
+
+    public function test_seo_directive_merges_into_the_context_and_prints_nothing(): void
+    {
+        $seo = new SeoContext();
+        $engine = new BladeEngine([$this->tmpDir], $this->assets, cachePath: $this->tmpDir . '/cache', seoContext: $seo);
+        file_put_contents(
+            $this->tmpDir . '/seo.blade.php',
+            "<p>Page</p>@seo(['title' => \$title, 'og_type' => 'article', 'schema' => ['@type' => 'Event']])@seo(['noindex' => true])",
+        );
+
+        $this->assertSame('<p>Page</p>', trim($engine->render('seo', ['title' => 'Game night'])));
+        $meta = $seo->get();
+        $this->assertSame('Game night', $meta?->title);
+        $this->assertSame('article', $meta->ogType);
+        $this->assertTrue($meta->noindex);
+        $this->assertSame([['@type' => 'Event']], $meta->schemas);
+    }
+
+    public function test_seo_directive_without_context_is_a_no_op(): void
+    {
+        file_put_contents($this->tmpDir . '/seo-none.blade.php', "<p>Page</p>@seo(['title' => 'X'])");
+
+        $this->assertSame('<p>Page</p>', trim($this->engine->render('seo-none')));
     }
 }

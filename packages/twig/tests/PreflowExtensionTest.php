@@ -12,6 +12,7 @@ use Preflow\View\JsPosition;
 use Preflow\View\NonceGenerator;
 use Preflow\Twig\PreflowExtension;
 use Preflow\View\Geo\GeoCollector;
+use Preflow\View\Seo\SeoContext;
 
 final class PreflowExtensionTest extends TestCase
 {
@@ -194,5 +195,32 @@ final class PreflowExtensionTest extends TestCase
         $result = $this->render('<p>Page</p>{% apply geo %}## Title{% endapply %}');
 
         $this->assertSame('<p>Page</p>', $result);
+    }
+
+    public function test_seo_function_merges_into_the_context_and_prints_nothing(): void
+    {
+        $seo = new SeoContext();
+        $twig = new Environment(new ArrayLoader([]), ['autoescape' => 'html']);
+        $twig->addExtension(new PreflowExtension($this->assets, seoContext: $seo));
+
+        $result = $twig->createTemplate(
+            "<p>Page</p>{% do seo({title: 'Game night', description: 'Bring a game', image: '/img/share.jpg', og_type: 'article', schema: {'@type': 'Event', name: 'Game night'}}) %}"
+            . "{{ seo({noindex: true, schema: [{'@type': 'Place'}]}) }}",
+        )->render();
+
+        $this->assertSame('<p>Page</p>', $result);
+        $meta = $seo->get();
+        $this->assertSame('Game night', $meta?->title);
+        $this->assertSame('Bring a game', $meta->description);
+        $this->assertSame(['url' => '/img/share.jpg'], $meta->image);
+        $this->assertSame('article', $meta->ogType);
+        $this->assertTrue($meta->noindex);
+        // Each call's nodes are added to the earlier ones.
+        $this->assertSame([['@type' => 'Event', 'name' => 'Game night'], ['@type' => 'Place']], $meta->schemas);
+    }
+
+    public function test_seo_function_without_context_is_a_no_op(): void
+    {
+        $this->assertSame('<p>Page</p>', $this->render("<p>Page</p>{% do seo({title: 'X'}) %}"));
     }
 }

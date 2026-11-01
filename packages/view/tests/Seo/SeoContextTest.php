@@ -59,4 +59,24 @@ final class SeoContextTest extends TestCase
 
         $this->assertSame('Outer', $context->get()?->title);
     }
+
+    public function test_merge_template_maps_snake_case_keys_images_and_schema_nodes(): void
+    {
+        $context = new SeoContext();
+        $context->mergeTemplate(['title' => 'A', 'og_type' => 'article', 'alternate_locales' => ['de'], 'image' => '/a.jpg', 'schema' => ['@type' => 'Event']]);
+        $context->mergeTemplate(['schema' => [['@type' => 'Place'], 'junk']]);
+
+        $meta = $context->get();
+        $this->assertSame('A', $meta?->title);
+        $this->assertSame('article', $meta->ogType);
+        $this->assertSame(['de'], $meta->alternateLocales);
+        $this->assertSame(['url' => '/a.jpg'], $meta->image);
+        $this->assertSame([['@type' => 'Event'], ['@type' => 'Place']], $meta->schemas);
+
+        $context->mergeTemplate(['image' => '']);
+        $this->assertNull($context->get()?->image);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $context->mergeTemplate(['titel' => 'B']);
+    }
 }

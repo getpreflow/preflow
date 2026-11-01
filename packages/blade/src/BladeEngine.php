@@ -13,6 +13,7 @@ use Illuminate\View\Factory;
 use Illuminate\View\FileViewFinder;
 use Preflow\View\AssetCollector;
 use Preflow\View\Geo\GeoCollector;
+use Preflow\View\Seo\SeoContext;
 use Preflow\View\TemplateFunctionDefinition;
 use Preflow\View\TemplateEngineInterface;
 
@@ -31,6 +32,7 @@ final class BladeEngine implements TemplateEngineInterface
         bool $debug = false,
         ?string $cachePath = null,
         ?GeoCollector $geoCollector = null,
+        ?SeoContext $seoContext = null,
     ) {
         $filesystem = new Filesystem();
         $cachePath ??= sys_get_temp_dir() . '/preflow_blade_cache';
@@ -54,6 +56,7 @@ final class BladeEngine implements TemplateEngineInterface
         // Share the asset collector so compiled templates can access it
         $this->viewFactory->share('__assetCollector', $assetCollector);
         $this->viewFactory->share('__geoCollector', $geoCollector);
+        $this->viewFactory->share('__seoContext', $seoContext);
     }
 
     public function render(string $template, array $context = []): string
@@ -140,6 +143,11 @@ final class BladeEngine implements TemplateEngineInterface
                 . 'if ($__geoCollector?->capturing()) { '
                 . "\$__geoCollector->add(html_entity_decode(\$__geoMarkdown, ENT_QUOTES | ENT_HTML5, 'UTF-8')); "
                 . '} unset($__geoMarkdown); ?>';
+        });
+
+        // @seo([...]): the page's meta for the SEO context; prints nothing, a no-op without one (SEO off)
+        $this->compiler->directive('seo', function (string $expression) {
+            return "<?php if (\$__seoContext ?? null) { \$__seoContext->mergeTemplate({$expression}); } ?>";
         });
     }
 }
