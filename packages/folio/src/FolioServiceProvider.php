@@ -247,6 +247,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(\Preflow\View\Seo\SchemaRegistry::class),
                 $c->get(\Preflow\Media\MediaLibrary::class),
                 $c->get(\Preflow\Folio\Content\Singletons::class),
+                $geo?->noindexField, // kept out of the sitemap and llms.txt: no cards either
             ));
             $site = $container->get(\Preflow\View\Seo\SeoSite::class);
             $site->defaults(static fn (string $locale): \Preflow\View\Seo\PageMeta => $container->get(\Preflow\Folio\Seo\FolioPageMeta::class)->siteDefaults($locale));

@@ -154,12 +154,13 @@ final class FolioPageMetaTest extends TestCase
             'teaser' => ['en' => '<p>Teaser <b>B</b></p>'], 'meta_description' => ['en' => 'Desc B'], 'cover' => json_encode([$mapped, $own])]);
         $this->assertSame(['Head B', 'Teaser B', $this->shareUrl($app, $mapped)], $this->card($app, $mappedRecord));
 
-        // Then the built-in fields, then the site's share section.
+        // Then the built-in fields, then (description and image only) the site's share section.
         $defaults = $this->record($app, 'post', 'c', ['meta_title' => ['en' => 'Meta C'], 'title' => ['en' => 'Title C'], 'meta_description' => ['en' => 'Desc C']]);
         $this->assertSame(['Meta C', 'Desc C', $this->shareUrl($app, $siteImage)], $this->card($app, $defaults));
         $this->assertSame('Title only', $this->meta($app, $this->record($app, 'post', 'c2', ['title' => ['en' => 'Title only']]))->title);
+        // An untitled record gets no title from the site: the middleware takes the page's <title>.
         $nothing = $this->record($app, 'post', 'd', ['slug' => ['en' => 'd']]);
-        $this->assertSame(['Club share', 'Club share text', $this->shareUrl($app, $siteImage)], $this->card($app, $nothing));
+        $this->assertSame(['', 'Club share text', $this->shareUrl($app, $siteImage)], $this->card($app, $nothing));
 
         // Each field on its own.
         $mixed = $this->record($app, 'post', 'e', ['title' => ['en' => 'Title E'], 'teaser' => ['en' => 'Teaser E'], '_seo' => ['title' => ['en' => 'Share E']]]);
@@ -168,6 +169,25 @@ final class FolioPageMetaTest extends TestCase
         $meta = $this->meta($app, $mixed);
         $this->assertSame(['article', 'https://site.test/page', 'en', ['de'], false, []], [$meta->ogType, $meta->url, $meta->locale, $meta->alternateLocales, $meta->noindex, $meta->schemas]);
         $this->assertSame([1200, 630], [$meta->image['width'], $meta->image['height']]);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_geos_noindex_field_makes_the_page_noindex(): void
+    {
+        $this->write('config/geo.php', "<?php\nreturn ['enabled' => false, 'noindex_field' => 'hidden'];\n");
+        $this->model('note', [
+            'frontend' => ['route' => '/notes/{slug}'],
+            'fields' => ['title' => ['type' => 'string'], 'slug' => ['type' => 'string'], 'hidden' => ['type' => 'boolean']],
+        ]);
+        $app = $this->app();
+
+        // Left out of the sitemap and llms.txt by the field, so no cards either (honoured with GEO off, as there).
+        $this->assertTrue($this->meta($app, $this->record($app, 'note', 'h', ['title' => 'Hidden', 'hidden' => true]))->noindex);
+        $this->assertTrue($this->meta($app, $this->record($app, 'note', 'h2', ['title' => 'Hidden', 'hidden' => 'yes']))->noindex);
+        $this->assertFalse($this->meta($app, $this->record($app, 'note', 'v', ['title' => 'Visible', 'hidden' => false]))->noindex);
+        $this->assertFalse($this->meta($app, $this->record($app, 'note', 'v2', ['title' => 'Visible', 'hidden' => '0']))->noindex);
+        // A type without the field is unaffected.
+        $this->assertFalse($this->meta($app, $this->record($app, 'post', 'p', ['title' => ['en' => 'Post']]))->noindex);
     }
 
     #[RunInSeparateProcess]

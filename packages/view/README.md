@@ -356,14 +356,15 @@ On a Folio page, the record fills the cards. Each value comes from the first of:
 1. the record's **SEO & sharing** section in the editor (share title and description per language, share image),
 2. the fields `types` maps for its type,
 3. the built-in fields: `meta_title`, `title`, `name` for the title, `meta_description` for the description,
-4. the `site` singleton: its own SEO & sharing section, then its `site_fields` description.
+4. for the description and image, the `site` singleton: its own SEO & sharing section, then its `site_fields`
+   description. A page without a title of its own keeps its `<title>`.
 
 Each value is chosen on its own: a page can have its own share title, a description from its `lead` field and the
 site's share image. Share texts count only in languages the record is visible in. Images go through the media
 library's `share` format (1200×630 JPEG, with the crop editors set for it); private, deleted and non-image assets are
 skipped. The section's settings (hide from search engines, leave out of the sitemap, leave out of the AI index) are
 content: they take effect when the record is published, and a share-preview link shows the working copy as
-`noindex`.
+`noindex`. A record GEO's `noindex_field` hides is `noindex` too.
 
 ### Pages outside Folio: `seo()`
 

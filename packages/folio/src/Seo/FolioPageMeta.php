@@ -16,9 +16,11 @@ use Preflow\View\Seo\SeoConfig;
  * title, description and image is taken from the first of: the record's
  * "SEO & sharing" section, the fields `config/seo.php` maps for its type
  * (first non-empty; for an image field its first asset), the built-in fields
- * (`meta_title`, `title`, `name` / `meta_description`), and the `site`
- * singleton (its "SEO & sharing" section, then its `site_fields`). Share
- * texts count only in languages the record is visible in.
+ * (`meta_title`, `title`, `name` / `meta_description`), and for description
+ * and image the `site` singleton (its "SEO & sharing" section, then its
+ * `site_fields`); an untitled page keeps its `<title>`. Share texts count only
+ * in languages the record is visible in. A record hidden by its section or by
+ * GEO's `noindex_field` is noindex.
  */
 final class FolioPageMeta
 {
@@ -30,6 +32,7 @@ final class FolioPageMeta
         private readonly SchemaRegistry $schemas,
         private readonly MediaLibrary $media,
         private readonly Singletons $singletons,
+        private readonly ?string $noindexField = null,
     ) {}
 
     /**
@@ -42,15 +45,12 @@ final class FolioPageMeta
         $mapping = $this->config->types[$type] ?? null;
         $seo = SeoSection::fromRecord($record);
         $textLocale = self::textLocale($record, $locale);
-        $site = $this->site();
-        $siteSeo = $site !== null ? SeoSection::fromRecord($site) : null;
-        $siteLocale = $site !== null ? self::textLocale($site, $locale) : null;
 
+        // No title from the site: an untitled page keeps its own <title> (SeoMiddleware).
         $title = self::firstText([
             $textLocale !== null ? $seo->title($textLocale) : '',
             ...self::fieldValues($record, $locale, $mapping['title'] ?? []),
             ...self::fieldValues($record, $locale, self::TITLE_FIELDS),
-            $siteLocale !== null ? (string) $siteSeo?->title($siteLocale) : '',
         ]);
         $description = self::firstText([
             $textLocale !== null ? $seo->description($textLocale) : '',
@@ -78,7 +78,7 @@ final class FolioPageMeta
             url: $url,
             locale: $locale,
             alternateLocales: array_values(array_diff($alternateLocales, [$locale])),
-            noindex: $seo->noindex(),
+            noindex: $seo->noindex() || self::hiddenByField($record, $locale, $this->noindexField),
             ogType: $mapping['og_type'] ?? 'website',
         );
 
@@ -120,6 +120,23 @@ final class FolioPageMeta
         return is_scalar($value)
             ? trim((string) preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags((string) $value), ENT_QUOTES | ENT_HTML5, 'UTF-8')))
             : '';
+    }
+
+    /**
+     * Whether the record's $field (GEO's `noindex_field`) hides it: a truthy value, when its type has the field.
+     *
+     * @internal shared with FolioPublicPages
+     */
+    public static function hiddenByField(DynamicRecord $record, string $locale, ?string $field): bool
+    {
+        if ($field === null || !isset($record->getType()->fields[$field])) {
+            return false;
+        }
+        $value = $record->localized($locale)->get($field);
+
+        return is_string($value)
+            ? !in_array(strtolower(trim($value)), ['', '0', 'false', 'no', 'off'], true)
+            : (bool) $value;
     }
 
     private function site(): ?DynamicRecord

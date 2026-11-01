@@ -81,8 +81,7 @@ final class FolioPublicPages
     {
         $seo = SeoSection::fromRecord($record);
         $values = $record->localized($locale);
-        $noindexField = $this->geo?->noindexField;
-        if ($seo->noindex() || ($noindexField !== null && isset($record->getType()->fields[$noindexField]) && self::truthy($values->get($noindexField)))) {
+        if ($seo->noindex() || FolioPageMeta::hiddenByField($record, $locale, $this->geo?->noindexField)) {
             return null;
         }
         $url = $this->resolver->urlFor($record, $locale);
@@ -134,12 +133,5 @@ final class FolioPublicPages
         $first = ((array) ($list['columns'] ?? []))[0] ?? null;
 
         return is_string($first) ? $first : null;
-    }
-
-    private static function truthy(mixed $value): bool
-    {
-        return is_string($value)
-            ? !in_array(strtolower(trim($value)), ['', '0', 'false', 'no', 'off'], true)
-            : (bool) $value;
     }
 }
