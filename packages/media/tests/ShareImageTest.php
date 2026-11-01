@@ -141,4 +141,44 @@ final class ShareImageTest extends TestCase
         $private = $lib->upload($this->upload($this->jpeg(), 'secret.jpg'), null, private: true);
         $this->assertNull($lib->shareImage($private));
     }
+
+    public function test_alt_text_in_the_asked_locale_else_the_default(): void
+    {
+        $lib = $this->lib();
+        $asset = $this->stored($lib);
+        $lib->update($asset->id, ['alt' => ['en' => 'A red field', 'de' => 'Ein rotes Feld']]);
+        $only = $this->stored($lib);
+        $lib->update($only->id, ['alt' => ['en' => 'Only English']]);
+
+        $this->assertSame('Ein rotes Feld', $lib->shareImage($asset->id, 'de')['alt']);
+        $this->assertSame('A red field', $lib->shareImage($asset->id)['alt']);
+        $this->assertSame('Only English', $lib->shareImage($only->id, 'de')['alt']);
+    }
+
+    public function test_warm_makes_no_share_files(): void
+    {
+        $lib = $this->lib();
+        $asset = $this->stored($lib);
+
+        $lib->warm($asset, [480]);
+
+        $shares = array_filter(glob($this->assetRoot . '/media/*/*/*') ?: [], static fn (string $f): bool => str_contains($f, '-share-'));
+        $this->assertSame([], array_values($shares));
+    }
+
+    public function test_a_transparent_png_becomes_a_jpeg_on_white(): void
+    {
+        $im = imagecreatetruecolor(300, 200);
+        imagesavealpha($im, true);
+        imagealphablending($im, false);
+        imagefill($im, 0, 0, (int) imagecolorallocatealpha($im, 0, 0, 0, 127));
+        imagepng($im, $this->assetRoot . '/t.png');
+        $dest = $this->assetRoot . '/t.jpg';
+
+        $ok = (new GdBackend())->writeVariants($this->assetRoot . '/t.png', [['dest' => $dest, 'width' => 120, 'format' => 'jpeg']], 80);
+
+        $this->assertSame([true], $ok);
+        $this->assertSame(IMAGETYPE_JPEG, getimagesize($dest)[2]);
+        $this->assertSame(0xFFFFFF, imagecolorat(imagecreatefromjpeg($dest), 2, 2) & 0xFFFFFF);
+    }
 }

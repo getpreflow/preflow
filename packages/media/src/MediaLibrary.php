@@ -1068,10 +1068,11 @@ final class MediaLibrary
      * WebP or AVIF), with the URL, size and alt text to put in the tags. The file is made by
      * the variant controller on the first request, not here. Null for an unknown, private or
      * non-image asset (a document without a preview), or without a variants backend that writes JPEG.
+     * The alt text is in $locale when the asset has one, else in the default locale.
      *
      * @return ?array{url: string, width: int, height: int, alt: string}
      */
-    public function shareImage(Asset|string $asset): ?array
+    public function shareImage(Asset|string $asset, ?string $locale = null): ?array
     {
         $asset = is_string($asset) ? $this->find($asset) : $asset;
         $plan = $asset === null ? null : $this->boxPlan($asset, Formats::SHARE);
@@ -1084,7 +1085,7 @@ final class MediaLibrary
             'url' => $this->url("{$plan->base}-{$width}.jpg"),
             'width' => $width,
             'height' => max(1, (int) round($plan->crop['h'] * $width / $plan->crop['w'])),
-            'alt' => $asset->altFor($this->locales->default, $this->locales->default),
+            'alt' => $asset->altFor($locale ?? $this->locales->default, $this->locales->default),
         ];
     }
 
@@ -1976,6 +1977,9 @@ final class MediaLibrary
             }
         }
         foreach (array_keys($this->formats?->boxes() ?? []) as $preset) {
+            if ($preset === Formats::SHARE) {
+                continue; // a JPEG for crawlers, made when one asks
+            }
             $plan = $this->boxPlan($asset, $preset);
             foreach ($plan === null ? [] : ['avif', 'webp'] as $format) {
                 if (array_filter($delivery->variants, static fn (Variant $v) => $v->format === $format) === []) {
