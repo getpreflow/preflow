@@ -35,6 +35,10 @@ final class ImagickBackend implements ImageBackend
                 } else {
                     $copy->thumbnailImage($job['width'], 0);
                 }
+                if ($job['format'] === 'jpeg') {
+                    $copy->setImageBackgroundColor('white'); // JPEG has no alpha
+                    $copy->setImageAlphaChannel(\Imagick::ALPHACHANNEL_REMOVE);
+                }
                 $copy->setImageFormat($job['format']);
                 $copy->setImageCompressionQuality($quality);
                 $results[] = $copy->writeImage($job['dest']);

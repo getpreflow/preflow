@@ -153,6 +153,16 @@ return [
         'confirmed' => 'Als noch korrekt markiert – veröffentliche, damit es live geht.',
         'confirmed_saved' => 'Als noch korrekt markiert.',
     ],
+    'seo' => [
+        'title' => 'SEO & Teilen',
+        'share_title' => 'Titel beim Teilen',
+        'share_description' => 'Beschreibung beim Teilen',
+        'image' => 'Bild beim Teilen',
+        'noindex' => 'Vor Suchmaschinen verbergen',
+        'exclude_sitemap' => 'Nicht in die Sitemap',
+        'exclude_llms' => 'Nicht in den KI-Index (llms.txt)',
+        'help' => 'Wird beim Teilen und von Suchmaschinen genutzt; leere Felder nehmen den Inhalt der Seite.',
+    ],
     // The edit form's Translate button (AI) and its review.
     'ai_translate' => [
         'button' => 'Übersetzen',

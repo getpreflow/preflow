@@ -6,7 +6,7 @@
     "require": {
         "php": ">=8.4",
         "ext-dom": "*",
-        "preflow/core": "^0.49 || @dev",
+        "preflow/core": "^0.50 || @dev",
         "matthiasmullie/minify": "^1.3"
     },
     "require-dev": {
@@ -16,7 +16,7 @@
         "smalot/pdfparser": "^2.0"
     },
     "conflict": {
-        "preflow/core": "<0.49"
+        "preflow/core": "<0.50"
     },
     "autoload": {
         "psr-4": {

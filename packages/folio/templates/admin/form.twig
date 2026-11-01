@@ -70,6 +70,30 @@
                 {% endfor %}
             </fieldset>
         {% endif %}
+        {% if seo_section|default(null) %}
+            {# Stored as the record's _seo meta; the boxes say "leave out", the stored flags are positive. #}
+            <details class="folio-seo"{% if seo_section.open %} open{% endif %}>
+                <summary>{{ t('folio.seo.title') }}</summary>
+                <div class="folio-seo-body">
+                    <input type="hidden" name="_seo_submitted" value="1">
+                    <p class="folio-seo-help">{{ t('folio.seo.help') }}</p>
+                    <div class="form-group">
+                        <label for="folio-seo-title">{{ t('folio.seo.share_title') }}</label>
+                        <input type="text" id="folio-seo-title" name="_seo[title]" value="{{ seo_section.title }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="folio-seo-description">{{ t('folio.seo.share_description') }}</label>
+                        <textarea id="folio-seo-description" name="_seo[description]" rows="3">{{ seo_section.description }}</textarea>
+                    </div>
+                    {% if seo_section.image is not null %}{{ seo_section.image|raw }}{% endif %}
+                    <div class="folio-seo-flags">
+                        <label class="folio-seo-flag"><input type="checkbox" name="_seo[noindex]" value="1"{% if seo_section.noindex %} checked{% endif %}> {{ t('folio.seo.noindex') }}</label>
+                        <label class="folio-seo-flag"><input type="checkbox" name="_seo[exclude_sitemap]" value="1"{% if seo_section.exclude_sitemap %} checked{% endif %}> {{ t('folio.seo.exclude_sitemap') }}</label>
+                        <label class="folio-seo-flag"><input type="checkbox" name="_seo[exclude_llms]" value="1"{% if seo_section.exclude_llms %} checked{% endif %}> {{ t('folio.seo.exclude_llms') }}</label>
+                    </div>
+                </div>
+            </details>
+        {% endif %}
         {% for field in fields %}
             <div class="folio-field-wrap">
                 {{ field.html|raw }}

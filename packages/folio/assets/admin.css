@@ -893,6 +893,15 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .folio-unchecked .btn { min-height: 24px; padding: 0 8px; font-size: 12px; }
 .folio-reference { margin: -12px 0 20px; font-size: 13px; color: var(--c-text-muted); }
 .folio-reference summary { cursor: pointer; }
+/* "SEO & sharing": a quiet card before the fields, closed while nothing is set. */
+.folio-seo { margin: 0 0 22px; border: 1px solid var(--c-border); border-radius: var(--r); background: var(--c-surface); }
+.folio-seo summary { padding: 10px 14px; font-size: 13px; font-weight: 620; cursor: pointer; }
+.folio-seo-body { padding: 2px 14px 14px; }
+.folio-seo-help { margin: 0 0 16px; font-size: 12px; color: var(--c-text-subtle); }
+.folio-seo-body textarea { min-height: 72px; }
+.folio-seo-flags { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.folio-seo-flag { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 450; }
+.folio-seo-flag > input { flex: none; margin: 0; }
 
 /* ---- blocks editor ---- */
 .folio-blocks { margin-bottom: 22px; }

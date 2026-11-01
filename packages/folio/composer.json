@@ -6,9 +6,9 @@
     "require": {
         "php": ">=8.4",
         "preflow/ai": "^0.47 || @dev",
-        "preflow/core": "^0.34 || @dev",
+        "preflow/core": "^0.50 || @dev",
         "preflow/data": "^0.42 || @dev",
-        "preflow/view": "^0.1 || @dev",
+        "preflow/view": "^0.50 || @dev",
         "preflow/routing": "^0.1 || @dev",
         "preflow/form": "^0.1 || @dev",
         "preflow/validation": "^0.46 || @dev",
@@ -16,7 +16,7 @@
         "preflow/components": "^0.1 || @dev",
         "preflow/htmx": "^0.1 || @dev",
         "preflow/i18n": "^0.47 || @dev",
-        "preflow/media": "^0.43 || @dev",
+        "preflow/media": "^0.50 || @dev",
         "preflow/notify": "^0.25 || @dev",
         "preflow/devtools": "^0.20 || @dev",
         "nyholm/psr7": "^1.8",
@@ -34,13 +34,14 @@
         "preflow/ai": "<0.47",
         "preflow/auth": "<0.38",
         "preflow/codes": "<0.40",
-        "preflow/core": "<0.34",
+        "preflow/core": "<0.50",
         "preflow/data": "<0.42",
         "preflow/i18n": "<0.47",
-        "preflow/media": "<0.43",
+        "preflow/media": "<0.50",
         "preflow/members": "<0.39",
         "preflow/notify": "<0.25",
-        "preflow/validation": "<0.46"
+        "preflow/validation": "<0.46",
+        "preflow/view": "<0.50"
     },
     "autoload": {
         "psr-4": { "Preflow\\Folio\\": "src/" },

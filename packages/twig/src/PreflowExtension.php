@@ -10,12 +10,14 @@ use Twig\TwigFunction;
 use Preflow\View\AssetCollector;
 use Preflow\View\Geo\GeoCollector;
 use Preflow\View\JsPosition;
+use Preflow\View\Seo\SeoContext;
 
 final class PreflowExtension extends AbstractExtension
 {
     public function __construct(
         private readonly AssetCollector $assetCollector,
         private readonly ?GeoCollector $geoCollector = null,
+        private readonly ?SeoContext $seoContext = null,
     ) {}
 
     public function getFilters(): array
@@ -33,6 +35,7 @@ final class PreflowExtension extends AbstractExtension
             new TwigFunction('head', $this->renderHead(...), ['is_safe' => ['html']]),
             new TwigFunction('assets', $this->renderAssets(...), ['is_safe' => ['html']]),
             new TwigFunction('asset_url', $this->assetUrl(...), ['is_safe' => ['html']]),
+            new TwigFunction('seo', $this->registerSeo(...), ['is_safe' => ['html']]),
         ];
     }
 
@@ -73,6 +76,17 @@ final class PreflowExtension extends AbstractExtension
         if ($this->geoCollector?->capturing()) {
             $this->geoCollector->add(html_entity_decode($markdown, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
         }
+        return '';
+    }
+
+    /**
+     * Function: {% do seo({title: …, description: …, image: …, noindex: …, og_type: …, schema: […]}) %}
+     * Merges the page's meta into the SEO context and returns empty string;
+     * without a context (SEO off) it does nothing.
+     */
+    public function registerSeo(array $meta): string
+    {
+        $this->seoContext?->mergeTemplate($meta);
         return '';
     }
 

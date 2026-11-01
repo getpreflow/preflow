@@ -14,7 +14,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * A missing image variant under the media URL ({base}-{width}.{avif|webp}) reaches PHP
+ * A missing image variant under the media URL ({base}-{width}.{avif|webp}, and .jpg for box files) reaches PHP
  * once: it is made, written next to the original and returned; from then on the web
  * server serves the file. The base must be one of the asset's current ones:
  * - the delivery image's stem ({Y}/{m}/{id}[-v{n}], an edited image's master
@@ -25,7 +25,7 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final class VariantController
 {
-    private const string VARIANT = '#^(\d{4}/\d{2}/([a-f0-9]{32})(?:-[a-z0-9-]+?)?)-([1-9]\d{0,4})\.(avif|webp)$#';
+    private const string VARIANT = '#^(\d{4}/\d{2}/([a-f0-9]{32})(?:-[a-z0-9-]+?)?)-([1-9]\d{0,4})\.(avif|webp|jpg)$#';
 
     public function __construct(
         private readonly MediaLibrary $library,
@@ -45,7 +45,7 @@ final class VariantController
 
         // The delivery image's own widths (the image, an edited image's master, a document's preview).
         $delivery = $this->library->deliveryAsset($asset);
-        if ($delivery !== null && self::stem($delivery) === $base) {
+        if ($format !== 'jpg' && $delivery !== null && self::stem($delivery) === $base) {
             if (!$this->library->allowsVariant($delivery, $width, $format, $this->widths->allowed())) {
                 throw new NotFoundHttpException('Not found');
             }
@@ -79,7 +79,7 @@ final class VariantController
     private static function file(string $file, string $format): ResponseInterface
     {
         return new Response(200, [
-            'Content-Type' => 'image/' . $format,
+            'Content-Type' => 'image/' . ($format === 'jpg' ? 'jpeg' : $format),
             'Content-Length' => (string) filesize($file),
             'Cache-Control' => 'public, max-age=31536000',
         ], (string) file_get_contents($file));

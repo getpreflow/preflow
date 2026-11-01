@@ -237,9 +237,13 @@ URL; `'full' => false` turns it off. Pages without a Markdown view (404, noindex
 With Folio, the published records of the `types` in your config are listed in each language: title from the
 `title` field (else `name`, else the first list column), description from `meta_description`, and the record's URL
 in that language. The home page comes first. Types behind a frontend permission are never listed. The index does
-not render pages to find a `noindex`, so `noindex_field` is what keeps a record out of llms.txt.
+not render pages to find a `noindex`, so a record's "SEO & sharing" settings (with SEO on) or `noindex_field` are
+what keep it out of llms.txt.
 
 ### Adding, changing and ordering entries
+
+Since 0.50 the pages llms.txt lists come from the public pages list the sitemap reads too; add and filter pages
+there (see "The public pages" under SEO below). `GeoEntries::source()` and `filter()` still work, but are deprecated.
 
 Records with their own detail pages (games, gallery objects…) and pages outside Folio are added through
 `GeoEntries`, from one of your service providers. A source gets the language and returns `GeoEntry` objects; a
@@ -279,6 +283,229 @@ public function register(Container $container): void
 `new GeoEntry(title, url, description = '', section = 'Pages', order = 100, full = true)`. Entries are sorted by
 section, in the order the sections first appear (the home page's section, `order` 0, first), then by `order`, then
 by title. Filters run after all sources, in the order they were registered.
+
+## SEO: share cards, structured data, sitemap
+
+SEO adds what search engines and link previews read: robots, Open Graph and Twitter card tags, `theme-color` and
+JSON-LD in each public page's `<head>`, and `/robots.txt`, `/sitemap.xml` and `/.well-known/security.txt`. Public
+pages also get an `ETag`, so a repeat visit can be answered with `304 Not Modified`. It is off until you turn it on;
+while it is off, nothing about your pages changes.
+
+It only adds tags a page doesn't already have: a robots meta, `og:image` or `theme-color` your layout prints wins.
+`<title>` and `<meta name="description">` stay your layout's job.
+
+### Turning it on
+
+Create `config/seo.php` (the skeleton has one with every key commented):
+
+```php
+<?php
+
+return [
+    'enabled' => true,
+    // og:site_name and the WebSite name in JSON-LD. Null takes it from Folio's "site" singleton
+    // (the field site_fields names, in each language), else app.name.
+    'name' => null,
+    'site_fields' => ['name' => 'name', 'description' => 'meta_description'],
+    // Who runs the site: a schema.org Organization or Person, on the home page.
+    'owner' => [
+        'type' => 'Organization',
+        'name' => 'Game Club',
+        'url' => 'https://club.example',
+        'logo' => 'https://club.example/logo.png',
+        'same_as' => ['https://social.example/gameclub'],
+    ],
+    // Per Folio type: the fields the share title, description and image come from (the first
+    // that isn't empty; an image field's first asset) and the Open Graph type.
+    'types' => [
+        'post' => ['title' => ['title'], 'description' => ['lead', 'body'], 'image' => ['cover'], 'og_type' => 'article'],
+    ],
+    // Folio types in the sitemap; null lists every type with a public frontend route.
+    'listed_types' => null,
+    'robots' => [
+        'enabled' => true,
+        'disallow' => ['/--component/', '/*/--component/'], // Folio adds its admin path itself
+        'ai_training' => true,                              // false shuts out AI training crawlers
+        'extra' => [],                                      // raw lines, appended as they are
+    ],
+    'sitemap' => true,
+    // Served only with a contact (mailto: or https: URL); Expires is always 180 days ahead.
+    'security_txt' => ['contact' => 'mailto:security@club.example', 'policy' => null],
+    'theme_color' => ['light' => '#ffffff', 'dark' => '#111111'], // or one '#hex'
+    'etag' => true,
+];
+```
+
+With Folio on SQL storage, run `preflow migrate` before turning SEO on: the "SEO & sharing" section is stored in a
+new `_seo` column, and saving a record in the editor fails until it exists.
+
+What a page gets:
+
+- `<meta name="robots" content="max-image-preview:large">`, or `noindex` for a page hidden from search engines.
+- `og:title`, `og:description`, `og:image` (with width, height and alt), `og:url`, `og:type`, `og:site_name`,
+  `og:locale` and its alternates, and `twitter:card` (`summary_large_image` with an image).
+- JSON-LD: the `WebSite` and its owner on each language's home page, a `WebPage` on every page, and the nodes the
+  page or its type adds (below). A page that prints its own `application/ld+json` (in the head or the body) gets
+  none of ours.
+- Pages that are `noindex` (their own robots meta, an `X-Robots-Tag` header, or the record's setting) and private
+  responses (`Cache-Control: private` or `no-store`: members' pages, gated Folio pages, share previews) get no cards
+  and no JSON-LD. Paths in robots.txt's Disallow that a package adds (Folio's admin) get no tags at all.
+- No `ETag` for private responses, responses that set a cookie, or requests that carry the session cookie.
+
+### Folio pages
+
+On a Folio page, the record fills the cards. Each value comes from the first of:
+
+1. the record's **SEO & sharing** section in the editor (share title and description per language, share image),
+2. the fields `types` maps for its type,
+3. the built-in fields: `meta_title`, `title`, `name` for the title, `meta_description` for the description,
+4. for the description and image, the `site` singleton: its own SEO & sharing section, then its `site_fields`
+   description. A page without a title of its own keeps its `<title>`.
+
+Each value is chosen on its own: a page can have its own share title, a description from its `lead` field and the
+site's share image. Share texts count only in languages the record is visible in. Images go through the media
+library's `share` format (1200×630 JPEG, with the crop editors set for it); private, deleted and non-image assets are
+skipped. The section's settings (hide from search engines, leave out of the sitemap, leave out of the AI index) are
+content: they take effect when the record is published, and a share-preview link shows the working copy as
+`noindex`. A record GEO's `noindex_field` hides is `noindex` too.
+
+### Pages outside Folio: `seo()`
+
+A controller's template or a file-routed page sets its own values; keys are `PageMeta`'s, in snake_case. A template's
+values are merged over what a Folio record set.
+
+```twig
+{% do seo({
+    title: game.title,
+    description: game.teaser,
+    image: game.cover_url,       {# an image URL; or the array MediaLibrary::shareImage() returns #}
+    og_type: 'article',
+    noindex: false,
+    schema: {'@type': 'Game', name: game.title},
+}) %}
+```
+
+`image` takes a URL as it is (no size or alt). For the media library's 1200×630 share crop with its size and alt
+text, the controller passes `MediaLibrary::shareImage($assetId, $locale)` to the template (say as `share_image`),
+which gives it on: `image: share_image`.
+
+In Blade: `@seo(['title' => $game->title, 'description' => $game->teaser])`. In PHP, set or merge the request's
+`Preflow\View\Seo\SeoContext` (`set(new PageMeta(...))`, `merge([...])`). An unknown key in a template's `seo()` is
+ignored (debug mode logs it); `PageMeta::with()` and `merge()` in PHP reject one.
+
+### The public pages: sitemap and llms.txt
+
+`/sitemap.xml` and GEO's `/llms.txt` list the same pages, from `Preflow\View\Seo\PublicPages`. With Folio, the
+published records of every type with a public frontend route are in it (no `permission`; narrowed by
+`listed_types` for the sitemap, by GEO's `types` for llms.txt), in each language they are visible in, with their
+publish time as `<lastmod>` and their other languages as `hreflang` alternates. A record hidden from search engines
+is in neither; the other two settings take it out of one.
+
+Add your own pages with a source, and drop, change or reorder pages with a filter, from one of your service
+providers:
+
+```php
+use Preflow\View\Seo\PublicPage;
+use Preflow\View\Seo\PublicPages;
+
+public function register(Container $container): void
+{
+    $pages = $container->get(PublicPages::class);
+
+    // Each game's page: in the sitemap and llms.txt, not in llms-full.txt.
+    $pages->source(fn (string $locale): array => array_map(
+        fn (Game $game): PublicPage => new PublicPage(
+            title: $game->title($locale),
+            url: $game->url($locale),               // absolute, or a path on this site
+            description: $game->teaser($locale),
+            section: 'Games',
+            lastmod: $game->updatedAt->format(DATE_ATOM),
+            alternates: ['en' => $game->url('en'), 'de' => $game->url('de')],
+            llmsFull: false,
+        ),
+        $container->get(GameRepository::class)->published(),
+    ));
+
+    // The not-found page in no list; the tools pages in the sitemap only.
+    $pages->filter(fn (array $pages, string $locale): array => array_map(
+        fn (PublicPage $p): PublicPage => str_contains($p->url, '/tools/') ? $p->with(['llms' => false, 'llmsFull' => false]) : $p,
+        array_filter($pages, fn (PublicPage $p): bool => !str_ends_with($p->url, '/not-found')),
+    ));
+}
+```
+
+`new PublicPage(title, url, description = '', section = 'Pages', order = 100, lastmod = null, alternates = [],
+sitemap = true, llms = true, llmsFull = true)`; `with([...])` changes some of them. Pages are sorted as GEO's entries
+were (sections in the order they first appear, then `order`, then title).
+
+**Moving a GEO source or filter here:** `GeoEntries::source()` and `filter()` still work in 0.50 but are deprecated,
+and their entries never reach the sitemap. Replace `GeoEntries` with `PublicPages` and `GeoEntry` with
+`PublicPage`; `full: false` becomes `llmsFull: false`, and `new GeoEntry($e->title, $e->url, …)` in a filter becomes
+`$p->with([...])`:
+
+```php
+// Before
+$container->get(GeoEntries::class)->filter(fn (array $entries) => array_filter(
+    $entries, fn (GeoEntry $e) => !str_ends_with($e->url, '/not-found'),
+));
+
+// After: out of llms.txt and the sitemap
+$container->get(PublicPages::class)->filter(fn (array $pages) => array_filter(
+    $pages, fn (PublicPage $p) => !str_ends_with($p->url, '/not-found'),
+));
+```
+
+### Structured data for your types
+
+Domain schemas (a game, a product, a job offer) are your site's: register a builder for a Folio type with
+`Preflow\View\Seo\SchemaRegistry`. It gets the record's values in the page's language, the language and the page's
+`PageMeta` (absolute `url`, `title`, `description`, `image`), and returns one node or a list. Its nodes join the
+page's graph after the `WebPage`, escaped safely for the page:
+
+```php
+use Preflow\View\Seo\PageMeta;
+use Preflow\View\Seo\Schema;
+use Preflow\View\Seo\SchemaRegistry;
+
+$schemas = $container->get(SchemaRegistry::class);
+
+$schemas->forType('job', fn (array $job, string $locale, PageMeta $meta): array => [
+    '@type' => 'JobPosting',
+    'title' => $meta->title,
+    'description' => $meta->description,
+    'url' => $meta->url,
+    'datePosted' => $job['posted_at'],
+    'employmentType' => $job['part_time'] ? 'PART_TIME' : 'FULL_TIME',
+    'hiringOrganization' => ['@type' => 'Organization', 'name' => 'Game Club', 'sameAs' => 'https://club.example'],
+    'jobLocation' => ['@type' => 'Place', 'address' => ['@type' => 'PostalAddress', 'addressLocality' => $job['city']]],
+]);
+
+// The owner per language instead of the one in config (same shape as 'owner').
+$schemas->owner(fn (string $locale): array => ['type' => 'Person', 'name' => 'Ada', 'url' => 'https://ada.example', 'same_as' => []]);
+```
+
+`Schema::breadcrumbList()`, `Schema::article()` and `Schema::imageObject()` build the common shapes, for builders and
+`seo({schema: …})` alike.
+
+### Site defaults without Folio
+
+Folio gives the site name, description and share image from its `site` singleton and keeps its admin out of
+robots.txt (all but its legacy `/_uploads/` images, which public pages show). A site without Folio can do the
+same from a provider:
+
+```php
+use Preflow\View\Seo\PageMeta;
+use Preflow\View\Seo\SeoSite;
+
+$site = $container->get(SeoSite::class);
+$site->defaults(fn (string $locale): PageMeta => new PageMeta(
+    title: 'Game Club',                         // the site's name
+    description: 'Board games every Friday',    // pages without their own
+    image: ['url' => '/img/share.jpg', 'width' => 1200, 'height' => 630, 'alt' => 'Our club room'],
+));
+$site->disallow('/admin/');                     // in robots.txt, and no head tags there
+$site->allow('/admin/uploads/');               // an exception under it (Allow:), head tags as usual
+```
 
 ## QR codes
 

@@ -1064,6 +1064,32 @@ final class MediaLibrary
     }
 
     /**
+     * The image for an og:image card: the "share" box as a JPEG (social networks read no
+     * WebP or AVIF), with the URL, size and alt text to put in the tags. The file is made by
+     * the variant controller on the first request, not here. Null for an unknown, private or
+     * non-image asset (a document without a preview), or without a variants backend that writes JPEG.
+     * The alt text is in $locale when the asset has one, else in the default locale.
+     *
+     * @return ?array{url: string, width: int, height: int, alt: string}
+     */
+    public function shareImage(Asset|string $asset, ?string $locale = null): ?array
+    {
+        $asset = is_string($asset) ? $this->find($asset) : $asset;
+        $plan = $asset === null ? null : $this->boxPlan($asset, Formats::SHARE);
+        $width = $plan === null ? 0 : max($plan->widths);
+        if ($plan === null || !$this->allowsBox($plan, $width, 'jpg')) {
+            return null;
+        }
+
+        return [
+            'url' => $this->url("{$plan->base}-{$width}.jpg"),
+            'width' => $width,
+            'height' => max(1, (int) round($plan->crop['h'] * $width / $plan->crop['w'])),
+            'alt' => $asset->altFor($locale ?? $this->locales->default, $this->locales->default),
+        ];
+    }
+
+    /**
      * The editor's image: the original turned and mirrored, without the crop, at most
      * ORIENTED_LONG_SIDE on its long side ({stem}-oriented-{key}.webp, made on the first
      * call). Null when it cannot be made (not editable, no WebP, needs Imagick).
@@ -1951,6 +1977,9 @@ final class MediaLibrary
             }
         }
         foreach (array_keys($this->formats?->boxes() ?? []) as $preset) {
+            if ($preset === Formats::SHARE) {
+                continue; // a JPEG for crawlers, made when one asks
+            }
             $plan = $this->boxPlan($asset, $preset);
             foreach ($plan === null ? [] : ['avif', 'webp'] as $format) {
                 if (array_filter($delivery->variants, static fn (Variant $v) => $v->format === $format) === []) {

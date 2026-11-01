@@ -41,6 +41,7 @@ use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\HandlesUpload;
 use Preflow\Folio\Field\Types\BlocksFieldType;
+use Preflow\Folio\Seo\SeoSection;
 use Preflow\Validation\ValidationException;
 use Preflow\Folio\Override\ActionResolver;
 use Preflow\View\TemplateEngineInterface;
@@ -83,6 +84,7 @@ final class AdminController
         private readonly ?\Preflow\I18n\Machine\JobRunner $jobs = null,
         private readonly ?\Preflow\I18n\Machine\ReviewIndex $reviewIndex = null,
         private readonly ?\Preflow\I18n\Machine\TranslationWorker $worker = null,
+        private readonly ?\Preflow\View\Seo\SeoConfig $seo = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
@@ -1312,6 +1314,9 @@ final class AdminController
             $editorAssets += ['ai-translate.css' => true, 'ai-translate-core.js' => true, 'ai-translate.js' => true];
         }
         $aiPending = $isNew ? [] : $this->aiPending($type, $typeDef, $values);
+        // A type without translations keeps its share texts under the default language (DraftRecordFactory).
+        $seoSection = $this->seoSection($type, $values, $locale, $multilingual ? $locale : $locales->default, $errors[SeoSection::KEY] ?? [], $locales);
+        $multipart = $multipart || $seoSection !== null; // the share image may be uploaded
         $html = $this->engine->render('@folio/admin/form.twig', [
             'prefix' => $this->prefix,
             'type' => $type,
@@ -1349,9 +1354,48 @@ final class AdminController
             'page_assets' => $panelAssets,
             'ai_translate' => $aiTranslate,
             'ai_pending' => $aiPending,
+            'seo_section' => $seoSection,
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
+    }
+
+    /**
+     * The "SEO & sharing" section's values, or null when it is not shown: SEO is off, or the
+     * type has no frontend route and is not the site singleton. Texts are in $textLocale (the
+     * edited one, or the default for a type without translations).
+     *
+     * @param array<string, mixed> $values
+     * @param list<string>         $errors the share image's refused uploads
+     * @return array{open: bool, title: string, description: string, image: ?string, noindex: bool, exclude_sitemap: bool, exclude_llms: bool}|null
+     */
+    private function seoSection(string $type, array $values, string $locale, string $textLocale, array $errors, \Preflow\Data\Locales $locales): ?array
+    {
+        if (!($this->seo?->enabled() ?? false)
+            || ($this->frontend->routeFor($type) === null && !($type === 'site' && $this->isSingleton($type)))) {
+            return null;
+        }
+        $seo = SeoSection::fromValue($values[SeoSection::KEY] ?? null);
+        $assetType = $this->fieldTypes->has('asset') ? $this->fieldTypes->get('asset') : null;
+
+        return [
+            'open' => !$seo->isEmpty(),
+            'title' => $seo->title($textLocale),
+            'description' => $seo->description($textLocale),
+            // The asset field's own editor (picker and upload), posting _seo[image_ids][] and _seo[image].
+            'image' => $assetType?->renderEditor(new FieldContext(
+                name: SeoSection::KEY . '[image]',
+                label: FolioText::get('folio.seo.image'),
+                value: $seo->image(),
+                errors: $errors,
+                config: SeoSection::IMAGE_CONFIG,
+                locale: $locale,
+                locales: $locales,
+            )),
+            'noindex' => $seo->noindex(),
+            'exclude_sitemap' => !$seo->inSitemap(),
+            'exclude_llms' => !$seo->inLlms(),
+        ];
     }
 
     /**

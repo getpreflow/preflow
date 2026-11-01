@@ -15,6 +15,8 @@ use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\FrontendRoute;
 use Preflow\Folio\Content\RecordRenderer;
 use Preflow\Folio\Publishing\PreviewLinks;
+use Preflow\Folio\Seo\FolioPageMeta;
+use Preflow\View\Seo\SeoContext;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -33,6 +35,8 @@ final class FrontendController
         private readonly ?FrontendGate $gate = null,
         private readonly ?ErrorHandler $errors = null,
         private readonly ?string $appUrl = null,
+        private readonly ?FolioPageMeta $pageMeta = null,
+        private readonly ?SeoContext $seo = null,
     ) {}
 
     public function show(ServerRequestInterface $request): ResponseInterface
@@ -132,6 +136,13 @@ final class FrontendController
             if ($url !== null) {
                 $alternates[] = ['locale' => $code, 'url' => $url, 'href' => $origin . $url, 'default' => $code === $locales->default];
             }
+        }
+        // Share cards and JSON-LD from the record (SEO on); the template's seo() can still change them.
+        // A preview is never indexed.
+        if ($this->pageMeta !== null && $this->seo !== null) {
+            $url = $origin . ($this->resolver->urlFor($record, $locale) ?? $request->getUri()->getPath());
+            $meta = $this->pageMeta->for($record, $locale, $url, array_column($alternates, 'locale'));
+            $this->seo->set($preview ? $meta->with(['noindex' => true]) : $meta);
         }
 
         $html = $this->engine->render(self::template($this->engine, $route), [

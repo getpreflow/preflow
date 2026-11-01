@@ -11,6 +11,7 @@ final class GdBackend implements ImageBackend
         return match ($format) {
             'webp' => function_exists('imagewebp'),
             'avif' => function_exists('imageavif'),
+            'jpeg' => function_exists('imagejpeg'),
             default => false,
         };
     }
@@ -29,8 +30,12 @@ final class GdBackend implements ImageBackend
             $crop = $job['crop'] ?? null;
             $height = max(1, (int) round(($crop['h'] ?? $h) * $job['width'] / max(1, $crop['w'] ?? $w)));
             $scaled = imagecreatetruecolor($job['width'], $height);
-            imagealphablending($scaled, false); // keep transparency (PNG, WebP)
-            imagesavealpha($scaled, true);
+            if ($job['format'] === 'jpeg') {
+                imagefill($scaled, 0, 0, (int) imagecolorallocate($scaled, 255, 255, 255)); // JPEG has no alpha
+            } else {
+                imagealphablending($scaled, false); // keep transparency (PNG, WebP)
+                imagesavealpha($scaled, true);
+            }
             if ($crop !== null) {
                 imagecopyresampled($scaled, $image, 0, 0, $crop['x'], $crop['y'], $job['width'], $height, $crop['w'], $crop['h']);
             } else {
@@ -39,6 +44,7 @@ final class GdBackend implements ImageBackend
             $results[] = match ($job['format']) {
                 'webp' => imagewebp($scaled, $job['dest'], $quality),
                 'avif' => imageavif($scaled, $job['dest'], $quality, 6), // speed 6: eager generation must stay fast
+                'jpeg' => imagejpeg($scaled, $job['dest'], $quality),
                 default => false,
             };
             unset($scaled);

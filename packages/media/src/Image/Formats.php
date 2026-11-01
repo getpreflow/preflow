@@ -12,6 +12,9 @@ namespace Preflow\Media\Image;
  */
 final class Formats
 {
+    /** The built-in 1200x630 box for og:image cards; a preset of this name in config/image.php replaces it. */
+    public const string SHARE = 'share';
+
     private const array FITS = ['cover', 'contain', 'max'];
 
     private const array RESERVED = ['edit', 'preview', 'oriented'];
@@ -23,6 +26,9 @@ final class Formats
     public static function fromConfig(array $presets): self
     {
         $formats = [];
+        if (!array_key_exists(self::SHARE, $presets)) {
+            $presets = [...$presets, self::SHARE => ['width' => 1200, 'height' => 630, 'fit' => 'cover', 'widths' => [1200]]];
+        }
         foreach ($presets as $name => $preset) {
             $name = (string) $name;
             $preset = is_array($preset) ? $preset : [];

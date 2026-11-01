@@ -221,18 +221,43 @@ final class FolioServiceProvider extends ServiceProvider
                 static fn (\Psr\Http\Message\ServerRequestInterface $sub, \Closure $next): \Psr\Http\Message\ResponseInterface => $contentLocale->scoped($next),
             );
         }
-        // GEO's llms.txt lists the published pages and takes its name and summary from the site singleton.
+        // The published pages are the site's public pages (sitemap with SEO, llms.txt with GEO);
+        // llms.txt takes its name and summary from the site singleton, SEO its defaults and share image.
         $geo = $container->bound(\Preflow\View\Geo\GeoConfig::class) ? $container->get(\Preflow\View\Geo\GeoConfig::class) : null;
-        if ($geo?->enabled() && $container->bound(\Preflow\View\Geo\GeoEntries::class)) {
-            $entries = $container->get(\Preflow\View\Geo\GeoEntries::class);
-            $entries->source(static fn (string $locale): array => (new \Preflow\Folio\Geo\FolioGeoEntries(
+        $seo = $container->bound(\Preflow\View\Seo\SeoConfig::class) ? $container->get(\Preflow\View\Seo\SeoConfig::class) : null;
+        if (($geo?->enabled() || $seo?->enabled()) && $container->bound(\Preflow\View\Seo\PublicPages::class)) {
+            $container->singleton(\Preflow\Folio\Seo\FolioPublicPages::class, static fn (Container $c) => new \Preflow\Folio\Seo\FolioPublicPages(
+                $seo,
                 $geo,
-                $container->get(TypeCatalog::class),
-                $container->get(\Preflow\Folio\Publishing\Publisher::class),
-                $container->get(FrontendResolver::class),
-            ))($locale));
-            $entries->site(static fn (string $locale): array => $container->get(\Preflow\Folio\Content\Singletons::class)
+                $c->get(TypeCatalog::class),
+                $c->get(\Preflow\Folio\Publishing\Publisher::class),
+                $c->get(FrontendResolver::class),
+            ));
+            $container->get(\Preflow\View\Seo\PublicPages::class)->source(
+                static fn (string $locale): array => $container->get(\Preflow\Folio\Seo\FolioPublicPages::class)($locale),
+            );
+        }
+        if ($geo?->enabled() && $container->bound(\Preflow\View\Geo\GeoEntries::class)) {
+            $container->get(\Preflow\View\Geo\GeoEntries::class)->site(static fn (string $locale): array => $container->get(\Preflow\Folio\Content\Singletons::class)
                 ->record('site')?->localized($locale)->toArray() ?? []);
+        }
+        if ($seo?->enabled() && $container->bound(\Preflow\View\Seo\SeoSite::class)) {
+            $container->singleton(\Preflow\Folio\Seo\FolioPageMeta::class, static fn (Container $c) => new \Preflow\Folio\Seo\FolioPageMeta(
+                $seo,
+                $c->get(\Preflow\View\Seo\SchemaRegistry::class),
+                $c->get(\Preflow\Media\MediaLibrary::class),
+                $c->get(\Preflow\Folio\Content\Singletons::class),
+                $geo?->noindexField, // kept out of the sitemap and llms.txt: no cards either
+            ));
+            $site = $container->get(\Preflow\View\Seo\SeoSite::class);
+            $site->defaults(static fn (string $locale): \Preflow\View\Seo\PageMeta => $container->get(\Preflow\Folio\Seo\FolioPageMeta::class)->siteDefaults($locale));
+            // The admin: kept from crawlers, no share cards; its legacy upload URLs are images public pages show.
+            // Folio at "/" would disallow the whole site, so nothing is kept out there.
+            $admin = rtrim($prefix, '/');
+            if ($admin !== '') {
+                $site->disallow($admin . '/');
+                $site->allow($admin . '/_uploads/');
+            }
         }
 
         // Media library (preflow/media): its config, library, usage, locale and image tag. Folio adapts it:
@@ -528,6 +553,7 @@ final class FolioServiceProvider extends ServiceProvider
             jobs: $c->get(\Preflow\I18n\Machine\JobRunner::class),
             reviewIndex: $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
             worker: $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
+            seo: $c->bound(\Preflow\View\Seo\SeoConfig::class) ? $c->get(\Preflow\View\Seo\SeoConfig::class) : null,
         ));
         $container->bind(\Preflow\Folio\Http\AiTranslateController::class, fn (Container $c) => new \Preflow\Folio\Http\AiTranslateController(
             $c->get(TypeCatalog::class),
@@ -585,6 +611,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Content\FrontendGate::class),
             $c->get(\Preflow\Core\Error\ErrorHandler::class),
             is_string($appUrl = $app->config()->get('app.url')) ? $appUrl : null,
+            $c->bound(\Preflow\Folio\Seo\FolioPageMeta::class) ? $c->get(\Preflow\Folio\Seo\FolioPageMeta::class) : null,
+            $c->bound(\Preflow\Folio\Seo\FolioPageMeta::class) ? $c->get(\Preflow\View\Seo\SeoContext::class) : null,
         ));
         $container->singleton(\Preflow\Folio\Content\FrontendGate::class, fn (Container $c) => new \Preflow\Folio\Content\FrontendGate(
             $c->get(\Preflow\Auth\Access\Access::class),

@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace Preflow\View\Geo;
 
+use Preflow\View\Seo\PageOrder;
+use Preflow\View\Seo\PublicPage;
+use Preflow\View\Seo\PublicPages;
+
 /**
- * Where llms.txt gets its pages: sources add entries per locale, filters drop,
+ * Where llms.txt gets its pages: the public pages' llms channel, plus sources that add entries per locale, filters drop,
  * change or reorder them. Folio registers its published pages as a source;
- * sites add their own from a service provider:
+ * sites add their own to PublicPages, which the sitemap reads too:
  *
- *     $container->get(GeoEntries::class)->source(fn (string $locale) => [new GeoEntry(…)]);
- *     $container->get(GeoEntries::class)->filter(fn (array $entries, string $locale) => …);
+ *     $container->get(PublicPages::class)->source(fn (string $locale) => [new PublicPage(…)]);
  *
  * Also holds the site's own fields (name, summary…) per locale, which llms.txt
  * falls back to when `config/geo.php` names none.
@@ -26,13 +29,21 @@ final class GeoEntries
     /** @var ?callable(string): array<string, mixed> */
     private $site = null;
 
-    /** @param callable(string $locale): iterable<GeoEntry> $source */
+    public function __construct(private readonly ?PublicPages $pages = null) {}
+
+    /**
+     * @deprecated add pages to PublicPages::source() instead; they reach the sitemap too
+     * @param callable(string $locale): iterable<GeoEntry> $source
+     */
     public function source(callable $source): void
     {
         $this->sources[] = $source;
     }
 
-    /** @param callable(list<GeoEntry> $entries, string $locale): array<GeoEntry> $filter */
+    /**
+     * @deprecated use PublicPages::filter() instead
+     * @param callable(list<GeoEntry> $entries, string $locale): array<GeoEntry> $filter
+     */
     public function filter(callable $filter): void
     {
         $this->filters[] = $filter;
@@ -51,7 +62,7 @@ final class GeoEntries
     }
 
     /**
-     * Every source's entries for a locale, filtered, then sorted: sections in
+     * The public pages' llms channel and every source's entries for a locale, filtered, then sorted: sections in
      * the order they first appear (the home page's — order 0 — first), within a
      * section by order, then title.
      *
@@ -59,7 +70,10 @@ final class GeoEntries
      */
     public function for(string $locale): array
     {
-        $entries = [];
+        $entries = array_map(
+            static fn (PublicPage $p): GeoEntry => new GeoEntry($p->title, self::url($p), $p->description, $p->section, $p->order, $p->llmsFull),
+            $this->pages?->llms($locale) ?? [],
+        );
         foreach ($this->sources as $source) {
             foreach ($source($locale) as $entry) {
                 $entries[] = self::entry($entry);
@@ -69,31 +83,16 @@ final class GeoEntries
             $entries = array_map(self::entry(...), array_values($filter($entries, $locale)));
         }
 
-        return self::sorted($entries);
+        return PageOrder::sort($entries);
     }
 
     /**
-     * @param list<GeoEntry> $entries
-     * @return list<GeoEntry>
+     * A public page's URL in llms.txt: a home page (order 0) keeps its canonical URL ("/de") in the
+     * sitemap, but its Markdown is "/de/index.md", so it is listed as "/de/".
      */
-    private static function sorted(array $entries): array
+    private static function url(PublicPage $page): string
     {
-        $sections = [];
-        foreach ($entries as $entry) {
-            if ($entry->order === 0) {
-                $sections[$entry->section] = 0;
-                break;
-            }
-        }
-        foreach ($entries as $entry) {
-            $sections[$entry->section] ??= count($sections);
-        }
-
-        usort($entries, static fn (GeoEntry $a, GeoEntry $b): int =>
-            [$sections[$a->section], $a->order] <=> [$sections[$b->section], $b->order]
-            ?: strnatcasecmp($a->title, $b->title));
-
-        return $entries;
+        return $page->order === 0 ? rtrim($page->url, '/') . '/' : $page->url;
     }
 
     private static function entry(mixed $entry): GeoEntry
