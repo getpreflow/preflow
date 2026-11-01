@@ -298,6 +298,22 @@ final class SeoHeadAndCachingTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_an_unknown_seo_key_is_ignored_and_logged_in_debug_mode(): void
+    {
+        $this->page('typo', '{% do seo({titel: "Typo", description: "Still here"}) %}<html><head><title>Typo page</title></head><body></body></html>');
+
+        $response = $this->get('/typo');
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertStringContainsString('<meta property="og:description" content="Still here">', (string) $response->getBody());
+
+        $log = $this->dir . '/php-errors.log';
+        ini_set('error_log', $log);
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name'=>'App Name','debug'=>1,'engine'=>'twig','key'=>'" . self::KEY . "','url'=>'https://site.test'];\n");
+        $this->assertSame(200, $this->get('/typo')->getStatusCode());
+        $this->assertStringContainsString('seo(): unknown key(s) ignored: titel', (string) @file_get_contents($log));
+    }
+
+    #[RunInSeparateProcess]
     public function test_works_without_folio(): void
     {
         $this->assertStringContainsString('<meta property="og:site_name" content="Game Club">', (string) $this->get('/plain')->getBody());

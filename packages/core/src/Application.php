@@ -567,7 +567,12 @@ final class Application
         $this->container->instance(\Preflow\View\Geo\GeoEntries::class, new \Preflow\View\Geo\GeoEntries($publicPages));
         // SEO settings, the page meta templates and controllers fill, and what sites register (JSON-LD builders, defaults)
         $seoConfig = \Preflow\View\Seo\SeoConfig::fromFile($this->basePath('config/seo.php'));
-        $seoContext = new \Preflow\View\Seo\SeoContext();
+        // A typo in a template's seo({…}) is ignored; in debug mode the log names it.
+        $seoContext = new \Preflow\View\Seo\SeoContext($debug->isDebug()
+            ? static function (array $keys): void {
+                error_log('seo(): unknown key(s) ignored: ' . implode(', ', $keys));
+            }
+            : null);
         $this->container->instance(\Preflow\View\Seo\SeoConfig::class, $seoConfig);
         $this->container->instance(\Preflow\View\Seo\SeoContext::class, $seoContext);
         $this->container->instance(\Preflow\View\Seo\SchemaRegistry::class, new \Preflow\View\Seo\SchemaRegistry());

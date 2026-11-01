@@ -12,6 +12,9 @@ final class SeoContext
 {
     private ?PageMeta $meta = null;
 
+    /** @param ?\Closure(list<string>): void $reportUnknown gets the keys a template's `seo({…})` gave that page meta doesn't have */
+    public function __construct(private readonly ?\Closure $reportUnknown = null) {}
+
     public function set(PageMeta $meta): void
     {
         $this->meta = $meta;
@@ -27,14 +30,21 @@ final class SeoContext
      * Merge what a template's `seo({…})` gives: snake_case keys (`og_type`,
      * `alternate_locales`), an image as URL or MediaLibrary::shareImage() array,
      * and `schema` as one node or a list, added to the nodes set so far.
+     * Unknown keys (a typo) are left out, not an error page, and reported.
      *
      * @param array<string, mixed> $values
      */
     public function mergeTemplate(array $values): void
     {
+        $known = get_object_vars(new PageMeta());
         $changes = [];
-        foreach ($values as $key => $value) {
-            $key = lcfirst(str_replace('_', '', ucwords((string) $key, '_')));
+        $unknown = [];
+        foreach ($values as $given => $value) {
+            $key = lcfirst(str_replace('_', '', ucwords((string) $given, '_')));
+            if ($key !== 'schema' && !array_key_exists($key, $known)) {
+                $unknown[] = (string) $given;
+                continue;
+            }
             if ($key === 'image' && is_string($value)) {
                 $value = $value === '' ? null : ['url' => $value];
             }
@@ -44,6 +54,9 @@ final class SeoContext
                 $value = [...($changes['schemas'] ?? $this->meta?->schemas ?? []), ...array_filter($nodes, 'is_array')];
             }
             $changes[$key] = $value;
+        }
+        if ($unknown !== []) {
+            $this->reportUnknown?->__invoke($unknown);
         }
 
         $this->merge($changes);

@@ -75,8 +75,23 @@ final class SeoContextTest extends TestCase
 
         $context->mergeTemplate(['image' => '']);
         $this->assertNull($context->get()?->image);
+    }
 
-        $this->expectException(\InvalidArgumentException::class);
-        $context->mergeTemplate(['titel' => 'B']);
+    public function test_merge_template_ignores_unknown_keys_and_reports_them(): void
+    {
+        $reported = [];
+        $context = new SeoContext(static function (array $keys) use (&$reported): void {
+            $reported[] = $keys;
+        });
+        $context->mergeTemplate(['titel' => 'B', 'description' => 'D', 'og_typ' => 'article']);
+
+        // A typo in a template is no 500: the known keys apply, the others are reported (debug mode logs them).
+        $this->assertSame('D', $context->get()?->description);
+        $this->assertSame('', $context->get()->title);
+        $this->assertSame([['titel', 'og_typ']], $reported);
+
+        $silent = new SeoContext();
+        $silent->mergeTemplate(['titel' => 'B']);
+        $this->assertSame('', $silent->get()?->title);
     }
 }
