@@ -194,7 +194,7 @@ final class Application
         $this->bootMiddleware();
 
         // GEO Markdown views — prepended, so it runs before every other middleware
-        $this->bootGeo();
+        $this->bootGeo($debug);
 
         // Error handler
         $renderer = $debug->isDebug()
@@ -554,6 +554,8 @@ final class Application
         // Markdown declared with {% apply geo %} / @geo; records only while GEO captures
         $geo = new \Preflow\View\Geo\GeoCollector();
         $this->container->instance(\Preflow\View\Geo\GeoCollector::class, $geo);
+        // Packages with request-scoped state add a wrapper here (bootGeo adds the core one)
+        $this->container->instance(\Preflow\View\Geo\RenderScopes::class, new \Preflow\View\Geo\RenderScopes());
 
         $pagesDir = $this->basePath('app/pages');
         $templateDirs = is_dir($pagesDir) ? [$pagesDir] : [];
@@ -1038,10 +1040,11 @@ final class Application
      * locale, session, CSRF and auth middleware, and its internal renders pass
      * through all of them as fresh anonymous requests.
      */
-    private function bootGeo(): void
+    private function bootGeo(DebugLevel $debug): void
     {
         if (!$this->container->bound(\Preflow\View\Geo\GeoCollector::class)
-            || !$this->container->bound(\Preflow\View\AssetCollector::class)) {
+            || !$this->container->bound(\Preflow\View\AssetCollector::class)
+            || !$this->container->bound(\Preflow\View\Geo\RenderScopes::class)) {
             return;
         }
 
@@ -1055,6 +1058,24 @@ final class Application
             return;
         }
 
+        // The core scope runs outermost, around the ones packages added during their registration.
+        $scopes = new \Preflow\View\Geo\RenderScopes();
+        $scopes->add($this->anonymousRenderScope());
+        $packageScopes = $this->container->get(\Preflow\View\Geo\RenderScopes::class);
+        $scopes->add(static fn (ServerRequestInterface $sub, \Closure $next): ResponseInterface => $packageScopes->run($sub, $next));
+
+        // Render failures that aren't HTTP answers: rethrown in debug (the error page shows them), logged otherwise.
+        $container = $this->container;
+        $report = static function (\Throwable $e) use ($container): void {
+            $message = 'GEO: a page could not be rendered as Markdown: ' . $e::class . ': ' . $e->getMessage();
+            if ($container->bound(\Psr\Log\LoggerInterface::class)) {
+                $container->get(\Psr\Log\LoggerInterface::class)->error($message, ['exception' => $e]);
+
+                return;
+            }
+            error_log($message . ' in ' . $e->getFile() . ':' . $e->getLine());
+        };
+
         $appUrl = $this->config->get('app.url');
         $middleware = new \Preflow\View\Geo\GeoMiddleware(
             $config,
@@ -1062,7 +1083,9 @@ final class Application
             $converter,
             $this->container->get(\Preflow\View\AssetCollector::class),
             is_string($appUrl) ? $appUrl : null,
-            [$this->anonymousRenderScope()],
+            $scopes,
+            $report,
+            $debug->isDebug(),
         );
         $this->container->instance(\Preflow\View\Geo\GeoMiddleware::class, $middleware);
         $this->pipeline->prepend($middleware);
@@ -1071,16 +1094,18 @@ final class Application
     /**
      * Wraps an internal GEO render: the request context names the rendered page,
      * the visitor's session data is hidden (templates read the session directly,
-     * e.g. flash()), and the translator locale and signed-in users are put back
-     * afterwards, so nothing passes between the request and its renders.
+     * e.g. flash(); a shutdown hook restores it even after a fatal error), and the
+     * translator locale and signed-in users are put back afterwards, so nothing
+     * passes between the request and its renders.
      *
      * @return \Closure(ServerRequestInterface, \Closure(): ResponseInterface): ResponseInterface
      */
     private function anonymousRenderScope(): \Closure
     {
         $container = $this->container;
+        $sessionData = new \Preflow\Core\Http\Session\SessionDataGuard();
 
-        return static function (ServerRequestInterface $sub, \Closure $next) use ($container): ResponseInterface {
+        return static function (ServerRequestInterface $sub, \Closure $next) use ($container, $sessionData): ResponseInterface {
             $context = $container->bound(RequestContext::class) ? $container->get(RequestContext::class) : null;
             $container->instance(RequestContext::class, new RequestContext($sub->getUri()->getPath(), 'GET'));
 
@@ -1095,20 +1120,12 @@ final class Application
             $users = $auth?->users() ?? [];
             $guard = $auth?->guardName();
 
-            $hadSession = isset($_SESSION);
-            $session = $_SESSION ?? null;
-            if ($hadSession) {
-                $_SESSION = ['_flash' => ['current' => [], 'previous' => []]];
-            }
+            $sessionData->hide();
 
             try {
                 return $next();
             } finally {
-                if ($hadSession) {
-                    $_SESSION = $session;
-                } else {
-                    unset($_SESSION);
-                }
+                $sessionData->restore();
                 if ($auth !== null) {
                     $auth->setUser($guard !== null ? ($users[$guard] ?? null) : null, $guard);
                     foreach ($users as $name => $user) {

@@ -29,6 +29,24 @@ final class ContentLocale
         return $this->locale ?? $this->locales->default;
     }
 
+    /**
+     * Run $render and put this locale back afterwards (also when it throws), so
+     * an internal render (a GEO Markdown view) can't change the request's.
+     *
+     * @template T
+     * @param callable(): T $render
+     * @return T
+     */
+    public function scoped(callable $render): mixed
+    {
+        $locale = $this->locale;
+        try {
+            return $render();
+        } finally {
+            $this->locale = $locale;
+        }
+    }
+
     public function locales(): Locales
     {
         return $this->locales;

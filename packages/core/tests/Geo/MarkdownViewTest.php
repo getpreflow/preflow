@@ -54,6 +54,11 @@ final class MarkdownViewTest extends TestCase
             '<p>Page HTML body</p>{{ component("' . $card . '", {title: "Inner"}) }}'
             . '{% apply geo %}## Facts' . "\n" . '- Players: 2{% endapply %}',
         ));
+        $this->page('only-block', $page(
+            'Only block',
+            '<div data-geo="skip"><p>Skipped HTML</p></div>{% apply geo %}## Only the block{% endapply %}',
+        ));
+        $this->page('broken', $page('Broken', '{{ component("No\\\\Such\\\\Component") }}'));
         $this->page('page-a', $page('Page A', '<p>Page A text</p>{{ component("' . $card . '", {title: "A"}) }}'));
         $this->page('page-b', $page('Page B', '<p>Page B text</p>'));
     }
@@ -337,8 +342,93 @@ final class MarkdownViewTest extends TestCase
         $md = (string) $res->getBody();
 
         $this->assertSame(200, $res->getStatusCode(), $md);
-        // The page's own block stands for the whole page: its HTML and components are not converted.
-        $this->assertSame("# Record\n\nSource: https://site.test/record\n\n## Facts\n- Players: 2\n", $md);
+        // A block outside components leads the converted page; it doesn't replace it.
+        $this->assertSame(
+            "# Record\n\nSource: https://site.test/record\n\n## Facts\n- Players: 2\n\nPage HTML body\n\n## Card Inner\n",
+            $md,
+        );
+
+        // A page that wants only its block marks its own HTML data-geo="skip".
+        $only = (string) $this->get($this->app(), '/only-block.md')->getBody();
+        $this->assertSame("# Only block\n\nSource: https://site.test/only-block\n\n## Only the block\n", $only);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_render_errors_are_logged_and_give_404(): void
+    {
+        $app = $this->app();
+        $logger = new class extends \Psr\Log\AbstractLogger {
+            /** @var list<array{string, string, array<string, mixed>}> */
+            public array $logs = [];
+
+            public function log($level, \Stringable|string $message, array $context = []): void
+            {
+                $this->logs[] = [(string) $level, (string) $message, $context];
+            }
+        };
+        $app->container()->instance(\Psr\Log\LoggerInterface::class, $logger);
+
+        $this->assertNoMarkdown($this->get($app, '/broken.md'), '/broken.md');
+        $this->assertCount(1, $logger->logs);
+        $this->assertSame('error', $logger->logs[0][0]);
+        $this->assertStringContainsString('could not be rendered as Markdown', $logger->logs[0][1]);
+        $this->assertInstanceOf(\Throwable::class, $logger->logs[0][2]['exception']);
+
+        // Pages that simply aren't there are no error.
+        $this->assertNoMarkdown($this->get($app, '/missing.md'), '/missing.md');
+        $this->assertCount(1, $logger->logs);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_render_errors_show_the_error_page_in_debug_mode(): void
+    {
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name'=>'t','debug'=>1,'engine'=>'twig','key'=>'" . self::KEY . "','url'=>'https://site.test'];\n");
+
+        $res = $this->get($this->app(), '/broken.md');
+
+        $this->assertSame(500, $res->getStatusCode());
+        $this->assertStringContainsString('No\\Such\\Component', (string) $res->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_each_render_gets_its_own_locale_and_the_request_keeps_its_own(): void
+    {
+        $app = $this->app();
+        $seen = [];
+        $app->container()->get(\Preflow\View\Geo\RenderScopes::class)->add(
+            function (\Psr\Http\Message\ServerRequestInterface $sub, \Closure $next) use (&$seen): \Psr\Http\Message\ResponseInterface {
+                $seen[] = $sub->getUri()->getPath();
+
+                return $next();
+            },
+        );
+
+        // The outer request: a German page, so the translator is in German.
+        $outer = (new Psr17Factory())->createServerRequest('GET', 'http://localhost/de/about');
+        $app->handle($outer);
+        $translator = $app->container()->get(\Preflow\I18n\Translator::class);
+        $context = $app->container()->get(\Preflow\Core\Http\RequestContext::class);
+        $this->assertSame('de', $translator->getLocale());
+
+        // Renders as GeoMiddleware (outermost) makes them: through the whole application.
+        $handler = new class ($app) implements \Psr\Http\Server\RequestHandlerInterface {
+            public function __construct(private readonly Application $app) {}
+
+            public function handle(\Psr\Http\Message\ServerRequestInterface $request): ResponseInterface
+            {
+                return $this->app->handle($request);
+            }
+        };
+        $geo = $app->container()->get(\Preflow\View\Geo\GeoMiddleware::class);
+        $de = (string) $geo->render($outer, $handler, '/de/');
+        $en = (string) $geo->render($outer, $handler, '/');
+
+        $this->assertStringStartsWith('# Home de', $de);
+        $this->assertStringStartsWith('# Home en', $en);
+        $this->assertSame('de', $translator->getLocale());
+        $this->assertSame($context, $app->container()->get(\Preflow\Core\Http\RequestContext::class));
+        // Scopes packages add (Folio's content locale) wrap every render.
+        $this->assertSame(['/de/', '/'], $seen);
     }
 
     #[RunInSeparateProcess]

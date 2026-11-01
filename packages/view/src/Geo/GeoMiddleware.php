@@ -8,6 +8,7 @@ use Dom\HTMLDocument;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use Nyholm\Psr7\Stream;
+use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\Http\Session\SessionMiddleware;
 use Preflow\View\AssetCollector;
 use Psr\Http\Message\ResponseInterface;
@@ -32,9 +33,10 @@ final class GeoMiddleware implements MiddlewareInterface
     private const KEPT_HEADERS = ['X-Forwarded-Proto', 'X-Forwarded-Host', 'X-Forwarded-Port'];
 
     /**
-     * @param ?string $appUrl the configured app.url; its origin makes links absolute (else the request's)
-     * @param list<\Closure(ServerRequestInterface, \Closure(): ResponseInterface): ResponseInterface> $scopes
-     *        wrap each internal render, e.g. to set and restore request-scoped services
+     * @param ?string       $appUrl the configured app.url; its origin makes links absolute (else the request's)
+     * @param ?RenderScopes  $scopes wrap each internal render (request-scoped state set and put back)
+     * @param ?\Closure(\Throwable): void $report gets render failures that aren't HTTP answers (404, 403…)
+     * @param bool           $debug  rethrow those failures, so the error page shows them
      */
     public function __construct(
         private readonly GeoConfig $config,
@@ -42,7 +44,9 @@ final class GeoMiddleware implements MiddlewareInterface
         private readonly MarkdownConverter $converter,
         private readonly AssetCollector $assets,
         private readonly ?string $appUrl = null,
-        private readonly array $scopes = [],
+        private readonly ?RenderScopes $scopes = null,
+        private readonly ?\Closure $report = null,
+        private readonly bool $debug = false,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -70,8 +74,9 @@ final class GeoMiddleware implements MiddlewareInterface
 
     /**
      * The Markdown of one page path, or null when it has none (not 200 HTML,
-     * noindex, failed). Rendered anonymously through $handler with its own
+     * noindex, an HTTP error). Rendered anonymously through $handler with its own
      * assets and geo blocks, so several renders in one request stay independent.
+     * Other failures are reported and give null; in debug mode they are rethrown.
      */
     public function render(ServerRequestInterface $request, RequestHandlerInterface $handler, string $path): ?string
     {
@@ -84,7 +89,15 @@ final class GeoMiddleware implements MiddlewareInterface
             $response = $this->assets->isolate(fn (): ResponseInterface => $this->scoped($sub, $handler));
 
             return $this->markdownOf($response, $path, $origin);
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            if ($e instanceof HttpException && $e->statusCode < 500) {
+                return null; // not found, forbidden…: the page has no public view
+            }
+            if ($this->debug) {
+                throw $e;
+            }
+            $this->report?->__invoke($e);
+
             return null;
         } finally {
             $this->collector->capture(false);
@@ -153,16 +166,12 @@ final class GeoMiddleware implements MiddlewareInterface
             ->withAttribute(SessionMiddleware::WITHOUT_SESSION, true);
     }
 
-    /** Handle $sub inside every scope, the first scope outermost. */
+    /** Handle $sub inside every render scope. */
     private function scoped(ServerRequestInterface $sub, RequestHandlerInterface $handler): ResponseInterface
     {
-        $run = static fn (): ResponseInterface => $handler->handle($sub);
-        foreach (array_reverse($this->scopes) as $scope) {
-            $next = $run;
-            $run = static fn (): ResponseInterface => $scope($sub, $next);
-        }
+        $render = static fn (): ResponseInterface => $handler->handle($sub);
 
-        return $run();
+        return $this->scopes?->run($sub, $render) ?? $render();
     }
 
     private function markdownOf(ResponseInterface $response, string $path, string $origin): ?string
@@ -181,11 +190,13 @@ final class GeoMiddleware implements MiddlewareInterface
         $canonical = trim((string) $document->querySelector('link[rel~="canonical"][href]')?->getAttribute('href'));
         $source = $canonical !== '' ? $this->absolute($canonical, $origin) : $origin . $path;
 
-        // A page template's own geo block stands for the whole page; otherwise the page is converted.
-        $pageBlocks = $this->collector->pageBlocks();
-        $body = $pageBlocks !== []
-            ? implode("\n\n", array_filter($pageBlocks, static fn (string $block): bool => $block !== ''))
-            : $this->converter->convert($html, $origin);
+        // Blocks a page or layout template declares outside components lead the converted page
+        // (a page that wants only its block marks its own HTML data-geo="skip").
+        $parts = array_filter(
+            [...$this->collector->pageBlocks(), $this->converter->convert($html, $origin)],
+            static fn (string $part): bool => $part !== '',
+        );
+        $body = implode("\n\n", $parts);
 
         $markdown = ($title !== '' ? '# ' . $title . "\n\n" : '') . 'Source: ' . $source . "\n";
 

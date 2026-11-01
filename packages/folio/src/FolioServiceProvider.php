@@ -213,7 +213,14 @@ final class FolioServiceProvider extends ServiceProvider
         ));
 
         // One request-scoped content locale shared by the frontend, preview and field types.
-        $container->instance(ContentLocale::class, new ContentLocale($locales ?? \Preflow\Data\Locales::single('en')));
+        $contentLocale = new ContentLocale($locales ?? \Preflow\Data\Locales::single('en'));
+        $container->instance(ContentLocale::class, $contentLocale);
+        // GEO renders pages internally (Markdown views): each keeps its content locale to itself.
+        if ($container->bound(\Preflow\View\Geo\RenderScopes::class)) {
+            $container->get(\Preflow\View\Geo\RenderScopes::class)->add(
+                static fn (\Psr\Http\Message\ServerRequestInterface $sub, \Closure $next): \Psr\Http\Message\ResponseInterface => $contentLocale->scoped($next),
+            );
+        }
 
         // Media library (preflow/media): its config, library, usage, locale and image tag. Folio adapts it:
         // its content locale, its records as a usage source, the legacy upload URL and the old class names.

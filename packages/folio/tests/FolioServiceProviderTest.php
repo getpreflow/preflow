@@ -298,6 +298,23 @@ final class FolioServiceProviderTest extends TestCase
         $this->rrmdir($dir);
     }
 
+    public function test_internal_renders_keep_their_content_locale_to_themselves(): void
+    {
+        [$app, $dir] = $this->appWith([]);
+        $locale = $app->container()->get(\Preflow\Folio\Content\ContentLocale::class);
+        $request = (new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('GET', '/');
+
+        $app->container()->get(\Preflow\View\Geo\RenderScopes::class)->run($request, function () use ($locale): \Psr\Http\Message\ResponseInterface {
+            $locale->set('en');
+
+            return new \Nyholm\Psr7\Response(200);
+        });
+
+        // The request never chose a content locale, and the render's choice didn't stay.
+        $this->assertNull((new \ReflectionProperty($locale, 'locale'))->getValue($locale));
+        $this->rrmdir($dir);
+    }
+
     private function rrmdir(string $dir): void
     {
         foreach (scandir($dir) ?: [] as $e) {
