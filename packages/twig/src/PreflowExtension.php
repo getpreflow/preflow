@@ -8,12 +8,14 @@ use Twig\Extension\AbstractExtension;
 use Twig\TwigFilter;
 use Twig\TwigFunction;
 use Preflow\View\AssetCollector;
+use Preflow\View\Geo\GeoCollector;
 use Preflow\View\JsPosition;
 
 final class PreflowExtension extends AbstractExtension
 {
     public function __construct(
         private readonly AssetCollector $assetCollector,
+        private readonly ?GeoCollector $geoCollector = null,
     ) {}
 
     public function getFilters(): array
@@ -21,6 +23,7 @@ final class PreflowExtension extends AbstractExtension
         return [
             new TwigFilter('css', $this->registerCss(...), ['is_safe' => ['html']]),
             new TwigFilter('js', $this->registerJs(...), ['is_safe' => ['html']]),
+            new TwigFilter('geo', $this->registerGeo(...), ['is_safe' => ['html']]),
         ];
     }
 
@@ -56,6 +59,19 @@ final class PreflowExtension extends AbstractExtension
         if ($js !== '') {
             $pos = JsPosition::from($position);
             $this->assetCollector->addJs($js, $pos);
+        }
+        return '';
+    }
+
+    /**
+     * Filter: {% apply geo %}...{% endapply %}
+     * Records the block's Markdown with the geo collector and returns empty string.
+     * Values printed inside were HTML-escaped by Twig; they are decoded back to plain text.
+     */
+    public function registerGeo(string $markdown): string
+    {
+        if ($this->geoCollector?->capturing()) {
+            $this->geoCollector->add(html_entity_decode($markdown, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
         }
         return '';
     }

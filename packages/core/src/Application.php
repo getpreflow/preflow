@@ -548,6 +548,10 @@ final class Application
         $this->container->instance(\Preflow\View\AssetCollector::class, $assets);
         $this->container->instance(\Preflow\View\NonceGenerator::class, $nonce);
 
+        // Markdown declared with {% apply geo %} / @geo; records only while GEO captures
+        $geo = new \Preflow\View\Geo\GeoCollector();
+        $this->container->instance(\Preflow\View\Geo\GeoCollector::class, $geo);
+
         $pagesDir = $this->basePath('app/pages');
         $templateDirs = is_dir($pagesDir) ? [$pagesDir] : [];
 
@@ -559,7 +563,7 @@ final class Application
         }
 
         $engineName = $this->config->get('app.engine', 'twig');
-        $engine = $this->createTemplateEngine($engineName, $templateDirs, $assets, $debug);
+        $engine = $this->createTemplateEngine($engineName, $templateDirs, $assets, $debug, $geo);
 
         if ($engine === null) {
             return;
@@ -608,6 +612,7 @@ final class Application
         array $templateDirs,
         \Preflow\View\AssetCollector $assets,
         DebugLevel $debug,
+        ?\Preflow\View\Geo\GeoCollector $geo = null,
     ): ?\Preflow\View\TemplateEngineInterface {
         return match ($name) {
             'twig' => class_exists(\Preflow\Twig\TwigEngine::class)
@@ -615,17 +620,22 @@ final class Application
                     templateDirs: $templateDirs,
                     assetCollector: $assets,
                     debug: $debug->isDebug(),
+                    geoCollector: $geo,
                 )
                 : null,
             'blade' => class_exists(\Preflow\Blade\BladeEngine::class)
-                ? $this->createBladeEngine($templateDirs, $assets, $debug)
+                ? $this->createBladeEngine($templateDirs, $assets, $debug, $geo)
                 : null,
             default => throw new \RuntimeException("Unknown template engine: {$name}. Supported: twig, blade"),
         };
     }
 
-    private function createBladeEngine(array $templateDirs, \Preflow\View\AssetCollector $assets, DebugLevel $debug): \Preflow\Blade\BladeEngine
-    {
+    private function createBladeEngine(
+        array $templateDirs,
+        \Preflow\View\AssetCollector $assets,
+        DebugLevel $debug,
+        ?\Preflow\View\Geo\GeoCollector $geo = null,
+    ): \Preflow\Blade\BladeEngine {
         // Passed explicitly so the engine and the registry use the same folder.
         $cachePath = $this->absolutePath('storage/cache/blade');
 
@@ -640,6 +650,7 @@ final class Application
             assetCollector: $assets,
             debug: $debug->isDebug(),
             cachePath: $cachePath,
+            geoCollector: $geo,
         );
     }
 
@@ -780,7 +791,10 @@ final class Application
         $assets = $this->container->has(\Preflow\View\AssetCollector::class)
             ? $this->container->get(\Preflow\View\AssetCollector::class)
             : null;
-        $renderer = new \Preflow\Components\ComponentRenderer($engine, $errorBoundary, $collector, $assets);
+        $geo = $this->container->has(\Preflow\View\Geo\GeoCollector::class)
+            ? $this->container->get(\Preflow\View\Geo\GeoCollector::class)
+            : null;
+        $renderer = new \Preflow\Components\ComponentRenderer($engine, $errorBoundary, $collector, $assets, $geo);
         $this->container->instance(\Preflow\Components\ComponentRenderer::class, $renderer);
 
         // Auto-discover components

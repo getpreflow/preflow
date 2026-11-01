@@ -8,6 +8,7 @@ use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
 use Twig\TwigFunction;
 use Preflow\View\AssetCollector;
+use Preflow\View\Geo\GeoCollector;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
 
@@ -23,6 +24,7 @@ final class TwigEngine implements TemplateEngineInterface
         AssetCollector $assetCollector,
         bool $debug = false,
         ?string $cachePath = null,
+        ?GeoCollector $geoCollector = null,
     ) {
         $loader = new FilesystemLoader($templateDirs);
 
@@ -34,7 +36,7 @@ final class TwigEngine implements TemplateEngineInterface
             'autoescape' => 'html',
         ]);
 
-        $this->twig->addExtension(new PreflowExtension($assetCollector));
+        $this->twig->addExtension(new PreflowExtension($assetCollector, $geoCollector));
     }
 
     public function render(string $template, array $context = []): string

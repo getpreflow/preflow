@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Components;
 
 use Preflow\View\AssetCollector;
+use Preflow\View\Geo\GeoCollector;
 use Preflow\View\TemplateEngineInterface;
 
 final class ComponentRenderer
@@ -14,6 +15,7 @@ final class ComponentRenderer
         private readonly ErrorBoundary $errorBoundary,
         private readonly ?\Preflow\Core\Debug\DebugCollector $collector = null,
         private readonly ?AssetCollector $assetCollector = null,
+        private readonly ?GeoCollector $geoCollector = null,
     ) {}
 
     /**
@@ -24,7 +26,7 @@ final class ComponentRenderer
         try {
             $component->resolveState();
             $start = hrtime(true);
-            $innerHtml = $this->renderTemplate($component);
+            $innerHtml = $this->renderInner($component);
             if ($this->collector !== null) {
                 $durationMs = (hrtime(true) - $start) / 1_000_000;
                 $this->collector->logComponent(
@@ -49,7 +51,7 @@ final class ComponentRenderer
         try {
             $component->resolveState();
             $start = hrtime(true);
-            $html = $this->renderTemplate($component);
+            $html = $this->renderInner($component);
             if ($this->collector !== null) {
                 $durationMs = (hrtime(true) - $start) / 1_000_000;
                 $this->collector->logComponent(
@@ -74,7 +76,7 @@ final class ComponentRenderer
     {
         try {
             $start = hrtime(true);
-            $html = $this->renderTemplate($component);
+            $html = $this->renderInner($component);
             if ($this->collector !== null) {
                 $durationMs = (hrtime(true) - $start) / 1_000_000;
                 $this->collector->logComponent(
@@ -99,7 +101,7 @@ final class ComponentRenderer
     {
         try {
             $start = hrtime(true);
-            $innerHtml = $this->renderTemplate($component);
+            $innerHtml = $this->renderInner($component);
             if ($this->collector !== null) {
                 $durationMs = (hrtime(true) - $start) / 1_000_000;
                 $this->collector->logComponent(
@@ -119,6 +121,27 @@ final class ComponentRenderer
     public function renderError(Component $component, \Throwable $e, string $phase = 'action'): string
     {
         return $this->errorBoundary->render($e, $component, $phase);
+    }
+
+    /**
+     * The component's inner HTML. While GEO captures, the render runs in its own
+     * frame; a component that declared a geo block is replaced by its placeholder.
+     */
+    private function renderInner(Component $component): string
+    {
+        $geo = $this->geoCollector;
+        if ($geo === null || !$geo->capturing()) {
+            return $this->renderTemplate($component);
+        }
+
+        $geo->enter();
+        try {
+            $html = $this->renderTemplate($component);
+        } finally {
+            $block = $geo->leave();
+        }
+
+        return $block === null ? $html : $geo->placeholder($block);
     }
 
     private function renderTemplate(Component $component): string
