@@ -326,6 +326,10 @@ final class FolioServiceProvider extends ServiceProvider
                 ...(file_exists($app->basePath('config/auth.php')) ? [$c->get(\Preflow\Folio\Users\UserPreferences::class)->definition()] : []),
                 // The admins' interface text overrides (Settings → Translations).
                 $c->get(\Preflow\Folio\Translations\StoredOverrides::class)->definition(),
+                // Redirect entries, the not-found list and the records' last public addresses.
+                \Preflow\Folio\Redirects\RedirectEntries::definition(),
+                \Preflow\Folio\Redirects\NotFoundEntries::definition(),
+                \Preflow\Folio\Redirects\AddressTable::definition(),
             ],
         ));
         $container->get(\Preflow\Data\Schema\RecordTables::class)->add(
@@ -336,6 +340,73 @@ final class FolioServiceProvider extends ServiceProvider
             'folio.tables',
             static fn (): array => $container->get(\Preflow\Folio\Storage\TableSync::class)->sync(),
         );
+        // Redirects and the not-found list (the routing core's RedirectMiddleware switches on with the
+        // store). Built without touching the storage: a site not migrated yet fails inside the
+        // middleware's lookups only, which keep the 404.
+        if ($dataManager !== null) {
+            $container->singleton(\Preflow\Folio\Redirects\RedirectEntries::class, static fn (Container $c) => new \Preflow\Folio\Redirects\RedirectEntries(
+                $c->get(DataManager::class),
+            ));
+            $container->singleton(\Preflow\Folio\Redirects\NotFoundEntries::class, static fn (Container $c) => new \Preflow\Folio\Redirects\NotFoundEntries(
+                $c->get(DataManager::class),
+                \Preflow\Routing\Redirect\RedirectConfig::fromFile($app->basePath('config/redirects.php'))->notFoundLimit,
+            ));
+            $container->singleton(\Preflow\Folio\Redirects\LiveRecords::class, static fn (Container $c) => new \Preflow\Folio\Redirects\LiveRecords(
+                $c->get(DataManager::class),
+                $c->get(\Preflow\Folio\Publishing\Publisher::class),
+                $c->get(FrontendResolver::class),
+            ));
+            $container->singleton(\Preflow\Folio\Redirects\FolioRedirectTargets::class, static fn (Container $c) => new \Preflow\Folio\Redirects\FolioRedirectTargets(
+                $c->get(\Preflow\Folio\Redirects\LiveRecords::class),
+                $c->get(FrontendResolver::class),
+            ));
+            // Where a redirect target really leads (a page's URL becomes its record; no chains), for
+            // Settings → Redirects and the removal targets of deletes and unpublishes.
+            $container->singleton(\Preflow\Folio\Redirects\SiteTarget::class, static fn (Container $c) => new \Preflow\Folio\Redirects\SiteTarget(
+                $c->get(\Preflow\Folio\Redirects\RedirectEntries::class),
+                static fn (): \Preflow\Folio\Redirects\LiveRecords => $c->get(\Preflow\Folio\Redirects\LiveRecords::class),
+                $c->get(FrontendResolver::class),
+                $locales ?? \Preflow\Data\Locales::single('en'),
+                self::prefixedUrls($app),
+                \Preflow\Folio\Redirects\SiteTarget::hostOf($app->config()->get('app.url')),
+            ));
+            // The address book behind the automatic redirects. LiveRecords reads through the Publisher,
+            // which writes through the address book: it is looked up when first needed.
+            $container->singleton(\Preflow\Folio\Redirects\RecordAddresses::class, static fn (Container $c) => new \Preflow\Folio\Redirects\RecordAddresses(
+                $c->get(DataManager::class),
+                $c->get(\Preflow\Folio\Redirects\RedirectEntries::class),
+                $c->get(FrontendResolver::class),
+                static fn (): \Preflow\Folio\Redirects\LiveRecords => $c->get(\Preflow\Folio\Redirects\LiveRecords::class),
+                self::prefixedUrls($app),
+                $app->config()->get('app.debug', false) ? static fn (string $message) => error_log('folio: ' . $message) : null,
+                $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class),
+                $c->get(\Preflow\Folio\Redirects\SiteTarget::class),
+            ));
+            // After the tables exist (folio.tables): every live page's current addresses, so the first
+            // rename after an upgrade redirects for every type.
+            $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
+                'folio.addresses',
+                static fn (): array => $container->get(\Preflow\Folio\Redirects\RecordAddresses::class)->seed(),
+            );
+            $container->bind(\Preflow\Routing\Redirect\RedirectStore::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\RedirectEntries::class));
+            $container->bind(\Preflow\Routing\Redirect\NotFoundLog::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class));
+            $container->bind(\Preflow\Routing\Redirect\RedirectTargets::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\FolioRedirectTargets::class));
+            // Settings → Redirects.
+            $container->bind(\Preflow\Folio\Http\RedirectsController::class, static fn (Container $c) => new \Preflow\Folio\Http\RedirectsController(
+                $c->get(\Preflow\Folio\Redirects\RedirectEntries::class),
+                $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class),
+                $c->get(\Preflow\Folio\Redirects\LiveRecords::class),
+                $c->get(FrontendResolver::class),
+                $c->get(TypeCatalog::class),
+                $c->get(\Preflow\Folio\Content\DisplayLabels::class),
+                $c->bound(\Preflow\Core\Http\NonPublicPaths::class) ? $c->get(\Preflow\Core\Http\NonPublicPaths::class) : new \Preflow\Core\Http\NonPublicPaths(),
+                $locales ?? \Preflow\Data\Locales::single('en'),
+                self::prefixedUrls($app),
+                $c->get(TemplateEngineInterface::class),
+                $prefix,
+                $c->get(\Preflow\Folio\Redirects\SiteTarget::class),
+            ));
+        }
         $container->singleton(\Preflow\Folio\Extension\ExtensionState::class, fn (Container $c) => new \Preflow\Folio\Extension\ExtensionState(
             $c->get(DataManager::class),
         ));
@@ -504,6 +575,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Content\TranslationStatus::class),
             (bool) ($folioConfig['publishing']['complete_languages'] ?? false),
             $c->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
+            self::addresses($c),
         ));
         $container->singleton(\Preflow\Folio\Content\ReviewIndexUpdater::class, fn (Container $c) => new \Preflow\Folio\Content\ReviewIndexUpdater(
             $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
@@ -554,6 +626,12 @@ final class FolioServiceProvider extends ServiceProvider
             reviewIndex: $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
             worker: $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
             seo: $c->bound(\Preflow\View\Seo\SeoConfig::class) ? $c->get(\Preflow\View\Seo\SeoConfig::class) : null,
+            addresses: self::addresses($c),
+            oldAddresses: $c->bound(\Preflow\Folio\Redirects\RedirectEntries::class) ? new \Preflow\Folio\Redirects\OldAddresses(
+                $c->get(\Preflow\Folio\Redirects\RedirectEntries::class),
+                new \Preflow\Folio\Redirects\VisibleAddress(($locales ?? \Preflow\Data\Locales::single('en'))->default, self::prefixedUrls($app)),
+                $app->config()->get('app.debug', false) ? static fn (string $message) => error_log('folio: ' . $message) : null,
+            ) : null,
         ));
         $container->bind(\Preflow\Folio\Http\AiTranslateController::class, fn (Container $c) => new \Preflow\Folio\Http\AiTranslateController(
             $c->get(TypeCatalog::class),
@@ -972,8 +1050,9 @@ final class FolioServiceProvider extends ServiceProvider
 
     /**
      * admin.js's words: every folio.js.* key (as Folio's English file and the site's lang/en name
-     * them), short keys ("confirm_delete"), in the translator's language, as JSON that cannot
-     * close or break out of its script block.
+     * them), short keys ("confirm_delete"), and the redirect prompt's folio.redirects.prompt.*
+     * ("redirects.prompt.leave"), in the translator's language, as JSON that cannot close or
+     * break out of its script block.
      */
     private static function jsTexts(\Preflow\I18n\Translator $translator): string
     {
@@ -981,6 +1060,8 @@ final class FolioServiceProvider extends ServiceProvider
         foreach (array_keys($translator->entries('folio', 'en')) as $key) {
             if (str_starts_with($key, 'folio.js.')) {
                 $texts[substr($key, strlen('folio.js.'))] = $translator->get($key);
+            } elseif (str_starts_with($key, 'folio.redirects.prompt.')) {
+                $texts[substr($key, strlen('folio.'))] = $translator->get($key);
             }
         }
 
@@ -1005,6 +1086,12 @@ final class FolioServiceProvider extends ServiceProvider
         // The staff login: a form left open past the session's end still signs in (CSRF).
         if ($container->bound(\Preflow\Core\Http\Csrf\CsrfSignInPaths::class)) {
             $container->get(\Preflow\Core\Http\Csrf\CsrfSignInPaths::class)->add(rtrim($this->prefix($app), '/') . '/login');
+        }
+        // The admin is not a public page: no redirects there, nothing in the not-found list.
+        // Folio at "/" would cover the whole site, so nothing is registered then.
+        $admin = rtrim($this->prefix($app), '/');
+        if ($admin !== '' && $container->bound(\Preflow\Core\Http\NonPublicPaths::class)) {
+            $container->get(\Preflow\Core\Http\NonPublicPaths::class)->add($admin);
         }
         self::requireRbacForMembers($container->get(ExtensionRegistry::class));
         // The codes admin's purpose select lists the purposes of config/codes.php (preflow/codes' Codes).
@@ -1033,6 +1120,10 @@ final class FolioServiceProvider extends ServiceProvider
         }
         // Settings → Translations, on every site (the admins' overrides of interface texts).
         $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.translations'), rtrim($this->prefix($app), '/') . '/translations', 'ui-settings', 'translations.edit', 920);
+        // Settings → Redirects, wherever Folio keeps the redirect entries (a site with a DataManager).
+        if ($container->bound(\Preflow\Folio\Redirects\RedirectEntries::class)) {
+            $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.redirects'), rtrim($this->prefix($app), '/') . '/redirects', 'ui-settings', 'redirects.manage', 930);
+        }
         // Settings → Cache, on every site (Folio registers its own caches).
         $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.cache'), rtrim($this->prefix($app), '/') . '/cache', 'ui-settings', 'folio.cache', 950);
         // Settings → AI, while AI is switched on or a key is present (so a missing key or switch can be seen and fixed).
@@ -1128,7 +1219,7 @@ final class FolioServiceProvider extends ServiceProvider
                         ? $container->get(\Preflow\Core\Http\Session\SessionInterface::class)
                         : null;
                     $flashes = [];
-                    foreach (['success', 'error'] as $type) {
+                    foreach (['success', 'warning', 'error'] as $type) {
                         $message = $session?->isStarted() ? $session->getFlash($type) : null;
                         if (is_string($message) && $message !== '') {
                             $flashes[$type] = $message;
@@ -1136,6 +1227,20 @@ final class FolioServiceProvider extends ServiceProvider
                     }
 
                     return $flashes;
+                },
+            ));
+            // The link a flash may carry ({url, label}; a page that left the site: "Send its old links to…").
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_flash_link',
+                callable: function (string $type) use ($container): ?array {
+                    $session = $container->has(\Preflow\Core\Http\Session\SessionInterface::class)
+                        ? $container->get(\Preflow\Core\Http\Session\SessionInterface::class)
+                        : null;
+                    $link = $session?->isStarted() ? $session->getFlash($type . '_link') : null;
+
+                    return is_array($link) && is_string($link['url'] ?? null) && is_string($link['label'] ?? null)
+                        ? ['url' => $link['url'], 'label' => $link['label']]
+                        : null;
                 },
             ));
 
@@ -1335,8 +1440,15 @@ final class FolioServiceProvider extends ServiceProvider
                 new RecordLabeler(),
                 $container->get(\Preflow\I18n\Machine\TranslationSettings::class),
                 $container->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
+                self::addresses($container),
             ));
         }
+    }
+
+    /** The address book, when Folio's internal storage is there (see register()). */
+    private static function addresses(Container $c): ?\Preflow\Folio\Redirects\RecordAddresses
+    {
+        return $c->bound(\Preflow\Folio\Redirects\RecordAddresses::class) ? $c->get(\Preflow\Folio\Redirects\RecordAddresses::class) : null;
     }
 
     /**
@@ -1353,6 +1465,7 @@ final class FolioServiceProvider extends ServiceProvider
         $registry->declare('folio.extensions', 'Extensions', 'Folio');
         $registry->declare('folio.cache', 'Cache', 'Folio');
         $registry->declare('translations.edit', 'Translations', 'Folio');
+        $registry->declare('redirects.manage', 'Redirects', 'Folio');
         // Declared with AI off too, so roles may list them before AI is switched on.
         $registry->declare('ai.translate', 'Use AI translation', 'AI');
         $registry->declare('ai.settings', 'AI settings', 'AI');
@@ -1593,6 +1706,15 @@ final class FolioServiceProvider extends ServiceProvider
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /** Whether the site's URLs carry the locale (config/i18n.php url_strategy "prefix", the default). */
+    private static function prefixedUrls(Application $app): bool
+    {
+        $path = $app->basePath('config/i18n.php');
+        $i18n = file_exists($path) ? (array) require $path : [];
+
+        return ($i18n['url_strategy'] ?? 'prefix') === 'prefix';
     }
 
     private function prefix(Application $app): string

@@ -1835,3 +1835,38 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-ai-progress-section h2 { margin: 0 0 8px; font-size: 15px; font-weight: 650; }
 .folio-ai-progress-section ul { margin: 0; padding-left: 18px; }
 .folio-ai-progress-review { margin-top: 22px; font-weight: 620; }
+
+/* ---- "Send its old links to…" (admin.js removalPrompt): deleting or unpublishing a record with public addresses ---- */
+.folio-removal-dialog {
+  width: min(520px, calc(100vw - 32px));
+  padding: 20px 22px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface-raised);
+  color: var(--c-text);
+  box-shadow: var(--shadow-lg);
+}
+.folio-removal-dialog::backdrop { background: var(--c-overlay); }
+.folio-removal-line { margin: 0 0 6px; font-size: 13.5px; }
+.folio-removal-line:first-child { font-weight: 620; }
+.folio-removal-choices { display: flex; flex-direction: column; gap: 6px; margin: 14px 0 0; padding: 0; border: 0; font-size: 13px; }
+.folio-removal-choices legend { margin-bottom: 6px; padding: 0; font-weight: 620; }
+.folio-removal-option { display: flex; gap: 8px; align-items: center; }
+.folio-removal-search, .folio-removal-url { width: 100%; margin-left: 24px; max-width: calc(100% - 24px); }
+.folio-removal-results { margin: 0 0 0 24px; padding: 0; list-style: none; max-height: 200px; overflow-y: auto; }
+.folio-removal-results:empty { display: none; }
+.folio-removal-pick {
+  display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 6px 8px;
+  border: 0; border-radius: var(--r-sm); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.folio-removal-pick:hover, .folio-removal-pick:focus-visible { background: var(--c-row-hover); }
+.folio-removal-pick-meta, .folio-removal-none { font-size: 12px; color: var(--c-text-muted); overflow-wrap: anywhere; }
+.folio-removal-none { padding: 6px 8px; }
+.folio-removal-picked { min-height: 1.4em; margin: 0 0 0 24px; color: var(--c-text-muted); }
+.folio-removal-error { margin: 12px 0 0; padding: 8px 10px; border-radius: var(--r-sm); background: var(--c-danger-soft); color: var(--c-danger); font-size: 13px; }
+.folio-removal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+/* The editor's "Old addresses" note (sidebar). */
+.folio-old-addresses ul { margin: 0 0 8px; padding: 0; list-style: none; }
+.folio-old-addresses li { padding: 2px 0; font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; }
+.folio-old-addresses-help, .folio-old-addresses-more { margin: 0 0 8px; color: var(--c-text-muted); }

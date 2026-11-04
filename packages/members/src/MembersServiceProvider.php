@@ -17,6 +17,7 @@ use Preflow\Core\Container\Container;
 use Preflow\Core\Container\Exceptions\ContainerException;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Core\Http\Csrf\CsrfSignInPaths;
+use Preflow\Core\Http\NonPublicPaths;
 use Preflow\Core\Http\OldInput;
 use Preflow\Data\DataManager;
 use Preflow\Data\DeletePlan;
@@ -148,6 +149,10 @@ final class MembersServiceProvider extends ServiceProvider
             $base = rtrim($container->get(MembersConfig::class)->path(), '/');
             $container->get(CsrfSignInPaths::class)->add($base . '/login');
             $container->get(CsrfSignInPaths::class)->add($base . '/register');
+        }
+        // The members area is not a public page: no redirects there, nothing in the not-found list.
+        if ($container->bound(NonPublicPaths::class)) {
+            $container->get(NonPublicPaths::class)->add($container->get(MembersConfig::class)->path());
         }
     }
 

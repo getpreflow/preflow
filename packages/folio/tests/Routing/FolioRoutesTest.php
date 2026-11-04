@@ -76,6 +76,35 @@ final class FolioRoutesTest extends TestCase
         }
     }
 
+    public function test_redirects_routes_come_before_type_routes(): void
+    {
+        foreach ([false, true] as $auth) {
+            $entries = FolioRoutes::admin('/folio', $auth);
+            $routes = array_map(fn ($e) => $e->method . ' ' . $e->pattern . ' ' . $e->handler, $entries);
+            $at = static fn (string $route): int|false => array_search($route, $routes, true);
+            $typeList = $at('GET /folio/{type} Preflow\\Folio\\Http\\AdminController@list');
+            $controller = 'Preflow\\Folio\\Http\\RedirectsController@';
+
+            $expected = [
+                'GET /folio/redirects ' . $controller . 'index',
+                'GET /folio/redirects/_targets ' . $controller . 'targets',
+                'GET /folio/redirects/new ' . $controller . 'create',
+                'POST /folio/redirects ' . $controller . 'store',
+                'POST /folio/redirects/not-found/{id}/dismiss ' . $controller . 'dismiss',
+                'GET /folio/redirects/{id} ' . $controller . 'edit',
+                'POST /folio/redirects/{id} ' . $controller . 'update',
+                'POST /folio/redirects/{id}/delete ' . $controller . 'destroy',
+            ];
+            foreach ($expected as $route) {
+                $this->assertIsInt($at($route), $route);
+                $this->assertLessThan($typeList, $at($route), $route);
+            }
+            // The literal ones before redirects/{id}, which would match them.
+            $this->assertLessThan($at($expected[5]), $at($expected[1]));
+            $this->assertLessThan($at($expected[5]), $at($expected[2]));
+        }
+    }
+
     public function test_frontend_is_lowest_priority_catch_all(): void
     {
         $entry = FolioRoutes::frontend();

@@ -17,6 +17,7 @@ final class FolioRoutes
     private const EXTENSIONS = 'Preflow\\Folio\\Http\\ExtensionsController';
     private const CACHE = 'Preflow\\Folio\\Http\\CacheController';
     private const TRANSLATIONS = 'Preflow\\Folio\\Http\\TranslationsController';
+    private const REDIRECTS = 'Preflow\\Folio\\Http\\RedirectsController';
     private const WORKING_MW = 'Preflow\\Folio\\Http\\WorkingCopyMiddleware';
     private const AUTH = 'Preflow\\Folio\\Http\\AuthController';
     private const PASSWORDS = 'Preflow\\Folio\\Http\\PasswordController';
@@ -84,6 +85,15 @@ final class FolioRoutes
             ['POST', $prefix . '/translations',        'save', self::TRANSLATIONS],
             ['POST', $prefix . '/translations/reset',  'reset', self::TRANSLATIONS],
             ['POST', $prefix . '/translations/save-all', 'saveAll', self::TRANSLATIONS],
+            // Settings → Redirects; the literal paths before redirects/{id}, which would match them.
+            ['GET',  $prefix . '/redirects',           'index', self::REDIRECTS],
+            ['GET',  $prefix . '/redirects/_targets',  'targets', self::REDIRECTS],
+            ['GET',  $prefix . '/redirects/new',       'create', self::REDIRECTS],
+            ['POST', $prefix . '/redirects',           'store', self::REDIRECTS],
+            ['POST', $prefix . '/redirects/not-found/{id}/dismiss', 'dismiss', self::REDIRECTS],
+            ['GET',  $prefix . '/redirects/{id}',      'edit', self::REDIRECTS],
+            ['POST', $prefix . '/redirects/{id}',      'update', self::REDIRECTS],
+            ['POST', $prefix . '/redirects/{id}/delete', 'destroy', self::REDIRECTS],
             // Enabled extensions' assets/ files (public, like _assets/{file}); before the generic {type} routes.
             ['GET',  $prefix . '/_assets/x/{extension}/{...path}', 'serve', self::EXTENSION_ASSETS],
             ['GET',  $prefix . '/_relation/{type}',    'relationOptions'], // before the generic {type} routes

@@ -19,6 +19,7 @@ Requires PHP 8.4+.
 | `Router` | Combines both scanners, implements `RouterInterface` |
 | `RouteMatcher` | Matches requests with priority: static > dynamic > catch-all |
 | `RouteCompiler` | Caches the route collection to a PHP file for production |
+| `Redirect\RedirectMiddleware` | Answers unfound public pages from a redirect store and notes the rest in a not-found log |
 
 ## File-based routing
 
@@ -147,3 +148,111 @@ For a given HTTP method, `RouteMatcher` tests routes in three passes:
 3. **Catch-all** — has `{...param}`, matches across slashes
 
 The first match wins. Throws `NotFoundHttpException` if nothing matches.
+
+## Redirects and the not-found list
+
+When a public page is not found, `RedirectMiddleware` looks the address up in a redirect store
+and answers with a redirect; when no entry matches, it notes the address in a not-found log.
+The mechanism lives here; where entries are kept is up to a store. Folio supplies one (renamed
+and removed pages redirect automatically, Settings → Redirects lists them, see
+`preflow/folio`); a site without Folio binds its own.
+
+### When it acts
+
+- Only a thrown `Preflow\Core\Exceptions\NotFoundHttpException` on `GET` or `HEAD`: a router
+  miss, a controller's own 404, Folio finding no record. A 404 *response* (Folio's gated pages)
+  passes through untouched, and every other method keeps its 404.
+- Never under a non-public path (`Preflow\Core\Http\NonPublicPaths` in `preflow/core`: the admin,
+  the member area, private files, the component endpoint).
+- A page that answers always wins: the middleware only runs after the app found nothing.
+- Lookup order: the exact entry for the path (the request's language first, then an
+  any-language entry), else the area entry with the longest path above it.
+- Paths are compared after `LocaleMiddleware` stripped the locale prefix, together with the
+  request's `locale` (the site's default when there is none), in one canonical form
+  (`RedirectPath::normalize()`: repeated slashes collapsed, no trailing slash, each segment
+  encoded once, so `/über-uns` and `/%C3%BCber-uns` are the same address).
+
+### The answer
+
+- The entry's status: 301 (permanent) or 302 (temporary), with `Cache-Control: public,
+  max-age=86400`, so a browser asks again after a day (a page renamed back must not loop).
+- The original query string is kept (`/old?ref=x` → `/new?ref=x`).
+- A record target is resolved when the redirect is answered, through `RedirectTargets`, in the
+  old address's language (its default-language URL when it has none in that language). A
+  renamed page's old addresses all point at the record, so renaming twice never chains.
+- An area entry either sends everything below it to one target (`AreaMode::One`) or keeps the
+  rest of the path under a new prefix (`AreaMode::Prefix`: `/workshops-2024/basel` →
+  `/workshops/basel`).
+- A target that is gone (a deleted record, no target picked), equal to the visited address, or
+  a protocol-relative URL (`//host`) keeps the 404. Store and log failures (a table not
+  migrated yet) are logged in debug mode and keep the 404; they never turn it into a 500.
+
+### The not-found list
+
+An unanswered address is passed to `NotFoundLog::record($path, $locale, $at)`: the path without
+query string, the language and the time, nothing about the visitor (no IP address, user agent
+or referrer). Scanner noise is left out by `NotFoundFilter`: WordPress and admin-tool probes
+(`/wp-…`, `/xmlrpc`, `/phpmyadmin`, `/cgi-bin`…), dotfiles (`/.env`, `/.git`) and script, backup
+and archive extensions (`.php`, `.sql`, `.bak`, `.zip`…).
+
+### `config/redirects.php`
+
+The skeleton ships it with every option commented out; without the file the defaults apply:
+
+```php
+return [
+    'not_found' => true,          // record unanswered addresses; redirects work either way
+    'not_found_limit' => 1000,    // how many addresses the store keeps (least recently hit go first)
+    'ignore' => ['/legacy/', '.json'], // more noise: a path prefix, or an extension starting with '.'
+];
+```
+
+`RedirectConfig::fromFile()` reads it. Keeping the limit is the log's job (Folio's does).
+
+### A store without Folio
+
+The application adds the middleware (after the site's own middleware) when a provider has bound
+`Preflow\Routing\Redirect\RedirectStore`. `RedirectTargets` (record targets) and `NotFoundLog`
+are optional:
+
+```php
+use Preflow\Routing\Redirect\AreaMode;
+use Preflow\Routing\Redirect\Redirect;
+use Preflow\Routing\Redirect\RedirectPath;
+use Preflow\Routing\Redirect\RedirectStore;
+
+final class SiteRedirects implements RedirectStore
+{
+    /** @var array<string, string> old path => new URL */
+    private const MAP = ['/old-page' => '/new-page', '/shop' => 'https://shop.example.org'];
+
+    public function exact(string $path, string $locale): ?Redirect
+    {
+        foreach (self::MAP as $from => $to) {
+            if (RedirectPath::normalize($from) === $path) {
+                return new Redirect(Redirect::id('exact', '', $path), $path, '', false, AreaMode::One, null, null, $to, 301);
+            }
+        }
+
+        return null;
+    }
+
+    public function areas(string $locale): array
+    {
+        return []; // Redirect objects with area: true
+    }
+
+    public function hit(Redirect $redirect, \DateTimeImmutable $at): void {}
+}
+
+// In a service provider's register():
+$container->bind(\Preflow\Routing\Redirect\RedirectStore::class, static fn () => new SiteRedirects());
+```
+
+- `exact($path, $locale)` and `areas($locale)` get the normalized path; return entries of that
+  locale and any-language ones (`locale` `''`).
+- A `Redirect` has a fixed `targetUrl` (absolute `https://…` or a path on this site), or a
+  `targetType` and `targetId` that a bound `RedirectTargets::url($type, $id, $locale)` turns into
+  a URL; with neither it is broken and answers 404.
+- `hit()` counts a served redirect; it may do nothing.
+- `NotFoundLog::record()` gets every unanswered, non-noise address; bind it to keep a list.

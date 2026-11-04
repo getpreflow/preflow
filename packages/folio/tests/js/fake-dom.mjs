@@ -22,6 +22,16 @@ class Element {
         this.alt = '';
         // A frame's window: what a message event from that frame carries as its source.
         if (this.tagName === 'IFRAME') { this.contentWindow = { frame: this }; }
+        // A <dialog>: showModal() opens it, close() closes it and sends "close".
+        if (this.tagName === 'DIALOG') {
+            this.open = false;
+            this.showModal = () => { this.open = true; };
+            this.close = () => {
+                if (!this.open) { return; }
+                this.open = false;
+                this.dispatchEvent(new Event('close'));
+            };
+        }
     }
     get id() { return this.getAttribute('id') || ''; }
     set id(v) { this.setAttribute('id', v); }

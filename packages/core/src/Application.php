@@ -178,6 +178,9 @@ final class Application
                 : null,
         ));
 
+        // Admin, API and endpoint prefixes that are not public pages; packages add theirs in their providers
+        $this->container->instance(\Preflow\Core\Http\NonPublicPaths::class, new \Preflow\Core\Http\NonPublicPaths());
+
         // Auto-discover installed packages and wire them up
         $this->bootDataLayer($collector);
         $this->bootViewLayer($debug);
@@ -200,6 +203,9 @@ final class Application
 
         // Load user-defined middleware from config/middleware.php
         $this->bootMiddleware();
+
+        // Redirects and the not-found list — after the site's middleware, so a site route wins
+        $this->bootRedirects($debug);
 
         // SEO files, head tags and ETag — prepended, then GEO is prepended around it
         $this->bootSeo();
@@ -1070,6 +1076,43 @@ final class Application
     }
 
     /**
+     * Redirects (preflow/routing) when a provider bound a RedirectStore: a public GET/HEAD
+     * that ends in a thrown 404 is answered from the store, else noted in the not-found
+     * log (when bound and not switched off with 'not_found' => false in config/redirects.php).
+     */
+    private function bootRedirects(DebugLevel $debug): void
+    {
+        if (!class_exists(\Preflow\Routing\Redirect\RedirectMiddleware::class)
+            || !$this->container->bound(\Preflow\Routing\Redirect\RedirectStore::class)) {
+            return;
+        }
+
+        $config = \Preflow\Routing\Redirect\RedirectConfig::fromFile($this->basePath('config/redirects.php'));
+        [, $defaultLocale] = $this->siteLocales();
+        $container = $this->container;
+
+        $this->addMiddleware(new \Preflow\Routing\Redirect\RedirectMiddleware(
+            store: $container->get(\Preflow\Routing\Redirect\RedirectStore::class),
+            targets: $container->bound(\Preflow\Routing\Redirect\RedirectTargets::class)
+                ? $container->get(\Preflow\Routing\Redirect\RedirectTargets::class)
+                : null,
+            log: $config->recordNotFound && $container->bound(\Preflow\Routing\Redirect\NotFoundLog::class)
+                ? $container->get(\Preflow\Routing\Redirect\NotFoundLog::class)
+                : null,
+            nonPublic: $container->get(\Preflow\Core\Http\NonPublicPaths::class),
+            filter: new \Preflow\Routing\Redirect\NotFoundFilter($config->ignore),
+            defaultLocale: $defaultLocale,
+            now: static fn (): \DateTimeImmutable => new \DateTimeImmutable(),
+            warn: $debug->isDebug() ? $this->csrfWarning(...) : null,
+            // The visitor's address includes the locale prefix LocaleMiddleware stripped.
+            urlPrefix: static fn (): string => class_exists(\Preflow\I18n\LocaleMiddleware::class)
+                && $container->bound(\Preflow\I18n\LocaleMiddleware::class)
+                    ? $container->get(\Preflow\I18n\LocaleMiddleware::class)->urlPrefix()
+                    : '',
+        ));
+    }
+
+    /**
      * The site's locales and its default: every available locale when they
      * have URL prefixes (i18n url_strategy "prefix"), else only the default.
      *
@@ -1352,7 +1395,7 @@ final class Application
         ));
     }
 
-    /** Debug-mode CSRF warnings: to the bound logger (a provider may bind it after boot), else the PHP log. */
+    /** Debug-mode CSRF and redirect warnings: to the bound logger (a provider may bind it after boot), else the PHP log. */
     private function csrfWarning(string $message): void
     {
         if ($this->container->has(\Psr\Log\LoggerInterface::class)) {

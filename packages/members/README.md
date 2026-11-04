@@ -122,7 +122,8 @@ locale at the root): `https://site.test/de/members/login`.
 ## Pages and routes
 
 The provider registers these routes under `path` (in every locale: `/de/members/login`, the
-default locale without a prefix):
+default locale without a prefix). `path` is registered as non-public (`NonPublicPaths`, see
+`preflow/core`): a 404 under it never redirects and never shows up in Folio's not-found list.
 
 | Method | Path | Page |
 |---|---|---|

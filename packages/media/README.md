@@ -709,6 +709,8 @@ plain `<img>`, no srcset) use it.
 - The route needs the session: the prefix of `private_url` must be covered by
   `session.paths` in `config/auth.php` and by the session cookie's path.
 - `private_dir` and `versions_dir` must be shared directories in a deployment and git-ignored.
+- `private_url` is registered as non-public (`NonPublicPaths`, see `preflow/core`): an unknown
+  file there never redirects and never shows up in Folio's not-found list.
 
 ## Allowed files
 

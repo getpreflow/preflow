@@ -96,7 +96,7 @@ final class AllScreensTranslatedTest extends TestCase
         }
         $this->assertSame([], array_values(array_unique($this->problems)), count($walked) . ' screens walked');
         // Every type's list and form, the dashboard, assets, extensions, cache, translations, account.
-        foreach (['/folio', '/folio/assets', '/folio/extensions', '/folio/cache', '/folio/translations', '/folio/_account', '/folio/staff', '/folio/rbac_role', '/folio/member', '/folio/code', '/folio/post/new'] as $must) {
+        foreach (['/folio', '/folio/assets', '/folio/extensions', '/folio/cache', '/folio/translations', '/folio/redirects', '/folio/redirects?tab=not-found', '/folio/_account', '/folio/staff', '/folio/rbac_role', '/folio/member', '/folio/code', '/folio/post/new'] as $must) {
             $this->assertContains($must, $walked);
         }
         $this->assertGreaterThan(25, count($walked), implode("\n", $walked));
@@ -192,8 +192,8 @@ final class AllScreensTranslatedTest extends TestCase
 
     /**
      * Every GET route of the router under /folio with its parameters filled: each type for
-     * {type}, its seeded record for {id}, the seeded asset, a block key. Static files,
-     * uploads, relation options (JSON) and exports (XLSX) are left out; so are the
+     * {type}, its seeded record for {id}, the seeded asset and redirect, a block key. Static files,
+     * uploads, relation options and redirect targets (JSON) and exports (XLSX) are left out; so are the
      * signed-out pages (checked before signing in).
      *
      * @param array<string, string> $ids type → record id ('_asset' → asset id)
@@ -206,7 +206,7 @@ final class AllScreensTranslatedTest extends TestCase
         foreach ($this->router()->getCollection()->forMethod('GET') as $route) {
             $pattern = $route->pattern;
             if (!str_starts_with($pattern, '/folio')
-                || preg_match('~/(_assets|_uploads|_relation|_export|login|forgot|password)\b~', $pattern) === 1) {
+                || preg_match('~/(_assets|_uploads|_relation|_export|_targets|login|forgot|password)\b~', $pattern) === 1) {
                 continue;
             }
             if (str_contains($pattern, '{type}')) {
@@ -220,6 +220,8 @@ final class AllScreensTranslatedTest extends TestCase
                 if (isset($ids['_asset'])) {
                     $uris[] = str_replace('{id}', $ids['_asset'], $pattern);
                 }
+            } elseif ($pattern === '/folio/redirects/{id}') {
+                $uris[] = '/folio/redirects/' . $ids['_redirect'];
             } elseif (str_contains($pattern, '{key}')) {
                 $uris[] = str_replace('{key}', 'hero', $pattern) . '?name=sections';
             } else {
@@ -233,6 +235,9 @@ final class AllScreensTranslatedTest extends TestCase
         $uris[] = '/folio/post?q=nothing-matches';
         $uris[] = '/folio/post?kind=a&featured=1';
         $uris[] = '/folio/translations?q=nothing-matches';
+        $uris[] = '/folio/redirects?tab=not-found';
+        $uris[] = '/folio/redirects?record=page:gone';
+        $uris[] = '/folio/redirects/new?not_found=' . $ids['_not_found'];
 
         return array_values(array_unique($uris));
     }
@@ -351,6 +356,13 @@ final class AllScreensTranslatedTest extends TestCase
         if ($role instanceof DynamicRecord) {
             $ids['rbac_role'] = (string) $role->getId();
         }
+        // Settings → Redirects: an entry whose target is gone (every badge) and an address not found twice.
+        $this->flow->container()->get(\Preflow\Folio\Redirects\RedirectEntries::class)->save(['path' => '/old', 'locale' => 'de', 'target_type' => 'page', 'target_id' => 'gone']);
+        $ids['_redirect'] = \Preflow\Routing\Redirect\Redirect::id('exact', 'de', '/old');
+        $missing = $this->flow->container()->get(\Preflow\Folio\Redirects\NotFoundEntries::class);
+        $missing->record('/missing', 'de', new \DateTimeImmutable('-2 days'));
+        $missing->record('/missing', 'de', new \DateTimeImmutable('-1 day'));
+        $ids['_not_found'] = \Preflow\Folio\Redirects\NotFoundEntries::id('de', '/missing');
         if (function_exists('imagecreatetruecolor')) {
             $image = imagecreatetruecolor(160, 120);
             imagefill($image, 0, 0, (int) imagecolorallocate($image, 200, 10, 10));

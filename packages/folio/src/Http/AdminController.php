@@ -85,6 +85,8 @@ final class AdminController
         private readonly ?\Preflow\I18n\Machine\ReviewIndex $reviewIndex = null,
         private readonly ?\Preflow\I18n\Machine\TranslationWorker $worker = null,
         private readonly ?\Preflow\View\Seo\SeoConfig $seo = null,
+        private readonly ?\Preflow\Folio\Redirects\RecordAddresses $addresses = null,
+        private readonly ?\Preflow\Folio\Redirects\OldAddresses $oldAddresses = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
@@ -543,7 +545,7 @@ final class AdminController
             }
         } else {
             try {
-                $this->saveWithBlocks($typeDef, $record);
+                $this->saveWithBlocks($typeDef, $record, $request);
             } catch (ValidationException $e) {
                 $action = $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : '');
                 $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
@@ -646,7 +648,7 @@ final class AdminController
                 return $this->savePublishing($request, $record, $type, $action, $heading, $csrf, $locale, $editUrl) ?? $done;
             }
             try {
-                $this->saveWithBlocks($typeDef, $record);
+                $this->saveWithBlocks($typeDef, $record, $request);
             } catch (ValidationException $e) {
                 return $this->form($type, $record->toArray(), $action, $heading, $e->errors(), $csrf, 422, locale: $locale, editUrl: $editUrl);
             }
@@ -662,6 +664,7 @@ final class AdminController
             } else {
                 $this->dm->saveType($confirmed, false);
                 $this->review?->refresh($confirmed);
+                $this->syncAddresses($request, [$confirmed]);
             }
         } catch (VersionConflict $e) {
             $values = $current->toArray();
@@ -710,7 +713,7 @@ final class AdminController
             }
         } else {
             try {
-                $this->saveWithBlocks($typeDef, $record);
+                $this->saveWithBlocks($typeDef, $record, $request);
             } catch (ValidationException $e) {
                 return $this->form(
                     $type,
@@ -802,7 +805,7 @@ final class AdminController
         // Through the delete plan: cascades, detaches and restrictions of declared relations;
         // a restriction or any hook's refusal leaves everything in place.
         try {
-            $this->deleter()->delete($type, [$id]);
+            $this->deleter()->delete($type, [$id], $this->removalTarget($request));
         } catch (Refused $e) {
             self::flash($request, 'error', $e->getMessage());
         }
@@ -840,7 +843,14 @@ final class AdminController
             $this->customizations !== null ? $this->customizations->runHooks(...) : null,
             $this->labels,
             $this->review,
+            $this->addresses,
         );
+    }
+
+    /** "Send its old links to…" of a delete (the posted _redirect_to); null: they answer 404. */
+    private function removalTarget(ServerRequestInterface $request): ?\Preflow\Folio\Redirects\RemovalTarget
+    {
+        return \Preflow\Folio\Redirects\RemovalTarget::parse(((array) $request->getParsedBody())['_redirect_to'] ?? null, $this->frontend);
     }
 
     /**
@@ -858,7 +868,7 @@ final class AdminController
         }
 
         try {
-            $this->deleter()->delete($type, array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $records));
+            $this->deleter()->delete($type, array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $records), $this->removalTarget($request));
             self::flash($request, 'success', FolioText::get('folio.common.done_count', ['label' => FolioText::get('folio.common.delete'), 'count' => count($records)]));
         } catch (Refused $e) {
             self::flash($request, 'error', $e->getMessage());
@@ -934,11 +944,13 @@ final class AdminController
 
         $done = 0;
         $failed = [];
+        $saved = [];
         foreach ($records as $record) {
             $record->set($field['name'], $stored);
             try {
                 $this->saveChanged($record);
                 $done++;
+                $saved[] = $record;
             } catch (ValidationException $e) {
                 $messages = [];
                 $errors = $e->errors();
@@ -949,6 +961,9 @@ final class AdminController
             }
         }
 
+        if (!$this->publishes($type)) {
+            $this->syncAddresses($request, $saved);
+        }
         $message = FolioText::get('folio.list.set_done', ['label' => $field['label'], 'count' => $done]);
         if ($failed !== []) {
             self::flash($request, 'error', FolioText::get('folio.list.failed', ['message' => $message, 'count' => count($failed), 'records' => implode('; ', $failed)]));
@@ -1355,9 +1370,33 @@ final class AdminController
             'ai_translate' => $aiTranslate,
             'ai_pending' => $aiPending,
             'seo_section' => $seoSection,
+            'old_addresses' => $isNew ? null : $this->oldAddressesNote($type, (string) ($values[$typeDef->idField] ?? '')),
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
+    }
+
+    /** The editor note shows at most this many old addresses, then how many more. */
+    private const int OLD_ADDRESSES_SHOWN = 10;
+
+    /**
+     * The editor's "Old addresses" note: the addresses that redirect to the record, as visitors
+     * see them, and the link to its redirects for those who may manage them; null when none.
+     *
+     * @return array{shown: list<string>, more: int, url: ?string}|null
+     */
+    private function oldAddressesNote(string $type, string $id): ?array
+    {
+        $addresses = $id === '' || $this->oldAddresses === null ? [] : $this->oldAddresses->of($type, $id);
+        if ($addresses === []) {
+            return null;
+        }
+
+        return [
+            'shown' => array_slice($addresses, 0, self::OLD_ADDRESSES_SHOWN),
+            'more' => max(0, count($addresses) - self::OLD_ADDRESSES_SHOWN),
+            'url' => $this->can('redirects.manage') ? $this->prefix . '/redirects?record=' . rawurlencode($type) . ':' . rawurlencode($id) : null,
+        ];
     }
 
     /**
@@ -1529,7 +1568,8 @@ final class AdminController
         return $this->customizations?->forType($type) ?? ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'hooks' => [], 'placeholders' => []];
     }
 
-    private static function flash(ServerRequestInterface $request, string $type, string $message): void
+    /** @param string|array{url: string, label: string} $message a text, or the link of a "{type}_link" flash */
+    private static function flash(ServerRequestInterface $request, string $type, string|array $message): void
     {
         $session = $request->getAttribute(\Preflow\Core\Http\Session\SessionInterface::class);
         if ($session instanceof \Preflow\Core\Http\Session\SessionInterface) {
@@ -1600,15 +1640,54 @@ final class AdminController
 
     /**
      * Full validation (blocks, then the type's rules), then save and the #[AfterSave] hooks.
+     * The record's public addresses follow (a live save of a type without publishing); with the
+     * request, a record that has just left the site is flashed (syncAddresses()).
      *
      * @throws ValidationException
      */
-    private function saveWithBlocks(TypeDefinition $typeDef, DynamicRecord $record): void
+    private function saveWithBlocks(TypeDefinition $typeDef, DynamicRecord $record, ?ServerRequestInterface $request = null): void
     {
         $this->validator->validate($record);
         $this->dm->saveType($record, false);
         $this->review?->refresh($record);
+        if ($request !== null) {
+            $this->syncAddresses($request, [$record]);
+        }
         $this->customizations?->runHooks(AfterSave::class, $record);
+    }
+
+    /**
+     * After live saves (types without publishing): old addresses redirect to the records
+     * (RecordAddresses::sync()). Records that have just left the site (their status changed)
+     * leave their old links answering 404: a warning says so, with a link to pick where they go
+     * (Settings → Redirects, filtered to the record) for those who may manage redirects.
+     *
+     * @param list<DynamicRecord> $records
+     */
+    private function syncAddresses(ServerRequestInterface $request, array $records): void
+    {
+        if ($this->addresses === null) {
+            return;
+        }
+        $left = [];
+        foreach ($records as $record) {
+            if ($this->addresses->sync($record->getType()->key, (string) $record->getId())) {
+                $left[] = $record;
+            }
+        }
+        if ($left === []) {
+            return;
+        }
+
+        self::flash($request, 'warning', count($left) === 1
+            ? FolioText::get('folio.redirects.left_site', ['title' => $this->labeler->label($left[0])])
+            : FolioText::get('folio.redirects.left_site_count', ['count' => count($left)]));
+        if ($this->can('redirects.manage')) {
+            self::flash($request, 'warning_link', [
+                'url' => $this->prefix . '/redirects' . (count($left) === 1 ? '?record=' . rawurlencode($left[0]->getType()->key) . ':' . rawurlencode((string) $left[0]->getId()) : ''),
+                'label' => FolioText::get('folio.redirects.send_old_links'),
+            ]);
+        }
     }
 
     /**
@@ -1749,6 +1828,8 @@ final class AdminController
             'autosave_url' => $edit ? $base . '/autosave' : null,
             'share_url' => $edit && $this->previewLinks?->enabled() === true && $this->frontend->routeFor($type) !== null ? $base . '/share' : null,
             'unpublish_url' => $publish && $state !== PublishState::Draft ? $base . '/unpublish' : null,
+            // The public addresses unpublishing takes off the site: above 0, it asks where their old links go.
+            'unpublish_addresses' => $publish && $state !== PublishState::Draft ? count($this->addresses?->of($type, (string) $id) ?? []) : 0,
             'discard_url' => $edit && $state === PublishState::Changed ? $base . '/discard' : null,
         ];
     }

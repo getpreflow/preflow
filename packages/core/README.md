@@ -22,6 +22,7 @@ Requires PHP 8.4+.
 | `Application` | Bootstrap entry point |
 | `CsrfMiddleware` | CSRF check on every unsafe request (origin, session or stateless token), `#[CsrfExempt]`, expired-session handling |
 | HTTP exceptions | `NotFoundHttpException`, `ForbiddenHttpException`, `UnauthorizedHttpException` |
+| `NonPublicPaths` | Path prefixes that are not public pages (admin, member area, private files), for features that treat unknown addresses as pages |
 | Route contracts | `Route`, `RouteMode`, `RouterInterface` |
 
 ## API
@@ -492,3 +493,22 @@ throw new NotFoundHttpException('Page not found');
 throw new ForbiddenHttpException();
 throw new UnauthorizedHttpException('Login required');
 ```
+
+### Non-public paths
+
+`Preflow\Core\Http\NonPublicPaths` is a list of path prefixes that are not public pages. The
+application keeps one in the container, holding `/--component` from the start; packages add
+theirs in their provider (Folio its admin prefix, members its `path`, media its `private_url`):
+
+```php
+use Preflow\Core\Http\NonPublicPaths;
+
+if ($container->bound(NonPublicPaths::class)) {
+    $container->get(NonPublicPaths::class)->add('/api');
+}
+```
+
+A prefix matches whole segments: `/folio` covers `/folio` and `/folio/x`, not `/folios`. `''` and
+`/` are ignored (they would cover the whole site). `matches($path)` and `all()` read the list.
+Redirects and the not-found list (`preflow/routing`) never answer or record a 404 under these
+paths. Add the prefix of any area of your own that is not a page (an API, a webhook endpoint).

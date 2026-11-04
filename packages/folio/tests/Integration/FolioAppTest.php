@@ -308,7 +308,8 @@ final class FolioAppTest extends TestCase
             ['Notes', '/folio/note'],
             ['Pages', '/folio/page'],
             ['Assets', '/folio/assets'],
-            ['Translations', '/folio/translations'], // Settings → Translations and Cache are always there
+            ['Translations', '/folio/translations'], // Settings → Translations, Redirects and Cache are always there
+            ['Redirects', '/folio/redirects'],
             ['Cache', '/folio/cache'],
         ], $items);
         $this->assertSame(['Content', 'Library', 'Settings'], $labels[1]);

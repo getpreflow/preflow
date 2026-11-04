@@ -144,7 +144,9 @@ final class PublishingController
         if ($type === null) {
             return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.unknown_type'));
         }
-        $this->publisher->unpublish($type, $id);
+        // "Send its old links to…": none chosen leaves them answering 404.
+        $target = \Preflow\Folio\Redirects\RemovalTarget::parse(((array) $request->getParsedBody())['_redirect_to'] ?? null, $this->resolver);
+        $this->publisher->unpublish($type, $id, $target);
 
         return $this->backToEditor($type, $id);
     }

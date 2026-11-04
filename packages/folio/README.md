@@ -138,6 +138,10 @@ section the user may view.
 **The Translations screen** needs `translations.edit` (an `admin` role with `*` has it).
 Choosing one's own admin language needs no permission.
 
+**Settings → Redirects** needs `redirects.manage`. The automatic redirects need no permission,
+and choosing where a deleted or unpublished page's old links go needs only the right to that
+delete or unpublish (see [Redirects](#redirects)).
+
 **Block editor fragments** need `edit` on any type.
 
 The sidebar, dashboard cards, list buttons and form buttons follow the same
@@ -426,7 +430,9 @@ and shows the summary: "This can't be undone." plus a line per type, such as "Al
 posts." or "2 posts lose a link."; for a restricted plan it shows the refusal ("Can't delete: 2
 posts still point here.") instead. The summary is only information: the delete computes its own
 plan. If any hook refuses, nothing is deleted. SQL writes run in one transaction per
-connection; JSON-file writes can't be rolled back.
+connection; JSON-file writes can't be rolled back. When the records to delete (cascades
+included) have public addresses, the summary also counts them (`addresses`) and the admin asks
+where their old links go (see [Redirects](#redirects)).
 
 #### Bulk actions
 
@@ -1423,6 +1429,134 @@ An OPcache table shows the status (memory, scripts, hit rate) with **Reset OPcac
 is per SAPI: the web request resets the web pool's cache; the CLI cannot see it, so the
 button is a web-only action. The same registry backs `cache:list` and
 `cache:clear <key>… | --all` (devtools).
+
+## Redirects
+
+Old links keep working. Folio remembers every page's public addresses and answers an old one
+with a redirect, through `preflow/routing`'s `RedirectMiddleware` (see its README for when a
+redirect applies and `config/redirects.php`). Folio supplies the store, the automatic entries,
+the prompt when a page goes away and *Settings → Redirects*.
+
+### Renamed pages
+
+When a record's public address changes (any field its route is built from, in any language), its
+old address answers with a 301 to the record's current address. That covers a publish (also the
+scheduler and a revision restore) and, for types without publishing, a plain save. Every old
+address points at the record itself, not at an address, so a page renamed twice redirects from
+both old addresses straight to the current one. A record that loses its address in one language
+only (translated slug cleared, language removed) redirects that address to its default-language
+address. The address a page holds now always shows the page: renaming A → B → A drops the entry
+at A, and B redirects to A.
+
+### Removed pages: "Send its old links to…"
+
+Deleting a record that has public addresses (single, bulk, or records deleted by cascade) and
+unpublishing one asks, in place of the plain confirmation, where the old links go:
+
+- **Leave them as not found** (the default): its addresses answer 404 as before.
+- **A page on the site**: a search over the public pages
+  (`GET {prefix}/redirects/_targets?q=`, `{items: [{value: "type:id", label, type, url}]}`).
+- **A URL or a path**: `https://…` or a path on this site (`/…`, never `//host`).
+
+The form posts the choice as `_redirect_to` (`type:id` or the URL); the server checks it again
+and treats anything it can't use as no target. A bulk delete has one target for the whole
+batch; records deleted by cascade get the same one.
+
+The server also follows the target to where it really leads, so old links never end in a chain:
+
+- a path or URL on this site (an absolute URL counts when its host is `app.url`'s or the
+  request's) where a page
+  answers is stored as that page, so the links follow it when it moves later;
+- one that redirects already is replaced by that redirect's final target;
+- a target that leads back to the record (one of its own addresses, current or earlier), a draft
+  or unknown record, an address that redirects nowhere, and in a delete one of the records the
+  same delete removes all count as no target.
+
+Choosing needs only the right to that delete
+or unpublish. Without JavaScript nothing is asked and the old links answer 404. A type without
+publishing that leaves the site by its status field shows a warning after the save instead, with
+a link to the record's redirects for those who may manage them.
+
+What a removal does to the other entries that point at the record:
+
+- **With a target**, they follow it. The record's own automatic entries (its earlier addresses)
+  become "removed" entries to the target, like its current addresses. Entries from anywhere else
+  (hand-made entries, areas, another record's) send visitors to the target too, each keeping what
+  it is (a hand-made entry stays hand-made, an area stays an area, its status is kept). Entries an
+  earlier removal of the record left without a target get it too.
+- **Without a target**, the record's own addresses become "removed" entries without a target
+  (404), and the entries of others keep pointing at the record: 404 while it is off the site,
+  working again when it comes back, shown as broken if it was deleted.
+
+When the record comes back to the site, its own "removed" entries point at it again and are
+automatic once more, whatever target the removal gave them; hand-made entries, areas and other
+records' entries keep the target the removal gave them.
+
+### The "Old addresses" note
+
+A record's editor shows the addresses that send visitors to it in the sidebar, as visitors see
+them (`/about`, `/de/über-uns`), at most ten and then how many more, with a link to its
+redirects (`{prefix}/redirects?record={type}:{id}`) for those with `redirects.manage`. The note
+is hidden when there are none.
+
+### Settings → Redirects
+
+`{prefix}/redirects`, permission `redirects.manage` (the automatic entries need none: they follow
+from publishing). Two tabs:
+
+- **Redirects**: old address, language, target, kind (automatic, removed page, hand-made),
+  permanent or temporary, hits since created, and a broken flag when the target page is gone or
+  none was picked; untargeted and broken entries first. Search by address; `?record=type:id`
+  shows the entries of one record. Add, edit, delete.
+- **Not found**: addresses visitors asked for that don't exist, hit at least twice, most hit
+  first, with **Redirect…** (the form, prefilled) and **Dismiss**. A dismissed address comes back
+  only when it is hit again 30 days or more after the dismissal; an address that gets a redirect
+  or that a page takes leaves the list.
+
+A hand-made entry has an old address, typed as visitors see it (`/de/werkstatt` for German on a
+site with locale prefixes; the prefix of any of the site's languages becomes the entry's
+language, else it is the default language; without prefixes entries are language-neutral), and
+a target: a page picked from the search, or a URL or path. It can cover *everything under it*
+(an area): either all to one target, or **keep the rest** under a new address
+(`/workshops-2024/basel` → `/workshops/basel`, a URL or path target without `?` or `#`). Hand-made
+entries answer 301 (default) or 302; automatic and removed-page entries are always 301.
+
+A typed path or URL where a page answers, in the entry's language, is stored as that page (as if
+it had been picked), so the entry follows the page when it moves; not for "keep the rest" (the
+rest of the path is appended to the URL), nor with a `?` or `#` (kept as typed).
+
+The form refuses what could never work or would loop:
+
+- an address with `?` or `#`, under a non-public path (the admin, members, private files), or
+  that a page holds now (it would never answer; an area's root may be a page);
+- an area over the whole site (`/`);
+- an address that already has an entry (edit that one instead);
+- a target starting with two slashes or backslashes in any mix (`//host`, `\\host`), a page that
+  is not on the site, the old address itself, or an address inside the area being saved;
+- chains, both ways: a target that redirects already (exactly or through an area), and an
+  address that other entries send visitors to (point them to the final target first); a
+  "keep the rest" area counts with everything below its target.
+
+### Storage and upgrading
+
+Three internal tables in the default storage: `folio_redirects` (the entries),
+`folio_addresses` (each record's current public address per language) and `folio_not_found`
+(at most `not_found_limit` addresses, 1000 by default; the least recently hit go first; path,
+language, count, first and last hit, nothing about the visitor).
+
+**Upgrading to 0.52:** SQL sites run `preflow migrate`, which creates the three tables and
+records every live page's current addresses. Until it has run, pages, 404s, publishes and
+deletes behave exactly as before (the redirect pieces catch the failure and log it in debug
+mode). Without that run, the first rename of a page after upgrading redirects only for
+publishing types (their previous live copy still holds the old address); after it, for every
+type. On a JSON-only site `preflow migrate` has nothing to do: addresses are recorded as records
+are saved or published, so the same holds there for each record's first rename.
+
+Records written by `folio:import` don't get automatic redirects for renames the import makes (the
+importer writes rows directly); run `preflow migrate` afterwards to record their addresses.
+
+Until `preflow migrate` has run on a SQL site, *Settings → Redirects* says so instead of showing
+the lists.
 
 ## User types and transfer
 
