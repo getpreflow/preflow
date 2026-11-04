@@ -66,6 +66,7 @@ final class FolioTextSource implements TextSource
         private readonly RecordLabeler $labeler,
         private readonly TranslationSettings $settings,
         private readonly ?ReviewIndexUpdater $review = null,
+        private readonly ?\Preflow\Folio\Redirects\RecordAddresses $addresses = null,
     ) {}
 
     public function collection(): string
@@ -270,6 +271,8 @@ final class FolioTextSource implements TextSource
         if ($this->writesLive()) {
             $this->dm->saveType($after, false);
             $this->review?->refresh($after);
+            // A translated slug moves the record's address in that language.
+            $this->addresses?->sync($this->typeKey, (string) $after->getId());
 
             return new WriteOutcome(WriteOutcomeStatus::Written, $leftMessage, false, $leftAlone);
         }

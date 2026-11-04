@@ -23,6 +23,11 @@ use Preflow\I18n\Machine\FileReviewIndex;
 use Preflow\I18n\Machine\MachineMarks;
 use Preflow\Folio\Publishing\Publisher;
 use Preflow\Folio\Publishing\VersionConflict;
+use Preflow\Folio\Content\FrontendResolver;
+use Preflow\Folio\Redirects\LiveRecords;
+use Preflow\Folio\Redirects\RecordAddresses;
+use Preflow\Folio\Redirects\RedirectEntries;
+use Preflow\Folio\Redirects\RemovalTarget;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidatorFactory;
@@ -781,6 +786,119 @@ final class PublisherTest extends TestCase
         $this->assertSame(3, (int) $this->reload('post')->get('_version'));
         $this->assertSame('Published', $p->restore('post', 'r1', $revision, 3)?->get('title'));
         $this->assertSame(4, (int) $this->reload('post')->get('_version'));
+    }
+
+    /**
+     * A publisher hooked to the address book, for an "article" at /a/{slug}: Folio's internal tables
+     * in a JSON folder, or in $internal (an SQLite without them, for a site not migrated yet).
+     *
+     * @return array{Publisher, RedirectEntries, RecordAddresses}
+     */
+    private function addressed(?\Preflow\Data\StorageDriver $internal = null): array
+    {
+        $this->model('article', ['publishing' => true, 'frontend' => ['route' => '/a/{slug}'], 'fields' => [
+            'title' => ['type' => 'string', 'validate' => ['required']],
+            'slug' => ['type' => 'string'],
+        ]]);
+        $this->registry = new TypeRegistry($this->dir . '/models', new Locales(['en', 'de'], 'en'));
+        $this->dm = new DataManager(
+            drivers: ['json' => new JsonFileDriver($this->dir . '/store'), 'default' => $internal ?? new JsonFileDriver($this->dir . '/internal')],
+            defaultDriver: 'json',
+            typeRegistry: $this->registry,
+            validatorFactory: new ValidatorFactory(new RuleFactory()),
+        );
+        $catalog = new TypeCatalog($this->dir . '/models');
+        $resolver = FrontendResolver::fromCatalog($catalog, $this->dm);
+        $entries = new RedirectEntries($this->dm);
+        $live = null;
+        $addresses = new RecordAddresses($this->dm, $entries, $resolver, static function () use (&$live): LiveRecords {
+            return $live;
+        });
+        $fieldTypes = $this->fieldTypes();
+        $p = new Publisher($this->dm, $catalog, new RecordValidator($fieldTypes, $this->dm), 20, fn (): \DateTimeImmutable => $this->now, addresses: $addresses);
+        $live = new LiveRecords($this->dm, $p, $resolver);
+
+        return [$p, $entries, $addresses];
+    }
+
+    /** @param array<string, mixed> $data */
+    private function article(string $id, string $slug, array $data = []): DynamicRecord
+    {
+        return DynamicRecord::fromArray($this->registry->get('article'), ['uuid' => $id, 'title' => 'T ' . $slug, 'slug' => $slug] + $data);
+    }
+
+    public function test_publish_with_a_new_slug_redirects_the_old_one(): void
+    {
+        [$p, $entries, $addresses] = $this->addressed();
+        $p->publish($this->article('r1', 'one'), null);
+        $this->assertSame([], $entries->all());
+
+        $p->publish($this->article('r1', 'two'), null);
+
+        foreach (['en', 'de'] as $locale) {
+            $entry = $entries->at($locale, '/a/one');
+            $this->assertSame(['article', 'r1', 'auto', 301], [$entry['target_type'] ?? null, $entry['target_id'] ?? null, $entry['kind'] ?? null, $entry['status'] ?? null], $locale);
+        }
+        $this->assertSame(['en' => '/a/two', 'de' => '/a/two'], $addresses->of('article', 'r1'));
+    }
+
+    public function test_scheduled_publish_redirects_too(): void
+    {
+        [$p, $entries] = $this->addressed();
+        $p->publish($this->article('r1', 'one'), null);
+        $p->saveDraft($this->article('r1', 'two', ['_publish_at' => '2026-10-20T09:00']), null);
+
+        $due = (new \Preflow\Folio\Publishing\Scheduler($p, new TypeCatalog($this->dir . '/models'), $this->dm))
+            ->runDue(new \DateTimeImmutable('2026-10-20T10:00'));
+
+        $this->assertSame(['article/r1'], $due['published']);
+        $this->assertSame('r1', $entries->at('en', '/a/one')['target_id'] ?? null);
+    }
+
+    public function test_restored_revision_published_redirects(): void
+    {
+        [$p, $entries, $addresses] = $this->addressed();
+        $p->publish($this->article('r1', 'one'), null);
+        $p->publish($this->article('r1', 'two'), null);
+        $this->assertNotNull($entries->at('en', '/a/one'));
+
+        $first = $p->revisions('article', 'r1')[1];
+        $restored = $p->restore('article', 'r1', $first->id);
+        $this->assertNotNull($entries->at('en', '/a/one'), 'a restore only changes the working copy');
+        $p->publish($restored ?? $this->fail('nothing restored'), null);
+
+        $this->assertNull($entries->at('en', '/a/one'), 'the page holds /a/one again');
+        $this->assertSame('r1', $entries->at('en', '/a/two')['target_id'] ?? null);
+        $this->assertSame(['en' => '/a/one', 'de' => '/a/one'], $addresses->of('article', 'r1'));
+    }
+
+    public function test_unpublish_with_target(): void
+    {
+        [$p, $entries, $addresses] = $this->addressed();
+        $p->publish($this->article('r1', 'one'), null);
+        $p->publish($this->article('r2', 'other'), null);
+
+        $p->unpublish('article', 'r1', RemovalTarget::parse('article:r2'));
+
+        $this->assertNull($p->snapshot('article', 'r1'));
+        $entry = $entries->at('en', '/a/one');
+        $this->assertSame(['article', 'r2', 'removed', 'article', 'r1'], [$entry['target_type'] ?? null, $entry['target_id'] ?? null, $entry['kind'] ?? null, $entry['source_type'] ?? null, $entry['source_id'] ?? null]);
+        $this->assertSame([], $addresses->of('article', 'r1'));
+        $this->assertSame(['en' => '/a/other', 'de' => '/a/other'], $addresses->of('article', 'r2'));
+    }
+
+    public function test_publish_works_without_the_tables(): void
+    {
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        [$p] = $this->addressed(new \Preflow\Data\Driver\SqliteDriver($pdo));
+
+        $p->publish($this->article('r1', 'one'), null);
+        $p->publish($this->article('r1', 'two'), null);
+        $this->assertSame('two', $p->snapshot('article', 'r1')?->get('slug'));
+
+        $p->unpublish('article', 'r1', RemovalTarget::parse('/elsewhere'));
+        $this->assertNull($p->snapshot('article', 'r1'));
     }
 
     private function publisher(?int $keep = 20, bool $complete = false, ?ReviewIndexUpdater $review = null): Publisher

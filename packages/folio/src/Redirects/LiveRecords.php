@@ -46,4 +46,18 @@ final class LiveRecords
 
         return null;
     }
+
+    /** @return list<DynamicRecord> every record of the type the public site shows; none for a type without a frontend route */
+    public function of(string $type): array
+    {
+        $route = $this->resolver->routeFor($type);
+        if ($route === null) {
+            return [];
+        }
+        if ($route->publishing) {
+            return array_values($this->publisher->query($type)->get()->items());
+        }
+        // Queried as FrontendResolver::match() queries it: what this returns is what the site shows.
+        return array_values($this->dm->queryType($type)->where($route->publishedField, $route->publishedValue)->get()->items());
+    }
 }

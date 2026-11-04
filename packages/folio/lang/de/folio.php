@@ -734,4 +734,9 @@ return [
             'body' => "Hallo {name},\n\nhier setzt du ein neues Passwort für {site}: {link}\n\nDer Link ist eine Stunde gültig. Wenn du das nicht angefordert hast, ignoriere diese Mail.\n\nFreundliche Grüße\n{site}",
         ],
     ],
+    'redirects' => [
+        'left_site' => '„:title“ ist nicht mehr auf der Website: Seine alten Links ergeben jetzt „nicht gefunden“.',
+        'left_site_count' => ':count Einträge sind nicht mehr auf der Website: Ihre alten Links ergeben jetzt „nicht gefunden“.',
+        'send_old_links' => 'Alte Links weiterleiten nach…',
+    ],
 ];

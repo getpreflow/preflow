@@ -102,7 +102,7 @@
             <div class="folio-actions">{% block actions %}{% endblock %}</div>
         </header>
         <main class="folio-content">
-            {%- for type, message in folio_flashes() %}<div class="folio-alert folio-alert-{{ type }}" role="{{ type == 'error' ? 'alert' : 'status' }}">{{ message }}</div>{% endfor -%}
+            {%- for type, message in folio_flashes() %}<div class="folio-alert folio-alert-{{ type }}" role="{{ type == 'error' ? 'alert' : 'status' }}">{{ message }}{% set flash_link = folio_flash_link(type) %}{% if flash_link %} <a href="{{ flash_link.url }}">{{ flash_link.label }}</a>{% endif %}</div>{% endfor -%}
             {% block content %}{% endblock %}</main>
     </div>
 </div>

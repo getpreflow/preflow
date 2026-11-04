@@ -17,6 +17,8 @@ use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\Customization\Refused;
 use Preflow\Folio\Publishing\PublishedCopies;
 use Preflow\Folio\Publishing\Publisher;
+use Preflow\Folio\Redirects\RecordAddresses;
+use Preflow\Folio\Redirects\RemovalTarget;
 use Preflow\Validation\ValidationException;
 
 /**
@@ -52,6 +54,7 @@ final class RecordDeleter
         private readonly ?\Closure $hooks = null,
         ?DisplayLabels $labels = null,
         private readonly ?ReviewIndexUpdater $review = null,
+        private readonly ?RecordAddresses $addresses = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog);
     }
@@ -92,9 +95,11 @@ final class RecordDeleter
 
     /**
      * @param list<string> $ids
+     * @param RemovalTarget|null $target where the old addresses of every deleted record (those
+     *                                   deleted by cascade too) redirect; null: they answer 404
      * @throws Refused restricted, or a hook refused (nothing was written)
      */
-    public function delete(string $type, array $ids): void
+    public function delete(string $type, array $ids, ?RemovalTarget $target = null): void
     {
         $plan = $this->plan($type, $ids);
         if ($plan->restricted()) {
@@ -147,6 +152,7 @@ final class RecordDeleter
         });
         foreach ($deletes as $record) {
             $this->review?->forget($record->getType()->key, (string) $record->getId());
+            $this->addresses?->removed($record->getType()->key, (string) $record->getId(), $target);
         }
 
         foreach ($saves as $record) {

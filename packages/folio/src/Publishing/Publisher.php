@@ -14,6 +14,8 @@ use Preflow\Folio\Content\ReviewIndexUpdater;
 use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\FolioText;
+use Preflow\Folio\Redirects\RecordAddresses;
+use Preflow\Folio\Redirects\RemovalTarget;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationResult;
 
@@ -47,6 +49,7 @@ final class Publisher
         private readonly ?TranslationStatus $translations = null,
         private readonly bool $completeLanguages = false,
         private readonly ?ReviewIndexUpdater $review = null,
+        private readonly ?RecordAddresses $addresses = null,
     ) {
         if ($keepRevisions !== null && $keepRevisions < 0) {
             throw new \InvalidArgumentException('publishing.revisions must be 0 (keep all) or more.');
@@ -248,6 +251,7 @@ final class Publisher
             $working->set('_publish_at', '');
             $this->dm->saveType($working, false);
             $snapshot = $this->writeSnapshot($working, $previous, $by);
+            $this->addresses?->sync($def->key, (string) $working->getId(), $previous);
             $this->review?->refresh($working);
 
             return $snapshot;
@@ -255,16 +259,20 @@ final class Publisher
 
         $next = $changed ? $loadedVersion + 1 : $loadedVersion;
 
-        $snapshot = $this->transaction([$def, $shadow], function () use ($working, $shadow, $by, $loadedVersion, $next): DynamicRecord {
+        $previous = null;
+        $snapshot = $this->transaction([$def, $shadow], function () use ($working, $shadow, $by, $loadedVersion, $next, &$previous): DynamicRecord {
             $schedule = $working->toArray();
             $working->set('_publish_at', '');
             if (!$this->dm->saveTypeIfVersion($working, $loadedVersion, $next, validate: false)) {
                 array_key_exists('_publish_at', $schedule) ? $working->set('_publish_at', $schedule['_publish_at']) : $working->remove('_publish_at');
                 throw new VersionConflict($this->storedVersion($working));
             }
+            $previous = $this->dm->findIn($shadow, (string) $working->getId());
 
-            return $this->writeSnapshot($working, $this->dm->findIn($shadow, (string) $working->getId()), $by);
+            return $this->writeSnapshot($working, $previous, $by);
         });
+        // After the commit: the address book writes on its own (it never fails a publish).
+        $this->addresses?->sync($def->key, (string) $working->getId(), $previous);
         $this->review?->refresh($working);
 
         return $snapshot;
@@ -388,9 +396,14 @@ final class Publisher
         }
     }
 
-    public function unpublish(string $type, string $id): void
+    /**
+     * Takes the record off the site. Its old addresses then redirect to $target, or answer 404
+     * when there is none (RecordAddresses::removed()).
+     */
+    public function unpublish(string $type, string $id, ?RemovalTarget $target = null): void
     {
         $this->dm->deleteIn(ShadowTypes::published($this->definition($type)), $id);
+        $this->addresses?->removed($type, $id, $target);
     }
 
     /** Carry a working copy's list position into its snapshot (ordering is not content). */

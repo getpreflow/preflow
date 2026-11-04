@@ -734,4 +734,9 @@ return [
             'body' => "Bonjour {name},\n\ndéfinissez un nouveau mot de passe pour {site} ici : {link}\n\nLe lien est valable une heure. Si vous n’avez rien demandé, ignorez ce message.\n\nCordialement\n{site}",
         ],
     ],
+    'redirects' => [
+        'left_site' => '« :title » n’est plus sur le site : ses anciens liens renvoient maintenant « introuvable ».',
+        'left_site_count' => ':count éléments ne sont plus sur le site : leurs anciens liens renvoient maintenant « introuvable ».',
+        'send_old_links' => 'Rediriger ses anciens liens vers…',
+    ],
 ];

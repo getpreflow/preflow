@@ -360,6 +360,22 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(\Preflow\Folio\Redirects\LiveRecords::class),
                 $c->get(FrontendResolver::class),
             ));
+            // The address book behind the automatic redirects. LiveRecords reads through the Publisher,
+            // which writes through the address book: it is looked up when first needed.
+            $container->singleton(\Preflow\Folio\Redirects\RecordAddresses::class, static fn (Container $c) => new \Preflow\Folio\Redirects\RecordAddresses(
+                $c->get(DataManager::class),
+                $c->get(\Preflow\Folio\Redirects\RedirectEntries::class),
+                $c->get(FrontendResolver::class),
+                static fn (): \Preflow\Folio\Redirects\LiveRecords => $c->get(\Preflow\Folio\Redirects\LiveRecords::class),
+                self::prefixedUrls($app),
+                $app->config()->get('app.debug', false) ? static fn (string $message) => error_log('folio: ' . $message) : null,
+            ));
+            // After the tables exist (folio.tables): every live page's current addresses, so the first
+            // rename after an upgrade redirects for every type.
+            $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
+                'folio.addresses',
+                static fn (): array => $container->get(\Preflow\Folio\Redirects\RecordAddresses::class)->seed(),
+            );
             $container->bind(\Preflow\Routing\Redirect\RedirectStore::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\RedirectEntries::class));
             $container->bind(\Preflow\Routing\Redirect\NotFoundLog::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class));
             $container->bind(\Preflow\Routing\Redirect\RedirectTargets::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\FolioRedirectTargets::class));
@@ -532,6 +548,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Content\TranslationStatus::class),
             (bool) ($folioConfig['publishing']['complete_languages'] ?? false),
             $c->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
+            self::addresses($c),
         ));
         $container->singleton(\Preflow\Folio\Content\ReviewIndexUpdater::class, fn (Container $c) => new \Preflow\Folio\Content\ReviewIndexUpdater(
             $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
@@ -582,6 +599,7 @@ final class FolioServiceProvider extends ServiceProvider
             reviewIndex: $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
             worker: $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
             seo: $c->bound(\Preflow\View\Seo\SeoConfig::class) ? $c->get(\Preflow\View\Seo\SeoConfig::class) : null,
+            addresses: self::addresses($c),
         ));
         $container->bind(\Preflow\Folio\Http\AiTranslateController::class, fn (Container $c) => new \Preflow\Folio\Http\AiTranslateController(
             $c->get(TypeCatalog::class),
@@ -1162,7 +1180,7 @@ final class FolioServiceProvider extends ServiceProvider
                         ? $container->get(\Preflow\Core\Http\Session\SessionInterface::class)
                         : null;
                     $flashes = [];
-                    foreach (['success', 'error'] as $type) {
+                    foreach (['success', 'warning', 'error'] as $type) {
                         $message = $session?->isStarted() ? $session->getFlash($type) : null;
                         if (is_string($message) && $message !== '') {
                             $flashes[$type] = $message;
@@ -1170,6 +1188,20 @@ final class FolioServiceProvider extends ServiceProvider
                     }
 
                     return $flashes;
+                },
+            ));
+            // The link a flash may carry ({url, label}; a page that left the site: "Send its old links to…").
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_flash_link',
+                callable: function (string $type) use ($container): ?array {
+                    $session = $container->has(\Preflow\Core\Http\Session\SessionInterface::class)
+                        ? $container->get(\Preflow\Core\Http\Session\SessionInterface::class)
+                        : null;
+                    $link = $session?->isStarted() ? $session->getFlash($type . '_link') : null;
+
+                    return is_array($link) && is_string($link['url'] ?? null) && is_string($link['label'] ?? null)
+                        ? ['url' => $link['url'], 'label' => $link['label']]
+                        : null;
                 },
             ));
 
@@ -1369,8 +1401,15 @@ final class FolioServiceProvider extends ServiceProvider
                 new RecordLabeler(),
                 $container->get(\Preflow\I18n\Machine\TranslationSettings::class),
                 $container->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
+                self::addresses($container),
             ));
         }
+    }
+
+    /** The address book, when Folio's internal storage is there (see register()). */
+    private static function addresses(Container $c): ?\Preflow\Folio\Redirects\RecordAddresses
+    {
+        return $c->bound(\Preflow\Folio\Redirects\RecordAddresses::class) ? $c->get(\Preflow\Folio\Redirects\RecordAddresses::class) : null;
     }
 
     /**
@@ -1387,6 +1426,7 @@ final class FolioServiceProvider extends ServiceProvider
         $registry->declare('folio.extensions', 'Extensions', 'Folio');
         $registry->declare('folio.cache', 'Cache', 'Folio');
         $registry->declare('translations.edit', 'Translations', 'Folio');
+        $registry->declare('redirects.manage', 'Redirects', 'Folio');
         // Declared with AI off too, so roles may list them before AI is switched on.
         $registry->declare('ai.translate', 'Use AI translation', 'AI');
         $registry->declare('ai.settings', 'AI settings', 'AI');
@@ -1627,6 +1667,15 @@ final class FolioServiceProvider extends ServiceProvider
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /** Whether the site's URLs carry the locale (config/i18n.php url_strategy "prefix", the default). */
+    private static function prefixedUrls(Application $app): bool
+    {
+        $path = $app->basePath('config/i18n.php');
+        $i18n = file_exists($path) ? (array) require $path : [];
+
+        return ($i18n['url_strategy'] ?? 'prefix') === 'prefix';
     }
 
     private function prefix(Application $app): string

@@ -759,4 +759,9 @@ return [
             'body' => "Hi {name},\n\nset a new password for {site} here: {link}\n\nThe link works for one hour. If you didn't ask for this, ignore this mail.\n\nKind regards\n{site}",
         ],
     ],
+    'redirects' => [
+        'left_site' => '“:title” is no longer on the site: its old links now answer “not found”.',
+        'left_site_count' => ':count records are no longer on the site: their old links now answer “not found”.',
+        'send_old_links' => 'Send its old links to…',
+    ],
 ];

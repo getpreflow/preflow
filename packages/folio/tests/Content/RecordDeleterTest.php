@@ -20,6 +20,11 @@ use Preflow\Folio\Extension\Customization\Refused;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\StringFieldType;
 use Preflow\Folio\Publishing\Publisher;
+use Preflow\Folio\Content\FrontendResolver;
+use Preflow\Folio\Redirects\LiveRecords;
+use Preflow\Folio\Redirects\RecordAddresses;
+use Preflow\Folio\Redirects\RedirectEntries;
+use Preflow\Folio\Redirects\RemovalTarget;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationResult;
@@ -37,6 +42,9 @@ final class RecordDeleterTest extends TestCase
     private TypeRegistry $registry;
     private TypeCatalog $catalog;
     private Publisher $publisher;
+    private FrontendResolver $resolver;
+    private RedirectEntries $entries;
+    private RecordAddresses $addresses;
 
     /** @var list<string> */
     private array $log = [];
@@ -63,7 +71,7 @@ final class RecordDeleterTest extends TestCase
     }
 
     /** @param 'json'|'sqlite' $storage */
-    private function boot(string $storage = 'json', bool $publishedTables = true): void
+    private function boot(string $storage = 'json', bool $publishedTables = true, bool $routes = false): void
     {
         $models = [
             'designer' => ['label' => 'Designers', 'fields' => ['name' => ['type' => 'string']]],
@@ -83,6 +91,15 @@ final class RecordDeleterTest extends TestCase
                 'designer' => ['type' => 'relation', 'relation' => ['to' => 'designer', 'onDelete' => 'restrict']],
             ]],
         ];
+        if ($routes) {
+            // Designers and games on the public site (shown when their status is "published").
+            $models['designer']['frontend'] = ['route' => '/designers/{name}'];
+            $models['game']['frontend'] = ['route' => '/games/{title}'];
+            foreach (['designer', 'game'] as $routed) {
+                $models[$routed]['publishing'] = false;
+                $models[$routed]['fields']['status'] = ['type' => 'string'];
+            }
+        }
         $pdo = null;
         if ($storage === 'sqlite') {
             $pdo = new \PDO('sqlite::memory:');
@@ -108,7 +125,7 @@ final class RecordDeleterTest extends TestCase
         }
 
         $this->registry = new TypeRegistry($this->dir . '/models');
-        $drivers = ['json' => new JsonFileDriver($this->dir . '/store')];
+        $drivers = ['json' => new JsonFileDriver($this->dir . '/store'), 'default' => new JsonFileDriver($this->dir . '/internal')];
         if ($pdo !== null) {
             $drivers['sqlite'] = new SqliteDriver($pdo);
         }
@@ -122,6 +139,9 @@ final class RecordDeleterTest extends TestCase
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());
         $this->publisher = new Publisher($this->dm, $this->catalog, new RecordValidator($fieldTypes, $this->dm));
+        $this->resolver = FrontendResolver::fromCatalog($this->catalog, $this->dm);
+        $this->entries = new RedirectEntries($this->dm);
+        $this->addresses = new RecordAddresses($this->dm, $this->entries, $this->resolver, new LiveRecords($this->dm, $this->publisher, $this->resolver));
     }
 
     private function deleter(): RecordDeleter
@@ -132,7 +152,7 @@ final class RecordDeleterTest extends TestCase
             if (isset($this->behaviour[$hook])) {
                 ($this->behaviour[$hook])($record);
             }
-        });
+        }, addresses: $this->addresses);
     }
 
     /** @param array<string, mixed> $data */
@@ -497,5 +517,80 @@ final class RecordDeleterTest extends TestCase
         // Known ids among unknown ones are planned (once, however often they are posted).
         $mixed = $this->deleter()->plan('designer', ['ghost', 'd2', 'd2']);
         $this->assertSame(['d2'], $mixed->deletes()['designer'] ?? null);
+    }
+
+    /** Uwe (d1) with Agricola and Caverna, Reiner (d2) with Lost Cities, all on the site and their addresses recorded. */
+    private function seedLiveWorld(): void
+    {
+        $this->boot(routes: true);
+        $this->seed('designer', 'd1', ['name' => 'Uwe', 'status' => 'published']);
+        $this->seed('designer', 'd2', ['name' => 'Reiner', 'status' => 'published']);
+        $this->seed('game', 'g1', ['title' => 'Agricola', 'designer' => 'd1', 'status' => 'published']);
+        $this->seed('game', 'g2', ['title' => 'Caverna', 'designer' => 'd1', 'status' => 'published']);
+        $this->seed('game', 'g3', ['title' => 'Lost-Cities', 'designer' => 'd2', 'status' => 'published']);
+        $this->addresses->seed();
+    }
+
+    /** @return array<string, string> path => "target (kind)" of every entry */
+    private function entryTargets(): array
+    {
+        $lines = [];
+        foreach ($this->entries->all() as $row) {
+            $lines[$row['path']] = ($row['target_url'] ?? ($row['target_type'] !== null ? $row['target_type'] . ':' . $row['target_id'] : '-')) . ' (' . $row['kind'] . ')';
+        }
+
+        return $lines;
+    }
+
+    public function test_delete_with_target_redirects_the_record_and_its_cascades(): void
+    {
+        $this->seedLiveWorld();
+
+        $this->deleter()->delete('designer', ['d1'], RemovalTarget::parse('designer:d2', $this->resolver));
+
+        $this->assertSame([
+            '/designers/Uwe' => 'designer:d2 (removed)',
+            '/games/Agricola' => 'designer:d2 (removed)',
+            '/games/Caverna' => 'designer:d2 (removed)',
+        ], $this->entryTargets());
+        $this->assertSame('game', $this->entries->at('en', '/games/Caverna')['source_type']);
+        $this->assertSame([], $this->addresses->of('game', 'g1'));
+        $this->assertSame(['en' => '/games/Lost-Cities'], $this->addresses->of('game', 'g3'));
+    }
+
+    public function test_delete_with_target_repoints_entries_that_pointed_to_the_record(): void
+    {
+        $this->seedLiveWorld();
+        // Uwe was renamed once (an automatic entry), and an editor sends an old list there by hand.
+        $this->seed('designer', 'd1', ['name' => 'Uwe-R', 'status' => 'published']);
+        $this->addresses->sync('designer', 'd1');
+        $this->entries->save(['path' => '/uwe-list', 'locale' => '', 'target_type' => 'designer', 'target_id' => 'd1', 'kind' => 'manual']);
+        $this->assertSame('designer:d1 (auto)', $this->entryTargets()['/designers/Uwe']);
+
+        $this->deleter()->delete('designer', ['d1'], RemovalTarget::parse('designer:d2', $this->resolver));
+
+        $this->assertSame([
+            '/designers/Uwe' => 'designer:d2 (removed)',
+            '/designers/Uwe-R' => 'designer:d2 (removed)',
+            '/games/Agricola' => 'designer:d2 (removed)',
+            '/games/Caverna' => 'designer:d2 (removed)',
+            '/uwe-list' => 'designer:d2 (manual)',
+        ], $this->entryTargets());
+    }
+
+    public function test_delete_without_target_leaves_404s(): void
+    {
+        $this->seedLiveWorld();
+        $this->entries->save(['path' => '/uwe-list', 'locale' => '', 'target_type' => 'designer', 'target_id' => 'd1', 'kind' => 'manual']);
+
+        $this->deleter()->delete('designer', ['d1']);
+
+        $this->assertSame([
+            '/designers/Uwe' => '- (removed)',
+            '/games/Agricola' => '- (removed)',
+            '/games/Caverna' => '- (removed)',
+            '/uwe-list' => '- (manual)',
+        ], $this->entryTargets());
+        $this->assertSame([], $this->addresses->of('designer', 'd1'));
     }
 }
