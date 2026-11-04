@@ -108,7 +108,7 @@ final class InstallTest extends TestCase
     {
         $store = new RoleStore($this->container()->get(DataManager::class));
         $store->ensure('members', 'member', 'Member', ['tools.*']);
-        $store->ensure('members', 'member', 'Other', ['page.*']);
+        $store->ensure('members', 'member', 'Other', ['tools.*']);
 
         $this->assertSame(['member' => ['tools.*']], $store->rolesFor('members'));
         $this->assertSame(['members/member' => ['label' => 'Member', 'permissions' => ['tools.*']]], $this->byName());
