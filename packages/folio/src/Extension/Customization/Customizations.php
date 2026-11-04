@@ -13,11 +13,13 @@ use Preflow\Folio\Extension\Attributes\FolioType;
 use Preflow\Folio\Extension\BeforeDelete;
 use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\BulkAction;
+use Preflow\Folio\Extension\DashboardNotice;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Extension\ExtensionRegistry;
 use Preflow\Folio\Extension\FieldPlaceholder;
 use Preflow\Folio\Extension\FormPanel;
 use Preflow\Folio\Extension\ListColumn;
+use Preflow\Folio\Extension\ListNotice;
 use Preflow\Folio\Extension\NavBadge;
 use Preflow\Folio\Extension\RecordAction;
 
@@ -39,10 +41,10 @@ final class Customizations
 
     private const string PERMISSION_PATTERN = '/^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)+$/';
 
-    private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, BulkAction::class, ListColumn::class, NavBadge::class, FieldPlaceholder::class, ...self::HOOKS];
+    private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, BulkAction::class, ListColumn::class, NavBadge::class, ListNotice::class, DashboardNotice::class, FieldPlaceholder::class, ...self::HOOKS];
 
     /**
-     * @param array<string, array{panels: list<array{label: string, position: string, extension: string, owner: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}> $types
+     * @param array<string, array{panels: list<array{label: string, position: string, extension: string, owner: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, listNotices: list<\Closure>, dashboardNotices: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}> $types
      */
     /** @var array<string, ?int> */
     private array $badgeCounts = [];
@@ -78,7 +80,7 @@ final class Customizations
                 if (!$catalog->has($key)) {
                     throw new ExtensionException("Type customization {$class}: #[FolioType('{$key}')] names no content type \"{$key}\".");
                 }
-                $types[$key] ??= ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'hooks' => [], 'placeholders' => []];
+                $types[$key] ??= ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'listNotices' => [], 'dashboardNotices' => [], 'hooks' => [], 'placeholders' => []];
 
                 $badgeMethod = null;
                 $built = new \stdClass(); // one instance per class, shared by its methods' closures
@@ -155,6 +157,10 @@ final class Customizations
                             }
                             $badgeMethod = $name;
                             $types[$key]['badges'][] = $call;
+                        } elseif ($meta instanceof ListNotice) {
+                            $types[$key]['listNotices'][] = $call;
+                        } elseif ($meta instanceof DashboardNotice) {
+                            $types[$key]['dashboardNotices'][] = $call;
                         } else {
                             $types[$key]['hooks'][$attributeClass][] = $call;
                         }
@@ -170,11 +176,11 @@ final class Customizations
     }
 
     /**
-     * @return array{panels: list<array{label: string, position: string, extension: string, owner: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}
+     * @return array{panels: list<array{label: string, position: string, extension: string, owner: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, listNotices: list<\Closure>, dashboardNotices: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}
      */
     public function forType(string $key): array
     {
-        $type = $this->types[$key] ?? ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'hooks' => [], 'placeholders' => []];
+        $type = $this->types[$key] ?? ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'listNotices' => [], 'dashboardNotices' => [], 'hooks' => [], 'placeholders' => []];
         foreach (['panels', 'actions', 'bulk', 'columns'] as $list) {
             $type[$list] = array_map(self::texts(...), $type[$list]);
         }
@@ -234,6 +240,59 @@ final class Customizations
         }
 
         return $this->badgeCounts[$key] = $sum > 0 ? $sum : null;
+    }
+
+    /**
+     * The HTML of the type's #[ListNotice] methods, in extension name order. A method that throws
+     * or returns null, '' or a non-string adds nothing (the list must render even when an
+     * extension's notice is broken).
+     *
+     * @return list<string>
+     */
+    public function listNotices(string $type): array
+    {
+        return self::notices($this->types[$type]['listNotices'] ?? []);
+    }
+
+    /**
+     * The HTML of the #[DashboardNotice] methods of the types $canView allows, by type in the order
+     * their first customization came, then extension name order. Methods of other types are not
+     * called. Broken or empty ones add nothing, as with listNotices().
+     *
+     * @param \Closure(string): bool $canView whether the signed-in user may view a type key
+     * @return list<string>
+     */
+    public function dashboardNotices(\Closure $canView): array
+    {
+        $notices = [];
+        foreach ($this->types as $key => $type) {
+            if ($type['dashboardNotices'] !== [] && $canView($key)) {
+                array_push($notices, ...self::notices($type['dashboardNotices']));
+            }
+        }
+
+        return $notices;
+    }
+
+    /**
+     * @param list<\Closure> $calls
+     * @return list<string>
+     */
+    private static function notices(array $calls): array
+    {
+        $notices = [];
+        foreach ($calls as $call) {
+            try {
+                $html = $call();
+            } catch (\Throwable) {
+                continue;
+            }
+            if (is_string($html) && $html !== '') {
+                $notices[] = $html;
+            }
+        }
+
+        return $notices;
     }
 
     /** @param class-string $hook one of HOOKS (BeforeSave::class, ...) */

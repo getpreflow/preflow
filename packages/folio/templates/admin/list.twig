@@ -9,6 +9,8 @@
     {% if can(type ~ '.create') %}<a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>{{ t('folio.common.new') }}</a>{% endif %}
 {% endblock %}
 {% block content %}
+    {# Extensions' #[ListNotice] HTML: built and escaped by the extension, so printed raw. #}
+    {% if list_notices|default([]) is not empty %}<div class="folio-page-notices">{% for notice in list_notices %}{{ notice|raw }}{% endfor %}</div>{% endif %}
     {% if has_records %}
         {# One GET form: works without JS; with JS the search narrows as you type (admin.js). #}
         <form class="folio-list-toolbar" method="get" action="{{ list.base }}" role="search" data-folio-list-form>

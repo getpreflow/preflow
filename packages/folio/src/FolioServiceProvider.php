@@ -1146,8 +1146,11 @@ final class FolioServiceProvider extends ServiceProvider
         if (self::aiSettingsVisible($container)) {
             $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.ai'), rtrim($this->prefix($app), '/') . '/ai', 'ui-settings', 'ai.settings', 960);
         }
-        // Extension screens in the sidebar (filtered by their permission).
+        // Extension screens in the sidebar (filtered by their permission), except those declared nav: false.
         foreach ($screens->all() as $screen) {
+            if (!$screen['nav']) {
+                continue;
+            }
             $container->get(\Preflow\Folio\Http\AdminNav::class)->add(
                 $screen['section'],
                 static fn (): string => \Preflow\Folio\FolioText::label($screen['label']),

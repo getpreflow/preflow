@@ -73,7 +73,7 @@ final class ScreenRegistry
         return new self($screens);
     }
 
-    /** @return list<array{class: class-string, extension: string, path: string, label: string, icon: string, section: string, order: int, permission: string, assets: list<string>, badge: ?string}> */
+    /** @return list<array{class: class-string, extension: string, path: string, label: string, icon: string, section: string, order: int, permission: string, assets: list<string>, badge: ?string, nav: bool}> */
     public function all(): array
     {
         $all = [];
@@ -84,7 +84,7 @@ final class ScreenRegistry
         return $all;
     }
 
-    /** @return array{class: class-string, extension: string, path: string, label: string, icon: string, section: string, order: int, permission: string, assets: list<string>, badge: ?string}|null */
+    /** @return array{class: class-string, extension: string, path: string, label: string, icon: string, section: string, order: int, permission: string, assets: list<string>, badge: ?string, nav: bool}|null */
     public function get(string $class): ?array
     {
         $screen = $this->screens[$class] ?? null;
@@ -104,6 +104,7 @@ final class ScreenRegistry
             'permission' => $screen['permission'],
             'assets' => $meta->assets,
             'badge' => $screen['badge'],
+            'nav' => $meta->nav, // false: no sidebar item
         ];
     }
 

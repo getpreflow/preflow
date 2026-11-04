@@ -2,6 +2,8 @@
 {% block title %}Folio — {{ t('folio.dashboard.title') }}{% endblock %}
 {% block page_title %}{{ t('folio.dashboard.title') }}{% endblock %}
 {% block content %}
+    {# Extensions' #[DashboardNotice] HTML: built and escaped by the extension, so printed raw. #}
+    {% if dashboard_notices|default([]) is not empty %}<div class="folio-page-notices">{% for notice in dashboard_notices %}{{ notice|raw }}{% endfor %}</div>{% endif %}
     <div class="folio-card-grid">
         {% for card in cards|filter(c => can(c.key ~ '.view')) %}
             <a class="folio-card" href="{{ prefix }}/{{ card.key }}">

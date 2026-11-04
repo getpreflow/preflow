@@ -128,6 +128,8 @@ final class AdminController
             'cards' => $cards,
             'review' => $review,
             'editor_assets' => ($review['polling'] ?? false) ? ['htmx.js'] : [],
+            // #[DashboardNotice] HTML of the types the user may view, printed raw above the cards.
+            'dashboard_notices' => $this->customizations?->dashboardNotices(fn (string $type): bool => $this->can($type . '.view')) ?? [],
         ]));
     }
 
@@ -377,6 +379,8 @@ final class AdminController
             'export_url' => $this->exporter()->available() ? $this->prefix . '/' . $type . '/_export' : null,
             // The view to return to after a bulk action (search, filters, sort, page).
             'list_query' => http_build_query($query->query(), '', '&', PHP_QUERY_RFC3986),
+            // #[ListNotice] HTML, printed raw above the list; the full page only, not each live-search refresh.
+            'list_notices' => $partial ? [] : ($this->customizations?->listNotices($type) ?? []),
         ]));
     }
 
