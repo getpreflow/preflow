@@ -103,6 +103,14 @@ final class TwoRolesTest extends TestCase
             ['POST /folio/translations', '/folio/translations', ['locale' => 'en', 'key' => 'folio.common.save', 'text' => ''], [302, 403, 403]], // an empty text: nothing stored
             ['POST /folio/translations/reset', '/folio/translations/reset', ['locale' => 'en', 'key' => 'folio.common.save'], [302, 403, 403]],
             ['POST /folio/translations/save-all', '/folio/translations/save-all', ['locale' => 'en', 'keys' => ['folio.common.save'], 'texts' => ['Save']], [302, 403, 403]],
+            ['GET /folio/redirects', '/folio/redirects', [], [200, 403, 403]],
+            ['GET /folio/redirects/_targets', '/folio/redirects/_targets?q=nothing', [], [200, 200, 200]], // signed in, no permission: public pages only
+            ['GET /folio/redirects/new', '/folio/redirects/new', [], [200, 403, 403]],
+            ['POST /folio/redirects', '/folio/redirects', ['address' => '', 'target' => ''], [422, 403, 403]], // refused: nothing stored
+            ['POST /folio/redirects/not-found/{id}/dismiss', '/folio/redirects/not-found/missing/dismiss', [], [404, 403, 403]],
+            ['GET /folio/redirects/{id}', '/folio/redirects/missing', [], [404, 403, 403]],
+            ['POST /folio/redirects/{id}', '/folio/redirects/missing', [], [404, 403, 403]],
+            ['POST /folio/redirects/{id}/delete', '/folio/redirects/missing/delete', [], [404, 403, 403]],
             // Past the permission check (and ai.translate, which content_admin lacks): a group this site does not have (422), an asset that does not exist (404).
             ['POST /folio/translations/_ai/suggest', '/folio/translations/_ai/suggest', ['group' => 'nothing', 'locale' => 'de', 'scope' => 'needed'], [422, 403, 403]],
             ['POST /folio/assets/{id}/_ai/suggest', '/folio/assets/missing/_ai/suggest', ['locale' => 'de'], [404, 403, 403]],
@@ -323,7 +331,7 @@ final class TwoRolesTest extends TestCase
         $this->as($account);
 
         $expected = [
-            'super' => ['/folio', '/folio/page', '/folio/member', '/folio/team', '/folio/assets', '/folio/rbac_role', '/folio/staff', '/folio/moderation_settings', '/folio/queue', '/folio/extensions', '/folio/translations', '/folio/cache', '/folio/ai'],
+            'super' => ['/folio', '/folio/page', '/folio/member', '/folio/team', '/folio/assets', '/folio/rbac_role', '/folio/staff', '/folio/moderation_settings', '/folio/queue', '/folio/extensions', '/folio/translations', '/folio/redirects', '/folio/cache', '/folio/ai'],
             'content' => ['/folio', '/folio/page', '/folio/member', '/folio/team', '/folio/assets', '/folio/queue'],
             'plain' => [],
         ][$account];

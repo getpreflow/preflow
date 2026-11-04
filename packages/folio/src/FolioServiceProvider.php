@@ -380,6 +380,20 @@ final class FolioServiceProvider extends ServiceProvider
             $container->bind(\Preflow\Routing\Redirect\RedirectStore::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\RedirectEntries::class));
             $container->bind(\Preflow\Routing\Redirect\NotFoundLog::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class));
             $container->bind(\Preflow\Routing\Redirect\RedirectTargets::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\FolioRedirectTargets::class));
+            // Settings → Redirects.
+            $container->bind(\Preflow\Folio\Http\RedirectsController::class, static fn (Container $c) => new \Preflow\Folio\Http\RedirectsController(
+                $c->get(\Preflow\Folio\Redirects\RedirectEntries::class),
+                $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class),
+                $c->get(\Preflow\Folio\Redirects\LiveRecords::class),
+                $c->get(FrontendResolver::class),
+                $c->get(TypeCatalog::class),
+                $c->get(\Preflow\Folio\Content\DisplayLabels::class),
+                $c->bound(\Preflow\Core\Http\NonPublicPaths::class) ? $c->get(\Preflow\Core\Http\NonPublicPaths::class) : new \Preflow\Core\Http\NonPublicPaths(),
+                $locales ?? \Preflow\Data\Locales::single('en'),
+                self::prefixedUrls($app),
+                $c->get(TemplateEngineInterface::class),
+                $prefix,
+            ));
         }
         $container->singleton(\Preflow\Folio\Extension\ExtensionState::class, fn (Container $c) => new \Preflow\Folio\Extension\ExtensionState(
             $c->get(DataManager::class),
@@ -1086,6 +1100,10 @@ final class FolioServiceProvider extends ServiceProvider
         }
         // Settings → Translations, on every site (the admins' overrides of interface texts).
         $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.translations'), rtrim($this->prefix($app), '/') . '/translations', 'ui-settings', 'translations.edit', 920);
+        // Settings → Redirects, wherever Folio keeps the redirect entries (a site with a DataManager).
+        if ($container->bound(\Preflow\Folio\Redirects\RedirectEntries::class)) {
+            $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.redirects'), rtrim($this->prefix($app), '/') . '/redirects', 'ui-settings', 'redirects.manage', 930);
+        }
         // Settings → Cache, on every site (Folio registers its own caches).
         $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.cache'), rtrim($this->prefix($app), '/') . '/cache', 'ui-settings', 'folio.cache', 950);
         // Settings → AI, while AI is switched on or a key is present (so a missing key or switch can be seen and fixed).

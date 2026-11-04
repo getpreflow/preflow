@@ -1,0 +1,419 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Folio\Tests\Http;
+
+use Nyholm\Psr7\Factory\Psr17Factory;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use PHPUnit\Framework\TestCase;
+use Preflow\Core\Application;
+use Preflow\Folio\Http\FolioPermissionMiddleware;
+use Preflow\Folio\Redirects\NotFoundEntries;
+use Preflow\Folio\Redirects\RedirectEntries;
+use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Psr\Http\Message\ResponseInterface;
+
+/**
+ * Settings → Redirects ({prefix}/redirects): the list of entries, the not-found tab, the add/edit
+ * form and the page picker's _targets endpoint. A publishing "page" at "/{slug}" (translated
+ * slugs), a non-publishing "news" at "/news/{slug}" shown when its status is "published", and a
+ * "snippet" without a frontend route; en/de with prefixes. Without auth (no permission
+ * middleware) except for the permission tests.
+ */
+final class RedirectsControllerTest extends TestCase
+{
+    use PublishingScaffold;
+
+    private ?Application $booted = null;
+    private string $token = '';
+
+    protected function setUp(): void
+    {
+        $this->scaffoldPublishing();
+        unlink($this->dir . '/config/models/post.json');
+        $this->writeModel('page', ['label' => 'Pages', 'publishing' => true, 'frontend' => ['route' => '/{slug}'], 'fields' => [
+            'title' => ['type' => 'string', 'translatable' => true],
+            'slug' => ['type' => 'string', 'translatable' => true],
+        ]]);
+        $this->writeModel('news', ['label' => 'News', 'publishing' => false, 'frontend' => ['route' => '/news/{slug}'], 'fields' => [
+            'title' => ['type' => 'string'],
+            'slug' => ['type' => 'string'],
+            'status' => ['type' => 'string'],
+        ]]);
+        $this->writeModel('snippet', ['label' => 'Snippets', 'publishing' => false, 'fields' => [
+            'title' => ['type' => 'string'],
+            'status' => ['type' => 'string'],
+        ]]);
+        $this->write('resources/folio/frontend/page.twig', '<h1>{{ record.title }}</h1>');
+        $this->write('resources/folio/frontend/news.twig', '<h1>{{ record.title }}</h1>');
+    }
+
+    protected function tearDown(): void
+    {
+        $this->removeScaffold();
+    }
+
+    private function app(): Application
+    {
+        if ($this->booted === null) {
+            $this->booted = Application::create($this->dir);
+            $this->booted->boot();
+        }
+
+        return $this->booted;
+    }
+
+    private function fetch(string $uri): ResponseInterface
+    {
+        parse_str((string) parse_url($uri, PHP_URL_QUERY), $query);
+
+        return $this->app()->handle((new Psr17Factory())->createServerRequest('GET', $uri)->withQueryParams($query));
+    }
+
+    /** @param array<string, mixed> $body */
+    private function send(string $uri, array $body = []): ResponseInterface
+    {
+        $request = (new Psr17Factory())->createServerRequest('POST', $uri)
+            ->withHeader('Sec-Fetch-Site', 'same-origin')
+            ->withParsedBody($body + ($this->token !== '' ? ['_csrf_token' => $this->token] : []));
+        if ($this->token !== '' && session_id() !== '') {
+            $request = $request->withCookieParams([session_name() => session_id()]);
+        }
+
+        return $this->app()->handle($request);
+    }
+
+    private function entries(): RedirectEntries
+    {
+        return $this->app()->container()->get(RedirectEntries::class);
+    }
+
+    private function notFound(): NotFoundEntries
+    {
+        return $this->app()->container()->get(NotFoundEntries::class);
+    }
+
+    /** @param array<string, string> $slug */
+    private function publishPage(string $id, array $title, array $slug): void
+    {
+        $this->publisher()->publish($this->working('page', $id, ['title' => $title, 'slug' => $slug, '_locales' => array_keys($slug)]), null);
+    }
+
+    /** Hit $path $times in $locale (as the middleware records it). */
+    private function hitMissing(string $locale, string $path, int $times): string
+    {
+        for ($i = 0; $i < $times; $i++) {
+            $this->notFound()->record($path, $locale, new \DateTimeImmutable('2026-11-0' . ($i + 1) . 'T10:00:00Z'));
+        }
+
+        return NotFoundEntries::id($locale, $path);
+    }
+
+    public function test_index_lists_entries_with_targets_and_broken_flags(): void
+    {
+        $this->publishPage('p1', ['en' => 'About'], ['en' => 'about']);
+        $this->entries()->save(['path' => '/old-about', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'p1', 'hits' => 7, 'created_at' => '2026-10-01T10:00:00+00:00']);
+        $this->entries()->save(['path' => '/gone', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'nope', 'created_at' => '2026-09-01T10:00:00+00:00']);
+        $this->entries()->save(['path' => '/left', 'locale' => 'de', 'kind' => 'removed', 'source_type' => 'page', 'source_id' => 'p9', 'created_at' => '2026-08-01T10:00:00+00:00']);
+        $this->entries()->save(['path' => '/shop', 'locale' => '', 'area' => true, 'mode' => 'prefix', 'target_url' => 'https://example.org/store', 'status' => 302, 'created_at' => '2026-10-02T10:00:00+00:00']);
+
+        $res = $this->fetch('/folio/redirects');
+        $body = (string) $res->getBody();
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertMatchesRegularExpression('#<h1>\s*Redirects\s*</h1>#', $body);
+        // A record target: its label and its URL; the hits.
+        $this->assertMatchesRegularExpression('#/old-about.*?About.*?/about.*?<td>7</td>#s', $body);
+        // A URL target, an area, temporary.
+        $this->assertStringContainsString('https://example.org/store', $body);
+        $this->assertMatchesRegularExpression('#/shop.*?302#s', $body);
+        // Broken (the target record is gone) and untargeted entries, first.
+        $this->assertStringContainsString('Broken', $body);
+        $this->assertStringContainsString('No target', $body);
+        $this->assertStringContainsString('/de/left', $body, 'the address as the visitor sees it');
+        $gone = strpos($body, '/gone');
+        $left = strpos($body, '/de/left');
+        $shop = strpos($body, '/shop');
+        $old = strpos($body, '/old-about');
+        $this->assertLessThan($shop, $gone);
+        $this->assertLessThan($shop, $left);
+        $this->assertLessThan($old, $shop, 'then the newest first');
+        $this->assertStringContainsString('href="/folio/redirects/new"', $body);
+        $this->assertStringContainsString('href="/folio/redirects?tab=not-found"', $body);
+        // Search on the address.
+        $searched = (string) $this->fetch('/folio/redirects?q=old')->getBody();
+        $this->assertStringContainsString('/old-about', $searched);
+        $this->assertStringNotContainsString('/shop', $searched);
+    }
+
+    public function test_index_filters_by_record(): void
+    {
+        $this->publishPage('p1', ['en' => 'About'], ['en' => 'about']);
+        $this->entries()->save(['path' => '/to-p1', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'p1']);
+        $this->entries()->save(['path' => '/from-p2', 'locale' => 'en', 'kind' => 'removed', 'source_type' => 'page', 'source_id' => 'p2']);
+        $this->entries()->save(['path' => '/other', 'locale' => 'en', 'target_url' => '/x']);
+
+        $body = (string) $this->fetch('/folio/redirects?record=page:p2')->getBody();
+        $this->assertStringContainsString('/from-p2', $body);
+        $this->assertStringNotContainsString('/to-p1', $body);
+        $this->assertStringNotContainsString('/other', $body);
+
+        $body = (string) $this->fetch('/folio/redirects?record=page:p1')->getBody();
+        $this->assertStringContainsString('/to-p1', $body);
+        $this->assertStringNotContainsString('/from-p2', $body);
+        $this->assertStringNotContainsString('/other', $body);
+    }
+
+    public function test_not_found_tab_hides_single_hits(): void
+    {
+        $id = $this->hitMissing('de', '/missing', 3);
+        $this->hitMissing('en', '/once', 1);
+
+        $body = (string) $this->fetch('/folio/redirects?tab=not-found')->getBody();
+
+        $this->assertStringContainsString('/de/missing', $body);
+        $this->assertMatchesRegularExpression('#/de/missing.*?Deutsch.*?<td>3</td>#s', $body);
+        $this->assertStringNotContainsString('/once', $body);
+        $this->assertStringContainsString('href="/folio/redirects/new?not_found=' . $id . '"', $body);
+        $this->assertStringContainsString('action="/folio/redirects/not-found/' . $id . '/dismiss"', $body);
+        $this->assertStringContainsString('name="_csrf_token"', $body);
+    }
+
+    public function test_create_exact_entry_with_page_target(): void
+    {
+        $this->publishPage('p1', ['en' => 'About', 'de' => 'Über uns'], ['en' => 'about', 'de' => 'ueber-uns']);
+        $form = (string) $this->fetch('/folio/redirects/new')->getBody();
+        $this->assertStringContainsString('action="/folio/redirects"', $form);
+        $this->assertStringContainsString('data-redirect-targets="/folio/redirects/_targets"', $form);
+
+        $res = $this->send('/folio/redirects', ['address' => '/old-about/', 'target' => 'page:p1', 'status' => '301']);
+
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame('/folio/redirects', $res->getHeaderLine('Location'));
+        $entry = $this->entries()->at('en', '/old-about');
+        $this->assertSame(['manual', 'page', 'p1', null, 301, false], [$entry['kind'] ?? null, $entry['target_type'] ?? null, $entry['target_id'] ?? null, $entry['target_url'] ?? null, $entry['status'] ?? null, $entry['area'] ?? null]);
+        $answer = $this->fetch('/old-about?ref=x');
+        $this->assertSame(301, $answer->getStatusCode());
+        $this->assertSame('/about?ref=x', $answer->getHeaderLine('Location'));
+
+        // Editing keeps the hits; deleting removes the entry.
+        $this->assertSame(1, $this->entries()->at('en', '/old-about')['hits']);
+        $edit = (string) $this->fetch('/folio/redirects/' . $entry['id'])->getBody();
+        $this->assertStringContainsString('value="/old-about"', $edit);
+        $this->assertStringContainsString('value="page:p1"', $edit);
+        $this->assertSame(302, $this->send('/folio/redirects/' . $entry['id'], ['address' => '/old-about', 'target' => '/elsewhere', 'status' => '302'])->getStatusCode());
+        $edited = $this->entries()->at('en', '/old-about');
+        $this->assertSame(['/elsewhere', 302, 1], [$edited['target_url'], $edited['status'], $edited['hits']]);
+        $this->assertSame(302, $this->send('/folio/redirects/' . $entry['id'] . '/delete')->getStatusCode());
+        $this->assertNull($this->entries()->at('en', '/old-about'));
+        $this->assertSame(404, $this->fetch('/folio/redirects/' . $entry['id'])->getStatusCode());
+    }
+
+    public function test_create_area_entry_prefix_mode(): void
+    {
+        $res = $this->send('/folio/redirects', ['address' => '/blog', 'area' => '1', 'mode' => 'prefix', 'target' => '/journal', 'status' => '302']);
+
+        $this->assertSame(302, $res->getStatusCode());
+        $entry = $this->entries()->all()[0] ?? [];
+        $this->assertSame(['/blog', 'en', true, 'prefix', '/journal', 302], [$entry['path'] ?? null, $entry['locale'] ?? null, $entry['area'] ?? null, $entry['mode'] ?? null, $entry['target_url'] ?? null, $entry['status'] ?? null]);
+        $answer = $this->fetch('/blog/2024/hello?x=1');
+        $this->assertSame(302, $answer->getStatusCode());
+        $this->assertSame('/journal/2024/hello?x=1', $answer->getHeaderLine('Location'));
+
+        // Prefix mode needs a URL or path, without a query or fragment.
+        $this->publishPage('p1', ['en' => 'About'], ['en' => 'about']);
+        foreach (['page:p1', '/journal?x=1', '/journal#top', ''] as $target) {
+            $refused = $this->send('/folio/redirects', ['address' => '/diary', 'area' => '1', 'mode' => 'prefix', 'target' => $target, 'status' => '301']);
+            $this->assertSame(422, $refused->getStatusCode(), $target);
+        }
+        $this->assertCount(1, $this->entries()->all());
+    }
+
+    public function test_whole_site_area_and_unsafe_targets_are_refused(): void
+    {
+        $refused = $this->send('/folio/redirects', ['address' => '/', 'area' => '1', 'mode' => 'one', 'target' => '/x', 'status' => '301']);
+        $this->assertSame(422, $refused->getStatusCode());
+        $this->assertStringContainsString('An area can’t cover the whole site.', (string) $refused->getBody());
+
+        foreach (['//evil.example', '/\\evil.example', '\\\\evil.example', '\\/evil.example', 'javascript:alert(1)', 'ftp://example.org', 'nowhere'] as $target) {
+            $res = $this->send('/folio/redirects', ['address' => '/old', 'target' => $target, 'status' => '301']);
+            $this->assertSame(422, $res->getStatusCode(), $target);
+        }
+        foreach (['/folio/page', '/--component/x', 'no-slash', '/a/../b'] as $address) {
+            $res = $this->send('/folio/redirects', ['address' => $address, 'target' => '/x', 'status' => '301']);
+            $this->assertSame(422, $res->getStatusCode(), $address);
+        }
+        $this->assertSame([], $this->entries()->all());
+    }
+
+    public function test_typed_address_with_umlauts_matches_the_browser_form(): void
+    {
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => '/de/über-uns', 'target' => '/de/wir', 'status' => '301'])->getStatusCode());
+
+        $answer = $this->fetch('/de/%C3%BCber-uns');
+        $this->assertSame(301, $answer->getStatusCode());
+        $this->assertSame('/de/wir', $answer->getHeaderLine('Location'));
+        // Shown as typed.
+        $this->assertStringContainsString('/de/über-uns', (string) $this->fetch('/folio/redirects')->getBody());
+    }
+
+    public function test_locale_prefix_becomes_the_entry_language(): void
+    {
+        $this->send('/folio/redirects', ['address' => '/de/alt', 'target' => '/de/neu', 'status' => '301']);
+        $this->send('/folio/redirects', ['address' => '/old', 'target' => '/new', 'status' => '301']);
+
+        $this->assertSame('/de/neu', $this->entries()->at('de', '/alt')['target_url'] ?? null);
+        $this->assertSame('/new', $this->entries()->at('en', '/old')['target_url'] ?? null);
+        $this->assertSame(404, $this->fetch('/alt')->getStatusCode(), 'German only');
+        $this->assertSame('/de/neu', $this->fetch('/de/alt')->getHeaderLine('Location'));
+    }
+
+    public function test_address_of_a_live_page_is_refused(): void
+    {
+        $this->publishPage('p1', ['en' => 'About', 'de' => 'Über uns'], ['en' => 'about', 'de' => 'ueber-uns']);
+        $this->working('news', 'n1', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published']);
+
+        foreach (['/about', '/de/ueber-uns', '/news/hello'] as $address) {
+            $res = $this->send('/folio/redirects', ['address' => $address, 'target' => '/elsewhere', 'status' => '301']);
+            $this->assertSame(422, $res->getStatusCode(), $address);
+            $this->assertStringContainsString('A page has this address; it always wins.', (string) $res->getBody());
+            $this->assertStringContainsString('value="' . $address . '"', (string) $res->getBody(), 'the typed address stays');
+        }
+        $this->assertSame([], $this->entries()->all());
+    }
+
+    public function test_target_that_redirects_already_is_refused(): void
+    {
+        $this->entries()->save(['path' => '/a', 'locale' => 'en', 'target_url' => '/b']);
+        $this->entries()->save(['path' => '/alt', 'locale' => 'de', 'target_url' => '/de/neu']);
+
+        foreach (['/a', '/de/alt'] as $target) {
+            $res = $this->send('/folio/redirects', ['address' => '/c', 'target' => $target, 'status' => '301']);
+            $this->assertSame(422, $res->getStatusCode(), $target);
+            $this->assertStringContainsString('That address redirects already; pick its target instead.', (string) $res->getBody());
+        }
+        // A target equal to the address.
+        $this->assertSame(422, $this->send('/folio/redirects', ['address' => '/c', 'target' => '/c/', 'status' => '301'])->getStatusCode());
+        $this->assertNull($this->entries()->at('en', '/c'));
+    }
+
+    public function test_redirect_from_not_found_removes_the_row(): void
+    {
+        $id = $this->hitMissing('de', '/fehlt', 2);
+        $this->hitMissing('de', '/andere', 2);
+
+        $form = (string) $this->fetch('/folio/redirects/new?not_found=' . $id)->getBody();
+        $this->assertStringContainsString('value="/de/fehlt"', $form);
+        $this->assertStringContainsString('name="not_found" value="' . $id . '"', $form);
+
+        $res = $this->send('/folio/redirects', ['address' => '/de/fehlt', 'target' => '/de/da', 'status' => '301', 'not_found' => $id]);
+
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame(['/andere'], array_column($this->notFound()->visible(), 'path'));
+        $this->assertNull($this->notFound()->find($id));
+    }
+
+    public function test_dismiss_hides_the_row(): void
+    {
+        $id = $this->hitMissing('en', '/missing', 2);
+
+        $res = $this->send('/folio/redirects/not-found/' . $id . '/dismiss');
+
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame('/folio/redirects?tab=not-found', $res->getHeaderLine('Location'));
+        $this->assertSame([], $this->notFound()->visible());
+        $this->assertNotNull($this->notFound()->find($id)['dismissed_at'] ?? null);
+    }
+
+    public function test_targets_endpoint_lists_only_public_pages(): void
+    {
+        $this->publishPage('p1', ['en' => 'About us'], ['en' => 'about']);
+        $this->working('page', 'p2', ['title' => ['en' => 'About draft'], 'slug' => ['en' => 'about-draft'], '_locales' => ['en']]);
+        $this->working('news', 'n1', ['title' => 'About the news', 'slug' => 'about-news', 'status' => 'published']);
+        $this->working('news', 'n2', ['title' => 'About the old news', 'slug' => 'old-news', 'status' => 'draft']);
+        $this->working('snippet', 's1', ['title' => 'About snippet', 'status' => 'published']);
+        $this->working('news', 'n3', ['title' => 'Elsewhere', 'slug' => 'elsewhere', 'status' => 'published']);
+
+        $res = $this->fetch('/folio/redirects/_targets?q=about');
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertStringStartsWith('application/json', $res->getHeaderLine('Content-Type'));
+        $items = json_decode((string) $res->getBody(), true)['items'] ?? null;
+        $this->assertIsArray($items);
+        $byValue = array_column($items, null, 'value');
+        ksort($byValue);
+        $this->assertSame(['news:n1', 'page:p1'], array_keys($byValue));
+        $this->assertSame(['value' => 'page:p1', 'label' => 'About us', 'type' => 'Pages', 'url' => '/about'], $byValue['page:p1']);
+        $this->assertSame('/news/about-news', $byValue['news:n1']['url']);
+
+        for ($i = 0; $i < 25; $i++) {
+            $this->working('news', 'm' . $i, ['title' => 'Many ' . $i, 'slug' => 'many-' . $i, 'status' => 'published']);
+        }
+        $this->assertCount(20, json_decode((string) $this->fetch('/folio/redirects/_targets?q=many')->getBody(), true)['items']);
+    }
+
+    public function test_routes_ask_redirects_manage_except_targets(): void
+    {
+        foreach (['index', 'create', 'store', 'edit', 'update', 'destroy', 'dismiss'] as $action) {
+            $this->assertSame('redirects.manage', FolioPermissionMiddleware::rule('Preflow\\Folio\\Http\\RedirectsController@' . $action), $action);
+        }
+        $this->assertSame(FolioPermissionMiddleware::SIGNED_IN, FolioPermissionMiddleware::rule('Preflow\\Folio\\Http\\RedirectsController@targets'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_screen_needs_redirects_manage(): void
+    {
+        $this->signInAs('editor');
+
+        $this->assertSame(403, $this->fetch('/folio/redirects')->getStatusCode());
+        $this->assertSame(403, $this->fetch('/folio/redirects?tab=not-found')->getStatusCode());
+        $this->assertSame(403, $this->fetch('/folio/redirects/new')->getStatusCode());
+        $this->assertSame(403, $this->send('/folio/redirects', ['address' => '/old', 'target' => '/new', 'status' => '301'])->getStatusCode());
+        $this->assertSame([], $this->entries()->all());
+        $targets = $this->fetch('/folio/redirects/_targets?q=a');
+        $this->assertSame(200, $targets->getStatusCode(), 'any signed-in staff user: it lists public pages only');
+        $this->assertSame(['items' => []], json_decode((string) $targets->getBody(), true));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_nav_item_only_with_the_permission(): void
+    {
+        $this->signInAs('manager');
+        $body = (string) $this->fetch('/folio/redirects')->getBody();
+        $this->assertMatchesRegularExpression('#<span class="folio-nav-label">Settings</span>.*?<a href="/folio/redirects" class="active"#s', $body);
+
+        $this->booted = null;
+        $this->signInAs('editor');
+        $this->assertStringNotContainsString('href="/folio/redirects"', (string) $this->fetch('/folio/page')->getBody());
+    }
+
+    /** Signed in with auth and roles: "manager" may manage redirects, "editor" may not. */
+    private function signInAs(string $role): void
+    {
+        $hash = password_hash('secret', PASSWORD_DEFAULT);
+        $this->write('config/auth.php', "<?php\nreturn " . var_export([
+            'default_guard' => 'session',
+            'guards' => ['session' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'config']],
+            'providers' => ['config' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [
+                ['email' => 'manager@site.test', 'password_hash' => $hash, 'roles' => ['manager']],
+                ['email' => 'editor@site.test', 'password_hash' => $hash, 'roles' => ['editor']],
+            ]]],
+            'session' => ['cookie' => 'folio_redirects_test', 'path' => '/', 'secure' => false],
+        ], true) . ";\n");
+        $this->write('config/roles.php', "<?php\nreturn " . var_export(['staff' => [
+            'manager' => ['folio.dashboard', 'page.view', 'redirects.manage'],
+            'editor' => ['folio.dashboard', 'page.view'],
+        ]], true) . ";\n");
+        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Roles\\RolesServiceProvider::class];\n");
+
+        $f = new Psr17Factory();
+        $page = (string) $this->app()->handle($f->createServerRequest('GET', '/folio/login'))->getBody();
+        preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
+        $this->token = $m[1] ?? '';
+        $login = $this->app()->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
+            '_csrf_token' => $this->token, 'email' => $role . '@site.test', 'password' => 'secret',
+        ]));
+        $this->assertSame(302, $login->getStatusCode());
+    }
+}

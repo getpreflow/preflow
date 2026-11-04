@@ -1048,6 +1048,38 @@
     // and the page asks before leaving while such rows are unsaved. A row the server refused
     // carries data-unsaved: its text is the posted one, not the saved one.
 
+    // Settings → Redirects: the target field's page picker. As the user types, the field's datalist
+    // gets the matching public pages from {prefix}/redirects/_targets ({items: [{value, label, type, url}]}):
+    // the value "type:id" goes into the field, a URL or path typed by hand stays as it is.
+    function initRedirectTargets() {
+        var input = document.querySelector('[data-redirect-targets]');
+        var list = input && input.list;
+        if (!list || !window.fetch) { return; }
+        var seq = 0;
+        var timer = null;
+        input.addEventListener('input', function () {
+            var q = input.value.trim();
+            clearTimeout(timer);
+            if (q === '' || q.charAt(0) === '/' || /^https?:/i.test(q)) { list.textContent = ''; return; }
+            timer = setTimeout(function () {
+                var mine = ++seq;
+                fetch(input.getAttribute('data-redirect-targets') + '?q=' + encodeURIComponent(q), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+                    .then(function (res) { return res.ok ? res.json() : { items: [] }; })
+                    .then(function (data) {
+                        if (mine !== seq) { return; }
+                        list.textContent = '';
+                        (data.items || []).forEach(function (item) {
+                            var option = document.createElement('option');
+                            option.value = item.value;
+                            option.label = item.label + ' (' + item.type + ') ' + item.url;
+                            list.appendChild(option);
+                        });
+                    })
+                    .catch(function () {});
+            }, 200);
+        });
+    }
+
     function initTranslationsSaveAll() {
         var saveAll = document.querySelector('[data-translations-save-all]');
         var table = document.querySelector('.folio-translations');
@@ -1687,6 +1719,7 @@
         initSplit();
         initUnsavedGuard();
         initTranslationsSaveAll();
+        initRedirectTargets();
     }
 
     if (document.readyState === 'loading') {
