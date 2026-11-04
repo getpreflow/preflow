@@ -326,6 +326,10 @@ final class FolioServiceProvider extends ServiceProvider
                 ...(file_exists($app->basePath('config/auth.php')) ? [$c->get(\Preflow\Folio\Users\UserPreferences::class)->definition()] : []),
                 // The admins' interface text overrides (Settings → Translations).
                 $c->get(\Preflow\Folio\Translations\StoredOverrides::class)->definition(),
+                // Redirect entries, the not-found list and the records' last public addresses.
+                \Preflow\Folio\Redirects\RedirectEntries::definition(),
+                \Preflow\Folio\Redirects\NotFoundEntries::definition(),
+                \Preflow\Folio\Redirects\AddressTable::definition(),
             ],
         ));
         $container->get(\Preflow\Data\Schema\RecordTables::class)->add(
@@ -336,6 +340,30 @@ final class FolioServiceProvider extends ServiceProvider
             'folio.tables',
             static fn (): array => $container->get(\Preflow\Folio\Storage\TableSync::class)->sync(),
         );
+        // Redirects and the not-found list (the routing core's RedirectMiddleware switches on with the
+        // store). Built without touching the storage: a site not migrated yet fails inside the
+        // middleware's lookups only, which keep the 404.
+        if ($dataManager !== null) {
+            $container->singleton(\Preflow\Folio\Redirects\RedirectEntries::class, static fn (Container $c) => new \Preflow\Folio\Redirects\RedirectEntries(
+                $c->get(DataManager::class),
+            ));
+            $container->singleton(\Preflow\Folio\Redirects\NotFoundEntries::class, static fn (Container $c) => new \Preflow\Folio\Redirects\NotFoundEntries(
+                $c->get(DataManager::class),
+                \Preflow\Routing\Redirect\RedirectConfig::fromFile($app->basePath('config/redirects.php'))->notFoundLimit,
+            ));
+            $container->singleton(\Preflow\Folio\Redirects\LiveRecords::class, static fn (Container $c) => new \Preflow\Folio\Redirects\LiveRecords(
+                $c->get(DataManager::class),
+                $c->get(\Preflow\Folio\Publishing\Publisher::class),
+                $c->get(FrontendResolver::class),
+            ));
+            $container->singleton(\Preflow\Folio\Redirects\FolioRedirectTargets::class, static fn (Container $c) => new \Preflow\Folio\Redirects\FolioRedirectTargets(
+                $c->get(\Preflow\Folio\Redirects\LiveRecords::class),
+                $c->get(FrontendResolver::class),
+            ));
+            $container->bind(\Preflow\Routing\Redirect\RedirectStore::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\RedirectEntries::class));
+            $container->bind(\Preflow\Routing\Redirect\NotFoundLog::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class));
+            $container->bind(\Preflow\Routing\Redirect\RedirectTargets::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\FolioRedirectTargets::class));
+        }
         $container->singleton(\Preflow\Folio\Extension\ExtensionState::class, fn (Container $c) => new \Preflow\Folio\Extension\ExtensionState(
             $c->get(DataManager::class),
         ));
@@ -1005,6 +1033,12 @@ final class FolioServiceProvider extends ServiceProvider
         // The staff login: a form left open past the session's end still signs in (CSRF).
         if ($container->bound(\Preflow\Core\Http\Csrf\CsrfSignInPaths::class)) {
             $container->get(\Preflow\Core\Http\Csrf\CsrfSignInPaths::class)->add(rtrim($this->prefix($app), '/') . '/login');
+        }
+        // The admin is not a public page: no redirects there, nothing in the not-found list.
+        // Folio at "/" would cover the whole site, so nothing is registered then.
+        $admin = rtrim($this->prefix($app), '/');
+        if ($admin !== '' && $container->bound(\Preflow\Core\Http\NonPublicPaths::class)) {
+            $container->get(\Preflow\Core\Http\NonPublicPaths::class)->add($admin);
         }
         self::requireRbacForMembers($container->get(ExtensionRegistry::class));
         // The codes admin's purpose select lists the purposes of config/codes.php (preflow/codes' Codes).

@@ -186,6 +186,11 @@ final class MediaServiceProvider extends ServiceProvider
             ));
         }
 
+        // Private files are not public pages: no redirects there, nothing in the not-found list.
+        if ($container->bound(\Preflow\Core\Http\NonPublicPaths::class)) {
+            $container->get(\Preflow\Core\Http\NonPublicPaths::class)->add($container->get(MediaConfig::class)->privateUrl);
+        }
+
         // After the app's routes; on a Folio site before Folio's (Folio registers media first, so media boots first).
         if ($container->has(RouterInterface::class)) {
             $router = $container->get(RouterInterface::class);
