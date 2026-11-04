@@ -250,6 +250,68 @@ final class NewPermissionsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_add_to_role_runs_the_types_save_hooks_as_the_role_editor_does(): void
+    {
+        // Another extension's customization of rbac_role: refuses saving "helper", records every save.
+        $root = $this->dir . '/app/Folio/';
+        $autoload = static function (string $class) use ($root): void {
+            if (str_starts_with($class, 'App\\Folio\\')) {
+                $file = $root . str_replace('\\', '/', substr($class, strlen('App\\Folio\\'))) . '.php';
+                if (is_file($file)) {
+                    require $file;
+                }
+            }
+        };
+        spl_autoload_register($autoload);
+        try {
+            $this->write('config/folio/extensions.json', '{"enabled": {"rbac": {"disabled_parts": []}, "audit": {"disabled_parts": []}}}');
+            $this->write('app/Folio/Audit/Extension.php', <<<'PHP'
+                <?php
+                namespace App\Folio\Audit;
+                #[\Preflow\Folio\Extension\Attributes\FolioExtension(name: 'audit', label: 'Audit')]
+                final class Extension extends \Preflow\Folio\Extension\Extension {}
+                PHP);
+            $this->write('app/Folio/Audit/Types/RoleAudit.php', <<<'PHP'
+                <?php
+                namespace App\Folio\Audit\Types;
+                use Preflow\Data\DynamicRecord;
+                #[\Preflow\Folio\Extension\Attributes\FolioType('rbac_role')]
+                final class RoleAudit
+                {
+                    #[\Preflow\Folio\Extension\BeforeSave]
+                    public function before(DynamicRecord $role): void
+                    {
+                        if ($role->get('name') === 'helper') {
+                            throw new \Preflow\Folio\Extension\Customization\Refused('Helper is frozen.');
+                        }
+                    }
+
+                    #[\Preflow\Folio\Extension\AfterSave]
+                    public function after(DynamicRecord $role): void
+                    {
+                        file_put_contents(dirname(__DIR__, 4) . '/storage/audit.log', $role->get('name') . ': ' . implode(',', $role->get('permissions')) . "\n", FILE_APPEND);
+                    }
+                }
+                PHP);
+            $this->managerSetup();
+            $this->as('admin');
+
+            $this->assertSame(302, $this->send('POST', '/folio/rbac/new-permissions/grant', ['names' => ['redirects.manage'], 'role' => 'r-helper'])->getStatusCode());
+            $this->assertStringContainsString('Helper is frozen.', self::text($this->send('GET', '/folio/rbac_role')));
+            $this->assertSame(['page.view'], $this->stored('rbac_role', 'r-helper')?->get('permissions'));
+            $this->assertSame(['redirects.manage'], $this->known()->fresh());
+            $this->assertFileDoesNotExist($this->dir . '/storage/audit.log');
+
+            $this->assertSame(302, $this->send('POST', '/folio/rbac/new-permissions/grant', ['names' => ['redirects.manage'], 'role' => 'r-editor'])->getStatusCode());
+            $this->assertSame([...self::EDITOR, 'redirects.manage'], $this->stored('rbac_role', 'r-editor')?->get('permissions'));
+            $this->assertSame("editor: folio.dashboard,rbac_role.*,page.*,redirects.manage\n", (string) file_get_contents($this->dir . '/storage/audit.log'));
+            $this->assertSame([], $this->known()->fresh());
+        } finally {
+            spl_autoload_unregister($autoload);
+        }
+    }
+
+    #[RunInSeparateProcess]
     public function test_granting_in_the_role_editor_keeps_the_notice_and_names_the_role(): void
     {
         $this->managerSetup();

@@ -5,10 +5,15 @@ declare(strict_types=1);
 namespace Preflow\Rbac;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Container\Container;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Folio\Content\RecordValidator;
+use Preflow\Folio\Extension\AfterSave;
 use Preflow\Folio\Extension\Attributes\FolioScreen;
+use Preflow\Folio\Extension\BeforeSave;
+use Preflow\Folio\Extension\Customization\Customizations;
 use Preflow\Folio\Extension\Customization\Refused;
 use Preflow\Rbac\Types\RoleRules;
 use Preflow\Routing\Attributes\Get;
@@ -21,8 +26,9 @@ use Psr\Http\Message\ServerRequestInterface;
  * The actions of the new-permissions notice on the Roles list (NewPermissions), outside the
  * sidebar, for those who may edit roles. Dismiss and "Add to role" take the line's names[]
  * (only the ones still new count) and make them known for good; "Add to role" first gives
- * them to the chosen role (role = its id) as the role editor would: RoleRules decides
- * (delegation, lock-out), and a refusal changes nothing. Each answers with a redirect to the
+ * them to the chosen role (role = its id) and saves it as the role editor does: every
+ * #[BeforeSave] of the type (RoleRules among them: delegation, lock-out), the type's validation,
+ * the save, every #[AfterSave]. A refusal changes nothing. Each answers with a redirect to the
  * Roles list and a flash message, also when the new permissions can't be read (a site not
  * migrated).
  *
@@ -38,6 +44,7 @@ final class NewPermissionsScreen
         private readonly DataManager $dm,
         private readonly RoleRules $rules,
         private readonly Messages $messages,
+        private readonly Container $container,
     ) {}
 
     /** No page of its own: the notice lives on the Roles list. */
@@ -80,8 +87,13 @@ final class NewPermissionsScreen
 
         $current = RoleList::normalize($role->get('permissions'));
         $role->set('permissions', [...$current, ...array_values(array_diff($names, $current))]);
+        $customizations = $this->container->bound(Customizations::class) ? $this->container->get(Customizations::class) : null;
         try {
-            $this->rules->beforeSave($role);
+            // As the role editor saves (AdminController): the type's #[BeforeSave] hooks, then validation.
+            $customizations !== null ? $customizations->runHooks(BeforeSave::class, $role) : $this->rules->beforeSave($role);
+            if ($this->container->bound(RecordValidator::class)) {
+                $this->container->get(RecordValidator::class)->validate($role);
+            }
         } catch (ValidationException $e) {
             return self::back($request, 'error', self::firstMessage($e) ?? $e->getMessage());
         } catch (Refused $e) {
@@ -89,6 +101,7 @@ final class NewPermissionsScreen
         }
         $this->dm->saveType($role, false);
         $this->permissions->markKnown($names);
+        $customizations?->runHooks(AfterSave::class, $role);
         $label = $this->messages->roleLabel((string) $role->get('population'), (string) $role->get('name'), (string) $role->get('label'));
 
         return self::back($request, 'success', $this->messages->get('new.added', ['role' => $label]));
