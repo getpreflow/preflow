@@ -1464,12 +1464,15 @@ batch; records deleted by cascade get the same one.
 
 The server also follows the target to where it really leads, so old links never end in a chain:
 
-- a path or URL on this site (an absolute URL counts when its host is `app.url`'s) where a page
+- a path or URL on this site (an absolute URL counts when its host is `app.url`'s or the
+  request's) where a page
   answers is stored as that page, so the links follow it when it moves later;
 - one that redirects already is replaced by that redirect's final target;
 - a target that leads back to the record (one of its own addresses, current or earlier), a draft
   or unknown record, an address that redirects nowhere, and in a delete one of the records the
-  same delete removes all count as no target. Choosing needs only the right to that delete
+  same delete removes all count as no target.
+
+Choosing needs only the right to that delete
 or unpublish. Without JavaScript nothing is asked and the old links answer 404. A type without
 publishing that leaves the site by its status field shows a warning after the save instead, with
 a link to the record's redirects for those who may manage them.
