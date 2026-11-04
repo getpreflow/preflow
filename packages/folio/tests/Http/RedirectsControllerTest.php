@@ -290,6 +290,37 @@ final class RedirectsControllerTest extends TestCase
         $this->assertSame(302, $this->send('/folio/redirects/' . $d['id'], ['address' => '/d', 'target' => '/f', 'status' => '301'])->getStatusCode());
     }
 
+    public function test_addresses_a_keep_the_rest_area_sends_to_are_refused(): void
+    {
+        $this->entries()->save(['path' => '/blog', 'locale' => 'en', 'area' => true, 'mode' => 'prefix', 'target_url' => '/journal']);
+
+        foreach ([['/journal/x', false], ['/journal/2020', true], ['/journal', true]] as [$address, $area]) {
+            $res = $this->send('/folio/redirects', ['address' => $address, 'area' => $area ? '1' : '', 'target' => '/elsewhere', 'status' => '301']);
+            $this->assertSame(422, $res->getStatusCode(), $address);
+            $this->assertStringContainsString('Other redirects send visitors here', (string) $res->getBody());
+        }
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => '/de/journal/x', 'target' => '/y', 'status' => '301'])->getStatusCode(), 'another language');
+        // An area being saved that holds another area's target space.
+        $this->entries()->save(['path' => '/news', 'locale' => 'en', 'area' => true, 'mode' => 'prefix', 'target_url' => '/press/all']);
+        $this->assertSame(422, $this->send('/folio/redirects', ['address' => '/press', 'area' => '1', 'target' => '/y', 'status' => '301'])->getStatusCode());
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => '/journalism', 'target' => '/y', 'status' => '301'])->getStatusCode(), 'whole segments only');
+    }
+
+    public function test_keep_the_rest_target_with_entries_below_it_is_refused(): void
+    {
+        $this->entries()->save(['path' => '/journal/x', 'locale' => 'en', 'target_url' => '/z']);
+        $this->entries()->save(['path' => '/press/sub', 'locale' => 'en', 'area' => true, 'target_url' => '/z']);
+
+        foreach (['/journal', '/press'] as $target) {
+            $res = $this->send('/folio/redirects', ['address' => '/blog', 'area' => '1', 'mode' => 'prefix', 'target' => $target, 'status' => '301']);
+            $this->assertSame(422, $res->getStatusCode(), $target);
+            $this->assertStringContainsString('That address redirects already; pick its target instead.', (string) $res->getBody());
+        }
+        // Another language, or one target for all: fine.
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => '/blog', 'area' => '1', 'mode' => 'prefix', 'target' => '/de/journal', 'status' => '301'])->getStatusCode());
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => '/old', 'area' => '1', 'mode' => 'one', 'target' => '/journal', 'status' => '301'])->getStatusCode());
+    }
+
     public function test_address_is_normalized_before_its_language_is_read(): void
     {
         // LocaleMiddleware strips every available locale's prefix, the default one too.

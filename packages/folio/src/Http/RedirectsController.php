@@ -302,7 +302,9 @@ final class RedirectsController
 
     /**
      * Whether another entry's URL target lies at this address (exact) or under it (area), in its
-     * language, where no page answers.
+     * language, where no page answers. A "keep the rest" area sends visitors to its target and
+     * everything below it: an address there counts too, and so does an area being saved that
+     * holds the target.
      */
     private function targetedBy(string $locale, string $path, bool $area, ?string $own, string $host): bool
     {
@@ -312,6 +314,12 @@ final class RedirectsController
             }
             $at = $this->siteAddress($other['target_url'], $host);
             if ($at === null || ($locale !== '' && $at[0] !== $locale)) {
+                continue;
+            }
+            if ($other['area'] && $other['mode'] === AreaMode::Prefix->value) {
+                if (RedirectPath::under($path, $at[1]) !== null || ($area && RedirectPath::under($at[1], $path) !== null)) {
+                    return true;
+                }
                 continue;
             }
             $hit = $area ? RedirectPath::under($at[1], $path) !== null : $at[1] === $path;
@@ -370,6 +378,10 @@ final class RedirectsController
         if ($this->redirectsAt($this->lookupLocale($targetLocale), $targetPath, $own)) {
             return [null, FolioText::get('folio.redirects.errors.target_redirects')];
         }
+        // "Keep the rest" sends visitors below the target too: no entry may answer there.
+        if ($mode === AreaMode::Prefix->value && $this->entryBelow($targetLocale, $targetPath, $own)) {
+            return [null, FolioText::get('folio.redirects.errors.target_redirects')];
+        }
 
         return [$target, null];
     }
@@ -393,6 +405,20 @@ final class RedirectsController
         }
 
         return $redirected && !$this->pageAt($locale, $path);
+    }
+
+    /** Whether an entry (exact or area) other than $own lies below the path, in its language. */
+    private function entryBelow(string $locale, string $path, ?string $own): bool
+    {
+        foreach ($this->entries->all() as $entry) {
+            if ($entry['id'] !== $own
+                && ($locale === '' || $entry['locale'] === '' || $entry['locale'] === $locale)
+                && !in_array(RedirectPath::under($entry['path'], $path), [null, ''], true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
