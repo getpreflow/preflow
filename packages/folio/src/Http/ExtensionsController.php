@@ -18,7 +18,7 @@ use Psr\Http\Message\ServerRequestInterface;
  * {prefix}/extensions (Settings → Extensions): the discovered extensions, their parts and
  * installed versions. With config/folio.php extensions.allow_admin_changes (default:
  * app.debug) an extension or part toggles by POST, which writes config/folio/extensions.json;
- * install() is folio:extensions:apply's job, never the toggle's. Otherwise read-only.
+ * install() and seed() are folio:extensions:apply's job, never the toggle's. Otherwise read-only.
  */
 final class ExtensionsController
 {

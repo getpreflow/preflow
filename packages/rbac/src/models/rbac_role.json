@@ -12,6 +12,7 @@
         "name": { "type": "string", "label": "Name", "validate": ["required", "regex:/^[a-z][a-z0-9_-]*$/"] },
         "label": { "type": "string", "label": "Label", "validate": ["required"] },
         "population": { "type": "select", "label": "Population", "options": { "staff": "Staff", "members": "Members" }, "validate": ["required", "in:staff,members"] },
-        "permissions": { "type": "rbac_permissions", "label": "Permissions" }
+        "permissions": { "type": "rbac_permissions", "label": "Permissions" },
+        "seeded_permissions": { "type": "text", "hidden": true, "label": "Seeded permissions" }
     }
 }

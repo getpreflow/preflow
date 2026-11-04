@@ -330,6 +330,8 @@ final class FolioServiceProvider extends ServiceProvider
                 \Preflow\Folio\Redirects\RedirectEntries::definition(),
                 \Preflow\Folio\Redirects\NotFoundEntries::definition(),
                 \Preflow\Folio\Redirects\AddressTable::definition(),
+                // The declared permissions the site has seen (new ones are announced on the Roles screen).
+                \Preflow\Folio\Permissions\KnownPermissions::definition(),
             ],
         ));
         $container->get(\Preflow\Data\Schema\RecordTables::class)->add(
@@ -340,6 +342,22 @@ final class FolioServiceProvider extends ServiceProvider
             'folio.tables',
             static fn (): array => $container->get(\Preflow\Folio\Storage\TableSync::class)->sync(),
         );
+        // Which declared permissions are new since the site last looked (the Roles notice, badge and
+        // dashboard line); migrate lists them once the table exists, and only where rbac's Roles screen
+        // (the rbac_role type) is there to review and dismiss them: elsewhere the line would never go
+        // away. The steps run after boot, when declarePermissions() has filled the registry.
+        if ($dataManager !== null) {
+            $container->singleton(\Preflow\Folio\Permissions\KnownPermissions::class, static fn (Container $c) => new \Preflow\Folio\Permissions\KnownPermissions(
+                $c->get(DataManager::class),
+                $c->get(\Preflow\Auth\Access\Access::class)->registry(),
+            ));
+            $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
+                'folio.permissions',
+                static fn (): array => $container->get(TypeCatalog::class)->has('rbac_role')
+                    ? $container->get(\Preflow\Folio\Permissions\KnownPermissions::class)->migrateLines()
+                    : [],
+            );
+        }
         // Redirects and the not-found list (the routing core's RedirectMiddleware switches on with the
         // store). Built without touching the storage: a site not migrated yet fails inside the
         // middleware's lookups only, which keep the 404.
@@ -1131,8 +1149,11 @@ final class FolioServiceProvider extends ServiceProvider
         if (self::aiSettingsVisible($container)) {
             $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.ai'), rtrim($this->prefix($app), '/') . '/ai', 'ui-settings', 'ai.settings', 960);
         }
-        // Extension screens in the sidebar (filtered by their permission).
+        // Extension screens in the sidebar (filtered by their permission), except those declared nav: false.
         foreach ($screens->all() as $screen) {
+            if (!$screen['nav']) {
+                continue;
+            }
             $container->get(\Preflow\Folio\Http\AdminNav::class)->add(
                 $screen['section'],
                 static fn (): string => \Preflow\Folio\FolioText::label($screen['label']),

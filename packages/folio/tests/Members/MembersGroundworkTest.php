@@ -57,7 +57,7 @@ final class MembersGroundworkTest extends TestCase
         $this->assertSame('Waiting for approval', $roles['pending']->get('label'));
     }
 
-    public function test_install_is_idempotent_and_keeps_existing_roles(): void
+    public function test_seed_is_idempotent_and_keeps_existing_roles(): void
     {
         $this->migrateAndApply();
         // As on a live site: the owner edited the member role in Folio.
@@ -69,8 +69,8 @@ final class MembersGroundworkTest extends TestCase
 
         $c = $this->container();
         $count = count($c->get(DataManager::class)->queryType('rbac_role')->get()->items());
-        $c->get(Extension::class)->install($c);
-        $c->get(Extension::class)->install($c);
+        $c->get(Extension::class)->seed($c);
+        $c->get(Extension::class)->seed($c);
 
         $roles = $this->memberRoles();
         $this->assertSame(['member', 'pending', 'rejected'], array_keys($roles));

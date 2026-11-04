@@ -147,6 +147,24 @@ final class ScreenTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_screen_outside_the_sidebar_answers_at_its_path_with_its_permission(): void
+    {
+        $this->hidden();
+        $this->as('admin');
+
+        $page = $this->send('GET', '/folio/hidden');
+        $this->assertSame(200, $page->getStatusCode());
+        $this->assertStringContainsString('hidden screen', (string) $page->getBody());
+        $this->assertSame(302, $this->send('POST', '/folio/hidden/go')->getStatusCode());
+        $this->assertStringNotContainsString('href="/folio/hidden"', (string) $this->send('GET', '/folio')->getBody());
+        $this->assertFalse($this->session->container()->get(\Preflow\Folio\Extension\Screen\ScreenRegistry::class)->get('App\\Folio\\Hidden\\Screens\\Page')['nav']);
+
+        $this->as('editor');
+        $this->assertSame(403, $this->send('GET', '/folio/hidden')->getStatusCode());
+        $this->assertSame(403, $this->send('POST', '/folio/hidden/go')->getStatusCode());
+    }
+
+    #[RunInSeparateProcess]
     public function test_screen_path_colliding_with_type_throws(): void
     {
         $this->clash('post');
@@ -349,6 +367,31 @@ final class ScreenTest extends TestCase
         $this->write('app/Folio/Assetsx/assets/page.js', 'window.assetsx = 1;');
         $this->write('app/Folio/Assetsx/assets/mod.mjs', 'export {};');
         $this->write('config/folio/extensions.json', (string) json_encode(['enabled' => ['assetsx' => new \stdClass()]]));
+    }
+
+    /** An enabled extension "hidden" with one screen outside the sidebar (nav: false): GET / and POST /go. */
+    private function hidden(): void
+    {
+        $this->write('app/Folio/Hidden/Extension.php', <<<'PHP'
+            <?php
+            namespace App\Folio\Hidden;
+            #[\Preflow\Folio\Extension\Attributes\FolioExtension(name: 'hidden', label: 'Hidden')]
+            final class Extension extends \Preflow\Folio\Extension\Extension {}
+            PHP);
+        $this->write('app/Folio/Hidden/Screens/Page.php', <<<'PHP'
+            <?php
+            namespace App\Folio\Hidden\Screens;
+            #[\Preflow\Folio\Extension\Attributes\FolioScreen('hidden', 'Hidden', permission: 'hidden.view', nav: false)]
+            final class Page
+            {
+                #[\Preflow\Routing\Attributes\Get('/')]
+                public function index(): string { return 'hidden screen'; }
+
+                #[\Preflow\Routing\Attributes\Post('/go')]
+                public function go(): \Psr\Http\Message\ResponseInterface { return new \Nyholm\Psr7\Response(302, ['Location' => '/folio/hidden']); }
+            }
+            PHP);
+        $this->write('config/folio/extensions.json', '{"enabled": {"hidden": {"disabled_parts": []}}}');
     }
 
     /** An enabled extension "clash" whose one screen has this path and permission (GET / and GET /{type}). */

@@ -11,15 +11,16 @@ use Preflow\Folio\Extension\ExtensionState;
 use Preflow\Folio\Storage\TableSync;
 
 /**
- * Run on every deploy: syncs Folio's tables (as `preflow migrate` does), then runs install()
- * of each enabled extension whose installed version here differs from its version, once.
+ * Run on every deploy: syncs Folio's tables (as `preflow migrate` does), then, for each enabled
+ * extension, runs install() once when its installed version here differs from its version, and
+ * seed() every run (silently: a run that installs nothing still says "nothing to do").
  */
 final class ExtensionsApplyCommand implements CommandInterface
 {
     use BootsApplication;
 
     public function getName(): string { return 'folio:extensions:apply'; }
-    public function getDescription(): string { return 'Sync Folio tables and install enabled extensions (once per version)'; }
+    public function getDescription(): string { return 'Sync Folio tables, install enabled extensions once per version, seed every run'; }
 
     public function execute(array $args): int
     {
@@ -32,16 +33,16 @@ final class ExtensionsApplyCommand implements CommandInterface
         $state = $c->get(ExtensionState::class);
         $did = $lines !== [];
         foreach ($c->get(ExtensionRegistry::class)->enabled() as $definition) {
-            $installed = $state->installedVersion($definition->name);
-            if ($installed === $definition->version) {
-                continue;
-            }
             $extension = $c->get($definition->class);
             assert($extension instanceof Extension);
-            $extension->install($c);
-            $state->markInstalled($definition->name, $definition->version);
-            echo "installed {$definition->name} {$definition->version}" . ($installed === null ? '' : " (was {$installed})") . "\n";
-            $did = true;
+            $installed = $state->installedVersion($definition->name);
+            if ($installed !== $definition->version) {
+                $extension->install($c);
+                $state->markInstalled($definition->name, $definition->version);
+                echo "installed {$definition->name} {$definition->version}" . ($installed === null ? '' : " (was {$installed})") . "\n";
+                $did = true;
+            }
+            $extension->seed($c);
         }
         if (!$did) {
             echo "nothing to do\n";

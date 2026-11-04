@@ -59,6 +59,22 @@ return [
         'not_defined' => ':role (nicht definiert)',
         'no_population' => 'Kein Personenkreis: Gib dem Typ „users“ oder dem Feld „population“.',
     ],
+    // Die neuen Berechtigungen aus einem Update: der Hinweis über der Rollenliste, seine Aktionen,
+    // die Zeile im Dashboard (:count, „eins|mehrere“). :role ist die Bezeichnung einer Rolle.
+    'new' => [
+        'title' => 'Neue Berechtigungen',
+        'intro' => 'Diese Berechtigungen sind mit einem Update dazugekommen. Keine Rolle bekommt sie automatisch.',
+        'covered' => 'Schon in:',
+        'pick' => 'Zu Rolle hinzufügen…',
+        'add' => 'Hinzufügen',
+        'dismiss' => 'Ausblenden',
+        'dashboard' => ':count neue Berechtigung in Rollen zu prüfen|:count neue Berechtigungen in Rollen zu prüfen',
+        'added' => 'Zu :role hinzugefügt.',
+        'dismissed' => 'Ausgeblendet.',
+        'no_role' => 'Wähle die Rolle, der du sie geben willst.',
+        'unavailable' => 'Neue Berechtigungen lassen sich noch nicht prüfen: Führe preflow migrate aus.',
+        'failed' => 'Die Rolle konnte nicht gespeichert werden. Der Fehler steht im Server-Log.',
+    ],
     'extension' => ['label' => 'Rollen'],
     'roles' => [
         'staff' => ['admin' => 'Administrator'],

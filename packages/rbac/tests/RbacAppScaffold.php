@@ -117,12 +117,13 @@ trait RbacAppScaffold
         return ($this->session ??= $this->app())->container();
     }
 
-    /** As folio:extensions:apply does: install() of rbac, then the installed version. */
+    /** As folio:extensions:apply does: install() of rbac, the installed version, then seed(). */
     private function install(): void
     {
         $c = $this->container();
         $c->get(Extension::class)->install($c);
         $c->get(ExtensionState::class)->markInstalled('rbac', '1.1.0');
+        $c->get(Extension::class)->seed($c);
     }
 
     /** @param list<string> $permissions */

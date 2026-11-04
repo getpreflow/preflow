@@ -224,7 +224,21 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 
 ### rbac
 
-- **Grant-once role seeding:** `RoleStore::ensure()` never changes an existing role, so later-added permissions never reach seeded roles; an ensure that grants new permissions once and remembers them (an editor's removal stays)
+- ~~**Grant-once role seeding:** `RoleStore::ensure()` never changes an existing role, so later-added permissions never reach seeded roles; an ensure that grants new permissions once and remembers them (an editor's removal stays)~~ — done in 0.53.0
+  (`RoleStore::ensure()` gives an existing role the listed permissions it never gave before and records the list in the
+  role's hidden `seeded_permissions` field, so an editor's removal stays; a role without a record gets one and nothing
+  added. Folio extensions have `seed()`, which `folio:extensions:apply` runs on every deploy, after `install()`; rbac and
+  the members extension seed their roles there. New: Folio's list of known permissions
+  (`folio_known_permissions`), `#[ListNotice]` and `#[DashboardNotice]` on type customizations, `FolioScreen(nav: false)`;
+  with rbac, *Settings → Roles* announces every new permission to whoever may edit roles (notice with "Add to role" and
+  "Dismiss", sidebar count, dashboard line); see `packages/rbac/README.md` and `packages/folio/README.md`).
+  **Upgrading:** SQL sites run `preflow migrate`, which creates `folio_known_permissions`; until then the notice shows
+  nothing. Extensions that seed roles in `install()` move that to `seed()`; BG Genius moves its `ensure()` calls there.
+  holz-objekte.org can drop `grantOnce()` and delete its `rbac_role.json` extension in the same commit as the upgrade
+  (a site's own `extends` file adding `seeded_permissions` to `rbac_role` stops the boot, with an error naming the
+  field); its stored records carry over. Check each seeded role once: a permission listed before 0.53 that never reached
+  the role stays missing, because a role without a record is assumed to have had its seed list already. A seeded role
+  deleted in Folio comes back on the next deploy; remove it from `config/roles.php` (or the extension's seed) first.
 
 ### Routing, core and i18n
 

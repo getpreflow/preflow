@@ -15,15 +15,39 @@ php preflow folio:extensions:apply
   (`config/folio/extensions.json`).
 - Enabled, it answers `can()` from the roles and registers the field types
   `rbac_permissions` and `rbac_roles`.
-- `folio:extensions:apply` (run it on every deploy) installs the extension once per
-  version and per environment:
+- `folio:extensions:apply` (run it on every deploy) seeds the roles on every run (since 0.53):
   - It creates the staff role `admin` ("Administrator", `*`) when no staff role exists.
-  - If `config/roles.php` exists, it imports every role it defines that doesn't exist yet,
-    in `preflow/roles`' format: `['staff' => ['editor' => ['page.*']], 'members' => [...]]`.
-  - It never changes a role that exists, so running it again is safe.
-- Sites seed their own roles the same way:
-  `RoleStore::ensure(string $population, string $name, string $label, array $permissions)`
-  creates a role when it is missing and never overwrites one.
+  - If `config/roles.php` exists, it creates every role it defines that doesn't exist yet,
+    in `preflow/roles`' format: `['staff' => ['editor' => ['page.*']], 'members' => [...]]`,
+    and gives an existing role the permissions the file lists for it for the first time
+    (see Grant-once seeding below).
+  - Running it again is safe.
+- Sites seed their own roles the same way, from an extension's `seed()` (it runs on every apply):
+  `RoleStore::ensure(string $population, string $name, string $label, array $permissions)`.
+  Before 0.53 such calls sat in `install()`, which runs once per version; move them to
+  `seed()`. `apply` resolves the extension on every run, so keep its constructor light.
+- A seeded role that someone deletes in Folio comes back on the next deploy. To retire one,
+  remove it from `config/roles.php` (or from the extension's seed) first.
+
+## Grant-once seeding
+
+`ensure()` creates a missing role. For an existing role it gives only the listed permissions
+it has never given before, and remembers the list in the role's hidden field
+`seeded_permissions` (since 0.53). So:
+
+- A permission added to a seed list reaches the role once, on the next apply.
+- A permission an editor removed from the role stays removed: it is recorded, so no later run
+  adds it again.
+- A permission an editor added stays too.
+- First sight: a role that has no record yet (made before 0.53) is assumed to have had what it
+  has now plus the seed list. The record is made and nothing is added. A permission that was
+  listed before 0.53 but never reached the role stays missing; add it by hand once.
+- Only a site's own seed list grants. A permission that a Folio release, package or extension
+  declares is never given to a role on its own; see New permissions below.
+
+A site that kept its own `extends` file adding `seeded_permissions` to `rbac_role` (holz-objekte.org
+did) must delete that file when it upgrades to 0.53. Boot fails otherwise, naming the field.
+The stored records carry over.
 
 ## Roles
 
@@ -236,6 +260,34 @@ it. A refused save shows the form again with the message; a refused delete keeps
 Before the extension is installed, the same check applies: the first role you save must
 grant yourself `rbac_role.view` and `rbac_role.edit` (or run `folio:extensions:apply`,
 which creates `admin`).
+
+## New permissions
+
+When an update brings a permission (a Folio release, a new package, extension or content
+type; 0.52 brought `redirects.manage`), it is never given to a role on its own. Whoever may
+edit roles (`rbac_role.edit`) is told, and decides (since 0.53):
+
+- **Settings → Roles** shows a notice above the list: one line per permission group (a new
+  content type's five permissions are one line), with the roles that already have it and how
+  ("Already in: Administrator (`*`), Content admin (`assets.*`)"), so you also learn when a
+  role got something new through a pattern.
+- **Add to role…** gives the line's permissions to the role you pick, exactly as the role
+  editor would: delegation applies (the picker offers only roles you may give them; a crafted
+  POST gets the editor's refusal), and so does the lock-out check. The picker offers staff roles
+  only (member roles never get admin permissions from this notice) and leaves out roles that
+  already have all of the line's permissions, such as `*`. It saves through the type's
+  `#[BeforeSave]` and `#[AfterSave]` hooks and its validation, like the role editor, so a site's
+  own hooks on `rbac_role` run for it too.
+- **Dismiss** takes the line away without granting anything.
+- The *Roles* item in the sidebar carries the count, and the dashboard has a line linking here.
+
+A permission leaves the notice only through Dismiss or Add to role; then it is known for good.
+Granting it in the role editor does not clear it: the notice then names that role, and a
+Dismiss clears it. Which permissions are known is Folio's list
+(`Preflow\Folio\Permissions\KnownPermissions`; its table is created by `preflow migrate` or
+`folio:extensions:apply` on SQL storage, JSON storage needs neither); until then the
+notice, badge and line show nothing. `preflow migrate` prints the new ones too, without
+marking them known. A switched-off extension's permissions wait until it is switched on.
 
 ## Bootstrap
 

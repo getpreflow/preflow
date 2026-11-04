@@ -812,6 +812,13 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 }
 .folio-notice p, .folio-locale-errors p { margin: 0; }
 .folio-notice ul, .folio-locale-errors ul { margin: 6px 0 0; padding-left: 18px; }
+/* Notices stacked above a list or the dashboard (#[ListNotice], #[DashboardNotice]): the wrapper spaces
+   them. A notice's list of items with their own actions (.folio-notice-list) goes without bullets. */
+.folio-page-notices { display: grid; gap: 10px; margin-bottom: 18px; }
+.folio-page-notices > * { margin: 0; }
+.folio-notice .folio-notice-list { list-style: none; margin: 10px 0 0; padding: 0; }
+.folio-notice-list > li + li { margin-top: 10px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--c-warning) 25%, transparent); }
+.folio-notice-list .folio-form-buttons { margin-top: 6px; }
 .folio-notice, .folio-locale-errors {
   background: var(--c-warning-soft);
   border-color: color-mix(in srgb, var(--c-warning) 35%, transparent);

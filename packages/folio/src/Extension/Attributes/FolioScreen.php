@@ -11,6 +11,8 @@ namespace Preflow\Folio\Extension\Attributes;
  * arguments; ScreenRegistry refuses a screen without one).
  * The label is shown as written or, when it is a translation key and the translator has a text
  * for it, in the staff member's language: 'site.screens.queue' from the site's lang/{locale}/site.php.
+ * With nav: false the screen has no sidebar item (so no #[NavBadge] shows either); its routes,
+ * permission and page assets stay as they are, so it is reached by links (since 0.53).
  */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final class FolioScreen
@@ -24,5 +26,6 @@ final class FolioScreen
         public readonly ?string $permission = null,
         /** @var list<string> files the page needs: 'file.js', '@folio/htmx.js', '@folio/trix', '@folio/ai-translate', '@other/file.css' */
         public readonly array $assets = [],
+        public readonly bool $nav = true,
     ) {}
 }

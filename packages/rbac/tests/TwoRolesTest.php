@@ -116,6 +116,10 @@ final class TwoRolesTest extends TestCase
             ['POST /folio/assets/{id}/_ai/suggest', '/folio/assets/missing/_ai/suggest', ['locale' => 'de'], [404, 403, 403]],
             ['GET /folio/queue', '/folio/queue', [], [200, 200, 403]],
             ['POST /folio/queue/{id}/approve', '/folio/queue/m1/approve', [], [302, 302, 403]],
+            // rbac's new-permissions actions (rbac_role.edit): back to the Roles list; names not new change nothing.
+            ['GET /folio/rbac/new-permissions', '/folio/rbac/new-permissions', [], [302, 403, 403]],
+            ['POST /folio/rbac/new-permissions/dismiss', '/folio/rbac/new-permissions/dismiss', ['names' => ['nothing.new']], [302, 403, 403]],
+            ['POST /folio/rbac/new-permissions/grant', '/folio/rbac/new-permissions/grant', ['names' => ['nothing.new'], 'role' => 'r-spare'], [302, 403, 403]],
         ];
 
         // [type, record id, a valid new record, a valid update, the record to delete, answers that differ for this type].
@@ -300,7 +304,7 @@ final class TwoRolesTest extends TestCase
         }
         $rules = (new \ReflectionClassConstant(FolioPermissionMiddleware::class, 'RULES'))->getValue();
         $this->assertSame([], array_values(array_diff(array_keys($rules), $handlers)), 'permission rules no registered route uses');
-        $this->assertSame(['App\\Folio\\Moderation\\Screens\\Queue'], array_column($screens->all(), 'class'));
+        $this->assertSame(['App\\Folio\\Moderation\\Screens\\Queue', 'Preflow\\Rbac\\NewPermissionsScreen'], array_column($screens->all(), 'class'));
     }
 
     #[RunInSeparateProcess]
