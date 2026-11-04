@@ -120,6 +120,35 @@ final class RedirectEntriesTest extends TestCase
     }
 
     #[DataProvider('storages')]
+    public function test_save_keeps_counts_and_origin_of_the_replaced_entry(string $storage): void
+    {
+        $entries = $this->entries($storage);
+        $entries->save(['path' => '/old', 'locale' => 'en', 'target_url' => '/first', 'kind' => 'auto', 'created_at' => '2026-10-01T09:00:00+00:00', 'created_by' => 'ada']);
+        $redirect = $entries->exact('/old', 'en');
+        $entries->hit($redirect, new \DateTimeImmutable('2026-11-04T10:00:00+00:00'));
+        $entries->hit($redirect, new \DateTimeImmutable('2026-11-04T11:00:00+00:00'));
+
+        // Re-pointed (Task 4) or edited (Task 5) without those columns: they stay.
+        $entries->save(['path' => '/old', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'p1', 'kind' => 'removed']);
+        $row = $entries->at('en', '/old');
+        $this->assertSame('page', $row['target_type']);
+        $this->assertNull($row['target_url']);
+        $this->assertSame('removed', $row['kind']);
+        $this->assertSame(2, $row['hits']);
+        $this->assertSame('2026-10-01T09:00:00+00:00', $row['created_at']);
+        $this->assertSame('ada', $row['created_by']);
+        $this->assertSame('2026-11-04T11:00:00+00:00', $row['last_hit_at']);
+
+        // Given explicitly, they are what the caller says.
+        $entries->save(['path' => '/old', 'locale' => 'en', 'target_url' => '/x', 'hits' => 0, 'last_hit_at' => null, 'created_by' => 'bob']);
+        $row = $entries->at('en', '/old');
+        $this->assertSame(0, $row['hits']);
+        $this->assertNull($row['last_hit_at']);
+        $this->assertSame('bob', $row['created_by']);
+        $this->assertSame('2026-10-01T09:00:00+00:00', $row['created_at']);
+    }
+
+    #[DataProvider('storages')]
     public function test_lookups_are_exact_on_case(string $storage): void
     {
         $entries = $this->entries($storage);

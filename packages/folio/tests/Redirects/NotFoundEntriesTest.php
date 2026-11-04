@@ -22,11 +22,11 @@ final class NotFoundEntriesTest extends TestCase
         $this->removeInternalStorage();
     }
 
-    private function log(string $storage, int $limit = 1000): NotFoundEntries
+    private function log(string $storage, int $limit = 1000, int $checkEvery = 1): NotFoundEntries
     {
         $this->dm = $this->internalStorage($storage, NotFoundEntries::definition());
 
-        return new NotFoundEntries($this->dm, $limit);
+        return new NotFoundEntries($this->dm, $limit, $checkEvery);
     }
 
     private static function at(string $when): \DateTimeImmutable
@@ -101,6 +101,35 @@ final class NotFoundEntriesTest extends TestCase
         foreach (['/a', '/c', '/d'] as $path) {
             $this->assertNotNull($log->find(NotFoundEntries::id('en', $path)), $path);
         }
+    }
+
+    #[DataProvider('storages')]
+    public function test_limit_is_checked_now_and_then_and_holds(string $storage): void
+    {
+        $log = $this->log($storage, 10, 5);
+        $start = self::at('2026-11-01T00:00:00+00:00');
+        for ($i = 0; $i < 120; $i++) {
+            $log->record('/scan-' . $i, 'en', $start->modify("+{$i} minutes"));
+        }
+
+        $rows = $this->dm->queryIn(NotFoundEntries::definition())->get()->items();
+        // Checked on about one new address in five: never far past the limit, never under it.
+        $this->assertGreaterThanOrEqual(10, count($rows));
+        $this->assertLessThanOrEqual(10 + 4 * 5, count($rows));
+        $this->assertNull($log->find(NotFoundEntries::id('en', '/scan-0')), 'the least recent went first');
+        $kept = array_map(static fn ($row): string => (string) $row->get('path'), $rows);
+        sort($kept, SORT_NATURAL);
+        $this->assertSame('/scan-119', end($kept), 'the most recent stays');
+        $this->assertSame(range(120 - count($rows), 119), array_map(static fn (string $p): int => (int) substr($p, 6), $kept), 'only the most recent are kept');
+    }
+
+    #[DataProvider('storages')]
+    public function test_stamps_are_kept_in_utc(string $storage): void
+    {
+        $log = $this->log($storage);
+        $log->record('/zone', 'en', self::at('2026-11-01T12:00:00+02:00'));
+
+        $this->assertSame('2026-11-01T10:00:00+00:00', $log->find(NotFoundEntries::id('en', '/zone'))['last_hit_at']);
     }
 
     #[DataProvider('storages')]

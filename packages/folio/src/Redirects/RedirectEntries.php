@@ -117,7 +117,8 @@ final class RedirectEntries implements RedirectStore
     /**
      * Stores an entry; the one at the same address (area or not, locale, path) is replaced.
      * Missing columns get their defaults: any language, not an area, mode "one", status 301,
-     * kind "manual", no hits, created now.
+     * kind "manual"; hits, created_at, created_by and last_hit_at are kept from the replaced
+     * entry, else no hits, created now.
      *
      * @param array<string, mixed> $row
      * @throws \InvalidArgumentException for a path that is not a site path, or an unknown mode, status or kind
@@ -141,8 +142,17 @@ final class RedirectEntries implements RedirectStore
             throw new \InvalidArgumentException("Unknown redirect kind: {$kind}");
         }
 
+        $id = Redirect::id($area ? 'area' : 'exact', $locale, $path);
+        // Re-pointing or editing an entry keeps its counts and who made it when.
+        $existing = $this->find($id);
+        foreach (['hits', 'created_at', 'created_by', 'last_hit_at'] as $kept) {
+            if ($existing !== null && !array_key_exists($kept, $row)) {
+                $row[$kept] = $existing[$kept];
+            }
+        }
+
         $this->write([
-            'id' => Redirect::id($area ? 'area' : 'exact', $locale, $path),
+            'id' => $id,
             'path' => $path,
             'locale' => $locale,
             'area' => $area,
