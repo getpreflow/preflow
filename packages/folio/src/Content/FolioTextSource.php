@@ -11,8 +11,8 @@ use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Field\AcceptsTranslatedTexts;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\ReportsTranslatableTexts;
-use Preflow\Folio\Publishing\Publisher;
 use Preflow\Folio\Publishing\PublishState;
+use Preflow\Folio\Publishing\Publisher;
 use Preflow\Folio\Publishing\VersionConflict;
 use Preflow\I18n\Machine\Scope;
 use Preflow\I18n\Machine\TextFormat;
@@ -21,6 +21,7 @@ use Preflow\I18n\Machine\TranslationSettings;
 use Preflow\I18n\Machine\TranslationUnit;
 use Preflow\I18n\Machine\WriteOutcome;
 use Preflow\I18n\Machine\WriteOutcomeStatus;
+use Preflow\Validation\Rules\Slug;
 use Preflow\Validation\ValidationException;
 
 /**
@@ -67,6 +68,7 @@ final class FolioTextSource implements TextSource
         private readonly TranslationSettings $settings,
         private readonly ?ReviewIndexUpdater $review = null,
         private readonly ?\Preflow\Folio\Redirects\RecordAddresses $addresses = null,
+        private readonly ?FrontendResolver $frontend = null,
     ) {}
 
     public function collection(): string
@@ -207,6 +209,9 @@ final class FolioTextSource implements TextSource
             $before[$text->path] = $text->in($to);
         }
         $leftAlone = []; // changed since units() read it: the person's text wins
+        // The fields the public address is built from take only a-z, digits and hyphens: a
+        // translated address is made into one ("Über uns" → "ueber-uns"), or not written.
+        $addressModes = $this->frontend?->routeFor($this->typeKey)?->addressModes() ?? [];
         foreach ($texts as $path => $text) {
             $path = (string) $path;
             if (!isset($known[$path]) || !is_string($text) || trim($text) === '') {
@@ -217,6 +222,12 @@ final class FolioTextSource implements TextSource
                 continue;
             }
             $field = self::topField($path);
+            if ($field === $path && isset($addressModes[$field])) {
+                $text = Slug::clean($text, $addressModes[$field] === 'path');
+                if ($text === '') {
+                    continue;
+                }
+            }
             $config = $def->fields[$field]->config;
             $type = $this->fieldTypes->get($def->fields[$field]->type);
             if ($field === $path) {

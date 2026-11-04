@@ -74,9 +74,18 @@ final class RemovalPromptFormTest extends TestCase
         ]), null);
     }
 
+    public function test_editor_marks_the_address_field(): void
+    {
+        $this->publishPage('p1', ['en' => 'about']);
+        $html = $this->editor('p1');
+
+        $this->assertMatchesRegularExpression('#<div class="folio-field-wrap" data-folio-address="segment">\s*<div[^>]*>\s*<label for="[^"]*slug#', $html);
+        $this->assertSame(1, substr_count($html, 'data-folio-address='), 'only the slug builds the address');
+    }
+
     public function test_editor_shows_old_addresses(): void
     {
-        $this->publishPage('p1', ['en' => 'about', 'de' => 'über-uns']);
+        $this->publishPage('p1', ['en' => 'about', 'de' => 'ueber-uns']);
         $this->publishPage('p2', ['en' => 'team']);
         $this->assertStringNotContainsString('Old addresses', $this->editor('p1'), 'no note while nothing redirects here');
 
@@ -86,7 +95,7 @@ final class RemovalPromptFormTest extends TestCase
         $this->assertStringContainsString('Old addresses', $html);
         // As visitors see them: the other language's prefix, the umlaut readable.
         $this->assertStringContainsString('<li>/about</li>', $html);
-        $this->assertStringContainsString('<li>/de/über-uns</li>', $html);
+        $this->assertStringContainsString('<li>/de/ueber-uns</li>', $html);
         $this->assertStringContainsString('href="/folio/redirects?record=page:p1"', $html);
         $this->assertStringNotContainsString('Old addresses', $this->editor('p2'));
 

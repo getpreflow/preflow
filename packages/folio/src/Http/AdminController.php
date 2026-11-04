@@ -91,7 +91,7 @@ final class AdminController
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
-        $this->validator = $validator ?? new RecordValidator($fieldTypes, $dm);
+        $this->validator = $validator ?? new RecordValidator($fieldTypes, $dm, $frontend);
     }
 
     public function index(ServerRequestInterface $request): ResponseInterface
@@ -1197,6 +1197,8 @@ final class AdminController
                 $unchecked[$field] = ['count' => ($unchecked[$field]['count'] ?? 0) + 1, 'plain' => $text->path === $field];
             }
         }
+        // The fields the public address is built from: admin.js keeps them to a-z, digits and hyphens.
+        $addressFields = $this->frontend->routeFor($type)?->addressModes() ?? [];
         foreach ($typeDef->fields as $name => $fieldDef) {
             if ($name === $typeDef->idField || ($fieldDef->config['hidden'] ?? false) === true) {
                 continue;
@@ -1272,6 +1274,7 @@ final class AdminController
                 'structured' => $fieldType instanceof BlocksFieldType,
                 'falls_back' => $fallsBack,
                 'reference' => $reference,
+                'address' => $addressFields[$name] ?? null,
             ];
             foreach ($fieldType->assets() as $asset) {
                 $editorAssets[$asset] = true;

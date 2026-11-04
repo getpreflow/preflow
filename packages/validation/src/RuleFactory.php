@@ -15,6 +15,7 @@ use Preflow\Validation\Rules\Nullable;
 use Preflow\Validation\Rules\Numeric;
 use Preflow\Validation\Rules\Regex;
 use Preflow\Validation\Rules\Required;
+use Preflow\Validation\Rules\Slug;
 use Preflow\Validation\Rules\Step;
 use Preflow\Validation\Rules\Url;
 
@@ -37,6 +38,7 @@ final class RuleFactory
         'in' => InList::class,
         'regex' => Regex::class,
         'confirmed' => Confirmed::class,
+        'slug' => Slug::class,
     ];
 
     /**

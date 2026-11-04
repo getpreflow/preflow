@@ -21,6 +21,10 @@ return [
     'step' => 'Muss ein Vielfaches von :step sein.',
     'in' => 'Muss eines davon sein: :values.',
     'regex' => 'Das Format ist ungültig.',
+    'slug' => [
+        'segment' => 'Nur Kleinbuchstaben a–z, Ziffern und einzelne Bindestriche dazwischen, z. B. «ueber-uns».',
+        'path' => 'Nur Kleinbuchstaben a–z, Ziffern, einzelne Bindestriche und Schrägstriche dazwischen, z. B. «doku/ueber-uns».',
+    ],
     'confirmed' => 'Die Bestätigung stimmt nicht überein.',
     'unique' => 'Dieser Wert ist bereits vergeben.',
 ];

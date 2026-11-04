@@ -40,6 +40,8 @@ final class ValidationTranslationTest extends TestCase
             'step' => [['f' => ['step:0.5']], ['f' => 2.3], 'Must be a multiple of 0.5.', 'Muss ein Vielfaches von 0.5 sein.', 'Doit être un multiple de 0.5.'],
             'in' => [['f' => ['in:a,b']], ['f' => 'c'], 'Must be one of: a, b.', 'Muss eines davon sein: a, b.', 'Doit être l’une de ces valeurs : a, b.'],
             'regex' => [['f' => ['regex:/^a$/']], ['f' => 'b'], 'Format is invalid.', 'Das Format ist ungültig.', 'Le format n’est pas valide.'],
+            'slug' => [['f' => ['slug']], ['f' => 'über'], 'Only lowercase letters a-z, digits and single hyphens between them, e.g. "about-us".', 'Nur Kleinbuchstaben a–z, Ziffern und einzelne Bindestriche dazwischen, z. B. «ueber-uns».', 'Uniquement des lettres minuscules a–z, des chiffres et des tirets simples entre eux, p. ex. « a-propos ».'],
+            'slug path' => [['f' => ['slug:path']], ['f' => 'a//b'], 'Only lowercase letters a-z, digits, single hyphens and slashes between them, e.g. "docs/about-us".', 'Nur Kleinbuchstaben a–z, Ziffern, einzelne Bindestriche und Schrägstriche dazwischen, z. B. «doku/ueber-uns».', 'Uniquement des lettres minuscules a–z, des chiffres, des tirets et des barres obliques simples entre eux, p. ex. « docs/a-propos ».'],
             'confirmed' => [['f' => ['confirmed']], ['f' => 'a', 'f_confirmation' => 'b'], 'Confirmation does not match.', 'Die Bestätigung stimmt nicht überein.', 'La confirmation ne correspond pas.'],
         ];
     }

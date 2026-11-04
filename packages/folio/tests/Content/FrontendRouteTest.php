@@ -11,6 +11,26 @@ use Preflow\Folio\Content\FrontendRoute;
 
 final class FrontendRouteTest extends TestCase
 {
+    public function test_address_modes_name_each_parameter(): void
+    {
+        $this->assertSame(['year' => 'segment', 'slug' => 'segment'], FrontendRoute::fromConfig('event', ['route' => '/events/{year}/{slug}'])->addressModes());
+        $this->assertSame(['path' => 'path'], FrontendRoute::fromConfig('doc', ['route' => '/docs/{...path}'])->addressModes());
+    }
+
+    public function test_home_must_be_a_clean_address(): void
+    {
+        $this->assertSame('start-page', FrontendRoute::fromConfig('page', ['home' => 'start-page'])->home);
+        $this->assertSame('docs/start', FrontendRoute::fromConfig('doc', ['route' => '/docs/{...path}', 'home' => 'docs/start'])->home);
+        foreach (['Home', 'über', 'start page'] as $home) {
+            try {
+                FrontendRoute::fromConfig('page', ['home' => $home]);
+                $this->fail($home);
+            } catch (FrontendConfigException $e) {
+                $this->assertStringContainsString('frontend.home', $e->getMessage());
+            }
+        }
+    }
+
     public function test_permission_and_login_are_read(): void
     {
         $route = FrontendRoute::fromConfig('resource', [

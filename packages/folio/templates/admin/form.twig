@@ -96,7 +96,7 @@
             </details>
         {% endif %}
         {% for field in fields %}
-            <div class="folio-field-wrap">
+            <div class="folio-field-wrap"{% if field.address|default(null) %} data-folio-address="{{ field.address }}"{% endif %}>
                 {{ field.html|raw }}
                 {% if multilingual|default(false) %}
                     {% if not field.translatable and not field.structured|default(false) %}
