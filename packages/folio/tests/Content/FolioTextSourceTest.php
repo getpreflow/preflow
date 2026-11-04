@@ -49,6 +49,18 @@ final class FolioTextSourceTest extends TestCase
                 'sections' => ['type' => 'blocks'],
             ],
         ]);
+        $this->writeModel('guide', [
+            'label' => 'Guides',
+            'publishing' => false,
+            'frontend' => ['route' => '/guides/{slug}'],
+            'fields' => ['slug' => ['type' => 'string', 'translatable' => true], 'title' => ['type' => 'string', 'translatable' => true]],
+        ]);
+        $this->writeModel('post', [
+            'label' => 'Posts',
+            'publishing' => true,
+            'frontend' => ['route' => '/posts/{...slug}'],
+            'fields' => ['slug' => ['type' => 'string', 'translatable' => true]],
+        ]);
         $this->writeModel('memo', [
             'label' => 'Memos',
             'publishing' => false,
@@ -344,6 +356,35 @@ final class FolioTextSourceTest extends TestCase
         $this->assertSame(['en' => 'Note', 'de' => 'Notiz'], $stored->get('text'));
         $this->assertCount(1, $this->translationStatus()->unchecked($stored->getType(), $stored, 'de'));
         $this->assertSame(WriteOutcomeStatus::Skipped, $memos->write('missing', 'de', ['text' => 'x'])->status);
+    }
+
+    public function test_a_translated_address_is_written_as_a_clean_address(): void
+    {
+        $this->working('guide', 'g1', ['slug' => ['en' => 'about-us'], 'title' => ['en' => 'About us']]);
+
+        $outcome = $this->source('guide')->write('g1', 'de', ['slug' => 'Über uns', 'title' => 'Über uns']);
+
+        $this->assertSame(WriteOutcomeStatus::Written, $outcome->status);
+        $stored = $this->stored('guide', 'g1');
+        $this->assertSame(['en' => 'about-us', 'de' => 'ueber-uns'], $stored->get('slug'));
+        $this->assertSame(['en' => 'About us', 'de' => 'Über uns'], $stored->get('title'), 'only address fields are changed');
+    }
+
+    public function test_a_translated_address_with_no_a_to_z_form_is_not_written(): void
+    {
+        $this->working('guide', 'g1', ['slug' => ['en' => 'about-us'], 'title' => ['en' => 'About us']]);
+
+        $this->assertSame(WriteOutcomeStatus::Skipped, $this->source('guide')->write('g1', 'de', ['slug' => '!!'])->status);
+        $this->assertSame(['en' => 'about-us'], $this->stored('guide', 'g1')->get('slug'));
+    }
+
+    public function test_a_translated_catch_all_address_keeps_its_slashes_in_the_draft(): void
+    {
+        $this->working('post', 'p1', ['slug' => ['en' => 'docs/start']]);
+        $this->publisher()->publish($this->stored('post', 'p1'), 'tester');
+
+        $this->assertSame(WriteOutcomeStatus::Written, $this->source('post')->write('p1', 'de', ['slug' => 'Doku/Erste Schritte'])->status);
+        $this->assertSame(['en' => 'docs/start', 'de' => 'doku/erste-schritte'], $this->stored('post', 'p1')->get('slug'));
     }
 
     public function test_registered_per_multilingual_type(): void

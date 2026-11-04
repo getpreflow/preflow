@@ -62,6 +62,34 @@ final class SlugRuleTest extends TestCase
         $this->assertTrue($factory->resolve('slug:path')->validate('a/b', new ValidationContext('f', [])));
     }
 
+    public function test_clean_turns_text_into_a_valid_part(): void
+    {
+        $cases = [
+            'Über uns' => 'ueber-uns',
+            'Straße & Plätze' => 'strasse-plaetze',
+            'ÖKO Häuser' => 'oeko-haeuser',
+            'Café crème' => 'cafe-creme',
+            "U\u{0308}ber" => 'ueber',
+            '  --Top 10 Spiele!!  ' => 'top-10-spiele',
+            'a_b.c' => 'a-b-c',
+            'a/b' => 'a-b',
+            'already-clean' => 'already-clean',
+            'Привет' => '',
+        ];
+        foreach ($cases as $text => $expected) {
+            $this->assertSame($expected, Slug::clean($text), $text);
+        }
+        $this->assertSame('doku/erste-schritte', Slug::clean('/Doku//Erste Schritte/', path: true));
+    }
+
+    public function test_what_clean_makes_passes_the_rule(): void
+    {
+        foreach (['Über uns', 'Ça va?', 'Øresund 2026', '/a//B/'] as $text) {
+            $this->assertTrue($this->check(Slug::clean($text, path: true), true), $text);
+            $this->assertTrue($this->check(Slug::clean($text)), $text);
+        }
+    }
+
     public function test_an_unknown_mode_throws(): void
     {
         $this->expectException(\InvalidArgumentException::class);

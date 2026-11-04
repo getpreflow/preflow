@@ -17,6 +17,9 @@ Rules for validating arrays and records. A rule is written as a string alias wit
   them (`ueber-uns`). Umlauts, capitals, spaces, underscores and leading, trailing or double hyphens
   are refused. `slug:path` also allows single slashes between parts (`docs/ueber-uns`). Empty values
   pass. The messages are `validation.slug.segment` and `validation.slug.path`.
+  `Slug::clean($text, path: false)` makes text into a valid value (`Über uns` → `ueber-uns`, `é` → `e`;
+  with `path: true` single slashes stay); text with no a-z form gives `''`. Accents are dropped with
+  `ext-intl`'s `Normalizer`; without it only the letters ä, ö, ü, ß, æ, œ, ø, đ, ł and þ are converted.
 
 ## Rules for a filled value only
 

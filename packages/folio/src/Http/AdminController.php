@@ -1198,12 +1198,7 @@ final class AdminController
             }
         }
         // The fields the public address is built from: admin.js keeps them to a-z, digits and hyphens.
-        $addressFields = [];
-        if (($route = $this->frontend->routeFor($type)) !== null) {
-            foreach ($route->paramNames as $param) {
-                $addressFields[$param] = str_contains($route->pattern, '{...' . $param . '}') ? 'path' : 'segment';
-            }
-        }
+        $addressFields = $this->frontend->routeFor($type)?->addressModes() ?? [];
         foreach ($typeDef->fields as $name => $fieldDef) {
             if ($name === $typeDef->idField || ($fieldDef->config['hidden'] ?? false) === true) {
                 continue;

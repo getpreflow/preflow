@@ -1442,6 +1442,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $container->get(\Preflow\I18n\Machine\TranslationSettings::class),
                 $container->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
                 self::addresses($container),
+                $container->get(FrontendResolver::class),
             ));
         }
     }

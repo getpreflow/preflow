@@ -269,8 +269,12 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   records every live page's current addresses; without that run, the first rename of a page after upgrading
   redirects only for publishing types. Also in 0.52.0 (owner: addresses never hold umlauts): the fields a page's
   address is built from only take lowercase `a-z`, digits and single hyphens (new rule `slug` / `slug:path` in
-  `preflow/validation`); the editor converts what is typed (`Über uns` → `ueber-uns`). Before upgrading, check that
-  no page's address breaks the rule, or that page refuses its next save until the address is fixed.
+  `preflow/validation`, `Slug::clean()`); the editor and machine translation convert what is typed or translated
+  (`Über uns` → `ueber-uns`), `frontend.home` must follow the rule too. Before upgrading, check that no page's address
+  breaks the rule: saving such a page from the editor converts the address in the language being edited (the old
+  address then redirects), and a bad address in another language refuses the save until it is fixed there. A site
+  without any `frontend` block whose `page` model is served by its own routing also gets its `slug` checked, since
+  Folio's fallback route `/{slug}` serves it.
 - ~~**GEO (generative engine optimisation):** `llms.txt` and plain-text/Markdown views of pages for AI search.
   Owner's idea: an `{% apply geo %}` block in component templates, like `{% apply css %}`, holding the
   component's Markdown; the blocks of a page are collected in render order and served as `/page.md` and for

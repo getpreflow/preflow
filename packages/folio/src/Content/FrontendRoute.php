@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Folio\Content;
 
 use Preflow\Folio\Routing\PatternCompiler;
+use Preflow\Validation\Rules\Slug;
+use Preflow\Validation\ValidationContext;
 
 /** One content type's public route, from its "frontend" block. */
 final readonly class FrontendRoute
@@ -55,7 +57,7 @@ final readonly class FrontendRoute
             paramNames: $compiled['paramNames'],
             isCatchAll: $compiled['isCatchAll'],
             staticSegments: $static,
-            home: isset($frontend['home']) ? (string) $frontend['home'] : null,
+            home: self::home($type, $frontend['home'] ?? null),
             template: isset($frontend['template']) ? (string) $frontend['template'] : null,
             publishedField: (string) ($published['field'] ?? 'status'),
             publishedValue: self::publishedValue($type, $published['value'] ?? 'published'),
@@ -114,6 +116,19 @@ final readonly class FrontendRoute
         return $login;
     }
 
+    /** The home record's value of the first parameter: an address part like any other ("home"). */
+    private static function home(string $type, mixed $home): ?string
+    {
+        if ($home === null) {
+            return null;
+        }
+        if (!is_scalar($home) || (new Slug())->validate((string) $home, new ValidationContext('home', [])) !== true || (string) $home === '') {
+            throw new FrontendConfigException(sprintf('Folio type "%s": frontend.home must hold only lowercase a-z, digits and single hyphens, e.g. "home".', $type));
+        }
+
+        return (string) $home;
+    }
+
     /**
      * The configured value keeps its JSON type: storage compares strictly, so a
      * boolean field needs true, not "1".
@@ -165,6 +180,22 @@ final readonly class FrontendRoute
         if ($params === 0) {
             throw $fail('it needs at least one parameter, e.g. "/{slug}" (use "home" to serve "/")');
         }
+    }
+
+    /**
+     * How each parameter's value is written: "segment" (a-z, digits, hyphens) or "path" (a
+     * catch-all, also single slashes between parts).
+     *
+     * @return array<string, 'segment'|'path'>
+     */
+    public function addressModes(): array
+    {
+        $modes = [];
+        foreach ($this->paramNames as $name) {
+            $modes[$name] = str_contains($this->pattern, '{...' . $name . '}') ? 'path' : 'segment';
+        }
+
+        return $modes;
     }
 
     /** The pattern with parameter names erased, for duplicate detection ("/{slug}" ≡ "/{title}"). */

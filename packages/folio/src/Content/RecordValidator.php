@@ -98,12 +98,7 @@ final class RecordValidator
         if ($route === null) {
             return [];
         }
-        $rules = [];
-        foreach ($route->paramNames as $name) {
-            $rules[$name] = new AddressPart($typeDef->locales, str_contains($route->pattern, '{...' . $name . '}'));
-        }
-
-        return $rules;
+        return array_map(static fn (string $mode): AddressPart => new AddressPart($typeDef->locales, $mode === 'path'), $route->addressModes());
     }
 
     /** @param array<string, mixed> $config */

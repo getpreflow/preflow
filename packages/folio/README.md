@@ -299,11 +299,22 @@ A type's `key` cannot be a path Folio uses under its prefix (`login`, `logout`,
 - `route`: `{field}` matches one path segment, `{...field}` matches the rest of the
   path. The parameter names are record fields used for the lookup. Since 0.52 their values may
   only hold lowercase `a-z`, digits and single hyphens (`ueber-uns`; a `{...field}` also single
-  slashes between parts): a save or publish with an umlaut, a capital, a space or anything else is
-  refused with the field's `validation.slug` message, in every language. The editor converts what
-  is typed as the field is left and before sending (`Über uns` becomes `ueber-uns`). A `readonly`
-  field is not checked.
-- `home` (optional): the value `/` resolves to. Only one type may declare it.
+  slashes between parts):
+  - a save or publish through Folio with an umlaut, a capital, a space or anything else is refused
+    with the field's `validation.slug` message, in every language;
+  - the editor converts what is typed as the field is left and before sending (`Über uns` becomes
+    `ueber-uns`; text with no a-z form, such as another script, stays as typed so the message
+    explains it), and machine translation writes a translated address the same way
+    (`Slug::clean()`), leaving it out when nothing is left;
+  - route parameters should be text fields (`string`, `text`): the editor converts only those, so
+    a `select` whose option keys aren't valid, a date with a time or a decimal number can never
+    be saved;
+  - not checked: a `readonly` field (a value a hook sets must be valid itself), and writes that
+    don't go through Folio's validation (an app's own `$dm->saveType()`, `Transfer\Importer`
+    restoring an archive).
+- `home` (optional): the value `/` resolves to. Only one type may declare it. It must be a valid
+  address part too (`home`, `start-page`); anything else stops the boot with a
+  `FrontendConfigException`.
 - `template` (optional): a userland Twig path. When it is absent, Folio uses
   `@folio/frontend/{type}.twig`, then `@folio/frontend/page.twig`. Templates receive
   `record`, `rendered` (field → safe HTML), `type`, `preview`, `locale`, `alternates` and

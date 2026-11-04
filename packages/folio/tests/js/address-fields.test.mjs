@@ -67,6 +67,27 @@ test('sending the form cleans an address the editor never left', () => {
 
 test('an empty address stays empty', () => {
     const { w, slug } = editor();
-    change(w, slug, ' !! ');
+    change(w, slug, '');
     assert.equal(slug.value, '');
+});
+
+test('text with no a-z form is left as typed, for the server to explain', () => {
+    const { w, slug } = editor();
+    change(w, slug, 'Привет');
+    assert.equal(slug.value, 'Привет');
+});
+
+test('a decomposed umlaut (u + U+0308, as pasted from some files) still becomes ue', () => {
+    const { w, slug } = editor();
+    change(w, slug, 'U\u0308ber');
+    assert.equal(slug.value, 'ueber');
+});
+
+test('a textarea address field is cleaned too', () => {
+    const { w, form } = editor();
+    const wrap = form.appendChild(w.document.createElement('div'));
+    wrap.setAttribute('data-folio-address', 'segment');
+    const area = wrap.appendChild(w.document.createElement('textarea'));
+    change(w, area, 'Über uns');
+    assert.equal(area.value, 'ueber-uns');
 });
