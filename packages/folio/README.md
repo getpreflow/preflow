@@ -144,6 +144,17 @@ delete or unpublish (see [Redirects](#redirects)).
 
 **Block editor fragments** need `edit` on any type.
 
+**New permissions.** A permission that arrives with an update is never given to a role by Folio.
+Folio keeps the list of permissions this site has seen (`Preflow\Folio\Permissions\KnownPermissions`,
+table `folio_known_permissions`, created by `preflow migrate`, since 0.53). The first time it is
+read, every enabled permission becomes known silently, except `redirects.manage`, which came with
+the release that introduced the list. After that, each new one counts as new until someone dismisses
+it or adds it to a role. A permission of a switched-off extension is new only once the extension is
+switched on. `preflow migrate` prints the new ones ("New permissions to review in Settings →
+Roles: …") without marking them known. With `preflow/rbac` the notice, the sidebar count and the
+dashboard line are shown to whoever may edit roles; see
+[rbac](../rbac/README.md#new-permissions). Before `preflow migrate` has run, they show nothing.
+
 The sidebar, dashboard cards, list buttons and form buttons follow the same
 answers. A form the user may not save is shown read-only. Each check is also
 enforced on the server, so a hidden button is never the only protection. A
@@ -1099,10 +1110,32 @@ php preflow folio:extensions:check
 - `disable <name>` works without booting the app, so it is the recovery path for an
   extension that breaks boot or whose folder is gone. Disabling an extension forgets
   its `disabled_parts`.
-- `apply` runs the Folio table sync (as `preflow migrate` does) and then `install()` of
-  every enabled extension, once per version per environment (the installed version is
-  kept in the environment's own storage, never exported). Run it on every deploy.
+- `apply` runs the Folio table sync (as `preflow migrate` does) and then, for every enabled
+  extension, `install()` once per version per environment (the installed version is kept in the
+  environment's own storage, never exported) and `seed()` on every run (since 0.53). Run it on
+  every deploy.
 - `check` boots with debug forced on and exits 1 on any extension error; use it in CI.
+
+### Seeding on every deploy
+
+`install()` runs once per version, so it cannot bring anything a later deploy adds. For data
+that must follow the code, such as the roles an extension creates, override `seed()` (since 0.53):
+
+```php
+public function seed(Container $c): void
+{
+    $c->get(RoleStore::class)->ensure('staff', 'shop_manager', 'Shop manager', ['shop.view', 'shop.refund']);
+}
+```
+
+- `seed()` runs on every `folio:extensions:apply`, after `install()` when that runs. It prints
+  nothing, and a run that only seeds still says "nothing to do".
+- It must be safe to run again and again. `RoleStore::ensure()` is: it creates a missing role and
+  grants an existing role only the permissions the list names for the first time.
+- Apply resolves every enabled extension from the container on every run, so keep constructors
+  light.
+- Roles an extension or `config/roles.php` seeds come back on the next deploy if someone deleted
+  them in Folio. To retire one, take it out of the seed list (or `config/roles.php`) first.
 
 ### Screens
 
@@ -1138,8 +1171,9 @@ final class Overview
 {% endblock %}
 ```
 
-- `FolioScreen(path, label, icon, section, order, permission)`: the permission is
-  required. The `label` may be a translation key (`'site.screens.queue'`): the sidebar item
+- `FolioScreen(path, label, icon, section, order, permission, assets, nav)`: the permission is
+  required. `nav: false` (since 0.53) leaves the screen out of the sidebar (and so its
+  `#[NavBadge]`); routes, permission and assets stay, and other pages link to it. The `label` may be a translation key (`'site.screens.queue'`): the sidebar item
   and `screen.label` then follow each staff member's admin language; plain text stays as written.
   `section` is `settings` by default; a new name adds a sidebar section after the built-in ones.
 - A method returns a `ScreenView(template, data)` (rendered in the admin layout with
@@ -1291,6 +1325,8 @@ final class NoteTweaks
 | `#[RecordAction(name, label, permission, icon, confirm, toolbar: true)]` | `fn(DynamicRecord, ServerRequestInterface): ?ResponseInterface` | A POST button at `{prefix}/{type}/{id}/_action/{name}`; null redirects back to the form with "{label}: done". Needs the permission and the type's edit permission. With `toolbar: false` there is no button in the form header; the action stays routed and permission-checked, for a form inside a `FormPanel` to post to. |
 | `#[ListColumn(label, position: 100)]` | `fn(DynamicRecord): string\|Badge\|Link` | A column after the type's own, ordered by position, shown as escaped text, as a link for `new Link($label, $url)` (`$url` is `member/3/edit`, relative to the admin prefix, or a site path like `/shop/order?id=3`; anything with a scheme, host, `//`, backslash or whitespace is no link and shows the escaped label), or as a status pill for `new Badge($label, $tone)` (tone `''`, `published`, `draft`, `changed` or `incomplete`; the label is escaped, an unknown tone is shown plain). |
 | `#[NavBadge]` | `fn(): ?int` | A count badge on the type's sidebar item (e.g. waiting members); also on a `#[FolioScreen]` class (see Screens), computed only while the item is visible and at most once per request; `null`, `0` or any non-int return shows none, a callback that throws shows no badge (the admin still renders), several add up, one per class. Keep it cheap: it runs on admin page renders. |
+| `#[ListNotice]` | `fn(): ?string` | A notice above the type's list (since 0.53), on the full page only, not on live-search refreshes. The method returns HTML that Folio prints as it is, so it escapes its own content (usually by rendering a Twig template). Use Folio's `.folio-notice` markup, e.g. `<div class="folio-notice" role="status"><p>…</p></div>`, for the spacing. `null` or `''` shows nothing, and so does a throw. Several add up, in extension name order. |
+| `#[DashboardNotice]` | `fn(): ?string` | A notice above the dashboard's cards (since 0.53), the same rules as `#[ListNotice]`. Only called for a user who may view the type (`{type}.view`); the notices are grouped by type, in extension name order. |
 | `#[FieldPlaceholder(field)]` | `fn(string $locale): ?string` | What the field means while it is empty, as its placeholder in the edit form in the locale being edited (e.g. a standard text from the lang files); it replaces the "falls back to" placeholder of a translatable field. The field must exist on the type (boot error), one per field. |
 | `#[BeforeSave]` | `fn(DynamicRecord): void` | Before validation; may `set()` fields. Throw `Preflow\Validation\ValidationException` to refuse the save: the form is shown again with its errors (422). |
 | `#[AfterSave]` | `fn(DynamicRecord): void` | After the record is stored. |
