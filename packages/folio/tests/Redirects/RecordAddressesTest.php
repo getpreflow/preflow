@@ -19,6 +19,7 @@ use Preflow\Folio\Publishing\Publisher;
 use Preflow\Folio\Redirects\AddressTable;
 use Preflow\Folio\Redirects\FolioRedirectTargets;
 use Preflow\Folio\Redirects\LiveRecords;
+use Preflow\Folio\Redirects\NotFoundEntries;
 use Preflow\Folio\Redirects\RecordAddresses;
 use Preflow\Folio\Redirects\RedirectEntries;
 use Preflow\Folio\Redirects\RemovalTarget;
@@ -45,6 +46,8 @@ final class RecordAddressesTest extends TestCase
     private RedirectEntries $entries;
 
     private RecordAddresses $addresses;
+
+    private NotFoundEntries $notFound;
 
     protected function setUp(): void
     {
@@ -75,7 +78,8 @@ final class RecordAddressesTest extends TestCase
         $this->resolver = FrontendResolver::fromCatalog($catalog, $this->dm);
         $this->live = new LiveRecords($this->dm, $this->publisher, $this->resolver);
         $this->entries = new RedirectEntries($this->dm);
-        $this->addresses = new RecordAddresses($this->dm, $this->entries, $this->resolver, $this->live);
+        $this->notFound = new NotFoundEntries($this->dm);
+        $this->addresses = new RecordAddresses($this->dm, $this->entries, $this->resolver, $this->live, notFound: $this->notFound);
     }
 
     protected function tearDown(): void
@@ -316,6 +320,114 @@ final class RecordAddressesTest extends TestCase
         $this->assertFalse($broken->sync('page', 'p1'));
         $broken->removed('page', 'p1', null);
         $this->assertSame([], $broken->of('page', 'p1'));
+    }
+
+    private function notFoundAt(string $locale, string $path): bool
+    {
+        return $this->notFound->find(NotFoundEntries::id($locale, $path)) !== null;
+    }
+
+    public function test_an_address_a_page_takes_leaves_the_not_found_list(): void
+    {
+        $at = new \DateTimeImmutable('2026-11-01T10:00:00Z');
+        $this->notFound->record('/about', 'en', $at);
+        $this->notFound->record('/ueber-uns', 'de', $at);
+        $this->notFound->record('/elsewhere', 'en', $at);
+
+        $this->publishAndSync('p1', ['en' => 'about', 'de' => 'ueber-uns']);
+
+        $this->assertFalse($this->notFoundAt('en', '/about'));
+        $this->assertFalse($this->notFoundAt('de', '/ueber-uns'));
+        $this->assertTrue($this->notFoundAt('en', '/elsewhere'), 'other addresses stay listed');
+
+        // Seeding records a page's addresses too: they leave the list.
+        $this->notFound->record('/news/hello', 'en', $at);
+        $this->working('post', 'n1', ['slug' => 'hello', 'status' => 'published']);
+        $this->addresses->seed();
+        $this->assertFalse($this->notFoundAt('en', '/news/hello'));
+    }
+
+    public function test_addresses_that_get_an_entry_leave_the_not_found_list(): void
+    {
+        $at = new \DateTimeImmutable('2026-11-01T10:00:00Z');
+        $this->publishAndSync('p1', ['en' => 'a']);
+        // Hit while something went wrong (the rows were there; a cache served a 404).
+        $this->notFound->record('/a', 'en', $at);
+        $this->publishAndSync('p1', ['en' => 'b']);
+        $this->assertNotNull($this->entries->at('en', '/a'), 'an automatic entry');
+        $this->assertFalse($this->notFoundAt('en', '/a'));
+
+        // Removed: the record's address gets a "removed" entry.
+        $this->working('post', 'n1', ['slug' => 'hello', 'status' => 'published']);
+        $this->addresses->sync('post', 'n1');
+        $this->notFound->record('/news/hello', 'de', $at);
+        $this->working('post', 'n1', ['slug' => 'hello', 'status' => 'draft']);
+        $this->assertTrue($this->addresses->sync('post', 'n1'));
+        $this->assertSame('removed', $this->entries->at('de', '/news/hello')['kind'] ?? null);
+        $this->assertFalse($this->notFoundAt('de', '/news/hello'));
+    }
+
+    public function test_entries_of_others_survive_a_removal_without_target(): void
+    {
+        $this->publishAndSync('p1', ['en' => 'about']);
+        $this->entries->save(['path' => '/team-old', 'locale' => '', 'target_type' => 'page', 'target_id' => 'p1', 'kind' => 'manual', 'status' => 302]);
+        $this->entries->save(['path' => '/archive', 'locale' => '', 'area' => true, 'mode' => 'one', 'target_type' => 'page', 'target_id' => 'p1', 'kind' => 'manual']);
+        $targets = new FolioRedirectTargets($this->live, $this->resolver);
+
+        $this->publisher->unpublish('page', 'p1');
+        $this->addresses->removed('page', 'p1', null);
+
+        $this->assertSame([
+            'en /about → - (removed, page:p1, 301)',
+            ' /archive/* → page:p1 (manual, -, 301)',
+            ' /team-old → page:p1 (manual, -, 302)',
+        ], $this->entryLines());
+        $this->assertNull($targets->url('page', 'p1', 'en'), 'a 404 while the page is off');
+
+        $this->publishAndSync('p1', ['en' => 'about']);
+
+        $this->assertSame('/about', $targets->url('page', 'p1', 'en'), 'the hand-made entry works again');
+        $this->assertSame([
+            ' /archive/* → page:p1 (manual, -, 301)',
+            ' /team-old → page:p1 (manual, -, 302)',
+        ], $this->entryLines());
+    }
+
+    public function test_seed_goes_on_past_a_type_that_fails(): void
+    {
+        // A type stored where its table does not exist: its records cannot be read.
+        file_put_contents($this->dir . '/models/broken.json', (string) json_encode(
+            ['key' => 'broken', 'table' => 'broken', 'storage' => 'nowhere', 'id_field' => 'uuid', 'publishing' => false,
+                'frontend' => ['route' => '/broken/{slug}'], 'fields' => ['slug' => ['type' => 'string'], 'status' => ['type' => 'string']]],
+        ));
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $registry = new TypeRegistry($this->dir . '/models', new Locales(['en', 'de'], 'en'));
+        $dm = new DataManager(
+            drivers: [
+                'json' => new JsonFileDriver($this->dir . '/store'),
+                'default' => new JsonFileDriver($this->dir . '/internal'),
+                'nowhere' => new \Preflow\Data\Driver\SqliteDriver($pdo),
+            ],
+            defaultDriver: 'json',
+            typeRegistry: $registry,
+        );
+        $catalog = new TypeCatalog($this->dir . '/models');
+        $resolver = FrontendResolver::fromCatalog($catalog, $dm);
+        $publisher = new Publisher($dm, $catalog, new RecordValidator(new FieldTypeRegistry(), $dm));
+        $warnings = [];
+        $addresses = new RecordAddresses($dm, new RedirectEntries($dm), $resolver, new LiveRecords($dm, $publisher, $resolver), warn: static function (string $m) use (&$warnings): void {
+            $warnings[] = $m;
+        });
+        $this->working('post', 'n1', ['slug' => 'hello', 'status' => 'published']);
+
+        $lines = $addresses->seed();
+
+        $this->assertSame('folio: recorded the public addresses of 1 record.', $lines[0]);
+        $this->assertCount(2, $lines);
+        $this->assertStringStartsWith('folio: addresses not recorded for broken: ', $lines[1]);
+        $this->assertCount(1, $warnings);
+        $this->assertSame(['en' => '/news/hello', 'de' => '/news/hello'], $addresses->of('post', 'n1'));
     }
 
     public function test_removal_target_parse(): void

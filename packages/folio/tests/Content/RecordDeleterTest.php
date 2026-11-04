@@ -589,8 +589,24 @@ final class RecordDeleterTest extends TestCase
             '/designers/Uwe' => '- (removed)',
             '/games/Agricola' => '- (removed)',
             '/games/Caverna' => '- (removed)',
-            '/uwe-list' => '- (manual)',
+            '/uwe-list' => 'designer:d1 (manual)', // still points at Uwe: broken now, not cleared
         ], $this->entryTargets());
         $this->assertSame([], $this->addresses->of('designer', 'd1'));
+    }
+
+    public function test_delete_works_without_the_tables(): void
+    {
+        $this->seedLiveWorld();
+        // A site upgraded but not migrated: Folio's internal storage has no redirect tables.
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $bare = new DataManager(['json' => $this->dm->driver('json'), 'default' => new SqliteDriver($pdo)], 'json', $this->registry);
+        $this->addresses = new RecordAddresses($bare, new RedirectEntries($bare), $this->resolver, new LiveRecords($bare, $this->publisher, $this->resolver));
+
+        $this->deleter()->delete('designer', ['d1'], RemovalTarget::parse('designer:d2', $this->resolver));
+
+        $this->assertNull($this->stored('designer', 'd1'));
+        $this->assertNull($this->stored('game', 'g1'));
+        $this->assertNotNull($this->stored('designer', 'd2'));
     }
 }

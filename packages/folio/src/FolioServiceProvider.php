@@ -369,6 +369,7 @@ final class FolioServiceProvider extends ServiceProvider
                 static fn (): \Preflow\Folio\Redirects\LiveRecords => $c->get(\Preflow\Folio\Redirects\LiveRecords::class),
                 self::prefixedUrls($app),
                 $app->config()->get('app.debug', false) ? static fn (string $message) => error_log('folio: ' . $message) : null,
+                $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class),
             ));
             // After the tables exist (folio.tables): every live page's current addresses, so the first
             // rename after an upgrade redirects for every type.

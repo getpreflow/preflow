@@ -21,7 +21,8 @@ use Preflow\Routing\Redirect\RedirectPath;
  *   removed() without a target.
  * - removed() when a record leaves the site (unpublished, deleted, or its status changed): its
  *   addresses become "removed" entries to the chosen target, or to none (they answer 404 until an
- *   editor picks one); entries that already pointed at the record follow the target.
+ *   editor picks one); with a target, entries that already pointed at the record follow it.
+ * - Addresses a page takes and addresses that get an entry leave the not-found list.
  *
  * Locales are those of the URL: with prefixes (i18n url_strategy "prefix") every content locale
  * keeps its own address, stored with its locale as LocaleMiddleware hands it to the redirect
@@ -41,6 +42,7 @@ final class RecordAddresses
      *                                                  (it reads through the Publisher this hooks into)
      * @param bool                                $prefixed whether URLs carry the locale (url_strategy "prefix")
      * @param (\Closure(string): void)|null       $warn
+     * @param NotFoundEntries|null                $notFound addresses a page takes or an entry answers leave the not-found list
      */
     public function __construct(
         private readonly DataManager $dm,
@@ -49,6 +51,7 @@ final class RecordAddresses
         LiveRecords|\Closure $live,
         private readonly bool $prefixed = true,
         private readonly ?\Closure $warn = null,
+        private readonly ?NotFoundEntries $notFound = null,
     ) {
         $this->live = $live instanceof LiveRecords ? static fn (): LiveRecords => $live : $live;
     }
@@ -91,6 +94,8 @@ final class RecordAddresses
                 $this->entries->save([
                     'path' => $path,
                     'locale' => $locale,
+                    'area' => false,
+                    'mode' => AreaMode::One->value,
                     'target_type' => $type,
                     'target_id' => $id,
                     'status' => 301,
@@ -98,6 +103,7 @@ final class RecordAddresses
                     'source_type' => $type,
                     'source_id' => $id,
                 ]);
+                $this->notFound?->forget($locale, $path);
                 if (!isset($current[$locale])) {
                     $this->deleteRow($type, $id, $locale);
                 }
@@ -114,6 +120,7 @@ final class RecordAddresses
                 if ($entry !== null) {
                     $this->entries->delete($entry['id']);
                 }
+                $this->notFound?->forget($locale, $path);
                 if (($rows[$locale] ?? null) !== $path) {
                     $this->writeRow($type, $id, $locale, $path);
                 }
@@ -129,10 +136,11 @@ final class RecordAddresses
 
     /**
      * The record left the site (unpublished or deleted): each stored address becomes a "removed"
-     * entry to $target (none: it answers 404), and the entries that pointed at the record follow
-     * $target, keeping what they are (an area stays an area, a hand-made entry stays hand-made;
-     * an automatic one becomes "removed"). Entries an earlier removal of this record left without
-     * a target get $target too.
+     * entry to $target (none: it answers 404), and so do this record's own automatic entries.
+     * With a target, the entries other sources made for the record follow it too, keeping what
+     * they are (an area stays an area, a hand-made entry stays hand-made), and entries an earlier
+     * removal of this record left without a target get it. Without one, those other entries keep
+     * pointing at the record: 404 while it is off, working again when it comes back.
      */
     public function removed(string $type, string $id, ?RemovalTarget $target): void
     {
@@ -179,30 +187,49 @@ final class RecordAddresses
             return [];
         }
         $count = 0;
+        $failed = [];
         foreach ($registry->keys() as $type) {
-            if ($this->resolver->routeFor($type) === null) {
+            // One type or record that fails is reported; the others are still recorded.
+            try {
+                if ($this->resolver->routeFor($type) === null) {
+                    continue;
+                }
+                $known = [];
+                foreach ($this->dm->queryIn(AddressTable::definition())->where('type', $type)->get()->items() as $row) {
+                    if ((string) $row->get('type') === $type) {
+                        $known[(string) $row->get('record_id')] = true;
+                    }
+                }
+                $records = ($this->live)()->of($type);
+            } catch (\Throwable $e) {
+                $failed[] = "{$type}: " . $e->getMessage();
                 continue;
             }
-            $known = [];
-            foreach ($this->dm->queryIn(AddressTable::definition())->where('type', $type)->get()->items() as $row) {
-                if ((string) $row->get('type') === $type) {
-                    $known[(string) $row->get('record_id')] = true;
-                }
-            }
-            foreach (($this->live)()->of($type) as $record) {
+            foreach ($records as $record) {
                 $id = (string) $record->getId();
                 if (isset($known[$id])) {
                     continue;
                 }
-                $addresses = $this->addressesOf($record);
-                foreach ($addresses as $locale => $path) {
-                    $this->writeRow($type, $id, $locale, $path);
+                try {
+                    $addresses = $this->addressesOf($record);
+                    foreach ($addresses as $locale => $path) {
+                        $this->writeRow($type, $id, $locale, $path);
+                        $this->notFound?->forget($locale, $path);
+                    }
+                    $count += $addresses === [] ? 0 : 1;
+                } catch (\Throwable $e) {
+                    $failed[] = "{$type} {$id}: " . $e->getMessage();
                 }
-                $count += $addresses === [] ? 0 : 1;
             }
         }
 
-        return [sprintf('folio: recorded the public addresses of %d %s.', $count, $count === 1 ? 'record' : 'records')];
+        $lines = [sprintf('folio: recorded the public addresses of %d %s.', $count, $count === 1 ? 'record' : 'records')];
+        foreach ($failed as $failure) {
+            $this->warn('Addresses not recorded: ' . $failure);
+            $lines[] = 'folio: addresses not recorded for ' . $failure;
+        }
+
+        return $lines;
     }
 
     /**
@@ -221,6 +248,12 @@ final class RecordAddresses
         ];
 
         foreach ($this->entries->targeting($type, $id) as $entry) {
+            $own = $entry['source_type'] === $type && $entry['source_id'] === $id;
+            if ($target === null && !$own) {
+                // Another source's entry (hand-made, an area, another record's) keeps pointing here:
+                // a 404 while the record is off, working again when it comes back.
+                continue;
+            }
             $this->entries->save(['kind' => $entry['kind'] === 'auto' ? 'removed' : $entry['kind']] + $to + $entry);
         }
         if ($target !== null) {
@@ -241,6 +274,7 @@ final class RecordAddresses
                 'source_type' => $type,
                 'source_id' => $id,
             ] + $to);
+            $this->notFound?->forget($locale, $path);
             $this->deleteRow($type, $id, $locale);
         }
     }

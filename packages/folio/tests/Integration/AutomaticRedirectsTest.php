@@ -206,6 +206,31 @@ final class AutomaticRedirectsTest extends TestCase
         $this->assertSame(['en' => '/news/hello', 'de' => '/news/hello'], $this->addresses()->of('news', 'n1'));
     }
 
+    public function test_admin_save_and_delete_work_without_the_tables(): void
+    {
+        // A site upgraded but not migrated: Folio's internal storage has no redirect tables.
+        $container = $this->app()->container();
+        $dm = $container->get(\Preflow\Data\DataManager::class);
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $bare = new \Preflow\Data\DataManager(['json' => $dm->driver('json'), 'default' => new \Preflow\Data\Driver\SqliteDriver($pdo)], 'json', $dm->getTypeRegistry());
+        $resolver = $container->get(\Preflow\Folio\Content\FrontendResolver::class);
+        $container->instance(RecordAddresses::class, new RecordAddresses(
+            $bare,
+            new RedirectEntries($bare),
+            $resolver,
+            new \Preflow\Folio\Redirects\LiveRecords($bare, $this->publisher(), $resolver),
+            notFound: new \Preflow\Folio\Redirects\NotFoundEntries($bare),
+        ));
+        $this->working('news', 'n1', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published']);
+
+        $this->assertSame(302, $this->saveNews('n1', ['title' => 'Hello', 'slug' => 'hello-world', 'status' => 'published'])->getStatusCode());
+        $this->assertSame('hello-world', $this->stored('news', 'n1')->get('slug'));
+        $this->assertSame(302, $this->saveNews('n1', ['title' => 'Hello', 'slug' => 'hello-world', 'status' => 'draft'])->getStatusCode());
+        $this->assertSame(302, $this->send('/folio/news/n1/delete', ['_redirect_to' => '/elsewhere'])->getStatusCode());
+        $this->assertNull($dm->findType('news', 'n1'));
+    }
+
     /** A signed-in user who may do everything but $permission. */
     private function signInWithout(string $permission): void
     {
