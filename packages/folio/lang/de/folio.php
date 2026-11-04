@@ -781,6 +781,7 @@ return [
         'delete_confirm' => 'Diese Weiterleitung löschen?',
         'saved' => 'Weiterleitung gespeichert.',
         'deleted' => 'Weiterleitung gelöscht.',
+        'not_migrated' => 'Weiterleitungen brauchen ihre Datenbanktabellen. Führe diesen Befehl auf dem Server aus:',
         'dismissed' => '„:address“ ausgeblendet. Die Adresse kommt wieder, wenn sie in 30 Tagen noch aufgerufen wird.',
         'unknown' => 'Unbekannte Weiterleitung',
         'old_addresses' => 'Alte Adressen',

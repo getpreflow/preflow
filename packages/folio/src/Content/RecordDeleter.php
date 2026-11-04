@@ -105,6 +105,7 @@ final class RecordDeleter
         if ($plan->restricted()) {
             throw new Refused($this->restrictedText($plan));
         }
+        $target = $this->removalTarget($plan, $target);
 
         // Pre-phase: load and hook everything, write nothing.
         /** @var list<DynamicRecord> $saves */
@@ -194,6 +195,20 @@ final class RecordDeleter
             'confirm' => implode("\n", [\Preflow\Folio\FolioText::get('folio.delete.cannot_undo'), ...$lines]),
             'addresses' => $this->addressCount($plan),
         ];
+    }
+
+    /**
+     * The target as it leads before anything is deleted (a page's URL becomes its record), and no
+     * target when that is one of the records the plan deletes: their old links would end in a 404.
+     */
+    private function removalTarget(DeletePlan $plan, ?RemovalTarget $target): ?RemovalTarget
+    {
+        $target = $this->addresses?->finalTarget($target) ?? ($this->addresses === null ? $target : null);
+        if ($target?->type !== null && in_array($target->id, array_map(strval(...), $plan->deletes()[$target->type] ?? []), true)) {
+            return null;
+        }
+
+        return $target;
     }
 
     /** The public addresses (one per record and language) of the records the plan deletes. */

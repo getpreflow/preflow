@@ -17,11 +17,12 @@ use Preflow\Routing\Redirect\RedirectPath;
  *
  * - sync() after a publish or a live save: old addresses redirect to the record (one entry per
  *   address, all pointing at the record itself, so renaming twice never chains), the address a
- *   record holds now never keeps an entry (the page wins), and a record that left the site is
- *   removed() without a target.
+ *   record holds now never keeps an entry (the page wins), a record back on the site takes its
+ *   "removed" entries back, and a record that left the site is removed() without a target.
  * - removed() when a record leaves the site (unpublished, deleted, or its status changed): its
- *   addresses become "removed" entries to the chosen target, or to none (they answer 404 until an
- *   editor picks one); with a target, entries that already pointed at the record follow it.
+ *   addresses become "removed" entries to the chosen target as SiteTarget::final() resolves it
+ *   (none when it leads back to the record or nowhere: they answer 404 until an editor picks
+ *   one); with a target, entries that already pointed at the record follow it.
  * - Addresses a page takes and addresses that get an entry leave the not-found list.
  *
  * Locales are those of the URL: with prefixes (i18n url_strategy "prefix") every content locale
@@ -43,6 +44,7 @@ final class RecordAddresses
      * @param bool                                $prefixed whether URLs carry the locale (url_strategy "prefix")
      * @param (\Closure(string): void)|null       $warn
      * @param NotFoundEntries|null                $notFound addresses a page takes or an entry answers leave the not-found list
+     * @param SiteTarget|null                     $targets  where a removal target really leads (none: taken as given)
      */
     public function __construct(
         private readonly DataManager $dm,
@@ -52,6 +54,7 @@ final class RecordAddresses
         private readonly bool $prefixed = true,
         private readonly ?\Closure $warn = null,
         private readonly ?NotFoundEntries $notFound = null,
+        private readonly ?SiteTarget $targets = null,
     ) {
         $this->live = $live instanceof LiveRecords ? static fn (): LiveRecords => $live : $live;
     }
@@ -108,9 +111,9 @@ final class RecordAddresses
                     $this->deleteRow($type, $id, $locale);
                 }
             }
-            // Back on the site: what an earlier removal left without a target points here again.
+            // Back on the site: its addresses an earlier removal sent elsewhere, or nowhere, point here again.
             foreach ($this->entries->sourcedBy($type, $id) as $entry) {
-                if ($entry['target_type'] === null && $entry['target_url'] === null) {
+                if ($entry['kind'] === 'removed' || ($entry['target_type'] === null && $entry['target_url'] === null)) {
                     $this->entries->save(['target_type' => $type, 'target_id' => $id, 'kind' => 'auto'] + $entry);
                 }
             }
@@ -137,6 +140,8 @@ final class RecordAddresses
     /**
      * The record left the site (unpublished or deleted): each stored address becomes a "removed"
      * entry to $target (none: it answers 404), and so do this record's own automatic entries.
+     * The target is taken where it really leads (finalTarget()); one that leads back to the
+     * record, to a record off the site, or nowhere is none.
      * With a target, the entries other sources made for the record follow it too, keeping what
      * they are (an area stays an area, a hand-made entry stays hand-made), and entries an earlier
      * removal of this record left without a target get it. Without one, those other entries keep
@@ -151,6 +156,25 @@ final class RecordAddresses
             $this->remove($type, $id, $target, $this->stored($type, $id));
         } catch (\Throwable $e) {
             $this->warn("Old addresses of {$type} {$id} not redirected: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Where a removal target really sends visitors (SiteTarget::final()): a URL of a page becomes
+     * its record, a URL that redirects already its final target, a record that is not live (a
+     * draft, an unknown or a deleted one) no target. Taken as given when the storage fails.
+     */
+    public function finalTarget(?RemovalTarget $target): ?RemovalTarget
+    {
+        if ($target === null || $this->targets === null) {
+            return $target;
+        }
+        try {
+            return $this->targets->final($target);
+        } catch (\Throwable $e) {
+            $this->warn('Redirect target not resolved: ' . $e->getMessage());
+
+            return $target;
         }
     }
 
@@ -237,10 +261,7 @@ final class RecordAddresses
      */
     private function remove(string $type, string $id, ?RemovalTarget $target, array $stored): void
     {
-        // A record cannot send its old links to itself: that is no target.
-        if ($target !== null && $target->isRecord($type, $id)) {
-            $target = null;
-        }
+        $target = $this->finalFor($type, $id, $target, $stored);
         $to = [
             'target_type' => $target?->type,
             'target_id' => $target?->id,
@@ -277,6 +298,29 @@ final class RecordAddresses
             $this->notFound?->forget($locale, $path);
             $this->deleteRow($type, $id, $locale);
         }
+    }
+
+    /**
+     * The target the record's old links get, or none: never the record itself (by its id, at one
+     * of its own addresses, or through an entry leading back to it), nor anything that leads
+     * nowhere.
+     *
+     * @param array<string, string> $stored locale => path
+     */
+    private function finalFor(string $type, string $id, ?RemovalTarget $target, array $stored): ?RemovalTarget
+    {
+        if ($target === null) {
+            return null;
+        }
+        if ($target->url !== null && $this->targets !== null) {
+            $at = $this->targets->address($target->url);
+            if ($at !== null && ($stored[$at[0]] ?? null) === $at[1]) {
+                return null;
+            }
+        }
+        $target = $this->targets !== null ? $this->targets->final($target) : $target;
+
+        return $target === null || $target->isRecord($type, $id) ? null : $target;
     }
 
     /** @return array<string, string> locale => path of a live record ([] for none) */

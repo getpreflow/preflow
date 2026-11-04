@@ -23,6 +23,7 @@ use Preflow\Folio\Redirects\NotFoundEntries;
 use Preflow\Folio\Redirects\RecordAddresses;
 use Preflow\Folio\Redirects\RedirectEntries;
 use Preflow\Folio\Redirects\RemovalTarget;
+use Preflow\Folio\Redirects\SiteTarget;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidatorFactory;
 
@@ -79,7 +80,14 @@ final class RecordAddressesTest extends TestCase
         $this->live = new LiveRecords($this->dm, $this->publisher, $this->resolver);
         $this->entries = new RedirectEntries($this->dm);
         $this->notFound = new NotFoundEntries($this->dm);
-        $this->addresses = new RecordAddresses($this->dm, $this->entries, $this->resolver, $this->live, notFound: $this->notFound);
+        $this->addresses = new RecordAddresses($this->dm, $this->entries, $this->resolver, $this->live, notFound: $this->notFound, targets: new SiteTarget(
+            $this->entries,
+            $this->live,
+            $this->resolver,
+            new Locales(['en', 'de'], 'en'),
+            true,
+            'example.com',
+        ));
     }
 
     protected function tearDown(): void
@@ -462,5 +470,88 @@ final class RecordAddressesTest extends TestCase
         foreach (['', '  ', 'memo:m1', 'nope:x', 'page:', ':p1', 'page:a/b', '//evil.example/x', '/\\evil.example', 'javascript:alert(1)', 'ftp://example.org/', 'https://', 'relative/path', ['page:p1'], null, 42] as $bad) {
             $this->assertNull(RemovalTarget::parse($bad, $this->resolver), var_export($bad, true));
         }
+    }
+
+    /** Takes page $id (at /$slug) off the site with the posted target; its old address's entry target. */
+    private function removeWith(string $id, string $slug, string $posted): string
+    {
+        $this->publishAndSync($id, ['en' => $slug]);
+        $this->publisher->unpublish('page', $id);
+        $this->addresses->removed('page', $id, RemovalTarget::parse($posted, $this->resolver));
+        $entry = $this->entries->at('en', '/' . $slug);
+
+        return $entry['target_url'] ?? ($entry['target_type'] !== null ? $entry['target_type'] . ':' . $entry['target_id'] : '-');
+    }
+
+    public function test_removal_url_target_of_a_page_becomes_the_record(): void
+    {
+        $this->publishAndSync('p2', ['en' => 'team', 'de' => 'team']);
+
+        $this->assertSame('page:p2', $this->removeWith('p1', 'about', '/team'));
+        $this->assertSame('page:p2', $this->removeWith('p3', 'contact', 'https://example.com/de/team'), 'an absolute URL of this site, another language');
+        $this->assertSame('https://example.org/team', $this->removeWith('p4', 'jobs', 'https://example.org/team'), 'another host stays a URL');
+
+        // The page moves: the old links follow it, no chain.
+        $this->publishAndSync('p2', ['en' => 'crew', 'de' => 'team']);
+        $this->assertSame('/crew', (new FolioRedirectTargets($this->live, $this->resolver))->url('page', 'p2', 'en'));
+        $this->assertSame('page:p2', $this->entries->at('en', '/about')['target_type'] . ':' . $this->entries->at('en', '/about')['target_id']);
+    }
+
+    public function test_removal_url_target_that_redirects_takes_the_final_target(): void
+    {
+        $this->publishAndSync('p2', ['en' => 'team']);
+        $this->publishAndSync('p2', ['en' => 'crew']);
+        $this->entries->save(['path' => '/blog', 'locale' => 'en', 'area' => true, 'mode' => 'prefix', 'target_url' => 'https://example.org/journal']);
+        $this->entries->save(['path' => '/ext', 'locale' => '', 'target_url' => '/elsewhere']);
+        $this->entries->save(['path' => '/to-ext', 'locale' => 'en', 'target_url' => '/ext']);
+        $this->entries->save(['path' => '/gone', 'locale' => 'en', 'kind' => 'removed', 'source_type' => 'page', 'source_id' => 'p9']);
+
+        $this->assertSame('page:p2', $this->removeWith('p1', 'a', '/team'), 'an automatic entry: its record');
+        $this->assertSame('https://example.org/journal/2024/x', $this->removeWith('p3', 'b', '/blog/2024/x'), 'a "keep the rest" area');
+        $this->assertSame('/elsewhere', $this->removeWith('p4', 'c', '/to-ext'), 'through two entries');
+        $this->assertSame('-', $this->removeWith('p5', 'd', '/gone'), 'an entry without a target: none');
+    }
+
+    public function test_removal_target_at_its_own_old_address_is_no_target(): void
+    {
+        $this->publishAndSync('p1', ['en' => 'a']);
+        $this->publishAndSync('p1', ['en' => 'b']);
+        $this->publisher->unpublish('page', 'p1');
+
+        $this->addresses->removed('page', 'p1', RemovalTarget::parse('/b'));
+
+        $this->assertSame(['en /a → - (removed, page:p1, 301)', 'en /b → - (removed, page:p1, 301)'], $this->entryLines());
+
+        // Its earlier address (an entry to the record itself) is no target either.
+        $this->assertSame('-', $this->removeWith('p3', 'c', '/a'));
+    }
+
+    public function test_removal_target_of_a_draft_or_unknown_record_is_no_target(): void
+    {
+        $this->working('page', 'd1', ['title' => ['en' => 'Draft'], 'slug' => ['en' => 'draft'], '_locales' => ['en']]);
+
+        $this->assertSame('-', $this->removeWith('p1', 'a', 'page:d1'));
+        $this->assertSame('-', $this->removeWith('p2', 'b', 'page:nope'));
+    }
+
+    public function test_coming_back_after_a_removal_with_target_takes_its_old_addresses_back(): void
+    {
+        $this->publishAndSync('overview', ['en' => 'overview']);
+        $this->publishAndSync('p1', ['en' => 'a', 'de' => 'x']);
+        $this->publishAndSync('p1', ['en' => 'b', 'de' => 'x']);
+        $this->entries->save(['path' => '/promo', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'p1', 'kind' => 'manual']);
+        $this->entries->save(['path' => '/hand', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'overview', 'kind' => 'manual']);
+        $this->publisher->unpublish('page', 'p1');
+        $this->addresses->removed('page', 'p1', RemovalTarget::parse('page:overview'));
+
+        $this->publishAndSync('p1', ['en' => 'c', 'de' => 'x']);
+
+        $this->assertSame([
+            'en /a → page:p1 (auto, page:p1, 301)',
+            'en /b → page:p1 (auto, page:p1, 301)',
+            'en /hand → page:overview (manual, -, 301)',
+            'en /promo → page:overview (manual, -, 301)',
+        ], $this->entryLines(), 'hand-made entries keep the target they were given');
+        $this->assertSame(['en' => '/c', 'de' => '/x'], $this->addresses->of('page', 'p1'));
     }
 }

@@ -806,6 +806,7 @@ return [
         'delete_confirm' => 'Delete this redirect?',
         'saved' => 'Redirect saved.',
         'deleted' => 'Redirect deleted.',
+        'not_migrated' => 'Redirects need their database tables. Run this command on the server:',
         'dismissed' => '“:address” dismissed. It comes back if it is still asked for in 30 days.',
         'unknown' => 'Unknown redirect',
         'old_addresses' => 'Old addresses',

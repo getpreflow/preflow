@@ -24,6 +24,16 @@ final class NotFoundFilterTest extends TestCase
             'localized page' => ['/de/werkstatt', false],
             'html page' => ['/page.html', false],
             'missing image' => ['/images/missing.jpg', false],
+            // Asked for by browsers on their own, not by visitors following a link.
+            'favicon' => ['/favicon.ico', true],
+            'apple touch icon' => ['/apple-touch-icon.png', true],
+            'apple touch icon precomposed' => ['/apple-touch-icon-precomposed.png', true],
+            'apple touch icon size' => ['/apple-touch-icon-152x152.png', true],
+            'browserconfig' => ['/browserconfig.xml', true],
+            'web manifest' => ['/site.webmanifest', true],
+            'manifest json' => ['/manifest.json', true],
+            'manifest page' => ['/manifest-of-the-arts', false],
+            'favicon below' => ['/icons/favicon.ico.html', false],
         ];
     }
 

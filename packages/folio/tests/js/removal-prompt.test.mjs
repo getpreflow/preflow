@@ -16,13 +16,14 @@ const settle = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 function admin({ plan = null, targets = [] } = {}) {
     const w = createWindow({ body: { 'data-folio-prefix': '/folio' } });
-    const log = { fetched: [], confirmed: [], alerted: [], submitted: [] };
+    const log = { fetched: [], bodies: [], confirmed: [], alerted: [], submitted: [] };
     w.confirmAnswer = true;
     w.confirm = (text) => { log.confirmed.push(text); return w.confirmAnswer; };
     w.alert = (text) => { log.alerted.push(text); };
     w.URLSearchParams = URLSearchParams;
-    w.fetch = (url) => {
+    w.fetch = (url, options = {}) => {
         log.fetched.push(url);
+        log.bodies.push(options.body ? String(options.body) : null);
         if (url.startsWith('/folio/redirects/_targets')) {
             return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: targets }) });
         }
@@ -207,4 +208,67 @@ test('test_restricted_plan_only_alerts', async () => {
     assert.deepEqual(log.confirmed, []);
     assert.equal(dialog(w), null);
     assert.deepEqual(log.submitted, []);
+});
+
+/** The list's bulk bar: ticked ids[] and a Delete button carrying data-delete-plan and its formaction. */
+function bulkForm(w, ticked) {
+    const doc = w.document;
+    const form = doc.body.appendChild(doc.createElement('form'));
+    form.setAttribute('method', 'post');
+    form.setAttribute('action', '/folio/news/_bulk');
+    const token = form.appendChild(doc.createElement('input'));
+    token.type = 'hidden';
+    token.name = '_csrf_token';
+    token.value = 'tok';
+    const boxes = ['n1', 'n2', 'n3'].map((id) => {
+        const box = form.appendChild(doc.createElement('input'));
+        box.type = 'checkbox';
+        box.name = 'ids[]';
+        box.value = id;
+        box.checked = ticked.includes(id);
+        return box;
+    });
+    form.elements = [token, ...boxes];
+    const button = form.appendChild(doc.createElement('button'));
+    button.setAttribute('formaction', '/folio/news/_bulk/delete');
+    button.setAttribute('data-confirm', 'Delete the selected records?');
+    button.setAttribute('data-delete-plan', '/folio/news/_delete-plan');
+    return { form, button };
+}
+
+/** A submit event sent by a button (event.submitter), as the browser sends it. */
+function submitBy(w, form, button) {
+    const event = new w.Event('submit', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'submitter', { value: button });
+    form.dispatchEvent(event);
+    return event;
+}
+
+test('test_bulk_delete_asks_for_the_ticked_ids_and_submits_the_button_again', async () => {
+    const { w, log } = admin({ plan: { restricted: false, lines: [], confirm: "This can't be undone.", addresses: 2 } });
+    const { form, button } = bulkForm(w, ['n1', 'n2']);
+    const requested = [];
+    form.requestSubmit = (submitter) => {
+        requested.push({ submitter, target: posted(form), confirmed: form.getAttribute('data-delete-confirmed') });
+    };
+
+    assert.equal(submitBy(w, form, button).defaultPrevented, true, 'held while the plan is asked for');
+    await settle();
+
+    assert.deepEqual(log.fetched, ['/folio/news/_delete-plan']);
+    assert.equal(log.bodies[0], '_csrf_token=tok&ids%5B%5D=n1&ids%5B%5D=n2', 'the ticked ids only');
+    assert.deepEqual(log.confirmed, [], 'the dialog replaces window.confirm');
+    const d = dialog(w);
+    assert.ok(d, 'the prompt is shown');
+
+    type(d.querySelector('input[data-removal-url]'), '/team');
+    d.querySelector('button[data-removal-confirm]').click();
+
+    assert.deepEqual(requested, [{ submitter: button, target: '/team', confirmed: '1' }], 'the Delete button is submitted again, with _redirect_to');
+    assert.deepEqual(log.submitted, [], 'not a plain form.submit(): that would drop the button\'s formaction');
+
+    // The browser's second submit (marked confirmed) goes through untouched.
+    assert.equal(submitBy(w, form, button).defaultPrevented, false);
+    assert.equal(form.getAttribute('data-delete-confirmed'), null);
+    assert.equal(log.fetched.length, 1, 'the plan is not asked for again');
 });

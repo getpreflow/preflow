@@ -62,6 +62,12 @@ final readonly class RemovalTarget
         return null;
     }
 
+    /** A record target (not checked: SiteTarget::final() tells whether it is live). */
+    public static function record(string $type, string $id): self
+    {
+        return new self($type, $id, null);
+    }
+
     public function isRecord(string $type, string $id): bool
     {
         return $this->type === $type && $this->id === $id;

@@ -17,6 +17,7 @@ use Preflow\Folio\Redirects\LiveRecords;
 use Preflow\Folio\Redirects\NotFoundEntries;
 use Preflow\Folio\Redirects\RedirectEntries;
 use Preflow\Folio\Redirects\RemovalTarget;
+use Preflow\Folio\Redirects\SiteTarget;
 use Preflow\Folio\Redirects\VisibleAddress;
 use Preflow\I18n\LocaleNames;
 use Preflow\Routing\Redirect\AreaMode;
@@ -54,99 +55,114 @@ final class RedirectsController
         private readonly bool $prefixed,
         private readonly TemplateEngineInterface $engine,
         private readonly string $prefix,
+        private readonly SiteTarget $site,
     ) {}
 
     /** GET {prefix}/redirects?q=…&record=type:id, or ?tab=not-found */
     public function index(ServerRequestInterface $request): ResponseInterface
     {
-        $query = $request->getQueryParams();
-        $q = is_string($query['q'] ?? null) ? trim($query['q']) : '';
-        $record = is_string($query['record'] ?? null) && str_contains($query['record'], ':') ? $query['record'] : '';
-        $notFoundTab = ($query['tab'] ?? null) === 'not-found';
+        return $this->guarded(function () use ($request): ResponseInterface {
+            $query = $request->getQueryParams();
+            $q = is_string($query['q'] ?? null) ? trim($query['q']) : '';
+            $record = is_string($query['record'] ?? null) && str_contains($query['record'], ':') ? $query['record'] : '';
+            $notFoundTab = ($query['tab'] ?? null) === 'not-found';
 
-        return $this->html('@folio/admin/redirects/index.twig', [
-            'prefix' => $this->prefix,
-            'tab' => $notFoundTab ? 'not-found' : 'redirects',
-            'q' => $q,
-            'record' => $record,
-            'rows' => $notFoundTab ? [] : $this->rows($q, $record),
-            'missing' => $notFoundTab ? $this->missing() : [],
-            'csrf' => self::csrf($request),
-        ]);
+            return $this->html('@folio/admin/redirects/index.twig', [
+                'prefix' => $this->prefix,
+                'tab' => $notFoundTab ? 'not-found' : 'redirects',
+                'q' => $q,
+                'record' => $record,
+                'rows' => $notFoundTab ? [] : $this->rows($q, $record),
+                'missing' => $notFoundTab ? $this->missing() : [],
+                'csrf' => self::csrf($request),
+            ]);
+        });
     }
 
     /** GET {prefix}/redirects/new (?not_found={id} starts from that address) */
     public function create(ServerRequestInterface $request): ResponseInterface
     {
-        $values = self::blank();
-        $id = $request->getQueryParams()['not_found'] ?? null;
-        $row = is_string($id) ? $this->notFound->find($id) : null;
-        if ($row !== null) {
-            $values['address'] = $this->visible($row['locale'], $row['path']);
-            $values['not_found'] = $row['id'];
-        }
+        return $this->guarded(function () use ($request): ResponseInterface {
+            $values = self::blank();
+            $id = $request->getQueryParams()['not_found'] ?? null;
+            $row = is_string($id) ? $this->notFound->find($id) : null;
+            if ($row !== null) {
+                $values['address'] = $this->visible($row['locale'], $row['path']);
+                $values['not_found'] = $row['id'];
+            }
 
-        return $this->form($request, null, $values);
+            return $this->form($request, null, $values);
+        });
     }
 
     /** POST {prefix}/redirects */
     public function store(ServerRequestInterface $request): ResponseInterface
     {
-        return $this->save($request, null);
+        return $this->guarded(function () use ($request): ResponseInterface {
+            return $this->save($request, null);
+        });
     }
 
     /** GET {prefix}/redirects/{id} */
     public function edit(ServerRequestInterface $request): ResponseInterface
     {
-        $entry = $this->entry($request);
-        if ($entry === null) {
-            return self::unknown();
-        }
+        return $this->guarded(function () use ($request): ResponseInterface {
+            $entry = $this->entry($request);
+            if ($entry === null) {
+                return self::unknown();
+            }
 
-        return $this->form($request, $entry, [
-            'address' => $this->visible($entry['locale'], $entry['path']),
-            'area' => $entry['area'],
-            'mode' => $entry['mode'],
-            'target' => $entry['target_type'] !== null && $entry['target_id'] !== null
-                ? $entry['target_type'] . ':' . $entry['target_id']
-                : (string) $entry['target_url'],
-            'status' => $entry['status'],
-            'not_found' => '',
-        ]);
+            return $this->form($request, $entry, [
+                'address' => $this->visible($entry['locale'], $entry['path']),
+                'area' => $entry['area'],
+                'mode' => $entry['mode'],
+                'target' => $entry['target_type'] !== null && $entry['target_id'] !== null
+                    ? $entry['target_type'] . ':' . $entry['target_id']
+                    : (string) $entry['target_url'],
+                'status' => $entry['status'],
+                'not_found' => '',
+            ]);
+        });
     }
 
     /** POST {prefix}/redirects/{id} */
     public function update(ServerRequestInterface $request): ResponseInterface
     {
-        $entry = $this->entry($request);
+        return $this->guarded(function () use ($request): ResponseInterface {
+            $entry = $this->entry($request);
 
-        return $entry === null ? self::unknown() : $this->save($request, $entry);
+            return $entry === null ? self::unknown() : $this->save($request, $entry);
+        });
     }
 
     /** POST {prefix}/redirects/{id}/delete */
     public function destroy(ServerRequestInterface $request): ResponseInterface
     {
-        $entry = $this->entry($request);
-        if ($entry === null) {
-            return self::unknown();
-        }
-        $this->entries->delete($entry['id']);
-        self::flash($request, FolioText::get('folio.redirects.deleted'));
+        return $this->guarded(function () use ($request): ResponseInterface {
+            $entry = $this->entry($request);
+            if ($entry === null) {
+                return self::unknown();
+            }
+            $this->entries->delete($entry['id']);
+            self::flash($request, FolioText::get('folio.redirects.deleted'));
 
-        return new Response(302, ['Location' => $this->prefix . '/redirects']);
+            return new Response(302, ['Location' => $this->prefix . '/redirects']);
+        });
     }
 
     /** POST {prefix}/redirects/not-found/{id}/dismiss */
     public function dismiss(ServerRequestInterface $request): ResponseInterface
     {
-        $row = $this->notFound->find((string) $request->getAttribute('id', ''));
-        if ($row === null) {
-            return self::unknown();
-        }
-        $this->notFound->dismiss($row['id'], new \DateTimeImmutable());
-        self::flash($request, FolioText::get('folio.redirects.dismissed', ['address' => $this->visible($row['locale'], $row['path'])]));
+        return $this->guarded(function () use ($request): ResponseInterface {
+            $row = $this->notFound->find((string) $request->getAttribute('id', ''));
+            if ($row === null) {
+                return self::unknown();
+            }
+            $this->notFound->dismiss($row['id'], new \DateTimeImmutable());
+            self::flash($request, FolioText::get('folio.redirects.dismissed', ['address' => $this->visible($row['locale'], $row['path'])]));
 
-        return new Response(302, ['Location' => $this->prefix . '/redirects?tab=not-found']);
+            return new Response(302, ['Location' => $this->prefix . '/redirects?tab=not-found']);
+        });
     }
 
     /**
@@ -184,6 +200,37 @@ final class RedirectsController
             ['items' => $items],
             JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
         ));
+    }
+
+    /**
+     * Runs a screen's action; a storage failure (a SQL site that has not run `preflow migrate`:
+     * no redirect tables) answers with a notice saying so instead of an error page.
+     *
+     * @param \Closure(): ResponseInterface $action
+     */
+    private function guarded(\Closure $action): ResponseInterface
+    {
+        try {
+            return $action();
+        } catch (\RuntimeException $e) {
+            if (!self::storageFailure($e)) {
+                throw $e;
+            }
+
+            return $this->html('@folio/admin/redirects/index.twig', ['prefix' => $this->prefix, 'unavailable' => true], 503);
+        }
+    }
+
+    /** Whether the failure came from the database (a missing table): a PDOException anywhere in the chain. */
+    private static function storageFailure(\Throwable $e): bool
+    {
+        for ($cause = $e; $cause !== null; $cause = $cause->getPrevious()) {
+            if ($cause instanceof \PDOException) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -334,7 +381,8 @@ final class RedirectsController
 
     /**
      * The parsed target, or why it is refused: a live record ("type:id", not for "keep the rest"),
-     * an http(s) URL, or a path on this site; never "//host" or "\\host" in any mix of slashes,
+     * an http(s) URL, or a path on this site (a page's address in the entry's language becomes
+     * that page's record, as SiteTarget resolves it); never "//host" or "\\host" in any mix of slashes,
      * never the address itself, an address inside the area being saved, or an address another
      * entry redirects (exact or by an area: no chains); for "keep the rest" no ? or # (the rest of
      * the path is appended after the target).
@@ -355,7 +403,7 @@ final class RedirectsController
                 return [null, FolioText::get('folio.redirects.errors.prefix_needs_url')];
             }
 
-            return $this->live->find($target->type, $target->id) === null
+            return $this->site->final($target) === null
                 ? [null, FolioText::get('folio.redirects.errors.target_not_live')]
                 : [$target, null];
         }
@@ -375,6 +423,15 @@ final class RedirectsController
         // /blog → /blog/archive would run /blog/x → /blog/archive/x → /blog/archive/archive/x …
         if ($area && $sameLanguage && RedirectPath::under($targetPath, $path) !== null) {
             return [null, FolioText::get('folio.redirects.errors.target_in_area')];
+        }
+        // A page's address becomes the page itself: the redirect follows it when it moves. Not for
+        // "keep the rest" (the rest of the path goes after the URL), another language's address
+        // (a record answers in the visitor's language) or a URL with a query or fragment.
+        if ($mode !== AreaMode::Prefix->value && $sameLanguage && !str_contains($url, '?') && !str_contains($url, '#')) {
+            $page = $this->site->page($targetLocale, $targetPath);
+            if ($page !== null) {
+                return [RemovalTarget::record($page->route->type, (string) $page->record->getId()), null];
+            }
         }
         if ($this->redirectsAt($this->lookupLocale($targetLocale), $targetPath, $own)) {
             return [null, FolioText::get('folio.redirects.errors.target_redirects')];
@@ -424,67 +481,36 @@ final class RedirectsController
 
     /**
      * The entry locale and path a URL on this site lands on (a path, or an absolute URL with this
-     * host), as split() reads an address; null for another host or a path normalize() rejects.
+     * site's host or the request's); null for another host or a path normalize() rejects.
      *
      * @return array{string, string}|null
      */
     private function siteAddress(string $url, string $host): ?array
     {
-        $local = self::localPath($url, $host);
-        $normalized = $local === null ? null : RedirectPath::normalize($local);
-
-        return $normalized === null ? null : $this->split($normalized);
+        return $this->site->address($url, $host);
     }
 
-    /** The path of a URL on this site (a path, or an absolute URL with this host), without query and fragment; else null. */
-    private static function localPath(string $url, string $host): ?string
-    {
-        if (str_starts_with($url, '/')) {
-            return (string) (parse_url($url, PHP_URL_PATH) ?? '/');
-        }
-        $parts = parse_url($url);
-        if (!is_array($parts) || $host === '' || strcasecmp((string) ($parts['host'] ?? ''), $host) !== 0) {
-            return null;
-        }
-
-        return (string) ($parts['path'] ?? '/') ?: '/';
-    }
-
-    /**
-     * Whether a page holds the address. Tried with the path decoded too: FrontendResolver::match()
-     * compares route values unencoded, so "/%C3%BCber-uns" alone would miss the page "über-uns".
-     */
+    /** Whether a page holds the address (SiteTarget::page()). */
     private function pageAt(string $locale, string $path): bool
     {
-        return $this->resolver->match($path, $locale) !== null
-            || ($path !== rawurldecode($path) && $this->resolver->match(rawurldecode($path), $locale) !== null);
+        return $this->site->page($locale, $path) !== null;
     }
 
     /**
-     * The entry's locale and the path without its locale prefix, for a normalized address. With
-     * locale prefixes, as LocaleMiddleware reads them: a first segment of two lowercase letters
-     * naming one of the site's languages (the default's too) is the language, else the default
-     * language; the locale is always a real one, as RecordAddresses stores it. Without prefixes
-     * the entry is language-neutral ('').
+     * The entry's locale and the path without its locale prefix, for a normalized address, as
+     * LocaleMiddleware reads it (SiteTarget::split()).
      *
      * @return array{string, string}
      */
     private function split(string $normalized): array
     {
-        if (!$this->prefixed) {
-            return ['', $normalized];
-        }
-        if (preg_match('#^/([a-z]{2})(/.*)?$#', $normalized, $m) === 1 && $this->locales->has($m[1])) {
-            return [$m[1], ($m[2] ?? '') === '' ? '/' : $m[2]];
-        }
-
-        return [$this->locales->default, $normalized];
+        return $this->site->split($normalized);
     }
 
     /** The locale a request for an address of $locale has ('' on a site without locale prefixes: its default). */
     private function lookupLocale(string $locale): string
     {
-        return $locale !== '' ? $locale : $this->locales->default;
+        return $this->site->lookupLocale($locale);
     }
 
     /** The address as visitors see and type it ("/de/über-uns"). */

@@ -3,6 +3,10 @@
 {% block title %}Folio — {{ t('folio.nav.redirects') }}{% endblock %}
 {% block page_title %}{{ t('folio.nav.redirects') }}{% endblock %}
 {% block content %}
+    {% if unavailable|default(false) %}
+        {# A SQL site that has not run `preflow migrate` yet: no redirect tables. #}
+        <div class="folio-alert folio-alert-warning" role="alert">{{ t('folio.redirects.not_migrated') }} <code>preflow migrate</code></div>
+    {% else %}
     <nav class="folio-list-toolbar" aria-label="{{ t('folio.nav.redirects') }}">
         <a class="btn {{ tab == 'redirects' ? 'btn-secondary' : 'btn-ghost' }} btn-sm" href="{{ prefix }}/redirects"{% if tab == 'redirects' %} aria-current="page"{% endif %}>{{ t('folio.redirects.tab_redirects') }}</a>
         <a class="btn {{ tab == 'not-found' ? 'btn-secondary' : 'btn-ghost' }} btn-sm" href="{{ prefix }}/redirects?tab=not-found"{% if tab == 'not-found' %} aria-current="page"{% endif %}>{{ t('folio.redirects.tab_not_found') }}</a>
@@ -103,5 +107,6 @@
         </table>
         </div>
         {% endif %}
+    {% endif %}
     {% endif %}
 {% endblock %}

@@ -4,14 +4,22 @@ declare(strict_types=1);
 
 namespace Preflow\Routing\Redirect;
 
-/** Tells scanner noise (WordPress probes, dotfiles, backups) from addresses worth listing. */
+/**
+ * Tells noise (scanner probes for WordPress, dotfiles and backups; icons and manifests browsers
+ * ask for on their own) from addresses worth listing.
+ */
 final class NotFoundFilter
 {
     private const PREFIXES = [
         '/wp-', '/wordpress', '/cgi-bin', '/xmlrpc', '/phpmyadmin', '/pma', '/vendor/',
         '/server-status', '/.well-known/', '/autodiscover', '/ecp/', '/owa/', '/boaform',
         '/actuator', '/hnap1', '/cdn-cgi/',
+        // Its "-precomposed" and size variants too ("/apple-touch-icon-152x152.png").
+        '/apple-touch-icon',
     ];
+
+    /** Files browsers request by themselves, whether or not a page links to them. */
+    private const BROWSER_FILES = ['/favicon.ico', '/browserconfig.xml', '/site.webmanifest', '/manifest.json'];
 
     private const EXTENSIONS = [
         'php', 'asp', 'aspx', 'jsp', 'cgi', 'env', 'ini', 'sql', 'bak', 'old', 'orig', 'swp',
@@ -48,6 +56,10 @@ final class NotFoundFilter
     public function ignores(string $path): bool
     {
         $lower = strtolower(rawurldecode($path));
+
+        if (in_array($lower, self::BROWSER_FILES, true)) {
+            return true;
+        }
 
         foreach ($this->prefixes as $prefix) {
             if (str_starts_with($lower, $prefix)) {

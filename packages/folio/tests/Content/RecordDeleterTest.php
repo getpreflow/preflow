@@ -25,6 +25,7 @@ use Preflow\Folio\Redirects\LiveRecords;
 use Preflow\Folio\Redirects\RecordAddresses;
 use Preflow\Folio\Redirects\RedirectEntries;
 use Preflow\Folio\Redirects\RemovalTarget;
+use Preflow\Folio\Redirects\SiteTarget;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationResult;
@@ -141,7 +142,14 @@ final class RecordDeleterTest extends TestCase
         $this->publisher = new Publisher($this->dm, $this->catalog, new RecordValidator($fieldTypes, $this->dm));
         $this->resolver = FrontendResolver::fromCatalog($this->catalog, $this->dm);
         $this->entries = new RedirectEntries($this->dm);
-        $this->addresses = new RecordAddresses($this->dm, $this->entries, $this->resolver, new LiveRecords($this->dm, $this->publisher, $this->resolver));
+        $live = new LiveRecords($this->dm, $this->publisher, $this->resolver);
+        $this->addresses = new RecordAddresses($this->dm, $this->entries, $this->resolver, $live, targets: new SiteTarget(
+            $this->entries,
+            $live,
+            $this->resolver,
+            \Preflow\Data\Locales::single('en'),
+            true,
+        ));
     }
 
     private function deleter(): RecordDeleter
@@ -610,6 +618,44 @@ final class RecordDeleterTest extends TestCase
             '/uwe-list' => 'designer:d1 (manual)', // still points at Uwe: broken now, not cleared
         ], $this->entryTargets());
         $this->assertSame([], $this->addresses->of('designer', 'd1'));
+    }
+
+    /** @return array<string, array{string}> a target that is deleted too: by id, by its address, or deleted by cascade */
+    public static function deletedTargets(): array
+    {
+        return [
+            'by id' => ['designer:d2'],
+            'by address' => ['/designers/Reiner'],
+            'cascade by id' => ['game:g3'],
+            'cascade by address' => ['/games/Lost-Cities'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('deletedTargets')]
+    public function test_bulk_delete_target_among_the_deleted_records_is_no_target(string $posted): void
+    {
+        $this->seedLiveWorld();
+
+        $this->deleter()->delete('designer', ['d1', 'd2'], RemovalTarget::parse($posted, $this->resolver));
+
+        $this->assertSame([
+            '/designers/Reiner' => '- (removed)',
+            '/designers/Uwe' => '- (removed)',
+            '/games/Agricola' => '- (removed)',
+            '/games/Caverna' => '- (removed)',
+            '/games/Lost-Cities' => '- (removed)',
+        ], $this->entryTargets());
+    }
+
+    public function test_delete_target_of_a_record_off_the_site_is_no_target(): void
+    {
+        $this->seedLiveWorld();
+        $this->seed('designer', 'd3', ['name' => 'Draft', 'status' => 'draft']);
+
+        $this->deleter()->delete('game', ['g1'], RemovalTarget::parse('designer:d3', $this->resolver));
+        $this->deleter()->delete('game', ['g2'], RemovalTarget::parse('designer:ghost', $this->resolver));
+
+        $this->assertSame(['/games/Agricola' => '- (removed)', '/games/Caverna' => '- (removed)'], $this->entryTargets());
     }
 
     public function test_delete_works_without_the_tables(): void

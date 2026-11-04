@@ -1460,20 +1460,34 @@ unpublishing one asks, in place of the plain confirmation, where the old links g
 
 The form posts the choice as `_redirect_to` (`type:id` or the URL); the server checks it again
 and treats anything it can't use as no target. A bulk delete has one target for the whole
-batch; records deleted by cascade get the same one. Choosing needs only the right to that delete
+batch; records deleted by cascade get the same one.
+
+The server also follows the target to where it really leads, so old links never end in a chain:
+
+- a path or URL on this site (an absolute URL counts when its host is `app.url`'s) where a page
+  answers is stored as that page, so the links follow it when it moves later;
+- one that redirects already is replaced by that redirect's final target;
+- a target that leads back to the record (one of its own addresses, current or earlier), a draft
+  or unknown record, an address that redirects nowhere, and in a delete one of the records the
+  same delete removes all count as no target. Choosing needs only the right to that delete
 or unpublish. Without JavaScript nothing is asked and the old links answer 404. A type without
 publishing that leaves the site by its status field shows a warning after the save instead, with
 a link to the record's redirects for those who may manage them.
 
 What a removal does to the other entries that point at the record:
 
-- **With a target**, they follow it: its earlier addresses, hand-made entries and areas that sent
-  visitors to the record now send them to the target, each keeping what it is (a hand-made entry
-  stays hand-made, an area stays an area, its status is kept). Entries an earlier removal of the
-  record left without a target get it too.
+- **With a target**, they follow it. The record's own automatic entries (its earlier addresses)
+  become "removed" entries to the target, like its current addresses. Entries from anywhere else
+  (hand-made entries, areas, another record's) send visitors to the target too, each keeping what
+  it is (a hand-made entry stays hand-made, an area stays an area, its status is kept). Entries an
+  earlier removal of the record left without a target get it too.
 - **Without a target**, the record's own addresses become "removed" entries without a target
   (404), and the entries of others keep pointing at the record: 404 while it is off the site,
   working again when it comes back, shown as broken if it was deleted.
+
+When the record comes back to the site, its own "removed" entries point at it again and are
+automatic once more, whatever target the removal gave them; hand-made entries, areas and other
+records' entries keep the target the removal gave them.
 
 ### The "Old addresses" note
 
@@ -1504,6 +1518,10 @@ a target: a page picked from the search, or a URL or path. It can cover *everyth
 (`/workshops-2024/basel` → `/workshops/basel`, a URL or path target without `?` or `#`). Hand-made
 entries answer 301 (default) or 302; automatic and removed-page entries are always 301.
 
+A typed path or URL where a page answers, in the entry's language, is stored as that page (as if
+it had been picked), so the entry follows the page when it moves; not for "keep the rest" (the
+rest of the path is appended to the URL), nor with a `?` or `#` (kept as typed).
+
 The form refuses what could never work or would loop:
 
 - an address with `?` or `#`, under a non-public path (the admin, members, private files), or
@@ -1530,6 +1548,12 @@ mode). Without that run, the first rename of a page after upgrading redirects on
 publishing types (their previous live copy still holds the old address); after it, for every
 type. On a JSON-only site `preflow migrate` has nothing to do: addresses are recorded as records
 are saved or published, so the same holds there for each record's first rename.
+
+Records written by `folio:import` don't get automatic redirects for renames the import makes (the
+importer writes rows directly); run `preflow migrate` afterwards to record their addresses.
+
+Until `preflow migrate` has run on a SQL site, *Settings → Redirects* says so instead of showing
+the lists.
 
 ## User types and transfer
 

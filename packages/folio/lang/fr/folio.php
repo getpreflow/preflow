@@ -781,6 +781,7 @@ return [
         'delete_confirm' => 'Supprimer cette redirection ?',
         'saved' => 'Redirection enregistrée.',
         'deleted' => 'Redirection supprimée.',
+        'not_migrated' => 'Les redirections ont besoin de leurs tables dans la base de données. Lancez cette commande sur le serveur :',
         'dismissed' => '« :address » masquée. Elle reviendra si elle est encore demandée dans 30 jours.',
         'unknown' => 'Redirection inconnue',
         'old_addresses' => 'Anciennes adresses',

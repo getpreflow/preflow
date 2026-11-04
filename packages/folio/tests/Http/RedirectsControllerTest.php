@@ -432,6 +432,76 @@ final class RedirectsControllerTest extends TestCase
         $this->assertNull($this->entries()->at('en', '/c'));
     }
 
+    public function test_typed_address_of_a_page_becomes_a_record_target(): void
+    {
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key', 'url' => 'https://example.com'];\n");
+        $this->publishPage('p1', ['en' => 'Team', 'de' => 'Team'], ['en' => 'b', 'de' => 'b-de']);
+        $this->working('news', 'n1', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published']);
+
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => '/x', 'target' => '/b', 'status' => '301'])->getStatusCode());
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => '/y', 'target' => 'https://example.com/b', 'status' => '301'])->getStatusCode());
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => '/de/z', 'target' => '/de/news/hello', 'status' => '301'])->getStatusCode());
+
+        $target = fn (string $locale, string $path): ?string => ($e = $this->entries()->at($locale, $path)) === null ? null
+            : ($e['target_url'] ?? $e['target_type'] . ':' . $e['target_id']);
+        $this->assertSame('page:p1', $target('en', '/x'));
+        $this->assertSame('page:p1', $target('en', '/y'), "an absolute URL with the site's host");
+        $this->assertSame('news:n1', $target('de', '/z'));
+
+        // The page moves: the redirect follows it, no chain.
+        $this->publishPage('p1', ['en' => 'Team', 'de' => 'Team'], ['en' => 'c', 'de' => 'b-de']);
+        $answer = $this->fetch('/x');
+        $this->assertSame(301, $answer->getStatusCode());
+        $this->assertSame('/c', $answer->getHeaderLine('Location'));
+
+        // Another language's page, a query, another host, a path no page holds: kept as typed.
+        foreach (['/w1' => '/de/b-de', '/w2' => '/c?ref=x', '/w3' => 'https://example.org/c', '/w4' => '/nothing-here'] as $address => $typed) {
+            $this->assertSame(302, $this->send('/folio/redirects', ['address' => $address, 'target' => $typed, 'status' => '301'])->getStatusCode(), $typed);
+            $this->assertSame($typed, $target('en', $address));
+        }
+        // "Keep the rest" sends the rest of the path along: a URL stays a URL there.
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => '/old', 'area' => '1', 'mode' => 'prefix', 'target' => '/c', 'status' => '301'])->getStatusCode());
+        $this->assertSame('/c', $this->entries()->all()[array_search('/old', array_column($this->entries()->all(), 'path'), true)]['target_url']);
+    }
+
+    public function test_record_target_off_the_site_is_refused(): void
+    {
+        $this->working('page', 'd1', ['title' => ['en' => 'Draft'], 'slug' => ['en' => 'draft'], '_locales' => ['en']]);
+
+        foreach (['page:d1', 'page:nope'] as $posted) {
+            $res = $this->send('/folio/redirects', ['address' => '/old', 'target' => $posted, 'status' => '301']);
+            $this->assertSame(422, $res->getStatusCode(), $posted);
+        }
+        $this->assertSame([], $this->entries()->all());
+    }
+
+    public function test_screens_ask_for_migrate_when_the_tables_are_missing(): void
+    {
+        // A SQL site upgraded but not migrated: Folio's internal storage has no redirect tables.
+        $container = $this->app()->container();
+        $dm = $container->get(\Preflow\Data\DataManager::class);
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $bare = new \Preflow\Data\DataManager(['json' => $dm->driver('json'), 'default' => new \Preflow\Data\Driver\SqliteDriver($pdo)], 'json', $dm->getTypeRegistry());
+        $container->instance(RedirectEntries::class, new RedirectEntries($bare));
+        $container->instance(NotFoundEntries::class, new NotFoundEntries($bare));
+
+        $answers = [
+            'list' => $this->fetch('/folio/redirects'),
+            'not found tab' => $this->fetch('/folio/redirects?tab=not-found'),
+            'new' => $this->fetch('/folio/redirects/new?not_found=x'),
+            'edit' => $this->fetch('/folio/redirects/abc'),
+            'save' => $this->send('/folio/redirects', ['address' => '/old', 'target' => '/new', 'status' => '301']),
+            'update' => $this->send('/folio/redirects/abc', ['address' => '/old', 'target' => '/new', 'status' => '301']),
+            'delete' => $this->send('/folio/redirects/abc/delete'),
+            'dismiss' => $this->send('/folio/redirects/not-found/abc/dismiss'),
+        ];
+        foreach ($answers as $what => $res) {
+            $this->assertSame(503, $res->getStatusCode(), $what);
+            $this->assertStringContainsString('Redirects need their database tables. Run this command on the server: <code>preflow migrate</code>', (string) $res->getBody(), $what);
+        }
+    }
+
     public function test_redirect_from_not_found_removes_the_row(): void
     {
         $id = $this->hitMissing('de', '/fehlt', 2);

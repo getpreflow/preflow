@@ -153,6 +153,14 @@ final class AdminTranslationTest extends TestCase
         preg_match('~<script type="application/json" id="folio-i18n" nonce="[^"]+">(.*?)</script>~s', $html, $m);
         $texts = json_decode($m[1], true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame($locale === 'de' ? 'Diesen Eintrag löschen?' : 'Supprimer cette entrée ?', $texts['confirm_delete'] ?? null);
+        // The "Send its old links to…" prompt's words (folio.redirects.prompt.*), every one of them.
+        $translated = \Preflow\Folio\FolioText::translator()->entries('folio', $locale);
+        $prompt = array_filter(array_keys(\Preflow\Folio\FolioText::translator()->entries('folio', 'en')), static fn (string $key): bool => str_starts_with($key, 'folio.redirects.prompt.'));
+        $this->assertNotEmpty($prompt);
+        foreach ($prompt as $key) {
+            $this->assertSame($translated[$key] ?? null, $texts[substr($key, strlen('folio.'))] ?? null, $key);
+        }
+        $this->assertSame($locale === 'de' ? 'Als „nicht gefunden“ lassen' : 'Les laisser « introuvables »', $texts['redirects.prompt.leave'] ?? null);
         $this->assertStringNotContainsString('</script', $m[1]);
     }
 

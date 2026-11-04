@@ -178,6 +178,37 @@ final class AutomaticRedirectsTest extends TestCase
         $this->assertSame('/team', $res->getHeaderLine('Location'));
     }
 
+    public function test_removal_url_targets_lead_to_the_final_target(): void
+    {
+        $page = static fn (string $title, string $slug): array => ['title' => ['en' => $title], 'slug' => ['en' => $slug], '_locales' => ['en']];
+        $this->publisher()->publish($this->working('page', 'p2', $page('Team', 'team')), null);
+        $this->publisher()->publish($this->working('page', 'p2', $page('Team', 'crew')), null);
+        $this->publisher()->publish($this->working('page', 'p1', $page('About', 'about')), null);
+        $this->working('news', 'n1', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published']);
+        $this->addresses()->seed();
+        $this->assertSame('/crew', $this->fetch('/team')->getHeaderLine('Location'), '/team redirects already');
+
+        // Unpublish and delete ("Send its old links to…" with a URL): the page behind /team.
+        $this->send('/folio/page/p1/unpublish', ['_redirect_to' => '/team']);
+        $this->send('/folio/news/n1/delete', ['_redirect_to' => '/team']);
+
+        foreach (['/about', '/news/hello'] as $path) {
+            $entry = $this->entries()->at('en', $path);
+            $this->assertSame(['page', 'p2', null], [$entry['target_type'] ?? null, $entry['target_id'] ?? null, $entry['target_url'] ?? null], $path);
+            $this->assertSame('/crew', $this->fetch($path)->getHeaderLine('Location'), $path);
+        }
+        // The page moves again: one hop still.
+        $this->publisher()->publish($this->working('page', 'p2', $page('Team', 'staff')), null);
+        $this->assertSame('/staff', $this->fetch('/about')->getHeaderLine('Location'));
+
+        // A target at the record's own address is no target: no redirect to itself.
+        $this->publisher()->publish($this->working('page', 'p3', $page('Jobs', 'jobs')), null);
+        $this->send('/folio/page/p3/unpublish', ['_redirect_to' => '/jobs']);
+        $jobs = $this->entries()->at('en', '/jobs');
+        $this->assertSame([null, null, 'removed'], [$jobs['target_type'] ?? null, $jobs['target_url'] ?? null, $jobs['kind'] ?? null]);
+        $this->assertSame(404, $this->fetch('/jobs')->getStatusCode());
+    }
+
     public function test_old_address_answers_301_end_to_end(): void
     {
         $page = ['title' => ['en' => 'About', 'de' => 'Über uns'], '_locales' => ['en', 'de']];

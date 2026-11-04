@@ -360,6 +360,16 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(\Preflow\Folio\Redirects\LiveRecords::class),
                 $c->get(FrontendResolver::class),
             ));
+            // Where a redirect target really leads (a page's URL becomes its record; no chains), for
+            // Settings → Redirects and the removal targets of deletes and unpublishes.
+            $container->singleton(\Preflow\Folio\Redirects\SiteTarget::class, static fn (Container $c) => new \Preflow\Folio\Redirects\SiteTarget(
+                $c->get(\Preflow\Folio\Redirects\RedirectEntries::class),
+                static fn (): \Preflow\Folio\Redirects\LiveRecords => $c->get(\Preflow\Folio\Redirects\LiveRecords::class),
+                $c->get(FrontendResolver::class),
+                $locales ?? \Preflow\Data\Locales::single('en'),
+                self::prefixedUrls($app),
+                \Preflow\Folio\Redirects\SiteTarget::hostOf($app->config()->get('app.url')),
+            ));
             // The address book behind the automatic redirects. LiveRecords reads through the Publisher,
             // which writes through the address book: it is looked up when first needed.
             $container->singleton(\Preflow\Folio\Redirects\RecordAddresses::class, static fn (Container $c) => new \Preflow\Folio\Redirects\RecordAddresses(
@@ -370,6 +380,7 @@ final class FolioServiceProvider extends ServiceProvider
                 self::prefixedUrls($app),
                 $app->config()->get('app.debug', false) ? static fn (string $message) => error_log('folio: ' . $message) : null,
                 $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class),
+                $c->get(\Preflow\Folio\Redirects\SiteTarget::class),
             ));
             // After the tables exist (folio.tables): every live page's current addresses, so the first
             // rename after an upgrade redirects for every type.
@@ -393,6 +404,7 @@ final class FolioServiceProvider extends ServiceProvider
                 self::prefixedUrls($app),
                 $c->get(TemplateEngineInterface::class),
                 $prefix,
+                $c->get(\Preflow\Folio\Redirects\SiteTarget::class),
             ));
         }
         $container->singleton(\Preflow\Folio\Extension\ExtensionState::class, fn (Container $c) => new \Preflow\Folio\Extension\ExtensionState(
