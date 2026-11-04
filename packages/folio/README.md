@@ -297,7 +297,12 @@ A type's `key` cannot be a path Folio uses under its prefix (`login`, `logout`,
 ```
 
 - `route`: `{field}` matches one path segment, `{...field}` matches the rest of the
-  path. The parameter names are record fields used for the lookup.
+  path. The parameter names are record fields used for the lookup. Since 0.52 their values may
+  only hold lowercase `a-z`, digits and single hyphens (`ueber-uns`; a `{...field}` also single
+  slashes between parts): a save or publish with an umlaut, a capital, a space or anything else is
+  refused with the field's `validation.slug` message, in every language. The editor converts what
+  is typed as the field is left and before sending (`Über uns` becomes `ueber-uns`). A `readonly`
+  field is not checked.
 - `home` (optional): the value `/` resolves to. Only one type may declare it.
 - `template` (optional): a userland Twig path. When it is absent, Folio uses
   `@folio/frontend/{type}.twig`, then `@folio/frontend/page.twig`. Templates receive

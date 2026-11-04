@@ -15,12 +15,15 @@ use Preflow\Validation\ValidationResult;
 /**
  * Full validation of a record: rules inside blocks fields first (keyed
  * "<field>.<uid>.<leaf>"), then the type's rules plus each field type's own.
+ * With a frontend resolver, the fields a type's public address is built from
+ * also get "slug" ("slug:path" for a catch-all): no umlauts, capitals or spaces.
  */
 final class RecordValidator
 {
     public function __construct(
         private readonly FieldTypeRegistry $fieldTypes,
         private readonly DataManager $dm,
+        private readonly ?FrontendResolver $frontend = null,
     ) {}
 
     /** @throws ValidationException */
@@ -47,7 +50,8 @@ final class RecordValidator
     /**
      * Per-field rules: the JSON "validate" list plus the field type's own rules
      * (e.g. select's in:…, date's format) and, for a unique or indexed string or a unique
-     * field's scope, its length limit. Keyed by field, because the data
+     * field's scope, its length limit; a field of the type's frontend route, "slug" or
+     * "slug:path" (a catch-all). Keyed by field, because the data
      * layer merges extra rules per field. A "readonly" field gets an empty list:
      * it is not validated on save (nor checked for being unique).
      *
@@ -57,6 +61,7 @@ final class RecordValidator
     {
         $rules = [];
         $lengthRules = $this->dm->fieldKinds()->lengthRules($typeDef);
+        $addressRules = $this->addressRules($typeDef);
         foreach ($typeDef->fields as $name => $fieldDef) {
             if (self::readonly($fieldDef->config)) {
                 // The editor can't touch it, so its stored value is not checked: it would block
@@ -71,9 +76,31 @@ final class RecordValidator
             if (isset($lengthRules[$name])) {
                 $merged[] = $lengthRules[$name];
             }
+            if (isset($addressRules[$name])) {
+                $merged[] = $addressRules[$name];
+            }
             if ($merged !== []) {
                 $rules[$name] = $merged;
             }
+        }
+
+        return $rules;
+    }
+
+    /**
+     * "slug" for each parameter of the type's route, "slug:path" for a catch-all.
+     *
+     * @return array<string, AddressPart>
+     */
+    private function addressRules(TypeDefinition $typeDef): array
+    {
+        $route = $this->frontend?->routeFor($typeDef->key);
+        if ($route === null) {
+            return [];
+        }
+        $rules = [];
+        foreach ($route->paramNames as $name) {
+            $rules[$name] = new AddressPart($typeDef->locales, str_contains($route->pattern, '{...' . $name . '}'));
         }
 
         return $rules;

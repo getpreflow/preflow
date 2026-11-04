@@ -21,6 +21,10 @@ return [
     'step' => 'Doit être un multiple de :step.',
     'in' => 'Doit être l’une de ces valeurs : :values.',
     'regex' => 'Le format n’est pas valide.',
+    'slug' => [
+        'segment' => 'Uniquement des lettres minuscules a–z, des chiffres et des tirets simples entre eux, p. ex. « a-propos ».',
+        'path' => 'Uniquement des lettres minuscules a–z, des chiffres, des tirets et des barres obliques simples entre eux, p. ex. « docs/a-propos ».',
+    ],
     'confirmed' => 'La confirmation ne correspond pas.',
     'unique' => 'Cette valeur est déjà utilisée.',
 ];

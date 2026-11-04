@@ -1280,6 +1280,37 @@
         });
     }
 
+    // Address fields (the wrapper has data-folio-address="segment" or "path"): what the editor types becomes
+    // lowercase a-z, digits and single hyphens ("Über uns" → "ueber-uns"), with single slashes between parts
+    // for "path". Done when the value changes and again before the form is sent; the server refuses anything else.
+    var ADDRESS_LETTERS = { 'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss', 'æ': 'ae', 'œ': 'oe', 'ø': 'o', 'đ': 'd', 'ł': 'l', 'þ': 'th' };
+
+    function addressPart(text, path) {
+        var plain = String(text).toLowerCase()
+            .replace(/[äöüßæœøđłþ]/g, function (ch) { return ADDRESS_LETTERS[ch]; })
+            .normalize('NFD').replace(/[̀-ͯ]/g, '');
+        var word = function (part) { return part.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); };
+        if (!path) { return word(plain); }
+        return plain.split('/').map(word).filter(function (part) { return part !== ''; }).join('/');
+    }
+
+    function cleanAddressInput(input) {
+        var wrap = input && input.closest ? input.closest('[data-folio-address]') : null;
+        if (!wrap || input.tagName !== 'INPUT' || (input.type && input.type !== 'text')) { return; }
+        var clean = addressPart(input.value, wrap.getAttribute('data-folio-address') === 'path');
+        if (clean !== input.value) { input.value = clean; }
+    }
+
+    function onAddressChange(e) {
+        cleanAddressInput(e.target);
+    }
+
+    function onAddressSubmit(e) {
+        var form = e.target;
+        if (!form || !form.querySelectorAll) { return; }
+        form.querySelectorAll('[data-folio-address] input').forEach(cleanAddressInput);
+    }
+
     function initTranslationsSaveAll() {
         var saveAll = document.querySelector('[data-translations-save-all]');
         var table = document.querySelector('.folio-translations');
@@ -1899,6 +1930,9 @@
         document.addEventListener('click', onPickClick);
         document.addEventListener('click', onAssetFieldClick);
         document.querySelectorAll('[data-folio-focal]').forEach(placeFocalMarker);
+        // Capture phase: addresses are clean before autosave or any other handler reads the field.
+        document.addEventListener('change', onAddressChange, true);
+        document.addEventListener('submit', onAddressSubmit, true);
         document.addEventListener('submit', onAutosaveSubmit);
         document.addEventListener('htmx:beforeRequest', onBeforeRequest);
         document.addEventListener('htmx:responseError', onAutosaveError);

@@ -20,7 +20,7 @@ use PHPUnit\Framework\TestCase;
  * interfaces Folio implements), media 0.50 (MediaLibrary::shareImage() for share cards; since 0.43 the bin: findBinned(), binned(), restoreFromBin(),
  * AssetUsageEntry::$blocksDelete; AssetCleanup for the "Unused only" filter; since 0.36 box presets, edits and
  * writeEdited, the asset classes Folio's library and field build on),
- * view 0.50 (PublicPages, PublicPage, SeoSite, SeoContext, PageMeta, the SEO head tags), validation 0.46 (the step rule; since 0.37 Message, ValidatorFactory::useTranslator()).
+ * view 0.50 (PublicPages, PublicPage, SeoSite, SeoContext, PageMeta, the SEO head tags), validation 0.52 (the slug rule; since 0.46 the step rule, since 0.37 Message, ValidatorFactory::useTranslator()).
  * preflow/members is only suggested (Folio carries its admin when it is installed); a members
  * release before 0.39 lacks Members::lock(), unlock(), isLocked(), endSessions() and resendConfirmation()
  * (and before 0.38 still shipped its own admin extension), so it conflicts. preflow/codes is suggested too
@@ -33,7 +33,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.47', 'preflow/auth' => '<0.38', 'preflow/codes' => '<0.40', 'preflow/core' => '<0.52', 'preflow/data' => '<0.42', 'preflow/i18n' => '<0.47', 'preflow/media' => '<0.50', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/routing' => '<0.52', 'preflow/validation' => '<0.46', 'preflow/view' => '<0.50'],
+            ['preflow/ai' => '<0.47', 'preflow/auth' => '<0.38', 'preflow/codes' => '<0.40', 'preflow/core' => '<0.52', 'preflow/data' => '<0.42', 'preflow/i18n' => '<0.47', 'preflow/media' => '<0.50', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/routing' => '<0.52', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.50'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; members and codes are suggested, not required.

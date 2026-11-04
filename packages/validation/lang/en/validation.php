@@ -23,6 +23,10 @@ return [
     'step' => 'Must be a multiple of :step.',
     'in' => 'Must be one of: :values.',
     'regex' => 'Format is invalid.',
+    'slug' => [
+        'segment' => 'Only lowercase letters a-z, digits and single hyphens between them, e.g. "about-us".',
+        'path' => 'Only lowercase letters a-z, digits, single hyphens and slashes between them, e.g. "docs/about-us".',
+    ],
     'confirmed' => 'Confirmation does not match.',
     'unique' => 'This value is already taken.',
 ];
