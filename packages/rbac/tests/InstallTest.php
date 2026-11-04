@@ -11,7 +11,7 @@ use Preflow\Folio\Console\ExtensionsApplyCommand;
 use Preflow\Folio\Extension\ExtensionState;
 use Preflow\Rbac\RoleStore;
 
-/** Extension::install() (from folio:extensions:apply) and RoleStore::ensure(). */
+/** Extension::seed() (on every folio:extensions:apply) and RoleStore::ensure(). */
 final class InstallTest extends TestCase
 {
     use RbacAppScaffold;
@@ -67,6 +67,19 @@ final class InstallTest extends TestCase
             'staff/editor' => ['label' => 'Editor', 'permissions' => ['page.*']],
         ], $this->byName());
         $this->assertSame('1.1.0', $this->container()->get(ExtensionState::class)->installedVersion('rbac'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_role_added_to_config_roles_reaches_an_installed_site(): void
+    {
+        $this->write('config/roles.php', "<?php\nreturn ['staff' => ['editor' => ['page.*']]];\n");
+        $this->assertStringContainsString('installed rbac 1.1.0', $this->apply());
+
+        // The next deploy, same rbac version: the site's seed list grew.
+        $this->write('config/roles.php', "<?php\nreturn ['staff' => ['editor' => ['page.*', 'assets.*']]];\n");
+        $this->assertSame("nothing to do\n", $this->apply());
+
+        $this->assertSame(['page.*', 'assets.*'], $this->byName()['staff/editor']['permissions']);
     }
 
     #[RunInSeparateProcess]

@@ -74,10 +74,11 @@ final class Extension extends \Preflow\Folio\Extension\Extension
     }
 
     /**
-     * The member roles, created when missing; an existing role (edited in Folio, or made by
-     * an earlier version) is never changed, so applying a new version is harmless.
+     * The member roles, on every deploy: created when missing, and an existing role (edited in
+     * Folio, or made by an earlier version) gets only what the list below newly names, once
+     * (RoleStore::ensure()), so an owner's change in Folio stays.
      */
-    public function install(Container $c): void
+    public function seed(Container $c): void
     {
         $roles = $c->get(RoleStore::class);
         $roles->ensure('members', 'pending', 'Waiting for approval', []);
