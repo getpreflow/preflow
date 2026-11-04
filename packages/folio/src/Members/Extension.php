@@ -76,7 +76,9 @@ final class Extension extends \Preflow\Folio\Extension\Extension
     /**
      * The member roles, on every deploy: created when missing, and an existing role (edited in
      * Folio, or made by an earlier version) gets only what the list below newly names, once
-     * (RoleStore::ensure()), so an owner's change in Folio stays.
+     * (RoleStore::ensure()), so an owner's change in Folio stays. A permission added to this
+     * list reaches every site's member role on its next deploy (grant-once), so adding one here
+     * is a deliberate framework decision.
      */
     public function seed(Container $c): void
     {

@@ -25,7 +25,8 @@ final class KnownPermissions
 
     /**
      * Announced even on the first run, when every other declared permission becomes known
-     * silently: permissions that arrived in the release which introduced this list.
+     * silently: permissions that came shortly before this list (0.53) and that roles with an
+     * explicit permission list never received. `redirects.manage` came with 0.52.
      */
     public const array ANNOUNCE_ON_FIRST_RUN = ['redirects.manage'];
 
@@ -84,8 +85,8 @@ final class KnownPermissions
     }
 
     /**
-     * For `preflow migrate` (the folio.permissions step): one line naming the fresh
-     * permissions with their labels, or nothing.
+     * For `preflow migrate` (the folio.permissions step, which asks only where rbac's Roles
+     * screen exists): one line naming the fresh permissions with their labels, or nothing.
      *
      * @return list<string>
      */

@@ -30,7 +30,7 @@ use Psr\Http\Message\ServerRequestInterface;
  * #[BeforeSave] of the type (RoleRules among them: delegation, lock-out), the type's validation,
  * the save, every #[AfterSave]. A refusal changes nothing. Each answers with a redirect to the
  * Roles list and a flash message, also when the new permissions can't be read (a site not
- * migrated).
+ * migrated) and when the save or an #[AfterSave] fails (logged).
  *
  * @since 0.53
  */
@@ -99,9 +99,16 @@ final class NewPermissionsScreen
         } catch (Refused $e) {
             return self::back($request, 'error', $e->getMessage());
         }
-        $this->dm->saveType($role, false);
-        $this->permissions->markKnown($names);
-        $customizations?->runHooks(AfterSave::class, $role);
+        try {
+            $this->dm->saveType($role, false);
+            $this->permissions->markKnown($names);
+            $customizations?->runHooks(AfterSave::class, $role);
+        } catch (\Throwable $e) {
+            // The storage or a site's #[AfterSave] failed: a message instead of a 500, the cause in the log.
+            error_log('rbac: add to role failed: ' . $e->getMessage());
+
+            return self::back($request, 'error', $this->messages->get('new.failed'));
+        }
         $label = $this->messages->roleLabel((string) $role->get('population'), (string) $role->get('name'), (string) $role->get('label'));
 
         return self::back($request, 'success', $this->messages->get('new.added', ['role' => $label]));

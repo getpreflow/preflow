@@ -134,6 +134,14 @@ final class NoticeHooksTest extends TestCase
         $this->assertFileDoesNotExist($marker);
     }
 
+    public function test_admin_css_spaces_stacked_notices_and_their_item_list(): void
+    {
+        $css = (string) file_get_contents(__DIR__ . '/../../assets/admin.css');
+        $this->assertMatchesRegularExpression('/\.folio-page-notices \{[^}]*gap: 10px;/', $css);
+        $this->assertStringContainsString('.folio-page-notices > * { margin: 0; }', $css, 'the gap spaces them, not each margin');
+        $this->assertMatchesRegularExpression('/\.folio-notice \.folio-notice-list \{ list-style: none;[^}]*padding: 0; \}/', $css);
+    }
+
     #[RunInSeparateProcess]
     public function test_static_notice_method_throws_at_boot(): void
     {

@@ -73,6 +73,7 @@ return [
         'dismissed' => 'Ignoré.',
         'no_role' => 'Choisissez le rôle auquel l’ajouter.',
         'unavailable' => 'Les nouvelles autorisations ne peuvent pas encore être vérifiées : lancez preflow migrate.',
+        'failed' => "Le rôle n'a pas pu être enregistré. L'erreur figure dans le journal du serveur.",
     ],
     'extension' => ['label' => 'Rôles'],
     'roles' => [

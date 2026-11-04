@@ -73,6 +73,7 @@ return [
         'dismissed' => 'Ausgeblendet.',
         'no_role' => 'Wähle die Rolle, der du sie geben willst.',
         'unavailable' => 'Neue Berechtigungen lassen sich noch nicht prüfen: Führe preflow migrate aus.',
+        'failed' => 'Die Rolle konnte nicht gespeichert werden. Der Fehler steht im Server-Log.',
     ],
     'extension' => ['label' => 'Rollen'],
     'roles' => [

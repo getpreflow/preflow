@@ -343,8 +343,9 @@ final class FolioServiceProvider extends ServiceProvider
             static fn (): array => $container->get(\Preflow\Folio\Storage\TableSync::class)->sync(),
         );
         // Which declared permissions are new since the site last looked (the Roles notice, badge and
-        // dashboard line); migrate lists them once the table exists. The steps run after boot, when
-        // declarePermissions() has filled the registry.
+        // dashboard line); migrate lists them once the table exists, and only where rbac's Roles screen
+        // (the rbac_role type) is there to review and dismiss them: elsewhere the line would never go
+        // away. The steps run after boot, when declarePermissions() has filled the registry.
         if ($dataManager !== null) {
             $container->singleton(\Preflow\Folio\Permissions\KnownPermissions::class, static fn (Container $c) => new \Preflow\Folio\Permissions\KnownPermissions(
                 $c->get(DataManager::class),
@@ -352,7 +353,9 @@ final class FolioServiceProvider extends ServiceProvider
             ));
             $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
                 'folio.permissions',
-                static fn (): array => $container->get(\Preflow\Folio\Permissions\KnownPermissions::class)->migrateLines(),
+                static fn (): array => $container->get(TypeCatalog::class)->has('rbac_role')
+                    ? $container->get(\Preflow\Folio\Permissions\KnownPermissions::class)->migrateLines()
+                    : [],
             );
         }
         // Redirects and the not-found list (the routing core's RedirectMiddleware switches on with the

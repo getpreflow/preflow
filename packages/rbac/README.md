@@ -273,7 +273,9 @@ edit roles (`rbac_role.edit`) is told, and decides (since 0.53):
   role got something new through a pattern.
 - **Add to role…** gives the line's permissions to the role you pick, exactly as the role
   editor would: delegation applies (the picker offers only roles you may give them; a crafted
-  POST gets the editor's refusal), and so does the lock-out check. It saves through the type's
+  POST gets the editor's refusal), and so does the lock-out check. The picker offers staff roles
+  only (member roles never get admin permissions from this notice) and leaves out roles that
+  already have all of the line's permissions, such as `*`. It saves through the type's
   `#[BeforeSave]` and `#[AfterSave]` hooks and its validation, like the role editor, so a site's
   own hooks on `rbac_role` run for it too.
 - **Dismiss** takes the line away without granting anything.
@@ -282,7 +284,8 @@ edit roles (`rbac_role.edit`) is told, and decides (since 0.53):
 A permission leaves the notice only through Dismiss or Add to role; then it is known for good.
 Granting it in the role editor does not clear it: the notice then names that role, and a
 Dismiss clears it. Which permissions are known is Folio's list
-(`Preflow\Folio\Permissions\KnownPermissions`, created by `preflow migrate`); until then the
+(`Preflow\Folio\Permissions\KnownPermissions`; its table is created by `preflow migrate` or
+`folio:extensions:apply` on SQL storage, JSON storage needs neither); until then the
 notice, badge and line show nothing. `preflow migrate` prints the new ones too, without
 marking them known. A switched-off extension's permissions wait until it is switched on.
 

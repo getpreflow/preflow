@@ -104,7 +104,9 @@ final class NewPermissions
     {
         try {
             return $this->container->get(Access::class)->can(self::AUDIENCE) ? $this->fresh() : [];
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            error_log('rbac: new permissions not shown: ' . $e->getMessage());
+
             return [];
         }
     }
@@ -113,11 +115,13 @@ final class NewPermissions
      * The fresh names by the registry's group (a new content type's five permissions are one
      * line), in name order, each with the roles covering some of them: the role's patterns
      * that match (Pattern::matches), so "Administrator (*)", "Content (assets.*)". "roles" are
-     * the roles the signed-in user may add all of the group's names to (delegation, as in the
-     * role editor: they cover the role as stored and every name).
+     * the staff roles that lack one of the names (a role covering them all, such as `*`, gains
+     * nothing) and that the signed-in user may add all of them to (delegation, as in the role
+     * editor: they cover the role as stored and every name). Member roles are never offered:
+     * the permissions this notice announces are the admin's.
      *
      * @param list<string> $fresh
-     * @return list<array{heading: string, names: list<string>, permissions: list<array{name: string, label: string}>, covered: list<array{label: string, patterns: list<string>}>, roles: array<string, list<array{id: string, label: string}>>}>
+     * @return list<array{heading: string, names: list<string>, permissions: list<array{name: string, label: string}>, covered: list<array{label: string, patterns: list<string>}>, roles: list<array{id: string, label: string}>}>
      */
     private function groups(array $fresh): array
     {
@@ -153,8 +157,11 @@ final class NewPermissions
                 if ($matching !== []) {
                     $covered[] = ['label' => $role['label'], 'patterns' => $matching];
                 }
+                if ($role['population'] !== 'staff' || PermissionCoverage::coversAll($role['patterns'], $names)) {
+                    continue;
+                }
                 if ($held === null || PermissionCoverage::coversAll($held, [...$role['patterns'], ...$names])) {
-                    $pickable[$this->messages->get('options.rbac_role.population.' . $role['population'])][] = ['id' => $role['id'], 'label' => $role['label']];
+                    $pickable[] = ['id' => $role['id'], 'label' => $role['label']];
                 }
             }
             $groups[] = [

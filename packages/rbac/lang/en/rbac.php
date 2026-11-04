@@ -77,6 +77,7 @@ return [
         'dismissed' => 'Dismissed.',
         'no_role' => 'Choose a role to add it to.',
         'unavailable' => "New permissions can't be checked yet: run preflow migrate.",
+        'failed' => 'The role could not be saved. The error is in the server log.',
     ],
     // The heading of rbac's permissions on the roles screen.
     'extension' => ['label' => 'Roles'],

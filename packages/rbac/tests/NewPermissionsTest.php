@@ -121,6 +121,7 @@ final class NewPermissionsTest extends TestCase
         $this->assertStringContainsString('New permissions', $text);
         $this->assertStringContainsString('These permissions came with an update. They are not given to any role automatically.', $text);
 
+        $this->assertStringContainsString('<ul class="folio-notice-list rbac-new-list">', $html, "Folio's list styling");
         $lines = $this->lines($html);
         $this->assertCount(3, $lines, implode("\n", $lines)); // Folio, Pages (a type's five as one), Assets
         [$assets, $folio, $pages] = [self::lineWith($lines, 'assets.upload'), self::lineWith($lines, 'redirects.manage'), self::lineWith($lines, 'page.view')];
@@ -166,12 +167,56 @@ final class NewPermissionsTest extends TestCase
         $html = (string) $this->send('GET', '/folio/rbac_role')->getBody();
         $lines = $this->lines($html);
         $this->assertCount(2, $lines);
-        // The editor holds page.* (Pages: Helper and their own role) but not redirects.manage (no picker on that line).
+        // The editor holds page.* (Pages: Helper; their own role has them all already) but not
+        // redirects.manage (no picker on that line).
         $this->assertSame(1, substr_count($html, 'action="/folio/rbac/new-permissions/grant"'));
         $this->assertMatchesRegularExpression('#<option value="r-helper">Helper</option>#', $html);
-        $this->assertMatchesRegularExpression('#<option value="r-editor">Editor</option>#', $html);
+        $this->assertDoesNotMatchRegularExpression('#<option value="r-editor">Editor</option>#', $html);
         $this->assertDoesNotMatchRegularExpression('#<option value="[^"]*">Administrator</option>#', $html);
         $this->assertSame(2, substr_count($html, 'action="/folio/rbac/new-permissions/dismiss"'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_picker_offers_staff_roles_that_lack_some_of_the_line(): void
+    {
+        $this->managerSetup();
+        $this->role('r-content', 'staff', 'content', ['assets.*']);
+        $this->role('r-member', 'members', 'member', ['page.view']);
+        $this->forget(['page.view', 'page.create', 'page.edit', 'page.publish', 'page.delete', 'assets.upload']);
+        $this->as('admin');
+
+        $items = $this->items((string) $this->send('GET', '/folio/rbac_role')->getBody());
+        $this->assertCount(3, $items);
+        $options = static function (string $item): array {
+            preg_match_all('#<option value="([^"]+)">#', $item, $m);
+            sort($m[1]);
+
+            return $m[1];
+        };
+        // A role covering every name of the line (Administrator by *, Editor by page.*, Content by
+        // assets.*) is not offered; neither is a members role, the admin's notice is for staff roles.
+        $this->assertSame(['r-content', 'r-editor', 'r-helper', 'r-keeper'], $options(self::itemWith($items, 'redirects.manage')));
+        $this->assertSame(['r-content', 'r-helper', 'r-keeper'], $options(self::itemWith($items, 'page.view')));
+        $this->assertSame(['r-editor', 'r-helper', 'r-keeper'], $options(self::itemWith($items, 'assets.upload')));
+    }
+
+    /** @return list<string> the notice's lines as HTML */
+    private function items(string $html): array
+    {
+        preg_match_all('#<li class="rbac-new-item"[^>]*>(.*?)</li>#s', $html, $m);
+
+        return $m[1];
+    }
+
+    /** @param list<string> $items */
+    private static function itemWith(array $items, string $needle): string
+    {
+        foreach ($items as $item) {
+            if (str_contains($item, '<code>' . $needle . '</code>')) {
+                return $item;
+            }
+        }
+        self::fail("no line with {$needle}");
     }
 
     #[RunInSeparateProcess]
@@ -312,6 +357,37 @@ final class NewPermissionsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_add_to_role_whose_save_fails_answers_with_a_message_not_a_500(): void
+    {
+        $this->managerSetup();
+        $this->as('admin');
+        // The role's file can't be written (the save throws after the delegation check passed).
+        $dir = $this->dir . '/storage/data/rbac_role';
+        chmod($dir, 0555);
+        set_error_handler(static fn (): bool => true, E_WARNING); // the driver's own warning, before it throws
+        try {
+            $res = $this->send('POST', '/folio/rbac/new-permissions/grant', ['names' => ['redirects.manage'], 'role' => 'r-helper']);
+        } finally {
+            restore_error_handler();
+            chmod($dir, 0755);
+        }
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame('/folio/rbac_role', $res->getHeaderLine('Location'));
+        $this->assertStringContainsString('The role could not be saved. The error is in the server log.', self::text($this->send('GET', '/folio/rbac_role')));
+        $this->assertSame(['page.view'], $this->stored('rbac_role', 'r-helper')?->get('permissions'));
+        $this->assertSame(['redirects.manage'], $this->known()->fresh(), 'still new');
+        $this->assertNotEmpty(array_filter($this->errorLog(), static fn (string $line): bool => str_contains($line, 'rbac: add to role failed')), implode("\n", $this->errorLog()));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_migrate_lists_the_new_permissions_where_rbac_shows_them(): void
+    {
+        $steps = $this->container()->get(\Preflow\Data\Migration\MigrationRegistry::class)->steps();
+
+        $this->assertSame(['New permissions to review in Settings → Roles: redirects.manage (Redirects)'], $steps['folio.permissions']());
+    }
+
+    #[RunInSeparateProcess]
     public function test_granting_in_the_role_editor_keeps_the_notice_and_names_the_role(): void
     {
         $this->managerSetup();
@@ -344,6 +420,7 @@ final class NewPermissionsTest extends TestCase
         $this->assertSame(200, $list->getStatusCode());
         $this->assertStringNotContainsString('rbac-new', (string) $list->getBody());
         $this->assertNull(self::badge((string) $list->getBody()));
+        $this->assertNotEmpty(array_filter($this->errorLog(), static fn (string $line): bool => str_contains($line, 'rbac: new permissions not shown')), 'logged, not shown');
         $dashboard = $this->send('GET', '/folio');
         $this->assertSame(200, $dashboard->getStatusCode());
         $this->assertStringNotContainsString('to review in Roles', (string) $dashboard->getBody());
