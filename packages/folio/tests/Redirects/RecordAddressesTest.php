@@ -367,6 +367,28 @@ final class RecordAddressesTest extends TestCase
         $this->assertFalse($this->notFoundAt('de', '/news/hello'));
     }
 
+    public function test_without_locale_prefixes_addresses_are_language_neutral(): void
+    {
+        $neutral = new RecordAddresses($this->dm, $this->entries, $this->resolver, $this->live, prefixed: false, notFound: $this->notFound);
+        $at = new \DateTimeImmutable('2026-11-01T10:00:00Z');
+        // Visits are recorded under the locale each request had.
+        $this->notFound->record('/about', 'de', $at);
+        $this->notFound->record('/about', 'en', $at);
+
+        $this->publish('p1', ['en' => 'about', 'de' => 'ueber-uns']);
+        $neutral->sync('page', 'p1');
+
+        $this->assertSame(['' => '/about'], $neutral->of('page', 'p1'));
+        $this->assertFalse($this->notFoundAt('de', '/about'));
+        $this->assertFalse($this->notFoundAt('en', '/about'));
+
+        $this->notFound->record('/about', 'de', $at);
+        $this->publish('p1', ['en' => 'about-us', 'de' => 'ueber-uns']);
+        $neutral->sync('page', 'p1');
+        $this->assertSame([' /about → page:p1 (auto, page:p1, 301)'], $this->entryLines());
+        $this->assertFalse($this->notFoundAt('de', '/about'), 'the address got an entry');
+    }
+
     public function test_entries_of_others_survive_a_removal_without_target(): void
     {
         $this->publishAndSync('p1', ['en' => 'about']);

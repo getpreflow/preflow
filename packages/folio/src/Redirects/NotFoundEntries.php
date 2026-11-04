@@ -145,12 +145,29 @@ final class NotFoundEntries implements NotFoundLog
         }
     }
 
-    /** Drops an address from the list (it got a redirect, or a page took it). */
+    /**
+     * Drops an address from the list (it got a redirect, or a page took it). Locale '' is a
+     * language-neutral address (a site without locale prefixes): the path goes in every locale,
+     * as the visits were recorded under the locale each request had.
+     */
     public function forget(string $locale, string $path): void
     {
         $path = RedirectPath::normalize($path);
-        if ($path !== null && $this->at($locale, $path) !== null) {
-            $this->dm->deleteIn(self::definition(), self::id($locale, $path));
+        if ($path === null) {
+            return;
+        }
+        if ($locale !== '') {
+            if ($this->at($locale, $path) !== null) {
+                $this->dm->deleteIn(self::definition(), self::id($locale, $path));
+            }
+
+            return;
+        }
+        foreach ($this->dm->queryIn(self::definition())->where('path', $path)->get()->items() as $record) {
+            // A value column: MySQL compares it case-insensitively, so exact matches only.
+            if ((string) $record->get('path') === $path) {
+                $this->dm->deleteIn(self::definition(), (string) $record->getId());
+            }
         }
     }
 

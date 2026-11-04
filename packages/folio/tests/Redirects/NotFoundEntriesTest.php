@@ -70,6 +70,26 @@ final class NotFoundEntriesTest extends TestCase
     }
 
     #[DataProvider('storages')]
+    public function test_language_neutral_forget_drops_the_path_in_every_locale(string $storage): void
+    {
+        // A site without locale prefixes keeps its addresses under '' but records visits under
+        // the locale each request had.
+        $log = $this->log($storage);
+        $at = self::at('2026-11-01T10:00:00+00:00');
+        $log->record('/old', 'de', $at);
+        $log->record('/old', 'en', $at);
+        $log->record('/older', 'en', $at);
+        $log->record('/OLD', 'en', $at);
+
+        $log->forget('', '/old/');
+
+        $this->assertNull($log->find(NotFoundEntries::id('de', '/old')));
+        $this->assertNull($log->find(NotFoundEntries::id('en', '/old')));
+        $this->assertNotNull($log->find(NotFoundEntries::id('en', '/older')));
+        $this->assertNotNull($log->find(NotFoundEntries::id('en', '/OLD')), 'exact paths only');
+    }
+
+    #[DataProvider('storages')]
     public function test_single_hits_are_hidden(string $storage): void
     {
         $log = $this->log($storage);
