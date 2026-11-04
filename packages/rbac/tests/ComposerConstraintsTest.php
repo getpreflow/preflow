@@ -11,7 +11,8 @@ use PHPUnit\Framework\TestCase;
  * Composer from pairing rbac with a release that lacks the APIs it calls: auth 0.27
  * (Access::population(), ConfigUserProvider::entries(), the chain provider), core 0.27 (builds
  * chains from config/auth.php), folio 0.53 (Extension::seed(), which folio:extensions:apply runs on every
- * deploy and where rbac seeds its roles; since 0.37 #[FolioExtension(translations: …)], DisplayLabels, FolioText::label();
+ * deploy and where rbac seeds its roles; KnownPermissions, #[ListNotice], #[DashboardNotice] and
+ * FolioScreen(nav: false) for the new-permissions notice; since 0.37 #[FolioExtension(translations: …)], DisplayLabels, FolioText::label();
  * since 0.27 opt-in parts, StaffPasswords, SIGNED_IN), i18n 0.37 (translation scopes, the translator's locale
  * as the default of Messages::get()). devtools is not guarded: an older one only lacks the import command.
  */

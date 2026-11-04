@@ -237,6 +237,29 @@ Before the extension is installed, the same check applies: the first role you sa
 grant yourself `rbac_role.view` and `rbac_role.edit` (or run `folio:extensions:apply`,
 which creates `admin`).
 
+## New permissions
+
+When an update brings a permission (a Folio release, a new package, extension or content
+type; 0.52 brought `redirects.manage`), it is never given to a role on its own. Whoever may
+edit roles (`rbac_role.edit`) is told, and decides (since 0.53):
+
+- **Settings → Roles** shows a notice above the list: one line per permission group (a new
+  content type's five permissions are one line), with the roles that already have it and how
+  ("Already in: Administrator (`*`), Content admin (`assets.*`)"), so you also learn when a
+  role got something new through a pattern.
+- **Add to role…** gives the line's permissions to the role you pick, exactly as the role
+  editor would: delegation applies (the picker offers only roles you may give them; a crafted
+  POST gets the editor's refusal), and so does the lock-out check.
+- **Dismiss** takes the line away without granting anything.
+- The *Roles* item in the sidebar carries the count, and the dashboard has a line linking here.
+
+A permission leaves the notice only through Dismiss or Add to role; then it is known for good.
+Granting it in the role editor does not clear it: the notice then names that role, and a
+Dismiss clears it. Which permissions are known is Folio's list
+(`Preflow\Folio\Permissions\KnownPermissions`, created by `preflow migrate`); until then the
+notice, badge and line show nothing. `preflow migrate` prints the new ones too, without
+marking them known. A switched-off extension's permissions wait until it is switched on.
+
 ## Bootstrap
 
 Until `folio:extensions:apply` has installed the extension in this environment, staff may

@@ -59,6 +59,21 @@ return [
         'not_defined' => ':role (non défini)',
         'no_population' => 'Aucun public : indiquez « users » pour le type ou « population » pour le champ.',
     ],
+    // Les nouvelles autorisations apportées par une mise à jour : l’avis au-dessus de la liste des
+    // rôles, ses actions, la ligne du tableau de bord (:count, « un|plusieurs »). :role est le libellé d’un rôle.
+    'new' => [
+        'title' => 'Nouvelles autorisations',
+        'intro' => 'Ces autorisations sont arrivées avec une mise à jour. Elles ne sont données automatiquement à aucun rôle.',
+        'covered' => 'Déjà dans :',
+        'pick' => 'Ajouter au rôle…',
+        'add' => 'Ajouter',
+        'dismiss' => 'Ignorer',
+        'dashboard' => ':count nouvelle autorisation à examiner dans Rôles|:count nouvelles autorisations à examiner dans Rôles',
+        'added' => 'Ajouté au rôle :role.',
+        'dismissed' => 'Ignoré.',
+        'no_role' => 'Choisissez le rôle auquel l’ajouter.',
+        'unavailable' => 'Les nouvelles autorisations ne peuvent pas encore être vérifiées : lancez preflow migrate.',
+    ],
     'extension' => ['label' => 'Rôles'],
     'roles' => [
         'staff' => ['admin' => 'Administrateur'],

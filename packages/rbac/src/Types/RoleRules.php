@@ -12,7 +12,11 @@ use Preflow\Folio\Extension\Attributes\FolioType;
 use Preflow\Folio\Extension\BeforeDelete;
 use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\Customization\Refused;
+use Preflow\Folio\Extension\DashboardNotice;
+use Preflow\Folio\Extension\ListNotice;
+use Preflow\Folio\Extension\NavBadge;
 use Preflow\Rbac\Messages;
+use Preflow\Rbac\NewPermissions;
 use Preflow\Rbac\PermissionCoverage;
 use Preflow\Rbac\RoleList;
 use Preflow\Rbac\StaffManagers;
@@ -30,6 +34,9 @@ use Preflow\Validation\ValidationResult;
  * grant them no more. A changed name or population counts as losing the role. With staff
  * accounts (the staff type), a role save or delete may not leave no active manager either
  * (StaffManagers: staff.edit and rbac_role.edit).
+ *
+ * The roles type's one customization also announces new permissions (NewPermissions) to those
+ * who may edit roles: the sidebar badge, the notice above the list and the dashboard line.
  */
 #[FolioType('rbac_role')]
 final class RoleRules
@@ -42,7 +49,26 @@ final class RoleRules
         private readonly AuthManager $auth,
         private readonly PermissionCoverage $coverage,
         private readonly Messages $messages,
+        private readonly NewPermissions $newPermissions,
     ) {}
+
+    #[NavBadge]
+    public function newPermissionsBadge(): ?int
+    {
+        return $this->newPermissions->count();
+    }
+
+    #[ListNotice]
+    public function newPermissionsNotice(): ?string
+    {
+        return $this->newPermissions->notice();
+    }
+
+    #[DashboardNotice]
+    public function newPermissionsLine(): ?string
+    {
+        return $this->newPermissions->dashboard();
+    }
 
     #[BeforeSave]
     public function beforeSave(DynamicRecord $record): void

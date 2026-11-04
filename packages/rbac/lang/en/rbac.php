@@ -63,6 +63,21 @@ return [
         'not_defined' => ':role (not defined)',
         'no_population' => 'No population: give the type "users" or the field "population".',
     ],
+    // The new permissions an update brought: the notice above the Roles list, its actions, the
+    // dashboard line (:count, "one|many"). :role is a role's label.
+    'new' => [
+        'title' => 'New permissions',
+        'intro' => 'These permissions came with an update. They are not given to any role automatically.',
+        'covered' => 'Already in:',
+        'pick' => 'Add to role…',
+        'add' => 'Add',
+        'dismiss' => 'Dismiss',
+        'dashboard' => ':count new permission to review in Roles|:count new permissions to review in Roles',
+        'added' => 'Added to :role.',
+        'dismissed' => 'Dismissed.',
+        'no_role' => 'Choose a role to add it to.',
+        'unavailable' => "New permissions can't be checked yet: run preflow migrate.",
+    ],
     // The heading of rbac's permissions on the roles screen.
     'extension' => ['label' => 'Roles'],
     // The roles rbac seeds (population => name), shown in the language of the admin while their

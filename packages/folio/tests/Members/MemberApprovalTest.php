@@ -60,7 +60,7 @@ final class MemberApprovalTest extends TestCase
         $this->makeMember('c@example.com', 'member');
         $this->signIn();
 
-        $this->assertNull(Dom::first($this->admin('/folio'), '//*[contains(@class, "folio-nav-badge")]'));
+        $this->assertNull(Dom::first($this->admin('/folio'), '//nav[contains(@class, "folio-nav")]//a[contains(@href, "/folio/member")]//*[contains(@class, "folio-nav-badge")]'));
     }
 
     #[RunInSeparateProcess]

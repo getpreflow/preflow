@@ -1,0 +1,42 @@
+{# The new permissions above the Roles list (NewPermissions): one line per permission group, the roles
+   that already cover it and how, "Add to role…" (the roles the user may give it) and Dismiss. #}
+{# Folio's own classes only: rbac.css loads with the permissions field, not on the list. #}
+<section class="folio-notice rbac-new" role="status" aria-labelledby="rbac-new-title">
+    <p><strong id="rbac-new-title">{{ t('rbac.new.title') }}</strong></p>
+    <p>{{ t('rbac.new.intro') }}</p>
+    <ul class="rbac-new-list">
+        {% for group in groups %}
+            <li class="rbac-new-item" data-rbac-new-group>
+                <div class="rbac-new-what">
+                    <strong>{{ group.heading }}:</strong>
+                    {% for permission in group.permissions %}<span class="rbac-new-permission">{{ permission.label }} <code>{{ permission.name }}</code></span>{% if not loop.last %}, {% endif %}{% endfor %}
+                    {% if group.covered is not empty %}
+                        <span class="rbac-new-covered">{{ t('rbac.new.covered') }} {% for role in group.covered %}{{ role.label }} ({{ role.patterns|join(', ') }}){% if not loop.last %}, {% endif %}{% endfor %}</span>
+                    {% endif %}
+                </div>
+                <div class="folio-form-buttons rbac-new-actions">
+                    {% if group.roles is not empty %}
+                        <form method="post" action="{{ grant_url }}" class="rbac-new-grant">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+                            {% for name in group.names %}<input type="hidden" name="names[]" value="{{ name }}">{% endfor %}
+                            <select name="role" aria-label="{{ t('rbac.new.pick') }}" required>
+                                <option value="">{{ t('rbac.new.pick') }}</option>
+                                {% for population, roles in group.roles %}
+                                    <optgroup label="{{ population }}">
+                                        {% for role in roles %}<option value="{{ role.id }}">{{ role.label }}</option>{% endfor %}
+                                    </optgroup>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-secondary">{{ t('rbac.new.add') }}</button>
+                        </form>
+                    {% endif %}
+                    <form method="post" action="{{ dismiss_url }}">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+                        {% for name in group.names %}<input type="hidden" name="names[]" value="{{ name }}">{% endfor %}
+                        <button type="submit" class="btn btn-ghost">{{ t('rbac.new.dismiss') }}</button>
+                    </form>
+                </div>
+            </li>
+        {% endfor %}
+    </ul>
+</section>
