@@ -272,7 +272,8 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   `preflow/validation`, `Slug::clean()`); the editor and machine translation convert what is typed or translated
   (`Über uns` → `ueber-uns`), `frontend.home` must follow the rule too. Before upgrading, check that no page's address
   breaks the rule: saving such a page from the editor converts the address in the language being edited (the old
-  address then redirects), and a bad address in another language refuses the save until it is fixed there. A site
+  address then redirects), and a bad address in another language refuses the save (for publishing types: the publish) until it is fixed
+  there. A machine translation of an address that leaves nothing in a-z is not written and stays missing. A site
   without any `frontend` block whose `page` model is served by its own routing also gets its `slug` checked, since
   Folio's fallback route `/{slug}` serves it.
 - ~~**GEO (generative engine optimisation):** `llms.txt` and plain-text/Markdown views of pages for AI search.

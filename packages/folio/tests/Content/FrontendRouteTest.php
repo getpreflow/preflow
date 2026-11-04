@@ -20,6 +20,7 @@ final class FrontendRouteTest extends TestCase
     public function test_home_must_be_a_clean_address(): void
     {
         $this->assertSame('start-page', FrontendRoute::fromConfig('page', ['home' => 'start-page'])->home);
+        $this->assertSame('docs/start', FrontendRoute::fromConfig('doc', ['route' => '/docs/{...path}', 'home' => 'docs/start'])->home);
         foreach (['Home', 'über', 'start page'] as $home) {
             try {
                 FrontendRoute::fromConfig('page', ['home' => $home]);

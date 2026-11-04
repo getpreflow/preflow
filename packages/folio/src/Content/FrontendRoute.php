@@ -57,7 +57,7 @@ final readonly class FrontendRoute
             paramNames: $compiled['paramNames'],
             isCatchAll: $compiled['isCatchAll'],
             staticSegments: $static,
-            home: self::home($type, $frontend['home'] ?? null),
+            home: self::home($type, $frontend['home'] ?? null, str_contains($pattern, '{...' . $compiled['paramNames'][0] . '}')),
             template: isset($frontend['template']) ? (string) $frontend['template'] : null,
             publishedField: (string) ($published['field'] ?? 'status'),
             publishedValue: self::publishedValue($type, $published['value'] ?? 'published'),
@@ -116,13 +116,16 @@ final readonly class FrontendRoute
         return $login;
     }
 
-    /** The home record's value of the first parameter: an address part like any other ("home"). */
-    private static function home(string $type, mixed $home): ?string
+    /**
+     * The home record's value of the first parameter: an address part like any other ("home";
+     * "docs/start" when that parameter is a catch-all).
+     */
+    private static function home(string $type, mixed $home, bool $catchAll): ?string
     {
         if ($home === null) {
             return null;
         }
-        if (!is_scalar($home) || (new Slug())->validate((string) $home, new ValidationContext('home', [])) !== true || (string) $home === '') {
+        if (!is_scalar($home) || (new Slug($catchAll ? 'path' : null))->validate((string) $home, new ValidationContext('home', [])) !== true || (string) $home === '') {
             throw new FrontendConfigException(sprintf('Folio type "%s": frontend.home must hold only lowercase a-z, digits and single hyphens, e.g. "home".', $type));
         }
 
