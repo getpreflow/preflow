@@ -615,6 +615,11 @@ final class FolioServiceProvider extends ServiceProvider
             worker: $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
             seo: $c->bound(\Preflow\View\Seo\SeoConfig::class) ? $c->get(\Preflow\View\Seo\SeoConfig::class) : null,
             addresses: self::addresses($c),
+            oldAddresses: $c->bound(\Preflow\Folio\Redirects\RedirectEntries::class) ? new \Preflow\Folio\Redirects\OldAddresses(
+                $c->get(\Preflow\Folio\Redirects\RedirectEntries::class),
+                new \Preflow\Folio\Redirects\VisibleAddress(($locales ?? \Preflow\Data\Locales::single('en'))->default, self::prefixedUrls($app)),
+                $app->config()->get('app.debug', false) ? static fn (string $message) => error_log('folio: ' . $message) : null,
+            ) : null,
         ));
         $container->bind(\Preflow\Folio\Http\AiTranslateController::class, fn (Container $c) => new \Preflow\Folio\Http\AiTranslateController(
             $c->get(TypeCatalog::class),
@@ -1033,8 +1038,9 @@ final class FolioServiceProvider extends ServiceProvider
 
     /**
      * admin.js's words: every folio.js.* key (as Folio's English file and the site's lang/en name
-     * them), short keys ("confirm_delete"), in the translator's language, as JSON that cannot
-     * close or break out of its script block.
+     * them), short keys ("confirm_delete"), and the redirect prompt's folio.redirects.prompt.*
+     * ("redirects.prompt.leave"), in the translator's language, as JSON that cannot close or
+     * break out of its script block.
      */
     private static function jsTexts(\Preflow\I18n\Translator $translator): string
     {
@@ -1042,6 +1048,8 @@ final class FolioServiceProvider extends ServiceProvider
         foreach (array_keys($translator->entries('folio', 'en')) as $key) {
             if (str_starts_with($key, 'folio.js.')) {
                 $texts[substr($key, strlen('folio.js.'))] = $translator->get($key);
+            } elseif (str_starts_with($key, 'folio.redirects.prompt.')) {
+                $texts[substr($key, strlen('folio.'))] = $translator->get($key);
             }
         }
 

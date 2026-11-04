@@ -542,6 +542,24 @@ final class RecordDeleterTest extends TestCase
         return $lines;
     }
 
+    public function test_summary_counts_addresses_including_cascades(): void
+    {
+        $this->seedLiveWorld();
+
+        // Uwe and his two games, each with one address (English only).
+        $summary = $this->deleter()->summary($this->deleter()->plan('designer', ['d1']));
+        $this->assertSame(3, $summary['addresses']);
+        $this->assertSame(['Also deletes 2 games.'], $summary['lines'], 'the lines stay as they were');
+        $this->assertSame(1, $this->deleter()->summary($this->deleter()->plan('game', ['g3']))['addresses']);
+
+        // Records without an address (no route), and a deleter without the address book.
+        $this->boot();
+        $this->seedWorld();
+        $this->assertSame(0, $this->deleter()->summary($this->deleter()->plan('page', ['p2']))['addresses']);
+        $bare = new RecordDeleter($this->dm, $this->catalog, $this->publisher);
+        $this->assertSame(0, $bare->summary($bare->plan('designer', ['d1']))['addresses']);
+    }
+
     public function test_delete_with_target_redirects_the_record_and_its_cascades(): void
     {
         $this->seedLiveWorld();

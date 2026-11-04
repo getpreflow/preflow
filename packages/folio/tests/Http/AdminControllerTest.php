@@ -647,6 +647,7 @@ final class AdminControllerTest extends TestCase
             'restricted' => false,
             'lines' => ['2 tags lose a link.'],
             'confirm' => "This can't be undone.\n2 tags lose a link.",
+            'addresses' => 0,
         ], json_decode((string) $res->getBody(), true));
         $this->assertNotNull($this->dm->findType('page', 'p1')); // only a summary
     }

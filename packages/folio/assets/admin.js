@@ -731,6 +731,7 @@
         if (!f || !f.hasAttribute) { return; }
         var src = confirmSource(e);
         if (src.hasAttribute('data-delete-plan')) { return; } // onDeletePlanSubmit asks
+        if (removalAddresses(src) > 0) { return; } // onRemovalSubmit asks
         if (src.hasAttribute('data-confirm') && !window.confirm(src.getAttribute('data-confirm'))) {
             e.preventDefault();
         }
@@ -781,6 +782,12 @@
                 if (!plan || typeof plan.confirm !== 'string') { throw new Error('plan shape'); }
                 if (plan.restricted) {
                     window.alert(plan.confirm);
+                } else if ((parseInt(plan.addresses, 10) || 0) > 0) {
+                    // The records have public addresses: ask where their old links go as well.
+                    removalPrompt(plan.confirm.split('\n'), folioT('redirects.prompt.delete'), function (target) {
+                        setRemovalTarget(f, target);
+                        send();
+                    });
                 } else if (window.confirm(plan.confirm)) {
                     send();
                 }
@@ -789,6 +796,199 @@
                 if (window.confirm(src.getAttribute('data-confirm') || folioT('confirm_delete'))) { send(); }
             })
             .then(function () { f.removeAttribute('data-delete-busy'); });
+    }
+
+    // ---- "Send its old links to…" -------------------------------------------
+    // Deleting or unpublishing records that have public addresses asks, in place of window.confirm,
+    // where their old links go: nowhere ("Leave them as not found", the default: they answer 404),
+    // a page picked from {prefix}/redirects/_targets (posted as its "type:id"), or a URL or path.
+    // The choice is posted as _redirect_to; the server checks it again (RemovalTarget::parse).
+    // The unpublish form carries its count as data-removal-addresses; the delete plan as "addresses".
+
+    function removalAddresses(el) {
+        return el && el.getAttribute ? (parseInt(el.getAttribute('data-removal-addresses') || '0', 10) || 0) : 0;
+    }
+
+    /** The form's _redirect_to: the chosen target, or none at all for "Leave them as not found". */
+    function setRemovalTarget(form, target) {
+        form.querySelectorAll('input[name="_redirect_to"]').forEach(function (el) { el.remove(); });
+        if (!target) { return; }
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = '_redirect_to';
+        input.value = target;
+        form.appendChild(input);
+    }
+
+    function onRemovalSubmit(e) {
+        var f = e.target;
+        if (!f || !f.hasAttribute || f.hasAttribute('data-delete-plan') || removalAddresses(f) <= 0) { return; }
+        e.preventDefault();
+        removalPrompt([f.getAttribute('data-confirm') || ''], folioT('redirects.prompt.unpublish'), function (target) {
+            setRemovalTarget(f, target);
+            HTMLFormElement.prototype.submit.call(f);
+        });
+    }
+
+    var removalDialog = null;
+
+    /**
+     * Shows the prompt: the confirmation's lines, the three choices, Cancel and $confirmLabel.
+     * onConfirm(target) gets "type:id", a URL or path, or '' for none; Cancel sends nothing.
+     */
+    function removalPrompt(lines, confirmLabel, onConfirm) {
+        if (removalDialog) { return; }
+        var t = function (key, params) { return folioT('redirects.prompt.' + key, params); };
+        var el = function (tag, className, text) {
+            var node = document.createElement(tag);
+            if (className) { node.className = className; }
+            if (text) { node.textContent = text; }
+            return node;
+        };
+        var dialog = el('dialog', 'folio-removal-dialog');
+        dialog.setAttribute('data-removal-dialog', '');
+        dialog.setAttribute('aria-label', t('send_to'));
+        lines.filter(function (line) { return line !== ''; }).forEach(function (line) {
+            dialog.appendChild(el('p', 'folio-removal-line', line));
+        });
+
+        var choices = el('fieldset', 'folio-removal-choices');
+        choices.appendChild(el('legend', '', t('send_to')));
+        var radios = {};
+        var option = function (value, text) {
+            var label = el('label', 'folio-removal-option');
+            var radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'folio_removal_target';
+            radio.value = value;
+            radio.setAttribute('value', value);
+            radio.checked = value === 'none';
+            radios[value] = radio;
+            label.appendChild(radio);
+            label.appendChild(el('span', '', text));
+            choices.appendChild(label);
+            return label;
+        };
+        var choose = function (value) {
+            Object.keys(radios).forEach(function (key) { radios[key].checked = key === value; });
+        };
+        var chosen = function () {
+            return Object.keys(radios).filter(function (key) { return radios[key].checked; })[0] || 'none';
+        };
+
+        option('none', t('leave'));
+        option('page', t('to_page'));
+        var search = el('input', 'folio-removal-search');
+        search.type = 'search';
+        search.setAttribute('data-removal-search', '');
+        search.setAttribute('autocomplete', 'off');
+        search.setAttribute('placeholder', t('search'));
+        search.setAttribute('aria-label', t('search'));
+        var results = el('ul', 'folio-removal-results');
+        results.setAttribute('data-removal-results', '');
+        var picked = el('p', 'folio-removal-picked');
+        picked.setAttribute('aria-live', 'polite');
+        choices.appendChild(search);
+        choices.appendChild(results);
+        choices.appendChild(picked);
+        option('url', t('to_url'));
+        var url = el('input', 'folio-removal-url');
+        url.type = 'text';
+        url.setAttribute('data-removal-url', '');
+        url.setAttribute('autocomplete', 'off');
+        url.setAttribute('placeholder', t('url_placeholder'));
+        url.setAttribute('aria-label', t('to_url'));
+        choices.appendChild(url);
+        dialog.appendChild(choices);
+
+        var error = el('p', 'folio-removal-error');
+        error.setAttribute('data-removal-error', '');
+        error.setAttribute('role', 'alert');
+        error.hidden = true;
+        dialog.appendChild(error);
+
+        var footer = el('div', 'folio-removal-footer');
+        var cancel = el('button', 'btn btn-ghost', t('cancel'));
+        cancel.type = 'button';
+        cancel.setAttribute('data-removal-cancel', '');
+        var ok = el('button', 'btn btn-danger', confirmLabel);
+        ok.type = 'button';
+        ok.setAttribute('data-removal-confirm', '');
+        footer.appendChild(cancel);
+        footer.appendChild(ok);
+        dialog.appendChild(footer);
+
+        var page = null; // the picked page's "type:id"
+        var seq = 0;
+        var timer = null;
+        search.addEventListener('input', function () {
+            choose('page');
+            var q = search.value.trim();
+            clearTimeout(timer);
+            if (q === '') { results.innerHTML = ''; return; }
+            timer = setTimeout(function () {
+                var mine = ++seq;
+                var prefix = document.body.getAttribute('data-folio-prefix') || '';
+                fetch(prefix + '/redirects/_targets?q=' + encodeURIComponent(q), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+                    .then(function (res) { return res.ok ? res.json() : { items: [] }; })
+                    .then(function (data) {
+                        if (mine !== seq) { return; }
+                        results.innerHTML = '';
+                        var items = (data && data.items) || [];
+                        if (items.length === 0) { results.appendChild(el('li', 'folio-removal-none', folioT('no_matches'))); }
+                        items.forEach(function (item) {
+                            if (!item || typeof item.value !== 'string') { return; }
+                            var li = el('li');
+                            var button = el('button', 'folio-removal-pick');
+                            button.type = 'button';
+                            button.setAttribute('data-removal-pick', item.value);
+                            button.appendChild(el('span', 'folio-removal-pick-label', String(item.label || item.value)));
+                            button.appendChild(el('span', 'folio-removal-pick-meta', [item.type, item.url].filter(Boolean).join(' · ')));
+                            button.addEventListener('click', function () {
+                                page = item.value;
+                                choose('page');
+                                picked.textContent = t('picked', { label: String(item.label || item.value) });
+                                error.hidden = true;
+                            });
+                            li.appendChild(button);
+                            results.appendChild(li);
+                        });
+                    })
+                    .catch(function () {});
+            }, 200);
+        });
+        url.addEventListener('input', function () { choose('url'); });
+
+        var close = function () {
+            clearTimeout(timer);
+            if (typeof dialog.close === 'function') { dialog.close(); } else { dialog.removeAttribute('open'); }
+            dialog.remove();
+            removalDialog = null;
+        };
+        cancel.addEventListener('click', close);
+        dialog.addEventListener('cancel', function (e) { e.preventDefault(); close(); }); // Escape
+        ok.addEventListener('click', function () {
+            var target = '';
+            var mode = chosen();
+            if (mode === 'page') {
+                if (!page) { error.textContent = t('pick_page'); error.hidden = false; return; }
+                target = page;
+            } else if (mode === 'url') {
+                target = url.value.trim();
+                // An http(s) URL with a host, or a path on this site (never "//host" or "/\host").
+                if (!/^https?:\/\/[^\/\\\s]+/i.test(target) && !/^\/(?![\/\\])/.test(target)) {
+                    error.textContent = t('url_invalid');
+                    error.hidden = false;
+                    return;
+                }
+            }
+            close();
+            onConfirm(target);
+        });
+
+        document.body.appendChild(dialog);
+        removalDialog = dialog;
+        if (typeof dialog.showModal === 'function') { dialog.showModal(); } else { dialog.setAttribute('open', ''); }
     }
 
     // ---- Blocks editor -------------------------------------------------
@@ -1676,6 +1876,7 @@
         document.querySelectorAll('[data-folio-list-form]').forEach(initList);
         document.addEventListener('submit', onSubmitConfirm);
         document.addEventListener('submit', onDeletePlanSubmit);
+        document.addEventListener('submit', onRemovalSubmit);
         initBulk(document);
         document.addEventListener('change', onBulkChange);
         document.addEventListener('reset', onBulkReset);

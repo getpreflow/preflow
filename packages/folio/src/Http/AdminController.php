@@ -86,6 +86,7 @@ final class AdminController
         private readonly ?\Preflow\I18n\Machine\TranslationWorker $worker = null,
         private readonly ?\Preflow\View\Seo\SeoConfig $seo = null,
         private readonly ?\Preflow\Folio\Redirects\RecordAddresses $addresses = null,
+        private readonly ?\Preflow\Folio\Redirects\OldAddresses $oldAddresses = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
@@ -1369,9 +1370,33 @@ final class AdminController
             'ai_translate' => $aiTranslate,
             'ai_pending' => $aiPending,
             'seo_section' => $seoSection,
+            'old_addresses' => $isNew ? null : $this->oldAddressesNote($type, (string) ($values[$typeDef->idField] ?? '')),
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
+    }
+
+    /** The editor note shows at most this many old addresses, then how many more. */
+    private const int OLD_ADDRESSES_SHOWN = 10;
+
+    /**
+     * The editor's "Old addresses" note: the addresses that redirect to the record, as visitors
+     * see them, and the link to its redirects for those who may manage them; null when none.
+     *
+     * @return array{shown: list<string>, more: int, url: ?string}|null
+     */
+    private function oldAddressesNote(string $type, string $id): ?array
+    {
+        $addresses = $id === '' || $this->oldAddresses === null ? [] : $this->oldAddresses->of($type, $id);
+        if ($addresses === []) {
+            return null;
+        }
+
+        return [
+            'shown' => array_slice($addresses, 0, self::OLD_ADDRESSES_SHOWN),
+            'more' => max(0, count($addresses) - self::OLD_ADDRESSES_SHOWN),
+            'url' => $this->can('redirects.manage') ? $this->prefix . '/redirects?record=' . rawurlencode($type) . ':' . rawurlencode($id) : null,
+        ];
     }
 
     /**
@@ -1803,6 +1828,8 @@ final class AdminController
             'autosave_url' => $edit ? $base . '/autosave' : null,
             'share_url' => $edit && $this->previewLinks?->enabled() === true && $this->frontend->routeFor($type) !== null ? $base . '/share' : null,
             'unpublish_url' => $publish && $state !== PublishState::Draft ? $base . '/unpublish' : null,
+            // The public addresses unpublishing takes off the site: above 0, it asks where their old links go.
+            'unpublish_addresses' => $publish && $state !== PublishState::Draft ? count($this->addresses?->of($type, (string) $id) ?? []) : 0,
             'discard_url' => $edit && $state === PublishState::Changed ? $base . '/discard' : null,
         ];
     }

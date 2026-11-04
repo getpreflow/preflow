@@ -17,6 +17,7 @@ use Preflow\Folio\Redirects\LiveRecords;
 use Preflow\Folio\Redirects\NotFoundEntries;
 use Preflow\Folio\Redirects\RedirectEntries;
 use Preflow\Folio\Redirects\RemovalTarget;
+use Preflow\Folio\Redirects\VisibleAddress;
 use Preflow\I18n\LocaleNames;
 use Preflow\Routing\Redirect\AreaMode;
 use Preflow\Routing\Redirect\Redirect;
@@ -81,7 +82,7 @@ final class RedirectsController
         $id = $request->getQueryParams()['not_found'] ?? null;
         $row = is_string($id) ? $this->notFound->find($id) : null;
         if ($row !== null) {
-            $values['address'] = $this->display($this->visible($row['locale'], $row['path']));
+            $values['address'] = $this->visible($row['locale'], $row['path']);
             $values['not_found'] = $row['id'];
         }
 
@@ -103,7 +104,7 @@ final class RedirectsController
         }
 
         return $this->form($request, $entry, [
-            'address' => $this->display($this->visible($entry['locale'], $entry['path'])),
+            'address' => $this->visible($entry['locale'], $entry['path']),
             'area' => $entry['area'],
             'mode' => $entry['mode'],
             'target' => $entry['target_type'] !== null && $entry['target_id'] !== null
@@ -143,7 +144,7 @@ final class RedirectsController
             return self::unknown();
         }
         $this->notFound->dismiss($row['id'], new \DateTimeImmutable());
-        self::flash($request, FolioText::get('folio.redirects.dismissed', ['address' => $this->display($this->visible($row['locale'], $row['path']))]));
+        self::flash($request, FolioText::get('folio.redirects.dismissed', ['address' => $this->visible($row['locale'], $row['path'])]));
 
         return new Response(302, ['Location' => $this->prefix . '/redirects?tab=not-found']);
     }
@@ -486,26 +487,10 @@ final class RedirectsController
         return $locale !== '' ? $locale : $this->locales->default;
     }
 
-    /** The address as visitors see it: the locale prefix of a language other than the default, then the path. */
+    /** The address as visitors see and type it ("/de/über-uns"). */
     private function visible(string $locale, string $path): string
     {
-        if ($locale === '' || $locale === $this->locales->default || !$this->prefixed) {
-            return $path;
-        }
-
-        return '/' . $locale . ($path === '/' ? '' : $path);
-    }
-
-    /**
-     * A path in RedirectPath's form as typed: each segment decoded ("/über-uns"), except for the
-     * characters that would change it when typed back ("%", "/", "?", "#").
-     */
-    private function display(string $path): string
-    {
-        return implode('/', array_map(
-            static fn (string $segment): string => str_replace(['%', '/', '?', '#'], ['%25', '%2F', '%3F', '%23'], rawurldecode($segment)),
-            explode('/', $path),
-        ));
+        return (new VisibleAddress($this->locales->default, $this->prefixed))->of($locale, $path);
     }
 
     /**
@@ -523,7 +508,7 @@ final class RedirectsController
                 || ($entry['source_type'] === $recordType && $entry['source_id'] === $recordId))) {
                 continue;
             }
-            $address = $this->display($this->visible($entry['locale'], $entry['path']));
+            $address = $this->visible($entry['locale'], $entry['path']);
             if ($q !== '' && mb_stripos($address, $q) === false) {
                 continue;
             }
@@ -559,7 +544,7 @@ final class RedirectsController
     private function missing(): array
     {
         return array_map(fn (array $row): array => $row + [
-            'address' => $this->display($this->visible($row['locale'], $row['path'])),
+            'address' => $this->visible($row['locale'], $row['path']),
             'language' => $this->language($row['locale']),
             'redirect' => $this->prefix . '/redirects/new?not_found=' . rawurlencode($row['id']),
         ], $this->notFound->visible());

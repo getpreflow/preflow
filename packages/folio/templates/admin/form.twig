@@ -10,7 +10,8 @@
     {% if previewable|default(false) %}<div class="folio-split" data-folio-split data-mode="form">
     <div class="folio-split-form">{% endif %}
     {% set side_panels = panels|default([])|filter(p => p.position == 'side') %}
-    <div class="folio-form folio-editor{% if side_panels is not empty %} has-side{% endif %}">
+    {% set old_addresses = old_addresses|default(null) %}
+    <div class="folio-form folio-editor{% if side_panels is not empty or old_addresses %} has-side{% endif %}">
         {% if publishing and publishing.share_url %}<div class="folio-share" id="folio-share"></div>{% endif %}
         {% if publishing and publishing.schedule_cancels|default(false) %}
             <div class="folio-notice" role="status"><p>{{ t('folio.form.scheduled', {date: folio_date(publishing.publish_at, 'datetime')}) }}</p></div>
@@ -141,9 +142,21 @@
             </div>
         </div>
         {{ form_end()|raw }}
-        {% if side_panels is not empty %}
+        {% if side_panels is not empty or old_addresses %}
         <aside class="folio-side" aria-label="{{ t('folio.form.side_panels') }}">
             {% for panel in side_panels %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}
+            {% if old_addresses %}
+            {# The addresses that send visitors here (renamed, removed, hand-made redirects). #}
+            <section class="folio-panel folio-old-addresses">
+                <h2 class="folio-panel-title">{{ t('folio.redirects.old_addresses') }}</h2>
+                <div class="folio-panel-body">
+                    <p class="folio-old-addresses-help">{{ t('folio.redirects.old_addresses_help') }}</p>
+                    <ul>{% for address in old_addresses.shown %}<li>{{ address }}</li>{% endfor %}</ul>
+                    {% if old_addresses.more > 0 %}<p class="folio-old-addresses-more">{{ t('folio.redirects.old_addresses_more', {count: old_addresses.more}) }}</p>{% endif %}
+                    {% if old_addresses.url %}<a href="{{ old_addresses.url }}">{{ t('folio.redirects.old_addresses_manage') }}</a>{% endif %}
+                </div>
+            </section>
+            {% endif %}
         </aside>
         {% endif %}
         {% set history = publishing and (publishing.revisions is not empty or publishing.discard_url or publishing.unpublish_url) %}
@@ -181,7 +194,7 @@
                     </form>
                 {% endif %}
                 {% if publishing.unpublish_url %}
-                    <form method="post" action="{{ publishing.unpublish_url }}" data-confirm="{{ t('folio.publishing.confirm_unpublish') }}">
+                    <form method="post" action="{{ publishing.unpublish_url }}" data-confirm="{{ t('folio.publishing.confirm_unpublish') }}" data-removal-addresses="{{ publishing.unpublish_addresses|default(0) }}">
                         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                         <button type="submit" class="btn btn-danger">{{ t('folio.publishing.unpublish') }}</button>
                     </form>

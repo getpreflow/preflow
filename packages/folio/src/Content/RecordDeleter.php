@@ -165,16 +165,18 @@ final class RecordDeleter
 
     /**
      * The confirmation for a plan: "This can't be undone." and a line per type of
-     * what else happens; a restricted plan gives the refusal instead.
+     * what else happens; a restricted plan gives the refusal instead. "addresses" counts
+     * the public addresses the plan's deleted records hold (those deleted by cascade too),
+     * so the admin can ask where their old links go ("Send its old links to…").
      *
-     * @return array{restricted: bool, lines: list<string>, confirm: string}
+     * @return array{restricted: bool, lines: list<string>, confirm: string, addresses: int}
      */
     public function summary(DeletePlan $plan): array
     {
         if ($plan->restricted()) {
             $text = $this->restrictedText($plan);
 
-            return ['restricted' => true, 'lines' => [$text], 'confirm' => $text];
+            return ['restricted' => true, 'lines' => [$text], 'confirm' => $text, 'addresses' => 0];
         }
 
         $counts = $plan->counts();
@@ -186,7 +188,28 @@ final class RecordDeleter
             $lines[] = \Preflow\Folio\FolioText::choice('folio.delete.loses_link', $n, ['noun' => $this->noun($type, $n)]);
         }
 
-        return ['restricted' => false, 'lines' => $lines, 'confirm' => implode("\n", [\Preflow\Folio\FolioText::get('folio.delete.cannot_undo'), ...$lines])];
+        return [
+            'restricted' => false,
+            'lines' => $lines,
+            'confirm' => implode("\n", [\Preflow\Folio\FolioText::get('folio.delete.cannot_undo'), ...$lines]),
+            'addresses' => $this->addressCount($plan),
+        ];
+    }
+
+    /** The public addresses (one per record and language) of the records the plan deletes. */
+    private function addressCount(DeletePlan $plan): int
+    {
+        if ($this->addresses === null) {
+            return 0;
+        }
+        $count = 0;
+        foreach ($plan->deletes() as $type => $ids) {
+            foreach ($ids as $id) {
+                $count += count($this->addresses->of($type, (string) $id));
+            }
+        }
+
+        return $count;
     }
 
     private function restrictedText(DeletePlan $plan): string

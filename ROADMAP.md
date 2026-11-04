@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.51.0** — 5275 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.52.0** — 5426 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -257,8 +257,17 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   `packages/view/README.md`). **Upgrading:** SQL sites run `preflow migrate` after upgrading and before turning
   SEO on: the section is stored in the new `_seo` column, which every editor save writes once the section shows
   (SEO on), and saving fails until it exists. Each site's deploy must run it.
-- **301 redirects on slug change:** Folio remembers a page's old paths and redirects them; a redirects list in
-  Settings for hand-made entries
+- ~~**301 redirects on slug change:** Folio remembers a page's old paths and redirects them; a redirects list in
+  Settings for hand-made entries~~ — done in 0.52.0 (`preflow/routing`'s `RedirectMiddleware` answers a public
+  GET/HEAD that ended in a thrown 404 from a `RedirectStore`, exact entry before the longest area, 301/302 with the
+  query string kept, and notes the rest in a `NotFoundLog` without visitor data and without scanner noise;
+  `config/redirects.php`; core's `NonPublicPaths`, registered by Folio, members and media. Folio: renamed pages
+  redirect automatically per language, deleting or unpublishing a page asks "Send its old links to…" (a page, a URL
+  or none), the editor's "Old addresses" note, Settings → Redirects with hand-made exact and area entries and the
+  not-found list, permission `redirects.manage`; see the Redirects sections in `packages/routing/README.md` and
+  `packages/folio/README.md`). **Upgrading:** SQL sites run `preflow migrate`, which creates the three tables and
+  records every live page's current addresses; without that run, the first rename of a page after upgrading
+  redirects only for publishing types.
 - ~~**GEO (generative engine optimisation):** `llms.txt` and plain-text/Markdown views of pages for AI search.
   Owner's idea: an `{% apply geo %}` block in component templates, like `{% apply css %}`, holding the
   component's Markdown; the blocks of a page are collected in render order and served as `/page.md` and for
