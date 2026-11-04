@@ -822,6 +822,8 @@ return [
             'target_redirects' => 'That address redirects already; pick its target instead.',
             'prefix_needs_url' => 'Keeping the rest needs a URL or a path as the target.',
             'prefix_no_query' => 'Keeping the rest needs a target without ? or #.',
+            'targeted' => 'Other redirects send visitors here; point them to the final target first.',
+            'target_in_area' => 'The target lies inside the area itself; visitors would be sent round and round.',
         ],
     ],
 ];

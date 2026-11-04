@@ -797,6 +797,8 @@ return [
             'target_redirects' => 'Diese Adresse leitet schon weiter; wähle stattdessen ihr Ziel.',
             'prefix_needs_url' => 'Um den Rest zu behalten, braucht es eine URL oder einen Pfad als Ziel.',
             'prefix_no_query' => 'Um den Rest zu behalten, darf das Ziel kein ? oder # enthalten.',
+            'targeted' => 'Andere Weiterleitungen schicken Besucher hierher; lass sie zuerst auf das endgültige Ziel zeigen.',
+            'target_in_area' => 'Das Ziel liegt im Bereich selbst; Besucher würden im Kreis geschickt.',
         ],
     ],
 ];

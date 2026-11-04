@@ -90,6 +90,27 @@ final class NotFoundEntriesTest extends TestCase
     }
 
     #[DataProvider('storages')]
+    public function test_forget_under_drops_the_area_and_what_is_below(string $storage): void
+    {
+        $log = $this->log($storage);
+        $at = self::at('2026-11-01T10:00:00+00:00');
+        foreach ([['de', '/blog'], ['de', '/blog/a/b'], ['en', '/blog/a'], ['de', '/blogger'], ['de', '/BLOG/a']] as [$locale, $path]) {
+            $log->record($path, $locale, $at);
+        }
+
+        $log->forgetUnder('de', '/blog/');
+
+        $this->assertNull($log->find(NotFoundEntries::id('de', '/blog')));
+        $this->assertNull($log->find(NotFoundEntries::id('de', '/blog/a/b')));
+        $this->assertNotNull($log->find(NotFoundEntries::id('en', '/blog/a')), 'another language');
+        $this->assertNotNull($log->find(NotFoundEntries::id('de', '/blogger')), 'whole segments only');
+        $this->assertNotNull($log->find(NotFoundEntries::id('de', '/BLOG/a')), 'exact paths only');
+
+        $log->forgetUnder('', '/blog');
+        $this->assertNull($log->find(NotFoundEntries::id('en', '/blog/a')), 'language-neutral: every locale');
+    }
+
+    #[DataProvider('storages')]
     public function test_single_hits_are_hidden(string $storage): void
     {
         $log = $this->log($storage);

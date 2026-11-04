@@ -171,6 +171,24 @@ final class NotFoundEntries implements NotFoundLog
         }
     }
 
+    /**
+     * Drops an area from the list: the address and everything below it (whole segments, exact
+     * matches only). Locale '' covers every locale, as in forget(). Reads the whole list (at most
+     * the limit, plus a few): an editor's action, not a visitor's.
+     */
+    public function forgetUnder(string $locale, string $area): void
+    {
+        $area = RedirectPath::normalize($area);
+        if ($area === null) {
+            return;
+        }
+        foreach ($this->rows() as $row) {
+            if (($locale === '' || $row['locale'] === $locale) && RedirectPath::under($row['path'], $area) !== null) {
+                $this->dm->deleteIn(self::definition(), $row['id']);
+            }
+        }
+    }
+
     /** @return array<string, mixed>|null */
     private function at(string $locale, string $path): ?array
     {

@@ -247,6 +247,109 @@ final class RedirectsControllerTest extends TestCase
         $this->assertSame([], $this->entries()->all());
     }
 
+    public function test_area_target_inside_the_area_is_refused(): void
+    {
+        foreach (['prefix', 'one'] as $mode) {
+            foreach (['/blog/archive', '/blog'] as $target) {
+                $res = $this->send('/folio/redirects', ['address' => '/blog', 'area' => '1', 'mode' => $mode, 'target' => $target, 'status' => '301']);
+                $this->assertSame(422, $res->getStatusCode(), "{$mode} {$target}");
+            }
+        }
+        $this->assertStringContainsString('The target lies inside the area itself', (string) $this->send('/folio/redirects', ['address' => '/blog', 'area' => '1', 'mode' => 'prefix', 'target' => '/blog/archive', 'status' => '301'])->getBody());
+        // Another language's /blog is another address.
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => '/blog', 'area' => '1', 'mode' => 'prefix', 'target' => '/de/blog/archiv', 'status' => '301'])->getStatusCode());
+    }
+
+    public function test_target_under_an_area_entry_is_refused(): void
+    {
+        $this->entries()->save(['path' => '/shop', 'locale' => 'en', 'area' => true, 'target_url' => '/store']);
+
+        $res = $this->send('/folio/redirects', ['address' => '/old', 'target' => '/shop/shoes', 'status' => '301']);
+
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('That address redirects already; pick its target instead.', (string) $res->getBody());
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => '/old', 'target' => '/shopping', 'status' => '301'])->getStatusCode());
+    }
+
+    public function test_address_other_entries_send_to_is_refused(): void
+    {
+        $this->entries()->save(['path' => '/a', 'locale' => 'en', 'target_url' => '/b']);
+        $this->entries()->save(['path' => '/c', 'locale' => 'de', 'target_url' => '/de/news/x']);
+
+        foreach ([['/b', false], ['/de/news', true]] as [$address, $area]) {
+            $res = $this->send('/folio/redirects', ['address' => $address, 'area' => $area ? '1' : '', 'target' => '/elsewhere', 'status' => '301']);
+            $this->assertSame(422, $res->getStatusCode(), $address);
+            $this->assertStringContainsString('Other redirects send visitors here', (string) $res->getBody());
+        }
+        // Editing an entry is refused the same way when its address becomes a target of others.
+        $this->entries()->save(['path' => '/d', 'locale' => 'en', 'target_url' => '/e']);
+        $d = $this->entries()->at('en', '/d');
+        $this->assertSame(422, $this->send('/folio/redirects/' . $d['id'], ['address' => '/b', 'target' => '/e', 'status' => '301'])->getStatusCode());
+        $this->assertNotNull($this->entries()->at('en', '/d'));
+        // The entry's own target does not count against it.
+        $this->assertSame(302, $this->send('/folio/redirects/' . $d['id'], ['address' => '/d', 'target' => '/f', 'status' => '301'])->getStatusCode());
+    }
+
+    public function test_address_is_normalized_before_its_language_is_read(): void
+    {
+        // LocaleMiddleware strips every available locale's prefix, the default one too.
+        $this->send('/folio/redirects', ['address' => '//de//alt/', 'target' => '/de/neu', 'status' => '301']);
+        $this->send('/folio/redirects', ['address' => '/en/old', 'target' => '/new', 'status' => '301']);
+        $this->send('/folio/redirects', ['address' => '/DE/x', 'target' => '/y', 'status' => '301']);
+
+        $this->assertSame('/de/neu', $this->entries()->at('de', '/alt')['target_url'] ?? null);
+        $this->assertSame('/new', $this->entries()->at('en', '/old')['target_url'] ?? null);
+        $this->assertSame('/new', $this->fetch('/old')->getHeaderLine('Location'));
+        $this->assertSame('/new', $this->fetch('/en/old')->getHeaderLine('Location'));
+        // "DE" is no locale prefix to LocaleMiddleware (lowercase codes only): a path of the default language.
+        $this->assertSame('/y', $this->entries()->at('en', '/DE/x')['target_url'] ?? null);
+        $this->assertSame('/y', $this->fetch('/DE/x')->getHeaderLine('Location'));
+    }
+
+    public function test_single_language_site_with_prefixes_keeps_the_real_locale(): void
+    {
+        $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en'], 'fallback' => 'en', 'url_strategy' => 'prefix'];\n");
+        $this->publishPage('p1', ['en' => 'About'], ['en' => 'about']);
+        $this->publishPage('p1', ['en' => 'About'], ['en' => 'about-us']);
+        $auto = $this->entries()->at('en', '/about');
+        $this->assertSame('auto', $auto['kind'] ?? null);
+
+        // Same locale as the automatic entry: no second entry at the same address.
+        $res = $this->send('/folio/redirects', ['address' => '/about', 'target' => '/x', 'status' => '301']);
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('This address has a redirect already.', (string) $res->getBody());
+
+        // Editing the automatic entry keeps its locale and kind.
+        $this->assertSame(302, $this->send('/folio/redirects/' . $auto['id'], ['address' => '/about', 'target' => '/x'])->getStatusCode());
+        $edited = $this->entries()->at('en', '/about');
+        $this->assertSame(['en', 'auto', '/x', 301], [$edited['locale'], $edited['kind'], $edited['target_url'], $edited['status']]);
+        $this->assertCount(1, $this->entries()->all());
+
+        $this->send('/folio/redirects', ['address' => '/old', 'target' => '/new', 'status' => '301']);
+        $this->assertNotNull($this->entries()->at('en', '/old'));
+    }
+
+    public function test_language_neutral_entries_without_prefixes(): void
+    {
+        $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'none'];\n");
+
+        $this->send('/folio/redirects', ['address' => '/de/alt', 'target' => '/neu', 'status' => '301']);
+
+        $this->assertSame('/neu', $this->entries()->at('', '/de/alt')['target_url'] ?? null, 'no prefixes: /de is part of the path');
+    }
+
+    public function test_area_entry_clears_the_not_found_rows_under_it(): void
+    {
+        $this->hitMissing('en', '/blog/one', 2);
+        $this->hitMissing('en', '/blog/two/three', 2);
+        $this->hitMissing('de', '/blog/one', 2);
+        $this->hitMissing('en', '/blogger', 2);
+
+        $this->send('/folio/redirects', ['address' => '/blog', 'area' => '1', 'mode' => 'prefix', 'target' => '/journal', 'status' => '301']);
+
+        $this->assertSame(['de /blog/one', 'en /blogger'], array_map(static fn (array $r): string => $r['locale'] . ' ' . $r['path'], $this->notFound()->visible()) |> (static function (array $rows): array { sort($rows); return $rows; }));
+    }
+
     public function test_typed_address_with_umlauts_matches_the_browser_form(): void
     {
         $this->assertSame(302, $this->send('/folio/redirects', ['address' => '/de/über-uns', 'target' => '/de/wir', 'status' => '301'])->getStatusCode());

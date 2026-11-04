@@ -203,10 +203,11 @@ final class RedirectsController
             'status' => $text('status') === '302' ? 302 : 301,
             'not_found' => $text('not_found'),
         ];
-        [$locale, $path, $error] = $this->checkAddress($values['address'], $values['area'], $entry);
+        $host = $request->getUri()->getHost();
+        [$locale, $path, $error] = $this->checkAddress($values['address'], $values['area'], $entry, $host);
         $errors = $error !== null ? ['address' => $error] : [];
         $mode = $values['area'] ? $values['mode'] : AreaMode::One->value;
-        [$target, $error] = $this->checkTarget($values['target'], $mode, $locale, $path, $request->getUri()->getHost());
+        [$target, $error] = $this->checkTarget($values['target'], $values['area'], $mode, $locale, $path, $entry['id'] ?? null, $host);
         if ($error !== null) {
             $errors['target'] = $error;
         }
@@ -244,7 +245,9 @@ final class RedirectsController
         }
 
         // An address that gets a redirect leaves the not-found list, and so does the row it was made from.
-        if (!$values['area']) {
+        if ($values['area']) {
+            $this->notFound->forgetUnder($locale, $path);
+        } else {
             $this->notFound->forget($locale, $path);
         }
         $from = $values['not_found'] !== '' ? $this->notFound->find($values['not_found']) : null;
@@ -257,23 +260,24 @@ final class RedirectsController
     }
 
     /**
-     * The entry's locale and path for a typed address, or why it is refused.
+     * The entry's locale and path for a typed address, or why it is refused. The address is
+     * normalized first, then its locale prefix split off (as LocaleMiddleware does).
      *
      * @param array<string, mixed>|null $entry the entry being edited
      * @return array{string, ?string, ?string} locale, path (null when refused), error
      */
-    private function checkAddress(string $address, bool $area, ?array $entry): array
+    private function checkAddress(string $address, bool $area, ?array $entry, string $host): array
     {
-        [$locale, $raw] = $this->split($address);
         if ($address === '') {
-            return [$locale, null, FolioText::get('folio.redirects.errors.address_required')];
+            return ['', null, FolioText::get('folio.redirects.errors.address_required')];
         }
         // A query or fragment never reaches the lookup: such an address could never match.
-        $path = str_contains($raw, '?') || str_contains($raw, '#') ? null : RedirectPath::normalize($raw);
-        if ($path === null) {
-            return [$locale, null, FolioText::get('folio.redirects.errors.address_invalid')];
+        $full = str_contains($address, '?') || str_contains($address, '#') ? null : RedirectPath::normalize($address);
+        if ($full === null) {
+            return ['', null, FolioText::get('folio.redirects.errors.address_invalid')];
         }
-        if ($this->nonPublic->matches($path) || $this->nonPublic->matches((string) RedirectPath::normalize($address))) {
+        [$locale, $path] = $this->split($full);
+        if ($this->nonPublic->matches($path) || $this->nonPublic->matches($full)) {
             return [$locale, null, FolioText::get('folio.redirects.errors.address_not_public')];
         }
         // RedirectPath::under() never matches '/', and an area over the whole site would hide every 404.
@@ -288,19 +292,47 @@ final class RedirectsController
         if ($taken !== null && $taken['id'] !== ($entry['id'] ?? null)) {
             return [$locale, null, FolioText::get('folio.redirects.errors.taken')];
         }
+        // No chains: other entries that send visitors here would send them on again.
+        if ($this->targetedBy($locale, $path, $area, $entry['id'] ?? null, $host)) {
+            return [$locale, null, FolioText::get('folio.redirects.errors.targeted')];
+        }
 
         return [$locale, $path, null];
     }
 
     /**
+     * Whether another entry's URL target lies at this address (exact) or under it (area), in its
+     * language, where no page answers.
+     */
+    private function targetedBy(string $locale, string $path, bool $area, ?string $own, string $host): bool
+    {
+        foreach ($this->entries->all() as $other) {
+            if ($other['id'] === $own || $other['target_url'] === null) {
+                continue;
+            }
+            $at = $this->siteAddress($other['target_url'], $host);
+            if ($at === null || ($locale !== '' && $at[0] !== $locale)) {
+                continue;
+            }
+            $hit = $area ? RedirectPath::under($at[1], $path) !== null : $at[1] === $path;
+            if ($hit && !$this->pageAt($this->lookupLocale($at[0]), $at[1])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The parsed target, or why it is refused: a live record ("type:id", not for "keep the rest"),
      * an http(s) URL, or a path on this site; never "//host" or "\\host" in any mix of slashes,
-     * never the address itself or another entry's address, and for "keep the rest" no ? or #
-     * (the rest of the path is appended after the target).
+     * never the address itself, an address inside the area being saved, or an address another
+     * entry redirects (exact or by an area: no chains); for "keep the rest" no ? or # (the rest of
+     * the path is appended after the target).
      *
      * @return array{?RemovalTarget, ?string}
      */
-    private function checkTarget(string $posted, string $mode, string $locale, ?string $path, string $host): array
+    private function checkTarget(string $posted, bool $area, string $mode, string $locale, ?string $path, ?string $own, string $host): array
     {
         if ($posted === '') {
             return [null, FolioText::get('folio.redirects.errors.target_required')];
@@ -322,20 +354,59 @@ final class RedirectsController
         if ($mode === AreaMode::Prefix->value && (str_contains($url, '?') || str_contains($url, '#'))) {
             return [null, FolioText::get('folio.redirects.errors.prefix_no_query')];
         }
-        $local = self::localPath($url, $host);
-        if ($local === null || $path === null) {
+        $at = $this->siteAddress($url, $host);
+        if ($at === null || $path === null) {
             return [$target, null];
         }
-        if (RedirectPath::normalize($local) === RedirectPath::normalize($this->visible($locale, $path))) {
+        [$targetLocale, $targetPath] = $at;
+        $sameLanguage = $locale === '' || $targetLocale === $locale;
+        if ($sameLanguage && $targetPath === $path) {
             return [null, FolioText::get('folio.redirects.errors.target_is_address')];
         }
-        [$targetLocale, $targetRaw] = $this->split($local);
-        $targetPath = RedirectPath::normalize($targetRaw);
-        if ($targetPath !== null && $this->entries->exact($targetPath, $this->lookupLocale($targetLocale)) !== null) {
+        // /blog → /blog/archive would run /blog/x → /blog/archive/x → /blog/archive/archive/x …
+        if ($area && $sameLanguage && RedirectPath::under($targetPath, $path) !== null) {
+            return [null, FolioText::get('folio.redirects.errors.target_in_area')];
+        }
+        if ($this->redirectsAt($this->lookupLocale($targetLocale), $targetPath, $own)) {
             return [null, FolioText::get('folio.redirects.errors.target_redirects')];
         }
 
         return [$target, null];
+    }
+
+    /**
+     * Whether a request for the address would be redirected, as the middleware looks it up (an
+     * exact entry, else an area above it), leaving out the entry being edited. A page there
+     * answers first: no redirect.
+     */
+    private function redirectsAt(string $locale, string $path, ?string $own): bool
+    {
+        $exact = $this->entries->exact($path, $locale);
+        $redirected = $exact !== null && $exact->id !== $own;
+        if (!$redirected) {
+            foreach ($this->entries->areas($locale) as $area) {
+                if ($area->id !== $own && RedirectPath::under($path, $area->path) !== null) {
+                    $redirected = true;
+                    break;
+                }
+            }
+        }
+
+        return $redirected && !$this->pageAt($locale, $path);
+    }
+
+    /**
+     * The entry locale and path a URL on this site lands on (a path, or an absolute URL with this
+     * host), as split() reads an address; null for another host or a path normalize() rejects.
+     *
+     * @return array{string, string}|null
+     */
+    private function siteAddress(string $url, string $host): ?array
+    {
+        $local = self::localPath($url, $host);
+        $normalized = $local === null ? null : RedirectPath::normalize($local);
+
+        return $normalized === null ? null : $this->split($normalized);
     }
 
     /** The path of a URL on this site (a path, or an absolute URL with this host), without query and fragment; else null. */
@@ -362,30 +433,28 @@ final class RedirectsController
             || ($path !== rawurldecode($path) && $this->resolver->match(rawurldecode($path), $locale) !== null);
     }
 
-    /** Whether addresses carry a language: locale prefixes and more than one language. */
-    private function multilingual(): bool
-    {
-        return $this->prefixed && $this->locales->isMultilingual();
-    }
-
     /**
-     * The entry's locale and the address without its locale prefix.
+     * The entry's locale and the path without its locale prefix, for a normalized address. With
+     * locale prefixes, as LocaleMiddleware reads them: a first segment of two lowercase letters
+     * naming one of the site's languages (the default's too) is the language, else the default
+     * language; the locale is always a real one, as RecordAddresses stores it. Without prefixes
+     * the entry is language-neutral ('').
      *
      * @return array{string, string}
      */
-    private function split(string $address): array
+    private function split(string $normalized): array
     {
-        if (!$this->multilingual()) {
-            return ['', $address];
+        if (!$this->prefixed) {
+            return ['', $normalized];
         }
-        if (preg_match('#^/([^/]+)(/.*)?$#', $address, $m) === 1 && $m[1] !== $this->locales->default && $this->locales->has($m[1])) {
+        if (preg_match('#^/([a-z]{2})(/.*)?$#', $normalized, $m) === 1 && $this->locales->has($m[1])) {
             return [$m[1], ($m[2] ?? '') === '' ? '/' : $m[2]];
         }
 
-        return [$this->locales->default, $address];
+        return [$this->locales->default, $normalized];
     }
 
-    /** The locale a request for an address of $locale has ('' on a single-language site: its default). */
+    /** The locale a request for an address of $locale has ('' on a site without locale prefixes: its default). */
     private function lookupLocale(string $locale): string
     {
         return $locale !== '' ? $locale : $this->locales->default;
@@ -394,7 +463,7 @@ final class RedirectsController
     /** The address as visitors see it: the locale prefix of a language other than the default, then the path. */
     private function visible(string $locale, string $path): string
     {
-        if ($locale === '' || $locale === $this->locales->default || !$this->multilingual()) {
+        if ($locale === '' || $locale === $this->locales->default || !$this->prefixed) {
             return $path;
         }
 
