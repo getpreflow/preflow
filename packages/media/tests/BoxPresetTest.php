@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Exceptions\NotFoundHttpException;
+use Preflow\Core\Http\InternalRender;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\Locales;
@@ -84,9 +85,12 @@ final class BoxPresetTest extends TestCase
         return new ImageTag($lib, new FixedLocale('en'), self::PRESETS, new AssetCollector(new NonceGenerator()), '', ImageWidths::fromConfig(self::PRESETS, [480]), Formats::fromConfig(self::PRESETS));
     }
 
-    private function serve(MediaLibrary $lib, string $path): ResponseInterface
+    private function serve(MediaLibrary $lib, string $path, bool $internal = false): ResponseInterface
     {
         $request = (new Psr17Factory())->createServerRequest('GET', '/media/' . $path)->withAttribute('path', $path);
+        if ($internal) {
+            $request = InternalRender::mark($request);
+        }
 
         return (new VariantController($lib, ImageWidths::fromConfig(self::PRESETS, [480]), Formats::fromConfig(self::PRESETS)))->serve($request);
     }
@@ -367,6 +371,31 @@ final class BoxPresetTest extends TestCase
         ] as $path) {
             $this->assertNotFound($lib, $path);
         }
+    }
+
+    public function test_an_internal_render_makes_no_box_file(): void
+    {
+        $lib = $this->lib();
+        $plan = $lib->boxPlan($this->uploadQuadrants($lib), 'cover-thumb');
+        $rel = $plan->base . '-200.webp';
+        $before = $this->mediaFiles();
+
+        // Allowed but not yet made: a pending 404.
+        $pending = $this->serve($lib, $rel, internal: true);
+        $this->assertSame(404, $pending->getStatusCode());
+        $this->assertSame('pending', $pending->getHeaderLine(VariantController::PENDING_HEADER));
+
+        // A width outside the plan is refused for a visitor too: a plain 404.
+        try {
+            $this->serve($lib, $plan->base . '-300.webp', internal: true);
+            $this->fail('a width outside the plan was served');
+        } catch (NotFoundHttpException) {
+        }
+        $this->assertSame($before, $this->mediaFiles());
+
+        // Once a visitor's request made it, an internal render gets it.
+        $this->assertSame(200, $this->serve($lib, $rel)->getStatusCode());
+        $this->assertSame(200, $this->serve($lib, $rel, internal: true)->getStatusCode());
     }
 
     public function test_the_current_masters_variants_are_made_on_request(): void

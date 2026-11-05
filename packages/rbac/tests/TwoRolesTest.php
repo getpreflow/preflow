@@ -103,6 +103,7 @@ final class TwoRolesTest extends TestCase
             ['POST /folio/translations', '/folio/translations', ['locale' => 'en', 'key' => 'folio.common.save', 'text' => ''], [302, 403, 403]], // an empty text: nothing stored
             ['POST /folio/translations/reset', '/folio/translations/reset', ['locale' => 'en', 'key' => 'folio.common.save'], [302, 403, 403]],
             ['POST /folio/translations/save-all', '/folio/translations/save-all', ['locale' => 'en', 'keys' => ['folio.common.save'], 'texts' => ['Save']], [302, 403, 403]],
+            ['GET /folio/seo-audit', '/folio/seo-audit', [], [200, 403, 403]], // read only: no report yet, how to run one,
             ['GET /folio/redirects', '/folio/redirects', [], [200, 403, 403]],
             ['GET /folio/redirects/_targets', '/folio/redirects/_targets?q=nothing', [], [200, 200, 200]], // signed in, no permission: public pages only
             ['GET /folio/redirects/new', '/folio/redirects/new', [], [200, 403, 403]],
@@ -335,7 +336,7 @@ final class TwoRolesTest extends TestCase
         $this->as($account);
 
         $expected = [
-            'super' => ['/folio', '/folio/page', '/folio/member', '/folio/team', '/folio/assets', '/folio/rbac_role', '/folio/staff', '/folio/moderation_settings', '/folio/queue', '/folio/extensions', '/folio/translations', '/folio/redirects', '/folio/cache', '/folio/ai'],
+            'super' => ['/folio', '/folio/page', '/folio/member', '/folio/team', '/folio/assets', '/folio/rbac_role', '/folio/staff', '/folio/moderation_settings', '/folio/queue', '/folio/extensions', '/folio/translations', '/folio/redirects', '/folio/seo-audit', '/folio/cache', '/folio/ai'],
             'content' => ['/folio', '/folio/page', '/folio/member', '/folio/team', '/folio/assets', '/folio/queue'],
             'plain' => [],
         ][$account];

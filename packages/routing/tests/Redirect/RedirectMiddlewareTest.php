@@ -11,6 +11,7 @@ require_once __DIR__ . '/Fixtures/InMemoryNotFoundLog.php';
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Exceptions\NotFoundHttpException;
+use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\NonPublicPaths;
 use Preflow\Routing\Redirect\AreaMode;
 use Preflow\Routing\Redirect\NotFoundFilter;
@@ -292,6 +293,31 @@ final class RedirectMiddlewareTest extends TestCase
 
         $this->assertNotFound(new InMemoryRedirectStore(), $this->get('/missing'));
         $this->assertNotEmpty($this->warnings);
+    }
+
+    public function test_an_internal_render_is_answered_but_leaves_no_trace(): void
+    {
+        $store = new InMemoryRedirectStore([
+            $this->exact('/old', 'en', url: '/new'),
+            $this->exact('/gone', 'en', type: 'page', id: '9'),
+        ]);
+
+        // The redirect is still issued, the 404s still thrown...
+        $response = $this->answer($store, InternalRender::mark($this->get('/old')));
+        $this->assertSame(301, $response->getStatusCode());
+        $this->assertSame('/new', $response->getHeaderLine('Location'));
+        $this->assertNotFound($store, InternalRender::mark($this->get('/gone')));
+        $this->assertNotFound($store, InternalRender::mark($this->get('/missing')));
+
+        // ...but no hit is counted and no not-found address recorded.
+        $this->assertSame([], $store->hits);
+        $this->assertSame([], $this->log->recorded);
+
+        // The same requests unmarked count and record as before.
+        $this->answer($store, $this->get('/old'));
+        $this->assertNotFound($store, $this->get('/missing'));
+        $this->assertSame([Redirect::id('exact', 'en', '/old')], $store->hits);
+        $this->assertSame([['/missing', 'en']], $this->log->recorded);
     }
 
     private function answer(

@@ -149,6 +149,11 @@ requests wait on a per-file lock. `warm_on_upload` or `media:variants --all` mak
 advance (use one on shared hosting). If an encode fails, the browser is redirected
 (uncached) to the closest existing size. A page under the media URL is not routed.
 
+**Internal renders.** A request marked as internal (the SEO audit rendering a page from inside the app,
+`Preflow\Core\Http\InternalRender`) never makes a variant. An allowed size that doesn't exist yet answers
+404 with the header `X-Preflow-Variant: pending`, so a checker can tell "not made yet" from "missing" (a
+disallowed or unknown one is a plain 404).
+
 ## Box presets: height and fit
 
 A preset without `height` is a width preset, as before. With `height` it gets a fixed box;

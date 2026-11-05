@@ -465,6 +465,20 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TemplateEngineInterface::class),
             $prefix,
         ));
+        // Settings → SEO audit: it only reads the report file, so it is there on every site (SQL or not).
+        $container->bind(\Preflow\Folio\Http\SeoAuditController::class, static fn (Container $c) => new \Preflow\Folio\Http\SeoAuditController(
+            \Preflow\View\Audit\AuditReport::file($app->basePath()),
+            $c->get(TypeCatalog::class),
+            $c->get(TemplateEngineInterface::class),
+            $prefix,
+            static fn (string $permission): bool => $c->get(\Preflow\Auth\Access\Access::class)->can($permission),
+        ));
+        // The SEO audit's "where to fix" (boot() hands it to the audit's registry): built on the first finding.
+        $container->singleton(\Preflow\Folio\Audit\AuditTargets::class, static fn (Container $c) => new \Preflow\Folio\Audit\AuditTargets(
+            static fn (): FrontendResolver => $c->get(FrontendResolver::class),
+            static fn (): string => $c->get(\Preflow\Media\MediaConfig::class)->url,
+            ($locales ?? \Preflow\Data\Locales::single('en'))->default,
+        ));
 
         // The media core's private files: Folio's rules (permission, login page) instead of its deny-all default.
         $container->singleton(\Preflow\Media\Access\PrivateFileAccess::class, fn (Container $c) => new \Preflow\Folio\Media\FolioPrivateFileAccess(
@@ -1145,6 +1159,14 @@ final class FolioServiceProvider extends ServiceProvider
         }
         // Settings → Cache, on every site (Folio registers its own caches).
         $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.cache'), rtrim($this->prefix($app), '/') . '/cache', 'ui-settings', 'folio.cache', 950);
+        // Settings → SEO audit, on every site (the last report of `preflow seo:audit`, or how to run one).
+        $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.seo_audit'), rtrim($this->prefix($app), '/') . '/seo-audit', 'ui-settings', 'seo.audit', 940);
+        // The SEO audit's findings link to the record or asset to fix. Nothing is built or read until the audit asks.
+        if ($container->bound(\Preflow\View\Audit\AuditRegistry::class)) {
+            $container->get(\Preflow\View\Audit\AuditRegistry::class)->setTargets(
+                static fn (string $url, string $locale): ?\Preflow\View\Audit\Target => $container->get(\Preflow\Folio\Audit\AuditTargets::class)->target($url, $locale),
+            );
+        }
         // Settings → AI, while AI is switched on or a key is present (so a missing key or switch can be seen and fixed).
         if (self::aiSettingsVisible($container)) {
             $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.ai'), rtrim($this->prefix($app), '/') . '/ai', 'ui-settings', 'ai.settings', 960);
@@ -1489,6 +1511,7 @@ final class FolioServiceProvider extends ServiceProvider
         $registry->declare('folio.cache', 'Cache', 'Folio');
         $registry->declare('translations.edit', 'Translations', 'Folio');
         $registry->declare('redirects.manage', 'Redirects', 'Folio');
+        $registry->declare('seo.audit', 'SEO audit', 'Folio');
         // Declared with AI off too, so roles may list them before AI is switched on.
         $registry->declare('ai.translate', 'Use AI translation', 'AI');
         $registry->declare('ai.settings', 'AI settings', 'AI');

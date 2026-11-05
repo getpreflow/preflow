@@ -213,11 +213,15 @@ final class Application
         // GEO Markdown views — prepended, so it runs before every other middleware
         $this->bootGeo($debug);
 
+        // The SEO audit's page renderer (through the whole pipeline built above)
+        $this->bootAudit();
+
         // Error handler
         $renderer = $debug->isDebug()
             ? new DevErrorRenderer($collector, $this->nonceProvider())
             : new ProdErrorRenderer($this->nonceProvider());
-        $errorHandler = new ErrorHandler($renderer);
+        // Internal renders (the SEO audit) get the visitor's error page, even in debug mode.
+        $errorHandler = new ErrorHandler($renderer, $debug->isDebug() ? new ProdErrorRenderer($this->nonceProvider()) : null);
         $this->container->instance(ErrorHandler::class, $errorHandler);
 
         // Default dispatchers if not set
@@ -259,11 +263,14 @@ final class Application
             method: $request->getMethod(),
         ));
 
+        // An internal render (the SEO audit) sends no mail: what it queues is not flushed here.
+        $flush = !$this->emitting && !\Preflow\Core\Http\InternalRender::is($request);
+
         try {
             $response = $this->kernel->handle($request);
         } catch (\Throwable $e) {
             // Mails queued before the failure still go out (CLI, tests); run() flushes itself.
-            if (!$this->emitting) {
+            if ($flush) {
                 $this->flushDeferredNotifications();
             }
             throw $e;
@@ -287,7 +294,7 @@ final class Application
 
         // In-process callers (CLI, tests) have no later emit step: send deferred
         // notifications now. run() flushes after the response has gone out instead.
-        if (!$this->emitting) {
+        if ($flush) {
             $this->flushDeferredNotifications();
         }
 
@@ -579,6 +586,27 @@ final class Application
         $publicPages = new \Preflow\View\Seo\PublicPages();
         $this->container->instance(\Preflow\View\Seo\PublicPages::class, $publicPages);
         $this->container->instance(\Preflow\View\Geo\GeoEntries::class, new \Preflow\View\Geo\GeoEntries($publicPages));
+        // The SEO audit's checks: here, so providers can add theirs. The built-in ones are made when an audit
+        // first reads the checks (bootAudit binds the renderer), so web requests don't build them.
+        $this->container->instance(\Preflow\View\Audit\AuditRegistry::class, new \Preflow\View\Audit\AuditRegistry(
+            function (\Preflow\View\Audit\AuditRegistry $registry) use ($publicPages): bool {
+                if (!$this->container->bound(\Preflow\View\Audit\PageRenderer::class)) {
+                    return false; // read before bootAudit: asked again on the next read
+                }
+                \Preflow\View\Audit\Checks\BuiltInChecks::register(
+                    $registry,
+                    $this->container->get(\Preflow\View\Audit\PageRenderer::class),
+                    $publicPages,
+                    $this->basePath('public'),
+                    $this->container->get(\Preflow\View\Seo\SeoConfig::class),
+                    $this->container->get(\Preflow\View\Geo\GeoConfig::class),
+                    $this->container->get(\Preflow\View\Seo\SeoSite::class),
+                    $this->container->get(\Preflow\View\Seo\SchemaRegistry::class),
+                );
+
+                return true;
+            },
+        ));
         // SEO settings, the page meta templates and controllers fill, and what sites register (JSON-LD builders, defaults)
         $seoConfig = \Preflow\View\Seo\SeoConfig::fromFile($this->basePath('config/seo.php'));
         // A typo in a template's seo({…}) is ignored; in debug mode the log names it.
@@ -1215,11 +1243,7 @@ final class Application
             return;
         }
 
-        // The core scope runs outermost, around the ones packages added during their registration.
-        $scopes = new \Preflow\View\Geo\RenderScopes();
-        $scopes->add($this->anonymousRenderScope());
-        $packageScopes = $this->container->get(\Preflow\View\Geo\RenderScopes::class);
-        $scopes->add(static fn (ServerRequestInterface $sub, \Closure $next): ResponseInterface => $packageScopes->run($sub, $next));
+        $scopes = $this->internalRenderScopes();
 
         // Render failures that aren't HTTP answers: rethrown in debug (the error page shows them), logged otherwise.
         $container = $this->container;
@@ -1266,7 +1290,56 @@ final class Application
     }
 
     /**
-     * Wraps an internal GEO render: the request context names the rendered page,
+     * The SEO audit's PageRenderer: renders a page through the app (handle(), so the
+     * whole pipeline) inside the internal render scopes, from the console too. Built
+     * on first use only, so web requests don't pay for it. The debug collector (debug
+     * mode) starts empty for each render.
+     */
+    private function bootAudit(): void
+    {
+        if (!$this->container->bound(\Preflow\View\Audit\AuditRegistry::class)
+            || !$this->container->bound(\Preflow\View\Geo\RenderScopes::class)) {
+            return;
+        }
+
+        $this->container->singleton(\Preflow\View\Audit\PageRenderer::class, function (): \Preflow\View\Audit\PageRenderer {
+            [$locales, $defaultLocale] = $this->siteLocales();
+            $appUrl = $this->config->get('app.url');
+
+            $collector = $this->container->bound(DebugCollector::class) ? $this->container->get(DebugCollector::class) : null;
+
+            return new \Preflow\View\Audit\PageRenderer(
+                function (ServerRequestInterface $request) use ($collector): ResponseInterface {
+                    // In debug mode each request logs into the one collector; renders don't pile up.
+                    $collector?->reset();
+
+                    return $this->handle($request);
+                },
+                is_string($appUrl) ? $appUrl : '',
+                $this->internalRenderScopes(),
+                $this->container->bound(\Preflow\View\AssetCollector::class) ? $this->container->get(\Preflow\View\AssetCollector::class) : null,
+                $locales,
+                $defaultLocale,
+            );
+        });
+    }
+
+    /**
+     * The scopes around an internal render (GEO's, the SEO audit's): the core scope
+     * outermost, around the ones packages added during their registration.
+     */
+    private function internalRenderScopes(): \Preflow\View\Geo\RenderScopes
+    {
+        $scopes = new \Preflow\View\Geo\RenderScopes();
+        $scopes->add($this->anonymousRenderScope());
+        $packageScopes = $this->container->get(\Preflow\View\Geo\RenderScopes::class);
+        $scopes->add(static fn (ServerRequestInterface $sub, \Closure $next): ResponseInterface => $packageScopes->run($sub, $next));
+
+        return $scopes;
+    }
+
+    /**
+     * Wraps an internal render (GEO, the SEO audit): the request context names the rendered page,
      * the visitor's session data is hidden (templates read the session directly,
      * e.g. flash(); a shutdown hook restores it even after a fatal error), nobody
      * is signed in during it, and the translator locale and signed-in users are

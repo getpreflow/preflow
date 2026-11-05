@@ -99,4 +99,21 @@ final class DebugCollectorTest extends TestCase
 
         $this->assertSame(['old config', 'old name'], $this->collector->getDeprecations());
     }
+
+    public function test_reset_forgets_the_request_but_keeps_deprecations(): void
+    {
+        $this->collector->logQuery('SELECT 1', [], 1.0);
+        $this->collector->logComponent('App\\Card', 'c1', 2.0);
+        $this->collector->setRoute('page', 'about.twig');
+        $this->collector->setAssets(1, 2, 3, 4);
+        $this->collector->logDeprecation('old setting');
+
+        $this->collector->reset();
+
+        $this->assertSame([], $this->collector->getQueries());
+        $this->assertSame([], $this->collector->getComponents());
+        $this->assertNull($this->collector->getRoute());
+        $this->assertSame(['css_count' => 0, 'js_count' => 0, 'css_bytes' => 0, 'js_bytes' => 0], $this->collector->getAssets());
+        $this->assertSame(['old setting'], $this->collector->getDeprecations());
+    }
 }

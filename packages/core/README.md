@@ -139,6 +139,10 @@ final class AuthMiddleware implements MiddlewareInterface
 $app->addMiddleware(new AuthMiddleware());
 ```
 
+A request the app makes of itself (the SEO audit rendering a page) carries the attribute
+`preflow.internal_render`; `Preflow\Core\Http\InternalRender::is($request)` reads it. Middleware that records
+visits, counts hits or queues side effects should skip them for such a request. Since 0.54.
+
 ### Application bootstrap
 
 ```php

@@ -256,6 +256,27 @@ final class AssetCollector
         }
     }
 
+    /**
+     * Run $render on the registries as they are, then put them back: pages rendered
+     * one after another in one process (the SEO audit) each start from what boot
+     * registered, and none sees what an earlier one added or printed.
+     *
+     * @since 0.54
+     * @template T
+     * @param callable(): T $render
+     * @return T
+     */
+    public function restoring(callable $render): mixed
+    {
+        $saved = [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags, $this->cssScope, $this->printed];
+
+        try {
+            return $render();
+        } finally {
+            [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags, $this->cssScope, $this->printed] = $saved;
+        }
+    }
+
     public function hasCss(): bool
     {
         return $this->cssRegistry !== [];

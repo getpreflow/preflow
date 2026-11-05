@@ -6,17 +6,21 @@
     "require": {
         "php": ">=8.4",
         "ext-dom": "*",
-        "preflow/core": "^0.50 || @dev",
+        "preflow/core": "^0.54 || @dev",
         "matthiasmullie/minify": "^1.3"
     },
     "require-dev": {
         "phpunit/phpunit": "^11.0",
         "chillerlan/php-qrcode": "^5.0",
         "mpdf/mpdf": "^8.2",
-        "smalot/pdfparser": "^2.0"
+        "smalot/pdfparser": "^2.0",
+        "preflow/devtools": "^0.54 || @dev"
     },
     "conflict": {
-        "preflow/core": "<0.50"
+        "preflow/core": "<0.54",
+        "preflow/routing": "<0.54",
+        "preflow/media": "<0.54",
+        "preflow/devtools": "<0.54"
     },
     "autoload": {
         "psr-4": {
@@ -30,6 +34,9 @@
     },
     "extra": {
         "preflow": {
+            "commands": [
+                "Preflow\\View\\Console\\SeoAuditCommand"
+            ],
             "translations": {
                 "geo": {
                     "path": "lang",
@@ -40,6 +47,7 @@
     },
     "suggest": {
         "mpdf/mpdf": "Renders PDFs (^8.2)",
-        "chillerlan/php-qrcode": "Renders QR codes (^5.0)"
+        "chillerlan/php-qrcode": "Renders QR codes (^5.0)",
+        "preflow/devtools": "Runs the SEO audit from the console: preflow seo:audit"
     }
 }

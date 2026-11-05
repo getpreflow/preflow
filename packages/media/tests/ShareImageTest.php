@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Exceptions\NotFoundHttpException;
+use Preflow\Core\Http\InternalRender;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\Locales;
@@ -56,10 +57,13 @@ final class ShareImageTest extends TestCase
         );
     }
 
-    private function serve(MediaLibrary $lib, string $url): ResponseInterface
+    private function serve(MediaLibrary $lib, string $url, bool $internal = false): ResponseInterface
     {
         $path = substr($url, strlen('/media/'));
         $request = (new Psr17Factory())->createServerRequest('GET', $url)->withAttribute('path', $path);
+        if ($internal) {
+            $request = InternalRender::mark($request);
+        }
 
         return (new VariantController($lib, ImageWidths::fromConfig([], [480]), Formats::fromConfig([])))->serve($request);
     }
@@ -119,6 +123,20 @@ final class ShareImageTest extends TestCase
         $cropped = $lib->shareImage($asset->id)['url'];
         $this->assertSame(200, $this->serve($lib, $cropped)->getStatusCode());
         $this->assertTrue($this->red($lib->absolute(substr($cropped, strlen('/media/'))), 600, 500)); // the top of the picture
+    }
+
+    public function test_an_internal_render_gets_a_pending_404_for_an_unmade_share_file(): void
+    {
+        $lib = $this->lib();
+        $url = $lib->shareImage($this->stored($lib))['url'];
+        $file = $lib->absolute(substr($url, strlen('/media/')));
+
+        $pending = $this->serve($lib, $url, internal: true);
+
+        $this->assertSame(404, $pending->getStatusCode());
+        $this->assertSame('pending', $pending->getHeaderLine(VariantController::PENDING_HEADER));
+        $this->assertFileDoesNotExist($file);
+        $this->assertSame([], glob($file . '.*') ?: []); // no lock file either
     }
 
     public function test_a_plain_width_jpg_is_not_found(): void

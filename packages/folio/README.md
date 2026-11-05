@@ -1612,6 +1612,16 @@ importer writes rows directly); run `preflow migrate` afterwards to record their
 Until `preflow migrate` has run on a SQL site, *Settings → Redirects* says so instead of showing
 the lists.
 
+## Settings → SEO audit
+
+`{prefix}/seo-audit`, permission `seo.audit`, on every site (also without SQL storage). A read-only screen of
+the last report of `preflow seo:audit` (see the SEO audit section in `packages/view/README.md`): when it ran
+and on which site, whether it is complete or how many pages it has done, the number of findings per severity
+and the findings grouped by check, most serious first. It never starts a run; without a report it says how to
+run one. Each finding links to its page and, for content findings, to the record or library asset to fix,
+for users who may open them (`{type}.view` / `assets.view`). The texts come in en, de and fr. With rbac, the
+new permission `seo.audit` is announced in *Settings → Roles* like any new permission.
+
 ## User types and transfer
 
 A type can hold the site's own users or members:

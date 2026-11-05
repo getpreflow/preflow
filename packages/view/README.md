@@ -520,6 +520,174 @@ $site->disallow('/admin/');                     // in robots.txt, and no head ta
 $site->allow('/admin/uploads/');               // an exception under it (Allow:), head tags as usual
 ```
 
+## SEO audit
+
+`preflow seo:audit` checks the site's public pages for the problems that cost visitors and search engines:
+a missing title, duplicate texts, images without `alt`, broken internal links, language versions that don't
+point at each other, a 404 page that answers 200. It is run by hand, never as part of a deploy. Each
+environment checks itself: the pages are rendered inside the app, with no network, as an anonymous visitor
+would get them and with the debug toolbar off. Run it where the site runs (on the live server for the live
+site, locally for your copy).
+
+```
+preflow seo:audit [--fresh] [--limit=N] [--url=/path] [--budget=600]
+```
+
+It audits what `PublicPages` lists (the same pages as the sitemap, every language, with the sitemap's and
+`llms.txt`'s exclusions), prints the progress, the number of findings per severity and the findings grouped
+by severity and check. There is no score. Severities are `critical` (visitors or search engines are
+blocked or misled), `warning` (should be fixed) and `notice` (worth a look).
+
+### The report and resuming
+
+A full run saves its report in `storage/data/seo-audit.json` (the site's own storage, so each environment
+has its own); Folio shows it (*Settings → SEO audit*). The report says `complete`, or `incomplete` with
+done/total pages. A run stops itself before the time budget (`--budget`, default 600 seconds, which keeps
+it under the roughly twelve minutes some servers allow a shell process) and says how to go on: run the
+command again and it continues where it stopped. `--fresh` starts over. Running it again after a complete
+run starts a new audit. While one audit runs, a second says "another audit is running" and does nothing.
+
+`--limit=N` (the first N pages) and `--url=/path` (one page, without the site checks) are quick checks:
+they print their findings and never touch the saved report, so they can't wipe the progress of a long run.
+
+The exit code is 0 whenever the audit ran, with or without findings and finished or not (and when another
+audit is running); 1 for a bad flag, an app that doesn't boot or a run that fails. Use the saved report,
+not the exit code, to decide whether the site is clean.
+
+### What it checks
+
+Pages (each public page that answers 2xx; the `status.*` rows cover the rest):
+
+| Id | Severity | What |
+|---|---|---|
+| `status.error` | critical | The page answers something other than 200 in this environment (5xx included) |
+| `status.redirect` | warning | The page redirects; list the address it ends at instead |
+| `title.missing` | critical | No `<title>` |
+| `title.duplicate` | warning | Several pages of a language share a title |
+| `description.missing` | warning | No meta description |
+| `description.duplicate` | notice | Several pages of a language share a description |
+| `h1.count` | notice | No `<h1>`, or more than one |
+| `img.alt-missing` | warning | An image without an `alt` attribute (an empty `alt=""` is fine) |
+| `og.image-alt-missing` | notice | A share image without its alt text |
+| `aria-hidden.focusable` | warning | A focusable element inside `aria-hidden` content |
+| `canonical.missing` | notice | No canonical link |
+| `canonical.foreign-host` | warning | The canonical link points to another site |
+| `noindex.in-sitemap` | critical | The page is `noindex` but the sitemap lists it |
+| `hreflang.unpaired` | warning | A language version that doesn't link back, or an alternate that isn't one of the site's public pages |
+| `hreflang.x-default-missing` | notice | A page with language alternates but no `x-default` |
+| `link.broken` | critical | An internal link whose target answers 404, 410 or 5xx (also redirect loops) |
+| `link.broken` | notice | An internal link that goes through two or more redirects |
+
+Links, images and other targets are checked for their status once per run, not per page; query-string URLs
+and paths `robots.txt` disallows are left out; files in `public/` count as fine; 401 and 403 count as
+members-only, not broken. A not-yet-made image size counts as fine (see below).
+
+The site (once per run, after the pages):
+
+| Id | Severity | What |
+|---|---|---|
+| `robots.missing` | warning | No robots.txt |
+| `sitemap.missing` | warning | No sitemap |
+| `sitemap.invalid` | critical | The sitemap isn't valid XML with a urlset or sitemapindex |
+| `sitemap.non200` | critical | A URL in the sitemap doesn't answer 200 |
+| `llms.missing` | warning | No `/llms.txt` for a language (when GEO is on) |
+| `notfound.status` | critical | An address that doesn't exist answers something other than 404 |
+| `notfound.no-home-link` | warning | The 404 page has no link to the home page |
+| `favicon.raster-missing` | warning | No linked raster icon of at least 48 px and no `/favicon.ico` |
+| `apple-touch.missing` | notice | No apple-touch icon |
+| `manifest.missing` | notice | No web app manifest |
+| `etag.no-304` | notice | The home page doesn't answer 304 to its own ETag |
+| `etag.unstable` | notice | Two renders a second apart give different ETags |
+| `etag.cookie` | notice | The home page sets a cookie for new visitors, so it gets no ETag |
+| `share-image.missing` | notice | No default share image |
+| `owner.missing` | notice | No site owner for structured data |
+
+A check that throws is not a crash: a page check reports one warning per check, "The check failed on N pages
+and was skipped there"; a site or run check reports under its group id (`etag`, `sitemap`, `icons`, `notfound`). Out of scope: DNS and email setup, links to other sites, page speed, and judging the text itself.
+
+### No trace
+
+An audit render is marked as internal (`Preflow\Core\Http\InternalRender`, the request attribute
+`preflow.internal_render`) and leaves nothing behind. Honouring the marker, the app writes no not-found
+entry and counts no redirect hit; media generates no image variant (a variant that is allowed but not yet
+made answers 404 with the header `X-Preflow-Variant: pending`, which the audit counts as fine; anything
+else missing is a plain 404 and a finding); no debug toolbar is added; no session file is written; mail
+queued for later during the render is held back (mail sent synchronously during a GET render still goes out). Site code that has side effects on a visit (counters, logs) can skip
+them:
+
+```php
+use Preflow\Core\Http\InternalRender;
+
+if (!InternalRender::is($request)) {
+    $this->visits->count($request->getUri()->getPath());
+}
+```
+
+### Limits worth knowing
+
+- A page whose links were already queued for their own turn isn't rendered again for the link check: its
+  own result (`status.error` or `status.redirect`) stands, and a broken link to it shows up there, not as
+  `link.broken` on the linking page.
+- One page with very many new link targets renders them all in one go, so a single page can take a while.
+- The ETag check sees headers the app sets through the response, not cookies set by a native `setcookie()`.
+- If the 404 page's home link is an absolute production URL, auditing locally reports `notfound.no-home-link`
+  falsely; the link is matched by host.
+- In debug mode a failing component's dev panel can still appear inside an otherwise answering page.
+- A site installed under a sub-path isn't supported.
+
+### Writing site checks
+
+Add your own checks from a service provider, to the `AuditRegistry`; they run after the built-in ones and
+report in the same shape, so they show up in the console and in Folio. There are three kinds:
+
+- `PageCheck`: looks at each audited page on its own (`check(RenderedPage $page)`).
+- `RunCheck`: sees every page through `collect()` and reports in `finish()`. A run can stop and continue in
+  another process, so what it collected must come back through `state()` (JSON-safe) and `restore()`.
+- `SiteCheck`: runs once for the whole site and may render pages through the `PageRenderer`.
+
+A `Finding` has the check id, a severity (`Severity::Critical`, `Warning`, `Notice`), a message that says what
+is wrong and what to do, and optionally a page URL, a locale and a `Target` that tells Folio where to fix it:
+`new Target('record', 'game', '42')` links to the record's editor, `'asset'` to the library.
+
+```php
+use Preflow\View\Audit\AuditRegistry;
+use Preflow\View\Audit\Finding;
+use Preflow\View\Audit\PageRenderer;
+use Preflow\View\Audit\Severity;
+use Preflow\View\Audit\SiteCheck;
+use Preflow\View\Audit\Target;
+
+final class GamesWithoutPlayerCount implements SiteCheck
+{
+    public function __construct(private readonly GameRepository $games) {}
+
+    public function id(): string
+    {
+        return 'game.players-missing';
+    }
+
+    public function check(PageRenderer $renderer): array
+    {
+        $findings = [];
+        foreach ($this->games->all() as $game) {
+            if ($game->players === null) {
+                $findings[] = new Finding(
+                    $this->id(),
+                    Severity::Warning,
+                    "{$game->title} has no player count; add one so it can show in search results.",
+                    target: new Target('record', 'game', (string) $game->id),
+                );
+            }
+        }
+
+        return $findings;
+    }
+}
+
+// in a service provider's boot():
+$container->get(AuditRegistry::class)->addSite(new GamesWithoutPlayerCount($container->get(GameRepository::class)));
+```
+
 ## QR codes
 
 `qr_svg($data, $options)` returns an inline SVG (safe HTML, no escaping). In Twig it is a function, in Blade the

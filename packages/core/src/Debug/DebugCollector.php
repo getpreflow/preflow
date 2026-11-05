@@ -39,6 +39,22 @@ final class DebugCollector
         $this->assets = ['css_count' => $cssCount, 'js_count' => $jsCount, 'css_bytes' => $cssBytes, 'js_bytes' => $jsBytes];
     }
 
+    /**
+     * Start over for another request in the same process (the SEO audit renders
+     * hundreds of pages): queries, components, route, assets and the timer.
+     * Deprecations stay; they come from the app's setup, not the request.
+     *
+     * @since 0.54
+     */
+    public function reset(): void
+    {
+        $this->startTime = hrtime(true);
+        $this->queries = [];
+        $this->components = [];
+        $this->route = null;
+        $this->assets = ['css_count' => 0, 'js_count' => 0, 'css_bytes' => 0, 'js_bytes' => 0];
+    }
+
     /** A deprecated setting or name in use; each message is kept once. */
     public function logDeprecation(string $message): void
     {
