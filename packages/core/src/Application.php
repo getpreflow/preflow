@@ -1250,6 +1250,16 @@ final class Application
             (string) $this->config->get('app.name', ''),
             $locales,
             $defaultLocale,
+            // preflow/view's geo texts, registered here too for apps whose Composer metadata doesn't list them.
+            static function () use ($container): ?object {
+                if (!class_exists(\Preflow\I18n\Translator::class) || !$container->bound(\Preflow\I18n\Translator::class)) {
+                    return null;
+                }
+                $translator = $container->get(\Preflow\I18n\Translator::class);
+                $translator->addDefaultsIfMissing('geo', \Preflow\View\Geo\LlmsTxt::LANG_PATH, 'public');
+
+                return $translator;
+            },
         );
         $this->container->instance(\Preflow\View\Geo\GeoMiddleware::class, $middleware);
         $this->pipeline->prepend($middleware);

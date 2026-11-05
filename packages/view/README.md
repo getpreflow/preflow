@@ -230,7 +230,8 @@ should stand alone, mark the template's own HTML `data-geo="skip"`:
 - [de](https://club.test/de/llms.txt)
 ```
 
-Each language has its own (`/de/llms.txt`); the default language's file links the others. `/llms-full.txt` (and
+Each language has its own (`/de/llms.txt`); the default language's file links the others. Their heading is in the file's language (translation key `geo.other_languages`: en, de and fr ship with
+preflow/view; a site renames it, or adds another language, in its own `lang/{locale}/geo.php`). `/llms-full.txt` (and
 `/de/llms-full.txt`) holds the Markdown of every listed page in the same order, each under its title and source
 URL; `'full' => false` turns it off. Pages without a Markdown view (404, noindex…) are left out of it.
 

@@ -48,6 +48,15 @@ final class LlmsTxtTest extends TestCase
         );
     }
 
+    public function test_the_other_languages_heading_is_given_in_the_files_language(): void
+    {
+        $txt = (new LlmsTxt())->index('Seite', '', [], [
+            ['locale' => 'en', 'url' => 'https://site.test/en/llms.txt'],
+        ], 'Andere Sprachen');
+
+        $this->assertSame("# Seite\n\n## Andere Sprachen\n\n- [en](https://site.test/en/llms.txt)\n", $txt);
+    }
+
     public function test_index_without_entries_is_the_header_alone(): void
     {
         $this->assertSame("# Site\n\n> Summary\n", (new LlmsTxt())->index('Site', 'Summary', [], []));

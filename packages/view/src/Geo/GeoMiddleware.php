@@ -47,6 +47,9 @@ final class GeoMiddleware implements MiddlewareInterface
      * @param string         $appName llms.txt's name when neither the config nor the site fields give one
      * @param list<string>   $locales the locales with their own llms.txt under `/{locale}/`
      * @param string         $defaultLocale the locale of `/llms.txt`
+     * @param ?\Closure(): ?object $translator gives the app's translator (a Preflow\I18n\Translator), if any;
+     *                       llms.txt's "Other languages" heading comes from its geo.other_languages
+     *                       in the file's locale (none: English)
      */
     public function __construct(
         private readonly GeoConfig $config,
@@ -61,6 +64,7 @@ final class GeoMiddleware implements MiddlewareInterface
         private readonly string $appName = '',
         private readonly array $locales = [],
         private readonly string $defaultLocale = '',
+        private readonly ?\Closure $translator = null,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -239,12 +243,26 @@ final class GeoMiddleware implements MiddlewareInterface
                     }
                 }
             }
-            $body = $txt->index($name, $summary, $entries, $others);
+            $body = $others !== []
+                ? $txt->index($name, $summary, $entries, $others, $this->otherLanguagesHeading($locale))
+                : $txt->index($name, $summary, $entries, $others);
         }
 
         $this->dropNativeCookies();
 
         return new Response(200, ['Cache-Control' => self::CACHE_CONTROL] + $headers, $body);
+    }
+
+    /** The "Other languages" heading in $locale: the translator's geo.other_languages, else English. */
+    private function otherLanguagesHeading(string $locale): string
+    {
+        $translator = $this->translator?->__invoke();
+        if ($translator === null || !method_exists($translator, 'get')) {
+            return 'Other languages';
+        }
+        $heading = trim((string) $translator->get(LlmsTxt::OTHER_LANGUAGES_KEY, [], $locale !== '' ? $locale : null));
+
+        return $heading !== '' && $heading !== LlmsTxt::OTHER_LANGUAGES_KEY ? $heading : 'Other languages';
     }
 
     /** @param array<string, mixed> $site */

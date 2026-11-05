@@ -28,6 +28,16 @@
             "Preflow\\View\\Tests\\": "tests/"
         }
     },
+    "extra": {
+        "preflow": {
+            "translations": {
+                "geo": {
+                    "path": "lang",
+                    "scope": "public"
+                }
+            }
+        }
+    },
     "suggest": {
         "mpdf/mpdf": "Renders PDFs (^8.2)",
         "chillerlan/php-qrcode": "Renders QR codes (^5.0)"
