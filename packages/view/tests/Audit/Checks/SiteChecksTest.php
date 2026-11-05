@@ -172,7 +172,7 @@ final class SiteChecksTest extends TestCase
             new SiteLlms(new GeoConfig(), $this->public),
             new SiteShareImage($off, new SeoSite()),
             new SiteOwner($off, new SchemaRegistry()),
-            new SiteEtag($off),
+            new SiteEtag($off, static function (): void {}),
         ];
         foreach ($checks as $check) {
             $this->assertSame([], $check->check($this->renderer()), $check->id());
@@ -277,7 +277,7 @@ final class SiteChecksTest extends TestCase
                 ? new Response(304, ['ETag' => 'W/"2-a"'])
                 : new Response(200, ['Content-Type' => 'text/html', 'ETag' => 'W/"2-a"'], '<html><body>Home</body></html>');
         };
-        $check = new SiteEtag($this->seo());
+        $check = $this->etag();
 
         $this->assertSame('etag', $check->id());
         $this->assertSame([], $check->check($this->renderer()));
@@ -293,22 +293,63 @@ final class SiteChecksTest extends TestCase
             return new Response(200, ['Content-Type' => 'text/html', 'ETag' => "W/\"2-{$n}\""], "<html><body>{$n}</body></html>");
         };
 
-        $this->assertSame(['etag.unstable|notice|https://site.test/|'], $this->summary((new SiteEtag($this->seo()))->check($this->renderer())));
+        $this->assertSame(['etag.unstable|notice|https://site.test/|'], $this->summary(($this->etag())->check($this->renderer())));
         $this->assertSame(2, $n, 'no conditional render once the ETags differ');
+    }
+
+    public function test_per_second_content_shows_because_the_second_render_waits(): void
+    {
+        $clock = 1_700_000_000;
+        $waited = 0;
+        $this->routes['/'] = function () use (&$clock): ResponseInterface {
+            $etag = 'W/"2-' . sha1('token ' . $clock) . '"';
+
+            return new Response(200, ['Content-Type' => 'text/html', 'ETag' => $etag], "<html><body><input name=\"t\" value=\"{$clock}\"></body></html>");
+        };
+        $check = new SiteEtag($this->seo(), static function () use (&$clock, &$waited): void {
+            $waited++;
+            $clock++;
+        });
+
+        $this->assertSame(['etag.unstable|notice|https://site.test/|'], $this->summary($check->check($this->renderer())));
+        $this->assertSame(1, $waited, 'one wait, between the first and the second render');
+    }
+
+    public function test_the_default_wait_is_just_over_a_second(): void
+    {
+        $this->routes['/'] = new Response(200, ['Content-Type' => 'text/html', 'ETag' => 'W/"2-a"'], '<html><body>Home</body></html>');
+
+        $start = microtime(true);
+        (new SiteEtag($this->seo()))->check($this->renderer());
+
+        $this->assertGreaterThanOrEqual(1.0, microtime(true) - $start);
+    }
+
+    public function test_a_second_render_that_fails_finds_nothing(): void
+    {
+        $n = 0;
+        $this->routes['/'] = function () use (&$n): ResponseInterface {
+            return ++$n === 1
+                ? new Response(200, ['Content-Type' => 'text/html', 'ETag' => 'W/"2-a"'], '<html><body>Home</body></html>')
+                : new Response(500, [], 'error');
+        };
+
+        $this->assertSame([], $this->etag()->check($this->renderer()));
+        $this->assertSame(2, $n);
     }
 
     public function test_etag_not_answered_with_304(): void
     {
         $this->routes['/'] = new Response(200, ['Content-Type' => 'text/html', 'ETag' => 'W/"2-a"'], '<html><body>Home</body></html>');
 
-        $this->assertSame(['etag.no-304|notice|https://site.test/|'], $this->summary((new SiteEtag($this->seo()))->check($this->renderer())));
+        $this->assertSame(['etag.no-304|notice|https://site.test/|'], $this->summary(($this->etag())->check($this->renderer())));
     }
 
     public function test_a_home_page_setting_a_cookie_gets_no_etag_and_says_why(): void
     {
         $this->routes['/'] = new Response(200, ['Content-Type' => 'text/html', 'Set-Cookie' => 'locale=en; Path=/; HttpOnly'], '<html><body>Home</body></html>');
 
-        $findings = (new SiteEtag($this->seo()))->check($this->renderer());
+        $findings = ($this->etag())->check($this->renderer());
 
         $this->assertSame(['etag.cookie|notice|https://site.test/|'], $this->summary($findings));
         $this->assertStringContainsString('locale', $findings[0]->message);
@@ -318,13 +359,13 @@ final class SiteChecksTest extends TestCase
     public function test_no_etag_without_a_cookie_or_with_etags_off_finds_nothing(): void
     {
         $this->routes['/'] = new Response(200, ['Content-Type' => 'text/html', 'Cache-Control' => 'private'], '<html><body>Home</body></html>');
-        $this->assertSame([], (new SiteEtag($this->seo()))->check($this->renderer()));
+        $this->assertSame([], ($this->etag())->check($this->renderer()));
 
         $this->routes['/'] = new Response(200, ['Content-Type' => 'text/html', 'Set-Cookie' => 'locale=en'], '<html><body>Home</body></html>');
-        $this->assertSame([], (new SiteEtag(new SeoConfig(enabled: true, etag: false)))->check($this->renderer()));
+        $this->assertSame([], (new SiteEtag(new SeoConfig(enabled: true, etag: false), static function (): void {}))->check($this->renderer()));
 
         $this->routes['/'] = new Response(500, [], 'error');
-        $this->assertSame([], (new SiteEtag($this->seo()))->check($this->renderer()));
+        $this->assertSame([], ($this->etag())->check($this->renderer()));
     }
 
     // share image and owner
@@ -357,6 +398,12 @@ final class SiteChecksTest extends TestCase
     private function seo(): SeoConfig
     {
         return new SeoConfig(enabled: true);
+    }
+
+    /** The ETag check without its wait between renders. */
+    private function etag(): SiteEtag
+    {
+        return new SiteEtag($this->seo(), static function (): void {});
     }
 
     private function home(string $head): void

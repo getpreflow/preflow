@@ -15,17 +15,31 @@ use Preflow\View\Seo\SeoConfig;
  *
  * - `etag.cookie` (notice): the page sets a cookie (such as the locale cookie), so it gets no ETag and
  *   browsers can't revalidate it;
- * - `etag.unstable` (notice): two renders in a row give different ETags (per-request content such as a
- *   timing token), so a browser never gets a 304;
+ * - `etag.unstable` (notice): two renders a little over a second apart give different ETags (per-request
+ *   content such as a time()-based form token), so a browser never gets a 304;
  * - `etag.no-304` (notice): asked with its own ETag, the page doesn't answer 304.
  *
- * A page without an ETag for another reason (private, not 200 HTML) finds nothing here.
+ * A page without an ETag for another reason (private, not 200 HTML), or whose second render doesn't
+ * answer 200, finds nothing here. A cookie set with PHP's own setcookie() can't be seen in the console
+ * (headers_list() is empty there), so such a page may pass here although production sends it no ETag.
  *
  * @since 0.54
  */
 final class SiteEtag implements SiteCheck
 {
-    public function __construct(private readonly SeoConfig $seo) {}
+    /** @var \Closure(): void */
+    private readonly \Closure $wait;
+
+    /**
+     * @param ?\Closure(): void $wait runs between the first and the second render; by default it waits 1.1 s,
+     *                               so content that changes once a second (a time()-based token) shows
+     */
+    public function __construct(private readonly SeoConfig $seo, ?\Closure $wait = null)
+    {
+        $this->wait = $wait ?? static function (): void {
+            usleep(1_100_000);
+        };
+    }
 
     public function id(): string
     {
@@ -55,10 +69,14 @@ final class SiteEtag implements SiteCheck
                 $first->url)];
         }
 
+        ($this->wait)();
         $second = $renderer->render('/');
+        if ($second->status !== 200) {
+            return [];
+        }
         if ($second->header('ETag') !== $etag) {
             return [new Finding('etag.unstable', Severity::Notice,
-                'Two renders of the home page in a row give different ETags, so browsers never get a 304. Something in the page changes on every request (a token, a timestamp, a random value); move it out of the page or into a script.',
+                'Two renders of the home page a second apart give different ETags, so browsers never get a 304. Something in the page changes on every request (a token, a timestamp, a random value); move it out of the page or into a script.',
                 $first->url)];
         }
 
