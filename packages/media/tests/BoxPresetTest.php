@@ -376,12 +376,19 @@ final class BoxPresetTest extends TestCase
     public function test_an_internal_render_makes_no_box_file(): void
     {
         $lib = $this->lib();
-        $rel = $lib->boxPlan($this->uploadQuadrants($lib), 'cover-thumb')->base . '-200.webp';
+        $plan = $lib->boxPlan($this->uploadQuadrants($lib), 'cover-thumb');
+        $rel = $plan->base . '-200.webp';
         $before = $this->mediaFiles();
 
+        // Allowed but not yet made: a pending 404.
+        $pending = $this->serve($lib, $rel, internal: true);
+        $this->assertSame(404, $pending->getStatusCode());
+        $this->assertSame('pending', $pending->getHeaderLine(VariantController::PENDING_HEADER));
+
+        // A width outside the plan is refused for a visitor too: a plain 404.
         try {
-            $this->serve($lib, $rel, internal: true);
-            $this->fail("{$rel} was served");
+            $this->serve($lib, $plan->base . '-300.webp', internal: true);
+            $this->fail('a width outside the plan was served');
         } catch (NotFoundHttpException) {
         }
         $this->assertSame($before, $this->mediaFiles());

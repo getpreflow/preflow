@@ -23,10 +23,14 @@ use Psr\Http\Message\ServerRequestInterface;
  * - the base of one of its box plans ({delivery stem}-{preset}-{key}), with a width of that plan.
  * Anything else under the media URL (an old key, an unknown preset, another width) is a
  * 404 that writes nothing. An internal render (InternalRender) makes nothing either: it gets
- * the variant if it exists, else a 404.
+ * the variant if it exists; one that would be made but is not yet on disk is a 404 with
+ * "X-Preflow-Variant: pending", so it can be told from one that does not exist.
  */
 final class VariantController
 {
+    /** Header on an internal render's 404 for a variant that would be made on a visitor's request (since 0.54). */
+    public const string PENDING_HEADER = 'X-Preflow-Variant';
+
     private const string VARIANT = '#^(\d{4}/\d{2}/([a-f0-9]{32})(?:-[a-z0-9-]+?)?)-([1-9]\d{0,4})\.(avif|webp|jpg)$#';
 
     public function __construct(
@@ -84,12 +88,12 @@ final class VariantController
         return substr($asset->path, 0, (int) strrpos($asset->path, '.'));
     }
 
-    /** The variant at $path (relative to the media dir) as it is on disk; a 404 when missing. */
+    /** The allowed variant at $path (relative to the media dir) as it is on disk; a pending 404 when not yet made. */
     private function existing(string $path, string $format): ResponseInterface
     {
         $file = $this->library->absolute($path);
 
-        return is_file($file) ? self::file($file, $format) : throw new NotFoundHttpException('Not found');
+        return is_file($file) ? self::file($file, $format) : new Response(404, [self::PENDING_HEADER => 'pending']);
     }
 
     private static function file(string $file, string $format): ResponseInterface

@@ -106,11 +106,18 @@ final class MediaVariantControllerTest extends TestCase
         $this->assertSame(200, $made->getStatusCode());
         $this->assertSame('RIFF', substr((string) $made->getBody(), 0, 4));
 
-        // Missing (a step width): reported as missing, not made.
-        try {
-            $this->serve($this->base($asset) . '-640.webp', internal: true);
-            $this->fail('expected a 404');
-        } catch (NotFoundHttpException) {
+        // Allowed but not yet made (a step width): a pending 404, not made.
+        $pending = $this->serve($this->base($asset) . '-640.webp', internal: true);
+        $this->assertSame(404, $pending->getStatusCode());
+        $this->assertSame('pending', $pending->getHeaderLine(VariantController::PENDING_HEADER));
+
+        // Refused for a visitor too (an unknown asset, a width no preset uses): a plain 404.
+        foreach ([dirname($this->base($asset)) . '/' . str_repeat('a', 32) . '-640.webp', $this->base($asset) . '-700.webp'] as $path) {
+            try {
+                $this->serve($path, internal: true);
+                $this->fail("expected a 404 for {$path}");
+            } catch (NotFoundHttpException) {
+            }
         }
         $this->assertSame($before, $this->mediaFiles());
     }
