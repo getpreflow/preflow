@@ -393,7 +393,9 @@ which gives it on: `image: share_image`.
 A page whose content is the same for everyone but whose response is private, because it embeds one visitor's
 tokens or state (a gallery page with the visitor's likes), says so with `public_content: true`, on its own or with
 other keys: `{% do seo({public_content: true}) %}`. It then gets the cards and JSON-LD of a public page; the response
-stays as it is (its `Cache-Control` untouched, no `ETag`), and `noindex` still wins. Since 0.53.1.
+stays as it is (its `Cache-Control` untouched, no `ETag`), and `noindex` still wins. Since 0.53.1. The flag is set
+per template: put `seo({public_content: true})` in the template of the public page itself, not in a layout shared
+with members' or gated pages (a gated Folio type answers `private, no-store` too, and would get cards).
 
 In Blade: `@seo(['title' => $game->title, 'description' => $game->teaser])`. In PHP, set or merge the request's
 `Preflow\View\Seo\SeoContext` (`set(new PageMeta(...))`, `merge([...])`). An unknown key in a template's `seo()` is

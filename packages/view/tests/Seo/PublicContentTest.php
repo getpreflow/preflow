@@ -73,11 +73,16 @@ final class PublicContentTest extends TestCase
             $this->assertStringContainsString('<meta property="og:url" content="https://site.test/objects/oak-bowl">', $html, $cacheControl);
             $this->assertStringContainsString('<meta property="og:title" content="Oak bowl">', $html, $cacheControl);
             $this->assertStringContainsString('<meta name="twitter:card" content="summary">', $html, $cacheControl);
-            $this->assertStringContainsString('<script type="application/ld+json">', $html, $cacheControl);
+            $this->assertSame(1, preg_match('~<script type="application/ld\+json">(.*?)</script>~s', $html, $m), $cacheControl);
+            $graph = json_decode($m[1], true, flags: JSON_THROW_ON_ERROR)['@graph'];
+            $this->assertContains('WebPage', array_column($graph, '@type'), $cacheControl);
             // Still one visitor's response: no ETag, its Cache-Control as the page sent it.
             $this->assertFalse($response->hasHeader('ETag'), $cacheControl);
-            $this->assertSame($cacheControl, $response->getHeaderLine('Cache-Control'));
+            $this->assertSame($cacheControl, $response->getHeaderLine('Cache-Control'), $cacheControl);
         }
+
+        // The control: the same page as a public response does get an ETag.
+        $this->assertTrue($this->render('no-cache', ['public_content' => true])->hasHeader('ETag'));
     }
 
     public function test_a_private_page_without_the_flag_gets_no_cards(): void
