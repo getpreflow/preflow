@@ -8,9 +8,12 @@ require_once __DIR__ . '/CheckFixtures.php';
 
 use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
+use Preflow\View\Audit\AuditRun;
 use Preflow\View\Audit\Checks\BrokenLinks;
 use Preflow\View\Audit\Finding;
 use Preflow\View\Audit\PageRenderer;
+use Preflow\View\Seo\PublicPage;
+use Preflow\View\Seo\PublicPages;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -22,6 +25,7 @@ final class BrokenLinksTest extends TestCase
     /** @var list<string> paths rendered, in order */
     private array $rendered = [];
     private string $public;
+    private string $homeLinks = '';
     private ?string $robots = "User-agent: *\nAllow: /\nAllow: /folio/media/\nDisallow: /folio/\nDisallow: /private\n\n# AI training crawlers\nUser-agent: GPTBot\nDisallow: /\n";
 
     protected function setUp(): void
@@ -33,8 +37,10 @@ final class BrokenLinksTest extends TestCase
 
     protected function tearDown(): void
     {
-        @unlink($this->public . '/img/logo.png');
-        @rmdir($this->public . '/img');
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->public, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+        foreach ($it as $f) {
+            $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
+        }
         @rmdir($this->public);
     }
 
@@ -127,6 +133,59 @@ final class BrokenLinksTest extends TestCase
         $this->assertSame(['/ok'], $this->rendered);
     }
 
+    public function test_srcset_data_uri_candidates_are_skipped(): void
+    {
+        $check = $this->check();
+        $check->restore([]);
+        $check->collect($this->page($this->html(body: '<img srcset="data:image/png;base64,AAAA,BBBB 1x, /ok 2x,/new 3x" alt="">'), 'https://site.test/', 'en'));
+
+        $this->assertSame(['/robots.txt', '/ok', '/new'], $this->rendered);
+        $this->assertSame([], $check->finish());
+    }
+
+    public function test_public_files_and_directories_are_fine_also_at_the_end_of_a_redirect(): void
+    {
+        @mkdir($this->public . '/docs', 0777, true);
+        file_put_contents($this->public . '/docs/index.html', '<html></html>');
+        $check = $this->check();
+        $check->restore([]);
+        $check->collect($this->page($this->html(body: '<a href="/docs/">d</a><a href="/docs">d</a><a href="/favicon.ico">f</a><a href="/handbook">h</a>'), 'https://site.test/', 'en'));
+
+        $this->assertSame(['/robots.txt', '/favicon.ico', '/handbook'], $this->rendered);
+        $this->assertSame([], $check->finish());
+    }
+
+    public function test_queued_public_pages_are_left_to_their_own_audit(): void
+    {
+        $check = $this->check();
+        $check->restore([]);
+        $check->queued(['/queued', '/de/%C3%BCber']);
+        $check->collect($this->page($this->html(body: '<a href="/queued">q</a><a href="/de/über">ü</a><a href="/to-queued">t</a>'), 'https://site.test/', 'en'));
+
+        $this->assertSame(['/robots.txt', '/to-queued'], $this->rendered);
+        $this->assertSame([], $check->finish(), 'a queued page answers for itself (status.error), not as link.broken');
+    }
+
+    public function test_a_full_run_renders_each_public_page_once_and_a_broken_one_shows_as_its_status(): void
+    {
+        $registry = $this->registry();
+        $renderer = $this->renderer();
+        $registry->addRun(new BrokenLinks($registry, $renderer, $this->public));
+        $pages = new PublicPages();
+        $pages->source(static fn (string $locale): array => $locale === 'en'
+            ? [new PublicPage('Home', '/', order: 0), new PublicPage('A', '/a'), new PublicPage('B', '/b'), new PublicPage('Gone', '/gone')]
+            : [new PublicPage('Über', '/de/%C3%BCber')]);
+        // The home page links every public page; the German one is linked decoded.
+        $this->homeLinks = '<a href="/a">a</a><a href="/b">b</a><a href="/gone">g</a><a href="/de/über">ü</a>';
+
+        $report = (new AuditRun($registry, $renderer, $pages, $this->public . '/storage/seo-audit.json', static fn (): \DateTimeImmutable => new \DateTimeImmutable('2026-11-05T10:00:00+00:00')))
+            ->run(600, null, null, false, null);
+
+        $this->assertTrue($report->complete());
+        $this->assertEqualsCanonicalizing(['/', '/a', '/b', '/gone', '/de/%C3%BCber', '/robots.txt'], $this->rendered);
+        $this->assertSame(['status.error|critical|https://site.test/gone|en'], $this->summary($report->findings));
+    }
+
     private function check(): BrokenLinks
     {
         return new BrokenLinks($this->registry(), $this->renderer(), $this->public);
@@ -145,6 +204,11 @@ final class BrokenLinksTest extends TestCase
                 '/old' => new Response(301, ['Location' => '/older']),
                 '/older' => new Response(301, ['Location' => 'https://site.test/new']),
                 '/moved' => new Response(301, ['Location' => '/ok']),
+                '/favicon.ico' => new Response(301, ['Location' => '/img/logo.png']),
+                '/handbook' => new Response(301, ['Location' => '/docs/']),
+                '/to-queued' => new Response(301, ['Location' => '/queued']),
+                '/' => new Response(200, $html, '<html><head><title>Home</title></head><body>' . $this->homeLinks . '</body></html>'),
+                '/a', '/b', '/de/%C3%BCber' => new Response(200, $html, '<html><head><title>' . $path . '</title></head><body><a href="/">home</a></body></html>'),
                 '/loop' => new Response(302, ['Location' => '/loop']),
                 '/out' => new Response(301, ['Location' => 'https://elsewhere.test/']),
                 '/boom' => new Response(500, $html, 'Error'),

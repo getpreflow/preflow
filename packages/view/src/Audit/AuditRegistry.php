@@ -27,7 +27,10 @@ final class AuditRegistry
     /** @var (\Closure(string, string): ?Target)|null */
     private ?\Closure $targets = null;
 
-    /** @param ?\Closure(self): void $builtIn adds the built-in checks; called once, on first read of a list */
+    /**
+     * @param ?\Closure(self): bool $builtIn adds the built-in checks on the first read of a list; returns false
+     *                                       when it can't yet (it is asked again on the next read)
+     */
     public function __construct(
         private ?\Closure $builtIn = null,
     ) {}
@@ -100,7 +103,9 @@ final class AuditRegistry
         $this->pageChecks = $this->siteChecks = $this->runChecks = [];
 
         try {
-            $register($this);
+            if ($register($this) === false) {
+                $this->builtIn = $register;
+            }
         } finally {
             array_push($this->pageChecks, ...$page);
             array_push($this->siteChecks, ...$site);

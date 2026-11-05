@@ -19,9 +19,15 @@ use Preflow\View\Audit\Severity;
  * that links it, with the number of pages that do.
  *
  * Not checked: other hosts, URLs with a query (search, filters, pages of a
- * list), paths robots.txt keeps crawlers from, and files the web server serves
- * from public/ itself. A media variant that is allowed but not made yet (a 404
- * marked pending) counts as fine.
+ * list), paths robots.txt keeps crawlers from, and files (or directories with an
+ * index.html) the web server serves from public/ itself, also where a redirect
+ * ends. A media variant that is allowed but not made yet (a 404 marked pending)
+ * counts as fine.
+ *
+ * Nor are the run's own public pages (queued()): they are audited themselves,
+ * so each page is rendered once per run. A link to one that answers 404 or 5xx
+ * or redirects shows as that page's `status.error` or `status.redirect`, not as
+ * `link.broken` on the pages linking it.
  *
  * @since 0.54
  */
@@ -46,6 +52,9 @@ final class BrokenLinks implements RunCheck
     private readonly string $host;
 
     private ?RobotsRules $robots = null;
+
+    /** @var array<string, true> decoded paths of the pages the run audits itself */
+    private array $queued = [];
 
     /**
      * Each target seen this run, by decoded path: how it answered (k: ok, chain, broken or loop; s: final status;
@@ -87,7 +96,7 @@ final class BrokenLinks implements RunCheck
             }
             $path = Urls::path($url);
             $key = rawurldecode($path);
-            if (isset($onPage[$key]) || $this->robots->disallows($path) || $this->isPublicFile($key)) {
+            if (isset($onPage[$key]) || isset($this->queued[$key]) || $this->robots->disallows($path) || $this->isPublicFile($key)) {
                 continue;
             }
             $onPage[$key] = true;
@@ -100,6 +109,20 @@ final class BrokenLinks implements RunCheck
                 $this->targets[$key] += ['p' => $path, 'u' => $page->url, 'l' => $page->locale, 'n' => 0];
             }
             $this->targets[$key]['n']++;
+        }
+    }
+
+    /**
+     * The paths (as written or decoded) of the pages the run audits itself; links to them aren't rendered. Set by
+     * AuditRun after restore(), for each run.
+     *
+     * @param list<string> $paths
+     */
+    public function queued(array $paths): void
+    {
+        $this->queued = [];
+        foreach ($paths as $path) {
+            $this->queued[rawurldecode($path)] = true;
         }
     }
 
@@ -167,6 +190,10 @@ final class BrokenLinks implements RunCheck
             $key = rawurldecode($path);
             if ($redirects > 0 && isset($this->targets[$key])) {
                 return self::after($redirects, $this->targets[$key]);
+            }
+            if ($redirects > 0 && (isset($this->queued[$key]) || $this->isPublicFile($key))) {
+                // A page the run audits itself, or a file the web server serves: taken as answering 200.
+                return self::after($redirects, ['k' => 'ok', 's' => 200, 'h' => 0, 'f' => $path]);
             }
             if (isset($visited[$key]) || $redirects > self::MAX_REDIRECTS) {
                 return ['k' => 'loop', 's' => 0, 'h' => $redirects, 'f' => $path];
@@ -238,10 +265,47 @@ final class BrokenLinks implements RunCheck
         return $robots->status === 200 ? RobotsRules::parse($robots->body) : new RobotsRules();
     }
 
-    /** Whether the web server serves $path (decoded) from public/ without asking the app. */
+    /** Whether the web server serves $path (decoded) from public/ without asking the app: a file, or a directory's index.html. */
     private function isPublicFile(string $path): bool
     {
-        return $this->publicDir !== null && $path !== '/' && !str_contains($path, '..') && is_file($this->publicDir . $path);
+        if ($this->publicDir === null || $path === '/' || str_contains($path, '..')) {
+            return false;
+        }
+        $file = $this->publicDir . $path;
+
+        return is_file($file) || (is_dir($file) && (is_file($file . '/index.html') || is_file($file . '/index.htm')));
+    }
+
+    /**
+     * The URLs of a srcset's candidates, read as the HTML standard does: a URL runs to the next space (so a data:
+     * URI's commas stay in it), a comma at its end closes the candidate, else its descriptors run to the next comma.
+     *
+     * @return list<string>
+     */
+    private static function srcset(string $srcset): array
+    {
+        $urls = [];
+        $length = strlen($srcset);
+        $at = 0;
+        while ($at < $length) {
+            $at += strspn($srcset, " \t\n\r\f,", $at);
+            if ($at >= $length) {
+                break;
+            }
+            $url = substr($srcset, $at, strcspn($srcset, " \t\n\r\f", $at));
+            $at += strlen($url);
+            if (str_ends_with($url, ',')) {
+                $url = rtrim($url, ',');
+            } else {
+                $comma = strpos($srcset, ',', $at);
+                $at = $comma === false ? $length : $comma + 1;
+            }
+            if ($url !== '' && !str_starts_with(strtolower($url), 'data:')) {
+                $urls[] = $url;
+            }
+        }
+
+        return $urls;
     }
 
     /**
@@ -280,9 +344,7 @@ final class BrokenLinks implements RunCheck
                     $hrefs[] = $value;
                     continue;
                 }
-                foreach (explode(',', $value) as $candidate) {
-                    $hrefs[] = (string) (preg_split('/\s+/', trim($candidate))[0] ?? '');
-                }
+                array_push($hrefs, ...self::srcset($value));
             }
         }
 

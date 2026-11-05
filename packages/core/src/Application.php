@@ -586,9 +586,9 @@ final class Application
         // The SEO audit's checks: here, so providers can add theirs. The built-in ones are made when an audit
         // first reads the checks (bootAudit binds the renderer), so web requests don't build them.
         $this->container->instance(\Preflow\View\Audit\AuditRegistry::class, new \Preflow\View\Audit\AuditRegistry(
-            function (\Preflow\View\Audit\AuditRegistry $registry) use ($publicPages): void {
+            function (\Preflow\View\Audit\AuditRegistry $registry) use ($publicPages): bool {
                 if (!$this->container->bound(\Preflow\View\Audit\PageRenderer::class)) {
-                    return;
+                    return false; // read before bootAudit: asked again on the next read
                 }
                 \Preflow\View\Audit\Checks\BuiltInChecks::register(
                     $registry,
@@ -596,6 +596,8 @@ final class Application
                     $publicPages,
                     $this->basePath('public'),
                 );
+
+                return true;
             },
         ));
         // SEO settings, the page meta templates and controllers fill, and what sites register (JSON-LD builders, defaults)

@@ -42,10 +42,12 @@ final class AuditRegistryTest extends TestCase
         $calls = 0;
         $builtIn = $this->pageCheck('built-in');
         $builtInRun = $this->runCheck('built-in-run');
-        $registry = new AuditRegistry(function (AuditRegistry $registry) use (&$calls, $builtIn, $builtInRun): void {
+        $registry = new AuditRegistry(function (AuditRegistry $registry) use (&$calls, $builtIn, $builtInRun): bool {
             $calls++;
             $registry->addPage($builtIn);
             $registry->addRun($builtInRun);
+
+            return true;
         });
         $own = $this->pageCheck('own');
         $ownSite = $this->siteCheck('own-site');
@@ -59,6 +61,27 @@ final class AuditRegistryTest extends TestCase
         $this->assertSame([$builtInRun], $registry->runChecks());
         $this->assertSame([$builtIn, $own], $registry->pageChecks());
         $this->assertSame(1, $calls);
+    }
+
+    public function test_built_in_checks_not_ready_yet_are_asked_for_again(): void
+    {
+        $ready = false;
+        $builtIn = $this->pageCheck('built-in');
+        $registry = new AuditRegistry(function (AuditRegistry $registry) use (&$ready, $builtIn): bool {
+            if (!$ready) {
+                return false;
+            }
+            $registry->addPage($builtIn);
+
+            return true;
+        });
+        $own = $this->pageCheck('own');
+        $registry->addPage($own);
+
+        $this->assertSame([$own], $registry->pageChecks(), 'read before the built-ins can be made');
+        $ready = true;
+        $this->assertSame([$builtIn, $own], $registry->pageChecks());
+        $this->assertSame([$builtIn, $own], $registry->pageChecks());
     }
 
     public function test_starts_empty_and_resolves_no_target_without_a_resolver(): void

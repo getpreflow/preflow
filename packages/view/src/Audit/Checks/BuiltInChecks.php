@@ -35,7 +35,7 @@ final class BuiltInChecks
 
         $registry->addRun(new TitleDuplicate($registry));
         $registry->addRun(new DescriptionDuplicate($registry));
-        $registry->addRun(new HreflangUnpaired($registry));
+        $registry->addRun(new HreflangUnpaired($registry, $pages, $locales));
         $registry->addRun(new BrokenLinks($registry, $renderer, $publicDir));
     }
 }

@@ -120,6 +120,9 @@ final class ContentChecksTest extends TestCase
             '<div aria-hidden="true"><a href="/x" tabindex="-1">x</a><button disabled>b</button><input type="hidden" name="h"><a>no href</a></div>',
             '<div aria-hidden="true" inert><a href="/y">y</a></div>',
             '<div aria-hidden="false"><a href="/z">z</a></div>',
+            '<div aria-hidden="true"><div inert><a href="/i">inert below</a></div><a href="/h" hidden>hidden</a><p hidden><button>in hidden</button></p></div>',
+            '<div aria-hidden="true"><fieldset disabled><input name="f"><button>b</button><select><option>o</option></select></fieldset></div>',
+            '<div aria-hidden="true"><span tabindex="">empty</span><span tabindex="x">word</span></div>',
         ])))));
     }
 

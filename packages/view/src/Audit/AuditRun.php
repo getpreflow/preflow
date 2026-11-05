@@ -185,6 +185,7 @@ final class AuditRun
         foreach ($this->registry->runChecks() as $check) {
             self::restore($check, []);
         }
+        $this->tellQueued($queue);
 
         return $report;
     }
@@ -196,8 +197,25 @@ final class AuditRun
         foreach ($this->registry->runChecks() as $check) {
             self::restore($check, $report->run[$check->id()] ?? []);
         }
+        $this->tellQueued($report->queue);
 
         return $report;
+    }
+
+    /**
+     * Tell the link check which pages the run audits itself, so it doesn't render them again as link targets
+     * (their own status finding stands for them).
+     *
+     * @param list<array{0: string, 1: string}> $queue
+     */
+    private function tellQueued(array $queue): void
+    {
+        $paths = array_column($queue, 0);
+        foreach ($this->registry->runChecks() as $check) {
+            if ($check instanceof Checks\BrokenLinks) {
+                $check->queued($paths);
+            }
+        }
     }
 
     /**
