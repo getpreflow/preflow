@@ -8,6 +8,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Exceptions\NotFoundHttpException;
+use Preflow\Core\Http\InternalRender;
 use Preflow\Media\Asset;
 use Preflow\Media\MediaLibrary;
 use Preflow\Media\Image\GdBackend;
@@ -36,9 +37,12 @@ final class MediaVariantControllerTest extends TestCase
         $this->removeAssetRoot();
     }
 
-    private function serve(string $path): \Psr\Http\Message\ResponseInterface
+    private function serve(string $path, bool $internal = false): \Psr\Http\Message\ResponseInterface
     {
         $request = (new Psr17Factory())->createServerRequest('GET', '/media/' . $path)->withAttribute('path', $path);
+        if ($internal) {
+            $request = InternalRender::mark($request);
+        }
 
         return (new VariantController($this->lib, $this->widths))->serve($request);
     }
@@ -90,6 +94,25 @@ final class MediaVariantControllerTest extends TestCase
         $this->serve($rel);
         $this->assertSame($mtime, filemtime($this->file($rel))); // reused, not re-encoded
         $this->assertSame([], glob($this->file($rel) . '.*') ?: []); // no lock or temp file left
+    }
+
+    public function test_an_internal_render_gets_existing_variants_and_makes_none(): void
+    {
+        $asset = $this->asset();
+        $before = $this->mediaFiles();
+
+        // Made at upload: served as usual.
+        $made = $this->serve($this->base($asset) . '-480.webp', internal: true);
+        $this->assertSame(200, $made->getStatusCode());
+        $this->assertSame('RIFF', substr((string) $made->getBody(), 0, 4));
+
+        // Missing (a step width): reported as missing, not made.
+        try {
+            $this->serve($this->base($asset) . '-640.webp', internal: true);
+            $this->fail('expected a 404');
+        } catch (NotFoundHttpException) {
+        }
+        $this->assertSame($before, $this->mediaFiles());
     }
 
     public function test_disallowed_requests_are_404_and_write_nothing(): void

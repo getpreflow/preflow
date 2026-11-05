@@ -6,6 +6,7 @@ namespace Preflow\DevTools\Tests\Http;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Debug\DebugCollector;
+use Preflow\Core\Http\InternalRender;
 use Preflow\DevTools\Http\DebugToolbarMiddleware;
 use Nyholm\Psr7\ServerRequest;
 use Nyholm\Psr7\Response;
@@ -51,6 +52,17 @@ final class DebugToolbarMiddlewareTest extends TestCase
         $this->assertStringContainsString('var t = "<body>" + x + "</body>";</script>', $html);
         $this->assertLessThan(strrpos($html, '</body>'), strpos($html, 'id="preflow-debug-toolbar"'));
         $this->assertGreaterThan(strpos($html, '<p>Hello</p>'), strpos($html, 'id="preflow-debug-toolbar"'));
+    }
+
+    public function test_does_not_inject_into_an_internal_render(): void
+    {
+        $body = '<html><body><p>Hello</p></body></html>';
+        $response = new Response(200, ['Content-Type' => 'text/html'], $body);
+        $request = InternalRender::mark(new ServerRequest('GET', '/'));
+
+        $result = (new DebugToolbarMiddleware(new DebugCollector()))->process($request, $this->makeHandler($response));
+
+        $this->assertSame($body, (string) $result->getBody());
     }
 
     public function test_does_not_inject_into_json_response(): void

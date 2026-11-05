@@ -6,6 +6,7 @@ namespace Preflow\Media\Http;
 
 use Nyholm\Psr7\Response;
 use Preflow\Core\Exceptions\NotFoundHttpException;
+use Preflow\Core\Http\InternalRender;
 use Preflow\Media\Asset;
 use Preflow\Media\Image\Formats;
 use Preflow\Media\Image\ImageWidths;
@@ -21,7 +22,8 @@ use Psr\Http\Message\ServerRequestInterface;
  *   {…}-edit-{key}, a public document's preview {…}-preview), with a width the presets allow;
  * - the base of one of its box plans ({delivery stem}-{preset}-{key}), with a width of that plan.
  * Anything else under the media URL (an old key, an unknown preset, another width) is a
- * 404 that writes nothing.
+ * 404 that writes nothing. An internal render (InternalRender) makes nothing either: it gets
+ * the variant if it exists, else a 404.
  */
 final class VariantController
 {
@@ -49,6 +51,9 @@ final class VariantController
             if (!$this->library->allowsVariant($delivery, $width, $format, $this->widths->allowed())) {
                 throw new NotFoundHttpException('Not found');
             }
+            if (InternalRender::is($request)) {
+                return $this->existing($path, $format);
+            }
             $file = $this->library->variantFile($delivery, $width, $format, $this->widths->allowed());
 
             return $file !== null ? self::file($file, $format) : $this->fallback($delivery, $width, $format);
@@ -63,6 +68,9 @@ final class VariantController
             if (!$this->library->allowsBox($plan, $width, $format)) {
                 throw new NotFoundHttpException('Not found');
             }
+            if (InternalRender::is($request)) {
+                return $this->existing($path, $format);
+            }
             $file = $this->library->boxFile($plan, $width, $format);
 
             return $file !== null ? self::file($file, $format) : $this->fallback($plan->source, $width, $format);
@@ -74,6 +82,14 @@ final class VariantController
     private static function stem(Asset $asset): string
     {
         return substr($asset->path, 0, (int) strrpos($asset->path, '.'));
+    }
+
+    /** The variant at $path (relative to the media dir) as it is on disk; a 404 when missing. */
+    private function existing(string $path, string $format): ResponseInterface
+    {
+        $file = $this->library->absolute($path);
+
+        return is_file($file) ? self::file($file, $format) : throw new NotFoundHttpException('Not found');
     }
 
     private static function file(string $file, string $format): ResponseInterface

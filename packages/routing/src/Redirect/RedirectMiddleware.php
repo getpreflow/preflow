@@ -6,6 +6,7 @@ namespace Preflow\Routing\Redirect;
 
 use Nyholm\Psr7\Response;
 use Preflow\Core\Exceptions\NotFoundHttpException;
+use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\NonPublicPaths;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -16,7 +17,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * Answers a public GET/HEAD that ended in a thrown 404 from the redirect store (exact entry,
  * else the longest area above it), and notes the address in the not-found log when nothing
  * matched. A 404 response (a gated page) and every other method pass through untouched;
- * store and log failures never turn the 404 into a 500.
+ * store and log failures never turn the 404 into a 500. An internal render (InternalRender)
+ * is answered the same way but counts no hit and records nothing.
  */
 final class RedirectMiddleware implements MiddlewareInterface
 {
@@ -66,6 +68,7 @@ final class RedirectMiddleware implements MiddlewareInterface
 
         $locale = $request->getAttribute('locale');
         $locale = is_string($locale) && $locale !== '' ? $locale : $this->defaultLocale;
+        $internal = InternalRender::is($request);
 
         try {
             [$entry, $rest] = $this->lookup($path, $locale);
@@ -75,7 +78,9 @@ final class RedirectMiddleware implements MiddlewareInterface
         }
 
         if ($entry === null) {
-            $this->record($path, $locale);
+            if (!$internal) {
+                $this->record($path, $locale);
+            }
             throw $notFound;
         }
 
@@ -86,7 +91,9 @@ final class RedirectMiddleware implements MiddlewareInterface
             throw $notFound;
         }
 
-        $this->hit($entry);
+        if (!$internal) {
+            $this->hit($entry);
+        }
 
         if ($url === null || $this->isVisitedAddress($url, $request, $rawPath)) {
             throw $notFound;
