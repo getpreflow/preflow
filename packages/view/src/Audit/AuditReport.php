@@ -103,23 +103,32 @@ final class AuditReport
             return null;
         }
 
+        // A hand-edited file may hold any JSON: a wrong type is no report, not a warning.
+        set_error_handler(static function (int $severity, string $message): never {
+            throw new \ErrorException($message, 0, $severity);
+        });
+        $string = static fn (mixed $v): string => is_string($v) ? $v : throw new \UnexpectedValueException('Not a string.');
+        $int = static fn (mixed $v): int => is_int($v) ? $v : throw new \UnexpectedValueException('Not a number.');
+        $array = static fn (mixed $v): array => is_array($v) ? $v : throw new \UnexpectedValueException('Not a list or object.');
         try {
-            $report = new self((string) ($data['started_at'] ?? ''), (string) ($data['origin'] ?? ''));
-            $report->finishedAt = isset($data['finished_at']) ? (string) $data['finished_at'] : null;
-            $report->total = (int) ($data['pages']['total'] ?? 0);
+            $report = new self($string($data['started_at'] ?? ''), $string($data['origin'] ?? ''));
+            $report->finishedAt = isset($data['finished_at']) ? $string($data['finished_at']) : null;
+            $report->total = $int($array($data['pages'] ?? [])['total'] ?? 0);
             $report->findings = array_map(
-                static fn (mixed $f): Finding => Finding::fromArray((array) $f),
-                array_values((array) ($data['findings'] ?? [])),
+                static fn (mixed $f): Finding => Finding::fromArray($array($f)),
+                array_values($array($data['findings'] ?? [])),
             );
-            $state = (array) ($data['state'] ?? []);
+            $state = $array($data['state'] ?? []);
             $report->queue = array_map(
-                static fn (mixed $entry): array => [(string) (((array) $entry)[0] ?? ''), (string) (((array) $entry)[1] ?? '')],
-                array_values((array) ($state['queue'] ?? [])),
+                static fn (mixed $entry): array => [$string($array($entry)[0] ?? ''), $string($array($entry)[1] ?? '')],
+                array_values($array($state['queue'] ?? [])),
             );
-            $report->cursor = (int) ($state['cursor'] ?? 0);
-            $report->run = array_map(static fn (mixed $s): array => (array) $s, (array) ($state['run'] ?? []));
-        } catch (\ValueError|\TypeError) {
-            return null; // an unknown severity, or a value of the wrong kind
+            $report->cursor = $int($state['cursor'] ?? 0);
+            $report->run = array_map($array, $array($state['run'] ?? []));
+        } catch (\Throwable) {
+            return null; // a value of the wrong kind, or an unknown severity
+        } finally {
+            restore_error_handler();
         }
 
         return $report;

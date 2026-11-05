@@ -1284,7 +1284,7 @@ final class Application
             [$locales, $defaultLocale] = $this->siteLocales();
             $appUrl = $this->config->get('app.url');
 
-            $collector = $this->container->has(DebugCollector::class) ? $this->container->get(DebugCollector::class) : null;
+            $collector = $this->container->bound(DebugCollector::class) ? $this->container->get(DebugCollector::class) : null;
 
             return new \Preflow\View\Audit\PageRenderer(
                 function (ServerRequestInterface $request) use ($collector): ResponseInterface {

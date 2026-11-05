@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\View\Audit\AuditRegistry;
 use Preflow\View\Audit\AuditReport;
 use Preflow\View\Audit\AuditRun;
+use Preflow\View\Audit\AuditRunning;
 use Preflow\View\Audit\Finding;
 use Preflow\View\Audit\PageCheck;
 use Preflow\View\Audit\PageRenderer;
@@ -86,8 +87,12 @@ final class AuditRunTest extends TestCase
                 $this->rendered[] = $path;
                 $this->clock = $this->clock->modify('+' . $this->renderSeconds . ' seconds');
                 $status = $this->statuses[$path] ?? 200;
+                $headers = ['Content-Type' => 'text/html; charset=UTF-8'];
+                if ($status >= 300 && $status < 400) {
+                    $headers['Location'] = $path . '-us';
+                }
 
-                return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], '<html><head><title>t</title></head><body>' . $path . '</body></html>');
+                return new Response($status, $headers, '<html><head><title>t</title></head><body>' . $path . '</body></html>');
             },
             'https://site.test',
             locales: ['en', 'de'],
@@ -323,20 +328,153 @@ final class AuditRunTest extends TestCase
         $this->assertSame($saved, file_get_contents($this->file));
     }
 
-    public function test_a_failing_check_is_reported_and_the_run_goes_on(): void
+    public function test_a_failing_check_is_one_finding_with_the_number_of_pages_and_the_run_goes_on(): void
     {
         $this->registry->addPage(new class implements PageCheck {
             public function id(): string { return 'page.broken'; }
-            public function check(RenderedPage $page): array { throw new \RuntimeException('oops'); }
+            public function check(RenderedPage $page): array { throw new \RuntimeException('oops ' . str_repeat('x', 400)); }
         });
 
         $report = $this->auditRun()->run(600, null, null, false, null);
 
         $this->assertTrue($report->complete());
-        $this->assertSame(['page.broken' => 3, 'page.seen' => 3, 'run.count' => 1, 'site.once' => 1], self::checks($report));
+        $this->assertSame(['page.broken' => 1, 'page.seen' => 3, 'run.count' => 1, 'site.once' => 1], self::checks($report));
         $broken = array_values(array_filter($report->findings, static fn (Finding $f): bool => $f->check === 'page.broken'))[0];
         $this->assertSame(Severity::Warning, $broken->severity);
-        $this->assertStringContainsString('oops', $broken->message);
+        $this->assertStringContainsString('failed on 3 pages', $broken->message);
+        $this->assertStringContainsString('oops xxx', $broken->message);
+        $this->assertStringContainsString('RuntimeException', $broken->message);
+        // The error's message is cut to 200 characters.
+        $this->assertLessThan(320, mb_strlen($broken->message));
+        $this->assertSame('https://site.test/', $broken->url);
+    }
+
+    public function test_a_failing_check_is_counted_on_across_a_continued_run(): void
+    {
+        $broken = new class implements PageCheck {
+            public function id(): string { return 'page.broken'; }
+            public function check(RenderedPage $page): array { throw new \RuntimeException('oops'); }
+        };
+        $this->registry->addPage($broken);
+        $this->auditRun()->run(15, null, null, false, null);
+
+        $report = $this->auditRun()->run(600, null, null, false, null);
+
+        $failures = array_values(array_filter($report->findings, static fn (Finding $f): bool => $f->check === 'page.broken'));
+        $this->assertCount(1, $failures);
+        $this->assertStringContainsString('failed on 3 pages', $failures[0]->message);
+    }
+
+    public function test_a_failing_site_check_is_reported_too(): void
+    {
+        $this->registry->addSite(new class implements SiteCheck {
+            public function id(): string { return 'site.broken'; }
+            public function check(PageRenderer $renderer): array { throw new \LogicException('nope'); }
+        });
+
+        $report = $this->auditRun()->run(600, null, null, false, null);
+
+        $failure = array_values(array_filter($report->findings, static fn (Finding $f): bool => $f->check === 'site.broken'))[0];
+        $this->assertSame(Severity::Warning, $failure->severity);
+        $this->assertStringContainsString('nope', $failure->message);
+        $this->assertSame('', $failure->url);
+    }
+
+    public function test_a_redirecting_page_is_a_warning_that_says_where_it_goes(): void
+    {
+        $this->statuses['/about'] = 301;
+
+        $report = $this->auditRun()->run(600, null, null, false, null);
+
+        $redirects = array_values(array_filter($report->findings, static fn (Finding $f): bool => $f->check === 'status.redirect'));
+        $this->assertCount(1, $redirects);
+        $this->assertSame(Severity::Warning, $redirects[0]->severity);
+        $this->assertSame('https://site.test/about', $redirects[0]->url);
+        $this->assertStringContainsString('301', $redirects[0]->message);
+        $this->assertStringContainsString('/about-us', $redirects[0]->message);
+        $this->assertSame(['page.seen' => 2, 'run.count' => 1, 'site.once' => 1, 'status.redirect' => 1], self::checks($report));
+    }
+
+    public function test_a_limit_run_leaves_the_report_file_alone(): void
+    {
+        $this->auditRun()->run(15, null, null, false, null);
+        $saved = file_get_contents($this->file);
+
+        $report = $this->auditRun()->run(600, 2, null, false, null);
+
+        $this->assertTrue($report->complete());
+        $this->assertSame(2, $report->total);
+        $this->assertSame($saved, file_get_contents($this->file));
+        // The saved run still continues.
+        $this->assertSame(3, $this->auditRun()->run(600, null, null, false, null)->done());
+    }
+
+    public function test_a_second_run_at_the_same_time_stops_at_once(): void
+    {
+        @mkdir(dirname($this->file), 0777, true);
+        $lock = fopen($this->file . '.lock', 'c');
+        $this->assertNotFalse($lock);
+        $this->assertTrue(flock($lock, LOCK_EX | LOCK_NB));
+
+        try {
+            $this->auditRun()->run(600, null, null, false, null);
+            $this->fail('Expected AuditRunning.');
+        } catch (AuditRunning $e) {
+            $this->assertStringContainsString('Another SEO audit is running', $e->getMessage());
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+
+        $this->assertSame([], $this->rendered);
+        $this->assertFileDoesNotExist($this->file);
+        // Once the other run is done, a run goes ahead.
+        $this->assertTrue($this->auditRun()->run(600, null, null, false, null)->complete());
+    }
+
+    public function test_quick_checks_run_while_a_full_run_holds_the_lock(): void
+    {
+        @mkdir(dirname($this->file), 0777, true);
+        $lock = fopen($this->file . '.lock', 'c');
+        $this->assertNotFalse($lock);
+        flock($lock, LOCK_EX | LOCK_NB);
+
+        try {
+            $this->assertSame(1, $this->auditRun()->run(600, null, '/about', false, null)->total);
+            $this->assertSame(2, $this->auditRun()->run(600, 2, null, false, null)->total);
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    public function test_a_run_check_that_cannot_restore_its_state_starts_fresh(): void
+    {
+        $this->auditRun()->run(15, null, null, false, null);
+        $this->registry = new AuditRegistry();
+        $fragile = new class implements RunCheck {
+            /** @var list<string> */
+            public array $urls = [];
+            public function id(): string { return 'run.count'; }
+            public function collect(RenderedPage $page): void { $this->urls[] = $page->url; }
+            public function finish(): array { return [new Finding('run.count', Severity::Notice, count($this->urls) . ' pages')]; }
+            public function state(): array { return $this->urls; }
+            public function restore(array $state): void
+            {
+                if ($state !== []) {
+                    throw new \UnexpectedValueException('state from an older version');
+                }
+                $this->urls = [];
+            }
+        };
+        $this->registry->addRun($fragile);
+
+        $report = $this->auditRun()->run(600, null, null, false, null);
+
+        $this->assertTrue($report->complete());
+        $this->assertSame(['/', '/about', '/de'], $this->rendered);
+        // It saw the two pages of this run, not the one before.
+        $this->assertSame('2 pages', $report->findings[array_key_last($report->findings)]->message);
     }
 }
 

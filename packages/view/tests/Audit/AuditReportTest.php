@@ -90,6 +90,18 @@ final class AuditReportTest extends TestCase
 
         file_put_contents($this->dir . '/v2.json', json_encode(['version' => 2]));
         $this->assertNull(AuditReport::load($this->dir . '/v2.json'));
+
+        // Valid JSON, wrong types (a hand-edited file): null, no warning.
+        foreach ([
+            ['version' => 1, 'started_at' => ['x'], 'origin' => 'https://site.test'],
+            ['version' => 1, 'pages' => 'all'],
+            ['version' => 1, 'findings' => [['check' => 'a', 'severity' => 'bad']]],
+            ['version' => 1, 'findings' => [['check' => ['a'], 'severity' => 'notice']]],
+            ['version' => 1, 'state' => ['queue' => [[['/'], 'en']]]],
+        ] as $i => $data) {
+            file_put_contents($this->dir . "/wrong{$i}.json", json_encode($data));
+            $this->assertNull(AuditReport::load($this->dir . "/wrong{$i}.json"), "case {$i}");
+        }
     }
 
     public function test_the_file_is_replaced_atomically(): void
