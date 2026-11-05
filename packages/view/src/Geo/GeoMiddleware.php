@@ -258,11 +258,11 @@ final class GeoMiddleware implements MiddlewareInterface
     {
         $translator = $this->translator?->__invoke();
         if ($translator === null || !method_exists($translator, 'get')) {
-            return 'Other languages';
+            return LlmsTxt::OTHER_LANGUAGES_DEFAULT;
         }
         $heading = trim((string) $translator->get(LlmsTxt::OTHER_LANGUAGES_KEY, [], $locale !== '' ? $locale : null));
 
-        return $heading !== '' && $heading !== LlmsTxt::OTHER_LANGUAGES_KEY ? $heading : 'Other languages';
+        return $heading !== '' && $heading !== LlmsTxt::OTHER_LANGUAGES_KEY ? $heading : LlmsTxt::OTHER_LANGUAGES_DEFAULT;
     }
 
     /** @param array<string, mixed> $site */

@@ -147,6 +147,25 @@ final class LlmsEndpointsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_french_llms_txt_has_the_french_heading(): void
+    {
+        file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['default'=>'fr','available'=>['fr','en'],'fallback'=>'fr','url_strategy'=>'prefix'];\n");
+
+        $body = $this->assertPlainText($this->get($this->app(), '/llms.txt'), '/llms.txt');
+        $this->assertStringEndsWith("\n## Autres langues\n\n- [en](https://site.test/en/llms.txt)\n", $body);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_language_without_the_heading_falls_back_to_english(): void
+    {
+        // preflow/view ships no Italian text and the site has no lang/it/geo.php.
+        file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['default'=>'it','available'=>['it','en'],'fallback'=>'it','url_strategy'=>'prefix'];\n");
+
+        $body = $this->assertPlainText($this->get($this->app(), '/llms.txt'), '/llms.txt');
+        $this->assertStringEndsWith("\n## Other languages\n\n- [en](https://site.test/en/llms.txt)\n", $body);
+    }
+
+    #[RunInSeparateProcess]
     public function test_a_site_renames_the_other_languages_heading_in_its_lang_file(): void
     {
         file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['default'=>'de','available'=>['de','en'],'fallback'=>'de','url_strategy'=>'prefix'];\n");
