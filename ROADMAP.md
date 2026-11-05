@@ -305,8 +305,16 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   `Accept: text/markdown`, and listed in `llms.txt`~~ — done in 0.49.0 (`config/geo.php`, `{% apply geo %}` /
   `@geo`, `data-geo="skip"`, `.md` views of public pages, `/llms.txt` and `/llms-full.txt` per locale from Folio's
   published pages plus the `GeoEntries` hook; see the GEO section in `packages/view/README.md`)
-- **An SEO audit command:** `preflow seo:audit` checks pages for a missing title or description, duplicate titles,
-  missing `alt` texts, broken internal links and `hreflang` pairs without their counterpart
+- ~~**An SEO audit command:** `preflow seo:audit` checks pages for a missing title or description, duplicate titles,
+  missing `alt` texts, broken internal links and `hreflang` pairs without their counterpart~~ — done in 0.54.0
+  (`preflow seo:audit [--fresh] [--limit=N] [--url=/path] [--budget=600]` renders every public page inside the
+  app, anonymously and without a trace (`InternalRender` marker: no not-found entries or redirect hits, no image
+  variants, no debug toolbar, no session, no queued mail), runs page, run and site checks, saves a resumable report in
+  `storage/data/seo-audit.json`; site checks register on `AuditRegistry`; Folio: *Settings → SEO audit*, read only;
+  see the SEO audit section in `packages/view/README.md`).
+  **Upgrading:** nothing to migrate. `composer update`, then run `preflow seo:audit` on each environment. The new
+  permission `seo.audit` is announced to role managers in *Settings → Roles*; add it to the roles that may see
+  the screen.
 
 ---
 
