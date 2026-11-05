@@ -431,6 +431,24 @@ final class SeoHeadAndCachingTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_304_keeps_the_cached_pages_csp(): void
+    {
+        $page = $this->get('/about');
+        $this->assertSame(200, $page->getStatusCode());
+        $this->assertSame(1, preg_match("~'nonce-([^']+)'~", $page->getHeaderLine('Content-Security-Policy'), $m));
+        $this->assertStringContainsString('nonce="' . $m[1] . '"', (string) $page->getBody());
+
+        // RFC 9111 4.3.4: the browser stores the 304's headers over the cached page's.
+        // A fresh nonce there would block every inline script and style in that page.
+        $notModified = $this->get('/about', ['If-None-Match' => $page->getHeaderLine('ETag')]);
+        $this->assertSame(304, $notModified->getStatusCode());
+        $this->assertFalse($notModified->hasHeader('Content-Security-Policy'));
+        $this->assertFalse($notModified->hasHeader('Content-Security-Policy-Report-Only'));
+        // The headers without a per-request value stay.
+        $this->assertSame('nosniff', $notModified->getHeaderLine('X-Content-Type-Options'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_geo_still_outermost(): void
     {
         file_put_contents($this->dir . '/config/geo.php', "<?php\nreturn ['enabled' => true];\n");

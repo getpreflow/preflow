@@ -356,6 +356,7 @@ What a page gets:
   and no JSON-LD, unless the page says its content is public (`public_content`, below). Paths in robots.txt's
   Disallow that a package adds (Folio's admin) get no tags at all.
 - No `ETag` for private responses, responses that set a cookie, or requests that carry the session cookie.
+- A `304` carries no `Content-Security-Policy`: the browser keeps the policy it stored with the cached page, whose nonces match that page (a fresh nonce would block its inline scripts and styles). Since 0.53.2.
 
 ### Folio pages
 

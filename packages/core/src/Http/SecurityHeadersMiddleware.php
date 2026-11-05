@@ -16,6 +16,9 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class SecurityHeadersMiddleware implements MiddlewareInterface
 {
+    /** The headers whose value holds the request's nonce. */
+    public const array NONCE_HEADERS = ['Content-Security-Policy', 'Content-Security-Policy-Report-Only', 'HX-Nonce'];
+
     /** @var array{csp: array<string, list<string>>, report_only: bool, headers: array<string, string|null>, hsts: bool} */
     private readonly array $config;
 
@@ -77,6 +80,11 @@ final class SecurityHeadersMiddleware implements MiddlewareInterface
      */
     public function decorate(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
     {
+        // A 304 keeps the cached page's policy (see withoutNonce()), whoever made it.
+        $notModified = $response->getStatusCode() === 304;
+        if ($notModified) {
+            $response = self::withoutNonce($response);
+        }
 
         $cspHeader = ($this->reportOnly || $this->config['report_only'])
             ? 'Content-Security-Policy-Report-Only'
@@ -84,14 +92,14 @@ final class SecurityHeadersMiddleware implements MiddlewareInterface
 
         // Only a header with the same name suppresses ours: a Report-Only trial of a
         // stricter policy must not switch off the enforced one.
-        if (!$response->hasHeader($cspHeader)) {
+        if (!$notModified && !$response->hasHeader($cspHeader)) {
             $response = $response->withHeader($cspHeader, $this->policy());
         }
 
         // For htmx requests: the nonce this response's own scripts carry, so the
         // page's htmx nonce guard can drop any script that lacks it.
         $nonce = ($this->nonce)();
-        if ($request->hasHeader('HX-Request') && $nonce !== null && $nonce !== '' && !$response->hasHeader('HX-Nonce')) {
+        if (!$notModified && $request->hasHeader('HX-Request') && $nonce !== null && $nonce !== '' && !$response->hasHeader('HX-Nonce')) {
             $response = $response->withHeader('HX-Nonce', $nonce);
         }
 
@@ -103,6 +111,23 @@ final class SecurityHeadersMiddleware implements MiddlewareInterface
 
         if ($this->config['hsts'] && $this->isHttps($request) && !$response->hasHeader('Strict-Transport-Security')) {
             $response = $response->withHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        }
+
+        return $response;
+    }
+
+    /**
+     * $response without the headers that carry the request's nonce. For a 304:
+     * it has no body, and the browser stores its headers over the cached page's
+     * (RFC 9111 4.3.4). A fresh nonce there would not match the nonces in that
+     * cached page and block all its inline scripts and styles; without one, the
+     * cached policy stands. Anything that turns a full response into a 304
+     * after this middleware ran (an ETag check further out) calls this too.
+     */
+    public static function withoutNonce(ResponseInterface $response): ResponseInterface
+    {
+        foreach (self::NONCE_HEADERS as $name) {
+            $response = $response->withoutHeader($name);
         }
 
         return $response;

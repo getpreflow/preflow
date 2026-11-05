@@ -6,6 +6,7 @@ namespace Preflow\View\Seo;
 
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\Stream;
+use Preflow\Core\Http\SecurityHeadersMiddleware;
 use Preflow\View\NonceGenerator;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -234,7 +235,9 @@ final class SeoMiddleware implements MiddlewareInterface
             return $response;
         }
 
-        return $response
+        // The browser keeps its cached page and the policy that came with it: the
+        // CSP the inner middleware added carries this request's nonce, not that page's.
+        return SecurityHeadersMiddleware::withoutNonce($response)
             ->withStatus(304)
             ->withoutHeader('Content-Length')
             ->withBody(Stream::create(''));
