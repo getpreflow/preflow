@@ -1,0 +1,64 @@
+{% extends "@folio/admin/_layout.twig" %}
+{# Settings → SEO audit (SeoAuditController): the last report of `preflow seo:audit`, read only. #}
+{% block title %}Folio — {{ t('folio.nav.seo_audit') }}{% endblock %}
+{% block page_title %}{{ t('folio.nav.seo_audit') }}{% endblock %}
+{% block content %}
+    {% if report is null %}
+        <div class="folio-notice" role="status"><p>{{ t('folio.audit.never_run') }} <code>preflow seo:audit</code></p></div>
+        <p class="folio-help">{{ t('folio.audit.intro') }}</p>
+    {% else %}
+        <p class="folio-help">{{ t('folio.audit.intro') }}</p>
+        <dl class="folio-audit-summary">
+            <div><dt>{{ t('folio.audit.site') }}</dt><dd>{{ report.origin }}</dd></div>
+            <div><dt>{{ t('folio.audit.started') }}</dt><dd>{{ folio_date(report.started_at, 'datetime') }}</dd></div>
+            {% if report.complete %}
+                <div><dt>{{ t('folio.audit.finished') }}</dt><dd>{{ folio_date(report.finished_at, 'datetime') }}</dd></div>
+            {% endif %}
+            <div><dt>{{ t('folio.audit.status') }}</dt><dd>
+                {% if report.complete %}
+                    <span class="folio-badge is-ok">{{ t('folio.audit.complete', {count: folio_number(report.total)}, report.total) }}</span>
+                {% else %}
+                    <span class="folio-badge is-incomplete">{{ t('folio.audit.incomplete', {done: folio_number(report.done), total: folio_number(report.total)}) }}</span>
+                    {{ t('folio.audit.continue') }} <code>preflow seo:audit</code>
+                {% endif %}
+            </dd></div>
+        </dl>
+        <ul class="folio-audit-counts">
+            {% for severity in ['critical', 'warning', 'notice'] %}
+                <li><span class="folio-badge is-{{ severity }}">{{ t('folio.audit.counts.' ~ severity) }}</span> <strong>{{ folio_number(report.counts[severity]) }}</strong></li>
+            {% endfor %}
+        </ul>
+        {% if report.groups is empty %}
+            <div class="folio-notice" role="status"><p>{{ t('folio.audit.no_findings') }}</p></div>
+        {% endif %}
+        {% for group in report.groups %}
+            <section class="folio-audit-check">
+                <h2>{% if group.label %}{{ group.label }} <code>{{ group.check }}</code>{% else %}<code>{{ group.check }}</code>{% endif %}
+                    <span class="folio-badge is-{{ group.severity }}">{{ t('folio.audit.severity.' ~ group.severity) }}</span>
+                    <span class="folio-count">{{ folio_number(group.findings|length) }}</span></h2>
+                <div class="folio-table-wrap">
+                <table class="folio-table">
+                    <thead><tr>
+                        <th>{{ t('folio.audit.page') }}</th>
+                        <th>{{ t('folio.audit.problem') }}</th>
+                        <th><span class="folio-sr">{{ t('folio.common.actions') }}</span></th>
+                    </tr></thead>
+                    <tbody>
+                    {% for finding in group.findings %}
+                        <tr>
+                            <td>{% if finding.url %}<code>{{ finding.url }}</code>{% else %}{{ t('folio.audit.site_wide') }}{% endif %}{% if finding.locale %} <span class="folio-help">({{ finding.locale }})</span>{% endif %}</td>
+                            <td>{% if finding.severity != group.severity %}<span class="folio-badge is-{{ finding.severity }}">{{ t('folio.audit.severity.' ~ finding.severity) }}</span> {% endif %}{{ finding.message }}</td>
+                            <td><div class="folio-row-actions">
+                                {%- if finding.page %}<a href="{{ finding.page }}" target="_blank" rel="noopener">{{ t('folio.audit.open_page') }}</a>{% endif -%}
+                                {%- if finding.edit %} <a href="{{ finding.edit }}">{{ t('folio.audit.edit') }}</a>{% endif -%}
+                                {%- if finding.asset %} <a href="{{ finding.asset }}">{{ t('folio.audit.open_in_library') }}</a>{% endif -%}
+                            </div></td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </section>
+        {% endfor %}
+    {% endif %}
+{% endblock %}

@@ -96,7 +96,7 @@ final class AllScreensTranslatedTest extends TestCase
         }
         $this->assertSame([], array_values(array_unique($this->problems)), count($walked) . ' screens walked');
         // Every type's list and form, the dashboard, assets, extensions, cache, translations, account.
-        foreach (['/folio', '/folio/assets', '/folio/extensions', '/folio/cache', '/folio/translations', '/folio/redirects', '/folio/redirects?tab=not-found', '/folio/_account', '/folio/staff', '/folio/rbac_role', '/folio/member', '/folio/code', '/folio/post/new'] as $must) {
+        foreach (['/folio', '/folio/assets', '/folio/extensions', '/folio/cache', '/folio/translations', '/folio/redirects', '/folio/redirects?tab=not-found', '/folio/seo-audit', '/folio/_account', '/folio/staff', '/folio/rbac_role', '/folio/member', '/folio/code', '/folio/post/new'] as $must) {
             $this->assertContains($must, $walked);
         }
         $this->assertGreaterThan(25, count($walked), implode("\n", $walked));
@@ -363,6 +363,16 @@ final class AllScreensTranslatedTest extends TestCase
         $missing->record('/missing', 'de', new \DateTimeImmutable('-2 days'));
         $missing->record('/missing', 'de', new \DateTimeImmutable('-1 day'));
         $ids['_not_found'] = \Preflow\Folio\Redirects\NotFoundEntries::id('de', '/missing');
+        // Settings → SEO audit: an incomplete report with a finding of every check Folio names, and the links.
+        $report = new \Preflow\View\Audit\AuditReport('2026-11-05T09:30:00+00:00', 'https://site.test');
+        $report->total = 10;
+        $report->cursor = 3;
+        $severities = \Preflow\View\Audit\Severity::cases();
+        foreach (array_keys((require dirname(__DIR__, 2) . '/lang/en/folio.php')['audit']['checks']) as $i => $check) {
+            $report->findings[] = new \Preflow\View\Audit\Finding(str_replace('_', '.', $check), $severities[$i % 3], 'Message.', 'https://site.test/x' . $i, 'de', $i === 0 ? new \Preflow\View\Audit\Target('record', 'post', 'po1') : null);
+        }
+        $report->findings[] = new \Preflow\View\Audit\Finding('site.own', \Preflow\View\Audit\Severity::Notice, 'Message.', '', '', new \Preflow\View\Audit\Target('asset', 'asset', str_repeat('a', 32)));
+        $report->save(\Preflow\View\Audit\AuditReport::file($this->dir));
         if (function_exists('imagecreatetruecolor')) {
             $image = imagecreatetruecolor(160, 120);
             imagefill($image, 0, 0, (int) imagecolorallocate($image, 200, 10, 10));

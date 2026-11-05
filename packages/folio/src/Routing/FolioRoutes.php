@@ -18,6 +18,7 @@ final class FolioRoutes
     private const CACHE = 'Preflow\\Folio\\Http\\CacheController';
     private const TRANSLATIONS = 'Preflow\\Folio\\Http\\TranslationsController';
     private const REDIRECTS = 'Preflow\\Folio\\Http\\RedirectsController';
+    private const SEO_AUDIT = 'Preflow\\Folio\\Http\\SeoAuditController';
     private const WORKING_MW = 'Preflow\\Folio\\Http\\WorkingCopyMiddleware';
     private const AUTH = 'Preflow\\Folio\\Http\\AuthController';
     private const PASSWORDS = 'Preflow\\Folio\\Http\\PasswordController';
@@ -81,6 +82,7 @@ final class FolioRoutes
             ['GET',  $prefix . '/cache',               'index', self::CACHE],
             ['POST', $prefix . '/cache/clear',         'clear', self::CACHE],
             ['POST', $prefix . '/cache/opcache-reset', 'opcacheReset', self::CACHE],
+            ['GET',  $prefix . '/seo-audit',           'index', self::SEO_AUDIT], // read only: no POST route
             ['GET',  $prefix . '/translations',        'index', self::TRANSLATIONS],
             ['POST', $prefix . '/translations',        'save', self::TRANSLATIONS],
             ['POST', $prefix . '/translations/reset',  'reset', self::TRANSLATIONS],

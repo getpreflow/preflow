@@ -854,6 +854,9 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .folio-count.is-incomplete { background: var(--c-warning-soft); color: var(--c-warning); }
 .folio-badge.is-scheduled { background: var(--c-accent-soft); color: var(--c-accent-text); }
 .folio-badge.is-draft { background: var(--c-neutral-soft); color: var(--c-text-muted); }
+.folio-badge.is-critical { background: var(--c-danger-soft); color: var(--c-danger); }
+.folio-badge.is-warning { background: var(--c-warning-soft); color: var(--c-warning); }
+.folio-badge.is-notice { background: var(--c-accent-soft); color: var(--c-accent-text); }
 
 .folio-save-state { font-size: 12.5px; font-weight: 450; color: var(--c-text-subtle); }
 .folio-save-state.is-conflict { color: var(--c-danger); font-weight: 550; }
@@ -1757,6 +1760,16 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 /* ---- Settings → Cache ---- */
 .folio-cache-opcache { margin-top: 28px; }
 .folio-cache-opcache h2 { margin: 0; }
+
+/* Settings → SEO audit */
+.folio-audit-summary { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 16px 0; }
+.folio-audit-summary dt { font-size: 12.5px; color: var(--c-text-muted); }
+.folio-audit-summary dd { margin: 2px 0 0; }
+.folio-audit-counts { display: flex; flex-wrap: wrap; gap: 8px 20px; list-style: none; margin: 0 0 20px; padding: 0; }
+.folio-audit-counts li { display: inline-flex; align-items: center; gap: 8px; }
+.folio-audit-check { margin-top: 28px; }
+.folio-audit-check h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 16px; }
+.folio-audit-check td code { overflow-wrap: anywhere; }
 
 /* ---- tables with form controls (glossary): even cells, controls fill them ---- */
 .folio-table-form thead th, .folio-table-form tbody td { padding-inline: 12px; }
