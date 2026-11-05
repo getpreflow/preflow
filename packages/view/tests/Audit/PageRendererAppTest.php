@@ -10,6 +10,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
+use Preflow\Core\Debug\DebugCollector;
 use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Core\Http\Session\SessionMiddleware;
@@ -129,6 +130,20 @@ final class PageRendererAppTest extends TestCase
         // Proof the toolbar is there for a visitor's request.
         $visitor = $app->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/about'));
         $this->assertStringContainsString('preflow-debug-toolbar', (string) $visitor->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_debug_collector_starts_empty_for_each_render(): void
+    {
+        $container = $this->app()->container();
+        $collector = $container->get(DebugCollector::class);
+        $collector->logQuery('SELECT left_over', [], 1.0);
+
+        $page = $container->get(PageRenderer::class)->render('/about');
+
+        $this->assertSame(200, $page->status, $page->body);
+        // Hundreds of renders in one process don't pile up in the collector.
+        $this->assertNotContains('SELECT left_over', array_column($collector->getQueries(), 'sql'));
     }
 
     #[RunInSeparateProcess]

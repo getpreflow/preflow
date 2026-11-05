@@ -1270,7 +1270,8 @@ final class Application
     /**
      * The SEO audit's PageRenderer: renders a page through the app (handle(), so the
      * whole pipeline) inside the internal render scopes, from the console too. Built
-     * on first use only, so web requests don't pay for it.
+     * on first use only, so web requests don't pay for it. The debug collector (debug
+     * mode) starts empty for each render.
      */
     private function bootAudit(): void
     {
@@ -1283,8 +1284,15 @@ final class Application
             [$locales, $defaultLocale] = $this->siteLocales();
             $appUrl = $this->config->get('app.url');
 
+            $collector = $this->container->has(DebugCollector::class) ? $this->container->get(DebugCollector::class) : null;
+
             return new \Preflow\View\Audit\PageRenderer(
-                fn (ServerRequestInterface $request): ResponseInterface => $this->handle($request),
+                function (ServerRequestInterface $request) use ($collector): ResponseInterface {
+                    // In debug mode each request logs into the one collector; renders don't pile up.
+                    $collector?->reset();
+
+                    return $this->handle($request);
+                },
                 is_string($appUrl) ? $appUrl : '',
                 $this->internalRenderScopes(),
                 $this->container->bound(\Preflow\View\AssetCollector::class) ? $this->container->get(\Preflow\View\AssetCollector::class) : null,

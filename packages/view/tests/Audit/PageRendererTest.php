@@ -74,6 +74,18 @@ final class PageRendererTest extends TestCase
         $this->assertSame('http://localhost/about', $renderer->render('about')->url);
     }
 
+    public function test_tells_its_origin_and_locales(): void
+    {
+        $handle = static fn (): ResponseInterface => new Response(200);
+        $prefixed = new PageRenderer($handle, 'https://site.test/', locales: ['en', 'de'], defaultLocale: 'en');
+        $single = new PageRenderer($handle, '', defaultLocale: 'de');
+
+        $this->assertSame('https://site.test', $prefixed->origin());
+        $this->assertSame(['en', 'de'], $prefixed->locales());
+        $this->assertSame('http://localhost', $single->origin());
+        $this->assertSame(['de'], $single->locales());
+    }
+
     public function test_runs_inside_the_render_scopes(): void
     {
         $scopes = new RenderScopes();

@@ -46,6 +46,23 @@ final class PageRenderer
         $this->origin = rtrim($origin !== '' ? $origin : 'http://localhost', '/');
     }
 
+    /** The site's scheme and host, as pages' URLs start with it (no trailing slash). */
+    public function origin(): string
+    {
+        return $this->origin;
+    }
+
+    /**
+     * The site's locales, the default one included: those with a URL prefix, or
+     * only the default when no locale has one.
+     *
+     * @return list<string>
+     */
+    public function locales(): array
+    {
+        return $this->locales !== [] ? $this->locales : [$this->defaultLocale];
+    }
+
     /** Render the page at $path ('/de/about'; a query or fragment is dropped). */
     public function render(string $path): RenderedPage
     {
