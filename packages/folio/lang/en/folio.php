@@ -618,6 +618,7 @@ return [
         'page' => 'Page',
         'problem' => 'Problem',
         'site_wide' => 'Whole site',
+        'more' => '… and :count more',
         'open_page' => 'Open page',
         'edit' => 'Edit',
         'open_in_library' => 'Open in library',

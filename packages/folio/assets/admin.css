@@ -1768,7 +1768,8 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-audit-counts { display: flex; flex-wrap: wrap; gap: 8px 20px; list-style: none; margin: 0 0 20px; padding: 0; }
 .folio-audit-counts li { display: inline-flex; align-items: center; gap: 8px; }
 .folio-audit-check { margin-top: 28px; }
-.folio-audit-check h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 16px; }
+.folio-audit-check summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 16px; font-weight: 600; cursor: pointer; }
+.folio-audit-check[open] > summary { margin-bottom: 10px; }
 .folio-audit-check td code { overflow-wrap: anywhere; }
 
 /* ---- tables with form controls (glossary): even cells, controls fill them ---- */

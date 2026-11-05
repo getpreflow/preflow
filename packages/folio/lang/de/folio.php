@@ -596,6 +596,7 @@ return [
         'page' => 'Seite',
         'problem' => 'Problem',
         'site_wide' => 'Ganze Website',
+        'more' => '… und :count weitere',
         'open_page' => 'Seite öffnen',
         'edit' => 'Bearbeiten',
         'open_in_library' => 'In der Bibliothek öffnen',

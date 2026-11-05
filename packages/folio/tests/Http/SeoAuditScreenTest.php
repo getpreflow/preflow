@@ -144,6 +144,43 @@ final class SeoAuditScreenTest extends TestCase
         $this->assertStringContainsString('javascript:alert(1)', $body);
     }
 
+    public function test_a_long_check_shows_the_first_hundred_findings_and_says_how_many_more(): void
+    {
+        $report = $this->report();
+        $report->findings = [];
+        for ($i = 1; $i <= 150; $i++) {
+            $report->findings[] = new Finding('description.missing', Severity::Warning, 'No description.', 'https://site.test/many/' . $i, 'en');
+        }
+        $report->save($this->file());
+
+        $body = (string) $this->fetch('/folio/seo-audit')->getBody();
+
+        $this->assertSame(100, substr_count($body, '<code>https://site.test/many/'));
+        $this->assertStringContainsString('https://site.test/many/100<', $body);
+        $this->assertStringNotContainsString('https://site.test/many/101<', $body);
+        $this->assertStringContainsString('and 50 more', $body);
+        // The summary still counts all of them.
+        $this->assertMatchesRegularExpression('#<summary>.*?<span class="folio-count">150</span>#s', $body);
+    }
+
+    public function test_short_checks_show_every_finding_without_a_more_line(): void
+    {
+        $this->report()->save($this->file());
+
+        $this->assertStringNotContainsString(' more', (string) $this->fetch('/folio/seo-audit')->getBody());
+    }
+
+    public function test_critical_checks_are_open_and_the_others_folded(): void
+    {
+        $this->report()->save($this->file());
+
+        $body = (string) $this->fetch('/folio/seo-audit')->getBody();
+
+        $this->assertMatchesRegularExpression('#<details class="folio-audit-check" open>\s*<summary>[^<]*(?:<[^s/][^>]*>[^<]*)*Page without a title#s', $body);
+        $this->assertSame(1, substr_count($body, '<details class="folio-audit-check" open>'));
+        $this->assertSame(4, substr_count($body, '<details class="folio-audit-check">'));
+    }
+
     public function test_an_incomplete_report_says_how_far_it_got(): void
     {
         $this->report(complete: false, done: 3, total: 10)->save($this->file());

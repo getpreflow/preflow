@@ -313,8 +313,8 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   `storage/data/seo-audit.json`; site checks register on `AuditRegistry`; Folio: *Settings → SEO audit*, read only;
   see the SEO audit section in `packages/view/README.md`).
   **Upgrading:** nothing to migrate. `composer update`, then run `preflow seo:audit` on each environment. The new
-  permission `seo.audit` is announced to role managers in *Settings → Roles*; add it to the roles that may see
-  the screen.
+  permission `seo.audit` is announced in *Settings → Roles* on sites with rbac; sites using `preflow/roles`
+  (config roles) grant it in `config/roles.php`.
 
 ---
 

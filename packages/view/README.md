@@ -556,7 +556,7 @@ not the exit code, to decide whether the site is clean.
 
 ### What it checks
 
-Pages (each public page that answers 200 with HTML):
+Pages (each public page that answers 2xx; the `status.*` rows cover the rest):
 
 | Id | Severity | What |
 |---|---|---|
@@ -573,7 +573,7 @@ Pages (each public page that answers 200 with HTML):
 | `canonical.missing` | notice | No canonical link |
 | `canonical.foreign-host` | warning | The canonical link points to another site |
 | `noindex.in-sitemap` | critical | The page is `noindex` but the sitemap lists it |
-| `hreflang.unpaired` | warning | A language version that doesn't link back, or an alternate that isn't an audited page |
+| `hreflang.unpaired` | warning | A language version that doesn't link back, or an alternate that isn't one of the site's public pages |
 | `hreflang.x-default-missing` | notice | A page with language alternates but no `x-default` |
 | `link.broken` | critical | An internal link whose target answers 404, 410 or 5xx (also redirect loops) |
 | `link.broken` | notice | An internal link that goes through two or more redirects |
@@ -593,7 +593,7 @@ The site (once per run, after the pages):
 | `llms.missing` | warning | No `/llms.txt` for a language (when GEO is on) |
 | `notfound.status` | critical | An address that doesn't exist answers something other than 404 |
 | `notfound.no-home-link` | warning | The 404 page has no link to the home page |
-| `favicon.raster-missing` | warning | No PNG/ICO favicon |
+| `favicon.raster-missing` | warning | No linked raster icon of at least 48 px and no `/favicon.ico` |
 | `apple-touch.missing` | notice | No apple-touch icon |
 | `manifest.missing` | notice | No web app manifest |
 | `etag.no-304` | notice | The home page doesn't answer 304 to its own ETag |
@@ -602,8 +602,8 @@ The site (once per run, after the pages):
 | `share-image.missing` | notice | No default share image |
 | `owner.missing` | notice | No site owner for structured data |
 
-A check that throws is reported as one warning under its own id ("The check failed and was skipped"), not as
-a crash. Out of scope: DNS and email setup, links to other sites, page speed, and judging the text itself.
+A check that throws is not a crash: a page check reports one warning per check, "The check failed on N pages
+and was skipped there"; a site or run check reports under its group id (`etag`, `sitemap`, `icons`, `notfound`). Out of scope: DNS and email setup, links to other sites, page speed, and judging the text itself.
 
 ### No trace
 
@@ -612,7 +612,7 @@ An audit render is marked as internal (`Preflow\Core\Http\InternalRender`, the r
 entry and counts no redirect hit; media generates no image variant (a variant that is allowed but not yet
 made answers 404 with the header `X-Preflow-Variant: pending`, which the audit counts as fine; anything
 else missing is a plain 404 and a finding); no debug toolbar is added; no session file is written; mail
-queued during the render is not sent. Site code that has side effects on a visit (counters, logs) can skip
+queued for later during the render is held back (mail sent synchronously during a GET render still goes out). Site code that has side effects on a visit (counters, logs) can skip
 them:
 
 ```php
