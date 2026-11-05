@@ -26,6 +26,13 @@ final class SeoMiddleware implements MiddlewareInterface
     /** The files are the same for every visitor, so a CDN or browser may keep them an hour. */
     private const CACHE_CONTROL = 'public, max-age=3600';
 
+    /**
+     * Leads every ETag. Bump it when a 304 sent wrong headers that browsers stored
+     * with their cached page: old validators stop matching and each client gets
+     * one fresh 200. 2 since 0.53.2 (304s carried a CSP with a new nonce).
+     */
+    private const ETAG_VERSION = '2';
+
     /** @var \Closure(): list<string> */
     private readonly \Closure $sentHeaders;
 
@@ -224,7 +231,7 @@ final class SeoMiddleware implements MiddlewareInterface
 
         // The nonce changes on every request; the page doesn't.
         $nonce = $this->nonce->get();
-        $etag = 'W/"' . sha1(str_replace($nonce, '', (string) $response->getBody())) . '"';
+        $etag = 'W/"' . self::ETAG_VERSION . '-' . sha1(str_replace($nonce, '', (string) $response->getBody())) . '"';
 
         $response = $response->withHeader('ETag', $etag);
         if (!$response->hasHeader('Cache-Control')) {

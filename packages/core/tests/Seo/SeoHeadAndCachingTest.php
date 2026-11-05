@@ -331,7 +331,7 @@ final class SeoHeadAndCachingTest extends TestCase
         $etag = $first->getHeaderLine('ETag');
 
         $this->assertNotSame((string) $first->getBody(), (string) $second->getBody());
-        $this->assertMatchesRegularExpression('~^W/"[0-9a-f]{40}"$~', $etag);
+        $this->assertMatchesRegularExpression('~^W/"2-[0-9a-f]{40}"$~', $etag);
         $this->assertSame($etag, $second->getHeaderLine('ETag'));
         $this->assertSame('no-cache', $first->getHeaderLine('Cache-Control'));
 
@@ -343,6 +343,10 @@ final class SeoHeadAndCachingTest extends TestCase
         }
 
         $this->assertSame(200, $this->get('/about', ['If-None-Match' => 'W/"other"'])->getStatusCode());
+        // An ETag of the old format (before 0.53.2, no version) no longer matches: a
+        // cache that stored a 304's wrong CSP gets one fresh page.
+        $old = 'W/"' . substr($etag, strlen('W/"2-'));
+        $this->assertSame(200, $this->get('/about', ['If-None-Match' => $old])->getStatusCode());
         $this->assertNotSame($etag, $this->get('/plain')->getHeaderLine('ETag'));
 
         // Switched off in config/seo.php: no ETag.
@@ -446,6 +450,15 @@ final class SeoHeadAndCachingTest extends TestCase
         $this->assertFalse($notModified->hasHeader('Content-Security-Policy-Report-Only'));
         // The headers without a per-request value stay.
         $this->assertSame('nosniff', $notModified->getHeaderLine('X-Content-Type-Options'));
+
+        // An htmx request gets no HX-Nonce on a 304 either; its 200 has one.
+        $htmx = $this->get('/about', ['HX-Request' => 'true']);
+        $this->assertSame(200, $htmx->getStatusCode());
+        $this->assertNotSame('', $htmx->getHeaderLine('HX-Nonce'));
+        $htmxNotModified = $this->get('/about', ['HX-Request' => 'true', 'If-None-Match' => $htmx->getHeaderLine('ETag')]);
+        $this->assertSame(304, $htmxNotModified->getStatusCode());
+        $this->assertFalse($htmxNotModified->hasHeader('HX-Nonce'));
+        $this->assertFalse($htmxNotModified->hasHeader('Content-Security-Policy'));
     }
 
     #[RunInSeparateProcess]
