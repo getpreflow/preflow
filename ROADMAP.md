@@ -270,7 +270,9 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   media library's `share` format, Folio's "SEO & sharing" section per record; see the SEO section in
   `packages/view/README.md`). **Upgrading:** SQL sites run `preflow migrate` after upgrading and before turning
   SEO on: the section is stored in the new `_seo` column, which every editor save writes once the section shows
-  (SEO on), and saving fails until it exists. Each site's deploy must run it.
+  (SEO on), and saving fails until it exists. Each site's deploy must run it. In 0.53.1: a page whose content is
+  public although its response is private (it embeds one visitor's tokens) gets cards and JSON-LD with
+  `seo({public_content: true})` (`PageMeta::$publicContent`); no ETag, its Cache-Control untouched, `noindex` wins.
 - ~~**301 redirects on slug change:** Folio remembers a page's old paths and redirects them; a redirects list in
   Settings for hand-made entries~~ — done in 0.52.0 (`preflow/routing`'s `RedirectMiddleware` answers a public
   GET/HEAD that ended in a thrown 404 from a `RedirectStore`, exact entry before the longest area, 301/302 with the

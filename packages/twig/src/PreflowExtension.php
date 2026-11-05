@@ -80,7 +80,7 @@ final class PreflowExtension extends AbstractExtension
     }
 
     /**
-     * Function: {% do seo({title: …, description: …, image: …, noindex: …, og_type: …, schema: […]}) %}
+     * Function: {% do seo({title: …, description: …, image: …, noindex: …, og_type: …, public_content: …, schema: […]}) %}
      * Merges the page's meta into the SEO context and returns empty string;
      * without a context (SEO off) it does nothing.
      */
