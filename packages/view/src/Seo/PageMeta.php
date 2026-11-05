@@ -14,6 +14,8 @@ final readonly class PageMeta
      * @param ?array{url: string, width: int, height: int, alt: string} $image share image, as MediaLibrary::shareImage() returns it
      * @param list<string> $alternateLocales other locales the page exists in
      * @param list<array>  $schemas          extra JSON-LD nodes for this page
+     * @param bool         $publicContent    the content is the same for everyone although the response is private
+     *                                       (it embeds one visitor's tokens): cards and JSON-LD all the same (since 0.53.1)
      */
     public function __construct(
         public string $title = '',
@@ -25,6 +27,7 @@ final readonly class PageMeta
         public bool $noindex = false,
         public string $ogType = 'website',
         public array $schemas = [],
+        public bool $publicContent = false,
     ) {}
 
     /** A copy with some properties changed; keys are the constructor's parameter names. */

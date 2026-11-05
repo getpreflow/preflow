@@ -349,7 +349,8 @@ What a page gets:
   none of ours.
 - Pages that are `noindex` (their own robots meta, an `X-Robots-Tag` header, or the record's setting) and private
   responses (`Cache-Control: private` or `no-store`: members' pages, gated Folio pages, share previews) get no cards
-  and no JSON-LD. Paths in robots.txt's Disallow that a package adds (Folio's admin) get no tags at all.
+  and no JSON-LD, unless the page says its content is public (`public_content`, below). Paths in robots.txt's
+  Disallow that a package adds (Folio's admin) get no tags at all.
 - No `ETag` for private responses, responses that set a cookie, or requests that carry the session cookie.
 
 ### Folio pages
@@ -388,6 +389,11 @@ values are merged over what a Folio record set.
 `image` takes a URL as it is (no size or alt). For the media library's 1200×630 share crop with its size and alt
 text, the controller passes `MediaLibrary::shareImage($assetId, $locale)` to the template (say as `share_image`),
 which gives it on: `image: share_image`.
+
+A page whose content is the same for everyone but whose response is private, because it embeds one visitor's
+tokens or state (a gallery page with the visitor's likes), says so with `public_content: true`, on its own or with
+other keys: `{% do seo({public_content: true}) %}`. It then gets the cards and JSON-LD of a public page; the response
+stays as it is (its `Cache-Control` untouched, no `ETag`), and `noindex` still wins. Since 0.53.1.
 
 In Blade: `@seo(['title' => $game->title, 'description' => $game->teaser])`. In PHP, set or merge the request's
 `Preflow\View\Seo\SeoContext` (`set(new PageMeta(...))`, `merge([...])`). An unknown key in a template's `seo()` is

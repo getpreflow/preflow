@@ -157,10 +157,11 @@ final class SeoMiddleware implements MiddlewareInterface
             // A page kept out of search by its own tag or by header gets no cards either.
             'noindex' => $page->noindex || PageSignals::noindexHeader($response) || PageSignals::noindexMeta($html),
         ]);
-        // A private page (a members' area, a gated page) isn't previewed or described to crawlers.
+        // A private page (a members' area, a gated page) isn't previewed or described to crawlers,
+        // unless it says its content is public and only the response is one visitor's.
         // Only the response's own header: PHP's session cache limiter queues `no-store` natively on every
         // page that starts a session, which would take the cards off every page of such a site.
-        $cards = !self::isPrivate($response->getHeaderLine('Cache-Control'));
+        $cards = !self::isPrivate($response->getHeaderLine('Cache-Control')) || $meta->publicContent;
 
         $siteName = $this->config->name ?? (($defaults?->title ?? '') !== '' ? $defaults->title : $this->appName);
         $home = $path === $this->homePath($locale) || $path === $this->homePath($locale) . '/';
