@@ -273,6 +273,13 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   (SEO on), and saving fails until it exists. Each site's deploy must run it. In 0.53.1: a page whose content is
   public although its response is private (it embeds one visitor's tokens) gets cards and JSON-LD with
   `seo({public_content: true})` (`PageMeta::$publicContent`); no ETag, its Cache-Control untouched, `noindex` wins.
+  In 0.53.2: GEO's `/llms.txt` heading "Other languages" is in the file's language (`geo.other_languages`, en/de/fr
+  in preflow/view, a site's `lang/{locale}/geo.php` overrides it; a language without the key falls back to the
+  site's fallback language, then English; English without a translator). Also in 0.53.2: a 304 carries no
+  `Content-Security-Policy` (nor Report-Only or `HX-Nonce`), so the browser keeps the cached page's policy; since
+  0.50 the 304 repeated the 200's headers with a fresh nonce and blocked every inline script and style of the page
+  (`SecurityHeadersMiddleware::withoutNonce()`, used by SEO's ETag check and on any 304 it decorates); the ETag
+  format changed to `W/"2-…"` so caches the bug broke get one fresh 200.
 - ~~**301 redirects on slug change:** Folio remembers a page's old paths and redirects them; a redirects list in
   Settings for hand-made entries~~ — done in 0.52.0 (`preflow/routing`'s `RedirectMiddleware` answers a public
   GET/HEAD that ended in a thrown 404 from a `RedirectStore`, exact entry before the longest area, 301/302 with the

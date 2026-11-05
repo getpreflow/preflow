@@ -10,11 +10,21 @@ namespace Preflow\View\Geo;
  */
 final class LlmsTxt
 {
+    /** preflow/view's lang folder (the "geo" group: en, de, fr). */
+    public const string LANG_PATH = __DIR__ . '/../../lang';
+
+    /** The translation key of the heading over the other locales' llms.txt links. */
+    public const string OTHER_LANGUAGES_KEY = 'geo.other_languages';
+
+    /** That heading when no translation gives one. */
+    public const string OTHER_LANGUAGES_DEFAULT = 'Other languages';
+
     /**
      * @param list<GeoEntry>                               $entries        sorted
      * @param list<array{locale: string, url: string}>     $otherLanguages the other locales' llms.txt (default locale only)
+     * @param string                                       $otherLanguagesHeading their section's heading, in this file's language
      */
-    public function index(string $name, string $summary, array $entries, array $otherLanguages): string
+    public function index(string $name, string $summary, array $entries, array $otherLanguages, string $otherLanguagesHeading = self::OTHER_LANGUAGES_DEFAULT): string
     {
         $sections = [];
         foreach ($entries as $entry) {
@@ -23,7 +33,7 @@ final class LlmsTxt
                 . ($description !== '' ? ': ' . $description : '');
         }
         foreach ($otherLanguages as $language) {
-            $sections['Other languages'][] = '- [' . self::linkText($language['locale']) . '](' . $language['url'] . ')';
+            $sections[$otherLanguagesHeading][] = '- [' . self::linkText($language['locale']) . '](' . $language['url'] . ')';
         }
 
         $txt = self::header($name, $summary);

@@ -160,6 +160,23 @@ final class SecurityHeadersMiddlewareTest extends TestCase
         }
     }
 
+    public function test_a_304_from_anywhere_gets_no_fresh_nonce(): void
+    {
+        // The browser keeps the cached page and stores the 304's headers over its
+        // own: a new nonce would not match the nonces in the cached page.
+        foreach ([false, true] as $reportOnly) {
+            $middleware = new SecurityHeadersMiddleware(fn () => self::NONCE, [], $reportOnly);
+            $request = (new Psr17Factory())->createServerRequest('GET', 'https://x.test/')->withHeader('HX-Request', 'true');
+            $response = $middleware->decorate($request, new Response(304, ['ETag' => '"v1"']));
+
+            $this->assertFalse($response->hasHeader('Content-Security-Policy'));
+            $this->assertFalse($response->hasHeader('Content-Security-Policy-Report-Only'));
+            $this->assertFalse($response->hasHeader('HX-Nonce'));
+            $this->assertSame('nosniff', $response->getHeaderLine('X-Content-Type-Options'));
+            $this->assertTrue($response->hasHeader('Strict-Transport-Security'));
+        }
+    }
+
     /**
      * @param array<string, mixed>  $config
      * @param array<string, string> $preset         headers the inner handler already set

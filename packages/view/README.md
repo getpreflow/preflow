@@ -230,9 +230,13 @@ should stand alone, mark the template's own HTML `data-geo="skip"`:
 - [de](https://club.test/de/llms.txt)
 ```
 
-Each language has its own (`/de/llms.txt`); the default language's file links the others. `/llms-full.txt` (and
-`/de/llms-full.txt`) holds the Markdown of every listed page in the same order, each under its title and source
-URL; `'full' => false` turns it off. Pages without a Markdown view (404, noindex…) are left out of it.
+Each language has its own (`/de/llms.txt`); the default language's file links the others. Their heading is in the
+file's language (translation key `geo.other_languages`: en, de and fr ship with preflow/view; a site renames it, or
+adds another language, in its own `lang/{locale}/geo.php`). A language without the key falls back to the site's
+fallback language, then English (default `it`, fallback `de`, no `lang/it/geo.php`: "Andere Sprachen").
+`/llms-full.txt` (and `/de/llms-full.txt`) holds the Markdown of every listed page in the same order, each under its
+title and source URL; `'full' => false` turns it off. Pages without a Markdown view (404, noindex…) are left out of
+it.
 
 With Folio, the published records of the `types` in your config are listed in each language: title from the
 `title` field (else `name`, else the first list column), description from `meta_description`, and the record's URL
@@ -352,6 +356,7 @@ What a page gets:
   and no JSON-LD, unless the page says its content is public (`public_content`, below). Paths in robots.txt's
   Disallow that a package adds (Folio's admin) get no tags at all.
 - No `ETag` for private responses, responses that set a cookie, or requests that carry the session cookie.
+- A `304` carries no `Content-Security-Policy`: the browser keeps the policy it stored with the cached page, whose nonces match that page (a fresh nonce would block its inline scripts and styles). Since 0.53.2.
 
 ### Folio pages
 
