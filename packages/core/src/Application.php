@@ -263,11 +263,14 @@ final class Application
             method: $request->getMethod(),
         ));
 
+        // An internal render (the SEO audit) sends no mail: what it queues is not flushed here.
+        $flush = !$this->emitting && !\Preflow\Core\Http\InternalRender::is($request);
+
         try {
             $response = $this->kernel->handle($request);
         } catch (\Throwable $e) {
             // Mails queued before the failure still go out (CLI, tests); run() flushes itself.
-            if (!$this->emitting) {
+            if ($flush) {
                 $this->flushDeferredNotifications();
             }
             throw $e;
@@ -291,7 +294,7 @@ final class Application
 
         // In-process callers (CLI, tests) have no later emit step: send deferred
         // notifications now. run() flushes after the response has gone out instead.
-        if (!$this->emitting) {
+        if ($flush) {
             $this->flushDeferredNotifications();
         }
 
