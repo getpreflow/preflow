@@ -132,9 +132,11 @@ final class PageRendererAppTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_the_registry_is_one_shared_instance(): void
+    public function test_the_registry_and_the_renderer_are_one_shared_instance_each(): void
     {
         $container = $this->app()->container();
+
+        $this->assertSame($container->get(PageRenderer::class), $container->get(PageRenderer::class));
 
         $this->assertInstanceOf(AuditRegistry::class, $container->get(AuditRegistry::class));
         $this->assertSame($container->get(AuditRegistry::class), $container->get(AuditRegistry::class));

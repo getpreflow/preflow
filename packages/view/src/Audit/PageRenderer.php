@@ -19,7 +19,7 @@ use Psr\Http\Message\ServerRequestInterface;
  * leaves no trace and gets no debug toolbar or debug error page), through the
  * app's full pipeline inside the render scopes. Works without an outer request
  * (the console command). Never throws: an error that escapes the app becomes a
- * 500 page whose body is the error's class and message.
+ * plain-text 500 page whose body is the error's class and message.
  *
  * @since 0.54
  */
@@ -64,7 +64,7 @@ final class PageRenderer
 
             return new RenderedPage($url, $locale, $response->getStatusCode(), $response->getHeaders(), (string) $response->getBody());
         } catch (\Throwable $e) {
-            return new RenderedPage($url, $locale, 500, [], $e::class . ': ' . $e->getMessage());
+            return new RenderedPage($url, $locale, 500, ['Content-Type' => ['text/plain; charset=UTF-8']], $e::class . ': ' . $e->getMessage());
         }
     }
 

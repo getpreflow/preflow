@@ -58,17 +58,26 @@ final readonly class RenderedPage
             return null;
         }
 
-        // libxml reads HTML as Latin-1 unless told otherwise: entities keep every character intact.
-        $html = mb_encode_numericentity($this->body, [0x80, 0x10FFFF, 0, 0x1FFFFF], 'UTF-8');
+        // libxml reads HTML as Latin-1 unless told otherwise. The encoding hint (not entities,
+        // which <script> and <style> would keep as raw text) makes it read UTF-8; its node goes after.
         $document = new \DOMDocument();
         $previous = libxml_use_internal_errors(true);
         try {
-            $parsed = $document->loadHTML($html, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
+            $parsed = $document->loadHTML('<?xml encoding="UTF-8">' . $this->body, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
         } finally {
             libxml_clear_errors();
             libxml_use_internal_errors($previous);
         }
+        if (!$parsed) {
+            return null;
+        }
 
-        return $parsed ? $document : null;
+        foreach (iterator_to_array($document->childNodes) as $node) {
+            if ($node instanceof \DOMProcessingInstruction) {
+                $document->removeChild($node);
+            }
+        }
+
+        return $document;
     }
 }

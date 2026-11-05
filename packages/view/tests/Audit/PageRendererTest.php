@@ -134,7 +134,8 @@ final class PageRendererTest extends TestCase
 
         $this->assertSame(500, $page->status);
         $this->assertSame('https://site.test/broken', $page->url);
-        $this->assertSame([], $page->headers);
+        $this->assertSame('text/plain; charset=UTF-8', $page->header('Content-Type'));
+        $this->assertNull($page->dom());
         $this->assertSame('LogicException: Template missing', $page->body);
     }
 

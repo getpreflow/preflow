@@ -1269,7 +1269,8 @@ final class Application
 
     /**
      * The SEO audit's PageRenderer: renders a page through the app (handle(), so the
-     * whole pipeline) inside the internal render scopes, from the console too.
+     * whole pipeline) inside the internal render scopes, from the console too. Built
+     * on first use only, so web requests don't pay for it.
      */
     private function bootAudit(): void
     {
@@ -1278,16 +1279,19 @@ final class Application
             return;
         }
 
-        [$locales, $defaultLocale] = $this->siteLocales();
-        $appUrl = $this->config->get('app.url');
-        $this->container->instance(\Preflow\View\Audit\PageRenderer::class, new \Preflow\View\Audit\PageRenderer(
-            fn (ServerRequestInterface $request): ResponseInterface => $this->handle($request),
-            is_string($appUrl) ? $appUrl : '',
-            $this->internalRenderScopes(),
-            $this->container->bound(\Preflow\View\AssetCollector::class) ? $this->container->get(\Preflow\View\AssetCollector::class) : null,
-            $locales,
-            $defaultLocale,
-        ));
+        $this->container->singleton(\Preflow\View\Audit\PageRenderer::class, function (): \Preflow\View\Audit\PageRenderer {
+            [$locales, $defaultLocale] = $this->siteLocales();
+            $appUrl = $this->config->get('app.url');
+
+            return new \Preflow\View\Audit\PageRenderer(
+                fn (ServerRequestInterface $request): ResponseInterface => $this->handle($request),
+                is_string($appUrl) ? $appUrl : '',
+                $this->internalRenderScopes(),
+                $this->container->bound(\Preflow\View\AssetCollector::class) ? $this->container->get(\Preflow\View\AssetCollector::class) : null,
+                $locales,
+                $defaultLocale,
+            );
+        });
     }
 
     /**

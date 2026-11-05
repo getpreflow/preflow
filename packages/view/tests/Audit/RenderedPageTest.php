@@ -38,6 +38,27 @@ final class RenderedPageTest extends TestCase
         $this->assertSame($before, libxml_use_internal_errors());
     }
 
+    public function test_dom_keeps_utf8_inside_script_and_style(): void
+    {
+        $html = '<!DOCTYPE html><html><head><title>Spiele für Groß und Klein</title>'
+            . '<style>.q::before { content: "–"; }</style>'
+            . '<script type="application/ld+json">{"name":"Über uns"}</script></head>'
+            . '<body><p>Ärger – Spaß</p></body></html>';
+        $page = new RenderedPage('https://site.test/de/ueber', 'de', 200, ['Content-Type' => ['text/html; charset=UTF-8']], $html);
+
+        $dom = $page->dom();
+
+        $this->assertNotNull($dom);
+        $this->assertSame('Spiele für Groß und Klein', $dom->getElementsByTagName('title')->item(0)?->textContent);
+        $this->assertSame('{"name":"Über uns"}', $dom->getElementsByTagName('script')->item(0)?->textContent);
+        $this->assertSame('.q::before { content: "–"; }', $dom->getElementsByTagName('style')->item(0)?->textContent);
+        $this->assertSame('Ärger – Spaß', $dom->getElementsByTagName('p')->item(0)?->textContent);
+        // The encoding hint leaves no node behind.
+        foreach ($dom->childNodes as $node) {
+            $this->assertNotInstanceOf(\DOMProcessingInstruction::class, $node);
+        }
+    }
+
     public function test_dom_is_null_for_an_empty_or_non_html_body(): void
     {
         $this->assertNull((new RenderedPage('u', 'en', 500, [], ''))->dom());
