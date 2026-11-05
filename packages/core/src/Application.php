@@ -583,8 +583,21 @@ final class Application
         $publicPages = new \Preflow\View\Seo\PublicPages();
         $this->container->instance(\Preflow\View\Seo\PublicPages::class, $publicPages);
         $this->container->instance(\Preflow\View\Geo\GeoEntries::class, new \Preflow\View\Geo\GeoEntries($publicPages));
-        // The SEO audit's checks: here, so providers can add theirs
-        $this->container->instance(\Preflow\View\Audit\AuditRegistry::class, new \Preflow\View\Audit\AuditRegistry());
+        // The SEO audit's checks: here, so providers can add theirs. The built-in ones are made when an audit
+        // first reads the checks (bootAudit binds the renderer), so web requests don't build them.
+        $this->container->instance(\Preflow\View\Audit\AuditRegistry::class, new \Preflow\View\Audit\AuditRegistry(
+            function (\Preflow\View\Audit\AuditRegistry $registry) use ($publicPages): void {
+                if (!$this->container->bound(\Preflow\View\Audit\PageRenderer::class)) {
+                    return;
+                }
+                \Preflow\View\Audit\Checks\BuiltInChecks::register(
+                    $registry,
+                    $this->container->get(\Preflow\View\Audit\PageRenderer::class),
+                    $publicPages,
+                    $this->basePath('public'),
+                );
+            },
+        ));
         // SEO settings, the page meta templates and controllers fill, and what sites register (JSON-LD builders, defaults)
         $seoConfig = \Preflow\View\Seo\SeoConfig::fromFile($this->basePath('config/seo.php'));
         // A typo in a template's seo({…}) is ignored; in debug mode the log names it.

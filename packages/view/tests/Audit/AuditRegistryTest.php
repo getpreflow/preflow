@@ -37,6 +37,30 @@ final class AuditRegistryTest extends TestCase
         $this->assertSame([$r1, $r2], $registry->runChecks());
     }
 
+    public function test_built_in_checks_are_added_on_first_use_and_come_first(): void
+    {
+        $calls = 0;
+        $builtIn = $this->pageCheck('built-in');
+        $builtInRun = $this->runCheck('built-in-run');
+        $registry = new AuditRegistry(function (AuditRegistry $registry) use (&$calls, $builtIn, $builtInRun): void {
+            $calls++;
+            $registry->addPage($builtIn);
+            $registry->addRun($builtInRun);
+        });
+        $own = $this->pageCheck('own');
+        $ownSite = $this->siteCheck('own-site');
+
+        $registry->addPage($own);
+        $registry->addSite($ownSite);
+        $this->assertSame(0, $calls, 'adding checks builds no built-in ones');
+
+        $this->assertSame([$builtIn, $own], $registry->pageChecks());
+        $this->assertSame([$ownSite], $registry->siteChecks());
+        $this->assertSame([$builtInRun], $registry->runChecks());
+        $this->assertSame([$builtIn, $own], $registry->pageChecks());
+        $this->assertSame(1, $calls);
+    }
+
     public function test_starts_empty_and_resolves_no_target_without_a_resolver(): void
     {
         $registry = new AuditRegistry();
