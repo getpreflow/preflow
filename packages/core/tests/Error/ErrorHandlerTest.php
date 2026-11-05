@@ -12,6 +12,7 @@ use Preflow\Core\Error\DevErrorRenderer;
 use Preflow\Core\Error\ProdErrorRenderer;
 use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\Exceptions\NotFoundHttpException;
+use Preflow\Core\Http\InternalRender;
 
 final class ErrorHandlerTest extends TestCase
 {
@@ -84,5 +85,30 @@ final class ErrorHandlerTest extends TestCase
         );
         $body = (string) $response->getBody();
         $this->assertStringContainsString('The page you requested was not found', $body);
+    }
+
+    public function test_an_internal_render_gets_the_internal_renderers_page(): void
+    {
+        $handler = new ErrorHandler(new DevErrorRenderer(), new ProdErrorRenderer());
+
+        $internal = $handler->handleException(new \RuntimeException('debug only detail'), InternalRender::mark($this->createRequest()));
+        $visitor = $handler->handleException(new \RuntimeException('debug only detail'), $this->createRequest());
+        $notFound = $handler->handleException(new NotFoundHttpException('Gone'), InternalRender::mark($this->createRequest()));
+
+        $this->assertSame(500, $internal->getStatusCode());
+        $this->assertStringNotContainsString('debug only detail', (string) $internal->getBody());
+        $this->assertStringContainsString('Internal Server Error', (string) $internal->getBody());
+        $this->assertStringContainsString('debug only detail', (string) $visitor->getBody());
+        $this->assertSame(404, $notFound->getStatusCode());
+        $this->assertStringContainsString('Not Found', (string) $notFound->getBody());
+    }
+
+    public function test_without_an_internal_renderer_an_internal_render_gets_the_usual_page(): void
+    {
+        $handler = new ErrorHandler(new DevErrorRenderer());
+
+        $response = $handler->handleException(new \RuntimeException('shown as usual'), InternalRender::mark($this->createRequest()));
+
+        $this->assertStringContainsString('shown as usual', (string) $response->getBody());
     }
 }

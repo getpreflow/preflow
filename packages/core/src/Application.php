@@ -213,11 +213,15 @@ final class Application
         // GEO Markdown views — prepended, so it runs before every other middleware
         $this->bootGeo($debug);
 
+        // The SEO audit's page renderer (through the whole pipeline built above)
+        $this->bootAudit();
+
         // Error handler
         $renderer = $debug->isDebug()
             ? new DevErrorRenderer($collector, $this->nonceProvider())
             : new ProdErrorRenderer($this->nonceProvider());
-        $errorHandler = new ErrorHandler($renderer);
+        // Internal renders (the SEO audit) get the visitor's error page, even in debug mode.
+        $errorHandler = new ErrorHandler($renderer, $debug->isDebug() ? new ProdErrorRenderer($this->nonceProvider()) : null);
         $this->container->instance(ErrorHandler::class, $errorHandler);
 
         // Default dispatchers if not set
@@ -579,6 +583,8 @@ final class Application
         $publicPages = new \Preflow\View\Seo\PublicPages();
         $this->container->instance(\Preflow\View\Seo\PublicPages::class, $publicPages);
         $this->container->instance(\Preflow\View\Geo\GeoEntries::class, new \Preflow\View\Geo\GeoEntries($publicPages));
+        // The SEO audit's checks: here, so providers can add theirs
+        $this->container->instance(\Preflow\View\Audit\AuditRegistry::class, new \Preflow\View\Audit\AuditRegistry());
         // SEO settings, the page meta templates and controllers fill, and what sites register (JSON-LD builders, defaults)
         $seoConfig = \Preflow\View\Seo\SeoConfig::fromFile($this->basePath('config/seo.php'));
         // A typo in a template's seo({…}) is ignored; in debug mode the log names it.
@@ -1215,11 +1221,7 @@ final class Application
             return;
         }
 
-        // The core scope runs outermost, around the ones packages added during their registration.
-        $scopes = new \Preflow\View\Geo\RenderScopes();
-        $scopes->add($this->anonymousRenderScope());
-        $packageScopes = $this->container->get(\Preflow\View\Geo\RenderScopes::class);
-        $scopes->add(static fn (ServerRequestInterface $sub, \Closure $next): ResponseInterface => $packageScopes->run($sub, $next));
+        $scopes = $this->internalRenderScopes();
 
         // Render failures that aren't HTTP answers: rethrown in debug (the error page shows them), logged otherwise.
         $container = $this->container;
@@ -1266,7 +1268,44 @@ final class Application
     }
 
     /**
-     * Wraps an internal GEO render: the request context names the rendered page,
+     * The SEO audit's PageRenderer: renders a page through the app (handle(), so the
+     * whole pipeline) inside the internal render scopes, from the console too.
+     */
+    private function bootAudit(): void
+    {
+        if (!$this->container->bound(\Preflow\View\Audit\AuditRegistry::class)
+            || !$this->container->bound(\Preflow\View\Geo\RenderScopes::class)) {
+            return;
+        }
+
+        [$locales, $defaultLocale] = $this->siteLocales();
+        $appUrl = $this->config->get('app.url');
+        $this->container->instance(\Preflow\View\Audit\PageRenderer::class, new \Preflow\View\Audit\PageRenderer(
+            fn (ServerRequestInterface $request): ResponseInterface => $this->handle($request),
+            is_string($appUrl) ? $appUrl : '',
+            $this->internalRenderScopes(),
+            $this->container->bound(\Preflow\View\AssetCollector::class) ? $this->container->get(\Preflow\View\AssetCollector::class) : null,
+            $locales,
+            $defaultLocale,
+        ));
+    }
+
+    /**
+     * The scopes around an internal render (GEO's, the SEO audit's): the core scope
+     * outermost, around the ones packages added during their registration.
+     */
+    private function internalRenderScopes(): \Preflow\View\Geo\RenderScopes
+    {
+        $scopes = new \Preflow\View\Geo\RenderScopes();
+        $scopes->add($this->anonymousRenderScope());
+        $packageScopes = $this->container->get(\Preflow\View\Geo\RenderScopes::class);
+        $scopes->add(static fn (ServerRequestInterface $sub, \Closure $next): ResponseInterface => $packageScopes->run($sub, $next));
+
+        return $scopes;
+    }
+
+    /**
+     * Wraps an internal render (GEO, the SEO audit): the request context names the rendered page,
      * the visitor's session data is hidden (templates read the session directly,
      * e.g. flash(); a shutdown hook restores it even after a fatal error), nobody
      * is signed in during it, and the translator locale and signed-in users are
