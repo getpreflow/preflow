@@ -63,8 +63,20 @@ final class PageRenderer
         return $this->locales !== [] ? $this->locales : [$this->defaultLocale];
     }
 
-    /** Render the page at $path ('/de/about'; a query or fragment is dropped). */
-    public function render(string $path): RenderedPage
+    /** The locale of paths without a URL prefix. */
+    public function defaultLocale(): string
+    {
+        return $this->defaultLocale;
+    }
+
+    /**
+     * Render the page at $path ('/de/about'; a query or fragment is dropped). $headers are added to the
+     * request (a conditional render's If-None-Match); Cookie and Authorization are left out, so the render
+     * stays anonymous, and Accept stays text/html.
+     *
+     * @param array<string, string> $headers
+     */
+    public function render(string $path, array $headers = []): RenderedPage
     {
         $path = (string) parse_url('/' . ltrim($path, '/'), PHP_URL_PATH);
         if ($path === '') {
@@ -74,7 +86,7 @@ final class PageRenderer
         $locale = $this->localeOf($path);
 
         try {
-            $request = $this->request($url, $path);
+            $request = $this->request($url, $path, $headers);
             $render = fn (): ResponseInterface => ($this->handle)($request);
             $scoped = fn (): ResponseInterface => $this->scopes?->run($request, $render) ?? $render();
             $response = $this->assets !== null ? $this->assets->restoring($scoped) : $scoped();
@@ -85,8 +97,12 @@ final class PageRenderer
         }
     }
 
-    /** A clean, marked GET for $url: no cookies, credentials, query or attributes, and no session. */
-    private function request(string $url, string $path): ServerRequestInterface
+    /**
+     * A clean, marked GET for $url: no cookies, credentials, query or attributes, and no session.
+     *
+     * @param array<string, string> $headers
+     */
+    private function request(string $url, string $path, array $headers): ServerRequestInterface
     {
         $scheme = (string) parse_url($url, PHP_URL_SCHEME);
         $host = (string) parse_url($url, PHP_URL_HOST);
@@ -104,7 +120,12 @@ final class PageRenderer
             $server['HTTPS'] = 'on';
         }
 
-        $request = (new ServerRequest('GET', $url, ['Accept' => 'text/html'], null, '1.1', $server))
+        $headers = array_filter(
+            $headers,
+            static fn (string $name): bool => !in_array(strtolower($name), ['cookie', 'authorization', 'accept'], true),
+            ARRAY_FILTER_USE_KEY,
+        );
+        $request = (new ServerRequest('GET', $url, ['Accept' => 'text/html'] + $headers, null, '1.1', $server))
             ->withAttribute(SessionMiddleware::WITHOUT_SESSION, true);
 
         return InternalRender::mark($request);

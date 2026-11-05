@@ -84,6 +84,30 @@ final class PageRendererTest extends TestCase
         $this->assertSame(['en', 'de'], $prefixed->locales());
         $this->assertSame('http://localhost', $single->origin());
         $this->assertSame(['de'], $single->locales());
+        $this->assertSame('en', $prefixed->defaultLocale());
+        $this->assertSame('de', $single->defaultLocale());
+    }
+
+    public function test_adds_request_headers_given_but_never_credentials(): void
+    {
+        $seen = null;
+        $renderer = new PageRenderer(
+            static function (ServerRequestInterface $request) use (&$seen): ResponseInterface {
+                $seen = $request;
+
+                return new Response(304);
+            },
+            'https://site.test',
+        );
+
+        $page = $renderer->render('/', ['If-None-Match' => 'W/"2-abc"', 'Cookie' => 'locale=de', 'authorization' => 'Basic eA==']);
+
+        $this->assertSame(304, $page->status);
+        $this->assertSame('W/"2-abc"', $seen->getHeaderLine('If-None-Match'));
+        $this->assertSame('text/html', $seen->getHeaderLine('Accept'));
+        $this->assertFalse($seen->hasHeader('Cookie'));
+        $this->assertFalse($seen->hasHeader('Authorization'));
+        $this->assertSame([], $seen->getCookieParams());
     }
 
     public function test_runs_inside_the_render_scopes(): void

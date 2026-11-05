@@ -595,6 +595,10 @@ final class Application
                     $this->container->get(\Preflow\View\Audit\PageRenderer::class),
                     $publicPages,
                     $this->basePath('public'),
+                    $this->container->get(\Preflow\View\Seo\SeoConfig::class),
+                    $this->container->get(\Preflow\View\Geo\GeoConfig::class),
+                    $this->container->get(\Preflow\View\Seo\SeoSite::class),
+                    $this->container->get(\Preflow\View\Seo\SchemaRegistry::class),
                 );
 
                 return true;

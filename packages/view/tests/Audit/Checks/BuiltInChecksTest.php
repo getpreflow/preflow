@@ -14,6 +14,7 @@ use Preflow\View\Audit\PageCheck;
 use Preflow\View\Audit\PageRenderer;
 use Preflow\View\Audit\RenderedPage;
 use Preflow\View\Audit\RunCheck;
+use Preflow\View\Audit\SiteCheck;
 use Preflow\View\Seo\PublicPage;
 use Preflow\View\Seo\PublicPages;
 
@@ -29,6 +30,7 @@ final class BuiltInChecksTest extends TestCase
         @mkdir($this->dir . '/app/pages', 0777, true);
         file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name'=>'t','debug'=>0,'engine'=>'twig','key'=>'audit-builtin-test-key-0123456789ab','url'=>'https://site.test'];\n");
         file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['default'=>'en','available'=>['en','de'],'fallback'=>'en','url_strategy'=>'prefix','cookie'=>true];\n");
+        file_put_contents($this->dir . '/app/pages/index.twig', '<html><head><title>Home</title></head><body><h1>Home</h1></body></html>');
         file_put_contents(
             $this->dir . '/app/pages/about.twig',
             '<html><head><title>About {{ current_locale() }}</title></head><body><main><h1>About us</h1><img src="/missing.png"><a href="/nowhere">x</a></main></body></html>',
@@ -65,7 +67,56 @@ final class BuiltInChecksTest extends TestCase
             ['title.duplicate', 'description.duplicate', 'hreflang.unpaired', 'link.broken'],
             array_map(static fn (RunCheck $c): string => $c->id(), $registry->runChecks()),
         );
-        $this->assertSame([], $registry->siteChecks());
+        $this->assertSame(
+            ['robots.missing', 'sitemap', 'llms.missing', 'notfound', 'icons', 'etag', 'share-image.missing', 'owner.missing'],
+            array_map(static fn (SiteCheck $c): string => $c->id(), $registry->siteChecks()),
+        );
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_site_checks_on_the_app_with_seo_on(): void
+    {
+        file_put_contents($this->dir . '/config/seo.php', "<?php\nreturn ['enabled' => true];\n");
+        $app = Application::create($this->dir);
+        $app->boot();
+        $container = $app->container();
+
+        $found = [];
+        foreach ($container->get(AuditRegistry::class)->siteChecks() as $check) {
+            foreach ($check->check($container->get(PageRenderer::class)) as $finding) {
+                $found[] = "{$finding->check}|{$finding->severity->value}|{$finding->locale}";
+            }
+        }
+
+        $this->assertNotContains('robots.missing|warning|', $found);
+        $this->assertNotContains('sitemap.missing|warning|', $found);
+        $this->assertNotContains('notfound.status|critical|', $found);
+        $this->assertContains('notfound.no-home-link|warning|', $found);
+        $this->assertContains('favicon.raster-missing|warning|', $found);
+        $this->assertContains('manifest.missing|notice|', $found);
+        $this->assertContains('etag.cookie|notice|', $found, 'the i18n locale cookie keeps the home page from an ETag');
+        $this->assertContains('share-image.missing|notice|', $found);
+        $this->assertContains('owner.missing|notice|', $found);
+        $this->assertNotContains('llms.missing|warning|', $found, 'GEO is off');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_with_seo_and_geo_off_their_site_checks_find_nothing(): void
+    {
+        $app = Application::create($this->dir);
+        $app->boot();
+        $container = $app->container();
+
+        $checks = [];
+        foreach ($container->get(AuditRegistry::class)->siteChecks() as $check) {
+            $checks = [...$checks, ...array_map(static fn (Finding $f): string => $f->check, $check->check($container->get(PageRenderer::class)))];
+        }
+
+        $this->assertSame([], array_intersect($checks, [
+            'robots.missing', 'sitemap.missing', 'sitemap.invalid', 'sitemap.non200', 'llms.missing',
+            'etag.cookie', 'etag.unstable', 'etag.no-304', 'share-image.missing', 'owner.missing',
+        ]));
+        $this->assertContains('manifest.missing', $checks);
     }
 
     #[RunInSeparateProcess]
