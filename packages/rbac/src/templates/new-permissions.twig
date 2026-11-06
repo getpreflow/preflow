@@ -1,5 +1,5 @@
 {# The new permissions above the Roles list (NewPermissions): one line per permission group, the roles
-   that already cover it and how, "Add to role…" (the staff roles the user may give it) and Dismiss. #}
+   that already cover it and how, "Add to role…" (the staff roles the user may give it) and Dismiss (only for what the user holds). #}
 {# Folio's own classes only: rbac.css loads with the permissions field, not on the list. #}
 <section class="folio-notice rbac-new" role="status" aria-labelledby="rbac-new-title">
     <p><strong id="rbac-new-title">{{ t('rbac.new.title') }}</strong></p>
@@ -26,11 +26,13 @@
                             <button type="submit" class="btn btn-secondary">{{ t('rbac.new.add') }}</button>
                         </form>
                     {% endif %}
-                    <form method="post" action="{{ dismiss_url }}">
-                        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                        {% for name in group.names %}<input type="hidden" name="names[]" value="{{ name }}">{% endfor %}
-                        <button type="submit" class="btn btn-ghost">{{ t('rbac.new.dismiss') }}</button>
-                    </form>
+                    {% if group.dismissable %}
+                        <form method="post" action="{{ dismiss_url }}">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+                            {% for name in group.names %}<input type="hidden" name="names[]" value="{{ name }}">{% endfor %}
+                            <button type="submit" class="btn btn-ghost">{{ t('rbac.new.dismiss') }}</button>
+                        </form>
+                    {% endif %}
                 </div>
             </li>
         {% endfor %}

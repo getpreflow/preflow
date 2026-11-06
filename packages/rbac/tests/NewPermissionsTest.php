@@ -173,7 +173,8 @@ final class NewPermissionsTest extends TestCase
         $this->assertMatchesRegularExpression('#<option value="r-helper">Helper</option>#', $html);
         $this->assertDoesNotMatchRegularExpression('#<option value="r-editor">Editor</option>#', $html);
         $this->assertDoesNotMatchRegularExpression('#<option value="[^"]*">Administrator</option>#', $html);
-        $this->assertSame(2, substr_count($html, 'action="/folio/rbac/new-permissions/dismiss"'));
+        // Dismiss only where the editor holds the permissions: the Pages line, not Redirects.
+        $this->assertSame(1, substr_count($html, 'action="/folio/rbac/new-permissions/dismiss"'));
     }
 
     #[RunInSeparateProcess]
@@ -247,6 +248,27 @@ final class NewPermissionsTest extends TestCase
         $this->assertSame([], $this->known()->fresh());
         $this->assertSame([], (new KnownPermissions($this->container()->get(DataManager::class), $this->container()->get(Access::class)->registry()))->fresh(), 'stored, not remembered');
         $this->assertSame(['*'], $this->roles()[array_key_first(array_filter($this->roles(), static fn ($r): bool => $r->get('name') === 'admin'))]->get('permissions'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_dismiss_only_for_permissions_the_user_holds(): void
+    {
+        $this->managerSetup();
+        $this->as('editor'); // manages roles, doesn't hold redirects.manage
+
+        $list = (string) $this->send('GET', '/folio/rbac_role')->getBody();
+        $this->assertStringContainsString('rbac-new', $list, 'the notice is still shown');
+        $this->assertStringNotContainsString('/folio/rbac/new-permissions/dismiss', $list, 'no Dismiss for a permission the user lacks');
+
+        $res = $this->send('POST', '/folio/rbac/new-permissions/dismiss', ['names' => ['redirects.manage']]);
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame(['redirects.manage'], $this->known()->fresh(), 'a crafted dismiss leaves it for those who hold it');
+        $this->assertStringNotContainsString('Dismissed.', (string) $this->send('GET', '/folio/rbac_role')->getBody());
+
+        // A mixed post: what the editor holds (page.view) is dismissed, the rest stays.
+        $this->forget(['page.view']);
+        $this->send('POST', '/folio/rbac/new-permissions/dismiss', ['names' => ['page.view', 'redirects.manage']]);
+        $this->assertSame(['redirects.manage'], $this->known()->fresh());
     }
 
     #[RunInSeparateProcess]

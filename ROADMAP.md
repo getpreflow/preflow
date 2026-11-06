@@ -315,6 +315,9 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   **Upgrading:** nothing to migrate. `composer update`, then run `preflow seo:audit` on each environment. The new
   permission `seo.audit` is announced in *Settings → Roles* on sites with rbac; sites using `preflow/roles`
   (config roles) grant it in `config/roles.php`.
+  0.54.1: a description cut that lands on a space keeps its last word (`HeadTags::description`); the audit
+  screen's collapsed groups show their arrow in every browser; the new-permissions notice offers Dismiss only for
+  permissions the user holds (a delegated role manager can't hide one from those who could grant it).
 
 ---
 

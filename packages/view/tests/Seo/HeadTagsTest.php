@@ -196,6 +196,14 @@ final class HeadTagsTest extends TestCase
         $this->assertSame('Zürich & Genf', HeadTags::description('<em>Zürich</em> &amp; Genf'));
     }
 
+    public function test_a_cut_on_a_word_boundary_keeps_the_last_whole_word(): void
+    {
+        // 9 characters fit before the "…" (max 10): "aaaa bbbb" ends exactly before a space.
+        $this->assertSame('aaaa bbbb…', HeadTags::description('aaaa bbbb cccc', 10));
+        // Inside a word, the cut still goes back to the last space.
+        $this->assertSame('aaaa…', HeadTags::description('aaaa bbbbbbbb', 10));
+    }
+
     public function test_without_cards_only_robots_and_theme_color(): void
     {
         $html = HeadTags::inject(self::PAGE, $this->meta(), 'Example', ['' => '#112233'], $this->graph($this->meta()), cards: false);

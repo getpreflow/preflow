@@ -278,7 +278,9 @@ edit roles (`rbac_role.edit`) is told, and decides (since 0.53):
   already have all of the line's permissions, such as `*`. It saves through the type's
   `#[BeforeSave]` and `#[AfterSave]` hooks and its validation, like the role editor, so a site's
   own hooks on `rbac_role` run for it too.
-- **Dismiss** takes the line away without granting anything.
+- **Dismiss** takes the line away without granting anything. It is offered only for permissions the user
+  holds (since 0.54.1), like Add to role: a delegated role manager can't hide a permission from those who could
+  grant it.
 - The *Roles* item in the sidebar carries the count, and the dashboard has a line linking here.
 
 A permission leaves the notice only through Dismiss or Add to role; then it is known for good.

@@ -58,7 +58,15 @@ final class NewPermissionsScreen
     public function dismiss(ServerRequestInterface $request): ResponseInterface
     {
         try {
-            $names = $this->requested($request);
+            // Only what the user holds (a crafted post can't hide a permission from those who could grant it).
+            $held = $this->container->get(PermissionCoverage::class)->held();
+            $names = array_values(array_filter(
+                $this->requested($request),
+                static fn (string $name): bool => $held === null || PermissionCoverage::covers($held, $name),
+            ));
+            if ($names === []) {
+                return self::roles($request);
+            }
             $this->permissions->markKnown($names);
         } catch (\Throwable $e) {
             return $this->unavailable($request, $e);

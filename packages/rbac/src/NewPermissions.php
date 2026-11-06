@@ -121,7 +121,7 @@ final class NewPermissions
      * the permissions this notice announces are the admin's.
      *
      * @param list<string> $fresh
-     * @return list<array{heading: string, names: list<string>, permissions: list<array{name: string, label: string}>, covered: list<array{label: string, patterns: list<string>}>, roles: list<array{id: string, label: string}>}>
+     * @return list<array{heading: string, names: list<string>, permissions: list<array{name: string, label: string}>, covered: list<array{label: string, patterns: list<string>}>, roles: list<array{id: string, label: string}>, dismissable: bool}>
      */
     private function groups(array $fresh): array
     {
@@ -170,6 +170,9 @@ final class NewPermissions
                 'permissions' => $permissions,
                 'covered' => $covered,
                 'roles' => $pickable,
+                // Only someone who holds a permission may dismiss it, as only they may grant it:
+                // a delegated role manager must not hide it from those who could act on it.
+                'dismissable' => $held === null || PermissionCoverage::coversAll($held, $names),
             ];
         }
 
