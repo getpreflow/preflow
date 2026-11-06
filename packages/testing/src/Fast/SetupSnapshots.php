@@ -407,8 +407,15 @@ final class SetupSnapshots
         foreach (array_keys($env['_ENV']['set']) as $var) {
             $rawEnv .= "\0" . serialize($_ENV[$var] ?? null);
         }
+        // The environment as it is stored: a root standing as a whole path ("{root}/media") is put
+        // back as the current root on a hit; any other mention of a root ("/tmp/rootA.lock") is
+        // still the real path here, and would hand another test this test's path.
+        $storedEnv = serialize($env);
         foreach ($roots as $placeholder => $root) {
-            if (str_contains($data, $root) || str_contains($contents, $placeholder) || str_contains($rawEnv, $placeholder)) {
+            // Files: any mention of a root, as a whole path (now the placeholder) or not (still
+            // the real path, "lock=/tmp/rootA.lock"), ties the content to this test.
+            if (str_contains($data, $root) || str_contains($contents, $placeholder) || str_contains($contents, $root)
+                || str_contains($rawEnv, $placeholder) || str_contains($storedEnv, $root)) {
                 return null;
             }
         }

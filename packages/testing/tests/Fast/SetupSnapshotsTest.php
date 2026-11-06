@@ -268,6 +268,39 @@ final class SetupSnapshotsTest extends TestCase
         $this->assertSame(2, $this->runs);
     }
 
+    public function test_an_outcome_naming_a_path_beside_the_root_is_not_stored(): void
+    {
+        $step = function (string $root, string $how): string {
+            $this->runs++;
+            if ($how === 'file') {
+                file_put_contents($root . '/where.txt', 'lock=' . $root . '.lock');
+            } else {
+                putenv('PREFLOW_SNAPSHOT_SET=' . $root . '.lock');
+                $_ENV['PREFLOW_SNAPSHOT_SET'] = $root . '-cache';
+            }
+
+            return 'named';
+        };
+        foreach (['file', 'env'] as $i => $how) {
+            $first = $this->tempDir();
+            $this->snapshots($first)->step('beside-' . $how, fn () => $step($first, $how));
+            putenv('PREFLOW_SNAPSHOT_SET');
+            unset($_ENV['PREFLOW_SNAPSHOT_SET']);
+
+            $second = $this->tempDir();
+            $this->snapshots($second)->step('beside-' . $how, fn () => $step($second, $how));
+            $this->assertSame(2 * ($i + 1), $this->runs, "{$how}: the second test runs the step for real");
+            if ($how === 'file') {
+                $this->assertSame('lock=' . $second . '.lock', file_get_contents($second . '/where.txt'));
+            } else {
+                $this->assertSame($second . '.lock', getenv('PREFLOW_SNAPSHOT_SET'));
+                $this->assertSame($second . '-cache', $_ENV['PREFLOW_SNAPSHOT_SET']);
+            }
+            putenv('PREFLOW_SNAPSHOT_SET');
+            unset($_ENV['PREFLOW_SNAPSHOT_SET']);
+        }
+    }
+
     public function test_off_without_run_or_with_the_switch(): void
     {
         $root = $this->tempDir();
