@@ -332,7 +332,9 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   for MySQL, SQLite needs no adapter. `Fast\TestWorker` names databases and directories per paratest worker. No test is
   skipped or weakened. See "Fast suites" in `packages/testing/README.md`). **Upgrading:** nothing changes unless a site opts in.
   Sites add `brianium/paratest` to require-dev, the `test` (paratest) and `test:serial` composer scripts, and call
-  `SetupSnapshots::bootstrap()` from `tests/bootstrap.php`. Timings: see below (filled in after the sites move).
+  `SetupSnapshots::bootstrap()` from `tests/bootstrap.php`. Measured full suites, before → `composer test` (6 workers) /
+  `composer test:serial`: holz-objekte.org ~33 min → 3:02 / 5:55 (MySQL; 950 tests), BG Genius 6:15 → 0:59 / 3:49,
+  smart-stack.works 87 s → 16 s / 72 s (paratest `--functional`), smeyer.me 59 s → 4.6 s / 12.5 s; no test skipped.
   0.56.1: the JSON storage query cache is kept per data path (`json-{type}-{path hash}.json` / `.gen`), so tests with
   their own data path and parallel workers sharing `storage/cache/data` never read each other's records; `cache:clear` still clears them all.
 - **An analytics package (later, its own project; owner, 2026-11-06):** privacy-first visit counts, AI usage among
