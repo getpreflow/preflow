@@ -145,8 +145,18 @@ paratest worker).
 - the content of every file under the registered roots
 - every table's definition and checksum, for each registered database
 
+- whether each root exists (a missing root and an empty root are different states)
+
 If any of these differs, the step runs for real. That includes an environment variable a test set, a file a test wrote and
-a row a test inserted. A restored step leaves what the real step left: files the step did not leave are removed.
+a row a test inserted. A restored step leaves what the real step left: files the step did not leave are removed, a root the
+step made or removed is made or removed, and the environment variables the step set or removed (`putenv()` and `$_ENV`) are
+set or removed again, before `onRestore` runs. A root's path in such a variable becomes the current test's root.
+
+A file's mode and modification time are not part of the state. A restored file gets the current time, and the mode new files
+get. A step whose outcome depends on either is not suited to snapshots.
+
+A restore that cannot remove, make or write a file throws a `RuntimeException` naming the path. Symlinks under a root are
+not supported: the step throws a `LogicException` before it runs, and the link is never followed.
 
 On a miss the step runs and its outcome is kept for later tests. Nothing is kept when the outcome names a root's real path
 (in a row or in the return value), when a root's placeholder appears in a file, when the return value cannot be serialized
@@ -170,6 +180,10 @@ require __DIR__ . '/../vendor/autoload.php';
 `bootstrap()` makes one run id per phpunit or paratest run (`PREFLOW_TEST_RUN`). Separate-process tests inherit it. Only
 the process that made the id removes the snapshots at the end. Without a run id, snapshots are off.
 
+If `PREFLOW_TEST_RUN` is already exported in your shell, `bootstrap()` does nothing: the snapshots are kept across runs and
+never removed. Code outside the roots is not part of the state, so a later run would restore what an edited migration or
+seeder did before the edit. Unset it (`unset PREFLOW_TEST_RUN`) and let each run make its own.
+
 In your test scaffold, keep one `SetupSnapshots` per test:
 
 ```php
@@ -186,9 +200,15 @@ $report = $snapshots->step('seed', fn () => ['users' => $this->runSeed()]);
 ```
 
 - **`root($placeholder, $dir)`**: a directory that is this test's own, with a random name. The name is replaced by the
-  placeholder in the state, so another test's equal state under another name matches.
+  placeholder in the state, so another test's equal state under another name matches. The placeholder is a name in braces
+  (`{siteTmp}`). `$dir` is a path or a closure that returns one. The closure is called every time the roots are used (state,
+  capture, restore, placeholders in the environment), so it suits a directory your scaffold makes later:
+  `->root('{images}', fn (): string => $this->imageDir)`. A closure that returns `''` means there is no such root right now.
+  An empty string path throws. Roots must not overlap: one root inside another throws a `LogicException` when the step runs.
+  A step that changes which directory a root is (a closure that returns another path afterwards) is not kept.
 - **`ignore($path)`**: a path under a root, written like `{siteTmp}/error.log`. It is left out of the state and kept on
-  restore. Use it for logs.
+  restore. Use it for logs. Its placeholder must be a registered root when the step runs (it may be registered after
+  `ignore()`); otherwise the step throws.
 - **`onRestore(Closure)`**: called after a restored step's files are in place. Drop your booted app, PDO handles and
   in-process caches here. Do not hold an open SQLite connection across a step. The `-wal` and `-shm` files are files under
   the root like any other. SQLite needs no adapter: its database is a file under a root.
@@ -209,6 +229,10 @@ A restored step does not write its tables at once. They are written when somethi
 `$snapshots->flush()`. Call it from your own `app()` or PDO helper. A restored migrate followed by a restored seed then
 writes the tables once. `$snapshots->reset()` marks the databases to be emptied the same lazy way; call it when your
 scaffold boots a fresh site.
+
+Call `flush()` before you start any process that touches a registered database: the built-in server for browser or HTTP
+tests, a CLI sub-process (`preflow migrate`), a queue worker. That process does not know about the pending tables and would
+see the database as it was before the restore.
 
 Limits of the MySQL adapter: views and generated columns are not supported. A table with more than about 327 columns hits
 the 65535-placeholder limit of one 200-row `INSERT`.

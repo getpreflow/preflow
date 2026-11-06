@@ -31,8 +31,10 @@ final class SetupSnapshotsTest extends TestCase
 
     protected function tearDown(): void
     {
-        putenv('PREFLOW_SNAPSHOT_PROBE');
-        putenv('PREFLOW_TEST_SNAPSHOTS');
+        foreach (['PREFLOW_SNAPSHOT_PROBE', 'PREFLOW_TEST_SNAPSHOTS', 'PREFLOW_SNAPSHOT_SET', 'PREFLOW_SNAPSHOT_GONE'] as $var) {
+            putenv($var);
+            unset($_ENV[$var]);
+        }
         foreach ($this->dirs as $dir) {
             self::remove($dir);
         }
@@ -78,14 +80,30 @@ final class SetupSnapshotsTest extends TestCase
         return $files;
     }
 
+    /** Only ever this test's own temp directories (preflow_snapshot_test_*, preflow_snapshots_*). */
     private static function remove(string $dir): void
     {
+        if ($dir === '' || !str_starts_with($dir, sys_get_temp_dir() . '/preflow_snapshot') || str_contains($dir, '..')) {
+            return;
+        }
+        if (is_link($dir)) {
+            unlink($dir);
+
+            return;
+        }
         if (!is_dir($dir)) {
             return;
         }
+        chmod($dir, 0777);
+        $rii = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::SELF_FIRST);
+        foreach ($rii as $f) {
+            if ($f->isDir() && !$f->isLink()) {
+                chmod($f->getPathname(), 0777);
+            }
+        }
         $rii = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
         foreach ($rii as $f) {
-            $f->isDir() ? rmdir($f->getPathname()) : unlink($f->getPathname());
+            $f->isDir() && !$f->isLink() ? rmdir($f->getPathname()) : unlink($f->getPathname());
         }
         rmdir($dir);
     }
@@ -342,10 +360,261 @@ final class SetupSnapshotsTest extends TestCase
 
         // A process that inherits the run leaves the snapshots to the one that set it.
         $inherited = 'test-' . bin2hex(random_bytes(4));
+        $expected = sys_get_temp_dir() . '/preflow_snapshots_' . $inherited;
+        $this->dirs[] = $expected;
         $dir = $run(['PREFLOW_TEST_RUN' => $inherited] + $env);
-        $this->dirs[] = $dir;
-        $this->assertSame(sys_get_temp_dir() . '/preflow_snapshots_' . $inherited, $dir);
+        $this->assertSame($expected, $dir);
         $this->assertFileExists($dir . '/x.ser');
+    }
+
+    public function test_a_root_given_as_a_closure_is_read_when_it_is_used(): void
+    {
+        // holz: the image directory is made lazily, after the snapshots were set up.
+        $dir = '';
+        $make = function () use (&$dir): SetupSnapshots {
+            $dir = '';
+
+            return (new SetupSnapshots($this->run, $this->snapshotDir))->root('{root}', function () use (&$dir): string {
+                return $dir;
+            });
+        };
+
+        $first = $make();
+        $dir = $this->tempDir();
+        file_put_contents($dir . '/old.txt', 'before the step');
+        $this->probe($first, $dir);
+        $real = self::files($dir);
+
+        $second = $make();
+        $dir = $this->tempDir();
+        file_put_contents($dir . '/old.txt', 'before the step');
+        $this->assertSame('made', $this->probe($second, $dir));
+        $this->assertSame(1, $this->runs, 'equal content under the lazily made directory hits');
+        $this->assertSame($real, self::files($dir));
+
+        // The same closure returning '' means "no such root right now": another state.
+        $third = $make();
+        $this->probe($third, $this->tempDir());
+        $this->assertSame(2, $this->runs);
+    }
+
+    public function test_a_closure_root_that_returns_empty_is_no_root(): void
+    {
+        $step = function (): string {
+            $this->runs++;
+
+            return 'made';
+        };
+        $none = fn (): SetupSnapshots => (new SetupSnapshots($this->run, $this->snapshotDir))->root('{root}', fn (): string => '');
+        $this->assertSame('made', $none()->step('none', $step));
+        $this->assertSame('made', $none()->step('none', $step));
+        $this->assertSame(1, $this->runs);
+    }
+
+    public function test_a_failed_restore_throws_naming_the_path(): void
+    {
+        $prepare = function (string $root): void {
+            mkdir($root . '/locked');
+            file_put_contents($root . '/locked/keep.txt', 'x');
+        };
+        $step = function (string $root): string {
+            $this->runs++;
+            file_put_contents($root . '/made.txt', 'y');
+
+            return 'made';
+        };
+        $first = $this->tempDir();
+        $prepare($first);
+        $this->snapshots($first)->step('locked', fn () => $step($first));
+
+        // Same content, but the directory can't be changed (mode isn't part of the state).
+        $second = $this->tempDir();
+        $prepare($second);
+        chmod($second . '/locked', 0555);
+        try {
+            $this->snapshots($second)->step('locked', fn () => $step($second));
+            $this->fail('a restore that cannot remove a file throws');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString($second . '/locked/keep.txt', $e->getMessage());
+        } finally {
+            chmod($second . '/locked', 0777);
+        }
+        $this->assertSame(1, $this->runs);
+    }
+
+    public function test_a_symlink_under_a_root_is_refused(): void
+    {
+        $root = $this->tempDir();
+        $outside = $this->tempDir();
+        file_put_contents($outside . '/secret.txt', 'outside the root');
+        symlink($outside, $root . '/link');
+
+        try {
+            $this->probe($this->snapshots($root), $root);
+            $this->fail('a symlink under a root throws');
+        } catch (\LogicException $e) {
+            $this->assertStringContainsString('symlink', $e->getMessage());
+            $this->assertStringContainsString($root . '/link', $e->getMessage());
+        }
+        $this->assertSame(0, $this->runs);
+        $this->assertSame('outside the root', file_get_contents($outside . '/secret.txt'), 'never followed');
+    }
+
+    public function test_environment_changes_made_by_the_step_are_restored(): void
+    {
+        $step = function (string $root): string {
+            $this->runs++;
+            putenv('PREFLOW_SNAPSHOT_SET=' . $root . '/media');
+            $_ENV['PREFLOW_SNAPSHOT_SET'] = $root . '/media';
+            putenv('PREFLOW_SNAPSHOT_GONE');
+            unset($_ENV['PREFLOW_SNAPSHOT_GONE']);
+
+            return 'made';
+        };
+        $before = function (): void {
+            putenv('PREFLOW_SNAPSHOT_SET');
+            unset($_ENV['PREFLOW_SNAPSHOT_SET']);
+            putenv('PREFLOW_SNAPSHOT_GONE=1');
+            $_ENV['PREFLOW_SNAPSHOT_GONE'] = '1';
+        };
+
+        $before();
+        $first = $this->tempDir();
+        $this->snapshots($first)->step('env', fn () => $step($first));
+
+        $before();
+        $second = $this->tempDir();
+        $seen = null;
+        $result = $this->snapshots($second)
+            ->onRestore(function () use (&$seen): void {
+                $seen = getenv('PREFLOW_SNAPSHOT_SET');
+            })
+            ->step('env', fn () => $step($second));
+
+        $this->assertSame('made', $result);
+        $this->assertSame(1, $this->runs, 'restored');
+        $this->assertSame($second . '/media', getenv('PREFLOW_SNAPSHOT_SET'), 'the placeholder becomes the current root');
+        $this->assertSame($second . '/media', $_ENV['PREFLOW_SNAPSHOT_SET'] ?? null);
+        $this->assertFalse(getenv('PREFLOW_SNAPSHOT_GONE'), 'a variable the step removed is removed');
+        $this->assertArrayNotHasKey('PREFLOW_SNAPSHOT_GONE', $_ENV);
+        $this->assertSame($second . '/media', $seen, 'the environment is in place before onRestore');
+    }
+
+    public function test_only_a_paths_leading_placeholder_is_replaced(): void
+    {
+        $step = function (string $root): string {
+            $this->runs++;
+            mkdir($root . '/{root}');
+            file_put_contents($root . '/{root}/{root}.txt', 'braces in a name');
+
+            return 'made';
+        };
+        $first = $this->tempDir();
+        $this->snapshots($first)->step('braces', fn () => $step($first));
+        $real = self::files($first);
+
+        $second = $this->tempDir();
+        $this->snapshots($second)->step('braces', fn () => $step($second));
+        $this->assertSame(1, $this->runs);
+        $this->assertSame($real, self::files($second));
+    }
+
+    public function test_a_placeholder_must_look_like_braces_around_a_name(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        (new SetupSnapshots($this->run, $this->snapshotDir))->root('root', $this->tempDir());
+    }
+
+    public function test_nested_roots_are_refused(): void
+    {
+        $outer = $this->tempDir();
+        mkdir($outer . '/inner');
+        $snapshots = $this->snapshots($outer)->root('{inner}', $outer . '/inner');
+
+        $this->expectException(\LogicException::class);
+        $this->probe($snapshots, $outer);
+    }
+
+    public function test_the_same_directory_twice_is_refused(): void
+    {
+        $root = $this->tempDir();
+        $snapshots = $this->snapshots($root)->root('{again}', $root . '/');
+
+        $this->expectException(\LogicException::class);
+        $this->probe($snapshots, $root);
+    }
+
+    public function test_an_empty_root_directory_is_refused(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        (new SetupSnapshots($this->run, $this->snapshotDir))->root('{root}', '');
+    }
+
+    public function test_ignoring_a_path_under_no_registered_root_is_refused(): void
+    {
+        $root = $this->tempDir();
+        $snapshots = (new SetupSnapshots($this->run, $this->snapshotDir))
+            ->ignore('{later}/error.log')   // registered after: fine
+            ->root('{root}', $root)
+            ->root('{later}', $this->tempDir());
+        $this->probe($snapshots, $root);
+        $this->assertSame(1, $this->runs);
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('{typo}/error.log');
+        $this->probe($this->snapshots($root)->ignore('{typo}/error.log'), $root);
+    }
+
+    public function test_a_missing_root_and_an_empty_root_are_different_states(): void
+    {
+        $step = function (string $root): string {
+            $this->runs++;
+            is_dir($root) || mkdir($root);
+            file_put_contents($root . '/made.txt', 'made');
+
+            return 'made';
+        };
+        $missing = $this->tempDir();
+        rmdir($missing);
+        $this->snapshots($missing)->step('exists', fn () => $step($missing));
+
+        $empty = $this->tempDir();
+        $this->snapshots($empty)->step('exists', fn () => $step($empty));
+        $this->assertSame(2, $this->runs, 'an empty root is not a missing root');
+    }
+
+    public function test_a_root_the_step_makes_or_removes_is_made_or_removed_on_restore(): void
+    {
+        $make = function (string $root): string {
+            $this->runs++;
+            mkdir($root);
+
+            return 'made';
+        };
+        $first = $this->tempDir();
+        rmdir($first);
+        $this->snapshots($first)->step('makes-root', fn () => $make($first));
+        $second = $this->tempDir();
+        rmdir($second);
+        $this->snapshots($second)->step('makes-root', fn () => $make($second));
+        $this->assertSame(1, $this->runs);
+        $this->assertDirectoryExists($second, 'an empty root the step made is made');
+
+        $remove = function (string $root): string {
+            $this->runs++;
+            unlink($root . '/x.txt');
+            rmdir($root);
+
+            return 'removed';
+        };
+        $third = $this->tempDir();
+        file_put_contents($third . '/x.txt', 'x');
+        $this->snapshots($third)->step('removes-root', fn () => $remove($third));
+        $fourth = $this->tempDir();
+        file_put_contents($fourth . '/x.txt', 'x');
+        $this->snapshots($fourth)->step('removes-root', fn () => $remove($fourth));
+        $this->assertSame(2, $this->runs);
+        $this->assertDirectoryDoesNotExist($fourth, 'a root the step removed is removed');
     }
 
     public function test_every_registered_database_is_in_the_key_and_restored(): void
