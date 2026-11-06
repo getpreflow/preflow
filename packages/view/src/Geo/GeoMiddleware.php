@@ -166,10 +166,17 @@ final class GeoMiddleware implements MiddlewareInterface
         $this->dropNativeCookies();
 
         $headers = ['Vary' => 'Accept', 'X-Content-Type-Options' => 'nosniff'];
+        if ($markdown === null) {
+            return new Response(404, ['Content-Type' => 'text/plain; charset=utf-8'] + $headers, "Not Found\n");
+        }
 
-        return $markdown === null
-            ? new Response(404, ['Content-Type' => 'text/plain; charset=utf-8'] + $headers, "Not Found\n")
-            : new Response(200, ['Content-Type' => 'text/markdown; charset=utf-8', 'Cache-Control' => self::CACHE_CONTROL] + $headers, $markdown);
+        // The HTML page is the one to index: the URL the Source line names (the page's canonical).
+        $source = preg_match('/^Source: (\S+)$/m', $markdown, $m) === 1 ? $m[1] : null;
+        if ($source !== null) {
+            $headers['Link'] = '<' . $source . '>; rel="canonical"';
+        }
+
+        return new Response(200, ['Content-Type' => 'text/markdown; charset=utf-8', 'Cache-Control' => self::CACHE_CONTROL] + $headers, $markdown);
     }
 
     /** $response with `Accept` in its `Vary` header. */
@@ -347,6 +354,7 @@ final class GeoMiddleware implements MiddlewareInterface
         $title = trim((string) preg_replace('/\s+/', ' ', $document->querySelector('title')?->textContent ?? ''));
         $canonical = trim((string) $document->querySelector('link[rel~="canonical"][href]')?->getAttribute('href'));
         $source = $canonical !== '' ? PageSignals::absolute($canonical, $origin) : $origin . $path;
+        $updated = self::date($document->querySelector('meta[property="og:updated_time"][content], meta[property="article:modified_time"][content]')?->getAttribute('content'));
 
         // Blocks a page or layout template declares outside components lead the converted page
         // (a page that wants only its block marks its own HTML data-geo="skip").
@@ -356,9 +364,25 @@ final class GeoMiddleware implements MiddlewareInterface
         );
         $body = implode("\n\n", $parts);
 
-        $markdown = ($title !== '' ? '# ' . $title . "\n\n" : '') . 'Source: ' . $source . "\n";
+        // Who copies a part keeps where it came from and how fresh it is.
+        $markdown = ($title !== '' ? '# ' . $title . "\n\n" : '') . 'Source: ' . $source . "\n"
+            . ($updated !== null ? 'Updated: ' . $updated . "\n" : '');
 
         return $body === '' ? $markdown : $markdown . "\n" . $body . "\n";
+    }
+
+    /** The day of an ISO 8601 time as written (its own offset), or null when it isn't one. */
+    private static function date(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if (preg_match('/^\d{4}-\d{2}-\d{2}/', $value) !== 1) {
+            return null;
+        }
+        try {
+            return (new \DateTimeImmutable($value))->format('Y-m-d');
+        } catch (\Exception) {
+            return null;
+        }
     }
 
     /** Add the Markdown alternate to a public HTML page: `Link` header and `<link>` in the head. */

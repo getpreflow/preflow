@@ -16,6 +16,8 @@ final readonly class PageMeta
      * @param list<array>  $schemas          extra JSON-LD nodes for this page
      * @param bool         $publicContent    the content is the same for everyone although the response is private
      *                                       (it embeds one visitor's tokens): cards and JSON-LD all the same (since 0.53.1)
+     * @param string       $modified         when the content last changed (ISO 8601; '' unknown): og:updated_time,
+     *                                       the WebPage's dateModified and the Markdown view's Updated line (since 0.55)
      */
     public function __construct(
         public string $title = '',
@@ -28,6 +30,7 @@ final readonly class PageMeta
         public string $ogType = 'website',
         public array $schemas = [],
         public bool $publicContent = false,
+        public string $modified = '',
     ) {}
 
     /** A copy with some properties changed; keys are the constructor's parameter names. */

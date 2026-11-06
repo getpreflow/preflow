@@ -145,6 +145,8 @@ return [
     'noindex_field' => null,
     // Serve /llms-full.txt (every listed page's Markdown in one file).
     'full' => true,
+    // The audit reports llms-full.txt above this size (MB) as too large to be useful (since 0.55).
+    'full_max_mb' => 5,
     // Pages without a Markdown view; also left out of llms.txt.
     'exclude' => ['/thank-you'],
 ];
@@ -159,6 +161,10 @@ Then every public page has a Markdown view:
   `X-Robots-Tag` header), Folio previews and excluded paths have none: their `.md` URL is a 404. Asked for with
   `Accept: text/markdown`, they (and redirects, JSON, files…) answer as they always do.
 - The Markdown, `/llms.txt` and `/llms-full.txt` are sent with `Cache-Control: public, max-age=3600`.
+- The Markdown starts with the page's title, a `Source:` line with its canonical URL and, when the page names one,
+  an `Updated:` line with the date its content last changed (its `og:updated_time` or `article:modified_time`;
+  with SEO on that is `PageMeta::$modified`, for Folio records their publish time). It is sent with
+  `Link: <canonical URL>; rel="canonical"`, so search engines index the HTML page, not its `.md` URL. Since 0.55.
 - HTML pages that have one point to it with `<link rel="alternate" type="text/markdown">` and a `Link` header.
 
 ### What ends up in the Markdown
@@ -347,7 +353,8 @@ What a page gets:
 
 - `<meta name="robots" content="max-image-preview:large">`, or `noindex` for a page hidden from search engines.
 - `og:title`, `og:description`, `og:image` (with width, height and alt), `og:url`, `og:type`, `og:site_name`,
-  `og:locale` and its alternates, and `twitter:card` (`summary_large_image` with an image).
+  `og:locale` and its alternates, `og:updated_time` when the page knows when it last changed (`modified`; Folio
+  records: their publish time; since 0.55), and `twitter:card` (`summary_large_image` with an image).
 - JSON-LD: the `WebSite` and its owner on each language's home page, a `WebPage` on every page, and the nodes the
   page or its type adds (below). A page that prints its own `application/ld+json` (in the head or the body) gets
   none of ours.
@@ -387,6 +394,7 @@ values are merged over what a Folio record set.
     image: game.cover_url,       {# an image URL; or the array MediaLibrary::shareImage() returns #}
     og_type: 'article',
     noindex: false,
+    modified: game.updated_at,   {# ISO 8601: og:updated_time, dateModified, the Markdown's Updated line (0.55) #}
     schema: {'@type': 'Game', name: game.title},
 }) %}
 ```
@@ -575,6 +583,8 @@ Pages (each public page that answers 2xx; the `status.*` rows cover the rest):
 | `noindex.in-sitemap` | critical | The page is `noindex` but the sitemap lists it |
 | `hreflang.unpaired` | warning | A language version that doesn't link back, or an alternate that isn't one of the site's public pages |
 | `hreflang.x-default-missing` | notice | A page with language alternates but no `x-default` |
+| `geo.markdown-thin` | warning | GEO is on and the page's Markdown view is empty, or holds under a third of the words its `<main>` shows (pages under 50 words: only an empty one). Renders each `.md` once more. Since 0.55 |
+| `geo.type-schema-missing` | notice | SEO is on and three or more pages under one address segment (`/spiele/…`) carry only generic JSON-LD (WebPage, BreadcrumbList…), nothing that says what they are about; one finding per group. Since 0.55 |
 | `link.broken` | critical | An internal link whose target answers 404, 410 or 5xx (also redirect loops) |
 | `link.broken` | notice | An internal link that goes through two or more redirects |
 
@@ -591,6 +601,7 @@ The site (once per run, after the pages):
 | `sitemap.invalid` | critical | The sitemap isn't valid XML with a urlset or sitemapindex |
 | `sitemap.non200` | critical | A URL in the sitemap doesn't answer 200 |
 | `llms.missing` | warning | No `/llms.txt` for a language (when GEO is on) |
+| `llms.full-too-large` | warning | A language's `/llms-full.txt` is larger than `full_max_mb` in `config/geo.php` (default 5). Since 0.55 |
 | `notfound.status` | critical | An address that doesn't exist answers something other than 404 |
 | `notfound.no-home-link` | warning | The 404 page has no link to the home page |
 | `favicon.raster-missing` | warning | No linked raster icon of at least 48 px and no `/favicon.ico` |

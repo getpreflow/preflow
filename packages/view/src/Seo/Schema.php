@@ -43,7 +43,8 @@ final class Schema
     }
 
     /** @param ?array{url: string, width?: int, height?: int, alt?: string} $image */
-    public static function webPage(string $url, string $name, string $description, string $inLanguage, string $siteUrl, ?array $image = null): array
+    /** @param ?string $dateModified ISO 8601, when the page's content last changed (since 0.55) */
+    public static function webPage(string $url, string $name, string $description, string $inLanguage, string $siteUrl, ?array $image = null, ?string $dateModified = null): array
     {
         return self::filter([
             '@type' => 'WebPage',
@@ -54,6 +55,7 @@ final class Schema
             'inLanguage' => $inLanguage,
             'isPartOf' => ['@id' => rtrim($siteUrl, '/') . '/#website'],
             'primaryImageOfPage' => $image === null ? null : self::imageObject($image),
+            'dateModified' => $dateModified,
         ]);
     }
 

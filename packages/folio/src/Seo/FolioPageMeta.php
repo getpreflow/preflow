@@ -80,6 +80,8 @@ final class FolioPageMeta
             alternateLocales: array_values(array_diff($alternateLocales, [$locale])),
             noindex: $seo->noindex() || self::hiddenByField($record, $locale, $this->noindexField),
             ogType: $mapping['og_type'] ?? 'website',
+            // The publish time, as the sitemap's lastmod has it.
+            modified: is_string($publishedAt = $record->get('_published_at')) ? $publishedAt : '',
         );
 
         return $meta->with(['schemas' => $this->schemas->nodesFor($type, $record->localized($locale)->toArray(), $locale, $meta)]);

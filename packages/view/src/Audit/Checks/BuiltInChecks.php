@@ -24,7 +24,7 @@ final class BuiltInChecks
     /**
      * @param ?string $publicDir the web server's document root, whose files the checks read instead of rendering
      * @param ?SeoConfig $seo    SEO's settings; without them (or with SEO off) the SEO site checks find nothing
-     * @param ?GeoConfig $geo    GEO's settings; without them (or with GEO off) the llms.txt check finds nothing
+     * @param ?GeoConfig $geo    GEO's settings; without them (or with GEO off) the GEO checks find nothing
      */
     public static function register(
         AuditRegistry $registry,
@@ -48,6 +48,7 @@ final class BuiltInChecks
         $registry->addPage(new CanonicalForeignHost($registry, $renderer->origin()));
         $registry->addPage(new NoindexInSitemap($registry, $pages, $locales));
         $registry->addPage(new HreflangXDefaultMissing($registry, count($locales) > 1));
+        $registry->addPage(new GeoMarkdownThin($registry, $renderer, $geo ?? new GeoConfig()));
 
         $registry->addRun(new TitleDuplicate($registry));
         $registry->addRun(new DescriptionDuplicate($registry));
@@ -55,9 +56,11 @@ final class BuiltInChecks
         $registry->addRun(new BrokenLinks($registry, $renderer, $publicDir));
 
         $seo ??= new SeoConfig();
+        $registry->addRun(new GeoTypeSchemaMissing($registry, $seo));
         $registry->addSite(new SiteRobots($seo, $publicDir));
         $registry->addSite(new SiteSitemap($seo, $pages, $publicDir));
         $registry->addSite(new SiteLlms($geo ?? new GeoConfig(), $publicDir));
+        $registry->addSite(new LlmsFullTooLarge($geo ?? new GeoConfig(), $publicDir));
         $registry->addSite(new SiteNotFound());
         $registry->addSite(new SiteIcons($publicDir));
         $registry->addSite(new SiteEtag($seo));

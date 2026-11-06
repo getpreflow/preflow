@@ -67,5 +67,7 @@ final class JsonLdTest extends TestCase
         $this->assertArrayNotHasKey('author', $article);
         $this->assertArrayNotHasKey('image', $article);
         $this->assertArrayNotHasKey('datePublished', $article);
+        $this->assertArrayNotHasKey('dateModified', $page);
+        $this->assertSame('2026-11-05T10:00:00+00:00', Schema::webPage('https://example.com/', 'Home', '', 'en', 'https://example.com', null, '2026-11-05T10:00:00+00:00')['dateModified']);
     }
 }

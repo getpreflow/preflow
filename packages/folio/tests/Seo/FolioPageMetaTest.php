@@ -172,6 +172,16 @@ final class FolioPageMetaTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_modified_is_the_records_publish_time(): void
+    {
+        $app = $this->app();
+
+        $published = $this->record($app, 'post', 'p', ['title' => ['en' => 'P'], '_published_at' => '2026-11-05T10:00:00+00:00']);
+        $this->assertSame('2026-11-05T10:00:00+00:00', $this->meta($app, $published)->modified);
+        $this->assertSame('', $this->meta($app, $this->record($app, 'post', 'q', ['title' => ['en' => 'Q']]))->modified);
+    }
+
+    #[RunInSeparateProcess]
     public function test_geos_noindex_field_makes_the_page_noindex(): void
     {
         $this->write('config/geo.php', "<?php\nreturn ['enabled' => false, 'noindex_field' => 'hidden'];\n");
