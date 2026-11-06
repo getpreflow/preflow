@@ -196,6 +196,28 @@ final class SetupSnapshotsTest extends TestCase
         }
     }
 
+    public function test_every_hit_gets_its_own_copy_of_the_result(): void
+    {
+        $step = function (): \ArrayObject {
+            $this->runs++;
+
+            return new \ArrayObject(['seeded' => 1]);
+        };
+
+        $miss = $this->snapshots($this->tempDir())->step('object', $step);
+        $miss['changed by the test'] = true;
+
+        $first = $this->snapshots($this->tempDir())->step('object', $step);
+        $this->assertNotSame($miss, $first);
+        $this->assertSame(['seeded' => 1], $first->getArrayCopy());
+        $first['changed by the test'] = true;
+
+        $second = $this->snapshots($this->tempDir())->step('object', $step);
+        $this->assertNotSame($first, $second);
+        $this->assertSame(['seeded' => 1], $second->getArrayCopy());
+        $this->assertSame(1, $this->runs);
+    }
+
     public function test_an_unserializable_result_runs_every_time(): void
     {
         $root = $this->tempDir();

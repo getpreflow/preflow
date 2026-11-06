@@ -22,7 +22,7 @@ final class SetupSnapshots
     /** Snapshots this process used last, by file (the rest are only in their files). */
     private const int IN_MEMORY = 4;
 
-    /** @var array<string, array> */
+    /** @var array<string, string> serialized: every hit unserializes its own copy of the result */
     private static array $memory = [];
 
     private readonly string $run;
@@ -109,9 +109,10 @@ final class SetupSnapshots
         }
 
         $file = $this->directory . '/' . hash('xxh128', $name . "\0" . $this->state()) . '.ser';
-        $snapshot = self::$memory[$file] ?? (is_file($file) ? unserialize((string) file_get_contents($file)) : null);
+        $stored = self::$memory[$file] ?? (is_file($file) ? (string) file_get_contents($file) : null);
+        $snapshot = $stored !== null ? unserialize($stored) : null;
         if (is_array($snapshot)) {
-            self::remember($file, $snapshot);
+            self::remember($file, $stored);
             $this->restoreFiles($snapshot['files']);
             if ($this->onRestore !== null) {
                 ($this->onRestore)();
@@ -123,8 +124,9 @@ final class SetupSnapshots
         $result = $step();
         $snapshot = $this->capture($result);
         if ($snapshot !== null) {
-            self::remember($file, $snapshot);
-            $this->store($file, $snapshot);
+            $stored = serialize($snapshot);
+            self::remember($file, $stored);
+            $this->store($file, $stored);
         }
 
         return $result;
@@ -135,7 +137,7 @@ final class SetupSnapshots
         return sys_get_temp_dir() . '/preflow_snapshots_' . $run;
     }
 
-    private static function remember(string $file, array $snapshot): void
+    private static function remember(string $file, string $snapshot): void
     {
         unset(self::$memory[$file]);
         self::$memory[$file] = $snapshot;
@@ -145,13 +147,13 @@ final class SetupSnapshots
     }
 
     /** Written to a temp file and renamed, so another process never reads half a snapshot. */
-    private function store(string $file, array $snapshot): void
+    private function store(string $file, string $snapshot): void
     {
         if (!is_dir($this->directory)) {
             @mkdir($this->directory, 0777, true);
         }
         $tmp = $file . '.' . getmypid();
-        file_put_contents($tmp, serialize($snapshot));
+        file_put_contents($tmp, $snapshot);
         rename($tmp, $file);
     }
 
