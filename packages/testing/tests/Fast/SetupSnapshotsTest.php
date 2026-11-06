@@ -6,6 +6,7 @@ namespace Preflow\Testing\Tests\Fast;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Testing\Fast\SetupSnapshots;
+use Preflow\Testing\Fast\SnapshotDatabase;
 
 /**
  * A restored step leaves exactly what the real step left, whatever the test before changed;
@@ -345,5 +346,121 @@ final class SetupSnapshotsTest extends TestCase
         $this->dirs[] = $dir;
         $this->assertSame(sys_get_temp_dir() . '/preflow_snapshots_' . $inherited, $dir);
         $this->assertFileExists($dir . '/x.ser');
+    }
+
+    public function test_every_registered_database_is_in_the_key_and_restored(): void
+    {
+        $root = $this->tempDir();
+        $a = new FakeSnapshotDatabase(['t' => 'a1']);
+        $b = new FakeSnapshotDatabase(['u' => 'b1']);
+        $make = fn (): SetupSnapshots => $this->snapshots($root)->database('a', $a)->database('b', $b);
+        $step = function () use ($a, $b): string {
+            $this->runs++;
+            $a->tables['made'] = 'x';
+            $b->tables['made'] = 'y';
+
+            return 'done';
+        };
+
+        $make()->step('dbs', $step);
+        $this->assertSame(1, $this->runs);
+        $expectedA = $a->tables;
+        $expectedB = $b->tables;
+
+        // Same start: a hit, both restored with their own tables.
+        $a->tables = ['t' => 'a1'];
+        $b->tables = ['u' => 'b1'];
+        $snapshots = $make();
+        $this->assertSame('done', $snapshots->step('dbs', $step));
+        $snapshots->flush();
+        $this->assertSame(1, $this->runs);
+        $this->assertSame($expectedA, $a->tables);
+        $this->assertSame($expectedB, $b->tables);
+
+        // Either database changed: the step runs for real.
+        $a->tables = ['t' => 'changed'];
+        $b->tables = ['u' => 'b1'];
+        $make()->step('dbs', $step);
+        $this->assertSame(2, $this->runs);
+
+        $a->tables = ['t' => 'a1'];
+        $b->tables = ['u' => 'changed'];
+        $make()->step('dbs', $step);
+        $this->assertSame(3, $this->runs);
+    }
+
+    public function test_a_hit_then_a_miss_writes_the_pending_tables_before_the_real_step(): void
+    {
+        $root = $this->tempDir();
+        $db = new FakeSnapshotDatabase([]);
+        $a = function () use ($db): string {
+            $this->runs++;
+            $db->tables['a'] = '1';
+
+            return 'a';
+        };
+        $this->snapshots($root)->database('main', $db)->step('a', $a);
+        $this->assertSame(1, $this->runs);
+
+        // A fresh test: a hits (tables pending), then c has no snapshot for this state.
+        $db->tables = [];
+        $db->log = [];
+        $seen = null;
+        $c = function () use ($db, &$seen): string {
+            $seen = $db->tables;
+            $db->log[] = 'c';
+            $db->tables['c'] = '3';
+
+            return 'c';
+        };
+        $second = $this->snapshots($root)->database('main', $db);
+        $this->assertSame('a', $second->step('a', $a));
+        $this->assertSame([], $db->tables, 'a hit writes lazily');
+        $this->assertSame('c', $second->step('c', $c));
+        $this->assertSame(1, $this->runs);
+        $this->assertSame(['restore', 'c'], $db->log, 'the pending tables are written before the real step');
+        $this->assertSame(['a' => '1'], $seen);
+
+        // c's outcome was captured from the restored state: a later test gets a and c.
+        $db->tables = [];
+        $third = $this->snapshots($root)->database('main', $db);
+        $third->step('a', $a);
+        $this->assertSame('c', $third->step('c', fn (): never => $this->fail('c is restored')));
+        $third->flush();
+        $this->assertSame(['a' => '1', 'c' => '3'], $db->tables);
+    }
+}
+
+/** An in-memory database for SetupSnapshots tests: tables are name => content. */
+final class FakeSnapshotDatabase implements SnapshotDatabase
+{
+    /** @var list<string> */
+    public array $log = [];
+
+    /** @param array<string, string> $tables */
+    public function __construct(public array $tables = [])
+    {
+    }
+
+    public function state(): array
+    {
+        return ['tables' => $this->tables];
+    }
+
+    public function capture(): array
+    {
+        return $this->tables;
+    }
+
+    public function restore(array $tables): void
+    {
+        $this->log[] = 'restore';
+        $this->tables = $tables;
+    }
+
+    public function empty(): void
+    {
+        $this->log[] = 'empty';
+        $this->tables = [];
     }
 }

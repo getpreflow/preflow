@@ -326,6 +326,13 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   `Updated:` line; on a listing or home page that date doesn't follow records shown on it (a per-type opt-out can
   follow if a site needs one). The two GEO page checks render more: `geo.markdown-thin` each page's `.md` once more,
   `llms.full-too-large` the whole llms-full.txt per language; a long audit continues where it stopped as before.
+- ~~**Fast test suites (0.56):**~~ done in 0.56.0 (`preflow/testing`: `Fast\SetupSnapshots` runs a set-up step such as
+  migrate or seed once and restores its result for every later test that starts from exactly the same state: same
+  environment, same files under the registered roots, same tables; any difference runs the step for real. `Fast\MysqlSnapshotDatabase`
+  for MySQL, SQLite needs no adapter. `Fast\TestWorker` names databases and directories per paratest worker. No test is
+  skipped or weakened. See "Fast suites" in `packages/testing/README.md`). **Upgrading:** nothing changes unless a site opts in.
+  Sites add `brianium/paratest` to require-dev, the `test` (paratest) and `test:serial` composer scripts, and call
+  `SetupSnapshots::bootstrap()` from `tests/bootstrap.php`. Timings: see below (filled in after the sites move).
 - **An analytics package (later, its own project; owner, 2026-11-06):** privacy-first visit counts, AI usage among
   them: per day, by AI agent family (OpenAI, Anthropic, Perplexity, Google…) and by what was fetched (HTML, Markdown,
   llms.txt), top pages per agent family, and one "everyone else" total. No paths with visitor data, no IP addresses,

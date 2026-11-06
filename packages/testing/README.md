@@ -126,3 +126,140 @@ final class PostRepositoryTest extends DataTestCase
 | `dataManager()` | `DataManager` with both drivers registered |
 | `createTable(string $name, callable $cb)` | Creates table via Schema builder |
 | `getPdo()` | Raw `\PDO` instance |
+
+## Fast suites
+
+Most of a site's test time goes into set-up, not into testing: migrate, seed, build a database. `Preflow\Testing\Fast` runs
+each set-up step once and gives every later test that starts from the same state what the step left behind. Nothing is
+skipped and no test is weakened. A test that starts from a different state runs the step for real.
+
+Two parts: `SetupSnapshots` (run a step once, restore its result) and `TestWorker` (own databases and directories per
+paratest worker).
+
+### The snapshot rule
+
+`$snapshots->step($name, $callable)` restores only when the state is exactly the same as when the step ran. The state is:
+
+- the step's name
+- every environment variable (`getenv()` and `$_ENV`)
+- the content of every file under the registered roots
+- every table's definition and checksum, for each registered database
+
+If any of these differs, the step runs for real. That includes an environment variable a test set, a file a test wrote and
+a row a test inserted. A restored step leaves what the real step left: files the step did not leave are removed.
+
+On a miss the step runs and its outcome is kept for later tests. Nothing is kept when the outcome names a root's real path
+(in a row or in the return value), when a root's placeholder appears in a file, when the return value cannot be serialized
+or when the step throws. Those steps run for real every time.
+
+### Effects outside the roots
+
+A step may only change files under its roots and the registered databases. Anything else it writes must be a derived
+cache, rebuilt from code, config and that state (Folio's extension and block caches are). If your step writes anything
+else, register that directory as a root too. Then its content is part of the state.
+
+### Setting it up
+
+```php
+// tests/bootstrap.php
+require __DIR__ . '/../vendor/autoload.php';
+
+\Preflow\Testing\Fast\SetupSnapshots::bootstrap();
+```
+
+`bootstrap()` makes one run id per phpunit or paratest run (`PREFLOW_TEST_RUN`). Separate-process tests inherit it. Only
+the process that made the id removes the snapshots at the end. Without a run id, snapshots are off.
+
+In your test scaffold, keep one `SetupSnapshots` per test:
+
+```php
+$snapshots = (new SetupSnapshots())
+    ->root('{siteTmp}', $this->siteTmp)             // this test's own temp dir
+    ->ignore('{siteTmp}/storage/logs/error.log')    // nothing depends on it
+    ->database('main', new MysqlSnapshotDatabase(fn () => $this->pdo(), TestWorker::name('site_test')))
+    ->onRestore(function (): void {
+        $this->app = null;                           // drop what you booted before the step
+    });
+
+$snapshots->step('migrate', fn () => $this->runMigrate());
+$report = $snapshots->step('seed', fn () => ['users' => $this->runSeed()]);
+```
+
+- **`root($placeholder, $dir)`**: a directory that is this test's own, with a random name. The name is replaced by the
+  placeholder in the state, so another test's equal state under another name matches.
+- **`ignore($path)`**: a path under a root, written like `{siteTmp}/error.log`. It is left out of the state and kept on
+  restore. Use it for logs.
+- **`onRestore(Closure)`**: called after a restored step's files are in place. Drop your booted app, PDO handles and
+  in-process caches here. Do not hold an open SQLite connection across a step. The `-wal` and `-shm` files are files under
+  the root like any other. SQLite needs no adapter: its database is a file under a root.
+
+### Return values
+
+A hit returns the value the real step returned, as its own copy. The value must survive `serialize()`. Return scalars or
+arrays: what a test needs from an import report, not the report object. A step that returns a closure or an object holding
+your container runs for real every time and nothing is stored.
+
+### Databases and lazy writing
+
+`database($name, SnapshotDatabase $db)` registers a database. Call it more than once for several databases. Every
+registered database is part of the state and restored. `MysqlSnapshotDatabase(\Closure $pdo, string $database)` is the
+adapter for MySQL; it refuses a connection whose current database is not `$database`, so it never touches a real one.
+
+A restored step does not write its tables at once. They are written when something next touches the database:
+`$snapshots->flush()`. Call it from your own `app()` or PDO helper. A restored migrate followed by a restored seed then
+writes the tables once. `$snapshots->reset()` marks the databases to be emptied the same lazy way; call it when your
+scaffold boots a fresh site.
+
+Limits of the MySQL adapter: views and generated columns are not supported. A table with more than about 327 columns hits
+the 65535-placeholder limit of one 200-row `INSERT`.
+
+You can write your own adapter for another database: implement `SnapshotDatabase` (`state()`, `capture()`, `restore()`,
+`empty()`).
+
+### Turning it off
+
+`PREFLOW_TEST_SNAPSHOTS=0 vendor/bin/phpunit` runs every step for real. Do that when you suspect a snapshot.
+
+### Workers
+
+paratest numbers its workers with `TEST_TOKEN` (1, 2, ...). `TestWorker` turns that into names:
+
+```php
+TestWorker::token();                  // 3, or null in a plain phpunit run
+TestWorker::suffix();                 // '_3' or ''
+TestWorker::name('site_test');        // 'site_test_3' or 'site_test'
+TestWorker::dir('site_folio_cache');  // sys_get_temp_dir() . '/site_folio_cache_3', created
+TestWorker::createMysqlDatabase($serverPdo, TestWorker::name('site_test'), $user);
+```
+
+`createMysqlDatabase()` runs `CREATE DATABASE IF NOT EXISTS`. If the user lacks the rights, the exception names the
+`GRANT` a database admin must run once, for example ``GRANT ALL PRIVILEGES ON `site\_test\_%`.* TO 'user'@'localhost';``.
+
+Workers can share one snapshot directory (they inherit the run id) or make their own. Both are correct: files are
+written by atomic rename, and the state holds the worker's database name and paths.
+
+### Running with paratest
+
+```
+composer require --dev brianium/paratest
+```
+
+```json
+"scripts": {
+    "test": [
+        "Composer\\Config::disableProcessTimeout",
+        "@php vendor/bin/paratest --processes=6"
+    ],
+    "test:serial": [
+        "Composer\\Config::disableProcessTimeout",
+        "@php vendor/bin/phpunit"
+    ]
+},
+"scripts-descriptions": {
+    "test": "All tests, 6 workers in parallel (each its own databases)",
+    "test:serial": "All tests in one process"
+}
+```
+
+`composer test` is the fast run. `composer test:serial` is the same tests in one process. A test must pass alone, in
+any order, serial or parallel.
