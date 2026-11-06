@@ -257,15 +257,24 @@ final class JsonFileDriverTest extends TestCase
         return [new JsonFileDriver($this->dataDir, $cacheDir), $cacheDir];
     }
 
+    /** The data path's cache (or generation) file of the type, named per data path. */
+    private function cacheFile(string $cacheDir, string $type, string $ext = 'json'): string
+    {
+        $found = glob($cacheDir . '/json-' . $type . '-*.' . $ext) ?: [];
+        $this->assertLessThanOrEqual(1, count($found));
+
+        return $found[0] ?? $cacheDir . '/json-' . $type . '-(none).' . $ext;
+    }
+
     public function test_cache_second_query_reads_the_cache(): void
     {
         [$driver, $cacheDir] = $this->cached();
         $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'Original']);
         $this->assertSame('Original', $driver->findMany('post', new Query())->items()[0]['title']);
-        $this->assertFileExists($cacheDir . '/json-post.json');
+        $this->assertFileExists($this->cacheFile($cacheDir, 'post', 'json'));
 
-        $cache = file_get_contents($cacheDir . '/json-post.json');
-        file_put_contents($cacheDir . '/json-post.json', str_replace('Original', 'FromCache', $cache));
+        $cache = file_get_contents($this->cacheFile($cacheDir, 'post', 'json'));
+        file_put_contents($this->cacheFile($cacheDir, 'post', 'json'), str_replace('Original', 'FromCache', $cache));
 
         $this->assertSame('FromCache', $driver->findMany('post', new Query())->items()[0]['title']);
         $this->deleteDir($cacheDir);
@@ -314,7 +323,7 @@ final class JsonFileDriverTest extends TestCase
         [$driver, $cacheDir] = $this->cached();
         $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A']);
         $driver->findMany('post', new Query());
-        $stale = (string) file_get_contents($cacheDir . '/json-post.json');
+        $stale = (string) file_get_contents($this->cacheFile($cacheDir, 'post', 'json'));
         $file = $this->dataDir . '/post/p1.json';
         $dir = $this->dataDir . '/post';
         clearstatcache();
@@ -325,7 +334,7 @@ final class JsonFileDriverTest extends TestCase
         touch($file, $fileTime);
         touch($dir, $dirTime);
         // ... and a reader that read the records before it writes its cache after the save's clearCache().
-        file_put_contents($cacheDir . '/json-post.json', $stale);
+        file_put_contents($this->cacheFile($cacheDir, 'post', 'json'), $stale);
 
         $this->assertSame('B', $driver->findMany('post', new Query())->items()[0]['title']);
         $this->deleteDir($cacheDir);
@@ -335,19 +344,19 @@ final class JsonFileDriverTest extends TestCase
     {
         [$driver, $cacheDir] = $this->cached();
         $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A']);
-        $first = (string) file_get_contents($cacheDir . '/json-post.gen');
+        $first = (string) file_get_contents($this->cacheFile($cacheDir, 'post', 'gen'));
         $driver->findMany('post', new Query());
-        $this->assertSame($first, file_get_contents($cacheDir . '/json-post.gen'));
+        $this->assertSame($first, file_get_contents($this->cacheFile($cacheDir, 'post', 'gen')));
 
         $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'B']);
-        $second = (string) file_get_contents($cacheDir . '/json-post.gen');
+        $second = (string) file_get_contents($this->cacheFile($cacheDir, 'post', 'gen'));
         $this->assertNotSame($first, $second);
         $driver->delete('post', 'p1');
-        $this->assertNotSame($second, file_get_contents($cacheDir . '/json-post.gen'));
+        $this->assertNotSame($second, file_get_contents($this->cacheFile($cacheDir, 'post', 'gen')));
         $this->assertSame([], glob($cacheDir . '/*.tmp-*'));
 
         $driver->clearCache();
-        $this->assertFileExists($cacheDir . '/json-post.gen', 'clearing the cache keeps the generation');
+        $this->assertFileExists($this->cacheFile($cacheDir, 'post', 'gen'), 'clearing the cache keeps the generation');
         $this->deleteDir($cacheDir);
     }
 
@@ -360,15 +369,81 @@ final class JsonFileDriverTest extends TestCase
         $driver->findMany('page', new Query());
 
         $driver->clearCache('post');
-        $this->assertFileDoesNotExist($cacheDir . '/json-post.json');
-        $this->assertFileExists($cacheDir . '/json-page.json');
+        $this->assertFileDoesNotExist($this->cacheFile($cacheDir, 'post', 'json'));
+        $this->assertFileExists($this->cacheFile($cacheDir, 'page', 'json'));
         $driver->clearCache();
-        $this->assertFileDoesNotExist($cacheDir . '/json-page.json');
+        $this->assertFileDoesNotExist($this->cacheFile($cacheDir, 'page', 'json'));
 
         $driver->findMany('post', new Query());
-        file_put_contents($cacheDir . '/json-post.json', '{not json');
+        file_put_contents($this->cacheFile($cacheDir, 'post', 'json'), '{not json');
         $this->assertCount(1, $driver->findMany('post', new Query())->items());
         $this->assertSame($cacheDir, $driver->cacheDir());
+        $this->deleteDir($cacheDir);
+    }
+
+    public function test_two_data_paths_never_share_a_cache(): void
+    {
+        $cacheDir = $this->dataDir . '-cache';
+        $otherDir = $this->dataDir . '-other';
+        $a = new JsonFileDriver($this->dataDir, $cacheDir);
+        $b = new JsonFileDriver($otherDir, $cacheDir);
+        $a->save('post', 'p1', ['uuid' => 'p1', 'title' => 'AAAA']);
+        $b->save('post', 'p1', ['uuid' => 'p1', 'title' => 'BBBB']);
+        // Same count, size and mtimes: the signatures alone cannot tell the two paths apart.
+        $time = time() - 100;
+        foreach ([$this->dataDir, $otherDir] as $dir) {
+            touch($dir . '/post/p1.json', $time);
+            touch($dir . '/post', $time);
+        }
+
+        $this->assertSame('AAAA', $a->findMany('post', new Query())->items()[0]['title']);
+        $this->assertSame('BBBB', $b->findMany('post', new Query())->items()[0]['title']);
+        $this->assertSame('AAAA', $a->findMany('post', new Query())->items()[0]['title']);
+        $this->deleteDir($cacheDir);
+        $this->deleteDir($otherDir);
+    }
+
+    public function test_a_save_in_one_data_path_keeps_the_other_paths_cache(): void
+    {
+        $cacheDir = $this->dataDir . '-cache';
+        $otherDir = $this->dataDir . '-other';
+        $a = new JsonFileDriver($this->dataDir, $cacheDir);
+        $b = new JsonFileDriver($otherDir, $cacheDir);
+        $b->save('post', 'p1', ['uuid' => 'p1', 'title' => 'B']);
+        $b->findMany('post', new Query());
+        $before = array_map('file_get_contents', glob($cacheDir . '/json-post-*'));
+
+        $a->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A']);
+        $a->clearCache();
+
+        $bFiles = array_values(array_filter(glob($cacheDir . '/json-post-*'), static fn (string $f): bool => in_array(file_get_contents($f), $before, true)));
+        $this->assertCount(2, $bFiles, "B's cache and generation are untouched by A's save and clearCache()");
+        $this->assertCount(2, $before);
+        $this->assertSame('B', $b->findMany('post', new Query())->items()[0]['title']);
+        $this->deleteDir($cacheDir);
+        $this->deleteDir($otherDir);
+    }
+
+    public function test_every_spelling_of_a_data_path_shares_one_cache(): void
+    {
+        $cacheDir = $this->dataDir . '-cache';
+        $link = $this->dataDir . '-link';
+        symlink($this->dataDir, $link);
+        $writer = new JsonFileDriver($this->dataDir, $cacheDir);
+        $writer->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A']);
+        $writer->findMany('post', new Query());
+        $cacheFile = $this->cacheFile($cacheDir, 'post');
+        // Marks the cache: a reader that rewrites it instead of using it drops the mark.
+        file_put_contents($cacheFile, str_replace('"A"', '"Cached"', (string) file_get_contents($cacheFile)));
+        $marked = file_get_contents($cacheFile);
+
+        foreach ([$link, $this->dataDir . '/', $this->dataDir . '/../' . basename($this->dataDir)] as $spelling) {
+            $reader = new JsonFileDriver($spelling, $cacheDir);
+            $this->assertSame('Cached', $reader->findMany('post', new Query())->items()[0]['title'], $spelling);
+            $this->assertSame($marked, file_get_contents($cacheFile), $spelling);
+        }
+        $this->assertCount(1, glob($cacheDir . '/json-post-*.json'));
+        unlink($link);
         $this->deleteDir($cacheDir);
     }
 

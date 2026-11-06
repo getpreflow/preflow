@@ -593,20 +593,25 @@ literally. Unlike `search()`, which keeps using exactly the `searchable: true` f
 ## JSON storage cache
 
 `JsonFileDriver` takes an optional second argument, a cache directory. With it, a query
-reads one cache file per type (`json-{type}.json`) instead of every record file. The cache is
+reads one cache file per type and data path (`json-{type}-{key}.json`, where `{key}` is a short hash
+of the resolved data path, the same for every spelling of it) instead of every record file. Drivers
+of different data paths (each test's own data, parallel workers) can share one cache directory. The cache is
 checked on every query against a signature of the type's directory (file count, newest mtime,
 total size, directory mtime), so records changed outside the driver are noticed; writes and
 deletes through the driver drop the type's cache and write a new generation
-(`json-{type}.gen`, kept by `clearCache()`). The generation is part of the signature and is read
+(`json-{type}-{key}.gen`, kept by `clearCache()`). The generation is part of the signature and is read
 before the records, so a reader that read records before a write can never leave a cache that
 is used after it; a cache is not written when the signature moved while the records were read. A cache that cannot be written only costs
 speed. Core's `Application` passes `storage/cache/data`.
 
 ```php
 $driver = new JsonFileDriver($basePath, cacheDir: $cacheDir);
-$driver->clearCache('game');   // one type
-$driver->clearCache();         // all types
+$driver->clearCache('game');   // one type of this data path
+$driver->clearCache();         // every type of this data path
 ```
+
+`clearCache()` leaves other data paths' caches in the same directory alone; `preflow cache:clear`
+(the registry's "JSON storage query cache") removes every data path's cache files.
 
 Without a cache directory the driver behaves as before.
 

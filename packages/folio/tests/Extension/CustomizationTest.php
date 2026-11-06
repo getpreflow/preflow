@@ -506,8 +506,9 @@ final class CustomizationTest extends TestCase
         $this->as('admin');
         $this->seed('contact', 'c1', ['name' => 'Ada', 'email' => 'ada@x.org', 'status' => 'new', 'stage' => 'lead']);
         $this->send('GET', '/folio/contact'); // builds the query cache
-        $cacheFile = $this->dir . '/storage/cache/data/json-contact.json';
-        $this->assertFileExists($cacheFile);
+        $cacheFiles = glob($this->dir . '/storage/cache/data/json-contact-*.json') ?: [];
+        $this->assertCount(1, $cacheFiles);
+        $cacheFile = $cacheFiles[0];
         // A query cache that lags behind the record file (as left by a racing reader).
         file_put_contents($cacheFile, str_replace('"Ada"', '"Stale"', (string) file_get_contents($cacheFile)));
 

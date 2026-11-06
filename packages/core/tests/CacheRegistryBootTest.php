@@ -28,6 +28,25 @@ final class CacheRegistryBootTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_clearing_the_json_query_cache_clears_every_data_paths_cache(): void
+    {
+        $dir = $this->app('twig');
+        $app = Application::create($dir);
+        $app->boot();
+        // The app's own data path and a second one (a test's own data) share the cache folder.
+        foreach (['/storage/data', '/storage/other'] as $path) {
+            $driver = new \Preflow\Data\Driver\JsonFileDriver($dir . $path, $dir . '/storage/cache/data');
+            $driver->save('post', 'p1', ['uuid' => 'p1']);
+            $driver->findMany('post', new \Preflow\Data\Query());
+        }
+        $this->assertCount(2, glob($dir . '/storage/cache/data/json-post-*.json'));
+
+        $app->container()->get(CacheRegistry::class)->get('data.json')->clear();
+
+        $this->assertSame([], glob($dir . '/storage/cache/data/json-*.json'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_a_provider_can_register_its_own_cache(): void
     {
         $app = Application::create($this->app('twig', withProvider: true));
