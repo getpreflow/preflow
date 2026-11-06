@@ -424,6 +424,29 @@ final class JsonFileDriverTest extends TestCase
         $this->deleteDir($otherDir);
     }
 
+    public function test_every_spelling_of_a_data_path_shares_one_cache(): void
+    {
+        $cacheDir = $this->dataDir . '-cache';
+        $link = $this->dataDir . '-link';
+        symlink($this->dataDir, $link);
+        $writer = new JsonFileDriver($this->dataDir, $cacheDir);
+        $writer->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A']);
+        $writer->findMany('post', new Query());
+        $cacheFile = $this->cacheFile($cacheDir, 'post');
+        // Marks the cache: a reader that rewrites it instead of using it drops the mark.
+        file_put_contents($cacheFile, str_replace('"A"', '"Cached"', (string) file_get_contents($cacheFile)));
+        $marked = file_get_contents($cacheFile);
+
+        foreach ([$link, $this->dataDir . '/', $this->dataDir . '/../' . basename($this->dataDir)] as $spelling) {
+            $reader = new JsonFileDriver($spelling, $cacheDir);
+            $this->assertSame('Cached', $reader->findMany('post', new Query())->items()[0]['title'], $spelling);
+            $this->assertSame($marked, file_get_contents($cacheFile), $spelling);
+        }
+        $this->assertCount(1, glob($cacheDir . '/json-post-*.json'));
+        unlink($link);
+        $this->deleteDir($cacheDir);
+    }
+
     public function test_without_cache_dir_no_files_are_written(): void
     {
         $this->driver->save('post', 'p1', ['uuid' => 'p1']);

@@ -122,8 +122,9 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
 
     /**
      * The type's generation, record count, newest mtime and total size of the record files,
-     * plus the directory's mtime and path: moves on every save / delete through a driver and
-     * when files are added, removed or rewritten outside it.
+     * plus the directory's mtime and the data path's key (the same for every spelling of the
+     * path): moves on every save / delete through a driver and when files are added, removed or
+     * rewritten outside it.
      *
      * @param list<string> $files
      * @return array{string, int, int, int, int, string}
@@ -138,7 +139,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             $size += (int) @filesize($file);
         }
 
-        return [$generation, count($files), $newest, $size, (int) @filemtime($dir), $dir];
+        return [$generation, count($files), $newest, $size, (int) @filemtime($dir), $this->pathKey];
     }
 
     /** @return list<array<string, mixed>> every record of the type, with `_id` */
