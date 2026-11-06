@@ -1768,7 +1768,11 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-audit-counts { display: flex; flex-wrap: wrap; gap: 8px 20px; list-style: none; margin: 0 0 20px; padding: 0; }
 .folio-audit-counts li { display: inline-flex; align-items: center; gap: 8px; }
 .folio-audit-check { margin-top: 28px; }
-.folio-audit-check summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 16px; font-weight: 600; cursor: pointer; }
+.folio-audit-check summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 16px; font-weight: 600; cursor: pointer; list-style: none; }
+/* display: flex drops the browser's own marker (Chrome, Safari): one arrow of our own, the same everywhere. */
+.folio-audit-check summary::-webkit-details-marker { display: none; }
+.folio-audit-check summary::before { content: '▸'; display: inline-block; width: 1em; color: var(--c-text-muted); transition: transform 0.15s ease; }
+.folio-audit-check[open] > summary::before { transform: rotate(90deg); }
 .folio-audit-check[open] > summary { margin-bottom: 10px; }
 .folio-audit-check td code { overflow-wrap: anywhere; }
 

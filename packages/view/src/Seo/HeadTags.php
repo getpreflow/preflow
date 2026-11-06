@@ -105,7 +105,9 @@ final class HeadTags
         }
 
         $cut = mb_substr($text, 0, $max - 1);
-        $space = mb_strrpos($cut, ' ');
+        // A cut that ends right before a space already ends on a whole word; otherwise go back
+        // to the last space so no word is cut in half.
+        $space = mb_substr($text, $max - 1, 1) === ' ' ? false : mb_strrpos($cut, ' ');
         if ($space !== false && $space > 0) {
             $cut = mb_substr($cut, 0, $space);
         }
