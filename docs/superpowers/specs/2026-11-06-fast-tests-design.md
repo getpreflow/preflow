@@ -61,7 +61,7 @@ Runs a set-up step or restores its result.
   files the step didn't leave are removed) and the step's return value is returned; the database is restored lazily
   (below). On a miss the step runs and its outcome is captured — unless the outcome names one of the roots' real
   paths (rows or return value) or a placeholder appears in file contents, then nothing is kept for later tests.
-- Roots: `root(string $placeholder, string $dir)` — directories that are this test's own (a temp dir with a random
+- Roots: `root(string $placeholder, string|\Closure $dir)` (a closure is read on every use, for directories a test creates later) — directories that are this test's own (a temp dir with a random
   name). Their random names are replaced by the placeholder in the key, so another test's equal state matches.
   Files can be ignored by name (`ignore('error.log')`: logs nothing depends on).
 - Databases: `database(string $name, SnapshotDatabase $db)`, one or more. Lazy: a restored step's tables are written when something next touches
