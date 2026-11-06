@@ -235,8 +235,10 @@ TestWorker::createMysqlDatabase($serverPdo, TestWorker::name('site_test'), $user
 `createMysqlDatabase()` runs `CREATE DATABASE IF NOT EXISTS`. If the user lacks the rights, the exception names the
 `GRANT` a database admin must run once, for example ``GRANT ALL PRIVILEGES ON `site\_test\_%`.* TO 'user'@'localhost';``.
 
-Workers can share one snapshot directory (they inherit the run id) or make their own. Both are correct: files are
-written by atomic rename, and the state holds the worker's database name and paths.
+Workers can share one snapshot directory (they inherit the run id) or make their own. Both are correct. The key holds
+every environment variable (so a worker's own `DB_DATABASE` or paths differ per worker when the site puts them in the
+environment), the table definitions and checksums, and the file contents. Equal keys mean equal state, so a snapshot
+written by one worker is correct for any worker that reaches the same key. Writes are atomic renames.
 
 ### Running with paratest
 

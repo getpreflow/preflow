@@ -9,9 +9,17 @@ use Preflow\Testing\Fast\TestWorker;
 
 final class TestWorkerTest extends TestCase
 {
+    private string|false $token = false;
+
+    protected function setUp(): void
+    {
+        $this->token = getenv('TEST_TOKEN');
+    }
+
     protected function tearDown(): void
     {
-        putenv('TEST_TOKEN');
+        // Under paratest the real token must survive for the worker's later tests.
+        putenv($this->token === false ? 'TEST_TOKEN' : 'TEST_TOKEN=' . $this->token);
         foreach (['x', 'x_3'] as $dir) {
             @rmdir(sys_get_temp_dir() . '/preflow_worker_test_' . $dir);
         }
