@@ -583,7 +583,7 @@ Pages (each public page that answers 2xx; the `status.*` rows cover the rest):
 | `noindex.in-sitemap` | critical | The page is `noindex` but the sitemap lists it |
 | `hreflang.unpaired` | warning | A language version that doesn't link back, or an alternate that isn't one of the site's public pages |
 | `hreflang.x-default-missing` | notice | A page with language alternates but no `x-default` |
-| `geo.markdown-thin` | warning | GEO is on and the page's Markdown view is empty, or holds under a third of the words its `<main>` shows (pages under 50 words: only an empty one). Renders each `.md` once more. Since 0.55 |
+| `geo.markdown-thin` | warning | GEO is on and the page's Markdown view is empty, or holds under a third of the words its `<main>` shows (pages under 50 words: only an empty one; what the converter leaves out, such as `data-geo="skip"`, isn't counted; text without spaces, such as Chinese, counts as few words). Renders each `.md` once more. Since 0.55 |
 | `geo.type-schema-missing` | notice | SEO is on and three or more pages under one address segment (`/spiele/…`) carry only generic JSON-LD (WebPage, BreadcrumbList…), nothing that says what they are about; one finding per group. Since 0.55 |
 | `link.broken` | critical | An internal link whose target answers 404, 410 or 5xx (also redirect loops) |
 | `link.broken` | notice | An internal link that goes through two or more redirects |
@@ -601,7 +601,7 @@ The site (once per run, after the pages):
 | `sitemap.invalid` | critical | The sitemap isn't valid XML with a urlset or sitemapindex |
 | `sitemap.non200` | critical | A URL in the sitemap doesn't answer 200 |
 | `llms.missing` | warning | No `/llms.txt` for a language (when GEO is on) |
-| `llms.full-too-large` | warning | A language's `/llms-full.txt` is larger than `full_max_mb` in `config/geo.php` (default 5). Since 0.55 |
+| `llms.full-too-large` | warning | A language's `/llms-full.txt` is larger than `full_max_mb` in `config/geo.php` (default 5). Renders the whole file (every listed page's Markdown) once per language, unless `public/` holds a copy. Since 0.55 |
 | `notfound.status` | critical | An address that doesn't exist answers something other than 404 |
 | `notfound.no-home-link` | warning | The 404 page has no link to the home page |
 | `favicon.raster-missing` | warning | No linked raster icon of at least 48 px and no `/favicon.ico` |

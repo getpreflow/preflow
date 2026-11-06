@@ -67,6 +67,8 @@ final class MarkdownViewTest extends TestCase
             '<link rel="canonical" href="/dated-page"><meta property="og:updated_time" content="2026-11-05T23:30:00+01:00">',
         ));
         $this->page('bad-date', $page('Bad date', '<p>Text</p>', '<meta property="og:updated_time" content="not a date">'));
+        $this->page('no-such-day', $page('No such day', '<p>Text</p>', '<meta property="og:updated_time" content="2026-02-30">'));
+        $this->page('spaced', $page('Spaced', '<p>Source: BoardGameGeek</p>', '<link rel="canonical" href="/spiele/Catan Junior">'));
         @mkdir($this->dir . '/app/pages/blog', 0777, true);
         $this->page('blog/post', $page(
             'Post',
@@ -163,6 +165,8 @@ final class MarkdownViewTest extends TestCase
         $this->assertSame('<https://site.test/about>; rel="canonical"', $this->get($app, '/about.md')->getHeaderLine('Link'));
         $this->assertSame('<https://site.test/dated-page>; rel="canonical"', $this->get($app, '/dated.md')->getHeaderLine('Link'));
         $this->assertSame('<https://site.test/about>; rel="canonical"', $this->get($app, '/about', ['Accept' => 'text/markdown'])->getHeaderLine('Link'));
+        // Only the header's Source line counts, and the URL is made safe for the header.
+        $this->assertSame('<https://site.test/spiele/Catan%20Junior>; rel="canonical"', $this->get($app, '/spaced.md')->getHeaderLine('Link'));
         // No Markdown view, no canonical.
         $this->assertSame('', $this->get($app, '/secret.md')->getHeaderLine('Link'));
     }
@@ -180,6 +184,7 @@ final class MarkdownViewTest extends TestCase
         // Without one, or with one that isn't a date, no line.
         $this->assertStringNotContainsString('Updated:', (string) $this->get($app, '/about.md')->getBody());
         $this->assertStringStartsWith("# Bad date\n\nSource: https://site.test/bad-date\n\nText", (string) $this->get($app, '/bad-date.md')->getBody());
+        $this->assertStringNotContainsString('Updated:', (string) $this->get($app, '/no-such-day.md')->getBody(), 'no rollover to March');
     }
 
     #[RunInSeparateProcess]

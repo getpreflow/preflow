@@ -77,6 +77,21 @@ final class SeoContextTest extends TestCase
         $this->assertNull($context->get()?->image);
     }
 
+    public function test_merge_template_takes_modified_as_a_date_time_or_a_real_date(): void
+    {
+        $context = new SeoContext();
+        $context->mergeTemplate(['modified' => new \DateTimeImmutable('2026-11-05 10:00:00', new \DateTimeZone('+01:00'))]);
+        $this->assertSame('2026-11-05T10:00:00+01:00', $context->get()->modified);
+
+        // Anything that isn't a real date leaves it unknown, never an error page.
+        foreach ([null, 'yesterday', '2026-02-30', 42] as $value) {
+            $context->mergeTemplate(['modified' => $value]);
+            $this->assertSame('', $context->get()->modified, var_export($value, true));
+        }
+        $context->mergeTemplate(['modified' => '2026-11-05']);
+        $this->assertStringStartsWith('2026-11-05T00:00:00', $context->get()->modified);
+    }
+
     public function test_merge_template_ignores_unknown_keys_and_reports_them(): void
     {
         $reported = [];

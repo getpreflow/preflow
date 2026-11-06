@@ -121,7 +121,9 @@ final class GeoTypeSchemaMissing implements RunCheck
         }
         foreach ($node as $key => $value) {
             if ($key === '@type') {
-                array_push($types, ...array_filter((array) $value, 'is_string'));
+                // "https://schema.org/WebPage" and "schema:WebPage" are WebPage too.
+                $names = array_filter((array) $value, 'is_string');
+                array_push($types, ...array_map(static fn (string $t): string => (string) preg_replace('~^(?:https?://schema\.org/|schema:)~i', '', $t), $names));
             } else {
                 self::collectTypes($value, $types);
             }

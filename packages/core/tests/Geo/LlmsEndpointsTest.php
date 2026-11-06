@@ -34,7 +34,8 @@ final class LlmsEndpointsTest extends TestCase
         $page = static fn (string $title, string $main, string $head = ''): string =>
             '<html><head><title>' . $title . '</title>' . $head . '</head><body><nav>Menu</nav><main>' . $main . '</main></body></html>';
         $this->page('index', $page('Home {{ current_locale() }}', '<h1>Welcome {{ current_locale() }}</h1><h2>News</h2><p>Hello.</p>'));
-        $this->page('about', $page('About us', '<h1>About</h1><p>We play games.</p>'));
+        // Dated: llms-full.txt's sections carry their Source line only, no Updated line.
+        $this->page('about', $page('About us', '<h1>About</h1><p>We play games.</p>', '<meta property="og:updated_time" content="2026-11-05T10:00:00+00:00">'));
         $this->page('contact', $page('Contact', '<p>Write to us.</p>'));
         $this->page('noindex', $page('No index', '<p>Hidden text</p>', '<meta name="robots" content="noindex">'));
         $this->page('secret', $page('Secret', '<p>Secret text</p>'));

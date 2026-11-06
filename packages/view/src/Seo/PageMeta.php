@@ -33,6 +33,29 @@ final readonly class PageMeta
         public string $modified = '',
     ) {}
 
+    /**
+     * A time as `modified` takes it: ISO 8601 with its offset (DATE_ATOM), from a string that
+     * starts with a real date (`2026-11-05`, `2026-11-05T10:00:00+01:00`) or a DateTimeInterface;
+     * '' for anything else (null, "yesterday", 2026-02-30). Since 0.55.
+     */
+    public static function time(mixed $value): string
+    {
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format(DATE_ATOM);
+        }
+        if (!is_string($value) || preg_match('/^(\d{4}-\d{2}-\d{2})/', trim($value), $m) !== 1) {
+            return '';
+        }
+        try {
+            $time = new \DateTimeImmutable(trim($value));
+        } catch (\Exception) {
+            return '';
+        }
+
+        // DateTime rolls 2026-02-30 over to March: only a date that exists counts.
+        return $time->format('Y-m-d') === $m[1] ? $time->format(DATE_ATOM) : '';
+    }
+
     /** A copy with some properties changed; keys are the constructor's parameter names. */
     public function with(array $changes): self
     {

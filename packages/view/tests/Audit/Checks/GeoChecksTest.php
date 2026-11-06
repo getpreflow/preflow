@@ -88,6 +88,20 @@ final class GeoChecksTest extends TestCase
         $this->assertSame(['geo.markdown-thin|warning|https://site.test/de/kontakt|de'], $this->summary($this->thin()->check($page)));
     }
 
+    public function test_what_the_converter_leaves_out_is_not_counted(): void
+    {
+        // A long list marked data-geo="skip" and told in a short geo block: as the docs recommend.
+        $this->routes['/about.md'] = self::markdown(self::words(20));
+        $skipped = '<ul data-geo="skip"><li>' . self::words(400, 'item') . '</li></ul><div hidden>' . self::words(100, 'x') . '</div>';
+        $this->assertSame([], $this->thin()->check($this->page($this->html(body: '<main><p>' . self::words(40) . '</p>' . $skipped . '</main>'))));
+    }
+
+    public function test_an_empty_markdown_without_a_title_is_still_empty(): void
+    {
+        $this->routes['/about.md'] = new Response(200, ['Content-Type' => 'text/markdown'], "Source: https://site.test/about\nUpdated: 2026-11-05\n");
+        $this->assertCount(1, $this->thin()->check($this->page($this->html(body: '<main><p>Short text.</p></main>'))));
+    }
+
     public function test_a_short_page_with_some_markdown_is_fine(): void
     {
         // Under 50 words of page text, only an empty Markdown counts: short pages vary too much.
@@ -157,6 +171,13 @@ final class GeoChecksTest extends TestCase
         $listed->collect($this->typed('https://site.test/shop/b', ['WebPage']));
         $listed->collect($this->page($this->html(head: '<script type="application/ld+json">not json</script>'), 'https://site.test/shop/c'));
         $this->assertSame([], $listed->finish());
+
+        // Generic types written as schema.org URLs are still generic.
+        $urls = $this->schemaCheck();
+        foreach (['a', 'b', 'c'] as $slug) {
+            $urls->collect($this->typed("https://site.test/news/{$slug}", ['https://schema.org/WebPage', 'schema:BreadcrumbList']));
+        }
+        $this->assertCount(1, $urls->finish());
     }
 
     public function test_the_state_survives_a_continued_run_and_seo_off_finds_nothing(): void

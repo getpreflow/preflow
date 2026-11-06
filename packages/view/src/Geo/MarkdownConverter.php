@@ -22,7 +22,8 @@ use Dom\Text;
  */
 final class MarkdownConverter
 {
-    private const REMOVE = 'script, style, template, svg, noscript, iframe, input, select, textarea, button, '
+    /** Elements whose content never reaches the Markdown (the SEO audit's geo.markdown-thin leaves them out too). */
+    public const REMOVE = 'script, style, template, svg, noscript, iframe, input, select, textarea, button, '
         . '[hidden], [aria-hidden="true"], [data-geo="skip"]';
 
     /** Elements that start their own block; any other element is inline unless it holds one of these. */

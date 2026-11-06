@@ -50,7 +50,7 @@ final class HeadTags
                 'og:type' => $meta->ogType,
                 'og:url' => $meta->url,
                 'og:locale' => self::ogLocale($meta->locale),
-                'og:updated_time' => trim($meta->modified),
+                'og:updated_time' => PageMeta::time($meta->modified),
             ];
             foreach ($og as $property => $content) {
                 if ($content !== '' && $missing($property)) {

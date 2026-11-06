@@ -81,7 +81,7 @@ final class FolioPageMeta
             noindex: $seo->noindex() || self::hiddenByField($record, $locale, $this->noindexField),
             ogType: $mapping['og_type'] ?? 'website',
             // The publish time, as the sitemap's lastmod has it.
-            modified: is_string($publishedAt = $record->get('_published_at')) ? $publishedAt : '',
+            modified: PageMeta::time($record->get('_published_at')),
         );
 
         return $meta->with(['schemas' => $this->schemas->nodesFor($type, $record->localized($locale)->toArray(), $locale, $meta)]);

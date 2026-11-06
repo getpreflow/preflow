@@ -213,7 +213,7 @@ final class SeoMiddleware implements MiddlewareInterface
             }
         }
 
-        $graph[] = Schema::webPage($meta->url, $meta->title, HeadTags::description($meta->description), $meta->locale, $origin, $meta->image, trim($meta->modified) !== '' ? trim($meta->modified) : null);
+        $graph[] = Schema::webPage($meta->url, $meta->title, HeadTags::description($meta->description), $meta->locale, $origin, $meta->image, PageMeta::time($meta->modified) ?: null);
 
         return [...$graph, ...$meta->schemas];
     }

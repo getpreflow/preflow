@@ -321,7 +321,11 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
 - ~~**GEO follow-ups (0.55):**~~ done in 0.55.0 (Markdown views send `Link: <canonical>; rel="canonical"` and an
   `Updated:` line from `og:updated_time`; `PageMeta::$modified` (`seo({modified: …})`, Folio: the publish time) gives
   `og:updated_time` and the WebPage's `dateModified`; audit checks `geo.markdown-thin`, `geo.type-schema-missing`,
-  `llms.full-too-large` with `full_max_mb` in `config/geo.php`). **Upgrading:** nothing to migrate.
+  `llms.full-too-large` with `full_max_mb` in `config/geo.php`). **Upgrading:** nothing to migrate. Every Folio page
+  now carries its record's publish time as `og:updated_time`, the WebPage's `dateModified` and the Markdown's
+  `Updated:` line; on a listing or home page that date doesn't follow records shown on it (a per-type opt-out can
+  follow if a site needs one). The two GEO page checks render more: `geo.markdown-thin` each page's `.md` once more,
+  `llms.full-too-large` the whole llms-full.txt per language; a long audit continues where it stopped as before.
 - **An analytics package (later, its own project; owner, 2026-11-06):** privacy-first visit counts, AI usage among
   them: per day, by AI agent family (OpenAI, Anthropic, Perplexity, Google…) and by what was fetched (HTML, Markdown,
   llms.txt), top pages per agent family, and one "everyone else" total. No paths with visitor data, no IP addresses,

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\View\Audit\Checks;
 
+use Dom\HTMLDocument;
 use Preflow\View\Audit\AuditRegistry;
 use Preflow\View\Audit\PageCheck;
 use Preflow\View\Audit\PageRenderer;
@@ -11,11 +12,14 @@ use Preflow\View\Audit\RenderedPage;
 use Preflow\View\Audit\Severity;
 use Preflow\View\Geo\GeoConfig;
 use Preflow\View\Geo\GeoMiddleware;
+use Preflow\View\Geo\MarkdownConverter;
 
 /**
  * `geo.markdown-thin` (warning): GEO is on and the page's Markdown view is
  * empty, or holds under a third of the words the page shows in its `<main>`
- * (else `<body>`; scripts, styles, navigation, header and footer left out).
+ * (else `<body>`; what the converter leaves out, such as `data-geo="skip"`, and
+ * navigation, header and footer left out). Words are counted between spaces,
+ * so text without spaces (Chinese, Japanese) counts as few words.
  * Content in JavaScript or attributes without a geo block doesn't reach AI
  * assistants. Pages under 50 words are only reported when the Markdown is
  * empty; pages without a Markdown view (excluded, noindex) are not. Renders
@@ -28,8 +32,8 @@ final class GeoMarkdownThin implements PageCheck
     /** Below this many words of page text, only an empty Markdown view is reported. */
     private const MIN_WORDS = 50;
 
-    /** Elements whose text is no part of what the page says. */
-    private const SKIPPED = ['script', 'style', 'noscript', 'template', 'svg', 'nav', 'header', 'footer', 'button', 'select', 'textarea'];
+    /** What never reaches the Markdown (the converter's own list), and the page's navigation, header and footer. */
+    private const SKIPPED = MarkdownConverter::REMOVE . ', nav, header, footer';
 
     public function __construct(
         private readonly AuditRegistry $registry,
@@ -55,7 +59,7 @@ final class GeoMarkdownThin implements PageCheck
             return [];
         }
 
-        $pageWords = self::count(self::pageText($dom));
+        $pageWords = self::count(self::pageText($page->body));
         $markdownWords = self::count(self::markdownText($markdown->body));
         if ($markdownWords === 0 && $pageWords > 0) {
             return [Html::pageFinding($this->registry, $page, $this->id(), Severity::Warning,
@@ -69,17 +73,17 @@ final class GeoMarkdownThin implements PageCheck
         return [];
     }
 
-    /** The words the page shows in its main content. */
-    private static function pageText(\DOMDocument $dom): string
+    /** The words the page shows in its main content, measured as the converter reads it. */
+    private static function pageText(string $html): string
     {
-        $root = $dom->getElementsByTagName('main')->item(0) ?? $dom->getElementsByTagName('body')->item(0);
+        $document = HTMLDocument::createFromString($html, LIBXML_NOERROR, 'UTF-8');
+        $root = $document->querySelector('main') ?? $document->body;
         if ($root === null) {
             return '';
         }
-        $root = $root->cloneNode(true);
-        foreach (self::SKIPPED as $tag) {
-            foreach (iterator_to_array($root->getElementsByTagName($tag)) as $node) {
-                $node->parentNode?->removeChild($node);
+        foreach ($root->querySelectorAll(self::SKIPPED) as $element) {
+            if ($element->parentNode !== null) {
+                $element->remove();
             }
         }
 
@@ -89,7 +93,7 @@ final class GeoMarkdownThin implements PageCheck
     /** The Markdown's text: without its title, Source and Updated lines, link targets and syntax. */
     private static function markdownText(string $markdown): string
     {
-        $text = (string) preg_replace('/\A# [^\n]*\n+(?:Source: [^\n]*\n)?(?:Updated: [^\n]*\n)?/', '', $markdown);
+        $text = (string) preg_replace('/\A(?:# [^\n]*\n+)?(?:Source: [^\n]*\n)?(?:Updated: [^\n]*\n)?/', '', $markdown);
         $text = (string) preg_replace('/\]\([^)]*\)/', ']', $text);
 
         return (string) preg_replace('/[#*_`>|\[\]!-]+/', ' ', $text);
