@@ -333,6 +333,8 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   skipped or weakened. See "Fast suites" in `packages/testing/README.md`). **Upgrading:** nothing changes unless a site opts in.
   Sites add `brianium/paratest` to require-dev, the `test` (paratest) and `test:serial` composer scripts, and call
   `SetupSnapshots::bootstrap()` from `tests/bootstrap.php`. Timings: see below (filled in after the sites move).
+  0.56.1: the JSON storage query cache is kept per data path (`json-{type}-{path hash}.json` / `.gen`), so tests with
+  their own data path and parallel workers sharing `storage/cache/data` never read each other's records; `cache:clear` still clears them all.
 - **An analytics package (later, its own project; owner, 2026-11-06):** privacy-first visit counts, AI usage among
   them: per day, by AI agent family (OpenAI, Anthropic, Perplexity, Google…) and by what was fetched (HTML, Markdown,
   llms.txt), top pages per agent family, and one "everyone else" total. No paths with visitor data, no IP addresses,

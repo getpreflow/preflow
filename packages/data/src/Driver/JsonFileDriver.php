@@ -19,17 +19,49 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
     /** @var array<string, true> types whose lock this driver holds (exclusive() nests) */
     private array $locked = [];
 
+    /**
+     * Names this data path's files in the cache directory: drivers of different data paths
+     * (each test's own data, parallel workers) can share one cache directory without ever
+     * reading each other's records or moving each other's generations.
+     */
+    private readonly string $pathKey;
+
     public function __construct(
         private readonly string $basePath,
         private readonly ?string $cacheDir = null,
-    ) {}
+    ) {
+        $this->pathKey = substr(hash('xxh128', self::resolvedPath($basePath)), 0, 16);
+    }
+
+    /**
+     * The path with its nearest existing ancestor resolved (symlinks, `..`): the same before
+     * and after the data directory is created.
+     */
+    private static function resolvedPath(string $path): string
+    {
+        $rest = '';
+        $current = $path === '/' ? '/' : rtrim($path, '/');
+        while (($real = realpath($current === '' ? '.' : $current)) === false) {
+            $parent = dirname($current);
+            if ($parent === $current) {
+                return $path;
+            }
+            $rest = '/' . basename($current) . $rest;
+            $current = $parent;
+        }
+
+        return $rest === '' ? $real : rtrim($real, '/') . $rest;
+    }
 
     public function cacheDir(): ?string
     {
         return $this->cacheDir;
     }
 
-    /** Drop the query cache of one type, or of every type. */
+    /**
+     * Drop this data path's query cache of one type, or of every type. Other data paths'
+     * caches in the same directory stay (`cache:clear` removes them all).
+     */
     public function clearCache(?string $type = null): void
     {
         if ($this->cacheDir === null) {
@@ -39,7 +71,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         if ($type !== null && !self::safeName($type)) {
             return;
         }
-        $files = $type !== null ? [$this->cacheFile($type)] : (glob($this->cacheDir . '/json-*.json') ?: []);
+        $files = $type !== null ? [$this->cacheFile($type)] : (glob($this->cacheDir . '/json-*-' . $this->pathKey . '.json') ?: []);
         foreach ($files as $file) {
             @unlink($file);
         }
@@ -47,13 +79,13 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
 
     private function cacheFile(string $type): string
     {
-        return $this->cacheDir . '/json-' . $type . '.json';
+        return $this->cacheDir . '/json-' . $type . '-' . $this->pathKey . '.json';
     }
 
     /** The type's generation file: rewritten by every save / delete, kept by clearCache(). */
     private function generationFile(string $type): string
     {
-        return $this->cacheDir . '/json-' . $type . '.gen';
+        return $this->cacheDir . '/json-' . $type . '-' . $this->pathKey . '.gen';
     }
 
     /** The type's current generation ('0' before its first save or delete through a driver). */
@@ -90,11 +122,11 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
 
     /**
      * The type's generation, record count, newest mtime and total size of the record files,
-     * plus the directory's mtime: moves on every save / delete through a driver and when files
-     * are added, removed or rewritten outside it.
+     * plus the directory's mtime and path: moves on every save / delete through a driver and
+     * when files are added, removed or rewritten outside it.
      *
      * @param list<string> $files
-     * @return array{string, int, int, int, int}
+     * @return array{string, int, int, int, int, string}
      */
     private function signature(string $generation, string $dir, array $files): array
     {
@@ -106,7 +138,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             $size += (int) @filesize($file);
         }
 
-        return [$generation, count($files), $newest, $size, (int) @filemtime($dir)];
+        return [$generation, count($files), $newest, $size, (int) @filemtime($dir), $dir];
     }
 
     /** @return list<array<string, mixed>> every record of the type, with `_id` */
