@@ -264,6 +264,11 @@ final class NewPermissionsTest extends TestCase
         $this->assertSame(302, $res->getStatusCode());
         $this->assertSame(['redirects.manage'], $this->known()->fresh(), 'a crafted dismiss leaves it for those who hold it');
         $this->assertStringNotContainsString('Dismissed.', (string) $this->send('GET', '/folio/rbac_role')->getBody());
+
+        // A mixed post: what the editor holds (page.view) is dismissed, the rest stays.
+        $this->forget(['page.view']);
+        $this->send('POST', '/folio/rbac/new-permissions/dismiss', ['names' => ['page.view', 'redirects.manage']]);
+        $this->assertSame(['redirects.manage'], $this->known()->fresh());
     }
 
     #[RunInSeparateProcess]
