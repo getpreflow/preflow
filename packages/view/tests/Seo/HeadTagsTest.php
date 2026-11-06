@@ -204,6 +204,18 @@ final class HeadTagsTest extends TestCase
         $this->assertSame('aaaa…', HeadTags::description('aaaa bbbbbbbb', 10));
     }
 
+    public function test_the_last_change_as_og_updated_time(): void
+    {
+        $html = HeadTags::inject(self::PAGE, $this->meta(['modified' => '2026-11-05T10:00:00+00:00']), '', [], []);
+        $this->assertOnce('<meta property="og:updated_time" content="2026-11-05T10:00:00+00:00">', $html);
+
+        // None without a time, none for a noindex page, and the page's own wins.
+        $this->assertStringNotContainsString('og:updated_time', HeadTags::inject(self::PAGE, $this->meta(), '', [], []));
+        $this->assertStringNotContainsString('og:updated_time', HeadTags::inject(self::PAGE, $this->meta(['modified' => '2026-11-05', 'noindex' => true]), '', [], []));
+        $own = "<html><head><meta property=\"og:updated_time\" content=\"2020-01-01\"></head><body></body></html>";
+        $this->assertSame(1, substr_count(HeadTags::inject($own, $this->meta(['modified' => '2026-11-05']), '', [], []), 'og:updated_time'));
+    }
+
     public function test_without_cards_only_robots_and_theme_color(): void
     {
         $html = HeadTags::inject(self::PAGE, $this->meta(), 'Example', ['' => '#112233'], $this->graph($this->meta()), cards: false);

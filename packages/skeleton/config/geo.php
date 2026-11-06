@@ -19,6 +19,8 @@ return [
 
     // Whether /llms-full.txt (all listed pages' Markdown in one file) is served.
     // 'full' => true,
+    // Above this size (MB) `preflow seo:audit` reports llms-full.txt as too large to be useful.
+    // 'full_max_mb' => 5,
 
     // Page paths without a Markdown view (exact paths, e.g. '/thanks').
     // 'exclude' => [],

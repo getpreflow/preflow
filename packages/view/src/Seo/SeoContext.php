@@ -45,6 +45,9 @@ final class SeoContext
                 $unknown[] = (string) $given;
                 continue;
             }
+            if ($key === 'modified') {
+                $value = PageMeta::time($value); // a DateTime or a date string; anything else: unknown
+            }
             if ($key === 'image' && is_string($value)) {
                 $value = $value === '' ? null : ['url' => $value];
             }

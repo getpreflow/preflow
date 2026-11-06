@@ -14,6 +14,7 @@ final readonly class GeoConfig
      * @param array<string, string> $siteFields where name/summary come from in Folio's `site` singleton
      * @param list<string>          $types      Folio types listed in llms.txt
      * @param list<string>          $exclude    page paths without a Markdown view
+     * @param float                 $fullMaxMb  the size above which the SEO audit reports llms-full.txt (since 0.55)
      */
     public function __construct(
         public bool $enabled = false,
@@ -24,6 +25,7 @@ final readonly class GeoConfig
         public ?string $noindexField = null,
         public bool $full = true,
         public array $exclude = [],
+        public float $fullMaxMb = 5.0,
     ) {}
 
     /** Read a config file; a missing file means GEO is off. */
@@ -51,6 +53,7 @@ final readonly class GeoConfig
             noindexField: $string($config['noindex_field'] ?? null),
             full: (bool) ($config['full'] ?? true),
             exclude: $strings($config['exclude'] ?? []),
+            fullMaxMb: is_numeric($config['full_max_mb'] ?? null) && (float) $config['full_max_mb'] > 0 ? (float) $config['full_max_mb'] : 5.0,
         );
     }
 

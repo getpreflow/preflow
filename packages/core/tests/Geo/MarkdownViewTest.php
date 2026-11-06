@@ -61,6 +61,14 @@ final class MarkdownViewTest extends TestCase
         $this->page('broken', $page('Broken', '{{ component("No\\\\Such\\\\Component") }}'));
         $this->page('page-a', $page('Page A', '<p>Page A text</p>{{ component("' . $card . '", {title: "A"}) }}'));
         $this->page('page-b', $page('Page B', '<p>Page B text</p>'));
+        $this->page('dated', $page(
+            'Dated',
+            '<p>Dated text</p>',
+            '<link rel="canonical" href="/dated-page"><meta property="og:updated_time" content="2026-11-05T23:30:00+01:00">',
+        ));
+        $this->page('bad-date', $page('Bad date', '<p>Text</p>', '<meta property="og:updated_time" content="not a date">'));
+        $this->page('no-such-day', $page('No such day', '<p>Text</p>', '<meta property="og:updated_time" content="2026-02-30">'));
+        $this->page('spaced', $page('Spaced', '<p>Source: BoardGameGeek</p>', '<link rel="canonical" href="/spiele/Catan Junior">'));
         @mkdir($this->dir . '/app/pages/blog', 0777, true);
         $this->page('blog/post', $page(
             'Post',
@@ -146,6 +154,37 @@ final class MarkdownViewTest extends TestCase
         $this->assertSame(200, $head->getStatusCode());
         $this->assertSame('text/markdown; charset=utf-8', $head->getHeaderLine('Content-Type'));
         $this->assertSame('', (string) $head->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_markdown_names_its_canonical_page_in_a_link_header(): void
+    {
+        $app = $this->app();
+
+        // The page's address, or its own canonical link: the same URL as the Source line.
+        $this->assertSame('<https://site.test/about>; rel="canonical"', $this->get($app, '/about.md')->getHeaderLine('Link'));
+        $this->assertSame('<https://site.test/dated-page>; rel="canonical"', $this->get($app, '/dated.md')->getHeaderLine('Link'));
+        $this->assertSame('<https://site.test/about>; rel="canonical"', $this->get($app, '/about', ['Accept' => 'text/markdown'])->getHeaderLine('Link'));
+        // Only the header's Source line counts, and the URL is made safe for the header.
+        $this->assertSame('<https://site.test/spiele/Catan%20Junior>; rel="canonical"', $this->get($app, '/spaced.md')->getHeaderLine('Link'));
+        // No Markdown view, no canonical.
+        $this->assertSame('', $this->get($app, '/secret.md')->getHeaderLine('Link'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_markdown_names_the_date_the_page_was_last_changed(): void
+    {
+        $app = $this->app();
+
+        // From the page's og:updated_time (SEO prints it from PageMeta::$modified), as a plain date.
+        $this->assertStringStartsWith(
+            "# Dated\n\nSource: https://site.test/dated-page\nUpdated: 2026-11-05\n\nDated text",
+            (string) $this->get($app, '/dated.md')->getBody(),
+        );
+        // Without one, or with one that isn't a date, no line.
+        $this->assertStringNotContainsString('Updated:', (string) $this->get($app, '/about.md')->getBody());
+        $this->assertStringStartsWith("# Bad date\n\nSource: https://site.test/bad-date\n\nText", (string) $this->get($app, '/bad-date.md')->getBody());
+        $this->assertStringNotContainsString('Updated:', (string) $this->get($app, '/no-such-day.md')->getBody(), 'no rollover to March');
     }
 
     #[RunInSeparateProcess]

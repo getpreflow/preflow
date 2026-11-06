@@ -61,14 +61,14 @@ final class BuiltInChecksTest extends TestCase
         $this->assertSame([
             'title.missing', 'description.missing', 'img.alt-missing', 'og.image-alt-missing', 'h1.count',
             'aria-hidden.focusable', 'canonical.missing', 'canonical.foreign-host', 'noindex.in-sitemap',
-            'hreflang.x-default-missing', 'site.own',
+            'hreflang.x-default-missing', 'geo.markdown-thin', 'site.own',
         ], array_map(static fn (PageCheck $c): string => $c->id(), $registry->pageChecks()));
         $this->assertSame(
-            ['title.duplicate', 'description.duplicate', 'hreflang.unpaired', 'link.broken'],
+            ['title.duplicate', 'description.duplicate', 'hreflang.unpaired', 'link.broken', 'geo.type-schema-missing'],
             array_map(static fn (RunCheck $c): string => $c->id(), $registry->runChecks()),
         );
         $this->assertSame(
-            ['robots.missing', 'sitemap', 'llms.missing', 'notfound', 'icons', 'etag', 'share-image.missing', 'owner.missing'],
+            ['robots.missing', 'sitemap', 'llms.missing', 'llms.full-too-large', 'notfound', 'icons', 'etag', 'share-image.missing', 'owner.missing'],
             array_map(static fn (SiteCheck $c): string => $c->id(), $registry->siteChecks()),
         );
     }

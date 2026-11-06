@@ -11,6 +11,7 @@ use Nyholm\Psr7\Stream;
 use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\Http\Session\SessionMiddleware;
 use Preflow\View\AssetCollector;
+use Preflow\View\Seo\PageMeta;
 use Preflow\View\Seo\PageSignals;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -166,10 +167,16 @@ final class GeoMiddleware implements MiddlewareInterface
         $this->dropNativeCookies();
 
         $headers = ['Vary' => 'Accept', 'X-Content-Type-Options' => 'nosniff'];
+        if ($markdown === null) {
+            return new Response(404, ['Content-Type' => 'text/plain; charset=utf-8'] + $headers, "Not Found\n");
+        }
 
-        return $markdown === null
-            ? new Response(404, ['Content-Type' => 'text/plain; charset=utf-8'] + $headers, "Not Found\n")
-            : new Response(200, ['Content-Type' => 'text/markdown; charset=utf-8', 'Cache-Control' => self::CACHE_CONTROL] + $headers, $markdown);
+        // The HTML page is the one to index: the URL the header's Source line names (the page's canonical).
+        if (preg_match('/\A(?:# [^\n]*\n\n)?Source: ([^\n]+)\n/', $markdown, $m) === 1) {
+            $headers['Link'] = '<' . strtr(trim($m[1]), [' ' => '%20', '<' => '%3C', '>' => '%3E', '"' => '%22']) . '>; rel="canonical"';
+        }
+
+        return new Response(200, ['Content-Type' => 'text/markdown; charset=utf-8', 'Cache-Control' => self::CACHE_CONTROL] + $headers, $markdown);
     }
 
     /** $response with `Accept` in its `Vary` header. */
@@ -289,7 +296,7 @@ final class GeoMiddleware implements MiddlewareInterface
     /** A page's Markdown without the title and `Source:` lines render() puts first. */
     private static function withoutHeader(string $markdown): string
     {
-        return (string) preg_replace('/\A(?:# [^\n]*\n\n)?Source: [^\n]*\n\n?/', '', $markdown);
+        return (string) preg_replace('/\A(?:# [^\n]*\n\n)?Source: [^\n]*\n(?:Updated: [^\n]*\n)?\n?/', '', $markdown);
     }
 
     /** Anonymous and cacheable: no cookie leaves, not even one PHP's session queued natively. */
@@ -347,6 +354,7 @@ final class GeoMiddleware implements MiddlewareInterface
         $title = trim((string) preg_replace('/\s+/', ' ', $document->querySelector('title')?->textContent ?? ''));
         $canonical = trim((string) $document->querySelector('link[rel~="canonical"][href]')?->getAttribute('href'));
         $source = $canonical !== '' ? PageSignals::absolute($canonical, $origin) : $origin . $path;
+        $updated = self::date($document->querySelector('meta[property="og:updated_time"][content], meta[property="article:modified_time"][content]')?->getAttribute('content'));
 
         // Blocks a page or layout template declares outside components lead the converted page
         // (a page that wants only its block marks its own HTML data-geo="skip").
@@ -356,9 +364,19 @@ final class GeoMiddleware implements MiddlewareInterface
         );
         $body = implode("\n\n", $parts);
 
-        $markdown = ($title !== '' ? '# ' . $title . "\n\n" : '') . 'Source: ' . $source . "\n";
+        // Who copies a part keeps where it came from and how fresh it is.
+        $markdown = ($title !== '' ? '# ' . $title . "\n\n" : '') . 'Source: ' . $source . "\n"
+            . ($updated !== null ? 'Updated: ' . $updated . "\n" : '');
 
         return $body === '' ? $markdown : $markdown . "\n" . $body . "\n";
+    }
+
+    /** The day of an ISO 8601 time as written (its own offset), or null when it isn't one. */
+    private static function date(?string $value): ?string
+    {
+        $time = PageMeta::time($value);
+
+        return $time === '' ? null : substr($time, 0, 10);
     }
 
     /** Add the Markdown alternate to a public HTML page: `Link` header and `<link>` in the head. */
