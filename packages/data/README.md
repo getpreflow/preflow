@@ -611,7 +611,8 @@ $driver->clearCache();         // every type of this data path
 ```
 
 `clearCache()` leaves other data paths' caches in the same directory alone; `preflow cache:clear`
-(the registry's "JSON storage query cache") removes every data path's cache files.
+(the registry's "JSON storage query cache") removes every data path's cache and temp files, but keeps
+the `.gen` generation files (a few bytes each) that guard a cache write racing a save.
 
 Without a cache directory the driver behaves as before.
 

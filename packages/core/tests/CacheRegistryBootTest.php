@@ -47,7 +47,7 @@ final class CacheRegistryBootTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_cache_clear_removes_json_cache_files_of_vanished_data_paths(): void
+    public function test_cache_clear_removes_json_caches_and_temp_files_but_keeps_generations(): void
     {
         $dir = $this->app('twig');
         $app = Application::create($dir);
@@ -68,7 +68,13 @@ final class CacheRegistryBootTest extends TestCase
         ob_end_clean();
 
         $this->assertSame(0, $code);
-        $this->assertSame([], glob($cache . '/json-*'));
+        // Caches and temp files of every path key go (the vanished one's too) ...
+        $this->assertSame([], glob($cache . '/json-*.json'));
+        $this->assertSame([], glob($cache . '/json-*.tmp-*'));
+        // ... the generation files stay: they guard a cache write racing a save.
+        $gens = glob($cache . '/json-*.gen');
+        $this->assertCount(2, $gens);
+        $this->assertSame(0, $app->container()->get(CacheRegistry::class)->get('data.json')->stats()->entries);
     }
 
     private function removeTree(string $dir): void

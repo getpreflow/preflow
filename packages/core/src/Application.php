@@ -450,8 +450,11 @@ final class Application
                     'data.json',
                     'JSON storage query cache',
                     $this->dataCachePath(absolute: true),
-                    // Every path key's files: .json caches, .gen generations, leftover .tmp-* files.
+                    // Every path key's .json caches and leftover .tmp-* files. The .gen generation
+                    // files stay: they guard a cache write racing a save, and the cache folder alone
+                    // can't tell a live data path's key from a vanished one (they are a few bytes each).
                     pattern: 'json-*',
+                    exclude: 'json-*.gen',
                 ));
             }
         }

@@ -82,6 +82,20 @@ final class DirectoryCacheTest extends TestCase
         $this->assertFileDoesNotExist($this->root . '/cache/json-post.json');
     }
 
+    public function test_excluded_files_are_neither_counted_nor_cleared(): void
+    {
+        file_put_contents($this->root . '/cache/json-post-k.json', '12');
+        file_put_contents($this->root . '/cache/json-post-k.gen', 'abc');
+        file_put_contents($this->root . '/cache/json-post-k.gen.tmp-ab12', 'x');
+        $cache = new DirectoryCache('k', 'Label', $this->root . '/cache', pattern: 'json-*', exclude: 'json-*.gen');
+
+        $this->assertSame(2, $cache->stats()->entries);
+        $this->assertSame(2, $cache->clear()->entries);
+        $this->assertFileExists($this->root . '/cache/json-post-k.gen');
+        $this->assertFileDoesNotExist($this->root . '/cache/json-post-k.json');
+        $this->assertFileDoesNotExist($this->root . '/cache/json-post-k.gen.tmp-ab12');
+    }
+
     public function test_symlinks_are_not_counted_and_never_followed(): void
     {
         mkdir($this->root . '/outside');
