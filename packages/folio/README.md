@@ -1578,8 +1578,8 @@ from publishing). Two tabs:
   first, with **Redirect…** (the form, prefilled) and **Dismiss**. A dismissed address comes back
   only when it is hit again 30 days or more after the dismissal; an address that gets a redirect
   or that a page takes leaves the list. The count is approximate: an address is counted at most
-  once a minute (hits in between are dropped), and at most 1,000 addresses are recorded (new ones
-  past that are ignored until old ones are dismissed or trimmed).
+  once a minute (hits in between are dropped), a burst of new addresses is recorded at most 30 a
+  minute, and the list keeps the 1,000 most recently hit addresses.
 
 A hand-made entry has an old address, typed as visitors see it (`/de/werkstatt` for German on a
 site with locale prefixes; the prefix of any of the site's languages becomes the entry's

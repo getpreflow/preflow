@@ -802,7 +802,7 @@ return [
         'intro' => 'Alte Adressen, die Besucher zu einer Seite oder URL weiterschicken. Umbenannte und entfernte Seiten bekommen ihre automatisch; für alles andere legst du eigene an.',
         'tab_redirects' => 'Weiterleitungen',
         'tab_not_found' => 'Nicht gefunden',
-        'not_found_intro' => 'Adressen, die Besucher aufgerufen haben und die es nicht gibt, jede mindestens zweimal. Leite sie auf die richtige Seite weiter oder blende aus, was egal ist. Die Zahl ist ungefähr: eine Adresse wird höchstens einmal pro Minute gezählt, und es werden höchstens 1.000 Adressen erfasst.',
+        'not_found_intro' => 'Adressen, die Besucher aufgerufen haben und die es nicht gibt, jede mindestens zweimal. Leite sie auf die richtige Seite weiter oder blende aus, was egal ist. Die Zahl ist ungefähr: eine Adresse wird höchstens einmal pro Minute gezählt, eine Welle neuer Adressen wird mit höchstens 30 pro Minute erfasst, und die Liste behält die 1.000 zuletzt aufgerufenen Adressen.',
         'new' => 'Neue Weiterleitung',
         'edit' => 'Weiterleitung bearbeiten',
         'search_label' => 'Adressen durchsuchen',

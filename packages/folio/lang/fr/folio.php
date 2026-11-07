@@ -802,7 +802,7 @@ return [
         'intro' => 'D’anciennes adresses qui renvoient les visiteurs vers une page ou une URL. Les pages renommées ou retirées reçoivent les leurs automatiquement ; ajoutez les vôtres pour tout le reste.',
         'tab_redirects' => 'Redirections',
         'tab_not_found' => 'Introuvables',
-        'not_found_intro' => 'Des adresses demandées par les visiteurs qui n’existent pas, chacune au moins deux fois. Redirigez-les vers la bonne page ou masquez ce qui n’a pas d’importance. Le nombre est approximatif : une adresse est comptée au plus une fois par minute, et 1 000 adresses au maximum sont enregistrées.',
+        'not_found_intro' => 'Des adresses demandées par les visiteurs qui n’existent pas, chacune au moins deux fois. Redirigez-les vers la bonne page ou masquez ce qui n’a pas d’importance. Le nombre est approximatif : une adresse est comptée au plus une fois par minute, une rafale de nouvelles adresses est enregistrée à raison de 30 par minute au plus, et la liste conserve les 1 000 adresses les plus récemment demandées.',
         'new' => 'Nouvelle redirection',
         'edit' => 'Modifier la redirection',
         'search_label' => 'Rechercher des adresses',

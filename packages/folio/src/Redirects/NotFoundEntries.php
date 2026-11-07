@@ -32,8 +32,10 @@ final class NotFoundEntries implements NotFoundLog
     /** A known address is written at most once in this many seconds; hits in between are dropped, not counted. */
     public const int WRITE_WINDOW = 60;
 
-    /** At most this many addresses are recorded; new ones past it are refused (known ones still count). */
-    public const int MAX_PATHS = 1000;
+    /** At most this many new addresses are recorded per NEW_WINDOW seconds, site-wide (bounds scanner bursts). */
+    public const int NEW_PER_WINDOW = 30;
+
+    public const int NEW_WINDOW = 60;
 
     private static ?TypeDefinition $definition = null;
 
@@ -89,8 +91,9 @@ final class NotFoundEntries implements NotFoundLog
         $row = $this->at($locale, $path);
 
         if ($row === null) {
-            $counted = $this->dm->queryIn(self::definition())->aggregate()->count()->get();
-            if ((int) ($counted[0]['count'] ?? 0) >= self::MAX_PATHS) {
+            $since = self::stamp($at->modify('-' . self::NEW_WINDOW . ' seconds'));
+            $recent = $this->dm->queryIn(self::definition())->where('first_hit_at', '>', $since)->aggregate()->count()->get();
+            if ((int) ($recent[0]['count'] ?? 0) >= self::NEW_PER_WINDOW) {
                 return;
             }
             $id = self::id($locale, $path);
