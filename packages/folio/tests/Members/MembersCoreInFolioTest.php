@@ -108,6 +108,7 @@ final class MembersCoreInFolioTest extends TestCase
         $errors = $this->post('/de/members/register', ['name' => '', 'email' => 'nope', 'password' => 'short']);
         $both = self::stable((string) $page->getBody()) . "\n<!-- errors -->\n" . self::stable((string) $errors->getBody());
 
+        // Since 0.58 inline JS entries are minified one by one and joined with ";\n" (one "\n" at an entry boundary differs from v0.36.0).
         $this->assertSame((string) file_get_contents(self::SNAPSHOT), $both);
     }
 
