@@ -11,10 +11,10 @@ use PHPUnit\Framework\TestCase;
  * so only "conflict" keeps Composer from pairing core with a release that lacks the APIs it calls: auth 0.38
  * (bootAuth binds Preflow\Auth\Record\RecordUserProvider::factory() for record users from
  * config/auth.php), data 0.28 (Application passes cacheDir: to JsonFileDriver), htmx 0.46
- * (HtmxExtensionProvider takes pathPrefix:), i18n 0.46 (LocaleMiddleware::urlPrefix()), view 0.54
+ * (HtmxExtensionProvider takes pathPrefix:), i18n 0.46 (LocaleMiddleware::urlPrefix()), view 0.58
  * (the Geo classes: GeoCollector, GeoMiddleware, RenderScopes, GeoEntries; the Seo classes: SeoConfig,
  * SeoContext, SeoSite, SchemaRegistry, SeoMiddleware; the Audit classes: AuditRegistry, PageRenderer
- * and AssetCollector::restoring()) and twig and blade 0.50 (TwigEngine and BladeEngine
+ * and AssetCollector::restoring(); since 0.58 AssetCollector takes cachePath:, which Application passes) and twig and blade 0.50 (TwigEngine and BladeEngine
  * take geoCollector: and seoContext:).
  */
 final class ComposerConstraintsTest extends TestCase
@@ -28,7 +28,7 @@ final class ComposerConstraintsTest extends TestCase
             'preflow/data' => '<0.28',
             'preflow/htmx' => '<0.46',
             'preflow/i18n' => '<0.46',
-            'preflow/view' => '<0.54',
+            'preflow/view' => '<0.58',
             'preflow/twig' => '<0.50',
             'preflow/blade' => '<0.50',
         ], $composer['conflict'] ?? null);

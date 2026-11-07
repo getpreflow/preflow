@@ -10,7 +10,8 @@ use PHPUnit\Framework\TestCase;
  * "^0.38 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing Folio with a release that lacks the APIs it calls: auth 0.38 (RecordUser and
  * RecordUserProvider moved to Preflow\Auth\Record, PasswordRehash; since 0.27 the chain
- * provider, ClaimsCredentials, SessionGuard::remembers()), core 0.52 (NonPublicPaths, where Folio registers its admin; since
+ * provider, ClaimsCredentials, SessionGuard::remembers()), core 0.58 (Composer\InstalledPackages and Config\ParsedJsonFiles,
+ * which the extension registry, ModelExtension and TypeCatalog read through; since 0.52 NonPublicPaths, where Folio registers its admin; since
  * 0.50 it binds PublicPages, SeoSite and SeoContext, which FolioServiceProvider fills; since 0.34 Container::hasProvider(),
  * so media registers once; 0.33's cache registry Settings → Cache lists; since 0.27 it builds
  * the chain from config/auth.php, which RecordProviders and StaffPasswords look into), data
@@ -34,7 +35,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.47', 'preflow/auth' => '<0.38', 'preflow/codes' => '<0.40', 'preflow/core' => '<0.52', 'preflow/data' => '<0.42', 'preflow/i18n' => '<0.47', 'preflow/media' => '<0.50', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/routing' => '<0.52', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.54'],
+            ['preflow/ai' => '<0.47', 'preflow/auth' => '<0.38', 'preflow/codes' => '<0.40', 'preflow/core' => '<0.58', 'preflow/data' => '<0.42', 'preflow/i18n' => '<0.47', 'preflow/media' => '<0.50', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/routing' => '<0.52', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.54'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; members and codes are suggested, not required.

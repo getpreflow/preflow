@@ -6,7 +6,7 @@
     "require": {
         "php": ">=8.4",
         "phpunit/phpunit": "^11.0",
-        "preflow/core": "^0.1 || @dev",
+        "preflow/core": "^0.58 || @dev",
         "preflow/routing": "^0.1 || @dev",
         "preflow/view": "^0.1 || @dev",
         "preflow/components": "^0.1 || @dev",
@@ -17,6 +17,7 @@
         "nyholm/psr7": "^1.8"
     },
     "conflict": {
+        "preflow/core": "<0.58",
         "preflow/data": "<0.25"
     },
     "autoload": {

@@ -20,7 +20,7 @@
         "preflow/data": "<0.28",
         "preflow/htmx": "<0.46",
         "preflow/i18n": "<0.46",
-        "preflow/view": "<0.54",
+        "preflow/view": "<0.58",
         "preflow/twig": "<0.50",
         "preflow/blade": "<0.50"
     },
