@@ -46,9 +46,10 @@ final class TestDataPathsTest extends TestCase
         $this->assertNotEmpty(glob($cache . '/json-post-*.json'));
         $this->assertDirectoryDoesNotExist($this->root . '/app/storage/cache/data');
 
-        // cache:clear empties the folder the app really uses.
+        // cache:clear empties the folder the app really uses (the tiny .gen generation files stay).
         $app->container()->get(CacheRegistry::class)->get('data.json')->clear();
-        $this->assertSame([], glob($cache . '/json-*'));
+        $this->assertSame([], glob($cache . '/json-*.json'));
+        $this->assertNotEmpty(glob($cache . '/json-post-*.gen'));
         $this->assertSame($data, getenv('DATA_PATH'));
     }
 

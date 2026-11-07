@@ -50,6 +50,7 @@ final class MysqlTestDatabaseTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/data' => '<0.25'], $composer['conflict'] ?? null);
+        // The full conflict list is pinned in ComposerConstraintsTest.
+        $this->assertSame('<0.25', $composer['conflict']['preflow/data'] ?? null);
     }
 }
