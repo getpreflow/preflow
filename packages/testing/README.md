@@ -162,6 +162,29 @@ On a miss the step runs and its outcome is kept for later tests. Nothing is kept
 (in a row or in the return value), when a root's placeholder appears in a file, when the return value cannot be serialized
 or when the step throws. Those steps run for real every time.
 
+### JSON caches of a test's data path
+
+The JSON storage keeps a query cache per data path in `storage/cache/data` (`json-{type}-{pathKey}.json` and `.gen`). A
+scaffold that gives every test a random `DATA_PATH` must give it a cache folder under the same temp root, or the site's
+shared `storage/cache/data` gets a new set of files per test and never shrinks. Set `DATA_CACHE_PATH` next to `DATA_PATH`
+(the application uses it instead of `storage/cache/data`), or let the helper do both:
+
+```php
+use Preflow\Testing\Fast\TestDataPaths;
+
+[$dataPath, $cachePath] = TestDataPaths::use($this->siteTmp);   // {tmp}/data and {tmp}/cache/data, made, env set
+// ... in the teardown, before the temp root is removed:
+TestDataPaths::release();                                       // unsets DATA_PATH and DATA_CACHE_PATH
+```
+
+A scaffold that sets `DATA_PATH` by hand adds `putenv('DATA_CACHE_PATH=' . $this->siteTmp . '/cache/data');` and the name
+to the list it unsets. If `{tmp}` is a snapshot root, the cache folder is part of the state like any file there.
+`preflow cache:clear` empties the JSON caches of every data path, including those of data paths that no longer exist
+(use it once on a site whose test runs piled up files). Other per-app caches (`storage/cache/twig`, `assets`, `composer`)
+are keyed by content or release, so a test run reuses them and they do not grow per test. A test that creates an
+application from a temp base path keeps them under it. `Application::create([...])` (an array) uses the working
+directory as its base path: `chdir()` to a temp folder first.
+
 ### Effects outside the roots
 
 A step may only change files under its roots and the registered databases. Anything else it writes must be a derived

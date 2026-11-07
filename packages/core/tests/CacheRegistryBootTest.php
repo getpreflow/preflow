@@ -47,6 +47,39 @@ final class CacheRegistryBootTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_cache_clear_removes_json_cache_files_of_vanished_data_paths(): void
+    {
+        $dir = $this->app('twig');
+        $app = Application::create($dir);
+        $app->boot();
+        $cache = $dir . '/storage/cache/data';
+        // A current data path, and a test's data path that was deleted long ago.
+        $gone = new \Preflow\Data\Driver\JsonFileDriver($dir . '/vanished-tmp/data', $cache);
+        $gone->save('post', 'p1', ['uuid' => 'p1']);
+        $gone->findMany('post', new \Preflow\Data\Query());
+        (new \Preflow\Data\Driver\JsonFileDriver($dir . '/storage/data', $cache))->save('post', 'p2', ['uuid' => 'p2']);
+        $this->assertNotEmpty(glob($cache . '/json-*.gen'));
+        file_put_contents($cache . '/json-post-deadbeef.json.tmp-ab12', '{}');
+        $this->removeTree($dir . '/vanished-tmp');
+
+        $console = new \Preflow\DevTools\Command\CacheClearCommand(static fn () => $app);
+        ob_start();
+        $code = $console->execute(['data.json']);
+        ob_end_clean();
+
+        $this->assertSame(0, $code);
+        $this->assertSame([], glob($cache . '/json-*'));
+    }
+
+    private function removeTree(string $dir): void
+    {
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST) as $f) {
+            $f->isDir() ? rmdir($f->getPathname()) : unlink($f->getPathname());
+        }
+        rmdir($dir);
+    }
+
+    #[RunInSeparateProcess]
     public function test_a_provider_can_register_its_own_cache(): void
     {
         $app = Application::create($this->app('twig', withProvider: true));

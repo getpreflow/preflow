@@ -438,7 +438,7 @@ final class Application
                 'mysql' => $this->createMysqlDriver($driverConfig, $collector),
                 'json' => new \Preflow\Data\Driver\JsonFileDriver(
                     $driverConfig['path'] ?? $this->basePath('storage/data'),
-                    cacheDir: $this->basePath('storage/cache/data'),
+                    cacheDir: $this->dataCachePath(),
                 ),
                 default => null,
             };
@@ -447,8 +447,9 @@ final class Application
                 $this->container->get(CacheRegistry::class)->register(new DirectoryCache(
                     'data.json',
                     'JSON storage query cache',
-                    $this->absolutePath('storage/cache/data'),
-                    pattern: 'json-*.json',
+                    $this->dataCachePath(absolute: true),
+                    // Every path key's files: .json caches, .gen generations, leftover .tmp-* files.
+                    pattern: 'json-*',
                 ));
             }
         }
@@ -723,6 +724,20 @@ final class Application
         ));
 
         return $cachePath;
+    }
+
+    /**
+     * Where the JSON storage keeps its query caches: storage/cache/data, or DATA_CACHE_PATH when
+     * set (a test scaffold with its own DATA_PATH sets it under the same temp root).
+     */
+    private function dataCachePath(bool $absolute = false): string
+    {
+        $env = $_ENV['DATA_CACHE_PATH'] ?? getenv('DATA_CACHE_PATH');
+        if (is_string($env) && $env !== '') {
+            return rtrim($env, '/');
+        }
+
+        return $absolute ? $this->absolutePath('storage/cache/data') : $this->basePath('storage/cache/data');
     }
 
     /** The decoded composer installed.json lives in storage/cache/composer. */

@@ -47,6 +47,29 @@ class AppTestProvider extends ServiceProvider
 
 final class ApplicationTest extends TestCase
 {
+    private string $cwd = '';
+    private string $tmp = '';
+
+    /** Application::create([...]) uses the working directory as its base path: keep its storage/ out of the repo. */
+    protected function setUp(): void
+    {
+        $this->cwd = getcwd() ?: '.';
+        $this->tmp = sys_get_temp_dir() . '/preflow_apptest_' . bin2hex(random_bytes(4));
+        mkdir($this->tmp);
+        chdir($this->tmp);
+    }
+
+    protected function tearDown(): void
+    {
+        chdir($this->cwd);
+        if (is_dir($this->tmp)) {
+            foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->tmp, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST) as $f) {
+                $f->isDir() ? rmdir($f->getPathname()) : unlink($f->getPathname());
+            }
+            rmdir($this->tmp);
+        }
+    }
+
     public function test_creates_with_config(): void
     {
         $app = Application::create([
