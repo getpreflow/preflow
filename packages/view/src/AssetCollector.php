@@ -161,11 +161,9 @@ final class AssetCollector
             return '';
         }
 
-        $css = implode("\n", $registry);
-
-        if ($this->isProd) {
-            $css = $this->minifyCss($css);
-        }
+        $css = $this->isProd
+            ? implode('', array_map($this->minifyCss(...), $registry))
+            : implode("\n", $registry);
 
         $nonce = $this->nonceAttr();
 
@@ -193,11 +191,9 @@ final class AssetCollector
             return '';
         }
 
-        $js = implode("\n", $registry);
-
-        if ($this->isProd) {
-            $js = $this->minifyJs($js);
-        }
+        $js = $this->isProd
+            ? implode(";\n", array_filter(array_map($this->minifyJs(...), $registry), static fn (string $j): bool => $j !== ''))
+            : implode("\n", $registry);
 
         $nonce = $this->nonceAttr();
 
@@ -224,33 +220,65 @@ final class AssetCollector
             return $minify();
         }
 
-        $version = class_exists(\Composer\InstalledVersions::class)
-            && \Composer\InstalledVersions::isInstalled('matthiasmullie/minify')
-                ? (string) \Composer\InstalledVersions::getReference('matthiasmullie/minify')
-                    . (string) \Composer\InstalledVersions::getPrettyVersion('matthiasmullie/minify')
-                : 'unknown';
         $dir = rtrim($this->cachePath, '/') . '/assets';
-        $file = $dir . '/' . hash('xxh3', $version . "\0" . $kind . "\0" . $input) . '.php';
+        $file = $dir . '/' . hash('xxh3', self::minifierVersion() . "\0" . $kind . "\0" . $input) . '.php';
 
         if (is_file($file)) {
-            $hit = @include $file;
+            try {
+                $hit = @include $file;
+            } catch (\Throwable) {
+                $hit = null;
+            }
             if (is_string($hit)) {
                 return $hit;
             }
+            @unlink($file); // truncated or corrupt entry
         }
 
         $out = $minify();
 
         if (is_dir($dir) || @mkdir($dir, 0775, true) || is_dir($dir)) {
+            $this->prune($dir);
+            $payload = '<?php return ' . var_export($out, true) . ";\n";
             $tmp = $file . '.' . bin2hex(random_bytes(4)) . '.tmp';
-            if (@file_put_contents($tmp, '<?php return ' . var_export($out, true) . ";\n") !== false) {
+            if (@file_put_contents($tmp, $payload) === strlen($payload)) {
                 if (!@rename($tmp, $file)) {
                     @unlink($tmp);
                 }
+            } else {
+                @unlink($tmp);
             }
         }
 
         return $out;
+    }
+
+    private static ?string $minifierVersion = null;
+
+    private static function minifierVersion(): string
+    {
+        return self::$minifierVersion ??= class_exists(\Composer\InstalledVersions::class)
+            && \Composer\InstalledVersions::isInstalled('matthiasmullie/minify')
+                ? (string) \Composer\InstalledVersions::getReference('matthiasmullie/minify')
+                    . (string) \Composer\InstalledVersions::getPrettyVersion('matthiasmullie/minify')
+                : 'unknown';
+    }
+
+    /** Safety cap: above 2000 entries, a miss drops the oldest 10% by mtime. */
+    private function prune(string $dir): void
+    {
+        $files = glob($dir . '/*.php') ?: [];
+        if (count($files) <= 2000) {
+            return;
+        }
+        $times = [];
+        foreach ($files as $f) {
+            $times[$f] = @filemtime($f) ?: 0;
+        }
+        asort($times);
+        foreach (array_slice(array_keys($times), 0, intdiv(count($times), 10)) as $f) {
+            @unlink($f);
+        }
     }
 
     private function nonceAttr(): string

@@ -370,4 +370,57 @@ final class AssetCollectorTest extends TestCase
         $out = $this->renderCss($this->collector(isProd: true), ".a {\n  color: red;\n}\n");
         $this->assertStringContainsString('.a{color:red}', $out);
     }
+
+    public function test_per_entry_output_equals_whole_block_minify(): void
+    {
+        $css = ['a' => ".a {\n  color: red;\n}\n", 'b' => ".b > .c { margin: 0 0 0 0; }\n@media (min-width:600px){ .d{ padding:1px } }", 'c' => '/* x */ .e{background:url(a.png)}'];
+        $js = ['a' => "var x = 1;\nfunction f() { return x }\n", 'b' => "document.title = 'a';\n", 'c' => "(function(){ f() })();"];
+        $c = new AssetCollector(new NonceGenerator(), isProd: true);
+        foreach ($css as $k => $v) {
+            $c->addCss($v, $k);
+        }
+        foreach ($js as $k => $v) {
+            $c->addJs($v, \Preflow\View\JsPosition::Head, $k);
+        }
+        $out = $c->renderHead();
+        $whole = (new \MatthiasMullie\Minify\CSS(implode("\n", $css)))->minify();
+        $this->assertStringContainsString('>' . $whole . '</style>', $out);
+        $wholeJs = (new \MatthiasMullie\Minify\JS(implode("\n", $js)))->minify();
+        // JS differs from the whole-block result only by the ";\n" put between entries: the minifier
+        // strips each entry's trailing semicolon, and without it `a\n(function(){})()` would be a call.
+        preg_match('#<script[^>]*>([^<]*)</script>#', $out, $m);
+        $this->assertSame(
+            str_replace([';', "\n"], '', $wholeJs),
+            str_replace([';', "\n"], '', $m[1]),
+        );
+        $this->assertStringContainsString("'a';\n(function", $m[1]);
+    }
+
+    public function test_a_garbage_cache_file_falls_back_to_a_fresh_minify(): void
+    {
+        $dir = $this->cacheDir();
+        $css = '.a { color: red; }';
+        $this->renderCss($this->prodWithCache($dir), $css);
+        $file = glob($dir . '/assets/*.php')[0];
+        file_put_contents($file, "<?php return '.a{col");
+        $this->assertStringContainsString('.a{color:red}', $this->renderCss($this->prodWithCache($dir), $css));
+        file_put_contents($file, '<?php throw new \\Exception("x");');
+        $this->assertStringContainsString('.a{color:red}', $this->renderCss($this->prodWithCache($dir), $css));
+        $this->assertStringContainsString('.a{color:red}', (string) include $file);
+    }
+
+    public function test_a_miss_prunes_the_oldest_tenth_above_the_cap(): void
+    {
+        $dir = $this->cacheDir();
+        mkdir($dir . '/assets', 0775, true);
+        for ($i = 0; $i < 2001; $i++) {
+            $f = sprintf('%s/assets/old%04d.php', $dir, $i);
+            file_put_contents($f, "<?php return 'x';\n");
+            touch($f, 1000000 + $i);
+        }
+        $this->renderCss($this->prodWithCache($dir), '.new { color: red; }');
+        $this->assertFileDoesNotExist($dir . '/assets/old0000.php');
+        $this->assertFileExists($dir . '/assets/old2000.php');
+        $this->assertCount(2001 - 200 + 1, glob($dir . '/assets/*.php'));
+    }
 }
