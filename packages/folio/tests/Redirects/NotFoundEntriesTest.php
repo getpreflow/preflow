@@ -223,4 +223,61 @@ final class NotFoundEntriesTest extends TestCase
         sort($definition);
         $this->assertSame($columns, $definition);
     }
+
+    #[DataProvider('storages')]
+    public function test_a_known_path_is_written_at_most_once_a_minute(string $storage): void
+    {
+        $log = $this->log($storage);
+        $id = NotFoundEntries::id('de', '/missing');
+        $log->record('/missing', 'de', self::at('2026-11-01T10:00:00+00:00'));
+        $log->record('/missing', 'de', self::at('2026-11-01T10:00:59+00:00'));
+        $this->assertSame(1, $log->find($id)['hits']);
+        $this->assertSame('2026-11-01T10:00:00+00:00', $log->find($id)['last_hit_at']);
+
+        $log->record('/missing', 'de', self::at('2026-11-01T10:01:00+00:00'));
+        $this->assertSame(2, $log->find($id)['hits']);
+        $this->assertSame('2026-11-01T10:01:00+00:00', $log->find($id)['last_hit_at']);
+    }
+
+    #[DataProvider('storages')]
+    public function test_new_paths_stop_at_the_cap(string $storage): void
+    {
+        $log = $this->log($storage, 5000);
+        $this->fill(NotFoundEntries::MAX_PATHS);
+
+        $log->record('/new', 'de', self::at('2026-11-02T10:00:00+00:00'));
+        $this->assertNull($log->find(NotFoundEntries::id('de', '/new')));
+
+        $log->record('/p0', 'de', self::at('2026-11-02T10:00:00+00:00'));
+        $this->assertSame(2, $log->find(NotFoundEntries::id('de', '/p0'))['hits']);
+    }
+
+    #[DataProvider('storages')]
+    public function test_a_list_over_the_cap_is_left_as_it_is(string $storage): void
+    {
+        $log = $this->log($storage, 5000, 1);
+        $this->fill(NotFoundEntries::MAX_PATHS + 5);
+
+        $log->record('/new', 'de', self::at('2026-11-02T10:00:00+00:00'));
+        $log->record('/p1', 'de', self::at('2026-11-02T10:00:00+00:00'));
+
+        $counted = $this->dm->queryIn(NotFoundEntries::definition())->aggregate()->count()->get();
+        $this->assertSame(NotFoundEntries::MAX_PATHS + 5, (int) $counted[0]['count']);
+        $this->assertSame(2, $log->find(NotFoundEntries::id('de', '/p1'))['hits']);
+    }
+
+    private function fill(int $count): void
+    {
+        for ($i = 0; $i < $count; $i++) {
+            $this->dm->saveType(\Preflow\Data\DynamicRecord::fromArray(NotFoundEntries::definition(), [
+                'id' => NotFoundEntries::id('de', "/p{$i}"),
+                'path' => "/p{$i}",
+                'locale' => 'de',
+                'hits' => 1,
+                'first_hit_at' => '2026-11-01T10:00:00+00:00',
+                'last_hit_at' => '2026-11-01T10:00:00+00:00',
+                'dismissed_at' => null,
+            ]), false);
+        }
+    }
 }

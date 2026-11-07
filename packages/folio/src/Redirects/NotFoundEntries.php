@@ -29,6 +29,12 @@ final class NotFoundEntries implements NotFoundLog
     /** A dismissed address is counted afresh when hit this long after the dismissal. */
     private const string DISMISSED_FOR = '+30 days';
 
+    /** A known address is written at most once in this many seconds; hits in between are dropped, not counted. */
+    public const int WRITE_WINDOW = 60;
+
+    /** At most this many addresses are recorded; new ones past it are refused (known ones still count). */
+    public const int MAX_PATHS = 1000;
+
     private static ?TypeDefinition $definition = null;
 
     /**
@@ -83,6 +89,10 @@ final class NotFoundEntries implements NotFoundLog
         $row = $this->at($locale, $path);
 
         if ($row === null) {
+            $counted = $this->dm->queryIn(self::definition())->aggregate()->count()->get();
+            if ((int) ($counted[0]['count'] ?? 0) >= self::MAX_PATHS) {
+                return;
+            }
             $id = self::id($locale, $path);
             $this->write([
                 'id' => $id,
@@ -97,6 +107,12 @@ final class NotFoundEntries implements NotFoundLog
                 $this->trim();
             }
 
+            return;
+        }
+
+        // The row's own last-seen time is the clock: a hit within the window is dropped.
+        $last = self::time($row['last_hit_at']);
+        if ($last !== null && $at >= $last && $at->getTimestamp() - $last->getTimestamp() < self::WRITE_WINDOW) {
             return;
         }
 

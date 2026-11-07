@@ -830,7 +830,7 @@ return [
         'intro' => 'Old addresses that send visitors on to a page or a URL. Renamed and removed pages get theirs automatically; add your own for anything else.',
         'tab_redirects' => 'Redirects',
         'tab_not_found' => 'Not found',
-        'not_found_intro' => 'Addresses visitors asked for that don’t exist, each hit at least twice. Redirect them to the right page, or dismiss what doesn’t matter.',
+        'not_found_intro' => 'Addresses visitors asked for that don’t exist, each hit at least twice. Redirect them to the right page, or dismiss what doesn’t matter. The count is approximate: an address is counted at most once a minute, and at most 1,000 addresses are recorded.',
         'new' => 'New redirect',
         'edit' => 'Edit redirect',
         'search_label' => 'Search addresses',
