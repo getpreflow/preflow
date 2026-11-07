@@ -276,7 +276,12 @@ final class Application
             throw $e;
         }
         if ($request->getMethod() === 'HEAD') {
-            // Same status and headers as GET, no body (RFC 9110).
+            // Same status and headers as GET (with the GET length), no body (RFC 9110).
+            $size = $response->getBody()->getSize();
+            if ($size !== null && !$response->hasHeader('Content-Length') && !$response->hasHeader('Transfer-Encoding')
+                && !in_array($response->getStatusCode(), [204, 304], true)) {
+                $response = $response->withHeader('Content-Length', (string) $size);
+            }
             $response = $response->withBody((new \Nyholm\Psr7\Factory\Psr17Factory())->createStream(''));
         }
 
@@ -370,7 +375,7 @@ final class Application
             $responseSent = false;
             try {
                 $response = $this->handle($request);
-                ($this->emitter ?? static fn (ResponseInterface $r) => (new Emitter())->emit($r))($response);
+                ($this->emitter ?? fn (ResponseInterface $r) => (new Emitter())->emit($r, $request))($response);
                 $responseSent = true;
             } finally {
                 $this->emitting = false;
