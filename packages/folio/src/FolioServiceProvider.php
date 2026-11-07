@@ -40,8 +40,6 @@ use Preflow\Folio\Field\Types\StringFieldType;
 use Preflow\Folio\Field\Types\MatrixFieldType;
 use Preflow\Folio\Field\Types\RelationFieldType;
 use Preflow\Folio\Field\Types\TextFieldType;
-use Symfony\Component\HtmlSanitizer\HtmlSanitizer;
-use Symfony\Component\HtmlSanitizer\HtmlSanitizerConfig;
 use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\RecordRenderer;
 use Preflow\Folio\Override\ActionResolver;
@@ -560,12 +558,8 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(TemplateEngineInterface::class),
                 $prefix,
             ));
-            $registry->register(new RichTextFieldType(new HtmlSanitizer(
-                (new HtmlSanitizerConfig())
-                    ->allowSafeElements()
-                    ->allowRelativeLinks()
-                    ->allowRelativeMedias(),
-            )));
+            // The sanitizer is built on the first sanitize call, not on every request.
+            $registry->register(new RichTextFieldType(\Preflow\Folio\Field\LazyHtmlSanitizer::standard()));
             // Editors render only the controls the user may use (the routes check again).
             $can = static fn (string $permission): bool => $c->get(\Preflow\Auth\Access\Access::class)->can($permission);
             $registry->register(new AssetFieldType(
