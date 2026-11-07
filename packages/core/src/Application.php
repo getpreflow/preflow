@@ -278,8 +278,10 @@ final class Application
         if ($request->getMethod() === 'HEAD') {
             // Same status and headers as GET (with the GET length), no body (RFC 9110).
             $size = $response->getBody()->getSize();
+            // Skipped like the Emitter does when stray output or an output handler would make it wrong.
             if ($size !== null && !$response->hasHeader('Content-Length') && !$response->hasHeader('Transfer-Encoding')
-                && !in_array($response->getStatusCode(), [204, 304], true)) {
+                && !in_array($response->getStatusCode(), [204, 304], true)
+                && \Preflow\Core\Http\Emitter::outputIsUnbuffered()) {
                 $response = $response->withHeader('Content-Length', (string) $size);
             }
             $response = $response->withBody((new \Nyholm\Psr7\Factory\Psr17Factory())->createStream(''));

@@ -106,4 +106,48 @@ final class EmitterTest extends TestCase
             $this->assertSame($v === '1.0', in_array('Connection: close', $lines, true));
         }
     }
+
+    public function test_stray_buffered_output_suppresses_content_length(): void
+    {
+        ob_start();
+        echo 'x'; // a notice, a BOM or trailing whitespace already in the output buffer
+        try {
+            [$lines, $out] = $this->emit(new Response(200, [], 'hello'), $this->req());
+        } finally {
+            ob_end_clean();
+        }
+        $this->assertSame([], array_values(array_filter($lines, fn ($l) => str_starts_with($l, 'Content-Length'))));
+        $this->assertSame('hello', $out);
+    }
+
+    public function test_output_handler_suppresses_content_length(): void
+    {
+        ob_start(static fn (string $buffer): string => $buffer); // e.g. compression rewrites the body
+        try {
+            [$lines] = $this->emit(new Response(200, [], 'hello'), $this->req());
+        } finally {
+            ob_end_clean();
+        }
+        $this->assertSame([], array_values(array_filter($lines, fn ($l) => str_starts_with($l, 'Content-Length'))));
+    }
+
+    public function test_explicit_content_length_header_is_kept(): void
+    {
+        ob_start();
+        echo 'x';
+        try {
+            [$lines] = $this->emit(new Response(200, ['Content-Length' => '5'], 'hello'), $this->req());
+        } finally {
+            ob_end_clean();
+        }
+        $this->assertContains('Content-Length: 5', $lines);
+    }
+
+    public function test_status_line_protocol_is_clamped_to_10_or_11(): void
+    {
+        foreach (['2' => '1.1', '3.0' => '1.1', '0.9' => '1.1', '1.0' => '1.0', '1.1' => '1.1'] as $in => $want) {
+            [$lines] = $this->emit(new Response(200, [], 'hi'), $this->req('GET', (string) $in));
+            $this->assertSame("HTTP/{$want} 200 OK", $lines[0], "protocol {$in}");
+        }
+    }
 }

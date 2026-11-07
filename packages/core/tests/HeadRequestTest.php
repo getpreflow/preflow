@@ -56,4 +56,19 @@ final class HeadRequestTest extends TestCase
         $this->assertSame(404, $head->getStatusCode());
         $this->assertSame('', (string) $head->getBody());
     }
+
+    public function test_head_states_no_length_when_stray_output_is_buffered(): void
+    {
+        $get = $this->handle('GET', '/');
+        ob_start();
+        echo 'x'; // a notice or BOM already waiting in PHP's output buffer
+        try {
+            $head = $this->handle('HEAD', '/');
+        } finally {
+            ob_end_clean();
+        }
+
+        $this->assertSame(200, $get->getStatusCode());
+        $this->assertFalse($head->hasHeader('Content-Length'));
+    }
 }

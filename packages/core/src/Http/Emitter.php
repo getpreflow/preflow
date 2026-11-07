@@ -38,6 +38,8 @@ final class Emitter
         $reasonPhrase = $response->getReasonPhrase();
         // The status line answers the request's HTTP version (an HTTP/1.0 client gets HTTP/1.0).
         $protocol = $request !== null ? $request->getProtocolVersion() : $response->getProtocolVersion();
+        // Only 1.0 and 1.1 are answered in a PHP status line; anything else (2, 3, garbage) gets 1.1.
+        $protocol = $protocol === '1.0' ? '1.0' : '1.1';
         $isHead = $request !== null && strtoupper($request->getMethod()) === 'HEAD';
         $body = $response->getBody();
         $noBody = $statusCode === 204 || $statusCode === 304 || ($statusCode >= 100 && $statusCode < 200);
@@ -62,7 +64,7 @@ final class Emitter
         }
 
         if (!$response->hasHeader('Content-Length') && !$response->hasHeader('Transfer-Encoding')) {
-            if ($size !== null) {
+            if ($size !== null && self::outputIsUnbuffered()) {
                 ($this->send)('Content-Length: ' . $size, true);
             } elseif ($protocol === '1.0') {
                 // Unknown length (stream, download): HTTP/1.0 cannot chunk, so the connection ends the body.
@@ -85,5 +87,24 @@ final class Emitter
                 break;
             }
         }
+    }
+
+    /**
+     * Whether a Content-Length computed from the body alone is true: no stray output waits in a
+     * PHP output buffer (a notice, a BOM, whitespace after ?>) and no handler rewrites the output
+     * (zlib compression, a custom callback). Otherwise the client would cut the response short.
+     */
+    public static function outputIsUnbuffered(): bool
+    {
+        foreach (ob_get_status(true) as $status) {
+            if ((int) ($status['buffer_used'] ?? 0) > 0) {
+                return false;
+            }
+            if (($status['name'] ?? '') !== 'default output handler') {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
