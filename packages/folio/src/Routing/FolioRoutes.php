@@ -28,6 +28,7 @@ final class FolioRoutes
     private const LOCALE_MW = 'Preflow\\Folio\\Http\\AdminLocaleMiddleware';
     private const PERMISSION_MW = 'Preflow\\Folio\\Http\\FolioPermissionMiddleware';
     private const EXTENSION_ASSETS = 'Preflow\\Folio\\Http\\ExtensionAssetController';
+    private const NAV_PREFS = 'Preflow\\Folio\\Http\\NavPreferenceController';
     private const AI = 'Preflow\\Folio\\Http\\AiTranslateController';
     private const AI_SETTINGS = 'Preflow\\Folio\\Http\\AiSettingsController';
 
@@ -50,6 +51,8 @@ final class FolioRoutes
             $defs[] = ['POST', $prefix . '/logout', 'logout',    self::AUTH];
             // The user's interface language (signed in, no permission): before {type}, which it would match.
             $defs[] = ['POST', $prefix . '/_locale', 'update',   self::LOCALE];
+            // One sidebar section open or closed (signed in, no permission): before {type}, too.
+            $defs[] = ['POST', $prefix . '/_prefs/nav', 'update', self::NAV_PREFS];
             if ($passwords) {
                 $defs[] = ['GET',  $prefix . '/forgot',           'forgotForm',   self::PASSWORDS];
                 $defs[] = ['POST', $prefix . '/forgot',           'forgot',       self::PASSWORDS];

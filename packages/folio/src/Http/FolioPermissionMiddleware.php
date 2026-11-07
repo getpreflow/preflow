@@ -109,6 +109,7 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'AccountController@show' => self::SIGNED_IN,
         'AccountController@password' => self::SIGNED_IN,
         'LocaleController@update' => self::SIGNED_IN,
+        'NavPreferenceController@update' => self::SIGNED_IN,
     ];
 
     public function __construct(

@@ -836,6 +836,10 @@ final class FolioServiceProvider extends ServiceProvider
             self::translator($c, $app),
             $prefix,
         ));
+        $container->bind(\Preflow\Folio\Http\NavPreferenceController::class, fn (Container $c) => new \Preflow\Folio\Http\NavPreferenceController(
+            $c->get(\Preflow\Folio\Users\UserPreferences::class),
+            $prefix,
+        ));
         $container->bind(\Preflow\Folio\Http\FolioPermissionMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\FolioPermissionMiddleware(
             $c->get(\Preflow\Auth\Access\Access::class),
             $c->get(TypeCatalog::class),
