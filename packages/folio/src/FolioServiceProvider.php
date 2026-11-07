@@ -521,13 +521,14 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(\Preflow\Folio\Content\DisplayLabels::class),
             );
             // One instance serves every request: the person is looked up when the sidebar renders.
-            $nav->setOpenState(static function () use ($c): array {
+            // No person (no auth, or signed out): null, every section renders open (nothing can be saved).
+            $nav->setOpenState(static function () use ($c): ?array {
                 if (!$c->bound(\Preflow\Auth\AuthManager::class)) {
-                    return [];
+                    return null;
                 }
                 $user = $c->get(\Preflow\Auth\AuthManager::class)->user();
 
-                return $user !== null ? $c->get(\Preflow\Folio\Users\UserPreferences::class)->navSections($user->getAuthId()) : [];
+                return $user !== null ? $c->get(\Preflow\Folio\Users\UserPreferences::class)->navSections($user->getAuthId()) : null;
             }, $navCollapsed);
 
             return $nav;
@@ -1085,12 +1086,6 @@ final class FolioServiceProvider extends ServiceProvider
     }
 
     /**
-     * The admin's default interface language: config/folio.php "locale", else app.locale
-     * (English when Folio has no texts in it, InterfaceLocales::default()).
-     *
-     * @param array<string, mixed> $folioCfg
-     */
-    /**
      * Sections that start closed (config/folio.php nav.collapsed): library and settings when not
      * set; a value that is not a list of strings is ignored (nothing starts closed).
      *
@@ -1116,6 +1111,12 @@ final class FolioServiceProvider extends ServiceProvider
         return $collapsed;
     }
 
+    /**
+     * The admin's default interface language: config/folio.php "locale", else app.locale
+     * (English when Folio has no texts in it, InterfaceLocales::default()).
+     *
+     * @param array<string, mixed> $folioCfg
+     */
     private static function interfaceDefault(Application $app, array $folioCfg): string
     {
         $locale = $folioCfg['locale'] ?? $app->config()->get('app.locale', 'en');

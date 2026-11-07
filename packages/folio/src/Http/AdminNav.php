@@ -30,7 +30,7 @@ final class AdminNav
     /** @var array<int, ?int> added items' badge results by closure id (the closures live in $added, so ids are stable) */
     private array $badgeCounts = [];
 
-    /** @var (Closure(): array<string, bool>)|null the current person's saved open state by section name */
+    /** @var (Closure(): ?array<string, bool>)|null the current person's saved open state by section name; null from the closure = no person */
     private ?Closure $saved = null;
     /** @var list<string> sections that start closed when nothing is saved */
     private array $collapsedDefaults = [];
@@ -49,13 +49,16 @@ final class AdminNav
     }
 
     /**
-     * Adds an item to a section; a new section name sits between Content and Library, in the order first used. A null permission shows it to everyone.
+     * Adds an item to a section; a new section name sits between Content and Library, in the order first used. A null permission shows it to everyone. The section name is [a-z][a-z0-9_-]{0,63} (what the sidebar can save); anything else throws \InvalidArgumentException.
      *
      * @param string|Closure(): string $label a closure is asked when the sidebar renders (a text in the interface language)
      * @param (Closure(): mixed)|null $badge a count for the item, asked once and only while the item is visible; anything but an int above 0 (or a throw) shows none
      */
     public function add(string $section, string|Closure $label, string $url, string $icon, ?string $permission, int $order = 100, ?Closure $badge = null): void
     {
+        if (preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $section) !== 1) {
+            throw new \InvalidArgumentException('Nav section "' . $section . '" is not a valid name: lower case letters, digits, "_" and "-", starting with a letter, at most 64 characters.');
+        }
         $this->added[] = compact('section', 'label', 'url', 'icon', 'permission', 'order', 'badge');
     }
 
@@ -66,7 +69,7 @@ final class AdminNav
     }
 
     /**
-     * @param Closure(): array<string, bool> $saved the current person's saved open state, asked once per render
+     * @param Closure(): ?array<string, bool> $saved the current person's saved open state, asked once per render; null (no person, nothing can be saved) opens every section
      * @param list<string> $collapsedDefaults sections that start closed when the person saved nothing for them
      */
     public function setOpenState(Closure $saved, array $collapsedDefaults): void
@@ -120,7 +123,7 @@ final class AdminNav
         }
 
         $active = $this->activeUrl($visible);
-        $saved = $this->saved !== null ? ($this->saved)() : [];
+        $saved = $this->saved !== null ? ($this->saved)() : null;
         $sections = [];
         foreach ($visible as $section => $items) {
             $name = (string) $section;
@@ -131,12 +134,12 @@ final class AdminNav
                 'active' => $item['url'] === $active,
                 'badge' => $this->badge($item),
             ], $items);
-            $badges = array_sum(array_map(static fn (array $item): int => $item['badge'] ?? 0, $mapped));
+            $badges = array_sum(array_map(static fn (array $item): int => max(0, $item['badge'] ?? 0), $mapped));
             $hasActive = in_array(true, array_column($mapped, 'active'), true);
             $sections[] = [
                 'name' => $name === 'dashboard' ? '' : $name,
                 'badge' => $badges > 0 ? $badges : null,
-                'open' => $this->saved === null || $hasActive
+                'open' => $saved === null || $hasActive
                     || ($saved[$name] ?? !in_array($name, $this->collapsedDefaults, true)),
                 'label' => isset(self::BUILTIN[$section]) ? self::sectionLabel($section) : $this->labels->section($section),
                 'items' => $mapped,

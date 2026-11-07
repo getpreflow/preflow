@@ -37,7 +37,7 @@ final class AdminNavTest extends TestCase
     {
         $nav = $this->nav();
         $nav->add('library', 'Gallery', '/folio/gallery', 'ui-file', null);
-        $nav->add('Members', 'Members', '/folio/members', 'ui-file', null);
+        $nav->add('members', 'Members', '/folio/members', 'ui-file', null);
         $nav->add('content', 'Early', '/folio/early', 'ui-file', null, 10);
         $nav->setCurrentPath('/folio');
 
@@ -82,8 +82,8 @@ final class AdminNavTest extends TestCase
     public function test_items_without_permission_hidden_and_empty_section_dropped(): void
     {
         $nav = $this->nav(['page.view', 'assets.view', 'site.view', 'secret.view']);
-        $nav->add('Members', 'Members', '/folio/members', 'ui-file', null);
-        $nav->add('Hidden', 'Secret', '/folio/secret', 'ui-file', 'secret.view');
+        $nav->add('members', 'Members', '/folio/members', 'ui-file', null);
+        $nav->add('hidden', 'Secret', '/folio/secret', 'ui-file', 'secret.view');
         $nav->setCurrentPath('/folio');
 
         $sections = $nav->sections();
@@ -282,6 +282,62 @@ final class AdminNavTest extends TestCase
         foreach ($nav->sections() as $section) {
             $this->assertTrue($section['open']);
         }
+    }
+
+    public function test_without_a_person_every_section_is_open_despite_the_defaults(): void
+    {
+        $nav = $this->nav();
+        $nav->setCurrentPath('/folio/profile');
+        $nav->setOpenState(static fn (): ?array => null, ['library', 'settings']);
+
+        foreach ($nav->sections() as $section) {
+            $this->assertTrue($section['open'], $section['name']);
+        }
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function badSectionNames(): iterable
+    {
+        yield 'ampersand and spaces' => ['news & events'];
+        yield 'umlaut' => ['Ä'];
+        yield 'quote' => ["a'b"];
+        yield 'upper case' => ['Members'];
+        yield 'leading digit' => ['2024'];
+        yield 'empty' => [''];
+        yield 'too long' => [str_repeat('a', 65)];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('badSectionNames')]
+    public function test_add_refuses_a_section_name_the_sidebar_cannot_save(string $section): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('"' . $section . '"');
+        $this->nav()->add($section, 'X', '/folio/x', 'ui-file', null);
+    }
+
+    public function test_add_accepts_hyphen_underscore_and_digits(): void
+    {
+        $nav = $this->nav();
+        $nav->add('member-area', 'X', '/folio/x', 'ui-file', null);
+        $nav->add('year2024_b', 'Y', '/folio/y', 'ui-file', null);
+        $nav->setCurrentPath('/folio');
+
+        $this->assertNotNull($this->byName($nav->sections(), 'member-area'));
+        $this->assertNotNull($this->byName($nav->sections(), 'year2024_b'));
+    }
+
+    public function test_only_positive_item_badges_count_in_the_section_sum(): void
+    {
+        $nav = $this->nav();
+        $nav->add('settings', 'A', '/folio/a', 'ui-file', null, 100, static fn () => 4);
+        $nav->add('settings', 'B', '/folio/b', 'ui-file', null, 100, static fn () => -3);
+        $nav->add('library', 'C', '/folio/c', 'ui-file', null, 100, static fn () => -2);
+        $nav->setCurrentPath('/folio');
+
+        $sections = $nav->sections();
+
+        $this->assertSame(4, $this->byName($sections, 'settings')['badge']);
+        $this->assertNull($this->byName($sections, 'library')['badge']);
     }
 
     public function test_the_saved_state_is_asked_once_per_render(): void

@@ -327,7 +327,7 @@ final class FolioServiceProviderTest extends TestCase
     }
 
     /** @return array<string, mixed> the sections by name */
-    private function navSections(array $folio): array
+    private function navSections(array $folio, bool $signedIn = true): array
     {
         $base = sys_get_temp_dir() . '/folio_navcfg_' . bin2hex(random_bytes(5));
         mkdir($base . '/config', 0777, true);
@@ -337,6 +337,12 @@ final class FolioServiceProviderTest extends TestCase
             $app->setRouter(new Router(pagesDir: null, controllers: []));
             $app->registerProvider(new FolioServiceProvider());
             $app->boot();
+            if ($signedIn) {
+                $auth = new \Preflow\Auth\AuthManager([], 'web');
+                $auth->setUser(new \Preflow\Auth\ArrayUser('u1', 'u@site.test', ''), 'web');
+                $app->container()->singleton(\Preflow\Auth\AuthManager::class, static fn () => $auth);
+                $app->container()->singleton(\Preflow\Data\DataManager::class, static fn () => new \Preflow\Data\DataManager(['default' => new \Preflow\Data\Driver\SqliteDriver(new \PDO('sqlite::memory:'))]));
+            }
             $nav = $app->container()->get(\Preflow\Folio\Http\AdminNav::class);
             $nav->setCurrentPath('/folio/profile');
             $out = [];
@@ -365,6 +371,13 @@ final class FolioServiceProviderTest extends TestCase
 
         $this->assertFalse($sections['settings']['open']);
         $this->assertFalse($sections['library']['open']);
+    }
+
+    public function test_without_a_signed_in_user_the_collapsed_defaults_do_not_apply(): void
+    {
+        foreach ($this->navSections([], signedIn: false) as $section) {
+            $this->assertTrue($section['open'], $section['name']);
+        }
     }
 
     public function test_nav_collapsed_can_be_set_by_the_site(): void

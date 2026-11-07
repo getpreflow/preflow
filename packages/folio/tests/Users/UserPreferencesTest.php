@@ -49,6 +49,16 @@ final class UserPreferencesTest extends TestCase
         $this->assertSame([], $prefs->navSections('u2'));
     }
 
+    public function test_numeric_section_names_keep_their_keys(): void
+    {
+        $prefs = $this->prefs();
+        $prefs->setNavSection('u1', '2024', false);
+        $prefs->setNavSection('u1', '2025', true);
+        $prefs->setNavSection('u1', 'library', false);
+
+        $this->assertSame(['2024' => false, '2025' => true, 'library' => false], $prefs->navSections('u1'));
+    }
+
     public function test_saving_one_section_keeps_the_others_and_the_locale(): void
     {
         $prefs = $this->prefs();

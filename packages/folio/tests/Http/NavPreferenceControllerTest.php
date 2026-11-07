@@ -66,6 +66,20 @@ final class NavPreferenceControllerTest extends TestCase
         $this->assertSame(['settings' => true], $this->preferences->navSections('u1'));
     }
 
+    public function test_a_hyphenated_section_is_saved(): void
+    {
+        $this->assertSame(204, $this->post(['section' => 'member-area', 'open' => '0'])->getStatusCode());
+        $this->assertSame(['member-area' => false], $this->preferences->navSections('u1'));
+    }
+
+    public function test_a_foreign_user_field_in_the_body_is_ignored(): void
+    {
+        $this->assertSame(204, $this->post(['section' => 'settings', 'open' => '0', 'user' => 'u2', 'id' => 'u2', 'auth_id' => 'u2'])->getStatusCode());
+
+        $this->assertSame(['settings' => false], $this->preferences->navSections('u1'));
+        $this->assertSame([], $this->preferences->navSections('u2'));
+    }
+
     public function test_signed_out_is_sent_to_login_and_nothing_is_saved(): void
     {
         $response = $this->post(['section' => 'settings', 'open' => '0'], signedIn: false);
@@ -80,6 +94,8 @@ final class NavPreferenceControllerTest extends TestCase
     {
         yield 'path characters' => [['section' => '../x', 'open' => '1']];
         yield 'too long' => [['section' => str_repeat('a', 65), 'open' => '1']];
+        yield 'leading digit' => [['section' => '2024', 'open' => '1']];
+        yield 'leading hyphen' => [['section' => '-x', 'open' => '1']];
         yield 'empty' => [['section' => '', 'open' => '1']];
         yield 'upper case' => [['section' => 'Settings', 'open' => '1']];
         yield 'flag is a word' => [['section' => 'settings', 'open' => 'yes']];

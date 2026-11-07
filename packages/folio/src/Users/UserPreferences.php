@@ -86,7 +86,7 @@ final class UserPreferences
         $keptLocale = is_string($keptLocale) && $keptLocale !== '' ? $keptLocale : null;
         $map = self::sections($current?->get('nav'));
         if ($nav !== null) {
-            $map = array_merge($map, $nav);
+            $map = array_replace($map, $nav);
         }
 
         if ($keptLocale === null && $map === []) {
