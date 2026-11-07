@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.56.1** — 5756 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.57.0** — 5804 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -337,6 +337,15 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   smart-stack.works 87 s → 16 s / 72 s (paratest `--functional`), smeyer.me 59 s → 4.6 s / 12.5 s; no test skipped.
   0.56.1: the JSON storage query cache is kept per data path (`json-{type}-{path hash}.json` / `.gen`), so tests with
   their own data path and parallel workers sharing `storage/cache/data` never read each other's records; `cache:clear` still clears them all.
+- ~~**Folio sidebar sections (0.57):**~~ done in 0.57.0 (owner, 2026-11-07: the sidebar "can get quite long"). Every
+  section with a heading opens and closes (`<details>`, keyboard and no-JS friendly); the state is saved per person in
+  Folio's user preferences (`POST {prefix}/_prefs/nav`, signed-in, CSRF) and rendered by the server, so nothing jumps;
+  the current screen's section is always open; a closed section shows the sum of its badges. Sites set the sections
+  that start closed in `config/folio.php` `'nav' => ['collapsed' => [...]]` (default `['library', 'settings']`; with no
+  signed-in user nothing starts closed). On narrow screens the headings show as chips in the scrolling row.
+  Clearing the admin language no longer deletes a person's other preferences. **Upgrading:** nothing to do;
+  `AdminNav::add()` now refuses section keys outside `^[a-z][a-z0-9_-]{0,63}$` (the rule model files already had), and
+  tests that inspect the sidebar markup see sections wrapped in `details.folio-nav-section`.
 - **An analytics package (later, its own project; owner, 2026-11-06):** privacy-first visit counts, AI usage among
   them: per day, by AI agent family (OpenAI, Anthropic, Perplexity, Google…) and by what was fetched (HTML, Markdown,
   llms.txt), top pages per agent family, and one "everyone else" total. No paths with visitor data, no IP addresses,
