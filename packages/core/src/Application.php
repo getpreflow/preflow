@@ -733,13 +733,16 @@ final class Application
 
     /**
      * Where the JSON storage keeps its query caches: storage/cache/data, or DATA_CACHE_PATH when
-     * set (a test scaffold with its own DATA_PATH sets it under the same temp root).
+     * set (a test scaffold with its own DATA_PATH sets it under the same temp root). A relative
+     * DATA_CACHE_PATH is resolved against the application's base path.
      */
     private function dataCachePath(bool $absolute = false): string
     {
         $env = $_ENV['DATA_CACHE_PATH'] ?? getenv('DATA_CACHE_PATH');
         if (is_string($env) && $env !== '') {
-            return rtrim($env, '/');
+            $env = rtrim($env, '/') ?: '/';
+
+            return str_starts_with($env, '/') ? $env : $this->absolutePath($env);
         }
 
         return $absolute ? $this->absolutePath('storage/cache/data') : $this->basePath('storage/cache/data');

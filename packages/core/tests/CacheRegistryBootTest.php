@@ -188,6 +188,26 @@ final class CacheRegistryBootTest extends TestCase
         $this->assertSame([], glob($dir . '/storage/cache/twig/*/*/*.php'));
     }
 
+    #[RunInSeparateProcess]
+    public function test_a_relative_data_cache_path_is_resolved_against_the_base_path(): void
+    {
+        $dir = $this->app('twig');
+        $_ENV['DATA_CACHE_PATH'] = 'storage/test-cache/data/';
+        try {
+            $app = Application::create($dir);
+            $app->boot();
+            $driver = $app->container()->get(\Preflow\Data\DataManager::class)->driver('json');
+            $driver->save('post', 'p1', ['uuid' => 'p1']);
+            $driver->findMany('post', new \Preflow\Data\Query());
+
+            $this->assertSame($dir . '/storage/test-cache/data', $driver->cacheDir());
+            $this->assertCount(1, glob($dir . '/storage/test-cache/data/json-post-*.json'));
+            $this->assertSame(1, $app->container()->get(CacheRegistry::class)->get('data.json')->stats()->entries);
+        } finally {
+            unset($_ENV['DATA_CACHE_PATH']);
+        }
+    }
+
     private function app(string $engine, bool $withProvider = false): string
     {
         $dir = sys_get_temp_dir() . '/cacheboot_' . bin2hex(random_bytes(4));
