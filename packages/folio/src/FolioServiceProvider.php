@@ -49,6 +49,12 @@ use Preflow\View\TemplateEngineInterface;
 
 final class FolioServiceProvider extends ServiceProvider
 {
+    /** @var array{0: string, 1: array<string, mixed>}|null config/folio.php, read once */
+    private ?array $folioConfigCache = null;
+
+    /** How often config/folio.php was actually loaded (for tests). */
+    public int $folioConfigReads = 0;
+
     public function register(Container $container): void
     {
         // The media core first (once, also when the app lists it): Folio adapts its services below.
@@ -1863,13 +1869,20 @@ final class FolioServiceProvider extends ServiceProvider
     private function folioConfig(Application $app): array
     {
         $path = $app->basePath('config/folio.php');
+        if ($this->folioConfigCache !== null && $this->folioConfigCache[0] === $path) {
+            return $this->folioConfigCache[1];
+        }
+        $this->folioConfigReads++;
+        $config = [];
         if (is_file($path)) {
             $cfg = require $path;
             if (is_array($cfg)) {
-                return $cfg;
+                $config = $cfg;
             }
         }
-        return [];
+        $this->folioConfigCache = [$path, $config];
+
+        return $config;
     }
 
     /**

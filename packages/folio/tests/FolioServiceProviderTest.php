@@ -394,4 +394,24 @@ final class FolioServiceProviderTest extends TestCase
 
         $this->assertTrue($sections['settings']['open']);
     }
+
+    public function test_folio_config_is_read_once(): void
+    {
+        $base = sys_get_temp_dir() . '/folio_cfgonce_' . bin2hex(random_bytes(5));
+        mkdir($base . '/config', 0777, true);
+        file_put_contents($base . '/config/folio.php', '<?php return ' . var_export(['password_min' => 12], true) . ';');
+        try {
+            $app = Application::create($base);
+            $app->setRouter(new Router(pagesDir: null, controllers: []));
+            $provider = new FolioServiceProvider();
+            $app->registerProvider($provider);
+            $app->boot();
+
+            $this->assertSame(1, $provider->folioConfigReads);
+        } finally {
+            @unlink($base . '/config/folio.php');
+            @rmdir($base . '/config');
+            @rmdir($base);
+        }
+    }
 }

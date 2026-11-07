@@ -118,7 +118,7 @@ final class ModelExtension
     {
         $patches = [];
         foreach (is_dir($modelsPath) ? (glob($modelsPath . '/*.json') ?: []) : [] as $file) {
-            $schema = json_decode((string) file_get_contents($file), true);
+            $schema = \Preflow\Core\Config\ParsedJsonFiles::read($file);
             if (self::isPatch($schema)) {
                 $key = is_string($schema['key'] ?? null) && $schema['key'] !== '' ? $schema['key'] : basename($file, '.json');
                 $patches[$key] = ['file' => $file, 'schema' => $schema];

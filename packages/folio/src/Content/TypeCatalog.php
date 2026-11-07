@@ -60,7 +60,7 @@ final class TypeCatalog
 
         $listings = [];
         foreach (glob($this->modelsPath . '/*.json') ?: [] as $file) {
-            $data = json_decode((string) file_get_contents($file), true);
+            $data = \Preflow\Core\Config\ParsedJsonFiles::read($file);
             if (!is_array($data) || !isset($data['key']) || !is_string($data['key'])) {
                 continue; // skip malformed / incomplete definitions
             }

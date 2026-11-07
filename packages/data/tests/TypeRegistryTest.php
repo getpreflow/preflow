@@ -190,4 +190,30 @@ final class TypeRegistryTest extends TestCase
         $this->assertTrue($fields['c']->searchable);
         $this->assertSame(['c'], $this->registry->get('thing')->searchableFields);
     }
+
+    public function test_each_model_file_is_decoded_once_across_registries(): void
+    {
+        $this->writeSchema('article', ['key' => 'article', 'table' => 'articles', 'storage' => 'sqlite', 'fields' => ['title' => ['type' => 'string']]]);
+        \Preflow\Core\Config\ParsedJsonFiles::reset();
+
+        for ($i = 0; $i < 3; $i++) {
+            $registry = new TypeRegistry($this->tmpDir);
+            $this->assertTrue($registry->has('article'));
+            $registry->get('article');
+        }
+
+        $this->assertSame(1, \Preflow\Core\Config\ParsedJsonFiles::decodeCount());
+    }
+
+    public function test_a_changed_model_file_is_read_again(): void
+    {
+        $this->writeSchema('article', ['key' => 'article', 'table' => 'articles', 'storage' => 'sqlite', 'fields' => ['title' => ['type' => 'string']]]);
+        $this->assertArrayHasKey('title', (new TypeRegistry($this->tmpDir))->get('article')->fields);
+
+        $this->writeSchema('article', ['key' => 'article', 'table' => 'articles', 'storage' => 'sqlite', 'fields' => ['headline' => ['type' => 'string']]]);
+
+        $fields = (new TypeRegistry($this->tmpDir))->get('article')->fields;
+        $this->assertArrayHasKey('headline', $fields);
+        $this->assertArrayNotHasKey('title', $fields);
+    }
 }

@@ -63,7 +63,7 @@ final class TypeRegistry
         if (!is_file($path)) {
             return false; // not remembered: the file may still be written
         }
-        $schema = json_decode((string) file_get_contents($path), true);
+        $schema = \Preflow\Core\Config\ParsedJsonFiles::read($path);
 
         return $this->files[$type] = !(is_array($schema) && ($schema['extends'] ?? false) === true);
     }
@@ -91,7 +91,12 @@ final class TypeRegistry
             throw new \RuntimeException("Unknown type: {$type}. No schema at {$path}");
         }
 
-        return $this->parse(json_decode(file_get_contents($path), true, 512, JSON_THROW_ON_ERROR));
+        $schema = \Preflow\Core\Config\ParsedJsonFiles::read($path);
+        if (!is_array($schema)) { // invalid or not an object: decode again for the same error as ever
+            $schema = json_decode(file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        }
+
+        return $this->parse($schema);
     }
 
     /**
