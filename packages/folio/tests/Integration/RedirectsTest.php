@@ -143,12 +143,23 @@ final class RedirectsTest extends TestCase
         $this->assertSame([], $this->notFoundRows());
     }
 
-    public function test_unknown_public_path_is_recorded_once_per_hit(): void
+    public function test_unknown_public_path_is_counted_at_most_once_a_minute(): void
     {
         $this->assertSame(404, $this->fetch('/nowhere')->getStatusCode());
         $this->assertSame(404, $this->fetch('/nowhere/?utm_source=x')->getStatusCode());
         $this->assertSame(404, $this->fetch('/de/nirgends')->getStatusCode());
         $this->assertSame(404, $this->fetch('/wp-login.php')->getStatusCode());
+
+        // The second hit within the minute is dropped, not counted.
+        $this->assertSame(['de /nirgends 1', 'en /nowhere 1'], $this->notFoundRows());
+        $this->assertSame([], $this->notFound()->visible());
+
+        // A minute later the same address counts again.
+        $id = NotFoundEntries::id('en', '/nowhere');
+        $row = $this->notFound()->find($id);
+        $row['last_hit_at'] = (new \DateTimeImmutable('-2 minutes', new \DateTimeZone('UTC')))->format(DATE_ATOM);
+        $this->dm()->saveType(\Preflow\Data\DynamicRecord::fromArray(NotFoundEntries::definition(), $row), false);
+        $this->assertSame(404, $this->fetch('/nowhere')->getStatusCode());
 
         $this->assertSame(['de /nirgends 1', 'en /nowhere 2'], $this->notFoundRows());
         $this->assertSame(['/nowhere'], array_column($this->notFound()->visible(), 'path'));
