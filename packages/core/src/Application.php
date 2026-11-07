@@ -759,7 +759,12 @@ final class Application
         return $path;
     }
 
-    /** Compiled Twig templates live in storage/cache/twig; auto_reload recompiles an edited source. */
+    /**
+     * Compiled Twig templates live in storage/cache/twig/{packages key}; auto_reload recompiles an
+     * edited source. The subfolder follows composer's installed.json (mtime and size), so after an
+     * install or update templates are compiled anew with the extensions' current function flags,
+     * even when the release folder stays the same. cache:clear empties the parent, old keys too.
+     */
     private function twigCachePath(): string
     {
         $cachePath = $this->absolutePath('storage/cache/twig');
@@ -770,7 +775,17 @@ final class Application
             $cachePath,
         ));
 
-        return $cachePath;
+        return $cachePath . '/' . self::packagesKey($this->absolutePath('vendor/composer/installed.json'));
+    }
+
+    /** A short key for the installed package set: changes with every composer install or update. */
+    private static function packagesKey(string $installedJson): string
+    {
+        clearstatcache(true, $installedJson);
+        $mtime = @filemtime($installedJson);
+        $size = @filesize($installedJson);
+
+        return $mtime === false || $size === false ? 'none' : substr(hash('xxh3', $mtime . ':' . $size), 0, 8);
     }
 
     private function createBladeEngine(

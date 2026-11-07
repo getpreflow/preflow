@@ -466,7 +466,8 @@ final class SiteCacheProvider extends ServiceProvider
         $caches = $container->get(CacheRegistry::class);
 
         // A folder of cache files; the folder and dotfiles stay, symlinks inside it are never
-        // followed. `pattern` is an fnmatch() pattern on file names.
+        // followed. `pattern` is an fnmatch() pattern on file names; files matching `exclude` are
+        // neither counted nor cleared.
         $caches->register(new DirectoryCache('site.thumbs', 'Thumbnails', $app->basePath('storage/cache/thumbs')));
 
         // A single file.
@@ -477,7 +478,9 @@ final class SiteCacheProvider extends ServiceProvider
 
 If you bind your own Twig engine or router with a cache path, register that same path like
 this (`DirectoryCache('twig', …)` for compiled templates, `FileCache('routes', …)` for a route
-table). A `DirectoryCache` folder must be an absolute path other than `/`; anything else
+table). Core's own Twig engine compiles into `storage/cache/twig/{key}`, where the key follows
+composer's `installed.json`, so an install or update never serves templates compiled by the
+previous packages; `cache:clear` empties every key. A `DirectoryCache` folder must be an absolute path other than `/`; anything else
 throws an `InvalidArgumentException`. Subfolders that can't be read are skipped.
 
 Keys must be unique; a duplicate throws a `LogicException`. Implement `CacheSource` for

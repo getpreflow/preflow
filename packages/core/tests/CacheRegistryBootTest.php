@@ -151,6 +151,43 @@ final class CacheRegistryBootTest extends TestCase
         $this->assertSame([], glob($dir . '/storage/cache/twig/*/*.php'));
     }
 
+    #[RunInSeparateProcess]
+    public function test_twig_compiles_into_a_folder_keyed_by_the_installed_packages(): void
+    {
+        $dir = $this->app('twig');
+        mkdir($dir . '/app/pages', 0777, true);
+        file_put_contents($dir . '/app/pages/index.twig', '<p>hi</p>');
+        file_put_contents($dir . '/app/pages/about.twig', '<p>about</p>');
+        mkdir($dir . '/vendor/composer', 0777, true);
+        file_put_contents($dir . '/vendor/composer/installed.json', '{"packages":[]}');
+        touch($dir . '/vendor/composer/installed.json', 1_700_000_000);
+
+        // A template class already loaded in this process is not written again: each run renders its own page.
+        $folders = function (string $page) use ($dir): array {
+            $app = Application::create($dir);
+            $app->boot();
+            $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('GET', $page));
+
+            return array_map('basename', glob($dir . '/storage/cache/twig/*', GLOB_ONLYDIR));
+        };
+
+        $first = $folders('/');
+        $this->assertCount(1, $first);
+        $this->assertNotEmpty(glob($dir . '/storage/cache/twig/' . $first[0] . '/*/*.php'));
+        $this->assertSame($first, $folders('/')); // same packages, same folder
+
+        // composer update: installed.json changes, templates compile into a new folder.
+        file_put_contents($dir . '/vendor/composer/installed.json', '{"packages":[{"name":"x/y"}]}');
+        $second = $folders('/about');
+        $this->assertCount(2, $second);
+
+        // cache:clear empties the parent, every key's compiled templates.
+        $app = Application::create($dir);
+        $app->boot();
+        $app->container()->get(CacheRegistry::class)->get('twig')->clear();
+        $this->assertSame([], glob($dir . '/storage/cache/twig/*/*/*.php'));
+    }
+
     private function app(string $engine, bool $withProvider = false): string
     {
         $dir = sys_get_temp_dir() . '/cacheboot_' . bin2hex(random_bytes(4));

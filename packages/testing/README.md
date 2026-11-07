@@ -181,7 +181,7 @@ A scaffold that sets `DATA_PATH` by hand adds `putenv('DATA_CACHE_PATH=' . $this
 to the list it unsets. If `{tmp}` is a snapshot root, the cache folder is part of the state like any file there.
 `preflow cache:clear` empties the JSON caches of every data path, including those of data paths that no longer exist
 (use it once on a site whose test runs piled up files). Other per-app caches (`storage/cache/twig`, `assets`, `composer`)
-are keyed by content or release, so a test run reuses them and they do not grow per test. A test that creates an
+are keyed by content or by the installed packages, so a test run reuses them and they do not grow per test. A test that creates an
 application from a temp base path keeps them under it. `Application::create([...])` (an array) uses the working
 directory as its base path: `chdir()` to a temp folder first.
 
