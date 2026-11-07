@@ -47,7 +47,7 @@ final class CacheRegistryBootTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_cache_clear_removes_json_caches_and_temp_files_but_keeps_generations(): void
+    public function test_cache_clear_removes_json_caches_temp_files_and_other_paths_generations(): void
     {
         $dir = $this->app('twig');
         $app = Application::create($dir);
@@ -58,22 +58,30 @@ final class CacheRegistryBootTest extends TestCase
         $gone->save('post', 'p1', ['uuid' => 'p1']);
         $gone->findMany('post', new \Preflow\Data\Query());
         (new \Preflow\Data\Driver\JsonFileDriver($dir . '/storage/data', $cache))->save('post', 'p2', ['uuid' => 'p2']);
-        $this->assertNotEmpty(glob($cache . '/json-*.gen'));
+        $other = new \Preflow\Data\Driver\JsonFileDriver($dir . '/vanished-two/data', $cache);
+        $other->save('post', 'p3', ['uuid' => 'p3']);
+        $other->findMany('post', new \Preflow\Data\Query());
+        $own = (new \Preflow\Data\Driver\JsonFileDriver($dir . '/storage/data', $cache))->pathKey();
+        $this->assertCount(3, glob($cache . '/json-*.gen'));
         file_put_contents($cache . '/json-post-deadbeef.json.tmp-ab12', '{}');
+        $before = count(glob($cache . '/json-*'));
         $this->removeTree($dir . '/vanished-tmp');
 
         $console = new \Preflow\DevTools\Command\CacheClearCommand(static fn () => $app);
         ob_start();
         $code = $console->execute(['data.json']);
-        ob_end_clean();
+        $output = ob_get_clean();
 
         $this->assertSame(0, $code);
         // Caches and temp files of every path key go (the vanished one's too) ...
         $this->assertSame([], glob($cache . '/json-*.json'));
         $this->assertSame([], glob($cache . '/json-*.tmp-*'));
-        // ... the generation files stay: they guard a cache write racing a save.
-        $gens = glob($cache . '/json-*.gen');
-        $this->assertCount(2, $gens);
+        // ... and so do the generations of other data paths; this app's own stay, they guard a
+        // cache write racing a save.
+        $this->assertSame([$cache . '/json-post-' . $own . '.gen'], glob($cache . '/json-*.gen'));
+        // Everything but the one own .gen is gone, and the command reports exactly that count.
+        $this->assertCount(1, glob($cache . '/json-*'));
+        $this->assertStringContainsString((string) ($before - 1), $output);
         $this->assertSame(0, $app->container()->get(CacheRegistry::class)->get('data.json')->stats()->entries);
     }
 

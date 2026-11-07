@@ -33,6 +33,12 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         $this->pathKey = substr(hash('xxh128', self::resolvedPath($basePath)), 0, 16);
     }
 
+    /** The key naming this data path's cache files: json-{type}-{pathKey}.json / .gen. */
+    public function pathKey(): string
+    {
+        return $this->pathKey;
+    }
+
     /**
      * The path with its nearest existing ancestor resolved (symlinks, `..`): the same before
      * and after the data directory is created.

@@ -438,7 +438,7 @@ final class Application
             $drivers[$name] = match ($name) {
                 'sqlite' => $this->createSqliteDriver($driverConfig, $collector),
                 'mysql' => $this->createMysqlDriver($driverConfig, $collector),
-                'json' => new \Preflow\Data\Driver\JsonFileDriver(
+                'json' => $jsonDriver = new \Preflow\Data\Driver\JsonFileDriver(
                     $driverConfig['path'] ?? $this->basePath('storage/data'),
                     cacheDir: $this->dataCachePath(),
                 ),
@@ -450,11 +450,11 @@ final class Application
                     'data.json',
                     'JSON storage query cache',
                     $this->dataCachePath(absolute: true),
-                    // Every path key's .json caches and leftover .tmp-* files. The .gen generation
-                    // files stay: they guard a cache write racing a save, and the cache folder alone
-                    // can't tell a live data path's key from a vanished one (they are a few bytes each).
+                    // Every path key's .json caches and leftover .tmp-* files, plus the .gen files of
+                    // other data paths (old test runs, moved sites). This app's own .gen files stay:
+                    // they guard a cache write racing a save.
                     pattern: 'json-*',
-                    exclude: 'json-*.gen',
+                    exclude: 'json-*-' . $jsonDriver->pathKey() . '.gen',
                 ));
             }
         }
