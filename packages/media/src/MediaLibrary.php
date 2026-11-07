@@ -125,6 +125,9 @@ final class MediaLibrary
     /** @var \Closure(): \DateTimeImmutable */
     private readonly \Closure $now;
 
+    /** @var array<string, ?Asset> id => the stored asset (null: unknown), see record() */
+    private array $memo = [];
+
     /**
      * @param array<string, mixed> $config MediaConfig::toArray() (storage, max_bytes, allow_svg, private_dir, private_url, …)
      */
@@ -587,15 +590,59 @@ final class MediaLibrary
         return $asset?->binnedAt !== null ? $asset : null;
     }
 
-    /** The stored asset, live or binned. */
+    /**
+     * The stored asset, live or binned. Memoised for the life of this library (one request): a page that shows
+     * the same asset twice asks the storage once, and an unknown id is remembered as unknown. Every write here
+     * (save, purge, delete) empties the memo, so nothing stale is served after a change in the same process.
+     */
     private function record(string $id): ?Asset
     {
         if (preg_match(self::ID_PATTERN, $id) !== 1) {
             return null;
         }
+        if (array_key_exists($id, $this->memo)) {
+            return $this->memo[$id];
+        }
         $record = $this->dm->findIn($this->definition(), $id);
 
-        return $record === null ? null : Asset::fromRecord($record);
+        return $this->memo[$id] = $record === null ? null : Asset::fromRecord($record);
+    }
+
+    /**
+     * Load the assets of a list in one query (WHERE uuid IN (...), in chunks) so the find() calls that follow while
+     * rendering it are answered from memory instead of one query each. Unknown ids are remembered as unknown.
+     * Call it with the ids a list is about to show, before rendering; it is optional and never changes a result.
+     *
+     * @param iterable<mixed> $ids
+     */
+    public function prefetch(iterable $ids): void
+    {
+        $wanted = [];
+        foreach ($ids as $id) {
+            if (is_string($id) && preg_match(self::ID_PATTERN, $id) === 1 && !array_key_exists($id, $this->memo)) {
+                $wanted[$id] = true;
+            }
+        }
+        if ($wanted === []) {
+            return;
+        }
+        $def = $this->definition();
+        foreach (array_chunk(array_keys($wanted), 200) as $chunk) {
+            $found = [];
+            foreach ($this->dm->queryIn($def)->whereAny([['field' => $def->idField, 'operator' => 'IN', 'value' => $chunk]])->limit(count($chunk))->get()->items() as $record) {
+                $asset = Asset::fromRecord($record);
+                $found[$asset->id] = $asset;
+            }
+            foreach ($chunk as $id) {
+                $this->memo[$id] = $found[$id] ?? null;
+            }
+        }
+    }
+
+    /** Forget the memoised assets (done after any write; also for a long-running process that outlives a request). */
+    public function flush(): void
+    {
+        $this->memo = [];
     }
 
     /** Only assets that are not in the bin (binned_at is empty, or missing on records from before the bin). */
@@ -1392,6 +1439,7 @@ final class MediaLibrary
             if ($this->findBinned($id) === null) {
                 return false; // restored meanwhile
             }
+            $this->memo = [];
             $this->dm->deleteIn($this->definition(), $id);
             $this->removeTree($this->binDir() . '/' . $id);
             $this->removeVersionsFolder($id);
@@ -1770,9 +1818,11 @@ final class MediaLibrary
             fclose($lock);
             throw new AssetUploadException("The lock of asset {$id} could not be taken (versions_dir); nothing was changed.");
         }
+        $this->memo = []; // another process may have saved while we waited for the lock
         try {
             return $work();
         } finally {
+            $this->memo = [];
             flock($lock, LOCK_UN);
             fclose($lock);
         }
@@ -1822,6 +1872,7 @@ final class MediaLibrary
             $current = $this->find($asset->id) ?? $asset; // a replace may have run while we waited
             $this->removeFiles($current);
             $this->removeLeftovers($current);
+            $this->memo = [];
             $this->dm->deleteIn($this->definition(), $asset->id);
             $this->removeVersionsFolder($asset->id);
             if ($this->versionsDir() !== null) {
@@ -2630,7 +2681,9 @@ final class MediaLibrary
     private function save(array $data): Asset
     {
         $record = DynamicRecord::fromArray($this->definition(), $data);
+        $this->memo = [];
         $this->dm->saveType($record, false);
+        $this->memo = [];
 
         return Asset::fromRecord($record);
     }

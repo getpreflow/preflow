@@ -125,6 +125,7 @@ final class VersionFileTest extends TestCase
         $data['versions'][0]['path'] = '../../config/app.php';
         $this->mediaApp()->container()->get(\Preflow\Data\DataManager::class)
             ->saveType(\Preflow\Data\DynamicRecord::fromArray($this->media()->definition(), $data), false);
+        $this->media()->flush(); // written behind the library's back
 
         $res = $this->fetch('/files/' . $id . '/v/1');
 
