@@ -510,15 +510,27 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Content\LiveContent::class),
             $c->get(\Preflow\Folio\Http\AdminNav::class),
         ));
-        $container->singleton(\Preflow\Folio\Http\AdminNav::class, function (Container $c) use ($prefix): \Preflow\Folio\Http\AdminNav {
+        $navCollapsed = self::navCollapsed($folioCfg);
+        $container->singleton(\Preflow\Folio\Http\AdminNav::class, function (Container $c) use ($prefix, $navCollapsed): \Preflow\Folio\Http\AdminNav {
             $access = $c->get(\Preflow\Auth\Access\Access::class);
 
-            return new \Preflow\Folio\Http\AdminNav(
+            $nav = new \Preflow\Folio\Http\AdminNav(
                 $c->get(TypeCatalog::class),
                 static fn (string $permission): bool => $access->can($permission),
                 $prefix,
                 $c->get(\Preflow\Folio\Content\DisplayLabels::class),
             );
+            // One instance serves every request: the person is looked up when the sidebar renders.
+            $nav->setOpenState(static function () use ($c): array {
+                if (!$c->bound(\Preflow\Auth\AuthManager::class)) {
+                    return [];
+                }
+                $user = $c->get(\Preflow\Auth\AuthManager::class)->user();
+
+                return $user !== null ? $c->get(\Preflow\Folio\Users\UserPreferences::class)->navSections($user->getAuthId()) : [];
+            }, $navCollapsed);
+
+            return $nav;
         });
         $container->bind(ActionResolver::class, fn (Container $c) => new ActionResolver($c));
         // Routes are computed (and validated) now, so conflicting "frontend"
@@ -1074,6 +1086,32 @@ final class FolioServiceProvider extends ServiceProvider
      *
      * @param array<string, mixed> $folioCfg
      */
+    /**
+     * Sections that start closed (config/folio.php nav.collapsed): library and settings when not
+     * set; a value that is not a list of strings is ignored (nothing starts closed).
+     *
+     * @param array<string, mixed> $folioCfg
+     * @return list<string>
+     */
+    private static function navCollapsed(array $folioCfg): array
+    {
+        $nav = $folioCfg['nav'] ?? null;
+        if (!is_array($nav) || !array_key_exists('collapsed', $nav)) {
+            return ['library', 'settings'];
+        }
+        $collapsed = $nav['collapsed'];
+        if (!is_array($collapsed) || !array_is_list($collapsed)) {
+            return [];
+        }
+        foreach ($collapsed as $name) {
+            if (!is_string($name)) {
+                return [];
+            }
+        }
+
+        return $collapsed;
+    }
+
     private static function interfaceDefault(Application $app, array $folioCfg): string
     {
         $locale = $folioCfg['locale'] ?? $app->config()->get('app.locale', 'en');

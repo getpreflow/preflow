@@ -536,6 +536,18 @@ between Content and Library (several, in the order first used), labelled from th
 Sections the user can see nothing in are left out. A wrong type for any of these keys is
 an error naming the type.
 
+Which sections start closed is set in `config/folio.php`; everyone can open or close a
+section, and the sidebar remembers it per person. The section of the current screen is
+always open, and a closed section shows the sum of its items' badges. This is the default:
+
+```php
+return [
+    'nav' => ['collapsed' => ['library', 'settings']], // sections closed until a person opens them; [] opens all
+];
+```
+
+A value that is not a list of section names is ignored (every section starts open).
+
 ## Field types
 
 `string`, `text` (`"monospace": true` gives a code-style editor), `number`, `boolean`,

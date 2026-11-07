@@ -30,6 +30,11 @@ final class AdminNav
     /** @var array<int, ?int> added items' badge results by closure id (the closures live in $added, so ids are stable) */
     private array $badgeCounts = [];
 
+    /** @var (Closure(): array<string, bool>)|null the current person's saved open state by section name */
+    private ?Closure $saved = null;
+    /** @var list<string> sections that start closed when nothing is saved */
+    private array $collapsedDefaults = [];
+
     private readonly DisplayLabels $labels;
 
     /** @param Closure(string): bool $can */
@@ -60,13 +65,23 @@ final class AdminNav
         $this->badges = $badges;
     }
 
+    /**
+     * @param Closure(): array<string, bool> $saved the current person's saved open state, asked once per render
+     * @param list<string> $collapsedDefaults sections that start closed when the person saved nothing for them
+     */
+    public function setOpenState(Closure $saved, array $collapsedDefaults): void
+    {
+        $this->saved = $saved;
+        $this->collapsedDefaults = array_values($collapsedDefaults);
+    }
+
     /** The path of the admin request being rendered; decides the active item. */
     public function setCurrentPath(string $path): void
     {
         $this->path = '/' . trim($path, '/');
     }
 
-    /** @return list<array{label: string, items: list<array{label: string, url: string, icon: string, active: bool, badge: ?int}>}> */
+    /** @return list<array{name: string, label: string, badge: ?int, open: bool, items: list<array{label: string, url: string, icon: string, active: bool, badge: ?int}>}> */
     public function sections(): array
     {
         $groups = array_fill_keys(array_keys(self::BUILTIN), []);
@@ -105,17 +120,26 @@ final class AdminNav
         }
 
         $active = $this->activeUrl($visible);
+        $saved = $this->saved !== null ? ($this->saved)() : [];
         $sections = [];
         foreach ($visible as $section => $items) {
+            $name = (string) $section;
+            $mapped = array_map(fn (array $item): array => [
+                'label' => $item['label'] instanceof Closure ? ($item['label'])() : $item['label'],
+                'url' => $item['url'],
+                'icon' => $item['icon'],
+                'active' => $item['url'] === $active,
+                'badge' => $this->badge($item),
+            ], $items);
+            $badges = array_sum(array_map(static fn (array $item): int => $item['badge'] ?? 0, $mapped));
+            $hasActive = in_array(true, array_column($mapped, 'active'), true);
             $sections[] = [
+                'name' => $name === 'dashboard' ? '' : $name,
+                'badge' => $badges > 0 ? $badges : null,
+                'open' => $this->saved === null || $hasActive
+                    || ($saved[$name] ?? !in_array($name, $this->collapsedDefaults, true)),
                 'label' => isset(self::BUILTIN[$section]) ? self::sectionLabel($section) : $this->labels->section($section),
-                'items' => array_map(fn (array $item): array => [
-                    'label' => $item['label'] instanceof Closure ? ($item['label'])() : $item['label'],
-                    'url' => $item['url'],
-                    'icon' => $item['icon'],
-                    'active' => $item['url'] === $active,
-                    'badge' => $this->badge($item),
-                ], $items),
+                'items' => $mapped,
             ];
         }
 

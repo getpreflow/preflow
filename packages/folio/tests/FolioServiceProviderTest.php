@@ -325,4 +325,60 @@ final class FolioServiceProviderTest extends TestCase
         }
         @rmdir($dir);
     }
+
+    /** @return array<string, mixed> the sections by name */
+    private function navSections(array $folio): array
+    {
+        $base = sys_get_temp_dir() . '/folio_navcfg_' . bin2hex(random_bytes(5));
+        mkdir($base . '/config', 0777, true);
+        file_put_contents($base . '/config/folio.php', '<?php return ' . var_export($folio, true) . ';');
+        try {
+            $app = Application::create($base);
+            $app->setRouter(new Router(pagesDir: null, controllers: []));
+            $app->registerProvider(new FolioServiceProvider());
+            $app->boot();
+            $nav = $app->container()->get(\Preflow\Folio\Http\AdminNav::class);
+            $nav->setCurrentPath('/folio/profile');
+            $out = [];
+            foreach ($nav->sections() as $section) {
+                $out[$section['name']] = $section;
+            }
+            return $out;
+        } finally {
+            @unlink($base . '/config/folio.php');
+            @rmdir($base . '/config');
+            @rmdir($base);
+        }
+    }
+
+    public function test_a_malformed_nav_collapsed_default_is_ignored(): void
+    {
+        $sections = $this->navSections(['nav' => ['collapsed' => 'settings']]);
+
+        $this->assertArrayHasKey('settings', $sections);
+        $this->assertTrue($sections['settings']['open']);
+    }
+
+    public function test_nav_collapsed_defaults_to_library_and_settings(): void
+    {
+        $sections = $this->navSections([]);
+
+        $this->assertFalse($sections['settings']['open']);
+        $this->assertFalse($sections['library']['open']);
+    }
+
+    public function test_nav_collapsed_can_be_set_by_the_site(): void
+    {
+        $sections = $this->navSections(['nav' => ['collapsed' => ['settings']]]);
+
+        $this->assertFalse($sections['settings']['open']);
+        $this->assertTrue($sections['library']['open']);
+    }
+
+    public function test_a_list_with_a_non_string_is_ignored_as_a_whole(): void
+    {
+        $sections = $this->navSections(['nav' => ['collapsed' => ['settings', 7]]]);
+
+        $this->assertTrue($sections['settings']['open']);
+    }
 }

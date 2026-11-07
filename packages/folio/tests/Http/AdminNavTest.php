@@ -203,4 +203,97 @@ final class AdminNavTest extends TestCase
 
         $this->assertSame(['', 'Members', 'Reports', 'Library'], array_column($sections, 'label'));
     }
+
+    /** @param array<string, mixed> $sections */
+    private function byName(array $sections, string $name): ?array
+    {
+        foreach ($sections as $section) {
+            if ($section['name'] === $name) {
+                return $section;
+            }
+        }
+        return null;
+    }
+
+    public function test_sections_carry_their_name_and_badge_sum(): void
+    {
+        $nav = $this->nav();
+        $nav->add('settings', 'A', '/folio/a', 'ui-file', null, 100, static fn () => 2);
+        $nav->add('settings', 'B', '/folio/b', 'ui-file', null, 100, static fn () => 3);
+        $nav->setCurrentPath('/folio');
+
+        $sections = $nav->sections();
+
+        $this->assertSame('', $sections[0]['name']);
+        $this->assertSame('settings', $this->byName($sections, 'settings')['name']);
+        $this->assertSame(5, $this->byName($sections, 'settings')['badge']);
+        $this->assertNull($this->byName($sections, 'content')['badge']);
+    }
+
+    public function test_open_follows_saved_state_then_default_then_open(): void
+    {
+        $nav = $this->nav();
+        $nav->setCurrentPath('/folio/profile');
+        $nav->setOpenState(static fn (): array => ['library' => true, 'content' => false], ['library', 'settings']);
+
+        $sections = $nav->sections();
+
+        $this->assertTrue($this->byName($sections, 'library')['open']);
+        $this->assertFalse($this->byName($sections, 'settings')['open']);
+        $this->assertFalse($this->byName($sections, 'content')['open']);
+        $this->assertTrue($this->byName($sections, 'pages') === null || $this->byName($sections, 'pages')['open']);
+    }
+
+    public function test_the_active_items_section_is_always_open(): void
+    {
+        $nav = $this->nav();
+        $nav->setCurrentPath('/folio/site');
+        $nav->setOpenState(static fn (): array => ['settings' => false], ['settings']);
+
+        $this->assertTrue($this->byName($nav->sections(), 'settings')['open']);
+    }
+
+    public function test_no_active_item_forces_nothing_open(): void
+    {
+        $nav = $this->nav();
+        $nav->setCurrentPath('/folio/profile');
+        $nav->setOpenState(static fn (): array => ['settings' => false], []);
+
+        $this->assertFalse($this->byName($nav->sections(), 'settings')['open']);
+    }
+
+    public function test_unknown_saved_sections_are_ignored(): void
+    {
+        $nav = $this->nav();
+        $nav->setCurrentPath('/folio/profile');
+        $nav->setOpenState(static fn (): array => ['gone' => false], []);
+
+        $sections = $nav->sections();
+
+        $this->assertNull($this->byName($sections, 'gone'));
+        $this->assertTrue($this->byName($sections, 'settings')['open']);
+    }
+
+    public function test_without_open_state_every_section_is_open(): void
+    {
+        $nav = $this->nav();
+        $nav->setCurrentPath('/folio/profile');
+
+        foreach ($nav->sections() as $section) {
+            $this->assertTrue($section['open']);
+        }
+    }
+
+    public function test_the_saved_state_is_asked_once_per_render(): void
+    {
+        $nav = $this->nav();
+        $calls = 0;
+        $nav->setOpenState(function () use (&$calls): array {
+            $calls++;
+            return [];
+        }, []);
+        $nav->sections();
+
+        $this->assertSame(1, $calls);
+    }
 }
