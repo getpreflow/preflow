@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.58.0** — 5859 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.58.1** — 5859 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -351,7 +351,8 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - Media records are memoised per request, and `MediaLibrary::prefetch($ids)` fetches a list in one query.
     - Each model JSON and `folio.php` are parsed once per request (`Preflow\Core\Config\ParsedJsonFiles`).
     - Test runs keep their JSON caches under their temp root (`DATA_CACHE_PATH`, `Testing\Fast\TestDataPaths`), and
-      `cache:clear` removes orphaned cache files.
+      `cache:clear` removes orphaned cache files. 0.58.1: it also removes other data paths' `.gen` files and keeps only
+      the app's own (core needs `preflow/data` 0.58.1 for `JsonFileDriver::pathKey()`).
   - **Measured on languagecorner** (Apache, OPcache, one request at a time), 0.57 → 0.58:
 
     | Page | 0.57 | 0.58 |
