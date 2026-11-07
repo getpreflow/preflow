@@ -125,7 +125,7 @@ final class MediaLibrary
     /** @var \Closure(): \DateTimeImmutable */
     private readonly \Closure $now;
 
-    /** @var array<string, ?Asset> id => the stored asset (null: unknown), see record() */
+    /** @var array<string, Asset> id => the stored asset, see record() */
     private array $memo = [];
 
     /**
@@ -592,7 +592,7 @@ final class MediaLibrary
 
     /**
      * The stored asset, live or binned. Memoised for the life of this library (one request): a page that shows
-     * the same asset twice asks the storage once, and an unknown id is remembered as unknown. Every write here
+     * the same asset twice asks the storage once. Only found records are memoised, never a miss. Every write here
      * (save, purge, delete) empties the memo, so nothing stale is served after a change in the same process.
      */
     private function record(string $id): ?Asset
@@ -600,17 +600,17 @@ final class MediaLibrary
         if (preg_match(self::ID_PATTERN, $id) !== 1) {
             return null;
         }
-        if (array_key_exists($id, $this->memo)) {
+        if (isset($this->memo[$id])) {
             return $this->memo[$id];
         }
         $record = $this->dm->findIn($this->definition(), $id);
 
-        return $this->memo[$id] = $record === null ? null : Asset::fromRecord($record);
+        return $record === null ? null : ($this->memo[$id] = Asset::fromRecord($record)); // unknown ids are not memoised
     }
 
     /**
      * Load the assets of a list in one query (WHERE uuid IN (...), in chunks) so the find() calls that follow while
-     * rendering it are answered from memory instead of one query each. Unknown ids are remembered as unknown.
+     * rendering it are answered from memory instead of one query each. Unknown ids are left alone.
      * Call it with the ids a list is about to show, before rendering; it is optional and never changes a result.
      *
      * @param iterable<mixed> $ids
@@ -619,7 +619,7 @@ final class MediaLibrary
     {
         $wanted = [];
         foreach ($ids as $id) {
-            if (is_string($id) && preg_match(self::ID_PATTERN, $id) === 1 && !array_key_exists($id, $this->memo)) {
+            if (is_string($id) && preg_match(self::ID_PATTERN, $id) === 1 && !isset($this->memo[$id])) {
                 $wanted[$id] = true;
             }
         }
@@ -633,9 +633,7 @@ final class MediaLibrary
                 $asset = Asset::fromRecord($record);
                 $found[$asset->id] = $asset;
             }
-            foreach ($chunk as $id) {
-                $this->memo[$id] = $found[$id] ?? null;
-            }
+            $this->memo += $found; // only found records are memoised
         }
     }
 

@@ -120,11 +120,11 @@ final class AssetMemoTest extends TestCase
         $this->assertNull($this->lib->find($unknown));
         $this->assertNull($this->lib->find('not-an-id'));
         $this->sql = [];
-        $this->assertNull($this->lib->find($unknown)); // remembered as unknown
-        $this->assertSame(0, $this->assetQueries());
+        $this->assertNull($this->lib->find($unknown)); // not memoised: a later write shows up
+        $this->assertSame(1, $this->assetQueries());
     }
 
-    public function test_memo_is_per_request(): void
+    public function test_memo_is_cleared_on_write(): void
     {
         $id = $this->upload25()[0];
         $this->assertNotNull($this->lib->find($id)); // memoised
@@ -134,5 +134,21 @@ final class AssetMemoTest extends TestCase
 
         $this->lib->delete($id);
         $this->assertNull($this->lib->find($id));
+    }
+
+    public function test_prefetched_assets_equal_plain_finds_in_every_locale(): void
+    {
+        $id = $this->upload25()[0];
+        $this->lib->update($id, ['alt' => ['en' => 'Tree', 'de' => 'Baum', 'fr' => 'Arbre']]);
+        $this->lib->flush();
+        $plain = $this->lib->find($id);
+        $this->lib->flush();
+        $this->lib->prefetch([$id]);
+        $batched = $this->lib->find($id);
+
+        $this->assertSame($plain->toData(), $batched->toData());
+        foreach (['en', 'de', 'fr', 'it'] as $locale) {
+            $this->assertSame($plain->altFor($locale, 'en'), $batched->altFor($locale, 'en'));
+        }
     }
 }

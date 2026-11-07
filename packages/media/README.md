@@ -51,6 +51,11 @@ $library->delete($id); // refuses a used asset: AssetInUseException lists the us
   private asset, like `upload(..., private: true)`; the source stays where it is.
 - `find($id)`, `all()` and `query()` (below) read assets; `replace()`, `versions()`, `restore()`,
   `deleteVersion()` and `prune()` are in Replace and versions.
+- **Lookups are memoised per request.** `find()` keeps the assets it found, so showing one twice
+  costs one query (unknown ids are not kept). Call `prefetch($ids)` before rendering a list whose
+  ids you collected: one `WHERE ... IN` loads them all instead of one query per image. Writes
+  through the library empty the memo; call `flush()` after writing assets with the
+  `DataManager` directly, and between jobs in a long-running process.
 - **Uploads do their work at once.** `upload()` (and a replace or restore) makes the variants,
   reads the colours and, for a PDF, renders its preview before it returns, in the same request.
   An image takes as long as its encodes; a PDF can add up to 30 seconds (the render's time
