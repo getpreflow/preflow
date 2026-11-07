@@ -315,10 +315,20 @@ final class MembersGroundworkTest extends TestCase
         $nav = [];
         $section = 'Dashboard';
         foreach (Dom::all($html, '//nav[contains(@class, "folio-nav")]/*') as $node) {
-            if ($node->tagName === 'span') {
-                $section = trim($node->textContent);
-            } elseif ($node->tagName === 'a') {
+            if ($node->tagName === 'a') {
                 $nav[$section][] = trim($node->textContent);
+            } elseif ($node->tagName === 'details') {
+                // A section: its heading in the summary's label, its items in .folio-nav-items.
+                $section = '';
+                foreach ($node->getElementsByTagName('span') as $span) {
+                    if ($span->getAttribute('class') === 'folio-nav-label') {
+                        $section = trim($span->textContent);
+                        break;
+                    }
+                }
+                foreach ($node->getElementsByTagName('a') as $a) {
+                    $nav[$section][] = trim($a->textContent);
+                }
             }
         }
 

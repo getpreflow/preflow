@@ -73,7 +73,7 @@ final class SettingsTest extends TestCase
 
         $page = (string) $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('GET', '/folio/members_settings'))->getBody();
         $this->assertMatchesRegularExpression(
-            '#<span class="folio-nav-label">Settings</span>\s*<a href="/folio/members_settings" class="active" aria-current="page">\s*<svg class="folio-icon" aria-hidden="true"><use href="[^"]*\#ui-settings"></use></svg><span>Members settings</span>#',
+            '#<span class="folio-nav-label">Settings</span>.*?</summary>\s*<div class="folio-nav-items">\s*<a href="/folio/members_settings" class="active" aria-current="page">\s*<svg class="folio-icon" aria-hidden="true"><use href="[^"]*\#ui-settings"></use></svg><span>Members settings</span>#s',
             $page,
         );
         // Before the first save the form shows the declared defaults.

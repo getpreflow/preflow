@@ -1958,6 +1958,43 @@
         initUnsavedGuard();
         initTranslationsSaveAll();
         initRedirectTargets();
+        initNavSections();
+    }
+
+    // Sidebar sections (<details class="folio-nav-section">): each open or close is saved for the
+    // person with a fetch to the nav's data-nav-save. The state rendered by the server is the start;
+    // a toggle event without a change (browsers send one for a section rendered open) saves nothing.
+    // A failed or refused save is silent: the section stays as the person left it on this page.
+    function initNavSections() {
+        var nav = document.querySelector('nav.folio-nav');
+        if (!nav) { return; }
+        // Narrow screens: the nav is one scrolling row, where headings push the current item out of view.
+        var active = nav.querySelector('a[aria-current="page"]');
+        if (active && nav.scrollWidth > nav.clientWidth + 1 && typeof nav.getBoundingClientRect === 'function') {
+            var box = nav.getBoundingClientRect();
+            var at = active.getBoundingClientRect();
+            if (at.right > box.right || at.left < box.left) { nav.scrollLeft += at.left - box.left - 16; }
+        }
+        var url = nav.getAttribute('data-nav-save');
+        if (!url) { return; }
+        nav.querySelectorAll('details.folio-nav-section').forEach(function (section) {
+            var known = !!section.open;
+            section.addEventListener('toggle', function () {
+                var open = !!section.open;
+                var name = section.getAttribute('data-section') || '';
+                if (open === known || name === '') { return; }
+                known = open;
+                var body = new URLSearchParams();
+                var token = document.querySelector('input[name="_csrf_token"]');
+                if (token) { body.append('_csrf_token', token.value); }
+                body.append('section', name);
+                body.append('open', open ? '1' : '0');
+                try {
+                    fetch(url, { method: 'POST', body: body, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+                        .catch(function () {});
+                } catch (e) { /* no fetch: the choice holds for this page only */ }
+            });
+        });
     }
 
     if (document.readyState === 'loading') {

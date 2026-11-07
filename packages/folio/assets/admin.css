@@ -184,6 +184,40 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
   font-variant-numeric: tabular-nums;
 }
 
+/* A section that opens and closes (<details>): the heading is its summary, with a chevron that
+   turns when open. A closed section shows its items' badges summed; an open one shows them per item. */
+.folio-nav-section { display: block; }
+.folio-nav-section > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  color: var(--c-text-subtle);
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  transition: color .12s ease;
+}
+.folio-nav-section > summary::-webkit-details-marker { display: none; }
+.folio-nav-section > summary::marker { content: ""; }
+.folio-nav-section > summary .folio-nav-label { flex: 1; min-width: 0; padding: 0; color: inherit; }
+.folio-nav-section > summary:hover { color: var(--c-text-muted); }
+.folio-nav-section > summary:focus-visible { outline-offset: 0; }
+.folio-nav-marker {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  opacity: .75;
+  transition: transform .15s ease, opacity .12s ease;
+}
+.folio-nav-section > summary:hover .folio-nav-marker { opacity: 1; }
+.folio-nav-section[open] > summary .folio-nav-marker { transform: rotate(90deg); }
+.folio-nav-section-badge { display: none; margin-left: 0; }
+.folio-nav-section:not([open]) > summary .folio-nav-section-badge { display: inline-block; }
+.folio-nav-items { display: flex; flex-direction: column; gap: 1px; }
+
 .folio-sidebar-foot {
   display: grid;
   gap: 10px;
@@ -1740,6 +1774,12 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   .folio-nav { order: 3; flex-direction: row; width: 100%; overflow-x: auto; gap: 2px; }
   .folio-nav-label { display: none; }
   .folio-nav a { flex: none; }
+  /* Sections sit in the same row: the heading is a small chip (its name, the chevron) and the items follow it when open. */
+  .folio-nav-section, .folio-nav-items { display: flex; flex: none; flex-direction: row; align-items: center; gap: 2px; }
+  .folio-nav-section > summary { min-height: 34px; margin: 0; padding: 0 6px 0 10px; }
+  .folio-nav-section > summary:hover { background: var(--c-row-hover); }
+  .folio-nav-section > summary .folio-nav-label { display: inline; white-space: nowrap; }
+  .folio-nav-section[open] > summary .folio-nav-marker { transform: rotate(180deg); }
   .folio-sidebar-foot { margin: 0 0 0 auto; padding: 0; display: flex; align-items: center; gap: 8px; }
   .folio-user { border: 0; padding: 0; background: none; }
   .folio-user-email { display: none; }

@@ -51,14 +51,25 @@
             {% include '@folio/admin/_logo.twig' %}
             <span class="folio-brand-name">Folio</span>
         </a>
-        <nav class="folio-nav" aria-label="Folio">
-            {% for nav_section in folio_nav() %}
-                {% if nav_section.label != '' %}<span class="folio-nav-label">{{ nav_section.label }}</span>{% endif %}
-                {% for item in nav_section.items %}
+        {# Each section with a heading opens and closes (<details>, open from the person's saved state);
+           admin.js saves a toggle to data-nav-save. A closed section shows its items' badges summed. #}
+        {%- macro nav_item(item, icons) %}
                     <a href="{{ item.url }}"{% if item.active %} class="active" aria-current="page"{% endif %}>
                         <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ item.icon }}"></use></svg><span>{{ item.label }}</span>{% if item.badge %}<span class="folio-nav-badge" aria-label="{{ t('folio.layout.waiting', {count: item.badge}) }}">{{ item.badge }}</span>{% endif %}
                     </a>
-                {% endfor %}
+        {%- endmacro %}
+        <nav class="folio-nav" aria-label="Folio"{% if folio_auth_enabled|default(false) and auth_check() %} data-nav-save="{{ prefix }}/_prefs/nav"{% endif %}>
+            {% for nav_section in folio_nav() %}
+                {% if nav_section.name != '' and nav_section.label != '' %}
+                <details class="folio-nav-section" data-section="{{ nav_section.name }}"{% if nav_section.open %} open{% endif %}>
+                    <summary><span class="folio-nav-label">{{ nav_section.label }}</span>{% if nav_section.badge %}<span class="folio-nav-badge folio-nav-section-badge" aria-label="{{ t('folio.layout.waiting', {count: nav_section.badge}) }}">{{ nav_section.badge }}</span>{% endif %}<svg class="folio-icon folio-nav-marker" aria-hidden="true"><use href="{{ icons }}#ui-chevron"></use></svg></summary>
+                    <div class="folio-nav-items">
+                    {%- for item in nav_section.items %}{{ _self.nav_item(item, icons) }}{% endfor %}
+                    </div>
+                </details>
+                {% else %}
+                    {%- for item in nav_section.items %}{{ _self.nav_item(item, icons) }}{% endfor %}
+                {% endif %}
             {% endfor %}
         </nav>
         <div class="folio-sidebar-foot">
