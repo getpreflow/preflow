@@ -30,6 +30,7 @@ final class AssetCollector
     public function __construct(
         private readonly NonceGenerator $nonceGenerator,
         private readonly bool $isProd = false,
+        private readonly ?string $cachePath = null,
     ) {}
 
     /**
@@ -205,12 +206,51 @@ final class AssetCollector
 
     private function minifyCss(string $css): string
     {
-        return (new \MatthiasMullie\Minify\CSS($css))->minify();
+        return $this->cached('css', $css, static fn (): string => (new \MatthiasMullie\Minify\CSS($css))->minify());
     }
 
     private function minifyJs(string $js): string
     {
-        return (new \MatthiasMullie\Minify\JS($js))->minify();
+        return $this->cached('js', $js, static fn (): string => (new \MatthiasMullie\Minify\JS($js))->minify());
+    }
+
+    /**
+     * Minified output is cached by content: key = xxh3(minifier version + kind + input),
+     * stored as a PHP file returning the string (opcache-friendly), written atomically.
+     */
+    private function cached(string $kind, string $input, \Closure $minify): string
+    {
+        if ($this->cachePath === null) {
+            return $minify();
+        }
+
+        $version = class_exists(\Composer\InstalledVersions::class)
+            && \Composer\InstalledVersions::isInstalled('matthiasmullie/minify')
+                ? (string) \Composer\InstalledVersions::getReference('matthiasmullie/minify')
+                    . (string) \Composer\InstalledVersions::getPrettyVersion('matthiasmullie/minify')
+                : 'unknown';
+        $dir = rtrim($this->cachePath, '/') . '/assets';
+        $file = $dir . '/' . hash('xxh3', $version . "\0" . $kind . "\0" . $input) . '.php';
+
+        if (is_file($file)) {
+            $hit = @include $file;
+            if (is_string($hit)) {
+                return $hit;
+            }
+        }
+
+        $out = $minify();
+
+        if (is_dir($dir) || @mkdir($dir, 0775, true) || is_dir($dir)) {
+            $tmp = $file . '.' . bin2hex(random_bytes(4)) . '.tmp';
+            if (@file_put_contents($tmp, '<?php return ' . var_export($out, true) . ";\n") !== false) {
+                if (!@rename($tmp, $file)) {
+                    @unlink($tmp);
+                }
+            }
+        }
+
+        return $out;
     }
 
     private function nonceAttr(): string
@@ -230,7 +270,7 @@ final class AssetCollector
      */
     public function fork(): self
     {
-        return new self($this->nonceGenerator, $this->isProd);
+        return new self($this->nonceGenerator, $this->isProd, $this->cachePath);
     }
 
     /**

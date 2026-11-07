@@ -571,7 +571,11 @@ final class Application
     private function bootViewLayer(DebugLevel $debug): void
     {
         $nonce = new \Preflow\View\NonceGenerator();
-        $assets = new \Preflow\View\AssetCollector($nonce, isProd: !$debug->isDebug());
+        $assets = new \Preflow\View\AssetCollector(
+            $nonce,
+            isProd: !$debug->isDebug(),
+            cachePath: $this->assetsCachePath(),
+        );
         $this->container->instance(\Preflow\View\AssetCollector::class, $assets);
         $this->container->instance(\Preflow\View\NonceGenerator::class, $nonce);
 
@@ -700,6 +704,20 @@ final class Application
                 : null,
             default => throw new \RuntimeException("Unknown template engine: {$name}. Supported: twig, blade"),
         };
+    }
+
+    /** Minified CSS and JS live in storage/cache/assets, keyed by content. */
+    private function assetsCachePath(): string
+    {
+        $cachePath = $this->absolutePath('storage/cache');
+
+        $this->container->get(CacheRegistry::class)->register(new DirectoryCache(
+            'assets',
+            'Minified CSS and JS',
+            $cachePath . '/assets',
+        ));
+
+        return $cachePath;
     }
 
     /** Compiled Twig templates live in storage/cache/twig; auto_reload recompiles an edited source. */

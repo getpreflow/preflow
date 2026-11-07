@@ -286,4 +286,88 @@ final class AssetCollectorTest extends TestCase
 
         $this->assertSame(1, substr_count($html, 'window.after=1;'));
     }
+
+    private function cacheDir(): string
+    {
+        $dir = sys_get_temp_dir() . '/preflow-assets-' . bin2hex(random_bytes(4));
+        $this->dirs[] = $dir;
+        return $dir;
+    }
+
+    /** @var string[] */
+    private array $dirs = [];
+
+    protected function tearDown(): void
+    {
+        foreach ($this->dirs as $dir) {
+            foreach (glob($dir . '/assets/*') ?: [] as $f) {
+                @unlink($f);
+            }
+            @rmdir($dir . '/assets');
+            @rmdir($dir);
+        }
+    }
+
+    private function prodWithCache(string $dir): AssetCollector
+    {
+        return new AssetCollector(new NonceGenerator(), isProd: true, cachePath: $dir);
+    }
+
+    private function renderCss(AssetCollector $c, string $css): string
+    {
+        $c->addCss($css);
+        return $c->renderHead();
+    }
+
+    public function test_minified_css_is_reused_for_the_same_input(): void
+    {
+        $dir = $this->cacheDir();
+        $css = ".a {\n  color: red;\n}\n";
+        $this->renderCss($this->prodWithCache($dir), $css);
+
+        $files = glob($dir . '/assets/*.php');
+        $this->assertCount(1, $files);
+        file_put_contents($files[0], "<?php return '.cached{}';\n");
+
+        $this->assertStringContainsString('.cached{}', $this->renderCss($this->prodWithCache($dir), $css));
+    }
+
+    public function test_cached_output_equals_fresh_output(): void
+    {
+        $dir = $this->cacheDir();
+        $css = ".a {\n  color: red;\n}\n.b { margin: 0 0 0 0; }";
+        $n = new NonceGenerator();
+        $mk = static fn (?string $d) => new AssetCollector($n, isProd: true, cachePath: $d);
+        $fresh = $this->renderCss($mk($dir), $css);
+        $cached = $this->renderCss($mk($dir), $css);
+        $plain = $this->renderCss($mk(null), $css);
+
+        $this->assertSame($fresh, $cached);
+        $this->assertSame($plain, $cached);
+    }
+
+    public function test_different_input_gets_its_own_entry(): void
+    {
+        $dir = $this->cacheDir();
+        $this->renderCss($this->prodWithCache($dir), '.a { color: red; }');
+        $this->renderCss($this->prodWithCache($dir), '.a { color: blue; }');
+        $this->assertCount(2, glob($dir . '/assets/*.php'));
+    }
+
+    public function test_css_and_js_with_the_same_text_do_not_share_an_entry(): void
+    {
+        $dir = $this->cacheDir();
+        $c = $this->prodWithCache($dir);
+        $c->addCss('a { b: c }');
+        $c->addJs('a { b: c }', \Preflow\View\JsPosition::Body);
+        $c->renderHead();
+        $c->renderAssets();
+        $this->assertCount(2, glob($dir . '/assets/*.php'));
+    }
+
+    public function test_without_a_cache_path_it_still_minifies(): void
+    {
+        $out = $this->renderCss($this->collector(isProd: true), ".a {\n  color: red;\n}\n");
+        $this->assertStringContainsString('.a{color:red}', $out);
+    }
 }
