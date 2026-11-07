@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.57.0** — 5804 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.58.0** — 5859 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -337,6 +337,41 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   smart-stack.works 87 s → 16 s / 72 s (paratest `--functional`), smeyer.me 59 s → 4.6 s / 12.5 s; no test skipped.
   0.56.1: the JSON storage query cache is kept per data path (`json-{type}-{path hash}.json` / `.gen`), so tests with
   their own data path and parallel workers sharing `storage/cache/data` never read each other's records; `cache:clear` still clears them all.
+- ~~**Performance step 1, quick wins (0.58):**~~ done in 0.58.0 (owner, 2026-11-07: "as fast as possible"; evidence
+  `docs/superpowers/specs/2026-11-07-perf-profiling-report.md`).
+  - **Fixes:**
+    - Twig compiles each template once, into a versioned `storage/cache/twig`. It used to compile every template on
+      every request, which was half the page time.
+    - Minified CSS/JS is cached per entry, by content. The cache is capped and survives corrupt entries.
+    - Composer's installed.json is read once per change, through `Preflow\Core\Composer\InstalledPackages`.
+    - The rich-text sanitizer is built only when it is used.
+    - 404 hits are written at most once a minute per address, and at most 30 new addresses a minute are recorded.
+    - Responses send `Content-Length` (only when nothing else is buffered) and answer HTTP/1.0 correctly (`ab` works
+      again).
+    - Media records are memoised per request, and `MediaLibrary::prefetch($ids)` fetches a list in one query.
+    - Each model JSON and `folio.php` are parsed once per request (`Preflow\Core\Config\ParsedJsonFiles`).
+    - Test runs keep their JSON caches under their temp root (`DATA_CACHE_PATH`, `Testing\Fast\TestDataPaths`), and
+      `cache:clear` removes orphaned cache files.
+  - **Measured on languagecorner** (Apache, OPcache, one request at a time), 0.57 → 0.58:
+
+    | Page | 0.57 | 0.58 |
+    |---|---|---|
+    | home | 15.3 ms | 5.0 ms |
+    | /classes | 17.6 ms | 8.1 ms |
+    | 404 | 10.0 ms | 3.9 ms |
+    | robots.txt | 3.7 ms | 2.2 ms |
+
+    Home with 10 parallel requests went from ~400 to ~700 req/s.
+  - **Upgrading:**
+    - core, i18n, data, folio and testing require each other at 0.58 (conflicts set). Release them together.
+    - Sites set `DATA_CACHE_PATH` (or use `TestDataPaths`) in their test scaffold, and run `preflow cache:clear` once
+      locally.
+    - A site that shares all of `storage` between releases should clear the caches after each deploy.
+  - **Next:**
+    - step 2, structural: lazy providers, a compiled boot manifest, a route cache;
+    - step 3: a page cache with rebuild on publish.
+  - **Follow-up:** FolioServiceProviderTest and LazyHtmlSanitizerTest boot with the repo root as base path, so a Folio
+    run writes `storage/cache/composer` into the monorepo root. Give them a temp root.
 - ~~**Folio sidebar sections (0.57):**~~ done in 0.57.0 (owner, 2026-11-07: the sidebar "can get quite long"). Every
   section with a heading opens and closes (`<details>`, keyboard and no-JS friendly); the state is saved per person in
   Folio's user preferences (`POST {prefix}/_prefs/nav`, signed-in, CSRF) and rendered by the server, so nothing jumps;
