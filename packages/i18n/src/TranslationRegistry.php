@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\I18n;
 
+use Preflow\Core\Composer\InstalledPackages;
+
 /**
  * The translation groups installed packages bring. A package declares them in its
  * composer.json, read from Composer's vendor/composer/installed.json (like
@@ -33,22 +35,17 @@ final class TranslationRegistry
         private readonly array $packagePaths = [],
     ) {}
 
-    public static function fromInstalled(string $installedJson): self
+    /** @param string|null $cacheDir where the decoded installed.json is cached (see InstalledPackages) */
+    public static function fromInstalled(string $installedJson, ?string $cacheDir = null): self
     {
-        if (!is_file($installedJson)) {
-            return new self();
-        }
-        $data = json_decode((string) file_get_contents($installedJson), true);
-        $packages = is_array($data) ? ($data['packages'] ?? $data) : [];
-
         $groups = [];
         $roots = [];
-        foreach (is_array($packages) ? $packages : [] as $package) {
-            if (!is_array($package) || !isset($package['extra']['preflow']['translations'])) {
+        foreach (InstalledPackages::read($installedJson, $cacheDir) as $package) {
+            if (!array_key_exists('translations', $package)) {
                 continue;
             }
-            $name = (string) ($package['name'] ?? '?');
-            $declared = $package['extra']['preflow']['translations'];
+            $name = $package['name'] !== '' ? $package['name'] : '?';
+            $declared = $package['translations'];
             if (!is_array($declared)) {
                 self::warn("package {$name} declares extra.preflow.translations as something other than a map; skipped.");
                 continue;

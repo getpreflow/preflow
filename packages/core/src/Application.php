@@ -720,6 +720,20 @@ final class Application
         return $cachePath;
     }
 
+    /** The decoded composer installed.json lives in storage/cache/composer. */
+    private function composerCachePath(): string
+    {
+        $path = $this->absolutePath('storage/cache/composer');
+
+        $this->container->get(CacheRegistry::class)->register(new DirectoryCache(
+            'composer',
+            'Decoded composer installed.json',
+            $path,
+        ));
+
+        return $path;
+    }
+
     /** Compiled Twig templates live in storage/cache/twig; auto_reload recompiles an edited source. */
     private function twigCachePath(): string
     {
@@ -1041,7 +1055,7 @@ final class Application
         $translator = new \Preflow\I18n\Translator($langDir, $locale, $fallback);
         $this->container->instance(\Preflow\I18n\Translator::class, $translator);
         if (class_exists(\Preflow\I18n\TranslationRegistry::class)) {
-            $registry = \Preflow\I18n\TranslationRegistry::fromInstalled($this->basePath('vendor/composer/installed.json'));
+            $registry = \Preflow\I18n\TranslationRegistry::fromInstalled($this->basePath('vendor/composer/installed.json'), $this->composerCachePath());
             $registry->apply($translator);
             $this->container->instance(\Preflow\I18n\TranslationRegistry::class, $registry);
         }

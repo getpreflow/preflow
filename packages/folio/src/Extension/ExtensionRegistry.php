@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Extension;
 
+use Preflow\Core\Composer\InstalledPackages;
 use Preflow\Folio\Extension\Attributes\FolioExtension;
 
 /**
@@ -67,17 +68,18 @@ final class ExtensionRegistry
      * @param bool          $debug     file errors (unknown extension or part) throw; otherwise they are logged and ignored
      * @param string|null   $cacheFile used when !$debug, written only when there is an extension
      * @param array<class-string, array{package: string, class: string}>|null $builtIn BUILT_IN when null (tests pass their own)
+     * @param string|null   $composerCache where the decoded installed.json is cached (InstalledPackages)
      */
-    public static function discover(string $basePath, bool $debug, ?string $cacheFile = null, ?array $builtIn = null): self
+    public static function discover(string $basePath, bool $debug, ?string $cacheFile = null, ?array $builtIn = null, ?string $composerCache = null): self
     {
         $file = new ExtensionsFile($basePath . '/config/folio/extensions.json');
         $projectDir = $basePath . '/app/Folio';
         $installed = $basePath . '/vendor/composer/installed.json';
-        $builtIn = self::builtIn($builtIn ?? self::BUILT_IN, $installed);
+        $builtInSpec = $builtIn ?? self::BUILT_IN;
 
         // Keyed by the project extension files, installed.json (Composer rewrites it whenever a
         // package changes) and the extensions file, so edits rebuild it (no manual clearing).
-        $signature = !$debug && $cacheFile !== null ? self::signature($projectDir, $installed, $file, $builtIn) : null;
+        $signature = !$debug && $cacheFile !== null ? self::signature($projectDir, $installed, $file) : null;
         if ($signature !== null && is_file($cacheFile)) {
             $cached = @unserialize((string) file_get_contents($cacheFile), ['allowed_classes' => [ExtensionDefinition::class]]);
             if (is_array($cached) && ($cached['signature'] ?? null) === $signature
@@ -86,11 +88,12 @@ final class ExtensionRegistry
             }
         }
 
+        $builtIn = self::builtIn($builtInSpec, $installed, $composerCache); // only on a cache miss
         $definitions = [];
         foreach (self::projectClasses($projectDir) as $class => $path) {
             $definitions[] = self::define($class, $path);
         }
-        foreach (self::packageClasses($installed) as $package => $class) {
+        foreach (self::packageClasses($installed, $composerCache) as $package => $class) {
             if (in_array($class, self::MOVED, true)) {
                 continue; // Folio carries it now (BUILT_IN)
             }
@@ -384,19 +387,9 @@ final class ExtensionRegistry
      * @param array<class-string, array{package: string, class: string}> $builtIn
      * @return list<class-string>
      */
-    private static function builtIn(array $builtIn, string $installed): array
+    private static function builtIn(array $builtIn, string $installed, ?string $composerCache = null): array
     {
-        $json = $builtIn !== [] && is_file($installed) ? (string) file_get_contents($installed) : '';
-        $names = [];
-        foreach ($builtIn as $requires) {
-            // A quick look first (most sites have no such package); json_encode() writes "/" as "\/".
-            if (str_contains($json, '"' . $requires['package'] . '"') || str_contains($json, '"' . str_replace('/', '\\/', $requires['package']) . '"')) {
-                $data = json_decode($json, true);
-                $packages = is_array($data) ? ($data['packages'] ?? $data) : [];
-                $names = array_column(is_array($packages) ? array_filter($packages, 'is_array') : [], 'name');
-                break;
-            }
-        }
+        $names = $builtIn === [] ? [] : array_column(InstalledPackages::read($installed, $composerCache), 'name');
         $classes = [];
         foreach ($builtIn as $class => $requires) {
             if (in_array($requires['package'], $names, true) && class_exists($requires['class'])) {
@@ -408,32 +401,24 @@ final class ExtensionRegistry
     }
 
     /** @return array<string, string> package name => extension class, from extra.folio.extension */
-    private static function packageClasses(string $installed): array
+    private static function packageClasses(string $installed, ?string $composerCache = null): array
     {
-        $json = is_file($installed) ? (string) file_get_contents($installed) : '';
-        if (!str_contains($json, '"folio"')) {
-            return []; // most sites: no package names a Folio extension, skip decoding
-        }
-        $data = json_decode($json, true);
-        $packages = is_array($data) ? ($data['packages'] ?? $data) : [];
-
         $classes = [];
-        foreach (is_array($packages) ? $packages : [] as $package) {
-            $class = is_array($package) ? ($package['extra']['folio']['extension'] ?? null) : null;
-            if ($class === null) {
+        foreach (InstalledPackages::read($installed, $composerCache) as $package) {
+            if (!array_key_exists('extension', $package)) {
                 continue;
             }
+            $class = $package['extension'];
             if (!is_string($class) || $class === '') {
-                throw new ExtensionException(sprintf('Package %s: extra.folio.extension must be a class name.', $package['name'] ?? '?'));
+                throw new ExtensionException(sprintf('Package %s: extra.folio.extension must be a class name.', $package['name'] !== '' ? $package['name'] : '?'));
             }
-            $classes[(string) ($package['name'] ?? $class)] = ltrim($class, '\\');
+            $classes[$package['name'] !== '' ? $package['name'] : $class] = ltrim($class, '\\');
         }
 
         return $classes;
     }
 
-    /** @param list<class-string> $builtIn the built-in extensions present */
-    private static function signature(string $projectDir, string $installed, ExtensionsFile $file, array $builtIn): string
+    private static function signature(string $projectDir, string $installed, ExtensionsFile $file): string
     {
         clearstatcache();
         $parts = [];
@@ -443,8 +428,7 @@ final class ExtensionRegistry
                 $parts[] = $f . '@' . filemtime($f);
             }
         }
-        $parts[] = $installed . '@' . (is_file($installed) ? filemtime($installed) : 0);
-        $parts[] = 'built-in:' . implode(',', $builtIn);
+        $parts[] = $installed . '@' . (is_file($installed) ? filemtime($installed) . ':' . filesize($installed) : 0);
         $parts[] = $file->path() . '@' . ($file->exists() ? filemtime($file->path()) . ':' . hash_file('xxh3', $file->path()) : 0);
 
         return hash('xxh3', implode('|', $parts));

@@ -364,4 +364,19 @@ final class DiscoveryTest extends TestCase
         @mkdir(dirname($path), 0777, true);
         file_put_contents($path, $content);
     }
+
+    public function test_builtin_runs_after_the_cache_check(): void
+    {
+        $this->project('Members');
+        $this->write('config/folio/extensions.json', '{"enabled": {"members": {"disabled_parts": []}}}');
+        $this->write('vendor/composer/installed.json', '{"packages": [{"name": "acme/x"}]}');
+        $cache = $this->dir . '/storage/cache/folio-extensions.cache';
+
+        ExtensionRegistry::discover($this->dir, debug: false, cacheFile: $cache, composerCache: $this->dir . '/c1');
+        $this->assertDirectoryExists($this->dir . '/c1', 'a cache miss reads installed.json');
+
+        $registry = ExtensionRegistry::discover($this->dir, debug: false, cacheFile: $cache, composerCache: $this->dir . '/c2');
+        $this->assertTrue($registry->isEnabled('members'));
+        $this->assertDirectoryDoesNotExist($this->dir . '/c2', 'a cache hit never touches installed.json');
+    }
 }

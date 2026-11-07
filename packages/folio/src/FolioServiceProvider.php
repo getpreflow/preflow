@@ -105,6 +105,7 @@ final class FolioServiceProvider extends ServiceProvider
             $app->basePath(),
             debug: (bool) $app->config()->get('app.debug', false),
             cacheFile: $this->cacheDir($app) . '/folio-extensions.cache',
+            composerCache: $app->basePath('storage/cache/composer'),
         );
         $container->instance(ExtensionRegistry::class, $extensions);
         // The members admin (the built-in extension "members", with preflow/members), when it is

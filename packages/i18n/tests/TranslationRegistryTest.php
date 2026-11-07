@@ -125,4 +125,20 @@ final class TranslationRegistryTest extends TestCase
         $this->assertSame(realpath($this->tmp() . '/vendor/acme/media'), realpath((string) $registry->packagePath('media')));
         $this->assertNull($registry->packagePath('nope'));
     }
+
+    public function test_a_changed_installed_json_shows_the_new_packages_translations(): void
+    {
+        $cache = $this->tmp() . '/cache/composer';
+        $installed = $this->fixture();
+        $this->assertArrayNotHasKey('late', TranslationRegistry::fromInstalled($installed, $cache)->groups());
+
+        $this->langFile('vendor/acme/late/lang', 'en', 'late', ['k' => 'Late']);
+        $this->file('vendor/composer/installed.json', (string) json_encode(['packages' => [
+            ['name' => 'acme/late', 'install-path' => '../acme/late', 'extra' => ['preflow' => ['translations' => ['late' => 'lang']]]],
+        ]]));
+        touch($installed, time() + 100);
+
+        $this->assertSame(['late'], array_keys(TranslationRegistry::fromInstalled($installed, $cache)->groups()));
+        $this->assertSame(['late'], array_keys(TranslationRegistry::fromInstalled($installed, $cache)->groups()));
+    }
 }
