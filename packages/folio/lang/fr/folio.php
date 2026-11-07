@@ -663,6 +663,9 @@ return [
         'blocks' => 'Blocs Folio',
         'data_json' => 'Cache des requêtes du stockage JSON',
         'blade' => 'Templates Blade compilés',
+        'twig' => 'Templates Twig compilés',
+        'assets' => 'CSS et JS minifiés',
+        'composer' => 'Liste des paquets Composer décodée (installed.json)',
         'translations' => 'Traductions de Folio',
     ],
     'extensions' => [

@@ -26,6 +26,9 @@ final class CacheController
         'folio.blocks' => 'folio.cache.blocks',
         'data.json' => 'folio.cache.data_json',
         'blade' => 'folio.cache.blade',
+        'twig' => 'folio.cache.twig',
+        'assets' => 'folio.cache.assets',
+        'composer' => 'folio.cache.composer',
     ];
 
     public function __construct(

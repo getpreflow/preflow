@@ -663,6 +663,9 @@ return [
         'blocks' => 'Folio-Blöcke',
         'data_json' => 'Abfrage-Cache des JSON-Speichers',
         'blade' => 'Kompilierte Blade-Templates',
+        'twig' => 'Kompilierte Twig-Templates',
+        'assets' => 'Minifiziertes CSS und JS',
+        'composer' => 'Dekodierte Composer-Paketliste (installed.json)',
         'translations' => 'Folio-Übersetzungen',
     ],
     'extensions' => [

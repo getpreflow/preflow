@@ -47,6 +47,21 @@ final class CacheScreenTest extends TestCase
         }
     }
 
+    public function test_core_and_folio_caches_have_a_label_in_every_folio_language(): void
+    {
+        $labels = (new \ReflectionClassConstant(\Preflow\Folio\Http\CacheController::class, 'LABELS'))->getValue();
+        foreach (['folio.extensions', 'folio.blocks', 'data.json', 'blade', 'twig', 'assets', 'composer'] as $key) {
+            $this->assertArrayHasKey($key, $labels, $key);
+        }
+        foreach (['en', 'de', 'fr'] as $lang) {
+            $texts = require dirname(__DIR__, 2) . "/lang/{$lang}/folio.php";
+            foreach ($labels as $cache => $textKey) {
+                $leaf = substr($textKey, strlen('folio.cache.'));
+                $this->assertNotSame('', $texts['cache'][$leaf] ?? '', "{$lang}: {$cache}");
+            }
+        }
+    }
+
     #[RunInSeparateProcess]
     public function test_screen_lists_caches_with_forms_and_opcache(): void
     {

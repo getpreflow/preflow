@@ -686,6 +686,9 @@ return [
         'blocks' => 'Folio blocks',
         'data_json' => 'JSON storage query cache',
         'blade' => 'Compiled Blade templates',
+        'twig' => 'Compiled Twig templates',
+        'assets' => 'Minified CSS and JS',
+        'composer' => 'Decoded Composer package list (installed.json)',
         'translations' => 'Folio translations',
     ],
     // Settings → Extensions.
