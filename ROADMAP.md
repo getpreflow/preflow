@@ -371,8 +371,12 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   - **Next:**
     - step 2, structural: lazy providers, a compiled boot manifest, a route cache;
     - step 3: a page cache with rebuild on publish.
-  - **Follow-up:** FolioServiceProviderTest and LazyHtmlSanitizerTest boot with the repo root as base path, so a Folio
-    run writes `storage/cache/composer` into the monorepo root. Give them a temp root.
+  - **Follow-ups:**
+    - FolioServiceProviderTest and LazyHtmlSanitizerTest boot with the repo root as base path, so a Folio run writes
+      `storage/cache/composer` into the monorepo root. Give them a temp root.
+    - `MediaLibrary::prefetch()` runs COUNT + SELECT through the query builder's `get()`; it should be one query.
+    - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
+      The rest is the host's floor, which only the page cache (step 3) removes.
 - ~~**Folio sidebar sections (0.57):**~~ done in 0.57.0 (owner, 2026-11-07: the sidebar "can get quite long"). Every
   section with a heading opens and closes (`<details>`, keyboard and no-JS friendly); the state is saved per person in
   Folio's user preferences (`POST {prefix}/_prefs/nav`, signed-in, CSRF) and rendered by the server, so nothing jumps;
