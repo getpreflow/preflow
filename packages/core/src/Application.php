@@ -690,6 +690,7 @@ final class Application
                     templateDirs: $templateDirs,
                     assetCollector: $assets,
                     debug: $debug->isDebug(),
+                    cachePath: $this->twigCachePath(),
                     geoCollector: $geo,
                     seoContext: $seo,
                 )
@@ -699,6 +700,20 @@ final class Application
                 : null,
             default => throw new \RuntimeException("Unknown template engine: {$name}. Supported: twig, blade"),
         };
+    }
+
+    /** Compiled Twig templates live in storage/cache/twig; auto_reload recompiles an edited source. */
+    private function twigCachePath(): string
+    {
+        $cachePath = $this->absolutePath('storage/cache/twig');
+
+        $this->container->get(CacheRegistry::class)->register(new DirectoryCache(
+            'twig',
+            'Compiled Twig templates',
+            $cachePath,
+        ));
+
+        return $cachePath;
     }
 
     private function createBladeEngine(

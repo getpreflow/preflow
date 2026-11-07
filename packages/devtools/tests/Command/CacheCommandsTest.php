@@ -82,8 +82,9 @@ final class CacheCommandsTest extends TestCase
         $this->assertSame(0, $code);
         $lines = explode("\n", trim($out));
         $this->assertMatchesRegularExpression('/^Key\s+Label\s+Entries\s+Size$/', $lines[0]);
-        $this->assertMatchesRegularExpression('/^one\s+Cache one\s+1\s+1\.5 KB$/', $lines[1]);
-        $this->assertMatchesRegularExpression('/^two\s+Cache two\s+1\s+2 B$/', $lines[2]);
+        $this->assertMatchesRegularExpression('/^one\s+Cache one\s+1\s+1\.5 KB$/', $lines[2]);
+        $this->assertMatchesRegularExpression('/^two\s+Cache two\s+1\s+2 B$/', $lines[3]);
+        $this->assertMatchesRegularExpression('/^twig\s+Compiled Twig templates\s+0\s+0 B$/', $lines[1]);
     }
 
     public function test_list_with_empty_registry(): void
@@ -93,7 +94,9 @@ final class CacheCommandsTest extends TestCase
         [$code, $out] = $this->exec(new CacheListCommand($this->factory()));
 
         $this->assertSame(0, $code);
-        $this->assertSame("No caches registered.\n", $out);
+        // The Twig engine (default) always registers its compiled-template folder.
+        $this->assertStringNotContainsString('one', $out);
+        $this->assertStringContainsString('Compiled Twig templates', $out);
     }
 
     public function test_clear_one(): void
@@ -108,10 +111,10 @@ final class CacheCommandsTest extends TestCase
 
     public function test_clear_unknown_key_fails_and_deletes_nothing(): void
     {
-        [$code, $out] = $this->exec(new CacheClearCommand($this->factory()), ['twig']);
+        [$code, $out] = $this->exec(new CacheClearCommand($this->factory()), ['nothing']);
 
         $this->assertSame(1, $code);
-        $this->assertStringContainsString('Unknown cache: twig (known: one, two)', $out);
+        $this->assertStringContainsString('Unknown cache: nothing (known: twig, one, two)', $out);
         $this->assertFileExists($this->dir . '/storage/cache/one.txt');
         $this->assertFileExists($this->dir . '/storage/cache/two.txt');
     }
@@ -121,7 +124,7 @@ final class CacheCommandsTest extends TestCase
         [$code, $out] = $this->exec(new CacheClearCommand($this->factory()), ['--all']);
 
         $this->assertSame(0, $code);
-        $this->assertSame("Cleared one: 1 file(s), 1.5 KB.\nCleared two: 1 file(s), 2 B.\n", $out);
+        $this->assertSame("Cleared twig: 0 file(s), 0 B.\nCleared one: 1 file(s), 1.5 KB.\nCleared two: 1 file(s), 2 B.\n", $out);
         $this->assertFileDoesNotExist($this->dir . '/storage/cache/one.txt');
         $this->assertFileDoesNotExist($this->dir . '/storage/cache/two.txt');
     }

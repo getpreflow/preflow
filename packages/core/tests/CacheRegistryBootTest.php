@@ -86,12 +86,30 @@ final class CacheRegistryBootTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_twig_registers_nothing(): void
+    public function test_twig_registers_its_compiled_templates(): void
     {
-        $app = Application::create($this->app('twig'));
+        $dir = $this->app('twig');
+        $app = Application::create($dir);
         $app->boot();
 
-        $this->assertNull($app->container()->get(CacheRegistry::class)->get('twig'));
+        $source = $app->container()->get(CacheRegistry::class)->get('twig');
+
+        $this->assertNotNull($source);
+        $this->assertSame('Compiled Twig templates', $source->label());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_cache_clear_empties_the_twig_cache(): void
+    {
+        $dir = $this->app('twig');
+        $app = Application::create($dir);
+        $app->boot();
+        mkdir($dir . '/storage/cache/twig/ab', 0777, true);
+        file_put_contents($dir . '/storage/cache/twig/ab/compiled.php', '<?php');
+
+        $app->container()->get(CacheRegistry::class)->get('twig')->clear();
+
+        $this->assertSame([], glob($dir . '/storage/cache/twig/*/*.php'));
     }
 
     private function app(string $engine, bool $withProvider = false): string

@@ -181,4 +181,79 @@ final class TwigEngineTest extends TestCase
 
         $this->assertStringContainsString('<svg', $this->engine->render('qr.twig'));
     }
+
+    private function cachedEngine(string $cache): TwigEngine
+    {
+        return new TwigEngine([$this->templateDir], new AssetCollector(new NonceGenerator()), cachePath: $cache);
+    }
+
+    /** @return string[] */
+    private function compiled(string $cache): array
+    {
+        return glob($cache . '/*/*.php') ?: [];
+    }
+
+    public function test_twig_compiles_into_the_cache_directory(): void
+    {
+        $cache = $this->templateDir . '/cache/twig';
+        $this->createTemplate('hello.twig', '<h1>Hello {{ name }}</h1>');
+        $engine = $this->cachedEngine($cache);
+
+        $engine->render('hello.twig', ['name' => 'A']);
+        $files = $this->compiled($cache);
+        $mtimes = array_map('filemtime', $files);
+        clearstatcache();
+        $engine->render('hello.twig', ['name' => 'B']);
+        // A fresh engine (next request) reuses the compiled file instead of compiling again.
+        $this->cachedEngine($cache)->render('hello.twig', ['name' => 'C']);
+
+        $this->assertNotEmpty($files);
+        $this->assertSame($files, $this->compiled($cache));
+        $this->assertSame($mtimes, array_map('filemtime', $this->compiled($cache)));
+    }
+
+    /** Renders in a fresh PHP process, like the next request (a compiled class stays loaded within one process). */
+    private function renderInNewProcess(string $cache, string $template): string
+    {
+        $code = 'require ' . var_export(dirname(__DIR__, 3) . '/vendor/autoload.php', true) . ';'
+            . '$e = new Preflow\\Twig\\TwigEngine([' . var_export($this->templateDir, true) . '], '
+            . 'new Preflow\\View\\AssetCollector(new Preflow\\View\\NonceGenerator()), cachePath: ' . var_export($cache, true) . ');'
+            . 'echo $e->render(' . var_export($template, true) . ');';
+
+        return (string) shell_exec(escapeshellarg(PHP_BINARY) . ' -d opcache.enable_cli=0 -r ' . escapeshellarg($code));
+    }
+
+    public function test_an_edited_template_recompiles(): void
+    {
+        $cache = $this->templateDir . '/cache/twig';
+        $this->createTemplate('page.twig', 'one');
+        $abs = $this->templateDir . '/component.twig';
+        file_put_contents($abs, 'compA');
+        $this->assertSame('one', $this->renderInNewProcess($cache, 'page.twig'));
+        $this->assertSame('compA', $this->renderInNewProcess($cache, $abs));
+
+        file_put_contents($this->templateDir . '/page.twig', 'two');
+        file_put_contents($abs, 'compB');
+        touch($this->templateDir . '/page.twig', time() + 10);
+        touch($abs, time() + 10);
+        clearstatcache();
+
+        $this->assertSame('two', $this->renderInNewProcess($cache, 'page.twig'));
+        $this->assertSame('compB', $this->renderInNewProcess($cache, $abs));
+    }
+
+    public function test_output_is_identical_with_and_without_cache(): void
+    {
+        $this->createTemplate('base.twig', '<html>{% block body %}{% endblock %}</html>');
+        $this->createTemplate('page.twig', '{% extends "base.twig" %}{% block body %}{% for i in 1..3 %}<p>{{ i }} {{ name|upper }}</p>{% endfor %}<script nonce="abc123"></script>{% endblock %}');
+        $render = fn (TwigEngine $e): string => preg_replace('/nonce="[^"]*"/', 'nonce="X"', $e->render('page.twig', ['name' => 'x']));
+
+        $plain = $render($this->makeEngine());
+        $cache = $this->templateDir . '/cache/twig';
+        $cold = $render($this->cachedEngine($cache));
+        $warm = $render($this->cachedEngine($cache));
+
+        $this->assertSame($plain, $cold);
+        $this->assertSame($plain, $warm);
+    }
 }
