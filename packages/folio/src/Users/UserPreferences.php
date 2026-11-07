@@ -13,7 +13,7 @@ use Preflow\Data\TypeDefinition;
  * Each Folio user's own settings, one record per auth id (a record user's id, a config user's
  * address) in the default storage: so config users need no record, and a choice survives
  * signing out. Folio's own table, not a content type: never in the TypeCatalog, never
- * exported or imported. Today it holds the interface language.
+ * exported or imported. It holds the interface language and which sidebar sections are open.
  */
 final class UserPreferences
 {
@@ -35,6 +35,7 @@ final class UserPreferences
             storage: 'default',
             fields: [
                 'locale' => new \Preflow\Data\TypeFieldDefinition('locale', 'string'),
+                'nav' => new \Preflow\Data\TypeFieldDefinition('nav', 'json'),
             ],
             idField: 'id',
         );
@@ -43,31 +44,91 @@ final class UserPreferences
     /** The user's interface language, or null (none chosen; or the table isn't there yet: `preflow migrate` makes it). */
     public function locale(string $authId): ?string
     {
+        $locale = $this->read($authId)?->get('locale');
+
+        return is_string($locale) && $locale !== '' ? $locale : null;
+    }
+
+    /**
+     * Which sidebar sections the user left open (true) or closed (false), by section name. Empty
+     * when nothing is saved, or the table or its column isn't there yet.
+     *
+     * @return array<string, bool>
+     */
+    public function navSections(string $authId): array
+    {
+        return self::sections($this->read($authId)?->get('nav'));
+    }
+
+    /** Stores the language (null forgets only the language; the sections stay). The table is created when missing. */
+    public function setLocale(string $authId, ?string $locale): void
+    {
+        $this->store($authId, ($locale === null || $locale === '') ? null : $locale, null);
+    }
+
+    /** Remembers one sidebar section as open or closed; the language and the other sections stay. */
+    public function setNavSection(string $authId, string $section, bool $open): void
+    {
+        $this->store($authId, false, [$section => $open]);
+    }
+
+    /**
+     * Writes the changed parts of the record. $locale: false keeps it, null clears it. $nav: the
+     * keys to set, or null to keep the map. The row goes when neither language nor map is left.
+     *
+     * @param array<string, bool>|null $nav
+     */
+    private function store(string $authId, string|false|null $locale, ?array $nav): void
+    {
+        $this->ensureTable();
+        $current = $this->read($authId);
+        $keptLocale = $locale === false ? ($current?->get('locale')) : $locale;
+        $keptLocale = is_string($keptLocale) && $keptLocale !== '' ? $keptLocale : null;
+        $map = self::sections($current?->get('nav'));
+        if ($nav !== null) {
+            $map = array_merge($map, $nav);
+        }
+
+        if ($keptLocale === null && $map === []) {
+            if ($current !== null) {
+                $this->dm->deleteIn($this->definition(), $authId);
+            }
+
+            return;
+        }
+        $this->dm->saveType(DynamicRecord::fromArray($this->definition(), [
+            'id' => $authId,
+            'locale' => $keptLocale,
+            'nav' => $map === [] ? null : $map,
+        ]), false);
+    }
+
+    private function read(string $authId): ?DynamicRecord
+    {
         try {
-            $locale = $this->dm->findIn($this->definition(), $authId)?->get('locale');
+            $record = $this->dm->findIn($this->definition(), $authId);
         } catch (\RuntimeException $e) {
-            // No table yet (the driver's "run preflow migrate"): nobody chose, the admin keeps working.
+            // No table or column yet (the driver's "run preflow migrate"): nothing saved, the admin keeps working.
             if ($e instanceof \PDOException || $e->getPrevious() instanceof \PDOException) {
                 return null;
             }
             throw $e;
         }
 
-        return is_string($locale) && $locale !== '' ? $locale : null;
+        return $record instanceof DynamicRecord ? $record : null;
     }
 
-    /** Stores the interface language (null forgets it). The table is created when missing. */
-    public function setLocale(string $authId, ?string $locale): void
+    /** @return array<string, bool> only the bool entries of a stored map */
+    private static function sections(mixed $raw): array
     {
-        $this->ensureTable();
-        if ($locale === null || $locale === '') {
-            if ($this->dm->findIn($this->definition(), $authId) !== null) {
-                $this->dm->deleteIn($this->definition(), $authId);
-            }
-
-            return;
+        if (is_string($raw) && $raw !== '') {
+            $raw = json_decode($raw, true);
         }
-        $this->dm->saveType(DynamicRecord::fromArray($this->definition(), ['id' => $authId, 'locale' => $locale]), false);
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        return array_filter($raw, static fn (mixed $v): bool => is_bool($v));
     }
 
     private function ensureTable(): void
