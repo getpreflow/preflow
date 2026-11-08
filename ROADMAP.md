@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.58.1** — 5859 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.59.0** — 5927 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -377,6 +377,58 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - `MediaLibrary::prefetch()` runs COUNT + SELECT through the query builder's `get()`; it should be one query.
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- ~~**Performance step 2, structural boot (0.59):**~~ done in 0.59.0 (owner, 2026-11-08: "push through all step by
+  step"; spec `docs/superpowers/specs/2026-11-08-perf-structural-boot-design.md`).
+  - **What changed:**
+    - The database connects on the first query, not at boot. A page that runs no query opens no connection, and a
+      MySQL outage shows at the first query (the error page), not at boot.
+    - `MediaLibrary::prefetch()` is one query. The JSON storage query cache is validated from its generation file and
+      the type directory's mtime instead of a stat per record (a record file edited by hand needs `cache:clear`).
+    - Folio sets up its admin (admin routes, nav, screens, customizations) on the first request under the admin prefix
+      in a process, and always in the console. Public requests never build it. New core hooks:
+      `Application::onRequest()`, `runningInConsole()`/`setRunningInConsole()`, `Container::resolved()`,
+      `RouteCollection::insertBefore()`.
+    - `preflow optimize` writes a per-release boot manifest, `bootstrap/cache/boot.php`: merged config, package data,
+      the component/controller/translation/Folio catalogs, and the compiled public route sets (app, media, Folio
+      frontend). `preflow optimize --check` lists drifted sources and exits 1. `cache:clear` and Folio's Cache
+      "Clear all" remove it.
+    - The manifest is read only in web mode, with the live `app.debug` off, and while `.env`,
+      `config/folio/extensions.json` and `vendor/composer/installed.json` are unchanged (checked per request).
+      Otherwise the request boots live, as in 0.58. The console never reads it. Data-stored settings are never in it.
+  - **Measured on languagecorner** (Apache, OPcache, one request at a time, 1000 requests, average):
+
+    | Page | 0.57 | 0.58 | 0.59 live boot | 0.59 with manifest |
+    |---|---|---|---|---|
+    | home | 15.3 ms | 5.0 ms | 4.4 ms | 3.9 ms |
+    | /classes | 17.6 ms | 8.1 ms | 4.5 ms | 4.0 ms |
+    | 404 | 10.0 ms | 3.9 ms | 2.6 ms | 2.0 ms |
+    | robots.txt | 3.7 ms | 2.2 ms | 2.0 ms | 1.8 ms |
+
+    PHP boot time with the manifest went from 1.41 to 0.90 ms. The target (robots.txt under 1 ms) is not reached
+    locally: about 0.5 ms is PSR-4 file lookups without an optimised classmap (deploys install with
+    `--optimize-autoloader`).
+  - **Upgrading:**
+    - core, data, routing, folio, media, members and devtools require each other at 0.59 (conflicts set). Release and
+      update them together (`composer update 'preflow/*'`).
+    - Without `preflow optimize` a site works as in 0.58. To use the manifest, add `/bootstrap/cache/` to
+      `.gitignore` (the manifest holds the merged config, secrets included; its permissions follow `.env`), and deploy in
+      this order: composer install → migrations → `folio:extensions:apply` → any `cache:clear` → `preflow optimize` →
+      symlink → OPcache reset.
+    - A broken extension screen or customization now fails the first admin request in web mode (in the console still at
+      boot). A setup that threw runs again on the next admin request.
+    - Pages, controllers or model files added on the server without a deploy are not routed until `preflow optimize`
+      runs again. Environment variables set only by the web server are not watched; re-run `optimize` after changing
+      one.
+    - The admin prefix may be written with or without a leading slash, as before.
+  - **Follow-ups:**
+    - Folio's `_uploads`, `_account` and nav base still use the raw admin prefix; route them through `adminPath()` so
+      `'path' => 'folio'` builds correct URLs there too (all sites use `/folio`).
+    - `PublishingAppTest::test_dashboard_shows_a_running_records_progress_and_refreshes_itself` depends on the wall
+      clock (`AdminController::stale()`); pin the clock.
+    - A web-mode test lane for the whole suite; more COUNT skips in `findMany`.
+    - Toggling an extension in Folio removes the manifest; the site boots live until the next deploy or `optimize`.
+    - holz-objekte.org `/album`: batch `Catalog::object` per album item (site work).
+    - Next: step 3, a page cache with rebuild on publish.
 - ~~**Folio sidebar sections (0.57):**~~ done in 0.57.0 (owner, 2026-11-07: the sidebar "can get quite long"). Every
   section with a heading opens and closes (`<details>`, keyboard and no-JS friendly); the state is saved per person in
   Folio's user preferences (`POST {prefix}/_prefs/nav`, signed-in, CSRF) and rendered by the server, so nothing jumps;
