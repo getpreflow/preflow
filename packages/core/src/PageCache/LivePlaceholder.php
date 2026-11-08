@@ -17,7 +17,8 @@ namespace Preflow\Core\PageCache;
  *
  * Text a visitor wrote can't name a template or component to render: a marker whose signature
  * doesn't verify (no key, another key, an edited payload) is not a placeholder and stays in
- * the page as the HTML comment it is.
+ * the page as the HTML comment it is. With an unusable key (empty, or the public default one
+ * anybody can sign with) nothing is signed or found at all (usable()).
  */
 final class LivePlaceholder
 {
@@ -29,6 +30,12 @@ final class LivePlaceholder
     private const int MAX_PAYLOAD = 65536;
 
     public function __construct(private readonly string $secret) {}
+
+    /** Whether the key can sign: not empty, not the public default (StatelessCsrfToken::DEFAULT_KEY). */
+    public function usable(): bool
+    {
+        return $this->secret !== '' && $this->secret !== \Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY;
+    }
 
     /**
      * The placeholder of the part $kind with $recipe (scalars and arrays only).
@@ -52,23 +59,35 @@ final class LivePlaceholder
     }
 
     /**
-     * The placeholders in $body whose signature verifies, each once.
+     * The placeholders in $body whose signature verifies, each once (none with an unusable key).
      *
+     * @param int $rejected set to the number of markers that look like placeholders but don't verify
      * @return array<string, array{0: string, 1: array<string, mixed>}> placeholder => [kind, recipe]
      */
-    public function find(string $body): array
+    public function find(string $body, ?int &$rejected = 0): array
     {
+        $rejected = 0;
         if (!self::in($body) || preg_match_all(self::PATTERN, $body, $matches, PREG_SET_ORDER) === 0) {
+            return [];
+        }
+        if (!$this->usable()) {
+            $rejected = count($matches);
+
             return [];
         }
         $found = [];
         foreach ($matches as [$marker, $payload, $sig]) {
-            if (isset($found[$marker]) || strlen($payload) > self::MAX_PAYLOAD || !hash_equals($this->sign($payload), $sig)) {
+            if (isset($found[$marker])) {
+                continue;
+            }
+            if (strlen($payload) > self::MAX_PAYLOAD || !hash_equals($this->sign($payload), $sig)) {
+                $rejected++;
                 continue;
             }
             $json = base64_decode(strtr($payload, '-_', '+/'), true);
             $recipe = is_string($json) ? json_decode($json, true) : null;
             if (!is_array($recipe) || !isset($recipe['k']) || !is_string($recipe['k'])) {
+                $rejected++;
                 continue;
             }
             $kind = $recipe['k'];

@@ -68,7 +68,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->dir = sys_get_temp_dir() . '/pcmw_' . bin2hex(random_bytes(4));
         mkdir($this->dir, 0777, true);
         $this->root = $this->dir . '/storage/cache/pages';
-        $this->config = new PageCacheConfig(enabled: true, hosts: ['example.com'], signedInCookies: ['preflow_auth', 'remember_session'], explain: true);
+        $this->config = new PageCacheConfig(enabled: true, hosts: ['example.com'], signedInCookies: ['preflow_auth', 'remember_session'], explain: true, verify: 'off');
         $this->store = new PageStore($this->root, 'aaaaaaaaaaaaaaaa');
         $this->recorder = new DependencyRecorder();
         $this->cache = new PageCache();
@@ -218,7 +218,7 @@ final class PageCacheMiddlewareTest extends TestCase
 
     public function test_forwarded_hosts_that_are_cached_stay_apart(): void
     {
-        $this->config = new PageCacheConfig(enabled: true, hosts: ['example.com', 'www.example.com']);
+        $this->config = new PageCacheConfig(enabled: true, hosts: ['example.com', 'www.example.com'], verify: 'off');
         $mw = $this->middleware();
         $handler = $this->handler(fn (ServerRequestInterface $r): ResponseInterface => $this->html('for ' . $r->getHeaderLine('X-Forwarded-Host')));
 
@@ -442,7 +442,7 @@ final class PageCacheMiddlewareTest extends TestCase
     public function test_stale_pages_are_served_and_reported(): void
     {
         $now = 1_000_000.0;
-        $config = new PageCacheConfig(enabled: true, hosts: ['example.com'], maxAge: 3600);
+        $config = new PageCacheConfig(enabled: true, hosts: ['example.com'], maxAge: 3600, verify: 'off');
         $mw = $this->middleware(config: $config, clock: static function () use (&$now): float {
             return $now;
         });
@@ -758,6 +758,78 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame(2, $same->calls, 'verify never runs on a hit');
     }
 
+    public function test_verify_compares_the_stored_headers(): void
+    {
+        $mw = $this->middleware(verify: 'always');
+        $count = $this->handler(fn (ServerRequestInterface $r): ResponseInterface => $this->html('<p>same body</p>')
+            ->withHeader('HX-Trigger', json_encode(['albumCount' => count(array_filter(explode('_', (string) ($r->getCookieParams()['album'] ?? ''))))]) ?: ''));
+
+        $miss = $mw->process($this->get('/fragment')->withCookieParams(['album' => '1_2']), $count);
+        $this->assertSame('differs', $miss->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertSame('{"albumCount":2}', $miss->getHeaderLine('HX-Trigger'), 'the visitor gets their own');
+        $this->assertFileDoesNotExist($this->pageFile('/fragment'));
+        $this->assertSame(['page cache: https://example.com/fragment differs per visitor outside live parts'], $this->logged);
+
+        // Headers the same for everyone (in another case and order): stored.
+        $same = $this->handler(fn (): ResponseInterface => $this->html('<p>x</p>')->withHeader('X-Robots-Tag', 'noindex'));
+        $this->assertSame('', $mw->process($this->get('/same')->withCookieParams(['album' => '1']), $same)->getHeaderLine('X-Page-Cache-Skip'));
+    }
+
+    public function test_verify_first_runs_once_for_a_key_the_index_does_not_know(): void
+    {
+        $mw = $this->middleware(config: new PageCacheConfig(enabled: true, hosts: ['example.com'], explain: true));
+        $page = $this->handler(fn (): ResponseInterface => $this->html('<p>page</p>'));
+
+        $this->assertSame('', $mw->process($this->get('/page'), $page)->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertSame(2, $page->calls, 'the first store of the key renders twice');
+
+        // A rebuild of the known key is not verified.
+        $rebuild = $this->get('/page')->withAttribute(PageCacheMiddleware::REBUILD, true)->withAttribute(InternalRender::ATTRIBUTE, true);
+        $mw->process($rebuild, $page);
+        $this->assertSame(3, $page->calls);
+
+        // A page that differed is never known: verified again on its next miss.
+        $personal = $this->handler(fn (ServerRequestInterface $r): ResponseInterface => $this->html('<p>' . ($r->getCookieParams()['album'] ?? '') . '</p>'));
+        $mw->process($this->get('/album')->withCookieParams(['album' => '1']), $personal);
+        $this->assertSame('differs', $mw->process($this->get('/album')->withCookieParams(['album' => '2']), $personal)->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertSame(4, $personal->calls);
+
+        $off = $this->middleware(config: new PageCacheConfig(enabled: true, hosts: ['example.com'], verify: 'off'));
+        $other = $this->handler(fn (): ResponseInterface => $this->html('<p>other</p>'));
+        $off->process($this->get('/other'), $other);
+        $this->assertSame(1, $other->calls);
+    }
+
+    public function test_live_placeholders_are_filled_into_html_only(): void
+    {
+        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder('test-secret'), $this->cache, $this->recorder);
+        $live->register('greeting', static fn (): string => "<b>\"hi\"\n</b>");
+        $mw = $this->middleware(live: $live);
+        $json = $this->handler(fn (): ResponseInterface => new Response(200, ['Content-Type' => 'application/json'], (string) json_encode(['html' => $live->placeholder('greeting', [])])));
+
+        $response = $mw->process($this->get('/api'), $json);
+        $this->assertSame('live-non-html', $response->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertIsArray(json_decode((string) $response->getBody(), true), 'never filled: still valid JSON');
+        $this->assertFileDoesNotExist($this->pageFile('/api'));
+    }
+
+    public function test_an_unusable_app_key_places_and_fills_nothing(): void
+    {
+        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder(StatelessCsrfToken::DEFAULT_KEY), $this->cache, $this->recorder, function (string $m): void {
+            $this->logged[] = $m;
+        });
+        $live->register('greeting', static fn (): string => '<b>FILLED</b>');
+        $public = (new \Preflow\Core\PageCache\LivePlaceholder(StatelessCsrfToken::DEFAULT_KEY))->make('greeting', []);
+        $this->values = new PerRequestValues(StatelessCsrfToken::DEFAULT_KEY);
+        $mw = $this->middleware(live: $live);
+        $handler = $this->handler(fn (): ResponseInterface => $this->html('<p>' . ($live->placeholder('greeting', []) ?? 'in place') . "</p>{$public}"));
+
+        $response = $mw->process($this->get('/page'), $handler);
+        $this->assertSame("<p>in place</p>{$public}", (string) $response->getBody());
+        $this->assertSame('app-key', $response->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertStringContainsString('1 live marker(s) left as comments', $this->logged[0] ?? '');
+    }
+
     public function test_without_explain_the_skip_reason_is_not_sent(): void
     {
         $mw = $this->middleware(config: new PageCacheConfig(enabled: true, hosts: ['example.com']));
@@ -776,7 +848,7 @@ final class PageCacheMiddlewareTest extends TestCase
      * @param (\Closure(): float)|null $clock
      * @param (\Closure(string): bool)|null $nonPublic
      */
-    private function middleware(?PageCacheConfig $config = null, ?\Closure $clock = null, ?\Closure $nonPublic = null, ?\Closure $sentHeaders = null, ?\Preflow\Core\PageCache\LiveParts $live = null, ?bool $verify = null): PageCacheMiddleware
+    private function middleware(?PageCacheConfig $config = null, ?\Closure $clock = null, ?\Closure $nonPublic = null, ?\Closure $sentHeaders = null, ?\Preflow\Core\PageCache\LiveParts $live = null, bool|string|null $verify = null): PageCacheMiddleware
     {
         $config ??= $this->config;
         $source = new PageCacheSource($this->root, static fn (): string => 'aaaaaaaaaaaaaaaa');
@@ -860,7 +932,7 @@ final class PageCacheMiddlewareTest extends TestCase
     private function site(?array $i18n = null, bool $auth = false, bool $data = false): void
     {
         $this->write('config/app.php', "<?php\nreturn ['name'=>'t','debug'=>0,'engine'=>'twig','key'=>'page-cache-test-key-0123456789ab','url'=>'https://example.com','locale'=>'en'];\n");
-        $this->write('config/page_cache.php', "<?php\nreturn ['enabled' => true, 'signed_in_cookies' => ['site_cookie'], 'explain' => true, 'verify' => true];\n");
+        $this->write('config/page_cache.php', "<?php\nreturn ['enabled' => true, 'signed_in_cookies' => ['site_cookie'], 'explain' => true, 'verify' => 'always'];\n");
         if ($i18n !== null) {
             $this->write('config/i18n.php', '<?php return ' . var_export($i18n, true) . ';');
             foreach (['en' => 'Hello', 'de' => 'Hallo', 'fr' => 'Salut'] as $locale => $hi) {

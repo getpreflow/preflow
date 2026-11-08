@@ -53,7 +53,7 @@ final class LiveDirectiveTest extends TestCase
 
     public function test_live_block_sees_only_its_with_values(): void
     {
-        $file = $this->template('page.blade.php', "<main>{{ \$secret }}|@live(['number' => \$object['number']])[{{ \$number }}/{{ \$secret ?? 'none' }}/{{ isset(\$object) ? 'object' : 'none' }}/{{ \$site }}]@endlive</main>");
+        $this->template('page.blade.php', "<main>{{ \$secret }}|@live(['number' => \$object['number']])[{{ \$number }}/{{ \$secret ?? 'none' }}/{{ isset(\$object) ? 'object' : 'none' }}/{{ \$site }}]@endlive</main>");
         $context = ['secret' => 'outer', 'object' => ['number' => 7]];
 
         $this->assertSame('<main>outer|[7/none/none/Holz]</main>', $this->engine->render('page', $context), 'in place');
@@ -63,7 +63,7 @@ final class LiveDirectiveTest extends TestCase
         $this->assertSame(1, preg_match('/^<main>outer\|(<!--pc:l:[A-Za-z0-9_-]+:[0-9a-f]{32}-->)<\/main>$/', $stored, $m));
         $found = (new LivePlaceholder('live-test-key'))->find($stored)[$m[1]] ?? null;
         $this->assertSame('blade', $found[0] ?? null);
-        $this->assertSame(['f' => realpath($file), 'i' => 0, 'w' => ['number' => 7]], array_diff_key($found[1] ?? [], ['h' => true]));
+        $this->assertSame(['n' => 'page', 'i' => 0, 'w' => ['number' => 7]], array_diff_key($found[1] ?? [], ['h' => true]));
 
         $this->assertSame('<main>outer|[7/none/none/Holz]</main>', $this->live->fill($stored), 'filled as in place');
     }
@@ -90,6 +90,60 @@ final class LiveDirectiveTest extends TestCase
         exec('rm -rf ' . escapeshellarg($this->dir . '/cache') . ' && mkdir ' . escapeshellarg($this->dir . '/cache'));
         $who = 'Cy';
         $this->assertSame(str_replace('Bob', 'Cy', $inPlace), $this->live->fill($stored));
+    }
+
+    public function test_only_declared_live_blocks_are_filled(): void
+    {
+        $this->template('page.blade.php', "@live LIVE @endlive");
+        $stored = $this->storing(fn (): string => $this->engine->render('page'));
+        $recipe = (new LivePlaceholder('live-test-key'))->find($stored)[$stored][1];
+        file_put_contents($this->dir . '/upload.txt', '@live UPLOADED @endlive');
+        $sign = new LivePlaceholder('live-test-key');
+        $markers = [
+            $sign->make('blade', ['n' => 'page', 'i' => 0, 'h' => str_repeat('a', 32), 'w' => []]),     // no such body
+            $sign->make('blade', ['n' => $this->dir . '/upload.txt', 'i' => 0, 'h' => hash('xxh128', ' UPLOADED '), 'w' => []]),
+            $sign->make('blade', ['n' => '../upload', 'i' => 0, 'h' => hash('xxh128', ' UPLOADED '), 'w' => []]),
+            $sign->make('blade', ['f' => $this->dir . '/upload.txt', 'i' => 0, 'h' => hash('xxh128', ' UPLOADED '), 'w' => []]),
+            $sign->make('blade', ['c' => \stdClass::class, 'i' => 0, 'h' => str_repeat('b', 32), 'w' => []]),
+            $sign->make('blade', ['n' => 'page', 'i' => 0, 'h' => '../../x', 'w' => []]),
+        ];
+        $body = implode('|', $markers);
+
+        $this->assertSame($body, $this->live->fill($body), 'every one stays a comment');
+        $this->assertSame(['page cache: 6 live marker(s) left as comments: unsigned, forged or naming no declared live part'], $this->logged);
+        $this->assertSame('LIVE ', $this->live->fill($sign->make('blade', $recipe)), 'the control');
+    }
+
+    public function test_an_edited_template_after_a_cleared_cache_is_not_the_stored_block(): void
+    {
+        $this->template('page.blade.php', "@live(['n' => 1])first {{ \$n }}@endlive");
+        $stored = $this->storing(fn (): string => $this->engine->render('page'));
+        exec('rm -rf ' . escapeshellarg($this->dir . '/cache') . ' && mkdir ' . escapeshellarg($this->dir . '/cache'));
+        $this->template('page.blade.php', "@live(['m' => 1])another block {{ \$m }}@endlive");
+
+        $this->assertSame($stored, $this->live->fill($stored), 'block 0 is another block now: not rendered with the old values');
+    }
+
+    public function test_an_unresolvable_template_renders_in_place_and_refuses_the_page(): void
+    {
+        @mkdir($this->dir . '/elsewhere');
+        file_put_contents($this->dir . '/elsewhere/loose.blade.php', '<p>@live mine @endlive</p>');
+        $engine = new BladeEngine([$this->dir . '/views-only'], new AssetCollector(new NonceGenerator()), cachePath: $this->dir . '/cache', liveParts: $this->live);
+
+        $before = $this->cache->begin($this->key());
+        $html = $engine->render($this->dir . '/elsewhere/loose.blade.php');
+        $refusal = $this->cache->refusal();
+        $this->cache->end($before);
+        $this->assertSame(['<p>mine </p>', 'live:blade-template'], [$html, $refusal]);
+    }
+
+    public function test_with_an_unusable_key_nothing_is_placed_or_filled(): void
+    {
+        $this->template('page.blade.php', '<p>@live LIVE @endlive</p>');
+        $live = new LiveParts(new LivePlaceholder(''), $this->cache, $this->recorder, static function (): void {});
+        $engine = new BladeEngine([$this->dir], new AssetCollector(new NonceGenerator()), cachePath: $this->dir . '/cache3', liveParts: $live);
+
+        $this->assertSame('<p>LIVE </p>', $this->storing(fn (): string => $engine->render('page')));
     }
 
     public function test_with_values_are_scalars_and_arrays(): void

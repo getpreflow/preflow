@@ -52,14 +52,17 @@ use Psr\Http\Server\RequestHandlerInterface;
  * - `refused:{reason}`: code called PageCache::refuse();
  * - `index`: the tag index can't be used (the cache is off then);
  * - `invalidated`: a write changed what the page read while it rendered;
- * - `differs`: with verify on (page_cache.verify, or app.debug), the page rendered once more as
- *   another anonymous visitor (another REMOTE_ADDR, no cookies) differs outside its live parts
- *   and per-request values (logged: something personal is not in a live part);
+ * - `live-non-html`: the body holds live placeholders but is not text/html (they are filled
+ *   into HTML only; such a response goes out as it is);
+ * - `differs`: verified (page_cache.verify: 'first' for a key the index doesn't know yet,
+ *   'always' for every store), the page rendered once more as another anonymous visitor
+ *   (another REMOTE_ADDR, no cookies) has another body or other stored headers outside its live
+ *   parts and per-request values (logged: something personal is not in a live part);
  * - `error`: the page could not be written (logged).
  *
  * Live parts (LiveParts): while a miss renders they leave signed placeholders, which are
- * stored. Every response the cache answers fills them for its visitor: a hit after the
- * per-request values, and the miss itself (stored or not) before it goes out.
+ * stored. Every text/html response the cache answers fills them for its visitor: a hit after
+ * the per-request values, and the miss itself (stored or not) before it goes out.
  *
  * Stored headers: everything the response had when it left the handler, except Set-Cookie,
  * the headers SecurityHeadersMiddleware adds per request (Content-Security-Policy(-Report-Only),
@@ -106,7 +109,8 @@ final class PageCacheMiddleware implements MiddlewareInterface
     /** @var \Closure(): list<string> */
     private readonly \Closure $sentHeaders;
 
-    private readonly bool $verify;
+    /** PageCacheConfig::VERIFY_* */
+    private readonly string $verify;
 
     /**
      * @param \Closure(): PageStore $store the store (made on first use)
@@ -121,7 +125,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * @param bool|null $sqlite a test seam, as TagIndex's
      * @param (\Closure(): list<string>)|null $sentHeaders the headers PHP queued natively; headers_list() by default
      * @param LiveParts|null $live fills the live parts of what is served
-     * @param bool|null $verify render a page twice before storing it (config verify when null)
+     * @param bool|string|null $verify 'first', 'always' or 'off' (true: always, false: off; config verify when null)
      * @param (\Closure(ServerRequestInterface, \Closure(): ResponseInterface): ResponseInterface)|null $visitorScope
      *        wraps each of the two renders of a verified page: makes $request the request being handled
      *        and starts from the same request-scoped state (assets) both times
@@ -144,12 +148,17 @@ final class PageCacheMiddleware implements MiddlewareInterface
         private readonly ?bool $sqlite = null,
         ?\Closure $sentHeaders = null,
         private readonly ?LiveParts $live = null,
-        ?bool $verify = null,
+        bool|string|null $verify = null,
         private readonly ?\Closure $visitorScope = null,
     ) {
         $this->sentHeaders = $sentHeaders ?? static fn (): array => headers_sent() ? [] : headers_list();
         $this->clock = $clock ?? static fn (): float => microtime(true);
-        $this->verify = $verify ?? $config->verify;
+        $this->verify = match (true) {
+            $verify === null => $config->verify,
+            $verify === true => PageCacheConfig::VERIFY_ALWAYS,
+            $verify === false => PageCacheConfig::VERIFY_OFF,
+            default => (new PageCacheConfig(verify: $verify))->verify,
+        };
     }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -279,8 +288,11 @@ final class PageCacheMiddleware implements MiddlewareInterface
         $headers[self::HEADER] = [$stale ? 'stale' : 'hit'];
         $this->cache->restoreState($page->state);
         $body = $this->values->fill($page->body);
+        if ($this->live !== null && self::isHtml($headers)) {
+            $body = $this->live->fill($body);
+        }
 
-        return new Response(200, $headers, $this->live !== null ? $this->live->fill($body) : $body);
+        return new Response(200, $headers, $body);
     }
 
     private function render(ServerRequestInterface $request, RequestHandlerInterface $handler, PageKey $key, PageStore $store): ResponseInterface
@@ -290,7 +302,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
         $before = $this->cache->begin($key->isHead() ? null : $key);
         $carried = [];
         $reason = null;
-        $verify = $this->verify && !$key->isHead();
+        $verify = !$key->isHead() && $this->verifies($key, $store);
         try {
             $response = $verify && $this->visitorScope !== null
                 ? ($this->visitorScope)($request, static fn (): ResponseInterface => $handler->handle($request))
@@ -325,8 +337,14 @@ final class PageCacheMiddleware implements MiddlewareInterface
             $content = (string) $body;
             $body->rewind();
         }
+        // Live parts are filled into HTML only: elsewhere (a JSON string) a placeholder must not stay
+        // stored, nor HTML be put in its place.
+        $html = self::isHtml($response->getHeaders());
+        if ($content !== null && !$html && LivePlaceholder::in($content)) {
+            $reason ??= 'live-non-html';
+        }
         if ($reason === null && $content !== null && $verify) {
-            $differs = $this->differs($request, $handler, $key, $content);
+            $differs = $this->differs($request, $handler, $key, $response, $content);
             // What the second render left (SEO's page meta) is put back to the first one's.
             $this->cache->restoreState($carried);
             if ($differs) {
@@ -339,28 +357,70 @@ final class PageCacheMiddleware implements MiddlewareInterface
         }
 
         // The visitor's own live parts, whether the page was stored or not.
-        if ($content !== null && $this->live !== null && $this->live->in($content)) {
+        if ($content !== null && $html && $this->live !== null && $this->live->in($content)) {
             $response = $response->withBody(\Nyholm\Psr7\Stream::create($this->live->fill($content)));
         }
 
         return $reason === null || !$this->config->explain ? $response : $response->withHeader(self::SKIP_HEADER, $reason);
     }
 
+    /** Whether a response is HTML (live parts are filled into nothing else). @param array<string, list<string>> $headers */
+    private static function isHtml(array $headers): bool
+    {
+        foreach ($headers as $name => $values) {
+            if (strcasecmp((string) $name, 'Content-Type') === 0) {
+                return str_starts_with(strtolower(trim((string) ($values[0] ?? ''))), 'text/html');
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a miss of $key is verified before it is stored: always, never, or ('first') when the
+     * index doesn't know the key yet (a new page; a rebuild of a known one is not verified).
+     */
+    private function verifies(PageKey $key, PageStore $store): bool
+    {
+        if ($this->verify !== PageCacheConfig::VERIFY_FIRST) {
+            return $this->verify === PageCacheConfig::VERIFY_ALWAYS;
+        }
+        try {
+            $index = $this->index ??= TagIndex::forStore($store, $this->config, $this->clock, $this->sqlite);
+
+            return $index->available() && $index->page($key->id()) === null;
+        } catch (\Throwable) {
+            return false; // the store says why it can't store
+        }
+    }
+
     /**
      * Whether the page differs for another anonymous visitor: rendered once more (another
      * REMOTE_ADDR and forwarded address, no cookies) with nothing recorded, then compared with
-     * $content with the per-request values and live parts as placeholders, as they are stored.
-     * A second render that would not be stored either (a cookie set for a visitor without one)
-     * or that fails differs too.
+     * $first (its stored headers) and $content (its body), with the per-request values and live
+     * parts as placeholders, as they are stored. A second render that would not be stored either
+     * (a cookie set for a visitor without one) or that fails differs too.
      */
-    private function differs(ServerRequestInterface $request, RequestHandlerInterface $handler, PageKey $key, string $content): bool
+    private function differs(ServerRequestInterface $request, RequestHandlerInterface $handler, PageKey $key, ResponseInterface $first, string $content): bool
     {
         $other = self::otherVisitor($request);
         $before = $this->cache->begin($key);
+        $compared = null;
         try {
+            // Its per-request values are its own (a token from its address): replaced inside its scope.
+            $render = function () use ($handler, $other, &$compared): ResponseInterface {
+                $response = $handler->handle($other);
+                $body = $response->getBody();
+                if ($body->isSeekable()) {
+                    $compared = [$this->values->toPlaceholders((string) $body), $this->comparedHeaders($response)];
+                    $body->rewind();
+                }
+
+                return $response;
+            };
             $response = $this->recorder->outside(fn (): ResponseInterface => $this->visitorScope !== null
-                ? ($this->visitorScope)($other, static fn (): ResponseInterface => $handler->handle($other))
-                : $handler->handle($other));
+                ? ($this->visitorScope)($other, $render)
+                : $render());
             if ($this->cache->refusal() !== null || $this->refusal($other, $key, $response) !== null) {
                 return true;
             }
@@ -371,12 +431,27 @@ final class PageCacheMiddleware implements MiddlewareInterface
         } finally {
             $this->cache->end($before);
         }
-        $body = $response->getBody();
-        if (!$body->isSeekable()) {
-            return true;
-        }
 
-        return $this->values->toPlaceholders((string) $body) !== $this->values->toPlaceholders($content);
+        return $compared === null
+            || $compared[0] !== $this->values->toPlaceholders($content)
+            || $compared[1] !== $this->comparedHeaders($first);
+    }
+
+    /**
+     * The headers a page is stored with, as verify compares them: names lowercased and sorted,
+     * per-request values as placeholders.
+     *
+     * @return array<string, list<string>>
+     */
+    private function comparedHeaders(ResponseInterface $response): array
+    {
+        $headers = [];
+        foreach ($this->storedHeaders($response) as $name => $values) {
+            $headers[strtolower($name)] = array_map($this->values->toPlaceholders(...), $values);
+        }
+        ksort($headers);
+
+        return $headers;
     }
 
     /** $request as another anonymous visitor: another address (forwarded ones too), no cookies. */

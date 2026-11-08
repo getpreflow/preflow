@@ -20,6 +20,12 @@ namespace Preflow\Core\PageCache;
  * inside it does nothing, and a part that throws is replaced by ERROR (and logged), the rest of
  * the page is served. Before rendering, the placeholders of one kind are handed to that kind's
  * prefetch together (components: one prefetchLive() call per class).
+ *
+ * Only declared parts are rendered: a kind's renderer throws LiveRecipeRejected for a signed
+ * recipe that names anything else, and such a marker, like one that doesn't verify, stays an
+ * inert HTML comment (logged once per fill). With an unusable app.key (empty or the public
+ * default) nothing is signed or filled: live parts render in place and the page is not stored
+ * (the middleware refuses with `app-key`).
  */
 final class LiveParts
 {
@@ -62,11 +68,20 @@ final class LiveParts
     public function placeholder(string $kind, array $recipe): ?string
     {
         LivePlaceholder::assertPlain($recipe);
-        if (!$this->cache->storing() || !isset($this->kinds[$kind])) {
+        if (!$this->cache->storing() || !isset($this->kinds[$kind]) || !$this->placeholders->usable()) {
             return null;
         }
 
         return $this->placeholders->make($kind, $recipe);
+    }
+
+    /**
+     * For a live part that has to render in place while the page renders for the cache (an
+     * integration can't name it in a recipe): the page is not stored, as it holds a visitor's part.
+     */
+    public function renderedInPlace(string $why): void
+    {
+        $this->cache->refuse('live:' . $why);
     }
 
     /** Whether $body may hold live parts. */
@@ -85,25 +100,30 @@ final class LiveParts
             return $body;
         }
         $parts = [];
-        foreach ($this->placeholders->find($body) as $marker => [$kind, $recipe]) {
+        foreach ($this->placeholders->find($body, $rejected) as $marker => [$kind, $recipe]) {
             if (isset($this->kinds[$kind])) {
                 $parts[$marker] = [$kind, $recipe];
+            } else {
+                $rejected++;
             }
         }
-        if ($parts === []) {
-            return $body;
+        $map = [];
+        if ($parts !== []) {
+            // No page is rendered for the cache meanwhile (nothing refuses or records into one).
+            $before = $this->cache->begin(null);
+            try {
+                $map = $this->recorder->outside(fn (): array => $this->render($parts));
+            } finally {
+                $this->cache->end($before);
+            }
+            $rejected += count($parts) - count($map);
         }
-
-        // No page is rendered for the cache meanwhile (nothing refuses or records into one).
-        $before = $this->cache->begin(null);
-        try {
-            $map = $this->recorder->outside(fn (): array => $this->render($parts));
-        } finally {
-            $this->cache->end($before);
+        if ($rejected > 0) {
+            $this->log("page cache: {$rejected} live marker(s) left as comments: unsigned, forged or naming no declared live part");
         }
 
         // One pass: what a part printed is never read for placeholders again.
-        return strtr($body, $map);
+        return $map === [] ? $body : strtr($body, $map);
     }
 
     /**
@@ -132,6 +152,8 @@ final class LiveParts
         foreach ($parts as $marker => [$kind, $recipe]) {
             try {
                 $map[$marker] = ($this->kinds[$kind][0])($recipe);
+            } catch (LiveRecipeRejected) {
+                continue; // stays the comment it is; counted by fill()
             } catch (\Throwable $e) {
                 $this->log("page cache: a live part ({$kind}) failed: " . $e->getMessage());
                 $map[$marker] = self::ERROR;

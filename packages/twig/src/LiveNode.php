@@ -25,7 +25,7 @@ final class LiveNode extends Node implements NodeOutputInterface
             ->addDebugInfo($this)
             ->write('yield $this->env->getExtension(' . var_export(LiveExtension::class, true) . ')->live($this->env, $this, ')
             ->string($this->getAttribute('block'))
-            ->raw(', ');
+            ->raw(", \$context['componentClass'] ?? null, ");
         if ($this->hasNode('with')) {
             $compiler->subcompile($this->getNode('with'));
         } else {

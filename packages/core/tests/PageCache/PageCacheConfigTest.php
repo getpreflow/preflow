@@ -47,15 +47,18 @@ final class PageCacheConfigTest extends TestCase
         $this->assertSame(10, $config->maxPages);
     }
 
-    public function test_explain_and_verify_are_off_by_default_and_kept_with_more_cookies(): void
+    public function test_explain_is_off_and_verify_first_by_default(): void
     {
         $default = PageCacheConfig::fromArray([]);
         $this->assertFalse($default->explain);
-        $this->assertFalse($default->verify);
+        $this->assertSame('first', $default->verify);
 
-        $config = PageCacheConfig::fromArray(['explain' => true, 'verify' => true])->withSignedInCookies(['preflow_auth']);
+        $config = PageCacheConfig::fromArray(['explain' => true, 'verify' => 'always'])->withSignedInCookies(['preflow_auth']);
         $this->assertTrue($config->explain);
-        $this->assertTrue($config->verify);
+        $this->assertSame('always', $config->verify);
+        $this->assertSame('always', PageCacheConfig::fromArray(['verify' => true])->verify);
+        $this->assertSame('off', PageCacheConfig::fromArray(['verify' => false])->verify);
+        $this->assertSame('off', $config->withVerify('off')->verify);
 
         $this->expectException(\InvalidArgumentException::class);
         PageCacheConfig::fromArray(['verify' => 'yes']);

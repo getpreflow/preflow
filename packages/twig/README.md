@@ -125,8 +125,12 @@ count) is a live part of a cached page (preflow/core's page cache):
 - While a page renders for the page cache, the tag prints a signed placeholder (template,
   block, values) instead of the body; the block is rendered for each visitor when the page is
   served. Otherwise it renders in place.
-- Not inside `{% embed %}`. A template given to `render()` as a string (no file) can't be
-  filled.
+- Live blocks don't nest. Not inside `{% embed %}`.
+- The placeholder names the template by its loader name (`page.twig`, `@folio/...`), or, in a
+  component's own template, by the component class. A template rendered by a path that is no
+  component's renders its live blocks in place and keeps the page from being stored.
+- Print the tag's output as it is: captured into `{% set %}` and printed escaped, or passed
+  through `|striptags` or `|slice`, the placeholder is broken and the part is missing.
 
 ## Engine configuration
 

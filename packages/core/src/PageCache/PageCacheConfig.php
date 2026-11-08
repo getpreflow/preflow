@@ -25,10 +25,14 @@ namespace Preflow\Core\PageCache;
  *                      evicted first
  *   explain            bool, false: a miss that was not stored says why in X-Page-Cache-Skip
  *                      (for audits with curl -I; off, the reason is not sent to visitors)
- *   verify             bool, false: before a page is stored it is rendered once more as another
- *                      anonymous visitor (another address, no cookies); a page that differs
- *                      outside its live parts and per-request values is not stored, and logged.
- *                      For tests and a site's staging check: it doubles the cost of a miss.
+ *   verify             'first' (default), 'always' or 'off' (true and false mean 'always' and
+ *                      'off'): before a page is stored it is rendered once more as another
+ *                      anonymous visitor (another address, no cookies); a page whose body or
+ *                      headers differ outside its live parts and per-request values is not
+ *                      stored, and logged. 'first' does it for the first store of a key the
+ *                      index doesn't know yet (one extra render per new key, on real traffic);
+ *                      'always' for every store (tests, staging: each stored miss costs two
+ *                      renders).
  */
 final readonly class PageCacheConfig
 {
@@ -43,6 +47,12 @@ final readonly class PageCacheConfig
     public const int DEFAULT_MAX_QUERY_VARIANTS = 50;
 
     public const int DEFAULT_MAX_PAGES = 50000;
+
+    public const string VERIFY_FIRST = 'first';
+
+    public const string VERIFY_ALWAYS = 'always';
+
+    public const string VERIFY_OFF = 'off';
 
     /**
      * The cookie preflow/auth sets while someone is signed in (SessionGuard::SIGNED_IN_COOKIE):
@@ -68,8 +78,12 @@ final readonly class PageCacheConfig
         public int $maxQueryVariants = self::DEFAULT_MAX_QUERY_VARIANTS,
         public int $maxPages = self::DEFAULT_MAX_PAGES,
         public bool $explain = false,
-        public bool $verify = false,
-    ) {}
+        public string $verify = self::VERIFY_FIRST,
+    ) {
+        if (!in_array($verify, [self::VERIFY_FIRST, self::VERIFY_ALWAYS, self::VERIFY_OFF], true)) {
+            throw new \InvalidArgumentException("page_cache.verify must be 'first', 'always' or 'off'.");
+        }
+    }
 
     /**
      * This config with $names added to signed_in_cookies (the wiring adds the auth marker and
@@ -131,7 +145,7 @@ final readonly class PageCacheConfig
             maxQueryVariants: self::count($config, 'max_query_variants', self::DEFAULT_MAX_QUERY_VARIANTS),
             maxPages: self::count($config, 'max_pages', self::DEFAULT_MAX_PAGES),
             explain: self::bool($config, 'explain', false),
-            verify: self::bool($config, 'verify', false),
+            verify: self::verify($config['verify'] ?? self::VERIFY_FIRST),
         );
     }
 
@@ -150,6 +164,37 @@ final readonly class PageCacheConfig
             ? 'app.url is not set'
             : "app.url '{$appUrl}' has no scheme or host (write it like https://example.com)";
         error_log("The page cache is enabled but caches nothing: {$reason} and page_cache.hosts is empty.");
+    }
+
+    private static function verify(mixed $value): string
+    {
+        return match (true) {
+            $value === true => self::VERIFY_ALWAYS,
+            $value === false => self::VERIFY_OFF,
+            is_string($value) && in_array($value, [self::VERIFY_FIRST, self::VERIFY_ALWAYS, self::VERIFY_OFF], true) => $value,
+            default => throw new \InvalidArgumentException("page_cache.verify must be 'first', 'always' or 'off' (or true, false)."),
+        };
+    }
+
+    /**
+     * This config with verify set to $mode (preflow/testing's web apps: 'always').
+     */
+    public function withVerify(string $mode): self
+    {
+        return new self(
+            enabled: $this->enabled,
+            maxAge: $this->maxAge,
+            rebuildBudget: $this->rebuildBudget,
+            cacheQuery: $this->cacheQuery,
+            ignoreQuery: $this->ignoreQuery,
+            varyHeaders: $this->varyHeaders,
+            signedInCookies: $this->signedInCookies,
+            hosts: $this->hosts,
+            maxQueryVariants: $this->maxQueryVariants,
+            maxPages: $this->maxPages,
+            explain: $this->explain,
+            verify: self::verify($mode),
+        );
     }
 
     /** @param array<string, mixed> $config */

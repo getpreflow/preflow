@@ -49,17 +49,27 @@ final class ComponentRenderer
                     try {
                         $class = self::liveClass($recipe);
                     } catch (\Throwable) {
-                        continue; // rendering it reports the error
+                        continue; // not a live component: never rendered either
                     }
                     $byClass[$class][] = is_array($recipe['p'] ?? null) ? $recipe['p'] : [];
                 }
+                // Each class on its own: one that fails doesn't keep the others from prefetching.
+                $failed = null;
                 foreach ($byClass as $class => $propsList) {
-                    if (is_subclass_of($class, PrefetchesLive::class)) {
+                    if (!is_subclass_of($class, PrefetchesLive::class)) {
+                        continue;
+                    }
+                    try {
                         $prefetcher = $factory($class, []);
                         if ($prefetcher instanceof PrefetchesLive) {
                             $prefetcher->prefetchLive($propsList);
                         }
+                    } catch (\Throwable $e) {
+                        $failed ??= new \RuntimeException($class . ': ' . $e->getMessage(), 0, $e);
                     }
+                }
+                if ($failed !== null) {
+                    throw $failed; // logged by LiveParts
                 }
             },
         );
@@ -94,7 +104,7 @@ final class ComponentRenderer
     {
         $class = $recipe['c'] ?? null;
         if (!is_string($class) || !is_subclass_of($class, Component::class) || !self::isLive($class)) {
-            throw new \RuntimeException('A live placeholder names no live component: ' . (is_string($class) ? $class : get_debug_type($class)) . '.');
+            throw new \Preflow\Core\PageCache\LiveRecipeRejected('A live placeholder names no live component: ' . (is_string($class) ? $class : get_debug_type($class)) . '.');
         }
 
         return $class;

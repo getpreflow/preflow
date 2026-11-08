@@ -279,6 +279,17 @@ final class Application
         return $this->console ?? in_array(PHP_SAPI, ['cli', 'phpdbg'], true);
     }
 
+    private ?string $pageCacheVerify = null;
+
+    /**
+     * Overrides page_cache.verify ('first', 'always', 'off'); set it before boot(). preflow/testing's
+     * web apps set 'always', so a site's suite double-renders every page it stores.
+     */
+    public function setPageCacheVerify(string $mode): void
+    {
+        $this->pageCacheVerify = $mode;
+    }
+
     /** Overrides runningInConsole() (tests that stand in for web requests); set it before boot(). */
     public function setRunningInConsole(bool $console): void
     {
@@ -912,6 +923,9 @@ final class Application
         if ($config->enabled) {
             $config = $config->withSignedInCookies($this->signedInCookies());
         }
+        if ($this->pageCacheVerify !== null) {
+            $config = $config->withVerify($this->pageCacheVerify);
+        }
         $this->container->instance(\Preflow\Core\PageCache\PageCacheConfig::class, $config);
         $base = $this->absolutePath('');
         $root = $this->absolutePath('storage/cache/pages');
@@ -1064,8 +1078,7 @@ final class Application
             nonPublic: static fn (string $path): bool => $container->get(\Preflow\Core\Http\NonPublicPaths::class)->matches($path),
             log: $logger,
             live: $container->get(\Preflow\Core\PageCache\LiveParts::class),
-            // The cache is off in debug mode, so in practice: page_cache.verify (tests, staging).
-            verify: $config->verify || $debug->isDebug(),
+            verify: $config->verify,
             visitorScope: static function (ServerRequestInterface $visitor, \Closure $render) use ($container): ResponseInterface {
                 $context = $container->bound(RequestContext::class) ? $container->get(RequestContext::class) : null;
                 $container->instance(RequestContext::class, new RequestContext($visitor->getUri()->getPath(), $visitor->getMethod(), $visitor));

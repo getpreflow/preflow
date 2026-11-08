@@ -29,7 +29,8 @@ return [
     // Send X-Page-Cache-Skip with the reason a miss was not stored (for audits with curl -I).
     // 'explain' => false,
 
-    // Render each page a second time as another anonymous visitor before storing it, and log
-    // and skip pages that differ outside their {% live %} parts. For tests and staging.
-    // 'verify' => false,
+    // Render a page a second time as another anonymous visitor before storing it, and log and
+    // skip pages that differ outside their {% live %} parts: 'first' (the first store of each
+    // new page, one extra render), 'always' (tests, staging: every store renders twice), 'off'.
+    // 'verify' => 'first',
 ];

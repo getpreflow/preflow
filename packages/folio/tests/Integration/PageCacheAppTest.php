@@ -24,7 +24,7 @@ final class PageCacheAppTest extends TestCase
         $this->scaffoldPublishing();
         putenv('APP_DEBUG');
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-page-cache-test-key-0123', 'url' => 'https://site.test'];\n");
-        $this->write('config/page_cache.php', "<?php\nreturn ['enabled' => true, 'explain' => true, 'verify' => true];\n");
+        $this->write('config/page_cache.php', "<?php\nreturn ['enabled' => true, 'explain' => true, 'verify' => 'always'];\n");
         $this->write('resources/folio/frontend/post.twig', '<html><body><h1>{{ record.title }}</h1></body></html>');
         // The category list: a page of the site listing the published posts.
         $this->write('app/pages/category.twig', '<ul>{% for p in folio_list("post") %}<li>{{ p.title }}</li>{% endfor %}</ul>');
@@ -109,6 +109,7 @@ final class PageCacheAppTest extends TestCase
     {
         $this->album('<html><head><script nonce="{{ csp_nonce() }}">var a = 1;</script></head><body><h1>{{ record.title }}</h1>'
             . '{% live with {number: record.status} %}<p class="album">{{ album_count() }} in your album{% if in_album(number) %}, this one too{% endif %}</p>{% endlive %}'
+            . '<form><input name="_token" value="{{ guest_token() }}"></form>'
             . '<footer>{{ record.title }} footer</footer></body></html>');
 
         $a = $this->visit('/project', ['album' => '1_2']);
@@ -137,35 +138,82 @@ final class PageCacheAppTest extends TestCase
         }
         $this->assertCount(3, array_unique($nonces));
 
+        // Nor their form tokens: each visitor's own, though it sits outside the live part.
+        $tokens = [];
+        foreach ([$a, $b, $again] as $response) {
+            $this->assertSame(1, preg_match('/name="_token" value="(guest-token-[0-9a-f]{16})"/', (string) $response->getBody(), $m));
+            $tokens[] = $m[1];
+        }
+        $this->assertNotSame($tokens[0], $tokens[1], 'A and B');
+        $this->assertSame($tokens[0], $tokens[2], 'A gets their own again');
+
         // What is stored is the placeholder, never somebody's album.
         $stored = $this->storedBody('/project');
         $this->assertStringContainsString('<!--pc:l:', $stored);
         $this->assertStringNotContainsString('in your album', $stored);
+        $this->assertStringNotContainsString('guest-token-', $stored);
     }
 
     #[RunInSeparateProcess]
     public function test_a_forged_marker_in_user_text_is_not_rendered(): void
     {
-        $this->write('app/pages/secret.twig', '<p>{% live %}TOP SECRET{% endlive %}</p>');
+        $log = $this->captureLog();
+        $this->write('app/pages/secret.twig', '<p>{% live %}TOP SECRET{% endlive %}</p>{% block plain %}PLAIN BLOCK{{ w|default("") }}{% endblock %}');
+        $this->write('storage/upload.txt', '{% live %}UPLOADED {{ 7 * 7 }}{% endlive %}');
         $recipe = ['t' => 'secret.twig', 'b' => '__live_1', 'w' => []];
         $forged = (new \Preflow\Core\PageCache\LivePlaceholder('a key the visitor guessed'))->make('twig', $recipe);
         $edited = (string) preg_replace('/:[0-9a-f]{32}-->/', ':' . str_repeat('0', 32) . '-->', $forged);
+        // Signed with the app's own key (say the key leaked), but naming nothing declared live:
+        $appKey = new \Preflow\Core\PageCache\LivePlaceholder('folio-page-cache-test-key-0123');
+        $undeclared = [
+            $appKey->make('twig', ['t' => 'nowhere.twig', 'b' => '__live_1', 'w' => []]),
+            $appKey->make('twig', ['t' => 'secret.twig', 'b' => 'plain', 'w' => ['w' => '<script>x</script>']]),
+            $appKey->make('twig', ['t' => $this->dir . '/storage/upload.txt', 'b' => '__live_1', 'w' => []]),
+            $appKey->make('twig', ['t' => $this->dir . '/storage/upload.txt (string template 0)', 'b' => '__live_1', 'w' => []]),
+            $appKey->make('twig', ['c' => \stdClass::class, 'b' => '__live_1', 'w' => []]),
+            $appKey->make('component', ['c' => \Preflow\Folio\Tests\Fixtures\Blocks\LinkBlock::class, 'p' => []]),
+        ];
+        $text = "<p>Hi</p>{$forged}{$edited}" . implode('', $undeclared);
         // Rich text a visitor sent in: printed raw.
-        $this->album('<html><body><div class="text">{{ record.body|raw }}</div></body></html>', body: "<p>Hi</p>{$forged}{$edited}");
+        $this->album('<html><body><div class="text">{{ record.body|raw }}</div></body></html>', body: $text);
 
         $miss = $this->visit('/project');
         $hit = $this->visit('/project');
         $this->assertSame(['miss', 'hit'], [$miss->getHeaderLine('X-Page-Cache'), $hit->getHeaderLine('X-Page-Cache')]);
         foreach ([$miss, $hit] as $response) {
-            $this->assertStringNotContainsString('TOP SECRET', (string) $response->getBody());
-            $this->assertStringContainsString("<p>Hi</p>{$forged}{$edited}", (string) $response->getBody(), 'left as the comment it is');
+            $body = (string) $response->getBody();
+            foreach (['TOP SECRET', 'PLAIN BLOCK', 'UPLOADED', '<script>x', \Preflow\Core\PageCache\LiveParts::ERROR] as $never) {
+                $this->assertStringNotContainsString($never, $body);
+            }
+            $this->assertStringContainsString($text, $body, 'left as the comments they are');
         }
+        $this->assertStringContainsString('page cache: 8 live marker(s) left as comments', (string) file_get_contents($log));
 
-        // The control: signed with the app's key, the same recipe is a live part.
-        $app = $this->app();
-        $live = $app->container()->get(\Preflow\Core\PageCache\LiveParts::class);
-        $signed = (new \Preflow\Core\PageCache\LivePlaceholder('folio-page-cache-test-key-0123'))->make('twig', $recipe);
-        $this->assertSame('<b>TOP SECRET</b>', $live->fill("<b>{$signed}</b>"));
+        // The control: the declared live block, signed with the app's key, is a live part.
+        $live = $this->app()->container()->get(\Preflow\Core\PageCache\LiveParts::class);
+        $this->assertSame('<b>TOP SECRET</b>', $live->fill('<b>' . $appKey->make('twig', $recipe) . '</b>'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_with_the_default_key_nothing_is_filled_or_stored(): void
+    {
+        $log = $this->captureLog();
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'url' => 'https://site.test'];\n");
+        $this->write('app/pages/secret.twig', '<p>{% live %}TOP SECRET{% endlive %}</p>');
+        $public = new \Preflow\Core\PageCache\LivePlaceholder(\Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY);
+        $marker = $public->make('twig', ['t' => 'secret.twig', 'b' => '__live_1', 'w' => []]);
+        $this->album('<html><body>{% live %}<p class="album">{{ album_count() }} in your album</p>{% endlive %}<div>{{ record.body|raw }}</div></body></html>', body: $marker);
+
+        foreach (['1_2' => '2', '3' => '1'] as $album => $count) {
+            $response = $this->visit('/project', ['album' => (string) $album]);
+            $this->assertSame('miss', $response->getHeaderLine('X-Page-Cache'));
+            $this->assertSame('app-key', $response->getHeaderLine('X-Page-Cache-Skip'));
+            $body = (string) $response->getBody();
+            $this->assertStringContainsString("<p class=\"album\">{$count} in your album</p>", $body, 'live parts render in place');
+            $this->assertStringNotContainsString('TOP SECRET', $body, 'a marker signed with the public key is never filled');
+            $this->assertStringContainsString($marker, $body);
+        }
+        $this->assertNull($this->stored('/project'));
     }
 
     #[RunInSeparateProcess]

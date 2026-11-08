@@ -143,6 +143,10 @@ The Blade twin of Twig's `{% live %}` (preflow/core's page cache, live parts):
   values) instead; the body is rendered for each visitor when the page is served. Otherwise
   it renders in place.
 - Not nested, and only in template files (not in strings compiled on the fly).
+- The placeholder names the template by its view name in the template folders, or, in a
+  component's own template, by the component class, with the body's hash: after a cleared
+  cache the body is taken again from the template only while it still has that hash. A
+  template outside both renders its live blocks in place and keeps the page from being stored.
 
 ## Engine configuration
 

@@ -17,6 +17,7 @@ use Twig\TokenParser\AbstractTokenParser;
  * globals, never the variables around it. While a page renders for the page cache it prints the
  * signed placeholder of template, block and values instead (LiveExtension), and the block is
  * rendered for every visitor when the page is served. `with` may be left out ({% live %}).
+ * Live blocks don't nest.
  */
 final class LiveTokenParser extends AbstractTokenParser
 {
@@ -24,6 +25,12 @@ final class LiveTokenParser extends AbstractTokenParser
     {
         $lineno = $token->getLine();
         $stream = $this->parser->getStream();
+
+        foreach ($this->parser->getBlockStack() as $open) {
+            if (str_starts_with((string) $open, '__live_')) {
+                throw new \Twig\Error\SyntaxError("{% live %} blocks can't be nested.", $lineno, $stream->getSourceContext());
+            }
+        }
 
         $with = null;
         if ($stream->nextIf(Token::NAME_TYPE, 'with')) {

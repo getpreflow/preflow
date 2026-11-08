@@ -540,7 +540,7 @@ return [
     'max_query_variants' => 50,      // pages with a query kept per URL path, oldest evicted first
     'max_pages' => 50000,            // pages kept in all, oldest evicted first
     'explain' => false,              // send X-Page-Cache-Skip (why a miss was not stored)
-    'verify' => false,               // render each page twice before storing it (tests, staging)
+    'verify' => 'first',             // 'first', 'always' or 'off': render a page twice before storing it
 ];
 ```
 
@@ -664,26 +664,46 @@ return [
     renders, from the visitor's request:
     `$container->get(\Preflow\Core\Http\RequestContext::class)->request?->getCookieParams()`.
   - While a page renders for the cache, a live part is not rendered. It leaves a signed
-    placeholder, `<!--pc:l:{recipe}:{signature}-->` (the recipe is the template and block, or
-    the component class and props, as base64url JSON; the signature is an HMAC with `app.key`).
-    That is what is stored. Every response the cache answers fills the placeholders for its
-    visitor, the miss that stored the page included. A marker in user text that doesn't verify
-    is left as the HTML comment it is.
+    placeholder, `<!--pc:l:{recipe}:{signature}-->` (the recipe is the template's logical name,
+    or the component class, with the block and its values, as base64url JSON; the signature is
+    an HMAC with `app.key`). That is what is stored. Every `text/html` response the cache
+    answers fills the placeholders for its visitor, the miss that stored the page included.
+  - Only declared live parts are ever filled: a `{% live %}` block of a template the loader
+    finds by name (or of a component's own template, by its class), an `@live` body the Blade
+    engine extracted (checked by its hash), a component class marked `#[Live]`. No file path
+    is ever read from a recipe. A marker that doesn't verify, or names anything else, is left
+    as an inert HTML comment, logged once per response
+    (`page cache: N live marker(s) left as comments …`).
+  - With an empty or the default `app.key`, nothing is signed or filled: live parts render in
+    place, and the page is not stored (`app-key`).
+  - A body that is not `text/html` (a JSON string with a live component in it) is never filled
+    and, while it holds a placeholder, never stored (`live-non-html`). A template in no
+    template folder and of no component (a string) renders its live parts in place and is not
+    stored (`refused:live:twig-template`, `live:blade-template`).
   - What a live part reads is not a dependency of the page, `refuse()` inside it does nothing,
     and a part that throws becomes `<div hidden data-live-error="true"></div>` (logged) while
     the rest of the page is served. A live component goes through its error boundary.
   - Many live components of one class are loaded together: a class implementing
     `\Preflow\Components\PrefetchesLive` gets one `prefetchLive($propsList)` call per page.
   - CSS and JS a live part adds while it is filled are not printed: keep them in the page.
-    Live parts don't open the session (a hit has none).
-- **Verify.** With `verify` on (or `app.debug`, but the cache is off in debug mode), a page
-  about to be stored is rendered once more as another anonymous visitor: another
-  `REMOTE_ADDR` (and forwarded address), no cookies. If the two differ outside their live parts
-  and per-request values, the page is not stored (`X-Page-Cache-Skip: differs`) and
-  `page cache: {url} differs per visitor outside live parts` is logged: something personal
-  (an album count, a token from the visitor's address) is not in a live part or registered.
-  It runs on every miss that would be stored, never on a hit, and doubles the cost of those
-  misses, so switch it on for tests and a staging check, not in production.
+    Live parts don't open the session (a hit has none), and see only globals registered at
+    boot (a global a middleware adds later is missing on hits).
+- **Verify.** A page about to be stored is rendered once more as another anonymous visitor:
+  another `REMOTE_ADDR` (and forwarded address), no cookies. If the two differ in their body or
+  their stored headers (an `HX-Trigger` with the visitor's album count) outside their live
+  parts and per-request values (each render's own), the page is not stored
+  (`X-Page-Cache-Skip: differs`) and `page cache: {url} differs per visitor outside live parts`
+  is logged: something personal is not in a live part or registered. It never runs on a hit.
+  - `'first'` (the default) verifies the first store of a key the index doesn't know yet: a
+    forgotten personal value shows up on real traffic as a log line and an uncached page,
+    never as a leak. It costs one extra render per new page (and per page whose index rows an
+    invalidation dropped); rebuilds of known pages skip it.
+  - `'always'` verifies every store: each stored miss costs two renders. For tests and staging;
+    preflow/testing's `WebApplication` sets it.
+  - `'off'` never verifies. `true` and `false` mean `'always'` and `'off'`.
+  - Verify sees the visitor only through the PSR request (and `RequestContext`). A value read
+    from `$_COOKIE`, `$_SERVER` or a memo of an earlier request is the same in both renders
+    and goes unnoticed: read the visitor from the request.
 - **Switching it off and on.** `storage/cache/pages/enabled` marks a cache that has been
   emptied since it was switched on. While the cache is off, the first write through the data
   layer removes the marker; the first request after switching it on again finds it missing and

@@ -13,6 +13,7 @@ use Illuminate\View\Factory;
 use Illuminate\View\FileViewFinder;
 use Preflow\Core\PageCache\LiveParts;
 use Preflow\Core\PageCache\LivePlaceholder;
+use Preflow\Core\PageCache\LiveRecipeRejected;
 use Preflow\View\AssetCollector;
 use Preflow\View\Geo\GeoCollector;
 use Preflow\View\Seo\SeoContext;
@@ -37,7 +38,7 @@ final class BladeEngine implements TemplateEngineInterface
      * @param string[] $templateDirs
      */
     public function __construct(
-        array $templateDirs,
+        private readonly array $templateDirs,
         AssetCollector $assetCollector,
         bool $debug = false,
         ?string $cachePath = null,
@@ -78,29 +79,40 @@ final class BladeEngine implements TemplateEngineInterface
 
     /**
      * A live block (@live): its placeholder while the page renders for the page cache, else its
-     * body rendered with only $with and the globals.
+     * body rendered with only $with and the globals. The recipe names the template by its view
+     * name ($view, relative to the template folders) or, for a component's own template, by
+     * the component class; one that is neither renders in place and keeps the page from being
+     * stored.
      *
      * @internal compiled templates
-     * @param string $file the template's source file
+     * @param string|null $view the template's view name, null outside the template folders
      * @param int $index which @live of it
      * @param string $hash the body's hash (its extracted view file)
      */
-    public function live(string $file, int $index, string $hash, mixed $with = []): string
+    public function live(?string $view, mixed $componentClass, int $index, string $hash, mixed $with = []): string
     {
         if (!is_array($with)) {
             throw new \InvalidArgumentException(sprintf('@live() takes an array of values, %s given.', get_debug_type($with)));
         }
         LivePlaceholder::assertPlain($with);
-        if ($this->liveParts !== null && ($placeholder = $this->liveParts->placeholder(self::LIVE_KIND, ['f' => $file, 'i' => $index, 'h' => $hash, 'w' => $with])) !== null) {
-            return $placeholder;
+        if ($this->liveParts !== null) {
+            $recipe = $view !== null
+                ? ['n' => $view, 'i' => $index, 'h' => $hash, 'w' => $with]
+                : (is_string($componentClass) && $componentClass !== '' ? ['c' => $componentClass, 'i' => $index, 'h' => $hash, 'w' => $with] : null);
+            if ($recipe === null) {
+                $this->liveParts->renderedInPlace('blade-template');
+            } elseif (($placeholder = $this->liveParts->placeholder(self::LIVE_KIND, $recipe)) !== null) {
+                return $placeholder;
+            }
         }
 
-        return $this->renderLiveBody($file, $index, $hash, $with);
+        return $this->renderLiveBody($this->livePath($hash), $with);
     }
 
     /**
      * Replaces each @live … @endlive of $value with a call of live(); its body goes into a view
      * file of its own (storage/cache/blade/live/{hash}.blade.php), rendered with only its values.
+     * That file is the block's declaration: only bodies written here are ever filled.
      */
     private function compileLive(string $value): string
     {
@@ -108,9 +120,10 @@ final class BladeEngine implements TemplateEngineInterface
             return $value;
         }
         $file = (string) $this->compiler->getPath();
+        $view = $file === '' ? null : $this->viewName($file);
         $index = 0;
 
-        return (string) preg_replace_callback(self::LIVE_PATTERN, function (array $m) use ($file, &$index): string {
+        return (string) preg_replace_callback(self::LIVE_PATTERN, function (array $m) use ($file, $view, &$index): string {
             $body = $m[2];
             if (preg_match('/(?<![@\w])@live(?![\w])/', $body) === 1) {
                 throw new \InvalidArgumentException("@live blocks can't be nested ({$file}).");
@@ -121,16 +134,38 @@ final class BladeEngine implements TemplateEngineInterface
             $hash = $this->writeLiveBody($body);
             $args = isset($m[1]) && $m[1] !== '' ? trim(substr($m[1], 1, -1)) : '';
 
-            return '<?php echo $__live->live(' . var_export($file, true) . ', ' . $index++ . ', ' . var_export($hash, true)
+            return '<?php echo $__live->live(' . var_export($view, true) . ', $componentClass ?? null, ' . $index++ . ', ' . var_export($hash, true)
                 . ($args !== '' ? ', ' . $args : '') . '); ?>';
         }, $value);
+    }
+
+    /** The view name of a template file in one of the template folders ("partials/card"), null elsewhere. */
+    private function viewName(string $file): ?string
+    {
+        $real = realpath($file);
+        if ($real === false || !str_ends_with($real, '.blade.php')) {
+            return null;
+        }
+        foreach ($this->templateDirs as $dir) {
+            $root = realpath($dir);
+            if ($root !== false && str_starts_with($real, rtrim($root, '/') . '/')) {
+                return substr($real, strlen(rtrim($root, '/')) + 1, -strlen('.blade.php'));
+            }
+        }
+
+        return null;
+    }
+
+    private function livePath(string $hash): string
+    {
+        return $this->cachePath . '/live/' . $hash . '.blade.php';
     }
 
     /** Writes a live block's body as a view file, once; returns its hash. */
     private function writeLiveBody(string $body): string
     {
         $hash = hash('xxh128', $body);
-        $path = $this->cachePath . '/live/' . $hash . '.blade.php';
+        $path = $this->livePath($hash);
         if (!is_file($path)) {
             @mkdir(dirname($path), 0755, true);
             $tmp = $path . '.' . bin2hex(random_bytes(4));
@@ -141,38 +176,66 @@ final class BladeEngine implements TemplateEngineInterface
         return $hash;
     }
 
-    /**
-     * A live block's body rendered with $with: from its view file, written again from the
-     * template's source when it is gone (a cleared cache).
-     *
-     * @param array<string, mixed> $with
-     */
-    private function renderLiveBody(string $file, int $index, string $hash, array $with): string
+    /** @param array<string, mixed> $with */
+    private function renderLiveBody(string $path, array $with): string
     {
-        $path = $this->cachePath . '/live/' . $hash . '.blade.php';
-        if (!is_file($path)) {
-            $source = is_file($file) ? (string) file_get_contents($file) : '';
-            if (preg_match_all(self::LIVE_PATTERN, $source, $blocks) <= $index) {
-                throw new \RuntimeException("The live block {$index} of {$file} is gone.");
-            }
-            $path = $this->cachePath . '/live/' . $this->writeLiveBody($blocks[2][$index]) . '.blade.php';
-        }
-
         return $this->viewFactory->file($path, array_merge($this->globals, $with))->render();
     }
 
-    /** @param array<string, mixed> $recipe a served page's @live placeholder */
+    /**
+     * A served page's @live placeholder: the body file the engine wrote for that hash, or, after
+     * a cleared cache, the block taken again from its template (found by view name in the
+     * template folders, or as a component's own template by class), only when its body still
+     * has that hash. Anything else is rejected (LiveRecipeRejected) and stays a comment.
+     *
+     * @param array<string, mixed> $recipe
+     */
     private function renderLiveBlock(array $recipe): string
     {
-        $file = $recipe['f'] ?? null;
         $index = $recipe['i'] ?? null;
         $hash = $recipe['h'] ?? null;
         $with = $recipe['w'] ?? [];
-        if (!is_string($file) || !is_int($index) || !is_string($hash) || preg_match('/^[0-9a-f]{32}$/', $hash) !== 1 || !is_array($with)) {
-            throw new \RuntimeException('A live block placeholder without file, index, hash or values.');
+        if (!is_int($index) || $index < 0 || !is_string($hash) || preg_match('/^[0-9a-f]{32}$/', $hash) !== 1 || !is_array($with)) {
+            throw new LiveRecipeRejected('A live block placeholder without index, hash or values.');
+        }
+        $path = $this->livePath($hash);
+        if (!is_file($path)) {
+            $source = $this->liveSource($recipe);
+            if (preg_match_all(self::LIVE_PATTERN, (string) file_get_contents($source), $blocks) <= $index
+                || hash('xxh128', $blocks[2][$index]) !== $hash) {
+                throw new LiveRecipeRejected("The live block {$index} of {$source} is not the one stored.");
+            }
+            $path = $this->livePath($this->writeLiveBody($blocks[2][$index]));
         }
 
-        return $this->renderLiveBody($file, $index, $hash, $with);
+        return $this->renderLiveBody($path, $with);
+    }
+
+    /** @param array<string, mixed> $recipe */
+    private function liveSource(array $recipe): string
+    {
+        $view = $recipe['n'] ?? null;
+        $class = $recipe['c'] ?? null;
+        if (is_string($view)) {
+            if ($view === '' || str_starts_with($view, '/') || str_contains($view, '..') || str_contains($view, "\0") || str_contains($view, '::')) {
+                throw new LiveRecipeRejected("A live block recipe names no view: {$view}.");
+            }
+            foreach ($this->templateDirs as $dir) {
+                $file = rtrim($dir, '/') . '/' . $view . '.blade.php';
+                if (is_file($file)) {
+                    return $file;
+                }
+            }
+            throw new LiveRecipeRejected("A live block recipe names no view: {$view}.");
+        }
+        if (is_string($class) && is_subclass_of($class, \Preflow\Components\Component::class)) {
+            $ref = new \ReflectionClass($class);
+            $file = dirname((string) $ref->getFileName()) . '/' . $ref->getShortName() . '.blade.php';
+            if (is_file($file)) {
+                return $file;
+            }
+        }
+        throw new LiveRecipeRejected('A live block recipe names neither a view nor a component.');
     }
 
     public function render(string $template, array $context = []): string

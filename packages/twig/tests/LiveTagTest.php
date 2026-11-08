@@ -17,6 +17,8 @@ use Preflow\View\AssetCollector;
 use Preflow\View\NonceGenerator;
 use Preflow\View\TemplateFunctionDefinition;
 
+require_once __DIR__ . '/Fixtures/Live/LiveBadge.php';
+
 /** {% live with {…} %}…{% endlive %}: in place, as a placeholder while storing, and filled. */
 final class LiveTagTest extends TestCase
 {
@@ -70,13 +72,13 @@ final class LiveTagTest extends TestCase
     {
         $this->template('layout.twig', '<body>{% block content %}{% endblock %}{% live %}<i>{{ who() }}</i>{% endlive %}</body>');
         $this->template('child.twig', '{% extends "layout.twig" %}{% block content %}{% for n in [1, 2] %}{% live with {n: n} %}<b>{{ n }}:{{ who() }}</b>{% endlive %}{% endfor %}{% endblock %}');
-        $component = $this->template('Badge/Badge.twig', '<span>{% live with {id: id} %}#{{ id }} {{ who() }}{% endlive %}</span>');
+        $component = __DIR__ . '/Fixtures/Live/LiveBadge.twig';
         $who = 'Ann';
         $this->engine->addFunction(new TemplateFunctionDefinition('who', static function () use (&$who): string {
             return $who;
         }));
 
-        $stored = $this->storing(fn (): string => $this->engine->render('child.twig') . $this->engine->render($component, ['id' => 5]));
+        $stored = $this->storing(fn (): string => $this->engine->render('child.twig') . $this->engine->render($component, ['id' => 5, 'componentClass' => \Preflow\Twig\Tests\Fixtures\Live\LiveBadge::class]));
         $this->assertSame(4, substr_count($stored, '<!--pc:l:'));
         $this->assertStringNotContainsString('Ann', $stored);
 
@@ -84,6 +86,58 @@ final class LiveTagTest extends TestCase
         $this->assertSame('<body><b>1:Bob</b><b>2:Bob</b><i>Bob</i></body><span>#5 Bob</span>', $this->live->fill($stored));
         $who = 'Cy';
         $this->assertSame('<body><b>1:Cy</b><b>2:Cy</b><i>Cy</i></body><span>#5 Cy</span>', $this->live->fill($stored), 'every visitor their own');
+    }
+
+    public function test_a_string_template_renders_in_place_and_refuses_the_page(): void
+    {
+        $file = $this->template('loose.twig', '<p>{% live %}{{ "mine" }}{% endlive %}</p>');
+
+        $before = $this->cache->begin($this->key());
+        $html = $this->engine->render($file); // by path, but not a component's template
+        $refusal = $this->cache->refusal();
+        $this->cache->end($before);
+        $this->assertSame(['<p>mine</p>', 'live:twig-template'], [$html, $refusal]);
+    }
+
+    public function test_only_declared_live_blocks_are_filled(): void
+    {
+        $this->template('page.twig', '{% live %}LIVE{% endlive %}{% block plain %}PLAIN{{ w|default("") }}{% endblock %}');
+        $this->template('upload.txt', '{% live %}UPLOADED{% endlive %}');
+        $sign = new LivePlaceholder('live-test-key');
+        $markers = [
+            $sign->make('twig', ['t' => 'missing.twig', 'b' => '__live_1', 'w' => []]),
+            $sign->make('twig', ['t' => 'page.twig', 'b' => 'plain', 'w' => ['w' => 'x']]),
+            $sign->make('twig', ['t' => 'page.twig', 'b' => '__live_9', 'w' => []]),
+            $sign->make('twig', ['t' => $this->dir . '/upload.txt', 'b' => '__live_1', 'w' => []]),
+            $sign->make('twig', ['t' => '../' . basename($this->dir) . '/page.twig', 'b' => '__live_1', 'w' => []]),
+            $sign->make('twig', ['c' => \stdClass::class, 'b' => '__live_1', 'w' => []]),
+            $sign->make('twig', ['b' => '__live_1', 'w' => []]),
+        ];
+        $body = implode('|', $markers);
+
+        $this->assertSame($body, $this->live->fill($body), 'every one stays a comment');
+        $this->assertSame(['page cache: 7 live marker(s) left as comments: unsigned, forged or naming no declared live part'], $this->logged);
+        $this->assertSame('LIVE', $this->live->fill($sign->make('twig', ['t' => 'page.twig', 'b' => '__live_1', 'w' => []])), 'the control');
+    }
+
+    public function test_with_an_unusable_key_nothing_is_placed_or_filled(): void
+    {
+        $this->template('page.twig', '<p>{% live %}LIVE{% endlive %}</p>');
+        $live = new LiveParts(new LivePlaceholder(\Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY), $this->cache, $this->recorder, static function (): void {});
+        $engine = new TwigEngine([$this->dir], new AssetCollector(new NonceGenerator()), liveParts: $live);
+
+        $this->assertSame('<p>LIVE</p>', $this->storing(fn (): string => $engine->render('page.twig')), 'in place');
+        $public = (new LivePlaceholder(\Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY))->make('twig', ['t' => 'page.twig', 'b' => '__live_1', 'w' => []]);
+        $this->assertSame($public, $live->fill($public));
+    }
+
+    public function test_live_blocks_do_not_nest(): void
+    {
+        $this->template('page.twig', '{% live %}a{% live %}b{% endlive %}{% endlive %}');
+
+        $this->expectException(\Twig\Error\SyntaxError::class);
+        $this->expectExceptionMessage("can't be nested");
+        $this->engine->render('page.twig');
     }
 
     public function test_with_values_are_scalars_and_arrays(): void

@@ -22,6 +22,7 @@ use Preflow\View\TemplateFunctionDefinition;
 
 require_once __DIR__ . '/Fixtures/Live/AlbumButton.php';
 require_once __DIR__ . '/Fixtures/Live/PlainCard.php';
+require_once __DIR__ . '/Fixtures/Live/BrokenPrefetch.php';
 
 /** Components marked #[Live]: placeholders while storing, rendered per visitor, prefetched per class. */
 final class LiveComponentTest extends TestCase
@@ -115,8 +116,20 @@ final class LiveComponentTest extends TestCase
         $marker = (new LivePlaceholder('live-test-key'))->make(ComponentRenderer::LIVE_KIND, ['c' => PlainCard::class, 'p' => []]);
         $notAComponent = (new LivePlaceholder('live-test-key'))->make(ComponentRenderer::LIVE_KIND, ['c' => \stdClass::class, 'p' => []]);
 
-        $this->assertSame('<p>' . LiveParts::ERROR . LiveParts::ERROR . '</p>', $this->live->fill("<p>{$marker}{$notAComponent}</p>"));
-        $this->assertStringContainsString('names no live component', $this->logged[0] ?? '');
+        $this->assertSame("<p>{$marker}{$notAComponent}</p>", $this->live->fill("<p>{$marker}{$notAComponent}</p>"), 'inert comments');
+        $this->assertSame(['page cache: 2 live marker(s) left as comments: unsigned, forged or naming no declared live part'], $this->logged);
+    }
+
+    public function test_a_failing_prefetch_keeps_no_other_class_from_its_prefetch(): void
+    {
+        $stored = $this->storing(fn (): string => $this->renderer->render($this->factory(\Preflow\Components\Tests\Fixtures\Live\BrokenPrefetch::class, []))
+            . $this->renderer->render($this->factory(AlbumButton::class, ['number' => 1])));
+
+        $filled = $this->live->fill($stored);
+        $this->assertCount(1, AlbumButton::$prefetched, 'the class after it still prefetched');
+        $this->assertStringContainsString('<b>broken-prefetch</b>', $filled);
+        $this->assertStringContainsString('<b>1 add</b>', $filled);
+        $this->assertStringContainsString('prefetch down', $this->logged[0] ?? '');
     }
 
     /** @param array<string, mixed> $props */

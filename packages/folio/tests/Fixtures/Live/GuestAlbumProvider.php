@@ -29,7 +29,16 @@ final class GuestAlbumProvider extends ServiceProvider
 
             return is_string($value) && $value !== '' ? array_map('intval', explode('_', $value)) : [];
         };
+        // A form token from the visitor (as holz's FormToken, from the client's address): a registered
+        // per-request value, so it may sit outside live parts.
+        $token = static function () use ($container): string {
+            $request = $container->get(RequestContext::class)->request;
+
+            return 'guest-token-' . substr(hash('sha256', ($request?->getServerParams()['REMOTE_ADDR'] ?? '') . '|' . ($request?->getCookieParams()['album'] ?? '')), 0, 16);
+        };
+        $container->get(\Preflow\Core\PageCache\PerRequestValues::class)->register('guest_token', $token);
         $engine = $container->get(TemplateEngineInterface::class);
+        $engine->addFunction(new TemplateFunctionDefinition('guest_token', $token));
         $engine->addFunction(new TemplateFunctionDefinition('album_count', static fn (): int => count($numbers())));
         $engine->addFunction(new TemplateFunctionDefinition('in_album', static fn (int|string $number): bool => in_array((int) $number, $numbers(), true)));
         $engine->addFunction(new TemplateFunctionDefinition('album_numbers', static fn (): string => implode(',', $numbers())));

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Twig;
 
 use Preflow\Core\PageCache\LiveParts;
+use Preflow\Core\PageCache\LiveRecipeRejected;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
 use Twig\TwigFunction;
@@ -46,24 +47,39 @@ final class TwigEngine implements TemplateEngineInterface
     }
 
     /**
-     * A {% live %} block of a served page: its template (a component template by its file, as
-     * render() loads it), block and with values from the placeholder.
+     * A {% live %} block of a served page. Only a block the live tag declared, in a template
+     * the loader finds by its logical name or in a live-capable component's own template (by
+     * class, never by path); anything else is rejected (LiveRecipeRejected) and stays a comment.
      *
      * @param array<string, mixed> $recipe
      */
     private function renderLiveBlock(array $recipe): string
     {
-        $name = $recipe['t'] ?? null;
         $block = $recipe['b'] ?? null;
         $with = $recipe['w'] ?? [];
-        if (!is_string($name) || !is_string($block) || !is_array($with)) {
-            throw new \RuntimeException('A live block placeholder without template, block or values.');
+        if (!is_string($block) || preg_match(LiveExtension::BLOCK_PATTERN, $block) !== 1 || !is_array($with)) {
+            throw new LiveRecipeRejected('A live block recipe without a live block or values.');
         }
-        // render() of an absolute path: createTemplate() names it "{path} (string template {hash})".
-        if (preg_match('/^(\/.+) \(string template [0-9a-f]+\)$/', $name, $m) === 1 && is_file($m[1])) {
-            $template = $this->twig->createTemplate((string) file_get_contents($m[1]), $m[1]);
-        } else {
+        $name = $recipe['t'] ?? null;
+        $class = $recipe['c'] ?? null;
+        if (is_string($name)) {
+            if (!LiveExtension::logical($name) || !$this->twig->getLoader()->exists($name)) {
+                throw new LiveRecipeRejected("A live block recipe names no template of the loader: {$name}.");
+            }
             $template = $this->twig->load($name);
+        } elseif (is_string($class) && is_subclass_of($class, \Preflow\Components\Component::class)) {
+            $ref = new \ReflectionClass($class);
+            $path = dirname((string) $ref->getFileName()) . '/' . $ref->getShortName() . '.twig';
+            if (!is_file($path)) {
+                throw new LiveRecipeRejected("The component {$class} has no Twig template.");
+            }
+            // As render() loads a component template by its file.
+            $template = $this->twig->createTemplate((string) file_get_contents($path), $path);
+        } else {
+            throw new LiveRecipeRejected('A live block recipe names neither a template nor a component.');
+        }
+        if (!$template->hasBlock($block)) {
+            throw new LiveRecipeRejected("{$block} is not a live block of its template.");
         }
 
         return $template->renderBlock($block, $with);
