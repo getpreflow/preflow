@@ -140,6 +140,22 @@ final class BootManifestTest extends TestCase
         $this->assertFileDoesNotExist($this->dir . '/bootstrap/cache/boot.php');
     }
 
+    public function test_a_failed_write_removes_the_manifest(): void
+    {
+        (new ManifestBuilder($this->dir))->write();
+        // Builds, but does not load back as written: the write fails after a good build.
+        $this->write('config/lossy.php', "<?php\nreturn ['value' => new \\" . LossyExport::class . "('kept')];\n");
+
+        try {
+            (new ManifestBuilder($this->dir))->write();
+            $this->fail('the write should fail');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('does not load back', $e->getMessage());
+        }
+        $this->assertFileDoesNotExist($this->dir . '/bootstrap/cache/boot.php', 'never the manifest of the code before');
+        $this->assertSame([], glob($this->dir . '/bootstrap/cache/*.tmp'), 'no temporary file left');
+    }
+
     public function test_an_in_place_composer_install_bypasses_the_manifest(): void
     {
         (new ManifestBuilder($this->dir))->write();
@@ -238,6 +254,23 @@ final class BootManifestTest extends TestCase
         $this->assertContains('config: changed', $drift);
         $this->assertContains('app/Components: added', $drift);
         $this->assertContains('config/folio/extensions.json: changed (checked per request: web requests boot live until preflow optimize)', $drift);
+    }
+
+    public function test_optimize_check_lists_each_drifted_source_once(): void
+    {
+        $builder = new ManifestBuilder($this->dir);
+        $builder->write();
+        // Signed sources that boot also checks per request.
+        $this->write('vendor/composer/installed.json', '{"packages": [{"name": "acme/new"}]}');
+        touch($this->dir . '/vendor/composer/installed.json', time() + 10);
+        $this->write('.env', "{$this->env}=Old\nPF_OTHER=1\n");
+        touch($this->dir . '/.env', time() + 10);
+
+        $drift = $builder->drift() ?? [];
+        foreach (['vendor/composer/installed.json', '.env'] as $source) {
+            $lines = array_values(array_filter($drift, static fn (string $line): bool => str_starts_with($line, $source . ':')));
+            $this->assertSame(["{$source}: changed (checked per request: web requests boot live until preflow optimize)"], $lines, $source);
+        }
     }
 
     public function test_values_that_cannot_be_exported_stay_live(): void
@@ -352,5 +385,17 @@ final class BootManifestTest extends TestCase
         $path = $this->dir . '/' . $rel;
         @mkdir(dirname($path), 0777, true);
         file_put_contents($path, $content);
+    }
+}
+
+/** Exportable (it has __set_state), but loads back without its value: a write that fails after the build. */
+final class LossyExport
+{
+    public function __construct(public ?string $value = null) {}
+
+    /** @param array<string, mixed> $state */
+    public static function __set_state(array $state): self
+    {
+        return new self();
     }
 }

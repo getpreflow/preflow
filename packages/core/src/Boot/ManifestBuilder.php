@@ -20,7 +20,8 @@ final class ManifestBuilder
 
     /**
      * Builds and writes the manifest. With debug on (app.debug) none is written and an existing
-     * one is removed: boot ignores a manifest in debug mode anyway.
+     * one is removed: boot ignores a manifest in debug mode anyway. A failed build or write also
+     * removes an existing one (and rethrows): web requests boot live rather than from the old code's.
      *
      * @return array{written: bool, file: string, skipped: list<string>, catalogs: list<string>, routes: list<string>, config: list<string>, reason: ?string}
      */
@@ -43,7 +44,12 @@ final class ManifestBuilder
             return ['written' => false, 'file' => $file, 'skipped' => [], 'catalogs' => [], 'routes' => [], 'config' => [], 'reason' => 'APP_DEBUG is on: boot never uses a manifest in debug mode (an existing one was removed).'];
         }
 
-        ManifestFile::write($base, $data);
+        try {
+            ManifestFile::write($base, $data);
+        } catch (\Throwable $e) {
+            ManifestFile::forget($base); // the same after a failed write: not the old manifest
+            throw $e;
+        }
 
         return [
             'written' => true,
@@ -127,22 +133,24 @@ final class ManifestBuilder
             return ['the manifest has another version; run preflow optimize'];
         }
 
+        // One line per source: a signed source that is also checked per request (.env, installed.json) once.
         $drift = [];
         foreach ((array) ($data['sources'] ?? []) as $path => $signature) {
             $now = ManifestFile::signature(self::absolute($base, (string) $path));
             if ($now !== $signature) {
-                $drift[] = match (true) {
-                    $now === '-' => "{$path}: removed",
-                    $signature === '-' => "{$path}: added",
-                    default => "{$path}: changed",
+                $drift[(string) $path] = match (true) {
+                    $now === '-' => 'removed',
+                    $signature === '-' => 'added',
+                    default => 'changed',
                 };
             }
         }
         foreach (ManifestFile::RUNTIME as $source) {
             if (($data['runtime'][$source] ?? null) !== ManifestFile::stamp($base . '/' . $source)) {
-                $drift[] = "{$source}: changed (checked per request: web requests boot live until preflow optimize)";
+                $drift[$source] = ($drift[$source] ?? 'changed') . ' (checked per request: web requests boot live until preflow optimize)';
             }
         }
+        $drift = array_map(static fn (int|string $path, string $what): string => "{$path}: {$what}", array_keys($drift), $drift);
         \Preflow\Core\EnvLoader::load($base . '/.env'); // as a web request's boot does (it never overrides a set variable)
         $env = $data['runtime']['env'] ?? null;
         $keys = ManifestFile::envKeys($base . '/.env');
