@@ -24,14 +24,18 @@ final class MysqlDriver extends PdoDriver
         ];
     }
 
-    public function __construct(\PDO $pdo, ?\Preflow\Core\Debug\DebugCollector $collector = null)
+    /** @param \PDO|\Closure(): \PDO $pdo A connection, or a closure that opens it on the first query. */
+    public function __construct(\PDO|\Closure $pdo, ?\Preflow\Core\Debug\DebugCollector $collector = null)
+    {
+        $dialect = new MysqlDialect();
+        parent::__construct($pdo, $dialect, new QueryCompiler($dialect), $collector);
+    }
+
+    protected function configure(\PDO $pdo): void
     {
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $pdo->exec("SET NAMES 'utf8mb4'");
         $pdo->exec("SET SESSION sql_mode = '" . self::SQL_MODE . "'");
-
-        $dialect = new MysqlDialect();
-        parent::__construct($pdo, $dialect, new QueryCompiler($dialect), $collector);
     }
 
     /** Seconds exclusive() waits for the type's lock before it gives up. */

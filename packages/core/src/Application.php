@@ -555,10 +555,9 @@ final class Application
             mkdir($dbDir, 0755, true);
         }
         $dsn = str_starts_with($path, 'sqlite:') ? $path : 'sqlite:' . $path;
-        $pdo = new \PDO($dsn);
-        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-        $this->container->instance(\PDO::class, $pdo);
-        return new \Preflow\Data\Driver\SqliteDriver($pdo, $collector);
+        $driver = new \Preflow\Data\Driver\SqliteDriver(static fn (): \PDO => new \PDO($dsn), $collector);
+        $this->container->singleton(\PDO::class, static fn (): \PDO => $driver->pdo());
+        return $driver;
     }
 
     private function createMysqlDriver(array $config, ?DebugCollector $collector = null): \Preflow\Data\Driver\MysqlDriver
@@ -569,14 +568,15 @@ final class Application
             $config['port'] ?? getenv('DB_PORT') ?: '3306',
             $config['database'] ?? getenv('DB_NAME') ?: '',
         );
-        $pdo = new \PDO(
-            $dsn,
-            $config['username'] ?? getenv('DB_USER') ?: 'root',
-            $config['password'] ?? getenv('DB_PASS') ?: '',
-            \Preflow\Data\Driver\MysqlDriver::connectionOptions(),
+        $user = $config['username'] ?? getenv('DB_USER') ?: 'root';
+        $pass = $config['password'] ?? getenv('DB_PASS') ?: '';
+        // Opened on the first query: a request that reads no data never connects.
+        $driver = new \Preflow\Data\Driver\MysqlDriver(
+            static fn (): \PDO => new \PDO($dsn, $user, $pass, \Preflow\Data\Driver\MysqlDriver::connectionOptions()),
+            $collector,
         );
-        $this->container->instance(\PDO::class, $pdo);
-        return new \Preflow\Data\Driver\MysqlDriver($pdo, $collector);
+        $this->container->singleton(\PDO::class, static fn (): \PDO => $driver->pdo());
+        return $driver;
     }
 
     private function bootViewLayer(DebugLevel $debug): void

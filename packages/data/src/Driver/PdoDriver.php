@@ -13,12 +13,51 @@ use Preflow\Data\VersionedStorage;
 
 abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage
 {
+    private ?\PDO $connection = null;
+    private ?\Closure $connector = null;
+
+    /** The connection, opened on first use when the driver was given a closure instead of a PDO. */
+    protected \PDO $pdo {
+        get {
+            if ($this->connection === null) {
+                $connector = $this->connector;
+                $this->connector = null;
+                $this->connection = $connector();
+                $this->configure($this->connection);
+            }
+
+            return $this->connection;
+        }
+    }
+
+    /**
+     * @param \PDO|\Closure(): \PDO $pdo A connection, or a closure that opens it on the first query.
+     */
     public function __construct(
-        protected readonly \PDO $pdo,
+        \PDO|\Closure $pdo,
         protected readonly Dialect $dialect,
         protected readonly QueryCompiler $compiler,
         protected readonly ?\Preflow\Core\Debug\DebugCollector $collector = null,
-    ) {}
+    ) {
+        if ($pdo instanceof \PDO) {
+            $this->connection = $pdo;
+            $this->configure($pdo);
+        } else {
+            $this->connector = $pdo;
+        }
+    }
+
+    /** Session setup that runs once, when the connection is made (or handed in). */
+    protected function configure(\PDO $pdo): void
+    {
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+    }
+
+    /** Whether the connection has been opened (a lazy driver stays closed until its first query). */
+    public function connected(): bool
+    {
+        return $this->connection !== null;
+    }
 
     /** The connection this driver runs on (the migrator needs it). */
     public function pdo(): \PDO

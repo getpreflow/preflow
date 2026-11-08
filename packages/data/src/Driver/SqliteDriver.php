@@ -6,9 +6,9 @@ namespace Preflow\Data\Driver;
 
 final class SqliteDriver extends PdoDriver
 {
-    public function __construct(\PDO $pdo, ?\Preflow\Core\Debug\DebugCollector $collector = null)
+    /** @param \PDO|\Closure(): \PDO $pdo A connection, or a closure that opens it on the first query. */
+    public function __construct(\PDO|\Closure $pdo, ?\Preflow\Core\Debug\DebugCollector $collector = null)
     {
-        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $dialect = new SqliteDialect();
         parent::__construct($pdo, $dialect, new QueryCompiler($dialect), $collector);
     }
