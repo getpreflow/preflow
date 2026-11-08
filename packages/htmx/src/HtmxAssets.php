@@ -42,9 +42,12 @@ final class HtmxAssets
 
     public function require(): void
     {
-        if ($this->required || $this->mode === 'never') {
+        if ($this->mode === 'never') {
             return;
         }
+        // Added every time, keyed: the collector keeps one of each per page, and a page rendered
+        // from what boot registered (AssetCollector::restoring(): verify's second render, a
+        // page cache rebuild) gets htmx again.
         $this->required = true;
 
         $nonce = $this->assets->getNonce();
@@ -54,7 +57,7 @@ final class HtmxAssets
         );
 
         // htmx reads this meta on DOM ready, so its position after the script is fine.
-        $this->assets->addHeadTag('<meta name="htmx-config" content=\'' . $config . '\'>');
+        $this->assets->addHeadTag('<meta name="htmx-config" content=\'' . $config . '\'>', 'preflow-htmx-config');
         $this->assets->addJs((string) file_get_contents($this->scriptPath), JsPosition::Head, 'preflow-htmx');
         $this->assets->addJs(self::NONCE_GUARD, JsPosition::Head, 'preflow-htmx-nonce-guard');
     }

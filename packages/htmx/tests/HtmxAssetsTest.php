@@ -31,6 +31,25 @@ final class HtmxAssetsTest extends TestCase
         $this->assertStringNotContainsString('unpkg.com', $head);
     }
 
+    public function test_each_render_from_the_registered_assets_gets_htmx_again(): void
+    {
+        // Pages rendered one after another in one process (verify's second render, rebuilds)
+        // start from what boot registered (AssetCollector::restoring()).
+        $collector = new AssetCollector(new NonceGenerator());
+        $assets = new HtmxAssets($collector, 'on-demand');
+
+        foreach ([1, 2] as $render) {
+            $head = $collector->restoring(function () use ($assets, $collector): string {
+                $assets->require();
+                $assets->require();
+
+                return $collector->renderHead();
+            });
+            $this->assertSame(1, substr_count($head, '<meta name="htmx-config"'), "render {$render}");
+            $this->assertStringContainsString('var htmx=', $head, "render {$render}");
+        }
+    }
+
     public function test_swapped_scripts_are_only_trusted_with_the_fragment_nonce(): void
     {
         $collector = new AssetCollector(new NonceGenerator());
