@@ -178,8 +178,19 @@ Folio = UI adapter):
      developer forgot therefore shows up as an uncached page with a log line, never as a leak.
    - Each site's switch-on step includes an audit that moves its personal parts (album, like state, tokens) into
      `{% live %}` or the hook.
-9. **Rebuild budget:** after-response rebuilds stop after about 2 s per request. The cron command runs every minute
+9. **Rebuild budget:** after-response rebuilds stop after about 2 s per request (configurable). The cron command runs every minute
    where the site has one.
+
+10. **Every number and list is configurable per site** (owner, 2026-11-08: "configurable"). These are one config file
+    with the defaults above:
+    - the switch;
+    - the 4 h safety maximum age;
+    - the after-response rebuild budget;
+    - whether search and filter pages are cached, and which query parameters are ignored;
+    - which request headers fragments vary on;
+    - the cookies that mean "signed in".
+
+    The defaults are what makes the zero-configuration promise hold.
 
 ## Left to the builder
 
