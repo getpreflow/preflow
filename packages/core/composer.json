@@ -19,7 +19,7 @@
         "preflow/auth": "<0.60",
         "preflow/components": "<0.60",
         "preflow/data": "<0.60",
-        "preflow/htmx": "<0.46",
+        "preflow/htmx": "<0.60",
         "preflow/i18n": "<0.46",
         "preflow/routing": "<0.59",
         "preflow/view": "<0.60",
