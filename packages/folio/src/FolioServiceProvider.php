@@ -503,7 +503,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $c->get(TypeCatalog::class),
         ));
-        $container->bind(\Preflow\Folio\Http\WorkingCopyMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\WorkingCopyMiddleware(
+        self::isolatePageCacheRenders($container);
+        $container->bind(\Preflow\Folio\Http\WorkingCopyMiddleware::class,fn (Container $c) => new \Preflow\Folio\Http\WorkingCopyMiddleware(
             $c->get(\Preflow\Folio\Content\LiveContent::class),
             $c->get(\Preflow\Folio\Http\AdminNav::class),
         ));
@@ -924,6 +925,41 @@ final class FolioServiceProvider extends ServiceProvider
             $prefix,
             max(1, (int) ($this->folioConfig($app)['password_min'] ?? 10)),
         ));
+    }
+
+    /**
+     * Every render the page cache may store (a visitor's miss, verify's second render, a rebuild
+     * behind an admin request) reads published snapshots with empty memos, whatever the request
+     * around it switched on (WorkingCopyMiddleware, a share preview). A page rendered while
+     * working copies show anyway is refused (`refused:working-copy`).
+     */
+    private static function isolatePageCacheRenders(Container $container): void
+    {
+        if (!$container->bound(\Preflow\Core\PageCache\PageCache::class)) {
+            return;
+        }
+        $pageCache = $container->get(\Preflow\Core\PageCache\PageCache::class);
+        $pageCache->isolate(static function () use ($container): \Closure {
+            $restores = [$container->get(\Preflow\Folio\Content\LiveContent::class)->isolate()];
+            foreach ([\Preflow\Folio\Content\Collections::class, \Preflow\Folio\Content\Singletons::class] as $memo) {
+                // One not built yet starts empty; one built during the render is emptied after it.
+                $restores[] = $container->resolved($memo)
+                    ? $container->get($memo)->isolate()
+                    : static function () use ($container, $memo): void {
+                        if ($container->resolved($memo)) {
+                            $container->get($memo)->isolate();
+                        }
+                    };
+            }
+
+            return static function () use ($restores): void {
+                foreach (array_reverse($restores) as $restore) {
+                    $restore();
+                }
+            };
+        });
+        $pageCache->refuseWhen('working-copy', static fn (): bool => $container->resolved(\Preflow\Folio\Content\LiveContent::class)
+            && $container->get(\Preflow\Folio\Content\LiveContent::class)->showsWorkingCopies());
     }
 
     /**

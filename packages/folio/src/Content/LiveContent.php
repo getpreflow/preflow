@@ -36,6 +36,22 @@ final class LiveContent
     }
 
     /**
+     * Switches to published snapshots for a render the page cache may store (PageCache::isolate()):
+     * a rebuild behind an admin request reads what visitors see. Returns what switches back.
+     *
+     * @return \Closure(): void
+     */
+    public function isolate(): \Closure
+    {
+        $before = $this->workingCopies;
+        $this->workingCopies = false;
+
+        return function () use ($before): void {
+            $this->workingCopies = $before;
+        };
+    }
+
+    /**
      * The data manager these reads go through: for memos that replay their reads on a hit
      * (DataManager::captureReads()).
      */

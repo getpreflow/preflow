@@ -27,6 +27,22 @@ final class Collections
         private readonly ?FrontendGate $gate = null,
     ) {}
 
+    /**
+     * Empties the memo for a render the page cache may store (PageCache::isolate()), so it reads
+     * anew in the content mode it renders in. Returns what puts the earlier memo back.
+     *
+     * @return \Closure(): void
+     */
+    public function isolate(): \Closure
+    {
+        $before = [$this->lists, $this->reads];
+        $this->lists = $this->reads = [];
+
+        return function () use ($before): void {
+            [$this->lists, $this->reads] = $before;
+        };
+    }
+
     /** @return list<array<string, mixed>> */
     public function list(string $type): array
     {

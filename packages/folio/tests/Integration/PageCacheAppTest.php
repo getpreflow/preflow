@@ -122,6 +122,92 @@ final class PageCacheAppTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_staff_draft_never_reaches_a_rebuilt_or_verified_page(): void
+    {
+        // p1 and p2 are published; p3 never was. Then staff save a draft of p1 that differs from
+        // what is published, and publish p2 in the same process: the admin requests show working
+        // copies, but every page the publish rebuilds and verifies is what visitors may see.
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Published one'], 'slug' => ['en' => 'one']]), null);
+        $this->publisher()->publish($this->working('post', 'p2', ['title' => ['en' => 'Published two'], 'slug' => ['en' => 'two']]), null);
+        $this->working('post', 'p3', ['title' => ['en' => 'Secret draft'], 'slug' => ['en' => 'secret']]);
+        $this->cacheAll(['/category', '/one']);
+
+        $this->afterResponse = true;
+        $app = $this->app();
+        $staff = static fn (string $uri, array $body): ResponseInterface => $app->handle((new Psr17Factory())->createServerRequest('POST', 'https://site.test' . $uri)
+            ->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody($body));
+        $saved = $staff('/folio/post/p1', ['title' => 'Draft of one', 'slug' => 'one', '_locale' => 'en']);
+        $this->assertSame(302, $saved->getStatusCode(), (string) $saved->getBody());
+        $this->assertSame('Draft of one', $this->dm()->findType('post', 'p1')?->get('title')['en'] ?? null, 'the draft is saved, not published');
+        $published = $staff('/folio/post/p2', ['title' => 'Published two again', 'slug' => 'two', '_locale' => 'en', '_action' => 'publish']);
+        $this->assertSame(302, $published->getStatusCode(), (string) $published->getBody());
+        $this->afterResponse = false;
+
+        // What the publish rebuilt (and verified) behind its response holds published values only.
+        $stored = $this->storedBody('/category');
+        $this->assertStringContainsString('<li>Published two again</li>', $stored, 'rebuilt behind the publish');
+        $this->assertStringContainsString('<li>Published one</li>', $stored);
+        foreach (['Draft of one', 'Secret draft'] as $draft) {
+            $this->assertStringNotContainsString($draft, $stored);
+        }
+
+        foreach (['/category' => '<li>Published one</li>', '/one' => '<h1>Published one</h1>'] as $path => $expected) {
+            $response = $this->get($path);
+            $this->assertSame('hit', $response->getHeaderLine('X-Page-Cache'), $path);
+            $this->assertStringContainsString($expected, (string) $response->getBody(), $path);
+            $this->assertStringNotContainsString('Draft of one', (string) $response->getBody(), $path);
+            $this->assertStringNotContainsString('Secret draft', (string) $response->getBody(), $path);
+        }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_visitor_miss_after_an_admin_request_in_the_process_reads_published_settings(): void
+    {
+        $this->write('app/pages/category.twig', '<p>{{ folio_get("site").tagline|default("") }}</p><ul>{% for p in folio_list("post") %}<li>{{ p.title }}</li>{% endfor %}</ul>');
+        $this->site('Public tagline');
+        $this->working('site', 'site', ['tagline' => ['en' => 'Draft tagline']]);
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Published one'], 'slug' => ['en' => 'one']]), null);
+        $this->working('post', 'p1', ['title' => ['en' => 'Draft of one'], 'slug' => ['en' => 'one']]);
+
+        // The same app rendered working copies before (an admin request): memos hold the drafts.
+        $app = $this->app();
+        $app->container()->get(\Preflow\Folio\Content\LiveContent::class)->showWorkingCopies();
+        $this->assertSame('Draft tagline', $app->container()->get(\Preflow\Folio\Content\Singletons::class)->get('site')['tagline'] ?? null);
+        $this->assertSame('Draft of one', $app->container()->get(\Preflow\Folio\Content\Collections::class)->list('post')[0]['title'] ?? null);
+
+        $miss = $app->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/category'));
+        $this->assertSame('miss', $miss->getHeaderLine('X-Page-Cache'), $miss->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertSame('', $miss->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertSame('<p>Public tagline</p><ul><li>Published one</li></ul>', (string) $miss->getBody());
+        $this->assertSame('<p>Public tagline</p><ul><li>Published one</li></ul>', $this->storedBody('/category'));
+
+        // The admin request's own state is back afterwards.
+        $this->assertTrue($app->container()->get(\Preflow\Folio\Content\LiveContent::class)->showsWorkingCopies());
+        $this->assertSame('Draft tagline', $app->container()->get(\Preflow\Folio\Content\Singletons::class)->get('site')['tagline'] ?? null);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_page_rendered_with_working_copies_is_refused(): void
+    {
+        // Query pages cached, so a share preview (?folio_preview=) reaches the store step.
+        $this->write('config/page_cache.php', "<?php\nreturn ['enabled' => true, 'explain' => true, 'verify' => 'always', 'cache_query' => true];\n");
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Published one'], 'slug' => ['en' => 'one']]), null);
+        $this->working('post', 'p1', ['title' => ['en' => 'Draft of one'], 'slug' => ['en' => 'one']]);
+        $body = (string) $this->post('/folio/post/p1/share', ['_locale' => 'en'])->getBody();
+        $this->assertSame(1, preg_match('/folio_preview=([A-Za-z0-9_.\-]+)/', $body, $m), $body);
+
+        $preview = $this->app()->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/one?folio_preview=' . $m[1])
+            ->withQueryParams(['folio_preview' => $m[1]]));
+        $this->assertStringContainsString('<h1>Draft of one</h1>', (string) $preview->getBody());
+        $this->assertSame('refused:working-copy', $preview->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertNull($this->stored('/one?folio_preview=' . $m[1]));
+
+        $public = $this->get('/one');
+        $this->assertSame('miss', $public->getHeaderLine('X-Page-Cache'));
+        $this->assertStringContainsString('<h1>Published one</h1>', (string) $public->getBody());
+    }
+
+    #[RunInSeparateProcess]
     public function test_folio_refresh_page_and_everything(): void
     {
         $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Carpenter'], 'slug' => ['en' => 'carpenter']]), null);
