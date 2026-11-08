@@ -15,6 +15,20 @@ composer require preflow/testing --dev
 - In-memory SQLite and temporary JSON storage for isolated data tests
 - Minimal `TestApplication` bootstrap (container, renderer, token service)
 
+## WebApplication
+
+Boots a site's app as the web serves it (`setRunningInConsole(false)`), so the page cache
+serves and stores, with `page_cache.verify` set to `'always'`: every page the test stores is
+rendered a second time as another anonymous visitor, and a page that differs outside its
+`{% live %}` parts is not stored and is logged
+(`page cache: {url} differs per visitor outside live parts`).
+
+```php
+use Preflow\Testing\WebApplication;
+
+$response = WebApplication::boot($basePath)->handle($request); // one app per request, as on the server
+```
+
 ## ComponentTestCase
 
 Extend to test Preflow components. `TestApplication` is wired up automatically in `setUp()`.
