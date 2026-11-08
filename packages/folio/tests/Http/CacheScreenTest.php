@@ -42,7 +42,7 @@ final class CacheScreenTest extends TestCase
 
     public function test_routes_ask_folio_cache(): void
     {
-        foreach (['index', 'clear', 'opcacheReset'] as $action) {
+        foreach (['index', 'clear', 'opcacheReset', 'refreshPage', 'refreshAll'] as $action) {
             $this->assertSame('folio.cache', FolioPermissionMiddleware::rule('Preflow\\Folio\\Http\\CacheController@' . $action));
         }
     }
@@ -50,7 +50,7 @@ final class CacheScreenTest extends TestCase
     public function test_core_and_folio_caches_have_a_label_in_every_folio_language(): void
     {
         $labels = (new \ReflectionClassConstant(\Preflow\Folio\Http\CacheController::class, 'LABELS'))->getValue();
-        foreach (['folio.extensions', 'folio.blocks', 'data.json', 'blade', 'twig', 'assets', 'composer', 'boot'] as $key) {
+        foreach (['folio.extensions', 'folio.blocks', 'data.json', 'blade', 'twig', 'assets', 'composer', 'boot', 'pages'] as $key) {
             $this->assertArrayHasKey($key, $labels, $key);
         }
         foreach (['en', 'de', 'fr'] as $lang) {
@@ -59,7 +59,7 @@ final class CacheScreenTest extends TestCase
                 $leaf = substr($textKey, strlen('folio.cache.'));
                 $this->assertNotSame('', $texts['cache'][$leaf] ?? '', "{$lang}: {$cache}");
             }
-            foreach (['clear_all_note', 'boot_cleared'] as $leaf) {
+            foreach (['clear_all_note', 'boot_cleared', 'pages_title', 'pages_intro', 'pages_queued', 'refresh_url', 'refresh_url_help', 'refresh_page', 'refresh_all', 'refresh_all_note', 'refreshed', 'refreshed_all', 'refresh_bad_url', 'refresh_failed'] as $leaf) {
                 $this->assertNotSame('', $texts['cache'][$leaf] ?? '', "{$lang}: {$leaf}");
             }
         }
@@ -210,6 +210,41 @@ final class CacheScreenTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_refreshing_pages_needs_folio_cache(): void
+    {
+        $this->write('config/page_cache.php', "<?php\nreturn ['enabled' => true, 'hosts' => ['site.test']];\n");
+        $this->signIn(['folio.dashboard']);
+
+        $this->assertSame(403, $this->send('POST', '/folio/cache/pages/refresh', ['url' => '/'])->getStatusCode());
+        $this->assertSame(403, $this->send('POST', '/folio/cache/pages/refresh-all')->getStatusCode());
+        $this->assertSame(403, $this->send('GET', '/folio/cache')->getStatusCode());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_page_cache_actions_flash_what_they_did(): void
+    {
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key', 'url' => 'https://site.test'];\n");
+        $this->write('config/page_cache.php', "<?php\nreturn ['enabled' => true];\n");
+        $this->signIn();
+
+        $this->assertStringContainsString('<section class="folio-cache-pages">', (string) $this->send('GET', '/folio/cache')->getBody(), 'shown with the cache on');
+        $this->send('POST', '/folio/cache/pages/refresh', ['url' => '/about']);
+        $this->assertStringContainsString('/about refreshed (0 cached copies forgotten); it is rebuilt now.', (string) $this->send('GET', '/folio/cache')->getBody());
+        $this->send('POST', '/folio/cache/pages/refresh', ['url' => 'https://elsewhere.test/about']);
+        $this->assertStringContainsString('Not an address of this site: https://elsewhere.test/about', (string) $this->send('GET', '/folio/cache')->getBody());
+        $this->send('POST', '/folio/cache/pages/refresh-all');
+        $this->assertStringContainsString('Every page refreshed:', (string) $this->send('GET', '/folio/cache')->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_without_the_page_cache_its_actions_are_not_there(): void
+    {
+        $body = (string) $this->request('GET', '/folio/cache')->getBody();
+        $this->assertStringNotContainsString('/folio/cache/pages/refresh', $body);
+        $this->assertSame(404, $this->post('/folio/cache/pages/refresh-all')->getStatusCode());
+    }
+
+    #[RunInSeparateProcess]
     public function test_post_without_csrf_token_is_403(): void
     {
         $this->signIn();
@@ -274,8 +309,12 @@ final class CacheScreenTest extends TestCase
         };
     }
 
-    /** Auth with one admin, signed in on one in-process app (the session and its flashes live there). */
-    private function signIn(): void
+    /**
+     * Auth with one admin, signed in on one in-process app (the session and its flashes live there).
+     *
+     * @param list<string>|null $permissions the admin role's permissions (all when null)
+     */
+    private function signIn(?array $permissions = null): void
     {
         $hash = password_hash('secret', PASSWORD_DEFAULT);
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
@@ -286,7 +325,7 @@ final class CacheScreenTest extends TestCase
             ]]],
             'session' => ['cookie' => 'folio_cache_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
-        $this->write('config/roles.php', "<?php\nreturn " . var_export(['staff' => ['admin' => ['*']]], true) . ";\n");
+        $this->write('config/roles.php', "<?php\nreturn " . var_export(['staff' => ['admin' => $permissions ?? ['*']]], true) . ";\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Roles\\RolesServiceProvider::class];\n");
 
         $this->session = $this->app();

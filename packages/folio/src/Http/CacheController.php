@@ -17,6 +17,10 @@ use Psr\Http\Message\ServerRequestInterface;
  * {prefix}/cache (Settings → Cache): the caches in the CacheRegistry with their size, cleared
  * one by one or all at once, and the OPcache of the web server's PHP (which the CLI's
  * cache:clear can't reach). Every cache rebuilds itself on the next request.
+ *
+ * With the page cache on (preflow/core's Refresher bound), its two manual actions: refresh one
+ * page by its address, and refresh everything. Both forget and queue; the rebuild runs after the
+ * response (and by `preflow pages:work`). Folio only adapts the core's calls here.
  */
 final class CacheController
 {
@@ -30,6 +34,7 @@ final class CacheController
         'assets' => 'folio.cache.assets',
         'composer' => 'folio.cache.composer',
         'boot' => 'folio.cache.boot',
+        'pages' => 'folio.cache.pages',
     ];
 
     /** Core's cache key of the boot manifest (`preflow optimize`); clearing it is not undone by a request. */
@@ -40,6 +45,7 @@ final class CacheController
         private readonly OpcacheStatus $opcache,
         private readonly TemplateEngineInterface $engine,
         private readonly string $prefix,
+        private readonly ?\Preflow\Core\PageCache\Refresher $pages = null,
     ) {}
 
     public function index(ServerRequestInterface $request): ResponseInterface
@@ -67,7 +73,52 @@ final class CacheController
                 'hit_rate' => $opcache['hit_rate'],
             ],
             'csrf' => $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '',
+            'pages' => $this->pages === null ? null : ['queued' => $this->queued()],
         ]));
+    }
+
+    /** POST {prefix}/cache/pages/refresh: url=<a path or an address of the site>. */
+    public function refreshPage(ServerRequestInterface $request): ResponseInterface
+    {
+        if ($this->pages === null) {
+            return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], FolioText::get('folio.cache.unknown'));
+        }
+        $body = (array) $request->getParsedBody();
+        $url = is_string($body['url'] ?? null) ? trim($body['url']) : '';
+        try {
+            $forgotten = $this->pages->refresh($url);
+            self::flash($request, 'success', FolioText::get('folio.cache.refreshed', ['url' => $url, 'count' => $forgotten]));
+        } catch (\InvalidArgumentException) {
+            self::flash($request, 'error', FolioText::get('folio.cache.refresh_bad_url', ['url' => $url]));
+        } catch (\Throwable $e) {
+            self::flash($request, 'error', FolioText::get('folio.cache.refresh_failed', ['error' => $e->getMessage()]));
+        }
+
+        return $this->back();
+    }
+
+    /** POST {prefix}/cache/pages/refresh-all */
+    public function refreshAll(ServerRequestInterface $request): ResponseInterface
+    {
+        if ($this->pages === null) {
+            return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], FolioText::get('folio.cache.unknown'));
+        }
+        try {
+            self::flash($request, 'success', FolioText::get('folio.cache.refreshed_all', ['count' => $this->pages->refreshAll()]));
+        } catch (\Throwable $e) {
+            self::flash($request, 'error', FolioText::get('folio.cache.refresh_failed', ['error' => $e->getMessage()]));
+        }
+
+        return $this->back();
+    }
+
+    private function queued(): int
+    {
+        try {
+            return $this->pages?->queued() ?? 0;
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     /** POST {prefix}/cache/clear: key=<key> for one cache, all=1 for every registered one. */

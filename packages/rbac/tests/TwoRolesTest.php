@@ -94,6 +94,9 @@ final class TwoRolesTest extends TestCase
             ['GET /folio/cache', '/folio/cache', [], [200, 403, 403]],
             ['POST /folio/cache/clear', '/folio/cache/clear', ['key' => 'nothing'], [404, 403, 403]],
             ['POST /folio/cache/opcache-reset', '/folio/cache/opcache-reset', [], [302, 403, 403]],
+            // The page cache is off here: the actions are not there (404) for whoever may use them.
+            ['POST /folio/cache/pages/refresh', '/folio/cache/pages/refresh', ['url' => '/'], [404, 403, 403]],
+            ['POST /folio/cache/pages/refresh-all', '/folio/cache/pages/refresh-all', [], [404, 403, 403]],
             ['GET /folio/ai', '/folio/ai', [], [200, 403, 403]],
             ['POST /folio/ai/test', '/folio/ai/test', [], [200, 403, 403]], // the unknown provider fails without a request; the page shows why
             ['GET /folio/ai/tuning', '/folio/ai/tuning', [], [200, 403, 403]],

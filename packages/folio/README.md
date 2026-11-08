@@ -1496,6 +1496,14 @@ is per SAPI: the web request resets the web pool's cache; the CLI cannot see it,
 button is a web-only action. The same registry backs `cache:list` and
 `cache:clear <key>… | --all` (devtools).
 
+With the page cache on (preflow/core's README, "Page cache"), its row is `pages` (clearing it
+empties the cache), and a *Page cache* section has the two manual actions: **Refresh a page**
+(a path such as `/about`, or the full address: every cached copy of it is forgotten and it is
+rebuilt behind the response) and **Refresh everything** (every page is forgotten and the known
+pages are rebuilt in the background, the rest by `preflow pages:work`). Pages refresh
+themselves on every write; these are for changes the site can't see. They are core's
+`Refresher::refresh()` and `refreshAll()`, the same as `preflow pages:refresh`.
+
 ## Redirects
 
 Old links keep working. Folio remembers every page's public addresses and answers an old one

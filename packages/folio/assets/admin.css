@@ -1800,6 +1800,11 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 /* ---- Settings → Cache ---- */
 .folio-cache-opcache { margin-top: 28px; }
 .folio-cache-opcache h2 { margin: 0; }
+.folio-cache-pages { margin-top: 28px; }
+.folio-cache-pages h2 { margin: 0; }
+.folio-cache-refresh { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.folio-cache-refresh input[type="text"] { flex: 1 1 16rem; min-width: 0; }
+.folio-cache-refresh .folio-help { flex-basis: 100%; margin: 0; }
 
 /* Settings → SEO audit */
 .folio-audit-summary { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 16px 0; }

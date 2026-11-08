@@ -66,7 +66,8 @@ final class PageCacheAppTest extends TestCase
     public function test_job_detail_with_other_jobs_next_visit(): void
     {
         // The owner's example (forum-holzkarriere): the job itself fresh, "other jobs of this
-        // company" next visit, on the job's own Folio address.
+        // company" next visit, on the job's own Folio address. Rebuilds run behind each response.
+        $this->afterResponse = true;
         $this->write('resources/folio/frontend/post.twig', '<html><body><h1>{{ record.title }}</h1>'
             . '{% freshness \'next-visit\' %}<ul class="others">{% for p in folio_list("post") %}<li>{{ p.title }}</li>{% endfor %}</ul>{% endfreshness %}'
             . '</body></html>');
@@ -87,18 +88,76 @@ final class PageCacheAppTest extends TestCase
         $this->assertStringContainsString('<li>Joiner</li>', (string) $next->getBody());
         $this->assertStringNotContainsString('Sawyer', (string) $next->getBody());
 
-        // The visit after gets the new list.
+        // It was rebuilt behind that response: the visit after gets the new list from the cache.
         $after = $this->get('/carpenter');
+        $this->assertSame('hit', $after->getHeaderLine('X-Page-Cache'), 'rebuilt and cached again');
         $this->assertStringContainsString('<li>Sawyer</li>', (string) $after->getBody());
-        $this->assertSame('hit', $this->get('/carpenter')->getHeaderLine('X-Page-Cache'), 'and it is cached again');
 
         // The job itself stays fresh: changing it refreshes the page at once.
+        $this->afterResponse = false; // to see the forget before the rebuild
         $published = $this->post('/folio/post/p1', ['title' => 'Master carpenter', 'slug' => 'carpenter', '_locale' => 'en', '_action' => 'publish']);
         $this->assertSame(302, $published->getStatusCode(), (string) $published->getBody());
         $this->assertNull($this->stored('/carpenter'), 'forgotten');
         $response = $this->get('/carpenter');
         $this->assertSame('miss', $response->getHeaderLine('X-Page-Cache'));
         $this->assertStringContainsString('<h1>Master carpenter</h1>', (string) $response->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_publish_rebuilds_its_pages_behind_the_response(): void
+    {
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Awaiting approval'], 'slug' => ['en' => 'project']]), null);
+        $this->cacheAll(['/project', '/category']);
+
+        $this->afterResponse = true;
+        $published = $this->post('/folio/post/p1', ['title' => 'Approved project', 'slug' => 'project', '_locale' => 'en', '_action' => 'publish']);
+        $this->assertSame(302, $published->getStatusCode(), (string) $published->getBody());
+
+        // Rebuilt right after the staff request: the owner's first visit is already a hit.
+        foreach (['/project' => '<h1>Approved project</h1>', '/category' => '<li>Approved project</li>'] as $path => $expected) {
+            $response = $this->get($path);
+            $this->assertSame('hit', $response->getHeaderLine('X-Page-Cache'), $path);
+            $this->assertStringContainsString($expected, (string) $response->getBody(), $path);
+        }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_folio_refresh_page_and_everything(): void
+    {
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Carpenter'], 'slug' => ['en' => 'carpenter']]), null);
+        $this->cacheAll(['/carpenter', '/category']);
+        $before = $this->stored('/carpenter')?->createdAt;
+        $category = $this->stored('/category')?->createdAt;
+
+        // Settings → Cache shows the page cache with both actions.
+        $screen = (string) $this->get('/folio/cache')->getBody();
+        $this->assertStringContainsString('Page cache (finished pages for visitors)', $screen);
+        $this->assertStringContainsString('<form method="post" action="/folio/cache/pages/refresh"', $screen);
+        $this->assertStringContainsString('<form method="post" action="/folio/cache/pages/refresh-all">', $screen);
+        $this->assertStringContainsString('Refresh a page', $screen);
+        $this->assertStringContainsString('Refresh everything', $screen);
+
+        // One page, by its path: forgotten, and rebuilt behind the response.
+        $this->afterResponse = true;
+        usleep(2000);
+        $response = $this->post('/folio/cache/pages/refresh', ['url' => '/carpenter']);
+        $this->assertSame(302, $response->getStatusCode());
+        $this->assertSame('/folio/cache', $response->getHeaderLine('Location'));
+        $this->assertGreaterThan($before, $this->stored('/carpenter')?->createdAt, 'rebuilt');
+        $this->assertSame($category, $this->stored('/category')?->createdAt, 'the other page is left alone');
+        $this->assertSame('hit', $this->get('/carpenter')->getHeaderLine('X-Page-Cache'));
+
+        // Everything: both rebuilt.
+        $before = $this->stored('/carpenter')?->createdAt;
+        usleep(2000);
+        $this->assertSame(302, $this->post('/folio/cache/pages/refresh-all')->getStatusCode());
+        $this->assertGreaterThan($before, $this->stored('/carpenter')?->createdAt);
+        $this->assertGreaterThan($category, $this->stored('/category')?->createdAt);
+
+        // Another site's address changes nothing.
+        $before = $this->stored('/carpenter')?->createdAt;
+        $this->assertSame(302, $this->post('/folio/cache/pages/refresh', ['url' => 'https://elsewhere.test/carpenter'])->getStatusCode());
+        $this->assertSame($before, $this->stored('/carpenter')?->createdAt);
     }
 
     #[RunInSeparateProcess]
@@ -494,10 +553,14 @@ final class PageCacheAppTest extends TestCase
         $app->container()->get(\Preflow\Core\PageCache\ChangeLog::class)->flush();
     }
 
+    /** Whether each app runs its after-response work (rebuilds) at the end of handle(), as run() does. */
+    private bool $afterResponse = false;
+
     private function app(): Application
     {
         $app = Application::create($this->dir);
         $app->setRunningInConsole(false);
+        $app->runAfterResponseInHandle($this->afterResponse);
         $app->boot();
 
         return $app;

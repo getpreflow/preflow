@@ -459,6 +459,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Core\Cache\OpcacheStatus::class),
             $c->get(TemplateEngineInterface::class),
             $prefix,
+            // The page cache's refresh actions, when it is on (core's Refresher).
+            $c->bound(\Preflow\Core\PageCache\Refresher::class) ? $c->get(\Preflow\Core\PageCache\Refresher::class) : null,
         ));
         // Settings → SEO audit: it only reads the report file, so it is there on every site (SQL or not).
         $container->bind(\Preflow\Folio\Http\SeoAuditController::class, static fn (Container $c) => new \Preflow\Folio\Http\SeoAuditController(

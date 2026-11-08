@@ -32,6 +32,26 @@
         </tbody>
     </table>
     </div>
+    {% if pages %}
+    <section class="folio-cache-pages">
+        <div class="folio-list-toolbar">
+            <h2>{{ t('folio.cache.pages_title') }}</h2>
+            <form method="post" action="{{ prefix }}/cache/pages/refresh-all">
+                <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+                <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.cache.refresh_all') }}</button>
+            </form>
+        </div>
+        <p class="folio-help">{{ t('folio.cache.pages_intro') }} {{ t('folio.cache.refresh_all_note') }}</p>
+        <form method="post" action="{{ prefix }}/cache/pages/refresh" class="folio-cache-refresh">
+            <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+            <label for="folio-cache-refresh-url">{{ t('folio.cache.refresh_url') }}</label>
+            <input type="text" id="folio-cache-refresh-url" name="url" placeholder="/about" required aria-describedby="folio-cache-refresh-help">
+            <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.cache.refresh_page') }}</button>
+            <p class="folio-help" id="folio-cache-refresh-help">{{ t('folio.cache.refresh_url_help') }}</p>
+        </form>
+        {% if pages.queued > 0 %}<p class="folio-help">{{ t('folio.cache.pages_queued', {count: folio_number(pages.queued)}) }}</p>{% endif %}
+    </section>
+    {% endif %}
     <section class="folio-cache-opcache">
         <div class="folio-list-toolbar">
             <h2>{{ t('folio.cache.opcache') }}</h2>

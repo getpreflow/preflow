@@ -85,6 +85,8 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'CacheController@index' => 'folio.cache',
         'CacheController@clear' => 'folio.cache',
         'CacheController@opcacheReset' => 'folio.cache',
+        'CacheController@refreshPage' => 'folio.cache',
+        'CacheController@refreshAll' => 'folio.cache',
         'SeoAuditController@index' => 'seo.audit',
         'AiSettingsController@status' => 'ai.settings',
         'AiSettingsController@test' => 'ai.settings',
