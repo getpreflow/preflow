@@ -157,6 +157,39 @@ final class AdminOnDemandTest extends TestCase
         $this->assertTrue($container->get(\Preflow\Core\Http\Csrf\CsrfSignInPaths::class)->matches('/folio/login'), 'the staff login is a sign-in path');
     }
 
+    /** A setup that threw (a broken extension screen, a passing outage) is not marked done: the next admin request runs it again. */
+    #[RunInSeparateProcess]
+    public function test_an_admin_setup_that_failed_runs_again_on_the_next_admin_request(): void
+    {
+        $this->site();
+        $this->flow = $this->app(console: false);
+        $container = $this->flow->container();
+        $bindings = (new \ReflectionProperty($container, 'bindings'))->getValue($container);
+        $real = $bindings[ScreenRegistry::class];
+        $fail = true;
+        $container->singleton(ScreenRegistry::class, static function (mixed ...$args) use (&$fail, $real): ScreenRegistry {
+            if ($fail) {
+                $fail = false;
+                throw new \RuntimeException('screen validation failed');
+            }
+
+            return $real(...$args);
+        });
+
+        try {
+            $status = $this->request('GET', '/folio/login')->getStatusCode();
+        } catch (\RuntimeException $e) {
+            $this->assertSame('screen validation failed', $e->getMessage());
+            $status = 500;
+        }
+        $this->assertSame(500, $status, 'the failed setup');
+        $this->assertFalse($fail);
+
+        $this->assertSame(200, $this->request('GET', '/folio/login')->getStatusCode(), 'set up on the retry');
+        $this->assertContains('GET /folio', $this->patterns($this->flow));
+        $this->assertContains('GET /folio/rbac/new-permissions', $this->patterns($this->flow), 'the rbac screen');
+    }
+
     #[RunInSeparateProcess]
     public function test_cli_boot_has_the_admin_setup(): void
     {

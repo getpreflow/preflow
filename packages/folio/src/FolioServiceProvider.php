@@ -1518,7 +1518,6 @@ final class FolioServiceProvider extends ServiceProvider
         if (isset($this->adminReady[$container])) {
             return;
         }
-        $this->adminReady[$container] = true;
 
         $app = $container->get(Application::class);
         // Validated on first resolution: a broken extension screen or customization fails here.
@@ -1544,6 +1543,9 @@ final class FolioServiceProvider extends ServiceProvider
                 ]);
             }
         }
+        // Done only now: a setup that threw runs again on the next admin request. The routes go in
+        // last, in one insert, so a failure before leaves none to add twice.
+        $this->adminReady[$container] = true;
     }
 
     /**
