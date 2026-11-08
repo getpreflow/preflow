@@ -413,7 +413,15 @@ final class FolioServiceProvider extends ServiceProvider
             );
             $container->bind(\Preflow\Routing\Redirect\RedirectStore::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\RedirectEntries::class));
             $container->bind(\Preflow\Routing\Redirect\NotFoundLog::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class));
-            $container->bind(\Preflow\Routing\Redirect\RedirectTargets::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\FolioRedirectTargets::class));
+            // The redirect middleware is built at boot; the targets (the Publisher behind LiveRecords) only when a redirect points to a record.
+            $container->bind(\Preflow\Routing\Redirect\RedirectTargets::class, static fn (Container $c) => new class ($c) implements \Preflow\Routing\Redirect\RedirectTargets {
+                public function __construct(private readonly Container $container) {}
+
+                public function url(string $type, string $id, string $locale): ?string
+                {
+                    return $this->container->get(\Preflow\Folio\Redirects\FolioRedirectTargets::class)->url($type, $id, $locale);
+                }
+            });
             // Settings → Redirects.
             $container->bind(\Preflow\Folio\Http\RedirectsController::class, static fn (Container $c) => new \Preflow\Folio\Http\RedirectsController(
                 $c->get(\Preflow\Folio\Redirects\RedirectEntries::class),
@@ -516,7 +524,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Http\AdminNav::class),
         ));
         $navCollapsed = self::navCollapsed($folioCfg);
-        $container->singleton(\Preflow\Folio\Http\AdminNav::class, function (Container $c) use ($prefix, $navCollapsed): \Preflow\Folio\Http\AdminNav {
+        // Built on first use (an admin request, the console): its Folio items come with it (adminNavItems()).
+        $container->singleton(\Preflow\Folio\Http\AdminNav::class, function (Container $c) use ($prefix, $navCollapsed, $app): \Preflow\Folio\Http\AdminNav {
             $access = $c->get(\Preflow\Auth\Access\Access::class);
 
             $nav = new \Preflow\Folio\Http\AdminNav(
@@ -535,6 +544,7 @@ final class FolioServiceProvider extends ServiceProvider
 
                 return $user !== null ? $c->get(\Preflow\Folio\Users\UserPreferences::class)->navSections($user->getAuthId()) : null;
             }, $navCollapsed);
+            $this->adminNavItems($nav, $c, $app);
 
             return $nav;
         });
@@ -849,12 +859,12 @@ final class FolioServiceProvider extends ServiceProvider
             $prefix,
             $c->get(ScreenRegistry::class),
         ));
-        // Extension screens: validated when first resolved (in boot()), so collisions fail at boot.
+        // Extension screens: validated when first resolved (the admin setup, ensureAdmin()), so collisions fail there.
         $container->singleton(ScreenRegistry::class, fn (Container $c) => ScreenRegistry::fromExtensions(
             $c->get(ExtensionRegistry::class),
             $c->get(TypeCatalog::class),
         ));
-        // Type customizations: validated when first resolved (in boot()); their classes come from the container.
+        // Type customizations: validated when first resolved (the admin setup, ensureAdmin()); their classes come from the container.
         $container->singleton(Customizations::class, fn (Container $c) => Customizations::fromExtensions(
             $c->get(ExtensionRegistry::class),
             $c->get(TypeCatalog::class),
@@ -1177,57 +1187,22 @@ final class FolioServiceProvider extends ServiceProvider
         }
         // ... and carries it into the published snapshots afterwards (best effort, see PublishedMemberDeletion).
         if (class_exists(\Preflow\Members\MemberEvents::class) && $container->bound(\Preflow\Members\MemberEvents::class)) {
-            $container->get(\Preflow\Members\MemberEvents::class)->on(\Preflow\Members\MemberEvents::DELETED, new \Preflow\Folio\Members\PublishedMemberDeletion(
-                $container->get(DataManager::class),
-                $container->get(\Preflow\Folio\Publishing\Publisher::class),
-                $container->get(\Preflow\Folio\Publishing\PublishedCopies::class),
-            ));
+            // Built when a member is deleted: the Publisher is not needed before.
+            $container->get(\Preflow\Members\MemberEvents::class)->on(\Preflow\Members\MemberEvents::DELETED, static function (array $payload) use ($container): void {
+                (new \Preflow\Folio\Members\PublishedMemberDeletion(
+                    $container->get(DataManager::class),
+                    $container->get(\Preflow\Folio\Publishing\Publisher::class),
+                    $container->get(\Preflow\Folio\Publishing\PublishedCopies::class),
+                ))($payload);
+            });
         }
-        $screens = $container->get(ScreenRegistry::class);
         $this->registerFieldKinds($container, $app);
-        $customizations = $container->get(Customizations::class);
-        // Set here, not in the AdminNav factory: Customizations validate extensions and resolve only now.
-        $container->get(\Preflow\Folio\Http\AdminNav::class)->setBadges(static fn (string $type): ?int => $customizations->navBadge($type));
         $this->declarePermissions($container, $app);
         $this->registerTextSources($container);
-
-        // Settings → Extensions, once there is an extension (sites without any keep today's sidebar).
-        if ($container->get(ExtensionRegistry::class)->all() !== []) {
-            $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.extensions'), rtrim($this->prefix($app), '/') . '/extensions', 'ui-settings', 'folio.extensions', 900);
-        }
-        // Settings → Translations, on every site (the admins' overrides of interface texts).
-        $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.translations'), rtrim($this->prefix($app), '/') . '/translations', 'ui-settings', 'translations.edit', 920);
-        // Settings → Redirects, wherever Folio keeps the redirect entries (a site with a DataManager).
-        if ($container->bound(\Preflow\Folio\Redirects\RedirectEntries::class)) {
-            $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.redirects'), rtrim($this->prefix($app), '/') . '/redirects', 'ui-settings', 'redirects.manage', 930);
-        }
-        // Settings → Cache, on every site (Folio registers its own caches).
-        $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.cache'), rtrim($this->prefix($app), '/') . '/cache', 'ui-settings', 'folio.cache', 950);
-        // Settings → SEO audit, on every site (the last report of `preflow seo:audit`, or how to run one).
-        $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.seo_audit'), rtrim($this->prefix($app), '/') . '/seo-audit', 'ui-settings', 'seo.audit', 940);
         // The SEO audit's findings link to the record or asset to fix. Nothing is built or read until the audit asks.
         if ($container->bound(\Preflow\View\Audit\AuditRegistry::class)) {
             $container->get(\Preflow\View\Audit\AuditRegistry::class)->setTargets(
                 static fn (string $url, string $locale): ?\Preflow\View\Audit\Target => $container->get(\Preflow\Folio\Audit\AuditTargets::class)->target($url, $locale),
-            );
-        }
-        // Settings → AI, while AI is switched on or a key is present (so a missing key or switch can be seen and fixed).
-        if (self::aiSettingsVisible($container)) {
-            $container->get(\Preflow\Folio\Http\AdminNav::class)->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.ai'), rtrim($this->prefix($app), '/') . '/ai', 'ui-settings', 'ai.settings', 960);
-        }
-        // Extension screens in the sidebar (filtered by their permission), except those declared nav: false.
-        foreach ($screens->all() as $screen) {
-            if (!$screen['nav']) {
-                continue;
-            }
-            $container->get(\Preflow\Folio\Http\AdminNav::class)->add(
-                $screen['section'],
-                static fn (): string => \Preflow\Folio\FolioText::label($screen['label']),
-                rtrim($this->prefix($app), '/') . '/' . $screen['path'],
-                $screen['icon'],
-                $screen['permission'],
-                $screen['order'],
-                $screen['badge'] === null ? null : static fn (): mixed => $container->get($screen['class'])->{$screen['badge']}(),
             );
         }
 
@@ -1249,10 +1224,9 @@ final class FolioServiceProvider extends ServiceProvider
             // Single asset URL seam: folio_asset('admin.css') -> versioned URL.
             // Content-hash version so immutable caches bust on edit. A future
             // asset-publishing system can swap this one resolver.
-            $assetUrls = $container->get(\Preflow\Folio\Http\AdminAssetUrls::class);
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_asset',
-                callable: fn (string $file): string => $assetUrls($file),
+                callable: static fn (string $file): string => $container->get(\Preflow\Folio\Http\AdminAssetUrls::class)($file),
                 isSafe: false,
             ));
             // folio_extension_asset('shop', 'shop.css') -> {prefix}/_assets/x/shop/shop.css?v=…; throws when not served.
@@ -1459,25 +1433,133 @@ final class FolioServiceProvider extends ServiceProvider
             }
         }
 
-        // 2. Routes: admin under the configured prefix, then the frontend catch-all LAST.
+        // 2. Routes: the frontend catch-all, LAST. The admin's (under the configured prefix, in front
+        // of it) come with the admin setup: on the first request under the prefix, or now in the console.
         // The media core's (private files, variants) are already in: it boots before Folio.
         if ($container->has(RouterInterface::class)) {
             $router = $container->get(RouterInterface::class);
             if ($router instanceof Router) {
-                $collection = $router->getCollection(); // builds app routes first (lazy)
+                $router->getCollection()->add(FolioRoutes::frontend()); // builds app routes first (lazy)
+            }
+        }
+
+        if ($admin === '' || $app->runningInConsole()) {
+            $this->ensureAdmin($container); // Folio at "/" covers every request
+        } else {
+            $app->onRequest(function (\Psr\Http\Message\ServerRequestInterface $request) use ($container, $admin): void {
+                if (self::underAdmin($request->getUri()->getPath(), $admin)) {
+                    $this->ensureAdmin($container);
+                }
+            });
+        }
+    }
+
+    /** @var \WeakMap<Container, true>|null the containers whose admin is set up (ensureAdmin()) */
+    private ?\WeakMap $adminReady = null;
+
+    /**
+     * Folio's admin setup, once per app (later calls do nothing): extension screens and
+     * customizations validated, the sidebar built, and the admin routes (extension screens
+     * first, then Folio's) registered in front of the frontend catch-all. It runs on the first
+     * request under the admin prefix (Application::onRequest()), at boot in the console and
+     * when Folio is at "/". A public request never needs it; services it builds are lazy
+     * singletons, so code that asks for one elsewhere gets it complete.
+     */
+    public function ensureAdmin(Container $container): void
+    {
+        $this->adminReady ??= new \WeakMap();
+        if (isset($this->adminReady[$container])) {
+            return;
+        }
+        $this->adminReady[$container] = true;
+
+        $app = $container->get(Application::class);
+        // Validated on first resolution: a broken extension screen or customization fails here.
+        $screens = $container->get(ScreenRegistry::class);
+        $container->get(Customizations::class);
+        $container->get(\Preflow\Folio\Http\AdminNav::class);
+
+        if ($container->has(RouterInterface::class)) {
+            $router = $container->get(RouterInterface::class);
+            if ($router instanceof Router) {
                 $authEnabled = file_exists($app->basePath('config/auth.php'));
                 // Screens first: their routes must win over the admin's {type} routes.
-                $collection->addMany($screens->routes($this->prefix($app), $authEnabled));
-                $collection->addMany(FolioRoutes::admin(
-                    $this->prefix($app),
-                    $authEnabled,
-                    $authEnabled && self::recordProviders($container) !== [],
-                    // The AI endpoints exist only while AI is on (config/ai.php and the key).
-                    $container->get(\Preflow\Ai\Ai::class)->enabled(),
-                    self::aiSettingsVisible($container),
-                ));
-                $collection->add(FolioRoutes::frontend());
+                $router->getCollection()->insertBefore(FolioRoutes::frontend(), [
+                    ...$screens->routes($this->prefix($app), $authEnabled),
+                    ...FolioRoutes::admin(
+                        $this->prefix($app),
+                        $authEnabled,
+                        $authEnabled && self::recordProviders($container) !== [],
+                        // The AI endpoints exist only while AI is on (config/ai.php and the key).
+                        $container->get(\Preflow\Ai\Ai::class)->enabled(),
+                        self::aiSettingsVisible($container),
+                    ),
+                ]);
             }
+        }
+    }
+
+    /**
+     * Whether a raw request path is under the admin prefix ($admin, no trailing slash), also
+     * behind one leading segment ("/de/folio/…": the router reaches the admin behind a locale's
+     * URL prefix too). A public path that only looks like it costs the admin setup, nothing else.
+     */
+    private static function underAdmin(string $path, string $admin): bool
+    {
+        if ($path === $admin || str_starts_with($path, $admin . '/')) {
+            return true;
+        }
+        $slash = strpos($path, '/', 1);
+        if ($slash === false) {
+            return false;
+        }
+        $rest = substr($path, $slash);
+
+        return $rest === $admin || str_starts_with($rest, $admin . '/');
+    }
+
+    /**
+     * Folio's own sidebar items, added when the AdminNav is built: the type badges of the
+     * customizations, the Settings screens and the extension screens.
+     */
+    private function adminNavItems(\Preflow\Folio\Http\AdminNav $nav, Container $container, Application $app): void
+    {
+        $customizations = $container->get(Customizations::class);
+        $nav->setBadges(static fn (string $type): ?int => $customizations->navBadge($type));
+        $base = rtrim($this->prefix($app), '/');
+
+        // Settings → Extensions, once there is an extension (sites without any keep today's sidebar).
+        if ($container->get(ExtensionRegistry::class)->all() !== []) {
+            $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.extensions'), $base . '/extensions', 'ui-settings', 'folio.extensions', 900);
+        }
+        // Settings → Translations, on every site (the admins' overrides of interface texts).
+        $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.translations'), $base . '/translations', 'ui-settings', 'translations.edit', 920);
+        // Settings → Redirects, wherever Folio keeps the redirect entries (a site with a DataManager).
+        if ($container->bound(\Preflow\Folio\Redirects\RedirectEntries::class)) {
+            $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.redirects'), $base . '/redirects', 'ui-settings', 'redirects.manage', 930);
+        }
+        // Settings → Cache, on every site (Folio registers its own caches).
+        $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.cache'), $base . '/cache', 'ui-settings', 'folio.cache', 950);
+        // Settings → SEO audit, on every site (the last report of `preflow seo:audit`, or how to run one).
+        $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.seo_audit'), $base . '/seo-audit', 'ui-settings', 'seo.audit', 940);
+        // Settings → AI, while AI is switched on or a key is present (so a missing key or switch can be seen and fixed).
+        if (self::aiSettingsVisible($container)) {
+            $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.ai'), $base . '/ai', 'ui-settings', 'ai.settings', 960);
+        }
+        // Extension screens in the sidebar (filtered by their permission), except those declared nav: false.
+        foreach ($container->get(ScreenRegistry::class)->all() as $screen) {
+            if (!$screen['nav']) {
+                continue;
+            }
+            $nav->add(
+                $screen['section'],
+                static fn (): string => \Preflow\Folio\FolioText::label($screen['label']),
+                $base . '/' . $screen['path'],
+                $screen['icon'],
+                $screen['permission'],
+                $screen['order'],
+                $screen['badge'] === null ? null : static fn (): mixed => $container->get($screen['class'])->{$screen['badge']}(),
+            );
         }
     }
 
