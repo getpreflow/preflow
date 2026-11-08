@@ -24,11 +24,11 @@ return [
     'password_hasher' => Preflow\Auth\NativePasswordHasher::class,
 
     'session' => [
-        // Sessions (and their cookie) only where they are needed: signing in and out, the admin,
-        // component actions (/--component). Public pages start none, so the page cache stores
-        // them; without `paths` every request starts a session and nothing is cached. Signed-in
-        // visitors still get live pages (the preflow_auth cookie bypasses the cache), but a
-        // public page doesn't know who they are: show personal things on these paths only.
+        // New sessions (and their cookie) only where they are needed: signing in and out, the
+        // admin, component actions (/--component). A visitor who brings the session cookie (signed
+        // in) resumes it on every page; one without starts none, so the page cache stores public
+        // pages for them. Without `paths` every request starts a session and nothing is cached.
+        // List a public path here if guests need a session there.
         'paths' => ['/login', '/logout', '/register', '/admin', '/--component'],
         'lifetime' => 7200,
         'cookie' => 'preflow_session',
