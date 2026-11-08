@@ -216,6 +216,10 @@ final class BootManifestAppTest extends TestCase
             'GET /files/not-an-id' => [self::FRONTEND, ['path' => 'files/not-an-id']],
             'GET /files/' . self::HEX . '/v/0' => [self::FRONTEND, ['path' => 'files/' . self::HEX . '/v/0']],
             'POST /about' => 404,
+            'GET /blog/2026/hello' => ['blog/[...path].twig', ['path' => '2026/hello']],
+            'GET /hooks/ping' => ['App\\Controllers\\HookController@show', ['name' => 'ping']],
+            'POST /hooks' => ['App\\Controllers\\HookController@receive', []],
+            'GET /hooks' => [self::FRONTEND, ['path' => 'hooks']],
         ];
         // What a request gets: the locale prefix, a redirect (also behind the prefix), 404 and the admin.
         $requests = [
@@ -230,21 +234,38 @@ final class BootManifestAppTest extends TestCase
             '/folio' => [200, ''],
             '/folio/page' => [200, ''],
             '/folio/no-such-type' => [404, ''],
+            '/blog/2026/hello' => [200, ''],
+            '/hooks/ping' => [200, ''],
         ];
         $url = static fn (Application $app): ?string => $app->container()->get(\Preflow\Folio\Content\FrontendResolver::class)
             ->urlFor($app->container()->get(DataManager::class)->findType('page', 'about'), 'de');
 
-        $before = [$this->routing($this->app(console: false), array_keys($routes)), $this->requests($this->app(console: false), array_keys($requests)), $url($this->app(console: false))];
+        $before = [$this->routing($this->app(console: false), array_keys($routes)), $this->requests($this->app(console: false), array_keys($requests)), $url($this->app(console: false)), $this->entries($this->app(console: false))];
         (new ManifestBuilder($this->dir))->write();
         $app = $this->app(console: false);
         $this->assertTrue($app->bootManifest()->active());
-        $after = [$this->routing($app, array_keys($routes)), $this->requests($this->app(console: false), array_keys($requests)), $url($this->app(console: false))];
+        $after = [$this->routing($app, array_keys($routes)), $this->requests($this->app(console: false), array_keys($requests)), $url($this->app(console: false)), $this->entries($this->app(console: false))];
 
         $this->assertSame($routes, $before[0]);
         $this->assertSame($requests, $before[1]);
         $this->assertStringEndsWith('/de/about', (string) $before[2], 'a record\'s URL from its route');
+        $entries = $before[3];
+        $this->assertSame('GET /{...path}', array_key_last($entries), 'Folio\'s catch-all comes last');
+        $this->assertLessThan(array_search('GET /{...path}', array_keys($entries), true), array_search('GET /blog/{...path}', array_keys($entries), true), 'the site\'s catch-all page first');
+        $this->assertSame([[\Preflow\Core\Http\JsonBodyMiddleware::class, \Preflow\Core\Http\SecurityHeadersMiddleware::class], true], $entries['POST /hooks'], 'middleware and the CSRF exemption');
         $this->assertSame($before, $after, 'the same with the manifest');
         $this->assertSame([], $app->container()->get(\Preflow\Core\Routing\RouterInterface::class)->liveSets());
+    }
+
+    /** @return array<string, array{0: list<string>, 1: bool}> every route in order: "METHOD /pattern" => middleware, CSRF-exempt */
+    private function entries(Application $app): array
+    {
+        $out = [];
+        foreach ($app->container()->get(\Preflow\Core\Routing\RouterInterface::class)->getCollection()->all() as $entry) {
+            $out[$entry->method . ' ' . $entry->pattern] = [$entry->middleware, $entry->csrfExempt];
+        }
+
+        return $out;
     }
 
     /**
@@ -323,6 +344,12 @@ final class BootManifestAppTest extends TestCase
                     require $file;
                 }
             }
+            if (str_starts_with($class, 'App\\Controllers\\')) {
+                $file = $dir . '/app/Controllers/' . str_replace('\\', '/', substr($class, 16)) . '.php';
+                if (is_file($file)) {
+                    require $file;
+                }
+            }
         });
 
         $this->write('.env', "APP_MANIFEST_TEST=1\n");
@@ -376,6 +403,42 @@ final class BootManifestAppTest extends TestCase
             }
             PHP);
         $this->write('app/Components/Greeting/Greeting.twig', '<p class="greeting">Hi {{ name }}</p>');
+
+        // The site's own routes, which must come before Folio's catch-all: a catch-all page and an
+        // attribute controller (middleware, a CSRF-exempt POST).
+        $this->write('app/pages/blog/[...path].twig', 'BLOG {{ route.path }}');
+        $this->write('app/Controllers/HookController.php', <<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            namespace App\Controllers;
+
+            use Preflow\Core\Http\Csrf\CsrfExempt;
+            use Preflow\Routing\Attributes\Get;
+            use Preflow\Routing\Attributes\Middleware;
+            use Preflow\Routing\Attributes\Post;
+            use Preflow\Routing\Attributes\Route;
+            use Psr\Http\Message\ServerRequestInterface;
+
+            #[Route('/hooks', middleware: [\Preflow\Core\Http\JsonBodyMiddleware::class])]
+            final class HookController
+            {
+                #[Get('/{name}')]
+                public function show(ServerRequestInterface $request): string
+                {
+                    return 'hook ' . $request->getAttribute('name');
+                }
+
+                #[Post('/')]
+                #[CsrfExempt('a signed webhook')]
+                #[Middleware(\Preflow\Core\Http\SecurityHeadersMiddleware::class)]
+                public function receive(ServerRequestInterface $request): string
+                {
+                    return 'received';
+                }
+            }
+            PHP);
 
         $packages = [];
         foreach (self::PACKAGES as $name) {
