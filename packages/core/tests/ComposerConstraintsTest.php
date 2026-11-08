@@ -10,7 +10,8 @@ use PHPUnit\Framework\TestCase;
  * Core requires none of auth, data, htmx, i18n, routing, view, twig or blade, but boots them when they are installed,
  * so only "conflict" keeps Composer from pairing core with a release that lacks the APIs it calls: auth 0.38
  * (bootAuth binds Preflow\Auth\Record\RecordUserProvider::factory() for record users from
- * config/auth.php), data 0.28 (Application passes cacheDir: to JsonFileDriver), htmx 0.46
+ * config/auth.php), data 0.59 (Application passes cacheDir: to JsonFileDriver; since 0.59 the drivers take a connector
+ * closure, the lazy connection), htmx 0.46
  * (HtmxExtensionProvider takes pathPrefix:), i18n 0.46 (LocaleMiddleware::urlPrefix()), routing 0.59 (Router takes store:, the boot manifest's route sets), view 0.58
  * (the Geo classes: GeoCollector, GeoMiddleware, RenderScopes, GeoEntries; the Seo classes: SeoConfig,
  * SeoContext, SeoSite, SchemaRegistry, SeoMiddleware; the Audit classes: AuditRegistry, PageRenderer
@@ -25,7 +26,7 @@ final class ComposerConstraintsTest extends TestCase
 
         $this->assertSame([
             'preflow/auth' => '<0.38',
-            'preflow/data' => '<0.58.1',
+            'preflow/data' => '<0.59',
             'preflow/htmx' => '<0.46',
             'preflow/i18n' => '<0.46',
             'preflow/routing' => '<0.59',
