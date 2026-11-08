@@ -13,6 +13,28 @@ use Preflow\Routing\Router;
 
 final class LazyHtmlSanitizerTest extends TestCase
 {
+    private string $cwd = '';
+    private string $base = '';
+
+    /** Array-config apps take the working directory as base path: give them a temp one, not the repo root. */
+    protected function setUp(): void
+    {
+        $this->cwd = getcwd() ?: '.';
+        $this->base = sys_get_temp_dir() . '/folio_boot_' . bin2hex(random_bytes(5));
+        mkdir($this->base, 0777, true);
+        chdir($this->base);
+    }
+
+    protected function tearDown(): void
+    {
+        chdir($this->cwd);
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->base, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+        foreach ($it as $f) {
+            $f->isDir() && !$f->isLink() ? rmdir($f->getPathname()) : unlink($f->getPathname());
+        }
+        rmdir($this->base);
+    }
+
     public function test_booting_folio_builds_no_sanitizer(): void
     {
         LazyHtmlSanitizer::$built = 0;
