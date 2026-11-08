@@ -77,7 +77,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * - `differs`: verified (page_cache.verify: 'first' for a key not verified yet in this release,
  *   'always' for every store), the page rendered once more as another anonymous visitor
  *   (another REMOTE_ADDR, no cookies) has another body or other stored headers outside its live
- *   parts and per-request values (logged: something personal is not in a live part);
+ *   parts and per-request values (logged with where it differs first: a header and both values,
+ *   or the body's first differing byte with some context from each render);
  * - `error`: the page could not be written (logged).
  *
  * Live parts (LiveParts): while a miss renders they leave signed placeholders, which are
@@ -417,11 +418,12 @@ final class PageCacheMiddleware implements MiddlewareInterface
             $reason ??= 'live-non-html';
         }
         if ($reason === null && $content !== null && $verify) {
-            $differs = $this->differs($request, $handler, $key, $response, $content);
+            $difference = null;
+            $differs = $this->differs($request, $handler, $key, $response, $content, $difference);
             // What the second render left (SEO's page meta) is put back to the first one's.
             $this->cache->restoreState($carried);
             if ($differs) {
-                $this->log('page cache: ' . $key->url() . ' differs per visitor outside live parts');
+                $this->log('page cache: ' . $key->url() . ' differs per visitor outside live parts' . ($difference !== null ? ' (' . $difference . ')' : ''));
                 $reason = 'differs';
             }
         }
@@ -501,7 +503,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * parts as placeholders, as they are stored. A second render that would not be stored either
      * (a cookie set for a visitor without one) or that fails differs too.
      */
-    private function differs(ServerRequestInterface $request, RequestHandlerInterface $handler, PageKey $key, ResponseInterface $first, string $content): bool
+    private function differs(ServerRequestInterface $request, RequestHandlerInterface $handler, PageKey $key, ResponseInterface $first, string $content, ?string &$difference = null): bool
     {
         $other = self::otherVisitor($request);
         $before = $this->cache->begin($key);
@@ -527,7 +529,10 @@ final class PageCacheMiddleware implements MiddlewareInterface
             $response = AnonymousGlobals::run((string) ($other->getServerParams()['REMOTE_ADDR'] ?? '192.0.2.1'), fn (): ResponseInterface => $this->recorder->outside(fn (): ResponseInterface => $this->cache->isolated(fn (): ResponseInterface => $this->visitorScope !== null
                 ? ($this->visitorScope)($other, $render)
                 : $render())));
-            if ($this->cache->refusal() !== null || $this->refusal($other, $key, $response) !== null) {
+            $refused = $this->cache->refusal() ?? $this->refusal($other, $key, $response);
+            if ($refused !== null) {
+                $difference = 'the second render would not be stored: ' . $refused;
+
                 return true;
             }
         } catch (\Throwable $e) {
@@ -538,9 +543,45 @@ final class PageCacheMiddleware implements MiddlewareInterface
             $this->cache->end($before);
         }
 
-        return $compared === null
-            || $compared[0] !== $this->values->toPlaceholders($content)
-            || $compared[1] !== $this->comparedHeaders($first);
+        if ($compared === null) {
+            $difference = 'the second render has no readable body';
+
+            return true;
+        }
+        $difference = self::difference($this->values->toPlaceholders($content), $compared[0], $this->comparedHeaders($first), $compared[1]);
+
+        return $difference !== null;
+    }
+
+    /**
+     * Where the first render ($body, $headers) and the second differ first, for the log: a header
+     * and both values, or the body's first differing byte with a little context from each; null
+     * when they are the same.
+     *
+     * @param array<string, list<string>> $headers
+     * @param array<string, list<string>> $otherHeaders
+     */
+    private static function difference(string $body, string $other, array $headers, array $otherHeaders): ?string
+    {
+        foreach (array_keys($headers + $otherHeaders) as $name) {
+            if (($headers[$name] ?? null) !== ($otherHeaders[$name] ?? null)) {
+                return 'header ' . $name . ': ' . self::excerpt(implode(', ', $headers[$name] ?? ['(none)'])) . ' / ' . self::excerpt(implode(', ', $otherHeaders[$name] ?? ['(none)']));
+            }
+        }
+        if ($body === $other) {
+            return null;
+        }
+        $at = strspn($body ^ $other, "\0");
+        $from = max(0, $at - 40);
+
+        return 'body at byte ' . $at . ': ' . self::excerpt(substr($body, $from, $at - $from + 80), $from > 0) . ' / ' . self::excerpt(substr($other, $from, $at - $from + 80), $from > 0);
+    }
+
+    private static function excerpt(string $text, bool $cut = false): string
+    {
+        $text = (string) preg_replace('/\s+/', ' ', $text);
+
+        return json_encode(($cut ? '…' : '') . (mb_check_encoding($text, 'UTF-8') ? $text : mb_convert_encoding($text, 'UTF-8', 'UTF-8')), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) ?: '""';
     }
 
     /**

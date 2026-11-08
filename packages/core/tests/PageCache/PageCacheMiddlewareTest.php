@@ -797,13 +797,15 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame(['miss', 'differs'], [$miss->getHeaderLine('X-Page-Cache'), $miss->getHeaderLine('X-Page-Cache-Skip')]);
         $this->assertSame('<p>for 1_2 at -</p>', (string) $miss->getBody(), 'the visitor gets their render');
         $this->assertFileDoesNotExist($this->pageFile('/album'));
-        $this->assertSame(['page cache: https://example.com/album differs per visitor outside live parts'], $this->logged);
+        $this->assertSame(['page cache: https://example.com/album differs per visitor outside live parts'
+            . ' (body at byte 7: "<p>for 1_2 at -</p>" / "<p>for - at 192.0.2.1</p>")'], $this->logged, 'with where it differs first');
         $this->assertSame(2, $personal->calls);
 
         // By address alone (a token from the IP that was not registered) it differs too.
         $byIp = $this->handler(fn (ServerRequestInterface $r): ResponseInterface => $this->html('<p>' . ($r->getServerParams()['REMOTE_ADDR'] ?? '-') . '</p>'));
         $request = new ServerRequest('GET', 'https://example.com/ip', [], null, '1.1', ['REMOTE_ADDR' => '203.0.113.9']);
         $this->assertSame('differs', $mw->process($request, $byIp)->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertStringEndsWith('(body at byte 3: "<p>203.0.113.9</p>" / "<p>192.0.2.1</p>")', end($this->logged));
 
         // The same for everyone, with a registered per-request value: stored.
         $same = $this->handler(fn (): ResponseInterface => $this->html('<form><input value="token-of-this-request"></form>'));
@@ -823,7 +825,8 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame('differs', $miss->getHeaderLine('X-Page-Cache-Skip'));
         $this->assertSame('{"albumCount":2}', $miss->getHeaderLine('HX-Trigger'), 'the visitor gets their own');
         $this->assertFileDoesNotExist($this->pageFile('/fragment'));
-        $this->assertSame(['page cache: https://example.com/fragment differs per visitor outside live parts'], $this->logged);
+        $this->assertSame(['page cache: https://example.com/fragment differs per visitor outside live parts'
+            . ' (header hx-trigger: "{\"albumCount\":2}" / "{\"albumCount\":0}")'], $this->logged);
 
         // Headers the same for everyone (in another case and order): stored.
         $same = $this->handler(fn (): ResponseInterface => $this->html('<p>x</p>')->withHeader('X-Robots-Tag', 'noindex'));
