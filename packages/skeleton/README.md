@@ -145,7 +145,7 @@ $posts = $dm->query(Post::class)
 
 ### HTMX
 
-Components can define actions that handle HTMX requests. The ExampleCard counter persists in the session across page reloads — no JavaScript needed.
+Components can define actions that handle HTMX requests. The ExampleCard counter keeps its count in the session of its actions (`/--component`) — no JavaScript needed. Public pages start no session (`session.paths` in `config/auth.php`), so the page they render starts at 0.
 
 ### Asset helpers
 
@@ -163,7 +163,8 @@ Components can define actions that handle HTMX requests. The ExampleCard counter
 | File | Purpose |
 |------|---------|
 | `config/app.php` | App name, debug level, timezone, locale, template engine |
-| `config/auth.php` | Guards, user providers, session settings |
+| `config/auth.php` | Guards, user providers, session settings (`paths`: sessions only on sign-in, admin and component paths, so public pages can be cached) |
+| `config/page_cache.php` | The page cache (on; serves pages to visitors who aren't signed in, with `app.debug` off) |
 | `config/data.php` | Storage drivers (SQLite, JSON, MySQL) |
 | `config/i18n.php` | Available locales, fallback, URL strategy |
 | `config/providers.php` | Service provider registration |
