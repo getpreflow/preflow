@@ -20,10 +20,11 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
     protected \PDO $pdo {
         get {
             if ($this->connection === null) {
-                $connector = $this->connector;
+                // Kept until connect and configure both succeed, so a failure throws the same way again.
+                $pdo = ($this->connector)();
+                $this->configure($pdo);
+                $this->connection = $pdo;
                 $this->connector = null;
-                $this->connection = $connector();
-                $this->configure($this->connection);
             }
 
             return $this->connection;

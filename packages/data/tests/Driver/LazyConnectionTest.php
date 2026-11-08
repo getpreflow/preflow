@@ -73,6 +73,58 @@ final class LazyConnectionTest extends TestCase
         $this->assertSame(1, $this->opened);
     }
 
+    public function test_a_failing_connector_throws_the_same_error_every_time(): void
+    {
+        $driver = new SqliteDriver(static function (): \PDO {
+            throw new \PDOException('down');
+        });
+
+        foreach ([1, 2] as $_) {
+            try {
+                $driver->pdo();
+                $this->fail('expected PDOException');
+            } catch (\PDOException $e) {
+                $this->assertSame('down', $e->getMessage());
+            }
+        }
+        $this->assertFalse($driver->connected());
+    }
+
+    public function test_a_failing_configure_step_never_leaves_an_unconfigured_connection(): void
+    {
+        $calls = 0;
+        $driver = new class (static fn (): \PDO => new \PDO('sqlite::memory:'), $calls) extends \Preflow\Data\Driver\PdoDriver {
+            public function __construct(\Closure $c, public int &$calls)
+            {
+                $d = new \Preflow\Data\Driver\SqliteDialect();
+                parent::__construct($c, $d, new \Preflow\Data\Driver\QueryCompiler($d));
+            }
+
+            protected function configure(\PDO $pdo): void
+            {
+                if (++$this->calls === 1) {
+                    throw new \PDOException('set failed');
+                }
+            }
+
+            public function exclusive(string $type, \Closure $fn): mixed
+            {
+                return $fn();
+            }
+        };
+
+        try {
+            $driver->pdo();
+            $this->fail('expected PDOException');
+        } catch (\PDOException) {
+        }
+        $this->assertFalse($driver->connected());
+        $this->assertInstanceOf(\PDO::class, $driver->pdo());
+        $driver->pdo();
+        $this->assertSame(2, $calls);
+        $this->assertTrue($driver->connected());
+    }
+
     #[Group('mysql')]
     public function test_mysql_session_setup_runs_once_when_it_connects(): void
     {
