@@ -463,7 +463,7 @@ final class TagIndex
         }
         $tags = array_values(array_unique([self::EVERYTHING, ...array_map(strval(...), $tags)]));
         foreach (array_chunk($tags, self::CHUNK) as $chunk) {
-            $statement = $pdo->prepare('SELECT 1 FROM invalidations WHERE at > CAST(? AS REAL) AND tag IN (' . self::marks($chunk) . ') LIMIT 1');
+            $statement = $pdo->prepare('SELECT 1 FROM invalidations WHERE at >= CAST(? AS REAL) AND tag IN (' . self::marks($chunk) . ') LIMIT 1');
             $statement->execute([self::real($since), ...$chunk]);
             if ($statement->fetchColumn() !== false) {
                 return true;

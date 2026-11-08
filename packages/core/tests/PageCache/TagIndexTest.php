@@ -95,7 +95,8 @@ final class TagIndexTest extends TestCase
 
         $this->assertTrue($index->invalidatedSince(['object:1'], $this->now - 1));
         $this->assertTrue($index->invalidatedSince([], $this->now - 1));
-        $this->assertFalse($index->invalidatedSince(['object:1'], $this->now));
+        $this->assertTrue($index->invalidatedSince(['object:1'], $this->now), 'the same instant counts');
+        $this->assertFalse($index->invalidatedSince(['object:1'], $this->now + 0.000001));
     }
 
     public function test_query_variants_per_path_are_capped_oldest_first(): void
@@ -213,7 +214,8 @@ final class TagIndexTest extends TestCase
         $index->recordInvalidation(['t'], 1794162049.083123);
 
         $this->assertTrue($index->invalidatedSince(['t'], 1794162049.083122), 'one microsecond after the render started');
-        $this->assertFalse($index->invalidatedSince(['t'], 1794162049.083123));
+        $this->assertTrue($index->invalidatedSince(['t'], 1794162049.083123), 'the same microsecond counts as during the render');
+        $this->assertFalse($index->invalidatedSince(['t'], 1794162049.083124));
     }
 
     public function test_invalidated_since_sees_only_later_invalidations(): void
@@ -224,7 +226,7 @@ final class TagIndexTest extends TestCase
 
         $this->assertTrue($index->invalidatedSince(['object:1'], $at - 0.5));
         $this->assertTrue($index->invalidatedSince(['menu', 'list:objects'], $at - 0.5));
-        $this->assertFalse($index->invalidatedSince(['object:1'], $at));
+        $this->assertTrue($index->invalidatedSince(['object:1'], $at), 'from the render start on, inclusive');
         $this->assertFalse($index->invalidatedSince(['object:1'], $at + 0.5));
         $this->assertFalse($index->invalidatedSince(['object:2'], 0.0));
         $this->assertFalse($index->invalidatedSince([], 0.0));

@@ -106,7 +106,8 @@ final class RefresherTest extends TestCase
         $index = TagIndex::forStore($store, $this->config, fn (): float => $this->now);
         $this->assertTrue($index->invalidatedSince(['default:job#9', 'default:job#'], $renderStart), 'a record page read during a bulk write');
         $this->assertFalse($index->invalidatedSince(['default:news'], $renderStart));
-        $this->assertFalse($index->invalidatedSince(['default:job'], $this->now), 'only after the render started');
+        $this->assertTrue($index->invalidatedSince(['default:job'], $this->now), 'the same instant counts as during the render');
+        $this->assertFalse($index->invalidatedSince(['default:job'], $this->now + 0.000001), 'only from the render start on');
     }
 
     public function test_everything_forgets_every_page_and_counts_for_every_tag(): void
