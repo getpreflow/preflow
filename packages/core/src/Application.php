@@ -2123,8 +2123,9 @@ final class Application
             return;
         }
 
-        // session.paths limits sessions (and their cookie) to these path prefixes;
-        // without it the session starts on every request.
+        // session.paths limits new sessions (and their cookie) to these path prefixes; a visitor
+        // who brings the session cookie resumes it on every path. Without it the session starts
+        // on every request.
         $paths = isset($sessionConfig['paths']) ? array_values((array) $sessionConfig['paths']) : null;
         unset($sessionConfig['paths']);
 
@@ -2134,7 +2135,7 @@ final class Application
         }
         $this->container->instance(\Preflow\Core\Http\Session\SessionInterface::class, $session);
 
-        $this->addMiddleware(new \Preflow\Core\Http\Session\SessionMiddleware($session, $paths));
+        $this->addMiddleware(new \Preflow\Core\Http\Session\SessionMiddleware($session, $paths, $this->sessionCookieName()));
     }
 
     /** @return array<string, mixed> config/auth.php, loaded once (it may hash passwords) */

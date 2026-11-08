@@ -625,7 +625,9 @@ return [
 - **Sessions.** Nothing is stored from a request that started the session. Without
   `auth.session.paths`, every request starts one at boot, so **a site must limit sessions to
   the paths that need them for anything to be cached**; until it does, every miss says
-  `X-Page-Cache-Skip: session` (with `explain` on):
+  `X-Page-Cache-Skip: session` (with `explain` on). With `paths`, a session starts on those
+  paths, and on any other path only when the visitor brings the session cookie: an anonymous
+  visitor gets none (their pages are stored), a signed-in one resumes theirs everywhere:
 
   ```php
   // config/auth.php
@@ -635,9 +637,14 @@ return [
   ],
   ```
 
-  Public pages then know nobody: signed-in visitors still get live pages (their `preflow_auth`
-  marker bypasses the cache), but a header showing "signed in as" belongs on those paths or
-  in what they load. The skeleton ships with its sign-in, admin and component paths.
+  A signed-in visitor's public pages show their account (and are never cached: the
+  `preflow_auth` marker bypasses the cache). A leftover session cookie of a visitor who signed
+  out also resumes a session, so that visitor's misses are not stored (a hit is still served,
+  before any session opens). The form of a cached page carries the public (stateless) CSRF
+  token; posted on a public path where the session only resumed by its cookie, it is accepted
+  as it is for a visitor without one (with a passing origin). A site that needs sessions for
+  guests on public pages (a cart before sign-in) must list those paths. The skeleton ships
+  with its sign-in, admin and component paths.
 - **The key** is the URL as the visitor asked for it (the locale prefix included), the locale
   the locale middleware resolved (a cookie or `Accept-Language` on unprefixed paths), the
   normalised query, the `vary_headers` values, and a forwarded scheme and host

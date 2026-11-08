@@ -279,6 +279,23 @@ final class CsrfMiddlewareTest extends TestCase
         $this->assertRefused('origin', fn () => $middleware->process($post('/members/register', ['Sec-Fetch-Site' => 'cross-site']), $this->app()));
     }
 
+    public function test_a_session_resumed_by_its_cookie_on_a_public_path_takes_the_public_token(): void
+    {
+        // A visitor with a leftover session cookie was served a cached page (the stateless token)
+        // and posts its form on that public path: the session only resumed because of the cookie.
+        $session = $this->liveSession();
+        $middleware = $this->middleware();
+        $post = fn (array $headers, bool $resumed = true) => $this->withSession($this->post('/like', $headers, ['_csrf_token' => $this->stateless()->issue()]), $session)
+            ->withAttribute(\Preflow\Core\Http\Session\SessionMiddleware::RESUMED_BY_COOKIE, $resumed ?: null);
+
+        $this->assertSame(200, $middleware->process($post(['Sec-Fetch-Site' => 'same-origin']), $this->app())->getStatusCode());
+
+        // Still only with a passing origin, and not where the session belongs (a session path).
+        $this->assertRefused('token', fn () => $middleware->process($post([]), $this->app()));
+        $this->assertRefused('origin', fn () => $middleware->process($post(['Sec-Fetch-Site' => 'cross-site']), $this->app()));
+        $this->assertRefused('token', fn () => $middleware->process($post(['Sec-Fetch-Site' => 'same-origin'], resumed: false), $this->app()));
+    }
+
     public function test_live_session_without_its_cookie_is_still_checked_on_its_token(): void
     {
         // Resumed by other means than the configured cookie (trans_sid, a custom session, a worker runtime).

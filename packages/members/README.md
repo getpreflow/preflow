@@ -70,7 +70,8 @@ php preflow folio:extensions:apply
   ```
 
 - The session `paths` must cover the members `path` (`/members` above); public pages then
-  get no session and no cookie. Locale prefixes are stripped first, so `/de/members/login`
+  give no session and no cookie to visitors without one, and resume a signed-in member's
+  session (their cookie), so a public header can show the account. Locale prefixes are stripped first, so `/de/members/login`
   counts as `/members/login`.
 - A password change or reset ends the member's other sessions: the member type's
   `auth_epoch` field is the session epoch the guard checks on every request (provider key

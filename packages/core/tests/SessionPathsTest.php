@@ -16,7 +16,10 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
-/** session.paths: public pages get no session (and so no cookie). */
+/**
+ * session.paths: public pages get no session (and so no cookie), unless the visitor brings the
+ * session cookie (signed in): then it resumes on every path.
+ */
 final class SessionPathsTest extends TestCase
 {
     public function test_no_session_outside_configured_paths(): void
@@ -37,6 +40,28 @@ final class SessionPathsTest extends TestCase
             $this->assertTrue($session->isStarted(), $path);
             $this->assertSame($session, $captured->getAttribute(SessionInterface::class));
         }
+    }
+
+    public function test_a_visitor_with_the_session_cookie_resumes_it_on_any_path(): void
+    {
+        $session = new ArraySession();
+        $captured = $this->run_('/hello', $session, ['/folio'], cookies: ['paths_test' => 'abc']);
+
+        $this->assertTrue($session->isStarted(), 'a signed-in visitor keeps their session on public pages');
+        $this->assertSame($session, $captured->getAttribute(SessionInterface::class));
+        $this->assertTrue($captured->getAttribute(SessionMiddleware::RESUMED_BY_COOKIE));
+
+        // Another cookie, or an empty one, is no session cookie.
+        foreach ([['other' => 'abc'], ['paths_test' => '']] as $cookies) {
+            $session = new ArraySession();
+            $this->run_('/hello', $session, ['/folio'], cookies: $cookies);
+            $this->assertFalse($session->isStarted());
+        }
+
+        // On a session path the session is the path's own.
+        $session = new ArraySession();
+        $captured = $this->run_('/folio', $session, ['/folio'], cookies: ['paths_test' => 'abc']);
+        $this->assertNull($captured->getAttribute(SessionMiddleware::RESUMED_BY_COOKIE));
     }
 
     public function test_a_request_marked_without_session_gets_none(): void
@@ -77,6 +102,19 @@ final class SessionPathsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_public_request_with_the_session_cookie_resumes_that_session(): void
+    {
+        $dir = $this->app("'paths' => ['/folio']");
+        $app = Application::create($dir);
+        $app->boot();
+        $_COOKIE['paths_test'] = 'resumedsession0123456789';
+        $app->handle((new Psr17Factory())->createServerRequest('GET', '/hello')->withCookieParams($_COOKIE));
+
+        $this->assertSame('resumedsession0123456789', session_id(), 'the visitor\'s own session');
+        $this->assertTrue($app->container()->get(SessionInterface::class)->isStarted());
+    }
+
+    #[RunInSeparateProcess]
     public function test_boot_without_paths_still_starts_the_session(): void
     {
         $dir = $this->app('');
@@ -86,7 +124,8 @@ final class SessionPathsTest extends TestCase
     }
 
     /** @param list<string>|null $paths */
-    private function run_(string $path, SessionInterface $session, ?array $paths, bool $withoutSession = false): ServerRequestInterface
+    /** @param array<string, string> $cookies */
+    private function run_(string $path, SessionInterface $session, ?array $paths, bool $withoutSession = false, array $cookies = []): ServerRequestInterface
     {
         $handler = new class implements RequestHandlerInterface {
             public ?ServerRequestInterface $captured = null;
@@ -98,11 +137,11 @@ final class SessionPathsTest extends TestCase
                 return new Response(200);
             }
         };
-        $request = (new Psr17Factory())->createServerRequest('GET', $path);
+        $request = (new Psr17Factory())->createServerRequest('GET', $path)->withCookieParams($cookies);
         if ($withoutSession) {
             $request = $request->withAttribute(SessionMiddleware::WITHOUT_SESSION, true);
         }
-        (new SessionMiddleware($session, $paths))->process($request, $handler);
+        (new SessionMiddleware($session, $paths, 'paths_test'))->process($request, $handler);
 
         return $handler->captured ?? throw new \RuntimeException('handler not reached');
     }

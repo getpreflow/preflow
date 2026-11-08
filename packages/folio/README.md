@@ -348,9 +348,10 @@ A type's `key` cannot be a path Folio uses under its prefix (`login`, `logout`,
 "frontend": { "route": "/tools/r/{slug}", "permission": "members.access", "login": "/tools/login" }
 ```
 
-The gate needs the signed-in user, and sessions only exist on `session.paths` (when
-config/auth.php sets them): include the route's prefix there (`/tools`, and `/de/tools`
-for prefixed locales), or every visitor counts as signed out. The session cookie's path
+The gate needs the signed-in user. With `session.paths` (config/auth.php), a session starts on
+those paths and resumes elsewhere only when the visitor brings its cookie: include the route's
+prefix there (`/tools`, and `/de/tools` for prefixed locales) so a member who signs in there
+has a session for it. The session cookie's path
 (`session.path`) must cover the prefix as well. Access is granted when any signed-in user,
 staff or member guard, has the permission. A share-preview link does not
 open the gate: it stays a staff tool, and the reviewer must pass the gate as well. The

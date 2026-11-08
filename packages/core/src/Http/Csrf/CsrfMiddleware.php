@@ -119,8 +119,12 @@ final class CsrfMiddleware implements MiddlewareInterface
                 return $handler->handle($request);
             }
             // A public page's form (stateless token) posting into a sign-in form: no authority
-            // of the session is used there. Everywhere else a live session needs its own token.
-            if ($verdict === OriginVerdict::Pass && $this->signIn->matches($path) && $this->stateless->verify($submitted)) {
+            // of the session is used there. Nor on a public path, where the session only resumed
+            // because the visitor brought its cookie (session.paths): the form may come from a
+            // cached page, as it would for a visitor without one. Everywhere else a live session
+            // needs its own token.
+            $public = $this->signIn->matches($path) || $request->getAttribute(\Preflow\Core\Http\Session\SessionMiddleware::RESUMED_BY_COOKIE) === true;
+            if ($verdict === OriginVerdict::Pass && $public && $this->stateless->verify($submitted)) {
                 return $handler->handle($request);
             }
             throw $this->refuse('token');

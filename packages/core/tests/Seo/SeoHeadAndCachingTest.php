@@ -380,8 +380,9 @@ final class SeoHeadAndCachingTest extends TestCase
             . "'password_hasher' => \\Preflow\\Auth\\NativePasswordHasher::class,"
             . "'session' => ['cookie' => 'club_session', 'paths' => ['/account']],"
             . "];\n");
-        $this->assertFalse($this->get('/about', ['Cookie' => 'club_session=visitor'])->hasHeader('ETag'));
         $this->assertTrue($this->get('/about', ['Cookie' => session_name() . '=visitor'])->hasHeader('ETag'));
+        // Last: it resumes that session (session.paths), which stays in this process.
+        $this->assertFalse($this->get('/about', ['Cookie' => 'club_session=visitor'])->hasHeader('ETag'));
         unlink($this->dir . '/config/auth.php');
 
         // A cookie PHP queued natively (a session started during the request) counts too.

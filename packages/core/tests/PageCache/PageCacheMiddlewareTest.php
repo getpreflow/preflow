@@ -587,6 +587,22 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame([], $response->getHeader('Set-Cookie'));
         $this->assertSame(PHP_SESSION_NONE, session_status());
 
+        // A miss with the session cookie resumes that session (session.paths): not stored, and
+        // the anonymous visitor after it still gets the page stored.
+        $this->write('app/pages/fresh.twig', '<p>fresh</p>');
+        $app = $this->webApp();
+        $resumed = $app->handle($this->request('/fresh')->withCookieParams(['pc_session' => 'left-over']));
+        $this->assertSame('session', $resumed->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertTrue($app->container()->get(SessionInterface::class)->isStarted());
+        $anonymous = $this->web('/fresh');
+        $this->assertSame('', $anonymous->getHeaderLine('X-Page-Cache-Skip'), 'an anonymous visitor opens no session');
+        $this->assertSame('hit', $this->web('/fresh')->getHeaderLine('X-Page-Cache'));
+        // Signed in (the marker and the session cookie): bypassed, and the session resumes.
+        $app = $this->webApp();
+        $signedIn = $app->handle($this->request('/fresh')->withCookieParams(['pc_session' => 'left-over', 'preflow_auth' => '1']));
+        $this->assertSame('bypass', $signedIn->getHeaderLine('X-Page-Cache'));
+        $this->assertTrue($app->container()->get(SessionInterface::class)->isStarted());
+
         // Where the session lives, nothing is stored.
         $this->write('app/pages/account.twig', '<p>account</p>');
         $this->web('/account');
