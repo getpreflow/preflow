@@ -27,7 +27,12 @@ final readonly class CsrfConfig
             return new self();
         }
 
-        $config = (array) require $path;
+        return self::fromArray((array) require $path);
+    }
+
+    /** @param array<string, mixed> $config config/csrf.php's array */
+    public static function fromArray(array $config): self
+    {
         $strings = static fn (mixed $value): array => array_values(array_map('strval', (array) $value));
 
         return new self(

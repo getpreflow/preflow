@@ -1,0 +1,176 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Core\Boot;
+
+use Preflow\Core\Application;
+
+/**
+ * Builds the boot manifest (`preflow optimize`): boots a fresh application for the base path as
+ * a web request would (outside the console mode), with a recording BootManifest, reads every
+ * config file, runs the producers' warmers, and writes what they remembered with the signatures
+ * of their sources. Also reports drift (`optimize --check`).
+ */
+final class ManifestBuilder
+{
+    public function __construct(
+        private readonly string $basePath,
+    ) {}
+
+    /**
+     * Builds and writes the manifest. With debug on (app.debug) none is written and an existing
+     * one is removed: boot ignores a manifest in debug mode anyway.
+     *
+     * @return array{written: bool, file: string, skipped: list<string>, catalogs: list<string>, config: list<string>, reason: ?string}
+     */
+    public function write(): array
+    {
+        $base = $this->absoluteBase();
+        $data = $this->build();
+        $file = ManifestFile::path($base);
+        $recorded = $data['__recorded'];
+        unset($data['__recorded']);
+
+        if ((int) ($data['config']['app']['debug'] ?? 0) !== 0) {
+            ManifestFile::forget($base);
+
+            return ['written' => false, 'file' => $file, 'skipped' => [], 'catalogs' => [], 'config' => [], 'reason' => 'APP_DEBUG is on: boot never uses a manifest in debug mode (an existing one was removed).'];
+        }
+
+        ManifestFile::write($base, $data);
+
+        return [
+            'written' => true,
+            'file' => $file,
+            'skipped' => $recorded['skipped'],
+            'catalogs' => array_keys($data['catalogs']),
+            'config' => array_keys($data['config']),
+            'reason' => null,
+        ];
+    }
+
+    /**
+     * The manifest's array, as write() would store it (plus '__recorded').
+     *
+     * @return array<string, mixed>
+     */
+    public function build(): array
+    {
+        $base = $this->absoluteBase();
+        $manifest = BootManifest::recording();
+
+        $app = Application::create($base);
+        $app->setRunningInConsole(false);
+        $app->useBootManifest($manifest);
+        $app->boot();
+        // Every config file, also those no boot step read: the manifest holds the merged config.
+        foreach (glob($base . '/config/*.php') ?: [] as $file) {
+            $app->configFile(basename($file, '.php'));
+        }
+        $manifest->warm($app);
+
+        $recorded = $manifest->recorded();
+
+        // Core sources: the config files, the .env, Composer's package list, the extensions file.
+        $sources = [];
+        foreach ([$base . '/config', $base . '/.env', $base . '/vendor/composer/installed.json', ...$recorded['sources']] as $path) {
+            $sources[self::relative($base, $path)] = ManifestFile::signature($path);
+        }
+        ksort($sources);
+
+        $runtime = [];
+        foreach (ManifestFile::RUNTIME as $source) {
+            $runtime[$source] = ManifestFile::stamp($base . '/' . $source);
+        }
+        $keys = ManifestFile::envKeys($base . '/.env');
+        $runtime['env'] = ['keys' => $keys, 'hash' => ManifestFile::envHash($keys)];
+
+        return [
+            'version' => ManifestFile::VERSION,
+            'built' => date(DATE_ATOM),
+            'sources' => $sources,
+            'runtime' => $runtime,
+            'config' => $recorded['config'],
+            'packages' => $recorded['packages'],
+            'catalogs' => $recorded['catalogs'],
+            'routes' => $recorded['routes'],
+            '__recorded' => $recorded,
+        ];
+    }
+
+    /**
+     * What changed since the manifest was written: one line per source whose signature differs
+     * (or that is gone), plus the runtime-checked sources. Null when there is no manifest.
+     *
+     * @return list<string>|null
+     */
+    public function drift(): ?array
+    {
+        $base = $this->absoluteBase();
+        $file = ManifestFile::path($base);
+        if (!is_file($file)) {
+            return null;
+        }
+        try {
+            $data = include $file;
+        } catch (\Throwable) {
+            return ['the manifest does not load; run preflow optimize'];
+        }
+        if (!is_array($data) || ($data['version'] ?? null) !== ManifestFile::VERSION) {
+            return ['the manifest has another version; run preflow optimize'];
+        }
+
+        $drift = [];
+        foreach ((array) ($data['sources'] ?? []) as $path => $signature) {
+            $now = ManifestFile::signature(self::absolute($base, (string) $path));
+            if ($now !== $signature) {
+                $drift[] = match (true) {
+                    $now === '-' => "{$path}: removed",
+                    $signature === '-' => "{$path}: added",
+                    default => "{$path}: changed",
+                };
+            }
+        }
+        foreach (ManifestFile::RUNTIME as $source) {
+            if (($data['runtime'][$source] ?? null) !== ManifestFile::stamp($base . '/' . $source)) {
+                $drift[] = "{$source}: changed (checked per request: web requests boot live until preflow optimize)";
+            }
+        }
+        \Preflow\Core\EnvLoader::load($base . '/.env'); // as a web request's boot does (it never overrides a set variable)
+        $env = $data['runtime']['env'] ?? null;
+        $keys = ManifestFile::envKeys($base . '/.env');
+        if (!is_array($env) || ($env['keys'] ?? null) !== $keys || ($env['hash'] ?? null) !== ManifestFile::envHash($keys)) {
+            $drift[] = 'environment: a .env variable differs (checked per request: web requests boot live until preflow optimize)';
+        }
+
+        return array_values(array_unique($drift));
+    }
+
+    private function absoluteBase(): string
+    {
+        $base = rtrim($this->basePath, '/');
+        if (!str_starts_with($base, '/')) {
+            $base = rtrim((getcwd() ?: '') . '/' . $base, '/');
+        }
+
+        return realpath($base) ?: $base;
+    }
+
+    private static function relative(string $base, string $path): string
+    {
+        $real = realpath($path);
+        foreach (array_unique([$path, $real === false ? $path : $real]) as $candidate) {
+            if (str_starts_with($candidate, $base . '/')) {
+                return substr($candidate, strlen($base) + 1);
+            }
+        }
+
+        return $path; // outside the project (e.g. a models path elsewhere): kept absolute
+    }
+
+    private static function absolute(string $base, string $path): string
+    {
+        return str_starts_with($path, '/') ? $path : $base . '/' . $path;
+    }
+}

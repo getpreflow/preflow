@@ -5,6 +5,8 @@
 storage/cache/*
 storage/logs/*
 storage/data/*.sqlite
+# The boot manifest (preflow optimize), written per release.
+/bootstrap/cache/
 !storage/cache/.gitkeep
 !storage/logs/.gitkeep
 !storage/data/.gitkeep

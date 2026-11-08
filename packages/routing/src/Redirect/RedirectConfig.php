@@ -22,7 +22,12 @@ final readonly class RedirectConfig
             return new self();
         }
 
-        $config = (array) require $path;
+        return self::fromArray((array) require $path);
+    }
+
+    /** @param array<string, mixed> $config config/redirects.php's array */
+    public static function fromArray(array $config): self
+    {
         $limit = (int) ($config['not_found_limit'] ?? 1000);
 
         if ($limit < 1) {

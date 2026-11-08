@@ -135,6 +135,26 @@ php preflow cache:clear --all
 # Cleared data.json: 12 file(s), 3.1 KB.
 ```
 
+### `optimize [--check]` — write the boot manifest
+
+Writes `bootstrap/cache/boot.php` (atomically): the merged config, the package discovery data
+and the catalogs (components, blocks, extensions, models, ...), so web requests with
+`APP_DEBUG=0` read them instead of scanning. See preflow/core's README, "Boot manifest", for
+when a request uses it. Run it on every deploy after `composer install` and migrations /
+`folio:extensions:apply`, before the release goes live. With `APP_DEBUG` on it writes none
+(and removes an existing one). `cache:clear` (key `boot`) removes it.
+
+`optimize --check` lists the sources changed since the manifest was written and exits with 1;
+it exits with 0 when the manifest is current and with 1 when there is none.
+
+```
+php preflow optimize
+# Boot manifest written: /srv/site/releases/42/bootstrap/cache/boot.php
+#   config: 18 file(s); catalogs: core.components, core.controllers, folio.extensions, …
+php preflow optimize --check
+# Boot manifest is current.
+```
+
 ### `auth:user [PREFIX]` — set a login in `.env`
 
 Asks for an email and a password (hidden, twice, at least 8 characters) and

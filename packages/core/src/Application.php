@@ -47,6 +47,12 @@ final class Application
     /** see runningInConsole(); null: decided by the PHP SAPI */
     private ?bool $console = null;
 
+    /** see bootManifest() */
+    private \Preflow\Core\Boot\BootManifest $manifest;
+
+    /** @var array<string, mixed> config file results by name, see configFile() */
+    private array $configFiles = [];
+
     private function __construct(Config $config, string $basePath)
     {
         $this->config = $config;
@@ -58,7 +64,15 @@ final class Application
         $this->container->instance(Config::class, $config);
         $this->container->instance(Container::class, $this->container);
         $this->container->instance(MiddlewarePipeline::class, $this->pipeline);
-        $this->container->instance(CacheRegistry::class, new CacheRegistry());
+        $this->manifest = \Preflow\Core\Boot\BootManifest::off();
+        $this->container->instance(\Preflow\Core\Boot\BootManifest::class, $this->manifest);
+        $caches = new CacheRegistry();
+        $caches->register(new \Preflow\Core\Cache\FileCache(
+            'boot',
+            'Boot manifest (preflow optimize)',
+            \Preflow\Core\Boot\ManifestFile::path($this->absolutePath('')),
+        ));
+        $this->container->instance(CacheRegistry::class, $caches);
     }
 
     /**
@@ -75,25 +89,107 @@ final class Application
 
         EnvLoader::load(rtrim($basePath, '/') . '/.env');
 
-        $configPath = rtrim($basePath, '/') . '/config/app.php';
-        $appConfig = file_exists($configPath) ? require $configPath : [];
-        $config = ['app' => $appConfig];
+        $app = new self(new Config(), $basePath);
+        $app->config->replace(self::configItems($app->configFile(...)));
 
-        // Responsive image presets (image.presets), read by the view layer and Folio's asset library.
-        $imagePath = rtrim($basePath, '/') . '/config/image.php';
-        if (file_exists($imagePath)) {
-            $image = require $imagePath;
-            $config['image'] = is_array($image) ? $image : [];
+        return $app;
+    }
+
+    /**
+     * The Config items from the config files: app (config/app.php), image (responsive image
+     * presets, read by the view layer and Folio's asset library) and view (view.pdf: temp dir,
+     * fonts, default font for PDFs).
+     *
+     * @param \Closure(string): mixed $file configFile()
+     * @return array<string, mixed>
+     */
+    private static function configItems(\Closure $file): array
+    {
+        $app = $file('app');
+        $config = ['app' => $app ?? []];
+        foreach (['image', 'view'] as $name) {
+            $value = $file($name);
+            if ($value !== null) {
+                $config[$name] = is_array($value) ? $value : [];
+            }
         }
 
-        // View settings (view.pdf: temp dir, fonts, default font for PDFs).
-        $viewPath = rtrim($basePath, '/') . '/config/view.php';
-        if (file_exists($viewPath)) {
-            $view = require $viewPath;
-            $config['view'] = is_array($view) ? $view : [];
+        return $config;
+    }
+
+    /**
+     * The result of config/{name}.php, null when there is no such file. Loaded once per
+     * application; with a boot manifest, taken from it (see bootManifest()). Packages read the
+     * app's config files through this, so a manifest boot needn't load them.
+     */
+    public function configFile(string $name): mixed
+    {
+        if (array_key_exists($name, $this->configFiles)) {
+            return $this->configFiles[$name];
         }
 
-        return new self(new Config($config), $basePath);
+        return $this->configFiles[$name] = $this->manifest->config($name, function () use ($name): mixed {
+            $path = $this->basePath('config/' . $name . '.php');
+
+            return is_file($path) ? require $path : null;
+        });
+    }
+
+    /** Whether config/{name}.php exists (from the boot manifest when one is used). */
+    public function hasConfigFile(string $name): bool
+    {
+        return $this->configFile($name) !== null;
+    }
+
+    /**
+     * The boot manifest this boot uses (`preflow optimize`, {basePath}/bootstrap/cache/boot.php).
+     * It is used only outside the console, with app.debug off, and while .env and
+     * config/folio/extensions.json are unchanged (checked on every request); otherwise it is
+     * off and every value is computed live. Packages take their catalogs from it through
+     * BootManifest::remember().
+     */
+    public function bootManifest(): \Preflow\Core\Boot\BootManifest
+    {
+        return $this->manifest;
+    }
+
+    /**
+     * Sets the boot manifest before boot() (ManifestBuilder records one; tests).
+     *
+     * @internal
+     */
+    public function useBootManifest(\Preflow\Core\Boot\BootManifest $manifest): void
+    {
+        $this->manifest = $manifest;
+        $this->container->instance(\Preflow\Core\Boot\BootManifest::class, $manifest);
+    }
+
+    /**
+     * Picks the boot manifest for this boot: a recording one gets the config files read so far;
+     * outside the console, a current manifest file (with debug off) replaces the config.
+     */
+    private function resolveManifest(): void
+    {
+        if ($this->manifest->isRecording()) {
+            $read = $this->configFiles;
+            $this->configFiles = [];
+            foreach ($read as $name => $value) {
+                $this->configFiles[$name] = $this->manifest->config($name, static fn (): mixed => $value);
+            }
+
+            return;
+        }
+        if ($this->manifest->active() || $this->runningInConsole()) {
+            return; // the console never reads the manifest
+        }
+        $data = \Preflow\Core\Boot\ManifestFile::load($this->absolutePath(''));
+        $debug = is_array($data['config']['app'] ?? null) ? ($data['config']['app']['debug'] ?? 0) : $this->config->get('app.debug', 0);
+        if ($data === null || (int) $debug !== 0) {
+            return;
+        }
+        $this->useBootManifest(\Preflow\Core\Boot\BootManifest::fromData($data));
+        $this->configFiles = [];
+        $this->config->replace(self::configItems($this->configFile(...)));
     }
 
     /** basePath($sub), anchored at the working directory when the base path is relative. */
@@ -190,6 +286,8 @@ final class Application
      */
     public function boot(): void
     {
+        $this->resolveManifest();
+
         $debug = DebugLevel::from((int) $this->config->get('app.debug', 0));
         $secretKey = $this->config->get('app.key', \Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY);
 
@@ -470,12 +568,11 @@ final class Application
             $this->container->instance(\Preflow\Data\Schema\RecordTables::class, new \Preflow\Data\Schema\RecordTables());
         }
 
-        $dataConfigPath = $this->basePath('config/data.php');
-        if (!file_exists($dataConfigPath)) {
+        $dataConfig = $this->configFile('data');
+        if ($dataConfig === null) {
             return;
         }
-
-        $dataConfig = require $dataConfigPath;
+        $dataConfig = is_array($dataConfig) ? $dataConfig : [];
         $drivers = [];
 
         foreach ($dataConfig['drivers'] ?? [] as $name => $driverConfig) {
@@ -640,7 +737,7 @@ final class Application
         // Packages with request-scoped state add a wrapper here (bootGeo adds the core one)
         $this->container->instance(\Preflow\View\Geo\RenderScopes::class, new \Preflow\View\Geo\RenderScopes());
         // GEO settings and llms.txt's pages: here, so providers can read the one and add to the other
-        $this->container->instance(\Preflow\View\Geo\GeoConfig::class, \Preflow\View\Geo\GeoConfig::fromFile($this->basePath('config/geo.php')));
+        $this->container->instance(\Preflow\View\Geo\GeoConfig::class, $this->viewConfig(\Preflow\View\Geo\GeoConfig::class, 'geo'));
         // The public pages the sitemap and llms.txt both list
         $publicPages = new \Preflow\View\Seo\PublicPages();
         $this->container->instance(\Preflow\View\Seo\PublicPages::class, $publicPages);
@@ -667,7 +764,7 @@ final class Application
             },
         ));
         // SEO settings, the page meta templates and controllers fill, and what sites register (JSON-LD builders, defaults)
-        $seoConfig = \Preflow\View\Seo\SeoConfig::fromFile($this->basePath('config/seo.php'));
+        $seoConfig = $this->viewConfig(\Preflow\View\Seo\SeoConfig::class, 'seo');
         // A typo in a template's seo({…}) is ignored; in debug mode the log names it.
         $seoContext = new \Preflow\View\Seo\SeoContext($debug->isDebug()
             ? static function (array $keys): void {
@@ -708,6 +805,20 @@ final class Application
     }
 
     /**
+     * GeoConfig or SeoConfig from config/{name}.php (through configFile()); the defaults without one.
+     *
+     * @template T of \Preflow\View\Geo\GeoConfig|\Preflow\View\Seo\SeoConfig
+     * @param class-string<T> $class
+     * @return T
+     */
+    private function viewConfig(string $class, string $name): object
+    {
+        $config = $this->configFile($name);
+
+        return $config === null ? new $class() : $class::fromArray((array) $config);
+    }
+
+    /**
      * Security headers + CSP. Piped right after the view layer (it needs the
      * request nonce) and before session/CSRF/auth middleware, so it wraps them.
      * Debug mode sends the policy as report-only so dev tooling keeps working.
@@ -725,11 +836,7 @@ final class Application
 
     private function bootSecurityHeaders(DebugLevel $debug): void
     {
-        $config = [];
-        $path = $this->basePath('config/security.php');
-        if (file_exists($path)) {
-            $config = (array) require $path;
-        }
+        $config = (array) ($this->configFile('security') ?? []);
 
         $this->securityHeaders = new \Preflow\Core\Http\SecurityHeadersMiddleware($this->nonceProvider(), $config, $debug->isDebug());
         $this->addMiddleware($this->securityHeaders);
@@ -1038,8 +1145,7 @@ final class Application
             // htmx itself: vendored and inlined (no external request). Included
             // always (default), on demand (when a template uses hd.*), or never.
             $assets = $this->container->get(\Preflow\View\AssetCollector::class);
-            $htmxConfigPath = $this->basePath('config/htmx.php');
-            $htmxConfig = file_exists($htmxConfigPath) ? (array) require $htmxConfigPath : [];
+            $htmxConfig = (array) ($this->configFile('htmx') ?? []);
             $htmxAssets = new \Preflow\Htmx\HtmxAssets($assets, (string) ($htmxConfig['include'] ?? 'always'));
             $this->container->instance(\Preflow\Htmx\HtmxAssets::class, $htmxAssets);
             $htmxDriver->useAssets($htmxAssets); // form helpers (form_begin, inline validation) need htmx too
@@ -1108,8 +1214,7 @@ final class Application
      */
     private function contentLocales(): \Preflow\Data\Locales
     {
-        $path = $this->basePath('config/i18n.php');
-        $config = file_exists($path) ? (array) require $path : [];
+        $config = (array) ($this->configFile('i18n') ?? []);
         $default = (string) ($config['default'] ?? $this->config->get('app.locale', 'en'));
 
         return new \Preflow\Data\Locales(
@@ -1130,10 +1235,10 @@ final class Application
         // content-only multilingual app may have config/i18n.php but no lang/ yet), so a
         // site with neither keeps its frontend unchanged.
         $langDir = $this->basePath('lang');
-        $i18nPath = $this->basePath('config/i18n.php');
-        $localized = is_dir($langDir) || file_exists($i18nPath);
+        $i18nFile = $this->configFile('i18n');
+        $localized = is_dir($langDir) || $i18nFile !== null;
 
-        $i18nConfig = file_exists($i18nPath) ? (array) require $i18nPath : [];
+        $i18nConfig = (array) ($i18nFile ?? []);
         $locale = (string) ($i18nConfig['default'] ?? $this->config->get('app.locale', 'en'));
         $fallback = (string) ($i18nConfig['fallback'] ?? $locale);
         $available = array_values((array) ($i18nConfig['available'] ?? [$locale]));
@@ -1142,7 +1247,7 @@ final class Application
         $translator = new \Preflow\I18n\Translator($langDir, $locale, $fallback);
         $this->container->instance(\Preflow\I18n\Translator::class, $translator);
         if (class_exists(\Preflow\I18n\TranslationRegistry::class)) {
-            $registry = \Preflow\I18n\TranslationRegistry::fromInstalled($this->basePath('vendor/composer/installed.json'), $this->composerCachePath());
+            $registry = $this->translationRegistry();
             $registry->apply($translator);
             $this->container->instance(\Preflow\I18n\TranslationRegistry::class, $registry);
         }
@@ -1169,18 +1274,50 @@ final class Application
         }
     }
 
+    /**
+     * The translation groups installed packages declare (extra.preflow.translations), from the
+     * boot manifest when it has them.
+     */
+    private function translationRegistry(): \Preflow\I18n\TranslationRegistry
+    {
+        $class = \Preflow\I18n\TranslationRegistry::class;
+        $installed = $this->basePath('vendor/composer/installed.json');
+        if (!method_exists($class, 'fromArray')) {
+            return $class::fromInstalled($installed, $this->composerCachePath()); // preflow/i18n before 0.59
+        }
+
+        return $class::fromArray($this->manifest->remember(
+            'i18n.translations',
+            fn (): array => $class::fromPackages($installed, $this->installedPackages())->toArray(),
+            [$installed],
+        ));
+    }
+
+    /**
+     * The installed packages (vendor/composer/installed.json, as InstalledPackages reads it),
+     * from the boot manifest when it has them.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function installedPackages(): array
+    {
+        return $this->manifest->packages(fn (): array => \Preflow\Core\Composer\InstalledPackages::read(
+            $this->basePath('vendor/composer/installed.json'),
+            $this->composerCachePath(),
+        ));
+    }
+
     private function bootNotify(): void
     {
         if (!class_exists(\Preflow\Notify\Notifier::class)) {
             return;
         }
 
-        $notifyPath = $this->basePath('config/notify.php');
-        if (!file_exists($notifyPath)) {
+        $notifyConfig = $this->configFile('notify');
+        if ($notifyConfig === null) {
             return;
         }
 
-        $notifyConfig = require $notifyPath;
         $factory = new \Preflow\Notify\TransportFactory(
             (array) ($notifyConfig['transports'] ?? []),
             $this->basePath(),
@@ -1204,9 +1341,8 @@ final class Application
 
     private function bootProviders(): void
     {
-        $providersPath = $this->basePath('config/providers.php');
-        if (file_exists($providersPath)) {
-            $providers = require $providersPath;
+        $providers = $this->configFile('providers');
+        if ($providers !== null) {
             foreach ($providers as $providerClass) {
                 if (class_exists($providerClass)) {
                     $provider = new $providerClass();
@@ -1220,12 +1356,10 @@ final class Application
 
     private function bootMiddleware(): void
     {
-        $middlewarePath = $this->basePath('config/middleware.php');
-        if (!file_exists($middlewarePath)) {
+        $middlewareClasses = $this->configFile('middleware');
+        if ($middlewareClasses === null) {
             return;
         }
-
-        $middlewareClasses = require $middlewarePath;
         foreach ($middlewareClasses as $class) {
             if (!class_exists($class)) {
                 continue;
@@ -1249,7 +1383,12 @@ final class Application
             return;
         }
 
-        $config = \Preflow\Routing\Redirect\RedirectConfig::fromFile($this->basePath('config/redirects.php'));
+        $redirects = $this->configFile('redirects');
+        $config = $redirects === null
+            ? new \Preflow\Routing\Redirect\RedirectConfig()
+            : (method_exists(\Preflow\Routing\Redirect\RedirectConfig::class, 'fromArray')
+                ? \Preflow\Routing\Redirect\RedirectConfig::fromArray((array) $redirects)
+                : \Preflow\Routing\Redirect\RedirectConfig::fromFile($this->basePath('config/redirects.php')));
         [, $defaultLocale] = $this->siteLocales();
         $container = $this->container;
 
@@ -1282,8 +1421,7 @@ final class Application
      */
     private function siteLocales(): array
     {
-        $i18nPath = $this->basePath('config/i18n.php');
-        $i18n = file_exists($i18nPath) ? (array) require $i18nPath : [];
+        $i18n = (array) ($this->configFile('i18n') ?? []);
         $defaultLocale = (string) ($i18n['default'] ?? $this->config->get('app.locale', 'en'));
         $locales = ($i18n['url_strategy'] ?? 'prefix') === 'prefix'
             ? array_values(array_map('strval', (array) ($i18n['available'] ?? [$defaultLocale])))
@@ -1344,7 +1482,7 @@ final class Application
      */
     private function sessionCookieName(): ?string
     {
-        if (!file_exists($this->basePath('config/auth.php'))) {
+        if (!$this->hasConfigFile('auth')) {
             return null;
         }
         $cookie = $this->authConfig()['session']['cookie'] ?? null;
@@ -1533,8 +1671,7 @@ final class Application
             return;
         }
 
-        $authConfigPath = $this->basePath('config/auth.php');
-        if (!file_exists($authConfigPath)) {
+        if (!$this->hasConfigFile('auth')) {
             return;
         }
 
@@ -1559,13 +1696,10 @@ final class Application
         $this->addMiddleware(new \Preflow\Core\Http\Session\SessionMiddleware($session, $paths));
     }
 
-    /** @var array<string, mixed>|null config/auth.php, loaded once (it may hash passwords) */
-    private ?array $authConfigCache = null;
-
-    /** @return array<string, mixed> */
+    /** @return array<string, mixed> config/auth.php, loaded once (it may hash passwords) */
     private function authConfig(): array
     {
-        return $this->authConfigCache ??= (array) require $this->basePath('config/auth.php');
+        return (array) $this->configFile('auth');
     }
 
     /**
@@ -1575,7 +1709,8 @@ final class Application
      */
     private function bootCsrf(DebugLevel $debug, \Preflow\Core\Http\Csrf\StatelessCsrfToken $stateless): void
     {
-        $config = \Preflow\Core\Http\Csrf\CsrfConfig::fromFile($this->basePath('config/csrf.php'));
+        $csrf = $this->configFile('csrf');
+        $config = $csrf === null ? new \Preflow\Core\Http\Csrf\CsrfConfig() : \Preflow\Core\Http\Csrf\CsrfConfig::fromArray((array) $csrf);
 
         $signIn = new \Preflow\Core\Http\Csrf\CsrfSignInPaths();
         foreach ($config->signInPaths as $path) {
@@ -1639,10 +1774,9 @@ final class Application
             return;
         }
 
-        $authConfigPath = $this->basePath('config/auth.php');
         $registry = new \Preflow\Auth\Access\PermissionRegistry();
         $this->container->instance(\Preflow\Auth\Access\PermissionRegistry::class, $registry);
-        if (!file_exists($authConfigPath)) {
+        if (!$this->hasConfigFile('auth')) {
             // No auth: can() allows everything, as there is nobody to restrict. Templates may still ask.
             $access = new \Preflow\Auth\Access\Access(null, $registry, false, []);
             $this->container->instance(\Preflow\Auth\Access\Access::class, $access);
@@ -1858,14 +1992,16 @@ final class Application
     private function discoverComponents(): array
     {
         $dir = $this->basePath('app/Components');
-        if (!is_dir($dir)) {
-            return [];
-        }
 
-        $map = [];
-        $this->scanComponentsRecursive($dir, 'App\\Components', $map);
+        return $this->manifest->remember('core.components', function () use ($dir): array {
+            if (!is_dir($dir)) {
+                return [];
+            }
+            $map = [];
+            $this->scanComponentsRecursive($dir, 'App\\Components', $map);
 
-        return $map;
+            return $map;
+        }, [$dir]);
     }
 
     /**
@@ -1907,14 +2043,16 @@ final class Application
     private function discoverControllers(): array
     {
         $dir = $this->basePath('app/Controllers');
-        if (!is_dir($dir)) {
-            return [];
-        }
 
-        $controllers = [];
-        $this->scanControllersRecursive($dir, 'App\\Controllers', $controllers);
+        return $this->manifest->remember('core.controllers', function () use ($dir): array {
+            if (!is_dir($dir)) {
+                return [];
+            }
+            $controllers = [];
+            $this->scanControllersRecursive($dir, 'App\\Controllers', $controllers);
 
-        return $controllers;
+            return $controllers;
+        }, [$dir]);
     }
 
     /**

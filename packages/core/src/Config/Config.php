@@ -63,6 +63,17 @@ final class Config
     }
 
     /**
+     * Replaces every item (Application: the config from the boot manifest).
+     *
+     * @internal
+     * @param array<string, mixed> $items
+     */
+    public function replace(array $items): void
+    {
+        $this->items = $items;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function all(): array

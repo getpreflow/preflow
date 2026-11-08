@@ -16,6 +16,7 @@ final class Console
      */
     public function __construct(?string $basePath = null, mixed $stderr = null)
     {
+        $basePath ??= getcwd() ?: '.';
         $this->register(new Command\ServeCommand());
         $this->register(new Command\MigrateCommand());
         $this->register(new Command\MakeComponentCommand());
@@ -25,12 +26,12 @@ final class Console
         $this->register(new Command\RoutesListCommand());
         $this->register(new Command\CacheClearCommand());
         $this->register(new Command\CacheListCommand());
+        $this->register(new Command\OptimizeCommand($basePath));
         $this->register(new Command\SeedCommand());
         $this->register(new Command\KeyGenerateCommand());
         $this->register(new Command\AuthUserCommand());
         $this->register(new Command\NotifyTestCommand());
 
-        $basePath ??= getcwd() ?: '.';
         $this->registerPackageCommands($basePath . '/vendor/composer/installed.json', $stderr ?? STDERR);
         $this->registerAppCommands($basePath . '/config/commands.php', $stderr ?? STDERR);
     }

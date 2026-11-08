@@ -82,10 +82,11 @@ final class CacheCommandsTest extends TestCase
         $this->assertSame(0, $code);
         $lines = explode("\n", trim($out));
         $this->assertMatchesRegularExpression('/^Key\s+Label\s+Entries\s+Size$/', $lines[0]);
-        // The framework's own caches (assets, twig, composer) come first, the test's after them.
-        $this->assertMatchesRegularExpression('/^one\s+Cache one\s+1\s+1\.5 KB$/', $lines[4]);
-        $this->assertMatchesRegularExpression('/^two\s+Cache two\s+1\s+2 B$/', $lines[5]);
-        $this->assertMatchesRegularExpression('/^twig\s+Compiled Twig templates\s+0\s+0 B$/', $lines[2]);
+        // The framework's own caches (boot, assets, twig, composer) come first, the test's after them.
+        $this->assertMatchesRegularExpression('/^boot\s+Boot manifest \(preflow optimize\)\s+0\s+0 B$/', $lines[1]);
+        $this->assertMatchesRegularExpression('/^one\s+Cache one\s+1\s+1\.5 KB$/', $lines[5]);
+        $this->assertMatchesRegularExpression('/^two\s+Cache two\s+1\s+2 B$/', $lines[6]);
+        $this->assertMatchesRegularExpression('/^twig\s+Compiled Twig templates\s+0\s+0 B$/', $lines[3]);
     }
 
     public function test_list_with_empty_registry(): void
@@ -115,7 +116,7 @@ final class CacheCommandsTest extends TestCase
         [$code, $out] = $this->exec(new CacheClearCommand($this->factory()), ['nothing']);
 
         $this->assertSame(1, $code);
-        $this->assertStringContainsString('Unknown cache: nothing (known: assets, twig, composer, one, two)', $out);
+        $this->assertStringContainsString('Unknown cache: nothing (known: boot, assets, twig, composer, one, two)', $out);
         $this->assertFileExists($this->dir . '/storage/cache/one.txt');
         $this->assertFileExists($this->dir . '/storage/cache/two.txt');
     }
@@ -125,9 +126,28 @@ final class CacheCommandsTest extends TestCase
         [$code, $out] = $this->exec(new CacheClearCommand($this->factory()), ['--all']);
 
         $this->assertSame(0, $code);
-        $this->assertSame("Cleared assets: 0 file(s), 0 B.\nCleared twig: 0 file(s), 0 B.\nCleared composer: 0 file(s), 0 B.\nCleared one: 1 file(s), 1.5 KB.\nCleared two: 1 file(s), 2 B.\n", $out);
+        $this->assertSame("Cleared boot: 0 file(s), 0 B.\nCleared assets: 0 file(s), 0 B.\nCleared twig: 0 file(s), 0 B.\nCleared composer: 0 file(s), 0 B.\nCleared one: 1 file(s), 1.5 KB.\nCleared two: 1 file(s), 2 B.\n", $out);
         $this->assertFileDoesNotExist($this->dir . '/storage/cache/one.txt');
         $this->assertFileDoesNotExist($this->dir . '/storage/cache/two.txt');
+    }
+
+    public function test_cache_clear_removes_the_manifest(): void
+    {
+        file_put_contents($this->dir . '/.env', '');
+        @mkdir($this->dir . '/config');
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['debug' => 0, 'key' => 'cache-clear-key'];\n");
+        (new \Preflow\Core\Boot\ManifestBuilder($this->dir))->write();
+        $this->assertFileExists($this->dir . '/bootstrap/cache/boot.php');
+
+        [$code, $out] = $this->exec(new CacheClearCommand($this->factory()), ['--all']);
+
+        $this->assertSame(0, $code);
+        $this->assertStringStartsWith('Cleared boot: 1 file(s)', $out);
+        $this->assertFileDoesNotExist($this->dir . '/bootstrap/cache/boot.php');
+        @unlink($this->dir . '/config/app.php');
+        @rmdir($this->dir . '/config');
+        @rmdir($this->dir . '/bootstrap/cache');
+        @rmdir($this->dir . '/bootstrap');
     }
 
     public function test_clear_rejects_an_unknown_option_and_clears_nothing(): void

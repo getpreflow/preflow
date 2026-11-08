@@ -487,6 +487,50 @@ Keys must be unique; a duplicate throws a `LogicException`. Implement `CacheSour
 anything else (`key()`, `label()`, `stats()`, `clear()`). `OpcacheStatus` reports and resets
 PHP's OPcache for the current SAPI.
 
+### Boot manifest (`preflow optimize`)
+
+`preflow optimize` (preflow/devtools) writes `bootstrap/cache/boot.php`: what boot otherwise
+reads and scans on every request although it only changes on deploy. It holds:
+
+- the result of every `config/*.php` (read through `Application::configFile()`);
+- the package discovery data (`InstalledPackages`, i.e. `vendor/composer/installed.json`);
+- the catalogs packages remember: components, controllers, translation groups, and Folio's
+  extensions, extension types, model listings, blocks and interface languages;
+- a `routes` slot for compiled public routes.
+
+A boot uses it only when all of these hold; otherwise it boots live, exactly as without one:
+
+- the request is not in the console (`runningInConsole()`): **CLI commands and cron jobs never
+  read it**, so they always see the current files;
+- `app.debug` is off (`APP_DEBUG=0`); `optimize` writes none in debug mode;
+- `.env` and `config/folio/extensions.json` are unchanged (both are stat-ed on every request),
+  and every variable `.env` sets has the value it had when the manifest was written. Config
+  files read env values when they load, so the manifest holds those values: an edited `.env`
+  applies on the next request (live boots until the next `optimize`). A variable the web
+  server sets itself (`SetEnv`) and `.env` doesn't name is not checked: run `optimize` after
+  changing one.
+
+Folio's extensions writer (Settings → Extensions, `folio:extensions:*`) removes the manifest
+when it rewrites `extensions.json`. Stored settings are never in it. Everything else in it
+(config files, code, model files, `installed.json`) is trusted until the next
+`preflow optimize`: run it on every deploy, after `composer install` and migrations /
+`folio:extensions:apply`, before the release goes live. `preflow optimize --check` lists the
+sources that changed since (exit 1), and `preflow cache:clear` removes the manifest (cache
+`boot`). The file holds config values, secrets included: it is per release and must not be
+committed. Add this to the site's `.gitignore`:
+
+```
+/bootstrap/cache/
+```
+
+A package keeps its own deploy-time data in the manifest with
+`$app->bootManifest()->remember('vendor.key', fn () => …, [$sourcePath])`: the closure runs
+live without a manifest and while one is built; with a manifest its stored value comes back.
+The value must be exportable (scalars, arrays, enums) and depend only on code, config files
+and files that change on deploy, never on stored data or the request.
+`$manifest->whenBuilding(fn (Application $app) => …)` resolves a lazy service while the
+manifest is built, so its catalog is in it.
+
 ### HTTP exceptions
 
 Throw these anywhere in the request lifecycle — `ErrorHandler` converts them to the correct status code automatically.
