@@ -82,11 +82,12 @@ final class CacheCommandsTest extends TestCase
         $this->assertSame(0, $code);
         $lines = explode("\n", trim($out));
         $this->assertMatchesRegularExpression('/^Key\s+Label\s+Entries\s+Size$/', $lines[0]);
-        // The framework's own caches (boot, assets, twig, composer) come first, the test's after them.
+        // The framework's own caches (boot, pages, assets, twig, composer) come first, the test's after them.
         $this->assertMatchesRegularExpression('/^boot\s+Boot manifest \(preflow optimize\)\s+0\s+0 B$/', $lines[1]);
-        $this->assertMatchesRegularExpression('/^one\s+Cache one\s+1\s+1\.5 KB$/', $lines[5]);
-        $this->assertMatchesRegularExpression('/^two\s+Cache two\s+1\s+2 B$/', $lines[6]);
-        $this->assertMatchesRegularExpression('/^twig\s+Compiled Twig templates\s+0\s+0 B$/', $lines[3]);
+        $this->assertMatchesRegularExpression('/^pages\s+Page cache\s+0\s+0 B$/', $lines[2]);
+        $this->assertMatchesRegularExpression('/^one\s+Cache one\s+1\s+1\.5 KB$/', $lines[6]);
+        $this->assertMatchesRegularExpression('/^two\s+Cache two\s+1\s+2 B$/', $lines[7]);
+        $this->assertMatchesRegularExpression('/^twig\s+Compiled Twig templates\s+0\s+0 B$/', $lines[4]);
     }
 
     public function test_list_with_empty_registry(): void
@@ -116,7 +117,7 @@ final class CacheCommandsTest extends TestCase
         [$code, $out] = $this->exec(new CacheClearCommand($this->factory()), ['nothing']);
 
         $this->assertSame(1, $code);
-        $this->assertStringContainsString('Unknown cache: nothing (known: boot, assets, twig, composer, one, two)', $out);
+        $this->assertStringContainsString('Unknown cache: nothing (known: boot, pages, assets, twig, composer, one, two)', $out);
         $this->assertFileExists($this->dir . '/storage/cache/one.txt');
         $this->assertFileExists($this->dir . '/storage/cache/two.txt');
     }
@@ -126,7 +127,7 @@ final class CacheCommandsTest extends TestCase
         [$code, $out] = $this->exec(new CacheClearCommand($this->factory()), ['--all']);
 
         $this->assertSame(0, $code);
-        $this->assertSame("Cleared boot: 0 file(s), 0 B.\nCleared assets: 0 file(s), 0 B.\nCleared twig: 0 file(s), 0 B.\nCleared composer: 0 file(s), 0 B.\nCleared one: 1 file(s), 1.5 KB.\nCleared two: 1 file(s), 2 B.\n", $out);
+        $this->assertSame("Cleared boot: 0 file(s), 0 B.\nCleared pages: 0 file(s), 0 B.\nCleared assets: 0 file(s), 0 B.\nCleared twig: 0 file(s), 0 B.\nCleared composer: 0 file(s), 0 B.\nCleared one: 1 file(s), 1.5 KB.\nCleared two: 1 file(s), 2 B.\n", $out);
         $this->assertFileDoesNotExist($this->dir . '/storage/cache/one.txt');
         $this->assertFileDoesNotExist($this->dir . '/storage/cache/two.txt');
     }

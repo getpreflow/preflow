@@ -291,6 +291,7 @@ final class Application
     public function boot(): void
     {
         $this->resolveManifest();
+        $this->bootPageCache();
 
         $debug = DebugLevel::from((int) $this->config->get('app.debug', 0));
         $secretKey = $this->config->get('app.key', \Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY);
@@ -870,6 +871,25 @@ final class Application
                 : null,
             default => throw new \RuntimeException("Unknown template engine: {$name}. Supported: twig, blade"),
         };
+    }
+
+    /**
+     * The page cache's settings (config/page_cache.php, PageCacheConfig) and its store in the
+     * CacheRegistry (key "pages", storage/cache/pages, per release). Serving and storing pages
+     * is wired separately; the release key is computed only when the cache is cleared.
+     */
+    private function bootPageCache(): void
+    {
+        $file = $this->configFile('page_cache');
+        $this->container->instance(
+            \Preflow\Core\PageCache\PageCacheConfig::class,
+            \Preflow\Core\PageCache\PageCacheConfig::fromArray(is_array($file) ? $file : []),
+        );
+        $base = $this->absolutePath('');
+        $this->container->get(CacheRegistry::class)->register(new \Preflow\Core\PageCache\PageCacheSource(
+            $this->absolutePath('storage/cache/pages'),
+            static fn (): string => \Preflow\Core\PageCache\PageStore::releaseKey($base),
+        ));
     }
 
     /** Minified CSS and JS live in storage/cache/assets, keyed by content. */

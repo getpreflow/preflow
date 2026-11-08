@@ -94,6 +94,41 @@ final class CacheRegistryBootTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_page_cache_is_registered_with_its_config(): void
+    {
+        $dir = $this->app('twig');
+        file_put_contents($dir . '/config/page_cache.php', "<?php\nreturn ['enabled' => true, 'max_age' => 600, 'ignore_query' => ['ref']];\n");
+        $app = Application::create($dir);
+        $app->boot();
+
+        $source = $app->container()->get(CacheRegistry::class)->get('pages');
+        $config = $app->container()->get(\Preflow\Core\PageCache\PageCacheConfig::class);
+
+        $this->assertInstanceOf(\Preflow\Core\PageCache\PageCacheSource::class, $source);
+        $this->assertSame(0, $source->stats()->entries);
+        $this->assertTrue($config->enabled);
+        $this->assertSame(600, $config->maxAge);
+        $this->assertSame(['ref'], $config->ignoreQuery);
+        $this->assertSame(2.0, $config->rebuildBudget);
+        // Nothing is written until a page is stored.
+        $this->assertDirectoryDoesNotExist($dir . '/storage/cache/pages');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_without_a_config_file_the_page_cache_is_off(): void
+    {
+        $app = Application::create($this->app('twig'));
+        $app->boot();
+
+        $config = $app->container()->get(\Preflow\Core\PageCache\PageCacheConfig::class);
+        $this->assertFalse($config->enabled);
+        $this->assertSame(14400, $config->maxAge);
+        $this->assertSame(['utm_*', 'fbclid', 'gclid', 'mc_cid', 'mc_eid'], $config->ignoreQuery);
+        $this->assertSame(['HX-Request', 'HX-Target'], $config->varyHeaders);
+        $this->assertTrue($config->cacheQuery);
+    }
+
+    #[RunInSeparateProcess]
     public function test_a_provider_can_register_its_own_cache(): void
     {
         $app = Application::create($this->app('twig', withProvider: true));
