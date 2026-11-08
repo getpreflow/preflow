@@ -107,15 +107,17 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
 
     public function findMany(string $type, Query $query): ResultSet
     {
-        // Get total count (without limit/offset)
-        [$countSql, $countBindings] = $this->compiler->compileCount($type, $query);
-        $countStmt = $this->read($type, $countSql, $countBindings);
-        $total = (int) $countStmt->fetchColumn();
-
-        // Get items
         [$sql, $bindings] = $this->compiler->compile($type, $query);
-        $stmt = $this->read($type, $sql, $bindings);
-        $items = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $items = $this->read($type, $sql, $bindings)->fetchAll(\PDO::FETCH_ASSOC);
+
+        // A first page that is not full holds every match: the total needs no COUNT query.
+        $limit = $query->getLimit();
+        if ($limit !== null && ($query->getOffset() ?? 0) === 0 && count($items) < $limit) {
+            $total = count($items);
+        } else {
+            [$countSql, $countBindings] = $this->compiler->compileCount($type, $query);
+            $total = (int) $this->read($type, $countSql, $countBindings)->fetchColumn();
+        }
 
         return new ResultSet($items, $total);
     }

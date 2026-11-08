@@ -34,6 +34,21 @@ final class SqliteDriverTest extends TestCase
         $this->driver = new SqliteDriver($this->pdo);
     }
 
+    public function test_total_is_right_with_and_without_a_full_page(): void
+    {
+        foreach (['a', 'b', 'c'] as $i) {
+            $this->driver->save('posts', $i, ['uuid' => $i, 'title' => "T{$i}"]);
+        }
+        $page = fn (int $limit, int $offset) => $this->driver->findMany('posts', (new Query())->limit($limit)->offset($offset));
+
+        $this->assertSame([2, 3], [count($page(2, 0)->items()), $page(2, 0)->total()]);
+        $this->assertSame([3, 3], [count($page(4, 0)->items()), $page(4, 0)->total()]);
+        $this->assertSame([3, 3], [count($page(3, 0)->items()), $page(3, 0)->total()]);
+        $this->assertSame([1, 3], [count($page(2, 2)->items()), $page(2, 2)->total()]);
+        $this->assertSame([0, 3], [count($page(2, 5)->items()), $page(2, 5)->total()]);
+        $this->assertSame(3, $this->driver->findMany('posts', new Query())->total());
+    }
+
     public function test_save_and_find_one(): void
     {
         $this->driver->save('posts', 'abc-123', [

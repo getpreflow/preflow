@@ -95,6 +95,18 @@ final class AssetMemoTest extends TestCase
         $this->assertLessThanOrEqual(2, $this->assetQueries());
     }
 
+    public function test_prefetch_runs_one_query(): void
+    {
+        $ids = $this->upload25();
+        $this->lib->flush();
+        $this->sql = [];
+
+        $this->lib->prefetch($ids); // every id exists: the page is still not full
+
+        $this->assertSame(1, $this->assetQueries(), 'one SELECT, no COUNT');
+        $this->assertCount(1, $this->sql);
+    }
+
     public function test_repeated_lookups_without_prefetch_ask_the_storage_once_per_id(): void
     {
         $id = $this->upload25()[0];
