@@ -38,8 +38,12 @@ final readonly class PageKey
      * (HEAD shares GET's key), a host the config does not cache, or a query string while
      * cache_query is off. Whether
      * the visitor is signed in is not decided here.
+     *
+     * @param array<string, string> $parts more of what the response depends on, name => value
+     *        (the page cache middleware adds the locale LocaleMiddleware resolved and the
+     *        forwarded scheme/host); none gives the same id as before they existed
      */
-    public static function fromRequest(ServerRequestInterface $request, PageCacheConfig $config): ?self
+    public static function fromRequest(ServerRequestInterface $request, PageCacheConfig $config, array $parts = []): ?self
     {
         $method = strtoupper($request->getMethod());
         if ($method !== 'GET' && $method !== 'HEAD') {
@@ -79,7 +83,14 @@ final readonly class PageKey
         ksort($vary, SORT_STRING);
 
         $url = $origin . $path . ($query !== '' ? '?' . $query : '');
-        $id = sha1(implode("\n", [$origin, $path, $query, ...array_values($vary)]));
+        $extra = [];
+        if ($parts !== []) {
+            ksort($parts, SORT_STRING);
+            foreach ($parts as $name => $value) {
+                $extra[] = '@' . $name . '=' . $value;
+            }
+        }
+        $id = sha1(implode("\n", [$origin, $path, $query, ...array_values($vary), ...$extra]));
 
         return new self($id, $url, $fragment, $query !== '', $method === 'HEAD');
     }

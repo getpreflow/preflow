@@ -595,6 +595,43 @@ return [
   `default:member` when mysql is the default driver).
   `$dataManager->reportWrite('default', 'member', 42)` does the same from data code.
   Both do nothing while the cache is off.
+- **Serving.** `PageCacheMiddleware` runs after the locale middleware and before the session
+  middleware. It is on when `enabled` is true, `pdo_sqlite` is loaded, `app.debug` is off and
+  the app serves the web (never in the console). A hit reads one page file and stats its stale
+  marker: no database, no SQLite, no session. Responses carry `X-Page-Cache: hit`, `stale`,
+  `miss` or `bypass`, and a miss that wasn't stored says why in `X-Page-Cache-Skip`.
+- **The key** is the URL as the visitor asked for it (the locale prefix included), the locale
+  the locale middleware resolved (a cookie or `Accept-Language` on unprefixed paths), the
+  normalised query, the `vary_headers` values, and a forwarded scheme and host
+  (`X-Forwarded-Proto`, `X-Forwarded-Host`), so http and https never share a copy.
+- **Live, never cached:** anything but GET and HEAD; admin, API and component paths
+  (non-public paths); internal renders; and requests with a signed-in cookie (preflow/auth's
+  `preflow_auth` marker, every guard's remember-me cookie, `signed_in_cookies`) or an
+  `Authorization` header. A leftover session cookie alone is not one.
+- **Never stored:** a status other than 200 (404s, redirects), a response that sets a cookie
+  (a header or a native one), a request that started the session or where a guard resolved a
+  user, `Cache-Control: private` or `no-store`, a `Vary` on a header the key doesn't hold
+  (`Accept-Language` included: a page that redirects by it says so with `Vary` and is not
+  cached), bodies that aren't text, JSON, XML or JavaScript, and a page something it read was
+  written while it rendered. Code can refuse the page being rendered with
+  `$pageCache->refuse('why')`; `$pageCache->storing()` says whether it may be stored.
+- **Stored headers** are the response's own, without `Set-Cookie`, the security headers
+  (`Content-Security-Policy`, `HX-Nonce`, `Strict-Transport-Security`, which are added fresh to
+  every hit) and `Date`, `Content-Length`, `Transfer-Encoding`, `Connection`, `Keep-Alive`.
+- **Per-request values.** The CSP nonce and the CSRF token are stored as signed placeholders
+  and filled in on each hit, so every visitor gets their own (and a form from a hit posts).
+  A site adds its own in a provider's `boot()`:
+
+  ```php
+  $container->get(\Preflow\Core\PageCache\PerRequestValues::class)
+      ->register('form_token', fn (): string => FormToken::value());
+  ```
+
+  Values shorter than 8 characters are never replaced.
+- **Switching it off and on.** `storage/cache/pages/enabled` marks a cache that has been
+  emptied since it was switched on. While the cache is off, the first write through the data
+  layer removes the marker; the first request after switching it on again finds it missing and
+  clears the cache before serving anything.
 
 ### Boot manifest (`preflow optimize`)
 

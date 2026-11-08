@@ -39,6 +39,12 @@ final readonly class PageCacheConfig
     public const int DEFAULT_MAX_PAGES = 50000;
 
     /**
+     * The cookie preflow/auth sets while someone is signed in (SessionGuard::SIGNED_IN_COOKIE):
+     * always a signed-in cookie, with the guards' remember-me cookies (withSignedInCookies()).
+     */
+    public const string SIGNED_IN_MARKER = 'preflow_auth';
+
+    /**
      * @param list<string> $ignoreQuery
      * @param list<string> $varyHeaders
      * @param list<string> $signedInCookies
@@ -56,6 +62,28 @@ final readonly class PageCacheConfig
         public int $maxQueryVariants = self::DEFAULT_MAX_QUERY_VARIANTS,
         public int $maxPages = self::DEFAULT_MAX_PAGES,
     ) {}
+
+    /**
+     * This config with $names added to signed_in_cookies (the wiring adds the auth marker and
+     * every guard's remember-me cookie; a site's own list adds to them, never replaces them).
+     *
+     * @param list<string> $names
+     */
+    public function withSignedInCookies(array $names): self
+    {
+        return new self(
+            enabled: $this->enabled,
+            maxAge: $this->maxAge,
+            rebuildBudget: $this->rebuildBudget,
+            cacheQuery: $this->cacheQuery,
+            ignoreQuery: $this->ignoreQuery,
+            varyHeaders: $this->varyHeaders,
+            signedInCookies: array_values(array_unique([...$names, ...$this->signedInCookies])),
+            hosts: $this->hosts,
+            maxQueryVariants: $this->maxQueryVariants,
+            maxPages: $this->maxPages,
+        );
+    }
 
     /** Whether pages of $host are cached: app.url's host or one in hosts. */
     public function cachesHost(string $host): bool

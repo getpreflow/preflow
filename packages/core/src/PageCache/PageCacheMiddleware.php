@@ -1,0 +1,407 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Core\PageCache;
+
+use Nyholm\Psr7\Response;
+use Preflow\Core\Http\InternalRender;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\MiddlewareInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+
+/**
+ * Serves anonymous GET and HEAD requests from the page cache and stores what they render.
+ *
+ * It runs after the locale middleware (the key holds the resolved locale) and before the
+ * session middleware, so a hit never opens the session: a hit is the `active` check of the
+ * store, one page file read and one stat for its stale marker; no database, no SQLite.
+ *
+ * A request passes through untouched when:
+ * - it has no key (not GET/HEAD, a host that isn't cached, a query while cache_query is off,
+ *   an X-Forwarded-Proto other than http/https, an X-Forwarded-Host that isn't cached);
+ * - it is an internal render (the SEO audit, GEO's Markdown views) that isn't a rebuild;
+ * - its path is not a public page (NonPublicPaths: admin, APIs, /--component);
+ * - it carries a signed-in cookie (signed_in_cookies: the auth marker and the guards'
+ *   remember-me cookies) or an Authorization header: `X-Page-Cache: bypass`. A leftover
+ *   session cookie alone does not bypass.
+ *
+ * A hit (fresh, or stale: marked, past its expiresAt or older than max_age) gets the stored
+ * headers and body with this request's per-request values filled in, and `X-Page-Cache: hit`
+ * or `stale`; a stale one also goes to $onStale (the rebuild queue). The render state carried
+ * for middleware outside (PageCache::carry(), SEO's page meta) is restored first.
+ *
+ * A miss renders with its reads recorded (DependencyRecorder) and gets `X-Page-Cache: miss`.
+ * It is stored only when none of these holds, else the reason is sent as `X-Page-Cache-Skip`:
+ * - `status`: the status is not 200 (404s and redirects are never cached);
+ * - `set-cookie`: the response sets a cookie (a header, or a native one through header());
+ * - `session`: the session was started during the request;
+ * - `signed-in`: a guard resolved a user;
+ * - `cache-control`: Cache-Control is private or no-store;
+ * - `vary`: the response varies on a request header the key doesn't hold (anything but
+ *   vary_headers, Accept-Encoding and HX-History-Restore-Request);
+ * - `content-type`: not text, JSON, XML or JavaScript;
+ * - `size`: the body is larger than MAX_BODY;
+ * - `refused:{reason}`: code called PageCache::refuse();
+ * - `index`: the tag index can't be used (the cache is off then);
+ * - `invalidated`: a write changed what the page read while it rendered;
+ * - `error`: the page could not be written (logged).
+ *
+ * Stored headers: everything the response had when it left the handler, except Set-Cookie,
+ * the headers SecurityHeadersMiddleware adds per request (Content-Security-Policy(-Report-Only),
+ * HX-Nonce, Strict-Transport-Security; it runs outside this middleware, so it adds them fresh
+ * to every hit), and the hop and framing headers (Date, Content-Length, Transfer-Encoding,
+ * Connection, Keep-Alive).
+ */
+final class PageCacheMiddleware implements MiddlewareInterface
+{
+    /** The response header: hit, stale, miss or bypass. */
+    public const string HEADER = 'X-Page-Cache';
+
+    /** Why a miss was not stored. */
+    public const string SKIP_HEADER = 'X-Page-Cache-Skip';
+
+    /** Request attribute: true on an internal render that rebuilds a page (it is stored, never served). */
+    public const string REBUILD = 'preflow.page_cache.rebuild';
+
+    /** Bodies larger than this (bytes) are not stored. */
+    public const int MAX_BODY = 8 * 1024 * 1024;
+
+    /** Response headers never stored (lowercase). */
+    public const array UNSTORED_HEADERS = [
+        'set-cookie', 'content-security-policy', 'content-security-policy-report-only', 'hx-nonce',
+        'strict-transport-security', 'date', 'content-length', 'transfer-encoding', 'connection',
+        'keep-alive', 'x-page-cache', 'x-page-cache-skip',
+    ];
+
+    /**
+     * Request headers a response may vary on besides vary_headers: the key covers them. Not
+     * Accept-Language: a page that negotiates on it (a redirect for some visitors) says so with
+     * Vary and is not cached, unless vary_headers names it; the locale LocaleMiddleware resolved
+     * from it (url_strategy none) is in the key anyway.
+     */
+    private const array VARY_ALLOWED = ['accept-encoding', 'hx-history-restore-request'];
+
+    /** @var \Closure(): float */
+    private readonly \Closure $clock;
+
+    private bool $checked = false;
+
+    private ?TagIndex $index = null;
+
+    /**
+     * @param \Closure(): PageStore $store the store (made on first use)
+     * @param \Closure(): void $clearAll empties the whole cache (when the enabled marker is missing)
+     * @param (\Closure(): string)|null $localePrefix the locale prefix the locale middleware stripped ('/de'), '' for none
+     * @param (\Closure(): bool)|null $signedIn whether a guard resolved a user in this request
+     * @param (\Closure(): bool)|null $sessionStarted whether the session was started
+     * @param (\Closure(string): bool)|null $nonPublic whether a path is not a public page
+     * @param (\Closure(PageKey): void)|null $onStale gets the key of every stale page served
+     * @param (\Closure(string): void)|null $log error_log() when null
+     * @param (\Closure(): float)|null $clock microtime(true) when null
+     * @param bool|null $sqlite a test seam, as TagIndex's
+     */
+    public function __construct(
+        private readonly PageCacheConfig $config,
+        private readonly \Closure $store,
+        private readonly PageCache $cache,
+        private readonly DependencyRecorder $recorder,
+        private readonly PerRequestValues $values,
+        private readonly EnabledMarker $marker,
+        private readonly \Closure $clearAll,
+        private readonly ?\Closure $localePrefix = null,
+        private readonly ?\Closure $signedIn = null,
+        private readonly ?\Closure $sessionStarted = null,
+        private readonly ?\Closure $nonPublic = null,
+        private readonly ?\Closure $onStale = null,
+        private readonly ?\Closure $log = null,
+        ?\Closure $clock = null,
+        private readonly ?bool $sqlite = null,
+    ) {
+        $this->clock = $clock ?? static fn (): float => microtime(true);
+    }
+
+    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    {
+        $rebuild = $request->getAttribute(self::REBUILD) === true;
+        if (!$rebuild && InternalRender::is($request)) {
+            return $handler->handle($request);
+        }
+        $key = $this->key($request);
+        if ($key === null || ($this->nonPublic !== null && ($this->nonPublic)($request->getUri()->getPath()))) {
+            return $handler->handle($request);
+        }
+        if ($this->carriesSignIn($request)) {
+            return $handler->handle($request)->withHeader(self::HEADER, 'bypass');
+        }
+
+        try {
+            $this->ensureEnabled();
+            $store = ($this->store)();
+            $page = $rebuild ? null : $store->get($key);
+        } catch (\Throwable $e) {
+            $this->log('page cache: ' . $e->getMessage());
+
+            return $handler->handle($request);
+        }
+
+        if ($page !== null) {
+            try {
+                return $this->serve($key, $page);
+            } catch (\Throwable $e) {
+                // A per-request value or carried state that fails: render the page as on a miss.
+                $this->log('page cache: ' . $key->url() . ' could not be served: ' . $e->getMessage());
+            }
+        }
+
+        return $this->render($request, $handler, $key, $store);
+    }
+
+    /**
+     * The key of $request: the URL as the visitor asked for it (with the locale prefix the
+     * locale middleware stripped), the resolved locale, and the forwarded scheme and host.
+     */
+    private function key(ServerRequestInterface $request): ?PageKey
+    {
+        $parts = [];
+        $locale = $request->getAttribute('locale');
+        if (is_string($locale) && $locale !== '') {
+            $parts['locale'] = $locale;
+        }
+        $proto = $request->getHeaderLine('X-Forwarded-Proto');
+        if ($proto !== '') {
+            $proto = strtolower(trim(explode(',', $proto)[0]));
+            if ($proto !== 'http' && $proto !== 'https') {
+                return null;
+            }
+            $parts['proto'] = $proto;
+        }
+        $host = $request->getHeaderLine('X-Forwarded-Host');
+        if ($host !== '') {
+            $host = strtolower(trim(explode(',', $host)[0]));
+            if (!$this->config->cachesHost((string) preg_replace('/:\d+$/', '', $host))) {
+                return null;
+            }
+            $parts['host'] = $host;
+        }
+
+        $prefix = $this->localePrefix !== null ? ($this->localePrefix)() : '';
+        if ($prefix !== '') {
+            $uri = $request->getUri();
+            $path = $uri->getPath();
+            $request = $request->withUri($uri->withPath($prefix . ($path === '/' || $path === '' ? '' : $path)), true);
+        }
+
+        return PageKey::fromRequest($request, $this->config, $parts);
+    }
+
+    private function carriesSignIn(ServerRequestInterface $request): bool
+    {
+        if ($request->getHeaderLine('Authorization') !== '') {
+            return true;
+        }
+        $cookies = $request->getCookieParams();
+        if ($cookies === []) {
+            return false;
+        }
+        foreach ($this->config->signedInCookies as $name) {
+            if (isset($cookies[$name]) && $cookies[$name] !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** The first time in this process: a cache switched on again starts empty (EnabledMarker). */
+    private function ensureEnabled(): void
+    {
+        if ($this->checked) {
+            return;
+        }
+        $this->checked = true;
+        if ($this->marker->exists()) {
+            return;
+        }
+        ($this->clearAll)();
+        if (!$this->marker->write()) {
+            $this->log('page cache: the enabled marker could not be written; the cache is cleared on every request until it can.');
+        }
+    }
+
+    private function serve(PageKey $key, StoredPage $page): ResponseInterface
+    {
+        $now = ($this->clock)();
+        $stale = $page->stale
+            || ($page->expiresAt !== null && $page->expiresAt <= $now)
+            || ($this->config->maxAge > 0 && $page->createdAt + $this->config->maxAge <= $now);
+
+        if ($stale && $this->onStale !== null) {
+            try {
+                ($this->onStale)($key);
+            } catch (\Throwable $e) {
+                $this->log('page cache: ' . $e->getMessage());
+            }
+        }
+
+        $headers = $page->headers;
+        $headers[self::HEADER] = [$stale ? 'stale' : 'hit'];
+        $this->cache->restoreState($page->state);
+
+        return new Response(200, $headers, $this->values->fill($page->body));
+    }
+
+    private function render(ServerRequestInterface $request, RequestHandlerInterface $handler, PageKey $key, PageStore $store): ResponseInterface
+    {
+        $started = ($this->clock)();
+        $frame = $this->recorder->start();
+        $state = $this->cache->begin($key->isHead() ? null : $key);
+        try {
+            $response = $handler->handle($request);
+            $refusal = $this->cache->refusal();
+        } finally {
+            $tags = $this->recorder->stop($frame);
+            $this->cache->end($state);
+        }
+
+        $response = $response->withHeader(self::HEADER, 'miss');
+        if ($key->isHead()) {
+            return $response; // never stored: GET stores the page HEAD is served from
+        }
+        $reason = $refusal !== null ? 'refused:' . $refusal : $this->refusal($response);
+        $reason ??= $this->store($key, $response, $tags, $started, $store);
+
+        return $reason === null ? $response : $response->withHeader(self::SKIP_HEADER, $reason);
+    }
+
+    /** Why $response must not be stored, null when it may be. */
+    private function refusal(ResponseInterface $response): ?string
+    {
+        if ($response->getStatusCode() !== 200) {
+            return 'status';
+        }
+        if ($response->hasHeader('Set-Cookie') || self::nativeCookie()) {
+            return 'set-cookie';
+        }
+        if ($this->sessionStarted !== null && ($this->sessionStarted)()) {
+            return 'session';
+        }
+        if ($this->signedIn !== null && ($this->signedIn)()) {
+            return 'signed-in';
+        }
+        $control = strtolower($response->getHeaderLine('Cache-Control'));
+        if ($control !== '' && preg_match('/(^|[\s,])(private|no-store)([\s,=]|$)/', $control) === 1) {
+            return 'cache-control';
+        }
+        $vary = $response->getHeaderLine('Vary');
+        if ($vary !== '') {
+            $allowed = [...self::VARY_ALLOWED, ...array_map(strtolower(...), $this->config->varyHeaders)];
+            foreach (explode(',', strtolower($vary)) as $name) {
+                $name = trim($name);
+                if ($name !== '' && !in_array($name, $allowed, true)) {
+                    return 'vary';
+                }
+            }
+        }
+        $type = strtolower($response->getHeaderLine('Content-Type'));
+        if ($type !== '' && !str_starts_with($type, 'text/') && !str_contains($type, 'json')
+            && !str_contains($type, 'xml') && !str_contains($type, 'javascript')) {
+            return 'content-type';
+        }
+        $size = $response->getBody()->getSize();
+        if ($size !== null && $size > self::MAX_BODY) {
+            return 'size';
+        }
+
+        return null;
+    }
+
+    /**
+     * Stores the page: index rows first, then the file, then the check that nothing it read was
+     * invalidated since the render started (a write by another request meanwhile); if something
+     * was, both go again. Returns why it was not stored, null when it was.
+     *
+     * @param array<string, array{0: Freshness, 1: ?int}> $tags
+     */
+    private function store(PageKey $key, ResponseInterface $response, array $tags, float $started, PageStore $store): ?string
+    {
+        $body = $response->getBody();
+        $content = (string) $body;
+        if ($body->isSeekable()) {
+            $body->rewind();
+        }
+        if (strlen($content) > self::MAX_BODY) {
+            return 'size';
+        }
+
+        try {
+            $index = $this->index ??= TagIndex::forStore($store, $this->config, $this->clock, $this->sqlite);
+            if (!$index->available()) {
+                return 'index';
+            }
+            $page = new StoredPage(
+                $this->values->toPlaceholders($content),
+                $this->storedHeaders($response),
+                $started,
+                state: $this->cache->captureState(),
+            );
+            $index->record($key->id(), $key->url(), $key->isFragment(), $key->hasQuery(), $tags);
+            if (!$store->put($key, $page)) {
+                $index->forget($key->id());
+
+                return 'head';
+            }
+            if ($index->invalidatedSince(array_keys($tags), $started)) {
+                $index->forget($key->id());
+                $store->forget($key->id());
+
+                return 'invalidated';
+            }
+        } catch (\Throwable $e) {
+            $this->log('page cache: ' . $key->url() . ' was not stored: ' . $e->getMessage());
+            try {
+                $this->index?->forget($key->id());
+                $store->forget($key->id());
+            } catch (\Throwable) {
+            }
+
+            return 'error';
+        }
+
+        return null;
+    }
+
+    /** @return array<string, list<string>> */
+    private function storedHeaders(ResponseInterface $response): array
+    {
+        $headers = [];
+        foreach ($response->getHeaders() as $name => $values) {
+            if (!in_array(strtolower((string) $name), self::UNSTORED_HEADERS, true)) {
+                $headers[(string) $name] = array_values($values);
+            }
+        }
+
+        return $headers;
+    }
+
+    /** A cookie set with header()/setcookie() (a native session), which the PSR response doesn't show. */
+    private static function nativeCookie(): bool
+    {
+        if (headers_sent()) {
+            return false;
+        }
+        foreach (headers_list() as $line) {
+            if (strncasecmp($line, 'Set-Cookie:', 11) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function log(string $message): void
+    {
+        $this->log !== null ? ($this->log)($message) : error_log($message);
+    }
+}

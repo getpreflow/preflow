@@ -9,7 +9,7 @@ namespace Preflow\Core\PageCache;
  * {root}/{releaseKey}/{id[0..1]}/{id}.page, where root is storage/cache/pages.
  *
  * A file is "PFPC1\n", the length of a JSON header line, "\n", the header (headers, createdAt,
- * expiresAt, stale, body length) and the body. A file that does not parse (truncated, foreign,
+ * expiresAt, stale, body length, the carried render state when there is some) and the body. A file that does not parse (truncated, foreign,
  * an older format) reads as no page. Writes go to a temporary file in the same folder, then
  * rename(), so a reader sees the old page or the new one, never half of one.
  *
@@ -305,6 +305,10 @@ final class PageStore
             $headers[$name] = array_values(array_map(strval(...), $values));
         }
         $expires = $meta['e'] ?? null;
+        $state = $meta['r'] ?? [];
+        if (!is_array($state)) {
+            return null;
+        }
 
         return new StoredPage(
             $body,
@@ -312,6 +316,7 @@ final class PageStore
             (float) $meta['c'],
             is_int($expires) || is_float($expires) ? (float) $expires : null,
             ($meta['s'] ?? false) === true,
+            $state,
         );
     }
 
@@ -331,7 +336,7 @@ final class PageStore
             'e' => $page->expiresAt,
             's' => $page->stale,
             'b' => strlen($page->body),
-        ], JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION);
+        ] + ($page->state === [] ? [] : ['r' => $page->state]), JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION);
         $data = self::MAGIC . strlen($meta) . "\n" . $meta . $page->body;
         // A cache:clear can remove the shard folder between mkdir and the write: once more.
         for ($attempt = 1; ; $attempt++) {

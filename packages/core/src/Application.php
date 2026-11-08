@@ -336,6 +336,7 @@ final class Application
         $this->bootRouting();
         $this->bootI18n();
         $this->bootNotify();
+        $this->bootPageCacheServing($debug);
         $this->bootSession();
         $this->bootCsrf($debug, new \Preflow\Core\Http\Csrf\StatelessCsrfToken((string) $secretKey));
         $this->bootAuth();
@@ -670,6 +671,15 @@ final class Application
                 $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class),
                 $this->pageChanges,
             ));
+        } elseif ($this->pageCacheMarker?->exists() === true) {
+            // Off, with pages from when it was on: the first write removes the marker (switched on
+            // again, the cache starts empty) and the observer goes, so later queries cost nothing.
+            $dataManager->observe(new \Preflow\Core\PageCache\DisabledWritesObserver(
+                $this->pageCacheMarker,
+                static function () use ($dataManager): void {
+                    $dataManager->observe(null);
+                },
+            ));
         }
 
         // Bound only with a DataManager (i.e. config/data.php present); it has nothing to store through otherwise.
@@ -897,13 +907,33 @@ final class Application
             is_array($file) ? $file : [],
             is_string($url = $this->config->get('app.url')) ? $url : null,
         );
+        if ($config->enabled) {
+            $config = $config->withSignedInCookies($this->signedInCookies());
+        }
         $this->container->instance(\Preflow\Core\PageCache\PageCacheConfig::class, $config);
         $base = $this->absolutePath('');
         $root = $this->absolutePath('storage/cache/pages');
-        $this->container->get(CacheRegistry::class)->register(new \Preflow\Core\PageCache\PageCacheSource(
+        $this->pageCacheSource = new \Preflow\Core\PageCache\PageCacheSource(
             $root,
             static fn (): string => \Preflow\Core\PageCache\PageStore::releaseKey($base),
-        ));
+        );
+        $this->container->get(CacheRegistry::class)->register($this->pageCacheSource);
+        $this->pageCacheMarker = new \Preflow\Core\PageCache\EnabledMarker($root);
+
+        // The CSP nonce, the CSRF token and a site's own values (registered in providers):
+        // replaced by placeholders in stored pages, filled in on every hit.
+        $values = new \Preflow\Core\PageCache\PerRequestValues((string) $this->config->get('app.key', \Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY));
+        $nonce = $this->nonceProvider();
+        $values->register('nonce', static fn (): ?string => $nonce());
+        $container = $this->container;
+        $values->register('csrf', static function () use ($container): ?string {
+            $stateless = $container->bound(\Preflow\Core\Http\Csrf\StatelessCsrfToken::class)
+                ? $container->get(\Preflow\Core\Http\Csrf\StatelessCsrfToken::class)
+                : null;
+
+            return $stateless?->enabled() === true ? $stateless->issue() : null;
+        });
+        $this->container->instance(\Preflow\Core\PageCache\PerRequestValues::class, $values);
 
         // What pages read while rendering (recorded only while a render records) and what writes
         // changed. Off, or without pdo_sqlite (no index, nothing cached): no observer, no change
@@ -944,6 +974,78 @@ final class Application
 
     /** The page cache's change log, when the cache is on (bootPageCache()). */
     private ?\Preflow\Core\PageCache\ChangeLog $pageChanges = null;
+
+    private ?\Preflow\Core\PageCache\PageCacheSource $pageCacheSource = null;
+
+    private ?\Preflow\Core\PageCache\EnabledMarker $pageCacheMarker = null;
+
+    /**
+     * The cookies that mean "signed in" besides page_cache.signed_in_cookies: the auth marker
+     * (preflow_auth) and every session guard's remember-me cookie (config/auth.php).
+     *
+     * @return list<string>
+     */
+    private function signedInCookies(): array
+    {
+        $names = [\Preflow\Core\PageCache\PageCacheConfig::SIGNED_IN_MARKER];
+        if (!$this->hasConfigFile('auth')) {
+            return $names;
+        }
+        foreach ((array) ($this->authConfig()['guards'] ?? []) as $name => $guard) {
+            $remember = is_array($guard) ? ($guard['remember'] ?? []) : [];
+            if (is_array($remember) && $remember !== []) {
+                $names[] = (string) ($remember['cookie'] ?? 'remember_' . $name);
+            }
+        }
+
+        return array_values(array_unique($names));
+    }
+
+    /**
+     * Serving pages from the cache (PageCacheMiddleware): right after the locale middleware (the
+     * key holds the locale it resolved) and before the session middleware (a hit opens no
+     * session). Only when page_cache.enabled, pdo_sqlite is there, app.debug is off and the app
+     * serves the web, not the console.
+     */
+    private function bootPageCacheServing(DebugLevel $debug): void
+    {
+        $config = $this->container->get(\Preflow\Core\PageCache\PageCacheConfig::class);
+        if (!$config->enabled || $this->pageChanges === null || $debug->isDebug() || $this->runningInConsole()) {
+            return;
+        }
+        $container = $this->container;
+        $source = $this->pageCacheSource;
+        $logger = static function (string $message) use ($container): void {
+            if ($container->has(\Psr\Log\LoggerInterface::class)) {
+                $container->get(\Psr\Log\LoggerInterface::class)->warning($message);
+
+                return;
+            }
+            error_log($message);
+        };
+        $middleware = new \Preflow\Core\PageCache\PageCacheMiddleware(
+            config: $config,
+            store: static fn (): \Preflow\Core\PageCache\PageStore => $container->get(\Preflow\Core\PageCache\PageStore::class),
+            cache: $container->get(\Preflow\Core\PageCache\PageCache::class),
+            recorder: $container->get(\Preflow\Core\PageCache\DependencyRecorder::class),
+            values: $container->get(\Preflow\Core\PageCache\PerRequestValues::class),
+            marker: $this->pageCacheMarker ?? throw new \LogicException('bootPageCache() runs first.'),
+            clearAll: static function () use ($source): void {
+                $source?->clear();
+            },
+            localePrefix: static fn (): string => class_exists(\Preflow\I18n\LocaleMiddleware::class) && $container->bound(\Preflow\I18n\LocaleMiddleware::class)
+                ? $container->get(\Preflow\I18n\LocaleMiddleware::class)->urlPrefix()
+                : '',
+            signedIn: static fn (): bool => class_exists(\Preflow\Auth\AuthManager::class) && $container->bound(\Preflow\Auth\AuthManager::class)
+                && $container->get(\Preflow\Auth\AuthManager::class)->users() !== [],
+            sessionStarted: static fn (): bool => $container->bound(\Preflow\Core\Http\Session\SessionInterface::class)
+                && $container->get(\Preflow\Core\Http\Session\SessionInterface::class)->isStarted(),
+            nonPublic: static fn (string $path): bool => $container->get(\Preflow\Core\Http\NonPublicPaths::class)->matches($path),
+            log: $logger,
+        );
+        $this->container->instance(\Preflow\Core\PageCache\PageCacheMiddleware::class, $middleware);
+        $this->addMiddleware($middleware);
+    }
 
     /** Minified CSS and JS live in storage/cache/assets, keyed by content. */
     private function assetsCachePath(): string
@@ -1562,6 +1664,23 @@ final class Application
         );
         $this->container->instance(\Preflow\View\Seo\SeoMiddleware::class, $middleware);
         $this->pipeline->prepend($middleware);
+
+        // SEO adds its head tags outside the page cache, from the meta the page set while it
+        // rendered: a cached page carries that meta and hands it back on every hit.
+        $this->container->get(\Preflow\Core\PageCache\PageCache::class)->carry(
+            'seo',
+            static fn (): ?array => ($meta = $context->get()) === null ? null : get_object_vars($meta),
+            static function (mixed $value) use ($context): void {
+                if (!is_array($value)) {
+                    return;
+                }
+                try {
+                    $context->set(new \Preflow\View\Seo\PageMeta(...$value));
+                } catch (\Throwable) {
+                    // A page stored by another version of PageMeta: the tags fall back to the defaults.
+                }
+            },
+        );
     }
 
     /**
