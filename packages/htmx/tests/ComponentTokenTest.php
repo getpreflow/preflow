@@ -122,6 +122,24 @@ final class ComponentTokenTest extends TestCase
         $this->assertLessThanOrEqual($after, $decoded->timestamp);
     }
 
+    public function test_one_instance_issues_its_tokens_at_one_time(): void
+    {
+        // The clock ticks between two renders of one page (verify renders it twice; a rebuild
+        // renders it after the response): the page must print the same tokens both times.
+        $token = new class('test-secret-key-32-chars-long!!') extends ComponentToken {
+            public int $now = 1_800_000_000;
+
+            protected function currentTime(): int
+            {
+                return $this->now++;
+            }
+        };
+
+        $first = $token->encode('App\\X', ['a' => 1], 'increment');
+        $this->assertSame($first, $token->encode('App\\X', ['a' => 1], 'increment'));
+        $this->assertSame(1_800_000_000, $token->decode($first)->timestamp);
+    }
+
     public function test_empty_props_encoded(): void
     {
         $encoded = $this->token->encode('App\\X', []);

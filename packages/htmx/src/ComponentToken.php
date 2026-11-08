@@ -6,8 +6,17 @@ namespace Preflow\Htmx;
 
 use Preflow\Core\Exceptions\SecurityException;
 
+/**
+ * Signed component tokens (class, props, action, issue time). One instance issues all its
+ * tokens at one time, the time of its first token: a page rendered twice in one request (the
+ * page cache's verify) or again after the response (a rebuild) prints the same tokens, so it is
+ * the same page for every visitor. The instance lives for one request (or one command), so the
+ * age check of decode() is off by at most that long.
+ */
 class ComponentToken
 {
+    private ?int $issuedAt = null;
+
     public function __construct(
         private readonly string $secretKey,
         private readonly string $algorithm = 'sha256',
@@ -25,7 +34,7 @@ class ComponentToken
             'c' => $componentClass,
             'p' => $props,
             'a' => $action,
-            't' => $this->currentTime(),
+            't' => $this->issuedAt ??= $this->currentTime(),
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 
         $signature = hash_hmac($this->algorithm, $payload, $this->secretKey);

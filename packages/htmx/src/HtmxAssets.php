@@ -21,6 +21,9 @@ final class HtmxAssets
 
     private bool $required = false;
 
+    /** @var array<string, string> the htmx build by path, read once per process */
+    private static array $scripts = [];
+
     public function __construct(
         private readonly AssetCollector $assets,
         private readonly string $mode,
@@ -58,7 +61,7 @@ final class HtmxAssets
 
         // htmx reads this meta on DOM ready, so its position after the script is fine.
         $this->assets->addHeadTag('<meta name="htmx-config" content=\'' . $config . '\'>', 'preflow-htmx-config');
-        $this->assets->addJs((string) file_get_contents($this->scriptPath), JsPosition::Head, 'preflow-htmx');
+        $this->assets->addJs(self::$scripts[$this->scriptPath] ??= (string) file_get_contents($this->scriptPath), JsPosition::Head, 'preflow-htmx');
         $this->assets->addJs(self::NONCE_GUARD, JsPosition::Head, 'preflow-htmx-nonce-guard');
     }
 

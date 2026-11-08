@@ -50,6 +50,27 @@ final class HtmxAssetsTest extends TestCase
         }
     }
 
+    public function test_the_script_is_read_once_per_process(): void
+    {
+        $script = sys_get_temp_dir() . '/htmx_once_' . bin2hex(random_bytes(4)) . '.js';
+        file_put_contents($script, 'var htmx="first read";');
+        try {
+            $collector = new AssetCollector(new NonceGenerator());
+            $assets = new HtmxAssets($collector, 'on-demand', $script);
+            $collector->restoring(fn () => $assets->require());
+            file_put_contents($script, 'var htmx="read again";');
+
+            $head = $collector->restoring(function () use ($collector, $script): string {
+                (new HtmxAssets($collector, 'on-demand', $script))->require();
+
+                return $collector->renderHead();
+            });
+            $this->assertStringContainsString('first read', $head, 'added to every render, read once');
+        } finally {
+            @unlink($script);
+        }
+    }
+
     public function test_swapped_scripts_are_only_trusted_with_the_fragment_nonce(): void
     {
         $collector = new AssetCollector(new NonceGenerator());
