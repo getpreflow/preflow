@@ -72,6 +72,22 @@ All methods return `$this` for chaining except the terminal methods.
 | `SqliteDriver` | PDO-based SQLite via `PdoDriver` + `QueryCompiler` |
 | `MysqlDriver` | PDO-based MySQL / MariaDB via `PdoDriver` + `QueryCompiler` (see [MySQL and MariaDB](#mysql-and-mariadb)) |
 
+**Lazy connection (0.59).** `SqliteDriver`, `MysqlDriver` and any `PdoDriver` subclass take a
+`\PDO` or a `\Closure(): \PDO`. Given a closure, the driver opens the connection on its first
+query and runs its session setup (`configure()`) then; `connected()` tells whether it has.
+Core builds the drivers from `config/data.php` with closures, so a request that runs no query
+opens no database connection, and `preflow optimize` doesn't need the database. What that
+changes for site code:
+
+- A database outage now surfaces at the first query, inside the request (the error page), not
+  at boot. A failed connect is retried on the next query.
+- `\PDO` in the container is still the driver's own connection (the migrator, transactions and
+  the driver share it), but it is a lazy singleton: getting it from the container opens the
+  connection.
+- A `PdoDriver` subclass that overrides the constructor must pass the `\PDO|\Closure` on and
+  must not touch the connection in the constructor; per-connection setup belongs in
+  `configure()`. Read the connection through `$this->pdo` (or `pdo()`), never keep your own `\PDO`.
+
 ### Migrations
 
 ```php

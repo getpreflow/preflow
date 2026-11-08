@@ -155,7 +155,13 @@ manifest, debug mode, the console) `compiled()` just runs the closure. The entri
 only on code, config files and files that change on deploy; a set whose middleware holds
 closures or objects is not stored and is compiled live. `Router::liveSets()` lists the sets the
 router compiled live (with a current manifest: none). `RouteEntry::toArray()`/`fromArray()` are
-the stored form.
+the stored form; a stored set whose rows this version can't rebuild (a key missing, an unknown
+mode) is compiled live instead.
+
+Routes registered after the collection was built (Folio's admin routes, set up on the first
+admin request) must still match before a catch-all: add them with
+`$router->getCollection()->insertBefore($anchor, $entries)`, which puts them in front of the
+first entry equal (`==`) to `$anchor`, or appends them when there is none.
 
 ## Matching priority
 

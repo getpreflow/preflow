@@ -166,6 +166,39 @@ $response = $app->handle($request);
 
 `boot()` selects the error renderer based on `app.debug`, boots all providers, and wires the kernel. `handle()` runs the middleware pipeline and dispatches to the matched route.
 
+**Work that only some requests need.** A provider can leave setup out of boot and do it on the
+first request that needs it:
+
+```php
+public function boot(Container $container): void
+{
+    $app = $container->get(Application::class);
+    if ($app->runningInConsole()) {
+        $this->setUpAdmin($container);      // commands handle no request: set up now
+        return;
+    }
+    $app->onRequest(function (ServerRequestInterface $request) use ($container): void {
+        if (str_starts_with($request->getUri()->getPath(), '/admin/')) {
+            $this->setUpAdmin($container);  // make it idempotent: it runs on every such request
+        }
+    });
+}
+```
+
+- `onRequest(\Closure $hook)` calls the hook with every request `handle()` receives, before any
+  middleware and before routing, with the raw path (locale prefix still on). Hooks run in the
+  order added. A hook that throws fails that request like a boot error (no error page), so a
+  setup that can fail should only mark itself done once it has succeeded. Folio sets up its
+  whole admin this way.
+- `runningInConsole()` is true under the CLI and phpdbg (`PHP_SAPI`); `php -S` counts as web.
+  Tests that stand in for web requests call `setRunningInConsole(false)` before `boot()`.
+- `Container::resolved(string $id)` tells whether a shared instance exists already (set with
+  `instance()`, or a singleton built by an earlier `get()`), without building it. Tests use it to
+  check that a request left a lazy service alone.
+
+Admin routes added later in this way go in front of a catch-all with
+`RouteCollection::insertBefore($anchor, $entries)` (preflow/routing).
+
 ### JsonBodyMiddleware
 
 Automatically decodes `application/json` request bodies into `getParsedBody()`. No manual `json_decode` needed in controllers.
@@ -502,7 +535,7 @@ reads and scans on every request although it only changes on deploy. It holds:
   manifest no route pattern is compiled per request. Folio's admin routes are not in it: they
   are compiled on the first request under the admin prefix in a process, as without a manifest.
   A set that can't be exported (middleware given as closures or objects) is compiled live, every
-  request.
+  request; so is a stored set whose rows the installed routing code can't rebuild.
 
 A boot uses it only when all of these hold; otherwise it boots live, exactly as without one:
 
@@ -519,7 +552,20 @@ A boot uses it only when all of these hold; otherwise it boots live, exactly as 
 
 **Environment variables set only by the web server** (`SetEnv`, the FPM pool, the hosting
 panel) **and not named in `.env` are not watched**: after changing one, run `preflow optimize`
-again.
+again. `optimize --check` runs in the CLI and compares the CLI's environment, so it can't see a
+variable that the web server sets to a different value than the shell: `--check` says "current"
+while every web request boots live (correct, only slower). To confirm a site really uses its
+manifest, check from a web request (timing, or a temporary debug header), not only with `--check`.
+
+**Secrets.** A config file that reads a secret (`getenv('DB_PASS')`, `app.key`) puts its value
+in the manifest, so a secret that only the web server or the deploy shell sets now also lands on
+disk. The file gets the `.env`'s permission bits (0640 without a `.env`), lives under the release
+in `bootstrap/cache/`, outside `public/`; keep it there and don't commit it (see below).
+
+**OPcache with `opcache.validate_timestamps=0`.** Running `optimize` again in place (same
+release path) doesn't reach the web server's OPcache, which keeps serving the old compiled
+manifest until it is reset: reset OPcache afterwards (Folio → Settings → Cache → Reset OPcache,
+or your deploy's reset). A deploy to a new release path is not affected.
 
 **Toggling an extension** (Folio's Settings → Extensions, `folio:extensions:*`) rewrites
 `extensions.json` and **removes the manifest**: the change applies on the next request, and the
@@ -527,8 +573,10 @@ site boots live until the next deploy or `preflow optimize`. Stored settings are
 (config files, code, model files, `installed.json`) is trusted until the next
 `preflow optimize`: run it on every deploy, after `composer install` and migrations /
 `folio:extensions:apply`, before the release goes live. `preflow optimize --check` lists the
-sources that changed since (exit 1), and `preflow cache:clear` removes the manifest (cache
-`boot`); a failed `optimize` removes it too. The file holds config values, secrets included:
+sources that changed since (exit 1), each once, and `preflow cache:clear` removes the manifest
+(cache `boot`), as does "Clear all" on Folio's Cache screen: the site stays correct and boots live
+until the next deploy or `preflow optimize`. A failed `optimize` (the build or the write) removes
+it too, so the manifest of the code before is never left in place. The file holds config values, secrets included:
 it gets the `.env`'s file permissions, is per release and must not be committed. Add this to the site's `.gitignore`:
 
 ```
