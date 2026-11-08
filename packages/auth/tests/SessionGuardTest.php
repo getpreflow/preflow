@@ -249,4 +249,33 @@ final class SessionGuardTest extends TestCase
 
         $this->assertNull($this->session->get('_auth_user_id.members:epoch'));
     }
+
+    public function test_login_sets_the_signed_in_marker_and_logout_clears_it(): void
+    {
+        $request = $this->createRequest();
+        $this->guard->login($this->user, $request);
+        $this->assertSame(['preflow_auth=1; Path=/; HttpOnly; SameSite=Lax'], $this->guard->pullCookies(), 'for the browser session');
+
+        $this->guard->logout($request);
+        $this->assertSame(['preflow_auth=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'], $this->guard->pullCookies());
+
+        // No session: nobody signs in, no marker.
+        $this->guard->login($this->user, (new Psr17Factory())->createServerRequest('GET', '/'));
+        $this->assertSame([], $this->guard->pullCookies());
+    }
+
+    public function test_logout_keeps_the_marker_while_another_guard_is_signed_in(): void
+    {
+        $member = new SessionGuard($this->provider, $this->hasher, '_auth_user_id.member', ['_auth_user_id'], name: 'member');
+        $request = $this->createRequest();
+        $this->guard->login($this->user, $request);
+        $member->login($this->user, $request);
+        $this->guard->pullCookies();
+        $member->pullCookies();
+
+        $member->logout($request);
+
+        $this->assertSame([], $member->pullCookies(), 'staff are still signed in');
+        $this->assertSame('user-1', $this->session->get('_auth_user_id'));
+    }
 }

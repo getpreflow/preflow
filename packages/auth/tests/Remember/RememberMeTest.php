@@ -160,9 +160,28 @@ final class RememberMeTest extends DataTestCase
         return $this->dataManager()->raw('SELECT * FROM auth_remember ORDER BY user_id');
     }
 
+    /**
+     * The response's Set-Cookie values without the signed-in marker (SessionGuardTest covers it).
+     *
+     * @return list<string>
+     */
+    private static function cookies(ResponseInterface $response): array
+    {
+        return self::withoutMarker($response->getHeader('Set-Cookie'));
+    }
+
+    /**
+     * @param list<string> $cookies
+     * @return list<string>
+     */
+    private static function withoutMarker(array $cookies): array
+    {
+        return array_values(array_filter($cookies, static fn (string $c): bool => !str_starts_with($c, SessionGuard::SIGNED_IN_COOKIE . '=')));
+    }
+
     private static function cookieValue(ResponseInterface $response): string
     {
-        $header = $response->getHeaderLine('Set-Cookie');
+        $header = implode(', ', self::cookies($response));
         preg_match('/^ss_member=([^;]*)/', $header, $m);
 
         return $m[1] ?? throw new \RuntimeException("no ss_member cookie in [{$header}]");
@@ -173,7 +192,7 @@ final class RememberMeTest extends DataTestCase
         $guard = $this->guard($this->remember());
         [$response] = $this->handle($guard, then: fn (ServerRequestInterface $r) => $guard->login(new TestUser(uuid: 'user-1'), $r, true));
 
-        $cookies = $response->getHeader('Set-Cookie');
+        $cookies = self::cookies($response);
         $this->assertCount(1, $cookies);
         $this->assertMatchesRegularExpression(
             '/^ss_member=[A-Za-z0-9_-]{22}:[A-Za-z0-9_-]{43}; Max-Age=2592000; Path=\/; HttpOnly; SameSite=Lax; Secure$/',
@@ -192,9 +211,9 @@ final class RememberMeTest extends DataTestCase
         // Without Secure when not configured; login without remember sets nothing.
         $plain = $this->guard($this->remember(), ['secure' => false] + self::CONFIG);
         [$response] = $this->handle($plain, then: fn (ServerRequestInterface $r) => $plain->login(new TestUser(uuid: 'user-1'), $r, true));
-        $this->assertStringEndsWith('; HttpOnly; SameSite=Lax', $response->getHeaderLine('Set-Cookie'));
+        $this->assertStringEndsWith('; HttpOnly; SameSite=Lax', implode(', ', self::cookies($response)));
         [$response] = $this->handle($plain, then: fn (ServerRequestInterface $r) => $plain->login(new TestUser(uuid: 'user-1'), $r));
-        $this->assertSame([], $response->getHeader('Set-Cookie'));
+        $this->assertSame([], self::cookies($response));
     }
 
     public function test_cookie_restores_user_and_rotates(): void
@@ -215,7 +234,7 @@ final class RememberMeTest extends DataTestCase
             $rotated = self::cookieValue($response);
             $this->assertStringStartsWith($selector . ':', $rotated, $storage);
             $this->assertNotSame($cookie, $rotated, $storage);
-            $this->assertStringContainsString('; Max-Age=2592000; Path=/; HttpOnly; SameSite=Lax; Secure', $response->getHeaderLine('Set-Cookie'), $storage);
+            $this->assertStringContainsString('; Max-Age=2592000; Path=/; HttpOnly; SameSite=Lax; Secure', implode(', ', self::cookies($response)), $storage);
 
             // The rotated cookie works on the next visit (new session), once more rotated.
             $next = $remember->resolve('member', $rotated);
@@ -224,12 +243,25 @@ final class RememberMeTest extends DataTestCase
 
             // An already signed-in session is left alone: no restore, no cookie.
             [$response] = $this->handle($this->guard($remember), ['ss_member' => $next['cookie']], session: $session);
-            $this->assertSame([], $response->getHeader('Set-Cookie'), $storage);
+            $this->assertSame([], self::cookies($response), $storage);
             $this->assertSame('user-1', $remember->resolve('member', $next['cookie'])['userId'] ?? null, $storage);
 
             // Another guard's name does not match the row.
             $this->assertNull($remember->resolve('staff', $remember->issue('member', 'user-2')), $storage);
         }
+    }
+
+    public function test_the_signed_in_marker_lasts_as_long_as_the_remember_cookie(): void
+    {
+        $remember = $this->remember();
+        $guard = $this->guard($remember);
+        [$response] = $this->handle($guard, then: fn (ServerRequestInterface $r) => $guard->login(new TestUser(uuid: 'user-1'), $r, true));
+        $this->assertContains('preflow_auth=1; Max-Age=2592000; Path=/; HttpOnly; SameSite=Lax', $response->getHeader('Set-Cookie'));
+
+        // Signed in again from the cookie (restore()): the marker again, for as long.
+        [$response, $authManager] = $this->handle($this->guard($remember), ['ss_member' => $remember->issue('member', 'user-1')], session: new ArraySession());
+        $this->assertSame('user-1', $authManager->user()?->getAuthId());
+        $this->assertContains('preflow_auth=1; Max-Age=2592000; Path=/; HttpOnly; SameSite=Lax', $response->getHeader('Set-Cookie'));
     }
 
     public function test_replayed_old_validator_revokes_all(): void
@@ -250,7 +282,7 @@ final class RememberMeTest extends DataTestCase
             // member token of user-1 is gone (the rotated one and the other device).
             [$response, $authManager] = $this->handle($this->guard($remember), ['ss_member' => $stolen]);
             $this->assertNull($authManager->user(), $storage);
-            $this->assertSame('ss_member=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax; Secure', $response->getHeaderLine('Set-Cookie'), $storage);
+            $this->assertSame('ss_member=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax; Secure', implode(', ', self::cookies($response)), $storage);
             $this->assertNull($remember->resolve('member', $owner['cookie']), $storage);
             $this->assertNull($remember->resolve('member', $otherDevice), $storage);
 
@@ -270,7 +302,7 @@ final class RememberMeTest extends DataTestCase
 
             [$response, $authManager] = $this->handle($this->guard($remember), ['ss_member' => $cookie]);
             $this->assertNull($authManager->user(), $storage);
-            $this->assertStringStartsWith('ss_member=; Max-Age=0;', $response->getHeaderLine('Set-Cookie'), $storage);
+            $this->assertStringStartsWith('ss_member=; Max-Age=0;', implode(', ', self::cookies($response)), $storage);
             $this->assertNull($remember->resolve('member', $cookie), $storage);
             $this->assertSame('user-2', $remember->resolve('member', $live)['userId'] ?? null, $storage);
             $this->now -= 30 * 86400;
@@ -295,7 +327,7 @@ final class RememberMeTest extends DataTestCase
 
             [$response, , $captured] = $this->handle($guard, ['ss_member' => $cookie], fn (ServerRequestInterface $r) => $guard->logout($r), $session);
 
-            $this->assertSame('ss_member=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax; Secure', $response->getHeaderLine('Set-Cookie'), $storage);
+            $this->assertSame('ss_member=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax; Secure', implode(', ', self::cookies($response)), $storage);
             $this->assertNull($session->get('_auth_user_id.member'), $storage);
             $this->assertNull($remember->resolve('member', $cookie), $storage);
             // Only this device's token: another device stays remembered.
@@ -311,14 +343,14 @@ final class RememberMeTest extends DataTestCase
         $guard = $this->guard(null);
 
         [$response, $authManager] = $this->handle($guard, ['ss_member' => $cookie], fn (ServerRequestInterface $r) => $guard->login(new TestUser(uuid: 'user-2'), $r, true));
-        $this->assertSame([], $response->getHeader('Set-Cookie'));
+        $this->assertSame([], self::cookies($response));
         $this->assertNull($authManager->user());
         $this->assertCount(1, $this->rows());
 
         $session = new ArraySession();
         $session->set('_auth_user_id.member', 'user-1');
         [$response] = $this->handle($guard, ['ss_member' => $cookie], fn (ServerRequestInterface $r) => $guard->logout($r), $session);
-        $this->assertSame([], $response->getHeader('Set-Cookie'));
+        $this->assertSame([], self::cookies($response));
         $this->assertCount(1, $this->rows());
         $this->assertSame([], $guard->pullCookies());
     }
@@ -335,12 +367,12 @@ final class RememberMeTest extends DataTestCase
         $this->assertFalse($session->isStarted());
         $this->assertNull($captured?->getAttribute(SessionInterface::class));
         $this->assertNull($authManager->user());
-        $this->assertSame([], $response->getHeader('Set-Cookie'));
+        $this->assertSame([], self::cookies($response));
         // Not rotated: the cookie still works where the session lives.
         [$response, $authManager] = $this->handle($guard, ['ss_member' => $cookie], session: $session, path: '/members/home', paths: ['/members']);
         $this->assertTrue($session->isStarted());
         $this->assertSame('user-1', $authManager->user()?->getAuthId());
-        $this->assertStringStartsWith('ss_member=', $response->getHeaderLine('Set-Cookie'));
+        $this->assertStringStartsWith('ss_member=', implode(', ', self::cookies($response)));
     }
 
     public function test_rotation_is_decided_by_the_update(): void
@@ -384,7 +416,7 @@ final class RememberMeTest extends DataTestCase
             [$response, $authManager] = $this->handle($this->guard($remember), ['ss_member' => $old], session: $session);
             $this->assertSame('user-1', $authManager->user()?->getAuthId(), $storage);
             $this->assertSame('user-1', $session->get('_auth_user_id.member'), $storage);
-            $this->assertSame([], $response->getHeader('Set-Cookie'), $storage);
+            $this->assertSame([], self::cookies($response), $storage);
             // Not rotated by the grace: the current value still works.
             $this->assertSame('user-1', $remember->resolve('member', $rotated)['userId'] ?? null, $storage);
             $this->now -= RememberMe::GRACE;
@@ -402,7 +434,7 @@ final class RememberMeTest extends DataTestCase
 
             [$response, $authManager] = $this->handle($this->guard($remember), ['ss_member' => $old]);
             $this->assertNull($authManager->user(), $storage);
-            $this->assertStringStartsWith('ss_member=; Max-Age=0;', $response->getHeaderLine('Set-Cookie'), $storage);
+            $this->assertStringStartsWith('ss_member=; Max-Age=0;', implode(', ', self::cookies($response)), $storage);
             $this->assertNull($remember->resolve('member', $rotated), $storage);
             $this->assertNull($remember->resolve('member', $otherDevice), $storage);
             $this->now -= RememberMe::GRACE + 1;
@@ -422,8 +454,8 @@ final class RememberMeTest extends DataTestCase
 
             $this->assertSame('user-1', $firstAuth->user()?->getAuthId(), $storage);
             $this->assertSame('user-1', $secondAuth->user()?->getAuthId(), $storage);
-            $this->assertCount(1, $first->getHeader('Set-Cookie'), $storage);
-            $this->assertSame([], $second->getHeader('Set-Cookie'), $storage);
+            $this->assertCount(1, self::cookies($first), $storage);
+            $this->assertSame([], self::cookies($second), $storage);
             $this->assertSame('user-1', $remember->resolve('member', self::cookieValue($first))['userId'] ?? null, $storage);
         }
     }
@@ -562,7 +594,7 @@ final class RememberMeTest extends DataTestCase
         $request = (new Psr17Factory())->createServerRequest('GET', '/members')->withAttribute(SessionInterface::class, new ArraySession());
         $guard->login(new TestUser(uuid: 'user-1'), $request, true);
 
-        $cookies = $guard->pullCookies();
+        $cookies = self::withoutMarker($guard->pullCookies());
         $this->assertCount(1, $cookies);
         $this->assertMatchesRegularExpression('/^ss_member=[^;]+; Max-Age=2592000; Path=\/; HttpOnly; SameSite=Lax; Secure$/', $cookies[0]);
         $this->assertSame('member', $pdo->query('SELECT guard FROM auth_remember')->fetchColumn());
@@ -570,8 +602,8 @@ final class RememberMeTest extends DataTestCase
         // The staff guard has no remember support; a public page gets no cookie.
         $staff = $app->container()->get(AuthManager::class)->guard('session');
         $staff->login(new TestUser(uuid: 'user-1'), $request, true);
-        $this->assertSame([], $staff->pullCookies());
+        $this->assertSame([], self::withoutMarker($staff->pullCookies()));
         $response = $app->handle((new Psr17Factory())->createServerRequest('GET', '/hello')->withCookieParams(['ss_member' => explode(';', substr($cookies[0], 10))[0]]));
-        $this->assertSame([], $response->getHeader('Set-Cookie'));
+        $this->assertSame([], self::cookies($response));
     }
 }

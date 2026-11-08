@@ -12,6 +12,13 @@ use Psr\Http\Message\ServerRequestInterface;
 final class SessionGuard implements GuardInterface
 {
     /**
+     * Set while someone is signed in (at login, also from a remember-me cookie; cleared at
+     * logout), so a page cache can tell signed-in visitors without opening their session. It
+     * carries no identity. Preflow\Core\PageCache\PageCacheConfig::SIGNED_IN_MARKER is the same name.
+     */
+    public const string SIGNED_IN_COOKIE = 'preflow_auth';
+
+    /**
      * @param string       $sessionKey where this guard keeps its user id (one key per guard)
      * @param list<string> $otherKeys  other guards' keys: logging out keeps the session while one is set
      * @param string       $name       this guard's name (the remember rows are per guard)
@@ -86,9 +93,11 @@ final class SessionGuard implements GuardInterface
             $session->remove($this->epochKey());
         }
 
-        if ($remember && $this->remembers()) {
+        $remembered = $remember && $this->remembers();
+        if ($remembered) {
             $this->queueCookie($this->rememberMe->issue($this->name, (string) $user->getAuthId(), $this->days() * 86400));
         }
+        $this->queueMarker(true, $remembered || $this->hasRememberCookie($request));
     }
 
     /**
@@ -164,6 +173,7 @@ final class SessionGuard implements GuardInterface
             }
         }
         $session->invalidate();
+        $this->queueMarker(false, false);
     }
 
     /** Where the session keeps the user's epoch at sign-in ({@see HasSessionEpoch}). */
@@ -186,6 +196,28 @@ final class SessionGuard implements GuardInterface
     private function days(): int
     {
         return (int) ($this->remember['days'] ?? 30);
+    }
+
+    /** Whether the request carries this guard's remember-me cookie (a login from it, restore()). */
+    private function hasRememberCookie(ServerRequestInterface $request): bool
+    {
+        if (!$this->remembers()) {
+            return false;
+        }
+        $cookie = $request->getCookieParams()[$this->cookieName()] ?? null;
+
+        return is_string($cookie) && $cookie !== '';
+    }
+
+    /**
+     * Queues the signed-in marker (SIGNED_IN_COOKIE): for as long as the remember-me cookie when
+     * $lasting, else for the browser session; or a clearing one when $set is false.
+     */
+    private function queueMarker(bool $set, bool $lasting): void
+    {
+        $this->cookies->queue(self::SIGNED_IN_COOKIE . '=' . ($set ? '1' : '')
+            . ($set ? ($lasting ? '; Max-Age=' . $this->days() * 86400 : '') : '; Max-Age=0')
+            . '; Path=/; HttpOnly; SameSite=Lax');
     }
 
     /** Queues the remember cookie with $value, or a clearing one for null. */

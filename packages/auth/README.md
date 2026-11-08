@@ -178,6 +178,14 @@ session survives. A failure is logged without the password and leaves the accoun
 sign-in goes on. `RecordUserProvider` implements it; a config user is left alone. Folio's staff
 login and the members login call it.
 
+### Signed-in marker
+
+A session guard sets the cookie `preflow_auth=1` (`SessionGuard::SIGNED_IN_COOKIE`; `Path=/`,
+`HttpOnly`, `SameSite=Lax`) at login, also when it signs a user back in from a remember-me
+cookie, and clears it at logout once no other guard has anyone signed in. It carries no
+identity: it tells a page cache that the visitor is signed in without opening the session.
+It lasts as long as the remember-me cookie when there is one, else for the browser session.
+
 ### Remember me
 
 A session guard gets a remember-me cookie when its `config/auth.php` entry has a `remember`
