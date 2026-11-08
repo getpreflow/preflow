@@ -38,6 +38,13 @@ final class PageCacheTest extends TestCase
         // With the reason a miss was not stored (explain), for the messages below.
         $config = (string) file_get_contents($this->dir . '/config/page_cache.php');
         file_put_contents($this->dir . '/config/page_cache.php', str_replace("// 'explain' => false,", "'explain' => true,", $config));
+        // Clean globals and environment, as a new process on the server has: nothing from tests
+        // that ran before this one in the suite.
+        unset($_SESSION);
+        $_COOKIE = $_GET = $_POST = $_REQUEST = $_FILES = [];
+        foreach (['APP_NAME', 'APP_TIMEZONE', 'APP_LOCALE', 'APP_ENGINE', 'APP_SECURE', 'DB_PATH'] as $name) {
+            putenv($name);
+        }
         putenv('APP_DEBUG=0');
         putenv('APP_KEY=skeleton-page-cache-test-key-0123456789');
         putenv('APP_URL=http://localhost:8080');
@@ -109,17 +116,56 @@ final class PageCacheTest extends TestCase
         $this->assertStringNotContainsString('class="header-login-link"', $body);
     }
 
-    private function app(): Application
+    #[RunInSeparateProcess]
+    public function test_the_login_and_logout_forms_post_their_csrf_token(): void
     {
-        $app = Application::create($this->dir);
-        $app->setRunningInConsole(false);
-        $app->boot();
+        $user = new \App\Models\User();
+        $user->fill(['uuid' => 'user-1', 'email' => 'ada@example.com', 'passwordHash' => (new \Preflow\Auth\NativePasswordHasher())->hash('correct horse')]);
+        $this->app()->container()->get(\Preflow\Data\DataManager::class)->save($user);
 
-        return $app;
+        // The login form: its session (a session path) and the token in its field.
+        $form = (string) $this->get('/login')->getBody();
+        $_COOKIE = ['preflow_session' => session_id()];
+        $login = $this->post('/login', ['email' => 'ada@example.com', 'password' => 'correct horse', '_csrf_token' => $this->field($form)]);
+        $this->assertSame(302, $login->getStatusCode(), (string) $login->getBody());
+        $this->assertSame('/', $login->getHeaderLine('Location'), 'signed in');
+        $_COOKIE = ['preflow_session' => session_id(), 'preflow_auth' => '1'];
+
+        // The logout form on a public page (the session resumed by its cookie).
+        $page = (string) $this->get('/about', $_COOKIE)->getBody();
+        $this->assertStringContainsString('ada@example.com', $page);
+        $logout = $this->post('/logout', ['_csrf_token' => $this->field($page)]);
+        $this->assertSame(302, $logout->getStatusCode(), (string) $logout->getBody());
+        $this->assertSame('/login', $logout->getHeaderLine('Location'));
+
+        // Without the token the forms are refused, as a forged post would be.
+        $this->assertSame(403, $this->post('/logout', [])->getStatusCode());
     }
 
-    private function get(string $path): ResponseInterface
+    /** The CSRF field's value in a page's form. */
+    private function field(string $html): string
     {
-        return $this->app()->handle((new Psr17Factory())->createServerRequest('GET', 'http://localhost:8080' . $path));
+        $this->assertSame(1, preg_match('/<input type="hidden" name="_csrf_token" value="([^"]+)"/', $html, $m), 'a CSRF field');
+
+        return html_entity_decode($m[1]);
+    }
+
+    /** @param array<string, string> $body */
+    private function post(string $path, array $body): ResponseInterface
+    {
+        return $this->app()->handle((new Psr17Factory())->createServerRequest('POST', 'http://localhost:8080' . $path)
+            ->withCookieParams($_COOKIE)->withParsedBody($body));
+    }
+
+    /** The app as the web serves it, each page it stores verified (preflow/testing). */
+    private function app(): Application
+    {
+        return \Preflow\Testing\WebApplication::boot($this->dir);
+    }
+
+    /** @param array<string, string> $cookies */
+    private function get(string $path, array $cookies = []): ResponseInterface
+    {
+        return $this->app()->handle((new Psr17Factory())->createServerRequest('GET', 'http://localhost:8080' . $path)->withCookieParams($cookies));
     }
 }

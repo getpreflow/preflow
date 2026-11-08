@@ -21,7 +21,7 @@
                 <a href="/admin" class="header-admin-link">Admin</a>
                 <span class="header-user">{{ auth_user().email }}</span>
                 <form method="post" action="/logout" class="header-logout-form">
-                    {{ csrf_token()|raw }}
+                    {{ csrf_field() }}
                     <button type="submit" class="header-logout-btn">Logout</button>
                 </form>
             {% else %}

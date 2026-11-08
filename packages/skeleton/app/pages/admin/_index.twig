@@ -170,7 +170,7 @@ document.addEventListener('submit', function (e) {
                     <a href="/admin/edit/{{ post.uuid }}">Edit</a>
                     <form method="post" action="/admin/delete/{{ post.uuid }}" class="delete-form"
                           data-confirm="Delete this post?">
-                        {{ csrf_token()|raw }}
+                        {{ csrf_field() }}
                         <button type="submit" class="btn btn-danger">Delete</button>
                     </form>
                 </td>

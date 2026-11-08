@@ -1,5 +1,5 @@
 <form method="post" action="{{ action }}" class="post-form">
-    {{ csrf_token()|raw }}
+    {{ csrf_field() }}
 
     {% if isEdit %}
         <input type="hidden" name="uuid" value="{{ uuid }}">
