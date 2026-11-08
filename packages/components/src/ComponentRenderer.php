@@ -166,6 +166,10 @@ final class ComponentRenderer
      */
     public function render(Component $component): string
     {
+        if ($component instanceof PreviewsFailure) {
+            // What its boundary shows when it fails, without it failing (no error reported).
+            return $this->errorBoundary->preview($component->previewFailure(), $component, 'resolveState');
+        }
         try {
             if ($this->live !== null && self::isLive($component::class)) {
                 \Preflow\Core\PageCache\LivePlaceholder::assertPlain($component->getProps());

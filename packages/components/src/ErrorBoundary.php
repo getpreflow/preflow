@@ -26,6 +26,24 @@ final class ErrorBoundary
             ($this->onError)($exception, $component);
         }
 
+        return $this->output($exception, $component, $phase);
+    }
+
+    /**
+     * What render() shows for $exception, without reporting an error (no onError: a page cache
+     * stores the page): the boundary's output as a preview of a failed component
+     * (PreviewsFailure), never for a real failure.
+     */
+    public function preview(
+        \Throwable $exception,
+        Component $component,
+        string $phase = 'resolveState',
+    ): string {
+        return $this->output($exception, $component, $phase);
+    }
+
+    private function output(\Throwable $exception, Component $component, string $phase): string
+    {
         // Verbose mode: always show dev panel, even if component has a custom fallback
         if ($this->debug === DebugLevel::Verbose) {
             $fallback = $component->fallback($exception);

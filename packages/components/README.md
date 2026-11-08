@@ -16,6 +16,16 @@ Each component is a PHP class co-located with a `.twig` template. The renderer c
 
 Errors are caught by `ErrorBoundary`: in dev mode it renders an inline panel with the exception class, message, component class, props, lifecycle phase, and stack trace; in prod mode it calls the component's `fallback()` or renders a hidden `<div>`.
 
+A page where a boundary stood in for a component is never stored by the page cache (`refused:component-error`). To show what a boundary renders without failing (an error-boundary demo, a style guide), implement `Preflow\Components\PreviewsFailure`: the renderer prints `ErrorBoundary::preview()` of `previewFailure()` in place of the component, the same output a real failure in `resolveState` gets, and reports no error, so the page is cached. The skeleton's home page does this.
+
+```php
+final class ErrorDemo extends Component implements PreviewsFailure
+{
+    public function previewFailure(): \Throwable { return new \RuntimeException('Crashed on purpose'); }
+    public function fallback(\Throwable $e): ?string { return '<div class="error-demo-fallback">…</div>'; }
+}
+```
+
 ## API
 
 ### `Component` (abstract base class)
