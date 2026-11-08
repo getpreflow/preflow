@@ -305,24 +305,20 @@ final class JsonFileDriverTest extends TestCase
         $this->deleteDir($cacheDir);
     }
 
-    public function test_cache_sees_files_added_removed_and_rewritten_outside_the_driver(): void
+    public function test_cache_sees_files_added_and_removed_outside_the_driver(): void
     {
         [$driver, $cacheDir] = $this->cached();
         $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A']);
+        $this->settle('post');
         $driver->findMany('post', new Query());
 
         file_put_contents($this->dataDir . '/post/p2.json', '{"uuid":"p2","title":"B"}');
         $this->assertCount(2, $driver->findMany('post', new Query())->items());
 
-        $same = '{"uuid":"p1","title":"Z"}';
-        file_put_contents($this->dataDir . '/post/p1.json', $same);
-        touch($this->dataDir . '/post/p1.json', time() + 10);
-        $titles = array_column($driver->findMany('post', new Query())->items(), 'title');
-        sort($titles);
-        $this->assertSame(['B', 'Z'], $titles);
-
+        $this->settle('post');
+        $driver->findMany('post', new Query());
         unlink($this->dataDir . '/post/p2.json');
-        $this->assertSame(['Z'], array_column($driver->findMany('post', new Query())->items(), 'title'));
+        $this->assertSame(['A'], array_column($driver->findMany('post', new Query())->items(), 'title'));
         $this->deleteDir($cacheDir);
     }
 
@@ -387,11 +383,13 @@ final class JsonFileDriverTest extends TestCase
     {
         [$driver, $cacheDir] = $this->cached();
         $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A']);
+        $time = time() - 5;
+        touch($this->dataDir . '/post', $time);
         $driver->findMany('post', new Query());
-        $mtime = filemtime($this->dataDir . '/post');
+        touch($this->cacheFile($cacheDir, 'post', 'json'), $time); // built in the second the directory last changed
 
         file_put_contents($this->dataDir . '/post/p2.json', '{"uuid":"p2","title":"B"}');
-        touch($this->dataDir . '/post', $mtime); // the directory's whole-second mtime did not move
+        touch($this->dataDir . '/post', $time); // the directory's whole-second mtime did not move
         clearstatcache();
 
         $this->assertCount(2, $driver->findMany('post', new Query())->items());

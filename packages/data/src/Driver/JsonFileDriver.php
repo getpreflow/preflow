@@ -181,27 +181,28 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             // A directory mtime has whole-second resolution: a cache built in the second the
             // directory last changed cannot tell a file added later in that second. Such a
             // cache is checked against every record file until it is rebuilt.
-            $settled = is_int($cached['built'] ?? null) && $cached['built'] > $quick[1];
+            // The cache file's own mtime (the file system's clock, like the directory's) says when it was built.
+            clearstatcache(true, $cacheFile);
+            $settled = (int) @filemtime($cacheFile) > $quick[1];
             if ($settled && ($cached['quick'] ?? null) === $quick) {
                 return $cached['records'];
             }
             if (isset($cached['signature']) && $cached['signature'] === $this->signature($generation, $dir, glob($dir . '/*.json') ?: [])) {
                 if (!$settled && time() > $quick[1] && ($cached['quick'] ?? null) === $quick) {
                     // Unchanged and past that second now: trust the cheap check from here on.
-                    $this->writeCache($cacheFile, ['built' => time(), 'quick' => $quick, 'signature' => $cached['signature'], 'records' => $cached['records']]);
+                    $this->writeCache($cacheFile, ['quick' => $quick, 'signature' => $cached['signature'], 'records' => $cached['records']]);
                 }
 
                 return $cached['records'];
             }
         }
 
-        $built = time();
         $files = glob($dir . '/*.json') ?: [];
         $signature = $this->signature($generation, $dir, $files);
         $records = $this->readRecords($files);
         // Changed while reading: use what was read, but do not cache it.
         if ($this->signature($this->generation($type), $dir, glob($dir . '/*.json') ?: []) === $signature) {
-            $this->writeCache($cacheFile, ['built' => $built, 'quick' => $quick, 'signature' => $signature, 'records' => $records]);
+            $this->writeCache($cacheFile, ['quick' => $quick, 'signature' => $signature, 'records' => $records]);
         }
 
         return $records;
