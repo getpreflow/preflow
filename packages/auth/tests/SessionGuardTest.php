@@ -278,4 +278,20 @@ final class SessionGuardTest extends TestCase
         $this->assertSame([], $member->pullCookies(), 'staff are still signed in');
         $this->assertSame('user-1', $this->session->get('_auth_user_id'));
     }
+
+    public function test_a_session_signed_in_without_the_marker_gets_it_again(): void
+    {
+        $guard = new SessionGuard($this->provider, $this->hasher, marker: ['lifetime' => 7200, 'domain' => '.example.com', 'secure' => true]);
+        $this->session->set('_auth_user_id', 'user-1');
+
+        $this->assertSame($this->user, $guard->user($this->createRequest()));
+        $this->assertSame(['preflow_auth=1; Max-Age=7200; Path=/; Domain=.example.com; HttpOnly; SameSite=Lax; Secure'], $guard->pullCookies(), 'as long as the session cookie, on its domain');
+
+        $this->assertSame($this->user, $guard->user($this->createRequest()->withCookieParams(['preflow_auth' => '1'])));
+        $this->assertSame([], $guard->pullCookies(), 'already there');
+
+        $this->session->remove('_auth_user_id');
+        $this->assertNull($guard->user($this->createRequest()));
+        $this->assertSame([], $guard->pullCookies(), 'nobody signed in');
+    }
 }

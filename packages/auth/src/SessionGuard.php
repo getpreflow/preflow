@@ -25,6 +25,8 @@ final class SessionGuard implements GuardInterface
      * @param array{cookie?: string, days?: int, path?: string, secure?: bool} $remember
      *                                 remember-me cookie; empty (or no $rememberMe) means none
      * @param CookieQueue  $cookies    where its Set-Cookie values wait for the response (shared with the Kernel)
+     * @param array{lifetime?: int, domain?: string, secure?: bool} $marker the session cookie's lifetime,
+     *                                 domain and Secure flag, which the signed-in marker follows
      */
     public function __construct(
         private readonly UserProviderInterface $provider,
@@ -35,6 +37,7 @@ final class SessionGuard implements GuardInterface
         private readonly string $name = 'session',
         private readonly array $remember = [],
         private readonly CookieQueue $cookies = new CookieQueue(),
+        private readonly array $marker = [],
     ) {}
 
     public function user(ServerRequestInterface $request): ?Authenticatable
@@ -58,6 +61,12 @@ final class SessionGuard implements GuardInterface
             $session->remove($this->epochKey());
 
             return null;
+        }
+
+        // Signed in without the marker (a session from before it existed, one that outlived
+        // it): set it again, so a page cache sends this visitor live pages.
+        if ($user !== null && ($request->getCookieParams()[self::SIGNED_IN_COOKIE] ?? '') === '') {
+            $this->queueMarker(true, $this->hasRememberCookie($request));
         }
 
         return $user;
@@ -211,13 +220,25 @@ final class SessionGuard implements GuardInterface
 
     /**
      * Queues the signed-in marker (SIGNED_IN_COOKIE): for as long as the remember-me cookie when
-     * $lasting, else for the browser session; or a clearing one when $set is false.
+     * $lasting, else as long as the session cookie (its lifetime, or the browser session), on the
+     * session cookie's domain and with its Secure flag; or a clearing one when $set is false.
      */
     private function queueMarker(bool $set, bool $lasting): void
     {
+        $lifetime = (int) ($this->marker['lifetime'] ?? 0);
+        $maxAge = match (true) {
+            !$set => 0,
+            $lasting => max($this->days() * 86400, $lifetime),
+            $lifetime > 0 => $lifetime,
+            default => null, // the browser session, as the session cookie
+        };
+        $domain = (string) ($this->marker['domain'] ?? '');
         $this->cookies->queue(self::SIGNED_IN_COOKIE . '=' . ($set ? '1' : '')
-            . ($set ? ($lasting ? '; Max-Age=' . $this->days() * 86400 : '') : '; Max-Age=0')
-            . '; Path=/; HttpOnly; SameSite=Lax');
+            . ($maxAge !== null ? '; Max-Age=' . $maxAge : '')
+            . '; Path=/'
+            . ($domain !== '' ? '; Domain=' . $domain : '')
+            . '; HttpOnly; SameSite=Lax'
+            . (($this->marker['secure'] ?? false) ? '; Secure' : ''));
     }
 
     /** Queues the remember cookie with $value, or a clearing one for null. */

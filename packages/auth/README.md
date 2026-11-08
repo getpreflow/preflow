@@ -184,7 +184,10 @@ A session guard sets the cookie `preflow_auth=1` (`SessionGuard::SIGNED_IN_COOKI
 `HttpOnly`, `SameSite=Lax`) at login, also when it signs a user back in from a remember-me
 cookie, and clears it at logout once no other guard has anyone signed in. It carries no
 identity: it tells a page cache that the visitor is signed in without opening the session.
-It lasts as long as the remember-me cookie when there is one, else for the browser session.
+It lasts as long as the remember-me cookie when there is one, else as long as the session
+cookie (`session.lifetime`, or the browser session), on the session cookie's `domain` and with
+its `Secure` flag. A session found signed in without the marker (one from before the marker
+existed, or one that outlived it) sets it again.
 
 ### Remember me
 
