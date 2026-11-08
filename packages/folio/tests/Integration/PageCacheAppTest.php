@@ -254,6 +254,23 @@ final class PageCacheAppTest extends TestCase
         $this->assertStringNotContainsString('1,2', (string) $other->getBody());
     }
 
+    #[RunInSeparateProcess]
+    public function test_a_cookie_read_from_the_superglobal_outside_live_parts_is_not_stored(): void
+    {
+        $log = $this->captureLog();
+        $this->album('<html><body><h1>{{ record.title }}</h1><p class="album">{{ raw_album() }}</p></body></html>');
+
+        $_COOKIE = ['album' => '1_2'];
+        $first = $this->visit('/project', ['album' => '1_2']);
+        $this->assertSame('miss', $first->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('differs', $first->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertStringContainsString('<p class="album">1_2</p>', (string) $first->getBody());
+        $this->assertNull($this->stored('/project'), 'not stored');
+        $this->assertSame(['album' => '1_2'], $_COOKIE, 'put back');
+        $this->assertStringContainsString('page cache: https://site.test/project differs per visitor outside live parts', (string) file_get_contents($log));
+        $_COOKIE = [];
+    }
+
     /** The post page with $template, published, and the guest album functions. */
     private function album(string $template, string $body = ''): void
     {

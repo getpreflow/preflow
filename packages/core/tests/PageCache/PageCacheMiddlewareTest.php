@@ -73,10 +73,19 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->recorder = new DependencyRecorder();
         $this->cache = new PageCache();
         $this->values = new PerRequestValues('test-secret');
+        // Earlier tests in this process may leave a $_SESSION; a cacheable request has none (verify checks).
+        $this->sessionBefore = $_SESSION ?? null;
+        unset($_SESSION);
     }
+
+    /** @var array<string, mixed>|null */
+    private ?array $sessionBefore = null;
 
     protected function tearDown(): void
     {
+        if ($this->sessionBefore !== null) {
+            $_SESSION = $this->sessionBefore;
+        }
         exec('rm -rf ' . escapeshellarg($this->dir));
     }
 
@@ -773,6 +782,42 @@ final class PageCacheMiddlewareTest extends TestCase
         // Headers the same for everyone (in another case and order): stored.
         $same = $this->handler(fn (): ResponseInterface => $this->html('<p>x</p>')->withHeader('X-Robots-Tag', 'noindex'));
         $this->assertSame('', $mw->process($this->get('/same')->withCookieParams(['album' => '1']), $same)->getHeaderLine('X-Page-Cache-Skip'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_verify_sees_a_visitor_read_from_the_superglobals(): void
+    {
+        $_COOKIE = ['album' => '1_2'];
+        $_REQUEST = ['album' => '1_2', 'q' => 'x'];
+        $_SERVER['REMOTE_ADDR'] = '203.0.113.9';
+        $_SERVER['HTTP_COOKIE'] = 'album=1_2';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '198.51.100.7';
+        $seen = [];
+        $mw = $this->middleware(verify: 'always');
+        $raw = $this->handler(function () use (&$seen): ResponseInterface {
+            $seen[] = [$_COOKIE, $_REQUEST, $_SERVER['REMOTE_ADDR'] ?? null, isset($_SERVER['HTTP_COOKIE']), isset($_SERVER['HTTP_X_FORWARDED_FOR'])];
+
+            return $this->html('<p>' . ($_COOKIE['album'] ?? '') . '</p>');
+        });
+
+        $miss = $mw->process($this->get('/raw'), $raw);
+        $this->assertSame('differs', $miss->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertSame('<p>1_2</p>', (string) $miss->getBody());
+        $this->assertFileDoesNotExist($this->pageFile('/raw'));
+        $this->assertSame([[], ['q' => 'x'], '192.0.2.1', false, false], $seen[1], 'the second render saw another visitor');
+
+        // Put back afterwards.
+        $this->assertSame(['album' => '1_2'], $_COOKIE);
+        $this->assertSame(['album' => '1_2', 'q' => 'x'], $_REQUEST);
+        $this->assertSame(['203.0.113.9', 'album=1_2', '198.51.100.7'], [$_SERVER['REMOTE_ADDR'], $_SERVER['HTTP_COOKIE'], $_SERVER['HTTP_X_FORWARDED_FOR']]);
+
+        // A render with a session open is not verified, so not stored.
+        $_SESSION = [];
+        $same = $this->handler(fn (): ResponseInterface => $this->html('<p>same</p>'));
+        $this->assertSame('differs', $mw->process($this->get('/session'), $same)->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertStringContainsString('could not be verified: a session is open', implode("\n", $this->logged));
+        unset($_SESSION);
+        $this->assertSame('', $mw->process($this->get('/same'), $same)->getHeaderLine('X-Page-Cache-Skip'));
     }
 
     public function test_verify_first_runs_once_for_a_key_the_index_does_not_know(): void

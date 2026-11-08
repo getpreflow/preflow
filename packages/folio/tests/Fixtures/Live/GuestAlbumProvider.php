@@ -41,6 +41,8 @@ final class GuestAlbumProvider extends ServiceProvider
         $engine->addFunction(new TemplateFunctionDefinition('guest_token', $token));
         $engine->addFunction(new TemplateFunctionDefinition('album_count', static fn (): int => count($numbers())));
         $engine->addFunction(new TemplateFunctionDefinition('in_album', static fn (int|string $number): bool => in_array((int) $number, $numbers(), true)));
+        // A site that reads the cookie from PHP's superglobal instead of the request.
+        $engine->addFunction(new TemplateFunctionDefinition('raw_album', static fn (): string => (string) ($_COOKIE['album'] ?? '')));
         $engine->addFunction(new TemplateFunctionDefinition('album_numbers', static fn (): string => implode(',', $numbers())));
         $engine->addFunction(new TemplateFunctionDefinition('live_boom', static function (): string {
             throw new \RuntimeException('the album service is down');

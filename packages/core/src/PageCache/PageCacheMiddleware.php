@@ -418,9 +418,15 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
                 return $response;
             };
-            $response = $this->recorder->outside(fn (): ResponseInterface => $this->visitorScope !== null
+            if (isset($_SESSION) || session_status() === PHP_SESSION_ACTIVE) {
+                // A cacheable render never has a session; one that does can't be verified.
+                $this->log('page cache: ' . $key->url() . ' could not be verified: a session is open');
+
+                return true;
+            }
+            $response = self::asVisitor($other, fn (): ResponseInterface => $this->recorder->outside(fn (): ResponseInterface => $this->visitorScope !== null
                 ? ($this->visitorScope)($other, $render)
-                : $render());
+                : $render()));
             if ($this->cache->refusal() !== null || $this->refusal($other, $key, $response) !== null) {
                 return true;
             }
@@ -452,6 +458,32 @@ final class PageCacheMiddleware implements MiddlewareInterface
         ksort($headers);
 
         return $headers;
+    }
+
+    /**
+     * Runs $fn with PHP's superglobals as $other sees them, put back afterwards: no $_COOKIE (and
+     * none of its keys in $_REQUEST), $_SERVER with its REMOTE_ADDR and without HTTP_COOKIE and
+     * HTTP_X_FORWARDED_FOR. So code that reads the visitor from the superglobals instead of the
+     * request is seen too.
+     *
+     * @template T
+     * @param \Closure(): T $fn
+     * @return T
+     */
+    private static function asVisitor(ServerRequestInterface $other, \Closure $fn): mixed
+    {
+        $saved = [$_COOKIE, $_SERVER, $_REQUEST];
+        foreach (array_keys($_COOKIE) as $name) {
+            unset($_REQUEST[$name]);
+        }
+        $_COOKIE = [];
+        $_SERVER['REMOTE_ADDR'] = (string) ($other->getServerParams()['REMOTE_ADDR'] ?? '192.0.2.1');
+        unset($_SERVER['HTTP_COOKIE'], $_SERVER['HTTP_X_FORWARDED_FOR']);
+        try {
+            return $fn();
+        } finally {
+            [$_COOKIE, $_SERVER, $_REQUEST] = $saved;
+        }
     }
 
     /** $request as another anonymous visitor: another address (forwarded ones too), no cookies. */
