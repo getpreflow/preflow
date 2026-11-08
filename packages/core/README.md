@@ -740,6 +740,9 @@ return [
     forgotten when its job changes. Nested scopes: the innermost wins. Inside a live part the
     dial does nothing (its reads are no dependencies). `'*'` (a deploy, `cache:clear`) clears
     every page whatever its freshness.
+  - The dial applies where a read runs, not where its value is shown: `{% set others = … %}`
+    inside a next-visit scope and printed outside it is still next visit. A component's reads
+    before `resolveState()` (its constructor) follow the scope around it.
   - A write while the page renders: of something it read fresh, the page is not stored; next
     visit only, it is stored stale; timed only, it is stored.
   - Folio's frontend pages (types with publishing) depend on their record by id and on their
@@ -747,8 +750,10 @@ return [
     queried. The Publisher reports the addresses a publish, unpublish or delete leaves and
     takes. So "other jobs" next visit works on a job's own Folio page, and publishing another
     record of the type leaves other detail pages alone (unless they list the type, which follows
-    its own freshness). Writes into a `__published` table around the Publisher take over no
-    address the cache sees.
+    its own freshness). Every publishing route a path tries also adds "any record" of its
+    table (`{storage}:{table}__published#`), found or not: a table or bulk write around the
+    Publisher (an import, a pull) forgets every page another record of that type could claim.
+    A single-record write around the Publisher reaches the pages of that record only.
   - `$pageCache->depends('menu')` adds a dependency the data layer can't see, in the scope's
     freshness. Tags starting with `~` are exact: read and changed as they are.
 - **Expiry and the maximum age.** A page can say when it goes out of date, an event date or a
@@ -766,7 +771,8 @@ return [
 
   `$pageCache->expiresAt($date)` does it from PHP. A page past its expiry, or older than
   `max_age` (4 h by default; `0` turns the maximum age off, a negative value is refused), is
-  served once more as `stale`; the visitor after gets a fresh one (rendered on their request
+  served once more as `stale` (an expiry at or before the render is ignored: the page already
+  shows what came after it); the visitor after gets a fresh one (rendered on their request
   until rebuilds behind the response are wired).
 - **Switching it off and on.** `storage/cache/pages/enabled` marks a cache that has been
   emptied since it was switched on. While the cache is off, the first write through the data

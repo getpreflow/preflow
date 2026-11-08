@@ -38,7 +38,7 @@ final class FreshnessDialTest extends TestCase
     /** @return iterable<string, array{int|string}> */
     public static function notDurations(): iterable
     {
-        foreach (['0m', '0', '-1h', '1.5h', '1w', 'soon', '', '12 hours'] as $value) {
+        foreach (['0m', '0', '-1h', '1.5h', '1w', 'soon', '', '12 hours', '99999999999999999999d', '1234567890s'] as $value) {
             yield $value === '' ? 'empty' : $value => [$value];
         }
         yield 'zero' => [0];
@@ -94,6 +94,11 @@ final class FreshnessDialTest extends TestCase
         yield 'at no date' => [static fn (PageCache $c) => $c->expires(at: 'not a date at all')];
         yield 'at an array' => [static fn (PageCache $c) => $c->expires(at: [])];
         yield 'in no duration' => [static fn (PageCache $c) => $c->expires(in: 'later')];
+        yield 'in a bool' => [static fn (PageCache $c) => $c->expires(in: true)];
+        yield 'every a bool' => [static fn (PageCache $c) => $c->enter('timed', true)];
+        yield 'name a bool' => [static fn (PageCache $c) => $c->enter(true)];
+        yield 'at a bool' => [static fn (PageCache $c) => $c->expires(at: true)];
+        yield 'an overflowing duration' => [static fn (PageCache $c) => $c->enter('timed', '99999999999999999999d')];
     }
 
     #[DataProvider('mistakes')]

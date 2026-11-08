@@ -121,6 +121,8 @@ final class FreshnessTagTest extends TestCase
         yield 'zero duration' => ["{% freshness 'timed' every '0m' %}x{% endfreshness %}"];
         yield 'expires in a date' => ["{% expires in 'tomorrow' %}"];
         yield 'expires at no date' => ["{% expires at 'not a date at all' %}"];
+        yield 'every a bool' => ["{% freshness 'timed' every true %}x{% endfreshness %}"];
+        yield 'an overflowing duration' => ["{% freshness 'timed' every '99999999999999999999d' %}x{% endfreshness %}"];
         yield 'expires without at or in' => ["{% expires '1h' %}"];
     }
 

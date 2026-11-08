@@ -132,6 +132,94 @@ final class PageCacheAppTest extends TestCase
         $this->assertNotSame('hit', $this->get('/joiner')->getHeaderLine('X-Page-Cache'), 'never served from the cache');
     }
 
+    #[RunInSeparateProcess]
+    public function test_the_found_record_a_second_locale_and_delete(): void
+    {
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Carpenter', 'de' => 'Schreiner'], 'slug' => ['en' => 'carpenter', 'de' => 'schreiner'], '_locales' => ['en', 'de']]), null);
+        $this->publisher()->publish($this->working('post', 'p2', ['title' => ['en' => 'Joiner'], 'slug' => ['en' => 'joiner']]), null);
+        $this->cacheAll(['/carpenter', '/de/schreiner', '/joiner']);
+        $this->assertStringContainsString('<h1>Schreiner</h1>', $this->storedBody('/de/schreiner', 'de'));
+
+        // The shown record written around the Publisher (one record): its page goes, by its record tag alone.
+        $app = $this->app();
+        $app->container()->get(\Preflow\Data\DataManager::class)->reportWrite($this->storage, 'post__published', 'p1');
+        $app->container()->get(\Preflow\Core\PageCache\ChangeLog::class)->flush();
+        $this->assertNull($this->stored('/carpenter'), 'the found record is a dependency');
+        $this->assertNull($this->stored('/de/schreiner', 'de'));
+        $this->assertNotNull($this->stored('/joiner'), 'another record\'s page stays');
+
+        // A record that takes over the address in the second locale only.
+        $this->cacheAll(['/carpenter', '/de/schreiner']);
+        $this->publishNow('p3', ['title' => ['en' => 'Sawyer', 'de' => 'Säger'], 'slug' => ['en' => 'sawyer', 'de' => 'schreiner'], '_locales' => ['en', 'de']]);
+        $this->assertNull($this->stored('/de/schreiner', 'de'), 'its German address taken over');
+        $this->assertNotNull($this->stored('/carpenter'), 'its English address is not touched');
+
+        // Deleted (RecordDeleter and member deletion go through Publisher::forget()).
+        $app = $this->app();
+        $app->container()->get(\Preflow\Folio\Publishing\Publisher::class)->forget('post', 'p2');
+        $app->container()->get(\Preflow\Core\PageCache\ChangeLog::class)->flush();
+        $this->assertNull($this->stored('/joiner'));
+        $this->assertNotNull($this->stored('/carpenter'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_every_route_a_path_tries_is_a_dependency_and_the_home_address(): void
+    {
+        // Two routes match /jobs/…: the job route (tried first) and the pages' catch-all.
+        $this->writeModel('job', [
+            'label' => 'Jobs', 'publishing' => true, 'frontend' => ['route' => '/jobs/{slug}'],
+            'fields' => ['title' => ['type' => 'string', 'validate' => ['required']], 'slug' => ['type' => 'string', 'validate' => ['required']]],
+        ]);
+        $this->writeModel('page', [
+            'label' => 'Pages', 'publishing' => true, 'frontend' => ['route' => '/{...path}', 'home' => 'home'],
+            'fields' => ['title' => ['type' => 'string', 'validate' => ['required']], 'path' => ['type' => 'string', 'validate' => ['required']]],
+        ]);
+        $this->write('resources/folio/frontend/job.twig', '<h1>Job: {{ record.title }}</h1>');
+        $this->write('resources/folio/frontend/page.twig', '<h1>Page: {{ record.title }}</h1>');
+        $publish = function (string $type, string $id, array $data): void {
+            $app = $this->app();
+            $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+            $record = \Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get($type), ['uuid' => $id] + $data);
+            $dm->saveType($record, false);
+            $app->container()->get(\Preflow\Folio\Publishing\Publisher::class)->publish($record, null);
+            $app->container()->get(\Preflow\Core\PageCache\ChangeLog::class)->flush();
+        };
+        $publish('page', 'home', ['title' => 'Welcome', 'path' => 'home']);
+        $publish('page', 'about-jobs', ['title' => 'About carpentry jobs', 'path' => 'jobs/carpenter']);
+        $publish('page', 'sawyer-info', ['title' => 'About sawing', 'path' => 'jobs/sawyer']);
+        $this->cacheAll(['/', '/jobs/carpenter', '/jobs/sawyer']);
+        $this->assertStringContainsString('Page: Welcome', $this->storedBody('/'));
+        $this->assertStringContainsString('Page: About carpentry jobs', $this->storedBody('/jobs/carpenter'));
+
+        // A job published at /jobs/carpenter takes over the page's address.
+        $publish('job', 'j1', ['title' => 'Carpenter', 'slug' => 'carpenter']);
+        $this->assertNull($this->stored('/jobs/carpenter'), 'another type took over the path');
+        $this->assertStringContainsString('Job: Carpenter', (string) $this->get('/jobs/carpenter')->getBody());
+        $this->assertNotNull($this->stored('/jobs/sawyer'), 'one job is no bulk write');
+        $this->assertNotNull($this->stored('/'));
+
+        // An import of jobs (a table write around the Publisher): every path the job route tries goes.
+        $app = $this->app();
+        $app->container()->get(\Preflow\Data\DataManager::class)->reportWrite($this->storage, 'job__published');
+        $app->container()->get(\Preflow\Core\PageCache\ChangeLog::class)->flush();
+        $this->assertNull($this->stored('/jobs/sawyer'), 'the job route found nothing there, but it could now');
+        $this->assertNotNull($this->stored('/'), 'the home page tries no job route');
+
+        // The home record: another page record taking the home value takes over "/".
+        $publish('page', 'new-home', ['title' => 'New welcome', 'path' => 'home']);
+        $this->assertNull($this->stored('/'), 'the home address');
+    }
+
+    /** @param list<string> $paths visits each (miss) and checks it is a hit now */
+    private function cacheAll(array $paths): void
+    {
+        foreach ($paths as $path) {
+            $miss = $this->get($path);
+            $this->assertSame(200, $miss->getStatusCode(), $path . ': ' . substr((string) $miss->getBody(), 0, 300));
+            $this->assertSame('hit', $this->get($path)->getHeaderLine('X-Page-Cache'), $path . ': ' . $miss->getHeaderLine('X-Page-Cache-Skip'));
+        }
+    }
+
     /**
      * Publishes post $id with $data through one web app and flushes its change log, as the
      * end of a staff request does.
@@ -368,21 +456,21 @@ final class PageCacheAppTest extends TestCase
         return $this->app()->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test' . $uri)->withCookieParams($cookies));
     }
 
-    private function stored(string $uri): ?\Preflow\Core\PageCache\StoredPage
+    private function stored(string $uri, string $locale = 'en'): ?\Preflow\Core\PageCache\StoredPage
     {
         $app = $this->app();
         $key = \Preflow\Core\PageCache\PageKey::fromRequest(
-            (new Psr17Factory())->createServerRequest('GET', 'https://site.test' . $uri)->withAttribute('locale', 'en'),
+            (new Psr17Factory())->createServerRequest('GET', 'https://site.test' . $uri)->withAttribute('locale', $locale),
             $app->container()->get(\Preflow\Core\PageCache\PageCacheConfig::class),
-            ['locale' => 'en'],
+            ['locale' => $locale],
         );
 
         return $key === null ? null : $app->container()->get(\Preflow\Core\PageCache\PageStore::class)->get($key);
     }
 
-    private function storedBody(string $uri): string
+    private function storedBody(string $uri, string $locale = 'en'): string
     {
-        return ($this->stored($uri) ?? throw new \RuntimeException("{$uri} is not stored"))->body;
+        return ($this->stored($uri, $locale) ?? throw new \RuntimeException("{$uri} is not stored"))->body;
     }
 
     /** error_log() of this (separate) process goes to a file; returns its path. */

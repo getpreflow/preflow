@@ -212,4 +212,21 @@ final class DependencyRecorderTest extends TestCase
         $this->assertNull($recorder->expiry($page));
         $this->assertSame(['page' => [Freshness::NextVisit, null]], $recorder->stop($page));
     }
+
+    public function test_an_expiry_at_or_before_the_render_start_is_ignored_for_that_recording(): void
+    {
+        $recorder = new DependencyRecorder();
+        $page = $recorder->start(1000.0);
+        $part = $recorder->start(); // no start: every expiry counts
+        $recorder->expiresAt(900);
+        $recorder->expiresAt(1000);
+        $recorder->expiresAt(1060);
+        $this->assertSame(900.0, $recorder->expiry($part));
+        $this->assertNull($recorder->ignoredExpiry($part));
+        $recorder->stop($part);
+
+        $this->assertSame(1060.0, $recorder->expiry($page), 'the future one, not the past ones');
+        $this->assertSame(900.0, $recorder->ignoredExpiry($page));
+        $recorder->stop($page);
+    }
 }

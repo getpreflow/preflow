@@ -1041,6 +1041,59 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertFalse($this->recorder->recording());
     }
 
+    public function test_an_expiry_before_the_render_is_ignored(): void
+    {
+        $now = 1_800_000_000.0;
+        $clock = static function () use (&$now): float {
+            return $now;
+        };
+        $mw = $this->middleware(clock: $clock, reportsStale: false);
+        $handler = $this->handler(function () use (&$now): ResponseInterface {
+            // A listing of every event, some past: their dates say nothing new.
+            foreach ([-86400, -1, 0] as $offset) {
+                $this->cache->expiresAt(new \DateTimeImmutable('@' . (int) ($now + $offset)));
+            }
+
+            return $this->html('events');
+        });
+
+        $mw->process($this->get('/events'), $handler);
+        $this->assertNull($this->store->get($this->key('/events'))?->expiresAt, 'stored without an expiry');
+        $now += 1;
+        $this->assertSame('hit', $mw->process($this->get('/events'), $handler)->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('hit', $mw->process($this->get('/events'), $handler)->getHeaderLine('X-Page-Cache'));
+        $this->assertSame(1, $handler->calls);
+        $past = array_values(array_filter($this->logged, static fn (string $m): bool => str_contains($m, 'before it rendered')));
+        $this->assertCount(1, $past, 'logged once (explain)');
+        $this->assertStringContainsString('https://example.com/events asked to expire at', $past[0]);
+
+        // An expiry in the future of the render still counts, the earliest of them.
+        $handler = $this->handler(function () use (&$now): ResponseInterface {
+            $this->cache->expiresAt(new \DateTimeImmutable('@' . (int) ($now - 10)));
+            $this->cache->expiresAt(new \DateTimeImmutable('@' . (int) ($now + 60)));
+
+            return $this->html('soon');
+        });
+        $mw->process($this->get('/soon'), $handler);
+        $this->assertSame($now + 60, $this->store->get($this->key('/soon'))?->expiresAt);
+    }
+
+    public function test_a_head_request_does_not_use_up_the_stale_serve(): void
+    {
+        $now = 1_800_000_000.0;
+        $config = new PageCacheConfig(enabled: true, hosts: ['example.com'], maxAge: 60, verify: 'off');
+        $mw = $this->middleware(config: $config, clock: static function () use (&$now): float {
+            return $now;
+        }, reportsStale: false);
+        $handler = $this->handler(fn (): ResponseInterface => $this->html('page'));
+        $mw->process($this->get('/page'), $handler);
+
+        $now += 60;
+        $this->assertSame('stale', $mw->process(new ServerRequest('HEAD', 'https://example.com/page'), $handler)->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('stale', $mw->process($this->get('/page'), $handler)->getHeaderLine('X-Page-Cache'), 'the GET still gets it');
+        $this->assertSame('miss', $mw->process($this->get('/page'), $handler)->getHeaderLine('X-Page-Cache'));
+    }
+
     public function test_the_strictest_freshness_wins_when_a_tag_is_read_twice(): void
     {
         $now = 1_800_000_000.0;

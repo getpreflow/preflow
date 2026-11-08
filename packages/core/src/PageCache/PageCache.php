@@ -118,7 +118,9 @@ final class PageCache
 
     /**
      * Runs $fn with what it reads recorded as $freshness ($seconds: the time of a Timed one, 1 or
-     * more; ignored for the others). Nested, the innermost wins.
+     * more; ignored for the others, unlike the templates' `every`, which only timed takes).
+     * Nested, the innermost wins. The dial applies where a read runs: a value read inside and
+     * shown outside keeps the freshness it was read with.
      *
      * @template T
      * @param \Closure(): T $fn
@@ -149,8 +151,15 @@ final class PageCache
      * @internal the {% freshness %} tag and the Blade @freshness directive
      * @throws \InvalidArgumentException an unknown name, timed without $every, $every on another
      */
-    public function enter(Freshness|string $freshness, int|string|null $every = null): void
+    public function enter(mixed $freshness, mixed $every = null): void
     {
+        // mixed, checked here: compiled Blade views don't declare strict_types (true would be 1 s)
+        if (!is_string($freshness) && !$freshness instanceof Freshness) {
+            throw new \InvalidArgumentException(sprintf('A freshness is a name, %s given.', get_debug_type($freshness)));
+        }
+        if ($every !== null && !is_int($every) && !is_string($every)) {
+            throw new \InvalidArgumentException(sprintf('A freshness time is a duration, %s given.', get_debug_type($every)));
+        }
         [$freshness, $seconds] = self::scope($freshness, $every);
         $this->recorder?->enter($freshness, $seconds);
     }
@@ -168,8 +177,11 @@ final class PageCache
      * @internal the {% expires %} tag and the Blade @expires directive
      * @throws \InvalidArgumentException neither or both given, a date or duration that doesn't parse
      */
-    public function expires(mixed $at = null, int|string|null $in = null): void
+    public function expires(mixed $at = null, mixed $in = null): void
     {
+        if ($in !== null && !is_int($in) && !is_string($in)) {
+            throw new \InvalidArgumentException(sprintf('expires in takes a duration, %s given.', get_debug_type($in)));
+        }
         if ($in !== null) {
             if ($at !== null) {
                 throw new \InvalidArgumentException('expires takes `at` a date or `in` a duration, not both.');

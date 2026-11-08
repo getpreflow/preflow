@@ -50,13 +50,17 @@ final class DataTags
 
     /**
      * The page at the public path $path (as the router sees it, without a locale prefix):
-     * decoded and lowercased (ASCII), so "/Jobs%20A" and "/jobs a" are one address, in every locale.
+     * decoded and lowercased (multibyte when mbstring is there), so "/Jobs%20A" and "/jobs a" are
+     * one address, in every locale. Accents are kept: a database collation that matches "café"
+     * to "cafe" finds a record whose address tag differs (its record tag still counts).
      */
     public static function address(string $path): string
     {
         $path = '/' . trim(rawurldecode($path), '/');
 
-        return '~address:' . str_replace('#', '%23', strtolower($path));
+        $path = function_exists('mb_strtolower') ? mb_strtolower($path) : strtolower($path);
+
+        return '~address:' . str_replace('#', '%23', $path);
     }
 
     /** Whether $tag is an exact tag (address()): never expanded. */

@@ -127,6 +127,8 @@ final class FreshnessDirectiveTest extends TestCase
         yield 'zero duration' => ["@freshness('timed', every: '0m')x @endfreshness"];
         yield 'expires in a date' => ["@expires(in: 'tomorrow')"];
         yield 'expires at no date' => ["@expires(at: 'not a date at all')"];
+        yield 'every a bool' => ["@freshness('timed', every: true)x @endfreshness"];
+        yield 'expires in a bool' => ["@expires(in: true)"];
         yield 'expires at and in' => ["@expires(at: '2030-01-01', in: '1h')"];
     }
 

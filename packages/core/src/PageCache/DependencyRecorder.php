@@ -33,6 +33,12 @@ final class DependencyRecorder
     /** @var list<?float> the earliest expiry of each open recording (unix time), parallel to $frames */
     private array $expiries = [];
 
+    /** @var list<?float> when each open recording's render started (start()), parallel to $frames */
+    private array $starts = [];
+
+    /** @var list<?float> the earliest expiry each open recording ignored (before its start) */
+    private array $ignored = [];
+
     /** @var list<array{0: Freshness, 1: ?int}> the freshness scopes around the current one (enter()) */
     private array $scopes = [];
 
@@ -41,12 +47,16 @@ final class DependencyRecorder
      * and never stopped (a render that threw in between) is then closed with it, and the outer
      * page still gets its own reads. Prefer capture(), which can't be left open.
      *
+     * @param float|null $at when the render started (unix time): an expiry at or before it is
+     *        ignored for this recording, it says nothing new (null: every expiry counts)
      * @return int the recording, for stop()
      */
-    public function start(): int
+    public function start(?float $at = null): int
     {
         $this->frames[] = [];
         $this->expiries[] = null;
+        $this->starts[] = $at;
+        $this->ignored[] = null;
 
         return count($this->frames) - 1;
     }
@@ -65,6 +75,8 @@ final class DependencyRecorder
         $tags = $this->frames[$frame];
         array_splice($this->frames, $frame);
         array_splice($this->expiries, $frame);
+        array_splice($this->starts, $frame);
+        array_splice($this->ignored, $frame);
 
         return $tags;
     }
@@ -106,6 +118,17 @@ final class DependencyRecorder
     }
 
     /**
+     * The earliest expiry recording $frame ignored because it lay at or before its start (a past
+     * event date), null when none did. Ask before stop().
+     */
+    public function ignoredExpiry(?int $frame = null): ?float
+    {
+        $frame ??= count($this->frames) - 1;
+
+        return $this->ignored[$frame] ?? null;
+    }
+
+    /**
      * The page being recorded must be refreshed by $at at the latest (an event date): every
      * open recording keeps the earliest. Outside a recording (and in a live part) it does nothing.
      */
@@ -116,6 +139,11 @@ final class DependencyRecorder
         }
         $at = $at instanceof \DateTimeInterface ? (float) $at->format('U.u') : (float) $at;
         foreach ($this->expiries as $i => $known) {
+            if ($this->starts[$i] !== null && $at <= $this->starts[$i]) {
+                $this->ignored[$i] = min($this->ignored[$i] ?? $at, $at); // already past when this render started
+
+                continue;
+            }
             $this->expiries[$i] = $known === null ? $at : min($known, $at);
         }
     }
@@ -131,9 +159,11 @@ final class DependencyRecorder
      */
     public function outside(\Closure $fn): mixed
     {
-        $saved = [$this->frames, $this->expiries, $this->freshness, $this->seconds, $this->scopes];
+        $saved = [$this->frames, $this->expiries, $this->starts, $this->ignored, $this->freshness, $this->seconds, $this->scopes];
         $this->frames = [];
         $this->expiries = [];
+        $this->starts = [];
+        $this->ignored = [];
         // A freshness scope around a live part is not its: what it reads is no dependency at all.
         $this->freshness = Freshness::Fresh;
         $this->seconds = null;
@@ -141,7 +171,7 @@ final class DependencyRecorder
         try {
             return $fn();
         } finally {
-            [$this->frames, $this->expiries, $this->freshness, $this->seconds, $this->scopes] = $saved;
+            [$this->frames, $this->expiries, $this->starts, $this->ignored, $this->freshness, $this->seconds, $this->scopes] = $saved;
         }
     }
 

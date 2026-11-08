@@ -20,10 +20,10 @@ final class Duration
     {
         if (is_int($duration)) {
             $seconds = $duration;
-        } elseif (preg_match('/^\s*(\d+)\s*([smhd]?)\s*$/i', $duration, $m) === 1) {
+        } elseif (preg_match('/^\s*(\d{1,9})\s*([smhd]?)\s*$/i', $duration, $m) === 1) {
             $seconds = (int) $m[1] * self::UNITS[strtolower($m[2] === '' ? 's' : $m[2])];
         } else {
-            throw new \InvalidArgumentException("'{$duration}' is not a duration: write it as 30m, 12h or 2d.");
+            throw new \InvalidArgumentException("'{$duration}' is not a duration: write it as 30m, 12h or 2d (at most 9 digits).");
         }
         if ($seconds < 1) {
             throw new \InvalidArgumentException('A duration is 1 second or more.');

@@ -17,7 +17,9 @@ use Preflow\Folio\Publishing\ShadowTypes;
  * For the page cache, a page found this way depends on its record (by id) and on its address
  * (DataTags::address() of the path), not on the whole published table its lookup queried: the
  * Publisher reports the addresses a record leaves and takes. Publishing another record of the
- * type leaves the page alone; a record that takes over the address forgets it. Routes of types
+ * type leaves the page alone; a record that takes over the address forgets it. Every publishing
+ * route the path tries adds "any record of its table" (DataTags::anyRecord()): table and bulk
+ * writes around the Publisher (imports) reach the page too. Routes of types
  * without publishing still depend on their table (their records are written without the
  * Publisher).
  */
@@ -120,6 +122,13 @@ final class FrontendResolver
             }
 
             $published = $route->publishing ? ShadowTypes::published($this->definition($route->type)) : null;
+            if ($published !== null) {
+                // Any route this path tries could claim it: a table or bulk write of its records
+                // (an import, a pull, a site's raw write, none through the Publisher) changes the
+                // page, whether this route finds a record now or not. A single record's write
+                // through the Publisher never touches this tag (its address tags count instead).
+                $this->pageCache?->depends(\Preflow\Core\PageCache\DataTags::anyRecord($published->storage, $published->table));
+            }
             $query = $published !== null
                 ? $this->dm->queryIn($published)->unreported() // the record and the address are reported below
                 : $this->dm->queryType($route->type);

@@ -106,6 +106,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
     private bool $checked = false;
 
+    /** @var array<string, true> URLs whose past expiry was logged (explain) */
+    private array $pastExpiries = [];
+
     private ?TagIndex $index = null;
 
     /** @var \Closure(): list<string> */
@@ -283,8 +286,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
             try {
                 if ($this->onStale !== null) {
                     ($this->onStale)($key);
-                } else {
+                } elseif (!$key->isHead()) {
                     // Nothing rebuilds it behind this visitor: served this once, the next renders it.
+                    // Not for HEAD (uptime monitors): it would use up the stale serve a GET gets.
                     ($this->store)()->forget($key->id());
                 }
             } catch (\Throwable $e) {
@@ -306,7 +310,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
     private function render(ServerRequestInterface $request, RequestHandlerInterface $handler, PageKey $key, PageStore $store): ResponseInterface
     {
         $started = ($this->clock)();
-        $frame = $this->recorder->start();
+        $frame = $this->recorder->start($started);
         $before = $this->cache->begin($key->isHead() ? null : $key);
         $carried = [];
         $reason = null;
@@ -331,6 +335,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
             }
         } finally {
             $expiry = $this->recorder->expiry($frame);
+            $pastExpiry = $this->recorder->ignoredExpiry($frame);
             $tags = $this->recorder->stop($frame);
             $this->cache->end($before);
         }
@@ -362,6 +367,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
             }
         }
         if ($reason === null && $content !== null) {
+            if ($pastExpiry !== null) {
+                $this->logPastExpiry($key, $pastExpiry);
+            }
             $reason = $this->store($key, $response, $content, $tags, $started, $store, $carried, $expiry);
         }
 
@@ -601,7 +609,8 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * stale (as the write would have marked it); tags it read timed don't count.
      *
      * Its expiresAt is the earliest of what the render asked for (PageCache::expiresAt(), the
-     * expires tag) and, for each tag read timed, the render start plus its time.
+     * expires tag) and, for each tag read timed, the render start plus its time. An expiry at or
+     * before the render start is ignored (logged once per URL with explain on).
      *
      * Returns why it was not stored, null when it was.
      *
@@ -620,6 +629,12 @@ final class PageCacheMiddleware implements MiddlewareInterface
                 Freshness::NextVisit => $nextVisit[] = (string) $tag,
                 Freshness::Timed => $expiry = min($expiry ?? INF, $started + (int) $seconds),
             };
+        }
+        // An expiry at or before the render start says nothing (the recorder already left those out):
+        // the page shows what came after it. Kept, it would make every copy stale for good.
+        if ($expiry !== null && $expiry <= $started) {
+            $this->logPastExpiry($key, $expiry);
+            $expiry = null;
         }
 
         if (strlen($content) > self::MAX_BODY) {
@@ -666,6 +681,16 @@ final class PageCacheMiddleware implements MiddlewareInterface
         }
 
         return null;
+    }
+
+    /** With explain on, once per URL: an expiry that lay before the render was ignored. */
+    private function logPastExpiry(PageKey $key, float $at): void
+    {
+        if (!$this->config->explain || isset($this->pastExpiries[$key->url()])) {
+            return;
+        }
+        $this->pastExpiries[$key->url()] = true;
+        $this->log('page cache: ' . $key->url() . ' asked to expire at ' . gmdate('Y-m-d\\TH:i:s\\Z', (int) $at) . ', before it rendered; ignored');
     }
 
     /** @return array<string, list<string>> */
