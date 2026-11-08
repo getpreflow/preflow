@@ -1263,6 +1263,61 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame(3, $handler->calls);
     }
 
+    public function test_every_render_that_may_be_stored_is_isolated_and_checked(): void
+    {
+        // A package's request-scoped mode: an admin request left it on ('working').
+        $mode = 'working';
+        $this->cache->isolate(static function () use (&$mode): \Closure {
+            $before = $mode;
+            $mode = 'published';
+
+            return static function () use (&$mode, $before): void {
+                $mode = $before;
+            };
+        });
+        $this->cache->refuseWhen('working-copy', static function () use (&$mode): bool {
+            return $mode === 'working';
+        });
+        $seen = [];
+        $mw = $this->middleware(verify: 'always');
+        $handler = $this->handler(function () use (&$mode, &$seen): ResponseInterface {
+            $seen[] = $mode;
+
+            return $this->html('page in ' . $mode);
+        });
+
+        // The miss and verify's second render both see the published mode; it is put back after.
+        $response = $mw->process($this->get('/page'), $handler);
+        $this->assertSame(['published', 'published'], $seen);
+        $this->assertSame('working', $mode);
+        $this->assertSame('', $response->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertSame('page in published', $this->store->get($this->key('/page'))?->body);
+
+        // A rebuild too.
+        $mw->process(\Preflow\Core\PageCache\Rebuild::request('https://example.com/page', [], null, true), $handler);
+        $this->assertSame(['published', 'published', 'published', 'published'], $seen);
+
+        // A render that switches the mode on itself is refused, and the mode is put back still.
+        $switching = $this->handler(function () use (&$mode): ResponseInterface {
+            $mode = 'working';
+
+            return $this->html('preview');
+        });
+        $mode = 'published';
+        $this->assertSame('refused:working-copy', $mw->process($this->get('/preview'), $switching)->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertSame('published', $mode);
+        $this->assertNull($this->store->get($this->key('/preview')));
+
+        // A render that throws puts the state back too.
+        $mode = 'working';
+        try {
+            $mw->process($this->get('/broken'), $this->handler(static fn (): ResponseInterface => throw new \RuntimeException('broken')));
+            $this->fail('the exception goes through');
+        } catch (\RuntimeException) {
+        }
+        $this->assertSame('working', $mode);
+    }
+
     public function test_a_stale_head_queues_nothing(): void
     {
         $mw = $this->middleware();

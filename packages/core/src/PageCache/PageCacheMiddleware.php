@@ -48,6 +48,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * request passes through untouched.
  *
  * A miss renders with its reads recorded (DependencyRecorder) and gets `X-Page-Cache: miss`.
+ * Every render that may be stored (the miss, verify's second render, a rebuild) is isolated
+ * (PageCache::isolate()): it starts from the state a public render starts from.
  * It is stored only when none of these holds; with page_cache.explain on, the reason is sent
  * as `X-Page-Cache-Skip`:
  * - `status`: the status is not 200 (404s and redirects are never cached);
@@ -64,7 +66,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  *   vary_headers, Accept-Encoding and HX-History-Restore-Request);
  * - `content-type`: not text, JSON, XML or JavaScript;
  * - `size`: the body is larger than MAX_BODY;
- * - `refused:{reason}`: code called PageCache::refuse();
+ * - `refused:{reason}`: code called PageCache::refuse(), or a store check a package registered
+ *   said so (PageCache::refuseWhen(); Folio's `working-copy`);
  * - `index`: the tag index can't be used (the cache is off then);
  * - `pending`: an invalidation that could not reach the index is still pending (PendingInvalidations);
  * - `invalidated`: a write changed what the page read while it rendered;
@@ -362,9 +365,11 @@ final class PageCacheMiddleware implements MiddlewareInterface
         $reason = null;
         $verify = !$key->isHead() && $this->verifies($request, $key, $store);
         try {
-            $response = $verify && $this->visitorScope !== null
+            // Isolated (PageCache::isolate()): from the state a public render starts from, whatever
+            // an earlier request in this process (an admin one, before its rebuilds) switched on.
+            $response = $this->cache->isolated(fn (): ResponseInterface => $verify && $this->visitorScope !== null
                 ? ($this->visitorScope)($request, static fn (): ResponseInterface => $handler->handle($request))
-                : $handler->handle($request);
+                : $handler->handle($request));
             if (!$key->isHead()) {
                 $refusal = $this->cache->refusal();
                 $reason = $refusal !== null ? 'refused:' . $refusal : $this->refusal($request, $key, $response);
@@ -494,9 +499,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
                 return true;
             }
-            $response = AnonymousGlobals::run((string) ($other->getServerParams()['REMOTE_ADDR'] ?? '192.0.2.1'), fn (): ResponseInterface => $this->recorder->outside(fn (): ResponseInterface => $this->visitorScope !== null
+            $response = AnonymousGlobals::run((string) ($other->getServerParams()['REMOTE_ADDR'] ?? '192.0.2.1'), fn (): ResponseInterface => $this->recorder->outside(fn (): ResponseInterface => $this->cache->isolated(fn (): ResponseInterface => $this->visitorScope !== null
                 ? ($this->visitorScope)($other, $render)
-                : $render()));
+                : $render())));
             if ($this->cache->refusal() !== null || $this->refusal($other, $key, $response) !== null) {
                 return true;
             }

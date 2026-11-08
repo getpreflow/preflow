@@ -309,6 +309,78 @@ final class PageCache
         $this->carried[$name] = [$capture, $restore];
     }
 
+    /** @var list<\Closure(): ((\Closure(): void)|null)> */
+    private array $isolations = [];
+
+    /** @var list<array{0: string, 1: \Closure(): bool}> */
+    private array $storeChecks = [];
+
+    /**
+     * Render isolation for request-scoped state a package keeps between renders (a content mode,
+     * memos): $enter runs before every render the cache may store (a visitor's miss, verify's
+     * second render, every rebuild) and puts in place the state a public render starts from (a
+     * published-content mode, empty memos); it returns what puts the earlier state back (or
+     * null), which runs after the render, the last entered first. So a rebuild behind an admin
+     * request never sees what the admin request switched on.
+     *
+     *     $pageCache->isolate(static function () use ($content): \Closure {
+     *         $before = $content->mode();
+     *         $content->setMode('published');
+     *         return static fn () => $content->setMode($before);
+     *     });
+     *
+     * @param \Closure(): ((\Closure(): void)|null) $enter
+     */
+    public function isolate(\Closure $enter): void
+    {
+        $this->isolations[] = $enter;
+    }
+
+    /**
+     * A check after every render the cache may store: when $when is true the page is not stored
+     * (`refused:{$reason}`). Defence in depth for state isolate() should have reset.
+     *
+     * @param \Closure(): bool $when
+     */
+    public function refuseWhen(string $reason, \Closure $when): void
+    {
+        $this->storeChecks[] = [$reason, $when];
+    }
+
+    /**
+     * Runs $render isolated (isolate()), and asks the store checks (refuseWhen()) after it,
+     * before the state is put back.
+     *
+     * @internal the page cache middleware
+     * @template T
+     * @param \Closure(): T $render
+     * @return T
+     */
+    public function isolated(\Closure $render): mixed
+    {
+        $restores = [];
+        try {
+            foreach ($this->isolations as $enter) {
+                $restore = $enter();
+                if ($restore !== null) {
+                    $restores[] = $restore;
+                }
+            }
+            $result = $render();
+            foreach ($this->storeChecks as [$reason, $when]) {
+                if ($when()) {
+                    $this->refuse($reason);
+                }
+            }
+
+            return $result;
+        } finally {
+            foreach (array_reverse($restores) as $restore) {
+                $restore();
+            }
+        }
+    }
+
     /**
      * @internal the page cache middleware
      * @return array<string, mixed> name => value, for StoredPage::$state
