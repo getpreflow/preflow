@@ -285,7 +285,8 @@ final class SessionGuardTest extends TestCase
         $this->session->set('_auth_user_id', 'user-1');
 
         $this->assertSame($this->user, $guard->user($this->createRequest()));
-        $this->assertSame(['preflow_auth=1; Max-Age=7200; Path=/; Domain=.example.com; HttpOnly; SameSite=Lax; Secure'], $guard->pullCookies(), 'as long as the session cookie, on its domain');
+        $this->assertSame($this->user, $guard->user($this->createRequest()), 'asked twice in one request');
+        $this->assertSame(['preflow_auth=1; Max-Age=7200; Path=/; Domain=.example.com; HttpOnly; SameSite=Lax; Secure'], $guard->pullCookies(), 'once, as long as the session cookie, on its domain');
 
         $this->assertSame($this->user, $guard->user($this->createRequest()->withCookieParams(['preflow_auth' => '1'])));
         $this->assertSame([], $guard->pullCookies(), 'already there');

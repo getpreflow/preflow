@@ -64,8 +64,9 @@ final class SessionGuard implements GuardInterface
         }
 
         // Signed in without the marker (a session from before it existed, one that outlived
-        // it): set it again, so a page cache sends this visitor live pages.
-        if ($user !== null && ($request->getCookieParams()[self::SIGNED_IN_COOKIE] ?? '') === '') {
+        // it): set it again, so a page cache sends this visitor live pages. Once per response.
+        if ($user !== null && ($request->getCookieParams()[self::SIGNED_IN_COOKIE] ?? '') === ''
+            && !$this->cookies->has(self::SIGNED_IN_COOKIE)) {
             $this->queueMarker(true, $this->hasRememberCookie($request));
         }
 
