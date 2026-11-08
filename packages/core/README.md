@@ -502,22 +502,28 @@ A boot uses it only when all of these hold; otherwise it boots live, exactly as 
 
 - the request is not in the console (`runningInConsole()`): **CLI commands and cron jobs never
   read it**, so they always see the current files;
-- `app.debug` is off (`APP_DEBUG=0`); `optimize` writes none in debug mode;
-- `.env` and `config/folio/extensions.json` are unchanged (both are stat-ed on every request),
-  and every variable `.env` sets has the value it had when the manifest was written. Config
-  files read env values when they load, so the manifest holds those values: an edited `.env`
-  applies on the next request (live boots until the next `optimize`). A variable the web
-  server sets itself (`SetEnv`) and `.env` doesn't name is not checked: run `optimize` after
-  changing one.
+- `app.debug` is off (`APP_DEBUG=0`), decided live from `config/app.php` as this request loads
+  it: `APP_DEBUG=1` set by the web server, or `'debug' => 1` edited on the server, bypasses the
+  manifest at once. `optimize` writes none in debug mode;
+- `.env`, `config/folio/extensions.json` and `vendor/composer/installed.json` are unchanged
+  (each is stat-ed on every request), and every variable `.env` sets has the value it had when
+  the manifest was written. Config files read env values when they load, so the manifest holds
+  those values: an edited `.env` applies on the next request (live boots until the next
+  `optimize`).
 
-Folio's extensions writer (Settings → Extensions, `folio:extensions:*`) removes the manifest
-when it rewrites `extensions.json`. Stored settings are never in it. Everything else in it
+**Environment variables set only by the web server** (`SetEnv`, the FPM pool, the hosting
+panel) **and not named in `.env` are not watched**: after changing one, run `preflow optimize`
+again.
+
+**Toggling an extension** (Folio's Settings → Extensions, `folio:extensions:*`) rewrites
+`extensions.json` and **removes the manifest**: the change applies on the next request, and the
+site boots live until the next deploy or `preflow optimize`. Stored settings are never in it. Everything else in it
 (config files, code, model files, `installed.json`) is trusted until the next
 `preflow optimize`: run it on every deploy, after `composer install` and migrations /
 `folio:extensions:apply`, before the release goes live. `preflow optimize --check` lists the
 sources that changed since (exit 1), and `preflow cache:clear` removes the manifest (cache
-`boot`). The file holds config values, secrets included: it is per release and must not be
-committed. Add this to the site's `.gitignore`:
+`boot`); a failed `optimize` removes it too. The file holds config values, secrets included:
+it gets the `.env`'s file permissions, is per release and must not be committed. Add this to the site's `.gitignore`:
 
 ```
 /bootstrap/cache/

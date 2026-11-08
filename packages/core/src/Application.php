@@ -182,9 +182,13 @@ final class Application
         if ($this->manifest->active() || $this->runningInConsole()) {
             return; // the console never reads the manifest
         }
+        // Debug mode is decided live: create() loaded config/app.php with the request's environment, so
+        // APP_DEBUG set by the web server or an edit of config/app.php on the server bypasses the manifest.
+        if ((int) $this->config->get('app.debug', 0) !== 0) {
+            return;
+        }
         $data = \Preflow\Core\Boot\ManifestFile::load($this->absolutePath(''));
-        $debug = is_array($data['config']['app'] ?? null) ? ($data['config']['app']['debug'] ?? 0) : $this->config->get('app.debug', 0);
-        if ($data === null || (int) $debug !== 0) {
+        if ($data === null || (int) ($data['config']['app']['debug'] ?? 0) !== 0) {
             return;
         }
         $this->useBootManifest(\Preflow\Core\Boot\BootManifest::fromData($data));

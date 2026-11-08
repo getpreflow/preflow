@@ -20,11 +20,13 @@ final class BootManifestTest extends TestCase
 {
     private string $dir;
     private string $env;
+    private string|false $appDebug = false;
 
     protected function setUp(): void
     {
         $this->dir = sys_get_temp_dir() . '/preflow_manifest_' . bin2hex(random_bytes(4));
         $this->env = 'PF_MANIFEST_' . strtoupper(bin2hex(random_bytes(4)));
+        $this->appDebug = getenv('APP_DEBUG');
         $this->write('.env', "{$this->env}=Old\n");
         $this->write('config/app.php', "<?php\nreturn ['name' => getenv('{$this->env}') ?: 'none', 'debug' => 0, 'key' => 'manifest-test-key', 'locale' => 'en'];\n");
         $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'url_strategy' => 'prefix'];\n");
@@ -41,6 +43,7 @@ final class BootManifestTest extends TestCase
 
     protected function tearDown(): void
     {
+        putenv($this->appDebug === false ? 'APP_DEBUG' : 'APP_DEBUG=' . $this->appDebug);
         putenv($this->env);
         unset($_ENV[$this->env]);
         if (!is_dir($this->dir)) {
@@ -85,21 +88,73 @@ final class BootManifestTest extends TestCase
         $this->assertSame($live, $this->render($app));
     }
 
-    public function test_debug_mode_ignores_the_manifest(): void
+    public function test_debug_set_by_the_environment_ignores_the_manifest(): void
+    {
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Site', 'debug' => (int) (getenv('APP_DEBUG') ?: 0), 'key' => 'manifest-test-key'];\n");
+        putenv('APP_DEBUG'); // the .env doesn't name it
+        (new ManifestBuilder($this->dir))->write();
+        $this->assertTrue($this->web()->bootManifest()->active());
+
+        putenv('APP_DEBUG=1'); // the web server sets it to debug a production error
+        $app = $this->web();
+
+        $this->assertFalse($app->bootManifest()->active());
+        $this->assertSame(1, $app->config()->get('app.debug'));
+    }
+
+    public function test_debug_switched_on_in_config_on_the_server_ignores_the_manifest(): void
     {
         (new ManifestBuilder($this->dir))->write();
-        $data = include $this->dir . '/bootstrap/cache/boot.php';
-        $data['config']['app']['debug'] = 1;
-        ManifestFile::write($this->dir, $data);
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Site', 'debug' => 1, 'key' => 'manifest-test-key'];\n");
+        touch($this->dir . '/config/app.php', time() + 10);
 
-        $this->assertFalse($this->web()->bootManifest()->active());
+        $app = $this->web();
 
-        // optimize in debug mode writes none and removes the one there is.
+        $this->assertFalse($app->bootManifest()->active());
+        $this->assertSame(1, $app->config()->get('app.debug'));
+    }
+
+    public function test_optimize_in_debug_mode_writes_no_manifest(): void
+    {
+        (new ManifestBuilder($this->dir))->write();
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Debug', 'debug' => 1, 'key' => 'manifest-test-key'];\n");
+
         $result = (new ManifestBuilder($this->dir))->write();
+
         $this->assertFalse($result['written']);
         $this->assertStringContainsString('APP_DEBUG', (string) $result['reason']);
+        $this->assertFileDoesNotExist($this->dir . '/bootstrap/cache/boot.php', 'the existing one is removed');
+    }
+
+    public function test_a_failed_build_removes_the_manifest(): void
+    {
+        (new ManifestBuilder($this->dir))->write();
+        $this->write('config/providers.php', "<?php\nthrow new \\RuntimeException('broken provider list');\n");
+
+        try {
+            (new ManifestBuilder($this->dir))->write();
+            $this->fail('the build should fail');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('broken provider list', $e->getMessage());
+        }
         $this->assertFileDoesNotExist($this->dir . '/bootstrap/cache/boot.php');
+    }
+
+    public function test_an_in_place_composer_install_bypasses_the_manifest(): void
+    {
+        (new ManifestBuilder($this->dir))->write();
+        $this->write('vendor/composer/installed.json', '{"packages": [{"name": "acme/new"}]}');
+        touch($this->dir . '/vendor/composer/installed.json', time() + 10);
+
+        $this->assertFalse($this->web()->bootManifest()->active());
+    }
+
+    public function test_the_manifest_is_no_more_readable_than_the_env(): void
+    {
+        chmod($this->dir . '/.env', 0600);
+        (new ManifestBuilder($this->dir))->write();
+
+        $this->assertSame(0600, fileperms($this->dir . '/bootstrap/cache/boot.php') & 0777);
     }
 
     public function test_cli_ignores_the_manifest(): void
