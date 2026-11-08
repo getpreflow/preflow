@@ -411,26 +411,42 @@ final class QueryBuilder
             $numeric,
             $multiple,
             array_values(array_unique($boolean)),
-            $this->reportListing(...), // when it runs, not when it is built
+            $this->reporter(), // reported when it runs, as the query stands now
         );
     }
 
     /** Tells the DataManager's observer that this type was read as a listing. */
     private function reportListing(): void
     {
+        $this->reporter()();
+    }
+
+    /**
+     * What a run of this query reports, decided now (byIds() while it is the only filter: its
+     * ids, else a listing): an aggregate built before the builder changes keeps its own.
+     *
+     * @return \Closure(): void
+     */
+    private function reporter(): \Closure
+    {
+        $dm = $this->dataManager;
         $storage = $this->meta?->storage ?? $this->typeDef?->storage;
         $table = $this->meta?->table ?? $this->typeDef?->table;
-        if ($this->dataManager === null || $storage === null || $table === null) {
-            return;
+        if ($dm === null || $storage === null || $table === null) {
+            return static function (): void {};
         }
-        if ($this->byIds !== null && $this->filters === 1) {
-            foreach (array_unique($this->byIds) as $id) {
-                $this->dataManager->reportRead($storage, $table, $id);
-            }
+        $ids = $this->byIds !== null && $this->filters === 1 ? array_values(array_unique($this->byIds)) : null;
 
-            return;
-        }
-        $this->dataManager->reportRead($storage, $table);
+        return static function () use ($dm, $storage, $table, $ids): void {
+            if ($ids === null) {
+                $dm->reportRead($storage, $table);
+
+                return;
+            }
+            foreach ($ids as $id) {
+                $dm->reportRead($storage, $table, $id);
+            }
+        };
     }
 
     /** The query with the loose searches resolved and translatable fields compared in the locale. */

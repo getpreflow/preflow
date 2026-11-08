@@ -105,6 +105,9 @@ final class SqlTables
      */
     public static function writes(string $sql): bool
     {
+        if (preg_match('~/\*M?!~', $sql) === 1) {
+            return true; // an executable comment may hold any statement
+        }
         $unsure = false;
         foreach (self::statements(self::tokens($sql, $unsure)) as $tokens) {
             $first = strtoupper($tokens[0][1]);
@@ -355,6 +358,7 @@ final class SqlTables
     private static function tokens(string $sql, bool &$unsure): array
     {
         $tokens = [];
+        $hint = false;
         $length = strlen($sql);
         $i = 0;
         while ($i < $length) {
@@ -367,6 +371,22 @@ final class SqlTables
                 $end = strpos($sql, "\n", $i);
                 $i = $end === false ? $length : $end + 1;
                 continue;
+            }
+            if ($c === '/' && ($sql[$i + 1] ?? '') === '*' && ($sql[$i + 2] ?? '') === '+') {
+                // An optimizer hint (/*+ ... */): read as its content, which names no table.
+                $i += 3;
+                $hint = true;
+                continue;
+            }
+            if ($c === '*' && ($sql[$i + 1] ?? '') === '/' && $hint) {
+                $i += 2;
+                $hint = false;
+                continue;
+            }
+            if ($c === '/' && ($sql[$i + 1] ?? '') === '*' && (($sql[$i + 2] ?? '') === '!' || substr($sql, $i + 2, 2) === 'M!')) {
+                // A MySQL/MariaDB executable comment (/*!40000 ... */, /*M! ... */): the server
+                // runs it, so it may hold any statement.
+                $unsure = true;
             }
             if ($c === '/' && ($sql[$i + 1] ?? '') === '*') {
                 $end = strpos($sql, '*/', $i + 2);

@@ -53,7 +53,7 @@ final class DataManager
      */
     public function reportRead(string $storage, string $table, string|int|null $id = null): void
     {
-        if ($this->observer === null) {
+        if ($this->observer === null && $this->captures === []) {
             return;
         }
         $this->noteRead(['read', $this->storageKey($storage), $table, $id === null ? null : (string) $id]);
@@ -66,7 +66,8 @@ final class DataManager
      * Runs $fn and returns what it returned with the reads it made, for a memo that answers
      * later calls from memory (in this request or a later one in the same process): it hands
      * them to replayReads() on every hit, so each page that uses the memo still depends on what
-     * it holds. Without an observer the reads are [] and nothing is kept.
+     * it holds. Reads are captured with or without an observer: a memo filled before one is
+     * attached still replays them later.
      *
      * @template T
      * @param \Closure(): T $fn
@@ -74,9 +75,6 @@ final class DataManager
      */
     public function captureReads(\Closure $fn): array
     {
-        if ($this->observer === null) {
-            return [$fn(), []];
-        }
         $depth = count($this->captures);
         $this->captures[] = [];
         try {
@@ -309,7 +307,7 @@ final class DataManager
     public function raw(string $sql, array $bindings = [], string $storage = 'default'): array
     {
         $driver = $this->resolveDriver($storage);
-        if ($this->observer === null) {
+        if ($this->observer === null && $this->captures === []) {
             return $driver->rawQuery($sql, $bindings);
         }
         if (!SqlTables::writes($sql)) {
@@ -321,7 +319,7 @@ final class DataManager
         try {
             return $driver->rawQuery($sql, $bindings);
         } finally {
-            $this->observer->rawWrote($this->storageKey($storage), $sql); // also after a failure: part may be written
+            $this->observer?->rawWrote($this->storageKey($storage), $sql); // also after a failure: part may be written
         }
     }
 

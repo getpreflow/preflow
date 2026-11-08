@@ -51,6 +51,10 @@ final class SqlTablesTest extends TestCase
         yield 'backslash in double quotes is unsure' => ['SELECT * FROM a WHERE x = "a\\" FROM"', null];
         yield 'statements one by one' => ['SELECT 1; TRUNCATE likes', ['likes']];
         yield 'index ddl names no table' => ['CREATE INDEX i ON t (a)', []];
+        yield 'executable comment is unsure' => ['/*!40000 UPDATE t SET a = 1 */', null];
+        yield 'mariadb executable comment is unsure' => ['SELECT 1 /*M!100100 , (SELECT 1 FROM t) */', null];
+        yield 'optimizer hint is read as its content' => ['SELECT /*+ INDEX(o idx) */ * FROM `object__published` o', ['object__published']];
+        yield 'plain comment stays a comment' => ['SELECT * FROM a /* UPDATE b SET c = 1 */', ['a']];
     }
 
     /** @param list<string>|null $tables */
@@ -76,6 +80,9 @@ final class SqlTablesTest extends TestCase
 
     public function test_statements_that_change_no_data(): void
     {
+        $this->assertFalse(SqlTables::changesNothing('/*!40000 UPDATE t SET a = 1 */'), 'an executable comment may write');
+        $this->assertTrue(SqlTables::writes('/*!40000 UPDATE t SET a = 1 */'));
+        $this->assertFalse(SqlTables::writes('SELECT /*+ INDEX(t i) */ * FROM t'));
         $this->assertTrue(SqlTables::changesNothing('SET NAMES utf8mb4'));
         $this->assertTrue(SqlTables::changesNothing('PRAGMA foreign_keys = ON'));
         $this->assertTrue(SqlTables::changesNothing('BEGIN; SET @a = 1'));

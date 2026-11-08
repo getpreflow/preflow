@@ -275,8 +275,6 @@ final class DataManagerObserverTest extends TestCase
         $this->assertSame([...$first, ...$first], $this->events(), 'the second call still reports both reads');
         $this->assertCount(2, $outer);
 
-        $this->dm->observe(null);
-        $this->assertSame([5, []], $this->dm->captureReads(static fn (): int => 5), 'nothing kept without an observer');
     }
 
     public function test_a_query_by_ids_is_one_record_read_per_requested_id(): void
@@ -303,5 +301,40 @@ final class DataManagerObserverTest extends TestCase
         $this->events();
         $this->assertCount(1, $this->dm->query(ObservedGadget::class)->byIds([1])->get()->items());
         $this->assertSame(['read default:gadgets#1'], $this->events(), 'models use their id field');
+    }
+
+    public function test_an_aggregate_keeps_what_the_query_was_when_it_was_built(): void
+    {
+        foreach (['a', 'b', 'c'] as $id) {
+            $this->dm->saveType($this->object($id));
+        }
+        $this->events();
+        $qb = $this->dm->queryType('object');
+        $count = $qb->aggregate()->count(); // counts the whole table
+        $qb->byIds(['a']);                  // the builder reused for the items
+
+        $this->assertSame(3, $count->get()[0]['count']);
+        $this->assertSame(['read default:object'], $this->events(), 'a listing, not a read of a');
+
+        $byIds = $this->dm->queryType('object')->byIds(['a']);
+        $one = $byIds->aggregate()->count();
+        $byIds->where('title', 'T');
+        $one->get();
+        $this->assertSame(['read default:object#a'], $this->events());
+    }
+
+    public function test_a_memo_filled_before_the_observer_still_replays(): void
+    {
+        $this->dm->saveType($this->object('o1'));
+        $this->dm->observe(null);
+        [$record, $reads] = $this->dm->captureReads(fn (): ?DynamicRecord => $this->dm->findType('object', 'o1'));
+        [, $raw] = $this->dm->captureReads(fn (): array => $this->dm->raw('SELECT * FROM object'));
+        $this->assertNotNull($record);
+
+        $this->dm->observe($this->observer);
+        $this->events();
+        $this->dm->replayReads([...$reads, ...$raw]);
+
+        $this->assertSame(['read default:object#o1', 'rawRead default: SELECT * FROM object'], $this->events());
     }
 }
