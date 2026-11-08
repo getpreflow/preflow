@@ -667,6 +667,9 @@ return [
         'assets' => 'Minifiziertes CSS und JS',
         'composer' => 'Dekodierte Composer-Paketliste (installed.json)',
         'translations' => 'Folio-Übersetzungen',
+        'boot' => 'Boot-Manifest (preflow optimize)',
+        'clear_all_note' => '„Alle leeren“ entfernt auch das Boot-Manifest: Die Website bleibt korrekt, startet aber etwas langsamer, bis es beim nächsten Deploy oder mit preflow optimize neu erstellt wird.',
+        'boot_cleared' => 'Das Boot-Manifest wird beim nächsten Deploy oder mit preflow optimize neu erstellt.',
     ],
     'extensions' => [
         'changes' => 'Änderungen werden in config/folio/extensions.json geschrieben und gelten ab der nächsten Anfrage. Installationsschritte laufen hier nicht: Führe <code>preflow folio:extensions:apply</code> aus (Deploys tun das). Beim Ausschalten bleiben alle Daten erhalten.',

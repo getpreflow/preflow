@@ -690,6 +690,9 @@ return [
         'assets' => 'Minified CSS and JS',
         'composer' => 'Decoded Composer package list (installed.json)',
         'translations' => 'Folio translations',
+        'boot' => 'Boot manifest (preflow optimize)',
+        'clear_all_note' => '"Clear all" also removes the boot manifest: the site stays correct but boots a little slower until the next deploy or preflow optimize rebuilds it.',
+        'boot_cleared' => 'The boot manifest is rebuilt on the next deploy or with preflow optimize.',
     ],
     // Settings → Extensions.
     'extensions' => [

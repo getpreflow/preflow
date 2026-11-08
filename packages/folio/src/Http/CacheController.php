@@ -29,7 +29,11 @@ final class CacheController
         'twig' => 'folio.cache.twig',
         'assets' => 'folio.cache.assets',
         'composer' => 'folio.cache.composer',
+        'boot' => 'folio.cache.boot',
     ];
+
+    /** Core's cache key of the boot manifest (`preflow optimize`); clearing it is not undone by a request. */
+    private const string BOOT = 'boot';
 
     public function __construct(
         private readonly CacheRegistry $caches,
@@ -73,11 +77,13 @@ final class CacheController
         if (($body['all'] ?? '') === '1') {
             $entries = 0;
             $bytes = 0;
-            foreach ($this->caches->clearAll() as $cleared) {
+            $boot = false;
+            foreach ($this->caches->clearAll() as $key => $cleared) {
                 $entries += $cleared->entries;
                 $bytes += $cleared->bytes;
+                $boot = $boot || ($key === self::BOOT && $cleared->entries > 0);
             }
-            self::flash($request, 'success', FolioText::get('folio.cache.cleared_all', ['count' => $entries, 'size' => Bytes::human($bytes)]));
+            self::flash($request, 'success', FolioText::get('folio.cache.cleared_all', ['count' => $entries, 'size' => Bytes::human($bytes)]) . self::bootNote($boot));
 
             return $this->back();
         }
@@ -87,7 +93,8 @@ final class CacheController
             return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], FolioText::get('folio.cache.unknown'));
         }
         $cleared = $source->clear();
-        self::flash($request, 'success', FolioText::get('folio.cache.cleared', ['label' => self::label($source), 'count' => $cleared->entries, 'size' => Bytes::human($cleared->bytes)]));
+        self::flash($request, 'success', FolioText::get('folio.cache.cleared', ['label' => self::label($source), 'count' => $cleared->entries, 'size' => Bytes::human($cleared->bytes)])
+            . self::bootNote($source->key() === self::BOOT && $cleared->entries > 0));
 
         return $this->back();
     }
@@ -104,6 +111,12 @@ final class CacheController
         }
 
         return $this->back();
+    }
+
+    /** The boot manifest is not rebuilt by a request: how it comes back, when it was removed. */
+    private static function bootNote(bool $removed): string
+    {
+        return $removed ? ' ' . FolioText::get('folio.cache.boot_cleared') : '';
     }
 
     private static function label(\Preflow\Core\Cache\CacheSource $source): string

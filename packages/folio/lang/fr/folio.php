@@ -667,6 +667,9 @@ return [
         'assets' => 'CSS et JS minifiés',
         'composer' => 'Liste des paquets Composer décodée (installed.json)',
         'translations' => 'Traductions de Folio',
+        'boot' => 'Manifeste de démarrage (preflow optimize)',
+        'clear_all_note' => '« Tout vider » supprime aussi le manifeste de démarrage : le site reste correct mais démarre un peu plus lentement jusqu’à ce que le prochain déploiement ou preflow optimize le reconstruise.',
+        'boot_cleared' => 'Le manifeste de démarrage est reconstruit au prochain déploiement ou avec preflow optimize.',
     ],
     'extensions' => [
         'changes' => 'Les modifications sont écrites dans config/folio/extensions.json et s’appliquent à la requête suivante. Les étapes d’installation ne s’exécutent pas ici : lancez <code>preflow folio:extensions:apply</code> (les déploiements le font). La désactivation conserve toutes les données.',

@@ -50,7 +50,7 @@ final class CacheScreenTest extends TestCase
     public function test_core_and_folio_caches_have_a_label_in_every_folio_language(): void
     {
         $labels = (new \ReflectionClassConstant(\Preflow\Folio\Http\CacheController::class, 'LABELS'))->getValue();
-        foreach (['folio.extensions', 'folio.blocks', 'data.json', 'blade', 'twig', 'assets', 'composer'] as $key) {
+        foreach (['folio.extensions', 'folio.blocks', 'data.json', 'blade', 'twig', 'assets', 'composer', 'boot'] as $key) {
             $this->assertArrayHasKey($key, $labels, $key);
         }
         foreach (['en', 'de', 'fr'] as $lang) {
@@ -58,6 +58,9 @@ final class CacheScreenTest extends TestCase
             foreach ($labels as $cache => $textKey) {
                 $leaf = substr($textKey, strlen('folio.cache.'));
                 $this->assertNotSame('', $texts['cache'][$leaf] ?? '', "{$lang}: {$cache}");
+            }
+            foreach (['clear_all_note', 'boot_cleared'] as $leaf) {
+                $this->assertNotSame('', $texts['cache'][$leaf] ?? '', "{$lang}: {$leaf}");
             }
         }
     }
@@ -179,6 +182,31 @@ final class CacheScreenTest extends TestCase
         $this->session->container()->instance(OpcacheStatus::class, $this->opcache(true, resets: false));
         $this->send('POST', '/folio/cache/opcache-reset');
         $this->assertStringContainsString('<div class="folio-alert folio-alert-error" role="alert">OPcache reset failed.</div>', (string) $this->send('GET', '/folio/cache')->getBody());
+    }
+
+    /** "Clear all" also removes the boot manifest (core's `boot` cache): the screen says it comes back with the next deploy or `preflow optimize`. */
+    #[RunInSeparateProcess]
+    public function test_clearing_the_boot_manifest_says_how_it_comes_back(): void
+    {
+        $body = (string) $this->request('GET', '/folio/cache', opcache: $this->opcache(true))->getBody();
+        $this->assertStringContainsString('Boot manifest', $body);
+        $this->assertStringContainsString('<input type="hidden" name="key" value="boot">', $body);
+        $this->assertStringContainsString('until the next deploy or preflow optimize rebuilds it', $body, 'next to "Clear all"');
+
+        $this->signIn();
+        $this->write('bootstrap/cache/boot.php', "<?php\nreturn [];\n");
+        $this->send('POST', '/folio/cache/clear', ['all' => '1']);
+        $this->assertFileDoesNotExist($this->dir . '/bootstrap/cache/boot.php');
+        $this->assertStringContainsString('The boot manifest is rebuilt on the next deploy or with preflow optimize.', (string) $this->send('GET', '/folio/cache')->getBody());
+
+        $this->write('bootstrap/cache/boot.php', "<?php\nreturn [];\n");
+        $this->send('POST', '/folio/cache/clear', ['key' => 'boot']);
+        $this->assertFileDoesNotExist($this->dir . '/bootstrap/cache/boot.php');
+        $this->assertMatchesRegularExpression('#Boot manifest \\(preflow optimize\\): 1 file\\(s\\), .*? cleared\\. The boot manifest is rebuilt on the next deploy or with preflow optimize\\.#', (string) $this->send('GET', '/folio/cache')->getBody());
+
+        // Without a manifest to remove, nothing about it.
+        $this->send('POST', '/folio/cache/clear', ['all' => '1']);
+        $this->assertStringNotContainsString('The boot manifest is rebuilt', (string) $this->send('GET', '/folio/cache')->getBody());
     }
 
     #[RunInSeparateProcess]
