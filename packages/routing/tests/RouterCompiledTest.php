@@ -60,6 +60,25 @@ final class RouterCompiledTest extends TestCase
         $this->assertSame('404', $this->match($second, '/pkg/x'));
     }
 
+    /** A stored row the code can't rebuild (a key gone, an unknown mode): that set compiles live, no fatal. */
+    public function test_a_malformed_stored_set_is_compiled_live(): void
+    {
+        $good = (new RouteEntry('/a', 'A@b', 'GET', RouteMode::Action))->toArray();
+        foreach ([
+            'a key missing' => [array_diff_key($good, ['pattern' => true])],
+            'a null pattern' => [['pattern' => null] + $good],
+            'an unknown mode' => [['mode' => 'teleport'] + $good],
+            'not a row' => ['nope'],
+        ] as $case => $rows) {
+            $store = static fn (string $set, \Closure $compile): array => $set === 'pkg' ? $rows : $compile();
+            $router = new Router(pagesDir: $this->pagesDir, store: $store);
+            $entries = $router->compiled('pkg', static fn (): array => [new RouteEntry('/live', 'L@c', 'GET', RouteMode::Action)]);
+
+            $this->assertSame(['/live'], array_map(static fn (RouteEntry $e): string => $e->pattern, $entries), $case);
+            $this->assertSame(['pkg'], $router->liveSets(), $case);
+        }
+    }
+
     public function test_without_a_store_every_set_is_compiled_live(): void
     {
         $router = new Router(pagesDir: $this->pagesDir);

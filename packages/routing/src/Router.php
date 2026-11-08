@@ -69,7 +69,40 @@ final class Router implements RouterInterface
             return $rows;
         }, $sources);
 
-        return array_map(RouteEntry::fromArray(...), $rows);
+        // Rows the code can't rebuild (a manifest of another RouteEntry shape): this set compiles live.
+        $list = self::entriesFrom($rows);
+        if ($list === null) {
+            $this->liveSets[] = $set;
+            $list = [];
+            foreach ($entries() as $entry) {
+                $list[] = $entry;
+            }
+        }
+
+        return $list;
+    }
+
+    private const array ROW_KEYS = ['pattern', 'handler', 'method', 'mode', 'middleware', 'paramNames', 'regex', 'isCatchAll'];
+
+    /**
+     * @param array<mixed> $rows
+     * @return list<RouteEntry>|null null when a row does not have RouteEntry::toArray()'s shape
+     */
+    private static function entriesFrom(array $rows): ?array
+    {
+        $list = [];
+        foreach ($rows as $row) {
+            if (!is_array($row) || array_diff_key(array_flip(self::ROW_KEYS), $row) !== []) {
+                return null;
+            }
+            try {
+                $list[] = RouteEntry::fromArray($row);
+            } catch (\TypeError|\ValueError) {
+                return null;
+            }
+        }
+
+        return $list;
     }
 
     /**
