@@ -38,9 +38,20 @@ final class TranslationRegistry
     /** @param string|null $cacheDir where the decoded installed.json is cached (see InstalledPackages) */
     public static function fromInstalled(string $installedJson, ?string $cacheDir = null): self
     {
+        return self::fromPackages($installedJson, InstalledPackages::read($installedJson, $cacheDir));
+    }
+
+    /**
+     * From the packages InstalledPackages::read() gives (the boot manifest keeps them).
+     *
+     * @param string                          $installedJson the installed.json they come from (install paths are relative to its folder)
+     * @param list<array<string, mixed>>      $packages
+     */
+    public static function fromPackages(string $installedJson, array $packages): self
+    {
         $groups = [];
         $roots = [];
-        foreach (InstalledPackages::read($installedJson, $cacheDir) as $package) {
+        foreach ($packages as $package) {
             if (!array_key_exists('translations', $package)) {
                 continue;
             }
@@ -91,6 +102,22 @@ final class TranslationRegistry
         }
 
         return new self($groups, $roots);
+    }
+
+    /**
+     * The registry as plain data (the boot manifest stores it), for fromArray().
+     *
+     * @return array{groups: array<string, array{path: string, scope: 'admin'|'public'}>, paths: array<string, string>}
+     */
+    public function toArray(): array
+    {
+        return ['groups' => $this->groups, 'paths' => $this->packagePaths];
+    }
+
+    /** @param array{groups?: mixed, paths?: mixed} $data toArray()'s */
+    public static function fromArray(array $data): self
+    {
+        return new self((array) ($data['groups'] ?? []), (array) ($data['paths'] ?? []));
     }
 
     /** @return array<string, array{path: string, scope: 'admin'|'public'}> */
