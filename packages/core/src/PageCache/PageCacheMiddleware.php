@@ -418,7 +418,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
                 return $response;
             };
-            if (isset($_SESSION) || session_status() === PHP_SESSION_ACTIVE) {
+            if (session_status() === PHP_SESSION_ACTIVE) {
                 // A cacheable render never has a session; one that does can't be verified.
                 $this->log('page cache: ' . $key->url() . ' could not be verified: a session is open');
 
@@ -464,7 +464,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * Runs $fn with PHP's superglobals as $other sees them, put back afterwards: no $_COOKIE (and
      * none of its keys in $_REQUEST), $_SERVER with its REMOTE_ADDR and without HTTP_COOKIE and
      * HTTP_X_FORWARDED_FOR. So code that reads the visitor from the superglobals instead of the
-     * request is seen too.
+     * request is seen too. A leftover $_SESSION (no session is active) is hidden as well.
      *
      * @template T
      * @param \Closure(): T $fn
@@ -473,6 +473,8 @@ final class PageCacheMiddleware implements MiddlewareInterface
     private static function asVisitor(ServerRequestInterface $other, \Closure $fn): mixed
     {
         $saved = [$_COOKIE, $_SERVER, $_REQUEST];
+        $session = isset($_SESSION) ? [$_SESSION] : null; // outside an active session: residue, hidden too
+        unset($_SESSION);
         foreach (array_keys($_COOKIE) as $name) {
             unset($_REQUEST[$name]);
         }
@@ -483,6 +485,11 @@ final class PageCacheMiddleware implements MiddlewareInterface
             return $fn();
         } finally {
             [$_COOKIE, $_SERVER, $_REQUEST] = $saved;
+            if ($session !== null) {
+                $_SESSION = $session[0];
+            } else {
+                unset($_SESSION);
+            }
         }
     }
 

@@ -33,7 +33,9 @@ final class WebApplicationTest extends TestCase
     #[RunInSeparateProcess]
     public function test_boots_for_the_web_and_verifies_every_store(): void
     {
+        $_SESSION = ['left' => 'by an earlier test'];
         $app = WebApplication::boot($this->dir);
+        $this->assertFalse(isset($_SESSION), 'a leftover $_SESSION outside an active session is unset');
         $this->assertTrue($app->container()->bound(PageCacheMiddleware::class), 'the cache serves: web mode');
         $this->assertSame(PageCacheConfig::VERIFY_ALWAYS, $app->container()->get(PageCacheConfig::class)->verify);
 

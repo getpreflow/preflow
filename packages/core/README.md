@@ -704,7 +704,8 @@ return [
   - The second render sees the other visitor in the PSR request, `RequestContext` and the
     superglobals (`$_COOKIE` empty, `$_SERVER['REMOTE_ADDR']` another address, no
     `HTTP_COOKIE` or `HTTP_X_FORWARDED_FOR`, `$_REQUEST` without the cookies; all put back
-    afterwards). A render with a session open (`$_SESSION` set) is not verified, so not stored.
+    afterwards; a leftover `$_SESSION` outside an active session is hidden too). A render with a
+    session active is not verified, so not stored.
     A site's own memo of an earlier value is the same in both renders and goes unnoticed.
 - **Switching it off and on.** `storage/cache/pages/enabled` marks a cache that has been
   emptied since it was switched on. While the cache is off, the first write through the data

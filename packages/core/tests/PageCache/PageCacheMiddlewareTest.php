@@ -811,10 +811,24 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame(['album' => '1_2', 'q' => 'x'], $_REQUEST);
         $this->assertSame(['203.0.113.9', 'album=1_2', '198.51.100.7'], [$_SERVER['REMOTE_ADDR'], $_SERVER['HTTP_COOKIE'], $_SERVER['HTTP_X_FORWARDED_FOR']]);
 
-        // A render with a session open is not verified, so not stored.
-        $_SESSION = [];
-        $same = $this->handler(fn (): ResponseInterface => $this->html('<p>same</p>'));
+        // A leftover \$_SESSION (no session active) is hidden from the second render and put back.
+        $_SESSION = ['residue' => 1];
+        $sessions = [];
+        $same = $this->handler(function () use (&$sessions): ResponseInterface {
+            $sessions[] = $_SESSION ?? null;
+
+            return $this->html('<p>same</p>');
+        });
+        $this->assertSame('', $mw->process($this->get('/residue'), $same)->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertSame([['residue' => 1], null], $sessions);
+        $this->assertSame(['residue' => 1], $_SESSION);
+        unset($_SESSION);
+
+        // A render with a session active is not verified, so not stored.
+        session_id('pcverifytest');
+        session_start();
         $this->assertSame('differs', $mw->process($this->get('/session'), $same)->getHeaderLine('X-Page-Cache-Skip'));
+        session_write_close();
         $this->assertStringContainsString('could not be verified: a session is open', implode("\n", $this->logged));
         unset($_SESSION);
         $this->assertSame('', $mw->process($this->get('/same'), $same)->getHeaderLine('X-Page-Cache-Skip'));

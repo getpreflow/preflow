@@ -23,6 +23,10 @@ final class WebApplication
 {
     public static function boot(string $basePath, string $verify = PageCacheConfig::VERIFY_ALWAYS): Application
     {
+        // A $_SESSION outside an active session is residue of earlier tests in this process, never a visitor's.
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            unset($_SESSION);
+        }
         $app = Application::create($basePath);
         $app->setRunningInConsole(false);
         $app->setPageCacheVerify($verify);
