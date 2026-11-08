@@ -138,4 +138,68 @@ final class ChangeLogTest extends TestCase
         $this->assertSame(['*'], DataTags::changes('*'));
         $this->assertSame(['default:job', 'default:job#', 'default:*'], DataTags::changes('default:job#'));
     }
+
+    public function test_a_command_flushes_early_and_the_final_flush_sends_everything_again(): void
+    {
+        $now = 0.0;
+        $log = new ChangeLog(function (array $tags): void {
+            $this->calls[] = $tags;
+        }, flushAtShutdown: false, flushEvery: 30.0, flushAbove: 3, clock: function () use (&$now): float {
+            return $now;
+        });
+
+        $log->changed(['a', 'b']);
+        $this->assertSame([], $this->calls);
+        $log->changed(['c', 'd']); // more than 3 pending
+        $this->assertSame([['a', 'b', 'c', 'd']], $this->calls);
+
+        $log->changed(['e']);
+        $now = 29.0;
+        $log->changed(['f']);
+        $this->assertCount(1, $this->calls, 'not 30 s yet');
+        $now = 31.0;
+        $log->changed(['g']); // the oldest pending change (e, at 0 s... reset at the last flush) is 30 s old
+        $this->assertSame(['e', 'f', 'g'], $this->calls[1]);
+
+        $log->changed(['h']);
+        $log->flush();
+        $this->assertSame(['h', 'a', 'b', 'c', 'd', 'e', 'f', 'g'], $this->calls[2], 'the final flush sends the early ones again');
+        $log->flush();
+        $this->assertCount(3, $this->calls);
+    }
+
+    public function test_tableless_raw_writes_invalidate_everything_unless_they_change_no_data(): void
+    {
+        $log = $this->log();
+        $recorder = new DependencyRecorder();
+        $observer = new DataLayerObserver($recorder, $log);
+
+        $observer->rawWrote('default', 'SET NAMES utf8mb4');
+        $observer->rawWrote('default', 'PRAGMA foreign_keys = ON');
+        $this->assertSame([], $log->pending(), 'no data changed');
+
+        $observer->rawWrote('default', 'INSERT VALUES (1)');
+        $this->assertSame(['default:*', '*'], $log->pending());
+        $log->flush();
+
+        $observer->rawWrote('default', 'CREATE INDEX i ON t (a)');
+        $this->assertSame(['default:*', '*'], $log->pending(), 'a write never invalidates nothing');
+        $log->flush();
+
+        $observer->rawWrote('default', 'INSERT member (a) VALUES (1)');
+        $this->assertSame(['default:member', 'default:member#', 'default:*'], $log->pending());
+
+        $recorder->start();
+        $observer->rawRead('default', 'SELECT 1');
+        $this->assertSame([], $recorder->stop(), 'a read of no table depends on nothing');
+    }
+
+    public function test_page_cache_changed_uses_the_reported_storage_name(): void
+    {
+        $log = $this->log();
+        $cache = new PageCache($log, static fn (string $s): string => $s === 'mysql' ? 'default' : $s);
+        $cache->changed('mysql:member#4', 'menu', '*');
+
+        $this->assertSame(['default:member#4', 'default:member', 'default:*', 'menu', '*'], $log->pending());
+    }
 }

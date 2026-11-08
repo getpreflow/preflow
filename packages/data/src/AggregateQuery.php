@@ -48,6 +48,7 @@ final class AggregateQuery
      * @param list<string> $numericFields the fields stored as numbers
      * @param list<string> $multipleFields the relation fields holding a list of ids
      * @param list<string> $booleanFields the fields stored as booleans
+     * @param (\Closure(): void)|null $onRun called each time get() runs (reports the read)
      */
     public function __construct(
         private readonly StorageDriver $driver,
@@ -57,6 +58,7 @@ final class AggregateQuery
         private readonly array $numericFields = [],
         private readonly array $multipleFields = [],
         private readonly array $booleanFields = [],
+        private readonly ?\Closure $onRun = null,
     ) {}
 
     /** Group by these fields (a single relation groups by the related id; a multiple relation is refused). */
@@ -184,7 +186,12 @@ final class AggregateQuery
             ));
         }
 
-        return array_map($this->typed(...), array_values($this->driver->aggregate($this)));
+        $rows = $this->driver->aggregate($this);
+        if ($this->onRun !== null) {
+            ($this->onRun)();
+        }
+
+        return array_map($this->typed(...), array_values($rows));
     }
 
     /** @return list<string> */

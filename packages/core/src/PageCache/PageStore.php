@@ -232,6 +232,26 @@ final class PageStore
     }
 
     /** The release key {root}/active names, null when there is none. */
+    /** The release key this store holds pages of. */
+    public function release(): string
+    {
+        return $this->releaseKey;
+    }
+
+    /** The release named in {root}/active (the one that last used the cache), null when none or not a key. */
+    public function activeRelease(): ?string
+    {
+        $key = $this->activeKey();
+
+        return $key !== null && preg_match('/^[0-9a-f]{16}$/', $key) === 1 ? $key : null;
+    }
+
+    /** A store of another release under the same root (same clock). */
+    public function forRelease(string $releaseKey): self
+    {
+        return new self($this->root, $releaseKey, $this->clock);
+    }
+
     private function activeKey(): ?string
     {
         $value = @file_get_contents(rtrim($this->root, '/') . '/' . self::ACTIVE);

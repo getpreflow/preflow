@@ -38,22 +38,126 @@ final class SqlTables
         'TEMP', 'UNIQUE', 'INDEX', 'VIEW', 'TRIGGER', 'ADD', 'RENAME', 'COLUMN', 'MODIFY', 'CHANGE',
     ];
 
+    /** First words of statements that change no data: a raw write of them invalidates nothing. */
+    private const array NO_DATA = [
+        'SELECT', 'VALUES', 'EXPLAIN', 'SHOW', 'DESCRIBE', 'DESC', 'PRAGMA', 'SET', 'BEGIN', 'START',
+        'COMMIT', 'ROLLBACK', 'SAVEPOINT', 'RELEASE', 'LOCK', 'UNLOCK', 'ANALYZE', 'OPTIMIZE', 'VACUUM', '(',
+    ];
+
+    /** First words of statements that change rows: one that names no table is unsure. */
+    private const array DML = ['INSERT', 'REPLACE', 'UPDATE', 'DELETE', 'TRUNCATE'];
+
+    /** MySQL and SQLite words between INSERT/REPLACE and the table (or INTO). */
+    private const array INSERT_MODIFIERS = ['LOW_PRIORITY', 'DELAYED', 'HIGH_PRIORITY', 'IGNORE', 'OR', 'ROLLBACK', 'ABORT', 'FAIL', 'REPLACE'];
+
     /**
+     * The tables of every statement in $sql (several separated by ";" are read one by one).
+     *
      * @return list<string>|null the tables (lowercased, each once, in order), [] when it names
-     *         none (SELECT 1, SET, PRAGMA), null when unsure
+     *         none (SELECT 1, SET, PRAGMA), null when unsure: also an INSERT, REPLACE, UPDATE,
+     *         DELETE or TRUNCATE whose table it cannot find, and any quoted text with a backslash
+     *         (an escape in MySQL, a plain character in SQLite: where it ends depends on the dialect)
      */
     public static function of(string $sql): ?array
     {
-        $tokens = self::tokens($sql);
-        if ($tokens === []) {
-            return [];
+        $unsure = false;
+        $tokens = self::tokens($sql, $unsure);
+        if ($unsure) {
+            return null;
         }
+        $tables = [];
+        foreach (self::statements($tokens) as $statement) {
+            $read = self::tablesOf($statement);
+            if ($read === null) {
+                return null;
+            }
+            foreach ($read as $table) {
+                $tables[$table] = true;
+            }
+        }
+
+        return array_keys($tables);
+    }
+
+    /**
+     * Whether every statement in $sql leaves the data as it is (SELECT, SET, PRAGMA, BEGIN...).
+     * A raw write that names no table and is not one of these is unsure.
+     */
+    public static function changesNothing(string $sql): bool
+    {
+        $unsure = false;
+        foreach (self::statements(self::tokens($sql, $unsure)) as $statement) {
+            $first = strtoupper($statement[0][1]);
+            if (!in_array($first, self::NO_DATA, true)
+                || (in_array($first, self::READING, true) && self::writes(self::text($statement)))) {
+                return false;
+            }
+        }
+
+        return !$unsure;
+    }
+
+    /**
+     * Whether the statement may change data: anything but a plain read (SELECT, VALUES, SHOW,
+     * EXPLAIN, or WITH ... SELECT), in any of its statements. INSERT, UPDATE, DELETE or REPLACE
+     * anywhere in a read (a data-modifying CTE) and SELECT ... INTO count as writes; unknown
+     * statements do too.
+     */
+    public static function writes(string $sql): bool
+    {
+        $unsure = false;
+        foreach (self::statements(self::tokens($sql, $unsure)) as $tokens) {
+            $first = strtoupper($tokens[0][1]);
+            if ($first !== 'WITH' && !in_array($first, self::READING, true)) {
+                return true;
+            }
+            foreach ($tokens as $i => [$kind, $text]) {
+                if ($kind !== 'word') {
+                    continue;
+                }
+                $word = strtoupper($text);
+                $previous = $i > 0 ? strtoupper($tokens[$i - 1][1]) : '';
+                $call = ($tokens[$i + 1][1] ?? null) === '(';
+                if ($word === 'INTO' || in_array($word, ['INSERT', 'DELETE', 'TRUNCATE', 'DROP', 'ALTER', 'CREATE', 'RENAME'], true)
+                    || ($word === 'REPLACE' && !$call)
+                    || ($word === 'UPDATE' && !in_array($previous, ['FOR', 'KEY', 'DO'], true))) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param list<array{0: string, 1: string}> $tokens one statement
+     * @return list<string>|null
+     */
+    private static function tablesOf(array $tokens): ?array
+    {
         $first = strtoupper($tokens[0][1]);
         if (!in_array($first, self::KNOWN, true)) {
             return null;
         }
 
         $tables = [];
+        if ($first === 'INSERT' || $first === 'REPLACE') {
+            // MySQL's INTO is optional: INSERT [IGNORE] t (...) VALUES, INSERT t SET ..., REPLACE t VALUES.
+            $j = 1;
+            while (isset($tokens[$j]) && $tokens[$j][0] === 'word' && in_array(strtoupper($tokens[$j][1]), self::INSERT_MODIFIERS, true)) {
+                $j++;
+            }
+            if (!isset($tokens[$j]) || $tokens[$j][0] !== 'word' || strtoupper($tokens[$j][1]) !== 'INTO') {
+                $read = self::references($tokens, $j, 'INTO');
+                if ($read === null) {
+                    return null;
+                }
+                foreach ($read as $table) {
+                    $tables[$table] = true;
+                }
+            }
+        }
+
         $count = count($tokens);
         for ($i = 0; $i < $count; $i++) {
             [$kind, $text] = $tokens[$i];
@@ -69,7 +173,7 @@ final class SqlTables
                 }
                 continue;
             }
-            if (!in_array($word, ['FROM', 'JOIN', 'UPDATE', 'INTO', 'TABLE', 'TRUNCATE'], true)) {
+            if (!in_array($word, ['FROM', 'JOIN', 'STRAIGHT_JOIN', 'UPDATE', 'INTO', 'TABLE', 'TRUNCATE'], true)) {
                 continue;
             }
             $previous = $i > 0 ? strtoupper($tokens[$i - 1][1]) : '';
@@ -82,7 +186,7 @@ final class SqlTables
             while (isset($tokens[$j]) && $tokens[$j][0] === 'word' && in_array(strtoupper($tokens[$j][1]), ['IF', 'NOT', 'EXISTS', 'ONLY', 'LOW_PRIORITY', 'IGNORE', 'LATERAL', 'TABLE'], true)) {
                 $j++;
             }
-            $read = self::references($tokens, $j, $word);
+            $read = self::references($tokens, $j, $word === 'STRAIGHT_JOIN' ? 'JOIN' : $word);
             if ($read === null) {
                 return null;
             }
@@ -91,39 +195,44 @@ final class SqlTables
             }
         }
 
-        return array_keys($tables);
+        return $tables === [] && in_array($first, self::DML, true) ? null : array_keys($tables);
     }
 
     /**
-     * Whether the statement may change data: anything but a plain read (SELECT, VALUES, SHOW,
-     * EXPLAIN, or WITH ... SELECT). INSERT, UPDATE, DELETE or REPLACE anywhere in a read (a
-     * data-modifying CTE) and SELECT ... INTO count as writes; unknown statements do too.
+     * The statements of a token list, split at ";" (empty ones dropped).
+     *
+     * @param list<array{0: string, 1: string}> $tokens
+     * @return list<non-empty-list<array{0: string, 1: string}>>
      */
-    public static function writes(string $sql): bool
+    private static function statements(array $tokens): array
     {
-        $tokens = self::tokens($sql);
-        if ($tokens === []) {
-            return false;
-        }
-        $first = strtoupper($tokens[0][1]);
-        if ($first !== 'WITH' && !in_array($first, self::READING, true)) {
-            return true;
-        }
-        foreach ($tokens as $i => [$kind, $text]) {
-            if ($kind !== 'word') {
+        $statements = [];
+        $current = [];
+        foreach ($tokens as $token) {
+            if ($token[0] === 'punct' && $token[1] === ';') {
+                if ($current !== []) {
+                    $statements[] = $current;
+                }
+                $current = [];
                 continue;
             }
-            $word = strtoupper($text);
-            $previous = $i > 0 ? strtoupper($tokens[$i - 1][1]) : '';
-            $call = ($tokens[$i + 1][1] ?? null) === '(';
-            if ($word === 'INTO' || in_array($word, ['INSERT', 'DELETE'], true)
-                || ($word === 'REPLACE' && !$call)
-                || ($word === 'UPDATE' && !in_array($previous, ['FOR', 'KEY', 'DO'], true))) {
-                return true;
-            }
+            $current[] = $token;
+        }
+        if ($current !== []) {
+            $statements[] = $current;
         }
 
-        return false;
+        return $statements;
+    }
+
+    /** @param list<array{0: string, 1: string}> $tokens a statement as text again (for writes()) */
+    private static function text(array $tokens): string
+    {
+        return implode(' ', array_map(static fn (array $t): string => match ($t[0]) {
+            'string' => "''",
+            'name' => '`' . str_replace('`', '``', $t[1]) . '`',
+            default => $t[1],
+        }, $tokens));
     }
 
     /**
@@ -177,10 +286,39 @@ final class SqlTables
             if (isset($tokens[$j]) && ($tokens[$j][0] === 'name' || ($tokens[$j][0] === 'word' && !in_array(strtoupper($tokens[$j][1]), self::STOP, true)))) {
                 $j++;
             }
+            $j = self::afterHints($tokens, $j);
             if (($tokens[$j][1] ?? null) !== ',' || $keyword === 'INTO') {
                 return $tables;
             }
             $j++; // FROM a, b
+        }
+    }
+
+    /**
+     * The index after any index hints at $j: MySQL's USE|FORCE|IGNORE INDEX|KEY [FOR JOIN|ORDER
+     * BY|GROUP BY] (...), SQLite's INDEXED BY name and NOT INDEXED.
+     *
+     * @param list<array{0: string, 1: string}> $tokens
+     */
+    private static function afterHints(array $tokens, int $j): int
+    {
+        $word = static fn (int $k): string => ($tokens[$k][0] ?? null) === 'word' ? strtoupper($tokens[$k][1]) : '';
+        while (true) {
+            if (in_array($word($j), ['USE', 'FORCE', 'IGNORE'], true) && in_array($word($j + 1), ['INDEX', 'KEY'], true)) {
+                $j += 2;
+                if ($word($j) === 'FOR') {
+                    $j += in_array($word($j + 1), ['ORDER', 'GROUP'], true) ? 3 : 2;
+                }
+                if (($tokens[$j][1] ?? null) === '(') {
+                    $j = self::after($tokens, $j);
+                }
+            } elseif ($word($j) === 'INDEXED' && $word($j + 1) === 'BY') {
+                $j += 3;
+            } elseif ($word($j) === 'NOT' && $word($j + 1) === 'INDEXED') {
+                $j += 2;
+            } else {
+                return $j;
+            }
         }
     }
 
@@ -211,9 +349,10 @@ final class SqlTables
      * Words (bare identifiers and keywords), names (quoted identifiers, unquoted), strings,
      * numbers and punctuation; whitespace and comments dropped.
      *
+     * @param bool $unsure set when quoted text holds a backslash (where it ends depends on the dialect)
      * @return list<array{0: 'word'|'name'|'string'|'number'|'punct', 1: string}>
      */
-    private static function tokens(string $sql): array
+    private static function tokens(string $sql, bool &$unsure): array
     {
         $tokens = [];
         $length = strlen($sql);
@@ -235,13 +374,16 @@ final class SqlTables
                 continue;
             }
             if ($c === "'") {
-                $i = self::closing($sql, $i, "'");
+                $end = self::closing($sql, $i, "'");
+                $unsure = $unsure || str_contains(substr($sql, $i, $end - $i), '\\');
+                $i = $end;
                 $tokens[] = ['string', ''];
                 continue;
             }
             if ($c === '`' || $c === '"' || $c === '[') {
                 $close = $c === '[' ? ']' : $c;
                 $end = self::closing($sql, $i, $close);
+                $unsure = $unsure || ($c === '"' && str_contains(substr($sql, $i, $end - $i), '\\'));
                 $tokens[] = ['name', str_replace($close . $close, $close, substr($sql, $i + 1, $end - $i - 2))];
                 $i = $end;
                 continue;

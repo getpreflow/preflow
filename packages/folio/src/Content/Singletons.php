@@ -20,6 +20,9 @@ final class Singletons
     /** @var array<string, array<string, mixed>|null> */
     private array $values = [];
 
+    /** @var array<string, list<array<int, mixed>>> the reads behind each memoised record (DataManager::captureReads()) */
+    private array $reads = [];
+
     public function __construct(
         private readonly DataManager $dm,
         private readonly TypeCatalog $catalog,
@@ -32,8 +35,8 @@ final class Singletons
     public function get(string $type): ?array
     {
         $key = $type . '@' . $this->contentLocale->get();
+        $record = $this->record($type); // reports its read on every call, memoised or not
         if (!array_key_exists($key, $this->values)) {
-            $record = $this->record($type);
             $values = $record?->localized($this->contentLocale->get())->toArray();
             $this->values[$key] = $values !== null && $this->richText !== null
                 ? $this->richText->fields($values, $record->getType()->fields)
@@ -46,9 +49,12 @@ final class Singletons
     public function record(string $type): ?DynamicRecord
     {
         if (!array_key_exists($type, $this->records)) {
-            $this->records[$type] = $this->catalog->get($type)?->singleton === true
+            [$this->records[$type], $this->reads[$type]] = $this->dm->captureReads(fn (): ?DynamicRecord => $this->catalog->get($type)?->singleton === true
                 ? ($this->live !== null ? $this->live->find($type, $type) : $this->dm->findType($type, $type))
-                : null;
+                : null);
+        } else {
+            // A memo hit is still a read: every page using the settings depends on them (page cache).
+            $this->dm->replayReads($this->reads[$type]);
         }
 
         return $this->records[$type];

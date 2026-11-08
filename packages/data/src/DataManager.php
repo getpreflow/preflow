@@ -53,7 +53,68 @@ final class DataManager
      */
     public function reportRead(string $storage, string $table, string|int|null $id = null): void
     {
-        $this->observer?->read($this->storageKey($storage), $table, $id === null ? null : (string) $id);
+        if ($this->observer === null) {
+            return;
+        }
+        $this->noteRead(['read', $this->storageKey($storage), $table, $id === null ? null : (string) $id]);
+    }
+
+    /** @var list<list<array{0: 'read'|'raw', 1: string, 2: string, 3?: ?string}>> open captureReads() */
+    private array $captures = [];
+
+    /**
+     * Runs $fn and returns what it returned with the reads it made, for a memo that answers
+     * later calls from memory (in this request or a later one in the same process): it hands
+     * them to replayReads() on every hit, so each page that uses the memo still depends on what
+     * it holds. Without an observer the reads are [] and nothing is kept.
+     *
+     * @template T
+     * @param \Closure(): T $fn
+     * @return array{0: T, 1: list<array<int, mixed>>}
+     */
+    public function captureReads(\Closure $fn): array
+    {
+        if ($this->observer === null) {
+            return [$fn(), []];
+        }
+        $depth = count($this->captures);
+        $this->captures[] = [];
+        try {
+            $result = $fn();
+        } finally {
+            $reads = $this->captures[$depth] ?? [];
+            array_splice($this->captures, $depth);
+        }
+
+        return [$result, $reads];
+    }
+
+    /**
+     * Reports again reads captured by captureReads() (a memo hit).
+     *
+     * @param list<array<int, mixed>> $reads
+     */
+    public function replayReads(array $reads): void
+    {
+        if ($this->observer === null) {
+            return;
+        }
+        foreach ($reads as $read) {
+            $this->noteRead($read);
+        }
+    }
+
+    /** @param array<int, mixed> $read ['read', storage, table, ?id] or ['raw', storage, sql] */
+    private function noteRead(array $read): void
+    {
+        if ($read[0] === 'raw') {
+            $this->observer?->rawRead($read[1], $read[2]);
+        } else {
+            $this->observer?->read($read[1], $read[2], $read[3] ?? null);
+        }
+        foreach ($this->captures as $i => $_) {
+            $this->captures[$i][] = $read;
+        }
     }
 
     /**
@@ -69,10 +130,15 @@ final class DataManager
     private array $storageKeys = [];
 
     /**
-     * The name a storage is reported under: one driver configured under several names (the
+     * The name a storage is reported under (to the observer, in page cache tags): one driver configured under several names (the
      * default one, an alias) is one storage, reported as 'default' when it is the default
      * driver, else under its first configured name. An unknown name stays as it is.
      */
+    public function reportedStorage(string $name): string
+    {
+        return $this->storageKey($name);
+    }
+
     private function storageKey(string $name): string
     {
         if (isset($this->storageKeys[$name])) {
@@ -248,7 +314,7 @@ final class DataManager
         }
         if (!SqlTables::writes($sql)) {
             $rows = $driver->rawQuery($sql, $bindings);
-            $this->observer->rawRead($this->storageKey($storage), $sql);
+            $this->noteRead(['raw', $this->storageKey($storage), $sql]);
 
             return $rows;
         }

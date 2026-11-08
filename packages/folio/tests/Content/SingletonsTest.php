@@ -57,4 +57,27 @@ final class SingletonsTest extends TestCase
         $this->assertSame(1, $spy->finds);
         $this->assertNull($singletons->get('nope'));
     }
+
+    public function test_memoised_settings_are_still_a_read_of_every_page(): void
+    {
+        $dir = sys_get_temp_dir() . '/sgl_' . bin2hex(random_bytes(4));
+        mkdir($dir . '/models', 0777, true);
+        file_put_contents($dir . '/models/site.json', json_encode([
+            'key' => 'site', 'table' => 'site', 'storage' => 'json', 'id_field' => 'uuid', 'singleton' => true,
+            'fields' => ['name' => ['type' => 'string']],
+        ]));
+        $registry = new TypeRegistry($dir . '/models');
+        $dm = new DataManager(drivers: ['json' => new JsonFileDriver($dir . '/store')], defaultDriver: 'json', typeRegistry: $registry);
+        $dm->saveType(DynamicRecord::fromArray($registry->get('site'), ['uuid' => 'site', 'name' => 'S']), validate: false);
+        $log = new \Preflow\Folio\Tests\Support\ReadLog();
+        $dm->observe($log);
+        $singletons = new Singletons($dm, new TypeCatalog($dir . '/models'), new ContentLocale(Locales::single('en')));
+
+        $singletons->get('site');
+        $singletons->get('site');
+        $singletons->record('site');
+
+        $this->assertSame(['site#site', 'site#site', 'site#site'], $log->take());
+        exec('rm -rf ' . escapeshellarg($dir));
+    }
 }

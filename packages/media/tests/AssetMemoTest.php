@@ -26,6 +26,7 @@ final class AssetMemoTest extends TestCase
     /** @var list<string> */
     private array $sql = [];
     private MediaLibrary $lib;
+    private DataManager $dm;
 
     protected function setUp(): void
     {
@@ -53,7 +54,7 @@ final class AssetMemoTest extends TestCase
                 return $fetchMode === null ? parent::query($query) : parent::query($query, $fetchMode, ...$fetchModeArgs);
             }
         };
-        $dm = new DataManager(drivers: ['sqlite' => new SqliteDriver($pdo)], defaultDriver: 'sqlite', typeRegistry: new TypeRegistry($this->assetRoot . '/models'));
+        $dm = $this->dm = new DataManager(drivers: ['sqlite' => new SqliteDriver($pdo)], defaultDriver: 'sqlite', typeRegistry: new TypeRegistry($this->assetRoot . '/models'));
         $this->lib = new MediaLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', ['storage' => 'sqlite', 'versions_dir' => $this->assetRoot . '/versions']);
         (new RecordTableSync($dm))->sync($this->lib->definition());
     }
@@ -162,5 +163,46 @@ final class AssetMemoTest extends TestCase
         foreach (['en', 'de', 'fr', 'it'] as $locale) {
             $this->assertSame($plain->altFor($locale, 'en'), $batched->altFor($locale, 'en'));
         }
+    }
+
+    public function test_a_memoised_asset_is_still_a_read_of_every_page_rendered_in_the_process(): void
+    {
+        [$a, $b] = array_slice($this->upload25(), 0, 2);
+        $this->lib->flush();
+        $observer = new class () implements \Preflow\Data\Observe\DataObserver {
+            /** @var list<string> */
+            public array $reads = [];
+
+            public function read(string $storage, string $type, ?string $id): void
+            {
+                if ($id !== null) {
+                    $this->reads[] = "{$type}#{$id}";
+                }
+            }
+
+            public function wrote(string $storage, string $type, ?string $id): void {}
+
+            public function rawRead(string $storage, string $sql): void {}
+
+            public function rawWrote(string $storage, string $sql): void {}
+        };
+        $this->dm->observe($observer);
+        $table = $this->lib->definition()->table;
+
+        // Page one: a list, prefetched, then each asset.
+        $this->lib->prefetch([$a, $b]);
+        $this->lib->find($a);
+        $this->lib->find($b);
+        $pageOne = $observer->reads;
+        $observer->reads = [];
+
+        // Page two in the same process (a rebuild loop): every lookup is a memo hit.
+        $this->sql = [];
+        $this->lib->prefetch([$a]);
+        $this->lib->find($a);
+        $this->assertSame(0, $this->assetQueries(), 'answered from the memo');
+
+        $this->assertSame(["{$table}#{$a}", "{$table}#{$b}"], $pageOne);
+        $this->assertSame(["{$table}#{$a}"], $observer->reads, 'the second page still records the asset');
     }
 }

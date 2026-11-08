@@ -31,4 +31,24 @@ final class StoredOverridesTextTest extends TestCase
         }
         $this->assertSame('Speichern’s', StoredOverrides::validText("Speichern's"));
     }
+
+    public function test_compiled_texts_are_still_a_read_of_the_overrides(): void
+    {
+        $dir = sys_get_temp_dir() . '/ovr_' . bin2hex(random_bytes(4));
+        mkdir($dir);
+        try {
+            $dm = new \Preflow\Data\DataManager(['default' => new \Preflow\Data\Driver\JsonFileDriver($dir . '/store')]);
+            $overrides = new StoredOverrides($dm, new \Preflow\Folio\Translations\OverridesCache($dir . '/cache'));
+            $overrides->set('de', 'site.hello', 'Hallo', null);
+            $this->assertSame('Hallo', $overrides->get('de', 'site.hello')); // compiles the file
+            $log = new \Preflow\Folio\Tests\Support\ReadLog();
+            $dm->observe($log);
+
+            $this->assertSame('Hallo', $overrides->get('de', 'site.hello')); // from the compiled file
+
+            $this->assertSame([$overrides->definition()->table], $log->take());
+        } finally {
+            exec('rm -rf ' . escapeshellarg($dir));
+        }
+    }
 }

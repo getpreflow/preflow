@@ -20,7 +20,15 @@ namespace Preflow\Core\PageCache;
  */
 final class PageCache
 {
-    public function __construct(private readonly ?ChangeLog $changes = null) {}
+    /**
+     * @param (\Closure(string): string)|null $storageName the name a storage is reported under
+     *        (DataManager::reportedStorage()): 'mysql:member' becomes 'default:member' when mysql
+     *        is the default driver, as the data layer's own tags are
+     */
+    public function __construct(
+        private readonly ?ChangeLog $changes = null,
+        private readonly ?\Closure $storageName = null,
+    ) {}
 
     public function enabled(): bool
     {
@@ -34,6 +42,10 @@ final class PageCache
         }
         $changed = [];
         foreach ($tags as $tag) {
+            $colon = strpos($tag, ':');
+            if ($colon !== false && $this->storageName !== null) {
+                $tag = ($this->storageName)(substr($tag, 0, $colon)) . substr($tag, $colon);
+            }
             array_push($changed, ...DataTags::changes($tag));
         }
         $this->changes->changed($changed);

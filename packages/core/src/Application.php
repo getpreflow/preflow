@@ -927,10 +927,19 @@ final class Application
                 static function (array $tags) use ($container): void {
                     $container->get(\Preflow\Core\PageCache\Refresher::class)->invalidate($tags);
                 },
+                // A command (a cron import) flushes as it goes too: a killed run loses little.
+                flushEvery: $this->runningInConsole() ? 30.0 : null,
+                flushAbove: $this->runningInConsole() ? 5000 : 0,
             );
             $this->container->instance(\Preflow\Core\PageCache\ChangeLog::class, $this->pageChanges);
         }
-        $this->container->instance(\Preflow\Core\PageCache\PageCache::class, new \Preflow\Core\PageCache\PageCache($this->pageChanges));
+        $container = $this->container;
+        $this->container->instance(\Preflow\Core\PageCache\PageCache::class, new \Preflow\Core\PageCache\PageCache(
+            $this->pageChanges,
+            static fn (string $storage): string => $container->bound(\Preflow\Data\DataManager::class)
+                ? $container->get(\Preflow\Data\DataManager::class)->reportedStorage($storage)
+                : $storage,
+        ));
     }
 
     /** The page cache's change log, when the cache is on (bootPageCache()). */

@@ -153,8 +153,10 @@ final class DataManagerObserverTest extends TestCase
 
         $this->dm->findType('object', 'o1');
         $this->dm->queryType('object')->where('title', 'T')->get();
-        $this->dm->queryType('object')->aggregate()->count()->get();
-        $this->assertSame(['read default:object#o1', 'read default:object', 'read default:object'], $this->events());
+        $aggregate = $this->dm->queryType('object')->aggregate()->count();
+        $this->assertSame(['read default:object#o1', 'read default:object'], $this->events(), 'an aggregate is read when it runs, not when built');
+        $aggregate->get();
+        $this->assertSame(['read default:object'], $this->events());
 
         $this->dm->deleteType('object', 'o1');
         $this->assertSame(['wrote default:object#o1'], $this->events());
@@ -243,5 +245,37 @@ final class DataManagerObserverTest extends TestCase
         $this->assertSame([['uuid' => 'o1', 'title' => 'T', '_version' => null]], $this->dm->raw('SELECT * FROM object'));
         $this->assertSame(1, $this->dm->execute('UPDATE object SET title = ?', ['U']));
         $this->assertSame([], $this->events());
+    }
+
+    public function test_captured_reads_are_replayed_for_a_memo_hit(): void
+    {
+        $this->dm->saveType($this->object('o1'));
+        $this->events();
+        $memo = null;
+        $reads = [];
+        $read = function () use (&$memo, &$reads): ?DynamicRecord {
+            if ($memo !== null) {
+                $this->dm->replayReads($reads);
+
+                return $memo;
+            }
+            [$memo, $reads] = $this->dm->captureReads(function (): ?DynamicRecord {
+                $this->dm->raw('SELECT COUNT(*) FROM object');
+
+                return $this->dm->findType('object', 'o1');
+            });
+
+            return $memo;
+        };
+
+        [, $outer] = $this->dm->captureReads($read); // nested: the outer capture gets them too
+        $read();
+
+        $first = ['rawRead default: SELECT COUNT(*) FROM object', 'read default:object#o1'];
+        $this->assertSame([...$first, ...$first], $this->events(), 'the second call still reports both reads');
+        $this->assertCount(2, $outer);
+
+        $this->dm->observe(null);
+        $this->assertSame([5, []], $this->dm->captureReads(static fn (): int => 5), 'nothing kept without an observer');
     }
 }

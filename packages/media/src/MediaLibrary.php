@@ -601,6 +601,10 @@ final class MediaLibrary
             return null;
         }
         if (isset($this->memo[$id])) {
+            // Still a read of the record: a later page in this process depends on it too (page cache).
+            $def = $this->definition();
+            $this->dm->reportRead($def->storage, $def->table, $id);
+
             return $this->memo[$id];
         }
         $record = $this->dm->findIn($this->definition(), $id);

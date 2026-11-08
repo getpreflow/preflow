@@ -142,4 +142,24 @@ final class RefresherTest extends TestCase
 
         $this->assertDirectoryDoesNotExist($this->dir . '/none');
     }
+
+    public function test_a_command_from_the_release_before_a_deploy_also_reaches_the_active_release(): void
+    {
+        $old = new PageStore($this->dir . '/pages', str_repeat('a', 16), fn (): float => $this->now);
+        $import = new Refresher($old, $this->config, fn (): float => $this->now);
+        $import->invalidate(['default:job#1']); // its first flush: the old release claims active
+
+        // The new release serves a request: it reclaims active and caches a page.
+        $new = new PageStore($this->dir . '/pages', str_repeat('b', 16), fn (): float => $this->now);
+        $page = $this->cache($new, '/job/5', ['default:job#5']);
+        $this->assertSame(str_repeat('b', 16), $new->activeRelease());
+
+        $import->invalidate(DataTags::recordChanged('default', 'job', '5'));
+        $this->assertNull($new->get($page), 'the active release\'s page is forgotten too');
+
+        // A new refresher of the old release (a second command) reaches it as well.
+        $page = $this->cache(new PageStore($this->dir . '/pages', str_repeat('b', 16), fn (): float => $this->now), '/job/5', ['default:job#5']);
+        (new Refresher(new PageStore($this->dir . '/pages', str_repeat('a', 16)), $this->config))->invalidate(DataTags::recordChanged('default', 'job', '5'));
+        $this->assertNull($new->get($page));
+    }
 }

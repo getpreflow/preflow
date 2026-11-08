@@ -18,6 +18,9 @@ final class AuthorNames
     /** @var array<string, string> */
     private array $known = [];
 
+    /** @var array<string, list<array<int, mixed>>> the reads behind each known label (DataManager::captureReads()) */
+    private array $reads = [];
+
     /** @param \Closure(): list<RecordUserProvider> $providers the guard's record providers, asked on first use */
     public function __construct(
         private readonly DataManager $dm,
@@ -30,8 +33,17 @@ final class AuthorNames
             return $by;
         }
         if (isset($this->known[$by])) {
+            $this->dm->replayReads($this->reads[$by] ?? []); // still a read (page cache)
+
             return $this->known[$by];
         }
+        [$label, $this->reads[$by]] = $this->dm->captureReads(fn (): string => $this->lookup($by));
+
+        return $this->known[$by] = $label;
+    }
+
+    private function lookup(string $by): string
+    {
         foreach (($this->providers)() as $provider) {
             $record = $this->dm->findType($provider->type(), $by);
             if (!$record instanceof DynamicRecord) {
@@ -40,11 +52,11 @@ final class AuthorNames
             foreach (['name', $provider->fields()['email']] as $field) {
                 $value = $record->get($field);
                 if (is_string($value) && trim($value) !== '') {
-                    return $this->known[$by] = $value;
+                    return $value;
                 }
             }
         }
 
-        return $this->known[$by] = $by;
+        return $by;
     }
 }

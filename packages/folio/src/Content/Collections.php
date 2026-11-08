@@ -16,6 +16,9 @@ final class Collections
     /** @var array<string, list<array<string, mixed>>> */
     private array $lists = [];
 
+    /** @var array<string, list<array<int, mixed>>> the reads behind each memoised list (DataManager::captureReads()) */
+    private array $reads = [];
+
     public function __construct(
         private readonly LiveContent $live,
         private readonly TypeCatalog $catalog,
@@ -35,12 +38,17 @@ final class Collections
         $locale = $this->locale->get();
         $key = $type . '@' . $locale . ($this->live->showsWorkingCopies() ? '#working' : '');
         if (!isset($this->lists[$key])) {
-            $query = $this->live->query($type);
-            $records = [];
-            foreach (ListOrder::apply($query, $this->live->definition($type), $listing->list)->get()->items() as $record) {
-                $records[] = $this->safe($record->localized($locale)->toArray(), $type);
-            }
-            $this->lists[$key] = $records;
+            [$this->lists[$key], $this->reads[$key]] = $this->live->data()->captureReads(function () use ($type, $listing, $locale): array {
+                $records = [];
+                foreach (ListOrder::apply($this->live->query($type), $this->live->definition($type), $listing->list)->get()->items() as $record) {
+                    $records[] = $this->safe($record->localized($locale)->toArray(), $type);
+                }
+
+                return $records;
+            });
+        } else {
+            // A memo hit is still a read: every page showing the list depends on it (page cache).
+            $this->live->data()->replayReads($this->reads[$key]);
         }
 
         return $this->lists[$key];

@@ -92,4 +92,39 @@ final class DependencyRecorderTest extends TestCase
         $this->assertSame(['inner'], array_keys($inner));
         $this->assertSame(['outer', 'inner'], array_keys($outer));
     }
+
+    public function test_stopping_a_recording_closes_one_left_open_inside_it(): void
+    {
+        $recorder = new DependencyRecorder();
+        $page = $recorder->start();
+        $recorder->record('outer');
+        $recorder->start(); // an inner render that threw before its stop()
+        $recorder->record('inner');
+
+        $this->assertSame(['outer', 'inner'], array_keys($recorder->stop($page)));
+        $this->assertFalse($recorder->recording());
+    }
+
+    public function test_capture_closes_its_recording_when_the_render_throws(): void
+    {
+        $recorder = new DependencyRecorder();
+        $page = $recorder->start();
+        $recorder->record('outer');
+        try {
+            $recorder->capture(static function () use ($recorder): void {
+                $recorder->record('part');
+                throw new \RuntimeException('render failed');
+            });
+        } catch (\RuntimeException) {
+        }
+        [$result, $tags] = $recorder->capture(static function () use ($recorder): string {
+            $recorder->record('second');
+
+            return 'ok';
+        });
+
+        $this->assertSame('ok', $result);
+        $this->assertSame(['second'], array_keys($tags));
+        $this->assertSame(['outer', 'part', 'second'], array_keys($recorder->stop($page)));
+    }
 }

@@ -104,7 +104,11 @@ final class StoredOverrides implements TranslationOverrides
             return null;
         }
         $texts = $this->cache->read($locale);
-        if ($texts === null) {
+        if ($texts !== null) {
+            // From the compiled file, not the table: still a read of the overrides (page cache).
+            $def = $this->definition();
+            $this->dm->reportRead($def->storage, $def->table);
+        } else {
             $texts = $this->all($locale);
             $this->cache->write($locale, $texts);
         }

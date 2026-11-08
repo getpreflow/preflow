@@ -35,6 +35,22 @@ final class SqlTablesTest extends TestCase
         yield 'with rollup is no cte' => ['SELECT a, COUNT(*) FROM t GROUP BY a WITH ROLLUP', ['t']];
         yield 'no table' => ['SELECT 1', []];
         yield 'procedure is unsure' => ['CALL refresh_all()', null];
+        yield 'mysql insert without into' => ['INSERT member (number, company) VALUES (?, ?)', ['member']];
+        yield 'insert ignore set' => ['INSERT IGNORE member SET a = 1', ['member']];
+        yield 'insert modifiers, quoted' => ['INSERT LOW_PRIORITY IGNORE `member` (a) VALUES (1)', ['member']];
+        yield 'replace without into' => ['REPLACE member VALUES (1)', ['member']];
+        yield 'replace into' => ['REPLACE INTO member VALUES (1)', ['member']];
+        yield 'sqlite insert or ignore' => ['INSERT OR IGNORE INTO x (a) VALUES (1)', ['x']];
+        yield 'insert naming no table is unsure' => ['INSERT VALUES (1)', null];
+        yield 'update naming no table is unsure' => ['UPDATE SET a = 1', null];
+        yield 'straight join' => ['SELECT * FROM a STRAIGHT_JOIN b ON a.id = b.id', ['a', 'b']];
+        yield 'index hint then comma' => ['SELECT * FROM a FORCE INDEX (i1), b', ['a', 'b']];
+        yield 'index hint for order by' => ['SELECT * FROM a x USE INDEX FOR ORDER BY (i1) JOIN c ON 1', ['a', 'c']];
+        yield 'sqlite index hints' => ['SELECT * FROM a INDEXED BY i, b NOT INDEXED, c', ['a', 'b', 'c']];
+        yield 'backslash in a string is unsure' => ["SELECT * FROM a WHERE x = 'C:\\' UNION SELECT * FROM b WHERE y = ''", null];
+        yield 'backslash in double quotes is unsure' => ['SELECT * FROM a WHERE x = "a\\" FROM"', null];
+        yield 'statements one by one' => ['SELECT 1; TRUNCATE likes', ['likes']];
+        yield 'index ddl names no table' => ['CREATE INDEX i ON t (a)', []];
     }
 
     /** @param list<string>|null $tables */
@@ -53,5 +69,20 @@ final class SqlTablesTest extends TestCase
         $this->assertTrue(SqlTables::writes('WITH t AS (SELECT 1) DELETE FROM a'));
         $this->assertTrue(SqlTables::writes('CALL refresh_all()'));
         $this->assertTrue(SqlTables::writes('select 1 into @x'));
+        $this->assertTrue(SqlTables::writes('SELECT 1; TRUNCATE likes'), 'a write after a read');
+        $this->assertTrue(SqlTables::writes('SELECT 1; DROP TABLE likes'));
+        $this->assertTrue(SqlTables::writes('INSERT member VALUES (1)'));
+    }
+
+    public function test_statements_that_change_no_data(): void
+    {
+        $this->assertTrue(SqlTables::changesNothing('SET NAMES utf8mb4'));
+        $this->assertTrue(SqlTables::changesNothing('PRAGMA foreign_keys = ON'));
+        $this->assertTrue(SqlTables::changesNothing('BEGIN; SET @a = 1'));
+        $this->assertTrue(SqlTables::changesNothing('SELECT 1'));
+        $this->assertFalse(SqlTables::changesNothing('SELECT 1 INTO @x'));
+        $this->assertFalse(SqlTables::changesNothing('CREATE INDEX i ON t (a)'));
+        $this->assertFalse(SqlTables::changesNothing('INSERT VALUES (1)'));
+        $this->assertFalse(SqlTables::changesNothing('SET @a = 1; CALL x()'));
     }
 }

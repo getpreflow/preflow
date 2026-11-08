@@ -54,8 +54,10 @@ final class DataLayerObserver implements DataObserver
     public function rawWrote(string $storage, string $sql): void
     {
         $tables = SqlTables::of($sql);
-        if ($tables === null) {
-            $this->changes->changed([TagIndex::EVERYTHING]);
+        // Unsure, or no table found in a statement that may change data: a write never
+        // invalidates nothing, so it invalidates everything.
+        if ($tables === null || ($tables === [] && !SqlTables::changesNothing($sql))) {
+            $this->changes->changed([DataTags::storage($storage), TagIndex::EVERYTHING]);
 
             return;
         }

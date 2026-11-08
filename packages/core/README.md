@@ -568,11 +568,19 @@ return [
   covers `save`, `insert`, `update`, `delete`, `saveType`, `deleteIn`, delete plans,
   `execute()`, a write sent through `raw()`, Folio's publisher and Folio's import. The
   writes are merged, and the pages that depend on them are invalidated once, before the
-  response goes out, or at the end of a command (a cron import):
+  response goes out, or at the end of a command (a cron import). A command also flushes
+  every 30 seconds and past 5000 pending tags, so a killed run loses little; a command
+  still running from the release before a deploy reaches the new release's pages too:
   - writing a record invalidates its pages, the pages listing its table, and the
     whole-storage readers;
   - a raw write invalidates every page of the tables it names;
-  - a raw write whose tables can't be told invalidates every page.
+  - a raw write whose tables can't be told, or that names no table (unless it changes no
+    data, such as `SET` or `PRAGMA`), invalidates every page.
+- **Memos.** A service that keeps what it read for later calls (the media library, Folio's
+  site settings and lists) must still report the read on each hit, or a second page rendered
+  in the same process won't depend on it: `$dm->reportRead(...)` for one record, or
+  `[$value, $reads] = $dm->captureReads(fn () => ...)` once and `$dm->replayReads($reads)` on
+  each hit.
 - **Writes the data layer can't see**, such as a bare `$pdo->exec()` or a write through
   `$dataManager->driver(...)`, must be reported:
 
@@ -583,6 +591,8 @@ return [
   $pageCache->changed('*');                   // everything
   ```
 
+  The storage name is mapped as the data layer's own tags are (`mysql:member` becomes
+  `default:member` when mysql is the default driver).
   `$dataManager->reportWrite('default', 'member', 42)` does the same from data code.
   Both do nothing while the cache is off.
 

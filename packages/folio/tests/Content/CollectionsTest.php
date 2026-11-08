@@ -137,6 +137,21 @@ final class CollectionsTest extends TestCase
         $this->assertNull($this->collections()->find('nope', 'x'));
     }
 
+    public function test_a_memoised_list_is_still_a_read_of_the_next_page(): void
+    {
+        $this->publishApp('a', 'One', 10);
+        $log = new \Preflow\Folio\Tests\Support\ReadLog();
+        $this->dm->observe($log);
+        $collections = $this->collections();
+
+        $collections->list('app');
+        $first = $log->take();
+        $collections->list('app'); // the next page rendered in this process: a memo hit
+
+        $this->assertContains('app__published', $first);
+        $this->assertSame($first, $log->take());
+    }
+
     private function collections(): Collections
     {
         return new Collections($this->live, new TypeCatalog($this->dir . '/models'), $this->locale);

@@ -35,6 +35,15 @@ final class LiveContent
         return $this->workingCopies;
     }
 
+    /**
+     * The data manager these reads go through: for memos that replay their reads on a hit
+     * (DataManager::captureReads()).
+     */
+    public function data(): DataManager
+    {
+        return $this->dm;
+    }
+
     public function find(string $type, string $id): ?DynamicRecord
     {
         if ($this->readsWorkingCopies($type)) {

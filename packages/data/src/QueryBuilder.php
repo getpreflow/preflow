@@ -371,8 +371,6 @@ final class QueryBuilder
         $fields = array_values(array_unique($fields));
         $numeric = array_values(array_unique($numeric));
 
-        $this->reportListing();
-
         return new AggregateQuery(
             $this->driver,
             (string) ($this->meta?->table ?? $this->typeDef?->table),
@@ -381,6 +379,7 @@ final class QueryBuilder
             $numeric,
             $multiple,
             array_values(array_unique($boolean)),
+            $this->reportListing(...), // when it runs, not when it is built
         );
     }
 

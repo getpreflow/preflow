@@ -24,19 +24,55 @@ final class DependencyRecorder
 
     private ?int $seconds = null;
 
-    public function start(): void
+    /**
+     * Opens a recording. Keep what it returns and hand it to stop(): a recording opened inside
+     * and never stopped (a render that threw in between) is then closed with it, and the outer
+     * page still gets its own reads. Prefer capture(), which can't be left open.
+     *
+     * @return int the recording, for stop()
+     */
+    public function start(): int
     {
         $this->frames[] = [];
+
+        return count($this->frames) - 1;
     }
 
     /**
-     * Ends the innermost recording.
+     * Ends recording $frame (the innermost one when null), and any opened inside it.
      *
      * @return array<string, array{0: Freshness, 1: ?int}> tag => [freshness, seconds of a Timed one]
      */
-    public function stop(): array
+    public function stop(?int $frame = null): array
     {
-        return array_pop($this->frames) ?? [];
+        $frame ??= count($this->frames) - 1;
+        if ($frame < 0 || !isset($this->frames[$frame])) {
+            return [];
+        }
+        $tags = $this->frames[$frame];
+        array_splice($this->frames, $frame);
+
+        return $tags;
+    }
+
+    /**
+     * Runs $fn inside its own recording, closed even when $fn throws.
+     *
+     * @template T
+     * @param \Closure(): T $fn
+     * @return array{0: T, 1: array<string, array{0: Freshness, 1: ?int}>}
+     */
+    public function capture(\Closure $fn): array
+    {
+        $frame = $this->start();
+        try {
+            $result = $fn();
+        } catch (\Throwable $e) {
+            $this->stop($frame);
+            throw $e;
+        }
+
+        return [$result, $this->stop($frame)];
     }
 
     public function recording(): bool

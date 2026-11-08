@@ -16,8 +16,6 @@ namespace Preflow\Core\PageCache;
  */
 final class Refresher
 {
-    private ?TagIndex $index = null;
-
     /** @var \Closure(): float */
     private readonly \Closure $clock;
 
@@ -34,44 +32,63 @@ final class Refresher
         $this->clock = $clock ?? static fn (): float => microtime(true);
     }
 
-    /** @param list<string> $tags what changed (DataTags::changes() applied) */
+    /**
+     * Forgets the pages carrying any of $tags in this store's release, and in the release named
+     * active when that is another one: a command still running from the release before a
+     * deploy (a cron import) also reaches the pages the new release built meanwhile.
+     *
+     * @param list<string> $tags what changed (DataTags::changes() applied)
+     */
     public function invalidate(array $tags): void
     {
         $tags = array_values(array_unique(array_map(strval(...), $tags)));
         if ($tags === [] || !($this->sqlite ?? extension_loaded('pdo_sqlite'))) {
             return; // without pdo_sqlite nothing is cached: no store activation, no file touched
         }
-        $index = $this->index();
+        $at = ($this->clock)();
+        // Read before this store's own first use, which may claim active for itself.
+        $active = $this->store->activeRelease();
+        $this->invalidateIn($this->store, $tags, $at);
+        if ($active !== null && $active !== $this->store->release()) {
+            $other = $this->store->forRelease($active);
+            if (is_dir($other->releaseDir())) {
+                $this->invalidateIn($other, $tags, $at);
+            }
+        }
+    }
+
+    /** @param list<string> $tags */
+    private function invalidateIn(PageStore $store, array $tags, float $at): void
+    {
+        $index = $this->index($store);
         if (!$index->available()) {
             return;
         }
         // Recorded first: a render that started before and stores after this still refuses.
-        $index->recordInvalidation($tags, ($this->clock)());
+        $index->recordInvalidation($tags, $at);
 
         if (in_array(TagIndex::EVERYTHING, $tags, true)) {
             $index->forgetAll();
-            $this->store->clear();
+            $store->clear();
 
             return;
         }
-        $this->forget(array_keys($index->pagesFor($tags)));
-    }
-
-    /** @param list<string> $pageIds */
-    private function forget(array $pageIds): void
-    {
+        $pageIds = array_map(strval(...), array_keys($index->pagesFor($tags)));
         if ($pageIds === []) {
             return;
         }
         // Rows first: a page stored in between loses its file (a miss), never its rows.
-        $this->index()->forgetMany($pageIds);
+        $index->forgetMany($pageIds);
         foreach ($pageIds as $id) {
-            $this->store->forget((string) $id);
+            $store->forget($id);
         }
     }
 
-    private function index(): TagIndex
+    /** @var array<string, TagIndex> by release */
+    private array $indexes = [];
+
+    private function index(PageStore $store): TagIndex
     {
-        return $this->index ??= TagIndex::forStore($this->store, $this->config, $this->clock, $this->sqlite);
+        return $this->indexes[$store->release()] ??= TagIndex::forStore($store, $this->config, $this->clock, $this->sqlite);
     }
 }
