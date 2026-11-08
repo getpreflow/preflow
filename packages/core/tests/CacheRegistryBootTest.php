@@ -97,7 +97,8 @@ final class CacheRegistryBootTest extends TestCase
     public function test_the_page_cache_is_registered_with_its_config(): void
     {
         $dir = $this->app('twig');
-        file_put_contents($dir . '/config/page_cache.php', "<?php\nreturn ['enabled' => true, 'max_age' => 600, 'ignore_query' => ['ref']];\n");
+        file_put_contents($dir . '/config/page_cache.php', "<?php\nreturn ['enabled' => true, 'max_age' => 600, 'ignore_query' => ['ref'], 'hosts' => ['alias.example']];\n");
+        file_put_contents($dir . '/config/app.php', "<?php\nreturn ['name'=>'t','debug'=>0,'engine'=>'twig','key'=>'k','url'=>'https://site.example'];\n");
         $app = Application::create($dir);
         $app->boot();
 
@@ -110,6 +111,7 @@ final class CacheRegistryBootTest extends TestCase
         $this->assertSame(600, $config->maxAge);
         $this->assertSame(['ref'], $config->ignoreQuery);
         $this->assertSame(2.0, $config->rebuildBudget);
+        $this->assertSame(['site.example', 'alias.example'], $config->hosts);
         // Nothing is written until a page is stored.
         $this->assertDirectoryDoesNotExist($dir . '/storage/cache/pages');
     }

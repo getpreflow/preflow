@@ -883,7 +883,10 @@ final class Application
         $file = $this->configFile('page_cache');
         $this->container->instance(
             \Preflow\Core\PageCache\PageCacheConfig::class,
-            \Preflow\Core\PageCache\PageCacheConfig::fromArray(is_array($file) ? $file : []),
+            \Preflow\Core\PageCache\PageCacheConfig::fromArray(
+                is_array($file) ? $file : [],
+                is_string($url = $this->config->get('app.url')) ? $url : null,
+            ),
         );
         $base = $this->absolutePath('');
         $this->container->get(CacheRegistry::class)->register(new \Preflow\Core\PageCache\PageCacheSource(

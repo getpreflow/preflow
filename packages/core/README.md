@@ -520,6 +520,43 @@ Keys must be unique; a duplicate throws a `LogicException`. Implement `CacheSour
 anything else (`key()`, `label()`, `stats()`, `clear()`). `OpcacheStatus` reports and resets
 PHP's OPcache for the current SAPI.
 
+### Page cache (`config/page_cache.php`)
+
+The page cache keeps finished pages for visitors who are not signed in, under
+`storage/cache/pages/{release key}`, and is listed and cleared as the `pages` cache
+(`preflow cache:clear pages`, Folio's Cache screen). It is off until a site switches it on:
+
+```php
+// config/page_cache.php: every key is optional, these are the defaults
+return [
+    'enabled' => false,
+    'max_age' => 14400,              // seconds; older pages are rebuilt behind the next visitor
+    'rebuild_budget' => 2.0,         // seconds of rebuilding after a response
+    'cache_query' => true,           // cache pages with a query string (search, filters)
+    'ignore_query' => ['utm_*', 'fbclid', 'gclid', 'mc_cid', 'mc_eid'],
+    'vary_headers' => ['HX-Request', 'HX-Target'],
+    'signed_in_cookies' => [],       // added to the auth marker and the remember cookies
+    'hosts' => [],                   // hosts cached besides the host of app.url
+    'max_query_variants' => 50,      // pages with a query kept per URL path, oldest evicted first
+    'max_pages' => 50000,            // pages kept in all, oldest evicted first
+];
+```
+
+- **Hosts.** Only requests for the host of `app.url`, or one listed in `hosts`, are cached. An
+  alias domain or a forged `Host` header is never stored. Without `app.url` and `hosts`, nothing
+  is cached.
+- **Limits.** `max_query_variants` and `max_pages` bound the disk a crawler can fill with
+  `?x=1`, `?x=2`, … The oldest pages go first, files and index rows together.
+- **Releases.** The release key hashes the real path of the base folder (a deploy's `current`
+  link resolves to `releases/N`) and the mtimes of the boot manifest and `installed.json`. A new
+  release folder, `preflow optimize` or a composer install starts an empty cache. The file
+  `storage/cache/pages/active` names the release that last used the cache: a rollback to an
+  older release folder finds another release named there and empties its own pages first.
+  Folders of other releases are removed after 24 hours unused, never the active one.
+- **In-place deploys** (a `git pull` in the same folder, without `optimize` or a composer
+  install) keep the release key, so the pages from before the deploy stay. Run
+  `preflow cache:clear pages` or `preflow optimize` as part of such a deploy.
+
 ### Boot manifest (`preflow optimize`)
 
 `preflow optimize` (preflow/devtools) writes `bootstrap/cache/boot.php`: what boot otherwise

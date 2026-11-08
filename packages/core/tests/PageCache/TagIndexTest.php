@@ -75,6 +75,120 @@ final class TagIndexTest extends TestCase
         $this->assertSame(43200, $this->timed($index, 'x', 43200));
     }
 
+    public function test_seconds_are_stored_only_for_timed_tags(): void
+    {
+        $index = $this->index();
+        $index->record(self::id('a'), 'https://e.x/a', false, false, [
+            'fresh' => [Freshness::Fresh, 60],
+            'next' => [Freshness::NextVisit, 60],
+            'timed' => [Freshness::Timed, 60],
+        ]);
+
+        $rows = $index->pdo()->query('SELECT tag, timed_seconds FROM tags ORDER BY tag')->fetchAll(\PDO::FETCH_KEY_PAIR);
+        $this->assertSame(['fresh' => null, 'next' => null, 'timed' => 60], $rows);
+    }
+
+    public function test_an_everything_invalidation_counts_for_every_tag(): void
+    {
+        $index = $this->index();
+        $index->recordInvalidation([TagIndex::EVERYTHING], $this->now);
+
+        $this->assertTrue($index->invalidatedSince(['object:1'], $this->now - 1));
+        $this->assertTrue($index->invalidatedSince([], $this->now - 1));
+        $this->assertFalse($index->invalidatedSince(['object:1'], $this->now));
+    }
+
+    public function test_query_variants_per_path_are_capped_oldest_first(): void
+    {
+        $evicted = [];
+        $index = new TagIndex($this->dir . '/rel1/' . TagIndex::FILE, fn (): float => $this->now, null, 0, 3,
+            function (string $id) use (&$evicted): void { $evicted[] = $id; });
+        $index->record(self::id('plain'), 'https://e.x/list', false, false, []);
+        foreach ([1, 2, 3, 4, 5] as $n) {
+            $this->now += 1;
+            $index->record(self::id('q' . $n), 'https://e.x/list?page=' . $n, false, true, []);
+        }
+        $index->record(self::id('other'), 'https://e.x/other?page=1', false, true, []);
+
+        $this->assertSame([self::id('q1'), self::id('q2')], $evicted);
+        $this->assertNull($index->page(self::id('q1')));
+        $this->assertNotNull($index->page(self::id('q5')));
+        $this->assertNotNull($index->page(self::id('plain')));
+        $this->assertSame(5, $index->count());
+    }
+
+    public function test_the_total_is_capped_and_evicted_files_are_forgotten(): void
+    {
+        $root = $this->dir . '/pages';
+        $store = new \Preflow\Core\PageCache\PageStore($root, 'rel1', fn (): float => $this->now);
+        $index = TagIndex::forStore($store, new \Preflow\Core\PageCache\PageCacheConfig(hosts: ['e.x'], maxPages: 2), fn (): float => $this->now);
+        $keys = [];
+        foreach (['a', 'b', 'c'] as $name) {
+            $this->now += 1;
+            $key = \Preflow\Core\PageCache\PageKey::fromRequest(new \Nyholm\Psr7\ServerRequest('GET', 'https://e.x/' . $name), new \Preflow\Core\PageCache\PageCacheConfig(hosts: ['e.x']));
+            $evicted = $index->record($key->id(), $key->url(), false, false, ['news' => [Freshness::Fresh, null]]);
+            $store->put($key, new \Preflow\Core\PageCache\StoredPage($name, [], $this->now));
+            $keys[$name] = $key;
+        }
+
+        $this->assertSame([$keys['a']->id()], $evicted);
+        $this->assertSame(2, $index->count());
+        $this->assertNull($store->get($keys['a']));
+        $this->assertNotNull($store->get($keys['c']));
+        $this->assertSame(
+            $this->sorted([$keys['b']->id() => Freshness::Fresh, $keys['c']->id() => Freshness::Fresh]),
+            $this->sorted($index->pagesFor(['news'])),
+        );
+    }
+
+    public function test_a_new_index_empties_the_pages_of_its_release(): void
+    {
+        $root = $this->dir . '/pages';
+        $store = new \Preflow\Core\PageCache\PageStore($root, 'rel1', fn (): float => $this->now);
+        $key = \Preflow\Core\PageCache\PageKey::fromRequest(new \Nyholm\Psr7\ServerRequest('GET', 'https://e.x/a'), new \Preflow\Core\PageCache\PageCacheConfig(hosts: ['e.x']));
+        $store->put($key, new \Preflow\Core\PageCache\StoredPage('untracked', [], 1.0));
+
+        $this->assertTrue(TagIndex::in($store->releaseDir())->available());
+
+        $this->assertNull($store->get($key));
+    }
+
+    public function test_a_corrupt_index_is_set_aside_and_recreated(): void
+    {
+        mkdir($this->dir . '/rel1');
+        file_put_contents($this->dir . '/rel1/' . TagIndex::FILE, str_repeat('not a database ', 400));
+        $log = ini_set('error_log', $this->dir . '/php.log');
+
+        try {
+            $index = $this->index();
+            $this->assertTrue($index->available());
+            $index->record(self::id('a'), 'https://e.x/a', false, false, ['news' => [Freshness::Fresh, null]]);
+            $this->assertSame([self::id('a') => Freshness::Fresh], $index->pagesFor(['news']));
+        } finally {
+            ini_set('error_log', (string) $log);
+        }
+        $this->assertCount(1, glob($this->dir . '/rel1/' . TagIndex::FILE . '.corrupt-*'));
+        $this->assertStringContainsString('was corrupt', (string) file_get_contents($this->dir . '/php.log'));
+    }
+
+    public function test_an_index_of_an_older_schema_is_recreated(): void
+    {
+        mkdir($this->dir . '/rel1');
+        $old = new \PDO('sqlite:' . $this->dir . '/rel1/' . TagIndex::FILE);
+        $old->exec('CREATE TABLE pages (id TEXT PRIMARY KEY, url TEXT NOT NULL, fragment INTEGER NOT NULL, has_query INTEGER NOT NULL, created_at REAL NOT NULL)');
+        $old->exec("INSERT INTO pages VALUES ('x', 'https://e.x/', 0, 0, 1.0)");
+        $old->exec('CREATE TABLE refresh_queue (id INTEGER)');
+        $old = null;
+
+        $index = $this->index();
+        $index->record(self::id('a'), 'https://e.x/a?q=1', false, true, []);
+
+        $this->assertSame(1, $index->count());
+        $this->assertSame(TagIndex::SCHEMA, (int) $index->pdo()->query('PRAGMA user_version')->fetchColumn());
+        // Tables of others in the same file stay.
+        $this->assertSame('refresh_queue', $index->pdo()->query("SELECT name FROM sqlite_master WHERE name = 'refresh_queue'")->fetchColumn());
+    }
+
     public function test_invalidated_since_sees_only_later_invalidations(): void
     {
         $index = $this->index();

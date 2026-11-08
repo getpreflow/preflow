@@ -13,6 +13,8 @@ final class PageKeyTest extends TestCase
 {
     private function key(string $url, array $headers = [], string $method = 'GET', array $config = []): ?PageKey
     {
+        $config += ['hosts' => ['example.com', 'other.example']];
+
         return PageKey::fromRequest(new ServerRequest($method, $url, $headers), PageCacheConfig::fromArray($config));
     }
 
@@ -32,6 +34,36 @@ final class PageKeyTest extends TestCase
             $this->key('https://example.com/list?a[]=2&a[]=1')->id(),
             $this->key('https://example.com/list?a[]=1&a[]=2')->id(),
         );
+    }
+
+    public function test_indexed_array_parameters_keep_their_order(): void
+    {
+        $this->assertNotSame(
+            $this->key('https://example.com/list?a[1]=x&a[0]=y')->id(),
+            $this->key('https://example.com/list?a[0]=y&a[1]=x')->id(),
+        );
+        $this->assertNotSame(
+            $this->key('https://example.com/list?a[]=1&a[x]=2&a[]=3')->id(),
+            $this->key('https://example.com/list?a[]=1&a[]=3&a[x]=2')->id(),
+        );
+        // Different base names are still sorted.
+        $this->assertSame(
+            $this->key('https://example.com/list?b=1&a[0]=2&a[1]=3')->id(),
+            $this->key('https://example.com/list?a[0]=2&a[1]=3&b=1')->id(),
+        );
+    }
+
+    public function test_only_configured_hosts_are_cacheable(): void
+    {
+        $this->assertNull($this->key('https://alias.example/x'));
+        $this->assertNull($this->key('https://evil.test/x', config: ['hosts' => []]));
+
+        $config = PageCacheConfig::fromArray([], 'https://Site.example/base');
+        $this->assertNotNull(PageKey::fromRequest(new ServerRequest('GET', 'https://site.example/x'), $config));
+        $this->assertNotNull(PageKey::fromRequest(new ServerRequest('GET', 'http://site.example:8080/x'), $config));
+        $this->assertNull(PageKey::fromRequest(new ServerRequest('GET', 'https://www.site.example/x'), $config));
+        // No app.url and no hosts: nothing is cached.
+        $this->assertNull(PageKey::fromRequest(new ServerRequest('GET', 'https://site.example/x'), new PageCacheConfig()));
     }
 
     public function test_ignored_parameters_are_dropped_with_globbing(): void
@@ -107,6 +139,18 @@ final class PageKeyTest extends TestCase
         $this->assertSame($this->key('https://example.com/gallery')->id(), $restore->id());
     }
 
+    public function test_a_history_restore_still_varies_on_non_htmx_headers(): void
+    {
+        $config = ['vary_headers' => ['HX-Request', 'HX-Target', 'Accept-Language']];
+        $headers = ['HX-Request' => 'true', 'HX-History-Restore-Request' => 'true'];
+        $de = $this->key('https://example.com/g', $headers + ['Accept-Language' => 'de'], config: $config);
+        $fr = $this->key('https://example.com/g', $headers + ['Accept-Language' => 'fr'], config: $config);
+        $page = $this->key('https://example.com/g', ['Accept-Language' => 'de'], config: $config);
+
+        $this->assertNotSame($de->id(), $fr->id());
+        $this->assertSame($page->id(), $de->id());
+    }
+
     public function test_only_get_and_head_are_cacheable(): void
     {
         $this->assertNull($this->key('https://example.com/contact', method: 'POST'));
@@ -115,6 +159,8 @@ final class PageKeyTest extends TestCase
             $this->key('https://example.com/contact')->id(),
             $this->key('https://example.com/contact', method: 'HEAD')->id(),
         );
+        $this->assertTrue($this->key('https://example.com/contact', method: 'HEAD')->isHead());
+        $this->assertFalse($this->key('https://example.com/contact')->isHead());
     }
 
     public function test_locales_and_hosts_are_different_pages(): void

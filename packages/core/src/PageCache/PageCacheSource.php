@@ -14,7 +14,8 @@ use Preflow\Core\Cache\CacheStats;
  * bytes everything in the folder (the indexes too).
  *
  * clear() empties the current release (its pages, and its index's rows, so an open connection
- * of a running request stays valid) and removes the folders of other releases.
+ * of a running request stays valid), records an EVERYTHING invalidation so no render in flight
+ * stores an old page after it, and removes the folders of other releases.
  */
 final class PageCacheSource implements CacheSource
 {
@@ -26,6 +27,7 @@ final class PageCacheSource implements CacheSource
         private readonly string $root,
         private readonly \Closure $releaseKey,
         private readonly ?bool $sqlite = null,
+        private readonly ?\Closure $clock = null,
     ) {
         if ($root === '' || $root[0] !== '/' || rtrim($root, '/') === '') {
             throw new \InvalidArgumentException("The page cache folder must be an absolute path, got '{$root}'.");
@@ -83,14 +85,27 @@ final class PageCacheSource implements CacheSource
                 }
             }
             $entries += (new PageStore($root, $current))->clear();
-            if (is_file($dir . '/' . TagIndex::FILE)) {
-                $index = TagIndex::in($dir, sqlite: $this->sqlite);
-                $index->clear();
-                $index->close();
-            }
+            $this->emptyIndex($dir);
+            $cleared = true;
+        }
+        if (!isset($cleared)) {
+            $this->emptyIndex($root . '/' . $current);
         }
 
         return new CacheCleared($entries, $bytes);
+    }
+
+    /**
+     * Empties the current release's index rows (an open connection of a running request stays
+     * valid) and records an EVERYTHING invalidation: a render that started before the clear
+     * must not store its page after it.
+     */
+    private function emptyIndex(string $dir): void
+    {
+        $index = TagIndex::in($dir, $this->clock, $this->sqlite);
+        $index->clear();
+        $index->recordInvalidation([TagIndex::EVERYTHING], ($this->clock ?? static fn (): float => microtime(true))());
+        $index->close();
     }
 
     /** @return \Generator<\SplFileInfo> the files under $dir, symlinks and dotfiles left out */

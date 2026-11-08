@@ -12,8 +12,13 @@ use Psr\Http\Message\ServerRequestInterface;
  * /fr/x), so it is part of the key.
  *
  * The query is normalised: parameters matching an ignore_query pattern (utm_*, fbclid, ...) are
- * dropped, the rest are decoded, re-encoded and sorted by name (values of a repeated name keep
- * their order, a[]=2&a[]=1 is not a[]=1&a[]=2).
+ * dropped, the rest are decoded, re-encoded and sorted by base name, the part before "[" (all
+ * values of one base name keep their order: a[]=2&a[]=1 is not a[]=1&a[]=2, a[1]=x&a[0]=y is not
+ * a[0]=y&a[1]=x, since PHP builds those arrays in a different order).
+ *
+ * Only the hosts the config caches (app.url's, `hosts`) get a key. A HEAD request shares GET's
+ * key, so it can be answered from the cache, but its (empty) response is never stored:
+ * PageStore::put() refuses a HEAD key.
  *
  * A history-restore request (HX-History-Restore-Request) asks for a full page: its key leaves the
  * HX-* headers out, so it is the same key as a plain visit, and isFragment() is false.
@@ -25,11 +30,13 @@ final readonly class PageKey
         private string $url,
         private bool $fragment,
         private bool $hasQuery,
+        private bool $head,
     ) {}
 
     /**
      * The key of $request, or null when a request of its shape is never cached: not GET/HEAD
-     * (HEAD shares GET's key), no host, or a query string while cache_query is off. Whether
+     * (HEAD shares GET's key), a host the config does not cache, or a query string while
+     * cache_query is off. Whether
      * the visitor is signed in is not decided here.
      */
     public static function fromRequest(ServerRequestInterface $request, PageCacheConfig $config): ?self
@@ -41,7 +48,7 @@ final readonly class PageKey
 
         $uri = $request->getUri();
         $host = strtolower($uri->getHost());
-        if ($host === '') {
+        if ($host === '' || !$config->cachesHost($host)) {
             return null;
         }
         $scheme = strtolower($uri->getScheme()) ?: 'http';
@@ -74,7 +81,7 @@ final readonly class PageKey
         $url = $origin . $path . ($query !== '' ? '?' . $query : '');
         $id = sha1(implode("\n", [$origin, $path, $query, ...array_values($vary)]));
 
-        return new self($id, $url, $fragment, $query !== '');
+        return new self($id, $url, $fragment, $query !== '', $method === 'HEAD');
     }
 
     /** 40 hex characters. */
@@ -101,6 +108,12 @@ final readonly class PageKey
         return $this->hasQuery;
     }
 
+    /** A HEAD request: may be served from the cache, never stored. */
+    public function isHead(): bool
+    {
+        return $this->head;
+    }
+
     /** @param list<string> $ignore fnmatch() patterns, matched without regard to case */
     private static function normaliseQuery(string $query, array $ignore): string
     {
@@ -124,9 +137,11 @@ final readonly class PageKey
                     continue 2;
                 }
             }
-            $pairs[] = [$name, rawurlencode($name) . '=' . rawurlencode(urldecode($value))];
+            $bracket = strpos($name, '[');
+            $base = $bracket === false || $bracket === 0 ? $name : substr($name, 0, $bracket);
+            $pairs[] = [$base, rawurlencode($name) . '=' . rawurlencode(urldecode($value))];
         }
-        // usort is stable: repeated names keep their order.
+        // usort is stable: the values of one base name (a, a[], a[x]) keep their order.
         usort($pairs, static fn (array $a, array $b): int => strcmp($a[0], $b[0]));
 
         return implode('&', array_column($pairs, 1));

@@ -8,13 +8,24 @@ namespace Preflow\Core\PageCache;
  * Which cached pages depend on which tags, in SQLite (WAL) next to the release's pages:
  * {root}/{releaseKey}/index.sqlite.
  *
- *   pages(id, url, fragment, has_query, created_at)       one row per cached page
+ *   pages(id, url, path, fragment, has_query, created_at)  one row per cached page; path is the
+ *                                                          URL without its query
  *   tags(tag, page_id, freshness, timed_seconds)           what a page read while it rendered
  *   invalidations(tag, at)                                 recent changes, kept for an hour
  *
  * invalidations let a render that started before a change refuse to store what it built
- * (invalidatedSince()). Other tables may live in the same file (the refresh queue): pdo()
- * hands out the connection, and they create theirs with CREATE TABLE IF NOT EXISTS.
+ * (invalidatedSince()). The tag EVERYTHING ('*') stands for the whole site: an invalidation of
+ * it counts for every tag (cache:clear records one). Other tables may live in the same file (the
+ * refresh queue): pdo() hands out the connection, and they create theirs with CREATE TABLE IF
+ * NOT EXISTS. The schema of this class's own tables is versioned (PRAGMA user_version); another
+ * version is dropped and created anew, since an index is only a cache.
+ *
+ * Growth is bounded (PageCacheConfig max_pages, max_query_variants): record() evicts the oldest
+ * pages beyond either limit, removes their rows and hands their ids to onEvict, which forgets
+ * their files (forStore() wires that up).
+ *
+ * An index created anew, or set aside because it was corrupt (logged once), first empties the
+ * release's page files: pages it has no tags for could never be refreshed.
  *
  * Without pdo_sqlite, or when the file cannot be opened, the index is unavailable and never
  * throws: available() is false, record() and forget() do nothing, pagesFor() is empty and
@@ -26,8 +37,16 @@ final class TagIndex
 
     public const int INVALIDATIONS_KEPT = 3600;
 
+    /** The tag of the whole site. */
+    public const string EVERYTHING = '*';
+
+    public const int SCHEMA = 2;
+
     /** Bound parameters per IN (...) list. */
     private const int CHUNK = 500;
+
+    /** @var array<string, true> files whose failure was logged in this process */
+    private static array $logged = [];
 
     /** @var \Closure(): float */
     private readonly \Closure $clock;
@@ -42,20 +61,46 @@ final class TagIndex
      * @param string $file the SQLite file (absolute)
      * @param (\Closure(): float)|null $clock microtime(true) when null
      * @param bool|null $sqlite whether pdo_sqlite can be used; null asks the extension list (a test seam)
+     * @param int $maxPages pages kept at most, 0 = no limit
+     * @param int $maxQueryVariants pages with a query kept per path at most, 0 = no limit
+     * @param (\Closure(string): void)|null $onEvict called with each evicted page id, after the commit
      */
     public function __construct(
         private readonly string $file,
         ?\Closure $clock = null,
         ?bool $sqlite = null,
+        private readonly int $maxPages = 0,
+        private readonly int $maxQueryVariants = 0,
+        private readonly ?\Closure $onEvict = null,
     ) {
         $this->clock = $clock ?? static fn (): float => microtime(true);
         $this->sqlite = $sqlite ?? (extension_loaded('pdo_sqlite') && in_array('sqlite', \PDO::getAvailableDrivers(), true));
     }
 
-    /** The index of the release folder $releaseDir (PageStore::releaseDir()). */
+    /** The index of the release folder $releaseDir (PageStore::releaseDir()), without limits. */
     public static function in(string $releaseDir, ?\Closure $clock = null, ?bool $sqlite = null): self
     {
         return new self(rtrim($releaseDir, '/') . '/' . self::FILE, $clock, $sqlite);
+    }
+
+    /**
+     * The index of $store's release, with $config's limits; evicted pages are forgotten in $store.
+     * The way the page cache opens its index: the store is activated first (rollback check).
+     */
+    public static function forStore(PageStore $store, PageCacheConfig $config, ?\Closure $clock = null, ?bool $sqlite = null): self
+    {
+        $store->activate(); // a rollback empties the index before anything is recorded in it
+
+        return new self(
+            rtrim($store->releaseDir(), '/') . '/' . self::FILE,
+            $clock,
+            $sqlite,
+            $config->maxPages,
+            $config->maxQueryVariants,
+            static function (string $id) use ($store): void {
+                $store->forget($id);
+            },
+        );
     }
 
     /** Whether the index can be used; opens it (creating the file and tables) on first call. */
@@ -79,50 +124,125 @@ final class TagIndex
             return null;
         }
         try {
-            $dir = dirname($this->file);
-            if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
-                throw new \RuntimeException("Could not create {$dir}.");
+            $this->pdo = $this->open();
+        } catch (\PDOException $e) {
+            if (!self::corrupt($e) || !is_file($this->file)) {
+                $this->fail($e);
+
+                return null;
             }
-            $pdo = new \PDO('sqlite:' . $this->file, null, null, [
-                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-                \PDO::ATTR_TIMEOUT => 5,
-            ]);
-            $pdo->exec('PRAGMA busy_timeout = 5000');
-            $pdo->exec('PRAGMA journal_mode = WAL');
-            $pdo->exec('PRAGMA synchronous = NORMAL');
-            $pdo->exec('CREATE TABLE IF NOT EXISTS pages (
-                id TEXT PRIMARY KEY, url TEXT NOT NULL, fragment INTEGER NOT NULL,
-                has_query INTEGER NOT NULL, created_at REAL NOT NULL)');
-            $pdo->exec('CREATE TABLE IF NOT EXISTS tags (
-                tag TEXT NOT NULL, page_id TEXT NOT NULL, freshness TEXT NOT NULL, timed_seconds INTEGER,
-                PRIMARY KEY (tag, page_id))');
-            $pdo->exec('CREATE INDEX IF NOT EXISTS tags_page ON tags (page_id)');
-            $pdo->exec('CREATE TABLE IF NOT EXISTS invalidations (tag TEXT NOT NULL, at REAL NOT NULL)');
-            $pdo->exec('CREATE INDEX IF NOT EXISTS invalidations_tag_at ON invalidations (tag, at)');
-            $this->pdo = $pdo;
-        } catch (\Throwable) {
-            $this->failed = true;
+            $aside = $this->file . '.corrupt-' . date('Ymd-His');
+            @rename($this->file, $aside);
+            @unlink($this->file . '-wal');
+            @unlink($this->file . '-shm');
+            $this->log("Page cache index {$this->file} was corrupt ({$e->getMessage()}), set aside as {$aside}.");
+            try {
+                $this->pdo = $this->open();
+            } catch (\Throwable $again) {
+                $this->fail($again);
+            }
+        } catch (\Throwable $e) {
+            $this->fail($e);
         }
 
         return $this->pdo;
     }
 
+    private function open(): \PDO
+    {
+        $dir = dirname($this->file);
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            throw new \RuntimeException("Could not create {$dir}.");
+        }
+        $new = !is_file($this->file);
+        $pdo = new \PDO('sqlite:' . $this->file, null, null, [
+            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            \PDO::ATTR_TIMEOUT => 5,
+        ]);
+        $pdo->exec('PRAGMA busy_timeout = 5000');
+        $pdo->exec('PRAGMA journal_mode = WAL');
+        $pdo->exec('PRAGMA synchronous = NORMAL');
+        if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() !== self::SCHEMA) {
+            $pdo->exec('BEGIN IMMEDIATE');
+            try {
+                // Checked again under the write lock: another process may have just done it.
+                if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() !== self::SCHEMA) {
+                    $pdo->exec('DROP TABLE IF EXISTS tags');
+                    $pdo->exec('DROP TABLE IF EXISTS pages');
+                    $pdo->exec('DROP TABLE IF EXISTS invalidations');
+                    $pdo->exec('CREATE TABLE pages (
+                        id TEXT PRIMARY KEY, url TEXT NOT NULL, path TEXT NOT NULL, fragment INTEGER NOT NULL,
+                        has_query INTEGER NOT NULL, created_at REAL NOT NULL)');
+                    $pdo->exec('CREATE INDEX pages_created ON pages (created_at)');
+                    $pdo->exec('CREATE INDEX pages_path ON pages (path, has_query, created_at)');
+                    $pdo->exec('CREATE TABLE tags (
+                        tag TEXT NOT NULL, page_id TEXT NOT NULL, freshness TEXT NOT NULL, timed_seconds INTEGER,
+                        PRIMARY KEY (tag, page_id))');
+                    $pdo->exec('CREATE INDEX tags_page ON tags (page_id)');
+                    $pdo->exec('CREATE TABLE invalidations (tag TEXT NOT NULL, at REAL NOT NULL)');
+                    $pdo->exec('CREATE INDEX invalidations_tag_at ON invalidations (tag, at)');
+                    $pdo->exec('PRAGMA user_version = ' . self::SCHEMA);
+                    $new = true;
+                }
+                $pdo->exec('COMMIT');
+            } catch (\Throwable $e) {
+                $pdo->exec('ROLLBACK');
+                throw $e;
+            }
+        }
+        if ($new) {
+            // Pages from before this index have no tags here: they could never be refreshed.
+            (new PageStore(dirname($dir), basename($dir)))->clear();
+        }
+
+        return $pdo;
+    }
+
+    private static function corrupt(\PDOException $e): bool
+    {
+        $message = strtolower($e->getMessage());
+
+        return str_contains($message, 'not a database') || str_contains($message, 'malformed')
+            || str_contains($message, 'corrupt');
+    }
+
+    private function fail(\Throwable $e): void
+    {
+        $this->failed = true;
+        $this->pdo = null;
+        $this->log("Page cache index {$this->file} is unavailable, the page cache is off: {$e->getMessage()}");
+    }
+
+    private function log(string $message): void
+    {
+        if (!isset(self::$logged[$this->file])) {
+            self::$logged[$this->file] = true;
+            error_log($message);
+        }
+    }
+
     /**
-     * Records what a page depends on, replacing what was recorded for it before.
+     * Records what a page depends on, replacing what was recorded for it before, then evicts the
+     * oldest pages beyond max_query_variants (pages with a query on this page's path) and
+     * max_pages. Returns the evicted ids (onEvict was called with each).
      *
      * @param array<string, array{0: Freshness, 1?: int|null}|Freshness> $tags tag => [Freshness, ?seconds]
      *        (the seconds of a Timed dependency)
+     * @return list<string>
      */
-    public function record(string $pageId, string $url, bool $fragment, bool $hasQuery, array $tags): void
+    public function record(string $pageId, string $url, bool $fragment, bool $hasQuery, array $tags): array
     {
         $pdo = $this->pdo();
         if ($pdo === null) {
-            return;
+            return [];
         }
+        $path = strstr($url, '?', true);
+        $path = $path === false ? $url : $path;
+        $evicted = [];
         $pdo->beginTransaction();
         try {
-            $pdo->prepare('INSERT OR REPLACE INTO pages (id, url, fragment, has_query, created_at) VALUES (?, ?, ?, ?, ?)')
-                ->execute([$pageId, $url, (int) $fragment, (int) $hasQuery, ($this->clock)()]);
+            $pdo->prepare('INSERT OR REPLACE INTO pages (id, url, path, fragment, has_query, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+                ->execute([$pageId, $url, $path, (int) $fragment, (int) $hasQuery, ($this->clock)()]);
             $pdo->prepare('DELETE FROM tags WHERE page_id = ?')->execute([$pageId]);
             $insert = $pdo->prepare('INSERT OR REPLACE INTO tags (tag, page_id, freshness, timed_seconds) VALUES (?, ?, ?, ?)');
             foreach ($tags as $tag => $spec) {
@@ -132,11 +252,54 @@ final class TagIndex
                 }
                 $insert->execute([(string) $tag, $pageId, $freshness->value, $freshness === Freshness::Timed ? $seconds : null]);
             }
+            if ($hasQuery && $this->maxQueryVariants > 0) {
+                $statement = $pdo->prepare('SELECT id FROM pages WHERE path = ? AND has_query = 1 AND id != ?
+                    ORDER BY created_at DESC, id LIMIT -1 OFFSET ' . ($this->maxQueryVariants - 1));
+                $statement->execute([$path, $pageId]);
+                $evicted = $statement->fetchAll(\PDO::FETCH_COLUMN);
+                $this->delete($pdo, $evicted);
+            }
+            if ($this->maxPages > 0) {
+                $over = (int) $pdo->query('SELECT COUNT(*) FROM pages')->fetchColumn() - $this->maxPages;
+                if ($over > 0) {
+                    $statement = $pdo->prepare('SELECT id FROM pages WHERE id != ? ORDER BY created_at, id LIMIT ' . $over);
+                    $statement->execute([$pageId]);
+                    $oldest = $statement->fetchAll(\PDO::FETCH_COLUMN);
+                    $this->delete($pdo, $oldest);
+                    $evicted = [...$evicted, ...$oldest];
+                }
+            }
             $pdo->commit();
         } catch (\Throwable $e) {
             $pdo->rollBack();
             throw $e;
         }
+        $evicted = array_values(array_map(strval(...), $evicted));
+        if ($this->onEvict !== null) {
+            foreach ($evicted as $id) {
+                ($this->onEvict)($id);
+            }
+        }
+
+        return $evicted;
+    }
+
+    /** @param list<string> $ids */
+    private function delete(\PDO $pdo, array $ids): void
+    {
+        foreach (array_chunk($ids, self::CHUNK) as $chunk) {
+            $marks = self::marks($chunk);
+            $pdo->prepare("DELETE FROM tags WHERE page_id IN ({$marks})")->execute($chunk);
+            $pdo->prepare("DELETE FROM pages WHERE id IN ({$marks})")->execute($chunk);
+        }
+    }
+
+    /** How many pages are recorded (0 when unavailable). */
+    public function count(): int
+    {
+        $pdo = $this->pdo();
+
+        return $pdo === null ? 0 : (int) $pdo->query('SELECT COUNT(*) FROM pages')->fetchColumn();
     }
 
     /**
@@ -236,8 +399,8 @@ final class TagIndex
     }
 
     /**
-     * Whether any of $tags changed after $since (microtime). True when the index is unavailable,
-     * so nothing is stored that could be stale.
+     * Whether any of $tags, or EVERYTHING, changed after $since (microtime). True when the index
+     * is unavailable, so nothing is stored that could be stale.
      *
      * @param list<string> $tags
      */
@@ -247,7 +410,7 @@ final class TagIndex
         if ($pdo === null) {
             return true;
         }
-        $tags = array_values(array_unique(array_map(strval(...), $tags)));
+        $tags = array_values(array_unique([self::EVERYTHING, ...array_map(strval(...), $tags)]));
         foreach (array_chunk($tags, self::CHUNK) as $chunk) {
             $statement = $pdo->prepare('SELECT 1 FROM invalidations WHERE at > ? AND tag IN (' . self::marks($chunk) . ') LIMIT 1');
             $statement->execute([$since, ...$chunk]);

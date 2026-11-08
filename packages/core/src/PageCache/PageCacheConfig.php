@@ -16,6 +16,13 @@ namespace Preflow\Core\PageCache;
  *   vary_headers       list of request headers a cached fragment's key includes
  *   signed_in_cookies  list of cookie names that mean "signed in" (bypass the cache); the auth
  *                      marker and the guards' remember cookies are added by the wiring
+ *   hosts              list of extra host names that are cached (lowercase, no port); the host of
+ *                      app.url always is. A request for any other host (an alias domain, a forged
+ *                      Host header) is never cached. No app.url and no hosts: nothing is cached.
+ *   max_query_variants int, 50: at most this many pages with a query per URL path; the oldest
+ *                      is evicted when another is stored
+ *   max_pages          int, 50000: at most this many cached pages in a release; the oldest are
+ *                      evicted first
  */
 final readonly class PageCacheConfig
 {
@@ -27,10 +34,15 @@ final readonly class PageCacheConfig
 
     public const array DEFAULT_VARY_HEADERS = ['HX-Request', 'HX-Target'];
 
+    public const int DEFAULT_MAX_QUERY_VARIANTS = 50;
+
+    public const int DEFAULT_MAX_PAGES = 50000;
+
     /**
      * @param list<string> $ignoreQuery
      * @param list<string> $varyHeaders
      * @param list<string> $signedInCookies
+     * @param list<string> $hosts lowercase host names
      */
     public function __construct(
         public bool $enabled = false,
@@ -40,14 +52,30 @@ final readonly class PageCacheConfig
         public array $ignoreQuery = self::DEFAULT_IGNORE_QUERY,
         public array $varyHeaders = self::DEFAULT_VARY_HEADERS,
         public array $signedInCookies = [],
+        public array $hosts = [],
+        public int $maxQueryVariants = self::DEFAULT_MAX_QUERY_VARIANTS,
+        public int $maxPages = self::DEFAULT_MAX_PAGES,
     ) {}
+
+    /** Whether pages of $host are cached: app.url's host or one in hosts. */
+    public function cachesHost(string $host): bool
+    {
+        return in_array(strtolower($host), $this->hosts, true);
+    }
 
     /**
      * @param array<string, mixed> $config the array config/page_cache.php returns
+     * @param string|null $appUrl app.url: its host is cached
      * @throws \InvalidArgumentException on a value of the wrong kind
      */
-    public static function fromArray(array $config): self
+    public static function fromArray(array $config, ?string $appUrl = null): self
     {
+        $hosts = array_map(strtolower(...), self::strings($config, 'hosts', []));
+        $appHost = is_string($appUrl) ? parse_url($appUrl, PHP_URL_HOST) : null;
+        if (is_string($appHost) && $appHost !== '') {
+            array_unshift($hosts, strtolower($appHost));
+        }
+
         return new self(
             enabled: self::bool($config, 'enabled', false),
             maxAge: self::seconds($config, 'max_age', self::DEFAULT_MAX_AGE),
@@ -56,6 +84,9 @@ final readonly class PageCacheConfig
             ignoreQuery: self::strings($config, 'ignore_query', self::DEFAULT_IGNORE_QUERY),
             varyHeaders: self::strings($config, 'vary_headers', self::DEFAULT_VARY_HEADERS),
             signedInCookies: self::strings($config, 'signed_in_cookies', []),
+            hosts: array_values(array_unique($hosts)),
+            maxQueryVariants: self::count($config, 'max_query_variants', self::DEFAULT_MAX_QUERY_VARIANTS),
+            maxPages: self::count($config, 'max_pages', self::DEFAULT_MAX_PAGES),
         );
     }
 
@@ -79,6 +110,17 @@ final readonly class PageCacheConfig
         }
 
         throw new \InvalidArgumentException("page_cache.{$key} must be a whole number of seconds (0 or more).");
+    }
+
+    /** @param array<string, mixed> $config */
+    private static function count(array $config, string $key, int $default): int
+    {
+        $value = $config[$key] ?? $default;
+        if (is_int($value) && $value >= 1) {
+            return $value;
+        }
+
+        throw new \InvalidArgumentException("page_cache.{$key} must be a whole number of 1 or more.");
     }
 
     /** @param array<string, mixed> $config */

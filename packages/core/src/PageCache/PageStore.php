@@ -13,10 +13,20 @@ namespace Preflow\Core\PageCache;
  * an older format) reads as no page. Writes go to a temporary file in the same folder, then
  * rename(), so a reader sees the old page or the new one, never half of one.
  *
+ * A stale mark is a separate, empty marker file next to the page, {id}.stale: markStale() never
+ * rewrites a page, so it can't put back an old body over one stored or forgotten meanwhile.
+ * put() removes the marker after its rename, forget() removes both.
+ *
  * Keys are per release (releaseKey()): a deploy starts with an empty cache, and a storage
- * folder shared between releases (BG Genius) never serves another release's pages. On its
- * first write, a store removes the folders of other releases that have not been written to
- * in 24 hours.
+ * folder shared between releases (BG Genius) never serves another release's pages. The file
+ * {root}/active names the release that last used the cache. A store's first use in a process
+ * compares it with its own key: when another release was active since (a rollback to an older
+ * release folder), its own pages are older than the content, so it empties its folder and index
+ * first, then names itself. On its first write, a store removes the folders of other releases
+ * not written to in 24 hours, never the active one.
+ *
+ * An in-place deploy (git pull in the same folder, no `optimize`, no composer install) keeps the
+ * release key: it needs `preflow cache:clear pages` or `preflow optimize`.
  */
 final class PageStore
 {
@@ -24,12 +34,16 @@ final class PageStore
 
     public const int PRUNE_AFTER = 86400;
 
+    public const string ACTIVE = 'active';
+
     private readonly string $dir;
 
     /** @var \Closure(): float */
     private readonly \Closure $clock;
 
     private bool $written = false;
+
+    private bool $activated = false;
 
     /**
      * @param string $root storage/cache/pages (absolute)
@@ -67,30 +81,55 @@ final class PageStore
         return $this->dir;
     }
 
+    /** The page, with stale set when its marker exists. */
     public function get(PageKey $key): ?StoredPage
     {
-        return $this->read($this->path($key->id()));
+        $this->activate();
+        $file = $this->path($key->id());
+        $page = $this->read($file);
+        if ($page !== null && !$page->stale && is_file(self::marker($file))) {
+            return $page->withStale();
+        }
+
+        return $page;
     }
 
-    public function put(PageKey $key, StoredPage $page): void
+    /**
+     * Stores a page (its stale flag is ignored; markStale() marks). A HEAD key is refused: its
+     * response has no body, and GET shares the key. Returns whether the page was stored.
+     *
+     * @throws \RuntimeException when the file can't be written (the caller logs it; a store must
+     *         never fail a request)
+     */
+    public function put(PageKey $key, StoredPage $page): bool
     {
-        $this->write($key->id(), $page);
+        if ($key->isHead()) {
+            return false;
+        }
+        $this->activate();
+        $this->write($key->id(), $page->stale ? $page->withStale(false) : $page);
+
+        return true;
     }
 
     public function forget(string $id): void
     {
+        $this->activate();
         $file = $this->path($id);
-        if (is_file($file)) {
-            @unlink($file);
-        }
+        @unlink($file);
+        @unlink(self::marker($file));
     }
 
-    /** Marks a page stale (served while a fresh one is built). No-op when there is no such page. */
+    /**
+     * Marks a page stale (served while a fresh one is built) with its marker file. No-op when
+     * there is no such page.
+     */
     public function markStale(string $id): void
     {
-        $page = $this->read($this->path($id));
-        if ($page !== null && !$page->stale) {
-            $this->write($id, $page->withStale());
+        $this->activate();
+        $file = $this->path($id);
+        if (is_file($file)) {
+            @touch(self::marker($file));
         }
     }
 
@@ -105,7 +144,7 @@ final class PageStore
             foreach (glob($shard . '/*', GLOB_NOSORT) ?: [] as $file) {
                 if (str_ends_with($file, '.page') && @unlink($file)) {
                     $count++;
-                } elseif (str_ends_with($file, '.tmp')) {
+                } elseif (str_ends_with($file, '.tmp') || str_ends_with($file, '.stale')) {
                     @unlink($file);
                 }
             }
@@ -113,6 +152,59 @@ final class PageStore
         }
 
         return $count;
+    }
+
+    /**
+     * First use in this process (every public method but clear() calls it; TagIndex::forStore()
+     * too, so a rollback is handled before the index is used): when {root}/active names another
+     * release, this release's pages predate what that release did (a rollback), so they go, with
+     * the index rows. Without an active file (the first use ever) the release just claims it.
+     */
+    public function activate(): void
+    {
+        if ($this->activated) {
+            return;
+        }
+        $this->activated = true;
+        $active = $this->activeKey();
+        if ($active === $this->releaseKey) {
+            return;
+        }
+        if ($active !== null && is_dir($this->dir)) {
+            $this->clear();
+            if (is_file($this->dir . '/' . TagIndex::FILE)) {
+                try {
+                    $index = TagIndex::in($this->dir);
+                    $index->clear();
+                    $index->close();
+                } catch (\Throwable) {
+                    // An index that can't be emptied: unavailable, so the cache is off anyway.
+                }
+            }
+        }
+        $root = rtrim($this->root, '/');
+        if (!is_dir($root) && !@mkdir($root, 0775, true) && !is_dir($root)) {
+            return; // nothing can be stored either
+        }
+        $tmp = $root . '/' . self::ACTIVE . '.' . bin2hex(random_bytes(4)) . '.tmp';
+        if (@file_put_contents($tmp, $this->releaseKey) === strlen($this->releaseKey)) {
+            @rename($tmp, $root . '/' . self::ACTIVE) || @unlink($tmp);
+        } else {
+            @unlink($tmp);
+        }
+    }
+
+    /** The release key {root}/active names, null when there is none. */
+    private function activeKey(): ?string
+    {
+        $value = @file_get_contents(rtrim($this->root, '/') . '/' . self::ACTIVE);
+
+        return is_string($value) && $value !== '' ? trim($value) : null;
+    }
+
+    private static function marker(string $file): string
+    {
+        return substr($file, 0, -strlen('.page')) . '.stale';
     }
 
     private function path(string $id): string
@@ -170,9 +262,7 @@ final class PageStore
     {
         $file = $this->path($id);
         $dir = dirname($file);
-        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
-            throw new \RuntimeException("Could not create {$dir}.");
-        }
+        self::ensureDir($dir);
         if (!$this->written) {
             $this->written = true;
             @touch($this->dir);
@@ -186,26 +276,39 @@ final class PageStore
             'b' => strlen($page->body),
         ], JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION);
         $data = self::MAGIC . strlen($meta) . "\n" . $meta . $page->body;
-        $tmp = $file . '.' . bin2hex(random_bytes(4)) . '.tmp';
-        if (@file_put_contents($tmp, $data) !== strlen($data)) {
+        // A cache:clear can remove the shard folder between mkdir and the write: once more.
+        for ($attempt = 1; ; $attempt++) {
+            $tmp = $file . '.' . bin2hex(random_bytes(4)) . '.tmp';
+            if (@file_put_contents($tmp, $data) === strlen($data) && @rename($tmp, $file)) {
+                break;
+            }
             @unlink($tmp);
-            throw new \RuntimeException("Could not write {$tmp}.");
+            if ($attempt === 2) {
+                throw new \RuntimeException("Could not write the page {$file}.");
+            }
+            self::ensureDir($dir);
         }
-        if (!@rename($tmp, $file)) {
-            @unlink($tmp);
-            throw new \RuntimeException("Could not move the page to {$file}.");
+        @unlink(self::marker($file));
+    }
+
+    private static function ensureDir(string $dir): void
+    {
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            throw new \RuntimeException("Could not create {$dir}.");
         }
     }
 
     /**
      * Removes the folders of other releases not written to in PRUNE_AFTER seconds: the newest
-     * mtime of the folder and its index files counts.
+     * mtime of the folder and its index files counts. Never this release or the active one.
      */
     private function pruneOtherReleases(): void
     {
         $cutoff = ($this->clock)() - self::PRUNE_AFTER;
+        $active = $this->activeKey();
         foreach (glob(rtrim($this->root, '/') . '/*', GLOB_ONLYDIR | GLOB_NOSORT) ?: [] as $dir) {
-            if (basename($dir) === $this->releaseKey || is_link($dir)) {
+            $name = basename($dir);
+            if ($name === $this->releaseKey || $name === $active || is_link($dir)) {
                 continue;
             }
             $newest = 0;
