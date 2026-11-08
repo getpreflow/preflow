@@ -17,7 +17,7 @@ use Twig\TokenParser\AbstractTokenParser;
  * globals, never the variables around it. While a page renders for the page cache it prints the
  * signed placeholder of template, block and values instead (LiveExtension), and the block is
  * rendered for every visitor when the page is served. `with` may be left out ({% live %}).
- * Live blocks don't nest.
+ * Live blocks don't nest, and the block name prefix __live_ is theirs (LiveBlockNames).
  */
 final class LiveTokenParser extends AbstractTokenParser
 {
@@ -42,7 +42,9 @@ final class LiveTokenParser extends AbstractTokenParser
         for ($n = 2; $this->parser->hasBlock($name); $n++) {
             $name = '__live_' . $lineno . '_' . $n;
         }
-        $this->parser->setBlock($name, $block = new BlockNode($name, new \Twig\Node\EmptyNode(), $lineno));
+        $block = new BlockNode($name, new \Twig\Node\EmptyNode(), $lineno);
+        $block->setAttribute(LiveBlockNames::ATTRIBUTE, true); // a template's own __live_ block is an error
+        $this->parser->setBlock($name, $block);
         $this->parser->pushLocalScope();
         $this->parser->pushBlockStack($name);
         $body = $this->parser->subparse([$this, 'decideLiveEnd'], true);

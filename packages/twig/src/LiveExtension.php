@@ -24,6 +24,11 @@ final class LiveExtension extends AbstractExtension
         return [new LiveTokenParser()];
     }
 
+    public function getNodeVisitors(): array
+    {
+        return [new LiveBlockNames()];
+    }
+
     /** The name of a block {% live %} declares (LiveTokenParser). */
     public const string BLOCK_PATTERN = '/^__live_\d+(_\d+)?$/';
 

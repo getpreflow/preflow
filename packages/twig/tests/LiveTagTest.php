@@ -140,6 +140,21 @@ final class LiveTagTest extends TestCase
         $this->engine->render('page.twig');
     }
 
+    public function test_the_live_block_prefix_is_reserved(): void
+    {
+        foreach (['{% block __live_3 %}x{% endblock %}', '{% live %}a{% endlive %}{% block __live_extra %}x{% endblock %}'] as $i => $source) {
+            $this->template("reserved{$i}.twig", $source);
+            try {
+                $this->engine->render("reserved{$i}.twig");
+                $this->fail("{$source} compiles");
+            } catch (\Twig\Error\SyntaxError $e) {
+                $this->assertStringContainsString('reserved for {% live %}', $e->getMessage());
+            }
+        }
+        $this->template('fine.twig', '{% live %}a{% endlive %}{% block live_ok %}b{% endblock %}');
+        $this->assertSame('ab', $this->engine->render('fine.twig'));
+    }
+
     public function test_with_values_are_scalars_and_arrays(): void
     {
         $this->template('page.twig', '{% live with {at: at} %}{{ at }}{% endlive %}');
