@@ -117,6 +117,23 @@ final class TagIndexTest extends TestCase
         $this->assertSame(5, $index->count());
     }
 
+    public function test_evicted_files_are_forgotten_before_the_rows_are_committed(): void
+    {
+        $file = $this->dir . '/rel1/' . TagIndex::FILE;
+        $seen = [];
+        $index = new TagIndex($file, fn (): float => $this->now, null, 1, 0, function (string $id) use ($file, &$seen): void {
+            // Another connection still sees the committed rows of the evicted page.
+            $other = new \PDO('sqlite:' . $file);
+            $seen[$id] = (int) $other->query("SELECT COUNT(*) FROM pages WHERE id = '{$id}'")->fetchColumn();
+        });
+        $index->record(self::id('a'), 'https://e.x/a', false, false, []);
+        $this->now += 1;
+        $index->record(self::id('b'), 'https://e.x/b', false, false, []);
+
+        $this->assertSame([self::id('a') => 1], $seen);
+        $this->assertNull($index->page(self::id('a')));
+    }
+
     public function test_the_total_is_capped_and_evicted_files_are_forgotten(): void
     {
         $root = $this->dir . '/pages';

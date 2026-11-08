@@ -76,8 +76,13 @@ final readonly class PageCacheConfig
             array_unshift($hosts, strtolower($appHost));
         }
 
+        $enabled = self::bool($config, 'enabled', false);
+        if ($enabled && $hosts === []) {
+            self::warn($appUrl);
+        }
+
         return new self(
-            enabled: self::bool($config, 'enabled', false),
+            enabled: $enabled,
             maxAge: self::seconds($config, 'max_age', self::DEFAULT_MAX_AGE),
             rebuildBudget: self::float($config, 'rebuild_budget', self::DEFAULT_REBUILD_BUDGET),
             cacheQuery: self::bool($config, 'cache_query', true),
@@ -88,6 +93,23 @@ final readonly class PageCacheConfig
             maxQueryVariants: self::count($config, 'max_query_variants', self::DEFAULT_MAX_QUERY_VARIANTS),
             maxPages: self::count($config, 'max_pages', self::DEFAULT_MAX_PAGES),
         );
+    }
+
+    /**
+     * Logs once per process that a switched-on cache caches nothing: no host from app.url (missing,
+     * or without a scheme, like "example.com") and no `hosts`.
+     */
+    private static function warn(?string $appUrl): void
+    {
+        static $warned = false;
+        if ($warned) {
+            return;
+        }
+        $warned = true;
+        $reason = $appUrl === null || $appUrl === ''
+            ? 'app.url is not set'
+            : "app.url '{$appUrl}' has no scheme or host (write it like https://example.com)";
+        error_log("The page cache is enabled but caches nothing: {$reason} and page_cache.hosts is empty.");
     }
 
     /** @param array<string, mixed> $config */

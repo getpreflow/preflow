@@ -543,8 +543,9 @@ return [
 ```
 
 - **Hosts.** Only requests for the host of `app.url`, or one listed in `hosts`, are cached. An
-  alias domain or a forged `Host` header is never stored. Without `app.url` and `hosts`, nothing
-  is cached.
+  alias domain or a forged `Host` header is never stored. `app.url` needs its scheme
+  (`https://example.com`, not `example.com`). Without a host from `app.url` and without `hosts`,
+  nothing is cached, and an enabled cache logs that once.
 - **Limits.** `max_query_variants` and `max_pages` bound the disk a crawler can fill with
   `?x=1`, `?x=2`, … The oldest pages go first, files and index rows together.
 - **Releases.** The release key hashes the real path of the base folder (a deploy's `current`

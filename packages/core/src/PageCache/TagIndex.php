@@ -63,7 +63,7 @@ final class TagIndex
      * @param bool|null $sqlite whether pdo_sqlite can be used; null asks the extension list (a test seam)
      * @param int $maxPages pages kept at most, 0 = no limit
      * @param int $maxQueryVariants pages with a query kept per path at most, 0 = no limit
-     * @param (\Closure(string): void)|null $onEvict called with each evicted page id, after the commit
+     * @param (\Closure(string): void)|null $onEvict called with each evicted page id, before the commit
      */
     public function __construct(
         private readonly string $file,
@@ -269,16 +269,18 @@ final class TagIndex
                     $evicted = [...$evicted, ...$oldest];
                 }
             }
+            // The files go before the commit: a crash in between leaves rows without a file (a
+            // miss), never a file without rows (a page no change could refresh).
+            $evicted = array_values(array_map(strval(...), $evicted));
+            if ($this->onEvict !== null) {
+                foreach ($evicted as $id) {
+                    ($this->onEvict)($id);
+                }
+            }
             $pdo->commit();
         } catch (\Throwable $e) {
             $pdo->rollBack();
             throw $e;
-        }
-        $evicted = array_values(array_map(strval(...), $evicted));
-        if ($this->onEvict !== null) {
-            foreach ($evicted as $id) {
-                ($this->onEvict)($id);
-            }
         }
 
         return $evicted;

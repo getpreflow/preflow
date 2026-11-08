@@ -376,4 +376,26 @@ final class PageStoreTest extends TestCase
         $this->assertSame([$key->id() => \Preflow\Core\PageCache\Freshness::Fresh], $index->pagesFor(['news']));
         $this->assertSame('5 again', $store->get($key)->body);
     }
+
+    public function test_concurrent_activations_after_a_rollback_clear_only_once(): void
+    {
+        $key = $this->key('https://example.com/news');
+        $config = new PageCacheConfig(hosts: ['example.com']);
+        $this->store('rel5')->put($key, new StoredPage('before release 6', [], 1.0));
+        $this->store('rel6')->get($key); // release 6 is active
+
+        // Rolled back. Request B reads `active` (rel6) ... meanwhile request A activates, records
+        // and stores P ... then B carries on.
+        $b = $this->store('rel5');
+        $b->beforeActivationLock(function () use ($key, $config): void {
+            $a = $this->store('rel5');
+            TagIndex::forStore($a, $config)->record($key->id(), $key->url(), false, false, ['news' => [\Preflow\Core\PageCache\Freshness::Fresh, null]]);
+            $a->put($key, new StoredPage('after the rollback', [], 2.0));
+        });
+        $b->get($this->key('https://example.com/other'));
+
+        // B found release 5 claimed once it held the lock and cleared nothing: P has its file and its rows.
+        $this->assertSame('after the rollback', $this->store('rel5')->get($key)->body);
+        $this->assertSame([$key->id() => \Preflow\Core\PageCache\Freshness::Fresh], TagIndex::in($this->root . '/rel5')->pagesFor(['news']));
+    }
 }

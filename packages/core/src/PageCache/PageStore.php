@@ -45,6 +45,8 @@ final class PageStore
 
     private bool $activated = false;
 
+    private ?\Closure $beforeLock = null;
+
     /**
      * @param string $root storage/cache/pages (absolute)
      * @param (\Closure(): float)|null $clock microtime(true) when null
@@ -159,6 +161,13 @@ final class PageStore
      * too, so a rollback is handled before the index is used): when {root}/active names another
      * release, this release's pages predate what that release did (a rollback), so they go, with
      * the index rows. Without an active file (the first use ever) the release just claims it.
+     *
+     * The check, clear and claim run under an exclusive flock on {root}/active.lock, and `active`
+     * is read again once the lock is held: of the requests that start together after a rollback,
+     * one clears and claims, the others then find their own key and return, so none of them clears
+     * rows another has recorded since. The rows go before the files: a page stored in between
+     * loses its file (a miss), never its rows. The usual case, `active` naming this release, takes
+     * no lock.
      */
     public function activate(): void
     {
@@ -166,32 +175,60 @@ final class PageStore
             return;
         }
         $this->activated = true;
-        $active = $this->activeKey();
-        if ($active === $this->releaseKey) {
+        if ($this->activeKey() === $this->releaseKey) {
             return;
         }
-        if ($active !== null && is_dir($this->dir)) {
-            $this->clear();
-            if (is_file($this->dir . '/' . TagIndex::FILE)) {
-                try {
-                    $index = TagIndex::in($this->dir);
-                    $index->clear();
-                    $index->close();
-                } catch (\Throwable) {
-                    // An index that can't be emptied: unavailable, so the cache is off anyway.
-                }
-            }
+        if ($this->beforeLock !== null) {
+            ($this->beforeLock)();
         }
         $root = rtrim($this->root, '/');
         if (!is_dir($root) && !@mkdir($root, 0775, true) && !is_dir($root)) {
             return; // nothing can be stored either
         }
-        $tmp = $root . '/' . self::ACTIVE . '.' . bin2hex(random_bytes(4)) . '.tmp';
-        if (@file_put_contents($tmp, $this->releaseKey) === strlen($this->releaseKey)) {
-            @rename($tmp, $root . '/' . self::ACTIVE) || @unlink($tmp);
-        } else {
-            @unlink($tmp);
+        $lock = @fopen($root . '/' . self::ACTIVE . '.lock', 'c');
+        if ($lock !== false) {
+            @flock($lock, LOCK_EX);
         }
+        try {
+            $active = $this->activeKey(); // again, under the lock
+            if ($active === $this->releaseKey) {
+                return;
+            }
+            if ($active !== null && is_dir($this->dir)) {
+                if (is_file($this->dir . '/' . TagIndex::FILE)) {
+                    try {
+                        $index = TagIndex::in($this->dir);
+                        $index->clear();
+                        $index->close();
+                    } catch (\Throwable) {
+                        // An index that can't be emptied: unavailable, so the cache is off anyway.
+                    }
+                }
+                $this->clear();
+            }
+            $tmp = $root . '/' . self::ACTIVE . '.' . bin2hex(random_bytes(4)) . '.tmp';
+            if (@file_put_contents($tmp, $this->releaseKey) === strlen($this->releaseKey)) {
+                @rename($tmp, $root . '/' . self::ACTIVE) || @unlink($tmp);
+            } else {
+                @unlink($tmp);
+            }
+        } finally {
+            if ($lock !== false) {
+                @flock($lock, LOCK_UN);
+                @fclose($lock);
+            }
+        }
+    }
+
+    /**
+     * Runs $hook in activate() after the unlocked read of `active` and before the lock: tests
+     * interleave a second activation there.
+     *
+     * @internal
+     */
+    public function beforeActivationLock(\Closure $hook): void
+    {
+        $this->beforeLock = $hook;
     }
 
     /** The release key {root}/active names, null when there is none. */

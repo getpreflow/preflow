@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Core\Tests\PageCache;
 
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\PageCache\PageCacheConfig;
 
@@ -44,6 +45,38 @@ final class PageCacheConfigTest extends TestCase
         $this->assertFalse($config->cachesHost('alias.example'));
         $this->assertSame(5, $config->maxQueryVariants);
         $this->assertSame(10, $config->maxPages);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_an_enabled_cache_without_a_host_is_logged_once(): void
+    {
+        $log = sys_get_temp_dir() . '/pagecache_log_' . bin2hex(random_bytes(4));
+        ini_set('error_log', $log);
+        try {
+            PageCacheConfig::fromArray(['enabled' => false], 'example.com'); // off: nothing to say
+            $this->assertFileDoesNotExist($log);
+
+            $config = PageCacheConfig::fromArray(['enabled' => true], 'example.com');
+            PageCacheConfig::fromArray(['enabled' => true]);
+
+            $this->assertSame([], $config->hosts);
+            $text = (string) file_get_contents($log);
+            $this->assertStringContainsString("app.url 'example.com' has no scheme or host", $text);
+            $this->assertSame(1, substr_count($text, 'caches nothing'));
+        } finally {
+            @unlink($log);
+        }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_an_enabled_cache_with_a_host_logs_nothing(): void
+    {
+        $log = sys_get_temp_dir() . '/pagecache_log_' . bin2hex(random_bytes(4));
+        ini_set('error_log', $log);
+        PageCacheConfig::fromArray(['enabled' => true], 'https://example.com');
+        PageCacheConfig::fromArray(['enabled' => true, 'hosts' => ['example.com']]);
+
+        $this->assertFileDoesNotExist($log);
     }
 
     /** @return iterable<string, array{array<string, mixed>}> */
