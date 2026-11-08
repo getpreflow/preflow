@@ -107,6 +107,35 @@ final class PublisherTest extends TestCase
         $this->assertSame('A', $this->reload('post')->get('title'));
     }
 
+    public function test_the_copy_into_published_is_reported_under_its_table(): void
+    {
+        $observer = new class () implements \Preflow\Data\Observe\DataObserver {
+            /** @var list<string> */
+            public array $writes = [];
+
+            public function read(string $storage, string $type, ?string $id): void {}
+
+            public function wrote(string $storage, string $type, ?string $id): void
+            {
+                $this->writes[] = "{$storage}:{$type}" . ($id === null ? '' : "#{$id}");
+            }
+
+            public function rawRead(string $storage, string $sql): void {}
+
+            public function rawWrote(string $storage, string $sql): void {}
+        };
+        $this->dm->observe($observer);
+        $p = $this->publisher();
+
+        $p->publish($this->working('post', ['title' => 'A']), null);
+        $this->assertContains('json:post#r1', $observer->writes, 'the working copy');
+        $this->assertContains('json:post__published#r1', $observer->writes, 'the published copy');
+
+        $observer->writes = [];
+        $p->unpublish('post', 'r1');
+        $this->assertContains('json:post__published#r1', $observer->writes, 'taken off the site');
+    }
+
     public function test_meta_keys_do_not_change_state(): void
     {
         $p = $this->publisher();

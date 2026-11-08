@@ -172,6 +172,39 @@ abstract class ImportReplacesTestCase extends TestCase
         }
     }
 
+    public function test_the_import_reports_each_table_it_wrote_as_a_bulk_write(): void
+    {
+        $this->setGames(['b' => ['title' => 'Live', 'slug' => 'x']]);
+        $archive = $this->export();
+        $this->setGames(['a' => ['title' => 'Local', 'slug' => 'x']]);
+        [$importer, $dm] = $this->importerWithData();
+        $observer = new class () implements \Preflow\Data\Observe\DataObserver {
+            /** @var list<string> */
+            public array $writes = [];
+
+            public function read(string $storage, string $type, ?string $id): void {}
+
+            public function wrote(string $storage, string $type, ?string $id): void
+            {
+                $this->writes[] = $type . ($id === null ? '' : '#' . $id);
+            }
+
+            public function rawRead(string $storage, string $sql): void {}
+
+            public function rawWrote(string $storage, string $sql): void {}
+        };
+        $dm->observe($observer);
+
+        $plan = $importer->read($archive, 'data');
+        try {
+            $importer->apply($plan);
+        } finally {
+            $plan->cleanup();
+        }
+
+        $this->assertContains('game', $observer->writes, 'written straight through the driver: reported by the importer');
+    }
+
     public function test_a_slug_on_another_id_replaces_the_local_record(): void
     {
         $this->setGames(['b' => ['title' => 'Live', 'slug' => 'x']]);

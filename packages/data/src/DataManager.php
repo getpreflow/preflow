@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Data;
 
 use Preflow\Data\Driver\PdoDriver;
+use Preflow\Data\Observe\DataObserver;
+use Preflow\Data\Observe\SqlTables;
 use Preflow\Data\Schema\ColumnKind;
 use Preflow\Data\Validation\Unique;
 use Preflow\Validation\Message;
@@ -27,6 +29,72 @@ final class DataManager
     ) {}
 
     private ?FieldKinds $fieldKinds = null;
+
+    private ?DataObserver $observer = null;
+
+    /**
+     * Report every read and write through this manager to $observer (the page cache); null
+     * stops reporting. Writes made around the manager, straight through driver(), are reported
+     * by their callers with reportWrite().
+     */
+    public function observe(?DataObserver $observer): void
+    {
+        $this->observer = $observer;
+    }
+
+    public function observer(): ?DataObserver
+    {
+        return $this->observer;
+    }
+
+    /**
+     * Report a read of $table on $storage: one record, or a listing when $id is null. For readers
+     * that go around the manager (QueryBuilder reports its own).
+     */
+    public function reportRead(string $storage, string $table, string|int|null $id = null): void
+    {
+        $this->observer?->read($this->storageKey($storage), $table, $id === null ? null : (string) $id);
+    }
+
+    /**
+     * Report a write of $table on $storage made around the manager (straight through driver(),
+     * an import): one record, or many or unknown ones when $id is null.
+     */
+    public function reportWrite(string $storage, string $table, string|int|null $id = null): void
+    {
+        $this->observer?->wrote($this->storageKey($storage), $table, $id === null || $id === '' ? null : (string) $id);
+    }
+
+    /** @var array<string, string> storage name => the name it is reported under */
+    private array $storageKeys = [];
+
+    /**
+     * The name a storage is reported under: one driver configured under several names (the
+     * default one, an alias) is one storage, reported as 'default' when it is the default
+     * driver, else under its first configured name. An unknown name stays as it is.
+     */
+    private function storageKey(string $name): string
+    {
+        if (isset($this->storageKeys[$name])) {
+            return $this->storageKeys[$name];
+        }
+        $driver = $this->drivers[$name] ?? null;
+        $key = $name;
+        if ($driver !== null) {
+            if (($this->drivers[$this->defaultDriver] ?? null) === $driver) {
+                $key = $this->defaultDriver;
+            } else {
+                foreach ($this->drivers as $other => $candidate) {
+                    if ($candidate === $driver) {
+                        $key = (string) $other;
+                        break;
+                    }
+                }
+            }
+        }
+
+        return $this->storageKeys[$name] = $key;
+    }
 
     public function getTypeRegistry(): ?TypeRegistry
     {
@@ -135,6 +203,7 @@ final class DataManager
         $driver = $this->resolveDriver($meta->storage);
 
         $data = $driver->findOne($meta->table, $id, $meta->idField);
+        $this->reportRead($meta->storage, $meta->table, (string) $id);
 
         if ($data === null) {
             return null;
@@ -174,7 +243,20 @@ final class DataManager
     public function raw(string $sql, array $bindings = [], string $storage = 'default'): array
     {
         $driver = $this->resolveDriver($storage);
-        return $driver->rawQuery($sql, $bindings);
+        if ($this->observer === null) {
+            return $driver->rawQuery($sql, $bindings);
+        }
+        if (!SqlTables::writes($sql)) {
+            $rows = $driver->rawQuery($sql, $bindings);
+            $this->observer->rawRead($this->storageKey($storage), $sql);
+
+            return $rows;
+        }
+        try {
+            return $driver->rawQuery($sql, $bindings);
+        } finally {
+            $this->observer->rawWrote($this->storageKey($storage), $sql); // also after a failure: part may be written
+        }
     }
 
     /**
@@ -190,7 +272,11 @@ final class DataManager
             throw new \LogicException("Storage driver [{$storage}] does not run SQL; execute() needs a PDO driver.");
         }
 
-        return $driver->execute($sql, $bindings);
+        try {
+            return $driver->execute($sql, $bindings);
+        } finally {
+            $this->observer?->rawWrote($this->storageKey($storage), $sql); // also after a failure: part may be written
+        }
     }
 
     /**
@@ -219,6 +305,7 @@ final class DataManager
                 $model->{$meta->idField} = is_int($newId) ? $newId : (is_numeric($newId) ? (int) $newId : $newId);
             }
         }
+        $this->wroteModel($meta, $model);
     }
 
     /**
@@ -242,6 +329,7 @@ final class DataManager
         if ($newId !== '' && $newId !== 0) {
             $model->{$meta->idField} = is_int($newId) ? $newId : (is_numeric($newId) ? (int) $newId : $newId);
         }
+        $this->wroteModel($meta, $model);
     }
 
     /**
@@ -264,6 +352,7 @@ final class DataManager
         }
 
         $this->guardedModel($meta, $data, fn () => $driver->save($meta->table, $id, $data, $meta->idField));
+        $this->reportWrite($meta->storage, $meta->table, (string) $id);
     }
 
     /**
@@ -279,6 +368,7 @@ final class DataManager
             $data = $modelClassOrInstance->toArray();
             $modelId = $data[$meta->idField] ?? throw new \RuntimeException("Model missing ID field [{$meta->idField}].");
             $driver->delete($meta->table, $modelId, $meta->idField);
+            $this->reportWrite($meta->storage, $meta->table, (string) $modelId);
             return;
         }
 
@@ -289,6 +379,7 @@ final class DataManager
         $meta = ModelMetadata::for($modelClassOrInstance);
         $driver = $this->resolveDriver($meta->storage);
         $driver->delete($meta->table, $id, $meta->idField);
+        $this->reportWrite($meta->storage, $meta->table, (string) $id);
     }
 
     /**
@@ -306,6 +397,7 @@ final class DataManager
     public function findIn(TypeDefinition $typeDef, string|int $id): ?DynamicRecord
     {
         $data = $this->resolveDriver($typeDef->storage)->findOne($typeDef->table, $id, $typeDef->idField);
+        $this->reportRead($typeDef->storage, $typeDef->table, (string) $id);
 
         return $data === null ? null : DynamicRecord::fromArray($typeDef, $data);
     }
@@ -349,6 +441,7 @@ final class DataManager
         }
 
         $this->guarded($record, fn () => $driver->save($typeDef->table, $id, $this->storageData($record), $typeDef->idField));
+        $this->reportWrite($typeDef->storage, $typeDef->table, (string) $id);
     }
 
     /**
@@ -399,9 +492,21 @@ final class DataManager
 
         if (!$written) {
             $had ? $record->set($versionField, $before) : $record->remove($versionField);
+        } else {
+            $this->reportWrite($typeDef->storage, $typeDef->table, (string) $id);
         }
 
         return $written;
+    }
+
+    /** Reports a model write with the id it has now (null when the storage gave none). */
+    private function wroteModel(ModelMetadata $meta, Model $model): void
+    {
+        if ($this->observer === null) {
+            return;
+        }
+        $id = $model->toArray()[$meta->idField] ?? null;
+        $this->reportWrite($meta->storage, $meta->table, (is_int($id) || is_string($id)) && $id !== 0 && $id !== '0' ? $id : null);
     }
 
     /** @return array<string, mixed> */
@@ -462,6 +567,7 @@ final class DataManager
     public function deleteIn(TypeDefinition $typeDef, string|int $id): void
     {
         $this->resolveDriver($typeDef->storage)->delete($typeDef->table, $id, $typeDef->idField);
+        $this->reportWrite($typeDef->storage, $typeDef->table, (string) $id);
     }
 
     /**

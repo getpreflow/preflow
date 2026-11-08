@@ -198,6 +198,12 @@ final class Importer
 
             // In the caller's transaction the rows are still written until the caller rolls back.
             throw new TransferException($e->getMessage(), $joined ? 0 : self::RECORDS_UNCHANGED, $e);
+        } finally {
+            // Written straight through the drivers: told to the observer (the page cache) by hand,
+            // also after a failure (what was put back may differ from what pages showed).
+            foreach ($work as $table => [$def]) {
+                $this->dm->reportWrite($def->storage, $table);
+            }
         }
         $this->set->imported($changed);
     }

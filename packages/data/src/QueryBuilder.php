@@ -308,6 +308,7 @@ final class QueryBuilder
     {
         $table = $this->meta?->table ?? $this->typeDef?->table;
         $result = $this->driver->findMany($table, $this->prepared());
+        $this->reportListing();
 
         if ($this->typeDef !== null) {
             $items = array_map(
@@ -370,6 +371,8 @@ final class QueryBuilder
         $fields = array_values(array_unique($fields));
         $numeric = array_values(array_unique($numeric));
 
+        $this->reportListing();
+
         return new AggregateQuery(
             $this->driver,
             (string) ($this->meta?->table ?? $this->typeDef?->table),
@@ -379,6 +382,16 @@ final class QueryBuilder
             $multiple,
             array_values(array_unique($boolean)),
         );
+    }
+
+    /** Tells the DataManager's observer that this type was read as a listing. */
+    private function reportListing(): void
+    {
+        $storage = $this->meta?->storage ?? $this->typeDef?->storage;
+        $table = $this->meta?->table ?? $this->typeDef?->table;
+        if ($this->dataManager !== null && $storage !== null && $table !== null) {
+            $this->dataManager->reportRead($storage, $table);
+        }
     }
 
     /** The query with the loose searches resolved and translatable fields compared in the locale. */
