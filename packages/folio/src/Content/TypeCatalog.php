@@ -16,8 +16,10 @@ final class TypeCatalog
      */
     public const array FILE_HOLDING_FIELD_TYPES = ['asset', 'blocks', 'matrix'];
 
+    /** @param \Preflow\Core\Boot\BootManifest|null $manifest the boot manifest the model files' listings come from when it has them */
     public function __construct(
         private readonly string $modelsPath,
+        private readonly ?\Preflow\Core\Boot\BootManifest $manifest = null,
     ) {}
 
     /** @var TypeListing[]|null scanned once per catalog (one request) */
@@ -53,6 +55,23 @@ final class TypeCatalog
 
     /** @return TypeListing[] */
     private function scan(): array
+    {
+        if ($this->manifest === null) {
+            return $this->scanFiles();
+        }
+
+        return array_map(
+            static fn (array $listing): TypeListing => new TypeListing(...$listing),
+            $this->manifest->remember(
+                'folio.type_listings',
+                fn (): array => array_map(static fn (TypeListing $listing): array => get_object_vars($listing), $this->scanFiles()),
+                [$this->modelsPath],
+            ),
+        );
+    }
+
+    /** @return TypeListing[] the model files' types */
+    private function scanFiles(): array
     {
         if (!is_dir($this->modelsPath)) {
             return [];

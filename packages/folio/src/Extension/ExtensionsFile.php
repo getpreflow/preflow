@@ -144,5 +144,11 @@ final class ExtensionsFile
         if (file_put_contents($this->path, $json . "\n", LOCK_EX) === false) {
             throw new ExtensionException("Could not write {$this->path}");
         }
+        // The boot manifest froze the old state: removed, so the next request boots live
+        // (it would anyway, extensions.json is checked per request) until `preflow optimize`.
+        $suffix = '/config/folio/extensions.json';
+        if (str_ends_with($this->path, $suffix)) {
+            \Preflow\Core\Boot\ManifestFile::forget(substr($this->path, 0, -strlen($suffix)));
+        }
     }
 }

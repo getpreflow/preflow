@@ -66,6 +66,35 @@ final class BlockRegistry
         return $registry;
     }
 
+    /**
+     * The blocks as plain data (the boot manifest stores it), for fromArray().
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function toArray(): array
+    {
+        $out = [];
+        foreach ($this->blocks as $definition) {
+            $block = get_object_vars($definition);
+            $block['fields'] = array_map(static fn (TypeFieldDefinition $field): array => get_object_vars($field), $definition->fields);
+            $out[] = $block;
+        }
+
+        return $out;
+    }
+
+    /** @param list<array<string, mixed>> $blocks toArray()'s */
+    public static function fromArray(array $blocks): self
+    {
+        $registry = new self();
+        foreach ($blocks as $block) {
+            $block['fields'] = array_map(static fn (array $field): TypeFieldDefinition => new TypeFieldDefinition(...$field), (array) $block['fields']);
+            $registry->add(new BlockDefinition(...$block));
+        }
+
+        return $registry;
+    }
+
     public function get(string $key): ?BlockDefinition
     {
         return $this->blocks[$key] ?? null;

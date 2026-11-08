@@ -73,7 +73,7 @@ final class FolioServiceProvider extends ServiceProvider
         $modelsPath = $this->modelsPath($app);
         $prefix = $this->prefix($app);
 
-        $catalog = new TypeCatalog($modelsPath);
+        $catalog = new TypeCatalog($modelsPath, $app->bootManifest());
         $container->instance(TypeCatalog::class, $catalog);
 
         // The DataManager's registry when it has one, so types defined at runtime (extension
@@ -105,12 +105,14 @@ final class FolioServiceProvider extends ServiceProvider
         // Extensions (app/Folio/*, Composer extra.folio.extension), enabled by the committed
         // config/folio/extensions.json. Built before anything reads the catalog, so the models
         // of enabled extensions are types like the model files (frontend routes, permissions).
-        $extensions = ExtensionRegistry::discover(
+        // From the boot manifest when it has them: it is used only while extensions.json is unchanged.
+        $manifest = $app->bootManifest();
+        $extensions = ExtensionRegistry::fromArray($manifest->remember('folio.extensions', fn (): array => ExtensionRegistry::discover(
             $app->basePath(),
             debug: (bool) $app->config()->get('app.debug', false),
             cacheFile: $this->cacheDir($app) . '/folio-extensions.cache',
             composerCache: $app->basePath('storage/cache/composer'),
-        );
+        )->toArray(), [$app->basePath('app/Folio')]));
         $container->instance(ExtensionRegistry::class, $extensions);
         // The members admin (the built-in extension "members", with preflow/members), when it is
         // switched on: the members core reads the owner's settings from Settings → Members and
@@ -140,46 +142,23 @@ final class FolioServiceProvider extends ServiceProvider
         // (Extension::settings()) are singleton types under Settings.
         // Each extension may adjust its models first (prepareModel: storage, options from config).
         // Their labels are translated in the extension's translation group (#[FolioExtension(translations: …)]).
-        $extensionTypes = [];
-        $labelSources = [];
-        foreach ($extensions->enabled() as $definition) {
-            foreach ($extensions->enabledModels($definition->name) as $schema) {
-                $extension = $container->get($definition->class);
-                $schema = $extension->model($schema);
-                $labelSources[] = ['extension ' . $definition->name . ' model ' . $schema['key'], $schema, $definition->labelGroup()];
-                $extensionTypes[] = [$extension->prepareModel($schema, $container), 'content', 'Extension model', $definition->labelGroup()];
-            }
-        }
-        foreach ($extensions->enabled() as $definition) {
-            if ($extensions->partEnabled($definition->name, 'settings')) {
-                // The settings form's labels are the extension's to deliver: in its group, like its models'.
-                $schema = ExtensionSettings::schema($definition, $container->get($definition->class)->settings());
-                if ($definition->labelGroup() !== 'site') {
-                    $labelSources[] = ['extension ' . $definition->name . ' settings', $schema, $definition->labelGroup()];
-                }
-                $extensionTypes[] = [$schema, 'settings', 'Extension settings type', $definition->labelGroup()];
-            }
-        }
+        // The schemas come from the boot manifest when it has them (with the site's "extends" files
+        // merged in): model(), prepareModel() and settings() depend only on code and config files.
+        [$extensionTypes, $labelSources] = $manifest->remember(
+            'folio.extension_types',
+            fn (): array => $this->extensionTypes($container, $extensions, $modelsPath),
+            [$modelsPath],
+        );
         if ($extensionTypes !== [] && $dataManager !== null && $dataManager->getTypeRegistry() === null) {
             throw new \Preflow\Folio\Extension\ExtensionException("Extension models and settings need the models directory {$modelsPath} (data.models_path); create it.");
         }
-        // Site model files with "extends": true add fields to these types (ModelExtension).
-        $patches = ModelExtension::patches($modelsPath);
-        $patchFiles = $patches === [] ? [] : ModelExtension::files($modelsPath);
         foreach ($extensionTypes as [$schema, $section, $what, $group]) {
-            if (isset($patches[$schema['key']])) {
-                $schema = ModelExtension::merge($schema, $patches[$schema['key']], $patchFiles[$schema['key']] ?? '');
-                unset($patches[$schema['key']]);
-            }
             try {
                 $types->define($schema);
                 $catalog->add($schema, $section, $group);
             } catch (\RuntimeException $e) {
                 throw new \Preflow\Folio\Extension\ExtensionException("{$what} \"{$schema['key']}\": {$e->getMessage()}", 0, $e);
             }
-        }
-        if ($patches !== []) {
-            throw ModelExtension::orphanError((string) array_key_first($patches), $modelsPath, $extensions);
         }
         $displayLabels = new \Preflow\Folio\Content\DisplayLabels($catalog, $types, $extensions);
         $container->instance(\Preflow\Folio\Content\DisplayLabels::class, $displayLabels);
@@ -195,13 +174,16 @@ final class FolioServiceProvider extends ServiceProvider
             } catch (\Throwable) {
                 $components = [];
             }
-            return BlockRegistry::discover(
+            return BlockRegistry::fromArray($app->bootManifest()->remember('folio.blocks', fn (): array => BlockRegistry::discover(
                 $components,
                 $app->basePath('app/Blocks'),
                 array_values((array) ($folioCfg['blocks']['classes'] ?? [])),
                 $this->cacheDir($app) . '/folio-blocks.cache',
                 useCache: !$app->config()->get('app.debug', false),
-            );
+            )->toArray(), [$app->basePath('app/Blocks'), $app->basePath('app/Components')]));
+        });
+        $manifest->whenBuilding(static function (Application $app): void {
+            $app->container()->get(BlockRegistry::class);
         });
 
         // Both caches rebuild themselves on the next request; Settings → Cache and cache:clear list them.
@@ -328,7 +310,7 @@ final class FolioServiceProvider extends ServiceProvider
             [
                 ...($extensions->all() !== [] ? [$c->get(\Preflow\Folio\Extension\ExtensionState::class)->definition()] : []),
                 // With sign-in, the users' own settings (the interface language).
-                ...(file_exists($app->basePath('config/auth.php')) ? [$c->get(\Preflow\Folio\Users\UserPreferences::class)->definition()] : []),
+                ...($app->hasConfigFile('auth') ? [$c->get(\Preflow\Folio\Users\UserPreferences::class)->definition()] : []),
                 // The admins' interface text overrides (Settings → Translations).
                 $c->get(\Preflow\Folio\Translations\StoredOverrides::class)->definition(),
                 // Redirect entries, the not-found list and the records' last public addresses.
@@ -830,10 +812,17 @@ final class FolioServiceProvider extends ServiceProvider
         $container->singleton(\Preflow\Folio\Users\UserPreferences::class, fn (Container $c) => new \Preflow\Folio\Users\UserPreferences(
             $c->get(DataManager::class),
         ));
-        $container->singleton(\Preflow\Folio\Http\InterfaceLocales::class, fn (Container $c) => new \Preflow\Folio\Http\InterfaceLocales(
-            self::translator($c, $app),
-            self::interfaceDefault($app, $folioCfg),
-        ));
+        $container->singleton(\Preflow\Folio\Http\InterfaceLocales::class, function (Container $c) use ($app, $folioCfg): \Preflow\Folio\Http\InterfaceLocales {
+            $translator = self::translator($c, $app);
+            // The languages with Folio texts (lang files of the packages and the site): from the boot manifest when it has them.
+            $locales = $app->bootManifest()->remember(
+                'folio.interface_locales',
+                static fn (): array => (new \Preflow\Folio\Http\InterfaceLocales($translator))->all(),
+                [$app->basePath('lang')],
+            );
+
+            return new \Preflow\Folio\Http\InterfaceLocales($translator, self::interfaceDefault($app, $folioCfg), $locales);
+        });
         $container->bind(\Preflow\Folio\Http\AdminLocaleMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\AdminLocaleMiddleware(
             self::translator($c, $app),
             $c->get(\Preflow\Folio\Http\InterfaceLocales::class),
@@ -973,6 +962,52 @@ final class FolioServiceProvider extends ServiceProvider
      *
      * @param list<array{0: string, 1: array<string, mixed>, 2: string}> $extensionModels what, schema, group
      */
+    /**
+     * The types enabled extensions define: their model schemas (model(), prepareModel(), the
+     * site's "extends" files merged in) and settings types, each [schema, section, what, label
+     * group]; and the label sources for registerLabelKeys(). A site "extends" file no enabled
+     * extension type takes is an error.
+     *
+     * @return array{0: list<array{0: array<string, mixed>, 1: string, 2: string, 3: string}>, 1: list<array{0: string, 1: array<string, mixed>, 2: string}>}
+     */
+    private function extensionTypes(Container $container, ExtensionRegistry $extensions, string $modelsPath): array
+    {
+        $extensionTypes = [];
+        $labelSources = [];
+        foreach ($extensions->enabled() as $definition) {
+            foreach ($extensions->enabledModels($definition->name) as $schema) {
+                $extension = $container->get($definition->class);
+                $schema = $extension->model($schema);
+                $labelSources[] = ['extension ' . $definition->name . ' model ' . $schema['key'], $schema, $definition->labelGroup()];
+                $extensionTypes[] = [$extension->prepareModel($schema, $container), 'content', 'Extension model', $definition->labelGroup()];
+            }
+        }
+        foreach ($extensions->enabled() as $definition) {
+            if ($extensions->partEnabled($definition->name, 'settings')) {
+                // The settings form's labels are the extension's to deliver: in its group, like its models'.
+                $schema = ExtensionSettings::schema($definition, $container->get($definition->class)->settings());
+                if ($definition->labelGroup() !== 'site') {
+                    $labelSources[] = ['extension ' . $definition->name . ' settings', $schema, $definition->labelGroup()];
+                }
+                $extensionTypes[] = [$schema, 'settings', 'Extension settings type', $definition->labelGroup()];
+            }
+        }
+        // Site model files with "extends": true add fields to these types (ModelExtension).
+        $patches = ModelExtension::patches($modelsPath);
+        $patchFiles = $patches === [] ? [] : ModelExtension::files($modelsPath);
+        foreach ($extensionTypes as $i => [$schema]) {
+            if (isset($patches[$schema['key']])) {
+                $extensionTypes[$i][0] = ModelExtension::merge($schema, $patches[$schema['key']], $patchFiles[$schema['key']] ?? '');
+                unset($patches[$schema['key']]);
+            }
+        }
+        if ($patches !== []) {
+            throw ModelExtension::orphanError((string) array_key_first($patches), $modelsPath, $extensions);
+        }
+
+        return [$extensionTypes, $labelSources];
+    }
+
     private function registerLabelKeys(Container $container, string $modelsPath, array $extensionModels): void
     {
         if (!class_exists(\Preflow\I18n\DerivedKeys::class)) {
@@ -1078,8 +1113,7 @@ final class FolioServiceProvider extends ServiceProvider
      */
     private static function editableGroups(Application $app): array
     {
-        $path = $app->basePath('config/folio.php');
-        $cfg = is_file($path) ? require $path : [];
+        $cfg = $app->configFile('folio') ?? [];
         $list = is_array($cfg) ? ($cfg['translations']['editable'] ?? []) : [];
         $groups = [];
         foreach (is_array($list) ? $list : [$list] as $entry) {
@@ -1405,7 +1439,7 @@ final class FolioServiceProvider extends ServiceProvider
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_account_url',
                 callable: function () use ($container, $app): ?string {
-                    if (!file_exists($app->basePath('config/auth.php')) || self::recordProviders($container) === []) {
+                    if (!$app->hasConfigFile('auth') || self::recordProviders($container) === []) {
                         return null;
                     }
 
@@ -1415,7 +1449,7 @@ final class FolioServiceProvider extends ServiceProvider
                 },
             ));
 
-            if (file_exists($app->basePath('config/auth.php'))) {
+            if ($app->hasConfigFile('auth')) {
                 $engine->addGlobal('folio_auth_enabled', true);
             } else {
                 // Auth is off: AuthExtensionProvider never ran, so its Twig
@@ -1482,7 +1516,7 @@ final class FolioServiceProvider extends ServiceProvider
         if ($container->has(RouterInterface::class)) {
             $router = $container->get(RouterInterface::class);
             if ($router instanceof Router) {
-                $authEnabled = file_exists($app->basePath('config/auth.php'));
+                $authEnabled = $app->hasConfigFile('auth');
                 // Screens first: their routes must win over the admin's {type} routes.
                 $router->getCollection()->insertBefore(FolioRoutes::frontend(), [
                     ...$screens->routes($this->prefix($app), $authEnabled),
@@ -1653,7 +1687,7 @@ final class FolioServiceProvider extends ServiceProvider
         }
         $this->declareExtensionPermissions($registry, $container->get(ExtensionRegistry::class), $container->get(TypeCatalog::class));
 
-        if (file_exists($app->basePath('config/auth.php'))) {
+        if ($app->hasConfigFile('auth')) {
             $access->markStaffGuard($container->get(\Preflow\Auth\AuthManager::class)->defaultGuardName());
         }
     }
@@ -1861,7 +1895,7 @@ final class FolioServiceProvider extends ServiceProvider
     /** The app's DataManager (core builds it from config/data.php), or null without one. */
     private function dataManager(Container $container, Application $app): ?DataManager
     {
-        if (!is_file($app->basePath('config/data.php'))) {
+        if (!$app->hasConfigFile('data')) {
             return null;
         }
         try {
@@ -1883,8 +1917,7 @@ final class FolioServiceProvider extends ServiceProvider
     /** Whether the site's URLs carry the locale (config/i18n.php url_strategy "prefix", the default). */
     private static function prefixedUrls(Application $app): bool
     {
-        $path = $app->basePath('config/i18n.php');
-        $i18n = file_exists($path) ? (array) require $path : [];
+        $i18n = (array) ($app->configFile('i18n') ?? []);
 
         return ($i18n['url_strategy'] ?? 'prefix') === 'prefix';
     }
@@ -1903,12 +1936,9 @@ final class FolioServiceProvider extends ServiceProvider
 
     private function modelsPath(Application $app): string
     {
-        $dataConfigPath = $app->basePath('config/data.php');
-        if (is_file($dataConfigPath)) {
-            $data = require $dataConfigPath;
-            if (is_array($data) && isset($data['models_path']) && is_string($data['models_path'])) {
-                return $data['models_path'];
-            }
+        $data = $app->configFile('data');
+        if (is_array($data) && isset($data['models_path']) && is_string($data['models_path'])) {
+            return $data['models_path'];
         }
         return $app->basePath('config/models');
     }
@@ -1955,13 +1985,8 @@ final class FolioServiceProvider extends ServiceProvider
             return $this->folioConfigCache[1];
         }
         $this->folioConfigReads++;
-        $config = [];
-        if (is_file($path)) {
-            $cfg = require $path;
-            if (is_array($cfg)) {
-                $config = $cfg;
-            }
-        }
+        $cfg = $app->configFile('folio'); // from the boot manifest when there is one
+        $config = is_array($cfg) ? $cfg : [];
         $this->folioConfigCache = [$path, $config];
 
         return $config;

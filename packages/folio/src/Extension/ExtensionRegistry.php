@@ -130,6 +130,30 @@ final class ExtensionRegistry
         return $registry;
     }
 
+    /**
+     * The registry as plain data (the boot manifest stores it), for fromArray().
+     *
+     * @return array{extensions: list<array<string, mixed>>, enabled: array<string, list<string>>, opted: array<string, list<string>>}
+     */
+    public function toArray(): array
+    {
+        return [
+            'extensions' => array_map(static fn (ExtensionDefinition $d): array => get_object_vars($d), array_values($this->extensions)),
+            'enabled' => $this->enabled,
+            'opted' => $this->optedIn,
+        ];
+    }
+
+    /** @param array{extensions: list<array<string, mixed>>, enabled: array<string, list<string>>, opted: array<string, list<string>>} $data toArray()'s */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            array_map(static fn (array $d): ExtensionDefinition => new ExtensionDefinition(...$d), $data['extensions']),
+            $data['enabled'],
+            $data['opted'],
+        );
+    }
+
     /** @return list<ExtensionDefinition> */
     public function all(): array
     {

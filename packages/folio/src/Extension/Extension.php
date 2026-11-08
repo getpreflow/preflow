@@ -48,6 +48,9 @@ abstract class Extension
      * file is merged: an extension adjusts what JSON can't know, such as a storage alias with
      * a fallback or select options from the site's locales.
      *
+     * The result (like model()'s and settings()') is kept in the boot manifest
+     * (`preflow optimize`): it must depend only on code and config files, never on stored data.
+     *
      * @param array<string, mixed> $schema
      * @return array<string, mixed>
      */

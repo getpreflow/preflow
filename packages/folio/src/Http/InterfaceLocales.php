@@ -18,15 +18,17 @@ final class InterfaceLocales
 {
     private ?string $current = null;
 
+    /** @param list<string>|null $locales the languages, when known (the boot manifest); else from the translator's lang files */
     public function __construct(
         private readonly Translator $translator,
         private readonly string $default = 'en',
+        private readonly ?array $locales = null,
     ) {}
 
     /** @return list<string> two-letter codes, sorted */
     public function all(): array
     {
-        return array_values(array_filter(
+        return $this->locales ?? array_values(array_filter(
             $this->translator->locales('folio'),
             static fn (string $locale): bool => preg_match('/^[a-z]{2}$/', $locale) === 1,
         ));
