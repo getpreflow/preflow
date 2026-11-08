@@ -539,6 +539,8 @@ return [
     'hosts' => [],                   // hosts cached besides the host of app.url
     'max_query_variants' => 50,      // pages with a query kept per URL path, oldest evicted first
     'max_pages' => 50000,            // pages kept in all, oldest evicted first
+    'explain' => false,              // send X-Page-Cache-Skip (why a miss was not stored)
+    'verify' => false,               // render each page twice before storing it (tests, staging)
 ];
 ```
 
@@ -599,7 +601,8 @@ return [
   middleware. It is on when `enabled` is true, `pdo_sqlite` is loaded, `app.debug` is off and
   the app serves the web (never in the console). A hit reads one page file and stats its stale
   marker: no database, no SQLite, no session. Responses carry `X-Page-Cache: hit`, `stale`,
-  `miss` or `bypass`, and a miss that wasn't stored says why in `X-Page-Cache-Skip`.
+  `miss` or `bypass`. With `explain` on, a miss that wasn't stored says why in
+  `X-Page-Cache-Skip` (off by default: the reason is for audits, not for visitors).
 - **The key** is the URL as the visitor asked for it (the locale prefix included), the locale
   the locale middleware resolved (a cookie or `Accept-Language` on unprefixed paths), the
   normalised query, the `vary_headers` values, and a forwarded scheme and host
@@ -638,6 +641,49 @@ return [
   ```
 
   Values shorter than 8 characters are never replaced.
+- **Live parts** are what differs per visitor inside an otherwise shared page: a guest's album
+  count, "in your album" buttons, a cart count, a greeting. Mark them, and only they are
+  rendered on every visit, on the server:
+
+  ```twig
+  {% live with {number: object.number} %}
+      {% include '_album_button.twig' with {marked: in_album(number)} %}
+  {% endlive %}
+  ```
+
+  ```blade
+  @live(['number' => $object->number])
+      @include('album-button', ['marked' => in_album($number)])
+  @endlive
+  ```
+
+  A component class marked `#[\Preflow\Components\Live]` is a live part as a whole.
+  - The block sees only its `with` values and the template globals, whether the cache is on or
+    not. The values are scalars and arrays, and the same for every visitor: what identifies the
+    part (an object number), never the personal value itself. The part reads that while it
+    renders, from the visitor's request:
+    `$container->get(\Preflow\Core\Http\RequestContext::class)->request?->getCookieParams()`.
+  - While a page renders for the cache, a live part is not rendered. It leaves a signed
+    placeholder, `<!--pc:l:{recipe}:{signature}-->` (the recipe is the template and block, or
+    the component class and props, as base64url JSON; the signature is an HMAC with `app.key`).
+    That is what is stored. Every response the cache answers fills the placeholders for its
+    visitor, the miss that stored the page included. A marker in user text that doesn't verify
+    is left as the HTML comment it is.
+  - What a live part reads is not a dependency of the page, `refuse()` inside it does nothing,
+    and a part that throws becomes `<div hidden data-live-error="true"></div>` (logged) while
+    the rest of the page is served. A live component goes through its error boundary.
+  - Many live components of one class are loaded together: a class implementing
+    `\Preflow\Components\PrefetchesLive` gets one `prefetchLive($propsList)` call per page.
+  - CSS and JS a live part adds while it is filled are not printed: keep them in the page.
+    Live parts don't open the session (a hit has none).
+- **Verify.** With `verify` on (or `app.debug`, but the cache is off in debug mode), a page
+  about to be stored is rendered once more as another anonymous visitor: another
+  `REMOTE_ADDR` (and forwarded address), no cookies. If the two differ outside their live parts
+  and per-request values, the page is not stored (`X-Page-Cache-Skip: differs`) and
+  `page cache: {url} differs per visitor outside live parts` is logged: something personal
+  (an album count, a token from the visitor's address) is not in a live part or registered.
+  It runs on every miss that would be stored, never on a hit, and doubles the cost of those
+  misses, so switch it on for tests and a staging check, not in production.
 - **Switching it off and on.** `storage/cache/pages/enabled` marks a cache that has been
   emptied since it was switched on. While the cache is off, the first write through the data
   layer removes the marker; the first request after switching it on again finds it missing and

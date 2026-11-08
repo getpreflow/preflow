@@ -108,6 +108,26 @@ $engine->addFunction(new TemplateFunctionDefinition(
 ));
 ```
 
+## Live parts: `{% live %}`
+
+A part of a page that differs per visitor (a guest's album count, "in your album", a cart
+count) is a live part of a cached page (preflow/core's page cache):
+
+```twig
+{% live with {number: object.number} %}
+    <button aria-pressed="{{ in_album(number) ? 'true' : 'false' }}">…</button>
+{% endlive %}
+```
+
+- The body becomes a block of the template (`__live_{line}`) and sees only the `with` values
+  and the globals, never the variables around it. `with` takes scalars and arrays; it may be
+  left out (`{% live %}`).
+- While a page renders for the page cache, the tag prints a signed placeholder (template,
+  block, values) instead of the body; the block is rendered for each visitor when the page is
+  served. Otherwise it renders in place.
+- Not inside `{% embed %}`. A template given to `render()` as a string (no file) can't be
+  filled.
+
 ## Engine configuration
 
 Set `APP_ENGINE=twig` in your `.env` (this is the default). Preflow's `Application` will automatically create a `TwigEngine` and register all extension providers.

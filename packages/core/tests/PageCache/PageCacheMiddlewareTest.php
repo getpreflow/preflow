@@ -68,7 +68,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->dir = sys_get_temp_dir() . '/pcmw_' . bin2hex(random_bytes(4));
         mkdir($this->dir, 0777, true);
         $this->root = $this->dir . '/storage/cache/pages';
-        $this->config = new PageCacheConfig(enabled: true, hosts: ['example.com'], signedInCookies: ['preflow_auth', 'remember_session']);
+        $this->config = new PageCacheConfig(enabled: true, hosts: ['example.com'], signedInCookies: ['preflow_auth', 'remember_session'], explain: true);
         $this->store = new PageStore($this->root, 'aaaaaaaaaaaaaaaa');
         $this->recorder = new DependencyRecorder();
         $this->cache = new PageCache();
@@ -688,6 +688,87 @@ final class PageCacheMiddlewareTest extends TestCase
     }
 
     // -----------------------------------------------------------------------
+    // Live parts, verify and explain (Task 4)
+    // -----------------------------------------------------------------------
+
+    public function test_live_parts_are_filled_for_each_visitor_on_the_miss_and_on_hits(): void
+    {
+        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder('test-secret'), $this->cache, $this->recorder);
+        $visitor = '';
+        $live->register('greeting', function (array $recipe) use (&$visitor): string {
+            $this->recorder->record('default:visitor#' . $visitor); // not the page's
+
+            return "<b>{$recipe['hi']}, {$visitor}</b>";
+        });
+        $mw = $this->middleware(live: $live);
+        $handler = $this->handler(function () use ($live): ResponseInterface {
+            $this->recorder->record(DataTags::record('default', 'post', '1'));
+
+            return $this->html('<p>page</p>' . ($live->placeholder('greeting', ['hi' => 'Hello']) ?? '<b>in place</b>'));
+        });
+
+        $visitor = 'Ann';
+        $miss = $mw->process($this->get('/page'), $handler);
+        $this->assertSame(['miss', '<p>page</p><b>Hello, Ann</b>'], [$miss->getHeaderLine('X-Page-Cache'), (string) $miss->getBody()]);
+        $this->assertSame('', $miss->getHeaderLine('X-Page-Cache-Skip'));
+        $stored = (string) file_get_contents($this->pageFile('/page'));
+        $this->assertStringContainsString('<!--pc:l:', $stored);
+        $this->assertStringNotContainsString('Ann', $stored);
+
+        $visitor = 'Bob';
+        $hit = $mw->process($this->get('/page'), $handler);
+        $this->assertSame(['hit', '<p>page</p><b>Hello, Bob</b>'], [$hit->getHeaderLine('X-Page-Cache'), (string) $hit->getBody()]);
+        $this->assertSame(1, $handler->calls);
+
+        $index = TagIndex::forStore($this->store, $this->config, null, null);
+        $this->assertSame([$this->key('/page')->id()], array_keys($index->pagesFor([DataTags::record('default', 'post', '1')])));
+        $this->assertSame([], $index->pagesFor(['default:visitor#Ann', 'default:visitor#Bob', 'default:visitor']), 'what a live part read is no dependency of the page');
+
+        // Not stored (another status): the visitor still gets their part, never a placeholder.
+        $gone = $mw->process($this->get('/gone'), $this->handler(fn (): ResponseInterface => new Response(404, ['Content-Type' => 'text/html'], (string) $live->placeholder('greeting', ['hi' => 'Hi']))));
+        $this->assertSame('<b>Hi, Bob</b>', (string) $gone->getBody());
+    }
+
+    public function test_verify_refuses_a_page_that_differs_per_visitor(): void
+    {
+        $values = $this->values;
+        $values->register('form_token', static fn (): string => 'token-of-' . 'this-request');
+        $mw = $this->middleware(verify: true);
+        $personal = $this->handler(fn (ServerRequestInterface $r): ResponseInterface => $this->html(
+            '<p>for ' . ($r->getCookieParams()['album'] ?? '-') . ' at ' . ($r->getServerParams()['REMOTE_ADDR'] ?? '-') . '</p>',
+        ));
+
+        $miss = $mw->process($this->get('/album')->withCookieParams(['album' => '1_2']), $personal);
+        $this->assertSame(['miss', 'differs'], [$miss->getHeaderLine('X-Page-Cache'), $miss->getHeaderLine('X-Page-Cache-Skip')]);
+        $this->assertSame('<p>for 1_2 at -</p>', (string) $miss->getBody(), 'the visitor gets their render');
+        $this->assertFileDoesNotExist($this->pageFile('/album'));
+        $this->assertSame(['page cache: https://example.com/album differs per visitor outside live parts'], $this->logged);
+        $this->assertSame(2, $personal->calls);
+
+        // By address alone (a token from the IP that was not registered) it differs too.
+        $byIp = $this->handler(fn (ServerRequestInterface $r): ResponseInterface => $this->html('<p>' . ($r->getServerParams()['REMOTE_ADDR'] ?? '-') . '</p>'));
+        $request = new ServerRequest('GET', 'https://example.com/ip', [], null, '1.1', ['REMOTE_ADDR' => '203.0.113.9']);
+        $this->assertSame('differs', $mw->process($request, $byIp)->getHeaderLine('X-Page-Cache-Skip'));
+
+        // The same for everyone, with a registered per-request value: stored.
+        $same = $this->handler(fn (): ResponseInterface => $this->html('<form><input value="token-of-this-request"></form>'));
+        $this->assertSame('', $mw->process($this->get('/same')->withCookieParams(['album' => '1']), $same)->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertSame(2, $same->calls);
+        $this->assertSame('hit', $mw->process($this->get('/same'), $same)->getHeaderLine('X-Page-Cache'));
+        $this->assertSame(2, $same->calls, 'verify never runs on a hit');
+    }
+
+    public function test_without_explain_the_skip_reason_is_not_sent(): void
+    {
+        $mw = $this->middleware(config: new PageCacheConfig(enabled: true, hosts: ['example.com']));
+        $response = $mw->process($this->get('/page'), $this->handler(fn (): ResponseInterface => $this->html('x')->withHeader('Set-Cookie', 'a=b')));
+
+        $this->assertSame('miss', $response->getHeaderLine('X-Page-Cache'));
+        $this->assertFalse($response->hasHeader('X-Page-Cache-Skip'));
+        $this->assertFileDoesNotExist($this->pageFile('/page'));
+    }
+
+    // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
 
@@ -695,7 +776,7 @@ final class PageCacheMiddlewareTest extends TestCase
      * @param (\Closure(): float)|null $clock
      * @param (\Closure(string): bool)|null $nonPublic
      */
-    private function middleware(?PageCacheConfig $config = null, ?\Closure $clock = null, ?\Closure $nonPublic = null, ?\Closure $sentHeaders = null): PageCacheMiddleware
+    private function middleware(?PageCacheConfig $config = null, ?\Closure $clock = null, ?\Closure $nonPublic = null, ?\Closure $sentHeaders = null, ?\Preflow\Core\PageCache\LiveParts $live = null, ?bool $verify = null): PageCacheMiddleware
     {
         $config ??= $this->config;
         $source = new PageCacheSource($this->root, static fn (): string => 'aaaaaaaaaaaaaaaa');
@@ -721,6 +802,8 @@ final class PageCacheMiddlewareTest extends TestCase
             },
             clock: $clock,
             sentHeaders: $sentHeaders,
+            live: $live,
+            verify: $verify,
         );
     }
 
@@ -777,7 +860,7 @@ final class PageCacheMiddlewareTest extends TestCase
     private function site(?array $i18n = null, bool $auth = false, bool $data = false): void
     {
         $this->write('config/app.php', "<?php\nreturn ['name'=>'t','debug'=>0,'engine'=>'twig','key'=>'page-cache-test-key-0123456789ab','url'=>'https://example.com','locale'=>'en'];\n");
-        $this->write('config/page_cache.php', "<?php\nreturn ['enabled' => true, 'signed_in_cookies' => ['site_cookie']];\n");
+        $this->write('config/page_cache.php', "<?php\nreturn ['enabled' => true, 'signed_in_cookies' => ['site_cookie'], 'explain' => true, 'verify' => true];\n");
         if ($i18n !== null) {
             $this->write('config/i18n.php', '<?php return ' . var_export($i18n, true) . ';');
             foreach (['en' => 'Hello', 'de' => 'Hallo', 'fr' => 'Salut'] as $locale => $hi) {

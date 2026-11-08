@@ -125,6 +125,25 @@ $engine->addGlobal('siteName', 'My App');
 <footer>{{ $siteName }}</footer>
 ```
 
+## Live parts: `@live`
+
+The Blade twin of Twig's `{% live %}` (preflow/core's page cache, live parts):
+
+```blade
+@live(['number' => $object->number])
+    <button aria-pressed="{{ in_album($number) ? 'true' : 'false' }}">…</button>
+@endlive
+```
+
+- The body is taken out of the template before Blade compiles it, into a view file of its own
+  (`{cache}/live/{hash}.blade.php`, written again from the template when the cache is cleared),
+  and rendered with only the given values and the globals. The values are scalars and arrays;
+  `@live` without them works too.
+- While a page renders for the page cache, `@live` prints a signed placeholder (file, index,
+  values) instead; the body is rendered for each visitor when the page is served. Otherwise
+  it renders in place.
+- Not nested, and only in template files (not in strings compiled on the fly).
+
 ## Engine configuration
 
 Set `APP_ENGINE=blade` in your `.env` to use Blade. Preflow's `Application` will automatically create a `BladeEngine` and register all extension providers.

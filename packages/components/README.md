@@ -44,6 +44,31 @@ $renderer->renderResolvedFragment(Component $component): string  // skip resolve
 
 `renderResolvedFragment()` combines the two partial-render flags: it skips `resolveState()` (state was already mutated by an action) and returns inner HTML without the wrapper element. Used by `ComponentEndpoint` when the HTMX target does not match the component's own ID.
 
+### Live components: `#[Live]` and `PrefetchesLive`
+
+A component class marked `#[Live]` is a live part of cached pages (preflow/core's page cache):
+while a page renders for the cache, `ComponentRenderer::render()` returns a signed placeholder
+of its class and props, and the component is made and rendered for each visitor when the page
+is served (wrapper and error boundary as always). Props must be scalars and arrays and the
+same for every visitor; the component reads what is personal (the visitor's cookie, from
+`RequestContext::$request`) in `resolveState()`.
+
+```php
+#[Live]
+final class AlbumButton extends Component implements PrefetchesLive
+{
+    public function __construct(private readonly Albums $albums) {}
+
+    public function prefetchLive(array $propsList): void
+    {
+        $this->albums->prefetch(array_column($propsList, 'number')); // one call for the page's 24 buttons
+    }
+}
+```
+
+`prefetchLive()` runs once per class before a served page's live parts are rendered, on an
+instance made like the others: keep what it loads in an injected service (or a static).
+
 ### `ComponentExtension` (Twig)
 
 Registers `{{ component('Name', {props}) }}`. Component names are resolved via a short-name → FQCN map or a fully-qualified class name.

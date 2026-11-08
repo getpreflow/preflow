@@ -81,6 +81,26 @@ final class DependencyRecorder
     }
 
     /**
+     * Runs $fn with nothing recorded, not even into the recordings open around it: what a live
+     * part reads while a page is served is the visitor's, never a dependency of the page.
+     * Recordings $fn opens and leaves open are closed when it returns.
+     *
+     * @template T
+     * @param \Closure(): T $fn
+     * @return T
+     */
+    public function outside(\Closure $fn): mixed
+    {
+        $frames = $this->frames;
+        $this->frames = [];
+        try {
+            return $fn();
+        } finally {
+            $this->frames = $frames;
+        }
+    }
+
+    /**
      * Runs $fn with its reads recorded as $freshness ($seconds: how long a Timed one may be old).
      *
      * @template T

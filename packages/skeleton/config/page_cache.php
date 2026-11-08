@@ -25,4 +25,11 @@ return [
 
     // More host names to cache besides the host of app.url.
     // 'hosts' => [],
+
+    // Send X-Page-Cache-Skip with the reason a miss was not stored (for audits with curl -I).
+    // 'explain' => false,
+
+    // Render each page a second time as another anonymous visitor before storing it, and log
+    // and skip pages that differ outside their {% live %} parts. For tests and staging.
+    // 'verify' => false,
 ];

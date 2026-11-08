@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Twig;
 
+use Preflow\Core\PageCache\LiveParts;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
 use Twig\TwigFunction;
@@ -27,6 +28,7 @@ final class TwigEngine implements TemplateEngineInterface
         ?string $cachePath = null,
         ?GeoCollector $geoCollector = null,
         ?SeoContext $seoContext = null,
+        ?LiveParts $liveParts = null,
     ) {
         $loader = new FilesystemLoader($templateDirs);
 
@@ -39,6 +41,32 @@ final class TwigEngine implements TemplateEngineInterface
         ]);
 
         $this->twig->addExtension(new PreflowExtension($assetCollector, $geoCollector, $seoContext));
+        $this->twig->addExtension(new LiveExtension($liveParts));
+        $liveParts?->register(LiveExtension::KIND, fn (array $recipe): string => $this->renderLiveBlock($recipe));
+    }
+
+    /**
+     * A {% live %} block of a served page: its template (a component template by its file, as
+     * render() loads it), block and with values from the placeholder.
+     *
+     * @param array<string, mixed> $recipe
+     */
+    private function renderLiveBlock(array $recipe): string
+    {
+        $name = $recipe['t'] ?? null;
+        $block = $recipe['b'] ?? null;
+        $with = $recipe['w'] ?? [];
+        if (!is_string($name) || !is_string($block) || !is_array($with)) {
+            throw new \RuntimeException('A live block placeholder without template, block or values.');
+        }
+        // render() of an absolute path: createTemplate() names it "{path} (string template {hash})".
+        if (preg_match('/^(\/.+) \(string template [0-9a-f]+\)$/', $name, $m) === 1 && is_file($m[1])) {
+            $template = $this->twig->createTemplate((string) file_get_contents($m[1]), $m[1]);
+        } else {
+            $template = $this->twig->load($name);
+        }
+
+        return $template->renderBlock($block, $with);
     }
 
     public function render(string $template, array $context = []): string

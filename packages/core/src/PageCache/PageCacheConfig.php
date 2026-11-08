@@ -23,6 +23,12 @@ namespace Preflow\Core\PageCache;
  *                      is evicted when another is stored
  *   max_pages          int, 50000: at most this many cached pages in a release; the oldest are
  *                      evicted first
+ *   explain            bool, false: a miss that was not stored says why in X-Page-Cache-Skip
+ *                      (for audits with curl -I; off, the reason is not sent to visitors)
+ *   verify             bool, false: before a page is stored it is rendered once more as another
+ *                      anonymous visitor (another address, no cookies); a page that differs
+ *                      outside its live parts and per-request values is not stored, and logged.
+ *                      For tests and a site's staging check: it doubles the cost of a miss.
  */
 final readonly class PageCacheConfig
 {
@@ -61,6 +67,8 @@ final readonly class PageCacheConfig
         public array $hosts = [],
         public int $maxQueryVariants = self::DEFAULT_MAX_QUERY_VARIANTS,
         public int $maxPages = self::DEFAULT_MAX_PAGES,
+        public bool $explain = false,
+        public bool $verify = false,
     ) {}
 
     /**
@@ -82,6 +90,8 @@ final readonly class PageCacheConfig
             hosts: $this->hosts,
             maxQueryVariants: $this->maxQueryVariants,
             maxPages: $this->maxPages,
+            explain: $this->explain,
+            verify: $this->verify,
         );
     }
 
@@ -120,6 +130,8 @@ final readonly class PageCacheConfig
             hosts: array_values(array_unique($hosts)),
             maxQueryVariants: self::count($config, 'max_query_variants', self::DEFAULT_MAX_QUERY_VARIANTS),
             maxPages: self::count($config, 'max_pages', self::DEFAULT_MAX_PAGES),
+            explain: self::bool($config, 'explain', false),
+            verify: self::bool($config, 'verify', false),
         );
     }
 

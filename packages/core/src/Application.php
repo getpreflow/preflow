@@ -409,6 +409,7 @@ final class Application
         $this->container->instance(RequestContext::class, new RequestContext(
             path: $request->getUri()->getPath(),
             method: $request->getMethod(),
+            request: $request,
         ));
 
         // An internal render (the SEO audit) sends no mail: what it queues is not flushed here.
@@ -886,6 +887,7 @@ final class Application
                     cachePath: $this->twigCachePath(),
                     geoCollector: $geo,
                     seoContext: $seo,
+                    liveParts: $this->container->get(\Preflow\Core\PageCache\LiveParts::class),
                 )
                 : null,
             'blade' => class_exists(\Preflow\Blade\BladeEngine::class)
@@ -972,6 +974,30 @@ final class Application
             // Off: a write reported by hand still means the cache starts empty when switched on again.
             $this->pageChanges === null ? $this->pageCacheMarker : null,
         ));
+
+        // Live parts ({% live %}, @live, #[Live] components): placeholders signed with app.key
+        // while a page renders for the cache, filled in for each visitor. Off, they render in place.
+        $this->container->instance(\Preflow\Core\PageCache\LiveParts::class, new \Preflow\Core\PageCache\LiveParts(
+            new \Preflow\Core\PageCache\LivePlaceholder((string) $this->config->get('app.key', \Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY)),
+            $this->container->get(\Preflow\Core\PageCache\PageCache::class),
+            $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class),
+            $this->pageCacheLogger(),
+        ));
+    }
+
+    /** @return \Closure(string): void the site's logger (a warning), error_log() without one */
+    private function pageCacheLogger(): \Closure
+    {
+        $container = $this->container;
+
+        return static function (string $message) use ($container): void {
+            if ($container->has(\Psr\Log\LoggerInterface::class)) {
+                $container->get(\Psr\Log\LoggerInterface::class)->warning($message);
+
+                return;
+            }
+            error_log($message);
+        };
     }
 
     /** The page cache's change log, when the cache is on (bootPageCache()). */
@@ -1017,14 +1043,7 @@ final class Application
         }
         $container = $this->container;
         $source = $this->pageCacheSource;
-        $logger = static function (string $message) use ($container): void {
-            if ($container->has(\Psr\Log\LoggerInterface::class)) {
-                $container->get(\Psr\Log\LoggerInterface::class)->warning($message);
-
-                return;
-            }
-            error_log($message);
-        };
+        $logger = $this->pageCacheLogger();
         $middleware = new \Preflow\Core\PageCache\PageCacheMiddleware(
             config: $config,
             store: static fn (): \Preflow\Core\PageCache\PageStore => $container->get(\Preflow\Core\PageCache\PageStore::class),
@@ -1044,6 +1063,23 @@ final class Application
                 && $container->get(\Preflow\Core\Http\Session\SessionInterface::class)->isStarted(),
             nonPublic: static fn (string $path): bool => $container->get(\Preflow\Core\Http\NonPublicPaths::class)->matches($path),
             log: $logger,
+            live: $container->get(\Preflow\Core\PageCache\LiveParts::class),
+            // The cache is off in debug mode, so in practice: page_cache.verify (tests, staging).
+            verify: $config->verify || $debug->isDebug(),
+            visitorScope: static function (ServerRequestInterface $visitor, \Closure $render) use ($container): ResponseInterface {
+                $context = $container->bound(RequestContext::class) ? $container->get(RequestContext::class) : null;
+                $container->instance(RequestContext::class, new RequestContext($visitor->getUri()->getPath(), $visitor->getMethod(), $visitor));
+                try {
+                    // Both renders start from the assets boot registered, so the second prints the same.
+                    return $container->has(\Preflow\View\AssetCollector::class)
+                        ? $container->get(\Preflow\View\AssetCollector::class)->restoring($render)
+                        : $render();
+                } finally {
+                    if ($context !== null) {
+                        $container->instance(RequestContext::class, $context);
+                    }
+                }
+            },
         );
         $this->container->instance(\Preflow\Core\PageCache\PageCacheMiddleware::class, $middleware);
         $this->addMiddleware($middleware);
@@ -1146,6 +1182,7 @@ final class Application
             cachePath: $cachePath,
             geoCollector: $geo,
             seoContext: $seo,
+            liveParts: $this->container->get(\Preflow\Core\PageCache\LiveParts::class),
         );
     }
 
@@ -1311,6 +1348,9 @@ final class Application
             $component->setProps($props);
             return $component;
         };
+
+        // Components marked #[Live] are live parts of cached pages
+        $renderer->enableLive($this->container->get(\Preflow\Core\PageCache\LiveParts::class), $componentFactory);
 
         // Register component template functions
         $componentProvider = new \Preflow\Components\ComponentsExtensionProvider(
