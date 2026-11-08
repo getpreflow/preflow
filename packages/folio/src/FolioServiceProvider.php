@@ -1215,13 +1215,14 @@ final class FolioServiceProvider extends ServiceProvider
         }
 
         $app = $container->get(Application::class);
+        // The admin's path prefix as the routes have it ("folio" and "/folio/" are "/folio"), "" at "/".
+        $admin = $this->adminPath($app);
         // The staff login: a form left open past the session's end still signs in (CSRF).
         if ($container->bound(\Preflow\Core\Http\Csrf\CsrfSignInPaths::class)) {
-            $container->get(\Preflow\Core\Http\Csrf\CsrfSignInPaths::class)->add(rtrim($this->prefix($app), '/') . '/login');
+            $container->get(\Preflow\Core\Http\Csrf\CsrfSignInPaths::class)->add($admin . '/login');
         }
         // The admin is not a public page: no redirects there, nothing in the not-found list.
         // Folio at "/" would cover the whole site, so nothing is registered then.
-        $admin = rtrim($this->prefix($app), '/');
         if ($admin !== '' && $container->bound(\Preflow\Core\Http\NonPublicPaths::class)) {
             $container->get(\Preflow\Core\Http\NonPublicPaths::class)->add($admin);
         }
@@ -1937,6 +1938,15 @@ final class FolioServiceProvider extends ServiceProvider
     private function prefix(Application $app): string
     {
         return $this->folioConfig($app)['path'] ?? '/folio';
+    }
+
+    /**
+     * The admin prefix normalised as FolioRoutes::admin() and ScreenRegistry::routes() build it:
+     * one leading slash, no trailing one ("folio" → "/folio"); "" when Folio is at "/".
+     */
+    private function adminPath(Application $app): string
+    {
+        return rtrim('/' . trim($this->prefix($app), '/'), '/');
     }
 
     private function uploadsDir(Application $app): string

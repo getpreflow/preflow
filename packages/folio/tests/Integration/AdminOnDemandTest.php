@@ -139,6 +139,24 @@ final class AdminOnDemandTest extends TestCase
         }
     }
 
+    /** 0.58 served `'path' => 'folio'` (no leading slash) at /folio, as the route builders normalise the prefix. */
+    #[RunInSeparateProcess]
+    public function test_a_prefix_without_a_leading_slash_serves_the_admin(): void
+    {
+        $this->site('folio');
+        $this->flow = $this->app(console: false);
+        $this->assertSame(200, $this->request('GET', '/')->getStatusCode());
+        $this->assertNotAdmin('after a public request');
+
+        $this->assertSame(200, $this->request('GET', '/folio/login')->getStatusCode());
+        $this->assertContains('GET /folio', $this->patterns($this->flow));
+        $this->assertSame(200, $this->request('GET', '/de/folio/login')->getStatusCode(), 'behind the locale prefix');
+
+        $container = $this->flow->container();
+        $this->assertTrue($container->get(\Preflow\Core\Http\NonPublicPaths::class)->matches('/folio/post'), 'the admin is not a public page');
+        $this->assertTrue($container->get(\Preflow\Core\Http\Csrf\CsrfSignInPaths::class)->matches('/folio/login'), 'the staff login is a sign-in path');
+    }
+
     #[RunInSeparateProcess]
     public function test_cli_boot_has_the_admin_setup(): void
     {
@@ -203,7 +221,7 @@ final class AdminOnDemandTest extends TestCase
         );
     }
 
-    private function site(): void
+    private function site(string $prefix = '/folio'): void
     {
         putenv('APP_DEBUG=1');
         $this->dir = sys_get_temp_dir() . '/folio_on_demand_' . bin2hex(random_bytes(4));
@@ -211,7 +229,7 @@ final class AdminOnDemandTest extends TestCase
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log');
         $this->write('config/app.php', "<?php\nreturn ['name' => 'On demand', 'debug' => 0, 'engine' => 'twig', 'key' => 'on-demand-test-key', 'url' => 'https://site.test'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Rbac\\RbacServiceProvider::class, \\Preflow\\Members\\MembersServiceProvider::class, \\Preflow\\Codes\\CodesServiceProvider::class];\n");
-        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
+        $this->write('config/folio.php', "<?php\nreturn ['path' => " . var_export($prefix, true) . "];\n");
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
             'default_guard' => 'session',
             'guards' => [
