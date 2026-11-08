@@ -135,6 +135,45 @@ php preflow cache:clear --all
 # Cleared data.json: 12 file(s), 3.1 KB.
 ```
 
+### `pages:work [--budget=50]` — rebuild queued pages (cron)
+
+With the page cache on (preflow/core's README, "Page cache"), writes forget the pages that
+showed what they changed and queue the full pages among them for rebuilding; stale pages and a
+deploy's warm-up are queued too. The request that queued them rebuilds for `rebuild_budget`
+seconds after its response; `pages:work` takes the rest, for up to `--budget` seconds (50 by
+default). Run it every minute from the cron:
+
+```
+* * * * * cd /path/to/site/current && php preflow pages:work >/dev/null 2>&1
+```
+
+The queue's leases keep it and the after-response work from building one page twice. With
+the cache off, or `app.debug` on, it rebuilds nothing.
+
+```
+php preflow pages:work
+# Rebuilt 12 page(s) in 1.4 s; 0 queued.
+```
+
+### `pages:refresh <url>` / `pages:refresh --all` — refresh cached pages
+
+`pages:refresh <url>` forgets every cached copy of one URL (each locale and htmx fragment
+variant; a path such as `/about` is taken against `app.url`) and rebuilds the page.
+`pages:refresh --all` forgets every page and queues every known full page without a query.
+Both then rebuild for up to `--budget` seconds (50) and leave the rest to `pages:work`. A URL of
+a host the cache doesn't cache exits with 1. Folio's Settings → Cache has the same two actions.
+
+```
+php preflow pages:refresh /about
+# Forgot 1 cached copy of /about.
+# Rebuilt 1 page(s); 0 queued.
+php preflow pages:refresh --all
+# Forgot every page; 240 queued for rebuilding.
+# Rebuilt 240 page(s); 0 queued.
+```
+
+`cache:clear pages` empties the page cache without rebuilding anything (and drops the queue).
+
 ### `optimize [--check]` — write the boot manifest
 
 Writes `bootstrap/cache/boot.php` (atomically): the merged config, the package discovery data
