@@ -16,14 +16,15 @@
         "phpunit/phpunit": "^11.0"
     },
     "conflict": {
-        "preflow/auth": "<0.38",
-        "preflow/data": "<0.59",
+        "preflow/auth": "<0.60",
+        "preflow/components": "<0.60",
+        "preflow/data": "<0.60",
         "preflow/htmx": "<0.46",
         "preflow/i18n": "<0.46",
         "preflow/routing": "<0.59",
-        "preflow/view": "<0.58",
-        "preflow/twig": "<0.50",
-        "preflow/blade": "<0.50"
+        "preflow/view": "<0.60",
+        "preflow/twig": "<0.60",
+        "preflow/blade": "<0.60"
     },
     "autoload": {
         "psr-4": {

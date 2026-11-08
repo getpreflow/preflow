@@ -7,16 +7,18 @@ namespace Preflow\Core\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Core requires none of auth, data, htmx, i18n, routing, view, twig or blade, but boots them when they are installed,
- * so only "conflict" keeps Composer from pairing core with a release that lacks the APIs it calls: auth 0.38
- * (bootAuth binds Preflow\Auth\Record\RecordUserProvider::factory() for record users from
- * config/auth.php), data 0.59 (Application passes cacheDir: to JsonFileDriver; since 0.59 the drivers take a connector
+ * Core requires none of auth, components, data, htmx, i18n, routing, view, twig or blade, but boots them when they are installed,
+ * so only "conflict" keeps Composer from pairing core with a release that lacks the APIs it calls: auth 0.60
+ * (SessionGuard takes marker:, the signed-in marker the page cache bypasses on; since 0.38 bootAuth binds Preflow\Auth\Record\RecordUserProvider::factory() for record users from
+ * config/auth.php), components 0.60
+ * (ComponentRenderer::enableLive() and enableFreshness(), ErrorBoundary takes onError:), data 0.60 (DataManager::observe()
+ * and reportedStorage() for the page cache; since 0.59 Application passes cacheDir: to JsonFileDriver; since 0.59 the drivers take a connector
  * closure, the lazy connection), htmx 0.46
  * (HtmxExtensionProvider takes pathPrefix:), i18n 0.46 (LocaleMiddleware::urlPrefix()), routing 0.59 (Router takes store:, the boot manifest's route sets), view 0.58
- * (the Geo classes: GeoCollector, GeoMiddleware, RenderScopes, GeoEntries; the Seo classes: SeoConfig,
+ * (since 0.60 SeoContext::useDefaults(), SeoMiddleware::pageLocale(), SeoSite::defaultsFor(); the Geo classes: GeoCollector, GeoMiddleware, RenderScopes, GeoEntries; the Seo classes: SeoConfig,
  * SeoContext, SeoSite, SchemaRegistry, SeoMiddleware; the Audit classes: AuditRegistry, PageRenderer
- * and AssetCollector::restoring(); since 0.58 AssetCollector takes cachePath:, which Application passes) and twig and blade 0.50 (TwigEngine and BladeEngine
- * take geoCollector: and seoContext:).
+ * and AssetCollector::restoring(); since 0.58 AssetCollector takes cachePath:, which Application passes) and twig and blade 0.60 (TwigEngine and BladeEngine
+ * take liveParts: and pageCache:; since 0.50 geoCollector: and seoContext:).
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -25,14 +27,15 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame([
-            'preflow/auth' => '<0.38',
-            'preflow/data' => '<0.59',
+            'preflow/auth' => '<0.60',
+            'preflow/components' => '<0.60',
+            'preflow/data' => '<0.60',
             'preflow/htmx' => '<0.46',
             'preflow/i18n' => '<0.46',
             'preflow/routing' => '<0.59',
-            'preflow/view' => '<0.58',
-            'preflow/twig' => '<0.50',
-            'preflow/blade' => '<0.50',
+            'preflow/view' => '<0.60',
+            'preflow/twig' => '<0.60',
+            'preflow/blade' => '<0.60',
         ], $composer['conflict'] ?? null);
     }
 }

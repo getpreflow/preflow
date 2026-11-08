@@ -7,7 +7,7 @@
         "php": ">=8.4",
         "nyholm/psr7": "^1.8",
         "preflow/core": "^0.54 || @dev",
-        "preflow/data": "^0.42 || @dev",
+        "preflow/data": "^0.60 || @dev",
         "preflow/routing": "^0.59 || @dev",
         "preflow/view": "^0.34 || @dev"
     },
@@ -21,7 +21,7 @@
     },
     "conflict": {
         "preflow/core": "<0.54",
-        "preflow/data": "<0.42",
+        "preflow/data": "<0.60",
         "preflow/routing": "<0.59",
         "preflow/view": "<0.34"
     },
