@@ -62,6 +62,55 @@ final class PageCacheAppTest extends TestCase
         }
     }
 
+    #[RunInSeparateProcess]
+    public function test_a_hit_reads_nothing_with_seo_and_geo_on_and_follows_the_site_settings(): void
+    {
+        $this->write('config/seo.php', "<?php\nreturn ['enabled' => true, 'name' => 'Pub', 'site_fields' => ['description' => 'tagline']];\n");
+        $this->write('config/geo.php', "<?php\nreturn ['enabled' => true, 'types' => ['post']];\n");
+        $this->write('resources/folio/frontend/post.twig', '<html><head><title>{{ record.title }}</title></head><body><h1>{{ record.title }}</h1></body></html>');
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Project'], 'slug' => ['en' => 'project']]), null);
+        $this->site('Games every Friday');
+
+        $miss = $this->get('/project');
+        $this->assertSame('miss', $miss->getHeaderLine('X-Page-Cache'));
+        $this->assertStringContainsString('<meta property="og:description" content="Games every Friday">', (string) $miss->getBody());
+
+        // The hit: the same head tags, and not one read through the data layer.
+        $app = $this->app();
+        $reads = new class implements \Preflow\Data\Observe\DataObserver {
+            /** @var list<string> */
+            public array $seen = [];
+            public function read(string $storage, string $type, ?string $id): void { $this->seen[] = "read {$storage}:{$type}#{$id}"; }
+            public function rawRead(string $storage, string $sql): void { $this->seen[] = "raw {$sql}"; }
+            public function wrote(string $storage, string $type, ?string $id): void { $this->seen[] = "wrote {$type}"; }
+            public function rawWrote(string $storage, string $sql): void { $this->seen[] = "raw write {$sql}"; }
+        };
+        $app->container()->get(\Preflow\Data\DataManager::class)->observe($reads);
+        $hit = $app->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/project'));
+        $this->assertSame('hit', $hit->getHeaderLine('X-Page-Cache'));
+        $this->assertSame([], $reads->seen, 'a hit makes no query');
+        $this->assertStringContainsString('type="text/markdown"', $hit->getHeaderLine('Link'), 'GEO ran on the hit too');
+        $strip = static fn (ResponseInterface $r): string => (string) preg_replace('/nonce="[^"]+"|Nonce":"[^"]+"/', 'NONCE', (string) $r->getBody());
+        $this->assertSame($strip($miss), $strip($hit));
+
+        // The site settings change: the page read them while it rendered, so it is refreshed.
+        $this->site('Games every Saturday');
+        $fresh = $this->get('/project');
+        $this->assertSame('miss', $fresh->getHeaderLine('X-Page-Cache'));
+        $this->assertStringContainsString('content="Games every Saturday"', (string) $fresh->getBody());
+    }
+
+    /** Saves and publishes the site singleton through a web app, whose change log then invalidates. */
+    private function site(string $tagline): void
+    {
+        $app = $this->app();
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $record = \Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get('site'), ['uuid' => 'site', 'tagline' => ['en' => $tagline]]);
+        $dm->saveType($record, false);
+        $app->container()->get(\Preflow\Folio\Publishing\Publisher::class)->publish($record, null);
+        $app->container()->get(\Preflow\Core\PageCache\ChangeLog::class)->flush();
+    }
+
     private function app(): Application
     {
         $app = Application::create($this->dir);

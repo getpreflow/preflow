@@ -148,8 +148,8 @@ final class SeoMiddleware implements MiddlewareInterface
 
         $origin = PageSignals::origin($this->appUrl, $request);
         $path = $request->getUri()->getPath();
-        $locale = $this->localeOf($path);
-        $defaults = $this->site->defaultsFor($locale);
+        $locale = $this->pageLocale($path);
+        $defaults = $this->context->hasDefaults($locale) ? $this->context->defaults($locale) : $this->site->defaultsFor($locale);
         $page = $this->context->get() ?? new PageMeta();
         // From the site only what describes the site: description and share image. Its title is the site's name.
         $description = $page->description !== '' ? $page->description : ($defaults?->description ?? '');
@@ -344,7 +344,8 @@ final class SeoMiddleware implements MiddlewareInterface
     }
 
     /** The locale a path is in: its prefix when that is one of the other locales, else the default. */
-    private function localeOf(string $path): string
+    /** The locale whose site defaults the head tags of $path use (its URL prefix, else the default). */
+    public function pageLocale(string $path): string
     {
         $prefix = explode('/', ltrim($path, '/'), 2)[0];
 

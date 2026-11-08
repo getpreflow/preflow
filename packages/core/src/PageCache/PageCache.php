@@ -31,13 +31,17 @@ final class PageCache
      * @param (\Closure(string): string)|null $storageName the name a storage is reported under
      *        (DataManager::reportedStorage()): 'mysql:member' becomes 'default:member' when mysql
      *        is the default driver, as the data layer's own tags are
+     * @param EnabledMarker|null $marker while the cache is off: removed by the first changed()
      */
     public function __construct(
         private readonly ?ChangeLog $changes = null,
         private readonly ?\Closure $storageName = null,
+        private readonly ?EnabledMarker $marker = null,
     ) {}
 
     private ?PageKey $key = null;
+
+    private bool $markerRemoved = false;
 
     /** @var array<string, array{0: \Closure(): mixed, 1: \Closure(mixed): void}> */
     private array $carried = [];
@@ -51,7 +55,16 @@ final class PageCache
 
     public function changed(string ...$tags): void
     {
-        if ($this->changes === null || $tags === []) {
+        if ($tags === []) {
+            return;
+        }
+        if ($this->changes === null) {
+            // Off: the pages stored while it was on may now be old (EnabledMarker).
+            if ($this->marker !== null && !$this->markerRemoved) {
+                $this->markerRemoved = true;
+                $this->marker->remove();
+            }
+
             return;
         }
         $changed = [];

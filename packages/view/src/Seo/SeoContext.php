@@ -12,6 +12,9 @@ final class SeoContext
 {
     private ?PageMeta $meta = null;
 
+    /** @var array<string, ?PageMeta> the site's defaults per locale, when known before the middleware asks (a cached page carries them) */
+    private array $defaults = [];
+
     /** @param ?\Closure(list<string>): void $reportUnknown gets the keys a template's `seo({…})` gave that page meta doesn't have */
     public function __construct(private readonly ?\Closure $reportUnknown = null) {}
 
@@ -73,6 +76,27 @@ final class SeoContext
     public function reset(): void
     {
         $this->meta = null;
+        $this->defaults = [];
+    }
+
+    /**
+     * The site's defaults for $locale, as SeoSite::defaultsFor() gave them when the page was
+     * rendered: a page served from the page cache brings them along, so serving it reads
+     * nothing (the defaults come from the database on a Folio site). Since 0.60.
+     */
+    public function useDefaults(string $locale, ?PageMeta $defaults): void
+    {
+        $this->defaults[$locale] = $defaults;
+    }
+
+    public function hasDefaults(string $locale): bool
+    {
+        return array_key_exists($locale, $this->defaults);
+    }
+
+    public function defaults(string $locale): ?PageMeta
+    {
+        return $this->defaults[$locale] ?? null;
     }
 
     /**
@@ -81,12 +105,13 @@ final class SeoContext
      */
     public function scoped(\Closure $next): mixed
     {
-        $saved = $this->meta;
+        [$saved, $savedDefaults] = [$this->meta, $this->defaults];
         $this->meta = null;
+        $this->defaults = [];
         try {
             return $next();
         } finally {
-            $this->meta = $saved;
+            [$this->meta, $this->defaults] = [$saved, $savedDefaults];
         }
     }
 }

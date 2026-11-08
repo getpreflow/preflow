@@ -37,6 +37,16 @@ final class PerRequestValues
     public function __construct(private readonly string $secret) {}
 
     /**
+     * Whether the placeholders are signed with a secret: not with an empty app.key or the public
+     * default one, with which anyone could compute a signature (and get the live nonce filled
+     * into text they put in a page). Pages are not stored then.
+     */
+    public function signed(): bool
+    {
+        return $this->secret !== '' && $this->secret !== \Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY;
+    }
+
+    /**
      * Registers (or replaces) a value. $name: letters, digits, "_" and "-".
      *
      * @param \Closure(): (string|list<string>|null) $value

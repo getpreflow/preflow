@@ -35,6 +35,11 @@ use Psr\Http\Server\RequestHandlerInterface;
  * A miss renders with its reads recorded (DependencyRecorder) and gets `X-Page-Cache: miss`.
  * It is stored only when none of these holds, else the reason is sent as `X-Page-Cache-Skip`:
  * - `status`: the status is not 200 (404s and redirects are never cached);
+ * - `restore` / `kind`: the render is not of the kind the key stands for: a full page's key
+ *   rendered for a request with HX-Request (a history restore, which may be served the full
+ *   page but is never stored), or a fragment's key without it;
+ * - `app-key`: app.key is empty or the public default, so placeholders could be forged;
+ * - `stream`: the body can't be read twice (a streamed export);
  * - `set-cookie`: the response sets a cookie (a header, or a native one through header());
  * - `session`: the session was started during the request;
  * - `signed-in`: a guard resolved a user;
@@ -90,6 +95,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
     private ?TagIndex $index = null;
 
+    /** @var \Closure(): list<string> */
+    private readonly \Closure $sentHeaders;
+
     /**
      * @param \Closure(): PageStore $store the store (made on first use)
      * @param \Closure(): void $clearAll empties the whole cache (when the enabled marker is missing)
@@ -101,6 +109,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * @param (\Closure(string): void)|null $log error_log() when null
      * @param (\Closure(): float)|null $clock microtime(true) when null
      * @param bool|null $sqlite a test seam, as TagIndex's
+     * @param (\Closure(): list<string>)|null $sentHeaders the headers PHP queued natively; headers_list() by default
      */
     public function __construct(
         private readonly PageCacheConfig $config,
@@ -118,7 +127,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
         private readonly ?\Closure $log = null,
         ?\Closure $clock = null,
         private readonly ?bool $sqlite = null,
+        ?\Closure $sentHeaders = null,
     ) {
+        $this->sentHeaders = $sentHeaders ?? static fn (): array => headers_sent() ? [] : headers_list();
         $this->clock = $clock ?? static fn (): float => microtime(true);
     }
 
@@ -256,32 +267,57 @@ final class PageCacheMiddleware implements MiddlewareInterface
     {
         $started = ($this->clock)();
         $frame = $this->recorder->start();
-        $state = $this->cache->begin($key->isHead() ? null : $key);
+        $before = $this->cache->begin($key->isHead() ? null : $key);
+        $carried = [];
+        $reason = null;
         try {
             $response = $handler->handle($request);
-            $refusal = $this->cache->refusal();
+            if (!$key->isHead()) {
+                $refusal = $this->cache->refusal();
+                $reason = $refusal !== null ? 'refused:' . $refusal : $this->refusal($request, $key, $response);
+                if ($reason === null) {
+                    // Inside the recording: what the carried state reads (the site's SEO defaults)
+                    // is a dependency of the page too.
+                    try {
+                        $carried = $this->cache->captureState();
+                    } catch (\Throwable $e) {
+                        $this->log('page cache: ' . $key->url() . ' was not stored: ' . $e->getMessage());
+                        $reason = 'error';
+                    }
+                }
+            }
         } finally {
             $tags = $this->recorder->stop($frame);
-            $this->cache->end($state);
+            $this->cache->end($before);
         }
 
         $response = $response->withHeader(self::HEADER, 'miss');
         if ($key->isHead()) {
             return $response; // never stored: GET stores the page HEAD is served from
         }
-        $reason = $refusal !== null ? 'refused:' . $refusal : $this->refusal($response);
-        $reason ??= $this->store($key, $response, $tags, $started, $store);
+        $reason ??= $this->store($key, $response, $tags, $started, $store, $carried);
 
         return $reason === null ? $response : $response->withHeader(self::SKIP_HEADER, $reason);
     }
 
     /** Why $response must not be stored, null when it may be. */
-    private function refusal(ResponseInterface $response): ?string
+    private function refusal(ServerRequestInterface $request, PageKey $key, ResponseInterface $response): ?string
     {
         if ($response->getStatusCode() !== 200) {
             return 'status';
         }
-        if ($response->hasHeader('Set-Cookie') || self::nativeCookie()) {
+        // Only a render of the kind the key stands for: a history restore (HX-Request with the
+        // full page's key) may be answered with a fragment by an app that branches on HX-Request.
+        if ($key->isFragment() !== $request->hasHeader('HX-Request')) {
+            return $request->hasHeader('HX-History-Restore-Request') ? 'restore' : 'kind';
+        }
+        if (!$this->values->signed()) {
+            return 'app-key';
+        }
+        if (!$response->getBody()->isSeekable()) {
+            return 'stream';
+        }
+        if ($response->hasHeader('Set-Cookie') || $this->nativeCookie()) {
             return 'set-cookie';
         }
         if ($this->sessionStarted !== null && ($this->sessionStarted)()) {
@@ -323,14 +359,13 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * was, both go again. Returns why it was not stored, null when it was.
      *
      * @param array<string, array{0: Freshness, 1: ?int}> $tags
+     * @param array<string, mixed> $carried PageCache::captureState()
      */
-    private function store(PageKey $key, ResponseInterface $response, array $tags, float $started, PageStore $store): ?string
+    private function store(PageKey $key, ResponseInterface $response, array $tags, float $started, PageStore $store, array $carried): ?string
     {
         $body = $response->getBody();
         $content = (string) $body;
-        if ($body->isSeekable()) {
-            $body->rewind();
-        }
+        $body->rewind();
         if (strlen($content) > self::MAX_BODY) {
             return 'size';
         }
@@ -344,7 +379,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
                 $this->values->toPlaceholders($content),
                 $this->storedHeaders($response),
                 $started,
-                state: $this->cache->captureState(),
+                state: $carried,
             );
             $index->record($key->id(), $key->url(), $key->isFragment(), $key->hasQuery(), $tags);
             if (!$store->put($key, $page)) {
@@ -386,12 +421,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
     }
 
     /** A cookie set with header()/setcookie() (a native session), which the PSR response doesn't show. */
-    private static function nativeCookie(): bool
+    private function nativeCookie(): bool
     {
-        if (headers_sent()) {
-            return false;
-        }
-        foreach (headers_list() as $line) {
+        foreach (($this->sentHeaders)() as $line) {
             if (strncasecmp($line, 'Set-Cookie:', 11) === 0) {
                 return true;
             }

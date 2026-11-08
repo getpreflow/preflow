@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Core\Tests\PageCache;
 
 require_once __DIR__ . '/Fixtures/NegotiatedLocaleRedirect.php';
+require_once __DIR__ . '/Fixtures/BrokenFeed.php';
 
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
@@ -117,6 +118,142 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame('post', (string) $hit->getBody());
         $this->assertSame(1, $quiet->calls, 'rendered once');
         $this->assertArrayHasKey($this->key('/post/1')->id(), TagIndex::forStore($this->store, $this->config)->pagesFor([$tag]));
+    }
+
+    public function test_an_invalidation_between_record_and_put_still_refuses_the_store(): void
+    {
+        // Another request writes the post right after this one recorded its rows and before its
+        // file is written (the store's first write consults its clock: the seam).
+        $tag = DataTags::record('default', 'post', '1');
+        $armed = false;
+        $this->store = new PageStore($this->root, 'aaaaaaaaaaaaaaaa', function () use (&$armed): float {
+            if ($armed) {
+                $armed = false;
+                (new Refresher(new PageStore($this->root, 'aaaaaaaaaaaaaaaa'), $this->config))
+                    ->invalidate(DataTags::recordChanged('default', 'post', '1'));
+            }
+
+            return microtime(true);
+        });
+        $handler = $this->handler(function () use ($tag, &$armed): ResponseInterface {
+            $this->recorder->record($tag);
+            $armed = true;
+
+            return $this->html('old post');
+        });
+
+        $response = $this->middleware()->process($this->get('/post/1'), $handler);
+
+        $this->assertFalse($armed, 'the write happened during the store');
+        $this->assertSame('invalidated', $response->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertNull($this->store->get($this->key('/post/1')));
+        $this->assertSame([], TagIndex::forStore($this->store, $this->config)->pagesFor([$tag]));
+    }
+
+    public function test_a_history_restore_that_misses_is_never_stored(): void
+    {
+        $mw = $this->middleware();
+        // An app that answers any htmx request with a fragment, a history restore too.
+        $handler = $this->handler(fn (ServerRequestInterface $r): ResponseInterface => $this->html(
+            $r->hasHeader('HX-Request') ? '<li>fragment</li>' : '<html><ul><li>fragment</li></ul></html>',
+        ));
+
+        $restore = $mw->process($this->get('/gallery')->withHeader('HX-Request', 'true')->withHeader('HX-History-Restore-Request', 'true'), $handler);
+        $this->assertSame('miss', $restore->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('restore', $restore->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertNull($this->store->get($this->key('/gallery')));
+
+        $visitor = $mw->process($this->get('/gallery'), $handler);
+        $this->assertSame('miss', $visitor->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('<html><ul><li>fragment</li></ul></html>', (string) $visitor->getBody(), 'the visitor gets the full page');
+        $again = $mw->process($this->get('/gallery'), $handler);
+        $this->assertSame('hit', $again->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('<html><ul><li>fragment</li></ul></html>', (string) $again->getBody());
+
+        // Served from the full page once it is there, and an HX-Request other than "true" stores nothing.
+        $this->assertSame('hit', $mw->process($this->get('/gallery')->withHeader('HX-Request', 'true')->withHeader('HX-History-Restore-Request', 'true'), $handler)->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('kind', $mw->process($this->get('/other')->withHeader('HX-Request', 'false'), $handler)->getHeaderLine('X-Page-Cache-Skip'));
+    }
+
+    public function test_native_cookies_streams_and_a_public_app_key_are_not_stored(): void
+    {
+        $cookie = $this->middleware(sentHeaders: static fn (): array => ['Content-Type: text/html', 'Set-Cookie: PHPSESSID=abc; path=/']);
+        $this->assertSame('set-cookie', $cookie->process($this->get('/a'), $this->handler(fn () => $this->html('x')))->getHeaderLine('X-Page-Cache-Skip'));
+
+        $stream = $this->handler(static function (): ResponseInterface {
+            $resource = fopen('php://temp', 'r+');
+            fwrite($resource, 'a,b,c');
+            rewind($resource);
+            $body = new class (\Nyholm\Psr7\Stream::create($resource)) implements \Psr\Http\Message\StreamInterface {
+                public function __construct(private readonly \Psr\Http\Message\StreamInterface $inner) {}
+                public function isSeekable(): bool { return false; }
+                public function __toString(): string { return $this->inner->getContents(); }
+                public function close(): void { $this->inner->close(); }
+                public function detach() { return $this->inner->detach(); }
+                public function getSize(): ?int { return null; }
+                public function tell(): int { return $this->inner->tell(); }
+                public function eof(): bool { return $this->inner->eof(); }
+                public function seek(int $offset, int $whence = SEEK_SET): void { throw new \RuntimeException('not seekable'); }
+                public function rewind(): void { throw new \RuntimeException('not seekable'); }
+                public function isWritable(): bool { return false; }
+                public function write(string $string): int { throw new \RuntimeException('read only'); }
+                public function isReadable(): bool { return true; }
+                public function read(int $length): string { return $this->inner->read($length); }
+                public function getContents(): string { return $this->inner->getContents(); }
+                public function getMetadata(?string $key = null): mixed { return $this->inner->getMetadata($key); }
+            };
+
+            return new Response(200, ['Content-Type' => 'text/csv'], $body);
+        });
+        $export = $this->middleware()->process($this->get('/export.csv'), $stream);
+        $this->assertSame('stream', $export->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertSame('a,b,c', (string) $export->getBody(), 'the visitor still gets the whole body');
+
+        foreach (['', StatelessCsrfToken::DEFAULT_KEY] as $key) {
+            $this->values = new PerRequestValues($key);
+            $skip = $this->middleware()->process($this->get('/k' . strlen($key)), $this->handler(fn () => $this->html('x')))->getHeaderLine('X-Page-Cache-Skip');
+            $this->assertSame('app-key', $skip, "key '{$key}'");
+        }
+    }
+
+    public function test_forwarded_hosts_that_are_cached_stay_apart(): void
+    {
+        $this->config = new PageCacheConfig(enabled: true, hosts: ['example.com', 'www.example.com']);
+        $mw = $this->middleware();
+        $handler = $this->handler(fn (ServerRequestInterface $r): ResponseInterface => $this->html('for ' . $r->getHeaderLine('X-Forwarded-Host')));
+
+        $mw->process($this->get('/page')->withHeader('X-Forwarded-Host', 'example.com'), $handler);
+        $mw->process($this->get('/page')->withHeader('X-Forwarded-Host', 'www.example.com'), $handler);
+        $www = $mw->process($this->get('/page')->withHeader('X-Forwarded-Host', 'www.example.com'), $handler);
+        $this->assertSame('hit', $www->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('for www.example.com', (string) $www->getBody());
+        $this->assertSame('for example.com', (string) $mw->process($this->get('/page')->withHeader('X-Forwarded-Host', 'example.com'), $handler)->getBody());
+    }
+
+    public function test_a_csp_the_page_set_itself_is_not_replayed(): void
+    {
+        $mw = $this->middleware();
+        $handler = $this->handler(fn (): ResponseInterface => $this->html('x')
+            ->withHeader('Content-Security-Policy', "script-src 'nonce-old'")
+            ->withHeader('Content-Security-Policy-Report-Only', "script-src 'nonce-old'")
+            ->withHeader('HX-Nonce', 'old'));
+        $mw->process($this->get('/csp'), $handler);
+        $hit = $mw->process($this->get('/csp'), $handler);
+        $this->assertSame('hit', $hit->getHeaderLine('X-Page-Cache'));
+        $this->assertFalse($hit->hasHeader('Content-Security-Policy'));
+        $this->assertFalse($hit->hasHeader('Content-Security-Policy-Report-Only'));
+        $this->assertFalse($hit->hasHeader('HX-Nonce'));
+    }
+
+    public function test_changed_while_switched_off_removes_the_enabled_marker(): void
+    {
+        $marker = new EnabledMarker($this->root);
+        $marker->write();
+        (new PageCache(null, null, $marker))->changed('default:member');
+        $this->assertFalse($marker->exists());
+        $marker->write();
+        (new PageCache(null, null, $marker))->changed();
+        $this->assertTrue($marker->exists(), 'nothing changed');
     }
 
     public function test_404_and_redirects_are_never_cached(): void
@@ -466,7 +603,27 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertStringContainsString('<meta property="og:title" content="About the club">', $strip($miss));
         $this->assertStringContainsString('og:updated_time', $strip($miss));
         $this->assertSame($strip($miss), $strip($hit), 'the page meta is carried through the cache');
-        $this->assertSame('About the club', $this->appStore()->get(PageKey::fromRequest($this->request('/about'), $this->appConfig()))?->state['seo']['title'] ?? null);
+        $this->assertSame('About the club', $this->appStore()->get(PageKey::fromRequest($this->request('/about'), $this->appConfig()))?->state['seo']['meta']['title'] ?? null);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_component_that_failed_is_never_stored(): void
+    {
+        putenv('FEED_UP');
+        $this->site();
+        $this->write('app/pages/news.twig', '<main>{{ component("' . addslashes(\Preflow\Core\Tests\PageCache\Fixtures\BrokenFeed::class) . '") }}</main>');
+
+        $broken = $this->web('/news');
+        $this->assertSame(200, $broken->getStatusCode(), 'the boundary keeps the page');
+        $this->assertStringNotContainsString('feed items', (string) $broken->getBody());
+        $this->assertSame('refused:component-error', $broken->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertSame('miss', $this->web('/news')->getHeaderLine('X-Page-Cache'));
+
+        // The feed is back: the next visitor gets it, and that page is stored.
+        putenv('FEED_UP=1');
+        $this->assertStringContainsString('feed items', (string) $this->web('/news')->getBody());
+        $this->assertSame('hit', $this->web('/news')->getHeaderLine('X-Page-Cache'));
+        putenv('FEED_UP');
     }
 
     #[RunInSeparateProcess]
@@ -538,7 +695,7 @@ final class PageCacheMiddlewareTest extends TestCase
      * @param (\Closure(): float)|null $clock
      * @param (\Closure(string): bool)|null $nonPublic
      */
-    private function middleware(?PageCacheConfig $config = null, ?\Closure $clock = null, ?\Closure $nonPublic = null): PageCacheMiddleware
+    private function middleware(?PageCacheConfig $config = null, ?\Closure $clock = null, ?\Closure $nonPublic = null, ?\Closure $sentHeaders = null): PageCacheMiddleware
     {
         $config ??= $this->config;
         $source = new PageCacheSource($this->root, static fn (): string => 'aaaaaaaaaaaaaaaa');
@@ -563,6 +720,7 @@ final class PageCacheMiddlewareTest extends TestCase
                 $this->logged[] = $message;
             },
             clock: $clock,
+            sentHeaders: $sentHeaders,
         );
     }
 

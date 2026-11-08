@@ -8,8 +8,8 @@ return [
     'locale' => getenv('APP_LOCALE') ?: 'en',
     'key' => getenv('APP_KEY') ?: '',
     // The site's address with its scheme (https://example.com): CSRF origin checks, absolute
-    // links and the page cache's host.
-    'url' => getenv('APP_URL') ?: 'http://localhost:8080',
+    // links and the page cache's host. Without it the page cache caches nothing and says so.
+    'url' => getenv('APP_URL') ?: '',
     // Template engine: 'twig' or 'blade'
     'engine' => getenv('APP_ENGINE') ?: 'twig',
 ];

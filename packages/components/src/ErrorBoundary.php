@@ -8,8 +8,13 @@ use Preflow\Core\DebugLevel;
 
 final class ErrorBoundary
 {
+    /**
+     * @param (\Closure(\Throwable, Component): void)|null $onError called for every error rendered
+     *        (the page cache refuses to store the page then)
+     */
     public function __construct(
         private readonly DebugLevel $debug = DebugLevel::Off,
+        private readonly ?\Closure $onError = null,
     ) {}
 
     public function render(
@@ -17,6 +22,10 @@ final class ErrorBoundary
         Component $component,
         string $phase = 'unknown',
     ): string {
+        if ($this->onError !== null) {
+            ($this->onError)($exception, $component);
+        }
+
         // Verbose mode: always show dev panel, even if component has a custom fallback
         if ($this->debug === DebugLevel::Verbose) {
             $fallback = $component->fallback($exception);

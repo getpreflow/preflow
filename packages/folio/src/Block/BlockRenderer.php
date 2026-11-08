@@ -78,6 +78,11 @@ final class BlockRenderer
         } catch (\Throwable) {
             // Could not be built (unresolvable dependency, bad data): skip this block,
             // never the page. Render-time errors are handled by the error boundary.
+            // A page missing a block is not stored by the page cache.
+            if (class_exists(\Preflow\Core\PageCache\PageCache::class) && $this->container->bound(\Preflow\Core\PageCache\PageCache::class)) {
+                $this->container->get(\Preflow\Core\PageCache\PageCache::class)->refuse('block-error');
+            }
+
             return '';
         }
         if (!$preview) {

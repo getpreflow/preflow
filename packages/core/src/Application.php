@@ -969,6 +969,8 @@ final class Application
             static fn (string $storage): string => $container->bound(\Preflow\Data\DataManager::class)
                 ? $container->get(\Preflow\Data\DataManager::class)->reportedStorage($storage)
                 : $storage,
+            // Off: a write reported by hand still means the cache starts empty when switched on again.
+            $this->pageChanges === null ? $this->pageCacheMarker : null,
         ));
     }
 
@@ -1281,7 +1283,14 @@ final class Application
 
         $engine = $this->container->get(\Preflow\View\TemplateEngineInterface::class);
 
-        $errorBoundary = new \Preflow\Components\ErrorBoundary(debug: $debug);
+        // A component that failed renders its boundary and the page stays 200: never store that page.
+        $pageCache = $this->container->get(\Preflow\Core\PageCache\PageCache::class);
+        $errorBoundary = new \Preflow\Components\ErrorBoundary(
+            debug: $debug,
+            onError: static function () use ($pageCache): void {
+                $pageCache->refuse('component-error');
+            },
+        );
         $assets = $this->container->has(\Preflow\View\AssetCollector::class)
             ? $this->container->get(\Preflow\View\AssetCollector::class)
             : null;
@@ -1666,18 +1675,40 @@ final class Application
         $this->pipeline->prepend($middleware);
 
         // SEO adds its head tags outside the page cache, from the meta the page set while it
-        // rendered: a cached page carries that meta and hands it back on every hit.
-        $this->container->get(\Preflow\Core\PageCache\PageCache::class)->carry(
+        // rendered and the site's defaults (on a Folio site, read from the database): a cached
+        // page carries both, read during its render (so a change of the site settings refreshes
+        // it), and hands them back on every hit, which then reads nothing.
+        $site = $this->container->get(\Preflow\View\Seo\SeoSite::class);
+        $pageCache = $this->container->get(\Preflow\Core\PageCache\PageCache::class);
+        $pageCache->carry(
             'seo',
-            static fn (): ?array => ($meta = $context->get()) === null ? null : get_object_vars($meta),
+            static function () use ($context, $middleware, $site, $pageCache): array {
+                $meta = $context->get();
+                $state = ['meta' => $meta === null ? null : get_object_vars($meta)];
+                $key = $pageCache->key();
+                if ($key !== null) {
+                    $locale = $middleware->pageLocale((string) parse_url($key->url(), PHP_URL_PATH));
+                    $defaults = $site->defaultsFor($locale);
+                    $state['locale'] = $locale;
+                    $state['defaults'] = $defaults === null ? null : get_object_vars($defaults);
+                }
+
+                return $state;
+            },
             static function (mixed $value) use ($context): void {
                 if (!is_array($value)) {
                     return;
                 }
                 try {
-                    $context->set(new \Preflow\View\Seo\PageMeta(...$value));
+                    if (is_array($value['meta'] ?? null)) {
+                        $context->set(new \Preflow\View\Seo\PageMeta(...$value['meta']));
+                    }
+                    if (is_string($value['locale'] ?? null)) {
+                        $defaults = $value['defaults'] ?? null;
+                        $context->useDefaults($value['locale'], is_array($defaults) ? new \Preflow\View\Seo\PageMeta(...$defaults) : null);
+                    }
                 } catch (\Throwable) {
-                    // A page stored by another version of PageMeta: the tags fall back to the defaults.
+                    // A page stored by another version of PageMeta: the tags fall back to the live defaults.
                 }
             },
         );
@@ -2104,6 +2135,11 @@ final class Application
                     $name,
                     $remember,
                     $cookieQueue,
+                    array_filter([
+                        'lifetime' => (int) ($authConfig['session']['lifetime'] ?? 0),
+                        'domain' => (string) ($authConfig['session']['domain'] ?? ''),
+                        'secure' => (bool) ($authConfig['session']['secure'] ?? false),
+                    ]),
                 ),
                 \Preflow\Auth\TokenGuard::class => $this->container->has(\Preflow\Data\DataManager::class)
                     ? new \Preflow\Auth\TokenGuard(

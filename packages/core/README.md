@@ -604,11 +604,21 @@ return [
   the locale middleware resolved (a cookie or `Accept-Language` on unprefixed paths), the
   normalised query, the `vary_headers` values, and a forwarded scheme and host
   (`X-Forwarded-Proto`, `X-Forwarded-Host`), so http and https never share a copy.
+- **htmx headers.** Only the `vary_headers` are in the key: `HX-Request` and `HX-Target` by
+  default. A fragment handler that answers differently by `HX-Trigger`, `HX-Trigger-Name`,
+  `HX-Boosted`, `HX-Current-URL` or a site header must add it to `vary_headers` (or send
+  `Vary` for it, which keeps the response from being stored), or the fragments of one target
+  overwrite each other. A history restore (`HX-History-Restore-Request`) is served the full
+  page, but what it renders is never stored.
 - **Live, never cached:** anything but GET and HEAD; admin, API and component paths
   (non-public paths); internal renders; and requests with a signed-in cookie (preflow/auth's
   `preflow_auth` marker, every guard's remember-me cookie, `signed_in_cookies`) or an
   `Authorization` header. A leftover session cookie alone is not one.
-- **Never stored:** a status other than 200 (404s, redirects), a response that sets a cookie
+- **Never stored:** a render of another kind than its key (a history restore, which an app
+  may answer with a fragment), an empty or the default `app.key` (placeholders could be forged),
+  a body that can't be read twice (a stream), a page where a component's error boundary or a
+  Folio block that couldn't be built stood in for content, a status other than 200 (404s,
+  redirects), a response that sets a cookie
   (a header or a native one), a request that started the session or where a guard resolved a
   user, `Cache-Control: private` or `no-store`, a `Vary` on a header the key doesn't hold
   (`Accept-Language` included: a page that redirects by it says so with `Vary` and is not
