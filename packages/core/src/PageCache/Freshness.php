@@ -40,4 +40,20 @@ enum Freshness: string
     {
         return $b->stricterThan($a) ? $b : $a;
     }
+
+    /**
+     * The freshness a template names: 'fresh', 'next-visit' (or 'next_visit') or 'timed'; a
+     * Freshness passes as it is.
+     *
+     * @throws \InvalidArgumentException any other name
+     */
+    public static function named(self|string $name): self
+    {
+        if ($name instanceof self) {
+            return $name;
+        }
+
+        return self::tryFrom(str_replace('-', '_', strtolower(trim($name))))
+            ?? throw new \InvalidArgumentException("Unknown freshness '{$name}': use 'fresh', 'next-visit' or 'timed'.");
+    }
 }

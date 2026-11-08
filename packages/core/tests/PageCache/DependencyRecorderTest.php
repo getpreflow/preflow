@@ -127,4 +127,89 @@ final class DependencyRecorderTest extends TestCase
         $this->assertSame(['second'], array_keys($tags));
         $this->assertSame(['outer', 'part', 'second'], array_keys($recorder->stop($page)));
     }
+
+    public function test_enter_and_leave_nest_and_timed_needs_its_time(): void
+    {
+        $recorder = new DependencyRecorder();
+        $recorder->start();
+        $recorder->enter(Freshness::NextVisit);
+        $recorder->enter(Freshness::Timed, 60);
+        $recorder->record('inner');
+        $recorder->leave();
+        $recorder->record('middle');
+        $recorder->leave();
+        $recorder->leave(); // one too many: nothing to close
+        $recorder->record('outer');
+
+        $this->assertSame([
+            'inner' => [Freshness::Timed, 60],
+            'middle' => [Freshness::NextVisit, null],
+            'outer' => [Freshness::Fresh, null],
+        ], $recorder->stop());
+
+        foreach ([null, 0, -5] as $seconds) {
+            try {
+                $recorder->enter(Freshness::Timed, $seconds);
+                $this->fail('timed without a time');
+            } catch (\InvalidArgumentException) {
+            }
+        }
+        $this->expectException(\InvalidArgumentException::class);
+        $recorder->within(Freshness::Timed, null, fn () => null);
+    }
+
+    public function test_a_scope_is_closed_when_its_body_throws(): void
+    {
+        $recorder = new DependencyRecorder();
+        $recorder->start();
+        try {
+            $recorder->within(Freshness::NextVisit, null, fn () => throw new \RuntimeException('render failed'));
+        } catch (\RuntimeException) {
+        }
+        $recorder->record('after');
+
+        $this->assertSame(['after' => [Freshness::Fresh, null]], $recorder->stop());
+    }
+
+    public function test_expiry_keeps_the_earliest_per_recording_and_reaches_the_outer_one(): void
+    {
+        $recorder = new DependencyRecorder();
+        $recorder->expiresAt(100.0); // not recording: nothing
+        $page = $recorder->start();
+        $this->assertNull($recorder->expiry($page));
+        $recorder->expiresAt(new \DateTimeImmutable('@500'));
+        $part = $recorder->start();
+        $recorder->expiresAt(300);
+        $recorder->expiresAt(400.5);
+        $this->assertSame(300.0, $recorder->expiry($part));
+        $recorder->stop($part);
+        $this->assertSame(300.0, $recorder->expiry($page), 'an inner render counts for the page around it');
+        $this->assertSame(300.0, $recorder->expiry());
+        $recorder->stop($page);
+        $this->assertNull($recorder->expiry());
+
+        $again = $recorder->start();
+        $this->assertNull($recorder->expiry($again), 'a new recording starts without one');
+        $recorder->stop($again);
+    }
+
+    public function test_outside_records_no_reads_no_expiry_and_no_freshness_of_the_scope_around(): void
+    {
+        $recorder = new DependencyRecorder();
+        $page = $recorder->start();
+        $recorder->within(Freshness::NextVisit, null, function () use ($recorder): void {
+            $recorder->outside(function () use ($recorder): void {
+                // A live part: what it reads and asks for is not the page's.
+                $recorder->record('personal');
+                $recorder->expiresAt(1.0);
+                $own = $recorder->start();
+                $recorder->record('own');
+                $this->assertSame(['own' => [Freshness::Fresh, null]], $recorder->stop($own), 'the scope around is not its');
+            });
+            $recorder->record('page');
+        });
+
+        $this->assertNull($recorder->expiry($page));
+        $this->assertSame(['page' => [Freshness::NextVisit, null]], $recorder->stop($page));
+    }
 }

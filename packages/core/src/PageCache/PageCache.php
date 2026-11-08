@@ -24,6 +24,17 @@ namespace Preflow\Core\PageCache;
  * keep it from being stored:
  *
  *     $pageCache->refuse('shows the visitor's basket');
+ *
+ * And the developer's freshness dial for what a part of a page reads (DependencyRecorder), and
+ * the page's expiry:
+ *
+ *     $others = $pageCache->within(Freshness::NextVisit, null, fn () => $jobs->ofCompany($id));
+ *     $pageCache->within(Freshness::Timed, 43200, fn () => ...);   // ignores writes, 12 h at most
+ *     $pageCache->expiresAt($event->startsAt);                    // stale once the event began
+ *
+ * A write forgets (and rebuilds) a page that read what it changed fresh, marks it stale when the
+ * page read it next-visit, and ignores it for a timed read: that page expires after its time
+ * instead. Both are no-ops outside a render for the cache and in a live part.
  */
 final class PageCache
 {
@@ -37,7 +48,14 @@ final class PageCache
         private readonly ?ChangeLog $changes = null,
         private readonly ?\Closure $storageName = null,
         private readonly ?EnabledMarker $marker = null,
-    ) {}
+        private readonly ?DependencyRecorder $recorder = null,
+        ?\Closure $clock = null,
+    ) {
+        $this->clock = $clock ?? static fn (): float => microtime(true);
+    }
+
+    /** @var \Closure(): float */
+    private readonly \Closure $clock;
 
     private ?PageKey $key = null;
 
@@ -76,6 +94,111 @@ final class PageCache
             array_push($changed, ...DataTags::changes($tag));
         }
         $this->changes->changed($changed);
+    }
+
+    /**
+     * Runs $fn with what it reads recorded as $freshness ($seconds: the time of a Timed one, 1 or
+     * more; ignored for the others). Nested, the innermost wins.
+     *
+     * @template T
+     * @param \Closure(): T $fn
+     * @return T
+     * @throws \InvalidArgumentException Timed without seconds
+     */
+    public function within(Freshness $freshness, ?int $seconds, \Closure $fn): mixed
+    {
+        if ($this->recorder === null) {
+            self::scope($freshness, $freshness === Freshness::Timed ? $seconds : null); // the same mistakes fail with the cache off
+
+            return $fn();
+        }
+
+        return $this->recorder->within($freshness, $seconds, $fn);
+    }
+
+    /** The page being rendered is stale from $at on (the earliest of several counts). */
+    public function expiresAt(\DateTimeInterface $at): void
+    {
+        $this->recorder?->expiresAt($at);
+    }
+
+    /**
+     * Opens a freshness scope as a template names it: 'fresh', 'next-visit' or 'timed', with
+     * $every ('12h', '30m', '2d' or seconds) for timed only. Close it with leave().
+     *
+     * @internal the {% freshness %} tag and the Blade @freshness directive
+     * @throws \InvalidArgumentException an unknown name, timed without $every, $every on another
+     */
+    public function enter(Freshness|string $freshness, int|string|null $every = null): void
+    {
+        [$freshness, $seconds] = self::scope($freshness, $every);
+        $this->recorder?->enter($freshness, $seconds);
+    }
+
+    /** @internal the {% freshness %} tag and the Blade @freshness directive */
+    public function leave(): void
+    {
+        $this->recorder?->leave();
+    }
+
+    /**
+     * The page expires at $at (a DateTimeInterface, a unix time or a date string; null: no
+     * expiry, an event without a date) or $in from now ('1h', '30m', seconds).
+     *
+     * @internal the {% expires %} tag and the Blade @expires directive
+     * @throws \InvalidArgumentException neither or both given, a date or duration that doesn't parse
+     */
+    public function expires(mixed $at = null, int|string|null $in = null): void
+    {
+        if ($in !== null) {
+            if ($at !== null) {
+                throw new \InvalidArgumentException('expires takes `at` a date or `in` a duration, not both.');
+            }
+            $seconds = Duration::seconds($in); // checked with the cache off too
+            $this->recorder?->expiresAt(($this->clock)() + $seconds);
+
+            return;
+        }
+        if ($at === null || $at === '') {
+            return;
+        }
+        $at = match (true) {
+            $at instanceof \DateTimeInterface => $at,
+            is_int($at), is_float($at) => (float) $at,
+            is_string($at) => self::date($at),
+            default => throw new \InvalidArgumentException(sprintf('expires at takes a date, %s given.', get_debug_type($at))),
+        };
+        $this->recorder?->expiresAt($at);
+    }
+
+    private static function date(string $at): \DateTimeImmutable
+    {
+        try {
+            return new \DateTimeImmutable($at);
+        } catch (\Exception $e) {
+            throw new \InvalidArgumentException("expires at '{$at}': not a date.", 0, $e);
+        }
+    }
+
+    /**
+     * @return array{0: Freshness, 1: ?int}
+     * @throws \InvalidArgumentException
+     */
+    private static function scope(Freshness|string $freshness, int|string|null $every): array
+    {
+        $freshness = Freshness::named($freshness);
+        if ($freshness !== Freshness::Timed) {
+            if ($every !== null) {
+                throw new \InvalidArgumentException("Only a timed freshness takes a time ('{$freshness->value}' was given one).");
+            }
+
+            return [$freshness, null];
+        }
+        if ($every === null) {
+            throw new \InvalidArgumentException("A timed freshness needs its time: 'timed' every '12h'.");
+        }
+
+        return [$freshness, Duration::seconds($every)];
     }
 
     /**

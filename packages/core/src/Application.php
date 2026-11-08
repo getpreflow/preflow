@@ -899,6 +899,7 @@ final class Application
                     geoCollector: $geo,
                     seoContext: $seo,
                     liveParts: $this->container->get(\Preflow\Core\PageCache\LiveParts::class),
+                    pageCache: $this->container->get(\Preflow\Core\PageCache\PageCache::class),
                 )
                 : null,
             'blade' => class_exists(\Preflow\Blade\BladeEngine::class)
@@ -987,6 +988,8 @@ final class Application
                 : $storage,
             // Off: a write reported by hand still means the cache starts empty when switched on again.
             $this->pageChanges === null ? $this->pageCacheMarker : null,
+            // The freshness dial ({% freshness %}, @freshness, #[Freshness]) and page expiry.
+            $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class),
         ));
 
         // Live parts ({% live %}, @live, #[Live] components): placeholders signed with app.key
@@ -1196,6 +1199,7 @@ final class Application
             geoCollector: $geo,
             seoContext: $seo,
             liveParts: $this->container->get(\Preflow\Core\PageCache\LiveParts::class),
+            pageCache: $this->container->get(\Preflow\Core\PageCache\PageCache::class),
         );
     }
 
@@ -1364,6 +1368,8 @@ final class Application
 
         // Components marked #[Live] are live parts of cached pages
         $renderer->enableLive($this->container->get(\Preflow\Core\PageCache\LiveParts::class), $componentFactory);
+        // Components marked #[Freshness] resolve and render with that freshness for what they read
+        $renderer->enableFreshness($pageCache);
 
         // Register component template functions
         $componentProvider = new \Preflow\Components\ComponentsExtensionProvider(

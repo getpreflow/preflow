@@ -30,6 +30,7 @@ final class TwigEngine implements TemplateEngineInterface
         ?GeoCollector $geoCollector = null,
         ?SeoContext $seoContext = null,
         ?LiveParts $liveParts = null,
+        ?\Preflow\Core\PageCache\PageCache $pageCache = null,
     ) {
         $loader = new FilesystemLoader($templateDirs);
 
@@ -43,6 +44,7 @@ final class TwigEngine implements TemplateEngineInterface
 
         $this->twig->addExtension(new PreflowExtension($assetCollector, $geoCollector, $seoContext));
         $this->twig->addExtension(new LiveExtension($liveParts));
+        $this->twig->addExtension(new FreshnessExtension($pageCache));
         $liveParts?->register(LiveExtension::KIND, fn (array $recipe): string => $this->renderLiveBlock($recipe));
     }
 

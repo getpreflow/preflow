@@ -8,7 +8,8 @@ return [
     'enabled' => true,
 
     // The safety maximum age (seconds): an older page is still served once while a fresh one
-    // is built.
+    // is built. 0 turns it off. Shorter times per page or per dependency belong in templates
+    // ({% expires %}, {% freshness 'timed' every '12h' %}), not here.
     // 'max_age' => 14400,
 
     // Pages with a query string (search, filters) are cached too; these parameters are left

@@ -132,6 +132,26 @@ count) is a live part of a cached page (preflow/core's page cache):
 - Print the tag's output as it is: captured into `{% set %}` and printed escaped, or passed
   through `|striptags` or `|slice`, the placeholder is broken and the part is missing.
 
+## Freshness and expiry: `{% freshness %}`, `{% expires %}`
+
+The page cache's dial for what a part of a page reads (preflow/core's page cache, "Freshness,
+per dependency"), and the page's expiry:
+
+```twig
+{% freshness 'next-visit' %}{% for other in jobs_of(job.company) %}…{% endfor %}{% endfreshness %}
+{% freshness 'timed' every '12h' %}{{ weather() }}{% endfreshness %}
+{% expires at event.startsAt %}
+{% expires in '1h' %}
+```
+
+- Names: `'fresh'`, `'next-visit'` (or `'next_visit'`), `'timed'`; only `timed` takes `every`
+  (`'30m'`, `'12h'`, `'2d'` or seconds). Both are expressions.
+- Nested, the innermost wins. The body sees and sets the variables around it.
+- `expires at` takes a `DateTimeInterface`, a unix time or a date string (null does nothing);
+  the earliest of several counts.
+- Without the page cache the body renders as it is; a wrong name or duration fails either way.
+  Inside `{% live %}` it does nothing.
+
 ## Engine configuration
 
 Set `APP_ENGINE=twig` in your `.env` (this is the default). Preflow's `Application` will automatically create a `TwigEngine` and register all extension providers.

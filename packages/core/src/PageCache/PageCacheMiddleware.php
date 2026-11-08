@@ -27,9 +27,11 @@ use Psr\Http\Server\RequestHandlerInterface;
  *   remember-me cookies) or an Authorization header: `X-Page-Cache: bypass`. A leftover
  *   session cookie alone does not bypass.
  *
- * A hit (fresh, or stale: marked, past its expiresAt or older than max_age) gets the stored
- * headers and body with this request's per-request values filled in, and `X-Page-Cache: hit`
- * or `stale`; a stale one also goes to $onStale (the rebuild queue). The render state carried
+ * A hit (fresh, or stale: marked, past its expiresAt or older than max_age; max_age 0 turns the
+ * maximum age off) gets the stored headers and body with this request's per-request values
+ * filled in, and `X-Page-Cache: hit` or `stale`; a stale one also goes to $onStale (the rebuild
+ * queue). Without $onStale, a stale page's file is forgotten once it is served: its next visitor
+ * renders it anew (a miss), so a stale page is served to one visitor only. The render state carried
  * for middleware outside (PageCache::carry(), SEO's page meta) is restored first.
  *
  * A miss renders with its reads recorded (DependencyRecorder) and gets `X-Page-Cache: miss`.
@@ -119,7 +121,8 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * @param (\Closure(): bool)|null $signedIn whether a guard resolved a user in this request
      * @param (\Closure(): bool)|null $sessionStarted whether the session was started
      * @param (\Closure(string): bool)|null $nonPublic whether a path is not a public page
-     * @param (\Closure(PageKey): void)|null $onStale gets the key of every stale page served
+     * @param (\Closure(PageKey): void)|null $onStale gets the key of every stale page served (it
+     *        rebuilds it); null: the page is forgotten once served
      * @param (\Closure(string): void)|null $log error_log() when null
      * @param (\Closure(): float)|null $clock microtime(true) when null
      * @param bool|null $sqlite a test seam, as TagIndex's
@@ -276,9 +279,14 @@ final class PageCacheMiddleware implements MiddlewareInterface
             || ($page->expiresAt !== null && $page->expiresAt <= $now)
             || ($this->config->maxAge > 0 && $page->createdAt + $this->config->maxAge <= $now);
 
-        if ($stale && $this->onStale !== null) {
+        if ($stale) {
             try {
-                ($this->onStale)($key);
+                if ($this->onStale !== null) {
+                    ($this->onStale)($key);
+                } else {
+                    // Nothing rebuilds it behind this visitor: served this once, the next renders it.
+                    ($this->store)()->forget($key->id());
+                }
             } catch (\Throwable $e) {
                 $this->log('page cache: ' . $e->getMessage());
             }
@@ -322,6 +330,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
                 }
             }
         } finally {
+            $expiry = $this->recorder->expiry($frame);
             $tags = $this->recorder->stop($frame);
             $this->cache->end($before);
         }
@@ -353,7 +362,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
             }
         }
         if ($reason === null && $content !== null) {
-            $reason = $this->store($key, $response, $content, $tags, $started, $store, $carried);
+            $reason = $this->store($key, $response, $content, $tags, $started, $store, $carried, $expiry);
         }
 
         // The visitor's own live parts, whether the page was stored or not.
@@ -587,15 +596,32 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
     /**
      * Stores the page: index rows first, then the file, then the check that nothing it read was
-     * invalidated since the render started (a write by another request meanwhile); if something
-     * was, both go again. Returns why it was not stored, null when it was.
+     * invalidated since the render started (a write by another request meanwhile). If a tag it
+     * read fresh was, both go again; if only tags it read next-visit were, it stays, marked
+     * stale (as the write would have marked it); tags it read timed don't count.
+     *
+     * Its expiresAt is the earliest of what the render asked for (PageCache::expiresAt(), the
+     * expires tag) and, for each tag read timed, the render start plus its time.
+     *
+     * Returns why it was not stored, null when it was.
      *
      * @param string $content the body as rendered (per-request values are replaced here)
      * @param array<string, array{0: Freshness, 1: ?int}> $tags
      * @param array<string, mixed> $carried PageCache::captureState()
+     * @param float|null $expiry DependencyRecorder::expiry()
      */
-    private function store(PageKey $key, ResponseInterface $response, string $content, array $tags, float $started, PageStore $store, array $carried): ?string
+    private function store(PageKey $key, ResponseInterface $response, string $content, array $tags, float $started, PageStore $store, array $carried, ?float $expiry = null): ?string
     {
+        $fresh = [];
+        $nextVisit = [];
+        foreach ($tags as $tag => [$freshness, $seconds]) {
+            match ($freshness) {
+                Freshness::Fresh => $fresh[] = (string) $tag,
+                Freshness::NextVisit => $nextVisit[] = (string) $tag,
+                Freshness::Timed => $expiry = min($expiry ?? INF, $started + (int) $seconds),
+            };
+        }
+
         if (strlen($content) > self::MAX_BODY) {
             return 'size';
         }
@@ -609,6 +635,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
                 $this->values->toPlaceholders($content),
                 $this->storedHeaders($response),
                 $started,
+                $expiry,
                 state: $carried,
             );
             $index->record($key->id(), $key->url(), $key->isFragment(), $key->hasQuery(), $tags);
@@ -617,11 +644,15 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
                 return 'head';
             }
-            if ($index->invalidatedSince(array_keys($tags), $started)) {
+            // Always asked (with no fresh tag too): an invalidation of everything counts for every page.
+            if ($index->invalidatedSince($fresh, $started)) {
                 $index->forget($key->id());
                 $store->forget($key->id());
 
                 return 'invalidated';
+            }
+            if ($nextVisit !== [] && $index->invalidatedSince($nextVisit, $started)) {
+                $store->markStale($key->id());
             }
         } catch (\Throwable $e) {
             $this->log('page cache: ' . $key->url() . ' was not stored: ' . $e->getMessage());

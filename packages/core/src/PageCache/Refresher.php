@@ -5,11 +5,22 @@ declare(strict_types=1);
 namespace Preflow\Core\PageCache;
 
 /**
- * Acts on what changed: invalidate() forgets every cached page carrying one of the tags (its
- * file and its index rows) and records the invalidation, so that a render which started before
- * and read one of them does not store its page (TagIndex::invalidatedSince()).
+ * Acts on what changed: invalidate() records the invalidation, so that a render which started
+ * before and read one of the tags does not store its page (TagIndex::invalidatedSince()), and
+ * then follows each page's freshness for the tags it carries (the strictest of them,
+ * TagIndex::pagesFor()):
  *
- * The tag TagIndex::EVERYTHING ('*') stands for every page.
+ * - Fresh: the page is forgotten (its file and its index rows) and its rebuild queued;
+ * - NextVisit: the page is marked stale (PageStore::markStale()): it is still served, once, while
+ *   a fresh one is built;
+ * - Timed: nothing. The page carries an expiresAt of its render time plus the time (set when it
+ *   was stored) and refreshes then.
+ *
+ * So a page that read "other jobs" timed and its own job fresh is still forgotten when its job
+ * changes: only the changed tags count.
+ *
+ * The tag TagIndex::EVERYTHING ('*') stands for every page, whatever its freshness (a deploy,
+ * cache:clear, a raw write whose tables are unsure).
  *
  * The index is opened on the first invalidate() (TagIndex::forStore(), which runs the release
  * rollback check first). An unavailable index does nothing: nothing can be cached then either.
@@ -73,15 +84,42 @@ final class Refresher
 
             return;
         }
-        $pageIds = array_map(strval(...), array_keys($index->pagesFor($tags)));
-        if ($pageIds === []) {
+        $fresh = [];
+        $nextVisit = [];
+        foreach ($index->pagesFor($tags) as $id => $freshness) {
+            match ($freshness) {
+                Freshness::Fresh => $fresh[] = (string) $id,
+                Freshness::NextVisit => $nextVisit[] = (string) $id,
+                Freshness::Timed => null, // its time runs out instead (expiresAt)
+            };
+        }
+        if ($fresh === [] && $nextVisit === []) {
             return;
         }
-        // Rows first: a page stored in between loses its file (a miss), never its rows.
-        $index->forgetMany($pageIds);
-        foreach ($pageIds as $id) {
-            $store->forget($id);
+        $this->queueRebuild($store, $index, $fresh, $nextVisit);
+        if ($fresh !== []) {
+            // Rows first: a page stored in between loses its file (a miss), never its rows.
+            $index->forgetMany($fresh);
+            foreach ($fresh as $id) {
+                $store->forget($id);
+            }
         }
+        foreach ($nextVisit as $id) {
+            $store->markStale($id);
+        }
+    }
+
+    /**
+     * Where the rebuild of the changed pages is queued, before they are forgotten or marked (their
+     * rows still give their URLs): $fresh are forgotten right after, $nextVisit marked stale.
+     * Nothing is queued yet; without a queue a forgotten page is rendered by its next visitor,
+     * and a stale one is served once and then forgotten (PageCacheMiddleware without onStale).
+     *
+     * @param list<string> $fresh
+     * @param list<string> $nextVisit
+     */
+    private function queueRebuild(PageStore $store, TagIndex $index, array $fresh, array $nextVisit): void
+    {
     }
 
     /** @var array<string, TagIndex> by release */

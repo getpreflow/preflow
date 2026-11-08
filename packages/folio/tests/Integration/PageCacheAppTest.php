@@ -63,6 +63,47 @@ final class PageCacheAppTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_job_detail_with_other_jobs_next_visit(): void
+    {
+        // The owner's example (forum-holzkarriere): the job itself fresh, "other jobs of this
+        // company" next visit. The job is read by its id, as a site's job page reads it.
+        $this->write('app/pages/job.twig', '<html><body>{% set job = folio_find("post", "p1") %}<h1>{{ job.title }}</h1>'
+            . '{% freshness \'next-visit\' %}<ul class="others">{% for p in folio_list("post") %}<li>{{ p.title }}</li>{% endfor %}</ul>{% endfreshness %}'
+            . '</body></html>');
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Carpenter'], 'slug' => ['en' => 'carpenter']]), null);
+        $this->publisher()->publish($this->working('post', 'p2', ['title' => ['en' => 'Joiner'], 'slug' => ['en' => 'joiner']]), null);
+        $first = $this->get('/job');
+        $this->assertSame('miss', $first->getHeaderLine('X-Page-Cache'), $first->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertStringContainsString('<h1>Carpenter</h1>', (string) $first->getBody());
+        $this->assertSame('hit', $this->get('/job')->getHeaderLine('X-Page-Cache'));
+
+        // The company publishes a new job.
+        $app = $this->app();
+        $app->container()->get(\Preflow\Folio\Publishing\Publisher::class)
+            ->publish($this->working('post', 'p3', ['title' => ['en' => 'Sawyer'], 'slug' => ['en' => 'sawyer']]), null);
+        $app->container()->get(\Preflow\Core\PageCache\ChangeLog::class)->flush();
+
+        // The detail page is still cached, but stale: the next visitor gets the old list at once.
+        $this->assertTrue($this->stored('/job')?->stale, 'kept and marked stale, not forgotten');
+        $next = $this->get('/job');
+        $this->assertSame('stale', $next->getHeaderLine('X-Page-Cache'));
+        $this->assertStringContainsString('<li>Joiner</li>', (string) $next->getBody());
+        $this->assertStringNotContainsString('Sawyer', (string) $next->getBody());
+
+        // The visit after gets the new list.
+        $after = $this->get('/job');
+        $this->assertStringContainsString('<li>Sawyer</li>', (string) $after->getBody());
+        $this->assertSame('hit', $this->get('/job')->getHeaderLine('X-Page-Cache'), 'and it is cached again');
+
+        // The job itself stays fresh: changing it refreshes the page at once.
+        $published = $this->post('/folio/post/p1', ['title' => 'Master carpenter', 'slug' => 'carpenter', '_locale' => 'en', '_action' => 'publish']);
+        $this->assertSame(302, $published->getStatusCode(), (string) $published->getBody());
+        $response = $this->get('/job');
+        $this->assertSame('miss', $response->getHeaderLine('X-Page-Cache'));
+        $this->assertStringContainsString('<h1>Master carpenter</h1>', (string) $response->getBody());
+    }
+
+    #[RunInSeparateProcess]
     public function test_a_hit_reads_nothing_with_seo_and_geo_on_and_follows_the_site_settings(): void
     {
         $this->write('config/seo.php', "<?php\nreturn ['enabled' => true, 'name' => 'Pub', 'site_fields' => ['description' => 'tagline']];\n");

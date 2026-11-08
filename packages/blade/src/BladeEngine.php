@@ -45,6 +45,7 @@ final class BladeEngine implements TemplateEngineInterface
         ?GeoCollector $geoCollector = null,
         ?SeoContext $seoContext = null,
         private readonly ?LiveParts $liveParts = null,
+        ?\Preflow\Core\PageCache\PageCache $pageCache = null,
     ) {
         $filesystem = new Filesystem();
         $cachePath ??= sys_get_temp_dir() . '/preflow_blade_cache';
@@ -74,6 +75,8 @@ final class BladeEngine implements TemplateEngineInterface
         $this->viewFactory->share('__geoCollector', $geoCollector);
         $this->viewFactory->share('__seoContext', $seoContext);
         $this->viewFactory->share('__live', $this);
+        // @freshness / @expires; without the page cache, one without a recorder checks the arguments
+        $this->viewFactory->share('__pageCache', $pageCache ?? new \Preflow\Core\PageCache\PageCache());
         $liveParts?->register(self::LIVE_KIND, fn (array $recipe): string => $this->renderLiveBlock($recipe));
     }
 
@@ -302,6 +305,12 @@ final class BladeEngine implements TemplateEngineInterface
         // Blade does not support Twig-style template namespaces; intentionally a no-op.
     }
 
+    /** A directive's arguments as a call's (Blade hands them over without their parentheses). */
+    private static function arguments(string $expression): string
+    {
+        return '(' . $expression . ')';
+    }
+
     private function registerAssetDirectives(AssetCollector $assetCollector): void
     {
         $this->compiler->directive('css', function () {
@@ -322,6 +331,20 @@ final class BladeEngine implements TemplateEngineInterface
                 . 'if ($__geoCollector?->capturing()) { '
                 . "\$__geoCollector->add(html_entity_decode(\$__geoMarkdown, ENT_QUOTES | ENT_HTML5, 'UTF-8')); "
                 . '} unset($__geoMarkdown); ?>';
+        });
+
+        // @freshness('next-visit') … @endfreshness, @freshness('timed', every: '12h') … @endfreshness:
+        // what the body reads is a dependency of the cached page with that freshness (PageCache::enter())
+        $this->compiler->directive('freshness', function (string $expression) {
+            return '<?php $__pageCache->enter' . self::arguments($expression) . '; try { ?>';
+        });
+        $this->compiler->directive('endfreshness', function () {
+            return '<?php } finally { $__pageCache->leave(); } ?>';
+        });
+
+        // @expires(at: $event->startsAt) / @expires(in: '1h'): the cached page is stale from then on
+        $this->compiler->directive('expires', function (string $expression) {
+            return '<?php $__pageCache->expires' . self::arguments($expression) . '; ?>';
         });
 
         // @seo([...]): the page's meta for the SEO context; prints nothing, a no-op without one (SEO off)

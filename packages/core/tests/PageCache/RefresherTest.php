@@ -125,15 +125,61 @@ final class RefresherTest extends TestCase
         $this->assertTrue($index->invalidatedSince(['menu'], $this->now - 1));
     }
 
-    public function test_freshness_does_not_yet_spare_a_page(): void
+    public function test_each_page_follows_the_strictest_freshness_of_the_changed_tags(): void
     {
-        // Task 5 adds next visit (mark stale) and timed (ignore); until then every match goes.
         $store = $this->store();
+        $fresh = $this->cache($store, '/f', ['default:company']);
+        $next = $this->cache($store, '/n', ['default:company'], Freshness::NextVisit);
+        $timed = $this->cache($store, '/t', ['default:company'], Freshness::Timed);
+        // Timed on the changed tag, fresh on another one: only the changed tags count.
+        $mixed = $this->mixed($store, '/m', ['default:company' => Freshness::Timed, 'default:job#5' => Freshness::Fresh]);
+
+        (new Refresher($store, $this->config, fn (): float => $this->now))->invalidate(DataTags::tableChanged('default', 'company'));
+
+        $this->assertNull($store->get($fresh), 'fresh: forgotten');
+        $this->assertTrue($store->get($next)?->stale, 'next visit: still there, stale');
+        $this->assertFalse($store->get($timed)?->stale, 'timed: untouched');
+        $this->assertFalse($store->get($mixed)?->stale, 'timed on the changed tag');
+        $index = TagIndex::forStore($store, $this->config, fn (): float => $this->now);
+        $this->assertNull($index->page($fresh->id()));
+        $this->assertNotNull($index->page($next->id()), 'a stale page keeps its rows');
+        $this->assertNotNull($index->page($timed->id()));
+
+        // The fresh tag of the timed page changes: it goes.
+        (new Refresher($store, $this->config, fn (): float => $this->now))->invalidate(DataTags::recordChanged('default', 'job', '5'));
+        $this->assertNull($store->get($mixed));
+        $this->assertFalse($store->get($timed)?->stale);
+    }
+
+    public function test_everything_forgets_next_visit_and_timed_pages_too(): void
+    {
+        $store = $this->store();
+        $next = $this->cache($store, '/n', ['default:company'], Freshness::NextVisit);
         $timed = $this->cache($store, '/t', ['default:company'], Freshness::Timed);
 
-        (new Refresher($store, $this->config))->invalidate(DataTags::tableChanged('default', 'company'));
+        (new Refresher($store, $this->config, fn (): float => $this->now))->invalidate([TagIndex::EVERYTHING]);
 
+        $this->assertNull($store->get($next));
         $this->assertNull($store->get($timed));
+    }
+
+    /**
+     * Stores a page at $path whose tags have the freshnesses given.
+     *
+     * @param array<string, Freshness> $tags
+     */
+    private function mixed(PageStore $store, string $path, array $tags): PageKey
+    {
+        $key = PageKey::fromRequest(new ServerRequest('GET', 'https://example.com' . $path), $this->config);
+        $index = TagIndex::forStore($store, $this->config, fn (): float => $this->now);
+        $index->record($key->id(), $key->url(), false, false, array_map(
+            static fn (Freshness $f): array => [$f, $f === Freshness::Timed ? 600 : null],
+            $tags,
+        ));
+        $index->close();
+        $store->put($key, new StoredPage('<p>' . $path . '</p>', [], $this->now));
+
+        return $key;
     }
 
     public function test_an_unavailable_index_does_nothing_and_touches_no_file(): void

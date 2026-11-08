@@ -148,6 +148,22 @@ The Blade twin of Twig's `{% live %}` (preflow/core's page cache, live parts):
   cache the body is taken again from the template only while it still has that hash. A
   template outside both renders its live blocks in place and keeps the page from being stored.
 
+## Freshness and expiry: `@freshness`, `@expires`
+
+The same as Twig's `{% freshness %}` and `{% expires %}` (preflow/core's page cache):
+
+```blade
+@freshness('next-visit') @foreach ($others as $job) … @endforeach @endfreshness
+@freshness('timed', every: '12h') {{ $weather() }} @endfreshness
+@expires(at: $event->startsAt)
+@expires(in: '1h')
+```
+
+- Names: `'fresh'`, `'next-visit'`, `'timed'`; only `timed` takes `every` (`'30m'`, `'12h'`,
+  `'2d'` or seconds). Nested, the innermost wins; a throw inside closes the scope.
+- As with every Blade directive, `@endfreshness` right after a letter or digit (`x@endfreshness`)
+  is not seen: put a space or a tag before it.
+
 ## Engine configuration
 
 Set `APP_ENGINE=blade` in your `.env` to use Blade. Preflow's `Application` will automatically create a `BladeEngine` and register all extension providers.

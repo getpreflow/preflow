@@ -69,6 +69,26 @@ final class AlbumButton extends Component implements PrefetchesLive
 `prefetchLive()` runs once per class before a served page's live parts are rendered, on an
 instance made like the others: keep what it loads in an injected service (or a static).
 
+### Freshness: `#[Freshness]`
+
+What a component reads, as a dependency of the cached page (preflow/core's page cache,
+"Freshness, per dependency"), around its `resolveState()` and its render:
+
+```php
+use Preflow\Components\Freshness;
+use Preflow\Core\PageCache\Freshness as Dial;
+
+#[Freshness(Dial::NextVisit)]              // a write marks the page stale
+final class OtherJobs extends Component { ... }
+
+#[Freshness(Dial::Timed, seconds: 43200)]  // writes ignored; the page expires after 12 h
+final class Ticker extends Component { ... }
+```
+
+A parent's attribute counts for its subclasses; a scope inside (a template's `{% freshness %}`)
+wins for its own reads; on a `#[Live]` component it does nothing. `Timed` without seconds is
+an error (the component's error boundary shows it).
+
 ### `ComponentExtension` (Twig)
 
 Registers `{{ component('Name', {props}) }}`. Component names are resolved via a short-name → FQCN map or a fully-qualified class name.

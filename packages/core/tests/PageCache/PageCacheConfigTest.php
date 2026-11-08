@@ -47,6 +47,14 @@ final class PageCacheConfigTest extends TestCase
         $this->assertSame(10, $config->maxPages);
     }
 
+    public function test_max_age_zero_means_no_maximum_age_and_a_negative_one_is_refused(): void
+    {
+        $this->assertSame(0, PageCacheConfig::fromArray(['max_age' => 0])->maxAge);
+        $this->assertSame(14400, PageCacheConfig::fromArray([])->maxAge);
+        $this->expectException(\InvalidArgumentException::class);
+        new PageCacheConfig(maxAge: -1);
+    }
+
     public function test_explain_is_off_and_verify_first_by_default(): void
     {
         $default = PageCacheConfig::fromArray([]);

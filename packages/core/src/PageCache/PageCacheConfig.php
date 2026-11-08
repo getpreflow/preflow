@@ -9,7 +9,10 @@ namespace Preflow\Core\PageCache;
  * defaults make the zero-configuration promise hold:
  *
  *   enabled            bool, false (an upgraded site opts in; the skeleton switches it on)
- *   max_age            int seconds, 14400 (4 h): the safety maximum age of every cached page
+ *   max_age            int seconds, 14400 (4 h): the safety maximum age of every cached page;
+ *                      an older one is served once more as stale while a fresh one is built.
+ *                      0 turns the maximum age off (pages then follow writes and their own
+ *                      expiry only); a negative value is refused
  *   rebuild_budget     float seconds, 2.0: after-response rebuilds stop after this per request
  *   cache_query        bool, true: pages with a query string (search, filters) are cached
  *   ignore_query       list of fnmatch() patterns of query parameters left out of the key
@@ -80,6 +83,9 @@ final readonly class PageCacheConfig
         public bool $explain = false,
         public string $verify = self::VERIFY_FIRST,
     ) {
+        if ($maxAge < 0) {
+            throw new \InvalidArgumentException('page_cache.max_age must be 0 (no maximum age) or more seconds.');
+        }
         if (!in_array($verify, [self::VERIFY_FIRST, self::VERIFY_ALWAYS, self::VERIFY_OFF], true)) {
             throw new \InvalidArgumentException("page_cache.verify must be 'first', 'always' or 'off'.");
         }

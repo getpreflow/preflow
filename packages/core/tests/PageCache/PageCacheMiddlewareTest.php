@@ -71,7 +71,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->config = new PageCacheConfig(enabled: true, hosts: ['example.com'], signedInCookies: ['preflow_auth', 'remember_session'], explain: true, verify: 'off');
         $this->store = new PageStore($this->root, 'aaaaaaaaaaaaaaaa');
         $this->recorder = new DependencyRecorder();
-        $this->cache = new PageCache();
+        $this->cache = new PageCache(recorder: $this->recorder);
         $this->values = new PerRequestValues('test-secret');
         // Earlier tests in this process may leave a $_SESSION; a cacheable request has none (verify checks).
         $this->sessionBefore = $_SESSION ?? null;
@@ -907,7 +907,201 @@ final class PageCacheMiddlewareTest extends TestCase
      * @param (\Closure(): float)|null $clock
      * @param (\Closure(string): bool)|null $nonPublic
      */
-    private function middleware(?PageCacheConfig $config = null, ?\Closure $clock = null, ?\Closure $nonPublic = null, ?\Closure $sentHeaders = null, ?\Preflow\Core\PageCache\LiveParts $live = null, bool|string|null $verify = null): PageCacheMiddleware
+    // -----------------------------------------------------------------------
+    // Freshness, expiry and the maximum age (Task 5)
+    // -----------------------------------------------------------------------
+
+    public function test_timed_dependency_ignores_writes_until_its_time(): void
+    {
+        $now = 1_800_000_000.0;
+        $clock = static function () use (&$now): float {
+            return $now;
+        };
+        $config = new PageCacheConfig(enabled: true, hosts: ['example.com'], maxAge: 0, explain: true, verify: 'off');
+        $mw = $this->middleware(config: $config, clock: $clock, reportsStale: false);
+        $refresher = new Refresher($this->store, $config, $clock);
+        $version = 'v1';
+        $handler = $this->handler(function () use (&$version): ResponseInterface {
+            $this->recorder->record(DataTags::record('default', 'job', '5'));
+            $this->cache->within(\Preflow\Core\PageCache\Freshness::Timed, 43200, fn () => $this->recorder->record(DataTags::listing('default', 'job')));
+
+            return $this->html('job 5, other jobs ' . $version);
+        });
+
+        $this->assertSame('miss', $mw->process($this->get('/job/5'), $handler)->getHeaderLine('X-Page-Cache'));
+        $this->assertSame($now + 43200, $this->store->get($this->key('/job/5'))?->expiresAt, 'render start plus its time');
+
+        // Another job is written: the listing changed, the page read it timed.
+        $version = 'v2';
+        $refresher->invalidate(DataTags::recordChanged('default', 'job', '6'));
+        $now += 43199;
+        $hit = $mw->process($this->get('/job/5'), $handler);
+        $this->assertSame('hit', $hit->getHeaderLine('X-Page-Cache'), 'a write of the timed dependency is ignored');
+        $this->assertSame('job 5, other jobs v1', (string) $hit->getBody());
+
+        // Its time is up: served once more, stale, and rendered anew for the next visitor.
+        $now += 1;
+        $stale = $mw->process($this->get('/job/5'), $handler);
+        $this->assertSame('stale', $stale->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('job 5, other jobs v1', (string) $stale->getBody());
+        $this->assertSame('job 5, other jobs v2', (string) $mw->process($this->get('/job/5'), $handler)->getBody());
+        $this->assertSame(2, $handler->calls);
+
+        // Its fresh dependency still refreshes at once.
+        $version = 'v3';
+        $refresher->invalidate(DataTags::recordChanged('default', 'job', '5'));
+        $this->assertNull($this->store->get($this->key('/job/5')), 'the job itself changed: forgotten');
+        $this->assertSame('job 5, other jobs v3', (string) $mw->process($this->get('/job/5'), $handler)->getBody());
+    }
+
+    public function test_max_age_four_hours_serves_stale_and_rebuilds(): void
+    {
+        $now = 1_800_000_000.0;
+        $clock = static function () use (&$now): float {
+            return $now;
+        };
+        $config = new PageCacheConfig(enabled: true, hosts: ['example.com'], verify: 'off');
+        $this->assertSame(14400, $config->maxAge, 'the default is 4 h');
+        // Nothing queues rebuilds here (Task 6 wires onStale): the stale copy is served once.
+        $mw = $this->middleware(config: $config, clock: $clock, reportsStale: false);
+        $version = 'old';
+        $handler = $this->handler(function () use (&$version): ResponseInterface {
+            return $this->html('upcoming: ' . $version);
+        });
+        $mw->process($this->get('/events'), $handler);
+
+        $version = 'new'; // changed with time alone, no write the cache saw
+        $now += 14399;
+        $this->assertSame('hit', $mw->process($this->get('/events'), $handler)->getHeaderLine('X-Page-Cache'));
+
+        $now += 1;
+        $stale = $mw->process($this->get('/events'), $handler);
+        $this->assertSame('stale', $stale->getHeaderLine('X-Page-Cache'), '4 h old');
+        $this->assertSame('upcoming: old', (string) $stale->getBody(), 'still served at once');
+
+        $rebuilt = $mw->process($this->get('/events'), $handler);
+        $this->assertSame('miss', $rebuilt->getHeaderLine('X-Page-Cache'), 'the next visitor gets it rebuilt');
+        $this->assertSame('upcoming: new', (string) $rebuilt->getBody());
+        $this->assertSame($now, $this->store->get($this->key('/events'))?->createdAt);
+        $this->assertSame('hit', $mw->process($this->get('/events'), $handler)->getHeaderLine('X-Page-Cache'));
+
+        // With a rebuild queue (onStale), the stale page goes to it and stays until it is rebuilt.
+        $now += 14400;
+        $queued = $this->middleware(config: $config, clock: $clock);
+        $this->assertSame('stale', $queued->process($this->get('/events'), $handler)->getHeaderLine('X-Page-Cache'));
+        $this->assertSame([$this->key('/events')->url()], $this->staleKeys);
+        $this->assertNotNull($this->store->get($this->key('/events')));
+    }
+
+    public function test_max_age_zero_turns_the_maximum_age_off(): void
+    {
+        $now = 1_800_000_000.0;
+        $config = new PageCacheConfig(enabled: true, hosts: ['example.com'], maxAge: 0, verify: 'off');
+        $mw = $this->middleware(config: $config, clock: static function () use (&$now): float {
+            return $now;
+        });
+        $handler = $this->handler(fn (): ResponseInterface => $this->html('page'));
+        $mw->process($this->get('/page'), $handler);
+
+        $now += 86400 * 365;
+        $this->assertSame('hit', $mw->process($this->get('/page'), $handler)->getHeaderLine('X-Page-Cache'));
+        $this->assertSame([], $this->staleKeys);
+    }
+
+    public function test_expires_at_an_event_date(): void
+    {
+        $now = 1_800_000_000.0;
+        $clock = static function () use (&$now): float {
+            return $now;
+        };
+        $config = new PageCacheConfig(enabled: true, hosts: ['example.com'], verify: 'off');
+        $mw = $this->middleware(config: $config, clock: $clock, reportsStale: false);
+        $starts = new \DateTimeImmutable('@' . (int) ($now + 3600));
+        $handler = $this->handler(function () use (&$now, $starts): ResponseInterface {
+            $this->cache->expiresAt($starts->modify('+1 day')); // the earliest counts
+            $this->cache->expiresAt($starts);
+
+            return $this->html($now < (float) $starts->format('U') ? 'Tickets: on sale' : 'The concert has begun');
+        });
+
+        $mw->process($this->get('/concert'), $handler);
+        $this->assertSame((float) $starts->format('U'), $this->store->get($this->key('/concert'))?->expiresAt);
+
+        $now += 3599;
+        $this->assertSame('hit', $mw->process($this->get('/concert'), $handler)->getHeaderLine('X-Page-Cache'));
+
+        $now += 1;
+        $stale = $mw->process($this->get('/concert'), $handler);
+        $this->assertSame('stale', $stale->getHeaderLine('X-Page-Cache'), 'the event began');
+        $this->assertSame('Tickets: on sale', (string) $stale->getBody());
+        $this->assertSame('The concert has begun', (string) $mw->process($this->get('/concert'), $handler)->getBody());
+
+        // Outside a render for the cache (no recording), expiresAt does nothing.
+        $this->cache->expiresAt($starts);
+        $this->assertFalse($this->recorder->recording());
+    }
+
+    public function test_the_strictest_freshness_wins_when_a_tag_is_read_twice(): void
+    {
+        $now = 1_800_000_000.0;
+        $clock = static function () use (&$now): float {
+            return $now;
+        };
+        $mw = $this->middleware(clock: $clock);
+        $refresher = new Refresher($this->store, $this->config, $clock);
+        $company = DataTags::listing('default', 'company');
+        $handler = $this->handler(function (ServerRequestInterface $request) use ($company): ResponseInterface {
+            $twice = $request->getUri()->getPath() === '/twice';
+            $this->cache->within(\Preflow\Core\PageCache\Freshness::Timed, 60, fn () => $this->recorder->record($company));
+            $this->cache->within(\Preflow\Core\PageCache\Freshness::NextVisit, null, fn () => $this->recorder->record($company));
+            if ($twice) {
+                $this->recorder->record($company); // and once more, fresh
+            }
+
+            return $this->html('companies');
+        });
+        $mw->process($this->get('/twice'), $handler);
+        $mw->process($this->get('/next'), $handler);
+        $pages = TagIndex::forStore($this->store, $this->config, $clock)->pagesFor([$company]);
+        $this->assertSame(\Preflow\Core\PageCache\Freshness::Fresh, $pages[$this->key('/twice')->id()] ?? null);
+        $this->assertSame(\Preflow\Core\PageCache\Freshness::NextVisit, $pages[$this->key('/next')->id()] ?? null);
+        $this->assertNull($this->store->get($this->key('/next'))?->expiresAt, 'a timed read the stricter one beat sets no expiry');
+
+        $refresher->invalidate(DataTags::tableChanged('default', 'company'));
+
+        $this->assertNull($this->store->get($this->key('/twice')), 'fresh beat next visit and timed: forgotten');
+        $this->assertTrue($this->store->get($this->key('/next'))?->stale, 'next visit beat timed: stale');
+    }
+
+    public function test_a_write_during_render_counts_by_the_freshness_of_what_it_changed(): void
+    {
+        $now = 1_800_000_000.0;
+        $clock = static function () use (&$now): float {
+            return $now;
+        };
+        $mw = $this->middleware(clock: $clock);
+        $handler = $this->handler(function (ServerRequestInterface $request) use ($clock): ResponseInterface {
+            $freshness = \Preflow\Core\PageCache\Freshness::from(ltrim($request->getUri()->getPath(), '/'));
+            $this->recorder->record('default:page#1');
+            $this->cache->within($freshness, 600, fn () => $this->recorder->record(DataTags::listing('default', 'news')));
+            // Another request writes the news while this one renders.
+            (new Refresher(new PageStore($this->root, 'aaaaaaaaaaaaaaaa'), $this->config, $clock))
+                ->invalidate(DataTags::tableChanged('default', 'news'));
+
+            return $this->html('page with old news');
+        });
+
+        $this->assertSame('invalidated', $mw->process($this->get('/fresh'), $handler)->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertNull($this->store->get($this->key('/fresh')));
+
+        $this->assertSame('', $mw->process($this->get('/next_visit'), $handler)->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertTrue($this->store->get($this->key('/next_visit'))?->stale, 'stored, as the write would have left it: stale');
+
+        $this->assertSame('', $mw->process($this->get('/timed'), $handler)->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertFalse($this->store->get($this->key('/timed'))?->stale, 'a timed read ignores the write');
+    }
+
+    private function middleware(?PageCacheConfig $config = null, ?\Closure $clock = null, ?\Closure $nonPublic = null, ?\Closure $sentHeaders = null, ?\Preflow\Core\PageCache\LiveParts $live = null, bool|string|null $verify = null, bool $reportsStale = true): PageCacheMiddleware
     {
         $config ??= $this->config;
         $source = new PageCacheSource($this->root, static fn (): string => 'aaaaaaaaaaaaaaaa');
@@ -925,9 +1119,9 @@ final class PageCacheMiddlewareTest extends TestCase
             signedIn: fn (): bool => $this->signedIn,
             sessionStarted: fn (): bool => $this->sessionStarted,
             nonPublic: $nonPublic,
-            onStale: function (PageKey $key): void {
+            onStale: $reportsStale ? function (PageKey $key): void {
                 $this->staleKeys[] = $key->url();
-            },
+            } : null,
             log: function (string $message): void {
                 $this->logged[] = $message;
             },

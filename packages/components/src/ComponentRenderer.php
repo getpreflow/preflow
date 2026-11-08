@@ -16,6 +16,11 @@ final class ComponentRenderer
 
     private ?LiveParts $live = null;
 
+    private ?\Preflow\Core\PageCache\PageCache $pageCache = null;
+
+    /** @var array<class-string, Freshness|false> */
+    private static array $freshnessOf = [];
+
     /** @var array<class-string, bool> */
     private static array $liveClasses = [];
 
@@ -75,6 +80,51 @@ final class ComponentRenderer
         );
     }
 
+    /**
+     * Makes #[Freshness] count: a component marked with it resolves and renders inside
+     * PageCache::within() with its freshness.
+     */
+    public function enableFreshness(\Preflow\Core\PageCache\PageCache $pageCache): void
+    {
+        $this->pageCache = $pageCache;
+    }
+
+    /** The #[Freshness] of $class (itself, else the nearest parent's), null without one. */
+    public static function freshnessOf(string $class): ?Freshness
+    {
+        if (!isset(self::$freshnessOf[$class])) {
+            $found = false;
+            if (class_exists($class)) {
+                for ($ref = new \ReflectionClass($class); $ref !== false; $ref = $ref->getParentClass()) {
+                    $attributes = $ref->getAttributes(Freshness::class);
+                    if ($attributes !== []) {
+                        $found = $attributes[0]->newInstance();
+                        break;
+                    }
+                }
+            }
+            self::$freshnessOf[$class] = $found;
+        }
+
+        return self::$freshnessOf[$class] ?: null;
+    }
+
+    /**
+     * Runs $fn (resolve and render) with $component's #[Freshness], when the cache is wired.
+     *
+     * @template T
+     * @param \Closure(): T $fn
+     * @return T
+     */
+    private function withFreshness(Component $component, \Closure $fn): mixed
+    {
+        $freshness = $this->pageCache !== null ? self::freshnessOf($component::class) : null;
+
+        return $freshness === null
+            ? $fn()
+            : $this->pageCache->within($freshness->freshness, $freshness->seconds, $fn);
+    }
+
     /** Whether $class is marked #[Live] (itself or a parent). */
     public static function isLive(string $class): bool
     {
@@ -124,9 +174,13 @@ final class ComponentRenderer
                     return $placeholder;
                 }
             }
-            $component->resolveState();
-            $start = hrtime(true);
-            $innerHtml = $this->renderInner($component);
+            $start = 0;
+            $innerHtml = $this->withFreshness($component, function () use ($component, &$start): string {
+                $component->resolveState();
+                $start = hrtime(true);
+
+                return $this->renderInner($component);
+            });
             if ($this->collector !== null) {
                 $durationMs = (hrtime(true) - $start) / 1_000_000;
                 $this->collector->logComponent(
@@ -149,9 +203,13 @@ final class ComponentRenderer
     public function renderFragment(Component $component): string
     {
         try {
-            $component->resolveState();
-            $start = hrtime(true);
-            $html = $this->renderInner($component);
+            $start = 0;
+            $html = $this->withFreshness($component, function () use ($component, &$start): string {
+                $component->resolveState();
+                $start = hrtime(true);
+
+                return $this->renderInner($component);
+            });
             if ($this->collector !== null) {
                 $durationMs = (hrtime(true) - $start) / 1_000_000;
                 $this->collector->logComponent(
@@ -176,7 +234,7 @@ final class ComponentRenderer
     {
         try {
             $start = hrtime(true);
-            $html = $this->renderInner($component);
+            $html = $this->withFreshness($component, fn (): string => $this->renderInner($component));
             if ($this->collector !== null) {
                 $durationMs = (hrtime(true) - $start) / 1_000_000;
                 $this->collector->logComponent(
@@ -201,7 +259,7 @@ final class ComponentRenderer
     {
         try {
             $start = hrtime(true);
-            $innerHtml = $this->renderInner($component);
+            $innerHtml = $this->withFreshness($component, fn (): string => $this->renderInner($component));
             if ($this->collector !== null) {
                 $durationMs = (hrtime(true) - $start) / 1_000_000;
                 $this->collector->logComponent(

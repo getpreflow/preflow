@@ -530,7 +530,7 @@ The page cache keeps finished pages for visitors who are not signed in, under
 // config/page_cache.php: every key is optional, these are the defaults
 return [
     'enabled' => false,
-    'max_age' => 14400,              // seconds; older pages are rebuilt behind the next visitor
+    'max_age' => 14400,              // seconds; older pages are rebuilt behind the next visitor; 0: no maximum age
     'rebuild_budget' => 2.0,         // seconds of rebuilding after a response
     'cache_query' => true,           // cache pages with a query string (search, filters)
     'ignore_query' => ['utm_*', 'fbclid', 'gclid', 'mc_cid', 'mc_eid'],
@@ -707,6 +707,60 @@ return [
     afterwards; a leftover `$_SESSION` outside an active session is hidden too). A render with a
     session active is not verified, so not stored.
     A site's own memo of an earlier value is the same in both renders and goes unnoticed.
+- **Freshness, per dependency.** What a page reads is fresh by default: a write forgets the
+  page, so the next visitor gets the new state. A developer can loosen
+  that for a part of a page, in the template or the component, never in settings:
+
+  ```twig
+  <h1>{{ job.title }}</h1>                         {# fresh #}
+  {% freshness 'next-visit' %}
+      {% for other in jobs_of(job.company) %}…{% endfor %}
+  {% endfreshness %}
+  {% freshness 'timed' every '12h' %}{{ weather() }}{% endfreshness %}
+  ```
+
+  ```blade
+  @freshness('next-visit') … @endfreshness
+  @freshness('timed', every: '12h') … @endfreshness
+  ```
+
+  ```php
+  #[\Preflow\Components\Freshness(Freshness::NextVisit)]           // around resolveState() and render
+  #[\Preflow\Components\Freshness(Freshness::Timed, seconds: 43200)]
+  $pageCache->within(Freshness::NextVisit, null, fn () => $jobs->ofCompany($id));
+  ```
+
+  - `fresh`: a write of what it read forgets the page.
+  - `next-visit`: a write marks the page stale. The next visitor still gets it at once, and a
+    fresh one is built behind them.
+  - `timed` (`every '30m'`, `'12h'`, `'2d'` or seconds): writes are ignored. The page expires
+    at its render time plus that time.
+  - A tag read several ways counts as the strictest (fresh, then next visit, then timed). Only
+    the changed tags count: a page that read "other jobs" timed and its own job fresh is still
+    forgotten when its job changes. Nested scopes: the innermost wins. Inside a live part the
+    dial does nothing (its reads are no dependencies). `'*'` (a deploy, `cache:clear`) clears
+    every page whatever its freshness.
+  - A write while the page renders: of something it read fresh, the page is not stored; next
+    visit only, it is stored stale; timed only, it is stored.
+  - Folio's frontend pages find their record with a query of its table, a listing: a listing of
+    that table elsewhere on the page can't be looser than the record itself.
+- **Expiry and the maximum age.** A page can say when it goes out of date, an event date or a
+  sale ending at midnight; the earliest of several counts:
+
+  ```twig
+  {% expires at event.startsAt %}   {# a DateTimeInterface, a unix time or a date string; null: none #}
+  {% expires in '1h' %}
+  ```
+
+  ```blade
+  @expires(at: $event->startsAt)
+  @expires(in: '1h')
+  ```
+
+  `$pageCache->expiresAt($date)` does it from PHP. A page past its expiry, or older than
+  `max_age` (4 h by default; `0` turns the maximum age off, a negative value is refused), is
+  served once more as `stale`; the visitor after gets a fresh one (rendered on their request
+  until rebuilds behind the response are wired).
 - **Switching it off and on.** `storage/cache/pages/enabled` marks a cache that has been
   emptied since it was switched on. While the cache is off, the first write through the data
   layer removes the marker; the first request after switching it on again finds it missing and

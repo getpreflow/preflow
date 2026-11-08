@@ -12,8 +12,14 @@ namespace Preflow\Core\PageCache;
  * ("other jobs of this company" may be NextVisit or Timed). A tag read with several freshnesses
  * keeps the strictest (Fresh > NextVisit > Timed); of two Timed reads, the shorter time.
  *
+ * Reads inside within() scopes that nest take the innermost scope's freshness: the dial is set
+ * where the read happens ("these other jobs"), the scope around it doesn't override it.
+ *
+ * A recording also keeps the earliest expiry asked for while it was open (expiresAt(): an event
+ * date, a sale ending at midnight), which the middleware stores as the page's expiresAt.
+ *
  * Recordings nest: a start() inside another one records into both, so what an inner render read
- * also counts for the page around it.
+ * (and an expiry it asked for) also counts for the page around it.
  */
 final class DependencyRecorder
 {
@@ -23,6 +29,12 @@ final class DependencyRecorder
     private Freshness $freshness = Freshness::Fresh;
 
     private ?int $seconds = null;
+
+    /** @var list<?float> the earliest expiry of each open recording (unix time), parallel to $frames */
+    private array $expiries = [];
+
+    /** @var list<array{0: Freshness, 1: ?int}> the freshness scopes around the current one (enter()) */
+    private array $scopes = [];
 
     /**
      * Opens a recording. Keep what it returns and hand it to stop(): a recording opened inside
@@ -34,6 +46,7 @@ final class DependencyRecorder
     public function start(): int
     {
         $this->frames[] = [];
+        $this->expiries[] = null;
 
         return count($this->frames) - 1;
     }
@@ -51,6 +64,7 @@ final class DependencyRecorder
         }
         $tags = $this->frames[$frame];
         array_splice($this->frames, $frame);
+        array_splice($this->expiries, $frame);
 
         return $tags;
     }
@@ -81,6 +95,32 @@ final class DependencyRecorder
     }
 
     /**
+     * The earliest expiry asked for in recording $frame (the innermost one when null) so far,
+     * a unix time; null when none was. Ask before stop().
+     */
+    public function expiry(?int $frame = null): ?float
+    {
+        $frame ??= count($this->frames) - 1;
+
+        return $this->expiries[$frame] ?? null;
+    }
+
+    /**
+     * The page being recorded must be refreshed by $at at the latest (an event date): every
+     * open recording keeps the earliest. Outside a recording (and in a live part) it does nothing.
+     */
+    public function expiresAt(\DateTimeInterface|float|int $at): void
+    {
+        if ($this->frames === []) {
+            return;
+        }
+        $at = $at instanceof \DateTimeInterface ? (float) $at->format('U.u') : (float) $at;
+        foreach ($this->expiries as $i => $known) {
+            $this->expiries[$i] = $known === null ? $at : min($known, $at);
+        }
+    }
+
+    /**
      * Runs $fn with nothing recorded, not even into the recordings open around it: what a live
      * part reads while a page is served is the visitor's, never a dependency of the page.
      * Recordings $fn opens and leaves open are closed when it returns.
@@ -91,30 +131,60 @@ final class DependencyRecorder
      */
     public function outside(\Closure $fn): mixed
     {
-        $frames = $this->frames;
+        $saved = [$this->frames, $this->expiries, $this->freshness, $this->seconds, $this->scopes];
         $this->frames = [];
+        $this->expiries = [];
+        // A freshness scope around a live part is not its: what it reads is no dependency at all.
+        $this->freshness = Freshness::Fresh;
+        $this->seconds = null;
+        $this->scopes = [];
         try {
             return $fn();
         } finally {
-            $this->frames = $frames;
+            [$this->frames, $this->expiries, $this->freshness, $this->seconds, $this->scopes] = $saved;
         }
     }
 
     /**
-     * Runs $fn with its reads recorded as $freshness ($seconds: how long a Timed one may be old).
+     * Runs $fn with its reads recorded as $freshness ($seconds: how long a Timed one may be old,
+     * 1 or more; ignored for the others). A scope inside another one wins for its reads.
      *
      * @template T
      * @param \Closure(): T $fn
      * @return T
+     * @throws \InvalidArgumentException Timed without seconds (or with fewer than 1)
      */
     public function within(Freshness $freshness, ?int $seconds, \Closure $fn): mixed
     {
-        $before = [$this->freshness, $this->seconds];
-        $this->freshness = $freshness;
-        $this->seconds = $freshness === Freshness::Timed ? $seconds : null;
+        $this->enter($freshness, $seconds);
         try {
             return $fn();
         } finally {
+            $this->leave();
+        }
+    }
+
+    /**
+     * Opens a freshness scope, as within() does, for code that can't pass a closure (a compiled
+     * Blade view). Close it with leave(), in a finally.
+     *
+     * @throws \InvalidArgumentException Timed without seconds (or with fewer than 1)
+     */
+    public function enter(Freshness $freshness, ?int $seconds = null): void
+    {
+        if ($freshness === Freshness::Timed && ($seconds === null || $seconds < 1)) {
+            throw new \InvalidArgumentException('A timed freshness needs its time: 1 second or more.');
+        }
+        $this->scopes[] = [$this->freshness, $this->seconds];
+        $this->freshness = $freshness;
+        $this->seconds = $freshness === Freshness::Timed ? $seconds : null;
+    }
+
+    /** Closes the scope enter() opened last. */
+    public function leave(): void
+    {
+        $before = array_pop($this->scopes);
+        if ($before !== null) {
             [$this->freshness, $this->seconds] = $before;
         }
     }
