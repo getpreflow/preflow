@@ -109,6 +109,44 @@ final class LandingTest extends TestCase
         $this->assertSame(404, $this->send('GET', '/members')->getStatusCode());
     }
 
+    #[RunInSeparateProcess]
+    public function test_the_member_routes_come_compiled_from_the_manifest(): void
+    {
+        $this->flowSite();
+        $result = (new \Preflow\Core\Boot\ManifestBuilder($this->dir))->write();
+        $this->assertContains('members', $result['routes']);
+        $this->assertContains('members.landing', $result['routes']);
+
+        $this->flow = $this->web();
+        $this->assertTrue($this->flow->bootManifest()->active());
+        $this->assertSame('/members/login', $this->send('GET', '/members')->getHeaderLine('Location'), 'the landing, from the manifest');
+        $this->assertSame(200, $this->send('GET', '/members/login')->getStatusCode());
+        $this->assertSame('/de/members/login', $this->send('GET', '/de/members')->getHeaderLine('Location'));
+        $this->assertSame([], $this->flow->container()->get(\Preflow\Core\Routing\RouterInterface::class)->liveSets(), 'nothing compiled');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_site_route_on_the_same_path_still_wins_with_the_manifest(): void
+    {
+        $this->flowSite(files: ['app/pages/members/index.twig' => 'SITE MEMBERS PAGE']);
+        (new \Preflow\Core\Boot\ManifestBuilder($this->dir))->write();
+
+        $this->flow = $this->web();
+        $this->assertTrue($this->flow->bootManifest()->active());
+        $this->assertSame('SITE MEMBERS PAGE', trim($this->html('/members')), 'no landing in the manifest either');
+        $this->assertSame(200, $this->send('GET', '/members/login')->getStatusCode());
+    }
+
+    /** A web request's boot (the console never reads the boot manifest). */
+    private function web(): \Preflow\Core\Application
+    {
+        $app = \Preflow\Core\Application::create($this->dir);
+        $app->setRunningInConsole(false);
+        $app->boot();
+
+        return $app;
+    }
+
     /** Staff signed in with the default guard (config/auth.php's admin), as a staff login leaves the session. */
     private function signInStaff(): void
     {

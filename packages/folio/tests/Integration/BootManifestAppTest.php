@@ -140,6 +140,149 @@ final class BootManifestAppTest extends TestCase
         $this->assertFalse($this->app(console: true)->bootManifest()->active(), 'commands and cron jobs boot live');
     }
 
+    private const string FRONTEND = 'Preflow\\Folio\\Http\\FrontendController@show';
+    private const string HEX = '0123456789abcdef0123456789abcdef';
+
+    #[RunInSeparateProcess]
+    public function test_public_routes_come_compiled_from_the_manifest(): void
+    {
+        $this->site();
+        $live = $this->app(console: false);
+        $this->assertFalse($live->bootManifest()->active());
+        $this->assertSame(['app', 'media', 'folio.frontend'], $live->container()->get(\Preflow\Core\Routing\RouterInterface::class)->liveSets(), 'without one, all three are compiled');
+
+        $result = (new ManifestBuilder($this->dir))->write();
+        $this->assertSame(['app', 'media', 'folio.frontend'], $result['routes']);
+        $this->assertContains('folio.frontend_routes', $result['catalogs']);
+
+        // Marked in the manifest: what a manifest boot uses is the stored value, not a fresh compile.
+        $data = include $this->dir . '/bootstrap/cache/boot.php';
+        $data['catalogs']['folio.frontend_routes'][0]['regex'] = '#^/(?P<slug>[^/]+)-x$#';
+        \Preflow\Core\Boot\ManifestFile::write($this->dir, $data);
+
+        $app = $this->app(console: false);
+        $this->assertTrue($app->bootManifest()->active());
+        $router = $app->container()->get(\Preflow\Core\Routing\RouterInterface::class);
+        $this->assertSame(200, $app->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/'))->getStatusCode());
+        $this->assertSame(200, $app->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/about-x'))->getStatusCode(), 'the content routes are the manifest\'s');
+        $this->assertSame(404, $app->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/about'))->getStatusCode());
+        $this->assertSame([], $router->liveSets(), 'no route set compiled: app, media and the frontend catch-all come from the manifest');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_admin_routes_compile_on_the_first_admin_request(): void
+    {
+        $this->site();
+        (new ManifestBuilder($this->dir))->write();
+        $app = $this->app(console: false);
+        $router = $app->container()->get(\Preflow\Core\Routing\RouterInterface::class);
+        $patterns = static fn (): array => array_map(static fn ($e): string => $e->method . ' ' . $e->pattern, $router->getCollection()->all());
+
+        $this->assertSame(200, $app->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/about'))->getStatusCode());
+        $public = $patterns();
+        $this->assertSame([], preg_grep('#^\S+ /folio#', $public), 'a public request registers no admin route');
+        $this->assertSame('GET /{...path}', end($public));
+
+        $this->assertSame(200, $app->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/folio'))->getStatusCode());
+        $all = $patterns();
+        $this->assertContains('GET /folio', $all);
+        $this->assertContains('GET /folio/{type}/{id}/edit', $all);
+        $this->assertSame('GET /{...path}', end($all), 'the admin routes go in front of the frontend catch-all');
+        $this->assertSame([], $router->liveSets(), 'the public sets still from the manifest; the admin\'s are compiled live, outside them');
+        $this->assertNotContains('folio.admin', array_keys((include $this->dir . '/bootstrap/cache/boot.php')['routes']));
+
+        // A second admin request adds nothing.
+        $app->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/folio/page'));
+        $this->assertSame($all, $patterns());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_routing_matches_identically_with_and_without_cache(): void
+    {
+        $this->site();
+        $live = $this->app(console: false);
+        $live->container()->get(\Preflow\Folio\Redirects\RedirectEntries::class)->save(['path' => '/old-about', 'locale' => '', 'target_type' => 'page', 'target_id' => 'about']);
+
+        // What the router matches (the path as it reaches the router: the locale prefix is gone by then).
+        $routes = [
+            'GET /' => [self::FRONTEND, ['path' => '']],
+            'GET /about' => [self::FRONTEND, ['path' => 'about']],
+            'GET /about/' => [self::FRONTEND, ['path' => 'about']],
+            'HEAD /about' => [self::FRONTEND, ['path' => 'about']],
+            'GET /a/b/c' => [self::FRONTEND, ['path' => 'a/b/c']],
+            'GET /media/2026/x.jpg' => ['Preflow\\Media\\Http\\VariantController@serve', ['path' => '2026/x.jpg']],
+            'GET /files/' . self::HEX => ['Preflow\\Media\\Http\\PrivateFileController@serve', ['id' => self::HEX]],
+            'GET /files/' . self::HEX . '/v/3' => ['Preflow\\Media\\Http\\PrivateFileController@serveVersion', ['id' => self::HEX, 'n' => '3']],
+            'GET /files/not-an-id' => [self::FRONTEND, ['path' => 'files/not-an-id']],
+            'GET /files/' . self::HEX . '/v/0' => [self::FRONTEND, ['path' => 'files/' . self::HEX . '/v/0']],
+            'POST /about' => 404,
+        ];
+        // What a request gets: the locale prefix, a redirect (also behind the prefix), 404 and the admin.
+        $requests = [
+            '/' => [200, ''],
+            '/about' => [200, ''],
+            '/de/about' => [200, ''],
+            '/de' => [200, ''],
+            '/old-about' => [301, '/about'],
+            '/de/old-about' => [301, '/de/about'],
+            '/no-such-page' => [404, ''],
+            '/de/no-such-page' => [404, ''],
+            '/folio' => [200, ''],
+            '/folio/page' => [200, ''],
+            '/folio/no-such-type' => [404, ''],
+        ];
+        $url = static fn (Application $app): ?string => $app->container()->get(\Preflow\Folio\Content\FrontendResolver::class)
+            ->urlFor($app->container()->get(DataManager::class)->findType('page', 'about'), 'de');
+
+        $before = [$this->routing($this->app(console: false), array_keys($routes)), $this->requests($this->app(console: false), array_keys($requests)), $url($this->app(console: false))];
+        (new ManifestBuilder($this->dir))->write();
+        $app = $this->app(console: false);
+        $this->assertTrue($app->bootManifest()->active());
+        $after = [$this->routing($app, array_keys($routes)), $this->requests($this->app(console: false), array_keys($requests)), $url($this->app(console: false))];
+
+        $this->assertSame($routes, $before[0]);
+        $this->assertSame($requests, $before[1]);
+        $this->assertStringEndsWith('/de/about', (string) $before[2], 'a record\'s URL from its route');
+        $this->assertSame($before, $after, 'the same with the manifest');
+        $this->assertSame([], $app->container()->get(\Preflow\Core\Routing\RouterInterface::class)->liveSets());
+    }
+
+    /**
+     * @param list<string> $keys "METHOD /path"
+     * @return array<string, array{0: string, 1: array<string, string>}|int>
+     */
+    private function routing(Application $app, array $keys): array
+    {
+        $router = $app->container()->get(\Preflow\Core\Routing\RouterInterface::class);
+        $out = [];
+        foreach ($keys as $key) {
+            [$method, $path] = explode(' ', $key, 2);
+            try {
+                $route = $router->match((new Psr17Factory())->createServerRequest($method, 'https://site.test' . $path));
+                $out[$key] = [$route->handler, $route->parameters];
+            } catch (\Preflow\Core\Exceptions\NotFoundHttpException) {
+                $out[$key] = 404;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param list<string> $paths
+     * @return array<string, array{0: int, 1: string}> status and Location
+     */
+    private function requests(Application $app, array $paths): array
+    {
+        $out = [];
+        foreach ($paths as $path) {
+            $response = $app->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test' . $path));
+            $out[$path] = [$response->getStatusCode(), $response->getHeaderLine('Location')];
+        }
+
+        return $out;
+    }
+
     /** @return array<string, mixed> what requests get, plus the config and catalogs boot set up */
     private function snapshot(Application $app): array
     {
@@ -285,6 +428,7 @@ final class BootManifestAppTest extends TestCase
     {
         $app = Application::create($this->dir);
         $app->setRunningInConsole($console);
+
         $app->boot();
 
         return $app;

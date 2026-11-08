@@ -9,7 +9,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * "^0.54 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing media with a release that lacks what it calls: core 0.54 (InternalRender,
- * honoured by VariantController) and data 0.42 (RecordTables, typed record tables).
+ * honoured by VariantController), data 0.42 (RecordTables, typed record tables) and routing 0.59
+ * (Router::compiled(), the routes compiled into the boot manifest).
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -18,7 +19,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/core' => '<0.54', 'preflow/data' => '<0.42', 'preflow/view' => '<0.34'],
+            ['preflow/core' => '<0.54', 'preflow/data' => '<0.42', 'preflow/routing' => '<0.59', 'preflow/view' => '<0.34'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound.

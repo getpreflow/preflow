@@ -7,11 +7,11 @@ namespace Preflow\Core\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Core requires none of auth, data, htmx, i18n, view, twig or blade, but boots them when they are installed,
+ * Core requires none of auth, data, htmx, i18n, routing, view, twig or blade, but boots them when they are installed,
  * so only "conflict" keeps Composer from pairing core with a release that lacks the APIs it calls: auth 0.38
  * (bootAuth binds Preflow\Auth\Record\RecordUserProvider::factory() for record users from
  * config/auth.php), data 0.28 (Application passes cacheDir: to JsonFileDriver), htmx 0.46
- * (HtmxExtensionProvider takes pathPrefix:), i18n 0.46 (LocaleMiddleware::urlPrefix()), view 0.58
+ * (HtmxExtensionProvider takes pathPrefix:), i18n 0.46 (LocaleMiddleware::urlPrefix()), routing 0.59 (Router takes store:, the boot manifest's route sets), view 0.58
  * (the Geo classes: GeoCollector, GeoMiddleware, RenderScopes, GeoEntries; the Seo classes: SeoConfig,
  * SeoContext, SeoSite, SchemaRegistry, SeoMiddleware; the Audit classes: AuditRegistry, PageRenderer
  * and AssetCollector::restoring(); since 0.58 AssetCollector takes cachePath:, which Application passes) and twig and blade 0.50 (TwigEngine and BladeEngine
@@ -28,6 +28,7 @@ final class ComposerConstraintsTest extends TestCase
             'preflow/data' => '<0.58.1',
             'preflow/htmx' => '<0.46',
             'preflow/i18n' => '<0.46',
+            'preflow/routing' => '<0.59',
             'preflow/view' => '<0.58',
             'preflow/twig' => '<0.50',
             'preflow/blade' => '<0.50',

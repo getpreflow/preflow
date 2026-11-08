@@ -283,7 +283,45 @@ final class BootManifestTest extends TestCase
         }));
         $this->assertSame(1, $calls);
         $this->assertSame('live', BootManifest::off()->remember('x', static fn (): string => 'live'));
-        $this->assertNull($loaded->routes(), 'routes: filled by the route cache');
+    }
+
+    public function test_route_sets_are_recorded_while_building_and_served_from_the_manifest(): void
+    {
+        $row = ['pattern' => '/a', 'handler' => 'A@b', 'method' => 'GET', 'mode' => 'action', 'middleware' => [], 'paramNames' => [], 'regex' => '', 'isCatchAll' => false, 'csrfExempt' => false];
+        $recording = BootManifest::recording();
+        $this->assertSame([$row], $recording->routes('app', static fn (): array => [$row], ['/pages']));
+        $closure = static fn () => null;
+        $recording->routes('pkg', static fn (): array => [['middleware' => [$closure]] + $row]);
+        $this->assertSame(['app' => [$row]], $recording->recorded()['routes'], 'a set with closures is not frozen');
+        $this->assertSame(['/pages'], $recording->recorded()['sources']);
+        $this->assertContains('routes pkg (not exportable; compiled live)', $recording->recorded()['skipped']);
+
+        $loaded = BootManifest::fromData(['routes' => ['app' => [$row]]]);
+        $this->assertSame([$row], $loaded->routes('app', fn (): array => $this->fail('not compiled with a manifest')));
+        $this->assertSame([], $loaded->routes('other', static fn (): array => []), 'a set the manifest lacks is compiled live');
+        $this->assertSame([], BootManifest::off()->routes('app', static fn (): array => []));
+    }
+
+    public function test_app_routes_come_compiled_from_the_manifest(): void
+    {
+        $result = (new ManifestBuilder($this->dir))->write();
+        $this->assertContains('app', $result['routes']);
+
+        // A page added after optimize (pages change only on deploy): the manifest boot doesn't scan for it.
+        $this->write('app/pages/added.twig', 'ADDED');
+        $app = $this->web();
+        $router = $app->container()->get(\Preflow\Core\Routing\RouterInterface::class);
+        $this->assertSame(200, $app->handle((new Psr17Factory())->createServerRequest('GET', '/'))->getStatusCode());
+        $this->assertSame(404, $app->handle((new Psr17Factory())->createServerRequest('GET', '/added'))->getStatusCode());
+        $this->assertSame([], $router->liveSets(), 'no route set compiled');
+        $this->assertContains('app/pages: changed', (new ManifestBuilder($this->dir))->drift() ?? []);
+
+        // Live boots (the console, or after the next optimize) see it.
+        $console = Application::create($this->dir);
+        $console->setRunningInConsole(true);
+        $console->boot();
+        $this->assertSame(200, $console->handle((new Psr17Factory())->createServerRequest('GET', '/added'))->getStatusCode());
+        $this->assertSame(['app'], $console->container()->get(\Preflow\Core\Routing\RouterInterface::class)->liveSets());
     }
 
     private function web(): Application

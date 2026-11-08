@@ -200,14 +200,15 @@ final class MembersServiceProvider extends ServiceProvider
         }
         $router = $c->get(RouterInterface::class);
         if ($router instanceof Router) {
-            $path = $c->get(MembersConfig::class)->path();
             $collection = $router->getCollection();
-            $collection->addMany(MembersRoutes::entries($path));
+            // Compiled once into the boot manifest (`preflow optimize`); the path comes from config.
+            $collection->addMany($router->compiled('members', static fn (): array => MembersRoutes::entries($c->get(MembersConfig::class)->path())));
             // The default landing comes last and only where the site has no page of its own on that path (Ruling 4).
-            $landing = MembersRoutes::landing($path);
-            if ($landing !== null && !self::answers($collection->forMethod('GET'), $landing->pattern)) {
-                $collection->add($landing);
-            }
+            $collection->addMany($router->compiled('members.landing', static function () use ($c, $collection): array {
+                $landing = MembersRoutes::landing($c->get(MembersConfig::class)->path());
+
+                return $landing !== null && !self::answers($collection->forMethod('GET'), $landing->pattern) ? [$landing] : [];
+            }));
         }
     }
 

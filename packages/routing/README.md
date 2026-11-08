@@ -139,6 +139,24 @@ $compiler->clear(__DIR__ . '/storage/routes.php');
 
 The compiled file is a plain PHP `return` statement — no eval, OPcache-friendly.
 
+On a Preflow application you don't need this: `preflow optimize` compiles the routes into the
+boot manifest (see preflow/core, "Boot manifest"). Core passes the Router a `store:`, and every
+route set goes through `Router::compiled()`:
+
+```php
+// In a provider's boot(): compiled once, then served from the manifest.
+$router->getCollection()->addMany($router->compiled('vendor.name', fn (): array => [
+    new RouteEntry(pattern: '/feed', handler: FeedController::class . '@show', method: 'GET', mode: RouteMode::Action),
+], [$sourcePath]));
+```
+
+The app's own routes (file pages and controllers) are the set `app`. Without a store (no
+manifest, debug mode, the console) `compiled()` just runs the closure. The entries must depend
+only on code, config files and files that change on deploy; a set whose middleware holds
+closures or objects is not stored and is compiled live. `Router::liveSets()` lists the sets the
+router compiled live (with a current manifest: none). `RouteEntry::toArray()`/`fromArray()` are
+the stored form.
+
 ## Matching priority
 
 For a given HTTP method, `RouteMatcher` tests routes in three passes:

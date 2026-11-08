@@ -30,4 +30,41 @@ final readonly class RouteEntry
         public bool $isCatchAll = false,
         public bool $csrfExempt = false,
     ) {}
+
+    /**
+     * The entry as a plain array (the mode as its string value): what a route cache stores.
+     * OPcache keeps such arrays in shared memory without building them per request.
+     *
+     * @return array{pattern: string, handler: string, method: string, mode: string, middleware: array<int, mixed>, paramNames: array<int, string>, regex: string, isCatchAll: bool, csrfExempt: bool}
+     */
+    public function toArray(): array
+    {
+        return [
+            'pattern' => $this->pattern,
+            'handler' => $this->handler,
+            'method' => $this->method,
+            'mode' => $this->mode->value,
+            'middleware' => $this->middleware,
+            'paramNames' => $this->paramNames,
+            'regex' => $this->regex,
+            'isCatchAll' => $this->isCatchAll,
+            'csrfExempt' => $this->csrfExempt,
+        ];
+    }
+
+    /** @param array<string, mixed> $row an entry's toArray() */
+    public static function fromArray(array $row): self
+    {
+        return new self(
+            $row['pattern'],
+            $row['handler'],
+            $row['method'],
+            RouteMode::from($row['mode']),
+            $row['middleware'],
+            $row['paramNames'],
+            $row['regex'],
+            $row['isCatchAll'],
+            $row['csrfExempt'] ?? false,
+        );
+    }
 }

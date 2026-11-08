@@ -30,12 +30,37 @@ final class MediaRoutes
     public const string PREVIEW_HANDLER = PrivateFileController::class . '@servePreview';
     public const string VARIANT_HANDLER = VariantController::class . '@serve';
 
-    /** Adds the routes, each once per collection: a second call adds nothing. */
-    public static function register(RouteCollection $routes, MediaConfig $config): void
+    /**
+     * Adds the routes, each once per collection: a second call adds nothing.
+     *
+     * @param list<RouteEntry>|null $entries the routes as entries() made them (the provider takes
+     *                                       them compiled from the boot manifest); null: made now
+     */
+    public static function register(RouteCollection $routes, MediaConfig $config, ?array $entries = null): void
+    {
+        $entries ??= self::entries($config);
+        $present = [];
+        foreach ($routes->all() as $entry) {
+            $present[$entry->method . ' ' . $entry->pattern . ' ' . $entry->handler] = true;
+        }
+        foreach ($entries as $entry) {
+            if (!isset($present[$entry->method . ' ' . $entry->pattern . ' ' . $entry->handler])) {
+                $routes->add($entry);
+            }
+        }
+    }
+
+    /**
+     * The routes for the configured URLs.
+     *
+     * @return list<RouteEntry>
+     */
+    public static function entries(MediaConfig $config): array
     {
         $private = rtrim($config->privateUrl, '/');
         $media = rtrim($config->url, '/');
-        $entries = [
+
+        return [
             new RouteEntry(
                 pattern: $private . '/{id}',
                 handler: self::PRIVATE_HANDLER,
@@ -77,14 +102,5 @@ final class MediaRoutes
                 isCatchAll: true,
             ),
         ];
-        $present = [];
-        foreach ($routes->all() as $entry) {
-            $present[$entry->method . ' ' . $entry->pattern . ' ' . $entry->handler] = true;
-        }
-        foreach ($entries as $entry) {
-            if (!isset($present[$entry->method . ' ' . $entry->pattern . ' ' . $entry->handler])) {
-                $routes->add($entry);
-            }
-        }
     }
 }

@@ -22,7 +22,7 @@ final class ManifestBuilder
      * Builds and writes the manifest. With debug on (app.debug) none is written and an existing
      * one is removed: boot ignores a manifest in debug mode anyway.
      *
-     * @return array{written: bool, file: string, skipped: list<string>, catalogs: list<string>, config: list<string>, reason: ?string}
+     * @return array{written: bool, file: string, skipped: list<string>, catalogs: list<string>, routes: list<string>, config: list<string>, reason: ?string}
      */
     public function write(): array
     {
@@ -40,7 +40,7 @@ final class ManifestBuilder
         if ((int) ($data['config']['app']['debug'] ?? 0) !== 0) {
             ManifestFile::forget($base);
 
-            return ['written' => false, 'file' => $file, 'skipped' => [], 'catalogs' => [], 'config' => [], 'reason' => 'APP_DEBUG is on: boot never uses a manifest in debug mode (an existing one was removed).'];
+            return ['written' => false, 'file' => $file, 'skipped' => [], 'catalogs' => [], 'routes' => [], 'config' => [], 'reason' => 'APP_DEBUG is on: boot never uses a manifest in debug mode (an existing one was removed).'];
         }
 
         ManifestFile::write($base, $data);
@@ -50,6 +50,7 @@ final class ManifestBuilder
             'file' => $file,
             'skipped' => $recorded['skipped'],
             'catalogs' => array_keys($data['catalogs']),
+            'routes' => array_keys($data['routes']),
             'config' => array_keys($data['config']),
             'reason' => null,
         ];

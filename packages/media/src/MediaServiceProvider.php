@@ -195,7 +195,9 @@ final class MediaServiceProvider extends ServiceProvider
         if ($container->has(RouterInterface::class)) {
             $router = $container->get(RouterInterface::class);
             if ($router instanceof Router) {
-                MediaRoutes::register($router->getCollection(), $container->get(MediaConfig::class));
+                $config = $container->get(MediaConfig::class);
+                // Compiled once into the boot manifest (`preflow optimize`).
+                MediaRoutes::register($router->getCollection(), $config, $router->compiled('media', static fn (): array => MediaRoutes::entries($config)));
             }
         }
     }

@@ -1201,15 +1201,26 @@ final class Application
         $pagesDir = $this->basePath('app/pages');
         $controllers = $this->discoverControllers();
 
+        // Route sets are compiled once into the boot manifest (Router::compiled()): with a current
+        // manifest no pattern is compiled per request. The admin's are not in it (Folio adds them
+        // live on the first admin request).
+        $manifest = $this->manifest;
         $router = new \Preflow\Routing\Router(
             pagesDir: is_dir($pagesDir) ? $pagesDir : null,
             controllers: $controllers,
             templateExtension: $this->container->has(\Preflow\View\TemplateEngineInterface::class)
                 ? $this->container->get(\Preflow\View\TemplateEngineInterface::class)->getTemplateExtension()
                 : 'twig',
+            store: $manifest->active() || $manifest->isRecording()
+                ? static fn (string $set, \Closure $compile, array $sources): array => $manifest->routes($set, $compile, $sources)
+                : null,
         );
 
         $this->setRouter($router);
+        // The app's own routes are built on first use (often by a provider's boot): built while the manifest is, too.
+        // app/pages is a source even when absent, so `optimize --check` reports one created since.
+        $manifest->addSources([$pagesDir]);
+        $manifest->whenBuilding(static fn (): \Preflow\Routing\RouteCollection => $router->getCollection());
     }
 
     /**

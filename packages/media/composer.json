@@ -8,7 +8,7 @@
         "nyholm/psr7": "^1.8",
         "preflow/core": "^0.54 || @dev",
         "preflow/data": "^0.42 || @dev",
-        "preflow/routing": "^0.1 || @dev",
+        "preflow/routing": "^0.59 || @dev",
         "preflow/view": "^0.34 || @dev"
     },
     "require-dev": {
@@ -22,6 +22,7 @@
     "conflict": {
         "preflow/core": "<0.54",
         "preflow/data": "<0.42",
+        "preflow/routing": "<0.59",
         "preflow/view": "<0.34"
     },
     "autoload": {

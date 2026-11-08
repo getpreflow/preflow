@@ -495,8 +495,14 @@ reads and scans on every request although it only changes on deploy. It holds:
 - the result of every `config/*.php` (read through `Application::configFile()`);
 - the package discovery data (`InstalledPackages`, i.e. `vendor/composer/installed.json`);
 - the catalogs packages remember: components, controllers, translation groups, and Folio's
-  extensions, extension types, model listings, blocks and interface languages;
-- a `routes` slot for compiled public routes.
+  extensions, extension types, model listings, frontend routes, blocks and interface languages;
+- the compiled public routes, per set (`Router::compiled()`, see preflow/routing): the app's own
+  (`app`: file pages and controllers), the media core's (`media`), the members pages
+  (`members`, `members.landing`) and Folio's frontend catch-all (`folio.frontend`). With a
+  manifest no route pattern is compiled per request. Folio's admin routes are not in it: they
+  are compiled on the first request under the admin prefix in a process, as without a manifest.
+  A set that can't be exported (middleware given as closures or objects) is compiled live, every
+  request.
 
 A boot uses it only when all of these hold; otherwise it boots live, exactly as without one:
 
@@ -536,6 +542,11 @@ The value must be exportable (scalars, arrays, enums) and depend only on code, c
 and files that change on deploy, never on stored data or the request.
 `$manifest->whenBuilding(fn (Application $app) => …)` resolves a lazy service while the
 manifest is built, so its catalog is in it.
+A package's routes go in as a set of their own:
+`$router->getCollection()->addMany($router->compiled('vendor.name', fn () => [...entries]))`
+(`$router` is the `Preflow\Routing\Router` bound as `RouterInterface`); the same rules apply.
+A page or controller added on the server without a deploy is not routed until the next
+`preflow optimize` (`optimize --check` lists `app/pages` as changed).
 
 ### HTTP exceptions
 

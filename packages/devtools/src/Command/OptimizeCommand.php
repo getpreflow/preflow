@@ -8,7 +8,7 @@ use Preflow\Core\Boot\ManifestBuilder;
 
 /**
  * `preflow optimize` writes the boot manifest (bootstrap/cache/boot.php): the merged config,
- * the package discovery data and the catalogs, so a web request with APP_DEBUG=0 reads them
+ * the package discovery data, the catalogs and the compiled public routes, so a web request with APP_DEBUG=0 reads them
  * instead of scanning. Run it on every deploy after `composer install` and migrations /
  * `folio:extensions:apply`, before the release goes live.
  *
@@ -54,6 +54,9 @@ final class OptimizeCommand implements CommandInterface
         }
         echo "Boot manifest written: {$result['file']}\n";
         echo '  config: ' . count($result['config']) . ' file(s); catalogs: ' . implode(', ', $result['catalogs']) . "\n";
+        if (($result['routes'] ?? []) !== []) {
+            echo '  routes: ' . implode(', ', $result['routes']) . "\n";
+        }
         foreach ($result['skipped'] as $skipped) {
             echo "  live: {$skipped}\n";
         }

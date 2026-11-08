@@ -10,8 +10,8 @@ use Preflow\Core\Application;
  * The compiled boot manifest as one boot sees it (`preflow optimize` writes it to
  * {basePath}/bootstrap/cache/boot.php, see ManifestFile). It holds what boot otherwise reads
  * and scans on every request although it only changes on deploy: the config files' results,
- * the package discovery data and the catalogs packages register (components, blocks,
- * extensions, models, ...).
+ * the package discovery data, the catalogs packages register (components, blocks,
+ * extensions, models, ...) and the compiled public routes (Router::compiled()).
  *
  * A boot sees it in one of three modes:
  * - off: no manifest (the console, debug mode, none written, or a runtime-checked source
@@ -40,8 +40,8 @@ final class BootManifest
     /** @var list<array<string, mixed>>|null */
     private ?array $packages = null;
 
-    /** @var array<string, mixed>|null */
-    private ?array $routes = null;
+    /** @var array<string, list<array<string, mixed>>> route set => compiled rows (recording) */
+    private array $routes = [];
 
     /** @var list<string> absolute paths whose signatures the manifest records (recording) */
     private array $sources = [];
@@ -158,31 +158,30 @@ final class BootManifest
     }
 
     /**
-     * The compiled route data a manifest holds (filled by the routing producer), or null.
+     * One compiled route set (Router::compiled() is the way to read one): its rows from the
+     * manifest when it holds $set, else from $compile (and remembered while recording, with
+     * $sources for `optimize --check`). A set that is not exportable stays live.
      *
-     * @return array<string, mixed>|null
+     * @param \Closure(): list<array<string, mixed>> $compile
+     * @param list<string>                          $sources absolute paths
+     * @return list<array<string, mixed>>
      */
-    public function routes(): ?array
+    public function routes(string $set, \Closure $compile, array $sources = []): array
     {
-        return $this->mode === self::LOADED && is_array($this->data['routes'] ?? null) ? $this->data['routes'] : null;
-    }
-
-    /**
-     * Stores the compiled route data while recording (ignored otherwise).
-     *
-     * @param array<string, mixed> $routes
-     */
-    public function recordRoutes(array $routes): void
-    {
-        if ($this->mode !== self::RECORDING) {
-            return;
+        if ($this->mode === self::LOADED && isset($this->data['routes'][$set]) && is_array($this->data['routes'][$set])) {
+            return $this->data['routes'][$set];
         }
-        if (!self::exportable($routes)) {
-            $this->skipped[] = 'routes (not exportable; compiled live)';
-
-            return;
+        $rows = $compile();
+        if ($this->mode === self::RECORDING) {
+            if (self::exportable($rows)) {
+                $this->routes[$set] = $rows;
+                $this->addSources($sources);
+            } else {
+                $this->skipped[] = "routes {$set} (not exportable; compiled live)";
+            }
         }
-        $this->routes = $routes;
+
+        return $rows;
     }
 
     /**
@@ -222,7 +221,7 @@ final class BootManifest
     /**
      * @internal ManifestBuilder
      *
-     * @return array{config: array<string, mixed>, catalogs: array<string, mixed>, packages: list<array<string, mixed>>|null, routes: array<string, mixed>|null, sources: list<string>, skipped: list<string>}
+     * @return array{config: array<string, mixed>, catalogs: array<string, mixed>, packages: list<array<string, mixed>>|null, routes: array<string, list<array<string, mixed>>>, sources: list<string>, skipped: list<string>}
      */
     public function recorded(): array
     {

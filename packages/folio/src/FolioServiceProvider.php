@@ -532,8 +532,19 @@ final class FolioServiceProvider extends ServiceProvider
         });
         $container->bind(ActionResolver::class, fn (Container $c) => new ActionResolver($c));
         // Routes are computed (and validated) now, so conflicting "frontend"
-        // declarations fail at boot; the resolver itself is built lazily.
-        $frontendRoutes = FrontendResolver::routesFromCatalog($container->get(TypeCatalog::class));
+        // declarations fail at boot (or at `preflow optimize`, which keeps them in the boot
+        // manifest like the catalog they come from); the resolver itself is built lazily.
+        $frontendRoutes = array_map(
+            static fn (array $route): \Preflow\Folio\Content\FrontendRoute => new \Preflow\Folio\Content\FrontendRoute(...$route),
+            $app->bootManifest()->remember(
+                'folio.frontend_routes',
+                static fn (): array => array_map(
+                    static fn (\Preflow\Folio\Content\FrontendRoute $route): array => get_object_vars($route),
+                    FrontendResolver::routesFromCatalog($container->get(TypeCatalog::class)),
+                ),
+                [$modelsPath],
+            ),
+        );
         $container->bind(FrontendResolver::class, fn (Container $c) => new FrontendResolver($c->get(DataManager::class), $frontendRoutes));
 
         $uploadsDir = $this->uploadsDir($app);
@@ -1473,7 +1484,8 @@ final class FolioServiceProvider extends ServiceProvider
         if ($container->has(RouterInterface::class)) {
             $router = $container->get(RouterInterface::class);
             if ($router instanceof Router) {
-                $router->getCollection()->add(FolioRoutes::frontend()); // builds app routes first (lazy)
+                // Builds the app's routes first (lazy); compiled once into the boot manifest (`preflow optimize`).
+                $router->getCollection()->addMany($router->compiled('folio.frontend', static fn (): array => [FolioRoutes::frontend()]));
             }
         }
 
