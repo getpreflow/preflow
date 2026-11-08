@@ -53,6 +53,15 @@ final class SqlTablesTest extends TestCase
         yield 'index ddl names no table' => ['CREATE INDEX i ON t (a)', []];
         yield 'executable comment is unsure' => ['/*!40000 UPDATE t SET a = 1 */', null];
         yield 'mariadb executable comment is unsure' => ['SELECT 1 /*M!100100 , (SELECT 1 FROM t) */', null];
+        yield 'comma after join on' => ['SELECT * FROM a JOIN b ON a.x = b.x, c', ['a', 'b', 'c']];
+        yield 'comma after join using' => ['SELECT * FROM a JOIN b USING (id), c', ['a', 'b', 'c']];
+        yield 'comma after outer join, alias' => ['SELECT * FROM a LEFT OUTER JOIN b ON 1, c AS z WHERE z.q IN (1, 2)', ['a', 'b', 'c']];
+        yield 'comma after join in a subquery' => ['SELECT * FROM t WHERE id IN (SELECT a.id FROM a JOIN b ON a.id = b.id, c)', ['t', 'a', 'b', 'c']];
+        yield 'commas in on are not tables' => ['SELECT * FROM a JOIN b ON a.x = COALESCE(b.x, 1), c ORDER BY a.x, b.x', ['a', 'b', 'c']];
+        yield 'update join then comma' => ['UPDATE a JOIN b ON a.id = b.id, c SET a.x = 1, c.y = 2', ['a', 'b', 'c']];
+        yield 'commas after the from clause are no tables' => ['SELECT a.x, b.y FROM a JOIN b ON 1 GROUP BY a.x, b.y HAVING 1 LIMIT 1, 2', ['a', 'b']];
+        yield 'mysql upsert after a select is no table' => ['INSERT INTO t SELECT * FROM s JOIN r ON 1 ON DUPLICATE KEY UPDATE a = 1, b = 2', ['t', 's', 'r']];
+        yield 'upsert after a select is no table' => ['INSERT INTO t SELECT * FROM s JOIN r ON 1 ON CONFLICT(id) DO UPDATE SET a = 1, b = 2', ['t', 's', 'r']];
         yield 'optimizer hint in a select' => ['SELECT /*+ INDEX(o idx) */ * FROM `object__published` o', ['object__published']];
         yield 'optimizer hint in an update' => ['UPDATE /*+ BKA(t) */ `object__published` SET likes = 1', ['object__published']];
         yield 'no_index hint in an update' => ['UPDATE /*+ NO_INDEX(t i) */ t SET a = 1', ['t']];

@@ -6,7 +6,8 @@ namespace Preflow\Data\Observe;
 
 /**
  * The tables a raw SQL statement names, read conservatively: every name after FROM, JOIN,
- * UPDATE, INTO and TABLE (DELETE FROM is FROM), with comma lists (`FROM a, b`, `UPDATE a, b`),
+ * UPDATE, INTO and TABLE (DELETE FROM is FROM), with comma lists (`FROM a, b`, `UPDATE a, b`; every
+ * comma of a FROM clause outside parentheses starts a table reference, `FROM a JOIN b ON 1, c` too),
  * quotes (`backticks`, "double", [brackets]) stripped, a schema prefix (`db.t`) dropped and the
  * name lowercased. Tables inside subqueries count: their FROM and JOIN are read like any other.
  * Strings and comments are skipped, so a FROM inside a literal is not a table.
@@ -198,7 +199,69 @@ final class SqlTables
             }
         }
 
+        // After FROM (and UPDATE's table list), every comma at the clause's own depth starts
+        // another table reference, also one after a JOIN ... ON or USING (FROM a JOIN b ON 1, c).
+        $read = self::afterCommas($tokens);
+        if ($read === null) {
+            return null;
+        }
+        foreach ($read as $table) {
+            $tables[$table] = true;
+        }
+
         return $tables === [] && in_array($first, self::DML, true) ? null : array_keys($tables);
+    }
+
+    /** Words that end a table-reference clause (FROM ..., UPDATE ...) at its depth. */
+    private const array CLAUSE_END = [
+        'WHERE', 'GROUP', 'ORDER', 'LIMIT', 'OFFSET', 'FETCH', 'HAVING', 'UNION', 'EXCEPT', 'INTERSECT',
+        'WINDOW', 'QUALIFY', 'RETURNING', 'SET', 'DO', 'DUPLICATE', 'CONFLICT', 'FOR', 'LOCK', 'VALUES',
+        'SELECT', 'INTO', 'PROCEDURE',
+    ];
+
+    /**
+     * The tables after each top-level comma of a FROM clause or of UPDATE's table list (the
+     * comma not inside parentheses): one there starts a new table reference, wherever it
+     * follows (a join condition too).
+     *
+     * @param list<array{0: string, 1: string}> $tokens one statement
+     * @return list<string>|null
+     */
+    private static function afterCommas(array $tokens): ?array
+    {
+        $tables = [];
+        $depth = 0;
+        $open = []; // depth => true inside a table-reference clause
+        foreach ($tokens as $i => [$kind, $text]) {
+            if ($kind === 'punct') {
+                if ($text === '(') {
+                    $depth++;
+                } elseif ($text === ')') {
+                    unset($open[$depth]);
+                    $depth = max(0, $depth - 1);
+                } elseif ($text === ',' && isset($open[$depth])) {
+                    $read = self::references($tokens, $i + 1, 'FROM');
+                    if ($read === null) {
+                        return null;
+                    }
+                    array_push($tables, ...$read);
+                }
+
+                continue;
+            }
+            if ($kind !== 'word') {
+                continue;
+            }
+            $word = strtoupper($text);
+            $previous = $i > 0 ? strtoupper($tokens[$i - 1][1]) : '';
+            if ($word === 'FROM' || ($word === 'UPDATE' && !in_array($previous, ['KEY', 'FOR', 'DO'], true))) {
+                $open[$depth] = true;
+            } elseif (in_array($word, self::CLAUSE_END, true)) {
+                unset($open[$depth]);
+            }
+        }
+
+        return $tables;
     }
 
     /**
