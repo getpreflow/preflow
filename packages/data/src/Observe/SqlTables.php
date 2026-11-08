@@ -358,7 +358,6 @@ final class SqlTables
     private static function tokens(string $sql, bool &$unsure): array
     {
         $tokens = [];
-        $hint = false;
         $length = strlen($sql);
         $i = 0;
         while ($i < $length) {
@@ -372,23 +371,14 @@ final class SqlTables
                 $i = $end === false ? $length : $end + 1;
                 continue;
             }
-            if ($c === '/' && ($sql[$i + 1] ?? '') === '*' && ($sql[$i + 2] ?? '') === '+') {
-                // An optimizer hint (/*+ ... */): read as its content, which names no table.
-                $i += 3;
-                $hint = true;
-                continue;
-            }
-            if ($c === '*' && ($sql[$i + 1] ?? '') === '/' && $hint) {
-                $i += 2;
-                $hint = false;
-                continue;
-            }
             if ($c === '/' && ($sql[$i + 1] ?? '') === '*' && (($sql[$i + 2] ?? '') === '!' || substr($sql, $i + 2, 2) === 'M!')) {
                 // A MySQL/MariaDB executable comment (/*!40000 ... */, /*M! ... */): the server
                 // runs it, so it may hold any statement.
                 $unsure = true;
             }
             if ($c === '/' && ($sql[$i + 1] ?? '') === '*') {
+                // A plain comment, and an optimizer hint (/*+ ... */): a hint only names tables the
+                // statement names itself, and read as words it would hide UPDATE /*+ BKA(t) */ t.
                 $end = strpos($sql, '*/', $i + 2);
                 $i = $end === false ? $length : $end + 2;
                 continue;

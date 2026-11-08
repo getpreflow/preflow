@@ -53,7 +53,12 @@ final class SqlTablesTest extends TestCase
         yield 'index ddl names no table' => ['CREATE INDEX i ON t (a)', []];
         yield 'executable comment is unsure' => ['/*!40000 UPDATE t SET a = 1 */', null];
         yield 'mariadb executable comment is unsure' => ['SELECT 1 /*M!100100 , (SELECT 1 FROM t) */', null];
-        yield 'optimizer hint is read as its content' => ['SELECT /*+ INDEX(o idx) */ * FROM `object__published` o', ['object__published']];
+        yield 'optimizer hint in a select' => ['SELECT /*+ INDEX(o idx) */ * FROM `object__published` o', ['object__published']];
+        yield 'optimizer hint in an update' => ['UPDATE /*+ BKA(t) */ `object__published` SET likes = 1', ['object__published']];
+        yield 'no_index hint in an update' => ['UPDATE /*+ NO_INDEX(t i) */ t SET a = 1', ['t']];
+        yield 'optimizer hint in an insert' => ['INSERT /*+ SET_VAR(x=1) */ member (a) VALUES (1)', ['member']];
+        yield 'optimizer hint in a replace' => ['REPLACE /*+ SET_VAR(x=1) */ member VALUES (1)', ['member']];
+        yield 'optimizer hints in two statements' => ['SELECT /*+ x */ 1; UPDATE /*+ y */ t SET a=1', ['t']];
         yield 'plain comment stays a comment' => ['SELECT * FROM a /* UPDATE b SET c = 1 */', ['a']];
     }
 
