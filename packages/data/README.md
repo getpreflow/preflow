@@ -596,12 +596,20 @@ literally. Unlike `search()`, which keeps using exactly the `searchable: true` f
 reads one cache file per type and data path (`json-{type}-{key}.json`, where `{key}` is a short hash
 of the resolved data path, the same for every spelling of it) instead of every record file. Drivers
 of different data paths (each test's own data, parallel workers) can share one cache directory. The cache is
-checked on every query against a signature of the type's directory (file count, newest mtime,
-total size, directory mtime), so records changed outside the driver are noticed; writes and
-deletes through the driver drop the type's cache and write a new generation
-(`json-{type}-{key}.gen`, kept by `clearCache()`). The generation is part of the signature and is read
+checked on every query with one directory stat and one small file read: the type's generation
+and the type directory's mtime. A record added or removed changes the directory's mtime, and a
+save or delete through any driver (this or another process: Folio, publishing, transfer
+imports included) writes a new generation (`json-{type}-{key}.gen`, kept by `clearCache()`) and
+drops the type's cache. A directory mtime has whole-second resolution, so a cache built in the
+second the directory last changed is checked against every record file (count, newest mtime,
+total size) until it is rebuilt or found unchanged in a later second. The generation is read
 before the records, so a reader that read records before a write can never leave a cache that
-is used after it; a cache is not written when the signature moved while the records were read. A cache that cannot be written only costs
+is used after it; a cache is not written when the signature moved while the records were read.
+
+Edge case: a record file edited by hand in place, outside the driver (an editor, `sed`, a deploy that
+overwrites a file), changes neither the generation nor the directory's mtime and is not noticed until the
+next save of that type or `preflow cache:clear`. Adding or removing a file by hand is noticed.
+A cache that cannot be written only costs
 speed. Core's `Application` passes `storage/cache/data`.
 
 ```php

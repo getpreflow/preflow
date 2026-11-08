@@ -148,6 +148,21 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         return [$generation, count($files), $newest, $size, (int) @filemtime($dir), $this->pathKey];
     }
 
+    /**
+     * The cheap check a query makes: the type's generation, its directory's mtime and the data
+     * path's key. Adding or removing a record changes the directory's mtime; a save or delete
+     * through any driver moves the generation. Rewriting a record file in place outside a driver
+     * is not seen (`cache:clear` after hand-editing a file).
+     *
+     * @return array{string, int, string}
+     */
+    private function quickSignature(string $generation, string $dir): array
+    {
+        clearstatcache(true, $dir);
+
+        return [$generation, (int) @filemtime($dir), $this->pathKey];
+    }
+
     /** @return list<array<string, mixed>> every record of the type, with `_id` */
     private function loadRecords(string $type, string $dir): array
     {
@@ -157,22 +172,36 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
 
         // The generation is read before the records: a save after this point moves it on.
         $generation = $this->generation($type);
-        $files = glob($dir . '/*.json') ?: [];
-        $signature = $this->signature($generation, $dir, $files);
+        $quick = $this->quickSignature($generation, $dir);
         $cacheFile = $this->cacheFile($type);
 
         $raw = @file_get_contents($cacheFile);
-        if ($raw !== false) {
-            $cached = json_decode($raw, true);
-            if (is_array($cached) && ($cached['signature'] ?? null) === $signature && is_array($cached['records'] ?? null)) {
+        $cached = $raw === false ? null : json_decode($raw, true);
+        if (is_array($cached) && is_array($cached['records'] ?? null)) {
+            // A directory mtime has whole-second resolution: a cache built in the second the
+            // directory last changed cannot tell a file added later in that second. Such a
+            // cache is checked against every record file until it is rebuilt.
+            $settled = is_int($cached['built'] ?? null) && $cached['built'] > $quick[1];
+            if ($settled && ($cached['quick'] ?? null) === $quick) {
+                return $cached['records'];
+            }
+            if (isset($cached['signature']) && $cached['signature'] === $this->signature($generation, $dir, glob($dir . '/*.json') ?: [])) {
+                if (!$settled && time() > $quick[1] && ($cached['quick'] ?? null) === $quick) {
+                    // Unchanged and past that second now: trust the cheap check from here on.
+                    $this->writeCache($cacheFile, ['built' => time(), 'quick' => $quick, 'signature' => $cached['signature'], 'records' => $cached['records']]);
+                }
+
                 return $cached['records'];
             }
         }
 
+        $built = time();
+        $files = glob($dir . '/*.json') ?: [];
+        $signature = $this->signature($generation, $dir, $files);
         $records = $this->readRecords($files);
         // Changed while reading: use what was read, but do not cache it.
         if ($this->signature($this->generation($type), $dir, glob($dir . '/*.json') ?: []) === $signature) {
-            $this->writeCache($cacheFile, ['signature' => $signature, 'records' => $records]);
+            $this->writeCache($cacheFile, ['built' => $built, 'quick' => $quick, 'signature' => $signature, 'records' => $records]);
         }
 
         return $records;

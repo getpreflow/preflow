@@ -266,10 +266,18 @@ final class JsonFileDriverTest extends TestCase
         return $found[0] ?? $cacheDir . '/json-' . $type . '-(none).' . $ext;
     }
 
+    /** The type's directory last changed a while ago: a cache built now is past that second. */
+    private function settle(string $type): void
+    {
+        touch($this->dataDir . '/' . $type, time() - 100);
+        clearstatcache();
+    }
+
     public function test_cache_second_query_reads_the_cache(): void
     {
         [$driver, $cacheDir] = $this->cached();
         $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'Original']);
+        $this->settle('post');
         $this->assertSame('Original', $driver->findMany('post', new Query())->items()[0]['title']);
         $this->assertFileExists($this->cacheFile($cacheDir, 'post', 'json'));
 
@@ -315,6 +323,78 @@ final class JsonFileDriverTest extends TestCase
 
         unlink($this->dataDir . '/post/p2.json');
         $this->assertSame(['Z'], array_column($driver->findMany('post', new Query())->items(), 'title'));
+        $this->deleteDir($cacheDir);
+    }
+
+    public function test_json_cache_validation_does_not_stat_every_record(): void
+    {
+        [$driver, $cacheDir] = $this->cached();
+        $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A']);
+        $driver->save('post', 'p2', ['uuid' => 'p2', 'title' => 'B']);
+        $this->settle('post');
+        $driver->findMany('post', new Query()); // builds the cache
+
+        // A record file rewritten in place outside a driver (same size, newer mtime) is not looked at:
+        // the documented exception, which needs cache:clear. Every record file would have been
+        // stat-ed by the old check and the change noticed.
+        $file = $this->dataDir . '/post/p1.json';
+        $size = filesize($file);
+        $json = (string) file_get_contents($file);
+        file_put_contents($file, str_replace('"A"', '"Z"', $json));
+        touch($file, time() + 10);
+        touch($this->dataDir . '/post', time() - 100);
+        clearstatcache();
+        $this->assertSame($size, filesize($file));
+
+        $titles = array_column($driver->findMany('post', new Query())->items(), 'title');
+        sort($titles);
+        $this->assertSame(['A', 'B'], $titles);
+
+        $driver->clearCache();
+        $titles = array_column($driver->findMany('post', new Query())->items(), 'title');
+        sort($titles);
+        $this->assertSame(['B', 'Z'], $titles);
+        $this->deleteDir($cacheDir);
+    }
+
+    public function test_a_record_added_removed_or_saved_by_another_driver_invalidates_a_settled_cache(): void
+    {
+        [$driver, $cacheDir] = $this->cached();
+        $other = new JsonFileDriver($this->dataDir, $cacheDir); // another process, same data path
+        $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A']);
+        $this->settle('post');
+        $driver->findMany('post', new Query());
+
+        $other->save('post', 'p2', ['uuid' => 'p2', 'title' => 'B']);
+        $this->assertCount(2, $driver->findMany('post', new Query())->items());
+
+        $this->settle('post');
+        $driver->findMany('post', new Query());
+        $other->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A2']); // in place, same size, directory mtime pushed back
+        $this->settle('post');
+        $titles = array_column($driver->findMany('post', new Query())->items(), 'title');
+        sort($titles);
+        $this->assertSame(['A2', 'B'], $titles);
+
+        $this->settle('post');
+        $driver->findMany('post', new Query());
+        unlink($this->dataDir . '/post/p2.json'); // removed outside any driver: the directory changes
+        $this->assertSame(['A2'], array_column($driver->findMany('post', new Query())->items(), 'title'));
+        $this->deleteDir($cacheDir);
+    }
+
+    public function test_a_file_added_in_the_second_the_cache_was_built_is_still_seen(): void
+    {
+        [$driver, $cacheDir] = $this->cached();
+        $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A']);
+        $driver->findMany('post', new Query());
+        $mtime = filemtime($this->dataDir . '/post');
+
+        file_put_contents($this->dataDir . '/post/p2.json', '{"uuid":"p2","title":"B"}');
+        touch($this->dataDir . '/post', $mtime); // the directory's whole-second mtime did not move
+        clearstatcache();
+
+        $this->assertCount(2, $driver->findMany('post', new Query())->items());
         $this->deleteDir($cacheDir);
     }
 
@@ -431,6 +511,7 @@ final class JsonFileDriverTest extends TestCase
         symlink($this->dataDir, $link);
         $writer = new JsonFileDriver($this->dataDir, $cacheDir);
         $writer->save('post', 'p1', ['uuid' => 'p1', 'title' => 'A']);
+        $this->settle('post');
         $writer->findMany('post', new Query());
         $cacheFile = $this->cacheFile($cacheDir, 'post');
         // Marks the cache: a reader that rewrites it instead of using it drops the mark.
