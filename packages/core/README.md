@@ -701,9 +701,11 @@ return [
   - `'always'` verifies every store: each stored miss costs two renders. For tests and staging;
     preflow/testing's `WebApplication` sets it.
   - `'off'` never verifies. `true` and `false` mean `'always'` and `'off'`.
-  - Verify sees the visitor only through the PSR request (and `RequestContext`). A value read
-    from `$_COOKIE`, `$_SERVER` or a memo of an earlier request is the same in both renders
-    and goes unnoticed: read the visitor from the request.
+  - The second render sees the other visitor in the PSR request, `RequestContext` and the
+    superglobals (`$_COOKIE` empty, `$_SERVER['REMOTE_ADDR']` another address, no
+    `HTTP_COOKIE` or `HTTP_X_FORWARDED_FOR`, `$_REQUEST` without the cookies; all put back
+    afterwards). A render with a session open (`$_SESSION` set) is not verified, so not stored.
+    A site's own memo of an earlier value is the same in both renders and goes unnoticed.
 - **Switching it off and on.** `storage/cache/pages/enabled` marks a cache that has been
   emptied since it was switched on. While the cache is off, the first write through the data
   layer removes the marker; the first request after switching it on again finds it missing and
