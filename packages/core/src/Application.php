@@ -416,6 +416,13 @@ final class Application
             $hook($request);
         }
 
+        $internal = \Preflow\Core\Http\InternalRender::is($request);
+        if (!$internal) {
+            // Work an earlier in-process request left for after its response (no run()) is dropped.
+            $this->afterResponse = [];
+            $this->rebuildsScheduled = false;
+        }
+
         // Make request context available to components via DI
         $this->container->instance(RequestContext::class, new RequestContext(
             path: $request->getUri()->getPath(),
@@ -424,7 +431,7 @@ final class Application
         ));
 
         // An internal render (the SEO audit) sends no mail: what it queues is not flushed here.
-        $flush = !$this->emitting && !\Preflow\Core\Http\InternalRender::is($request);
+        $flush = !$this->emitting && !$internal;
 
         try {
             $response = $this->kernel->handle($request);
@@ -469,9 +476,62 @@ final class Application
         // notifications now. run() flushes after the response has gone out instead.
         if ($flush) {
             $this->flushDeferredNotifications();
+            if ($this->afterResponseInHandle) {
+                $this->runAfterResponse();
+            }
         }
 
         return $response;
+    }
+
+    /** @var list<\Closure(): void> work for after the response (afterResponse()) */
+    private array $afterResponse = [];
+
+    private bool $afterResponseInHandle = false;
+
+    private bool $rebuildsScheduled = false;
+
+    /**
+     * Runs $work after the response of the current request has gone out: run() calls it once
+     * the client is released (fastcgi_finish_request / litespeed_finish_request) and the
+     * deferred mail is sent, in the order added. The page cache rebuilds there what the request
+     * queued. A closure that throws is logged; the others still run. In-process callers of
+     * handle() (commands, tests) have no "after the response": their work is dropped at the next
+     * request, unless runAfterResponseInHandle() is on.
+     *
+     * @param \Closure(): void $work
+     */
+    public function afterResponse(\Closure $work): void
+    {
+        $this->afterResponse[] = $work;
+    }
+
+    /**
+     * Runs the work added with afterResponse() now (what run() does after the response).
+     *
+     * @internal run(), and tests through runAfterResponseInHandle()
+     */
+    public function runAfterResponse(): void
+    {
+        while ($this->afterResponse !== []) {
+            $work = array_shift($this->afterResponse);
+            try {
+                $work();
+            } catch (\Throwable $e) {
+                error_log('After-response work failed: ' . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * A test seam: handle() runs the after-response work itself at its end, as run() does after
+     * emitting (a top-level request only, not an internal render). Set it after boot() or before.
+     *
+     * @internal
+     */
+    public function runAfterResponseInHandle(bool $on = true): void
+    {
+        $this->afterResponseInHandle = $on;
     }
 
     private bool $emitting = false;
@@ -557,6 +617,10 @@ final class Application
                     $this->flushDeferredNotifications();
                 } catch (\Throwable) {
                     error_log('Deferred notifications could not be flushed.');
+                }
+                // The page cache's rebuilds and other work queued for after the response.
+                if ($responseSent) {
+                    $this->runAfterResponse();
                 }
             }
         } else {
@@ -963,11 +1027,19 @@ final class Application
                 \Preflow\Core\PageCache\PageStore::class,
                 static fn (): \Preflow\Core\PageCache\PageStore => new \Preflow\Core\PageCache\PageStore($root, \Preflow\Core\PageCache\PageStore::releaseKey($base)),
             );
+            // Rebuilds render through the whole pipeline, where the cache serves and stores: not
+            // in debug mode (the cache is off), else on the web and, for rebuilds only, the console.
+            $rebuilds = !DebugLevel::from((int) $this->config->get('app.debug', 0))->isDebug();
+            $origin = $this->config->get('app.url');
             $this->container->singleton(
                 \Preflow\Core\PageCache\Refresher::class,
-                static fn (): \Preflow\Core\PageCache\Refresher => new \Preflow\Core\PageCache\Refresher(
+                fn (): \Preflow\Core\PageCache\Refresher => new \Preflow\Core\PageCache\Refresher(
                     $container->get(\Preflow\Core\PageCache\PageStore::class),
                     $config,
+                    rebuild: $rebuilds ? $this->renderRebuild(...) : null,
+                    onQueue: $this->scheduleRebuilds(...),
+                    log: $this->pageCacheLogger(),
+                    origin: is_string($origin) && $origin !== '' ? $origin : null,
                 ),
             );
             $this->pageChanges = new \Preflow\Core\PageCache\ChangeLog(
@@ -1000,6 +1072,54 @@ final class Application
             $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class),
             $this->pageCacheLogger(),
         ));
+    }
+
+    /**
+     * Pages were queued for rebuilding in this request: the work runs once after its response,
+     * within page_cache.rebuild_budget (what is left is the cron's, `preflow pages:work`).
+     */
+    private function scheduleRebuilds(): void
+    {
+        if ($this->rebuildsScheduled) {
+            return;
+        }
+        $this->rebuildsScheduled = true;
+        $container = $this->container;
+        $this->afterResponse(function () use ($container): void {
+            $this->rebuildsScheduled = false;
+            $budget = $container->get(\Preflow\Core\PageCache\PageCacheConfig::class)->rebuildBudget;
+            $container->get(\Preflow\Core\PageCache\Refresher::class)->work($budget);
+        });
+    }
+
+    /** @var \Preflow\View\Geo\RenderScopes|null the scopes around a rebuild, made on the first one */
+    private ?object $rebuildScopes = null;
+
+    /**
+     * Renders a rebuild request (Rebuild::request()) through the whole app, as an anonymous
+     * visitor and starting from clean request-scoped state each time, as the SEO audit's renders
+     * do: the request context, the hidden session data, nobody signed in, the translator locale,
+     * the SEO context and the content locale (the render scopes), the assets boot registered,
+     * and no recording of the page around it (DependencyRecorder::outside(): the page cache
+     * middleware opens the rebuild's own). So one page's state never reaches the next.
+     */
+    private function renderRebuild(ServerRequestInterface $request): ResponseInterface
+    {
+        if (!$this->container->bound(\Preflow\Core\PageCache\PageCacheMiddleware::class)) {
+            throw new \LogicException('The page cache does not serve in this app (debug mode?).');
+        }
+        $render = fn (): ResponseInterface => $this->handle($request);
+        if ($this->container->bound(\Preflow\View\Geo\RenderScopes::class)) {
+            $scopes = $this->rebuildScopes ??= $this->internalRenderScopes();
+            $scoped = static fn (): ResponseInterface => $scopes->run($request, $render);
+        } else {
+            $anonymous = $this->anonymousRenderScope();
+            $scoped = static fn (): ResponseInterface => $anonymous($request, $render);
+        }
+        $assets = $this->container->has(\Preflow\View\AssetCollector::class) ? $this->container->get(\Preflow\View\AssetCollector::class) : null;
+        $clean = static fn (): ResponseInterface => $assets !== null ? $assets->restoring($scoped) : $scoped();
+
+        return $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class)->outside($clean);
     }
 
     /** @return \Closure(string): void the site's logger (a warning), error_log() without one */
@@ -1049,13 +1169,15 @@ final class Application
     /**
      * Serving pages from the cache (PageCacheMiddleware): right after the locale middleware (the
      * key holds the locale it resolved) and before the session middleware (a hit opens no
-     * session). Only when page_cache.enabled, pdo_sqlite is there, app.debug is off and the app
-     * serves the web, not the console.
+     * session). Only when page_cache.enabled, pdo_sqlite is there and app.debug is off. In the
+     * console it is there for rebuilds only (`preflow pages:work`): every other request passes.
+     * A stale page served queues its rebuild (Refresher::stale()); a pending invalidation is
+     * applied before a hit (Refresher::applyPending()).
      */
     private function bootPageCacheServing(DebugLevel $debug): void
     {
         $config = $this->container->get(\Preflow\Core\PageCache\PageCacheConfig::class);
-        if (!$config->enabled || $this->pageChanges === null || $debug->isDebug() || $this->runningInConsole()) {
+        if (!$config->enabled || $this->pageChanges === null || $debug->isDebug()) {
             return;
         }
         $container = $this->container;
@@ -1079,6 +1201,9 @@ final class Application
             sessionStarted: static fn (): bool => $container->bound(\Preflow\Core\Http\Session\SessionInterface::class)
                 && $container->get(\Preflow\Core\Http\Session\SessionInterface::class)->isStarted(),
             nonPublic: static fn (string $path): bool => $container->get(\Preflow\Core\Http\NonPublicPaths::class)->matches($path),
+            onStale: static function (\Preflow\Core\PageCache\PageKey $key) use ($container): void {
+                $container->get(\Preflow\Core\PageCache\Refresher::class)->stale($key);
+            },
             log: $logger,
             live: $container->get(\Preflow\Core\PageCache\LiveParts::class),
             verify: $config->verify,
@@ -1096,6 +1221,8 @@ final class Application
                     }
                 }
             },
+            applyPending: static fn (): bool => $container->get(\Preflow\Core\PageCache\Refresher::class)->applyPending(),
+            rebuildOnly: $this->runningInConsole(),
         );
         $this->container->instance(\Preflow\Core\PageCache\PageCacheMiddleware::class, $middleware);
         $this->addMiddleware($middleware);

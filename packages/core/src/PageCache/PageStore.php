@@ -25,6 +25,11 @@ namespace Preflow\Core\PageCache;
  * first, then names itself. On its first write, a store removes the folders of other releases
  * not written to in 24 hours, never the active one.
  *
+ * A release that takes over from another one (a deploy, a rollback) notes which it was in
+ * {releaseDir}/warm-from: the refresher queues the full pages of that release's index for
+ * rebuilding (Refresher::work(), `preflow pages:work`), so the new release starts empty and is
+ * warmed from the URLs visitors used before.
+ *
  * An in-place deploy (git pull in the same folder, no `optimize`, no composer install) keeps the
  * release key: it needs `preflow cache:clear pages` or `preflow optimize`.
  */
@@ -35,6 +40,9 @@ final class PageStore
     public const int PRUNE_AFTER = 86400;
 
     public const string ACTIVE = 'active';
+
+    /** In a release folder: the release that was active before this one claimed it. */
+    public const string WARM_FROM = 'warm-from';
 
     private readonly string $dir;
 
@@ -86,8 +94,14 @@ final class PageStore
     /** The page, with stale set when its marker exists. */
     public function get(PageKey $key): ?StoredPage
     {
+        return $this->page($key->id());
+    }
+
+    /** The page with id $id (PageKey::id()), with stale set when its marker exists; null when none. */
+    public function page(string $id): ?StoredPage
+    {
         $this->activate();
-        $file = $this->path($key->id());
+        $file = $this->path($id);
         $page = $this->read($file);
         if ($page !== null && !$page->stale && is_file(self::marker($file))) {
             return $page->withStale();
@@ -193,6 +207,11 @@ final class PageStore
             $active = $this->activeKey(); // again, under the lock
             if ($active === $this->releaseKey) {
                 return;
+            }
+            if ($active !== null && preg_match('/^[0-9a-f]{16}$/', $active) === 1
+                && (is_dir($this->dir) || @mkdir($this->dir, 0775, true) || is_dir($this->dir))) {
+                // Its URLs warm this release (Refresher): written before the claim below.
+                @file_put_contents($this->dir . '/' . self::WARM_FROM, $active);
             }
             if ($active !== null && is_dir($this->dir)) {
                 if (is_file($this->dir . '/' . TagIndex::FILE)) {

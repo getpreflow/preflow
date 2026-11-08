@@ -15,7 +15,9 @@ use Preflow\Core\Cache\CacheStats;
  *
  * clear() empties the current release (its pages, and its index's rows, so an open connection
  * of a running request stays valid), records an EVERYTHING invalidation so no render in flight
- * stores an old page after it, and removes the folders of other releases.
+ * stores an old page after it, and removes the folders of other releases. A clear is not a
+ * refresh: the refresh queue, pending invalidations and the deploy warm-up go too (pages are
+ * built on their next visit; `preflow pages:refresh --all` rebuilds them instead).
  */
 final class PageCacheSource implements CacheSource
 {
@@ -105,7 +107,14 @@ final class PageCacheSource implements CacheSource
         $index = TagIndex::in($dir, $this->clock, $this->sqlite);
         $index->clear();
         $index->recordInvalidation([TagIndex::EVERYTHING], ($this->clock ?? static fn (): float => microtime(true))());
+        $pdo = $index->pdo();
+        if ($pdo !== null) {
+            (new RefreshQueue($pdo, $this->clock))->clear();
+        }
         $index->close();
+        // Everything is gone: nothing older than the clear is left to invalidate or warm.
+        (new PendingInvalidations($dir))->clear();
+        @unlink($dir . '/' . PageStore::WARM_FROM);
     }
 
     /** @return \Generator<\SplFileInfo> the files under $dir, symlinks and dotfiles left out */

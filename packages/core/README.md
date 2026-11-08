@@ -556,6 +556,13 @@ return [
   `storage/cache/pages/active` names the release that last used the cache: a rollback to an
   older release folder finds another release named there and empties its own pages first.
   Folders of other releases are removed after 24 hours unused, never the active one.
+- **Deploys.** A deploy never serves a page of the release before it (it could reference
+  assets that are gone): the new release key starts empty. The new release notes which release
+  was active before it (`storage/cache/pages/{key}/warm-from`). The first time its refresh queue
+  is opened (the cron's first `preflow pages:work`, or a write that queues a page), the full
+  pages without a query in the previous release's index are queued, last in line, so the pages visitors used
+  are rebuilt within minutes. They are verified again (`verify` `'first'`): the templates
+  changed. A rollback is warmed the same way.
 - **In-place deploys** (a `git pull` in the same folder, without `optimize` or a composer
   install) keep the release key, so the pages from before the deploy stay. Run
   `preflow cache:clear pages` or `preflow optimize` as part of such a deploy.
@@ -566,6 +573,12 @@ return [
   configured as), and the table is as the driver sees it: Folio's published copies are
   `object__published`. A raw read whose tables can't be told, such as one with a `WITH`
   clause, depends on the whole storage (`default:*`).
+- **SQL views.** A raw read of a view is tagged with the view's name (`FROM active_jobs` is
+  `default:active_jobs`): the parser can't see which tables the view reads, so a write to its
+  base table (`job`) does not reach those pages. Read the base tables in such a query, report
+  the view as changed where its tables are written
+  (`$pageCache->changed('default:active_jobs')`), or add the base table as a dependency of the
+  page (`$pageCache->depends('default:job')`).
 - **What a write changes.** Every write through the `DataManager` is noted too. That
   covers `save`, `insert`, `update`, `delete`, `saveType`, `deleteIn`, delete plans,
   `execute()`, a write sent through `raw()`, Folio's publisher and Folio's import. The
@@ -598,10 +611,11 @@ return [
   `$dataManager->reportWrite('default', 'member', 42)` does the same from data code.
   Both do nothing while the cache is off.
 - **Serving.** `PageCacheMiddleware` runs after the locale middleware and before the session
-  middleware. It is on when `enabled` is true, `pdo_sqlite` is loaded, `app.debug` is off and
-  the app serves the web (never in the console). A hit reads one page file and stats its stale
-  marker: no database, no SQLite, no session. Responses carry `X-Page-Cache: hit`, `stale`,
-  `miss` or `bypass`. With `explain` on, a miss that wasn't stored says why in
+  middleware. It is on when `enabled` is true, `pdo_sqlite` is loaded and `app.debug` is off.
+  In the console it is there for rebuilds only (`preflow pages:work`); every other request
+  passes through. A hit reads one page file and stats its stale marker and the release's
+  pending invalidations: no database, no SQLite, no session. Responses carry `X-Page-Cache: hit`,
+  `stale`, `miss` or `bypass`. With `explain` on, a miss that wasn't stored says why in
   `X-Page-Cache-Skip` (off by default: the reason is for audits, not for visitors).
 - **The key** is the URL as the visitor asked for it (the locale prefix included), the locale
   the locale middleware resolved (a cookie or `Accept-Language` on unprefixed paths), the
@@ -738,8 +752,9 @@ return [
   - A tag read several ways counts as the strictest (fresh, then next visit, then timed). Only
     the changed tags count: a page that read "other jobs" timed and its own job fresh is still
     forgotten when its job changes. Nested scopes: the innermost wins. Inside a live part the
-    dial does nothing (its reads are no dependencies). `'*'` (a deploy, `cache:clear`) clears
-    every page whatever its freshness.
+    dial does nothing (its reads are no dependencies). `'*'` (a raw write whose tables are
+    unsure, `pages:refresh --all`) forgets every page whatever its freshness, and queues every
+    full page for rebuilding; `cache:clear pages` empties the cache without rebuilding.
   - The dial applies where a read runs, not where its value is shown: `{% set others = … %}`
     inside a next-visit scope and printed outside it is still next visit. A component's reads
     before `resolveState()` (its constructor) follow the scope around it.
@@ -771,9 +786,49 @@ return [
 
   `$pageCache->expiresAt($date)` does it from PHP. A page past its expiry, or older than
   `max_age` (4 h by default; `0` turns the maximum age off, a negative value is refused), is
-  served once more as `stale` (an expiry at or before the render is ignored: the page already
-  shows what came after it); the visitor after gets a fresh one (rendered on their request
-  until rebuilds behind the response are wired).
+  served as `stale` (an expiry at or before the render is ignored: the page already shows what
+  came after it) and its rebuild is queued: it is built right after that response, or by the
+  cron. A `HEAD` request (an uptime monitor) is served the stale page and queues nothing. A
+  stale fragment or search page is served once and then forgotten (their next visit renders
+  them).
+- **Rebuilding.** A write forgets the pages that read it fresh, and queues the full pages
+  without a query among them for rebuilding (the refresh queue, a table in the release's
+  `index.sqlite`): the pages that showed the changed record or address first, then the
+  listings. A stale hit queues its page. Fragments and search or filter pages are never queued:
+  they are built on their next visit. One page is one queue entry, however often it is queued
+  (an import of 300 jobs queues each affected page once).
+  - **After the response.** The request that queued something rebuilds right after its
+    response went out (`fastcgi_finish_request`/`litespeed_finish_request`), for
+    `rebuild_budget` seconds (2.0; checked after each page, so at least one is built; `0`
+    leaves everything to the cron). Code can add its own work there with
+    `$app->afterResponse(fn () => ...)`.
+  - **The cron** takes what is left, every minute:
+
+    ```cron
+    * * * * * cd /path/to/site/current && php preflow pages:work >/dev/null 2>&1
+    ```
+
+    `preflow pages:work [--budget=50]` rebuilds for up to 50 seconds. `preflow pages:refresh
+    {url}` forgets every copy of one URL (a path is taken against `app.url`) and rebuilds it;
+    `preflow pages:refresh --all` forgets every page and rebuilds the known full pages. Folio's
+    Cache screen has the same two actions.
+  - A rebuild is an internal anonymous GET of the page's URL through the whole pipeline
+    (`Rebuild::request()`, marked `InternalRender` and `PageCache::REBUILD`), with no cookies
+    or session, from clean request state each time (request context, assets, SEO meta,
+    translator locale). It carries the key parts the page was stored under: the locale (as
+    `Accept-Language`), `X-Forwarded-Proto`/`X-Forwarded-Host` and the vary header values, so
+    it is stored under the key visitors read; one that gives another key is not rendered
+    (logged). A page a visitor already rendered again is skipped, and one a write changed while
+    it rebuilt is built once more.
+  - Claim with lease: each process takes a queue entry in a write transaction and holds it for
+    5 minutes, so the after-response work and the cron never build one URL at once, and an
+    entry of a process that died is taken again later.
+- **Failed invalidations.** An invalidation that can't reach the index (SQLite busy, the file
+  unusable) is never dropped: it is kept in `storage/cache/pages/{key}/pending-invalidations`
+  and applied by the next request or command that reaches the index. While one is pending, no
+  page of the release is served from the cache or stored (one stat per hit), so an index that
+  stays unreachable turns the cache off rather than serving pages nothing can refresh. If even
+  that file can't be written, the release's pages are removed.
 - **Switching it off and on.** `storage/cache/pages/enabled` marks a cache that has been
   emptied since it was switched on. While the cache is off, the first write through the data
   layer removes the marker; the first request after switching it on again finds it missing and

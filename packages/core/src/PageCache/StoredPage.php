@@ -27,6 +27,17 @@ final readonly class StoredPage
         public array $state = [],
     ) {}
 
+    /**
+     * Whether the page is served as stale at $now: marked, past its expiresAt, or older than
+     * $maxAge seconds (0: no maximum age).
+     */
+    public function staleAt(float $now, int $maxAge): bool
+    {
+        return $this->stale
+            || ($this->expiresAt !== null && $this->expiresAt <= $now)
+            || ($maxAge > 0 && $this->createdAt + $maxAge <= $now);
+    }
+
     public function withStale(bool $stale = true): self
     {
         return new self($this->body, $this->headers, $this->createdAt, $this->expiresAt, $stale, $this->state);

@@ -662,7 +662,8 @@ final class PageCacheMiddlewareTest extends TestCase
         $console = Application::create($this->dir);
         $console->boot();
         $this->assertSame('', $console->handle($this->request('/page'))->getHeaderLine('X-Page-Cache'), 'console');
-        $this->assertFalse($console->container()->bound(PageCacheMiddleware::class));
+        // In the console only rebuilds (`preflow pages:work`) go through it; nothing else is touched.
+        $this->assertTrue($console->container()->bound(PageCacheMiddleware::class));
 
         $this->write('config/app.php', "<?php\nreturn ['name'=>'t','debug'=>1,'engine'=>'twig','key'=>'page-cache-test-key-0123456789ab','url'=>'https://example.com'];\n");
         $this->assertSame('', $this->web('/page')->getHeaderLine('X-Page-Cache'), 'debug');
@@ -1154,7 +1155,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertFalse($this->store->get($this->key('/timed'))?->stale, 'a timed read ignores the write');
     }
 
-    private function middleware(?PageCacheConfig $config = null, ?\Closure $clock = null, ?\Closure $nonPublic = null, ?\Closure $sentHeaders = null, ?\Preflow\Core\PageCache\LiveParts $live = null, bool|string|null $verify = null, bool $reportsStale = true): PageCacheMiddleware
+    private function middleware(?PageCacheConfig $config = null, ?\Closure $clock = null, ?\Closure $nonPublic = null, ?\Closure $sentHeaders = null, ?\Preflow\Core\PageCache\LiveParts $live = null, bool|string|null $verify = null, bool $reportsStale = true, ?\Closure $applyPending = null, bool $rebuildOnly = false): PageCacheMiddleware
     {
         $config ??= $this->config;
         $source = new PageCacheSource($this->root, static fn (): string => 'aaaaaaaaaaaaaaaa');
@@ -1182,7 +1183,97 @@ final class PageCacheMiddlewareTest extends TestCase
             sentHeaders: $sentHeaders,
             live: $live,
             verify: $verify,
+            applyPending: $applyPending,
+            rebuildOnly: $rebuildOnly,
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Rebuilds and pending invalidations (Task 6)
+    // -----------------------------------------------------------------------
+
+    public function test_while_an_invalidation_stays_pending_nothing_is_served_or_stored(): void
+    {
+        $reachable = false;
+        $mw = $this->middleware(applyPending: function () use (&$reachable): bool {
+            if ($reachable) {
+                \Preflow\Core\PageCache\PendingInvalidations::exist($this->store->releaseDir())
+                    && (new \Preflow\Core\PageCache\PendingInvalidations($this->store->releaseDir()))->apply(static function (): void {});
+            }
+
+            return $reachable;
+        });
+        $handler = $this->handler(fn (): ResponseInterface => $this->html('page'));
+        $mw->process($this->get('/page'), $handler);
+        $this->assertSame('hit', $mw->process($this->get('/page'), $handler)->getHeaderLine('X-Page-Cache'));
+
+        // An invalidation could not reach the index, and the index stays unreachable.
+        (new \Preflow\Core\PageCache\PendingInvalidations($this->store->releaseDir()))->add(['default:post'], microtime(true));
+        $response = $mw->process($this->get('/page'), $handler);
+        $this->assertSame('miss', $response->getHeaderLine('X-Page-Cache'), 'the hit is treated as a miss');
+        $this->assertSame('pending', $response->getHeaderLine('X-Page-Cache-Skip'), 'and not stored');
+        $this->assertSame(2, $handler->calls);
+        $this->assertSame('miss', $mw->process($this->get('/other'), $handler)->getHeaderLine('X-Page-Cache'));
+        $this->assertNull($this->store->get($this->key('/other')));
+
+        // Without anything to apply it (no refresher), the same.
+        $this->assertSame('miss', $this->middleware()->process($this->get('/page'), $handler)->getHeaderLine('X-Page-Cache'));
+
+        // Reachable again: applied before the hit.
+        $reachable = true;
+        $this->assertSame('hit', $mw->process($this->get('/page'), $handler)->getHeaderLine('X-Page-Cache'));
+    }
+
+    public function test_a_rebuild_is_stored_never_served_and_must_give_its_key(): void
+    {
+        $mw = $this->middleware();
+        $handler = $this->handler(fn (): ResponseInterface => $this->html('page ' . microtime(true)));
+        $mw->process($this->get('/page'), $handler);
+        $key = $this->key('/page');
+
+        $rebuild = \Preflow\Core\PageCache\Rebuild::request('https://example.com/page', [], $key->id(), true);
+        $this->assertSame('miss', $mw->process($rebuild, $handler)->getHeaderLine('X-Page-Cache'));
+        $this->assertSame(2, $handler->calls);
+
+        // A key part the rebuild can't reproduce: not rendered, nothing stored under another key.
+        $wrong = \Preflow\Core\PageCache\Rebuild::request('https://example.com/page', [], str_repeat('0', 40), true);
+        $response = $mw->process($wrong, $handler);
+        $this->assertSame('rebuild-key', $response->getHeaderLine('X-Page-Cache'));
+        $this->assertSame(2, $handler->calls);
+        $this->assertStringContainsString('does not give the key it was stored under', implode("\n", $this->logged));
+
+        // In the console only rebuilds use the cache.
+        $console = $this->middleware(rebuildOnly: true);
+        $this->assertSame('', $console->process($this->get('/page'), $handler)->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('miss', $console->process(\Preflow\Core\PageCache\Rebuild::request('https://example.com/page'), $handler)->getHeaderLine('X-Page-Cache'));
+    }
+
+    public function test_verify_first_renders_a_page_verified_in_this_release_once(): void
+    {
+        $mw = $this->middleware(verify: 'first');
+        $handler = $this->handler(fn (): ResponseInterface => $this->html('page'));
+
+        // Its invalidation forgot its rows: the index doesn't know it, but it was verified when stored.
+        $mw->process(\Preflow\Core\PageCache\Rebuild::request('https://example.com/a', [], null, true), $handler);
+        $this->assertSame(1, $handler->calls);
+        $this->assertNotNull($this->store->get($this->key('/a')));
+
+        // Warmed from the release before (new templates): verified again.
+        $mw->process(\Preflow\Core\PageCache\Rebuild::request('https://example.com/b', [], null, false), $handler);
+        $this->assertSame(3, $handler->calls);
+    }
+
+    public function test_a_stale_head_queues_nothing(): void
+    {
+        $mw = $this->middleware();
+        $handler = $this->handler(fn (): ResponseInterface => $this->html('page'));
+        $mw->process($this->get('/page'), $handler);
+        $this->store->markStale($this->key('/page')->id());
+
+        $this->assertSame('stale', $mw->process(new ServerRequest('HEAD', 'https://example.com/page'), $handler)->getHeaderLine('X-Page-Cache'));
+        $this->assertSame([], $this->staleKeys);
+        $this->assertSame('stale', $mw->process($this->get('/page'), $handler)->getHeaderLine('X-Page-Cache'));
+        $this->assertSame([$this->key('/page')->url()], $this->staleKeys);
     }
 
     /** @param \Closure(ServerRequestInterface): ResponseInterface $render */

@@ -29,10 +29,23 @@ use Psr\Http\Server\RequestHandlerInterface;
  *
  * A hit (fresh, or stale: marked, past its expiresAt or older than max_age; max_age 0 turns the
  * maximum age off) gets the stored headers and body with this request's per-request values
- * filled in, and `X-Page-Cache: hit` or `stale`; a stale one also goes to $onStale (the rebuild
- * queue). Without $onStale, a stale page's file is forgotten once it is served: its next visitor
- * renders it anew (a miss), so a stale page is served to one visitor only. The render state carried
- * for middleware outside (PageCache::carry(), SEO's page meta) is restored first.
+ * filled in, and `X-Page-Cache: hit` or `stale`; a stale GET also goes to $onStale (the rebuild
+ * queue, Refresher::stale()), a stale HEAD (an uptime monitor) changes nothing. Without $onStale,
+ * a stale page's file is forgotten once a GET was served it: its next visitor renders it anew (a
+ * miss), so a stale page is served to one visitor only. The render state carried for middleware
+ * outside (PageCache::carry(), SEO's page meta) is restored first.
+ *
+ * While an invalidation is pending (PendingInvalidations: it could not reach the index), there
+ * is no hit and nothing is stored: $applyPending is asked to apply it first, and only when that
+ * succeeds is the page served. One more stat per hit.
+ *
+ * A rebuild (REBUILD, Rebuild::request(); from Refresher::work()) is never served from the cache,
+ * only stored. With Rebuild::EXPECTED_ID it is rendered only when it gives that key (else
+ * `X-Page-Cache: rebuild-key`, logged), and with Rebuild::VERIFIED verify 'first' doesn't render
+ * it twice (the page was verified when it was first stored). Its session check is PHP's own
+ * (an active session), since the request that wrote and queued it may have had one, closed
+ * before the work runs. With $rebuildOnly (the console: `preflow pages:work`) every other
+ * request passes through untouched.
  *
  * A miss renders with its reads recorded (DependencyRecorder) and gets `X-Page-Cache: miss`.
  * It is stored only when none of these holds; with page_cache.explain on, the reason is sent
@@ -53,6 +66,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * - `size`: the body is larger than MAX_BODY;
  * - `refused:{reason}`: code called PageCache::refuse();
  * - `index`: the tag index can't be used (the cache is off then);
+ * - `pending`: an invalidation that could not reach the index is still pending (PendingInvalidations);
  * - `invalidated`: a write changed what the page read while it rendered;
  * - `live-non-html`: the body holds live placeholders but is not text/html (they are filled
  *   into HTML only; such a response goes out as it is);
@@ -135,6 +149,11 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * @param (\Closure(ServerRequestInterface, \Closure(): ResponseInterface): ResponseInterface)|null $visitorScope
      *        wraps each of the two renders of a verified page: makes $request the request being handled
      *        and starts from the same request-scoped state (assets) both times
+     * @param (\Closure(): bool)|null $applyPending applies pending invalidations, true when none is
+     *        left (Refresher::applyPending()); null: a pending invalidation means no hit and no store
+     * @param bool $rebuildOnly only rebuilds use the cache (the console)
+     * @param (\Closure(): bool)|null $sessionActive whether a session is open, for rebuilds;
+     *        session_status() === PHP_SESSION_ACTIVE when null
      */
     public function __construct(
         private readonly PageCacheConfig $config,
@@ -156,6 +175,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
         private readonly ?LiveParts $live = null,
         bool|string|null $verify = null,
         private readonly ?\Closure $visitorScope = null,
+        private readonly ?\Closure $applyPending = null,
+        private readonly bool $rebuildOnly = false,
+        private readonly ?\Closure $sessionActive = null,
     ) {
         $this->sentHeaders = $sentHeaders ?? static fn (): array => headers_sent() ? [] : headers_list();
         $this->clock = $clock ?? static fn (): float => microtime(true);
@@ -170,12 +192,19 @@ final class PageCacheMiddleware implements MiddlewareInterface
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $rebuild = $request->getAttribute(self::REBUILD) === true;
-        if (!$rebuild && InternalRender::is($request)) {
+        if (!$rebuild && ($this->rebuildOnly || InternalRender::is($request))) {
             return $handler->handle($request);
         }
         $key = $this->key($request);
         if ($key === null || ($this->nonPublic !== null && ($this->nonPublic)($request->getUri()->getPath()))) {
             return $handler->handle($request);
+        }
+        $expected = $rebuild ? $request->getAttribute(Rebuild::EXPECTED_ID) : null;
+        if (is_string($expected) && $expected !== $key->id()) {
+            // A key part the rebuild request can't carry: rendering it would store under another key.
+            $this->log('page cache: the rebuild of ' . $key->url() . ' does not give the key it was stored under; it is built on its next visit');
+
+            return new Response(409, [self::HEADER => 'rebuild-key']);
         }
         if ($this->carriesSignIn($request)) {
             return $handler->handle($request)->withHeader(self::HEADER, 'bypass');
@@ -185,6 +214,11 @@ final class PageCacheMiddleware implements MiddlewareInterface
             $this->ensureEnabled();
             $store = ($this->store)();
             $page = $rebuild ? null : $store->get($key);
+            if ($page !== null && PendingInvalidations::exist($store->releaseDir())) {
+                // An invalidation that could not reach the index may concern this page: once it
+                // is applied the page is read again, else it is not served.
+                $page = $this->nothingPending($store) ? $store->get($key) : null;
+            }
         } catch (\Throwable $e) {
             $this->log('page cache: ' . $e->getMessage());
 
@@ -275,20 +309,32 @@ final class PageCacheMiddleware implements MiddlewareInterface
         }
     }
 
+    /** Whether no invalidation is pending in $store's release, after trying to apply one. */
+    private function nothingPending(PageStore $store): bool
+    {
+        if (!PendingInvalidations::exist($store->releaseDir())) {
+            return true;
+        }
+        try {
+            return $this->applyPending !== null && ($this->applyPending)();
+        } catch (\Throwable $e) {
+            $this->log('page cache: ' . $e->getMessage());
+
+            return false;
+        }
+    }
+
     private function serve(PageKey $key, StoredPage $page): ResponseInterface
     {
-        $now = ($this->clock)();
-        $stale = $page->stale
-            || ($page->expiresAt !== null && $page->expiresAt <= $now)
-            || ($this->config->maxAge > 0 && $page->createdAt + $this->config->maxAge <= $now);
+        $stale = $page->staleAt(($this->clock)(), $this->config->maxAge);
 
-        if ($stale) {
+        // Not for HEAD (uptime monitors): it changes nothing, and would use up the stale serve a GET gets.
+        if ($stale && !$key->isHead()) {
             try {
                 if ($this->onStale !== null) {
                     ($this->onStale)($key);
-                } elseif (!$key->isHead()) {
+                } else {
                     // Nothing rebuilds it behind this visitor: served this once, the next renders it.
-                    // Not for HEAD (uptime monitors): it would use up the stale serve a GET gets.
                     ($this->store)()->forget($key->id());
                 }
             } catch (\Throwable $e) {
@@ -314,7 +360,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
         $before = $this->cache->begin($key->isHead() ? null : $key);
         $carried = [];
         $reason = null;
-        $verify = !$key->isHead() && $this->verifies($key, $store);
+        $verify = !$key->isHead() && $this->verifies($request, $key, $store);
         try {
             $response = $verify && $this->visitorScope !== null
                 ? ($this->visitorScope)($request, static fn (): ResponseInterface => $handler->handle($request))
@@ -378,7 +424,10 @@ final class PageCacheMiddleware implements MiddlewareInterface
             $response = $response->withBody(\Nyholm\Psr7\Stream::create($this->live->fill($content)));
         }
 
-        return $reason === null || !$this->config->explain ? $response : $response->withHeader(self::SKIP_HEADER, $reason);
+        // A rebuild's response goes to Refresher::work() only, which retries one a write refused.
+        $explain = $this->config->explain || $request->getAttribute(self::REBUILD) === true;
+
+        return $reason === null || !$explain ? $response : $response->withHeader(self::SKIP_HEADER, $reason);
     }
 
     /** Whether a response is HTML (live parts are filled into nothing else). @param array<string, list<string>> $headers */
@@ -395,12 +444,16 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
     /**
      * Whether a miss of $key is verified before it is stored: always, never, or ('first') when the
-     * index doesn't know the key yet (a new page; a rebuild of a known one is not verified).
+     * index doesn't know the key yet (a new page; a rebuild of a known one is not verified, nor
+     * one of a page stored in this release that its invalidation forgot: Rebuild::VERIFIED).
      */
-    private function verifies(PageKey $key, PageStore $store): bool
+    private function verifies(ServerRequestInterface $request, PageKey $key, PageStore $store): bool
     {
         if ($this->verify !== PageCacheConfig::VERIFY_FIRST) {
             return $this->verify === PageCacheConfig::VERIFY_ALWAYS;
+        }
+        if ($request->getAttribute(self::REBUILD) === true && $request->getAttribute(Rebuild::VERIFIED) === true) {
+            return false;
         }
         try {
             $index = $this->index ??= TagIndex::forStore($store, $this->config, $this->clock, $this->sqlite);
@@ -569,7 +622,12 @@ final class PageCacheMiddleware implements MiddlewareInterface
         if ($response->hasHeader('Set-Cookie') || $this->nativeCookie()) {
             return 'set-cookie';
         }
-        if ($this->sessionStarted !== null && ($this->sessionStarted)()) {
+        if ($request->getAttribute(self::REBUILD) === true) {
+            // The request that queued it may have had a session (closed since): only one open now counts.
+            if ($this->sessionActive !== null ? ($this->sessionActive)() : session_status() === PHP_SESSION_ACTIVE) {
+                return 'session';
+            }
+        } elseif ($this->sessionStarted !== null && ($this->sessionStarted)()) {
             return 'session';
         }
         if ($this->signedIn !== null && ($this->signedIn)()) {
@@ -646,6 +704,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
             if (!$index->available()) {
                 return 'index';
             }
+            if (!$this->nothingPending($store)) {
+                return 'pending';
+            }
             $page = new StoredPage(
                 $this->values->toPlaceholders($content),
                 $this->storedHeaders($response),
@@ -653,7 +714,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
                 $expiry,
                 state: $carried,
             );
-            $index->record($key->id(), $key->url(), $key->isFragment(), $key->hasQuery(), $tags);
+            $index->record($key->id(), $key->url(), $key->isFragment(), $key->hasQuery(), $tags, $key->parts());
             if (!$store->put($key, $page)) {
                 $index->forget($key->id());
 

@@ -67,7 +67,7 @@ final class TagIndexTest extends TestCase
         $this->assertSame([], $index->pagesFor(['old']));
         $this->assertSame([self::id('a') => Freshness::Fresh], $index->pagesFor(['new']));
         $this->assertSame(
-            ['url' => 'https://e.x/a?x=1', 'fragment' => true, 'hasQuery' => true, 'createdAt' => $this->now],
+            ['url' => 'https://e.x/a?x=1', 'fragment' => true, 'hasQuery' => true, 'createdAt' => $this->now, 'parts' => []],
             $index->page(self::id('a')),
         );
         $pdo = $index->pdo();

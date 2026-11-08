@@ -31,6 +31,7 @@ final readonly class PageKey
         private bool $fragment,
         private bool $hasQuery,
         private bool $head,
+        private array $parts = [],
     ) {}
 
     /**
@@ -83,6 +84,15 @@ final readonly class PageKey
         ksort($vary, SORT_STRING);
 
         $url = $origin . $path . ($query !== '' ? '?' . $query : '');
+        $kept = $parts;
+        $varyValues = [];
+        foreach ($vary as $name => $line) {
+            $varyValues[$name] = substr($line, strlen($name) + 1);
+        }
+        if ($varyValues !== []) {
+            $kept['vary'] = $varyValues;
+        }
+        ksort($kept, SORT_STRING);
         $extra = [];
         if ($parts !== []) {
             ksort($parts, SORT_STRING);
@@ -92,7 +102,19 @@ final readonly class PageKey
         }
         $id = sha1(implode("\n", [$origin, $path, $query, ...array_values($vary), ...$extra]));
 
-        return new self($id, $url, $fragment, $query !== '', $method === 'HEAD');
+        return new self($id, $url, $fragment, $query !== '', $method === 'HEAD', $kept);
+    }
+
+    /**
+     * What the key holds besides the URL, so a rebuild can ask for the same key
+     * (Rebuild::request()): the $parts given (the middleware's locale, proto, host) and, under
+     * 'vary', the values of the vary headers the request carried (lowercase name => value).
+     *
+     * @return array<string, mixed>
+     */
+    public function parts(): array
+    {
+        return $this->parts;
     }
 
     /** 40 hex characters. */

@@ -39,6 +39,12 @@ namespace Preflow\Core\PageCache;
 final class PageCache
 {
     /**
+     * Request attribute: true on an internal render that rebuilds a page (Rebuild::request()):
+     * never served from the cache, stored.
+     */
+    public const string REBUILD = PageCacheMiddleware::REBUILD;
+
+    /**
      * @param (\Closure(string): string)|null $storageName the name a storage is reported under
      *        (DataManager::reportedStorage()): 'mysql:member' becomes 'default:member' when mysql
      *        is the default driver, as the data layer's own tags are

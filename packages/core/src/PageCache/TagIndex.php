@@ -8,8 +8,11 @@ namespace Preflow\Core\PageCache;
  * Which cached pages depend on which tags, in SQLite (WAL) next to the release's pages:
  * {root}/{releaseKey}/index.sqlite.
  *
- *   pages(id, url, path, fragment, has_query, created_at)  one row per cached page; path is the
- *                                                          URL without its query
+ *   pages(id, url, path, fragment, has_query, created_at, parts)
+ *                                                          one row per cached page; path is the
+ *                                                          URL without its query, parts what
+ *                                                          else its key holds (PageKey::parts(),
+ *                                                          JSON), so a rebuild asks for that key
  *   tags(tag, page_id, freshness, timed_seconds)           what a page read while it rendered
  *   invalidations(tag, at)                                 recent changes, kept for an hour
  *
@@ -40,7 +43,7 @@ final class TagIndex
     /** The tag of the whole site. */
     public const string EVERYTHING = '*';
 
-    public const int SCHEMA = 2;
+    public const int SCHEMA = 3;
 
     /** Bound parameters per IN (...) list. */
     private const int CHUNK = 500;
@@ -172,7 +175,7 @@ final class TagIndex
                     $pdo->exec('DROP TABLE IF EXISTS invalidations');
                     $pdo->exec('CREATE TABLE pages (
                         id TEXT PRIMARY KEY, url TEXT NOT NULL, path TEXT NOT NULL, fragment INTEGER NOT NULL,
-                        has_query INTEGER NOT NULL, created_at REAL NOT NULL)');
+                        has_query INTEGER NOT NULL, created_at REAL NOT NULL, parts TEXT NOT NULL DEFAULT \'\')');
                     $pdo->exec('CREATE INDEX pages_created ON pages (created_at)');
                     $pdo->exec('CREATE INDEX pages_path ON pages (path, has_query, created_at)');
                     $pdo->exec('CREATE TABLE tags (
@@ -228,9 +231,10 @@ final class TagIndex
      *
      * @param array<string, array{0: Freshness, 1?: int|null}|Freshness> $tags tag => [Freshness, ?seconds]
      *        (the seconds of a Timed dependency)
+     * @param array<string, mixed> $parts PageKey::parts(): what a rebuild needs to ask for the same key
      * @return list<string>
      */
-    public function record(string $pageId, string $url, bool $fragment, bool $hasQuery, array $tags): array
+    public function record(string $pageId, string $url, bool $fragment, bool $hasQuery, array $tags, array $parts = []): array
     {
         $pdo = $this->pdo();
         if ($pdo === null) {
@@ -241,8 +245,8 @@ final class TagIndex
         $evicted = [];
         $pdo->beginTransaction();
         try {
-            $pdo->prepare('INSERT OR REPLACE INTO pages (id, url, path, fragment, has_query, created_at) VALUES (?, ?, ?, ?, ?, CAST(? AS REAL))')
-                ->execute([$pageId, $url, $path, (int) $fragment, (int) $hasQuery, self::real(($this->clock)())]);
+            $pdo->prepare('INSERT OR REPLACE INTO pages (id, url, path, fragment, has_query, created_at, parts) VALUES (?, ?, ?, ?, ?, CAST(? AS REAL), ?)')
+                ->execute([$pageId, $url, $path, (int) $fragment, (int) $hasQuery, self::real(($this->clock)()), self::encodeParts($parts)]);
             $pdo->prepare('DELETE FROM tags WHERE page_id = ?')->execute([$pageId]);
             $insert = $pdo->prepare('INSERT OR REPLACE INTO tags (tag, page_id, freshness, timed_seconds) VALUES (?, ?, ?, ?)');
             foreach ($tags as $tag => $spec) {
@@ -334,7 +338,7 @@ final class TagIndex
     /**
      * The url and kind of a recorded page, null when it is not recorded.
      *
-     * @return array{url: string, fragment: bool, hasQuery: bool, createdAt: float}|null
+     * @return array{url: string, fragment: bool, hasQuery: bool, createdAt: float, parts: array<string, mixed>}|null
      */
     public function page(string $pageId): ?array
     {
@@ -342,7 +346,7 @@ final class TagIndex
         if ($pdo === null) {
             return null;
         }
-        $statement = $pdo->prepare('SELECT url, fragment, has_query, created_at FROM pages WHERE id = ?');
+        $statement = $pdo->prepare('SELECT url, fragment, has_query, created_at, parts FROM pages WHERE id = ?');
         $statement->execute([$pageId]);
         $row = $statement->fetch(\PDO::FETCH_NUM);
 
@@ -351,7 +355,71 @@ final class TagIndex
             'fragment' => (bool) $row[1],
             'hasQuery' => (bool) $row[2],
             'createdAt' => (float) $row[3],
+            'parts' => self::decodeParts((string) $row[4]),
         ];
+    }
+
+    /**
+     * The full pages without a query among $pageIds (all of them when null): the pages a refresh
+     * rebuilds eagerly. Fragments and search or filter pages are only rebuilt on visit.
+     *
+     * @param list<string>|null $pageIds
+     * @return array<string, array{url: string, parts: array<string, mixed>}> page id => url and key parts
+     */
+    public function fullPages(?array $pageIds = null): array
+    {
+        $pdo = $this->pdo();
+        if ($pdo === null) {
+            return [];
+        }
+        $pages = [];
+        $read = static function (\PDOStatement $statement) use (&$pages): void {
+            foreach ($statement->fetchAll(\PDO::FETCH_NUM) as [$id, $url, $parts]) {
+                $pages[(string) $id] = ['url' => (string) $url, 'parts' => self::decodeParts((string) $parts)];
+            }
+        };
+        if ($pageIds === null) {
+            $read($pdo->query('SELECT id, url, parts FROM pages WHERE fragment = 0 AND has_query = 0 ORDER BY created_at, id'));
+
+            return $pages;
+        }
+        foreach (array_chunk(array_values(array_unique($pageIds)), self::CHUNK) as $chunk) {
+            $statement = $pdo->prepare('SELECT id, url, parts FROM pages WHERE fragment = 0 AND has_query = 0 AND id IN (' . self::marks($chunk) . ')');
+            $statement->execute($chunk);
+            $read($statement);
+        }
+
+        return $pages;
+    }
+
+    /** The ids of the recorded pages (of every kind) at $url, the normalised URL a key gives. @return list<string> */
+    public function idsAt(string $url): array
+    {
+        $pdo = $this->pdo();
+        if ($pdo === null) {
+            return [];
+        }
+        $statement = $pdo->prepare('SELECT id FROM pages WHERE url = ?');
+        $statement->execute([$url]);
+
+        return array_map(strval(...), $statement->fetchAll(\PDO::FETCH_COLUMN));
+    }
+
+    /** @param array<string, mixed> $parts */
+    private static function encodeParts(array $parts): string
+    {
+        return $parts === [] ? '' : json_encode($parts, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    /** @return array<string, mixed> */
+    public static function decodeParts(string $json): array
+    {
+        if ($json === '') {
+            return [];
+        }
+        $parts = json_decode($json, true);
+
+        return is_array($parts) ? $parts : [];
     }
 
     /** Removes a page and its tags. */
