@@ -18,20 +18,27 @@ use Preflow\Core\Application;
 final class AiCommandsTest extends TestCase
 {
     private string $dir;
+    private string $cwd = '';
 
     /** @var resource */
     private $err;
 
+    /** Array-config apps take the working directory as base path: the temporary dir, not the repository root. */
     protected function setUp(): void
     {
         $this->dir = sys_get_temp_dir() . '/ai_cmd_' . bin2hex(random_bytes(4));
+        mkdir($this->dir, 0777, true);
+        $this->cwd = getcwd() ?: '.';
+        chdir($this->dir);
         $this->err = fopen('php://memory', 'w+');
     }
 
     protected function tearDown(): void
     {
-        foreach (glob($this->dir . '/*') ?: [] as $f) {
-            unlink($f);
+        chdir($this->cwd);
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->dir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+        foreach ($it as $f) {
+            $f->isDir() && !$f->isLink() ? rmdir($f->getPathname()) : unlink($f->getPathname());
         }
         @rmdir($this->dir);
     }

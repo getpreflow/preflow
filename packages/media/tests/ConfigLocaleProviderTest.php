@@ -12,6 +12,28 @@ use Preflow\Media\MediaServiceProvider;
 
 final class ConfigLocaleProviderTest extends TestCase
 {
+    private string $cwd = '';
+    private string $base = '';
+
+    /** Array-config apps take the working directory as base path: a temporary one, not the repository root. */
+    protected function setUp(): void
+    {
+        $this->cwd = getcwd() ?: '.';
+        $this->base = sys_get_temp_dir() . '/media_locale_' . bin2hex(random_bytes(5));
+        mkdir($this->base, 0777, true);
+        chdir($this->base);
+    }
+
+    protected function tearDown(): void
+    {
+        chdir($this->cwd);
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->base, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+        foreach ($it as $f) {
+            $f->isDir() && !$f->isLink() ? rmdir($f->getPathname()) : unlink($f->getPathname());
+        }
+        rmdir($this->base);
+    }
+
     public function test_translator_locale_wins_over_the_app_locale(): void
     {
         $locale = new ConfigLocaleProvider(static fn (): ?string => 'de', 'en');
