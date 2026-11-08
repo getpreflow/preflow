@@ -33,9 +33,9 @@ final class OptimizeCommand implements CommandInterface
                 return 1;
             }
         }
-        $builder = new ManifestBuilder($this->basePath ?? (getcwd() ?: '.'));
-
         try {
+            $builder = new ManifestBuilder($this->basePath ?? (getcwd() ?: '.'));
+
             return in_array('--check', $args, true) ? $this->check($builder) : $this->write($builder);
         } catch (\Throwable $e) {
             fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");

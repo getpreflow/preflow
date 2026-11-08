@@ -27,7 +27,12 @@ final class ManifestBuilder
     public function write(): array
     {
         $base = $this->absoluteBase();
-        $data = $this->build();
+        try {
+            $data = $this->build();
+        } catch (\Throwable $e) {
+            ManifestFile::forget($base); // never leave the manifest of the code before in place
+            throw $e;
+        }
         $file = ManifestFile::path($base);
         $recorded = $data['__recorded'];
         unset($data['__recorded']);

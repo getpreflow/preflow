@@ -77,8 +77,11 @@ final class BootManifestAppTest extends TestCase
     {
         $this->site();
         (new ManifestBuilder($this->dir))->write();
-        // Gone after the build: a manifest boot doesn't read them.
-        rename($this->dir . '/vendor/composer/installed.json', $this->dir . '/vendor/composer/installed.moved');
+        // Gone after the build: a manifest boot doesn't read them (installed.json is only stat-ed).
+        $installed = $this->dir . '/vendor/composer/installed.json';
+        $mtime = filemtime($installed);
+        file_put_contents($installed, str_repeat(' ', filesize($installed))); // same size, mtime and inode: unreadable content
+        touch($installed, $mtime);
         rename($this->dir . '/config/folio.php', $this->dir . '/config/folio.moved');
         rename($this->dir . '/config/models/rbac_role.json', $this->dir . '/config/rbac_role.moved');
 

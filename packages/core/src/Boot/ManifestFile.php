@@ -14,8 +14,8 @@ namespace Preflow\Core\Boot;
  *   built     string, when it was written (ISO 8601)
  *   sources   relative path => signature of every file or directory a value was made from
  *             (`preflow optimize --check` compares them)
- *   runtime   the sources checked on every request: '.env' and 'config/folio/extensions.json'
- *             => signature, plus 'env' (the .env keys and a hash of their effective values)
+ *   runtime   the sources checked on every request: '.env', 'config/folio/extensions.json' and
+ *             'vendor/composer/installed.json' => stamp, plus 'env' (the .env keys and a hash of their effective values)
  *   config    config file name => its result
  *   packages  the package discovery data (InstalledPackages)
  *   catalogs  key => value, as producers remember them
@@ -30,8 +30,12 @@ final class ManifestFile
 
     public const string PATH = 'bootstrap/cache/boot.php';
 
-    /** Sources that change without a deploy: checked on every request. */
-    public const array RUNTIME = ['.env', 'config/folio/extensions.json'];
+    /**
+     * Sources checked on every request: those that change without a deploy, and Composer's
+     * package list, so an in-place `composer install` without `optimize` never meets a manifest
+     * of the packages before.
+     */
+    public const array RUNTIME = ['.env', 'config/folio/extensions.json', 'vendor/composer/installed.json'];
 
     public static function path(string $basePath): string
     {
@@ -91,6 +95,9 @@ final class ManifestFile
             @unlink($tmp);
             throw new \RuntimeException("Could not write {$tmp}.");
         }
+        // It holds config values, secrets included: readable like the .env, no wider.
+        $envMode = @fileperms(rtrim($basePath, '/') . '/.env');
+        @chmod($tmp, $envMode !== false ? $envMode & 0777 : 0640);
         try {
             $back = include $tmp;
         } catch (\Throwable $e) {
