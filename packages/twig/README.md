@@ -125,7 +125,8 @@ count) is a live part of a cached page (preflow/core's page cache):
 - While a page renders for the page cache, the tag prints a signed placeholder (template,
   block, values) instead of the body; the block is rendered for each visitor when the page is
   served. Otherwise it renders in place.
-- Live blocks don't nest. Not inside `{% embed %}`.
+- Live blocks don't nest. Not inside `{% embed %}`. Block names starting with `__live_` are
+  theirs: a template's own `{% block __live_… %}` is a syntax error.
 - The placeholder names the template by its loader name (`page.twig`, `@folio/...`), or, in a
   component's own template, by the component class. A template rendered by a path that is no
   component's renders its live blocks in place and keeps the page from being stored.
@@ -145,7 +146,8 @@ per dependency"), and the page's expiry:
 ```
 
 - Names: `'fresh'`, `'next-visit'` (or `'next_visit'`), `'timed'`; only `timed` takes `every`
-  (`'30m'`, `'12h'`, `'2d'` or seconds). Both are expressions.
+  (`'30m'`, `'12h'`, `'2d'` or seconds). Both are expressions. A timed page never outlives the
+  page cache's `max_age` (4 h by default): `every '12h'` refreshes every 4 h unless it is raised.
 - Nested, the innermost wins. The body sees and sets the variables around it.
 - `expires at` takes a `DateTimeInterface`, a unix time or a date string (null does nothing);
   the earliest of several counts.

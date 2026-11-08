@@ -15,8 +15,9 @@ use Psr\Http\Server\RequestHandlerInterface;
  * Serves anonymous GET and HEAD requests from the page cache and stores what they render.
  *
  * It runs after the locale middleware (the key holds the resolved locale) and before the
- * session middleware, so a hit never opens the session: a hit is the `active` check of the
- * store, one page file read and one stat for its stale marker; no database, no SQLite.
+ * session middleware, so a hit never opens the session: a hit reads the store's `active` name
+ * and the page file, and stats the release key's inputs (once per process), the enabled marker,
+ * the page's stale marker and the pending invalidations; no database, no SQLite.
  *
  * A request passes through untouched when:
  * - it has no key (not GET/HEAD, a host that isn't cached, a query while cache_query is off,

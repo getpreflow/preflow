@@ -187,6 +187,39 @@ One conditional statement decides by its affected rows, so concurrent requests c
 take the last seat. A package writing its own SQL for both SQLite and MySQL asks the driver
 for `PdoDriver::dialect()` (`quoteIdentifier()`, `MysqlDialect`).
 
+### Observing reads and writes (the page cache)
+
+`DataManager::observe()` attaches a `Preflow\Data\Observe\DataObserver`: it is told about every
+read and write through the manager (`read`, `wrote`, `rawRead`, `rawWrote`). preflow/core's page
+cache attaches one when it is on, to learn what a page read and what a write changed; nothing
+is observed otherwise (`observe(null)` stops it). Writes are reported after they ran, also inside
+a transaction that may still roll back. The tables of raw SQL are read conservatively
+(`SqlTables`): a statement it can't be sure of counts as the whole storage.
+
+```php
+// Code that reads or writes around the manager (straight through driver(), an import):
+$dm->reportRead('default', 'member', 42);     // a read of one record (null: a listing)
+$dm->reportWrite('default', 'member', 42);    // a write of one record (null: many or unknown)
+
+// A memo that answers later calls from memory: capture the reads once, replay them on each hit,
+// so every page using the memo still depends on what it holds.
+[$value, $reads] = $dm->captureReads(fn () => $this->load());
+$dm->replayReads($reads);                     // on every memo hit
+
+// Queries:
+$dm->queryType('asset')->byIds(['a1', 'a2'])->get();   // reported as one record read per id
+$dm->queryType('page')->where('slug', $slug)->unreported()->first(); // reported by the caller
+```
+
+- `byIds($ids)` filters on the id field and is reported as one record read per id (found or
+  not), not as a listing of the table: a page showing these records depends on them alone.
+  Another filter added to the query makes it a listing again.
+- `unreported()` keeps the query's runs from the observer, for a lookup whose caller reports
+  what it really depends on (Folio finds a page by its address and reports the record and the
+  address, not the whole table).
+- `reportedStorage($name)` is the name a storage is reported under: `default` for the default
+  driver, whatever it is configured as.
+
 ### Version-checked saves (compare-and-set)
 
 Reading a record, comparing its version and then saving it leaves a window: two requests

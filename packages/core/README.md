@@ -616,10 +616,28 @@ return [
 - **Serving.** `PageCacheMiddleware` runs after the locale middleware and before the session
   middleware. It is on when `enabled` is true, `pdo_sqlite` is loaded and `app.debug` is off.
   In the console it is there for rebuilds only (`preflow pages:work`); every other request
-  passes through. A hit reads one page file and stats its stale marker and the release's
-  pending invalidations: no database, no SQLite, no session. Responses carry `X-Page-Cache: hit`,
+  passes through. A hit reads two small files, the release's `active` name and the page, and
+  makes about six stats: the release key (the base folder's real path, the mtimes of the boot
+  manifest and `installed.json`), the `enabled` marker, the page's stale marker and the
+  release's pending invalidations. No database, no SQLite, no session. Responses carry `X-Page-Cache: hit`,
   `stale`, `miss` or `bypass`. With `explain` on, a miss that wasn't stored says why in
   `X-Page-Cache-Skip` (off by default: the reason is for audits, not for visitors).
+- **Sessions.** Nothing is stored from a request that started the session. Without
+  `auth.session.paths`, every request starts one at boot, so **a site must limit sessions to
+  the paths that need them for anything to be cached**; until it does, every miss says
+  `X-Page-Cache-Skip: session` (with `explain` on):
+
+  ```php
+  // config/auth.php
+  'session' => [
+      'paths' => ['/login', '/logout', '/account', '/folio', '/--component'],
+      // ...
+  ],
+  ```
+
+  Public pages then know nobody: signed-in visitors still get live pages (their `preflow_auth`
+  marker bypasses the cache), but a header showing "signed in as" belongs on those paths or
+  in what they load. The skeleton ships with its sign-in, admin and component paths.
 - **The key** is the URL as the visitor asked for it (the locale prefix included), the locale
   the locale middleware resolved (a cookie or `Accept-Language` on unprefixed paths), the
   normalised query, the `vary_headers` values, and a forwarded scheme and host
@@ -633,7 +651,10 @@ return [
 - **Live, never cached:** anything but GET and HEAD; admin, API and component paths
   (non-public paths); internal renders; and requests with a signed-in cookie (preflow/auth's
   `preflow_auth` marker, every guard's remember-me cookie, `signed_in_cookies`) or an
-  `Authorization` header. A leftover session cookie alone is not one.
+  `Authorization` header. A leftover session cookie alone is not one. The marker is set at
+  sign-in for as long as the session cookie (or the remember-me cookie); a sliding session
+  (`session.lifetime` > 0) can outlive it, and then that visitor gets cached hits until a page
+  that asks for the user sets it again. No leak: a miss with their session open is not stored.
 - **Never stored:** a render of another kind than its key (a history restore, which an app
   may answer with a fragment), an empty or the default `app.key` (placeholders could be forged),
   a body that can't be read twice (a stream), a page where a component's error boundary or a
@@ -645,6 +666,23 @@ return [
   cached), bodies that aren't text, JSON, XML or JavaScript, and a page something it read was
   written while it rendered. Code can refuse the page being rendered with
   `$pageCache->refuse('why')`; `$pageCache->storing()` says whether it may be stored.
+- **Render isolation.** Every render the cache may store (a visitor's miss, verify's second
+  render, every rebuild) starts from the state a public render starts from. A package with
+  request-scoped state that outlives a request in the same process (a content mode, memos)
+  registers what resets it, and a store check as a second line:
+
+  ```php
+  $pageCache->isolate(static function () use ($content): \Closure {
+      $restore = $content->showPublished();   // and empty the memos
+      return $restore;                         // run after the render, last entered first
+  });
+  $pageCache->refuseWhen('working-copy', static fn (): bool => $content->showsDrafts());
+  ```
+
+  A rebuild after a Folio admin request (a publish) runs in that request's process: Folio
+  resets its working-copy mode and its `Collections` and `Singletons` memos this way, so drafts
+  never reach a stored page, and refuses a page rendered with working copies anyway
+  (`refused:working-copy`, a share preview).
 - **Stored headers** are the response's own, without `Set-Cookie`, the security headers
   (`Content-Security-Policy`, `HX-Nonce`, `Strict-Transport-Security`, which are added fresh to
   every hit) and `Date`, `Content-Length`, `Transfer-Encoding`, `Connection`, `Keep-Alive`.
@@ -691,10 +729,14 @@ return [
     is ever read from a recipe. A marker that doesn't verify, or names anything else, is left
     as an inert HTML comment, logged once per response
     (`page cache: N live marker(s) left as comments …`).
-  - With an empty or the default `app.key`, nothing is signed or filled: live parts render in
-    place, and the page is not stored (`app-key`).
+  - With an empty `app.key`, the default one or the skeleton's example
+    (`change-this-to-a-random-32-char-string!`), nothing is signed or filled: live parts render
+    in place, and the page is not stored (`app-key`).
+  - Block names starting with `__live_` belong to `{% live %}`: a template's own
+    `{% block __live_… %}` is a syntax error.
   - A body that is not `text/html` (a JSON string with a live component in it) is never filled
-    and, while it holds a placeholder, never stored (`live-non-html`). A template in no
+    and, while it holds a placeholder, never stored (`live-non-html`). A response without a
+    `Content-Type` is HTML (PHP sends `text/html` for it), logged once. A template in no
     template folder and of no component (a string) renders its live parts in place and is not
     stored (`refused:live:twig-template`, `live:blade-template`).
   - What a live part reads is not a dependency of the page, `refuse()` inside it does nothing,
@@ -711,10 +753,13 @@ return [
   parts and per-request values (each render's own), the page is not stored
   (`X-Page-Cache-Skip: differs`) and `page cache: {url} differs per visitor outside live parts`
   is logged: something personal is not in a live part or registered. It never runs on a hit.
-  - `'first'` (the default) verifies the first store of a key the index doesn't know yet: a
-    forgotten personal value shows up on real traffic as a log line and an uncached page,
-    never as a leak. It costs one extra render per new page (and per page whose index rows an
-    invalidation dropped); rebuilds of known pages skip it.
+  - `'first'` (the default) verifies each key once per release: its first store, by a visitor
+    or a rebuild. A verified key is noted in the release's index (kept when the page is
+    forgotten, emptied by `cache:clear pages` and a rollback), and is not verified again; a key
+    that differed is verified again on its next miss. A forgotten personal value shows up on
+    real traffic as a log line and an uncached page, never as a leak. It costs one extra render
+    per page and release. It checks the visitor it gets: a part that differs only for visitors
+    with a cookie (an album) is caught when such a visitor makes the first store.
   - `'always'` verifies every store: each stored miss costs two renders. For tests and staging;
     preflow/testing's `WebApplication` sets it.
   - `'off'` never verifies. `true` and `false` mean `'always'` and `'off'`.
@@ -751,7 +796,8 @@ return [
   - `next-visit`: a write marks the page stale. The next visitor still gets it at once, and a
     fresh one is built behind them.
   - `timed` (`every '30m'`, `'12h'`, `'2d'` or seconds): writes are ignored. The page expires
-    at its render time plus that time.
+    at its render time plus that time, but never later than `max_age`: with the default 4 h,
+    `every '12h'` refreshes every 4 h. Raise `max_age` for longer times.
   - A tag read several ways counts as the strictest (fresh, then next visit, then timed). Only
     the changed tags count: a page that read "other jobs" timed and its own job fresh is still
     forgotten when its job changes. Nested scopes: the innermost wins. Inside a live part the

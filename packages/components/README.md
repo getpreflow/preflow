@@ -81,13 +81,14 @@ use Preflow\Core\PageCache\Freshness as Dial;
 #[Freshness(Dial::NextVisit)]              // a write marks the page stale
 final class OtherJobs extends Component { ... }
 
-#[Freshness(Dial::Timed, seconds: 43200)]  // writes ignored; the page expires after 12 h
+#[Freshness(Dial::Timed, seconds: 43200)]  // writes ignored; expires after 12 h (or max_age, if shorter)
 final class Ticker extends Component { ... }
 ```
 
 A parent's attribute counts for its subclasses; a scope inside (a template's `{% freshness %}`)
 wins for its own reads; on a `#[Live]` component it does nothing. `Timed` without seconds is
-an error (the component's error boundary shows it).
+an error (the component's error boundary shows it). A timed page never outlives the page
+cache's `max_age` (4 h by default): raise it for longer times.
 
 ### `ComponentExtension` (Twig)
 

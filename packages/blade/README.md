@@ -160,7 +160,8 @@ The same as Twig's `{% freshness %}` and `{% expires %}` (preflow/core's page ca
 ```
 
 - Names: `'fresh'`, `'next-visit'`, `'timed'`; only `timed` takes `every` (`'30m'`, `'12h'`,
-  `'2d'` or seconds). Nested, the innermost wins; a throw inside closes the scope.
+  `'2d'` or seconds). Nested, the innermost wins; a throw inside closes the scope. A timed page
+  never outlives the page cache's `max_age` (4 h by default): raise it for longer times.
 - As with every Blade directive, `@endfreshness` right after a letter or digit (`x@endfreshness`)
   is not seen: put a space or a tag before it.
 
