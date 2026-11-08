@@ -121,9 +121,14 @@ final class Refresher
      */
     public function stale(PageKey $key): void
     {
-        if (!$this->usable() || $key->isFragment() || $key->hasQuery()) {
+        if (!$this->usable()) {
+            $this->store->forget($key->id()); // no index: only files
+
+            return;
+        }
+        if ($key->isFragment() || $key->hasQuery()) {
             // Built on their next visit: served stale this once.
-            $this->store->forget($key->id());
+            $this->forgetPage($this->index($this->store), $key->id());
 
             return;
         }
@@ -140,7 +145,7 @@ final class Refresher
             ]]);
         } catch (\Throwable $e) {
             ($this->log)('page cache: the rebuild of ' . $key->url() . ' could not be queued: ' . $e->getMessage());
-            $this->store->forget($key->id());
+            $this->forgetPage($this->index($this->store), $key->id());
         }
     }
 
@@ -288,7 +293,10 @@ final class Refresher
     /** @var array<string, true> queue ids taken in the running work() pass */
     private array $built = [];
 
-    /** Forgets a page whose rebuild was not stored: its rows, then its file (a stale copy never stays). */
+    /**
+     * Forgets a page: its rows, then its file, the file even when the rows can't go (a stale copy
+     * never stays). Rows and file go together, so the index never knows a page that isn't stored.
+     */
     private function forgetPage(TagIndex $index, string $id): void
     {
         try {
@@ -371,6 +379,10 @@ final class Refresher
             return;
         }
         ($this->log)('page cache: an invalidation failed (' . $reason->getMessage() . ') and could not be kept; the cached pages were removed');
+        try {
+            $this->index($store)->forgetAll(); // rows first, when the index can be reached at all
+        } catch (\Throwable) {
+        }
         try {
             $store->clear();
         } catch (\Throwable) {

@@ -41,8 +41,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  *
  * A rebuild (REBUILD, Rebuild::request(); from Refresher::work()) is never served from the cache,
  * only stored. With Rebuild::EXPECTED_ID it is rendered only when it gives that key (else
- * `X-Page-Cache: rebuild-key`, logged), and with Rebuild::VERIFIED verify 'first' doesn't render
- * it twice (the page was verified when it was first stored). Its session check is PHP's own
+ * `X-Page-Cache: rebuild-key`, logged); verify 'first' renders it twice only when its key was
+ * not verified yet in this release (TagIndex::verified()). Its session check is PHP's own
  * (an active session), since the request that wrote and queued it may have had one, closed
  * before the work runs. With $rebuildOnly (the console: `preflow pages:work`) every other
  * request passes through untouched.
@@ -73,7 +73,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * - `invalidated`: a write changed what the page read while it rendered;
  * - `live-non-html`: the body holds live placeholders but is not text/html (they are filled
  *   into HTML only; such a response goes out as it is);
- * - `differs`: verified (page_cache.verify: 'first' for a key the index doesn't know yet,
+ * - `differs`: verified (page_cache.verify: 'first' for a key not verified yet in this release,
  *   'always' for every store), the page rendered once more as another anonymous visitor
  *   (another REMOTE_ADDR, no cookies) has another body or other stored headers outside its live
  *   parts and per-request values (logged: something personal is not in a live part);
@@ -338,7 +338,14 @@ final class PageCacheMiddleware implements MiddlewareInterface
                     ($this->onStale)($key);
                 } else {
                     // Nothing rebuilds it behind this visitor: served this once, the next renders it.
-                    ($this->store)()->forget($key->id());
+                    // Its rows go with its file (the index never knows a page that isn't stored).
+                    $store = ($this->store)();
+                    try {
+                        $this->index ??= TagIndex::forStore($store, $this->config, $this->clock, $this->sqlite);
+                        $this->index->forget($key->id());
+                    } finally {
+                        $store->forget($key->id());
+                    }
                 }
             } catch (\Throwable $e) {
                 $this->log('page cache: ' . $e->getMessage());
@@ -422,6 +429,13 @@ final class PageCacheMiddleware implements MiddlewareInterface
                 $this->logPastExpiry($key, $pastExpiry);
             }
             $reason = $this->store($key, $response, $content, $tags, $started, $store, $carried, $expiry);
+            if ($reason === null && $verify && $this->verify === PageCacheConfig::VERIFY_FIRST) {
+                try {
+                    $this->index?->markVerified($key->id());
+                } catch (\Throwable $e) {
+                    $this->log('page cache: ' . $key->url() . ' could not be noted as verified: ' . $e->getMessage());
+                }
+            }
         }
 
         // The visitor's own live parts, whether the page was stored or not.
@@ -448,22 +462,20 @@ final class PageCacheMiddleware implements MiddlewareInterface
     }
 
     /**
-     * Whether a miss of $key is verified before it is stored: always, never, or ('first') when the
-     * index doesn't know the key yet (a new page; a rebuild of a known one is not verified, nor
-     * one of a page stored in this release that its invalidation forgot: Rebuild::VERIFIED).
+     * Whether a miss of $key is verified before it is stored: always, never, or ('first') when
+     * the key was not verified yet in this release (TagIndex::verified(): kept when the page is
+     * forgotten, so a page whose file or rows went is not verified again, and one stored without
+     * verify is verified on its next miss; cache:clear and a new release verify anew).
      */
     private function verifies(ServerRequestInterface $request, PageKey $key, PageStore $store): bool
     {
         if ($this->verify !== PageCacheConfig::VERIFY_FIRST) {
             return $this->verify === PageCacheConfig::VERIFY_ALWAYS;
         }
-        if ($request->getAttribute(self::REBUILD) === true && $request->getAttribute(Rebuild::VERIFIED) === true) {
-            return false;
-        }
         try {
             $index = $this->index ??= TagIndex::forStore($store, $this->config, $this->clock, $this->sqlite);
 
-            return $index->available() && $index->page($key->id()) === null;
+            return $index->available() && !$index->verified($key->id());
         } catch (\Throwable) {
             return false; // the store says why it can't store
         }

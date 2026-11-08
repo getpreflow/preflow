@@ -15,6 +15,9 @@ namespace Preflow\Core\PageCache;
  *                                                          JSON), so a rebuild asks for that key
  *   tags(tag, page_id, freshness, timed_seconds)           what a page read while it rendered
  *   invalidations(tag, at)                                 recent changes, kept for an hour
+ *   verified(id)                                           the page ids verify 'first' checked in
+ *                                                          this release: kept when a page is
+ *                                                          forgotten, emptied by clear()
  *
  * invalidations let a render that started before a change refuse to store what it built
  * (invalidatedSince()). The tag EVERYTHING ('*') stands for the whole site: an invalidation of
@@ -173,6 +176,7 @@ final class TagIndex
                     $pdo->exec('DROP TABLE IF EXISTS tags');
                     $pdo->exec('DROP TABLE IF EXISTS pages');
                     $pdo->exec('DROP TABLE IF EXISTS invalidations');
+                    $pdo->exec('DROP TABLE IF EXISTS verified');
                     $pdo->exec('CREATE TABLE pages (
                         id TEXT PRIMARY KEY, url TEXT NOT NULL, path TEXT NOT NULL, fragment INTEGER NOT NULL,
                         has_query INTEGER NOT NULL, created_at REAL NOT NULL, parts TEXT NOT NULL DEFAULT \'\')');
@@ -193,6 +197,8 @@ final class TagIndex
                 throw $e;
             }
         }
+        // Its own table, outside the versioned schema: an index of this schema made before it gets it.
+        $pdo->exec('CREATE TABLE IF NOT EXISTS verified (id TEXT PRIMARY KEY)');
         if ($new) {
             // Pages from before this index have no tags here: they could never be refreshed.
             (new PageStore(dirname($dir), basename($dir)))->clear();
@@ -565,7 +571,32 @@ final class TagIndex
         return false;
     }
 
-    /** Empties the pages, tags and invalidations; returns how many pages were recorded. */
+    /**
+     * Notes that verify 'first' checked the page $pageId in this release (PageCacheMiddleware):
+     * it is not verified again, whether its rows and file are forgotten meanwhile or not.
+     */
+    public function markVerified(string $pageId): void
+    {
+        $this->pdo()?->prepare('INSERT OR IGNORE INTO verified (id) VALUES (?)')->execute([$pageId]);
+    }
+
+    /** Whether the page $pageId was verified in this release (markVerified()); false when unavailable. */
+    public function verified(string $pageId): bool
+    {
+        $pdo = $this->pdo();
+        if ($pdo === null) {
+            return false;
+        }
+        $statement = $pdo->prepare('SELECT 1 FROM verified WHERE id = ?');
+        $statement->execute([$pageId]);
+
+        return $statement->fetchColumn() !== false;
+    }
+
+    /**
+     * Empties the pages, tags, invalidations and verified ids (cache:clear, a rollback: pages are
+     * verified anew); returns how many pages were recorded.
+     */
     public function clear(): int
     {
         $pdo = $this->pdo();
@@ -576,6 +607,7 @@ final class TagIndex
         $pdo->exec('DELETE FROM tags');
         $pdo->exec('DELETE FROM pages');
         $pdo->exec('DELETE FROM invalidations');
+        $pdo->exec('DELETE FROM verified');
 
         return $count;
     }

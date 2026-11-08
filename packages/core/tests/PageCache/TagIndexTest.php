@@ -268,6 +268,30 @@ final class TagIndexTest extends TestCase
         $this->assertFalse($index->invalidatedSince(['news'], 0.0));
     }
 
+    public function test_verified_keys_survive_forgets_and_go_with_clear(): void
+    {
+        $index = $this->index();
+        $this->assertFalse($index->verified(self::id('a')));
+        $index->record(self::id('a'), 'https://e.x/a', false, false, ['menu' => Freshness::Fresh]);
+        $index->markVerified(self::id('a'));
+        $index->markVerified(self::id('a')); // twice is fine
+        $this->assertTrue($index->verified(self::id('a')));
+
+        $index->forget(self::id('a'));
+        $this->assertTrue($index->verified(self::id('a')), 'forget');
+        $index->forgetMany([self::id('a')]);
+        $index->forgetAll();
+        $this->assertTrue($index->verified(self::id('a')), 'forgetMany, forgetAll');
+        $this->assertTrue($this->index()->verified(self::id('a')), 'persisted');
+
+        $index->clear();
+        $this->assertFalse($index->verified(self::id('a')), 'cache:clear and a rollback verify anew');
+
+        $off = $this->index(false);
+        $off->markVerified(self::id('a'));
+        $this->assertFalse($off->verified(self::id('a')), 'unavailable: nothing is verified');
+    }
+
     public function test_many_tags_are_queried_in_chunks(): void
     {
         $index = $this->index();

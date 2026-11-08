@@ -1253,14 +1253,53 @@ final class PageCacheMiddlewareTest extends TestCase
         $mw = $this->middleware(verify: 'first');
         $handler = $this->handler(fn (): ResponseInterface => $this->html('page'));
 
-        // Its invalidation forgot its rows: the index doesn't know it, but it was verified when stored.
+        // Verified on its first store; forgotten (rows and file) by an invalidation, its rebuild isn't.
+        $mw->process($this->get('/a'), $handler);
+        $this->assertSame(2, $handler->calls);
+        TagIndex::forStore($this->store, $this->config)->forget($this->key('/a')->id());
+        $this->store->forget($this->key('/a')->id());
         $mw->process(\Preflow\Core\PageCache\Rebuild::request('https://example.com/a', [], null, true), $handler);
-        $this->assertSame(1, $handler->calls);
+        $this->assertSame(3, $handler->calls);
         $this->assertNotNull($this->store->get($this->key('/a')));
 
-        // Warmed from the release before (new templates): verified again.
-        $mw->process(\Preflow\Core\PageCache\Rebuild::request('https://example.com/b', [], null, false), $handler);
-        $this->assertSame(3, $handler->calls);
+        // A rebuild of a key never verified in this release (warmed from the release before, or
+        // queued as verified by mistake): verified, whatever the queue says.
+        $mw->process(\Preflow\Core\PageCache\Rebuild::request('https://example.com/b', [], null, true), $handler);
+        $this->assertSame(5, $handler->calls);
+    }
+
+    public function test_verify_first_holds_for_a_key_never_verified_after_its_stale_serve(): void
+    {
+        // A fragment stored without verify (rows and file), as the album gallery's hx-get target.
+        $album = $this->handler(fn (ServerRequestInterface $r): ResponseInterface => $this->html('<p>album ' . ($r->getCookieParams()['album'] ?? 'none') . '</p>'));
+        $fragment = fn (array $cookies = []): ServerRequestInterface => $this->get('/gallery')->withHeader('HX-Request', 'true')->withCookieParams($cookies);
+        $this->middleware(verify: 'off', reportsStale: false)->process($fragment(), $album);
+        $id = $this->key('/gallery', ['HX-Request' => 'true'])->id();
+        $this->assertNotNull($this->store->get($this->key('/gallery', ['HX-Request' => 'true'])));
+
+        // It goes stale and is served once: forgotten (file and rows), never verified in this release.
+        $mw = $this->middleware(verify: 'first', reportsStale: false);
+        $this->store->markStale($id);
+        $this->assertSame('stale', $mw->process($fragment(), $album)->getHeaderLine('X-Page-Cache'));
+        $this->assertNull($this->store->get($this->key('/gallery', ['HX-Request' => 'true'])));
+        $this->assertNull(TagIndex::forStore($this->store, $this->config)->page($id), 'its rows go with it');
+
+        // The next visitor has an album: never verified in this release, so verified now.
+        $calls = $album->calls;
+        $response = $mw->process($fragment(['album' => '7']), $album);
+        $this->assertSame($calls + 2, $album->calls, 'rendered twice');
+        $this->assertSame('differs', $response->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertNull($this->store->get($this->key('/gallery', ['HX-Request' => 'true'])), 'never stored for every visitor');
+
+        // A key verified once in this release is not verified again after a forget (rows and file).
+        $plain = $this->handler(fn (): ResponseInterface => $this->html('<p>plain</p>'));
+        $mw->process($this->get('/plain'), $plain);
+        $this->assertSame(2, $plain->calls);
+        TagIndex::forStore($this->store, $this->config)->forget($this->key('/plain')->id());
+        $this->store->forget($this->key('/plain')->id());
+        $mw->process($this->get('/plain'), $plain);
+        $this->assertSame(3, $plain->calls);
+        $this->assertNotNull($this->store->get($this->key('/plain')));
     }
 
     public function test_every_render_that_may_be_stored_is_isolated_and_checked(): void

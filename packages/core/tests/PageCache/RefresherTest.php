@@ -182,6 +182,18 @@ final class RefresherTest extends TestCase
         return $key;
     }
 
+    public function test_a_stale_page_that_is_not_rebuilt_is_forgotten_rows_and_file(): void
+    {
+        $store = $this->store();
+        $search = $this->cache($store, '/search?q=oak', ['default:job']);
+        $this->assertTrue($search->hasQuery());
+
+        (new Refresher($store, $this->config, fn (): float => $this->now))->stale($search);
+
+        $this->assertNull($store->page($search->id()), 'its file');
+        $this->assertNull(TagIndex::forStore($store, $this->config)->page($search->id()), 'and its rows: the next visit is a new page');
+    }
+
     public function test_an_unavailable_index_does_nothing_and_touches_no_file(): void
     {
         (new Refresher(new PageStore($this->dir . '/none', 'rel1'), $this->config, sqlite: false))->invalidate(['default:job']);

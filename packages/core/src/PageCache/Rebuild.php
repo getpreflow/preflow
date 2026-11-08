@@ -29,7 +29,10 @@ final class Rebuild
     /** Request attribute: the page id the rebuild must store under. */
     public const string EXPECTED_ID = 'preflow.page_cache.rebuild_id';
 
-    /** Request attribute: true when the page was stored (so verified) in this release: verify 'first' skips it. */
+    /**
+     * Request attribute: true when the page was stored in this release before (the queue's
+     * note). Informational: verify 'first' asks TagIndex::verified() for the key instead.
+     */
     public const string VERIFIED = 'preflow.page_cache.rebuild_verified';
 
     /**
