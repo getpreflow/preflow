@@ -633,7 +633,8 @@ final class MediaLibrary
         $def = $this->definition();
         foreach (array_chunk(array_keys($wanted), 200) as $chunk) {
             $found = [];
-            foreach ($this->dm->queryIn($def)->whereAny([['field' => $def->idField, 'operator' => 'IN', 'value' => $chunk]])->limit(count($chunk) + 1)->get()->items() as $record) {
+            // byIds: a read of these assets only (page cache), not of the whole table.
+            foreach ($this->dm->queryIn($def)->byIds($chunk)->limit(count($chunk) + 1)->get()->items() as $record) {
                 $asset = Asset::fromRecord($record);
                 $found[$asset->id] = $asset;
             }

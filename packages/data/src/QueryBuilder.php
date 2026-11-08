@@ -58,8 +58,36 @@ final class QueryBuilder
 
     private ?string $locale = null;
 
+    /** Filters added through the public methods (where, whereAny, orWhere, search, searchLoose). */
+    private int $filters = 0;
+
+    /** @var list<string>|null the ids of byIds(), while it is the only filter */
+    private ?array $byIds = null;
+
+    /**
+     * Only the records with these ids (WHERE id IN (...)). Reported to the DataManager's observer
+     * as one record read per id, found or not, instead of a read of the whole table: a page that
+     * shows these records then depends on them alone (the page cache), not on every write to the
+     * table. Another filter added to the query makes it a listing again.
+     *
+     * @param iterable<string|int> $ids
+     */
+    public function byIds(iterable $ids): self
+    {
+        $list = [];
+        foreach ($ids as $id) {
+            $list[] = (string) $id;
+        }
+        $idField = $this->meta?->idField ?? $this->typeDef?->idField ?? 'uuid';
+        $this->whereAny([['field' => $idField, 'operator' => 'IN', 'value' => $list]]);
+        $this->byIds = $list;
+
+        return $this;
+    }
+
     public function where(string $field, mixed $operator, mixed $value = null): self
     {
+        $this->filters++;
         $this->query->where($field, $operator, $value);
         return $this;
     }
@@ -67,12 +95,14 @@ final class QueryBuilder
     /** @param list<array{field: string, operator: string, value: mixed}> $conditions OR'd; see Query::whereAny() */
     public function whereAny(array $conditions): self
     {
+        $this->filters++;
         $this->query->whereAny($conditions);
         return $this;
     }
 
     public function orWhere(string $field, mixed $operator, mixed $value = null): self
     {
+        $this->filters++;
         $this->query->orWhere($field, $operator, $value);
         return $this;
     }
@@ -98,6 +128,7 @@ final class QueryBuilder
 
     public function search(string $term, ?array $fields = null): self
     {
+        $this->filters++;
         $searchFields = $fields;
         if ($searchFields === null) {
             $searchFields = $this->meta?->searchableFields ?? $this->typeDef?->searchableFields ?? [];
@@ -127,6 +158,7 @@ final class QueryBuilder
      */
     public function searchLoose(string $term, ?array $fields = null): self
     {
+        $this->filters++;
         $words = preg_split('/\s+/u', trim($term), -1, PREG_SPLIT_NO_EMPTY);
         if ($words === false || $words === []) {
             return $this;
@@ -388,9 +420,17 @@ final class QueryBuilder
     {
         $storage = $this->meta?->storage ?? $this->typeDef?->storage;
         $table = $this->meta?->table ?? $this->typeDef?->table;
-        if ($this->dataManager !== null && $storage !== null && $table !== null) {
-            $this->dataManager->reportRead($storage, $table);
+        if ($this->dataManager === null || $storage === null || $table === null) {
+            return;
         }
+        if ($this->byIds !== null && $this->filters === 1) {
+            foreach (array_unique($this->byIds) as $id) {
+                $this->dataManager->reportRead($storage, $table, $id);
+            }
+
+            return;
+        }
+        $this->dataManager->reportRead($storage, $table);
     }
 
     /** The query with the loose searches resolved and translatable fields compared in the locale. */

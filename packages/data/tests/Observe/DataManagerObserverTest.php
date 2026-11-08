@@ -278,4 +278,30 @@ final class DataManagerObserverTest extends TestCase
         $this->dm->observe(null);
         $this->assertSame([5, []], $this->dm->captureReads(static fn (): int => 5), 'nothing kept without an observer');
     }
+
+    public function test_a_query_by_ids_is_one_record_read_per_requested_id(): void
+    {
+        $this->dm->saveType($this->object('o1'));
+        $this->dm->saveType($this->object('o2'));
+        $this->events();
+
+        $found = $this->dm->queryType('object')->byIds(['o1', 'o2', 'gone', 'o1'])->get();
+        $this->assertSame(2, $found->total());
+        $this->assertSame(['read default:object#o1', 'read default:object#o2', 'read default:object#gone'], $this->events(), 'a missing id counts too');
+
+        $this->dm->queryType('object')->byIds(['o1'])->orderBy('title')->limit(5)->aggregate()->count()->get();
+        $this->assertSame(['read default:object#o1'], $this->events());
+
+        $this->dm->queryType('object')->byIds(['o1'])->where('title', 'T')->get();
+        $this->dm->queryType('object')->where('title', 'T')->byIds(['o1'])->get();
+        $this->dm->queryType('object')->byIds(['o1'])->searchLoose('T')->get();
+        $this->assertSame(['read default:object', 'read default:object', 'read default:object'], $this->events(), 'another filter: a listing');
+
+        $gadget = new ObservedGadget();
+        $gadget->name = 'G';
+        $this->dm->save($gadget);
+        $this->events();
+        $this->assertCount(1, $this->dm->query(ObservedGadget::class)->byIds([1])->get()->items());
+        $this->assertSame(['read default:gadgets#1'], $this->events(), 'models use their id field');
+    }
 }

@@ -202,7 +202,34 @@ final class AssetMemoTest extends TestCase
         $this->lib->find($a);
         $this->assertSame(0, $this->assetQueries(), 'answered from the memo');
 
-        $this->assertSame(["{$table}#{$a}", "{$table}#{$b}"], $pageOne);
+        $this->assertSame(["{$table}#{$a}", "{$table}#{$b}", "{$table}#{$a}", "{$table}#{$b}"], $pageOne, 'the prefetch, then each find');
         $this->assertSame(["{$table}#{$a}"], $observer->reads, 'the second page still records the asset');
+    }
+
+    public function test_an_unrelated_upload_leaves_a_prefetched_page_and_an_edit_of_its_asset_does_not(): void
+    {
+        [$a, $b] = array_slice($this->upload25(), 0, 2);
+        $this->lib->flush();
+        $recorder = new \Preflow\Core\PageCache\DependencyRecorder();
+        $changes = new \Preflow\Core\PageCache\ChangeLog(static function (array $tags): void {}, flushAtShutdown: false);
+        $this->dm->observe(new \Preflow\Core\PageCache\DataLayerObserver($recorder, $changes));
+
+        // A gallery page: prefetches its assets, then shows them.
+        [, $tags] = $recorder->capture(function () use ($a, $b): void {
+            $this->lib->prefetch([$a, $b]);
+            $this->lib->find($a);
+            $this->lib->find($b);
+        });
+        $page = array_keys($tags);
+        $table = $this->lib->definition()->table;
+        $this->assertNotContains('sqlite:' . $table, $page, 'no dependency on the whole asset table');
+        $hit = static fn (): bool => array_intersect($page, $changes->pending()) !== [];
+
+        $this->lib->upload($this->upload($this->png(30, 30), 'other.png'), null); // a member's upload
+        $this->assertFalse($hit(), 'an unrelated upload keeps the page');
+
+        $changes->flush();
+        $this->lib->update($a, ['alt' => ['en' => 'New alt']]);
+        $this->assertTrue($hit(), 'an edit of a shown asset drops it');
     }
 }
