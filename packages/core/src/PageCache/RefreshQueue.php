@@ -24,7 +24,8 @@ namespace Preflow\Core\PageCache;
  * ends. version counts the times a row was queued: complete() removes it only when nobody
  * queued it again since the claim (that change came after the render started: the row stays,
  * its lease cleared, to be rebuilt once more). fail() clears the lease and counts the attempt;
- * after MAX_ATTEMPTS the row is dropped (its next visitor renders it).
+ * after MAX_ATTEMPTS the row is dropped (its next visitor renders it). Queuing a row again keeps
+ * its count: only a rebuild that is stored removes the row, so the count is of failures in a row.
  */
 final class RefreshQueue
 {
@@ -89,7 +90,7 @@ final class RefreshQueue
                 VALUES (?, ?, ?, ?, ?, CAST(? AS REAL))
                 ON CONFLICT(id) DO UPDATE SET url = excluded.url, parts = excluded.parts,
                     verified = MAX(verified, excluded.verified), priority = MIN(priority, excluded.priority),
-                    version = version + 1, attempts = 0');
+                    version = version + 1');
             foreach ($pages as $id => $page) {
                 $parts = $page['parts'] ?? [];
                 $statement->execute([
@@ -111,19 +112,23 @@ final class RefreshQueue
     }
 
     /**
-     * Takes the next page to rebuild for $lease seconds, null when none is free.
+     * Takes the next page to rebuild for $lease seconds, null when none is free. $exclude: ids
+     * not to take (those already built in this pass).
      *
+     * @param list<string> $exclude
      * @return array{id: string, url: string, parts: array<string, mixed>, verified: bool, priority: int, version: int}|null
      */
-    public function claim(float $lease): ?array
+    public function claim(float $lease, array $exclude = []): ?array
     {
         $pdo = $this->table();
         $now = ($this->clock)();
+        $exclude = array_values(array_unique($exclude));
+        $not = $exclude === [] ? '' : ' AND id NOT IN (' . implode(', ', array_fill(0, count($exclude), '?')) . ')';
         $pdo->exec('BEGIN IMMEDIATE');
         try {
             $statement = $pdo->prepare('SELECT id, url, parts, verified, priority, version FROM ' . self::TABLE . '
-                WHERE lease_until <= CAST(? AS REAL) ORDER BY priority, queued_at, id LIMIT 1');
-            $statement->execute([sprintf('%.6F', $now)]);
+                WHERE lease_until <= CAST(? AS REAL)' . $not . ' ORDER BY priority, queued_at, id LIMIT 1');
+            $statement->execute([sprintf('%.6F', $now), ...$exclude]);
             $row = $statement->fetch(\PDO::FETCH_NUM);
             if ($row !== false) {
                 $pdo->prepare('UPDATE ' . self::TABLE . ' SET lease_until = CAST(? AS REAL) WHERE id = ?')
@@ -185,17 +190,18 @@ final class RefreshQueue
     /**
      * What is queued, in the order it is taken (tests, the Cache screen).
      *
-     * @return list<array{id: string, url: string, priority: int, verified: bool}>
+     * @return list<array{id: string, url: string, priority: int, verified: bool, attempts: int}>
      */
     public function all(): array
     {
-        $rows = $this->table()->query('SELECT id, url, priority, verified FROM ' . self::TABLE . ' ORDER BY priority, queued_at, id')->fetchAll(\PDO::FETCH_NUM);
+        $rows = $this->table()->query('SELECT id, url, priority, verified, attempts FROM ' . self::TABLE . ' ORDER BY priority, queued_at, id')->fetchAll(\PDO::FETCH_NUM);
 
         return array_map(static fn (array $row): array => [
             'id' => (string) $row[0],
             'url' => (string) $row[1],
             'priority' => (int) $row[2],
             'verified' => (bool) $row[3],
+            'attempts' => (int) $row[4],
         ], $rows);
     }
 

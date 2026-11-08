@@ -501,6 +501,41 @@ final class PageCacheAppTest extends TestCase
         $_COOKIE = [];
     }
 
+    #[RunInSeparateProcess]
+    public function test_a_rebuild_after_a_response_renders_as_an_anonymous_visitor(): void
+    {
+        // A page that (wrongly) reads a cookie from the superglobal outside its live parts; verify
+        // as in production ('first'), so the rebuild of a known page is not verified.
+        $this->write('config/page_cache.php', "<?php\nreturn ['enabled' => true, 'explain' => true, 'verify' => 'first'];\n");
+        $this->album('<html><body><h1>{{ record.title }}</h1><p class="album">{{ raw_album() }}</p></body></html>');
+        $this->assertSame('miss', $this->get('/project')->getHeaderLine('X-Page-Cache'));
+        $this->assertStringContainsString('<p class="album"></p>', $this->storedBody('/project'));
+
+        // A visitor with cookies writes (staff publishing); the page is rebuilt behind that response.
+        $this->afterResponse = true;
+        $_COOKIE = ['album' => '1_2', 'folio_session' => 'abc'];
+        $_REQUEST = $_COOKIE;
+        $_SERVER['HTTP_COOKIE'] = 'album=1_2; folio_session=abc';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '203.0.113.9';
+        $_SESSION = ['user' => 'staff'];
+        try {
+            $published = $this->post('/folio/post/p1', ['title' => 'Project', 'slug' => 'project', '_locale' => 'en', '_action' => 'publish']);
+            $this->assertSame(302, $published->getStatusCode(), (string) $published->getBody());
+            $this->assertSame(['album' => '1_2', 'folio_session' => 'abc'], $_COOKIE, 'put back');
+            $this->assertSame(['user' => 'staff'], $_SESSION);
+            $this->assertSame('203.0.113.9', $_SERVER['HTTP_X_FORWARDED_FOR']);
+        } finally {
+            $_COOKIE = [];
+            $_REQUEST = [];
+            unset($_SERVER['HTTP_COOKIE'], $_SERVER['HTTP_X_FORWARDED_FOR'], $_SESSION);
+        }
+
+        $stored = $this->stored('/project');
+        $this->assertNotNull($stored, 'rebuilt');
+        $this->assertStringContainsString('<p class="album"></p>', $stored->body, 'not the writer\'s cookie');
+        $this->assertStringNotContainsString('1_2', $stored->body);
+    }
+
     /** The post page with $template, published, and the guest album functions. */
     private function album(string $template, string $body = ''): void
     {

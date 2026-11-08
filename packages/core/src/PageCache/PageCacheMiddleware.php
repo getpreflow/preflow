@@ -494,7 +494,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
                 return true;
             }
-            $response = self::asVisitor($other, fn (): ResponseInterface => $this->recorder->outside(fn (): ResponseInterface => $this->visitorScope !== null
+            $response = AnonymousGlobals::run((string) ($other->getServerParams()['REMOTE_ADDR'] ?? '192.0.2.1'), fn (): ResponseInterface => $this->recorder->outside(fn (): ResponseInterface => $this->visitorScope !== null
                 ? ($this->visitorScope)($other, $render)
                 : $render()));
             if ($this->cache->refusal() !== null || $this->refusal($other, $key, $response) !== null) {
@@ -528,39 +528,6 @@ final class PageCacheMiddleware implements MiddlewareInterface
         ksort($headers);
 
         return $headers;
-    }
-
-    /**
-     * Runs $fn with PHP's superglobals as $other sees them, put back afterwards: no $_COOKIE (and
-     * none of its keys in $_REQUEST), $_SERVER with its REMOTE_ADDR and without HTTP_COOKIE and
-     * HTTP_X_FORWARDED_FOR. So code that reads the visitor from the superglobals instead of the
-     * request is seen too. A leftover $_SESSION (no session is active) is hidden as well.
-     *
-     * @template T
-     * @param \Closure(): T $fn
-     * @return T
-     */
-    private static function asVisitor(ServerRequestInterface $other, \Closure $fn): mixed
-    {
-        $saved = [$_COOKIE, $_SERVER, $_REQUEST];
-        $session = isset($_SESSION) ? [$_SESSION] : null; // outside an active session: residue, hidden too
-        unset($_SESSION);
-        foreach (array_keys($_COOKIE) as $name) {
-            unset($_REQUEST[$name]);
-        }
-        $_COOKIE = [];
-        $_SERVER['REMOTE_ADDR'] = (string) ($other->getServerParams()['REMOTE_ADDR'] ?? '192.0.2.1');
-        unset($_SERVER['HTTP_COOKIE'], $_SERVER['HTTP_X_FORWARDED_FOR']);
-        try {
-            return $fn();
-        } finally {
-            [$_COOKIE, $_SERVER, $_REQUEST] = $saved;
-            if ($session !== null) {
-                $_SESSION = $session[0];
-            } else {
-                unset($_SESSION);
-            }
-        }
     }
 
     /** $request as another anonymous visitor: another address (forwarded ones too), no cookies. */

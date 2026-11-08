@@ -270,6 +270,90 @@ final class PageCacheRebuildAppTest extends TestCase
         $this->assertStringContainsString('pending invalidations were applied', $this->logged());
     }
 
+    #[RunInSeparateProcess]
+    public function test_a_stale_page_whose_rebuild_is_not_stored_is_never_served_again(): void
+    {
+        $this->site();
+        $this->write('app/pages/gone.twig', '<p>soon gone</p>');
+        $this->web('/gone');
+        // The page goes away by a change the cache could not see, and its copy is past max_age.
+        unlink($this->dir . '/app/pages/gone.twig');
+        $this->store()->markStale(PageKey::fromRequest(new ServerRequest('GET', 'https://example.com/gone'), $this->config())->id());
+
+        $stale = $this->web('/gone');
+        $this->assertSame('stale', $stale->getHeaderLine('X-Page-Cache'), 'served once more while it is rebuilt');
+
+        // Its rebuild answered 404: the copy is forgotten, never served again.
+        $this->assertNull($this->stored('/gone'));
+        $next = $this->web('/gone');
+        $this->assertSame(404, $next->getStatusCode());
+        $this->assertNotSame('stale', $next->getHeaderLine('X-Page-Cache'));
+        $this->assertSame(0, $this->queue()->count());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_page_whose_render_writes_what_it_read_does_not_rebuild_in_a_loop(): void
+    {
+        $this->site();
+        // Every render of the page reads object 7 and (once $count is on) counts a view of it.
+        $this->write('app/pages/object.twig', '<p>object {{ view_object() }}</p>');
+        $renders = 0;
+        $count = false;
+        $app = function () use (&$renders, &$count): Application {
+            $app = $this->webApp();
+            $dm = $app->container()->get(DataManager::class);
+            $app->container()->get(\Preflow\View\TemplateEngineInterface::class)->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                'view_object',
+                static function () use ($dm, &$renders, &$count): string {
+                    $renders++;
+                    $dm->reportRead('json', 'object', '7');
+                    if ($count) {
+                        $dm->reportWrite('json', 'object', '7');
+                    }
+
+                    return '7';
+                },
+            ));
+
+            return $app;
+        };
+        $this->assertSame('miss', $this->web('/object', app: $app())->getHeaderLine('X-Page-Cache'));
+        $key = PageKey::fromRequest(new ServerRequest('GET', 'https://example.com/object'), $this->config());
+        $this->assertNotNull($this->store()->get($key));
+        $this->store()->markStale($key->id());
+
+        $count = true;
+        $renders = 0;
+        $started = microtime(true);
+        $this->assertSame('stale', $this->web('/object', app: $app())->getHeaderLine('X-Page-Cache'));
+
+        $this->assertSame(1, $renders, 'built once behind the response, not again and again');
+        $this->assertLessThan(1.5, microtime(true) - $started);
+        $this->assertSame(0, $this->queue()->count(), 'its own write queued nothing');
+        $this->assertNull($this->store()->get($key), 'uncached, as before the cache');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_locale_remembered_in_a_cookie_is_rebuilt_under_its_key(): void
+    {
+        $this->site(i18n: ['default' => 'en', 'available' => ['en', 'de'], 'url_strategy' => 'none', 'cookie' => true]);
+        $this->write('app/pages/x.twig', "<p>{{ t('site.hi') }} {{ 'now'|date('U.u') }}</p>");
+        $app = $this->webApp();
+        $visit = $app->handle((new ServerRequest('GET', 'https://example.com/x'))->withCookieParams(['locale' => 'de']));
+        $this->assertStringContainsString('Hallo', (string) $visit->getBody());
+        $german = ['locale' => 'de'];
+        $old = (string) $this->stored('/x', $german)?->body;
+        $this->assertNotSame('', $old);
+
+        $refresher = $this->webApp()->container()->get(Refresher::class);
+        $refresher->refreshAll();
+        $this->assertSame(1, $refresher->work(50.0));
+
+        $this->assertStringContainsString('Hallo', (string) $this->stored('/x', $german)?->body);
+        $this->assertNotSame($old, (string) $this->stored('/x', $german)?->body, 'rebuilt under the cookie visitor\'s key');
+        $this->assertSame(1, TagIndex::forStore($this->store(), $this->config())->count());
+    }
+
     private function write(string $rel, string $content): void
     {
         $path = $this->dir . '/' . $rel;

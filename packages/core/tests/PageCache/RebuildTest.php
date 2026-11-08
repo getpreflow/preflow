@@ -64,13 +64,20 @@ final class RebuildTest extends TestCase
      *
      * @param (\Closure(ServerRequestInterface): void)|null $during runs inside each render
      */
-    private function refresher(PageStore $store, float $seconds = 0.1, ?\Closure $during = null): Refresher
+    /** How often onQueue was called. */
+    private int $onQueue = 0;
+
+    /** @param (\Closure(ServerRequestInterface): ?ResponseInterface)|null $refuse a response instead of storing (a refused rebuild) */
+    private function refresher(PageStore $store, float $seconds = 0.1, ?\Closure $during = null, ?\Closure $refuse = null): Refresher
     {
         return new Refresher(
             $store,
             $this->config,
             fn (): float => $this->now,
-            rebuild: function (ServerRequestInterface $request) use ($store, $seconds, $during): ResponseInterface {
+            onQueue: function (): void {
+                $this->onQueue++;
+            },
+            rebuild: function (ServerRequestInterface $request) use ($store, $seconds, $during, $refuse): ResponseInterface {
                 $this->assertTrue(InternalRender::is($request));
                 $this->assertTrue($request->getAttribute(PageCacheMiddleware::REBUILD));
                 $this->rendered[] = (string) $request->getUri();
@@ -80,6 +87,10 @@ final class RebuildTest extends TestCase
                     $during($request);
                 }
                 $this->now += $seconds;
+                $refused = $refuse !== null ? $refuse($request) : null;
+                if ($refused !== null) {
+                    return $refused;
+                }
                 $key = PageKey::fromRequest($request, $this->config, array_filter(['locale' => $request->getHeaderLine('Accept-Language')]));
                 $index = TagIndex::forStore($store, $this->config, fn (): float => $this->now);
                 $index->record($key->id(), $key->url(), $key->isFragment(), $key->hasQuery(), ['default:job' => [Freshness::Fresh, null]], $key->parts());
@@ -219,9 +230,109 @@ final class RebuildTest extends TestCase
         $refresher->invalidate(['default:job']);
 
         $refresher->work(50.0);
+        $this->assertSame(['https://example.com/a'], $this->rendered, 'once per pass');
+        $this->assertSame(1, $refresher->queued(), 'left for the next pass');
 
+        $refresher->work(50.0);
         $this->assertSame(['https://example.com/a', 'https://example.com/a'], $this->rendered);
         $this->assertSame(0, $refresher->queued());
+    }
+
+    public function test_a_stale_page_whose_rebuild_is_refused_is_never_served_again(): void
+    {
+        foreach ([404 => '', 200 => 'set-cookie', 409 => ''] as $status => $skip) {
+            $store = $this->store();
+            $key = $this->cache($store, '/gone', ['default:job']);
+            $store->markStale($key->id());
+            $refresher = $this->refresher($store, refuse: static fn (): ResponseInterface => new Response($status, $skip === '' ? [] : [PageCacheMiddleware::SKIP_HEADER => $skip]));
+            $refresher->stale($key);
+            $this->assertTrue($store->get($key)?->stale, 'served stale while it is rebuilt');
+
+            $this->assertSame(1, $refresher->work(50.0));
+
+            $this->assertNull($store->get($key), "{$status} {$skip}: forgotten, its next visitor renders it");
+            $this->assertNull(TagIndex::forStore($store, $this->config)->page($key->id()));
+            $this->assertSame(0, $refresher->queued());
+        }
+
+        // A rebuild that throws forgets it too (and is tried again, at most MAX_ATTEMPTS times).
+        $store = $this->store();
+        $key = $this->cache($store, '/broken', ['default:job']);
+        $store->markStale($key->id());
+        $refresher = $this->refresher($store, refuse: static fn (): ResponseInterface => throw new \RuntimeException('boom'));
+        $refresher->stale($key);
+        $refresher->work(50.0);
+        $this->assertNull($store->get($key));
+    }
+
+    public function test_a_render_that_writes_what_it_read_is_built_once_and_not_queued_again(): void
+    {
+        $store = $this->store();
+        $this->cache($store, '/object/7', ['default:object#7']);
+        $refresher = null;
+        // The render bumps the object's view count: its own flush invalidates the page it read.
+        $refresher = $this->refresher($store, seconds: 0.01, during: function () use (&$refresher): void {
+            $refresher->invalidate(DataTags::recordChanged('default', 'object', '7'));
+        });
+        $refresher->invalidate(DataTags::recordChanged('default', 'object', '7'));
+        $this->onQueue = 0;
+
+        $this->assertSame(1, $refresher->work(2.0), 'one render, not one per 10 ms of the budget');
+        $this->assertSame(0, $refresher->queued(), 'not queued again by its own write');
+        $this->assertSame(0, $this->onQueue, 'the work never schedules more work');
+    }
+
+    public function test_three_refused_rebuilds_in_a_row_drop_the_page(): void
+    {
+        $store = $this->store();
+        $key = $this->cache($store, '/busy', ['default:job']);
+        $refresher = $this->refresher($store, refuse: static fn (): ResponseInterface => new Response(200, [PageCacheMiddleware::SKIP_HEADER => 'invalidated']));
+        $refresher->invalidate(['default:job']);
+
+        for ($pass = 1; $pass <= RefreshQueue::MAX_ATTEMPTS; $pass++) {
+            $this->assertSame(1, $refresher->work(50.0), "pass {$pass}");
+            // Queued again by a write in between: the count of failures in a row is kept.
+            $refresher->stale($key);
+        }
+        $this->assertSame(1, $refresher->queued(), 'the last stale() queued it anew');
+        $this->assertSame(0, $this->queue($store)->all()[0]['attempts'] ?? null, 'a fresh row after the drop');
+        $this->assertNull($store->get($key));
+    }
+
+    public function test_an_expired_lease_is_taken_again_and_attempts_end_a_row(): void
+    {
+        $store = $this->store();
+        $queue = new RefreshQueue(TagIndex::forStore($store, $this->config)->pdo() ?? throw new \RuntimeException(), fn (): float => $this->now);
+        $queue->push(['p' => ['url' => 'https://example.com/p']]);
+
+        $claimed = $queue->claim(300.0);
+        $this->assertSame('p', $claimed['id'] ?? null);
+        $this->assertNull($queue->claim(300.0), 'leased');
+        $this->now += 299;
+        $this->assertNull($queue->claim(300.0), 'still leased');
+        $this->now += 2;
+        $this->assertSame('p', $queue->claim(300.0)['id'] ?? null, 'a dead process\'s row is taken again');
+        $this->assertNull($queue->claim(300.0, ['p']) , 'excluded');
+
+        for ($i = 1; $i < RefreshQueue::MAX_ATTEMPTS; $i++) {
+            $queue->fail(['id' => 'p']);
+            $this->assertSame(1, $queue->count(), "attempt {$i}");
+        }
+        $queue->push(['p' => ['url' => 'https://example.com/p']]);
+        $this->assertSame(RefreshQueue::MAX_ATTEMPTS - 1, $queue->all()[0]['attempts'], 'queued again, the count stays');
+        $queue->fail(['id' => 'p']);
+        $this->assertSame(0, $queue->count(), 'dropped');
+    }
+
+    public function test_a_refresh_by_hand_keeps_a_render_in_flight_from_storing(): void
+    {
+        $store = $this->store();
+        $this->cache($store, '/about', ['menu']);
+        $before = $this->now - 0.5; // a visitor's render started before the click
+        $this->refresher($store)->refresh('/about');
+
+        $this->assertTrue(TagIndex::forStore($store, $this->config)->invalidatedSince(['menu'], $before));
+        $this->assertFalse(TagIndex::forStore($store, $this->config)->invalidatedSince(['other'], $before));
     }
 
     public function test_a_page_fresh_again_is_not_rebuilt(): void

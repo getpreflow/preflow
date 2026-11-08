@@ -562,7 +562,10 @@ return [
   is opened (the cron's first `preflow pages:work`, or a write that queues a page), the full
   pages without a query in the previous release's index are queued, last in line, so the pages visitors used
   are rebuilt within minutes. They are verified again (`verify` `'first'`): the templates
-  changed. A rollback is warmed the same way.
+  changed. A rollback is warmed the same way (its old queue and pending invalidations are
+  dropped with its pages). On a site quiet for more than 24 hours, the previous release's
+  folder may be pruned by the new release's first stored page before the cron opens the queue;
+  then nothing is warmed and pages are built on visit.
 - **In-place deploys** (a `git pull` in the same folder, without `optimize` or a composer
   install) keep the release key, so the pages from before the deploy stay. Run
   `preflow cache:clear pages` or `preflow optimize` as part of such a deploy.
@@ -811,15 +814,31 @@ return [
     `preflow pages:work [--budget=50]` rebuilds for up to 50 seconds. `preflow pages:refresh
     {url}` forgets every copy of one URL (a path is taken against `app.url`) and rebuilds it;
     `preflow pages:refresh --all` forgets every page and rebuilds the known full pages. Folio's
-    Cache screen has the same two actions.
+    Cache screen has the same two actions. Both record an invalidation first (of the page's
+    tags, or of everything), so a render already running can't store the old page after them.
   - A rebuild is an internal anonymous GET of the page's URL through the whole pipeline
-    (`Rebuild::request()`, marked `InternalRender` and `PageCache::REBUILD`), with no cookies
-    or session, from clean request state each time (request context, assets, SEO meta,
-    translator locale). It carries the key parts the page was stored under: the locale (as
-    `Accept-Language`), `X-Forwarded-Proto`/`X-Forwarded-Host` and the vary header values, so
-    it is stored under the key visitors read; one that gives another key is not rendered
-    (logged). A page a visitor already rendered again is skipped, and one a write changed while
-    it rebuilt is built once more.
+    (`Rebuild::request()`, marked `InternalRender` and `PageCache::REBUILD`), from clean request
+    state each time (request context, assets, SEO meta, translator locale). It is anonymous in
+    PHP's superglobals too, as verify's second render is (`AnonymousGlobals`): after a response
+    they are still those of the request that wrote, so during the rebuild `$_COOKIE`, `$_POST`
+    and `$_FILES` are empty, `$_GET`/`$_REQUEST` are the page's query, `$_SERVER` has no
+    `HTTP_COOKIE` or forwarded address and `REMOTE_ADDR` 127.0.0.1, and `$_SESSION` is unset;
+    all are put back afterwards. With a PHP session open, nothing is rebuilt.
+  - It carries the key parts the page was stored under: the locale (as `Accept-Language`),
+    `X-Forwarded-Proto`/`X-Forwarded-Host` and the vary header values, so it is stored under the
+    key visitors read; one that gives another key is not rendered (logged). The stock locale
+    middleware resolves a cookie visitor's language the same way from `Accept-Language`; a site
+    middleware that chooses the language from a cookie of its own must also understand
+    `Accept-Language` (and set the `locale` request attribute), or its pages are only built on
+    visit.
+  - A page a visitor already rendered again is skipped. A rebuild that is not stored (a 404 or
+    redirect, a cookie set, a refusal, another key, an error) forgets the page: a stale copy is
+    never kept past its rebuild, and its next visitor renders it. One that a write refused while
+    it rendered stays queued for a later pass, and is dropped after 3 such failures in a row.
+  - Never a loop: each page is built at most once per pass, and what a rebuild itself writes
+    forgets pages as any write does but queues nothing in that pass. A page whose render writes
+    what it read (a view counter) is therefore not cached, as before. The work after a response
+    is one pass per request; it never schedules more.
   - Claim with lease: each process takes a queue entry in a write transaction and holds it for
     5 minutes, so the after-response work and the cron never build one URL at once, and an
     entry of a process that died is taken again later.

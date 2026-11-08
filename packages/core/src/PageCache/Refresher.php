@@ -165,6 +165,11 @@ final class Refresher
         }
         $ids = $index->idsAt($key->url());
         $full = $index->fullPages($ids);
+        // As a write would: a render in flight that read what these pages read doesn't store the old page.
+        $tags = $index->tagsOf($ids);
+        if ($tags !== []) {
+            $index->recordInvalidation($tags, ($this->clock)());
+        }
         $index->forgetMany($ids);
         foreach ($ids as $id) {
             $this->store->forget($id);
@@ -197,6 +202,15 @@ final class Refresher
      * (pages found fresh again are skipped and not counted). Does nothing with a budget of 0 or
      * less, without a renderer, when the index is unavailable, while invalidations stay pending,
      * or when called from inside a rebuild.
+     *
+     * Never a loop: a page is built at most once per pass; what the rebuilds themselves write
+     * forgets pages as usual but queues nothing in this pass (and doesn't call onQueue), so a
+     * page whose render writes what it read ends up uncached, as before the cache.
+     *
+     * A rebuild that is not stored (any refusal, a non-200, a 409 for another key, a throw)
+     * forgets the page: a stale copy is never kept past its rebuild, its next visitor renders it.
+     * One that a write refused while it rendered (`invalidated`) stays queued for a later pass;
+     * after RefreshQueue::MAX_ATTEMPTS failures in a row it is dropped.
      */
     public function work(float $budgetSeconds): int
     {
@@ -204,6 +218,7 @@ final class Refresher
             return 0;
         }
         $this->working = true;
+        $this->built = [];
         $started = ($this->clock)();
         $rendered = 0;
         try {
@@ -213,10 +228,11 @@ final class Refresher
             }
             $queue = $this->queue($this->store, $index);
             do {
-                $page = $queue->claim(self::LEASE);
+                $page = $queue->claim(self::LEASE, array_keys($this->built));
                 if ($page === null) {
                     break;
                 }
+                $this->built[$page['id']] = true;
                 $id = str_starts_with($page['id'], 'url:') ? null : $page['id'];
                 try {
                     if ($id !== null) {
@@ -229,15 +245,33 @@ final class Refresher
                     }
                     $response = ($this->rebuild)(Rebuild::request($page['url'], $page['parts'], $id, $page['verified']));
                     $rendered++;
-                    if ($response->getHeaderLine(PageCacheMiddleware::SKIP_HEADER) === 'invalidated') {
-                        // A write while it rendered: not stored, built once more (MAX_ATTEMPTS at most).
-                        $queue->fail($page);
+                    $skip = $response->getHeaderLine(PageCacheMiddleware::SKIP_HEADER);
+                    if ($id === null) {
+                        $queue->complete($page); // a URL the index didn't know: stored or not, its visit decides
 
                         continue;
                     }
-                    $queue->complete($page);
+                    $stored = $this->store->page($id);
+                    if ($response->getStatusCode() === 200 && $skip === '' && $stored !== null
+                        && !$stored->staleAt(($this->clock)(), $this->config->maxAge)) {
+                        $queue->complete($page);
+
+                        continue;
+                    }
+                    $this->forgetPage($index, $id);
+                    if ($skip === 'invalidated') {
+                        $queue->fail($page); // a write while it rendered: once more, in a later pass
+                    } else {
+                        if ($skip !== '' && $skip !== 'invalidated') {
+                            ($this->log)('page cache: the rebuild of ' . $page['url'] . ' was not stored (' . $skip . '); it is built on its next visit');
+                        }
+                        $queue->complete($page);
+                    }
                 } catch (\Throwable $e) {
                     ($this->log)('page cache: the rebuild of ' . $page['url'] . ' failed: ' . $e->getMessage());
+                    if ($id !== null) {
+                        $this->forgetPage($index, $id);
+                    }
                     $queue->fail($page);
                 }
             } while (($this->clock)() - $started < $budgetSeconds);
@@ -245,9 +279,23 @@ final class Refresher
             ($this->log)('page cache: rebuilding stopped: ' . $e->getMessage());
         } finally {
             $this->working = false;
+            $this->built = [];
         }
 
         return $rendered;
+    }
+
+    /** @var array<string, true> queue ids taken in the running work() pass */
+    private array $built = [];
+
+    /** Forgets a page whose rebuild was not stored: its rows, then its file (a stale copy never stays). */
+    private function forgetPage(TagIndex $index, string $id): void
+    {
+        try {
+            $index->forget($id);
+        } finally {
+            $this->store->forget($id);
+        }
     }
 
     /** How many pages of this store's release are queued (0 when the index is unavailable). */
@@ -427,6 +475,10 @@ final class Refresher
     /** @param array<string, array{url: string, parts?: array<string, mixed>, verified?: bool, priority?: int}> $pages */
     private function push(PageStore $store, TagIndex $index, array $pages): void
     {
+        if ($this->working && $store->release() === $this->store->release()) {
+            // Written by a rebuild of this pass: not queued again now (no loop); the next visit renders it.
+            $pages = array_diff_key($pages, $this->built);
+        }
         if ($pages === []) {
             return;
         }
@@ -436,7 +488,8 @@ final class Refresher
 
     private function queuedIn(PageStore $store): void
     {
-        if ($store->release() === $this->store->release() && $this->onQueue !== null) {
+        // Not while working: the after-response work never schedules itself again.
+        if (!$this->working && $store->release() === $this->store->release() && $this->onQueue !== null) {
             ($this->onQueue)();
         }
     }

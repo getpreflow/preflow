@@ -399,10 +399,34 @@ final class TagIndex
         if ($pdo === null) {
             return [];
         }
-        $statement = $pdo->prepare('SELECT id FROM pages WHERE url = ?');
-        $statement->execute([$url]);
+        $path = strstr($url, '?', true);
+        // By path first: pages_path is indexed, url is not.
+        $statement = $pdo->prepare('SELECT id FROM pages WHERE path = ? AND url = ?');
+        $statement->execute([$path === false ? $url : $path, $url]);
 
         return array_map(strval(...), $statement->fetchAll(\PDO::FETCH_COLUMN));
+    }
+
+    /**
+     * The tags these pages depend on.
+     *
+     * @param list<string> $pageIds
+     * @return list<string>
+     */
+    public function tagsOf(array $pageIds): array
+    {
+        $pdo = $this->pdo();
+        if ($pdo === null || $pageIds === []) {
+            return [];
+        }
+        $tags = [];
+        foreach (array_chunk(array_values(array_unique($pageIds)), self::CHUNK) as $chunk) {
+            $statement = $pdo->prepare('SELECT DISTINCT tag FROM tags WHERE page_id IN (' . self::marks($chunk) . ')');
+            $statement->execute($chunk);
+            array_push($tags, ...array_map(strval(...), $statement->fetchAll(\PDO::FETCH_COLUMN)));
+        }
+
+        return array_values(array_unique($tags));
     }
 
     /** @param array<string, mixed> $parts */

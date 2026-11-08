@@ -1086,9 +1086,13 @@ final class Application
         $this->rebuildsScheduled = true;
         $container = $this->container;
         $this->afterResponse(function () use ($container): void {
-            $this->rebuildsScheduled = false;
-            $budget = $container->get(\Preflow\Core\PageCache\PageCacheConfig::class)->rebuildBudget;
-            $container->get(\Preflow\Core\PageCache\Refresher::class)->work($budget);
+            // One pass per request: what the rebuilds themselves queue waits for the next request or the cron.
+            try {
+                $budget = $container->get(\Preflow\Core\PageCache\PageCacheConfig::class)->rebuildBudget;
+                $container->get(\Preflow\Core\PageCache\Refresher::class)->work($budget);
+            } finally {
+                $this->rebuildsScheduled = false;
+            }
         });
     }
 
@@ -1102,11 +1106,18 @@ final class Application
      * the SEO context and the content locale (the render scopes), the assets boot registered,
      * and no recording of the page around it (DependencyRecorder::outside(): the page cache
      * middleware opens the rebuild's own). So one page's state never reaches the next.
+     *
+     * PHP's superglobals are an anonymous visitor's too (AnonymousGlobals, as verify's): after a
+     * response, they are still those of the request that wrote (its cookies, address, session).
+     * With a PHP session open the rebuild is refused without rendering.
      */
     private function renderRebuild(ServerRequestInterface $request): ResponseInterface
     {
         if (!$this->container->bound(\Preflow\Core\PageCache\PageCacheMiddleware::class)) {
             throw new \LogicException('The page cache does not serve in this app (debug mode?).');
+        }
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            return new \Nyholm\Psr7\Response(200, [\Preflow\Core\PageCache\PageCacheMiddleware::SKIP_HEADER => 'session']);
         }
         $render = fn (): ResponseInterface => $this->handle($request);
         if ($this->container->bound(\Preflow\View\Geo\RenderScopes::class)) {
@@ -1119,7 +1130,13 @@ final class Application
         $assets = $this->container->has(\Preflow\View\AssetCollector::class) ? $this->container->get(\Preflow\View\AssetCollector::class) : null;
         $clean = static fn (): ResponseInterface => $assets !== null ? $assets->restoring($scoped) : $scoped();
 
-        return $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class)->outside($clean);
+        $recorder = $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class);
+
+        return \Preflow\Core\PageCache\AnonymousGlobals::run(
+            '127.0.0.1',
+            static fn (): ResponseInterface => $recorder->outside($clean),
+            $request->getQueryParams(),
+        );
     }
 
     /** @return \Closure(string): void the site's logger (a warning), error_log() without one */

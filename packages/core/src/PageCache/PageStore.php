@@ -218,11 +218,18 @@ final class PageStore
                     try {
                         $index = TagIndex::in($this->dir);
                         $index->clear();
+                        // Its old queue too: those pages are gone (the warm-up queues what is wanted).
+                        $pdo = $index->pdo();
+                        if ($pdo !== null) {
+                            (new RefreshQueue($pdo))->clear();
+                        }
                         $index->close();
                     } catch (\Throwable) {
                         // An index that can't be emptied: unavailable, so the cache is off anyway.
                     }
                 }
+                // Pending invalidations concerned the pages just removed.
+                (new PendingInvalidations($this->dir))->clear();
                 $this->clear();
             }
             $tmp = $root . '/' . self::ACTIVE . '.' . bin2hex(random_bytes(4)) . '.tmp';
