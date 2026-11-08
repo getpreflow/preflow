@@ -373,6 +373,55 @@ final class TagIndex
     }
 
     /**
+     * Removes these pages and their tags, in one transaction.
+     *
+     * @param list<string> $pageIds
+     */
+    public function forgetMany(array $pageIds): void
+    {
+        $pdo = $this->pdo();
+        $pageIds = array_values(array_unique(array_map(strval(...), $pageIds)));
+        if ($pdo === null || $pageIds === []) {
+            return;
+        }
+        $pdo->beginTransaction();
+        try {
+            foreach (array_chunk($pageIds, self::CHUNK) as $chunk) {
+                $pdo->prepare('DELETE FROM tags WHERE page_id IN (' . self::marks($chunk) . ')')->execute($chunk);
+                $pdo->prepare('DELETE FROM pages WHERE id IN (' . self::marks($chunk) . ')')->execute($chunk);
+            }
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Removes every page and its tags, keeping the invalidations (unlike clear()): a render
+     * that started before still finds what changed. Returns how many pages there were.
+     */
+    public function forgetAll(): int
+    {
+        $pdo = $this->pdo();
+        if ($pdo === null) {
+            return 0;
+        }
+        $pdo->beginTransaction();
+        try {
+            $count = (int) $pdo->query('SELECT COUNT(*) FROM pages')->fetchColumn();
+            $pdo->exec('DELETE FROM tags');
+            $pdo->exec('DELETE FROM pages');
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+
+        return $count;
+    }
+
+    /**
      * Notes that $tags changed at $at (microtime), so a render that started earlier and read
      * one of them is not stored (invalidatedSince()). Entries older than INVALIDATIONS_KEPT
      * seconds are pruned.

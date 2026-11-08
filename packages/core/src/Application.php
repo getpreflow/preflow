@@ -416,6 +416,8 @@ final class Application
         try {
             $response = $this->kernel->handle($request);
         } catch (\Throwable $e) {
+            // What the request wrote may be written (part of it, or by another connection).
+            $this->pageChanges?->flush();
             // Mails queued before the failure still go out (CLI, tests); run() flushes itself.
             if ($flush) {
                 $this->flushDeferredNotifications();
@@ -433,6 +435,10 @@ final class Application
             }
             $response = $response->withBody((new \Nyholm\Psr7\Factory\Psr17Factory())->createStream(''));
         }
+
+        // What the request wrote is invalidated before the response goes out: the visitor's next
+        // request (the redirect after a POST) never gets a page showing the old state.
+        $this->pageChanges?->flush();
 
         // Log asset stats to debug collector
         if ($this->container->has(DebugCollector::class) && $this->container->has(\Preflow\View\AssetCollector::class)) {
@@ -659,6 +665,12 @@ final class Application
 
         $dataManager = new \Preflow\Data\DataManager($drivers, 'default', $typeRegistry, $validatorFactory);
         $this->container->instance(\Preflow\Data\DataManager::class, $dataManager);
+        if ($this->pageChanges !== null) {
+            $dataManager->observe(new \Preflow\Core\PageCache\DataLayerObserver(
+                $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class),
+                $this->pageChanges,
+            ));
+        }
 
         // Bound only with a DataManager (i.e. config/data.php present); it has nothing to store through otherwise.
         $this->container->instance(
@@ -881,19 +893,48 @@ final class Application
     private function bootPageCache(): void
     {
         $file = $this->configFile('page_cache');
-        $this->container->instance(
-            \Preflow\Core\PageCache\PageCacheConfig::class,
-            \Preflow\Core\PageCache\PageCacheConfig::fromArray(
-                is_array($file) ? $file : [],
-                is_string($url = $this->config->get('app.url')) ? $url : null,
-            ),
+        $config = \Preflow\Core\PageCache\PageCacheConfig::fromArray(
+            is_array($file) ? $file : [],
+            is_string($url = $this->config->get('app.url')) ? $url : null,
         );
+        $this->container->instance(\Preflow\Core\PageCache\PageCacheConfig::class, $config);
         $base = $this->absolutePath('');
+        $root = $this->absolutePath('storage/cache/pages');
         $this->container->get(CacheRegistry::class)->register(new \Preflow\Core\PageCache\PageCacheSource(
-            $this->absolutePath('storage/cache/pages'),
+            $root,
             static fn (): string => \Preflow\Core\PageCache\PageStore::releaseKey($base),
         ));
+
+        // What pages read while rendering (recorded only while a render records) and what writes
+        // changed. Off, or without pdo_sqlite (no index, nothing cached): no observer, no change
+        // log, no IO; PageCache::changed() does nothing. On, writes invalidate from the CLI too.
+        $this->container->instance(\Preflow\Core\PageCache\DependencyRecorder::class, new \Preflow\Core\PageCache\DependencyRecorder());
+        $this->pageChanges = null;
+        if ($config->enabled && extension_loaded('pdo_sqlite')) {
+            $container = $this->container;
+            $this->container->singleton(
+                \Preflow\Core\PageCache\PageStore::class,
+                static fn (): \Preflow\Core\PageCache\PageStore => new \Preflow\Core\PageCache\PageStore($root, \Preflow\Core\PageCache\PageStore::releaseKey($base)),
+            );
+            $this->container->singleton(
+                \Preflow\Core\PageCache\Refresher::class,
+                static fn (): \Preflow\Core\PageCache\Refresher => new \Preflow\Core\PageCache\Refresher(
+                    $container->get(\Preflow\Core\PageCache\PageStore::class),
+                    $config,
+                ),
+            );
+            $this->pageChanges = new \Preflow\Core\PageCache\ChangeLog(
+                static function (array $tags) use ($container): void {
+                    $container->get(\Preflow\Core\PageCache\Refresher::class)->invalidate($tags);
+                },
+            );
+            $this->container->instance(\Preflow\Core\PageCache\ChangeLog::class, $this->pageChanges);
+        }
+        $this->container->instance(\Preflow\Core\PageCache\PageCache::class, new \Preflow\Core\PageCache\PageCache($this->pageChanges));
     }
+
+    /** The page cache's change log, when the cache is on (bootPageCache()). */
+    private ?\Preflow\Core\PageCache\ChangeLog $pageChanges = null;
 
     /** Minified CSS and JS live in storage/cache/assets, keyed by content. */
     private function assetsCachePath(): string

@@ -557,6 +557,34 @@ return [
 - **In-place deploys** (a `git pull` in the same folder, without `optimize` or a composer
   install) keep the release key, so the pages from before the deploy stay. Run
   `preflow cache:clear pages` or `preflow optimize` as part of such a deploy.
+- **What a page depends on.** While a page renders, every read through the `DataManager`
+  is noted as a tag: a record (`default:object#1234`), a listing (`default:object`, from
+  a query or an aggregate), or the tables a `raw()` query names (`FROM`, `JOIN`).
+  The storage is the driver name (`default` for the default driver, whatever it is
+  configured as), and the table is as the driver sees it: Folio's published copies are
+  `object__published`. A raw read whose tables can't be told, such as one with a `WITH`
+  clause, depends on the whole storage (`default:*`).
+- **What a write changes.** Every write through the `DataManager` is noted too. That
+  covers `save`, `insert`, `update`, `delete`, `saveType`, `deleteIn`, delete plans,
+  `execute()`, a write sent through `raw()`, Folio's publisher and Folio's import. The
+  writes are merged, and the pages that depend on them are invalidated once, before the
+  response goes out, or at the end of a command (a cron import):
+  - writing a record invalidates its pages, the pages listing its table, and the
+    whole-storage readers;
+  - a raw write invalidates every page of the tables it names;
+  - a raw write whose tables can't be told invalidates every page.
+- **Writes the data layer can't see**, such as a bare `$pdo->exec()` or a write through
+  `$dataManager->driver(...)`, must be reported:
+
+  ```php
+  $pageCache = $container->get(\Preflow\Core\PageCache\PageCache::class);
+  $pageCache->changed('default:member');      // the member table changed (many rows)
+  $pageCache->changed('default:member#42');   // one member
+  $pageCache->changed('*');                   // everything
+  ```
+
+  `$dataManager->reportWrite('default', 'member', 42)` does the same from data code.
+  Both do nothing while the cache is off.
 
 ### Boot manifest (`preflow optimize`)
 
