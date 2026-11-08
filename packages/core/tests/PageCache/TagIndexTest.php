@@ -206,6 +206,16 @@ final class TagIndexTest extends TestCase
         $this->assertSame('refresh_queue', $index->pdo()->query("SELECT name FROM sqlite_master WHERE name = 'refresh_queue'")->fetchColumn());
     }
 
+    public function test_invalidations_keep_microseconds(): void
+    {
+        $this->now = 1794162049.083123;
+        $index = $this->index();
+        $index->recordInvalidation(['t'], 1794162049.083123);
+
+        $this->assertTrue($index->invalidatedSince(['t'], 1794162049.083122), 'one microsecond after the render started');
+        $this->assertFalse($index->invalidatedSince(['t'], 1794162049.083123));
+    }
+
     public function test_invalidated_since_sees_only_later_invalidations(): void
     {
         $index = $this->index();

@@ -241,8 +241,8 @@ final class TagIndex
         $evicted = [];
         $pdo->beginTransaction();
         try {
-            $pdo->prepare('INSERT OR REPLACE INTO pages (id, url, path, fragment, has_query, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-                ->execute([$pageId, $url, $path, (int) $fragment, (int) $hasQuery, ($this->clock)()]);
+            $pdo->prepare('INSERT OR REPLACE INTO pages (id, url, path, fragment, has_query, created_at) VALUES (?, ?, ?, ?, ?, CAST(? AS REAL))')
+                ->execute([$pageId, $url, $path, (int) $fragment, (int) $hasQuery, self::real(($this->clock)())]);
             $pdo->prepare('DELETE FROM tags WHERE page_id = ?')->execute([$pageId]);
             $insert = $pdo->prepare('INSERT OR REPLACE INTO tags (tag, page_id, freshness, timed_seconds) VALUES (?, ?, ?, ?)');
             foreach ($tags as $tag => $spec) {
@@ -437,11 +437,11 @@ final class TagIndex
         }
         $pdo->beginTransaction();
         try {
-            $insert = $pdo->prepare('INSERT INTO invalidations (tag, at) VALUES (?, ?)');
+            $insert = $pdo->prepare('INSERT INTO invalidations (tag, at) VALUES (?, CAST(? AS REAL))');
             foreach ($tags as $tag) {
-                $insert->execute([$tag, $at]);
+                $insert->execute([$tag, self::real($at)]);
             }
-            $pdo->prepare('DELETE FROM invalidations WHERE at < ?')->execute([($this->clock)() - self::INVALIDATIONS_KEPT]);
+            $pdo->prepare('DELETE FROM invalidations WHERE at < CAST(? AS REAL)')->execute([self::real(($this->clock)() - self::INVALIDATIONS_KEPT)]);
             $pdo->commit();
         } catch (\Throwable $e) {
             $pdo->rollBack();
@@ -463,8 +463,8 @@ final class TagIndex
         }
         $tags = array_values(array_unique([self::EVERYTHING, ...array_map(strval(...), $tags)]));
         foreach (array_chunk($tags, self::CHUNK) as $chunk) {
-            $statement = $pdo->prepare('SELECT 1 FROM invalidations WHERE at > ? AND tag IN (' . self::marks($chunk) . ') LIMIT 1');
-            $statement->execute([$since, ...$chunk]);
+            $statement = $pdo->prepare('SELECT 1 FROM invalidations WHERE at > CAST(? AS REAL) AND tag IN (' . self::marks($chunk) . ') LIMIT 1');
+            $statement->execute([self::real($since), ...$chunk]);
             if ($statement->fetchColumn() !== false) {
                 return true;
             }
@@ -499,5 +499,15 @@ final class TagIndex
     private static function marks(array $values): string
     {
         return implode(', ', array_fill(0, count($values), '?'));
+    }
+
+    /**
+     * $time as SQL text with microseconds: PDO binds a float through `precision` (14 digits),
+     * which at today's timestamps keeps only 1/10 000 s, so an invalidation right after a render
+     * started could compare as not after it.
+     */
+    private static function real(float $time): string
+    {
+        return sprintf('%.6F', $time);
     }
 }
