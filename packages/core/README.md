@@ -742,8 +742,15 @@ return [
     every page whatever its freshness.
   - A write while the page renders: of something it read fresh, the page is not stored; next
     visit only, it is stored stale; timed only, it is stored.
-  - Folio's frontend pages find their record with a query of its table, a listing: a listing of
-    that table elsewhere on the page can't be looser than the record itself.
+  - Folio's frontend pages (types with publishing) depend on their record by id and on their
+    address (`DataTags::address()`, `~address:/path`), not on the whole type their lookup
+    queried. The Publisher reports the addresses a publish, unpublish or delete leaves and
+    takes. So "other jobs" next visit works on a job's own Folio page, and publishing another
+    record of the type leaves other detail pages alone (unless they list the type, which follows
+    its own freshness). Writes into a `__published` table around the Publisher take over no
+    address the cache sees.
+  - `$pageCache->depends('menu')` adds a dependency the data layer can't see, in the scope's
+    freshness. Tags starting with `~` are exact: read and changed as they are.
 - **Expiry and the maximum age.** A page can say when it goes out of date, an event date or a
   sale ending at midnight; the earliest of several counts:
 

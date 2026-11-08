@@ -19,6 +19,9 @@ namespace Preflow\Core\PageCache;
  *   a table (bulk, raw)      {storage}:{table}, {storage}:{table}#, {storage}:*
  *   unknown ({storage}:*)    * (TagIndex::EVERYTHING): a raw write whose tables are unsure
  *
+ * Exact tags start with '~' ("~address:/jobs/carpenter"): read and changed as they are, never
+ * expanded (address() is Folio's: the page at a public path).
+ *
  * {storage} is the driver name ('default'...), {table} the table as the driver sees it, lowercased
  * ("object__published" for a published copy), so a raw read of `object__published` and a write of
  * its published records meet. Other tags (no colon: "menu") are a site's own and pass as they are.
@@ -46,12 +49,32 @@ final class DataTags
     }
 
     /**
+     * The page at the public path $path (as the router sees it, without a locale prefix):
+     * decoded and lowercased (ASCII), so "/Jobs%20A" and "/jobs a" are one address, in every locale.
+     */
+    public static function address(string $path): string
+    {
+        $path = '/' . trim(rawurldecode($path), '/');
+
+        return '~address:' . str_replace('#', '%23', strtolower($path));
+    }
+
+    /** Whether $tag is an exact tag (address()): never expanded. */
+    public static function exact(string $tag): bool
+    {
+        return str_starts_with($tag, '~');
+    }
+
+    /**
      * The tags a page records for a read of $tag: a record also records "any record of its table".
      *
      * @return list<string>
      */
     public static function dependencies(string $tag): array
     {
+        if (self::exact($tag)) {
+            return [$tag];
+        }
         $hash = strpos($tag, '#');
         if ($hash === false || $hash === strlen($tag) - 1 || !str_contains(substr($tag, 0, $hash), ':')) {
             return [$tag];
@@ -69,6 +92,9 @@ final class DataTags
     {
         if ($tag === TagIndex::EVERYTHING) {
             return [TagIndex::EVERYTHING];
+        }
+        if (self::exact($tag)) {
+            return [$tag];
         }
         $colon = strpos($tag, ':');
         if ($colon === false) {

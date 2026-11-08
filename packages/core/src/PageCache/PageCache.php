@@ -88,12 +88,32 @@ final class PageCache
         $changed = [];
         foreach ($tags as $tag) {
             $colon = strpos($tag, ':');
-            if ($colon !== false && $this->storageName !== null) {
+            if ($colon !== false && $this->storageName !== null && !DataTags::exact($tag)) {
                 $tag = ($this->storageName)(substr($tag, 0, $colon)) . substr($tag, $colon);
             }
             array_push($changed, ...DataTags::changes($tag));
         }
         $this->changes->changed($changed);
+    }
+
+    /**
+     * The page being rendered depends on $tags, for what the data layer can't see or reports
+     * too broadly (a site's own tag such as 'menu', DataTags::address()). Recorded with the
+     * freshness of the scope around; outside a render for the cache it does nothing. A storage
+     * prefix is mapped as in changed().
+     */
+    public function depends(string ...$tags): void
+    {
+        if ($this->recorder === null || !$this->recorder->recording()) {
+            return;
+        }
+        foreach ($tags as $tag) {
+            $colon = strpos($tag, ':');
+            if ($colon !== false && $this->storageName !== null && !DataTags::exact($tag)) {
+                $tag = ($this->storageName)(substr($tag, 0, $colon)) . substr($tag, $colon);
+            }
+            $this->recorder->record($tag);
+        }
     }
 
     /**

@@ -64,6 +64,21 @@ final class QueryBuilder
     /** @var list<string>|null the ids of byIds(), while it is the only filter */
     private ?array $byIds = null;
 
+    private bool $unreported = false;
+
+    /**
+     * Runs of this query (get(), first(), paginate(), aggregate()) are not reported to the
+     * DataManager's observer: for a lookup whose caller reports what it really depends on
+     * instead (Folio finds a page's record by its address, and reports the record and the
+     * address, not a read of the whole table).
+     */
+    public function unreported(): self
+    {
+        $this->unreported = true;
+
+        return $this;
+    }
+
     /**
      * Only the records with these ids (WHERE id IN (...)). Reported to the DataManager's observer
      * as one record read per id, found or not, instead of a read of the whole table: a page that
@@ -432,7 +447,7 @@ final class QueryBuilder
         $dm = $this->dataManager;
         $storage = $this->meta?->storage ?? $this->typeDef?->storage;
         $table = $this->meta?->table ?? $this->typeDef?->table;
-        if ($dm === null || $storage === null || $table === null) {
+        if ($dm === null || $storage === null || $table === null || $this->unreported) {
             return static function (): void {};
         }
         $ids = $this->byIds !== null && $this->filters === 1 ? array_values(array_unique($this->byIds)) : null;

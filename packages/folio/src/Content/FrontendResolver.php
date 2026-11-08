@@ -13,6 +13,13 @@ use Preflow\Folio\Publishing\ShadowTypes;
  * Maps a public path to a published record of any type that declares a
  * "frontend" route. Routes are tried most specific first; '' resolves to the
  * record named by the (single) "home" declaration.
+ *
+ * For the page cache, a page found this way depends on its record (by id) and on its address
+ * (DataTags::address() of the path), not on the whole published table its lookup queried: the
+ * Publisher reports the addresses a record leaves and takes. Publishing another record of the
+ * type leaves the page alone; a record that takes over the address forgets it. Routes of types
+ * without publishing still depend on their table (their records are written without the
+ * Publisher).
  */
 final class FrontendResolver
 {
@@ -26,6 +33,7 @@ final class FrontendResolver
     public function __construct(
         private readonly DataManager $dm,
         string|array $routes = 'page',
+        private readonly ?\Preflow\Core\PageCache\PageCache $pageCache = null,
     ) {
         $this->routes = self::ordered(is_string($routes) ? [self::legacy($routes)] : $routes);
     }
@@ -94,6 +102,7 @@ final class FrontendResolver
     public function match(string $path, ?string $locale = null): ?ResolvedRecord
     {
         $path = trim($path, '/');
+        $found = null;
 
         foreach ($this->routes as $route) {
             $localized = $locale !== null;
@@ -110,8 +119,9 @@ final class FrontendResolver
                 continue;
             }
 
-            $query = $route->publishing
-                ? $this->dm->queryIn(ShadowTypes::published($this->definition($route->type)))
+            $published = $route->publishing ? ShadowTypes::published($this->definition($route->type)) : null;
+            $query = $published !== null
+                ? $this->dm->queryIn($published)->unreported() // the record and the address are reported below
                 : $this->dm->queryType($route->type);
             if ($localized) {
                 $query = $query->locale($locale);
@@ -125,12 +135,41 @@ final class FrontendResolver
 
             foreach ($query->get()->items() as $record) {
                 if ($locale === null || $record->getType()->translatableFields() === [] || in_array($locale, $record->availableLocales(), true)) {
-                    return new ResolvedRecord($record, $route);
+                    $found = new ResolvedRecord($record, $route);
+                    if ($published !== null) {
+                        $this->dm->reportRead($published->storage, $published->table, (string) $record->getId());
+                    }
+                    break 2;
                 }
             }
         }
 
-        return null;
+        // Found or not: a record published at this address later changes what it shows.
+        $this->pageCache?->depends(\Preflow\Core\PageCache\DataTags::address('/' . $path));
+
+        return $found;
+    }
+
+    /**
+     * The addresses of a published record, as DataTags::address() tags: its path in every
+     * locale of its type it has one in (the Publisher reports those it leaves and takes).
+     *
+     * @return list<string>
+     */
+    public function addressTags(?DynamicRecord $record): array
+    {
+        if ($record === null) {
+            return [];
+        }
+        $tags = [];
+        foreach ($record->getType()->locales->available as $locale) {
+            $path = $this->pathFor($record, $locale);
+            if ($path !== null) {
+                $tags[] = \Preflow\Core\PageCache\DataTags::address($path);
+            }
+        }
+
+        return array_values(array_unique($tags));
     }
 
     /**

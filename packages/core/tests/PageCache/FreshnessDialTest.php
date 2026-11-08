@@ -108,4 +108,32 @@ final class FreshnessDialTest extends TestCase
             }
         }
     }
+
+    public function test_address_tags_are_exact_and_normalised(): void
+    {
+        $tag = \Preflow\Core\PageCache\DataTags::address('/Jobs/Carpenter%20A/');
+        $this->assertSame('~address:/jobs/carpenter a', $tag);
+        $this->assertSame('~address:/', \Preflow\Core\PageCache\DataTags::address(''));
+        $this->assertSame('~address:/a%23b', \Preflow\Core\PageCache\DataTags::address('/a#b'), 'never read as a record');
+        $this->assertSame([$tag], \Preflow\Core\PageCache\DataTags::changes($tag), 'changed as it is');
+        $this->assertSame([$tag], \Preflow\Core\PageCache\DataTags::dependencies($tag));
+    }
+
+    public function test_depends_records_under_the_scope_and_maps_the_storage(): void
+    {
+        $recorder = new DependencyRecorder();
+        $cache = new PageCache(storageName: static fn (string $s): string => $s === 'mysql' ? 'default' : $s, recorder: $recorder);
+        $cache->depends('menu'); // not recording: nothing
+        $frame = $recorder->start();
+        $cache->depends('menu', 'mysql:job#5', \Preflow\Core\PageCache\DataTags::address('/x'));
+        $cache->within(Freshness::NextVisit, null, fn () => $cache->depends('weather'));
+
+        $this->assertSame([
+            'menu' => [Freshness::Fresh, null],
+            'default:job#5' => [Freshness::Fresh, null],
+            'default:job#' => [Freshness::Fresh, null],
+            '~address:/x' => [Freshness::Fresh, null],
+            'weather' => [Freshness::NextVisit, null],
+        ], $recorder->stop($frame));
+    }
 }

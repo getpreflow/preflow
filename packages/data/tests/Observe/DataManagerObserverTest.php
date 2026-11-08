@@ -303,6 +303,20 @@ final class DataManagerObserverTest extends TestCase
         $this->assertSame(['read default:gadgets#1'], $this->events(), 'models use their id field');
     }
 
+    public function test_an_unreported_query_reports_nothing(): void
+    {
+        $this->dm->saveType($this->object('o1'));
+        $this->events();
+
+        $this->assertCount(1, $this->dm->queryType('object')->where('title', 'T')->unreported()->get()->items());
+        $this->dm->queryType('object')->unreported()->byIds(['o1'])->first();
+        $this->dm->queryType('object')->unreported()->aggregate()->count()->get();
+        $this->assertSame([], $this->events(), 'its caller reports what it depends on');
+
+        $this->dm->queryType('object')->where('title', 'T')->get();
+        $this->assertSame(['read default:object'], $this->events(), 'other queries still report');
+    }
+
     public function test_an_aggregate_keeps_what_the_query_was_when_it_was_built(): void
     {
         foreach (['a', 'b', 'c'] as $id) {

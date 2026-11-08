@@ -545,7 +545,11 @@ final class FolioServiceProvider extends ServiceProvider
                 [$modelsPath],
             ),
         );
-        $container->bind(FrontendResolver::class, fn (Container $c) => new FrontendResolver($c->get(DataManager::class), $frontendRoutes));
+        $container->bind(FrontendResolver::class, fn (Container $c) => new FrontendResolver(
+            $c->get(DataManager::class),
+            $frontendRoutes,
+            $c->has(\Preflow\Core\PageCache\PageCache::class) ? $c->get(\Preflow\Core\PageCache\PageCache::class) : null,
+        ));
 
         $uploadsDir = $this->uploadsDir($app);
         $uploadUrlPrefix = rtrim($this->prefix($app), '/') . '/_uploads';
@@ -626,6 +630,9 @@ final class FolioServiceProvider extends ServiceProvider
             (bool) ($folioConfig['publishing']['complete_languages'] ?? false),
             $c->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
             self::addresses($c),
+            // The page cache: the addresses a publish, unpublish or delete leaves and takes
+            $c->has(\Preflow\Core\PageCache\PageCache::class) ? $c->get(\Preflow\Core\PageCache\PageCache::class) : null,
+            $c->get(FrontendResolver::class),
         ));
         $container->singleton(\Preflow\Folio\Content\ReviewIndexUpdater::class, fn (Container $c) => new \Preflow\Folio\Content\ReviewIndexUpdater(
             $c->get(\Preflow\I18n\Machine\ReviewIndex::class),

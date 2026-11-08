@@ -50,6 +50,8 @@ final class Publisher
         private readonly bool $completeLanguages = false,
         private readonly ?ReviewIndexUpdater $review = null,
         private readonly ?RecordAddresses $addresses = null,
+        private readonly ?\Preflow\Core\PageCache\PageCache $pageCache = null,
+        private readonly ?\Preflow\Folio\Content\FrontendResolver $resolver = null,
     ) {
         if ($keepRevisions !== null && $keepRevisions < 0) {
             throw new \InvalidArgumentException('publishing.revisions must be 0 (keep all) or more.');
@@ -251,6 +253,7 @@ final class Publisher
             $working->set('_publish_at', '');
             $this->dm->saveType($working, false);
             $snapshot = $this->writeSnapshot($working, $previous, $by);
+            $this->addressesChanged($previous, $snapshot);
             $this->addresses?->sync($def->key, (string) $working->getId(), $previous);
             $this->review?->refresh($working);
 
@@ -271,6 +274,7 @@ final class Publisher
 
             return $this->writeSnapshot($working, $previous, $by);
         });
+        $this->addressesChanged($previous, $snapshot);
         // After the commit: the address book writes on its own (it never fails a publish).
         $this->addresses?->sync($def->key, (string) $working->getId(), $previous);
         $this->review?->refresh($working);
@@ -402,8 +406,25 @@ final class Publisher
      */
     public function unpublish(string $type, string $id, ?RemovalTarget $target = null): void
     {
+        $this->addressesChanged($this->pageCache !== null ? $this->snapshot($type, $id) : null, null);
         $this->dm->deleteIn(ShadowTypes::published($this->definition($type)), $id);
         $this->addresses?->removed($type, $id, $target);
+    }
+
+    /**
+     * Tells the page cache the public addresses the record had ($before, its snapshot before) and
+     * has ($after): the pages at them change (a record that takes over an address, one that
+     * leaves it). The pages of the record itself follow its record tag anyway.
+     */
+    private function addressesChanged(?DynamicRecord $before, ?DynamicRecord $after): void
+    {
+        if ($this->pageCache === null || $this->resolver === null) {
+            return;
+        }
+        $tags = array_values(array_unique([...$this->resolver->addressTags($before), ...$this->resolver->addressTags($after)]));
+        if ($tags !== []) {
+            $this->pageCache->changed(...$tags);
+        }
     }
 
     /** Carry a working copy's list position into its snapshot (ordering is not content). */
@@ -421,6 +442,7 @@ final class Publisher
     public function forget(string $type, string $id): void
     {
         $def = $this->definition($type);
+        $this->addressesChanged($this->pageCache !== null ? $this->snapshot($type, $id) : null, null);
         $this->dm->deleteIn(ShadowTypes::published($def), $id);
         foreach ($this->revisionsOf($def, $id) as $revision) {
             $this->dm->deleteIn(ShadowTypes::revisions($def), $revision->id);
