@@ -10,7 +10,8 @@ namespace Preflow\Components;
  * previewFailure() (ErrorBoundary::preview(): its fallback(), or the dev panel or the hidden
  * placeholder, as for a real failure in the phase resolveState) in place of the component, and
  * neither resolves nor renders the component. No error is reported, so a page cache still
- * stores the page; a component that really fails is reported as always.
+ * stores the page; a component that really fails is reported as always, and so is a
+ * previewFailure() that throws (its boundary renders that error).
  */
 interface PreviewsFailure
 {

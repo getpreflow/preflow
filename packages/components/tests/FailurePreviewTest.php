@@ -41,6 +41,14 @@ class PreviewedFailureWithoutFallback extends Component implements PreviewsFailu
     }
 }
 
+class PreviewThatThrows extends Component implements PreviewsFailure
+{
+    public function previewFailure(): \Throwable
+    {
+        throw new \LogicException('the preview itself failed');
+    }
+}
+
 /** A component that shows what its error boundary renders for a failure, without failing. */
 final class FailurePreviewTest extends TestCase
 {
@@ -83,5 +91,13 @@ final class FailurePreviewTest extends TestCase
         // A component that really fails is still reported.
         $renderer->render(new BrokenComponent());
         $this->assertSame(['State resolution failed'], $this->errors);
+    }
+
+    public function test_a_preview_that_throws_is_a_real_failure(): void
+    {
+        $renderer = new ComponentRenderer(new FakeTemplateEngine(), $this->boundary());
+
+        $this->assertSame('<div style="display:none;" data-component-error="true"></div>', $renderer->render(new PreviewThatThrows()));
+        $this->assertSame(['the preview itself failed'], $this->errors, 'reported: the page is not stored');
     }
 }

@@ -167,8 +167,15 @@ final class ComponentRenderer
     public function render(Component $component): string
     {
         if ($component instanceof PreviewsFailure) {
-            // What its boundary shows when it fails, without it failing (no error reported).
-            return $this->errorBoundary->preview($component->previewFailure(), $component, 'resolveState');
+            // What its boundary shows when it fails, without it failing (no error reported). A
+            // preview that throws is a real failure.
+            try {
+                $failure = $component->previewFailure();
+            } catch (\Throwable $e) {
+                return $this->errorBoundary->render($e, $component, 'previewFailure');
+            }
+
+            return $this->errorBoundary->preview($failure, $component, 'resolveState');
         }
         try {
             if ($this->live !== null && self::isLive($component::class)) {
