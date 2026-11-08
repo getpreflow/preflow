@@ -62,6 +62,12 @@ final class Container implements ContainerInterface
         return class_exists($id);
     }
 
+    /** Whether the id has a shared instance already: set with instance(), or a singleton built on an earlier get(). */
+    public function resolved(string $id): bool
+    {
+        return isset($this->instances[$id]) || isset($this->singletons[$id]);
+    }
+
     /** Whether something is bound or set for the id (unlike has(), which is also true for any autowirable class). */
     public function bound(string $id): bool
     {

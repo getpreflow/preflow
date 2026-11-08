@@ -25,6 +25,26 @@ final class RouteCollection
     }
 
     /**
+     * Inserts entries right in front of the first entry equal to $anchor (same pattern,
+     * handler, method and the rest), so they match before it; appended when there is none.
+     * For routes registered after the collection was built, e.g. Folio's admin routes, which
+     * must precede its frontend catch-all.
+     *
+     * @param RouteEntry[] $entries
+     */
+    public function insertBefore(RouteEntry $anchor, array $entries): void
+    {
+        foreach ($this->entries as $i => $entry) {
+            if ($entry == $anchor) {
+                array_splice($this->entries, $i, 0, array_values($entries));
+
+                return;
+            }
+        }
+        $this->addMany($entries);
+    }
+
+    /**
      * @return RouteEntry[]
      */
     public function all(): array

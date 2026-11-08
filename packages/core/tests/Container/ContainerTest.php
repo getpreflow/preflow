@@ -162,6 +162,19 @@ final class ContainerTest extends TestCase
         $this->assertSame($a, $b);
     }
 
+    public function test_resolved_says_whether_a_shared_instance_exists(): void
+    {
+        $container = new Container();
+        $container->singleton(SomeInterface::class, ConcreteImplementation::class);
+        $container->instance(SimpleService::class, new SimpleService());
+
+        $this->assertTrue($container->resolved(SimpleService::class));
+        $this->assertFalse($container->resolved(SomeInterface::class), 'a singleton not asked for yet');
+        $container->get(SomeInterface::class);
+        $this->assertTrue($container->resolved(SomeInterface::class));
+        $this->assertFalse($container->resolved('Unbound\\Thing'));
+    }
+
     public function test_singleton_with_binding(): void
     {
         $container = new Container();

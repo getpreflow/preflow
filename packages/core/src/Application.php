@@ -41,6 +41,12 @@ final class Application
     /** @var callable(Route, ServerRequestInterface): ResponseInterface|null */
     private $componentRenderer = null;
 
+    /** @var list<\Closure(ServerRequestInterface): void> see onRequest() */
+    private array $requestHooks = [];
+
+    /** see runningInConsole(); null: decided by the PHP SAPI */
+    private ?bool $console = null;
+
     private function __construct(Config $config, string $basePath)
     {
         $this->config = $config;
@@ -143,6 +149,40 @@ final class Application
     public function addMiddleware(\Psr\Http\Server\MiddlewareInterface $middleware): void
     {
         $this->pipeline->pipe($middleware);
+    }
+
+    /**
+     * Calls $hook with every request handle() receives, before any middleware and before
+     * routing: the raw request, as it came in (no locale prefix stripped, no attributes).
+     * A provider uses it to set up, on demand, what only some requests need, e.g. Folio
+     * registers its admin routes on the first request under its prefix. Internal renders
+     * (the SEO audit) go through handle() too, so they call the hooks as well.
+     *
+     * Hooks run in the order added and return nothing; one that throws fails the request
+     * as a boot error would (it is not turned into an error page). Add hooks while booting
+     * (in a provider's boot()).
+     *
+     * @param \Closure(ServerRequestInterface): void $hook
+     */
+    public function onRequest(\Closure $hook): void
+    {
+        $this->requestHooks[] = $hook;
+    }
+
+    /**
+     * Whether the app serves the console (CLI or phpdbg) rather than web requests. Providers
+     * set up at boot what commands need (Folio: its whole admin), since a command handles no
+     * request. Tests that stand in for web requests in the CLI switch it off before boot().
+     */
+    public function runningInConsole(): bool
+    {
+        return $this->console ?? in_array(PHP_SAPI, ['cli', 'phpdbg'], true);
+    }
+
+    /** Overrides runningInConsole() (tests that stand in for web requests); set it before boot(). */
+    public function setRunningInConsole(bool $console): void
+    {
+        $this->console = $console;
     }
 
     /**
@@ -255,6 +295,10 @@ final class Application
     {
         if ($this->kernel === null) {
             throw new \RuntimeException('Application not booted. Call boot() first.');
+        }
+
+        foreach ($this->requestHooks as $hook) {
+            $hook($request);
         }
 
         // Make request context available to components via DI
