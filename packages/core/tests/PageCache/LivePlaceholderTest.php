@@ -39,6 +39,17 @@ final class LivePlaceholderTest extends TestCase
         $this->assertSame([], $mine->find($sign('not-base64-@')));
     }
 
+    public function test_public_keys_are_unusable(): void
+    {
+        // Empty, the built-in default and the skeleton's example key (.env.example) are public.
+        foreach (['', \Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY, 'change-this-to-a-random-32-char-string!'] as $key) {
+            $this->assertFalse((new LivePlaceholder($key))->usable(), $key);
+            $this->assertFalse((new \Preflow\Core\PageCache\PerRequestValues($key))->signed(), $key);
+        }
+        $this->assertTrue((new LivePlaceholder('a-real-secret'))->usable());
+        $this->assertTrue((new \Preflow\Core\PageCache\PerRequestValues('a-real-secret'))->signed());
+    }
+
     public function test_values_are_scalars_and_arrays(): void
     {
         LivePlaceholder::assertPlain(['a' => 1, 'b' => [true, 'x', 2.5, null, ['c' => 'd']]]);

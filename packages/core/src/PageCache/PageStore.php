@@ -55,6 +55,8 @@ final class PageStore
 
     private ?\Closure $beforeLock = null;
 
+    private ?\Closure $beforeFiles = null;
+
     /**
      * @param string $root storage/cache/pages (absolute)
      * @param (\Closure(): float)|null $clock microtime(true) when null
@@ -230,7 +232,10 @@ final class PageStore
                 }
                 // Pending invalidations concerned the pages just removed.
                 (new PendingInvalidations($this->dir))->clear();
-                $this->clear();
+                if ($this->beforeFiles !== null) {
+                    ($this->beforeFiles)();
+                }
+                $this->clear(); // rows first, then files: never a file the index doesn't know
             }
             $tmp = $root . '/' . self::ACTIVE . '.' . bin2hex(random_bytes(4)) . '.tmp';
             if (@file_put_contents($tmp, $this->releaseKey) === strlen($this->releaseKey)) {
@@ -255,6 +260,17 @@ final class PageStore
     public function beforeActivationLock(\Closure $hook): void
     {
         $this->beforeLock = $hook;
+    }
+
+    /**
+     * Runs $hook in a rollback's activate() after the index rows are emptied and before the
+     * page files go: tests check the order there.
+     *
+     * @internal
+     */
+    public function beforeActivationFiles(\Closure $hook): void
+    {
+        $this->beforeFiles = $hook;
     }
 
     /** The release key {root}/active names, null when there is none. */

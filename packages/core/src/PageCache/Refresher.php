@@ -274,10 +274,15 @@ final class Refresher
                     }
                 } catch (\Throwable $e) {
                     ($this->log)('page cache: the rebuild of ' . $page['url'] . ' failed: ' . $e->getMessage());
-                    if ($id !== null) {
-                        $this->forgetPage($index, $id);
+                    try {
+                        if ($id !== null) {
+                            $this->forgetPage($index, $id);
+                        }
+                    } catch (\Throwable $forget) {
+                        ($this->log)('page cache: ' . $page['url'] . ' could not be forgotten: ' . $forget->getMessage());
+                    } finally {
+                        $queue->fail($page); // the failure counts and the lease goes, whatever forgetting did
                     }
-                    $queue->fail($page);
                 }
             } while (($this->clock)() - $started < $budgetSeconds);
         } catch (\Throwable $e) {

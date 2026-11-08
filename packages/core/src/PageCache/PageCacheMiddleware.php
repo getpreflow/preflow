@@ -72,7 +72,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * - `pending`: an invalidation that could not reach the index is still pending (PendingInvalidations);
  * - `invalidated`: a write changed what the page read while it rendered;
  * - `live-non-html`: the body holds live placeholders but is not text/html (they are filled
- *   into HTML only; such a response goes out as it is);
+ *   into HTML only; such a response goes out as it is). One without a Content-Type is HTML;
  * - `differs`: verified (page_cache.verify: 'first' for a key not verified yet in this release,
  *   'always' for every store), the page rendered once more as another anonymous visitor
  *   (another REMOTE_ADDR, no cookies) has another body or other stored headers outside its live
@@ -356,7 +356,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
         $headers[self::HEADER] = [$stale ? 'stale' : 'hit'];
         $this->cache->restoreState($page->state);
         $body = $this->values->fill($page->body);
-        if ($this->live !== null && self::isHtml($headers)) {
+        if ($this->live !== null && $this->isHtml($headers, $key)) {
             $body = $this->live->fill($body);
         }
 
@@ -411,7 +411,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
         }
         // Live parts are filled into HTML only: elsewhere (a JSON string) a placeholder must not stay
         // stored, nor HTML be put in its place.
-        $html = self::isHtml($response->getHeaders());
+        $html = $this->isHtml($response->getHeaders(), $key, $content !== null && LivePlaceholder::in($content));
         if ($content !== null && !$html && LivePlaceholder::in($content)) {
             $reason ??= 'live-non-html';
         }
@@ -449,16 +449,28 @@ final class PageCacheMiddleware implements MiddlewareInterface
         return $reason === null || !$explain ? $response : $response->withHeader(self::SKIP_HEADER, $reason);
     }
 
-    /** Whether a response is HTML (live parts are filled into nothing else). @param array<string, list<string>> $headers */
-    private static function isHtml(array $headers): bool
+    private bool $untypedLogged = false;
+
+    /**
+     * Whether a response is HTML (live parts are filled into nothing else). One without a
+     * Content-Type is (PHP sends text/html for it); with $live (it holds live parts) that is
+     * logged, once per process.
+     *
+     * @param array<string, list<string>> $headers
+     */
+    private function isHtml(array $headers, PageKey $key, bool $live = false): bool
     {
         foreach ($headers as $name => $values) {
             if (strcasecmp((string) $name, 'Content-Type') === 0) {
                 return str_starts_with(strtolower(trim((string) ($values[0] ?? ''))), 'text/html');
             }
         }
+        if ($live && !$this->untypedLogged) {
+            $this->untypedLogged = true;
+            $this->log('page cache: ' . $key->url() . ' has no Content-Type; it is treated as text/html');
+        }
 
-        return false;
+        return true;
     }
 
     /**
@@ -646,7 +658,8 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
     /**
      * Stores the page: index rows first, then the file, then the check that nothing it read was
-     * invalidated since the render started (a write by another request meanwhile). If a tag it
+     * invalidated since the render started (a write by another request meanwhile) and that its
+     * rows are still there (an invalidation that began earlier may have taken them). If a tag it
      * read fresh was, both go again; if only tags it read next-visit were, it stays, marked
      * stale (as the write would have marked it); tags it read timed don't count.
      *
@@ -705,7 +718,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
                 return 'head';
             }
             // Always asked (with no fresh tag too): an invalidation of everything counts for every page.
-            if ($index->invalidatedSince($fresh, $started)) {
+            // Rows gone meanwhile (an invalidation that began before this render): the file goes too,
+            // the index could never find it.
+            if ($index->invalidatedSince($fresh, $started) || $index->page($key->id()) === null) {
                 $index->forget($key->id());
                 $store->forget($key->id());
 

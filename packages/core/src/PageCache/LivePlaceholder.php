@@ -29,12 +29,18 @@ final class LivePlaceholder
     /** Larger recipes are not read (a payload from user text is not decoded at any size). */
     private const int MAX_PAYLOAD = 65536;
 
+    /**
+     * Keys anyone knows, which sign nothing for the page cache: the built-in default
+     * (StatelessCsrfToken::DEFAULT_KEY) and the skeleton's example (.env.example).
+     */
+    public const array PUBLIC_KEYS = ['', \Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY, 'change-this-to-a-random-32-char-string!'];
+
     public function __construct(private readonly string $secret) {}
 
-    /** Whether the key can sign: not empty, not the public default (StatelessCsrfToken::DEFAULT_KEY). */
+    /** Whether the key can sign: not empty, not a public one (PUBLIC_KEYS). */
     public function usable(): bool
     {
-        return $this->secret !== '' && $this->secret !== \Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY;
+        return !in_array($this->secret, self::PUBLIC_KEYS, true);
     }
 
     /**

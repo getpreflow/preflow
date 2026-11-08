@@ -299,6 +299,29 @@ final class RebuildTest extends TestCase
         $this->assertNull($store->get($key));
     }
 
+    public function test_a_throw_while_forgetting_a_failed_rebuild_still_records_the_failure(): void
+    {
+        $store = $this->store();
+        $key = $this->cache($store, '/broken', ['default:job']);
+        $refresher = $this->refresher($store, refuse: function () use ($store): never {
+            // The index can't forget the page now (its tags table is gone), the queue still works.
+            $pdo = TagIndex::forStore($store, $this->config)->pdo() ?? throw new \RuntimeException('no index');
+            $pdo->exec('DROP TABLE tags');
+
+            throw new \RuntimeException('render failed');
+        });
+        $refresher->invalidate(['default:job']);
+
+        $refresher->work(50.0);
+
+        $rows = $this->queue($store)->all();
+        $this->assertCount(1, $rows, 'still queued');
+        $this->assertSame(1, $rows[0]['attempts'], 'the failure is recorded');
+        $this->assertSame('https://example.com/broken', $this->queue($store)->claim(300.0)['url'] ?? null, 'and its lease released');
+        $this->assertNull($store->get($key), 'the stale file is gone');
+        $this->assertStringContainsString('render failed', implode("\n", $this->logged));
+    }
+
     public function test_an_expired_lease_is_taken_again_and_attempts_end_a_row(): void
     {
         $store = $this->store();

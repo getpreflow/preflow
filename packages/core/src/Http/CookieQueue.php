@@ -22,6 +22,18 @@ final class CookieQueue
         $this->cookies[] = $setCookie;
     }
 
+    /** Whether a cookie named $name is queued (not applied yet). */
+    public function has(string $name): bool
+    {
+        foreach ($this->cookies as $cookie) {
+            if (str_starts_with($cookie, $name . '=')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * The queued values, emptying the queue.
      *

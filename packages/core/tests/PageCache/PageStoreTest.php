@@ -272,6 +272,45 @@ final class PageStoreTest extends TestCase
         $this->assertSame([], $index->pagesFor(['news']));
     }
 
+    public function test_a_rollback_empties_the_rows_before_the_files(): void
+    {
+        $key = $this->key('https://example.com/news');
+        TagIndex::in($this->root . '/rel5')->record($key->id(), $key->url(), false, false, ['news' => [\Preflow\Core\PageCache\Freshness::Fresh, null]]);
+        $this->store('rel5')->put($key, new StoredPage('5', [], 1.0));
+        $this->store('rel6')->get($key);
+
+        // Between the two steps: no rows left, the file still there (a page with rows but no file
+        // is a miss; one with a file but no rows could never be refreshed).
+        $seen = null;
+        $five = $this->store('rel5');
+        $five->beforeActivationFiles(function () use ($key, &$seen): void {
+            $seen = [TagIndex::in($this->root . '/rel5')->page($key->id()), is_file($this->file($key, 'rel5'))];
+        });
+        $five->get($key);
+
+        $this->assertSame([null, true], $seen);
+        $this->assertFileDoesNotExist($this->file($key, 'rel5'));
+    }
+
+    public function test_a_rollback_drops_the_release_queue_and_pending_invalidations(): void
+    {
+        $config = new PageCacheConfig(hosts: ['example.com']);
+        $five = $this->store('rel5');
+        $index = TagIndex::forStore($five, $config);
+        (new \Preflow\Core\PageCache\RefreshQueue($index->pdo() ?? throw new \RuntimeException('no index')))->push(['p' => ['url' => 'https://example.com/p']]);
+        $index->close();
+        (new \Preflow\Core\PageCache\PendingInvalidations($five->releaseDir()))->add(['news'], 1.0);
+        $this->store('rel6')->get($this->key('https://example.com/news'));
+
+        // Rolled back: what was queued and pending concerned pages that are gone.
+        $again = $this->store('rel5');
+        $again->get($this->key('https://example.com/news'));
+
+        $pdo = TagIndex::in($this->root . '/rel5')->pdo() ?? throw new \RuntimeException('no index');
+        $this->assertSame(0, (new \Preflow\Core\PageCache\RefreshQueue($pdo))->count());
+        $this->assertFalse(\Preflow\Core\PageCache\PendingInvalidations::exist($again->releaseDir()));
+    }
+
     public function test_the_same_release_keeps_its_pages_across_processes(): void
     {
         $key = $this->key('https://example.com/news');

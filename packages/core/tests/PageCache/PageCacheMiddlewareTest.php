@@ -159,6 +159,35 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame([], TagIndex::forStore($this->store, $this->config)->pagesFor([$tag]));
     }
 
+    public function test_rows_forgotten_between_record_and_put_take_the_file_too(): void
+    {
+        // An invalidation that began before this render (its time is earlier) deletes the rows
+        // this render just recorded, before its file is written: no file stays without rows.
+        $tag = DataTags::record('default', 'post', '1');
+        $armed = false;
+        $this->store = new PageStore($this->root, 'aaaaaaaaaaaaaaaa', function () use (&$armed): float {
+            if ($armed) {
+                $armed = false;
+                (new Refresher(new PageStore($this->root, 'aaaaaaaaaaaaaaaa'), $this->config, static fn (): float => microtime(true) - 60))
+                    ->invalidate(DataTags::recordChanged('default', 'post', '1'));
+            }
+
+            return microtime(true);
+        });
+        $handler = $this->handler(function () use ($tag, &$armed): ResponseInterface {
+            $this->recorder->record($tag);
+            $armed = true;
+
+            return $this->html('post');
+        });
+
+        $response = $this->middleware()->process($this->get('/post/1'), $handler);
+
+        $this->assertFalse($armed, 'the rows went during the store');
+        $this->assertSame('invalidated', $response->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertNull($this->store->get($this->key('/post/1')), 'no file the index would never find');
+    }
+
     public function test_a_history_restore_that_misses_is_never_stored(): void
     {
         $mw = $this->middleware();
@@ -871,6 +900,24 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame('live-non-html', $response->getHeaderLine('X-Page-Cache-Skip'));
         $this->assertIsArray(json_decode((string) $response->getBody(), true), 'never filled: still valid JSON');
         $this->assertFileDoesNotExist($this->pageFile('/api'));
+    }
+
+    public function test_a_response_without_content_type_is_html_for_live_parts(): void
+    {
+        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder('test-secret'), $this->cache, $this->recorder);
+        $live->register('greeting', static fn (): string => '<b>hi</b>');
+        $mw = $this->middleware(live: $live);
+        // PHP sends text/html for a response that names no type.
+        $untyped = $this->handler(fn (): ResponseInterface => new Response(200, [], '<p>' . $live->placeholder('greeting', []) . '</p>'));
+
+        $miss = $mw->process($this->get('/untyped'), $untyped);
+        $this->assertSame('', $miss->getHeaderLine('X-Page-Cache-Skip'), 'stored');
+        $this->assertSame('<p><b>hi</b></p>', (string) $miss->getBody(), 'filled on the miss');
+        $hit = $mw->process($this->get('/untyped'), $untyped);
+        $this->assertSame('hit', $hit->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('<p><b>hi</b></p>', (string) $hit->getBody(), 'and on the hit');
+        $mw->process($this->get('/untyped?again=1'), $untyped);
+        $this->assertCount(1, array_filter($this->logged, static fn (string $m): bool => str_contains($m, 'no Content-Type')), 'logged once');
     }
 
     public function test_an_unusable_app_key_places_and_fills_nothing(): void
