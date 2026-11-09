@@ -194,6 +194,17 @@ final class AuthMiddlewareTest extends TestCase
         $this->assertInstanceOf(UnauthorizedHttpException::class, $this->outcome($middleware, $this->request('GET', '/employer/jobs')));
     }
 
+    public function test_a_login_path_with_a_query_gets_next_appended_with_an_ampersand(): void
+    {
+        $manager = new AuthManager(['employers' => $this->createGuard(null)], 'employers', ['employers' => '/login?lang=en']);
+        $middleware = new AuthMiddleware($manager, null, new ApiConfig());
+
+        $response = $this->outcome($middleware, $this->request('GET', '/employer/jobs'));
+
+        $this->assertInstanceOf(ResponseInterface::class, $response);
+        $this->assertSame('/login?lang=en&next=%2Femployer%2Fjobs', $response->getHeaderLine('Location'));
+    }
+
     public function test_login_path_of_named_guard(): void
     {
         $middleware = new AuthMiddleware($this->redirectManager(), 'staff', new ApiConfig());

@@ -43,7 +43,8 @@ final class AuthMiddleware implements MiddlewareInterface
                     // Path and query only: never an absolute URL, so `next` cannot point off-site.
                     $uri = $request->getUri();
                     $next = $uri->getPath() . ($uri->getQuery() !== '' ? '?' . $uri->getQuery() : '');
-                    return new Response(302, ['Location' => $login . '?next=' . rawurlencode($next)]);
+                    $glue = str_contains($login, '?') ? '&' : '?';
+                    return new Response(302, ['Location' => $login . $glue . 'next=' . rawurlencode($next)]);
                 }
             }
             throw new UnauthorizedHttpException();
