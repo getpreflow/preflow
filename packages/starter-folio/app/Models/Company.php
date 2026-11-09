@@ -22,6 +22,7 @@ final class Company extends Model
     public ?string $name = null;
 
     #[Field(unique: true, length: 100)]
+    #[Validate('required', 'slug')]
     public ?string $slug = null;
 
     #[Field]

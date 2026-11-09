@@ -134,9 +134,8 @@ Employers sign in somewhere else (`/employer`) and cannot open Folio.
    - **Title**, **Place**, **Employment Type**, **Remote**, and, if you like, **Salary From** and **Salary To** (whole numbers, euro per year).
    - **Company**: pick it from the list.
    - **Description**: write it in Markdown, which is plain text with a few marks: a blank line starts a new paragraph, `**bold**` makes bold text, and a line that starts with `- ` is a bullet point. It needs at least 30 characters.
-   - **Slug**: the address of the job. Write the title in lower case with dashes, like `support-engineer`. The job's page will be `/jobs/support-engineer`. Always fill it in: a job without one has no page of its own.
+   - **Slug**: the address of the job. Write the title in lower case with dashes, like `support-engineer`. The job's page will be `/jobs/support-engineer`. Folio will not publish a job without one, and only lower case letters, digits and single dashes are allowed.
    - **Posted on**: today's date. The list shows the newest first, so a job without a date appears after the ones that have one.
-   - Leave **Created At** and **Updated At** empty.
 4. Click **Save draft**. Nobody outside Folio sees the job yet.
 5. Click **Publish**. Now the job shows on the job list (`/jobs`), on its own page, on the home page (if it is among the newest six) and on its company's page.
 
@@ -201,7 +200,7 @@ Ask an admin when you need more. Admins are the staff with the `admin` role in `
 | Admin files | `config/models/job.json`, `company.json`, `page.json`, `news.json`, and the singletons `jobs_page.json`, `job_page.json`, `company_page.json` |
 | SEO and GEO | `config/geo.php` (`/llms.txt`), and the `types` entry in `config/seo.php` |
 | Guards | `staff` in `config/auth.php`, the default guard, because Folio's admin checks only the default one; `employers` is marked `'population' => 'members'` |
-| Staff | `app/Models/Staff.php`, the `staff` table (`migrations/..._create_staff.php`), `config/roles.php` (admin, editor), `app/Console/StaffCreateCommand.php` |
+| Staff | `app/Models/Staff.php`, the `staff` table (`migrations/2026_11_09_004_create_staff.php`), `config/roles.php` (admin, editor), `app/Console/StaffCreateCommand.php` |
 | Seeds | `app/Seeds/ContentSeeder.php` (required content: home page and page texts); `DemoSeeder` now also adds staff, logos and news |
 | Blocks | `app/Components/Blocks/{Hero,Text,LatestJobsBlock,LatestNews}` |
 | Folio templates | `resources/folio/frontend/page.twig` and `news.twig`, `app/pages/news/index.twig` |
@@ -217,6 +216,7 @@ Ask an admin when you need more. Admins are the staff with the `admin` role in `
 | `app/Jobs/JobWriter.php` | `publish()` takes the user and goes through Folio's `Publisher`; `state()` and `states()` are new; `create()`, `update()`, `unpublish()` and `delete()` keep their signatures |
 | `app/Jobs/JobResource.php` | `status` is the publish state; `published_at` is the posted date |
 | `app/Controllers/Api/JobsController.php`, `Site/EmployerJobController.php` | Call the new `publish()`; a failed publish gives a 422, or the form with the errors |
+| `app/Components/ErrorDemo/ErrorDemo.php` | The comment now points to the page it lives on |
 | `app/Console/EmployerCreateCommand.php` | Also publishes the new company |
 | `app/pages/_layout.twig`, `jobs/index.twig`, `_views/job.twig`, `_views/company.twig`, `_views/employer/index.twig` | News link and footer link, the singletons' texts, the publish state |
 | `config/commands.php`, `lang/en/app.php` | Folio's commands and `StaffCreateCommand`; a few new texts |

@@ -50,6 +50,17 @@ final class FolioAccessTest extends TestCase
         $this->get('/folio/assets', $cookies)->assertOk();
     }
 
+    public function test_job_form_hides_the_dates_the_app_sets(): void
+    {
+        $cookies = ['Cookie' => $this->cookieHeader($this->signInStaff('editor@example.com', 'demo-editor'))];
+
+        $body = $this->get('/folio/job/' . md5('starter-job-2') . '/edit', $cookies)->assertOk()->body();
+
+        $this->assertStringContainsString('name="slug"', $body);
+        $this->assertStringNotContainsString('name="createdAt"', $body);
+        $this->assertStringNotContainsString('name="updatedAt"', $body);
+    }
+
     public function test_admin_opens_admin_only_screen(): void
     {
         $cookies = $this->signInStaff('admin@example.com', 'demo-admin');

@@ -32,6 +32,7 @@ final class Job extends Model
     public ?string $title = null;
 
     #[Field(unique: true, length: 140)]
+    #[Validate('required', 'slug')]
     public ?string $slug = null;
 
     /** The uuid of the company that posted the job; Folio shows it as a pick from the companies. */
@@ -81,10 +82,11 @@ final class Job extends Model
     #[Field(type: 'date', label: 'Posted on')]
     public ?string $postedOn = null;
 
-    #[Field]
+    // hidden: set by JobWriter, not typed into Folio's form.
+    #[Field(config: ['hidden' => true])]
     public ?string $createdAt = null;
 
-    #[Field]
+    #[Field(config: ['hidden' => true])]
     public ?string $updatedAt = null;
 
     /**

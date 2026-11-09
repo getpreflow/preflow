@@ -74,6 +74,7 @@ final class PageFirstTest extends TestCase
         $html = $response->body();
         $this->assertCount(6, $this->links($html, '/jobs'), 'latest_jobs: six job cards');
         $this->assertCount(3, $this->links($html, '/news'), 'latest_news: three news teasers');
+        $response->assertSee('class="hero__cta" href="/jobs"'); // a site path still gets its button
         $response->assertSee('href="/employer"'); // the text block
         // The layout prints the page's description once; SEO adds the share cards beside it.
         $this->assertSame(1, substr_count($html, '<meta name="description"'));
@@ -144,6 +145,25 @@ final class PageFirstTest extends TestCase
         $this->publisher()->publish($this->data()->findType('page', self::HOME), 'test');
 
         $this->get('/')->assertSee('<h1>Hiring this winter</h1>')->assertNotSee('evil.example');
+    }
+
+    public function test_hero_button_refuses_links_that_leave_the_site(): void
+    {
+        foreach (['//evil.example', '/\\evil.example', 'javascript:alert(1)'] as $url) {
+            $record = $this->data()->findType('page', self::HOME);
+            $sections = $record->get('sections');
+            $sections = is_string($sections) ? json_decode($sections, true) : $sections;
+            foreach ($sections as $i => $block) {
+                if ($block['_block'] === 'hero') {
+                    $sections[$i]['cta_url'] = $url;
+                }
+            }
+            $record->set('sections', $sections);
+            $this->publisher()->saveDraft($record, null);
+            $this->publisher()->publish($this->data()->findType('page', self::HOME), 'test');
+
+            $this->get('/')->assertOk()->assertNotSee('href="' . $url); // the debug toolbar prints props, so look for the link itself
+        }
     }
 
     public function test_seo_section_on_page_form(): void

@@ -103,6 +103,23 @@ final class PublishingTest extends TestCase
         $this->assertNotNull($this->data()->find(Job::class, (string) $job->uuid));
     }
 
+    public function test_job_without_a_slug_cannot_be_published(): void
+    {
+        $record = $this->draft($this->lumen(), 'Slugless Engineer');
+        $record->set('slug', '');
+        $this->publisher()->saveDraft($record, null);
+
+        try {
+            $this->publisher()->publish($this->data()->findType('job', (string) $record->getId()), 'editor@example.com');
+            $this->fail('publishing without a slug must be refused');
+        } catch (\Preflow\Validation\ValidationException $e) {
+            $this->assertArrayHasKey('slug', $e->result()->errors());
+        }
+
+        $this->get('/jobs')->assertNotSee('Slugless Engineer');
+        $this->assertSame(34, $this->json('GET', '/api/jobs')->json('meta.total'));
+    }
+
     public function test_working_copy_edit_is_not_public_until_published(): void
     {
         $job = $this->data()->query(Job::class)->where('title', 'Frontend Developer')->first();
