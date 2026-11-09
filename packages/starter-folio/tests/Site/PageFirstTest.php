@@ -133,6 +133,7 @@ final class PageFirstTest extends TestCase
         foreach ($sections as $i => $block) {
             if ($block['_block'] === 'hero') {
                 $sections[$i]['headline'] = 'Hiring this winter';
+                $sections[$i]['cta_url'] = '//evil.example'; // looks like a path, but a browser reads it as another site
             }
         }
         $record->set('sections', $sections);
@@ -142,7 +143,7 @@ final class PageFirstTest extends TestCase
 
         $this->publisher()->publish($this->data()->findType('page', self::HOME), 'test');
 
-        $this->get('/')->assertSee('<h1>Hiring this winter</h1>');
+        $this->get('/')->assertSee('<h1>Hiring this winter</h1>')->assertNotSee('evil.example');
     }
 
     public function test_seo_section_on_page_form(): void

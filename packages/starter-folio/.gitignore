@@ -7,6 +7,7 @@ composer.dev.lock
 storage/cache/*
 storage/logs/*
 storage/data/*
+storage/locks/*
 # The media library: uploads (the demo logos and news images), earlier versions of edited ones,
 # and the bin of deleted ones.
 /public/media/
