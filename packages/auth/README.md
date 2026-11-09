@@ -323,6 +323,46 @@ final class DashboardController
 
 `GuestMiddleware` redirects authenticated users away (for login/register pages).
 
+#### Sending signed-out browsers to the login page
+
+Give a guard a `login` path and `AuthMiddleware` stops answering browsers with a bare 401:
+
+```php
+'guards' => ['employers' => [
+    'class' => SessionGuard::class, 'provider' => 'employers', 'login' => '/employer/login',
+]],
+```
+
+When nobody is signed in on the guard:
+
+- `GET`/`HEAD` for a browser (not an API path, no `Accept: application/json` without `text/html`, no `HX-Request`) gets
+  `302 Location: /employer/login?next=<path and query, url-encoded>`. `next` holds the path and query only, never a host.
+- An htmx request (`HX-Request: true`) gets 401 with `HX-Redirect: /employer/login`, so the browser navigates instead of
+  swapping the login page into a fragment.
+- Everything else (API paths, JSON clients, `POST` and other methods) still gets 401.
+
+Without a `login` key nothing changes. The container instance receives the core `ApiConfig` to tell browsers from API
+clients; an `AuthMiddleware` you build yourself without the third argument never redirects.
+
+A named guard needs a small wrapper, because `#[Middleware]` takes a class name:
+
+```php
+final class EmployerAuth implements MiddlewareInterface
+{
+    public function __construct(private readonly AuthManager $auth, private readonly ApiConfig $api) {}
+
+    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    {
+        return (new AuthMiddleware($this->auth, 'employers', $this->api))->process($request, $handler);
+    }
+}
+```
+
+`AuthManager::loginPath('employers')` returns the configured path (null for none; null as the name is the default guard).
+
+Check `next` before redirecting back after login: accept only a value that starts with `/` and not `//` (and no
+backslash), otherwise go to your default page. Otherwise the login page is an open redirect.
+
 ### Templates
 
 ```twig

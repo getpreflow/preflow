@@ -16,11 +16,23 @@ final class AuthManager
     /** @var array<string, Authenticatable> every user resolved for this request, by guard (the first is the primary) */
     private array $resolvedUsers = [];
 
-    /** @param array<string, GuardInterface> $guards */
+    /**
+     * @param array<string, GuardInterface> $guards
+     * @param array<string, string> $loginPaths each guard's `login` path from config/auth.php, by guard name
+     */
     public function __construct(
         private readonly array $guards,
         private readonly string $defaultGuard,
+        private readonly array $loginPaths = [],
     ) {}
+
+    /** Where signed-out browsers of a guard are sent (guards.<name>.login); null when it has none. Null names the default guard. */
+    public function loginPath(?string $guard = null): ?string
+    {
+        $path = $this->loginPaths[$guard ?? $this->defaultGuard] ?? null;
+
+        return is_string($path) && $path !== '' ? $path : null;
+    }
 
     public function guard(?string $name = null): GuardInterface
     {

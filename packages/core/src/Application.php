@@ -2395,7 +2395,13 @@ final class Application
             }
         }
 
-        $authManager = new \Preflow\Auth\AuthManager($guards, $defaultGuard);
+        $loginPaths = [];
+        foreach ($authConfig['guards'] ?? [] as $name => $guardConfig) {
+            if (is_string($guardConfig['login'] ?? null)) {
+                $loginPaths[(string) $name] = $guardConfig['login'];
+            }
+        }
+        $authManager = new \Preflow\Auth\AuthManager($guards, $defaultGuard, $loginPaths);
         $this->container->instance(\Preflow\Auth\AuthManager::class, $authManager);
 
         // The permission question: staff/members per guard (config), default resolver until a package sets one.
@@ -2424,7 +2430,11 @@ final class Application
         // Register middleware instances in container for route-level use
         $this->container->instance(
             \Preflow\Auth\Http\AuthMiddleware::class,
-            new \Preflow\Auth\Http\AuthMiddleware($authManager),
+            new \Preflow\Auth\Http\AuthMiddleware(
+                $authManager,
+                null,
+                $this->container->has(\Preflow\Core\Http\Api\ApiConfig::class) ? $this->container->get(\Preflow\Core\Http\Api\ApiConfig::class) : null,
+            ),
         );
         $this->container->instance(
             \Preflow\Auth\Http\TokenAuthMiddleware::class,

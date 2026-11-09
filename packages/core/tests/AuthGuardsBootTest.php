@@ -143,6 +143,21 @@ final class AuthGuardsBootTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_container_built_auth_middleware_redirects_html_to_the_guards_login(): void
+    {
+        file_put_contents($this->dir . '/config/middleware.php', "<?php\nreturn [\\Preflow\\Auth\\Http\\AuthMiddleware::class];\n");
+        $app = $this->boot(['staff' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'users', 'population' => 'staff', 'login' => '/login']]);
+        $factory = new Psr17Factory();
+
+        $html = $app->handle($factory->createServerRequest('GET', '/?a=b'));
+        $this->assertSame(302, $html->getStatusCode());
+        $this->assertSame('/login?next=%2F%3Fa%3Db', $html->getHeaderLine('Location'));
+
+        $json = $app->handle($factory->createServerRequest('GET', '/api/x'));
+        $this->assertSame(401, $json->getStatusCode());
+    }
+
+    #[RunInSeparateProcess]
     public function test_guest_middleware_ignores_other_guards(): void
     {
         file_put_contents($this->dir . '/config/middleware.php', "<?php\nreturn [\\Preflow\\Auth\\Http\\GuestMiddleware::class];\n");

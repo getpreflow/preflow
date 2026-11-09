@@ -13,6 +13,7 @@ use Preflow\Auth\GuardInterface;
 use Preflow\Auth\Http\AuthMiddleware;
 use Preflow\Auth\Tests\Fixtures\TestUser;
 use Preflow\Core\Exceptions\UnauthorizedHttpException;
+use Preflow\Core\Http\Api\ApiConfig;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
@@ -104,5 +105,102 @@ final class AuthMiddlewareTest extends TestCase
 
         $this->expectException(UnauthorizedHttpException::class);
         $middleware->process($this->createRequest(), $this->createHandler());
+    }
+
+    private function redirectManager(): AuthManager
+    {
+        return new AuthManager(
+            ['employers' => $this->createGuard(null), 'staff' => $this->createGuard(null)],
+            'employers',
+            ['employers' => '/employer/login', 'staff' => '/folio/login'],
+        );
+    }
+
+    private function request(string $method, string $uri, array $headers = []): ServerRequestInterface
+    {
+        $request = (new Psr17Factory())->createServerRequest($method, 'http://localhost' . $uri);
+        foreach ($headers as $name => $value) {
+            $request = $request->withHeader($name, $value);
+        }
+
+        return $request;
+    }
+
+    private function outcome(AuthMiddleware $middleware, ServerRequestInterface $request): ResponseInterface|UnauthorizedHttpException
+    {
+        try {
+            return $middleware->process($request, $this->createHandler());
+        } catch (UnauthorizedHttpException $e) {
+            return $e;
+        }
+    }
+
+    public function test_html_get_redirects_to_the_guards_login_with_next(): void
+    {
+        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
+
+        $response = $this->outcome($middleware, $this->request('GET', '/employer/jobs?x=1'));
+
+        $this->assertInstanceOf(ResponseInterface::class, $response);
+        $this->assertSame(302, $response->getStatusCode());
+        $this->assertSame('/employer/login?next=%2Femployer%2Fjobs%3Fx%3D1', $response->getHeaderLine('Location'));
+    }
+
+    public function test_api_request_still_gets_401(): void
+    {
+        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
+
+        $this->assertInstanceOf(UnauthorizedHttpException::class, $this->outcome($middleware, $this->request('GET', '/api/x')));
+    }
+
+    public function test_accept_json_gets_401(): void
+    {
+        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
+
+        $this->assertInstanceOf(
+            UnauthorizedHttpException::class,
+            $this->outcome($middleware, $this->request('GET', '/employer/jobs', ['Accept' => 'application/json'])),
+        );
+    }
+
+    public function test_post_gets_401(): void
+    {
+        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
+
+        $this->assertInstanceOf(UnauthorizedHttpException::class, $this->outcome($middleware, $this->request('POST', '/employer/jobs')));
+    }
+
+    public function test_htmx_request_gets_401_with_hx_redirect(): void
+    {
+        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
+
+        $e = $this->outcome($middleware, $this->request('GET', '/employer/jobs', ['HX-Request' => 'true']));
+
+        $this->assertInstanceOf(UnauthorizedHttpException::class, $e);
+        $this->assertSame(['HX-Redirect' => '/employer/login'], $e->headers);
+    }
+
+    public function test_without_login_key_behaviour_is_unchanged(): void
+    {
+        $middleware = new AuthMiddleware($this->createManager(null), null, new ApiConfig());
+
+        $this->assertInstanceOf(UnauthorizedHttpException::class, $this->outcome($middleware, $this->request('GET', '/employer/jobs')));
+    }
+
+    public function test_without_api_config_nobody_is_redirected(): void
+    {
+        $middleware = new AuthMiddleware($this->redirectManager());
+
+        $this->assertInstanceOf(UnauthorizedHttpException::class, $this->outcome($middleware, $this->request('GET', '/employer/jobs')));
+    }
+
+    public function test_login_path_of_named_guard(): void
+    {
+        $middleware = new AuthMiddleware($this->redirectManager(), 'staff', new ApiConfig());
+
+        $response = $this->outcome($middleware, $this->request('GET', '/folio/pages'));
+
+        $this->assertInstanceOf(ResponseInterface::class, $response);
+        $this->assertSame('/folio/login?next=%2Ffolio%2Fpages', $response->getHeaderLine('Location'));
     }
 }
