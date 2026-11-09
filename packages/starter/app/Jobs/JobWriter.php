@@ -19,10 +19,7 @@ final class JobWriter
     /** Anything else in the input (company, status, slug...) is ignored: the form cannot set it. */
     private const array EDITABLE = ['title', 'place', 'employmentType', 'remote', 'salaryFrom', 'salaryTo', 'description'];
 
-    public function __construct(
-        private readonly DataManager $data,
-        private readonly JobSearch $search,
-    ) {}
+    public function __construct(private readonly DataManager $data) {}
 
     /**
      * @param array<string, mixed> $input

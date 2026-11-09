@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Site;
 
-use App\Jobs\JobSearch;
 use App\Jobs\JobWriter;
 use App\Models\Company;
 use App\Models\Job;
@@ -26,7 +25,7 @@ final class JobWriterTest extends TestCase
     {
         $this->bootStarter();
         $this->data = $this->container()->get(DataManager::class);
-        $this->writer = new JobWriter($this->data, new JobSearch($this->data));
+        $this->writer = new JobWriter($this->data);
         $this->owner = $this->data->query(User::class)->where('email', 'employer@example.com')->first();
     }
 
