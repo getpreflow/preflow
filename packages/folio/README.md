@@ -314,8 +314,9 @@ $jobs = $published->query(Job::class)->where('state', 'open')->get();
 ```
 
 The objects are read-only; saving one throws. In an admin or share preview it returns the working
-copy, as `LiveContent` does for JSON types. It refuses a class that is not a registered type or
-whose type has publishing off.
+copy, as `LiveContent` does for JSON types; so it does for a type with publishing off (it has no
+published copies: the record is what the site shows). It refuses a class that is not a registered
+type.
 
 ## Type options
 

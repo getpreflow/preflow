@@ -84,7 +84,11 @@ final class LiveContent
         return $registry->get($type);
     }
 
-    private function readsWorkingCopies(string $type): bool
+    /**
+     * Whether reads of $type see its working copies: in a preview, and always for a type that
+     * has no published copies (publishing off, or not listed in the admin).
+     */
+    public function readsWorkingCopies(string $type): bool
     {
         return $this->workingCopies || !($this->catalog->get($type)?->publishing ?? false);
     }

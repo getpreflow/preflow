@@ -80,12 +80,20 @@ final class PublishedModelsTest extends TestCase
         $this->assertTrue($app->container()->get(\Preflow\Data\DataManager::class)->isReadOnly($found), 'still read-only');
     }
 
-    public function test_a_type_without_publishing_is_refused(): void
+    public function test_a_type_without_publishing_reads_its_own_table_as_live_content_does(): void
     {
-        $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('Type "poster" (' . Poster::class . ') has no publishing');
+        $poster = new Poster();
+        $poster->name = 'Summer fair';
+        $this->dm()->save($poster);
 
-        $this->published()->find(Poster::class, 'p1');
+        $app = $this->app();
+        $published = $app->container()->get(PublishedModels::class);
+        $found = $published->find(Poster::class, (string) $poster->uuid);
+        $listed = $published->query(Poster::class)->get()->items();
+
+        $this->assertSame('Summer fair', $found?->name, 'no published copies: the record itself, as LiveContent reads it');
+        $this->assertSame([(string) $poster->uuid], array_map(static fn (Poster $p): string => (string) $p->uuid, $listed));
+        $this->assertTrue($app->container()->get(\Preflow\Data\DataManager::class)->isReadOnly($found), 'still read-only');
     }
 
     public function test_a_class_that_is_not_a_type_is_refused(): void

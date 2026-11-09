@@ -624,10 +624,9 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(FrontendResolver::class),
         ));
         $keepRevisions = self::keepRevisions((array) ($folioConfig['publishing'] ?? []));
-        // App code's typed reads of what the public site sees of a model class (its published copies).
+        // App code's typed reads of what the public site sees of a model class (its published copies, as LiveContent decides).
         $container->singleton(\Preflow\Folio\Publishing\PublishedModels::class, static fn (Container $c) => new \Preflow\Folio\Publishing\PublishedModels(
             $c->get(DataManager::class),
-            $c->get(TypeCatalog::class),
             $c->get(\Preflow\Folio\Content\LiveContent::class),
         ));
         $container->singleton(\Preflow\Folio\Publishing\Publisher::class, fn (Container $c) => new \Preflow\Folio\Publishing\Publisher(
