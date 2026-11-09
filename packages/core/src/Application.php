@@ -2427,6 +2427,10 @@ final class Application
             new \Preflow\Auth\Http\AuthMiddleware($authManager),
         );
         $this->container->instance(
+            \Preflow\Auth\Http\TokenAuthMiddleware::class,
+            new \Preflow\Auth\Http\TokenAuthMiddleware($authManager, isset($authConfig['api_guard']) ? (string) $authConfig['api_guard'] : null),
+        );
+        $this->container->instance(
             \Preflow\Auth\Http\GuestMiddleware::class,
             new \Preflow\Auth\Http\GuestMiddleware($authManager),
         );

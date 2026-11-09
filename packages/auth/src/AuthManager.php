@@ -56,6 +56,24 @@ final class AuthManager
         return $this->resolvedGuard;
     }
 
+    /**
+     * The guard bearer-token routes use: the preferred one (config auth.api_guard), else the first
+     * configured TokenGuard. Null when there is none.
+     */
+    public function tokenGuardName(?string $preferred = null): ?string
+    {
+        if ($preferred !== null) {
+            return isset($this->guards[$preferred]) ? $preferred : null;
+        }
+        foreach ($this->guards as $name => $guard) {
+            if ($guard instanceof TokenGuard) {
+                return (string) $name;
+            }
+        }
+
+        return null;
+    }
+
     public function defaultGuardName(): string
     {
         return $this->defaultGuard;

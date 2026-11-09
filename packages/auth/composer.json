@@ -5,7 +5,7 @@
     "license": "MIT",
     "require": {
         "php": ">=8.4",
-        "preflow/core": "^0.60 || @dev",
+        "preflow/core": "^0.62 || @dev",
         "preflow/data": "^0.21 || @dev"
     },
     "require-dev": {
@@ -13,7 +13,7 @@
         "nyholm/psr7": "^1.8"
     },
     "conflict": {
-        "preflow/core": "<0.60"
+        "preflow/core": "<0.62"
     },
     "autoload": {
         "psr-4": {

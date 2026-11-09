@@ -14,6 +14,12 @@ final class TokenGuard implements GuardInterface
         private readonly DataManager $dataManager,
     ) {}
 
+    /** The provider that finds the users the tokens belong to (auth:token looks users up with it). */
+    public function provider(): UserProviderInterface
+    {
+        return $this->provider;
+    }
+
     public function user(ServerRequestInterface $request): ?Authenticatable
     {
         $plainToken = $this->extractBearerToken($request);

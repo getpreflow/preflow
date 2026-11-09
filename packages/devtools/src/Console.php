@@ -32,6 +32,7 @@ final class Console
         $this->register(new Command\SeedCommand());
         $this->register(new Command\KeyGenerateCommand());
         $this->register(new Command\AuthUserCommand());
+        $this->register(new Command\AuthTokenCommand());
         $this->register(new Command\NotifyTestCommand());
 
         $this->registerPackageCommands($basePath . '/vendor/composer/installed.json', $stderr ?? STDERR);
