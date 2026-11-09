@@ -399,12 +399,13 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - devtools: `preflow auth:token <email-or-id> [--name=]`, `--list <email-or-id>`, `--revoke=<uuid>`.
     - testing: `TestResponse::json()`, `assertJsonPath()`, `assertJsonValidationErrors()`, `assertMethodNotAllowed()`.
     - skeleton: `config/api.php` (commented, CORS off).
-  - **Upgrading:** a site without `config/api.php` sees four changes:
+  - **Upgrading:** a site without `config/api.php` sees five changes:
     1. a wrong method on an existing path (not a catch-all) answers 405 instead of 404;
     2. an uncaught `ValidationException` answers 422 instead of 500;
     3. a malformed JSON request body answers 400 (it was silently ignored);
     4. a request with `Accept: application/json` (without `text/html`) gets a JSON error body instead of the HTML error
-       page.
+       page (a 404 caught by a site middleware stays the site's HTML; such a middleware does not see 405s);
+    5. `/api` is the default API prefix: paths under it are non-public (page cache, redirects, not-found list, SEO and GEO skip them) and answer errors as JSON; set `'prefixes' => []` in `config/api.php` to opt out.
     routing and auth require core 0.62, core conflicts with routing before 0.62, devtools requires core 0.62.
   - **Follow-ups:**
     - Caching API GETs: needs its own design, because bearer requests must never get or store a shared copy. API paths

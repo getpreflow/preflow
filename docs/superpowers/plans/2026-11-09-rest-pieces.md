@@ -21,10 +21,10 @@
 ## Global Constraints
 
 - **Framework rules (owner):** features live in the framework's packages behind public interfaces; Folio is only the UI adapter; project-specific things stay in projects.
-- **Upgrading changes nothing for a site without `config/api.php`, except two things:**
+- **Upgrading changes nothing for a site without `config/api.php`, except two things (plus the default `/api` prefix, see the README's upgrade notes):**
   - a wrong method on an existing path answers 405 instead of 404;
   - an uncaught `ValidationException` answers 422 instead of 500.
-  - The 5 production sites have no `/api` routes. Their HTML error pages, CSRF, sessions and page cache behave as before.
+  - Four of the 5 production sites have no `/api` routes; holz-objekte has a legacy `/api` controller (it already lists /api as non-public and catches its 404s itself). Their HTML error pages, CSRF, sessions and page cache behave as before.
 - **API prefixes:**
   - `config/api.php` key `prefixes`, default `['/api']`;
   - CORS under key `cors`;

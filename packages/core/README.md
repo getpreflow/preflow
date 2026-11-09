@@ -1107,12 +1107,16 @@ adds its headers to every API response, error responses included.
 entry is registered as one). Caching API GETs is on the roadmap; it needs its own design, because
 bearer requests must never get or store a shared copy.
 
-**Upgrading to 0.62.** A site without `config/api.php` changes in four visible ways:
+**Upgrading to 0.62.** A site without `config/api.php` changes in five visible ways:
 
 1. A wrong method on an existing path (not a catch-all) answers 405 with `Allow` instead of 404.
 2. An uncaught `ValidationException` answers 422 instead of 500 (HTML pages too).
 3. A malformed JSON request body answers 400; it used to be ignored.
 4. A request with `Accept: application/json` (without `text/html`) gets a JSON error body instead of
-   the HTML error page.
+   the HTML error page. A 404 that a site middleware catches (`NotFoundHttpException`, a branded
+   not-found page) stays the site's HTML.
+5. `/api` is the default API prefix: paths under it are non-public (page cache, redirects, not-found list, SEO and GEO skip them) and answer errors as JSON; set `'prefixes' => []` in `config/api.php` to opt out.
 
-HTML error pages, CSRF, sessions and the page cache behave as before for everything else.
+A site middleware that catches `NotFoundHttpException` does not see 405s: they render the framework's
+error page. HTML error pages, CSRF and sessions behave as before for everything else, and so does the
+page cache outside `/api`.

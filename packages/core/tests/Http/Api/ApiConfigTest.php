@@ -56,6 +56,14 @@ final class ApiConfigTest extends TestCase
         $this->assertEquals(new ApiConfig(), ApiConfig::fromArray(null));
     }
 
+    public function test_empty_prefixes_opt_out_of_the_api(): void
+    {
+        $config = ApiConfig::fromArray(['prefixes' => []]);
+
+        $this->assertSame([], $config->prefixes);
+        $this->assertFalse($config->isApi(new \Nyholm\Psr7\ServerRequest('GET', '/api/jobs')));
+    }
+
     public function test_from_array_reads_the_file_shape(): void
     {
         $config = ApiConfig::fromArray([
