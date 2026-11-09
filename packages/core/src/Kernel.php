@@ -39,6 +39,8 @@ final class Kernel
         private readonly ?\Closure $componentEndpoint = null,
         /** cookies queued before an exception (a rotated remember-me cookie) still reach the error response */
         private readonly ?\Preflow\Core\Http\CookieQueue $cookies = null,
+        /** a cross-origin API call must be able to read its error (a 401, a 422) */
+        private readonly ?\Preflow\Core\Http\Api\CorsMiddleware $cors = null,
     ) {
         $this->actionDispatcher = $actionDispatcher;
         $this->componentRenderer = $componentRenderer;
@@ -81,9 +83,10 @@ final class Kernel
                 return $dispatch($req);
             });
         } catch (\Throwable $e) {
-            // Error responses bypass the pipeline, so add the queued cookies and the security headers here.
+            // Error responses bypass the pipeline, so add the queued cookies, CORS and the security headers here.
             $response = $this->errorHandler->handleException($e, $request);
             $response = $this->cookies?->apply($response) ?? $response;
+            $response = $this->cors?->decorate($request, $response) ?? $response;
             return $this->securityHeaders?->decorate($request, $response) ?? $response;
         }
     }

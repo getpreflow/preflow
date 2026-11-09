@@ -377,6 +377,14 @@ final class Application
         // GEO Markdown views — prepended, so it runs before every other middleware
         $this->bootGeo($debug);
 
+        // CORS for API paths — prepended last, so it is outermost: it wraps the page cache
+        // (stored pages hold no CORS headers, hits get them) and answers preflights first.
+        $cors = null;
+        if ($api->corsOrigins !== []) {
+            $cors = new \Preflow\Core\Http\Api\CorsMiddleware($api);
+            $this->pipeline->prepend($cors);
+        }
+
         // The SEO audit's page renderer (through the whole pipeline built above)
         $this->bootAudit();
 
@@ -417,6 +425,7 @@ final class Application
             cookies: $this->container->has(\Preflow\Core\Http\CookieQueue::class)
                 ? $this->container->get(\Preflow\Core\Http\CookieQueue::class)
                 : null,
+            cors: $cors,
         );
     }
 
