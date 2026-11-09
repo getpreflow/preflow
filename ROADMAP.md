@@ -405,10 +405,12 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     2. A guard with a `login` path in `config/auth.php` now redirects signed-out HTML requests instead of answering 401;
        without the key nothing changes.
     3. core conflicts with view before 0.63 (the file-page renderer calls `PageResponder`); the other packages keep
-       their constraints (auth and devtools use nothing new from another package). The starters require every
+       their constraints (auth and devtools use nothing new from another package). Auth before 0.63 ignores the guard
+       `login` key (core 0.63 passes the new constructor arguments; with auth 0.62 signed-out visitors keep getting
+       401), so upgrade auth together with core; no conflict constraint enforces it. The starters require every
        `preflow/*` at `^0.63`.
-    4. Owner: tick "abandoned" for `preflow/skeleton` on Packagist; create the `starter` and `starter-folio` split
-       repositories and submit both to Packagist.
+    4. Owner: submit `starter` and `starter-folio` to Packagist and tick "abandoned" (replacement `preflow/starter`)
+       on `preflow/skeleton`.
   - **Tests:** 0.63 full monorepo run: 6536 tests, 31380 assertions (185 skipped); starter suite 86 tests, starter-folio suite 117 tests.
   - **Follow-ups:**
     - Remove `packages/skeleton` (step 2 of its retirement): the split entry, the root autoload (`App\`, `Tests\`),
