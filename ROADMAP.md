@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.62.0** — 6515 tests, 23 packages (0.63.0 prepared: 6536 tests, 25 packages), production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.63.0** — 6537 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -414,7 +414,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   - **Release checklist (every release):** bump `preflow/*` in `packages/starter/composer.json` and
     `packages/starter-folio/composer.json` to the new minor (`bin/starter` derives the versions from that pin, so a stale
     one is not caught by anything).
-  - **Tests:** 0.63 full monorepo run: 6536 tests, 31380 assertions (185 skipped); starter suite 86 tests, starter-folio suite 117 tests.
+  - **Tests:** 0.63 full monorepo run: 6537 tests, 31382 assertions (185 skipped); starter suite 86 tests, starter-folio suite 117 tests.
   - **Follow-ups:**
     - Remove `packages/skeleton` (step 2 of its retirement): the split entry, the root autoload (`App\`, `Tests\`),
       the Skeleton suite in `phpunit.xml`, and the migration copy in `AuthTokenCommandTest`.
