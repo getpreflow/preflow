@@ -1,0 +1,23 @@
+{% if prevUrl or nextUrl %}
+    {% set results = '#' ~ searchId ~ '-results' %}
+    <nav class="pager__nav" aria-label="{{ t('app.search.pages') }}">
+        {% if prevUrl %}
+            <a class="pager__link" href="{{ prevUrl }}" rel="prev" {{ hd.post('search', search, searchId, { page: prev }, constant('Preflow\\Htmx\\SwapStrategy::InnerHTML'), {
+                'hx-target': results,
+                'hx-swap': 'innerHTML show:' ~ results ~ ':top',
+            }) | raw }}>&larr; {{ t('app.search.prev') }}</a>
+        {% endif %}
+        <span class="pager__where">{{ t('app.search.page_of', { page: page, pages: lastPage }) }}</span>
+        {% if nextUrl %}
+            <a class="pager__link" href="{{ nextUrl }}" rel="next" {{ hd.post('search', search, searchId, { page: next }, constant('Preflow\\Htmx\\SwapStrategy::InnerHTML'), {
+                'hx-target': results,
+                'hx-swap': 'innerHTML show:' ~ results ~ ':top',
+            }) | raw }}>{{ t('app.search.next') }} &rarr;</a>
+        {% endif %}
+    </nav>
+{% endif %}
+
+{% apply css %}
+.pager__nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.25rem; }
+.pager__where { color: var(--muted); font-size: 0.9rem; }
+{% endapply %}

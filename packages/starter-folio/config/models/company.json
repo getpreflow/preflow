@@ -1,0 +1,14 @@
+{
+    "key": "company",
+    "label": "Companies",
+    "label_singular": "Company",
+    "section": "content",
+    "order": 20,
+    "publishing": true,
+    "list": {
+        "columns": [
+            "name",
+            "place"
+        ]
+    }
+}

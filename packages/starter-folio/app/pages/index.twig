@@ -1,0 +1,47 @@
+{% extends "_layout.twig" %}
+
+{% block title %}{{ t('app.name') }}{% endblock %}
+
+{% set description = 'A small job board built with Preflow: browse jobs, post jobs as an employer, or read them from the JSON API.' %}
+
+{% block content %}
+{% do seo({ title: 'Preflow Jobs', description: description }) %}
+
+<section class="intro">
+    <h1>Preflow Jobs</h1>
+    <p class="intro__lead">A small job board to read, run and copy. These pages are server-rendered Twig, the job cards are components, and the same jobs are also served as JSON.</p>
+    <ul class="intro__links">
+        <li><a href="/jobs">Browse and search jobs</a>: the public site.</li>
+        <li><a href="/employer">Employer area</a>: sign in as <code>employer@example.com</code> to post jobs.</li>
+        <li><a href="/api/jobs">JSON API</a>: the same jobs for other programs.</li>
+    </ul>
+</section>
+
+<h2 class="section-title">Latest jobs</h2>
+{{ component('LatestJobs', { count: 6 }) }}
+<p class="all-jobs"><a href="/jobs">All jobs &rarr;</a></p>
+
+{{ component('ErrorDemo') }}
+
+{% apply css %}
+.intro__lead { color: var(--muted); margin-top: 0.5rem; }
+.intro__links { margin: 1rem 0 0 1.25rem; }
+.intro__links li { margin-top: 0.25rem; }
+.section-title { margin-top: 2rem; margin-bottom: 0.75rem; font-size: 1.2rem; }
+.all-jobs { margin-top: 1rem; }
+
+.error-demo-fallback {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    padding: 1.25rem;
+    margin-top: 2rem;
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-line);
+    border-radius: 0.5rem;
+}
+.error-demo-fallback .error-demo-icon { font-size: 1.5rem; line-height: 1; }
+.error-demo-fallback strong { display: block; margin-bottom: 0.25rem; }
+.error-demo-fallback p { color: var(--muted); font-size: 0.875rem; }
+{% endapply %}
+{% endblock %}

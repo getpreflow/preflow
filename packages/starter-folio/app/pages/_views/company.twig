@@ -1,0 +1,44 @@
+{% extends "_layout.twig" %}
+
+{% block title %}{{ company ? company.name ~ ' - ' ~ t('app.name') : t('app.company_not_found') ~ ' - ' ~ t('app.name') }}{% endblock %}
+
+{% set description = company ? (company.summary ?: 'Open jobs at ' ~ company.name ~ '.') : null %}
+
+{% block content %}
+{% if company %}
+{% do seo({ title: company.name ~ ' jobs', description: description }) %}
+
+<article class="company">
+    <h1>{{ company.name }}</h1>
+    <p class="company__place">
+        {{ company.place }}{% if company.website %}{% if company.place %} &middot; {% endif %}
+        {# Only web addresses become links: a javascript: or data: value stays plain text. #}
+        {% if company.website|lower starts with 'http://' or company.website|lower starts with 'https://' %}<a href="{{ company.website }}" rel="noopener nofollow">{{ company.website }}</a>{% else %}{{ company.website }}{% endif %}
+        {% endif %}
+    </p>
+    {% if company.summary %}<p class="company__summary">{{ company.summary }}</p>{% endif %}
+
+    <h2 class="company__heading">{{ t('app.open_jobs') }}</h2>
+    <div class="company__jobs">
+        {% for job in jobs %}
+            {{ component('JobCard', { job: job, view: 'list', key: job.id }) }}
+        {% else %}
+            <p class="company__empty">{{ t('app.no_open_jobs') }}</p>
+        {% endfor %}
+    </div>
+</article>
+{% else %}
+<section class="not-found">
+    <h1>{{ t('app.company_not_found') }}</h1>
+    <p><a href="/jobs">{{ t('app.nav.jobs') }}</a></p>
+</section>
+{% endif %}
+
+{% apply css %}
+.company__place { color: var(--muted); margin-top: 0.25rem; overflow-wrap: anywhere; }
+.company__summary { margin-top: 0.75rem; }
+.company__heading { font-size: 1.15rem; margin-top: 2rem; }
+.company__jobs { display: grid; gap: 0.75rem; margin-top: 0.75rem; }
+.company__empty { color: var(--muted); }
+{% endapply %}
+{% endblock %}

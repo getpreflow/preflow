@@ -1,0 +1,60 @@
+{% extends "_layout.twig" %}
+
+{% block title %}{{ job ? job.title ~ ' - ' ~ t('app.name') : t('app.job_not_found') ~ ' - ' ~ t('app.name') }}{% endblock %}
+
+{% set description = job ? job.title ~ ' at ' ~ company.name ~ ' in ' ~ job.place ~ '. ' ~ t('app.type.' ~ job.employment_type) ~ '.' : null %}
+
+{% block content %}
+{% if job %}
+{% do seo({ title: job.title ~ ' at ' ~ company.name, description: description }) %}
+
+<article class="job">
+    <p class="job__back"><a href="/jobs">&larr; {{ t('app.nav.jobs') }}</a></p>
+    <h1>{{ job.title }}</h1>
+    <p class="job__company">
+        <a href="/companies/{{ job.company.slug }}">{{ job.company.name }}</a> &middot; {{ job.place }}
+    </p>
+    <p class="job__facts">
+        <span class="job__tag">{{ t('app.type.' ~ job.employment_type) }}</span>
+        <span class="job__tag">{{ t('app.remote.' ~ job.remote) }}</span>
+        {% if job.salary %}
+            <span class="job__tag">{{ job.salary.currency }}
+                {% if job.salary.from is not null and job.salary.to is not null %}{{ job.salary.from|number_format(0, '.', ',') }} &ndash; {{ job.salary.to|number_format(0, '.', ',') }}
+                {% elseif job.salary.from is not null %}{{ t('app.salary_from') }} {{ job.salary.from|number_format(0, '.', ',') }}
+                {% else %}{{ t('app.salary_up_to') }} {{ job.salary.to|number_format(0, '.', ',') }}{% endif %}
+                {{ t('app.per_year') }}</span>
+        {% endif %}
+        {% if job.published_at %}<span class="job__posted">{{ t('app.posted') }} {{ job.published_at|date('j M Y') }}</span>{% endif %}
+    </p>
+
+    <div class="job__description">{{ markdown(job.description) }}</div>
+
+    {% if moreFromCompany %}
+        <section class="job__more">
+            <h2>{{ t('app.more_from', { company: job.company.name }) }}</h2>
+            {% for other in moreFromCompany %}
+                {{ component('JobCard', { job: other, view: 'list', key: other.id }) }}
+            {% endfor %}
+        </section>
+    {% endif %}
+</article>
+{% else %}
+<section class="not-found">
+    <h1>{{ t('app.job_not_found') }}</h1>
+    <p>{{ t('app.job_not_found_hint') }} <a href="/jobs">{{ t('app.nav.jobs') }}</a></p>
+</section>
+{% endif %}
+
+{% apply css %}
+.job__back { font-size: 0.9rem; margin-bottom: 0.75rem; }
+.job__company { color: var(--muted); margin-top: 0.25rem; }
+.job__facts { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-top: 0.75rem; font-size: 0.9rem; }
+.job__tag { border: 1px solid var(--line); border-radius: 999px; padding: 0.05rem 0.7rem; }
+.job__posted { color: var(--muted); }
+.job__description { margin-top: 1.5rem; overflow-wrap: anywhere; }
+.job__description p, .job__description ul, .job__description ol { margin-top: 0.75rem; }
+.job__description ul, .job__description ol { padding-left: 1.5rem; }
+.job__more { margin-top: 2.5rem; display: grid; gap: 0.75rem; }
+.job__more h2 { font-size: 1.15rem; }
+{% endapply %}
+{% endblock %}

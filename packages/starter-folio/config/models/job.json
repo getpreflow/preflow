@@ -1,0 +1,20 @@
+{
+    "key": "job",
+    "label": "Jobs",
+    "label_singular": "Job",
+    "section": "content",
+    "order": 10,
+    "publishing": true,
+    "list": {
+        "columns": [
+            "title",
+            "company",
+            "place"
+        ],
+        "filters": [
+            "company",
+            "employmentType",
+            "remote"
+        ]
+    }
+}

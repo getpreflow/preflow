@@ -1,0 +1,16 @@
+<div class="latest-jobs__grid">
+    {% for job in jobs %}
+        {{ component('JobCard', { job: job, view: 'cards', key: job.id }) }}
+    {% else %}
+        <p class="latest-jobs__empty">{{ t('app.no_jobs') }}</p>
+    {% endfor %}
+</div>
+
+{% apply css %}
+.latest-jobs__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 0.75rem;
+}
+.latest-jobs__empty { color: var(--muted); }
+{% endapply %}

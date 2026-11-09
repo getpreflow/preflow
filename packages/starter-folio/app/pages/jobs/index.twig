@@ -1,0 +1,17 @@
+{% extends "_layout.twig" %}
+
+{% set description = t('app.jobs_description') %}
+
+{% block title %}{{ t('app.jobs_title') }} - {{ t('app.name') }}{% endblock %}
+
+{% block content %}
+{% do seo({ title: t('app.jobs_title'), description: description }) %}
+
+<h1 class="jobs-title">{{ t('app.jobs_title') }}</h1>
+{# Only the filter keys: any other query parameter (a "key", say) would change the component's id. #}
+{{ component('JobSearch', request.query|filter((value, name) => name in ['q', 'place', 'type', 'remote', 'view', 'page'])) }}
+
+{% apply css %}
+.jobs-title { margin-bottom: 1rem; }
+{% endapply %}
+{% endblock %}

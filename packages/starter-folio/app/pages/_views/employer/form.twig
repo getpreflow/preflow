@@ -1,0 +1,41 @@
+{% extends "_layout.twig" %}
+
+{% set isNew = job.uuid is empty %}
+{% block title %}{{ (isNew ? t('app.employer.new_job') : t('app.employer.edit_job')) ~ ' - ' ~ t('app.name') }}{% endblock %}
+
+{% block content %}
+<section class="job-form">
+    <h1>{{ isNew ? t('app.employer.new_job') : t('app.employer.edit_job') }}</h1>
+    {% if errors and not errors.isEmpty() %}<p class="notice notice--error" role="alert">{{ t('app.employer.fix_errors') }}</p>{% endif %}
+
+    {% set types = {} %}
+    {% for key in constant('App\\Jobs\\JobFilters::TYPES') %}{% set types = types|merge({ (key): t('app.type.' ~ key) }) %}{% endfor %}
+    {% set remotes = {} %}
+    {% for key in constant('App\\Jobs\\JobFilters::REMOTE') %}{% set remotes = remotes|merge({ (key): t('app.remote.' ~ key) }) %}{% endfor %}
+
+    {% set form = form_begin({ model: job, action: action, csrf_token: csrf_token(), errorBag: errors, oldInput: old }) %}
+    {{ form.begin()|raw }}
+        {{ form.field('title', { type: 'text', label: t('app.employer.label.title') })|raw }}
+        {{ form.field('place', { type: 'text', label: t('app.employer.label.place') })|raw }}
+        {{ form.select('employmentType', { label: t('app.employer.label.employmentType'), options: types })|raw }}
+        {{ form.select('remote', { label: t('app.employer.label.remote'), options: remotes })|raw }}
+        {{ form.field('salaryFrom', { type: 'number', label: t('app.employer.label.salaryFrom'), help: t('app.employer.salary_help'), attrs: { min: 0, step: 1 } })|raw }}
+        {{ form.field('salaryTo', { type: 'number', label: t('app.employer.label.salaryTo'), attrs: { min: 0, step: 1 } })|raw }}
+        {{ form.field('description', { type: 'textarea', label: t('app.employer.label.description'), help: t('app.employer.description_help'), attrs: { rows: 12 } })|raw }}
+        <p class="job-form__buttons">{{ form.submit(t('app.employer.save'))|raw }} <a href="/employer">{{ t('app.employer.cancel') }}</a></p>
+    {{ form_end()|raw }}
+</section>
+
+{% apply css %}
+.job-form form { margin-top: 1rem; display: grid; gap: 0.9rem; max-width: 40rem; }
+.job-form input, .job-form select, .job-form textarea {
+    width: 100%; font: inherit; padding: 0.5rem 0.75rem; border: 1px solid var(--line); border-radius: 0.5rem;
+    background: var(--bg); color: var(--text);
+}
+.job-form label { display: block; font-weight: 600; margin-bottom: 0.2rem; }
+.job-form__buttons { display: flex; gap: 1rem; align-items: center; }
+.job-form button[type=submit] { font: inherit; padding: 0.4rem 1.25rem; border: 0; border-radius: 0.5rem; background: var(--accent); color: var(--bg); cursor: pointer; }
+.notice { margin-top: 1rem; padding: 0.6rem 0.9rem; border-radius: 0.5rem; border: 1px solid var(--line); background: var(--card); }
+.notice--error { border-color: var(--warn-line); background: var(--warn-bg); }
+{% endapply %}
+{% endblock %}
