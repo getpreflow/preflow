@@ -7,6 +7,7 @@ namespace Preflow\Core\Tests\Http;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\Http\JsonBodyMiddleware;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -55,13 +56,40 @@ final class JsonBodyMiddlewareTest extends TestCase
         $this->assertNull($handler->parsedBody);
     }
 
-    public function test_parsed_body_remains_null_for_invalid_json(): void
+    public function test_malformed_json_body_is_a_400(): void
     {
         $factory = new Psr17Factory();
-        $body = $factory->createStream('{not valid json}');
         $request = $factory->createServerRequest('POST', '/')
             ->withHeader('Content-Type', 'application/json')
-            ->withBody($body);
+            ->withBody($factory->createStream('{"a":'));
+
+        try {
+            (new JsonBodyMiddleware())->process($request, $this->makeHandler());
+            $this->fail('Expected HttpException');
+        } catch (HttpException $e) {
+            $this->assertSame(400, $e->statusCode);
+            $this->assertSame('The request body is not valid JSON.', $e->getMessage());
+        }
+    }
+
+    public function test_empty_body_still_passes(): void
+    {
+        $factory = new Psr17Factory();
+        $request = $factory->createServerRequest('POST', '/')
+            ->withHeader('Content-Type', 'application/json');
+
+        $handler = $this->makeHandler();
+        (new JsonBodyMiddleware())->process($request, $handler);
+
+        $this->assertNull($handler->parsedBody);
+    }
+
+    public function test_json_scalar_body_passes_without_parsed_body(): void
+    {
+        $factory = new Psr17Factory();
+        $request = $factory->createServerRequest('POST', '/')
+            ->withHeader('Content-Type', 'application/json')
+            ->withBody($factory->createStream('"x"'));
 
         $handler = $this->makeHandler();
         (new JsonBodyMiddleware())->process($request, $handler);

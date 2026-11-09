@@ -2570,6 +2570,11 @@ final class Application
                 return $response;
             }
 
+            // Returning data from a controller is the short way to answer JSON.
+            if (is_array($response) || $response instanceof \JsonSerializable) {
+                return \Preflow\Core\Http\Json::response($response);
+            }
+
             return new \Nyholm\Psr7\Response(200, ['Content-Type' => 'text/html'], (string) $response);
         };
     }
