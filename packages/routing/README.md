@@ -173,6 +173,14 @@ For a given HTTP method, `RouteMatcher` tests routes in three passes:
 
 The first match wins. Throws `NotFoundHttpException` if nothing matches.
 
+### Wrong method: 405
+
+When no route matches the method but the path exists for other methods, the router throws
+`MethodNotAllowedHttpException` (a 405) and the response carries `Allow` with those methods
+(`GET` also lists `HEAD`; `OPTIONS` handling stays with CORS). A catch-all route does not count:
+a wrong method on a path that only a catch-all serves is still a 404. Before 0.62 every such
+request was a 404.
+
 ## Redirects and the not-found list
 
 When a public page is not found, `RedirectMiddleware` looks the address up in a redirect store

@@ -219,6 +219,20 @@ php preflow optimize --check
 # Boot manifest is current.
 ```
 
+### `auth:token <email-or-id>` — issue, list and revoke API tokens
+
+Needs `preflow/auth`. Creates a bearer token for a user of the token guard (the `auth.api_guard`
+guard, else the first `TokenGuard`) and prints it once; only its hash is stored. Use it as
+`Authorization: Bearer <token>` on routes with `TokenAuthMiddleware`.
+
+```
+php preflow auth:token editor@example.com --name=deploy-bot
+php preflow auth:token --list editor@example.com
+php preflow auth:token --revoke=<uuid>
+```
+
+`--name` is a label (default `cli`).
+
 ### `auth:user [PREFIX]` — set a login in `.env`
 
 Asks for an email and a password (hidden, twice, at least 8 characters) and

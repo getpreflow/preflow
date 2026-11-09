@@ -1015,3 +1015,98 @@ A prefix matches whole segments: `/folio` covers `/folio` and `/folio/x`, not `/
 `/` are ignored (they would cover the whole site). `matches($path)` and `all()` read the list.
 Redirects and the not-found list (`preflow/routing`) never answer or record a 404 under these
 paths. Add the prefix of any area of your own that is not a page (an API, a webhook endpoint).
+
+## JSON APIs (`config/api.php`)
+
+A controller action that returns an array or a `JsonSerializable` answers JSON; no response
+object needed. `Preflow\Core\Http\Json` builds the rest: `Json::response($body, $status, $headers)`,
+`Json::data($data, $meta)` (the `{"data": …, "meta": …}` envelope; `meta` only when given),
+`Json::noContent()` (204) and `Json::FLAGS` (the encoding flags: unescaped slashes and unicode,
+zero fractions kept, exceptions on failure). Every JSON response, errors included, is
+`Content-Type: application/json`.
+
+```php
+use Preflow\Auth\Http\TokenAuthMiddleware;
+use Preflow\Core\Http\Json;
+use Preflow\Routing\Attributes\{Get, Middleware, Post, Route};
+
+#[Route('/api/jobs')]
+final class JobController
+{
+    public function __construct(private readonly DataManager $dm) {}
+
+    #[Get('/')]
+    public function index(): ResponseInterface
+    {
+        $jobs = array_map(fn (Job $j) => ['id' => $j->uuid, 'title' => $j->title], $this->dm->query(Job::class)->get());
+
+        return Json::data($jobs, ['page' => 1]);
+    }
+
+    #[Post('/')]
+    #[Middleware(TokenAuthMiddleware::class)]
+    public function create(ServerRequestInterface $request): ResponseInterface
+    {
+        $job = new Job();
+        $job->title = (string) ($request->getParsedBody()['title'] ?? '');
+
+        // A failed validation throws ValidationException: the client gets the 422 shape below.
+        $this->dm->save($job);
+
+        return Json::data(['id' => $job->uuid], status: 201);
+    }
+}
+```
+
+`config/api.php` (all keys optional; without the file the defaults apply and CORS is off):
+
+```php
+return [
+    'prefixes' => ['/api'],        // path prefixes (whole segments) that are the API
+    'cors' => [
+        'origins' => ['https://app.example.com'],   // empty (default) = CORS off; ['*'] = any
+        'methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+        'headers' => ['Authorization', 'Content-Type', 'Accept'],
+        'expose' => [],            // response headers a browser may read
+        'max_age' => 600,          // seconds a preflight answer may be cached
+        'credentials' => false,    // cannot be true together with origins ['*']
+    ],
+];
+```
+
+```
+curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d '{"title":""}' https://site.test/api/jobs
+# 422 {"message":"The given data was invalid.","errors":{"title":["..."]}}
+```
+
+Get a token with `preflow auth:token <email-or-id>` (`preflow/devtools`, see
+`preflow/auth`'s README).
+
+**Request bodies.** A malformed JSON body answers 400 on every path,
+instead of arriving as an empty body.
+
+**Errors.** For a path under an API prefix, or a request whose `Accept` asks for JSON without
+`text/html`, an error answers `{"message": "<text>"}` instead of the HTML error page. A 422 adds
+`"errors": {"<field>": ["<message>", …]}`; in debug mode `"debug": {"exception", "message",
+"file", "line"}` is added. An `HttpException`'s own message is shown (it is written for the
+client); any other exception shows `Server Error`, never its message outside debug. An
+`HttpException` can carry `$headers` (`Allow`, `WWW-Authenticate`), which go on the response.
+
+**CORS.** With `cors.origins` set, `CorsMiddleware` runs outermost: it answers preflight
+(`OPTIONS` with `Access-Control-Request-Method`) for API paths without reaching the router, and
+adds its headers to every API response, error responses included.
+
+**The page cache never stores API paths** (they are non-public paths, and every `api.prefixes`
+entry is registered as one). Caching API GETs is on the roadmap; it needs its own design, because
+bearer requests must never get or store a shared copy.
+
+**Upgrading to 0.62.** A site without `config/api.php` changes in four visible ways:
+
+1. A wrong method on an existing path (not a catch-all) answers 405 with `Allow` instead of 404.
+2. An uncaught `ValidationException` answers 422 instead of 500 (HTML pages too).
+3. A malformed JSON request body answers 400; it used to be ignored.
+4. A request with `Accept: application/json` (without `text/html`) gets a JSON error body instead of
+   the HTML error page.
+
+HTML error pages, CSRF, sessions and the page cache behave as before for everything else.

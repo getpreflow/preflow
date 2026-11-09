@@ -93,6 +93,10 @@ final class HealthTest extends RouteTestCase
 | `assertForbidden()` | Status 403 |
 | `assertNotFound()` | Status 404 |
 | `assertUnauthorized()` | Status 401 |
+| `assertMethodNotAllowed()` | Status 405 |
+| `json(?string $path = null)` | Decoded body, or the value at a dot path (`data.0.title`); a missing path fails the test |
+| `assertJsonPath(string $path, mixed $expected)` | Value at a dot path equals `$expected` (strict) |
+| `assertJsonValidationErrors(string ...$fields)` | Status 422 and each field present under `errors` |
 
 All assertion methods return `$this` for chaining.
 

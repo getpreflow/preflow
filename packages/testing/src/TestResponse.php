@@ -84,6 +84,56 @@ final class TestResponse
         return $this;
     }
 
+    /**
+     * The decoded JSON body, or the value at a dot path (`data.0.title`). A missing path or a body
+     * that is not JSON fails the test.
+     */
+    public function json(?string $path = null): mixed
+    {
+        try {
+            $decoded = json_decode($this->body, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            Assert::fail('Response body is not valid JSON: ' . $e->getMessage());
+        }
+
+        if ($path === null || $path === '') {
+            return $decoded;
+        }
+
+        $value = $decoded;
+        foreach (explode('.', $path) as $segment) {
+            if (!is_array($value) || !array_key_exists($segment, $value)) {
+                Assert::fail("JSON path '{$path}' does not exist in the response.");
+            }
+            $value = $value[$segment];
+        }
+
+        return $value;
+    }
+
+    public function assertJsonPath(string $path, mixed $expected): self
+    {
+        Assert::assertSame($expected, $this->json($path), "Failed asserting JSON path '{$path}' has the expected value.");
+        return $this;
+    }
+
+    /** Status 422 with every field listed under `errors`. */
+    public function assertJsonValidationErrors(string ...$fields): self
+    {
+        $this->assertStatus(422);
+        $errors = $this->json('errors');
+        Assert::assertIsArray($errors, "Expected 'errors' to be an object.");
+        foreach ($fields as $field) {
+            Assert::assertArrayHasKey($field, $errors, "Expected a validation error for '{$field}'.");
+        }
+        return $this;
+    }
+
+    public function assertMethodNotAllowed(): self
+    {
+        return $this->assertStatus(405);
+    }
+
     public function assertForbidden(): self
     {
         return $this->assertStatus(403);

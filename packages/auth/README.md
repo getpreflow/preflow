@@ -258,6 +258,37 @@ $tokens->prune();                               // expired ones
   `null` and nothing is deleted.
 - Tokens are never in the TypeCatalog and never exported.
 
+### Bearer routes: `TokenAuthMiddleware`
+
+`Preflow\Auth\Http\TokenAuthMiddleware` protects an API route with `Authorization: Bearer <token>`.
+It never reads the session, so a session cookie does not pass a token route. A missing or
+unknown token answers 401 with `WWW-Authenticate: Bearer` (a JSON body on API paths).
+
+```php
+#[Post('/')]
+#[Middleware(TokenAuthMiddleware::class)]
+public function create(ServerRequestInterface $request): ResponseInterface
+{
+    $user = $request->getAttribute(Authenticatable::class);
+}
+```
+
+The guard is the constructor argument, else `auth.api_guard` in `config/auth.php`, else the first
+`TokenGuard` configured. A named guard that is not a `TokenGuard` is rejected (401), so a session
+guard can never pass a token route. `AuthManager::tokenGuardName(?string $preferred)` returns
+the name that is used.
+
+Issue tokens with the CLI (`preflow/devtools`):
+
+```
+php preflow auth:token editor@example.com --name=deploy-bot   # prints the token once
+php preflow auth:token --list editor@example.com
+php preflow auth:token --revoke=<uuid>
+```
+
+Only the token's SHA-256 hash is stored. See "JSON APIs" in the core README for the response
+shapes and CORS.
+
 ### Password hashing
 
 ```php

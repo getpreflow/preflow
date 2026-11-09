@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-09 (v0.61.0)
+> Last updated: 2026-11-09 (v0.62.0)
 
 ## Current State
 
-**v0.61.0** — 6433 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.62.0** — 6510 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -250,7 +250,11 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 
 ### Protected APIs (auth, later)
 
-The base exists (`TokenGuard`, `PersonalAccessToken`, `AuthMiddleware`). Missing: token management in Folio (create, name, list, revoke; shown once; per staff account or member), scopes per token checked per route, a configurable CORS middleware (origins, methods, headers, max-age, preflight answer), per-token rate limits.
+The base exists (`TokenGuard`, `PersonalAccessToken`, `AuthMiddleware`), and since 0.62.0 `TokenAuthMiddleware`, a
+configurable CORS middleware (`config/api.php`) and `preflow auth:token` (issue, list, revoke) are done. Missing:
+token management in Folio (create, name, list, revoke; shown once; per staff account or member), scopes per token
+checked per route, per-token rate limits, and caching of API GETs (needs its own design: bearer requests must never
+get or store a shared copy).
 
 ---
 
@@ -377,6 +381,34 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - `MediaLibrary::prefetch()` runs COUNT + SELECT through the query builder's `get()`; it should be one query.
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **REST pieces (0.62):** released in 0.62.0 (owner, 2026-11-09). What a JSON API needs from the framework, as small
+  parts with public interfaces; Folio is not involved.
+  - **What it is:**
+    - `Preflow\Core\Http\Json` (`response`, `data`, `noContent`, `FLAGS`). A controller action that returns an array or
+      a `JsonSerializable` answers JSON. A malformed JSON request body answers 400 on every path.
+    - `config/api.php`: `prefixes` (default `['/api']`) and `cors` (`origins`, `methods`, `headers`, `expose`,
+      `max_age`, `credentials`). `*` together with credentials is refused. The prefixes are non-public paths.
+    - JSON errors (`{"message"}`; 422 adds `errors`; debug adds `debug`) for API paths and for requests whose `Accept`
+      asks for JSON without `text/html`. An `HttpException`'s own message is shown, any other exception shows
+      `Server Error`. `HttpException` has `$headers`.
+    - 405 with `Allow` (`MethodNotAllowedHttpException`). A catch-all route does not count.
+    - `CorsMiddleware`, outermost (error responses too), only while `cors.origins` is set.
+    - auth: `TokenAuthMiddleware` (guard: constructor argument, else `auth.api_guard`, else the first `TokenGuard`; a
+      named guard that is not a `TokenGuard` is a 401; 401 carries `WWW-Authenticate: Bearer`),
+      `AuthManager::tokenGuardName()`.
+    - devtools: `preflow auth:token <email-or-id> [--name=]`, `--list <email-or-id>`, `--revoke=<uuid>`.
+    - testing: `TestResponse::json()`, `assertJsonPath()`, `assertJsonValidationErrors()`, `assertMethodNotAllowed()`.
+    - skeleton: `config/api.php` (commented, CORS off).
+  - **Upgrading:** a site without `config/api.php` sees four changes:
+    1. a wrong method on an existing path (not a catch-all) answers 405 instead of 404;
+    2. an uncaught `ValidationException` answers 422 instead of 500;
+    3. a malformed JSON request body answers 400 (it was silently ignored);
+    4. a request with `Accept: application/json` (without `text/html`) gets a JSON error body instead of the HTML error
+       page.
+    routing and auth require core 0.62, core conflicts with routing before 0.62, devtools requires core 0.62.
+  - **Follow-ups:**
+    - Caching API GETs: needs its own design, because bearer requests must never get or store a shared copy. API paths
+      are never stored by the page cache today.
 - **Model bridge (0.61):** released in 0.61.0 (owner, 2026-11-09: the PHP class is the source of truth). Spec:
   `docs/superpowers/specs/2026-11-09-model-bridge-design.md`. Content without code is a JSON file; the app's own
   models are PHP classes; Folio edits both.
