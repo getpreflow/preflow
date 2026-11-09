@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}{{ t('app.name') }}{% endblock %}</title>
     {# SEO adds the share cards, but the description is the layout's job: a page sets it with
-       {% set description = '…' %} next to its seo({…}) call. #}
+       {% set description = '…' %} next to its seo({…}) call. Folio's page and news templates set
+       it from page_description(), the one SEO chose for the record. #}
     {% if description is defined and description %}<meta name="description" content="{{ description }}">{% endif %}
 </head>
 <body>
@@ -13,6 +14,7 @@
         <a href="/" class="site-brand">{{ t('app.name') }}</a>
         <nav class="site-nav">
             <a href="/jobs">{{ t('app.nav.jobs') }}</a>
+            <a href="/news">{{ t('app.nav.news') }}</a>
             <a href="/employer">{{ t('app.nav.employers') }}</a>
             <a href="/api/jobs">{{ t('app.nav.api') }}</a>
         </nav>
@@ -22,7 +24,9 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="site-footer">{{ t('app.footer') }}</footer>
+    <footer class="site-footer">
+        {{ t('app.footer') }} &middot; <a href="/about-error-boundaries">{{ t('app.footer_errors') }}</a>
+    </footer>
 </body>
 </html>
 

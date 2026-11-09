@@ -67,9 +67,11 @@ final class PublicPagesTest extends TestCase
 
         $response->assertOk();
         $this->assertSame(6, $this->jobLinks($response->body()));
-        $response->assertSee('Error Boundary');
         $response->assertSee('href="/employer"');
         $response->assertSee('href="/api/jobs"');
+        // The demo moved off the Folio home page to a page of its own, linked from every footer.
+        $response->assertSee('href="/about-error-boundaries"');
+        $this->get('/about-error-boundaries')->assertOk()->assertSee('Error Boundary');
     }
 
     public function test_job_detail_shows_job_company_and_more_from_company(): void

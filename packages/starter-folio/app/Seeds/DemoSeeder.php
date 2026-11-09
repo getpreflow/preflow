@@ -12,15 +12,17 @@ use App\Models\User;
 use Preflow\Auth\NativePasswordHasher;
 use Preflow\Core\Config\Config;
 use Preflow\Data\DataManager;
+use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Publishing\PublishState;
 use Preflow\Folio\Publishing\Publisher;
 use Preflow\Media\Image\ImageBackends;
 use Preflow\Media\MediaLibrary;
 
 /**
- * Seven fictional companies with logos, forty jobs (34 published through Folio, 6 drafts), one
- * demo employer and two staff accounts, so a fresh install has something to show. Ids and dates
- * are fixed: running it again updates the same rows and publishes only what changed.
+ * Seven fictional companies with logos, forty jobs (34 published through Folio, 6 drafts), three
+ * news posts with images, one demo employer and two staff accounts, so a fresh install has
+ * something to show. Ids and dates are fixed: running it again updates the same rows and
+ * publishes only what changed.
  */
 final class DemoSeeder
 {
@@ -34,6 +36,7 @@ final class DemoSeeder
     private const string EMPLOYER_PASSWORD = 'demo-employer';
 
     private const string LOGOS = __DIR__ . '/../../resources/seed/logos';
+    private const string NEWS_IMAGES = __DIR__ . '/../../resources/seed/news';
 
     public function __construct(
         private readonly Config $config,
@@ -53,11 +56,11 @@ final class DemoSeeder
         $demo = require __DIR__ . '/demo-data.php';
 
         // Without GD or Imagick the media library can't make image sizes, so the demo goes without
-        // logos rather than failing. STARTER_NO_IMAGES=1 (in .env or the environment) does the
-        // same on a PHP that has them.
-        $logos = ImageBackends::detect() !== null && ($_ENV['STARTER_NO_IMAGES'] ?? getenv('STARTER_NO_IMAGES')) !== '1';
-        if (!$logos) {
-            echo "Logos skipped: no image library.\n";
+        // logos and news images rather than failing. STARTER_NO_IMAGES=1 (in .env or the
+        // environment) does the same on a PHP that has them.
+        $images = ImageBackends::detect() !== null && ($_ENV['STARTER_NO_IMAGES'] ?? getenv('STARTER_NO_IMAGES')) !== '1';
+        if (!$images) {
+            echo "Logos and news images skipped: no image library.\n";
         }
 
         $companyIds = [];
@@ -72,7 +75,7 @@ final class DemoSeeder
             $company->website = $row['website'];
             $company->summary = $row['summary'];
             $logo = self::LOGOS . '/' . $company->slug . '.png';
-            if ($logos && is_file($logo) && ($company->logo === null || $this->media->find($company->logo) === null)) {
+            if ($images && is_file($logo) && ($company->logo === null || $this->media->find($company->logo) === null)) {
                 $company->logo = $this->media->importFile($logo, basename($logo), 'seed')->id;
             }
             $data->save($company);
@@ -100,6 +103,27 @@ final class DemoSeeder
             if ($row['status'] === 'published') {
                 $this->publish($data, 'job', $job->uuid);
             }
+        }
+
+        // News is a JSON-defined Folio type (no PHP class), so its records are DynamicRecords.
+        foreach ($demo['news'] as $n => $row) {
+            $uuid = md5('starter-news-' . ($n + 1));
+            // Loaded first, so running the seed again keeps the image it imported the first time.
+            $post = $data->findType('news', $uuid) ?? DynamicRecord::fromArray($data->getTypeRegistry()->get('news'), ['uuid' => $uuid]);
+            foreach (['title', 'slug', 'date', 'summary', 'body'] as $field) {
+                $post->set($field, $row[$field]);
+            }
+            // Folio's form stores the chosen image as a JSON list, this seed as a plain id.
+            $current = $post->get('image');
+            $current = is_string($current) && str_starts_with($current, '[') ? (json_decode($current, true)[0] ?? null) : $current;
+            $image = self::NEWS_IMAGES . '/' . $row['slug'] . '.png';
+            if ($images && is_file($image) && (!is_string($current) || $current === '' || $this->media->find($current) === null)) {
+                $asset = $this->media->importFile($image, basename($image), 'seed');
+                $this->media->update($asset->id, ['alt' => ['en' => $row['alt']]]);
+                $post->set('image', $asset->id);
+            }
+            $data->saveType($post);
+            $this->publish($data, 'news', $uuid);
         }
 
         $hasher = new NativePasswordHasher();

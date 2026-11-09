@@ -1,0 +1,35 @@
+{% extends "_layout.twig" %}
+
+{% block title %}Error boundaries · {{ t('app.name') }}{% endblock %}
+
+{% set description = 'How a Preflow page survives a component that fails: the error boundary replaces only that component.' %}
+
+{% block content %}
+{% do seo({ title: 'Error boundaries', description: description }) %}
+
+<h1>Error boundaries</h1>
+<p class="about-errors__lead">The home page is built from blocks in Folio, so this demo lives on a page of
+its own. Each component, and each block of a Folio page, renders inside an error boundary: if one throws, the
+boundary puts its fallback in its place and the rest of the page is still sent. The box below is what that
+fallback looks like. Nothing failed: the component shows its fallback as a preview.</p>
+
+{{ component('ErrorDemo') }}
+
+{% apply css %}
+.about-errors__lead { color: var(--muted); margin-top: 0.5rem; }
+
+.error-demo-fallback {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    padding: 1.25rem;
+    margin-top: 2rem;
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-line);
+    border-radius: 0.5rem;
+}
+.error-demo-fallback .error-demo-icon { font-size: 1.5rem; line-height: 1; }
+.error-demo-fallback strong { display: block; margin-bottom: 0.25rem; }
+.error-demo-fallback p { color: var(--muted); font-size: 0.875rem; }
+{% endapply %}
+{% endblock %}

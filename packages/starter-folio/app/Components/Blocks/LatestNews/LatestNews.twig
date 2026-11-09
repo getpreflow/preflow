@@ -1,0 +1,33 @@
+{% if title %}<h2 class="latest-news__title"{{ folio_editable('title') }}>{{ title }}</h2>{% endif %}
+{# folio_list() gives published posts only, in the type's list order: newest first. #}
+<ul class="latest-news__list">
+    {% for post in folio_list('news')|slice(0, count) %}
+        <li class="latest-news__item">
+            {% if post.image %}<a href="/news/{{ post.slug }}" class="latest-news__image" tabindex="-1" aria-hidden="true">{{ media_image(post.image, 'card') }}</a>{% endif %}
+            <time datetime="{{ post.date }}">{{ post.date|date('j F Y') }}</time>
+            <h3><a href="/news/{{ post.slug }}">{{ post.title }}</a></h3>
+            {% if post.summary %}<p>{{ post.summary }}</p>{% endif %}
+        </li>
+    {% else %}
+        <li class="latest-news__empty">{{ t('app.news.none') }}</li>
+    {% endfor %}
+</ul>
+<p class="latest-news__all"><a href="/news">{{ t('app.news.all') }} &rarr;</a></p>
+
+{% apply css %}
+& { margin: 2rem 0; }
+.latest-news__title { font-size: 1.2rem; margin-bottom: 0.75rem; }
+.latest-news__list {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 1rem;
+}
+.latest-news__item { background: var(--card); border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.75rem; }
+.latest-news__image img { width: 100%; height: auto; border-radius: 0.375rem; display: block; margin-bottom: 0.5rem; }
+.latest-news__item time { color: var(--muted); font-size: 0.875rem; }
+.latest-news__item h3 { font-size: 1rem; }
+.latest-news__item p { color: var(--muted); font-size: 0.9rem; margin-top: 0.25rem; }
+.latest-news__empty { color: var(--muted); }
+.latest-news__all { margin-top: 1rem; }
+{% endapply %}

@@ -1,0 +1,55 @@
+{
+    "key": "news",
+    "table": "news",
+    "storage": "sqlite",
+    "id_field": "uuid",
+    "label": "News",
+    "label_singular": "News post",
+    "section": "content",
+    "order": 30,
+    "frontend": {
+        "route": "/news/{slug}"
+    },
+    "list": {
+        "columns": [
+            "title",
+            "date"
+        ],
+        "sort": "-date"
+    },
+    "fields": {
+        "title": {
+            "type": "string",
+            "validate": [
+                "required"
+            ]
+        },
+        "slug": {
+            "type": "string",
+            "help": "The address: /news/<slug>.",
+            "validate": [
+                "required"
+            ]
+        },
+        "date": {
+            "type": "date",
+            "validate": [
+                "required"
+            ]
+        },
+        "image": {
+            "type": "asset",
+            "asset": {
+                "multiple": false,
+                "accept": "image/*"
+            }
+        },
+        "summary": {
+            "type": "text",
+            "help": "One or two sentences for the news list, the home page and search results."
+        },
+        "body": {
+            "type": "richtext"
+        }
+    }
+}

@@ -1,0 +1,41 @@
+{% extends "_layout.twig" %}
+
+{% block title %}{{ t('app.news.title') }} · {{ t('app.name') }}{% endblock %}
+
+{% set description = t('app.news.description') %}
+
+{% block content %}
+{% do seo({ title: t('app.news.title'), description: description }) %}
+
+<h1>{{ t('app.news.title') }}</h1>
+
+{# Each post is a Folio record with its own page (resources/folio/frontend/news.twig).
+   folio_list() gives the published ones, newest first (the type's list sort). #}
+<ul class="news-list">
+    {% for post in folio_list('news') %}
+        <li class="news-list__item">
+            {% if post.image %}<a href="/news/{{ post.slug }}" class="news-list__image" tabindex="-1" aria-hidden="true">{{ media_image(post.image, 'card') }}</a>{% endif %}
+            <div>
+                <time datetime="{{ post.date }}">{{ post.date|date('j F Y') }}</time>
+                <h2><a href="/news/{{ post.slug }}">{{ post.title }}</a></h2>
+                {% if post.summary %}<p>{{ post.summary }}</p>{% endif %}
+            </div>
+        </li>
+    {% else %}
+        <li class="news-list__empty">{{ t('app.news.none') }}</li>
+    {% endfor %}
+</ul>
+
+{% apply css %}
+.news-list { list-style: none; margin-top: 1.5rem; }
+.news-list__item { display: grid; gap: 1rem; padding: 1rem 0; border-top: 1px solid var(--line); }
+@media (min-width: 36rem) {
+    .news-list__item:has(.news-list__image) { grid-template-columns: 12rem 1fr; }
+}
+.news-list__image img { width: 100%; height: auto; border-radius: 0.375rem; display: block; }
+.news-list__item time { color: var(--muted); font-size: 0.875rem; }
+.news-list__item h2 { font-size: 1.15rem; }
+.news-list__item p { color: var(--muted); margin-top: 0.25rem; }
+.news-list__empty { color: var(--muted); }
+{% endapply %}
+{% endblock %}

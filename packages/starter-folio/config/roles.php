@@ -7,8 +7,8 @@
 return [
     'staff' => [
         'admin' => ['*'],
-        // jobs_page, job_page and company_page are the page texts under Pages. news is a type the
-        // starter adds later on; a permission for a type that does not exist yet grants nothing.
+        // page holds the pages built from blocks (the home page among them), news the news posts;
+        // jobs_page, job_page and company_page are the page texts under Pages.
         'editor' => [
             'folio.dashboard',
             'page.*',

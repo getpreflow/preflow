@@ -10,7 +10,8 @@ use Preflow\Components\PreviewsFailure;
 /**
  * Shows what an error boundary does: the page renders what the boundary would show if this
  * component failed (its fallback()), as a preview. Nothing throws, so the page cache still stores
- * the home page. Delete this component and its line in index.twig when you don't need the demo.
+ * the page. Delete this component and app/pages/about-error-boundaries.twig (and its footer link
+ * in _layout.twig) when you don't need the demo.
  */
 final class ErrorDemo extends Component implements PreviewsFailure
 {

@@ -10,6 +10,7 @@ use Preflow\Core\Container\ServiceProvider;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\View\Seo\SeoContext;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
 
@@ -51,12 +52,24 @@ final class AppServiceProvider extends ServiceProvider
 
     public function boot(Container $container): void
     {
+        $engine = $container->get(TemplateEngineInterface::class);
+
         // markdown() renders a job description. It is safe to print because Markdown::render
         // escapes any HTML in the source.
-        $container->get(TemplateEngineInterface::class)->addFunction(new TemplateFunctionDefinition(
+        $engine->addFunction(new TemplateFunctionDefinition(
             name: 'markdown',
             callable: fn (?string $text): string => Markdown::render((string) $text),
             isSafe: true,
+        ));
+
+        // page_description() is the description SEO chose for the Folio record being shown (its
+        // "SEO & sharing" section, else the fields config/seo.php names). SEO prints the share
+        // cards but leaves <meta name="description"> to the layout, which gets it from here.
+        $engine->addFunction(new TemplateFunctionDefinition(
+            name: 'page_description',
+            callable: fn (): string => $container->has(SeoContext::class)
+                ? ($container->get(SeoContext::class)->get()?->description ?? '')
+                : '',
         ));
     }
 }

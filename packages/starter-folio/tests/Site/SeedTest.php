@@ -55,6 +55,12 @@ final class SeedTest extends TestCase
         return $query->get()->total();
     }
 
+    /** @return list<\Preflow\Data\DynamicRecord> the published news posts */
+    private function publishedNews(): array
+    {
+        return $this->container()->get(Publisher::class)->query('news')->get()->items();
+    }
+
     /** @return array<string, string> job uuid => draft|published|changed */
     private function states(): array
     {
@@ -90,6 +96,7 @@ final class SeedTest extends TestCase
         $this->assertSame(34, $this->published(Job::class));
         $this->assertSame(1, $this->total(User::class));
         $this->assertSame(2, $this->total(Staff::class));
+        $this->assertCount(3, $this->publishedNews());
     }
 
     public function test_the_drafts_and_the_places_are_as_planned(): void
@@ -144,7 +151,9 @@ final class SeedTest extends TestCase
         $this->assertSame(34, $this->published(Job::class));
         $this->assertSame(1, $this->total(User::class));
         $this->assertSame(2, $this->total(Staff::class));
-        $this->assertSame($assets, count($this->container()->get(MediaLibrary::class)->all()), 'the logos are imported once');
+        $this->assertCount(3, $this->publishedNews());
+        $this->assertSame(3, $this->data()->queryType('news')->get()->total());
+        $this->assertSame($assets, count($this->container()->get(MediaLibrary::class)->all()), 'the logos and news images are imported once');
         $this->assertSame(
             $revisions,
             count($this->container()->get(Publisher::class)->revisions('job', md5('starter-job-2'))),
@@ -164,6 +173,18 @@ final class SeedTest extends TestCase
         }
     }
 
+    public function test_the_demo_seed_imports_the_news_images(): void
+    {
+        $this->bootStarter();
+
+        $media = $this->container()->get(MediaLibrary::class);
+        foreach ($this->publishedNews() as $post) {
+            $asset = $media->find((string) $post->get('image'));
+            $this->assertSame('image/png', $asset?->mime, (string) $post->get('title'));
+            $this->assertNotSame('', $asset->altFor('en', 'en'), 'an image with a description');
+        }
+    }
+
     public function test_seed_without_image_library_succeeds(): void
     {
         // What the seeder sees on a PHP without GD and Imagick.
@@ -173,10 +194,11 @@ final class SeedTest extends TestCase
         [$code, $output] = $this->seed();
 
         $this->assertSame(0, $code, $output);
-        $this->assertStringContainsString('Logos skipped: no image library.', $output);
+        $this->assertStringContainsString('Logos and news images skipped: no image library.', $output);
         $this->assertSame([], $this->container()->get(MediaLibrary::class)->all());
         $this->assertSame(34, $this->published(Job::class));
         $this->assertSame(7, $this->published(Company::class));
+        $this->assertCount(3, $this->publishedNews(), 'the news is seeded without its images');
     }
 
     public function test_content_seed_runs_without_debug_and_creates_no_accounts(): void
@@ -187,6 +209,8 @@ final class SeedTest extends TestCase
         foreach (['jobs_page', 'job_page', 'company_page'] as $part) {
             $this->assertNotNull($publisher->snapshot($part, $part), $part . ' is published');
         }
+        $this->assertNotNull($publisher->snapshot('page', md5('starter-page-1')), 'the home page is published');
+        $this->assertSame([], $this->publishedNews(), 'news is demo content');
         $this->assertSame(0, $this->total(User::class));
         $this->assertSame(0, $this->total(Staff::class));
         $this->assertSame(0, $this->total(Job::class));

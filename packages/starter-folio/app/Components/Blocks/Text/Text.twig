@@ -1,0 +1,9 @@
+{# Folio cleans rich text before a block gets it, so it is safe to print as HTML. #}
+<div class="text-block__body"{{ folio_editable('body') }}>{{ body|raw }}</div>
+
+{% apply css %}
+& { margin: 1.5rem 0; }
+.text-block__body > * + * { margin-top: 0.75rem; }
+.text-block__body h2 { font-size: 1.2rem; margin-top: 1.5rem; }
+.text-block__body ul, .text-block__body ol { padding-left: 1.25rem; }
+{% endapply %}

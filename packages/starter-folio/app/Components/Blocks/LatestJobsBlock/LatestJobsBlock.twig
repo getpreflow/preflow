@@ -1,3 +1,4 @@
+{% if title %}<h2 class="latest-jobs__title"{{ folio_editable('title') }}>{{ title }}</h2>{% endif %}
 <div class="latest-jobs__grid">
     {% for job in jobs %}
         {{ component('JobCard', { job: job, view: 'cards', key: job.id }) }}
@@ -5,12 +6,16 @@
         <p class="latest-jobs__empty">{{ t('app.no_jobs') }}</p>
     {% endfor %}
 </div>
+<p class="latest-jobs__all"><a href="/jobs">{{ t('app.all_jobs') }} &rarr;</a></p>
 
 {% apply css %}
+& { margin: 2rem 0; }
+.latest-jobs__title { font-size: 1.2rem; margin-bottom: 0.75rem; }
 .latest-jobs__grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
     gap: 0.75rem;
 }
 .latest-jobs__empty { color: var(--muted); }
+.latest-jobs__all { margin-top: 1rem; }
 {% endapply %}

@@ -1,0 +1,46 @@
+{
+    "key": "page",
+    "table": "page",
+    "storage": "sqlite",
+    "id_field": "uuid",
+    "label": "Pages",
+    "label_singular": "Page",
+    "section": "pages",
+    "order": 1,
+    "frontend": {
+        "route": "/{slug}",
+        "home": "home"
+    },
+    "list": {
+        "columns": [
+            "title",
+            "slug"
+        ],
+        "sort": "title"
+    },
+    "fields": {
+        "title": {
+            "type": "string",
+            "validate": [
+                "required"
+            ]
+        },
+        "slug": {
+            "type": "string",
+            "help": "The address: /about for \"about\". The page with the slug \"home\" is the home page.",
+            "validate": [
+                "required"
+            ]
+        },
+        "sections": {
+            "type": "blocks",
+            "label": "Sections",
+            "allowed": [
+                "hero",
+                "text",
+                "latest_jobs",
+                "latest_news"
+            ]
+        }
+    }
+}

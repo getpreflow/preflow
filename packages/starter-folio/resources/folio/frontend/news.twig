@@ -1,0 +1,29 @@
+{#- One news post (config/models/news.json) at /news/<slug>. In the editor's live preview, the
+    data-folio-field marks let staff click a part to jump to its field. -#}
+{% extends "_layout.twig" %}
+
+{% set description = page_description() %}
+{% set preview = preview|default(false) %}
+
+{% block title %}{{ record.title }} · {{ t('app.name') }}{% endblock %}
+
+{% block content %}
+<article class="news-post">
+    <p class="news-post__back"><a href="/news">&larr; {{ t('app.news.all') }}</a></p>
+    <h1{% if preview %} data-folio-field="title"{% endif %}>{{ record.title }}</h1>
+    {% if record.date %}<time class="news-post__date" datetime="{{ record.date }}"{% if preview %} data-folio-field="date"{% endif %}>{{ record.date|date('j F Y') }}</time>{% endif %}
+    {% if record.image %}<div class="news-post__image"{% if preview %} data-folio-field="image"{% endif %}>{{ media_image(record.image, 'wide') }}</div>{% endif %}
+    {# rendered holds each field as safe HTML: Folio cleaned the rich text. #}
+    <div class="news-post__body"{% if preview %} data-folio-field="body"{% endif %}>{{ rendered.body|default('')|raw }}</div>
+</article>
+
+{% apply css %}
+.news-post__back { margin-bottom: 1rem; font-size: 0.9rem; }
+.news-post__date { display: block; color: var(--muted); margin-top: 0.25rem; }
+.news-post__image { margin: 1.25rem 0; }
+.news-post__image img { width: 100%; height: auto; border-radius: 0.5rem; display: block; }
+.news-post__body { margin-top: 1rem; }
+.news-post__body > * + * { margin-top: 0.75rem; }
+.news-post__body ul, .news-post__body ol { padding-left: 1.25rem; }
+{% endapply %}
+{% endblock %}

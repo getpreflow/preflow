@@ -11,7 +11,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Paths a fresh install must answer with 200. Later tasks add the pages and the API here.
-CHECK_PATHS=(/ /jobs /api/jobs)
+CHECK_PATHS=(/ /jobs /api/jobs /news /about-error-boundaries)
 
 usage() {
     echo "Usage: bin/starter install|test|fresh <name> [args...]" >&2

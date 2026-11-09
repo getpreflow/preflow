@@ -24,12 +24,14 @@ This password is public demo data. It only works while `APP_DEBUG=1`, and the de
 
 | Open | What you see | Where it lives |
 |---|---|---|
-| `/` | Home page with the latest jobs | `app/pages/index.twig`, `app/Components/LatestJobs/` |
+| `/` | Home page: a Folio page built from blocks (hero, text, latest jobs, latest news) | `config/models/page.json`, `resources/folio/frontend/page.twig`, `app/Components/Blocks/` |
+| `/news`, `/news/<slug>` | News posts, edited in Folio | `app/pages/news/index.twig`, `config/models/news.json`, `resources/folio/frontend/news.twig` |
 | `/jobs` | Search and filter, 12 jobs per page | `app/pages/jobs/index.twig`, `app/Components/JobSearch/`, `app/Jobs/JobFilters.php` |
 | `/jobs/<slug>` | One job, with more jobs from the same company | `app/Controllers/Site/JobController.php`, `app/pages/_views/job.twig` |
 | `/companies/<slug>` | A company and its open jobs | `app/Controllers/Site/CompanyController.php`, `app/pages/_views/company.twig` |
 | `/employer` | Sign in, then add, edit, publish and unpublish your jobs | `app/Controllers/Site/EmployerAuthController.php`, `EmployerJobController.php`, `app/pages/_views/employer/` |
 | `/api/jobs` | The same jobs as JSON | `app/Controllers/Api/JobsController.php` |
+| `/about-error-boundaries` | What happens when a component fails | `app/pages/about-error-boundaries.twig`, `app/Components/ErrorDemo/` |
 
 A few more things to know:
 

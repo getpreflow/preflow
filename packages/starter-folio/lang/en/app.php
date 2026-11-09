@@ -3,8 +3,10 @@
 return [
     'name' => 'Preflow Jobs',
     'footer' => 'Built with Preflow',
+    'footer_errors' => 'How errors are contained',
     'nav' => [
         'jobs' => 'Jobs',
+        'news' => 'News',
         'employers' => 'Employers',
         'api' => 'API',
     ],
@@ -24,6 +26,13 @@ return [
     'per_year' => 'per year',
     'posted' => 'Posted',
     'no_jobs' => 'No jobs yet.',
+    'all_jobs' => 'All jobs',
+    'news' => [
+        'title' => 'News',
+        'description' => 'News from Preflow Jobs: new features, new employers and how the board works.',
+        'none' => 'No news yet.',
+        'all' => 'All news',
+    ],
     'more_from' => 'More from :company',
     'open_jobs' => 'Open jobs',
     'no_open_jobs' => 'No open jobs right now.',
