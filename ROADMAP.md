@@ -411,6 +411,9 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
        `preflow/*` at `^0.63`.
     4. Owner: submit `starter` and `starter-folio` to Packagist and tick "abandoned" (replacement `preflow/starter`)
        on `preflow/skeleton`.
+  - **Release checklist (every release):** bump `preflow/*` in `packages/starter/composer.json` and
+    `packages/starter-folio/composer.json` to the new minor (`bin/starter` derives the versions from that pin, so a stale
+    one is not caught by anything).
   - **Tests:** 0.63 full monorepo run: 6536 tests, 31380 assertions (185 skipped); starter suite 86 tests, starter-folio suite 117 tests.
   - **Follow-ups:**
     - Remove `packages/skeleton` (step 2 of its retirement): the split entry, the root autoload (`App\`, `Tests\`),
