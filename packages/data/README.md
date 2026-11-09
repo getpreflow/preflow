@@ -749,6 +749,42 @@ $dm->queryType('page')->locale('de')->where('slug', 'ueber-uns')->first();
 - **Validation:** `required` binds the default locale; other rules run for every locale
   with a value, keyed `field.locale`.
 
+## Model classes as types
+
+A class marked `#[Entity(type: 'job')]` is the type `job` (the registry describes it with
+`ModelSchema::of()`). Its typed reads and writes do what `findType()`, `queryType()` and
+`saveType()` do for that type:
+
+- `find()` and `query()` read as the type reads: `query(Job::class)->locale('de')` compares
+  translatable fields in that locale, `searchLoose()` reaches related records. They give
+  `Job` objects, with stored numbers and yes/no values (text in JSON files) as the
+  properties' types.
+- `save()`, `insert()` and `update()` validate and store as `saveType()` does (the type's
+  rules, per locale, unique fields, bounded columns; the class's `on:` rules and `rules()`
+  on top), and write only the id and the type's fields: columns the class does not declare
+  (`_version`, `_publish_at`, …) stay as stored, also in JSON files.
+- A new object with an empty string id gets the id Folio gives a record
+  (`bin2hex(random_bytes(16))`) before it is written.
+- Reads and writes report the same page cache tags as the type's.
+
+A **translatable** field's property holds the locale map, `['en' => '…', 'de' => '…']`, on
+a multilingual site (a plain value on a single-locale one, or one stored before the field
+became translatable); give it the type `array|string|null` and the field type explicitly:
+
+```php
+#[Field(type: 'string', translatable: true)]
+public array|string|null $title = null;
+```
+
+**Another table of the same shape** (a published copy) is read with `findAs()` and
+`queryAs()`. The objects are read-only: every write of one throws a `LogicException`.
+
+```php
+$job = $dm->findAs(Job::class, $id, 'job__published');
+$dm->queryAs(Job::class, 'job__published')->where('open', true)->get();
+$dm->isReadOnly($job); // true
+```
+
 ## Usage
 
 **Model:**

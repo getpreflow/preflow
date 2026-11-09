@@ -56,6 +56,41 @@ final class QueryBuilder
         return $builder;
     }
 
+    /**
+     * A typed query that is its class's type (DataManager::query(), queryAs()): the type's
+     * definition decides localization and loose search as for queryType(), the rows become
+     * objects of the class through $hydrate, read from $table (default: the class's own).
+     *
+     * @param \Closure(array<string, mixed>): Model $hydrate
+     * @internal built by the DataManager
+     */
+    public static function forModelType(
+        StorageDriver $driver,
+        ModelMetadata $meta,
+        ?TypeDefinition $typeDef,
+        DataManager $dm,
+        \Closure $hydrate,
+        ?string $table = null,
+    ): self {
+        $builder = new self($driver, $meta, $meta->modelClass, $dm);
+        $builder->typeDef = $typeDef;
+        $builder->hydrate = $hydrate;
+        $builder->table = $table;
+
+        return $builder;
+    }
+
+    /** @var (\Closure(array<string, mixed>): Model)|null */
+    private ?\Closure $hydrate = null;
+
+    /** Another table than the model's or type's own (queryAs()). */
+    private ?string $table = null;
+
+    private function table(): ?string
+    {
+        return $this->table ?? $this->meta?->table ?? $this->typeDef?->table;
+    }
+
     private ?string $locale = null;
 
     /** Filters added through the public methods (where, whereAny, orWhere, search, searchLoose). */
@@ -353,9 +388,12 @@ final class QueryBuilder
      */
     public function get(): ResultSet
     {
-        $table = $this->meta?->table ?? $this->typeDef?->table;
-        $result = $this->driver->findMany($table, $this->prepared());
+        $result = $this->driver->findMany($this->table(), $this->prepared());
         $this->reportListing();
+
+        if ($this->hydrate !== null) {
+            return new ResultSet(array_map($this->hydrate, $result->items()), $result->total());
+        }
 
         if ($this->typeDef !== null) {
             $items = array_map(
@@ -420,7 +458,7 @@ final class QueryBuilder
 
         return new AggregateQuery(
             $this->driver,
-            (string) ($this->meta?->table ?? $this->typeDef?->table),
+            (string) $this->table(),
             clone $this->prepared(),
             $fields,
             $numeric,
@@ -446,7 +484,7 @@ final class QueryBuilder
     {
         $dm = $this->dataManager;
         $storage = $this->meta?->storage ?? $this->typeDef?->storage;
-        $table = $this->meta?->table ?? $this->typeDef?->table;
+        $table = $this->table();
         if ($dm === null || $storage === null || $table === null || $this->unreported) {
             return static function (): void {};
         }

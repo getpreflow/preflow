@@ -269,18 +269,13 @@ final class DataManager
         $data = $driver->findOne($meta->table, $id, $meta->idField);
         $this->reportRead($meta->storage, $meta->table, (string) $id);
 
-        if ($data === null) {
-            return null;
-        }
-
-        $model = new $modelClass();
-        $model->fill($data);
-
-        return $model;
+        return $data === null ? null : $this->hydrate($meta, $this->classType($meta), $data);
     }
 
     /**
-     * Start a query for a typed model.
+     * Start a query for a typed model. For a class marked #[Entity(type: …)] whose type the
+     * registry holds, the query is the type's: translatable fields compare in the query's
+     * locale, searchLoose() reaches related records, and it yields objects of the class.
      *
      * @template T of Model
      * @param class-string<T> $modelClass
@@ -290,8 +285,100 @@ final class DataManager
     {
         $meta = ModelMetadata::for($modelClass);
         $driver = $this->resolveDriver($meta->storage);
+        $def = $this->classType($meta);
+        if ($def === null) {
+            return new QueryBuilder($driver, $meta, $modelClass, $this);
+        }
 
-        return new QueryBuilder($driver, $meta, $modelClass, $this);
+        return QueryBuilder::forModelType($driver, $meta, $def, $this, fn (array $row): Model => $this->hydrate($meta, $def, $row));
+    }
+
+    /** @var \WeakMap<Model, string>|null objects loaded by findAs()/queryAs(), with the table they came from */
+    private ?\WeakMap $readOnly = null;
+
+    /**
+     * Load a model class from another table of the same shape (a published copy, an archive)
+     * as find() loads it from its own. The object is read-only: it is not the record of the
+     * class's table, so no write takes it (isReadOnly()).
+     *
+     * @template T of Model
+     * @param class-string<T> $modelClass
+     * @return T|null
+     */
+    public function findAs(string $modelClass, string|int $id, string $table): ?Model
+    {
+        $meta = ModelMetadata::for($modelClass);
+        $data = $this->resolveDriver($meta->storage)->findOne($table, $id, $meta->idField);
+        $this->reportRead($meta->storage, $table, (string) $id);
+
+        return $data === null ? null : $this->markReadOnly($this->hydrate($meta, $this->classType($meta), $data), $table);
+    }
+
+    /**
+     * Query a model class in another table of the same shape, as query() does in its own; the
+     * objects it yields are read-only (findAs()).
+     *
+     * @template T of Model
+     * @param class-string<T> $modelClass
+     * @return QueryBuilder<T>
+     */
+    public function queryAs(string $modelClass, string $table): QueryBuilder
+    {
+        $meta = ModelMetadata::for($modelClass);
+        $def = $this->classType($meta);
+
+        return QueryBuilder::forModelType(
+            $this->resolveDriver($meta->storage),
+            $meta,
+            $def,
+            $this,
+            fn (array $row): Model => $this->markReadOnly($this->hydrate($meta, $def, $row), $table),
+            $table,
+        );
+    }
+
+    /** Whether $model was loaded from another table (findAs(), queryAs()) and so cannot be written. */
+    public function isReadOnly(Model $model): bool
+    {
+        return $this->readOnly !== null && isset($this->readOnly[$model]);
+    }
+
+    /**
+     * @template T of Model
+     * @param T $model
+     * @return T
+     */
+    private function markReadOnly(Model $model, string $table): Model
+    {
+        $this->readOnly ??= new \WeakMap();
+        $this->readOnly[$model] = $table;
+
+        return $model;
+    }
+
+    private function assertWritable(Model $model): void
+    {
+        if ($this->isReadOnly($model)) {
+            throw new \LogicException(sprintf(
+                '%s was loaded read-only (from table %s) and cannot be saved.',
+                $model::class,
+                $this->readOnly[$model],
+            ));
+        }
+    }
+
+    /**
+     * The type a model class is: its #[Entity(type: …)] key's definition in the registry, or
+     * null for an ordinary model (or a type-marked class with no registry holding its key),
+     * which keeps today's typed-model behaviour.
+     */
+    private function classType(ModelMetadata $meta): ?TypeDefinition
+    {
+        if ($meta->type === null || $this->typeRegistry === null || !$this->typeRegistry->has($meta->type)) {
+            return null;
+        }
+
+        return $this->typeRegistry->get($meta->type);
     }
 
     /**
@@ -346,16 +433,28 @@ final class DataManager
     /**
      * Save a model.
      *
+     * A class marked #[Entity(type: …)] whose type the registry holds is saved as its type is
+     * (writeClassType()).
+     *
      * @throws ValidationException when $validate and the model fails its rules, and (validated
      *         or not) when the storage refuses a unique field's duplicate (nothing saved)
+     * @throws \LogicException for an object loaded read-only (findAs(), queryAs())
      */
     public function save(Model $model, bool $validate = true, array $rules = [], ?string $scenario = null): void
     {
+        $this->assertWritable($model);
+        $meta = ModelMetadata::for($model::class);
+        $def = $this->classType($meta);
+        if ($def !== null) {
+            $this->writeClassType($model, $meta, $def, 'save', $validate, $rules, $scenario);
+
+            return;
+        }
+
         if ($validate) {
             $this->validateModel($model, $rules, $scenario);
         }
 
-        $meta = ModelMetadata::for($model::class);
         $driver = $this->resolveDriver($meta->storage);
         $data = $this->modelData($meta, $model);
         $id = $data[$meta->idField] ?? null;
@@ -364,10 +463,7 @@ final class DataManager
         $this->guardedModel($meta, $data, fn () => $driver->save($meta->table, $id ?? '', $data, $meta->idField));
 
         if ($isEmpty) {
-            $newId = $driver->lastInsertId();
-            if ($newId !== '' && $newId !== 0) {
-                $model->{$meta->idField} = is_int($newId) ? $newId : (is_numeric($newId) ? (int) $newId : $newId);
-            }
+            $this->takeInsertId($driver, $meta, $model);
         }
         $this->wroteModel($meta, $model);
     }
@@ -375,43 +471,60 @@ final class DataManager
     /**
      * Insert a new model. Sets the auto-generated ID on the model.
      * Use this when you explicitly want INSERT behavior (not upsert).
+     *
+     * @throws \LogicException for an object loaded read-only (findAs(), queryAs())
      */
     public function insert(Model $model, bool $validate = true, array $rules = [], ?string $scenario = null): void
     {
+        $this->assertWritable($model);
+        $meta = ModelMetadata::for($model::class);
+        $def = $this->classType($meta);
+        if ($def !== null) {
+            $this->writeClassType($model, $meta, $def, 'insert', $validate, $rules, $scenario);
+
+            return;
+        }
+
         if ($validate) {
             $this->validateModel($model, $rules, $scenario);
         }
 
-        $meta = ModelMetadata::for($model::class);
         $driver = $this->resolveDriver($meta->storage);
         $data = $this->modelData($meta, $model);
 
         // Force INSERT by passing empty ID (PdoDriver strips the ID field and does plain INSERT)
         $this->guardedModel($meta, $data, fn () => $driver->save($meta->table, 0, $data, $meta->idField));
 
-        $newId = $driver->lastInsertId();
-        if ($newId !== '' && $newId !== 0) {
-            $model->{$meta->idField} = is_int($newId) ? $newId : (is_numeric($newId) ? (int) $newId : $newId);
-        }
+        $this->takeInsertId($driver, $meta, $model);
         $this->wroteModel($meta, $model);
     }
 
     /**
      * Update an existing model. Throws if ID is empty.
      * Use this when you explicitly want UPDATE behavior (not upsert).
+     *
+     * @throws \LogicException for an object loaded read-only (findAs(), queryAs())
      */
     public function update(Model $model, bool $validate = true, array $rules = [], ?string $scenario = null): void
     {
+        $this->assertWritable($model);
+        $meta = ModelMetadata::for($model::class);
+        $def = $this->classType($meta);
+        if ($def !== null) {
+            $this->writeClassType($model, $meta, $def, 'update', $validate, $rules, $scenario);
+
+            return;
+        }
+
         if ($validate) {
             $this->validateModel($model, $rules, $scenario);
         }
 
-        $meta = ModelMetadata::for($model::class);
         $driver = $this->resolveDriver($meta->storage);
         $data = $this->modelData($meta, $model);
         $id = $data[$meta->idField] ?? null;
 
-        if ($id === null || $id === '' || $id === 0 || $id === '0') {
+        if (self::emptyId($id)) {
             throw new \RuntimeException("Cannot update model without an ID. Use insert() for new records.");
         }
 
@@ -423,10 +536,12 @@ final class DataManager
      * Delete a model by class+ID or by model instance.
      *
      * @param class-string<Model>|Model $modelClassOrInstance
+     * @throws \LogicException for an object loaded read-only (findAs(), queryAs())
      */
     public function delete(string|Model $modelClassOrInstance, string|int|null $id = null): void
     {
         if ($modelClassOrInstance instanceof Model) {
+            $this->assertWritable($modelClassOrInstance);
             $meta = ModelMetadata::for($modelClassOrInstance::class);
             $driver = $this->resolveDriver($meta->storage);
             $data = $modelClassOrInstance->toArray();
@@ -444,6 +559,223 @@ final class DataManager
         $driver = $this->resolveDriver($meta->storage);
         $driver->delete($meta->table, $id, $meta->idField);
         $this->reportWrite($meta->storage, $meta->table, (string) $id);
+    }
+
+    private static function emptyId(mixed $id): bool
+    {
+        return $id === null || $id === '' || $id === 0 || $id === '0';
+    }
+
+    /** Sets the id the storage generated for the model just inserted, if it gave one. */
+    private function takeInsertId(StorageDriver $driver, ModelMetadata $meta, Model $model): void
+    {
+        $newId = $driver->lastInsertId();
+        if ($newId !== '' && $newId !== 0) {
+            $model->{$meta->idField} = is_int($newId) ? $newId : (is_numeric($newId) ? (int) $newId : $newId);
+        }
+    }
+
+    /**
+     * A save, insert or update of a class-backed type, as saveType() writes its record: the
+     * type's validation (its rules, a translatable field per locale, unique fields per locale,
+     * bounded columns) plus the class's own (scenario rules, rules()), the values as saveType()
+     * stores them, and nothing else: only the id and the type's fields are written, so the
+     * columns the class does not declare (Folio's _version, _publish_at, …) stay as stored.
+     * An empty string id gets the id Folio gives a new record (32 hex characters).
+     *
+     * @param 'save'|'insert'|'update' $mode
+     */
+    private function writeClassType(Model $model, ModelMetadata $meta, TypeDefinition $def, string $mode, bool $validate, array $rules, ?string $scenario): void
+    {
+        $record = new DynamicRecord($def, $this->classTypeValues($model, $def));
+        $driver = $this->resolveDriver($def->storage);
+
+        if ($validate) {
+            $this->validateDynamicRecord($record, $rules, $model, $this->classRules($model, $meta, $scenario));
+        }
+
+        $id = $record->toArray()[$def->idField] ?? null;
+        $given = !self::emptyId($id);
+        if (!$given) {
+            if ($mode === 'update') {
+                throw new \RuntimeException("Cannot update model without an ID. Use insert() for new records.");
+            }
+            if (self::hasStringId($meta)) {
+                $id = bin2hex(random_bytes(16));
+                $model->{$def->idField} = $id;
+                $record->set($def->idField, $id);
+            }
+        }
+        if ($mode === 'insert' && $given && $driver->findOne($def->table, $id, $def->idField) !== null) {
+            throw new \RuntimeException('Cannot insert ' . $model::class . " {$id}: a record with this id exists. Use save() or update().");
+        }
+
+        $data = $this->storageData($record);
+        $this->guarded($record, function () use ($driver, $def, $id, $data): void {
+            if (self::emptyId($id)) {
+                $driver->save($def->table, 0, $data, $def->idField); // an auto-increment id: the storage gives it
+
+                return;
+            }
+            $this->saveKeepingOtherColumns($driver, $def, $id, $data);
+        });
+
+        if (self::emptyId($id)) {
+            $this->takeInsertId($driver, $meta, $model);
+        }
+        $this->wroteModel($meta, $model);
+    }
+
+    /**
+     * Writes $data over the stored record, leaving the columns $data does not have as they
+     * are. SQL storage does that itself; a storage that writes whole records (JSON files) gets
+     * the stored record with $data laid over it, read and written under the type's lock where
+     * the storage has one, so a version-checked save in between is not undone.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function saveKeepingOtherColumns(StorageDriver $driver, TypeDefinition $def, string|int $id, array $data): void
+    {
+        if ($driver instanceof PdoDriver) {
+            $driver->save($def->table, $id, $data, $def->idField);
+
+            return;
+        }
+        $write = static function () use ($driver, $def, $id, $data): void {
+            $stored = $driver->findOne($def->table, $id, $def->idField);
+            $driver->save($def->table, $id, $stored === null ? $data : array_replace($stored, $data), $def->idField);
+        };
+        $driver instanceof ExclusiveWrites ? $driver->exclusive($def->table, $write) : $write();
+    }
+
+    /**
+     * The values a class-backed model writes: its id and the type's fields, as the properties
+     * hold them (a property that is no field is no column).
+     *
+     * @return array<string, mixed>
+     */
+    private function classTypeValues(Model $model, TypeDefinition $def): array
+    {
+        $vars = get_object_vars($model); // public, initialized properties (called from outside the class)
+        $values = [];
+        foreach ([$def->idField, ...array_keys($def->fields)] as $name) {
+            if (array_key_exists($name, $vars)) {
+                $values[$name] = $vars[$name];
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * The class's own rules, added to its type's: the #[Validate] rules for the scenario (as
+     * validateModel() takes them, so `on:` rules apply) and rules().
+     *
+     * @return array<string, list<mixed>>
+     */
+    private function classRules(Model $model, ModelMetadata $meta, ?string $scenario): array
+    {
+        $rules = $scenario !== null ? $meta->validationRulesForScenario($scenario) : $meta->validationRules;
+        if (method_exists($model, 'rules')) {
+            foreach ($model->rules() as $name => $fieldRules) {
+                $rules[$name] = [...($rules[$name] ?? []), ...(array) $fieldRules];
+            }
+        }
+
+        return $rules;
+    }
+
+    /** Whether the model's id property holds a string (Folio's ids), not an auto-increment number. */
+    private static function hasStringId(ModelMetadata $meta): bool
+    {
+        if (!property_exists($meta->modelClass, $meta->idField)) {
+            return false;
+        }
+        $type = (new \ReflectionProperty($meta->modelClass, $meta->idField))->getType();
+
+        return $type instanceof \ReflectionNamedType && $type->getName() === 'string';
+    }
+
+    /** @var array<class-string, array<string, ?\ReflectionType>> */
+    private array $propertyTypes = [];
+
+    /**
+     * A model from a stored row. An ordinary model is filled as it is; a class-backed type
+     * reads what its type stores: a translatable field's locale map (JSON text on SQL) as an
+     * array, and numbers and yes/no (text on JSON storage, integers on SQL) as the property's
+     * type. A NULL a property cannot take leaves its default.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function hydrate(ModelMetadata $meta, ?TypeDefinition $def, array $data): Model
+    {
+        $model = new ($meta->modelClass)();
+        if ($def === null) {
+            $model->fill($data);
+
+            return $model;
+        }
+
+        $types = $this->propertyTypes[$meta->modelClass] ??= $this->publicPropertyTypes($meta->modelClass);
+        $translatable = array_flip($def->translatableFields());
+        foreach ($data as $name => $value) {
+            if (!array_key_exists($name, $types)) {
+                continue;
+            }
+            if (isset($meta->transformers[$name])) {
+                $value = $meta->transformers[$name]->fromStorage($value);
+            }
+            if (isset($translatable[$name]) && is_string($value)) {
+                $map = LocaleValue::map($value, $def->locales);
+                $value = $map === [$def->locales->default => $value] ? $value : $map;
+            }
+            [$assign, $value] = self::asPropertyType($types[$name], $value);
+            if ($assign) {
+                $model->{$name} = $value;
+            }
+        }
+
+        return $model;
+    }
+
+    /** @return array<string, ?\ReflectionType> */
+    private function publicPropertyTypes(string $class): array
+    {
+        $types = [];
+        foreach ((new \ReflectionClass($class))->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            if (!$prop->isStatic() && !$prop->isReadOnly()) {
+                $types[$prop->getName()] = $prop->getType();
+            }
+        }
+
+        return $types;
+    }
+
+    /**
+     * A stored scalar as the property's (single, built-in) type: whether to assign it, and the
+     * value. Anything else is assigned as it is.
+     *
+     * @return array{bool, mixed}
+     */
+    private static function asPropertyType(?\ReflectionType $type, mixed $value): array
+    {
+        if ($type === null) {
+            return [true, $value];
+        }
+        if ($value === null || ($value === '' && $type instanceof \ReflectionNamedType && in_array($type->getName(), ['int', 'float', 'bool'], true))) {
+            return $type->allowsNull() ? [true, null] : [false, null];
+        }
+        if (!$type instanceof \ReflectionNamedType || !is_scalar($value)) {
+            return [true, $value];
+        }
+
+        return [true, match (true) {
+            $type->getName() === 'int' && is_numeric($value) && (int) $value == $value => (int) $value,
+            $type->getName() === 'float' && is_numeric($value) => (float) $value,
+            $type->getName() === 'bool' && !is_bool($value) => (bool) $value,
+            $type->getName() === 'string' && !is_string($value) => (string) $value,
+            default => $value,
+        }];
     }
 
     /**
@@ -725,7 +1057,11 @@ final class DataManager
         }
     }
 
-    private function validateDynamicRecord(DynamicRecord $record, array $extraRules = []): void
+    /**
+     * @param object|null $subject what the rules validate (the record, or the model of a class-backed type)
+     * @param array<string, list<mixed>> $ownRules a class-backed type's own rules, added to its type's per field
+     */
+    private function validateDynamicRecord(DynamicRecord $record, array $extraRules = [], ?object $subject = null, array $ownRules = []): void
     {
         if ($this->validatorFactory === null) {
             return;
@@ -733,6 +1069,13 @@ final class DataManager
 
         $typeDef = $record->getType();
         $rules = $typeDef->validationRules();
+        foreach ($ownRules as $name => $fieldRules) {
+            foreach ($fieldRules as $rule) {
+                if (!in_array($rule, $rules[$name] ?? [], true)) {
+                    $rules[$name][] = $rule;
+                }
+            }
+        }
 
         // A unique or indexed string, and a unique field's scope, is a bounded column: it may not outgrow it.
         foreach ($this->fieldKinds()->lengthRules($typeDef) as $name => $lengthRule) {
@@ -761,7 +1104,7 @@ final class DataManager
             return;
         }
 
-        $validator = $this->validatorFactory->make($rules, $data, subject: $record);
+        $validator = $this->validatorFactory->make($rules, $data, subject: $subject ?? $record);
         $result = $validator->validate();
 
         if ($result->fails()) {
