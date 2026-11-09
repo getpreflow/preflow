@@ -288,6 +288,35 @@ common layouts:
   even padding and the controls fill them. Use `.folio-cell-check` on a narrow checkbox or
   radio column.
 
+## Model classes as types
+
+A PHP model marked `#[Entity(type: 'job')]` (see `preflow/data`, "Model classes as types") is the
+type `job`. Folio edits it like a JSON type: lists, search, filters, forms, drafts, publishing,
+version-checked saves, relations, media, translations and page cache tracking, from the one class
+definition.
+
+A class appears in Folio only when `config/models/job.json` exists. That **admin-only file** holds
+presentation: `label`, `icon`, `section`, list columns, filters, sort, `publishing`, and per field
+`readonly`, `hidden`, `placeholder`, and so on. It may not set schema (`table`, `storage`,
+`id_field`, `matrixable`, `views`, or a field's `type`, `validate`, `translatable`, `unique`,
+`index`, `length`, `searchable`, `transform`, `default`, `relation`, `options`, `accept`, `time`,
+`blocks`, `fields`, `multiple`): such a file is refused with an error naming it. A class without
+the file is never listed, and `"extends": true` patch files do not apply to class keys. Folio
+creates the tables (`job`, `job__published`, `job__revisions`) as for any type.
+
+App code reads and writes the working copy through the `DataManager` (`find`, `query`, `save`).
+A save that changes a published record shows it as "Changed", like an edit in the admin. To read
+what is published, as public pages do, use **`PublishedModels`**:
+
+```php
+$job  = $published->find(Job::class, $id);                        // ?Job, read-only
+$jobs = $published->query(Job::class)->where('state', 'open')->get();
+```
+
+The objects are read-only; saving one throws. In an admin or share preview it returns the working
+copy, as `LiveContent` does for JSON types. It refuses a class that is not a registered type or
+whose type has publishing off.
+
 ## Type options
 
 Besides `fields`, a type JSON can carry two optional blocks, plus the flags `singleton`

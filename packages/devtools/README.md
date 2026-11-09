@@ -72,6 +72,29 @@ php preflow make:model BlogPost
 # (maps to table: blog_posts)
 ```
 
+#### `make:model Name --from-type=key` — turn a JSON type into a model class
+
+Reads `config/models/<key>.json` and writes `app/Models/Name.php`: `#[Entity(table, storage, type)]`,
+the id, one property per field, with `#[Field]`, `#[Relation]` and `#[Validate]` carrying the data
+parts and labels. The JSON file is rewritten to its admin-only part (presentation: label, icon,
+list columns, per field `readonly`, `hidden`, …), so nothing is defined twice. Same table, same
+data, same ids: nothing in the database changes.
+
+```
+php preflow make:model WoodObject --from-type=object
+# Model created: app/Models/WoodObject.php
+# Admin settings kept in: config/models/object.json
+# Check the class, then run your tests: nothing in the database changes.
+```
+
+- Every property is nullable and takes the JSON `default`; `required` stays a validation rule, so
+  a stored NULL is not rewritten by a later save. A translatable property is `array|string|null`.
+- Before writing, the command loads the generated class and compares the type it derives with the
+  type from the JSON file. Any difference is an error and nothing is written.
+- It refuses a class that exists, a key that is already class-backed, a class name PHP reserves
+  (`Object`, `List`, …) and a type with `matrixable` or `views`, which a class cannot carry yet.
+  Each error names the key.
+
 ### `make:controller Name` — scaffold a controller
 
 Creates `app/Controllers/NameController.php` with a `#[Route]` class attribute and a `#[Get]` index action. Appends `Controller` to the name if not already present.

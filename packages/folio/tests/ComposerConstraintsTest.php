@@ -10,13 +10,13 @@ use PHPUnit\Framework\TestCase;
  * "^0.38 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing Folio with a release that lacks the APIs it calls: auth 0.38 (RecordUser and
  * RecordUserProvider moved to Preflow\Auth\Record, PasswordRehash; since 0.27 the chain
- * provider, ClaimsCredentials, SessionGuard::remembers()), core 0.60 (the page cache: PageCache::isolate() and refuseWhen(), Refresher and DataTags for
+ * provider, ClaimsCredentials, SessionGuard::remembers()), core 0.61 (ModelClasses, with which the Application registers model classes as types; since 0.60 the page cache: PageCache::isolate() and refuseWhen(), Refresher and DataTags for
  * Settings → Cache and publishing; since 0.59 Application::onRequest() and runningInConsole(), with which the admin is set up on demand; since 0.58 Composer\InstalledPackages and Config\ParsedJsonFiles,
  * which the extension registry, ModelExtension and TypeCatalog read through; since 0.52 NonPublicPaths, where Folio registers its admin; since
  * 0.50 it binds PublicPages, SeoSite and SeoContext, which FolioServiceProvider fills; since 0.34 Container::hasProvider(),
  * so media registers once; 0.33's cache registry Settings → Cache lists; since 0.27 it builds
  * the chain from config/auth.php, which RecordProviders and StaffPasswords look into), data
- * 0.60 (captureReads(), replayReads(), reportRead(), reportWrite(), QueryBuilder::unreported() and byIds(),
+ * 0.61 (findAs(), queryAs() and isReadOnly() for PublishedModels, TypeRegistry's class-backed types, ModelSchema; since 0.60 captureReads(), replayReads(), reportRead(), reportWrite(), QueryBuilder::unreported() and byIds(),
  * with which Folio's memos and frontend report to the page cache; since 0.42 ColumnKind, unique fields, RecordTables and typed record tables; since 0.41 DataManager::saveTypeIfVersion() for Publisher::saveDraft(); since 0.38 DeletedBy for deletePlan(); since 0.37 ModelLabelKeys and label maps; since 0.34 RecordTableSync, since 0.28 searchLoose, whereAny, deletePlan,
  * relations), i18n 0.47 (MachineServiceProvider for machine translation; since 0.39 Translator::alwaysOverride() for editable site texts; since 0.37 translation scopes, overrides, Labels, DerivedKeys, the fallback chain), notify 0.25
  * (Notifier::sendLater; the bound its require names), routing 0.59 (RouteCollection::insertBefore(), which puts the admin routes in front of the frontend catch-all; since 0.52 the redirect store, targets and not-found log
@@ -37,7 +37,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.47', 'preflow/auth' => '<0.38', 'preflow/codes' => '<0.40', 'preflow/core' => '<0.60', 'preflow/data' => '<0.60', 'preflow/i18n' => '<0.47', 'preflow/media' => '<0.50', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/routing' => '<0.59', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.54'],
+            ['preflow/ai' => '<0.47', 'preflow/auth' => '<0.38', 'preflow/codes' => '<0.40', 'preflow/core' => '<0.61', 'preflow/data' => '<0.61', 'preflow/i18n' => '<0.47', 'preflow/media' => '<0.50', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/routing' => '<0.59', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.54'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; members and codes are suggested, not required.

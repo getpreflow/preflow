@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.60.1** — 6334 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.61.0** — 6418 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -377,6 +377,49 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - `MediaLibrary::prefetch()` runs COUNT + SELECT through the query builder's `get()`; it should be one query.
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Model bridge (0.61):** released in 0.61.0 (owner, 2026-11-09: the PHP class is the source of truth). Spec:
+  `docs/superpowers/specs/2026-11-09-model-bridge-design.md`. Content without code is a JSON file; the app's own
+  models are PHP classes; Folio edits both.
+  - **What it is:**
+    - `#[Entity(type: 'job')]` makes a model class the type `job`; `#[Field]` gained `type`, `label`, `help`,
+      `config` and `default`, and `#[Relation]` writes a relation with `onDelete`. `ModelSchema::of()` derives the
+      type. A class and a JSON file that both define the schema of a key is a boot error.
+    - `ModelClasses` finds marked classes in `data.model_paths` (default `app/Models`) and the boot manifest caches
+      them. `TypeRegistry` serves class-backed types next to JSON ones.
+    - A class appears in Folio through an admin-only file (`config/models/job.json`): presentation only. Folio's
+      `TypeCatalog` lists it and edits it like a JSON type, tables and publishing included.
+    - Typed reads and writes have parity with JSON types: uuid ids, columns the class does not declare stay as
+      stored, localized queries, loose search, the same page cache tags. `findAs()`, `queryAs()` and `isReadOnly()`
+      read a published copy as read-only objects; Folio's `PublishedModels` wraps them.
+    - `preflow make:model <Class> --from-type=<key>` turns a JSON type into a class and its admin-only file after
+      a self-check; nothing in the database changes.
+  - **Upgrading:**
+    - Nothing changes for existing sites: a model without a type key is as before, and no site moves a type in
+      this release.
+    - An admin file that sets a schema key (`table`, `storage`, `id_field`, `matrixable`, `views`, a field's `type`,
+      `validate`, `options`, `relation`, …) or `"multiple"` for a class-backed type is refused with an error naming
+      the file. JSON types are unaffected.
+    - All `preflow/*` packages must be at 0.61 together for Folio and devtools; composer enforces it (folio requires
+      core and data 0.61, devtools data 0.61, core conflicts with data before 0.61).
+  - **Follow-ups:**
+    - Move holz-objekte.org's objects and BG Genius's games to classes, later and per type (`make:model --from-type`).
+    - Type-level `matrixable` and `views` cannot be expressed on a class yet; the generator refuses such types.
+    - Public `readonly` properties are never hydrated (undocumented before this note); a clone of a read-only object
+      is writable.
+    - A translatable property must be `array|string|null` and still needs an explicit `type: 'string'`
+      (`inferType` rejects the union).
+    - `insert()` with a caller-supplied id checks existence non-atomically (the database's primary key is the guard).
+    - A numeric cast of out-of-range text (`'1e30'`) is not guarded.
+    - Config keys that collide with attribute-owned keys are silently dropped by `ModelSchema`; an error would be
+      clearer. The "needs a field type" message and `?Attributes\Relation` naming want a polish.
+    - A slim admin file without a class is listed by `has()`/`keys()` and only errors on `get()`/`schema()`.
+    - `Application` keeps a dead `class_exists(ModelClasses)` guard.
+    - `make:model` resolves a relative `data.model_paths` against the working directory.
+    - Thin test coverage: translatable/unique/index/length/searchable/transform/default/help/`onDelete` overrides,
+      `update()` on a class type, `#[Validate(on:)]` with `rules()`, transformer round trip, overlay errors for
+      `id_field`/`storage`/`matrixable`/`views`, `"extends"` on a class key.
+    - `StaffScaffold` docblock alignment; `addSources` is called before `scanFiles` in `TypeCatalog`.
+    - `MigrateCommandTest` writes `Storage driver [json]` noise to STDERR.
 - ~~**Performance step 3, page cache (0.60):**~~ done in 0.60.0. The owner asked for it on 2026-11-08:
   "why does the save/publish not trigger the cache build already?". Spec:
   `docs/superpowers/specs/2026-11-08-page-cache-design.md`.

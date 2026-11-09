@@ -751,9 +751,58 @@ $dm->queryType('page')->locale('de')->where('slug', 'ueber-uns')->first();
 
 ## Model classes as types
 
-A class marked `#[Entity(type: 'job')]` is the type `job` (the registry describes it with
-`ModelSchema::of()`). Its typed reads and writes do what `findType()`, `queryType()` and
-`saveType()` do for that type:
+Content without code is a JSON file; the app's own models are PHP classes; Folio edits both.
+A class is the single definition of its model: there is no second file that repeats its fields.
+
+**Opt in** with a type key on the entity. Nothing changes for a class without one (like the
+skeleton's `Post`), and an existing JSON type keeps working as it is:
+
+```php
+use Preflow\Data\Attributes\{Entity, Field, Id, Relation, Validate};
+use Preflow\Data\Model;
+
+#[Entity(table: 'jobs', storage: 'sqlite', type: 'job')]
+final class Job extends Model
+{
+    #[Id] public ?string $uuid = null;
+
+    #[Field(label: 'Title', help: 'Shown in the list', translatable: true, type: 'string')]
+    #[Validate('required')]
+    public array|string|null $title = null;
+
+    #[Field(type: 'select', config: ['options' => ['open' => 'Open', 'closed' => 'Closed']], default: 'open')]
+    public ?string $state = null;
+
+    #[Relation(to: 'company', onDelete: 'restrict', labelField: 'name')]
+    public ?string $company = null;
+}
+```
+
+The registry finds marked classes in `app/Models` (set `data.model_paths` in `config/data.php` for
+other directories). `preflow optimize` stores the
+list in the boot manifest, so a class costs a request no more than a JSON type. A class and a JSON
+file that both define the schema of one key (fields, table, storage, id field, `matrixable`,
+`views`) is a boot error, never a silent override.
+
+**Field kinds** come from the property type (`?string` is a string, `?bool` a boolean, `int` and
+`float` a number, `#[Relation]` a relation) or from `#[Field(type: …)]`. A property that needs a
+kind and has none (an array, an object, an untyped one) is an error naming it. Dates are strings
+with `type: 'date'`. `#[Field]` takes `type`, `label`, `help` (text or a locale map), `config`
+(kind settings written at field level, as in a JSON file: `options`, `accept`, `time`, `blocks`,
+`fields`, `multiple`), `default`, `translatable`, `unique` (or a scope list), `index`, `length`,
+`searchable` and `transform`. `#[Relation(to:, onDelete:, onSelfDelete:, labelField:)]` writes the
+relation the JSON file would. `ModelSchema::of(Job::class)` shows the type derived from a class.
+
+**What goes where.** On the class: everything with data meaning, plus labels and help, which forms
+outside Folio use too. In the admin-only file `config/models/job.json`: presentation (the type's
+label, icon, section, list columns, filters, sort, `publishing`; per field `readonly`, `hidden`,
+`placeholder`, …). The file may not set schema: `table`, `storage`, `id_field`, `matrixable`,
+`views`, a field's `type`, `validate`, `translatable`, `unique`, `index`, `length`, `searchable`,
+`transform`, `default`, `relation`, `options`, `accept`, `time`, `blocks`, `fields` or `multiple`
+is refused with a message naming the file. A site without Folio never sees these files.
+Folio's columns (`_version`, `_publish_at`, …) are invisible to the class.
+
+**Typed reads and writes** do what `findType()`, `queryType()` and `saveType()` do for the type:
 
 - `find()` and `query()` read as the type reads: `query(Job::class)->locale('de')` compares
   translatable fields in that locale, `searchLoose()` reaches related records. They give
@@ -784,6 +833,13 @@ $job = $dm->findAs(Job::class, $id, 'job__published');
 $dm->queryAs(Job::class, 'job__published')->where('open', true)->get();
 $dm->isReadOnly($job); // true
 ```
+
+Values that cannot be read as the property's type (an unreadable stored value) leave the
+property's default in place. Public `readonly` properties are never filled. Ids are the type's:
+the id field keeps its name and kind, strings are generated on insert, integers auto-increment.
+
+**Not yet on classes:** a type-level `matrixable` or `views`. The generator in
+`preflow/devtools` refuses a type that has them.
 
 ## Usage
 

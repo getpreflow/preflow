@@ -11,7 +11,7 @@ use PHPUnit\Framework\TestCase;
  * so only "conflict" keeps Composer from pairing core with a release that lacks the APIs it calls: auth 0.60
  * (SessionGuard takes marker:, the signed-in marker the page cache bypasses on; since 0.38 bootAuth binds Preflow\Auth\Record\RecordUserProvider::factory() for record users from
  * config/auth.php), components 0.60
- * (ComponentRenderer::enableLive() and enableFreshness(), ErrorBoundary takes onError:), data 0.60 (DataManager::observe()
+ * (ComponentRenderer::enableLive() and enableFreshness(), ErrorBoundary takes onError:), data 0.61 (ModelClasses and the TypeRegistry's class argument, which Application boots; since 0.60 DataManager::observe()
  * and reportedStorage() for the page cache; since 0.59 Application passes cacheDir: to JsonFileDriver; since 0.59 the drivers take a connector
  * closure, the lazy connection), htmx 0.60
  * (the page cache renders a page twice in one request and rebuilds after the response: HtmxAssets
@@ -31,7 +31,7 @@ final class ComposerConstraintsTest extends TestCase
         $this->assertSame([
             'preflow/auth' => '<0.60',
             'preflow/components' => '<0.60',
-            'preflow/data' => '<0.60',
+            'preflow/data' => '<0.61',
             'preflow/htmx' => '<0.60',
             'preflow/i18n' => '<0.46',
             'preflow/routing' => '<0.59',

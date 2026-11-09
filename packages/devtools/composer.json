@@ -7,10 +7,11 @@
         "php": ">=8.4",
         "preflow/core": "^0.60 || @dev",
         "preflow/routing": "^0.1 || @dev",
-        "preflow/data": "^0.25 || @dev"
+        "preflow/data": "^0.61 || @dev"
     },
     "conflict": {
-        "preflow/core": "<0.60"
+        "preflow/core": "<0.60",
+        "preflow/data": "<0.61"
     },
     "require-dev": {
         "phpunit/phpunit": "^11.0"
