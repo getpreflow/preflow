@@ -758,8 +758,9 @@ A class is the single definition of its model: there is no second file that repe
 skeleton's `Post`), and an existing JSON type keeps working as it is:
 
 ```php
-use Preflow\Data\Attributes\{Entity, Field, Id, Relation, Validate};
+use Preflow\Data\Attributes\{Entity, Field, Id, Relation};
 use Preflow\Data\Model;
+use Preflow\Validation\Attributes\Validate;
 
 #[Entity(table: 'jobs', storage: 'sqlite', type: 'job')]
 final class Job extends Model
@@ -779,10 +780,16 @@ final class Job extends Model
 ```
 
 The registry finds marked classes in `app/Models` (set `data.model_paths` in `config/data.php` for
-other directories). `preflow optimize` stores the
+other directories; a relative entry is under the app's base path). `preflow optimize` stores the
 list in the boot manifest, so a class costs a request no more than a JSON type. A class and a JSON
 file that both define the schema of one key (fields, table, storage, id field, `matrixable`,
-`views`) is a boot error, never a silent override.
+`views`) is a boot error (the registry checks it when it is built), never a silent override. A
+class marked with a key the registry does not know (it is outside `data.model_paths`) is a
+`LogicException` on its first read or write, never a silent fall back to a plain model.
+
+**Tables.** Folio creates a type's tables (and its published copies) for the types it lists,
+which for a class means one with an admin file. A class-backed type without an admin file gets
+no table from Folio: the app creates it, for example with a migration.
 
 **Field kinds** come from the property type (`?string` is a string, `?bool` a boolean, `int` and
 `float` a number, `#[Relation]` a relation) or from `#[Field(type: …)]`. A property that needs a
@@ -818,7 +825,9 @@ Folio's columns (`_version`, `_publish_at`, …) are invisible to the class.
 
 A **translatable** field's property holds the locale map, `['en' => '…', 'de' => '…']`, on
 a multilingual site (a plain value on a single-locale one, or one stored before the field
-became translatable); give it the type `array|string|null` and the field type explicitly:
+became translatable); give it the type `array|string|null` and the field type explicitly. The
+union names no single kind (an array could be blocks, a string text or a date), so the kind
+can't be read from the property:
 
 ```php
 #[Field(type: 'string', translatable: true)]
@@ -834,8 +843,10 @@ $dm->queryAs(Job::class, 'job__published')->where('open', true)->get();
 $dm->isReadOnly($job); // true
 ```
 
-Values that cannot be read as the property's type (an unreadable stored value) leave the
-property's default in place. Public `readonly` properties are never filled. Ids are the type's:
+**Array fields** (several assets, blocks, a matrix, a multiple relation) are `?array`
+properties: the JSON text SQL storage holds is read as the array. Values that cannot be read
+as the property's type (an unreadable stored value) leave the property's default in place,
+and a save keeps the stored value until the code sets that property. Public `readonly` properties are never filled. Ids are the type's:
 the id field keeps its name and kind, strings are generated on insert, integers auto-increment.
 
 **Not yet on classes:** a type-level `matrixable` or `views`. The generator in

@@ -23,7 +23,26 @@ final class TypeRegistry
         private readonly string $modelsPath,
         private readonly ?Locales $locales = null,
         private readonly array $classes = [],
-    ) {}
+    ) {
+        $this->assertOneDefinitionPerKey();
+    }
+
+    /**
+     * A class-backed key whose model file also defines schema is an error when the registry is
+     * built (at boot), not when a request first uses the type. Reads only the files of class
+     * keys (decoded once per process, as the type's first use reads them anyway); the full
+     * overlay (a file entry for a field the class lacks) still runs on first use.
+     */
+    private function assertOneDefinitionPerKey(): void
+    {
+        foreach ($this->classes as $key => $class) {
+            $path = $this->modelsPath . '/' . $key . '.json';
+            $file = is_file($path) ? \Preflow\Core\Config\ParsedJsonFiles::read($path) : null;
+            if (is_array($file) && ($file['extends'] ?? false) !== true) {
+                ModelSchema::assertAdminOnly($file, $path, $key, $class);
+            }
+        }
+    }
 
     /** The model class that defines a type, or null for a type defined by a JSON file or at runtime. */
     public function classFor(string $type): ?string

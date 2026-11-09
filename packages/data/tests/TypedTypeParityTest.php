@@ -168,6 +168,13 @@ final class TypedTypeParityTest extends TestCase
 
         $this->assertSame(['a1' => [null, false], 'a2' => [null, false], 'a3' => [4200, true]], $read, 'the type reads every row; so does the class');
         $this->assertCount(3, $this->dm->queryType('vacancy')->get()->items());
+
+        $vacancy = $this->dm->find(Vacancy::class, 'a2');
+        $vacancy->title = ['en' => 'Joiner'];
+        $this->dm->save($vacancy, validate: false);
+        $stored = $this->dm->driver('default')->findOne('vacancy', 'a2');
+        $this->assertSame('4.5', (string) $stored['salary_from'], 'a save that did not touch the field keeps the stored value');
+        $this->assertSame('{"en":"Joiner"}', is_array($stored['title']) ? json_encode($stored['title']) : $stored['title']);
     }
 
     #[DataProvider('storages')]

@@ -81,6 +81,23 @@ final class TypeRegistryClassesTest extends TestCase
         (new TypeRegistry($dir, null, ['job' => Job::class]))->get('job');
     }
 
+    public function test_a_file_redefining_a_class_type_fails_when_the_registry_is_built(): void
+    {
+        // One definition per key is checked at boot, not when a request first uses the type.
+        $dir = $this->dirWith('job.json', ['key' => 'job', 'storage' => 'other']);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Model file job.json sets "storage", but job is defined by ' . Job::class);
+        new TypeRegistry($dir, null, ['job' => Job::class]);
+    }
+
+    public function test_a_patch_file_for_a_class_key_is_not_checked_as_its_admin_file(): void
+    {
+        $dir = $this->dirWith('job.json', ['key' => 'job', 'extends' => true, 'fields' => ['extra' => ['type' => 'string']]]);
+
+        $this->assertSame('job', (new TypeRegistry($dir, null, ['job' => Job::class]))->get('job')->table);
+    }
+
     public function test_a_file_setting_multiple_is_an_error(): void
     {
         // "multiple" decides the column (a multiple relation is a text column): it is schema.

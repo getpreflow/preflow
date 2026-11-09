@@ -264,12 +264,13 @@ final class DataManager
     public function find(string $modelClass, string|int $id): ?Model
     {
         $meta = ModelMetadata::for($modelClass);
+        $def = $this->classType($meta);
         $driver = $this->resolveDriver($meta->storage);
 
         $data = $driver->findOne($meta->table, $id, $meta->idField);
         $this->reportRead($meta->storage, $meta->table, (string) $id);
 
-        return $data === null ? null : $this->hydrate($meta, $this->classType($meta), $data);
+        return $data === null ? null : $this->hydrate($meta, $def, $data);
     }
 
     /**
@@ -308,10 +309,11 @@ final class DataManager
     public function findAs(string $modelClass, string|int $id, string $table): ?Model
     {
         $meta = ModelMetadata::for($modelClass);
+        $def = $this->classType($meta);
         $data = $this->resolveDriver($meta->storage)->findOne($table, $id, $meta->idField);
         $this->reportRead($meta->storage, $table, (string) $id);
 
-        return $data === null ? null : $this->markReadOnly($this->hydrate($meta, $this->classType($meta), $data), $table);
+        return $data === null ? null : $this->markReadOnly($this->hydrate($meta, $def, $data), $table);
     }
 
     /**
@@ -369,13 +371,24 @@ final class DataManager
 
     /**
      * The type a model class is: its #[Entity(type: …)] key's definition in the registry, or
-     * null for an ordinary model (or a type-marked class with no registry holding its key),
-     * which keeps today's typed-model behaviour.
+     * null for an ordinary model, which keeps today's typed-model behaviour. A class marked
+     * with a key the registry does not know is an error, never the ordinary path: that would
+     * write every public property, replace whole JSON records (dropping Folio's columns) and
+     * give no Folio id.
+     *
+     * @throws \LogicException for a type-marked class the registry (or a missing one) does not know
      */
     private function classType(ModelMetadata $meta): ?TypeDefinition
     {
-        if ($meta->type === null || $this->typeRegistry === null || !$this->typeRegistry->has($meta->type)) {
+        if ($meta->type === null) {
             return null;
+        }
+        if ($this->typeRegistry === null || !$this->typeRegistry->has($meta->type)) {
+            throw new \LogicException(
+                "Model class {$meta->modelClass} is marked as the type \"{$meta->type}\", but "
+                . ($this->typeRegistry === null ? 'the data manager has no type registry' : 'the type registry does not know that key')
+                . ': put the class under data.model_paths (config/data.php), or register it with the registry.',
+            );
         }
 
         return $this->typeRegistry->get($meta->type);
@@ -587,7 +600,8 @@ final class DataManager
      */
     private function writeClassType(Model $model, ModelMetadata $meta, TypeDefinition $def, string $mode, bool $validate, array $rules, ?string $scenario): void
     {
-        $record = new DynamicRecord($def, $this->classTypeValues($model, $def));
+        $values = $this->classTypeValues($model, $def);
+        $record = new DynamicRecord($def, $values);
         $driver = $this->resolveDriver($def->storage);
 
         if ($validate) {
@@ -623,6 +637,7 @@ final class DataManager
         if (self::emptyId($id)) {
             $this->takeInsertId($driver, $meta, $model);
         }
+        $this->forgetSkipped($model, array_keys($values));
         $this->wroteModel($meta, $model);
     }
 
@@ -657,14 +672,43 @@ final class DataManager
     private function classTypeValues(Model $model, TypeDefinition $def): array
     {
         $vars = get_object_vars($model); // public, initialized properties (called from outside the class)
+        $skipped = $this->skipped !== null && isset($this->skipped[$model]) ? $this->skipped[$model] : [];
         $values = [];
         foreach ([$def->idField, ...array_keys($def->fields)] as $name) {
-            if (array_key_exists($name, $vars)) {
-                $values[$name] = $vars[$name];
+            if (!array_key_exists($name, $vars)) {
+                continue;
             }
+            if (array_key_exists($name, $skipped) && $skipped[$name] === [true, $vars[$name]]) {
+                continue; // the read could not take the stored value and the code left the default: keep what is stored
+            }
+            $values[$name] = $vars[$name];
         }
 
         return $values;
+    }
+
+    /**
+     * Per model read by hydrate(), the fields whose stored value the property could not take,
+     * with the value the property was left with ([initialized, value]). A typed save writes
+     * such a field only once the code changed it: else the default would replace the stored
+     * value nobody looked at.
+     *
+     * @var \WeakMap<Model, array<string, array{bool, mixed}>>|null
+     */
+    private ?\WeakMap $skipped = null;
+
+    /** @param list<string> $written fields a save wrote: from now on the property's value is what is stored */
+    private function forgetSkipped(Model $model, array $written): void
+    {
+        if ($this->skipped === null || !isset($this->skipped[$model])) {
+            return;
+        }
+        $left = array_diff_key($this->skipped[$model], array_flip($written));
+        if ($left === []) {
+            unset($this->skipped[$model]);
+        } else {
+            $this->skipped[$model] = $left;
+        }
     }
 
     /**
@@ -703,7 +747,9 @@ final class DataManager
      * A model from a stored row. An ordinary model is filled as it is; a class-backed type
      * reads what its type stores: a translatable field's locale map (JSON text on SQL) as an
      * array, and numbers and yes/no (text on JSON storage, integers on SQL) as the property's
-     * type. A NULL a property cannot take leaves its default.
+     * type, and an array field's JSON text (SQL) as an array. A NULL a property cannot take
+     * leaves its default; so does any value it cannot take, and a typed save then keeps the
+     * stored value until the code sets the property (see $skipped).
      *
      * @param array<string, mixed> $data
      */
@@ -718,6 +764,7 @@ final class DataManager
 
         $types = $this->propertyTypes[$meta->modelClass] ??= $this->publicPropertyTypes($meta->modelClass);
         $translatable = array_flip($def->translatableFields());
+        $skipped = [];
         foreach ($data as $name => $value) {
             if (!array_key_exists($name, $types)) {
                 continue;
@@ -732,7 +779,17 @@ final class DataManager
             [$assign, $value] = self::asPropertyType($types[$name], $value);
             if ($assign) {
                 $model->{$name} = $value;
+            } else {
+                $skipped[] = $name;
             }
+        }
+        if ($skipped !== []) {
+            $vars = get_object_vars($model);
+            $this->skipped ??= new \WeakMap();
+            $this->skipped[$model] = array_combine($skipped, array_map(
+                static fn (string $name): array => [array_key_exists($name, $vars), $vars[$name] ?? null],
+                $skipped,
+            ));
         }
 
         return $model;
@@ -754,7 +811,8 @@ final class DataManager
     /**
      * A stored value as the property's type: whether to assign it, and the value. A value the
      * type takes is assigned as it is; else it is converted where that is lossless (numeric
-     * text to a number, a number to text, '0', 'false' and '' to false). A value that cannot
+     * text to a number, a number to text, '0', 'false' and '' to false, JSON text of an array
+     * to the array). A value that cannot
      * be converted (text in a number field, 4.5 for an int) leaves the property's default, as
      * a NULL the property cannot take does: one odd row never breaks a read the type would
      * make.
@@ -781,6 +839,8 @@ final class DataManager
                 'float' => is_numeric($value) ? (float) $value : null,
                 'bool' => is_scalar($value) ? !in_array(is_string($value) ? strtolower(trim($value)) : $value, ['0', 'false', '', 0, 0.0], true) : null,
                 'string' => is_int($value) || is_float($value) ? (string) $value : null,
+                // SQL storage holds an array field (assets, blocks, a multiple relation) as JSON text
+                'array' => is_string($value) && is_array($decoded = json_decode($value, true)) ? $decoded : null,
                 default => null,
             };
             if ($converted !== null) {

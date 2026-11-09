@@ -70,6 +70,33 @@ final class ModelSchema
     }
 
     /**
+     * Refuses a model file that defines schema for a key a model class defines (one definition
+     * per key): a schema key at the top or on a field. Needs only the file, not the class, so
+     * TypeRegistry runs it for every class-backed key when it is built (at boot).
+     *
+     * @param array<string, mixed> $adminFile the model JSON file of the key
+     * @throws \RuntimeException naming the file and the key it sets
+     */
+    public static function assertAdminOnly(array $adminFile, string $file, string $key, string $modelClass = ''): void
+    {
+        $tail = "{$key} is defined by " . ($modelClass !== '' ? $modelClass : 'its model class') . '; this file may only hold its admin settings';
+        $file = basename($file);
+
+        foreach (array_diff(self::SCHEMA_TYPE_KEYS, ['key', 'fields']) as $schemaKey) {
+            if (array_key_exists($schemaKey, $adminFile)) {
+                throw new \RuntimeException("Model file {$file} sets \"{$schemaKey}\", but {$tail}.");
+            }
+        }
+        foreach (is_array($adminFile['fields'] ?? null) ? $adminFile['fields'] : [] as $name => $entry) {
+            foreach (array_keys(is_array($entry) ? $entry : []) as $fieldKey) {
+                if (in_array($fieldKey, self::SCHEMA_FIELD_KEYS, true)) {
+                    throw new \RuntimeException("Model file {$file} sets \"{$fieldKey}\" on the field \"{$name}\", but {$tail}.");
+                }
+            }
+        }
+    }
+
+    /**
      * A class-backed type with its admin file's presentation laid over it: the file's type-level
      * keys (label, list, section, ...) are added, its per-field keys merged into the class's
      * fields (the file wins for label and help). The file may not define data: one definition
@@ -84,23 +111,11 @@ final class ModelSchema
     public static function overlay(array $classSchema, array $adminFile, string $file, string $modelClass = ''): array
     {
         $key = (string) ($classSchema['key'] ?? '');
-        $tail = "{$key} is defined by " . ($modelClass !== '' ? $modelClass : 'its model class') . '; this file may only hold its admin settings';
-        $file = basename($file);
-
-        foreach (array_diff(self::SCHEMA_TYPE_KEYS, ['key', 'fields']) as $schemaKey) {
-            if (array_key_exists($schemaKey, $adminFile)) {
-                throw new \RuntimeException("Model file {$file} sets \"{$schemaKey}\", but {$tail}.");
-            }
-        }
+        self::assertAdminOnly($adminFile, $file, $key, $modelClass);
         $fields = is_array($adminFile['fields'] ?? null) ? $adminFile['fields'] : [];
         foreach ($fields as $name => $entry) {
             if (!isset($classSchema['fields'][$name])) {
-                throw new \RuntimeException("Model file {$file} has settings for the field \"{$name}\", which {$key}" . ($modelClass !== '' ? " ({$modelClass})" : '') . " does not have.");
-            }
-            foreach (array_keys(is_array($entry) ? $entry : []) as $fieldKey) {
-                if (in_array($fieldKey, self::SCHEMA_FIELD_KEYS, true)) {
-                    throw new \RuntimeException("Model file {$file} sets \"{$fieldKey}\" on the field \"{$name}\", but {$tail}.");
-                }
+                throw new \RuntimeException('Model file ' . basename($file) . " has settings for the field \"{$name}\", which {$key}" . ($modelClass !== '' ? " ({$modelClass})" : '') . " does not have.");
             }
         }
 

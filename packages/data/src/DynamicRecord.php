@@ -31,9 +31,12 @@ final class DynamicRecord
         unset($this->data[$field]);
     }
 
+    /** The id as text: an auto-increment id of a class-backed type is held as a number. */
     public function getId(): ?string
     {
-        return $this->data[$this->type->idField] ?? null;
+        $id = $this->data[$this->type->idField] ?? null;
+
+        return $id === null ? null : (string) $id;
     }
 
     public function getType(): TypeDefinition
