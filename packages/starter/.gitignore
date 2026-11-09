@@ -6,7 +6,7 @@ composer.dev.json
 composer.dev.lock
 storage/cache/*
 storage/logs/*
-storage/data/*.sqlite
+storage/data/*
 # The boot manifest (preflow optimize), written per release.
 /bootstrap/cache/
 !storage/cache/.gitkeep

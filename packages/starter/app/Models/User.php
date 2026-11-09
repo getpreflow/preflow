@@ -20,7 +20,7 @@ final class User extends Model implements Authenticatable
     #[Id]
     public string $uuid = '';
 
-    #[Field(searchable: true)]
+    #[Field(searchable: true, unique: true)]
     public string $email = '';
 
     #[Field]
@@ -28,6 +28,13 @@ final class User extends Model implements Authenticatable
 
     #[Field(transform: JsonTransformer::class)]
     public array $roles = [];
+
+    #[Field]
+    public ?string $name = null;
+
+    /** The uuid of the company the employer posts for. */
+    #[Field]
+    public ?string $company = null;
 
     #[Field]
     public ?string $createdAt = null;
