@@ -147,7 +147,7 @@ per dependency"), and the page's expiry:
 
 - Names: `'fresh'`, `'next-visit'` (or `'next_visit'`), `'timed'`; only `timed` takes `every`
   (`'30m'`, `'12h'`, `'2d'` or seconds). Both are expressions. A timed page never outlives the
-  page cache's `max_age` (4 h by default): `every '12h'` refreshes every 4 h unless it is raised.
+  page cache's `max_age` (4 h by default): `every '12h'` refreshes every 4 h unless it is raised (up to 20 h).
 - Nested, the innermost wins. The body sees and sets the variables around it.
 - `expires at` takes a `DateTimeInterface`, a unix time or a date string (null does nothing);
   the earliest of several counts.

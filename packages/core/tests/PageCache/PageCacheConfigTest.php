@@ -47,12 +47,21 @@ final class PageCacheConfigTest extends TestCase
         $this->assertSame(10, $config->maxPages);
     }
 
-    public function test_max_age_zero_means_no_maximum_age_and_a_negative_one_is_refused(): void
+    public function test_max_age_zero_means_the_longest_and_a_negative_one_is_refused(): void
     {
-        $this->assertSame(0, PageCacheConfig::fromArray(['max_age' => 0])->maxAge);
+        $this->assertSame(72000, PageCacheConfig::fromArray(['max_age' => 0])->maxAge, '20 h: the tokens in a page last 24 h');
+        $this->assertSame(72000, PageCacheConfig::fromArray(['max_age' => 72000])->maxAge);
         $this->assertSame(14400, PageCacheConfig::fromArray([])->maxAge);
+        $this->assertSame(72000, (new PageCacheConfig(maxAge: 0))->withVerify('off')->maxAge, 'kept by the copies');
         $this->expectException(\InvalidArgumentException::class);
         new PageCacheConfig(maxAge: -1);
+    }
+
+    public function test_a_max_age_past_the_token_lifetime_is_refused(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('72000');
+        PageCacheConfig::fromArray(['max_age' => 86400]);
     }
 
     public function test_explain_is_off_and_verify_first_by_default(): void
@@ -110,6 +119,7 @@ final class PageCacheConfigTest extends TestCase
         yield 'enabled' => [['enabled' => 'yes']];
         yield 'max_age' => [['max_age' => -1]];
         yield 'max_age float' => [['max_age' => 1.5]];
+        yield 'max_age past 20 h' => [['max_age' => 72001]];
         yield 'rebuild_budget' => [['rebuild_budget' => '2']];
         yield 'ignore_query' => [['ignore_query' => 'utm_*']];
         yield 'vary_headers item' => [['vary_headers' => ['']]];

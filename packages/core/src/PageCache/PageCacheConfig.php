@@ -11,8 +11,9 @@ namespace Preflow\Core\PageCache;
  *   enabled            bool, false (an upgraded site opts in; the skeleton switches it on)
  *   max_age            int seconds, 14400 (4 h): the safety maximum age of every cached page;
  *                      an older one is served once more as stale while a fresh one is built.
- *                      0 turns the maximum age off (pages then follow writes and their own
- *                      expiry only); a negative value is refused
+ *                      At most 72000 (20 h): a cached page carries form and component tokens
+ *                      that last 24 h, and a visitor needs time to use them. 0 means that
+ *                      longest maximum age; a negative or longer value is refused
  *   rebuild_budget     float seconds, 2.0: after-response rebuilds stop after this per request
  *   cache_query        bool, true: pages with a query string (search, filters) are cached
  *   ignore_query       list of fnmatch() patterns of query parameters left out of the key
@@ -40,6 +41,12 @@ namespace Preflow\Core\PageCache;
 final readonly class PageCacheConfig
 {
     public const int DEFAULT_MAX_AGE = 14400;
+
+    /**
+     * The longest max_age: the 24 h the tokens in a page last (ComponentEndpoint's component
+     * tokens, the stateless CSRF slot) less 4 h for a visitor to use one.
+     */
+    public const int LONGEST_MAX_AGE = 72000;
 
     public const float DEFAULT_REBUILD_BUDGET = 2.0;
 
@@ -69,9 +76,11 @@ final readonly class PageCacheConfig
      * @param list<string> $signedInCookies
      * @param list<string> $hosts lowercase host names
      */
+    public int $maxAge;
+
     public function __construct(
         public bool $enabled = false,
-        public int $maxAge = self::DEFAULT_MAX_AGE,
+        int $maxAge = self::DEFAULT_MAX_AGE,
         public float $rebuildBudget = self::DEFAULT_REBUILD_BUDGET,
         public bool $cacheQuery = true,
         public array $ignoreQuery = self::DEFAULT_IGNORE_QUERY,
@@ -83,9 +92,10 @@ final readonly class PageCacheConfig
         public bool $explain = false,
         public string $verify = self::VERIFY_FIRST,
     ) {
-        if ($maxAge < 0) {
-            throw new \InvalidArgumentException('page_cache.max_age must be 0 (no maximum age) or more seconds.');
+        if ($maxAge < 0 || $maxAge > self::LONGEST_MAX_AGE) {
+            throw new \InvalidArgumentException('page_cache.max_age must be 1 to ' . self::LONGEST_MAX_AGE . ' seconds (20 h; the tokens in a cached page last 24 h), or 0 for that longest.');
         }
+        $this->maxAge = $maxAge === 0 ? self::LONGEST_MAX_AGE : $maxAge;
         if (!in_array($verify, [self::VERIFY_FIRST, self::VERIFY_ALWAYS, self::VERIFY_OFF], true)) {
             throw new \InvalidArgumentException("page_cache.verify must be 'first', 'always' or 'off'.");
         }

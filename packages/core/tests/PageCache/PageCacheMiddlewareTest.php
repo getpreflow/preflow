@@ -833,6 +833,18 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame('', $mw->process($this->get('/same')->withCookieParams(['album' => '1']), $same)->getHeaderLine('X-Page-Cache-Skip'));
     }
 
+    public function test_verify_logs_a_long_header_around_its_difference_only(): void
+    {
+        $mw = $this->middleware(verify: 'always');
+        $handler = $this->handler(fn (ServerRequestInterface $r): ResponseInterface => $this->html('<p>same body</p>')
+            ->withHeader('Link', str_repeat('a', 5000) . ($r->getCookieParams()['album'] ?? '-') . str_repeat('b', 5000)));
+
+        $this->assertSame('differs', $mw->process($this->get('/long')->withCookieParams(['album' => '1']), $handler)->getHeaderLine('X-Page-Cache-Skip'));
+        $line = end($this->logged);
+        $this->assertLessThan(400, strlen($line), 'not the whole 10 kB header, twice');
+        $this->assertStringContainsString('(header link: "…' . str_repeat('a', 40) . '1' . str_repeat('b', 79) . '…" / "…' . str_repeat('a', 40) . '-' . str_repeat('b', 79) . '…")', $line);
+    }
+
     #[RunInSeparateProcess]
     public function test_verify_sees_a_visitor_read_from_the_superglobals(): void
     {
@@ -1060,7 +1072,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertNotNull($this->store->get($this->key('/events')));
     }
 
-    public function test_max_age_zero_turns_the_maximum_age_off(): void
+    public function test_max_age_zero_keeps_a_page_no_longer_than_its_tokens_allow(): void
     {
         $now = 1_800_000_000.0;
         $config = new PageCacheConfig(enabled: true, hosts: ['example.com'], maxAge: 0, verify: 'off');
@@ -1070,9 +1082,12 @@ final class PageCacheMiddlewareTest extends TestCase
         $handler = $this->handler(fn (): ResponseInterface => $this->html('page'));
         $mw->process($this->get('/page'), $handler);
 
-        $now += 86400 * 365;
+        $now += 71999;
         $this->assertSame('hit', $mw->process($this->get('/page'), $handler)->getHeaderLine('X-Page-Cache'));
         $this->assertSame([], $this->staleKeys);
+
+        $now += 1;
+        $this->assertSame('stale', $mw->process($this->get('/page'), $handler)->getHeaderLine('X-Page-Cache'), '20 h: its 24 h tokens still work for 4 h');
     }
 
     public function test_expires_at_an_event_date(): void

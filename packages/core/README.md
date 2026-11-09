@@ -530,7 +530,7 @@ The page cache keeps finished pages for visitors who are not signed in, under
 // config/page_cache.php: every key is optional, these are the defaults
 return [
     'enabled' => false,
-    'max_age' => 14400,              // seconds; older pages are rebuilt behind the next visitor; 0: no maximum age
+    'max_age' => 14400,              // seconds; older pages are rebuilt behind the next visitor; at most 72000 (20 h), 0 means that
     'rebuild_budget' => 2.0,         // seconds of rebuilding after a response
     'cache_query' => true,           // cache pages with a query string (search, filters)
     'ignore_query' => ['utm_*', 'fbclid', 'gclid', 'mc_cid', 'mc_eid'],
@@ -804,7 +804,7 @@ return [
     fresh one is built behind them.
   - `timed` (`every '30m'`, `'12h'`, `'2d'` or seconds): writes are ignored. The page expires
     at its render time plus that time, but never later than `max_age`: with the default 4 h,
-    `every '12h'` refreshes every 4 h. Raise `max_age` for longer times.
+    `every '12h'` refreshes every 4 h. Raise `max_age` for longer times (up to 20 h).
   - A tag read several ways counts as the strictest (fresh, then next visit, then timed). Only
     the changed tags count: a page that read "other jobs" timed and its own job fresh is still
     forgotten when its job changes. Nested scopes: the innermost wins. Inside a live part the
@@ -841,7 +841,8 @@ return [
   ```
 
   `$pageCache->expiresAt($date)` does it from PHP. A page past its expiry, or older than
-  `max_age` (4 h by default; `0` turns the maximum age off, a negative value is refused), is
+  `max_age` (4 h by default, at most 20 h: a cached page carries form and component tokens that
+  last 24 h; `0` means those 20 h, a negative or longer value is refused), is
   served as `stale` (an expiry at or before the render is ignored: the page already shows what
   came after it) and its rebuild is queued: it is built right after that response, or by the
   cron. A `HEAD` request (an uptime monitor) is served the stale page and queues nothing. A

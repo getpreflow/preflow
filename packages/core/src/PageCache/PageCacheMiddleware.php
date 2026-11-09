@@ -28,8 +28,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  *   remember-me cookies) or an Authorization header: `X-Page-Cache: bypass`. A leftover
  *   session cookie alone does not bypass.
  *
- * A hit (fresh, or stale: marked, past its expiresAt or older than max_age; max_age 0 turns the
- * maximum age off) gets the stored headers and body with this request's per-request values
+ * A hit (fresh, or stale: marked, past its expiresAt or older than max_age, which is at most
+ * 20 h) gets the stored headers and body with this request's per-request values
  * filled in, and `X-Page-Cache: hit` or `stale`; a stale GET also goes to $onStale (the rebuild
  * queue, Refresher::stale()), a stale HEAD (an uptime monitor) changes nothing. Without $onStale,
  * a stale page's file is forgotten once a GET was served it: its next visitor renders it anew (a
@@ -555,8 +555,8 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
     /**
      * Where the first render ($body, $headers) and the second differ first, for the log: a header
-     * and both values, or the body's first differing byte with a little context from each; null
-     * when they are the same.
+     * and both values, or the body's first differing byte, each as a little context around it
+     * (at most 120 characters of each side); null when they are the same.
      *
      * @param array<string, list<string>> $headers
      * @param array<string, list<string>> $otherHeaders
@@ -565,23 +565,30 @@ final class PageCacheMiddleware implements MiddlewareInterface
     {
         foreach (array_keys($headers + $otherHeaders) as $name) {
             if (($headers[$name] ?? null) !== ($otherHeaders[$name] ?? null)) {
-                return 'header ' . $name . ': ' . self::excerpt(implode(', ', $headers[$name] ?? ['(none)'])) . ' / ' . self::excerpt(implode(', ', $otherHeaders[$name] ?? ['(none)']));
+                return 'header ' . $name . ': ' . self::around(implode(', ', $headers[$name] ?? ['(none)']), implode(', ', $otherHeaders[$name] ?? ['(none)']));
             }
         }
         if ($body === $other) {
             return null;
         }
-        $at = strspn($body ^ $other, "\0");
-        $from = max(0, $at - 40);
 
-        return 'body at byte ' . $at . ': ' . self::excerpt(substr($body, $from, $at - $from + 80), $from > 0) . ' / ' . self::excerpt(substr($other, $from, $at - $from + 80), $from > 0);
+        return 'body at byte ' . strspn($body ^ $other, "\0") . ': ' . self::around($body, $other);
     }
 
-    private static function excerpt(string $text, bool $cut = false): string
+    /** Both texts from 40 bytes before their first difference, 120 bytes long; … marks a cut. */
+    private static function around(string $text, string $other): string
     {
-        $text = (string) preg_replace('/\s+/', ' ', $text);
+        $from = max(0, strspn($text ^ $other, "\0") - 40);
 
-        return json_encode(($cut ? '…' : '') . (mb_check_encoding($text, 'UTF-8') ? $text : mb_convert_encoding($text, 'UTF-8', 'UTF-8')), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) ?: '""';
+        return self::excerpt($text, $from) . ' / ' . self::excerpt($other, $from);
+    }
+
+    private static function excerpt(string $text, int $from): string
+    {
+        $part = substr($text, $from, 120);
+        $part = ($from > 0 ? '…' : '') . (string) preg_replace('/\s+/', ' ', $part) . ($from + 120 < strlen($text) ? '…' : '');
+
+        return json_encode(mb_check_encoding($part, 'UTF-8') ? $part : mb_convert_encoding($part, 'UTF-8', 'UTF-8'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) ?: '""';
     }
 
     /**
