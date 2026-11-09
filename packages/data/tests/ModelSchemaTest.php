@@ -10,6 +10,7 @@ use Preflow\Data\ModelSchema;
 use Preflow\Data\Tests\Fixtures\ModelSchema\Job;
 use Preflow\Data\Tests\Fixtures\ModelSchema\PlainPost;
 use Preflow\Data\Tests\Fixtures\ModelSchema\UntypedArray;
+use Preflow\Data\Tests\Fixtures\ModelSchema\TranslatableString;
 use Preflow\Data\Tests\Fixtures\ModelSchema\UntypedObject;
 use Preflow\Data\Tests\Fixtures\ModelSchema\WithPlainProperty;
 
@@ -50,6 +51,14 @@ final class ModelSchemaTest extends TestCase
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('needs a field type');
         ModelSchema::of(UntypedObject::class);
+    }
+
+    public function test_a_translatable_property_must_take_the_locale_map(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('Property [' . TranslatableString::class . '::$title] is translatable');
+        $this->expectExceptionMessage('type it array|string|null');
+        ModelSchema::of(TranslatableString::class);
     }
 
     public function test_a_property_without_field_or_relation_is_not_a_field(): void

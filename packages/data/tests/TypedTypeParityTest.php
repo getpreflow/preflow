@@ -149,6 +149,28 @@ final class TypedTypeParityTest extends TestCase
     }
 
     #[DataProvider('storages')]
+    public function test_a_value_the_property_cannot_take_leaves_its_default(string $storage): void
+    {
+        $this->boot($storage);
+        $type = $this->types->get('vacancy');
+        foreach ([
+            ['uuid' => 'a1', 'salary_from' => 'about 4000', 'open' => 'false'],
+            ['uuid' => 'a2', 'salary_from' => '4.5', 'open' => '0'],
+            ['uuid' => 'a3', 'salary_from' => '4200', 'open' => 'true'],
+        ] as $row) {
+            $this->dm->saveType(DynamicRecord::fromArray($type, $row + ['title' => ['en' => 'Carpenter'], 'company' => 'c1']), validate: false);
+        }
+
+        $read = [];
+        foreach ($this->dm->query(Vacancy::class)->orderBy('uuid')->get()->items() as $vacancy) {
+            $read[$vacancy->uuid] = [$vacancy->salary_from, $vacancy->open];
+        }
+
+        $this->assertSame(['a1' => [null, false], 'a2' => [null, false], 'a3' => [4200, true]], $read, 'the type reads every row; so does the class');
+        $this->assertCount(3, $this->dm->queryType('vacancy')->get()->items());
+    }
+
+    #[DataProvider('storages')]
     public function test_a_typed_query_compares_translatable_fields_in_the_locale(string $storage): void
     {
         $this->boot($storage);

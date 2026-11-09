@@ -752,8 +752,12 @@ final class DataManager
     }
 
     /**
-     * A stored scalar as the property's (single, built-in) type: whether to assign it, and the
-     * value. Anything else is assigned as it is.
+     * A stored value as the property's type: whether to assign it, and the value. A value the
+     * type takes is assigned as it is; else it is converted where that is lossless (numeric
+     * text to a number, a number to text, '0', 'false' and '' to false). A value that cannot
+     * be converted (text in a number field, 4.5 for an int) leaves the property's default, as
+     * a NULL the property cannot take does: one odd row never breaks a read the type would
+     * make.
      *
      * @return array{bool, mixed}
      */
@@ -762,20 +766,58 @@ final class DataManager
         if ($type === null) {
             return [true, $value];
         }
-        if ($value === null || ($value === '' && $type instanceof \ReflectionNamedType && in_array($type->getName(), ['int', 'float', 'bool'], true))) {
+        $names = $type instanceof \ReflectionUnionType
+            ? array_map(static fn (\ReflectionType $t): string => $t instanceof \ReflectionNamedType ? $t->getName() : '', $type->getTypes())
+            : [$type instanceof \ReflectionNamedType ? $type->getName() : ''];
+        if ($value === null) {
             return $type->allowsNull() ? [true, null] : [false, null];
         }
-        if (!$type instanceof \ReflectionNamedType || !is_scalar($value)) {
+        if (in_array('mixed', $names, true) || self::takes($names, $value)) {
             return [true, $value];
         }
+        foreach ($names as $name) {
+            $converted = match ($name) {
+                'int' => is_numeric($value) && (float) $value == (int) $value ? (int) $value : (is_bool($value) ? (int) $value : null),
+                'float' => is_numeric($value) ? (float) $value : null,
+                'bool' => is_scalar($value) ? !in_array(is_string($value) ? strtolower(trim($value)) : $value, ['0', 'false', '', 0, 0.0], true) : null,
+                'string' => is_int($value) || is_float($value) ? (string) $value : null,
+                default => null,
+            };
+            if ($converted !== null) {
+                return [true, $converted];
+            }
+        }
+        if ($value === '') {
+            return self::asPropertyType($type, null); // an empty number field: as NULL
+        }
 
-        return [true, match (true) {
-            $type->getName() === 'int' && is_numeric($value) && (int) $value == $value => (int) $value,
-            $type->getName() === 'float' && is_numeric($value) => (float) $value,
-            $type->getName() === 'bool' && !is_bool($value) => (bool) $value,
-            $type->getName() === 'string' && !is_string($value) => (string) $value,
-            default => $value,
-        }];
+        return [false, null];
+    }
+
+    /** @param list<string> $names whether a property of these built-in types takes $value as it is */
+    private static function takes(array $names, mixed $value): bool
+    {
+        $kind = match (true) {
+            is_int($value) => 'int',
+            is_float($value) => 'float',
+            is_bool($value) => 'bool',
+            is_string($value) => 'string',
+            is_array($value) => 'array',
+            default => null,
+        };
+        if ($kind === null) {
+            foreach ($names as $name) {
+                if ($name !== '' && $value instanceof $name) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return in_array($kind, $names, true)
+            || ($kind === 'int' && in_array('float', $names, true))
+            || ($kind === 'bool' && (in_array('true', $names, true) && $value === true || in_array('false', $names, true) && $value === false));
     }
 
     /**

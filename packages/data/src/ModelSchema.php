@@ -140,6 +140,7 @@ final class ModelSchema
         }
 
         if ($field->translatable) {
+            self::assertTakesLocaleMap($modelClass, $prop);
             $out['translatable'] = true;
         }
         if ($field->unique !== false) {
@@ -170,6 +171,29 @@ final class ModelSchema
         }
 
         return $out + $field->config;
+    }
+
+    /**
+     * A translatable field reads its locale map into the property on a multilingual site, so the
+     * property must take an array (and the plain value of a single-locale site).
+     */
+    private static function assertTakesLocaleMap(string $modelClass, \ReflectionProperty $prop): void
+    {
+        $type = $prop->getType();
+        if ($type === null) {
+            return;
+        }
+        $names = $type instanceof \ReflectionUnionType ? $type->getTypes() : [$type];
+        foreach ($names as $named) {
+            if ($named instanceof \ReflectionNamedType && in_array($named->getName(), ['array', 'mixed'], true)) {
+                return;
+            }
+        }
+
+        throw new \LogicException(
+            "Property [{$modelClass}::\${$prop->getName()}] is translatable, so it holds a locale map ({\"en\": …, \"de\": …}) on a multilingual site: "
+            . 'type it array|string|null.'
+        );
     }
 
     private static function inferType(string $modelClass, \ReflectionProperty $prop): string
