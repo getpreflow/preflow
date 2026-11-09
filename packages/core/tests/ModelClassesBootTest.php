@@ -68,4 +68,19 @@ PHP);
         $this->assertTrue($registry->has('boot_job'));
         $this->assertSame('boot_job', $registry->get('boot_job')->table);
     }
+
+    #[RunInSeparateProcess]
+    public function test_a_relative_model_path_is_under_the_app_not_the_working_directory(): void
+    {
+        mkdir($this->dir . '/src/Domain', 0777, true);
+        rename($this->dir . '/app/Models/BootJob.php', $this->dir . '/src/Domain/BootJob.php');
+        file_put_contents($this->dir . '/config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => '" . $this->dir . "/storage']], 'default' => 'json', 'model_paths' => ['src/Domain']];\n");
+        require_once $this->dir . '/src/Domain/BootJob.php';
+        $this->assertNotSame(realpath($this->dir), realpath((string) getcwd()), 'a web request runs in public/, a test elsewhere');
+
+        $app = Application::create($this->dir);
+        $app->boot();
+
+        $this->assertTrue($app->container()->get(TypeRegistry::class)->has('boot_job'));
+    }
 }

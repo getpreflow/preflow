@@ -711,7 +711,13 @@ final class Application
         $modelsPath = $dataConfig['models_path'] ?? $this->basePath('config/models');
         $locales = $this->container->get(\Preflow\Data\Locales::class);
         // Model classes marked #[Entity(type: …)] are types too, so the registry is there for them alone.
-        $modelPaths = array_values(array_filter((array) ($dataConfig['model_paths'] ?? [$this->basePath('app/Models')]), 'is_string'));
+        // A relative entry is under the app, not the working directory (public/ on a web request).
+        $modelPaths = isset($dataConfig['model_paths'])
+            ? array_map(
+                fn (string $path): string => str_starts_with($path, '/') ? $path : $this->absolutePath($path),
+                array_values(array_filter((array) $dataConfig['model_paths'], 'is_string')),
+            )
+            : [$this->basePath('app/Models')];
         $classes = class_exists(\Preflow\Data\ModelClasses::class)
             ? (new \Preflow\Data\ModelClasses($modelPaths, $this->manifest))->all()
             : [];
