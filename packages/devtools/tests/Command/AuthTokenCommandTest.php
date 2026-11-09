@@ -171,4 +171,17 @@ final class AuthTokenCommandTest extends TestCase
         $this->assertSame(1, $code);
         $this->assertSame("Error: Run the user_tokens migration first.\n", $out);
     }
+
+    public function test_other_storage_errors_print_their_own_message(): void
+    {
+        // The table exists but lacks a column: the error names user_tokens, yet the table is not missing.
+        (new \PDO('sqlite:' . $this->dir . '/app.sqlite'))->exec('CREATE TABLE user_tokens (uuid TEXT)');
+
+        [$code, $out] = $this->token(['ada@example.com'], migrate: false);
+
+        $this->assertSame(1, $code);
+        $this->assertStringStartsWith('Error: ', $out);
+        $this->assertStringNotContainsString('migration', $out);
+        $this->assertStringContainsString('user_tokens', $out);
+    }
 }

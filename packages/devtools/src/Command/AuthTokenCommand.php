@@ -84,7 +84,9 @@ final class AuthTokenCommand implements CommandInterface
 
                 return $list ? $this->list($dm, $user->getAuthId()) : $this->issue($dm, $user->getAuthId(), (string) $subject, $name);
             } catch (\Throwable $e) {
-                if (preg_match('/user_tokens|no such table|doesn.t exist|does not exist/i', $e->getMessage()) === 1) {
+                // Only a missing user_tokens table: SQLite "no such table: user_tokens", MySQL "user_tokens' doesn't exist",
+                // PostgreSQL 'relation "user_tokens" does not exist'.
+                if (preg_match('/no such table: (?:\w+\.)?user_tokens|user_tokens[`\'"]? doesn.t exist|relation "(?:\w+\.)?user_tokens" does not exist/i', $e->getMessage()) === 1) {
                     return $this->fail('Run the user_tokens migration first.');
                 }
                 throw $e;
