@@ -14,6 +14,7 @@ use Preflow\Data\DataManager;
 use Preflow\DevTools\Console;
 use Preflow\Folio\Publishing\PublishedModels;
 use Preflow\Folio\Publishing\Publisher;
+use Preflow\Media\Image\ImageBackends;
 use Preflow\Media\MediaLibrary;
 use Tests\Support\StarterApp;
 
@@ -21,10 +22,24 @@ final class SeedTest extends TestCase
 {
     use StarterApp;
 
+    private ?string $outerNoImages = null;
+
+    protected function setUp(): void
+    {
+        $outer = $_ENV['STARTER_NO_IMAGES'] ?? getenv('STARTER_NO_IMAGES');
+        $this->outerNoImages = $outer === false ? null : (string) $outer;
+    }
+
     protected function tearDown(): void
     {
-        putenv('STARTER_NO_IMAGES');
-        unset($_ENV['STARTER_NO_IMAGES']);
+        // Back to what the shell gave the run (STARTER_NO_IMAGES=1 is a way to run the suite without images).
+        if ($this->outerNoImages === null) {
+            putenv('STARTER_NO_IMAGES');
+            unset($_ENV['STARTER_NO_IMAGES']);
+        } else {
+            putenv('STARTER_NO_IMAGES=' . $this->outerNoImages);
+            $_ENV['STARTER_NO_IMAGES'] = $this->outerNoImages;
+        }
         $this->removeStarter();
     }
 
@@ -162,8 +177,17 @@ final class SeedTest extends TestCase
         $this->assertSame('published', $this->states()[md5('starter-job-2')]);
     }
 
+    /** The seed imports images only with an image library, so these checks mean nothing without one. */
+    private function skipWithoutImages(): void
+    {
+        if (ImageBackends::detect() === null || ($_ENV['STARTER_NO_IMAGES'] ?? getenv('STARTER_NO_IMAGES')) === '1') {
+            $this->markTestSkipped('No image library (or STARTER_NO_IMAGES=1): the seed skips the images.');
+        }
+    }
+
     public function test_the_demo_seed_imports_the_logos(): void
     {
+        $this->skipWithoutImages();
         $this->bootStarter();
 
         $media = $this->container()->get(MediaLibrary::class);
@@ -175,6 +199,7 @@ final class SeedTest extends TestCase
 
     public function test_the_demo_seed_imports_the_news_images(): void
     {
+        $this->skipWithoutImages();
         $this->bootStarter();
 
         $media = $this->container()->get(MediaLibrary::class);

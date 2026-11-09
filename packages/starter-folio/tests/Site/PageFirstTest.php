@@ -8,6 +8,7 @@ use App\Seeds\ContentSeeder;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Folio\Publishing\Publisher;
+use Preflow\Media\Image\ImageBackends;
 use Tests\Support\StarterApp;
 
 /**
@@ -97,7 +98,9 @@ final class PageFirstTest extends TestCase
         $detail->assertOk();
         $detail->assertSee('<h1>Forty jobs and counting</h1>');
         $detail->assertSee('datetime="2026-11-05"');
-        $detail->assertSee('<img'); // the news image (the seed imports it when GD is there)
+        if (ImageBackends::detect() !== null && ($_ENV['STARTER_NO_IMAGES'] ?? getenv('STARTER_NO_IMAGES')) !== '1') {
+            $detail->assertSee('<img'); // the news image: the seed imports it only with an image library
+        }
         $this->assertSame(1, substr_count($detail->body(), '<meta name="description"'));
         $detail->assertSee('property="og:type" content="article"');
 
