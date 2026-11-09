@@ -104,7 +104,7 @@ curl -X DELETE http://localhost:8080/api/jobs/<id> -H "Authorization: Bearer $TO
 ```
 
 - `employment_type` is `full_time`, `part_time`, `contract` or `internship`. `remote` is `no`, `hybrid` or `full`. `description` is Markdown, at least 30 characters.
-- No token gives 401. A missing job gives 404. A job of another company gives 403, not 404. That is on purpose: job ids are random and unguessable, so the answer reveals nothing, and a client gets a clearer message.
+- No token gives 401. A missing job gives 404. A job of another company gives 403, not 404. That is on purpose: the ids of jobs you create are random and unguessable, so the answer reveals nothing, and a client gets a clearer message. (The demo seed's ids are not random: they are fixed md5 values, so the demo data is the same on every install.)
 - A draft is not visible on the public read routes. Only its owner sees it, in the answer to a write.
 
 **Never put cookie-authenticated (session) routes under `/api`.** `/api` is exempt from CSRF checks in `config/csrf.php`, because its write routes take bearer tokens only, which a browser never sends by itself. A route that trusts the session cookie under `/api` would be open to forged requests.

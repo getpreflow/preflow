@@ -55,6 +55,12 @@ trait StarterApp
                 exec('rm -rf ' . escapeshellarg($this->starterRoot . '/' . $path));
             }
         }
+        // ApiOnlyTest reads this log back: one line per booted copy, naming the site paths it still has.
+        $log = getenv('STARTER_API_ONLY_LOG');
+        if (is_string($log) && $log !== '') {
+            $left = array_filter(self::SITE_PATHS, fn (string $path): bool => file_exists($this->starterRoot . '/' . $path));
+            file_put_contents($log, 'site paths left: ' . (implode(',', $left) ?: 'none') . "\n", FILE_APPEND);
+        }
 
         // Clean globals, as a new process on the server has: nothing from tests that ran before.
         if (session_status() !== PHP_SESSION_ACTIVE) {
