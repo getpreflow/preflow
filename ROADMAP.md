@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-09 (v0.62.0)
+> Last updated: 2026-11-09 (v0.62.0; 0.63.0 prepared)
 
 ## Current State
 
-**v0.62.0** — 6515 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.62.0** — 6515 tests, 23 packages (0.63.0 prepared: 6536 tests, 25 packages), production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -381,6 +381,49 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - `MediaLibrary::prefetch()` runs COUNT + SELECT through the query builder's `get()`; it should be one query.
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Starters (0.63):** prepared, not released (2026-11-09). Two project templates replace the skeleton, plus the three
+  general pieces they needed (rule: general features live in the packages). Plan:
+  `docs/superpowers/plans/2026-11-09-starters.md`.
+  - **What it is:**
+    - devtools: `preflow db:seed` boots the application: seeders get constructor injection from the container, the
+      `--class` option picks a seeder, `.env` is loaded, and models are validated on save. `preflow serve` quotes its
+      paths (a project path with a space works).
+    - auth: `AuthMiddleware` sends a signed-out HTML GET or HEAD to the guard's `login` path with `?next=`, and answers
+      htmx with `HX-Redirect`. A guard without a `login` key, and a middleware built without an `ApiConfig`, behave as
+      before (401). `AuthManager::loginPath()`.
+    - view: `Preflow\View\PageResponder` renders a page template from a controller (assets collected, status code
+      such as 404). `route` is an empty object there, since a controller has no route parameters; callers pass what
+      the template needs.
+    - New packages `preflow/starter` (a job board: public search without a session cookie, employer accounts, a JSON
+      API with bearer tokens, SQLite) and `preflow/starter-folio` (the same, with Folio: jobs are a Folio type, staff
+      accounts are records, publishing is Folio's). Install with `composer create-project`; both seed a demo and run
+      `composer test` green on a fresh install. `bin/starter test <name>` and `bin/starter fresh <name>` check them.
+    - `preflow/skeleton` is abandoned in favour of `preflow/starter` (`"abandoned"` in its composer.json, README
+      notice). It stays in the split for this release only.
+  - **Upgrading:**
+    1. `db:seed` validates on save: seed data that is invalid now fails the run instead of being stored.
+    2. A guard with a `login` path in `config/auth.php` now redirects signed-out HTML requests instead of answering 401;
+       without the key nothing changes.
+    3. core conflicts with view before 0.63 (the file-page renderer calls `PageResponder`); the other packages keep
+       their constraints (auth and devtools use nothing new from another package). The starters require every
+       `preflow/*` at `^0.63`.
+    4. Owner: tick "abandoned" for `preflow/skeleton` on Packagist; create the `starter` and `starter-folio` split
+       repositories and submit both to Packagist.
+  - **Tests:** 0.63 full monorepo run: 6536 tests, 31380 assertions (185 skipped); starter suite 86 tests, starter-folio suite 117 tests.
+  - **Follow-ups:**
+    - Remove `packages/skeleton` (step 2 of its retirement): the split entry, the root autoload (`App\`, `Tests\`),
+      the Skeleton suite in `phpunit.xml`, and the migration copy in `AuthTokenCommandTest`.
+    - CSRF: exempt API prefixes that are outside the session paths by default (the starters set
+      `csrf.exempt = ['/api']` by hand, so 401/404/405 answer JSON).
+    - `folio.tables` does not index relation columns (starter-folio adds `jobs.company` indexes in an after-migrate
+      step, SQLite only).
+    - Folio's `/folio/login` matches the email case-sensitively; the auth provider or Folio's AuthController should
+      normalise it.
+    - Folio date fields cannot default to today (starter-folio's "Posted on" is set in code).
+    - Expose the description `seo()` chose, so a layout does not need an app helper (starter-folio's
+      `page_description()`).
+    - The component endpoint resolves the default state before it runs an action (the starter's search runs twice).
+    - Optional: a Folio slug generated from the title (starter-folio requires the slug).
 - **REST pieces (0.62):** released in 0.62.0 (owner, 2026-11-09). What a JSON API needs from the framework, as small
   parts with public interfaces; Folio is not involved.
   - **What it is:**

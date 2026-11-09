@@ -2,8 +2,9 @@
 
 A small, runnable app that boots the [Folio](../../packages/folio) CMS admin so
 you can see it in a browser. It exists to **demonstrate** the admin — it is not a
-project template. To start a real project, use the
-[skeleton](../../packages/skeleton).
+project template. To start a real project, use
+[`preflow/starter`](../../packages/starter), or
+[`preflow/starter-folio`](../../packages/starter-folio) for an app with Folio already wired.
 
 It ships two content types (`Pages`, `Articles`) and the Folio admin mounted at
 `/folio`.

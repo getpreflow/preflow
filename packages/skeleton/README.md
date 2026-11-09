@@ -1,4 +1,18 @@
-# Preflow Skeleton
+# Preflow Skeleton (abandoned)
+
+This template is abandoned and gets no further releases. Use one of the two starters instead:
+
+- [`preflow/starter`](../starter): a job board with a public site, employer accounts and a JSON API.
+  `composer create-project preflow/starter myapp`
+- [`preflow/starter-folio`](../starter-folio): the same job board with the Folio CMS admin wired in.
+  `composer create-project preflow/starter-folio myapp`
+
+The old content stays below for reference.
+
+---
+
+## Old content
+
 
 Starter template for [Preflow](https://github.com/getpreflow/preflow) applications.
 

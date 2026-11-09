@@ -2,6 +2,7 @@
     "name": "preflow/skeleton",
     "description": "Preflow project skeleton",
     "type": "project",
+    "abandoned": "preflow/starter",
     "license": "MIT",
     "minimum-stability": "dev",
     "prefer-stable": true,

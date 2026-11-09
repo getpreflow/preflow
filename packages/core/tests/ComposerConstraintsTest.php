@@ -16,8 +16,8 @@ use PHPUnit\Framework\TestCase;
  * closure, the lazy connection), htmx 0.60
  * (the page cache renders a page twice in one request and rebuilds after the response: HtmxAssets
  * adds htmx to every render and ComponentToken issues a request's tokens at one time; before, a
- * second render had no htmx and could differ in its tokens; since 0.46 HtmxExtensionProvider takes pathPrefix:), i18n 0.46 (LocaleMiddleware::urlPrefix()), routing 0.62 (Router throws MethodNotAllowedHttpException; 0.59: Router takes store:, the boot manifest's route sets), view 0.58
- * (since 0.60 SeoContext::useDefaults(), SeoMiddleware::pageLocale(), SeoSite::defaultsFor(); the Geo classes: GeoCollector, GeoMiddleware, RenderScopes, GeoEntries; the Seo classes: SeoConfig,
+ * second render had no htmx and could differ in its tokens; since 0.46 HtmxExtensionProvider takes pathPrefix:), i18n 0.46 (LocaleMiddleware::urlPrefix()), routing 0.62 (Router throws MethodNotAllowedHttpException; 0.59: Router takes store:, the boot manifest's route sets), view 0.63
+ * (PageResponder::requestVariable(), which the file-page renderer calls and Application binds PageResponder for; since 0.60 SeoContext::useDefaults(), SeoMiddleware::pageLocale(), SeoSite::defaultsFor(); the Geo classes: GeoCollector, GeoMiddleware, RenderScopes, GeoEntries; the Seo classes: SeoConfig,
  * SeoContext, SeoSite, SchemaRegistry, SeoMiddleware; the Audit classes: AuditRegistry, PageRenderer
  * and AssetCollector::restoring(); since 0.58 AssetCollector takes cachePath:, which Application passes) and twig and blade 0.60 (TwigEngine and BladeEngine
  * take liveParts: and pageCache:; since 0.50 geoCollector: and seoContext:).
@@ -35,7 +35,7 @@ final class ComposerConstraintsTest extends TestCase
             'preflow/htmx' => '<0.60',
             'preflow/i18n' => '<0.46',
             'preflow/routing' => '<0.62',
-            'preflow/view' => '<0.60',
+            'preflow/view' => '<0.63',
             'preflow/twig' => '<0.60',
             'preflow/blade' => '<0.60',
         ], $composer['conflict'] ?? null);

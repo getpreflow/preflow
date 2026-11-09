@@ -1,6 +1,6 @@
 # Preflow DevTools
 
-CLI commands for Preflow development. Requires the `preflow` entry point in your project root (provided by `preflow/skeleton`) or the package binary at `vendor/bin/preflow`.
+CLI commands for Preflow development. Requires the `preflow` entry point in your project root (provided by `preflow/starter` and `preflow/starter-folio`) or the package binary at `vendor/bin/preflow`.
 
 ## Installation
 

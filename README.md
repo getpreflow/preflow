@@ -15,14 +15,20 @@ Browsers handle HTML best. Instead of shipping JSON to the client and hydrating 
 ## Quick Start
 
 ```bash
-composer create-project preflow/skeleton myapp
+composer create-project preflow/starter myapp
 cd myapp
-cp .env.example .env
-php preflow migrate
 php preflow serve
 ```
 
-Open `http://localhost:8080` — you'll see a working component with a counter.
+Open `http://localhost:8080`. The installer writes `.env`, creates the SQLite database and seeds a small job board, so the app works at once: a searchable job list, employer sign-in and a JSON API.
+
+With the Folio CMS admin wired in (admin at `/folio`):
+
+```bash
+composer create-project preflow/starter-folio myapp
+cd myapp
+php preflow serve
+```
 
 ## Packages
 
@@ -38,7 +44,9 @@ Open `http://localhost:8080` — you'll see a working component with a counter.
 | [`preflow/testing`](packages/testing) | Test utilities for components, routes, data |
 | [`preflow/media`](packages/media) | Asset library: uploads, WebP/AVIF variants, private files, `media_image()` |
 | [`preflow/devtools`](packages/devtools) | CLI commands (serve, migrate, make:component, etc.) |
-| [`preflow/skeleton`](packages/skeleton) | Project starter template |
+| [`preflow/starter`](packages/starter) | Project starter: a job board with employer accounts and a JSON API |
+| [`preflow/starter-folio`](packages/starter-folio) | The same starter with the Folio CMS admin wired in |
+| [`preflow/skeleton`](packages/skeleton) | Abandoned: use `preflow/starter` |
 
 ## Architecture
 

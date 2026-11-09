@@ -53,6 +53,8 @@ jobs:
           - { local: 'packages/form', remote: 'form' }
           - { local: 'packages/folio', remote: 'folio' }
           - { local: 'packages/notify', remote: 'notify' }
+          - { local: 'packages/starter', remote: 'starter' }
+          - { local: 'packages/starter-folio', remote: 'starter-folio' }
 
     steps:
       - uses: actions/checkout@v4

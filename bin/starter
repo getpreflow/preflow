@@ -10,8 +10,13 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Paths a fresh install must answer with 200. Later tasks add the pages and the API here.
-CHECK_PATHS=(/ /jobs /api/jobs /news /about-error-boundaries)
+# Paths a fresh install must answer with 200, per starter (they have different pages).
+check_paths_for() {
+    case "$1" in
+        starter-folio) echo "/ /jobs /api/jobs /news /about-error-boundaries" ;;
+        *) echo "/ /jobs /api/jobs /employer/login" ;;
+    esac
+}
 
 usage() {
     echo "Usage: bin/starter install|test|fresh <name> [args...]" >&2
@@ -140,7 +145,7 @@ do_fresh() {
     fi
 
     local path code
-    for path in "${CHECK_PATHS[@]}"; do
+    for path in $(check_paths_for "$name"); do
         code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port$path")"
         if [ "$code" != "200" ]; then
             echo "GET $path answered $code, expected 200" >&2
