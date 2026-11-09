@@ -1,6 +1,6 @@
 # Preflow Roadmap
 
-> Last updated: 2026-10-27 (v0.41.2 released)
+> Last updated: 2026-11-09 (v0.61.0)
 
 ## Current State
 
@@ -383,14 +383,18 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   - **What it is:**
     - `#[Entity(type: 'job')]` makes a model class the type `job`; `#[Field]` gained `type`, `label`, `help`,
       `config` and `default`, and `#[Relation]` writes a relation with `onDelete`. `ModelSchema::of()` derives the
-      type. A class and a JSON file that both define the schema of a key is a boot error.
+      type. A class and a JSON file that both define the schema of a key is a boot error (`TypeRegistry` checks the
+      class keys' files when it is built). A class marked with a key the registry does not know is a `LogicException`
+      on first use, never a fall back to a plain model.
     - `ModelClasses` finds marked classes in `data.model_paths` (default `app/Models`) and the boot manifest caches
       them. `TypeRegistry` serves class-backed types next to JSON ones.
     - A class appears in Folio through an admin-only file (`config/models/job.json`): presentation only. Folio's
       `TypeCatalog` lists it and edits it like a JSON type, tables and publishing included.
     - Typed reads and writes have parity with JSON types: uuid ids, columns the class does not declare stay as
       stored, localized queries, loose search, the same page cache tags. `findAs()`, `queryAs()` and `isReadOnly()`
-      read a published copy as read-only objects; Folio's `PublishedModels` wraps them.
+      read a published copy as read-only objects; Folio's `PublishedModels` wraps them (and reads the type's own
+      table where `LiveContent` would: previews, publishing off). Array fields (several assets, blocks, matrix, a
+      multiple relation) are `?array` properties; a value hydration could not take is kept by the next save.
     - `preflow make:model <Class> --from-type=<key>` turns a JSON type into a class and its admin-only file after
       a self-check; nothing in the database changes.
   - **Upgrading:**
@@ -401,6 +405,9 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       the file. JSON types are unaffected.
     - All `preflow/*` packages must be at 0.61 together for Folio and devtools; composer enforces it (folio requires
       core and data 0.61, devtools data 0.61, core conflicts with data before 0.61).
+    - Run `preflow optimize` after upgrading (the standard deploy does): the boot manifest then holds the model
+      class list.
+    - Relative `data.model_paths` entries are under the app's base path (not the working directory).
   - **Follow-ups:**
     - Move holz-objekte.org's objects and BG Genius's games to classes, later and per type (`make:model --from-type`).
     - Type-level `matrixable` and `views` cannot be expressed on a class yet; the generator refuses such types.
@@ -414,10 +421,11 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       clearer. The "needs a field type" message and `?Attributes\Relation` naming want a polish.
     - A slim admin file without a class is listed by `has()`/`keys()` and only errors on `get()`/`schema()`.
     - `Application` keeps a dead `class_exists(ModelClasses)` guard.
-    - `make:model` resolves a relative `data.model_paths` against the working directory.
+    - Derived `TypeDefinition`s are computed per request from the class (reflection; about the cost of a JSON
+      type's file decode), not stored in the boot manifest.
     - Thin test coverage: translatable/unique/index/length/searchable/transform/default/help/`onDelete` overrides,
-      `update()` on a class type, `#[Validate(on:)]` with `rules()`, transformer round trip, overlay errors for
-      `id_field`/`storage`/`matrixable`/`views`, `"extends"` on a class key.
+      `#[Validate(on:)]` with `rules()`, transformer round trip, overlay errors for `id_field`/`matrixable`/`views`,
+      the typed read of `''` and `'FALSE'` into a bool property.
     - `StaffScaffold` docblock alignment; `addSources` is called before `scanFiles` in `TypeCatalog`.
     - `MigrateCommandTest` writes `Storage driver [json]` noise to STDERR.
 - ~~**Performance step 3, page cache (0.60):**~~ done in 0.60.0. The owner asked for it on 2026-11-08:

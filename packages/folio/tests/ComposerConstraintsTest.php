@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
  * "^0.38 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing Folio with a release that lacks the APIs it calls: auth 0.38 (RecordUser and
  * RecordUserProvider moved to Preflow\Auth\Record, PasswordRehash; since 0.27 the chain
- * provider, ClaimsCredentials, SessionGuard::remembers()), core 0.61 (ModelClasses, with which the Application registers model classes as types; since 0.60 the page cache: PageCache::isolate() and refuseWhen(), Refresher and DataTags for
+ * provider, ClaimsCredentials, SessionGuard::remembers()), core 0.61 (the Application registers model classes as types, found with data's ModelClasses, so a class-backed type Folio lists is in the registry; since 0.60 the page cache: PageCache::isolate() and refuseWhen(), Refresher and DataTags for
  * Settings → Cache and publishing; since 0.59 Application::onRequest() and runningInConsole(), with which the admin is set up on demand; since 0.58 Composer\InstalledPackages and Config\ParsedJsonFiles,
  * which the extension registry, ModelExtension and TypeCatalog read through; since 0.52 NonPublicPaths, where Folio registers its admin; since
  * 0.50 it binds PublicPages, SeoSite and SeoContext, which FolioServiceProvider fills; since 0.34 Container::hasProvider(),
