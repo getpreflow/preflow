@@ -35,8 +35,8 @@ final class MakeModelCommand implements CommandInterface
     /** Field types whose stored value is text, so the property is a string. */
     private const array STRING_KINDS = ['string', 'text', 'richtext', 'date', 'select', 'env'];
 
-    /** Field types stored as a list or a structure: an array, or its JSON text as an SQL driver returns it. */
-    private const array STRUCTURED_KINDS = ['asset', 'blocks', 'matrix'];
+    /** Field types stored as a list or a structure, which DataManager's typed read gives as an array (from JSON text too). */
+    private const array STRUCTURED_KINDS = ['blocks', 'matrix'];
 
     /**
      * Schema keys with a #[Field] parameter or #[Validate]. The parameter is used only where
@@ -179,7 +179,11 @@ final class MakeModelCommand implements CommandInterface
                 throw new \RuntimeException("config/data.php could not be read ({$e->getMessage()}), so its data.model_paths can't be checked for a class of this type.", 0, $e);
             }
             if (is_array($data) && isset($data['model_paths'])) {
-                $paths = array_values(array_filter((array) $data['model_paths'], 'is_string'));
+                // a relative entry is under the app, as Application reads it
+                $paths = array_map(
+                    static fn (string $path): string => str_starts_with($path, '/') ? $path : "{$base}/{$path}",
+                    array_values(array_filter((array) $data['model_paths'], 'is_string')),
+                );
             }
         }
         $target = self::resolved("{$base}/app/Models");
@@ -317,8 +321,9 @@ final class MakeModelCommand implements CommandInterface
             $translatable => 'array|string',
             $fieldType === 'boolean' => 'bool',
             $fieldType === 'number' => 'int|float',
-            in_array($fieldType, self::STRING_KINDS, true), $fieldType === 'relation' && !($def['multiple'] ?? false) => 'string',
-            in_array($fieldType, self::STRUCTURED_KINDS, true), $fieldType === 'relation' => 'array|string',
+            // one asset or one related record: its id; several: the list of them
+            in_array($fieldType, self::STRING_KINDS, true), $fieldType === 'relation' && !($def['multiple'] ?? false), $fieldType === 'asset' && !self::multipleAssets($def) => 'string',
+            in_array($fieldType, self::STRUCTURED_KINDS, true), $fieldType === 'relation', $fieldType === 'asset' => 'array',
             default => 'mixed',
         };
         // The type ModelSchema reads from the property and its #[Relation] when #[Field] names none.
@@ -396,6 +401,12 @@ final class MakeModelCommand implements CommandInterface
         return implode("\n", $lines);
     }
 
+    /** @param array<string, mixed> $def whether an asset field holds several assets (Folio's "asset": {"multiple": true}) */
+    private static function multipleAssets(array $def): bool
+    {
+        return is_array($def['asset'] ?? null) && (bool) ($def['asset']['multiple'] ?? false);
+    }
+
     /** A label or help text goes on the class when it is a text or a map per locale; anything else stays in the admin file. */
     private static function textOnClass(mixed $value): bool
     {
@@ -438,6 +449,7 @@ final class MakeModelCommand implements CommandInterface
             'int|float' => is_int($default) || is_float($default),
             'string' => is_string($default),
             'array|string' => is_array($default) || is_string($default),
+            'array' => is_array($default),
             default => true,
         };
         $type = match (true) {

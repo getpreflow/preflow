@@ -124,7 +124,7 @@ final class MakeModelFromTypeTest extends TestCase
         $admin = json_decode(file_get_contents($this->base . '/config/models/article.json'), true);
         $this->assertArrayNotHasKey('tags', $admin['fields'], '"multiple" is schema: a multiple relation is a text column (FieldKinds)');
         $this->assertStringContainsString(
-            "    #[Field(type: 'relation', config: ['multiple' => true])]\n    #[Relation(to: 'tag', onDelete: 'detach', labelField: 'name')]\n    public array|string|null \$tags = null;",
+            "    #[Field(type: 'relation', config: ['multiple' => true])]\n    #[Relation(to: 'tag', onDelete: 'detach', labelField: 'name')]\n    public ?array \$tags = null;",
             file_get_contents($this->base . '/app/Models/Article.php'),
         );
     }
@@ -140,6 +140,55 @@ final class MakeModelFromTypeTest extends TestCase
         $this->assertStringContainsString("    #[Validate('required')]\n    public int|float|null \$rating = 3;", $php);
         $this->assertStringContainsString("    public ?bool \$featured = false;", $php);
         $this->assertStringContainsString("config: ['options' => ['news' => 'News', 'guides' => 'Guides'], 'default' => null],\n    )]\n    public ?string \$section = null;", $php);
+    }
+
+    public function test_a_field_that_holds_a_list_is_an_array_property(): void
+    {
+        copy($this->fixtureDir . '/object.json', $this->base . '/config/models/object.json');
+        copy($this->fixtureDir . '/article.json', $this->base . '/config/models/article.json');
+        copy($this->fixtureDir . '/game.json', $this->base . '/config/models/game.json');
+
+        $this->make('WoodObject', '--from-type=object');
+        $this->make('Article', '--from-type=article');
+        $this->make('Game', '--from-type=game');
+
+        $this->assertStringContainsString('    public ?array $images = null;', file_get_contents($this->base . '/app/Models/WoodObject.php'), 'multiple assets');
+        $article = file_get_contents($this->base . '/app/Models/Article.php');
+        $this->assertStringContainsString('    public ?array $gallery = null;', $article, 'a matrix');
+        $this->assertStringContainsString('    public array|string|null $body = null;', $article, 'translatable blocks: a locale map or the plain value');
+        $this->assertStringContainsString('    public ?string $cover = null;', file_get_contents($this->base . '/app/Models/Game.php'), 'one asset is its id');
+    }
+
+    public function test_a_generated_class_reads_and_keeps_its_list_fields_on_sql(): void
+    {
+        file_put_contents($this->base . '/config/models/album.json', json_encode(['key' => 'album', 'table' => 'album', 'fields' => [
+            'title' => ['type' => 'string'],
+            'images' => ['type' => 'asset', 'asset' => ['multiple' => true]],
+            'body' => ['type' => 'blocks'],
+            'tags' => ['type' => 'relation', 'multiple' => true, 'relation' => ['to' => 'album', 'onDelete' => 'detach']],
+        ]]));
+        [$code] = $this->make('ListAlbum', '--from-type=album');
+        $this->assertSame(0, $code, $this->errors());
+        require $this->base . '/app/Models/ListAlbum.php';
+
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('CREATE TABLE album (uuid TEXT PRIMARY KEY, title TEXT, images TEXT, body TEXT, tags TEXT)');
+        $pdo->exec('INSERT INTO album VALUES (\'a1\', \'Old\', \'["m1","m2"]\', \'[{"_block":"text","text":"Hi"}]\', \'["a2"]\')');
+        $types = new TypeRegistry($this->base . '/config/models', new Locales(['en'], 'en'), ['album' => \App\Models\ListAlbum::class]);
+        $dm = new DataManager(['default' => new SqliteDriver($pdo)], 'default', $types);
+
+        $album = $dm->find(\App\Models\ListAlbum::class, 'a1');
+        $this->assertSame(['m1', 'm2'], $album->images);
+        $this->assertSame([['_block' => 'text', 'text' => 'Hi']], $album->body);
+        $this->assertSame(['a2'], $album->tags);
+        $album->title = 'New';
+        $dm->save($album, validate: false);
+
+        $this->assertSame(
+            ['uuid' => 'a1', 'title' => 'New', 'images' => '["m1","m2"]', 'body' => '[{"_block":"text","text":"Hi"}]', 'tags' => '["a2"]'],
+            $pdo->query("SELECT * FROM album WHERE uuid = 'a1'")->fetch(\PDO::FETCH_ASSOC),
+        );
     }
 
     public function test_a_stored_null_in_a_required_field_survives_a_typed_find_and_save(): void
@@ -185,6 +234,19 @@ final class MakeModelFromTypeTest extends TestCase
         $this->assertStringContainsString('Type "game" is already defined by a model class (', $this->errors());
         $this->assertStringContainsString('/config/../src/Domain/Play.php)', $this->errors());
         $this->assertFileEquals($this->fixtureDir . '/game.json', $this->base . '/config/models/game.json');
+    }
+
+    public function test_relative_model_paths_are_under_the_app(): void
+    {
+        copy($this->fixtureDir . '/game.json', $this->base . '/config/models/game.json');
+        mkdir($this->base . '/src/Domain', 0777, true);
+        file_put_contents($this->base . '/src/Domain/Play.php', "<?php\n#[Entity(table: 'game', type: 'game')]\nfinal class Play {}\n");
+        file_put_contents($this->base . '/config/data.php', "<?php\nreturn ['model_paths' => ['src/Domain', 'app/Models']];\n");
+
+        [$code] = $this->make('Game', '--from-type=game');
+
+        $this->assertSame(1, $code, 'app/Models is a model path, and src/Domain is searched under the app, not the working directory');
+        $this->assertStringContainsString('Type "game" is already defined by a model class (' . $this->base . '/src/Domain/Play.php)', $this->errors());
     }
 
     public function test_it_refuses_when_app_models_is_not_a_model_path(): void

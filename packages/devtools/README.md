@@ -88,7 +88,9 @@ php preflow make:model WoodObject --from-type=object
 ```
 
 - Every property is nullable and takes the JSON `default`; `required` stays a validation rule, so
-  a stored NULL is not rewritten by a later save. A translatable property is `array|string|null`.
+  a stored NULL is not rewritten by a later save. A translatable property is `array|string|null`;
+  several assets, blocks, a matrix and a multiple relation are `?array`; one asset is its id (`?string`).
+- A relative entry in `data.model_paths` is under the app's base path.
 - Before writing, the command loads the generated class and compares the type it derives with the
   type from the JSON file. Any difference is an error and nothing is written.
 - It refuses a class that exists, a key that is already class-backed, a class name PHP reserves
