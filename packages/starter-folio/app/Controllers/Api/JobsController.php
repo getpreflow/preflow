@@ -58,9 +58,9 @@ final class JobsController
     #[Get('/{id}')]
     public function show(ServerRequestInterface $request): ResponseInterface
     {
-        $job = $this->data->find(Job::class, (string) $request->getAttribute('id'));
-        // A draft answers like a job that does not exist.
-        if (!$job instanceof Job || $job->status !== 'published') {
+        // Only a published copy: a draft answers like a job that does not exist.
+        $job = $this->search->byId((string) $request->getAttribute('id'));
+        if ($job === null) {
             throw new NotFoundHttpException('Job not found.');
         }
 
@@ -81,7 +81,7 @@ final class JobsController
             throw $this->apiErrors($e);
         }
         if ($status === 'published') {
-            $job = $this->writer->publish($job);
+            $job = $this->writer->publish($job, $user);
         }
 
         return Json::data($this->present($job), status: 201, headers: ['Location' => '/api/jobs/' . $job->uuid]);
@@ -91,6 +91,7 @@ final class JobsController
     #[Middleware(TokenAuthMiddleware::class)]
     public function update(ServerRequestInterface $request): ResponseInterface
     {
+        $user = $this->user($request);
         $job = $this->owned($request);
         $body = $this->body($request);
         $status = $this->status($body);
@@ -104,7 +105,7 @@ final class JobsController
             throw $this->apiErrors($e);
         }
         if ($status === 'published') {
-            $job = $this->writer->publish($job);
+            $job = $this->writer->publish($job, $user);
         } elseif ($status === 'draft') {
             $job = $this->writer->unpublish($job);
         }
@@ -174,9 +175,16 @@ final class JobsController
         return new ValidationException(new ValidationResult($this->resource->toApiErrors($e->errors())));
     }
 
-    /** @return array<string, mixed> the owner sees the status of their job */
+    /**
+     * The owner's view: the working copy (with any edits not yet published), its publish state,
+     * and when the published copy went out (null while it is a draft).
+     *
+     * @return array<string, mixed>
+     */
     private function present(Job $job): array
     {
-        return $this->resource->toArray($job, $this->search->company((string) $job->company), withStatus: true);
+        $job->_published_at = $this->search->byId((string) $job->uuid)?->_published_at;
+
+        return $this->resource->toArray($job, $this->search->company((string) $job->company), $this->writer->state($job));
     }
 }

@@ -9,6 +9,7 @@ use App\Models\Company;
 use App\Models\User;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
+use Preflow\Folio\Publishing\Publisher;
 use Tests\Support\StarterApp;
 
 final class EmployerCreateCommandTest extends TestCase
@@ -53,6 +54,7 @@ final class EmployerCreateCommandTest extends TestCase
         $company = $data->query(Company::class)->where('name', 'Acme Rockets')->first();
         $user = $data->query(User::class)->where('email', 'new@acme.test')->first();
         $this->assertSame('acme-rockets', $company->slug);
+        $this->assertNotNull($this->container()->get(Publisher::class)->snapshot('company', $company->uuid), 'the new company is public');
         $this->assertSame($company->uuid, $user->company);
         $this->assertTrue(password_verify($match[1], $user->passwordHash));
         $this->assertNotSame($match[1], $user->passwordHash);

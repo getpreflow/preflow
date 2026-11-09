@@ -67,10 +67,12 @@ return [
         'status' => [
             'draft' => 'Draft',
             'published' => 'Published',
+            'changed' => 'Changed, not yet published',
         ],
         'edit' => 'Edit',
         'view' => 'View',
         'publish' => 'Publish',
+        'publish_changes' => 'Publish changes',
         'unpublish' => 'Unpublish',
         'save' => 'Save',
         'cancel' => 'Cancel',

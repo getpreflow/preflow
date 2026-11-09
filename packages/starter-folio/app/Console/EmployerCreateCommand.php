@@ -11,6 +11,7 @@ use Preflow\Auth\NativePasswordHasher;
 use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\DevTools\Command\CommandInterface;
+use Preflow\Folio\Publishing\Publisher;
 use Preflow\Validation\ValidationException;
 
 /**
@@ -64,6 +65,8 @@ final class EmployerCreateCommand implements CommandInterface
                 $company->name = $companyName;
                 $company->slug = Slugs::unique($data, Company::class, $companyName);
                 $data->save($company);
+                // Published right away: the company page and the jobs' company names read the published copy.
+                $app->container()->get(Publisher::class)->publish($data->findType('company', $company->uuid), 'employer:create');
             }
 
             $password = bin2hex(random_bytes(9));

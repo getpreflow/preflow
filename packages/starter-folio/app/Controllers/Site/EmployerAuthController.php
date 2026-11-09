@@ -40,7 +40,8 @@ final class EmployerAuthController
     public function login(ServerRequestInterface $request): ResponseInterface
     {
         $body = (array) $request->getParsedBody();
-        $email = is_string($body['email'] ?? null) ? trim($body['email']) : '';
+        // Stored in lower case (employer:create), and SQLite compares text case-sensitively.
+        $email = is_string($body['email'] ?? null) ? strtolower(trim($body['email'])) : '';
         $password = is_string($body['password'] ?? null) ? $body['password'] : '';
         $next = self::safeNext($body['next'] ?? null);
 

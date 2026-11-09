@@ -9,6 +9,7 @@ use App\Models\Job;
 use App\Models\User;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
+use Preflow\Folio\Publishing\PublishedModels;
 use Tests\Support\StarterApp;
 
 /** The page cache as production runs it: APP_DEBUG=0 (it is off while debugging). */
@@ -44,12 +45,10 @@ final class PageCacheTest extends TestCase
 
     public function test_publishing_refreshes_list_detail_and_company_page(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $data = $this->data();
         $owner = $data->query(User::class)->where('email', 'employer@example.com')->first();
         $company = $data->find(Company::class, (string) $owner->company);
-        $neighbour = $data->query(Job::class)->where('company', $company->uuid)->where('status', 'published')->first();
+        $neighbour = $this->container()->get(PublishedModels::class)->query(Job::class)->where('company', $company->uuid)->first();
 
         $pages = ['/jobs', '/companies/' . $company->slug, '/jobs/' . $neighbour->slug];
         foreach ($pages as $path) {

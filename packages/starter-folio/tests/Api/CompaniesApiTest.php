@@ -23,8 +23,6 @@ final class CompaniesApiTest extends TestCase
 
     public function test_list_has_open_job_counts(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $response = $this->json('GET', '/api/companies');
 
         $response->assertOk();
@@ -39,8 +37,6 @@ final class CompaniesApiTest extends TestCase
 
     public function test_show_includes_jobs(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $response = $this->json('GET', '/api/companies/northwind-labs');
 
         $response->assertOk();

@@ -29,6 +29,15 @@
 
     <div class="job__description">{{ markdown(job.description) }}</div>
 
+    {# Edited in Folio (Pages > Job page), the same for every job. #}
+    {% set part = folio_get('job_page') %}
+    {% if part and (part.cta_title or part.cta_text) %}
+        <aside class="job__cta">
+            {% if part.cta_title %}<h2>{{ part.cta_title }}</h2>{% endif %}
+            {% if part.cta_text %}{{ part.cta_text|raw }}{% endif %}
+        </aside>
+    {% endif %}
+
     {% if moreFromCompany %}
         <section class="job__more">
             <h2>{{ t('app.more_from', { company: job.company.name }) }}</h2>
@@ -54,6 +63,9 @@
 .job__description { margin-top: 1.5rem; overflow-wrap: anywhere; }
 .job__description p, .job__description ul, .job__description ol { margin-top: 0.75rem; }
 .job__description ul, .job__description ol { padding-left: 1.5rem; }
+.job__cta { margin-top: 2rem; padding: 1rem 1.25rem; border: 1px solid var(--line); border-radius: 0.5rem; background: var(--card); }
+.job__cta h2 { font-size: 1.1rem; }
+.job__cta > * + * { margin-top: 0.5rem; }
 .job__more { margin-top: 2.5rem; display: grid; gap: 0.75rem; }
 .job__more h2 { font-size: 1.15rem; }
 {% endapply %}

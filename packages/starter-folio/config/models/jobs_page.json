@@ -1,0 +1,17 @@
+{
+    "key": "jobs_page",
+    "table": "jobs_page",
+    "storage": "sqlite",
+    "id_field": "uuid",
+    "label": "Job list page",
+    "singleton": true,
+    "section": "pages",
+    "order": 10,
+    "fields": {
+        "intro": {
+            "type": "richtext",
+            "label": "Intro",
+            "help": "Shown above the search on /jobs."
+        }
+    }
+}

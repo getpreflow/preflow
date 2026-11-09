@@ -39,6 +39,7 @@ final class EmployerJobController
     public function index(ServerRequestInterface $request): ResponseInterface
     {
         $user = $this->user($request);
+        // The working copies: the employer sees drafts and edits that are not published yet.
         $jobs = $user->company === null ? [] : array_values($this->data->query(Job::class)
             ->where('company', $user->company)
             ->orderBy('updatedAt', SortDirection::Desc)
@@ -47,6 +48,7 @@ final class EmployerJobController
         return $this->pages->render('_views/employer/index.twig', [
             'company' => $user->company === null ? null : $this->data->find(Company::class, $user->company),
             'jobs' => $jobs,
+            'states' => $this->writer->states($jobs),
         ]);
     }
 
@@ -94,7 +96,7 @@ final class EmployerJobController
     #[Post('/jobs/{id}/publish')]
     public function publish(ServerRequestInterface $request): ResponseInterface
     {
-        $this->writer->publish($this->owned($request));
+        $this->writer->publish($this->owned($request), $this->user($request));
 
         return $this->back($request, 'Published.');
     }

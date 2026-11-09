@@ -7,6 +7,9 @@ composer.dev.lock
 storage/cache/*
 storage/logs/*
 storage/data/*
+# The media library: uploads (and the demo logos), and the bin of deleted ones.
+/public/media/
+/storage/media-bin/
 # The boot manifest (preflow optimize), written per release.
 /bootstrap/cache/
 !storage/cache/.gitkeep

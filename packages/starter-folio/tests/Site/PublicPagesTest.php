@@ -8,6 +8,8 @@ use App\Models\Company;
 use App\Models\Job;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
+use Preflow\Folio\Publishing\PublishState;
+use Preflow\Folio\Publishing\Publisher;
 use Tests\Support\StarterApp;
 
 final class PublicPagesTest extends TestCase
@@ -37,6 +39,23 @@ final class PublicPagesTest extends TestCase
         return $job;
     }
 
+    /** Publishes a job's working copy, as staff (or its employer) would after an edit. */
+    private function publish(Job $job): void
+    {
+        $this->container()->get(Publisher::class)->publish($this->data()->findType('job', (string) $job->uuid), 'test');
+    }
+
+    /** @return list<Job> working copies that were never published */
+    private function drafts(): array
+    {
+        $states = $this->container()->get(Publisher::class)->states('job');
+
+        return array_values(array_filter(
+            $this->data()->query(Job::class)->get()->items(),
+            static fn (Job $job): bool => $states[$job->uuid] === PublishState::Draft,
+        ));
+    }
+
     private function jobLinks(string $html): int
     {
         return preg_match_all('#href="/jobs/[a-z0-9-]+"#', $html);
@@ -44,8 +63,6 @@ final class PublicPagesTest extends TestCase
 
     public function test_home_shows_latest_six_jobs_and_error_boundary_preview(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $response = $this->get('/');
 
         $response->assertOk();
@@ -57,8 +74,6 @@ final class PublicPagesTest extends TestCase
 
     public function test_job_detail_shows_job_company_and_more_from_company(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $job = $this->jobTitled('Frontend Developer');
 
         $response = $this->get('/jobs/' . $job->slug);
@@ -87,9 +102,7 @@ final class PublicPagesTest extends TestCase
 
     public function test_draft_job_is_404(): void
     {
-        $this->markTestIncomplete('Task 12');
-
-        $draft = $this->data()->query(Job::class)->where('status', 'draft')->first();
+        $draft = $this->drafts()[0] ?? null;
         $this->assertNotNull($draft);
 
         $this->get('/jobs/' . $draft->slug)->assertStatus(404);
@@ -97,10 +110,8 @@ final class PublicPagesTest extends TestCase
 
     public function test_company_page_lists_open_jobs_only(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $company = $this->data()->query(Company::class)->where('name', 'Northwind Labs')->first();
-        $drafts = $this->data()->query(Job::class)->where('status', 'draft')->where('company', $company->uuid)->get()->items();
+        $drafts = array_filter($this->drafts(), static fn (Job $job): bool => $job->company === $company->uuid);
         $this->assertNotEmpty($drafts);
 
         $response = $this->get('/companies/northwind-labs');
@@ -116,11 +127,10 @@ final class PublicPagesTest extends TestCase
 
     public function test_markdown_description_escapes_html(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $job = $this->jobTitled('Technical Recruiter');
         $job->description = "Hello <script>alert(1)</script> and [x](javascript:alert(1)) with **bold** text.";
         $this->data()->save($job);
+        $this->publish($job);
 
         $response = $this->get('/jobs/' . $job->slug);
 
@@ -133,8 +143,6 @@ final class PublicPagesTest extends TestCase
 
     public function test_job_page_has_a_meta_description(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $job = $this->jobTitled('Frontend Developer');
 
         $this->get('/jobs/' . $job->slug)->assertSee('<meta name="description"');
@@ -145,9 +153,11 @@ final class PublicPagesTest extends TestCase
         $company = $this->data()->query(Company::class)->where('name', 'Northwind Labs')->first();
         $this->get('/companies/northwind-labs')->assertSee('href="https://northwind-labs.example"');
 
-        // The model's url rule refuses this; an import or an older row may not have been checked.
-        $company->website = 'javascript:alert(1)';
-        $this->data()->save($company, validate: false);
+        // The model's url rule refuses this, and Folio checks it before it publishes; an import or
+        // an older row may not have been checked, so the published copy is written directly.
+        $published = $this->container()->get(Publisher::class)->snapshot('company', (string) $company->uuid);
+        $published->set('website', 'javascript:alert(1)');
+        $this->data()->saveType($published, false);
 
         $response = $this->get('/companies/northwind-labs');
         $response->assertNotSee('href="javascript:');
@@ -156,12 +166,11 @@ final class PublicPagesTest extends TestCase
 
     public function test_a_salary_of_zero_is_shown(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $job = $this->jobTitled('Frontend Developer');
         $job->salaryFrom = 0;
         $job->salaryTo = 40000;
         $this->data()->save($job);
+        $this->publish($job);
 
         $this->get('/jobs/' . $job->slug)->assertSee('0 &ndash; 40,000');
         $this->get('/companies/lumen-harbor')->assertSee('0 &ndash; 40,000'); // the job card

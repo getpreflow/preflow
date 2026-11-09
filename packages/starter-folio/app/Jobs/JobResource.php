@@ -33,10 +33,11 @@ final class JobResource
     }
 
     /**
-     * @param bool $withStatus employers see the status of their own jobs; the public never does
+     * @param string|null $status the publish state (draft, published, changed): employers see it
+     *                            for their own jobs, the public never does
      * @return array<string, mixed>
      */
-    public function toArray(Job $job, ?Company $company, bool $withStatus = false): array
+    public function toArray(Job $job, ?Company $company, ?string $status = null): array
     {
         $data = [
             'id' => $job->uuid,
@@ -58,12 +59,13 @@ final class JobResource
             // Markdown source: the client decides how to render it.
             'description' => $job->description,
         ];
-        if ($withStatus) {
-            $data['status'] = $job->status;
+        if ($status !== null) {
+            $data['status'] = $status;
         }
-        $data['published_at'] = $job->publishedAt === null
+        // Only a published copy has it (see Job::$_published_at).
+        $data['published_at'] = $job->_published_at === null
             ? null
-            : (new \DateTimeImmutable($job->publishedAt))->format(\DateTimeInterface::ATOM);
+            : (new \DateTimeImmutable($job->_published_at))->format(\DateTimeInterface::ATOM);
         $data['url'] = $this->baseUrl . '/jobs/' . $job->slug;
 
         return $data;

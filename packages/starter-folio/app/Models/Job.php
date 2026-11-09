@@ -80,6 +80,13 @@ final class Job extends Model
     public ?string $updatedAt = null;
 
     /**
+     * When Folio published this copy (ISO 8601). Only a published copy read through PublishedModels
+     * has it; it comes from the snapshot's `_published_at` column. Not a field: no column of its own,
+     * nothing Folio's form shows, and a save never writes it.
+     */
+    public ?string $_published_at = null;
+
+    /**
      * Rules that need two fields. They replace the attribute rules of the same field, so
      * salaryTo repeats its own.
      *

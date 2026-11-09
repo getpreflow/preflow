@@ -85,8 +85,6 @@ final class WriteApiTest extends TestCase
 
     public function test_create_draft_201_with_location(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $response = $this->json('POST', '/api/jobs', $this->body(), $this->bearer());
 
         $this->assertSame(201, $response->status());
@@ -103,8 +101,6 @@ final class WriteApiTest extends TestCase
 
     public function test_create_published_appears_in_public_list(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $response = $this->json('POST', '/api/jobs', $this->body(['status' => 'published']), $this->bearer());
 
         $this->assertSame(201, $response->status());
@@ -119,8 +115,6 @@ final class WriteApiTest extends TestCase
 
     public function test_validation_422_lists_snake_case_fields(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $response = $this->json('POST', '/api/jobs', ['title' => '', 'employment_type' => 'bogus', 'remote' => 'hybrid', 'place' => 'Berlin', 'description' => 'x'], $this->bearer());
 
         $response->assertJsonValidationErrors('title', 'employment_type', 'description');
@@ -135,8 +129,6 @@ final class WriteApiTest extends TestCase
 
     public function test_patch_own_job(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $headers = $this->bearer();
         $id = $this->json('POST', '/api/jobs', $this->body(), $headers)->json('data.id');
 
@@ -174,8 +166,6 @@ final class WriteApiTest extends TestCase
 
     public function test_delete_own_job_204(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $headers = $this->bearer();
         $id = $this->json('POST', '/api/jobs', $this->body(), $headers)->json('data.id');
 

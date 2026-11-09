@@ -11,6 +11,7 @@ use App\Models\Job;
 use App\Models\User;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
+use Preflow\Folio\Publishing\Publisher;
 use Preflow\Validation\ValidationException;
 use Tests\Support\StarterApp;
 
@@ -20,13 +21,17 @@ final class JobWriterTest extends TestCase
 
     private DataManager $data;
     private JobWriter $writer;
+    private JobSearch $search;
+    private Publisher $publisher;
     private User $owner;
 
     protected function setUp(): void
     {
         $this->bootStarter();
         $this->data = $this->container()->get(DataManager::class);
-        $this->writer = new JobWriter($this->data, new JobSearch($this->data));
+        $this->writer = $this->container()->get(JobWriter::class);
+        $this->publisher = $this->container()->get(Publisher::class);
+        $this->search = $this->container()->get(JobSearch::class);
         $this->owner = $this->data->query(User::class)->where('email', 'employer@example.com')->first();
     }
 
@@ -51,15 +56,13 @@ final class JobWriterTest extends TestCase
 
     public function test_create_sets_owner_company_slug_and_draft(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $job = $this->writer->create($this->input(), $this->owner);
 
         $this->assertSame(32, strlen($job->uuid));
         $this->assertSame($this->owner->company, $job->company);
         $this->assertSame('platform-wrangler', $job->slug);
-        $this->assertSame('draft', $job->status);
-        $this->assertNull($job->publishedAt);
+        $this->assertSame('draft', $this->writer->state($job));
+        $this->assertNull($this->publisher->snapshot('job', $job->uuid), 'nothing is public yet');
         $this->assertNotNull($job->createdAt);
         $this->assertSame($job->createdAt, $job->updatedAt);
         $this->assertSame(60000, $job->salaryFrom);
@@ -68,8 +71,6 @@ final class JobWriterTest extends TestCase
 
     public function test_create_ignores_non_editable_input(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $other = $this->data->query(Company::class)->where('name', '!=', 'Northwind Labs')->first();
 
         $job = $this->writer->create($this->input([
@@ -80,15 +81,13 @@ final class JobWriterTest extends TestCase
         ]), $this->owner);
 
         $this->assertSame($this->owner->company, $job->company);
-        $this->assertSame('draft', $job->status);
+        $this->assertSame('draft', $this->writer->state($job));
         $this->assertSame('platform-wrangler', $job->slug);
         $this->assertNotSame('x', $job->uuid);
     }
 
     public function test_invalid_input_throws_validation_exception_with_fields(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         try {
             $this->writer->create($this->input(['title' => '', 'salaryFrom' => '80000', 'salaryTo' => '50000']), $this->owner);
             $this->fail('Expected a ValidationException.');
@@ -109,30 +108,35 @@ final class JobWriterTest extends TestCase
         }
     }
 
-    public function test_publish_sets_published_at_once(): void
+    public function test_publish_unpublish_and_edit_go_through_folio(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $job = $this->writer->create($this->input(), $this->owner);
 
-        $job = $this->writer->publish($job);
-        $this->assertSame('published', $job->status);
-        $first = $job->publishedAt;
-        $this->assertNotNull($first);
+        $this->writer->publish($job, $this->owner);
+        $this->assertSame('published', $this->writer->state($job));
+        $snapshot = $this->publisher->snapshot('job', $job->uuid);
+        $this->assertSame('Platform Wrangler', $snapshot?->get('title'));
+        $this->assertSame('employer:employer@example.com', $snapshot->get('_published_by'));
+        $this->assertNotNull($this->search->byId($job->uuid)?->_published_at);
 
-        $job = $this->writer->unpublish($job);
-        $this->assertSame('draft', $job->status);
-        $this->assertSame($first, $job->publishedAt);
+        // An edit changes the working copy only: the public sees the old title until the next publish.
+        $job = $this->writer->update($job, ['title' => 'Senior Platform Wrangler']);
+        $this->assertSame('changed', $this->writer->state($job));
+        $this->assertSame('Platform Wrangler', $this->search->byId($job->uuid)?->title);
+        $this->writer->publish($job, $this->owner);
+        $this->assertSame('Senior Platform Wrangler', $this->search->byId($job->uuid)?->title);
 
-        $job = $this->writer->publish($job);
-        $this->assertSame($first, $job->publishedAt);
-        $this->assertSame('published', $this->data->find(Job::class, $job->uuid)->status);
+        $this->writer->unpublish($job);
+        $this->assertSame('draft', $this->writer->state($job));
+        $this->assertNull($this->search->byId($job->uuid));
+        $this->assertNotNull($this->data->find(Job::class, $job->uuid), 'unpublished, not deleted');
+
+        $this->writer->publish($job, $this->owner);
+        $this->assertSame('published', $this->writer->state($job));
     }
 
     public function test_update_is_partial_and_keeps_the_slug(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $job = $this->writer->create($this->input(), $this->owner);
 
         $job = $this->writer->update($job, ['title' => 'Senior Platform Wrangler']);
@@ -145,19 +149,19 @@ final class JobWriterTest extends TestCase
 
     public function test_delete_removes_the_job(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $job = $this->writer->create($this->input(), $this->owner);
+        $this->writer->publish($job, $this->owner);
 
         $this->writer->delete($job);
 
         $this->assertNull($this->data->find(Job::class, $job->uuid));
+        // Folio forgets it too: no published copy left on the site, no revisions left behind.
+        $this->assertNull($this->publisher->snapshot('job', $job->uuid));
+        $this->assertSame([], $this->publisher->revisions('job', $job->uuid));
     }
 
     public function test_owned_by_refuses_other_company(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $mine = $this->writer->create($this->input(), $this->owner);
         $foreign = $this->data->query(Job::class)->where('company', '!=', $this->owner->company)->first();
 
@@ -168,8 +172,6 @@ final class JobWriterTest extends TestCase
 
     public function test_slug_collision_gets_suffix(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $first = $this->writer->create($this->input(), $this->owner);
         $second = $this->writer->create($this->input(), $this->owner);
         $third = $this->writer->create($this->input(['title' => 'Platform Wrangler']), $this->owner);
@@ -181,8 +183,6 @@ final class JobWriterTest extends TestCase
 
     public function test_slug_is_ascii(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $job = $this->writer->create($this->input(['title' => 'Köchin / Koch (m/w/d) – Zürich']), $this->owner);
 
         $this->assertSame('kochin-koch-m-w-d-zurich', $job->slug);

@@ -18,6 +18,10 @@
     </p>
     {% if company.summary %}<p class="company__summary">{{ company.summary }}</p>{% endif %}
 
+    {# Edited in Folio (Pages > Company page), the same for every company. #}
+    {% set part = folio_get('company_page') %}
+    {% if part and part.before_jobs %}<div class="company__before-jobs">{{ part.before_jobs|raw }}</div>{% endif %}
+
     <h2 class="company__heading">{{ t('app.open_jobs') }}</h2>
     <div class="company__jobs">
         {% for job in jobs %}
@@ -37,6 +41,8 @@
 {% apply css %}
 .company__place { color: var(--muted); margin-top: 0.25rem; overflow-wrap: anywhere; }
 .company__summary { margin-top: 0.75rem; }
+.company__before-jobs { margin-top: 1.5rem; }
+.company__before-jobs > * + * { margin-top: 0.5rem; }
 .company__heading { font-size: 1.15rem; margin-top: 2rem; }
 .company__jobs { display: grid; gap: 0.75rem; margin-top: 0.75rem; }
 .company__empty { color: var(--muted); }

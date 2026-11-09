@@ -1,0 +1,21 @@
+{
+    "key": "job_page",
+    "table": "job_page",
+    "storage": "sqlite",
+    "id_field": "uuid",
+    "label": "Job page",
+    "singleton": true,
+    "section": "pages",
+    "order": 20,
+    "fields": {
+        "cta_title": {
+            "type": "string",
+            "label": "Call to action: title",
+            "help": "Shown below every job description."
+        },
+        "cta_text": {
+            "type": "richtext",
+            "label": "Call to action: text"
+        }
+    }
+}

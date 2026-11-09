@@ -7,7 +7,6 @@ namespace Tests\Site;
 use App\Console\StaffCreateCommand;
 use App\Models\Staff;
 use PHPUnit\Framework\TestCase;
-use Preflow\Auth\NativePasswordHasher;
 use Preflow\Data\DataManager;
 use Tests\Support\StarterApp;
 
@@ -21,10 +20,8 @@ final class FolioAccessTest extends TestCase
 
     protected function setUp(): void
     {
+        // The demo seed creates the staff accounts admin@example.com and editor@example.com.
         $this->bootStarter();
-        // Until the demo seed creates staff (Task 12), the test makes its own accounts.
-        $this->createStaff('admin@example.com', 'demo-admin', 'admin');
-        $this->createStaff('editor@example.com', 'demo-editor', 'editor');
     }
 
     protected function tearDown(): void
@@ -42,6 +39,25 @@ final class FolioAccessTest extends TestCase
         $this->assertStringContainsString('Frontend Developer', $response->body(), 'the list shows the seeded jobs');
     }
 
+    public function test_editor_opens_a_job_and_the_page_texts(): void
+    {
+        $cookies = ['Cookie' => $this->cookieHeader($this->signInStaff('editor@example.com', 'demo-editor'))];
+
+        $this->get('/folio/job/' . md5('starter-job-2') . '/edit', $cookies)->assertOk()->assertSee('Frontend Developer');
+        $this->get('/folio/jobs_page', $cookies)->assertOk()->assertSee('Open positions from small companies');
+        $this->get('/folio/job_page', $cookies)->assertOk();
+        $this->get('/folio/company_page', $cookies)->assertOk();
+        $this->get('/folio/assets', $cookies)->assertOk();
+    }
+
+    public function test_admin_opens_admin_only_screen(): void
+    {
+        $cookies = $this->signInStaff('admin@example.com', 'demo-admin');
+
+        // The control for the editor's 403 below: the screen exists, and '*' opens it.
+        $this->get('/folio/extensions', ['Cookie' => $this->cookieHeader($cookies)])->assertOk();
+    }
+
     public function test_editor_cannot_open_admin_only_screen(): void
     {
         $cookies = $this->signInStaff('editor@example.com', 'demo-editor');
@@ -54,8 +70,8 @@ final class FolioAccessTest extends TestCase
     public function test_employer_session_does_not_open_folio(): void
     {
         $cookies = $this->signInEmployer();
-        // Signed in: the employer area opens (its job list needs Task 12's publishing, the form does not).
-        $this->get('/employer/jobs/new', ['Cookie' => $this->cookieHeader($cookies)])->assertOk();
+        // Signed in: the employer area opens.
+        $this->get('/employer', ['Cookie' => $this->cookieHeader($cookies)])->assertOk();
 
         $this->get('/folio', ['Cookie' => $this->cookieHeader($cookies)])->assertRedirect('/folio/login');
     }
@@ -91,16 +107,6 @@ final class FolioAccessTest extends TestCase
         $this->assertSame(1, $code);
         $this->assertStringContainsString('already exists', $output);
         $this->assertStringNotContainsString('Password', $output);
-    }
-
-    private function createStaff(string $email, string $password, string $role): void
-    {
-        $staff = new Staff();
-        $staff->uuid = md5('starter-staff-' . $email);
-        $staff->email = $email;
-        $staff->passwordHash = (new NativePasswordHasher())->hash($password);
-        $staff->roles = [$role];
-        $this->container()->get(DataManager::class)->save($staff);
     }
 
     /** @return array{int, string} exit code and output */

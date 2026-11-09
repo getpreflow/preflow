@@ -10,6 +10,7 @@ use App\Models\Company;
 use App\Models\Job;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
+use Preflow\Folio\Publishing\Publisher;
 use Tests\Support\StarterApp;
 
 final class JobSearchServiceTest extends TestCase
@@ -23,7 +24,7 @@ final class JobSearchServiceTest extends TestCase
     {
         $this->bootStarter();
         $this->data = $this->container()->get(DataManager::class);
-        $this->search = new JobSearch($this->data);
+        $this->search = $this->container()->get(JobSearch::class);
     }
 
     protected function tearDown(): void
@@ -39,8 +40,6 @@ final class JobSearchServiceTest extends TestCase
 
     public function test_q_and_a_filter_both_apply(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $jobs = $this->search->search(JobFilters::fromArray(['q' => 'developer', 'remote' => 'full']), 100)->items;
         $titles = array_map(static fn (Job $job): string => $job->title, $jobs);
 
@@ -56,8 +55,6 @@ final class JobSearchServiceTest extends TestCase
 
     public function test_like_wildcards_in_q_match_literally(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $this->assertSame([], $this->titles(JobFilters::fromArray(['q' => '%'])));
         $this->assertSame([], $this->titles(JobFilters::fromArray(['q' => '_'])));
         $this->assertSame([], $this->titles(JobFilters::fromArray(['q' => 'Dev%per'])));
@@ -66,13 +63,12 @@ final class JobSearchServiceTest extends TestCase
         $job = $this->data->query(Job::class)->where('title', 'Illustrator')->first();
         $job->title = 'Illustrator (100% remote)';
         $this->data->save($job);
+        $this->container()->get(Publisher::class)->publish($this->data->findType('job', (string) $job->uuid), 'test');
         $this->assertSame(['Illustrator (100% remote)'], $this->titles(JobFilters::fromArray(['q' => '100%'])));
     }
 
     public function test_open_jobs_of_leaves_out_the_excluded_job(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $company = $this->data->query(Company::class)->where('name', 'Lumen Harbor')->first();
         $all = $this->search->openJobsOf($company->uuid);
         $this->assertGreaterThan(1, count($all));

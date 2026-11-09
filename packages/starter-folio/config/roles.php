@@ -7,8 +7,8 @@
 return [
     'staff' => [
         'admin' => ['*'],
-        // jobs_page, job_page, company_page and news are content types the starter adds later on;
-        // a permission for a type that does not exist yet grants nothing.
+        // jobs_page, job_page and company_page are the page texts under Pages. news is a type the
+        // starter adds later on; a permission for a type that does not exist yet grants nothing.
         'editor' => [
             'folio.dashboard',
             'page.*',

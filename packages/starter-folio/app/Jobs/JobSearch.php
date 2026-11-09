@@ -6,18 +6,22 @@ namespace App\Jobs;
 
 use App\Models\Company;
 use App\Models\Job;
-use Preflow\Data\DataManager;
 use Preflow\Data\PaginatedResult;
+use Preflow\Data\QueryBuilder;
 use Preflow\Data\SortDirection;
+use Preflow\Folio\Publishing\PublishedModels;
 
-/** Everything the public pages read. Only published jobs ever leave this class. */
+/**
+ * Everything the public pages and the API read. It reads Folio's published copies only, so a
+ * draft, or an edit nobody has published yet, never leaves this class.
+ */
 final class JobSearch
 {
-    public function __construct(private readonly DataManager $data) {}
+    public function __construct(private readonly PublishedModels $published) {}
 
     public function search(JobFilters $f, int $perPage = 12): PaginatedResult
     {
-        $query = $this->published();
+        $query = $this->jobs();
         if ($f->q !== '') {
             $query->searchLoose($f->q, ['title', 'description']);
         }
@@ -31,20 +35,20 @@ final class JobSearch
             $query->where('remote', $f->remote);
         }
 
-        return $query->orderBy('publishedAt', SortDirection::Desc)->paginate($perPage, $f->page);
+        return $query->orderBy('_published_at', SortDirection::Desc)->paginate($perPage, $f->page);
     }
 
     /** @return list<Job> */
     public function latest(int $n = 6): array
     {
-        return array_values($this->published()->orderBy('publishedAt', SortDirection::Desc)->limit($n)->get()->items());
+        return array_values($this->jobs()->orderBy('_published_at', SortDirection::Desc)->limit($n)->get()->items());
     }
 
     /** @return list<string> */
     public function places(): array
     {
         $places = [];
-        foreach ($this->published()->get()->items() as $job) {
+        foreach ($this->jobs()->get()->items() as $job) {
             if ($job->place !== null && $job->place !== '') {
                 $places[$job->place] = true;
             }
@@ -57,28 +61,33 @@ final class JobSearch
 
     public function bySlug(string $slug): ?Job
     {
-        return $this->published()->where('slug', $slug)->first();
+        return $this->jobs()->where('slug', $slug)->first();
+    }
+
+    public function byId(string $uuid): ?Job
+    {
+        return $this->published->find(Job::class, $uuid);
     }
 
     public function company(string $uuid): ?Company
     {
-        return $this->data->find(Company::class, $uuid);
+        return $this->published->find(Company::class, $uuid);
     }
 
     public function companyBySlug(string $slug): ?Company
     {
-        return $this->data->query(Company::class)->where('slug', $slug)->first();
+        return $this->published->query(Company::class)->where('slug', $slug)->first();
     }
 
     /** @return list<Job> */
     public function openJobsOf(string $companyUuid, ?string $exceptJob = null, int $limit = 50): array
     {
-        $query = $this->published()->where('company', $companyUuid);
+        $query = $this->jobs()->where('company', $companyUuid);
         if ($exceptJob !== null) {
             $query->where('uuid', '!=', $exceptJob);
         }
 
-        return array_values($query->orderBy('publishedAt', SortDirection::Desc)->limit($limit)->get()->items());
+        return array_values($query->orderBy('_published_at', SortDirection::Desc)->limit($limit)->get()->items());
     }
 
     public function openJobCount(string $companyUuid): int
@@ -86,13 +95,13 @@ final class JobSearch
         // One count per company: fine for a short list of companies. For a long one, count
         // every company in a single grouped query (or keep a counter on the company) instead.
         // total() ignores the limit, so this counts in the database without loading the jobs.
-        return $this->published()->where('company', $companyUuid)->limit(1)->get()->total();
+        return $this->jobs()->where('company', $companyUuid)->limit(1)->get()->total();
     }
 
     /** @return list<Company> */
     public function companies(): array
     {
-        return array_values($this->data->query(Company::class)->orderBy('name')->get()->items());
+        return array_values($this->published->query(Company::class)->orderBy('name')->get()->items());
     }
 
     /**
@@ -109,15 +118,19 @@ final class JobSearch
         }
 
         $companies = [];
-        foreach ($this->data->query(Company::class)->byIds($uuids)->get()->items() as $company) {
+        foreach ($this->published->query(Company::class)->byIds($uuids)->get()->items() as $company) {
             $companies[$company->uuid] = $company;
         }
 
         return $companies;
     }
 
-    private function published(): \Preflow\Data\QueryBuilder
+    /**
+     * The published jobs. `_published_at` is the snapshot's own column (Folio sets it on every
+     * publish), so "newest first" needs no date field on the job.
+     */
+    private function jobs(): QueryBuilder
     {
-        return $this->data->query(Job::class)->where('status', 'published');
+        return $this->published->query(Job::class);
     }
 }

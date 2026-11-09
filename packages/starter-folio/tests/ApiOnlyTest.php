@@ -42,10 +42,9 @@ final class ApiOnlyTest extends TestCase
         $text = implode("\n", $output);
 
         $this->assertSame(0, $code, $text);
-        // "OK (18 tests, ...)", or "OK, but there were issues!" and "Tests: 18, ..." while some
-        // tests are marked incomplete; the exit code above already says nothing failed.
-        $this->assertSame(1, preg_match('/^(?:OK \((\d+) tests?|Tests: (\d+),)/m', $text, $match), $text);
-        $this->assertGreaterThanOrEqual(max((int) $match[1], (int) ($match[2] ?? 0)), count($boots), 'Every Api test boots at least one copy.');
+        $this->assertMatchesRegularExpression('/^OK \((\d+) tests?/m', $text);
+        preg_match('/^OK \((\d+) tests?/m', $text, $match);
+        $this->assertGreaterThanOrEqual((int) $match[1], count($boots), 'Every Api test boots at least one copy.');
         $this->assertSame(['site paths left: none'], array_values(array_unique($boots)));
     }
 

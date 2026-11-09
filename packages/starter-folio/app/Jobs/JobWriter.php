@@ -7,12 +7,14 @@ namespace App\Jobs;
 use App\Models\Job;
 use App\Models\User;
 use Preflow\Data\DataManager;
+use Preflow\Folio\Publishing\Publisher;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationResult;
 
 /**
  * Every change an employer makes to a job goes through here, so the rules live in one place:
- * which keys a form may set, who owns a job, and when it was published.
+ * which keys a form may set and who owns a job. What the public sees is Folio's business:
+ * a save changes the working copy, and only publish() puts it on the site, as in Folio's admin.
  */
 final class JobWriter
 {
@@ -21,7 +23,7 @@ final class JobWriter
 
     public function __construct(
         private readonly DataManager $data,
-        private readonly JobSearch $search,
+        private readonly Publisher $publisher,
     ) {}
 
     /**
@@ -34,7 +36,6 @@ final class JobWriter
         $this->apply($job, $input);
         $job->uuid = bin2hex(random_bytes(16));
         $job->company = $owner->company;
-        $job->status = 'draft';
         $job->createdAt = $job->updatedAt = self::now();
         // Made from the title once; editing the title later keeps the address people may have shared.
         $job->slug = Slugs::unique($this->data, Job::class, (string) $job->title);
@@ -57,22 +58,23 @@ final class JobWriter
         return $job;
     }
 
-    public function publish(Job $job): Job
+    /**
+     * Puts the working copy on the site, as Folio's Publish button does. The revision names the
+     * employer, so staff see in Folio who published it.
+     *
+     * @throws ValidationException when the working copy breaks a rule (staff may have saved a half-finished draft)
+     */
+    public function publish(Job $job, User $by): Job
     {
-        $job->status = 'published';
-        // Set once: unpublishing and publishing again must not push the job to the top of the list.
-        $job->publishedAt ??= self::now();
-        $job->updatedAt = self::now();
-        $this->data->save($job);
+        $this->publisher->publish($this->data->findType('job', (string) $job->uuid), 'employer:' . $by->email);
 
         return $job;
     }
 
+    /** Takes the job off the site; the working copy stays, as a draft. */
     public function unpublish(Job $job): Job
     {
-        $job->status = 'draft';
-        $job->updatedAt = self::now();
-        $this->data->save($job);
+        $this->publisher->unpublish('job', (string) $job->uuid);
 
         return $job;
     }
@@ -80,9 +82,30 @@ final class JobWriter
     public function delete(Job $job): void
     {
         $this->data->delete($job);
+        // The published copy and the revisions are Folio's: without this the job would stay on the site.
+        $this->publisher->forget('job', (string) $job->uuid);
     }
 
-    /** The job in any status, but only if it belongs to the user's company. */
+    /** draft (never published), published, or changed (published, with edits not yet published). */
+    public function state(Job $job): string
+    {
+        return $this->publisher->state($this->data->findType('job', (string) $job->uuid))->value;
+    }
+
+    /**
+     * state() for a list, with one query for all of them.
+     *
+     * @param list<Job> $jobs
+     * @return array<string, string> keyed by uuid
+     */
+    public function states(array $jobs): array
+    {
+        $ids = array_map(static fn (Job $job): string => (string) $job->uuid, $jobs);
+
+        return array_map(static fn ($state): string => $state->value, $this->publisher->states('job', $ids));
+    }
+
+    /** The job in any state, but only if it belongs to the user's company. */
     public function ownedBy(string $uuid, User $user): ?Job
     {
         $job = $this->data->find(Job::class, $uuid);

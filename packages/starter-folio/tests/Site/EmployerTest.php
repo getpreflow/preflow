@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Site;
 
+use App\Jobs\JobWriter;
 use App\Models\Job;
 use App\Models\User;
 use PHPUnit\Framework\TestCase;
@@ -95,8 +96,6 @@ final class EmployerTest extends TestCase
 
     public function test_sign_in_goes_to_next_or_the_employer_page(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $cookies = $this->signInEmployer();
         $this->get('/employer', ['Cookie' => $this->cookieHeader($cookies)])->assertOk()->assertSee('Northwind Labs');
 
@@ -106,6 +105,14 @@ final class EmployerTest extends TestCase
         $token = $this->token('/employer/login', $cookies);
         $response = $this->post('/employer/login', ['email' => 'employer@example.com', 'password' => 'demo-employer', 'next' => '/employer/jobs/new', '_csrf_token' => $token], ['Cookie' => $this->cookieHeader($cookies)]);
         $response->assertRedirect('/employer/jobs/new');
+    }
+
+    public function test_the_email_signs_in_in_any_case(): void
+    {
+        // employer:create stores the email in lower case; people type it as they like.
+        $cookies = $this->signInEmployer(' Employer@Example.COM ');
+
+        $this->get('/employer', ['Cookie' => $this->cookieHeader($cookies)])->assertOk()->assertSee('Northwind Labs');
     }
 
     public function test_open_redirect_is_refused(): void
@@ -122,8 +129,6 @@ final class EmployerTest extends TestCase
 
     public function test_flow_sign_in_post_draft_publish(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $cookies = $this->signInEmployer();
 
         $created = $this->postAs($cookies, '/employer/jobs', $this->input());
@@ -132,7 +137,7 @@ final class EmployerTest extends TestCase
         $this->get('/employer', ['Cookie' => $this->cookieHeader($cookies)])->assertSee('Draft saved.')->assertSee('Platform Wrangler')->assertSee('Draft');
 
         $job = $this->draftOf('Platform Wrangler');
-        $this->assertSame('draft', $job->status);
+        $this->assertSame('draft', $this->container()->get(JobWriter::class)->state($job));
         $this->get('/jobs/' . $job->slug)->assertNotFound();
         $this->assertStringNotContainsString($job->slug, $this->get('/jobs?q=Wrangler')->body());
 
@@ -149,8 +154,6 @@ final class EmployerTest extends TestCase
 
     public function test_edit_updates_a_job(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $cookies = $this->signInEmployer();
         $this->postAs($cookies, '/employer/jobs', $this->input());
         $job = $this->draftOf('Platform Wrangler');
@@ -165,8 +168,6 @@ final class EmployerTest extends TestCase
 
     public function test_validation_errors_rerender_with_422(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $cookies = $this->signInEmployer();
 
         $response = $this->postAs($cookies, '/employer/jobs', $this->input(['title' => '', 'place' => 'Hamburg', 'description' => 'too short']));
@@ -212,8 +213,6 @@ final class EmployerTest extends TestCase
 
     public function test_logout(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $cookies = $this->signInEmployer();
 
         $response = $this->postAs($cookies, '/employer/logout', [], '/employer');

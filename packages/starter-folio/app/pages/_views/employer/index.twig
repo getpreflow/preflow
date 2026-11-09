@@ -16,19 +16,22 @@
     {% if jobs %}
         <ul class="employer__jobs">
         {% for job in jobs %}
+            {# draft: never published; published: what the site shows; changed: published, with edits not yet published #}
+            {% set state = states[job.uuid] ?? 'draft' %}
             <li class="employer__job">
                 <div>
                     <strong>{{ job.title }}</strong>
-                    <span class="employer__status employer__status--{{ job.status }}">{{ t('app.employer.status.' ~ job.status) }}</span>
+                    <span class="employer__status employer__status--{{ state }}">{{ t('app.employer.status.' ~ state) }}</span>
                     <div class="employer__meta">{{ job.place }} &middot; {{ t('app.type.' ~ job.employmentType) }} &middot; {{ t('app.remote.' ~ job.remote) }}</div>
                 </div>
                 <div class="employer__buttons">
                     <a href="/employer/jobs/{{ job.uuid }}/edit">{{ t('app.employer.edit') }}</a>
-                    {% if job.status == 'published' %}
+                    {% if state != 'published' %}
+                        <form method="post" action="/employer/jobs/{{ job.uuid }}/publish">{{ csrf_field() }}<button class="button" type="submit">{{ t(state == 'changed' ? 'app.employer.publish_changes' : 'app.employer.publish') }}</button></form>
+                    {% endif %}
+                    {% if state != 'draft' %}
                         <a href="/jobs/{{ job.slug }}">{{ t('app.employer.view') }}</a>
                         <form method="post" action="/employer/jobs/{{ job.uuid }}/unpublish">{{ csrf_field() }}<button class="button button--plain" type="submit">{{ t('app.employer.unpublish') }}</button></form>
-                    {% else %}
-                        <form method="post" action="/employer/jobs/{{ job.uuid }}/publish">{{ csrf_field() }}<button class="button" type="submit">{{ t('app.employer.publish') }}</button></form>
                     {% endif %}
                 </div>
             </li>
@@ -50,6 +53,7 @@
 .employer__buttons { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
 .employer__status { margin-left: 0.5rem; font-size: 0.8rem; border: 1px solid var(--line); border-radius: 999px; padding: 0.05rem 0.6rem; }
 .employer__status--published { border-color: var(--accent); color: var(--accent); }
+.employer__status--changed { border-color: var(--warn-line); background: var(--warn-bg); }
 .button {
     display: inline-block; font: inherit; padding: 0.35rem 1rem; border: 1px solid var(--accent); border-radius: 0.5rem;
     background: var(--accent); color: var(--bg); text-decoration: none; cursor: pointer;

@@ -6,7 +6,7 @@ namespace Tests\Site;
 
 use App\Models\Job;
 use PHPUnit\Framework\TestCase;
-use Preflow\Data\DataManager;
+use Preflow\Folio\Publishing\PublishedModels;
 use Preflow\Testing\TestResponse;
 use Psr\Http\Message\ResponseInterface;
 use Tests\Support\StarterApp;
@@ -36,10 +36,10 @@ final class JobSearchTest extends TestCase
     private function expected(callable $keep): array
     {
         $jobs = array_filter(
-            $this->container()->get(DataManager::class)->query(Job::class)->where('status', 'published')->get()->items(),
+            $this->container()->get(PublishedModels::class)->query(Job::class)->get()->items(),
             $keep,
         );
-        usort($jobs, static fn (Job $a, Job $b): int => strcmp((string) $b->publishedAt, (string) $a->publishedAt));
+        usort($jobs, static fn (Job $a, Job $b): int => strcmp((string) $b->_published_at, (string) $a->_published_at));
 
         return array_map(static fn (Job $job): string => (string) $job->slug, $jobs);
     }
@@ -76,8 +76,6 @@ final class JobSearchTest extends TestCase
 
     public function test_url_filters_render_server_side(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $response = $this->get('/jobs?remote=full&type=contract');
 
         $response->assertOk();
@@ -92,8 +90,6 @@ final class JobSearchTest extends TestCase
 
     public function test_search_box_and_filters_combine_without_js(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $response = $this->get('/jobs?q=engineer&place=Berlin');
 
         $expected = $this->expected(fn (Job $job): bool => $job->place === 'Berlin'
@@ -105,8 +101,6 @@ final class JobSearchTest extends TestCase
 
     public function test_search_action_filters_and_pushes_url(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $raw = $this->search(['q' => 'Engineer', 'remote' => 'hybrid']);
         $response = new TestResponse($raw);
 
@@ -150,8 +144,6 @@ final class JobSearchTest extends TestCase
 
     public function test_view_toggle_list(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $list = $this->get('/jobs?view=list')->body();
         $this->assertStringContainsString('class="job-list', $list);
         $this->assertMatchesRegularExpression('#<input[^>]*name="view"[^>]*value="list"[^>]*checked#', $list);
@@ -168,8 +160,6 @@ final class JobSearchTest extends TestCase
 
     public function test_paging(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $all = $this->expected(fn (): bool => true);
         $this->assertCount(34, $all);
 
@@ -189,8 +179,6 @@ final class JobSearchTest extends TestCase
 
     public function test_pager_links_run_the_search_action_with_their_page(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $html = $this->get('/jobs?remote=full')->body();
         $this->assertSame(1, preg_match('#href="/jobs\?remote=full&amp;page=2" rel="next"[^>]*hx-post="([^"]+)"#', $html, $next));
         [, $results] = $this->form($html);

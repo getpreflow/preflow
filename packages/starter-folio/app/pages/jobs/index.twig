@@ -8,10 +8,16 @@
 {% do seo({ title: t('app.jobs_title'), description: description }) %}
 
 <h1 class="jobs-title">{{ t('app.jobs_title') }}</h1>
+{# Staff edit this text in Folio (Pages > Job list page); it shows once published. Rich text from
+   folio_get() is cleaned when it is read, so |raw prints only safe HTML. #}
+{% set part = folio_get('jobs_page') %}
+{% if part and part.intro %}<div class="jobs-intro">{{ part.intro|raw }}</div>{% endif %}
 {# Only the filter keys: any other query parameter (a "key", say) would change the component's id. #}
 {{ component('JobSearch', request.query|filter((value, name) => name in ['q', 'place', 'type', 'remote', 'view', 'page'])) }}
 
 {% apply css %}
 .jobs-title { margin-bottom: 1rem; }
+.jobs-intro { margin-bottom: 1rem; color: var(--muted); }
+.jobs-intro > * + * { margin-top: 0.5rem; }
 {% endapply %}
 {% endblock %}

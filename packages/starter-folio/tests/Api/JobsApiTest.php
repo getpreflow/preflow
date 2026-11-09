@@ -7,6 +7,8 @@ namespace Tests\Api;
 use App\Models\Job;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
+use Preflow\Folio\Publishing\PublishState;
+use Preflow\Folio\Publishing\Publisher;
 use Tests\Support\StarterApp;
 
 /** The public read side of the API. Nothing here renders HTML. */
@@ -34,8 +36,6 @@ final class JobsApiTest extends TestCase
 
     public function test_list_with_filters_and_meta(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $all = $this->json('GET', '/api/jobs');
         $all->assertOk();
         $this->assertSame(12, $all->json('meta.per_page'));
@@ -65,8 +65,6 @@ final class JobsApiTest extends TestCase
 
     public function test_paging_past_last_page_is_empty_with_meta(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $page3 = $this->json('GET', '/api/jobs?page=3');
         $this->assertCount(10, $page3->json('data'));
 
@@ -80,8 +78,6 @@ final class JobsApiTest extends TestCase
 
     public function test_hostile_filters_are_ignored(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         foreach ([
             '?type=%3Cscript%3E',
             '?remote[]=x',
@@ -99,8 +95,6 @@ final class JobsApiTest extends TestCase
 
     public function test_show_published_job(): void
     {
-        $this->markTestIncomplete('Task 12');
-
         $job = $this->jobWhere('title', 'Frontend Developer');
 
         $response = $this->json('GET', '/api/jobs/' . $job->uuid);
@@ -114,9 +108,8 @@ final class JobsApiTest extends TestCase
 
     public function test_draft_is_404_json(): void
     {
-        $this->markTestIncomplete('Task 12');
-
-        $draft = $this->container()->get(DataManager::class)->query(Job::class)->where('status', 'draft')->first();
+        $states = $this->container()->get(Publisher::class)->states('job');
+        $draft = $this->container()->get(DataManager::class)->find(Job::class, (string) array_search(PublishState::Draft, $states, true));
         $this->assertInstanceOf(Job::class, $draft);
 
         $response = $this->json('GET', '/api/jobs/' . $draft->uuid);

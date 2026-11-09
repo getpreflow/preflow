@@ -1,0 +1,17 @@
+{
+    "key": "company_page",
+    "table": "company_page",
+    "storage": "sqlite",
+    "id_field": "uuid",
+    "label": "Company page",
+    "singleton": true,
+    "section": "pages",
+    "order": 30,
+    "fields": {
+        "before_jobs": {
+            "type": "richtext",
+            "label": "Before the job list",
+            "help": "Shown on every company page, above its open jobs."
+        }
+    }
+}
