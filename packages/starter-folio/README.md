@@ -22,7 +22,7 @@ Demo admin: admin@example.com / demo-admin (sign in at /folio)
 Demo editor: editor@example.com / demo-editor (sign in at /folio)
 ```
 
-These passwords are public demo data. They only exist while `APP_DEBUG=1`, and the demo seeder refuses to run when debug is off.
+These passwords are public demo data. `APP_DEBUG=0` only stops the seeder from running; it does not remove accounts that already exist. The accounts live in the SQLite file in `storage/data`, so never upload that file from a dev install (see "Deploy on shared hosting").
 
 The demo seed adds logos and news images, which needs the PHP `gd` extension. Without it (or with `STARTER_NO_IMAGES=1` in `.env`) the seed skips the images and says so; everything else works.
 
@@ -194,7 +194,7 @@ Ask an admin when you need more. Admins are the staff with the `admin` role in `
 
 | What | Files |
 |---|---|
-| Packages | `preflow/folio`, `preflow/media`, `preflow/roles`, `preflow/notify` in `composer.json` |
+| Packages | `preflow/folio`, `preflow/media`, `preflow/roles`, `preflow/notify` in `composer.json`; `config/notify.php` and `MAILER_DSN`, `MAIL_FROM` in `.env.example` |
 | Providers | `FolioServiceProvider` and `RolesServiceProvider` in `config/providers.php` |
 | Folio config | `config/folio.php` (admin at `/folio`), `config/media.php` (the library, on SQLite), `config/image.php` |
 | Admin files | `config/models/job.json`, `company.json`, `page.json`, `news.json`, and the singletons `jobs_page.json`, `job_page.json`, `company_page.json` |
@@ -211,9 +211,9 @@ Ask an admin when you need more. Admins are the staff with the `admin` role in `
 
 | File | What changed |
 |---|---|
-| `app/Models/Job.php`, `Company.php` | `type: 'job'` / `type: 'company'` on `#[Entity]`; `Job` loses `status` and `publishedAt` and gains `postedOn`; `Company` gains `logo`; `Job::company` is a `#[Relation]` |
+| `app/Models/Job.php`, `Company.php` | `type: 'job'` / `type: 'company'` on `#[Entity]`; `Job::slug` is now `#[Validate('required', 'slug')]`; `Job` loses `status` and `publishedAt` and gains `postedOn`; `Company` gains `logo`; `Job::company` is a `#[Relation]` |
 | `app/Jobs/JobSearch.php` | Reads Folio's published copies (`PublishedModels`); `byId()` is new |
-| `app/Jobs/JobWriter.php` | `publish()` takes the user and goes through Folio's `Publisher`; `state()` and `states()` are new; `create()`, `update()`, `unpublish()` and `delete()` keep their signatures |
+| `app/Jobs/JobWriter.php` | The constructor takes `DataManager` and Folio's `Publisher` (starter 1 takes `DataManager` only); `publish()` takes the user and goes through Folio's `Publisher`; `state()` and `states()` are new; `create()`, `update()`, `unpublish()` and `delete()` keep their signatures |
 | `app/Jobs/JobResource.php` | `status` is the publish state; `published_at` is the posted date |
 | `app/Controllers/Api/JobsController.php`, `Site/EmployerJobController.php` | Call the new `publish()`; a failed publish gives a 422, or the form with the errors |
 | `app/Components/ErrorDemo/ErrorDemo.php` | The comment now points to the page it lives on |
@@ -245,7 +245,7 @@ Publishing in Folio, or an employer publishing a job, refreshes the pages that s
 
 ## Deploy on shared hosting
 
-1. Upload the project and run `composer install --no-dev`.
+1. Upload the project and run `composer install --no-dev`. Do not upload `storage/data/*.sqlite` from a dev install: it holds the public demo accounts. Production starts with a fresh database, made by the steps below (`migrate`, the `ContentSeeder`, then `staff:create` and `employer:create`).
 2. Create `.env` from `.env.example`. Set `APP_DEBUG=0` and a real `APP_URL` with its scheme, like `https://jobs.example.com`.
 3. Run `php preflow key:generate` and `php preflow migrate`.
 4. Run `php preflow folio:extensions:apply`. Run it again after every deploy.

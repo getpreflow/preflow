@@ -18,7 +18,7 @@ Open `http://localhost:8080`. Use that exact address: `APP_URL` in `.env` and th
 Demo employer: employer@example.com / demo-employer (sign in at /employer)
 ```
 
-This password is public demo data. It only works while `APP_DEBUG=1`, and the demo seeder refuses to run when debug is off.
+This password is public demo data. `APP_DEBUG=0` only stops the seeder from running; it does not remove an account that already exists. The account lives in the SQLite file in `storage/data`, so never upload that file from a dev install (see "Deploy on shared hosting").
 
 ## Tour
 
@@ -157,7 +157,7 @@ Run one part with `vendor/bin/phpunit --testsuite Api`. Every test boots the rea
 
 ## Deploy on shared hosting
 
-1. Upload the project and run `composer install --no-dev`.
+1. Upload the project and run `composer install --no-dev`. Do not upload `storage/data/*.sqlite` from a dev install: it holds the public demo account. Production starts with a fresh database, made by the steps below (`migrate`, then `employer:create`).
 2. Create `.env` from `.env.example`. Set `APP_DEBUG=0` and a real `APP_URL` with its scheme, like `https://jobs.example.com`.
 3. Run `php preflow key:generate` and `php preflow migrate`.
 4. Do not run the demo seed. It refuses to run with debug off, and its password is public. Create the first account with `php preflow employer:create you@example.com --company="Your Company"`. It prints a password once.
