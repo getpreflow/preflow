@@ -19,7 +19,12 @@ final class JsonErrorRenderer implements ErrorRendererInterface
         403 => 'Forbidden',
         404 => 'Not Found',
         405 => 'Method Not Allowed',
+        409 => 'Conflict',
+        410 => 'Gone',
+        413 => 'Content Too Large',
+        415 => 'Unsupported Media Type',
         422 => 'The given data was invalid.',
+        429 => 'Too Many Requests',
         500 => 'Server Error',
         502 => 'Bad Gateway',
         503 => 'Service Unavailable',
@@ -39,7 +44,7 @@ final class JsonErrorRenderer implements ErrorRendererInterface
         } elseif ($exception instanceof HttpException && $exception->getMessage() !== '') {
             $message = $exception->getMessage();
         } else {
-            $message = self::STATUS_MESSAGES[$statusCode] ?? 'Server Error';
+            $message = self::STATUS_MESSAGES[$statusCode] ?? ($statusCode >= 400 && $statusCode < 500 ? 'Client Error' : 'Server Error');
         }
 
         $body = ['message' => $message];

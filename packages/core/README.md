@@ -1101,7 +1101,7 @@ client); any other exception shows `Server Error`, never its message outside deb
 
 **CORS.** With `cors.origins` set, `CorsMiddleware` runs outermost: it answers preflight
 (`OPTIONS` with `Access-Control-Request-Method`) for API paths without reaching the router, and
-adds its headers to every API response, error responses included.
+adds its headers to every API response, error responses included. Every API response also gets `Vary: Origin`, so a shared cache keeps the origins apart.
 
 **The page cache never stores API paths** (they are non-public paths, and every `api.prefixes`
 entry is registered as one). Caching API GETs is on the roadmap; it needs its own design, because

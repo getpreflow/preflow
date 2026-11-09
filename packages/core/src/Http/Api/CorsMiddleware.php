@@ -11,7 +11,8 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
 /**
- * CORS for the API paths (config/api.php `cors`), for requests that carry an Origin.
+ * CORS for the API paths (config/api.php `cors`). Every API response varies on Origin, so a shared
+ * cache never serves one origin's answer to another; the CORS headers go to requests that carry an allowed Origin.
  * Registered outermost, so page-cache hits get the headers and stored pages never hold them;
  * the Kernel adds them to error responses through decorate().
  */
@@ -21,20 +22,25 @@ final class CorsMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        if (!$this->applies($request)) {
+        if (!$this->config->isApi($request)) {
             return $handler->handle($request);
         }
 
-        if ($request->getMethod() === 'OPTIONS' && $request->hasHeader('Access-Control-Request-Method')) {
+        if ($request->hasHeader('Origin') && $request->getMethod() === 'OPTIONS' && $request->hasHeader('Access-Control-Request-Method')) {
             return $this->preflight($request);
         }
 
         return $this->decorate($request, $handler->handle($request));
     }
 
-    /** Adds the CORS headers for an allowed origin; any other response is returned as it is. */
+    /** Adds Vary: Origin to an API response, and the CORS headers when the Origin is allowed. */
     public function decorate(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
     {
+        if (!$this->config->isApi($request)) {
+            return $response;
+        }
+
+        $response = $this->withVary($response);
         if (!$this->applies($request) || !$this->allowed($request)) {
             return $response;
         }
@@ -47,10 +53,10 @@ final class CorsMiddleware implements MiddlewareInterface
         return $response;
     }
 
-    /** A disallowed origin gets an empty 204 without CORS headers: the browser then blocks the call. */
+    /** A disallowed origin gets an empty 204 without CORS headers (only Vary): the browser then blocks the call. */
     private function preflight(ServerRequestInterface $request): ResponseInterface
     {
-        $response = new Response(204);
+        $response = $this->withVary(new Response(204));
         if (!$this->allowed($request)) {
             return $response;
         }
@@ -84,6 +90,11 @@ final class CorsMiddleware implements MiddlewareInterface
             $response = $response->withHeader('Access-Control-Allow-Credentials', 'true');
         }
 
+        return $response;
+    }
+
+    private function withVary(ResponseInterface $response): ResponseInterface
+    {
         // Appended: the response may already vary on other headers (Accept-Encoding).
         $vary = array_map(trim(...), explode(',', strtolower($response->getHeaderLine('Vary'))));
         if (!in_array('origin', $vary, true) && !in_array('*', $vary, true)) {

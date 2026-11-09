@@ -7,6 +7,7 @@ namespace Preflow\Core\Tests\Error;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Error\JsonErrorRenderer;
+use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationResult;
@@ -50,5 +51,17 @@ final class JsonErrorRendererTest extends TestCase
             '{"message":"The given data was invalid.","errors":{"title":["The title is required."]}}',
             $this->render($e, 422),
         );
+    }
+
+    public function test_an_empty_message_falls_back_to_the_reason_phrase(): void
+    {
+        $this->assertSame('{"message":"Too Many Requests"}', $this->render(new HttpException(429), 429));
+        $this->assertSame('{"message":"Conflict"}', $this->render(new HttpException(409), 409));
+    }
+
+    public function test_an_unlisted_status_falls_back_by_range(): void
+    {
+        $this->assertSame('{"message":"Client Error"}', $this->render(new HttpException(418), 418));
+        $this->assertSame('{"message":"Server Error"}', $this->render(new HttpException(504), 504));
     }
 }

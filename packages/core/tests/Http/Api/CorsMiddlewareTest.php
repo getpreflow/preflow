@@ -88,6 +88,7 @@ final class CorsMiddlewareTest extends TestCase
         foreach (array_keys($response->getHeaders()) as $name) {
             $this->assertStringStartsNotWith('access-control-', strtolower((string) $name));
         }
+        $this->assertSame('Origin', $response->getHeaderLine('Vary'));
     }
 
     public function test_simple_request_gets_allow_origin_and_vary(): void
@@ -113,6 +114,7 @@ final class CorsMiddlewareTest extends TestCase
         );
 
         $this->assertFalse($response->hasHeader('Access-Control-Allow-Origin'));
+        $this->assertSame('Origin', $response->getHeaderLine('Vary'));
     }
 
     public function test_wildcard_origin_without_credentials_sends_star(): void
@@ -145,12 +147,26 @@ final class CorsMiddlewareTest extends TestCase
         $this->assertSame(405, $options->getStatusCode());
     }
 
-    public function test_request_without_origin_is_untouched(): void
+    public function test_request_without_origin_varies_on_origin_only(): void
     {
-        $original = new Response(200);
-        $response = $this->cors()->process($this->request('GET', '/api/jobs'), $this->handler($original));
+        $response = $this->cors()->process(
+            $this->request('GET', '/api/jobs'),
+            $this->handler(new Response(200, ['Vary' => 'Accept-Encoding'])),
+        );
 
-        $this->assertSame($original, $response);
+        $this->assertSame('Accept-Encoding, Origin', $response->getHeaderLine('Vary'));
+        $this->assertFalse($response->hasHeader('Access-Control-Allow-Origin'));
+    }
+
+    public function test_an_error_response_to_a_disallowed_origin_varies_on_origin(): void
+    {
+        $response = $this->cors()->decorate(
+            $this->request('GET', '/api/jobs', ['Origin' => 'https://evil.test']),
+            new Response(404),
+        );
+
+        $this->assertSame('Origin', $response->getHeaderLine('Vary'));
+        $this->assertFalse($response->hasHeader('Access-Control-Allow-Origin'));
     }
 
     public function test_decorate_adds_headers_to_an_error_response(): void
