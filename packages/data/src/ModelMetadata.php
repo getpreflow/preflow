@@ -33,6 +33,7 @@ final class ModelMetadata
         public readonly array $transformers = [],
         public readonly array $validationRules = [],
         private readonly array $rawValidationRules = [],
+        public readonly ?string $type = null,
     ) {}
 
     /**
@@ -128,6 +129,7 @@ final class ModelMetadata
             transformers: $transformers,
             validationRules: $validationRules,
             rawValidationRules: $rawValidationRules,
+            type: $entity->type,
         );
 
         self::$cache[$modelClass] = $meta;

@@ -1,0 +1,14 @@
+{
+    "key": "job",
+    "table": "job",
+    "storage": "default",
+    "id_field": "uuid",
+    "fields": {
+        "title": {"type": "string", "label": "Title", "validate": ["required"]},
+        "remote": {"type": "select", "options": {"no": "No", "hybrid": "Hybrid", "fully": "Fully"}},
+        "company": {"type": "relation", "relation": {"to": "company", "onDelete": "restrict", "labelField": "name"}},
+        "logo": {"type": "asset", "accept": ["image/*"]},
+        "salary_from": {"type": "number"},
+        "open": {"type": "boolean"}
+    }
+}

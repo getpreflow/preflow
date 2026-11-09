@@ -13,5 +13,14 @@ final class Field
         public readonly bool|array $unique = false,
         public readonly bool $index = false,
         public readonly ?int $length = null,
+        /** The field kind (string, select, asset, blocks, ...); inferred from the property type when null. */
+        public readonly ?string $type = null,
+        /** @var string|array<string, string>|null a label, or one per locale */
+        public readonly string|array|null $label = null,
+        /** @var string|array<string, string>|null help text, or one per locale */
+        public readonly string|array|null $help = null,
+        /** @var array<string, mixed> kind-specific settings (options, accept, ...), written at field level as a JSON file does */
+        public readonly array $config = [],
+        public readonly mixed $default = null,
     ) {}
 }
