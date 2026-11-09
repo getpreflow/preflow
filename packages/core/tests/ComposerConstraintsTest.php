@@ -8,8 +8,8 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Core requires none of auth, components, data, htmx, i18n, routing, view, twig or blade, but boots them when they are installed,
- * so only "conflict" keeps Composer from pairing core with a release that lacks the APIs it calls: auth 0.60
- * (SessionGuard takes marker:, the signed-in marker the page cache bypasses on; since 0.38 bootAuth binds Preflow\Auth\Record\RecordUserProvider::factory() for record users from
+ * so only "conflict" keeps Composer from pairing core with a release that lacks the APIs it calls: auth 0.62
+ * (TokenAuthMiddleware, which bootAuth registers; 0.60: SessionGuard takes marker:, the signed-in marker the page cache bypasses on; since 0.38 bootAuth binds Preflow\Auth\Record\RecordUserProvider::factory() for record users from
  * config/auth.php), components 0.60
  * (ComponentRenderer::enableLive() and enableFreshness(), ErrorBoundary takes onError:), data 0.61 (ModelClasses and the TypeRegistry's class argument, which Application boots; since 0.60 DataManager::observe()
  * and reportedStorage() for the page cache; since 0.59 Application passes cacheDir: to JsonFileDriver; since 0.59 the drivers take a connector
@@ -29,7 +29,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame([
-            'preflow/auth' => '<0.60',
+            'preflow/auth' => '<0.62',
             'preflow/components' => '<0.60',
             'preflow/data' => '<0.61',
             'preflow/htmx' => '<0.60',

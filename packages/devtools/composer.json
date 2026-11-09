@@ -10,6 +10,7 @@
         "preflow/data": "^0.61 || @dev"
     },
     "conflict": {
+        "preflow/auth": "<0.62",
         "preflow/core": "<0.62",
         "preflow/data": "<0.61"
     },
