@@ -83,6 +83,8 @@ final class JobSearch
 
     public function openJobCount(string $companyUuid): int
     {
+        // One count per company: fine for a short list of companies. For a long one, count
+        // every company in a single grouped query (or keep a counter on the company) instead.
         // total() ignores the limit, so this counts in the database without loading the jobs.
         return $this->published()->where('company', $companyUuid)->limit(1)->get()->total();
     }

@@ -49,7 +49,8 @@ trait StarterApp
             }
             exec('cp -R ' . escapeshellarg($project . '/' . $entry) . ' ' . escapeshellarg($this->starterRoot . '/' . $entry));
         }
-        if ($apiOnly) {
+        // STARTER_API_ONLY=1 forces this for a whole run (ApiOnlyTest starts one as a subprocess).
+        if ($apiOnly || getenv('STARTER_API_ONLY') === '1') {
             foreach (self::SITE_PATHS as $path) {
                 exec('rm -rf ' . escapeshellarg($this->starterRoot . '/' . $path));
             }

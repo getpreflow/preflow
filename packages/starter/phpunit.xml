@@ -7,8 +7,17 @@
          failOnWarning="true"
 >
     <testsuites>
-        <testsuite name="Starter">
-            <directory>tests</directory>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Site">
+            <directory>tests/Site</directory>
+        </testsuite>
+        <testsuite name="Api">
+            <directory>tests/Api</directory>
+        </testsuite>
+        <testsuite name="ApiOnly">
+            <file>tests/ApiOnlyTest.php</file>
         </testsuite>
     </testsuites>
 </phpunit>
