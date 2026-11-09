@@ -35,8 +35,10 @@ trait StaffScaffold
      * @param string|null          $locale config/i18n.php default (null: no i18n config)
      * @param 'sqlite'|'mysql'     $sql    where staff, tokens, remember rows and throttle live
      * @param string|null          $url    app.url (null: not set)
+     * @param array<string, mixed>  $data   more of config/data.php (model_paths)
+     * @param array<string, array<string, mixed>> $models more model files, by key, written before the tables are made
      */
-    private function staffSite(array $guard = ['remember' => ['cookie' => 'folio_remember', 'days' => 30, 'path' => '/folio']], array $folio = [], ?string $locale = null, string $sql = 'sqlite', ?string $url = 'https://site.test'): void
+    private function staffSite(array $guard = ['remember' => ['cookie' => 'folio_remember', 'days' => 30, 'path' => '/folio']], array $folio = [], ?string $locale = null, string $sql = 'sqlite', ?string $url = 'https://site.test', array $data = [], array $models = []): void
     {
         putenv('APP_DEBUG=1');
         $this->dir = sys_get_temp_dir() . '/folio_staff_' . bin2hex(random_bytes(4));
@@ -65,7 +67,7 @@ trait StaffScaffold
                 $sql => $sql === 'mysql' ? \Preflow\Testing\MysqlTestDatabase::dataConfig() : ['path' => $this->dir . '/storage/site.sqlite'],
             ],
             'aliases' => ['auth' => $sql, 'throttle' => $sql, 'staffdb' => $sql],
-        ], true) . ";\n");
+        ] + $data, true) . ";\n");
         if ($locale !== null) {
             $this->write('config/i18n.php', "<?php\nreturn " . var_export([
                 'default' => $locale, 'available' => [$locale], 'fallback' => $locale, 'url_strategy' => 'prefix', 'cookie' => false,
@@ -85,6 +87,9 @@ trait StaffScaffold
             ],
         ]));
         $this->write('app/pages/index.twig', 'HOME');
+        foreach ($models as $key => $model) {
+            $this->write("config/models/{$key}.json", (string) json_encode(['key' => $key] + $model));
+        }
 
         ob_start();
         try {

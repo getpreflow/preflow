@@ -24,7 +24,8 @@ trait PublishingScaffold
     /** The storage the scaffold's models use: 'json', 'sqlite' or 'mysql' (tables via TableSync). */
     private string $storage = 'json';
 
-    private function scaffoldPublishing(string $storage = 'json'): void
+    /** @param list<string> $modelPaths data.model_paths, where model classes marked #[Entity(type: …)] are found */
+    private function scaffoldPublishing(string $storage = 'json', array $modelPaths = []): void
     {
         $this->storage = $storage;
         putenv('APP_DEBUG=1');
@@ -33,6 +34,7 @@ trait PublishingScaffold
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key'];\n");
         $sqlite = $storage === 'sqlite' ? "'sqlite' => ['path' => __DIR__ . '/../storage/app.sqlite']," : '';
         $mysql = $storage === 'mysql' ? "'mysql' => " . var_export(MysqlTestDatabase::dataConfig(), true) . ',' : '';
+        $classes = $modelPaths === [] ? '' : "'model_paths' => " . var_export($modelPaths, true) . ',';
         $this->write('config/data.php', <<<PHP
             <?php
             return [
@@ -43,6 +45,7 @@ trait PublishingScaffold
                 ],
                 'default' => 'json',
                 'models_path' => __DIR__ . '/models',
+                {$classes}
             ];
             PHP);
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");

@@ -1,0 +1,98 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Folio\Tests;
+
+use PHPUnit\Framework\TestCase;
+use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Folio\Publishing\PublishedModels;
+use Preflow\Folio\Tests\Fixtures\Models\Job;
+use Preflow\Folio\Tests\Fixtures\Models\Poster;
+use Preflow\Folio\Tests\Support\PublishingScaffold;
+
+/** App code reads the published copies of a class-backed type as read-only objects of its class. */
+final class PublishedModelsTest extends TestCase
+{
+    use PublishingScaffold;
+
+    protected function setUp(): void
+    {
+        $this->scaffoldPublishing('sqlite', [__DIR__ . '/Fixtures/Models']);
+        $this->write('config/models/job.json', (string) json_encode(['key' => 'job', 'label' => 'Jobs', 'publishing' => true]));
+        $this->write('config/models/poster.json', (string) json_encode(['key' => 'poster', 'label' => 'Posters']));
+        ($this->app()->container()->get(MigrationRegistry::class)->steps()['folio.tables'] ?? throw new \RuntimeException('step not registered'))();
+    }
+
+    protected function tearDown(): void
+    {
+        $this->removeScaffold();
+    }
+
+    public function test_a_draft_only_record_is_not_found(): void
+    {
+        $id = $this->job('Carpenter');
+
+        $this->assertNull($this->published()->find(Job::class, $id));
+        $this->assertSame([], $this->published()->query(Job::class)->get()->items());
+    }
+
+    public function test_published_records_are_read_only_objects_of_the_class(): void
+    {
+        $carpenter = $this->job('Carpenter');
+        $this->job('Plumber');
+        $this->publish($carpenter);
+
+        $app = $this->app();
+        $published = $app->container()->get(PublishedModels::class);
+        $found = $published->find(Job::class, $carpenter);
+        $jobs = $published->query(Job::class)->where('title', 'Carpenter')->get()->items();
+
+        $this->assertInstanceOf(Job::class, $found);
+        $this->assertSame('Carpenter', $found->title);
+        $this->assertCount(1, $jobs);
+        $this->assertInstanceOf(Job::class, $jobs[0]);
+        $this->assertSame($carpenter, $jobs[0]->uuid);
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $this->assertTrue($dm->isReadOnly($found));
+        $this->assertTrue($dm->isReadOnly($jobs[0]));
+        $this->expectException(\LogicException::class);
+        $dm->save($found);
+    }
+
+    public function test_a_type_without_publishing_is_refused(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('Type "poster" (' . Poster::class . ') has no publishing');
+
+        $this->published()->find(Poster::class, 'p1');
+    }
+
+    public function test_a_class_that_is_not_a_type_is_refused(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage(\Preflow\Folio\Tests\Fixtures\Models\NotAType::class . ' is not a type');
+
+        $this->published()->query(\Preflow\Folio\Tests\Fixtures\Models\NotAType::class);
+    }
+
+    private function published(): PublishedModels
+    {
+        return $this->app()->container()->get(PublishedModels::class);
+    }
+
+    /** Saves a job from app code: a working copy only. */
+    private function job(string $title): string
+    {
+        $job = new Job();
+        $job->title = $title;
+        $this->dm()->save($job);
+
+        return (string) $job->uuid;
+    }
+
+    private function publish(string $id): void
+    {
+        $this->publisher()->publish($this->stored('job', $id), 'tester');
+    }
+}

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
+use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Extension\ModelExtension;
 use Preflow\Folio\Extension\Screen\ScreenRegistry;
 
@@ -16,10 +17,15 @@ final class TypeCatalog
      */
     public const array FILE_HOLDING_FIELD_TYPES = ['asset', 'blocks', 'matrix'];
 
-    /** @param \Preflow\Core\Boot\BootManifest|null $manifest the boot manifest the model files' listings come from when it has them */
+    /**
+     * @param \Preflow\Core\Boot\BootManifest|null $manifest the boot manifest the model files' listings come from when it has them
+     * @param TypeRegistry|null                   $types    the types; a model file whose key a model class defines is that
+     *                                                      class's admin file, listed with the class's schema
+     */
     public function __construct(
         private readonly string $modelsPath,
         private readonly ?\Preflow\Core\Boot\BootManifest $manifest = null,
+        private readonly ?TypeRegistry $types = null,
     ) {}
 
     /** @var TypeListing[]|null scanned once per catalog (one request) */
@@ -64,7 +70,12 @@ final class TypeCatalog
             static fn (array $listing): TypeListing => new TypeListing(...$listing),
             $this->manifest->remember(
                 'folio.type_listings',
-                fn (): array => array_map(static fn (TypeListing $listing): array => get_object_vars($listing), $this->scanFiles()),
+                function (): array {
+                    // The model classes are sources too: a changed class changes its listing.
+                    $this->manifest?->addSources($this->classFiles());
+
+                    return array_map(static fn (TypeListing $listing): array => get_object_vars($listing), $this->scanFiles());
+                },
                 [$this->modelsPath],
             ),
         );
@@ -86,10 +97,30 @@ final class TypeCatalog
             if (ModelExtension::isPatch($data)) {
                 continue; // adds to an extension's type, listed through add() once merged
             }
+            // A model class's admin file: listed from the class's schema with the file laid over it,
+            // so the checks below (hidden columns, file fields) see the class's fields.
+            if ($this->types?->classFor($data['key']) !== null) {
+                $data = $this->types->schema($data['key']);
+            }
             $listings[] = $this->listing($data, 'content');
         }
 
         return $listings;
+    }
+
+    /** @return list<string> the files of the model classes that define types */
+    private function classFiles(): array
+    {
+        $files = [];
+        foreach ($this->types?->keys() ?? [] as $key) {
+            $class = $this->types->classFor($key);
+            $file = $class === null ? false : (new \ReflectionClass($class))->getFileName();
+            if (is_string($file)) {
+                $files[] = $file;
+            }
+        }
+
+        return $files;
     }
 
     /** @param array<string, mixed> $data */

@@ -73,9 +73,6 @@ final class FolioServiceProvider extends ServiceProvider
         $modelsPath = $this->modelsPath($app);
         $prefix = $this->prefix($app);
 
-        $catalog = new TypeCatalog($modelsPath, $app->bootManifest());
-        $container->instance(TypeCatalog::class, $catalog);
-
         // The DataManager's registry when it has one, so types defined at runtime (extension
         // models) are the ones it queries. Otherwise Folio's own, bound unconditionally:
         // Container::has() falls back to class_exists(), so a has() guard would never bind it.
@@ -83,6 +80,10 @@ final class FolioServiceProvider extends ServiceProvider
         $dataManager = $this->dataManager($container, $app);
         $types = $dataManager?->getTypeRegistry() ?? new TypeRegistry($modelsPath, $locales);
         $container->instance(TypeRegistry::class, $types);
+
+        // Built on the registry: a model file whose key a model class defines lists that class.
+        $catalog = new TypeCatalog($modelsPath, $app->bootManifest(), $types);
+        $container->instance(TypeCatalog::class, $catalog);
 
         // Record user providers named in config/auth.php get their user type from Folio's catalog.
         // The pre-0.38 Folio name still works, with a deprecation note.
@@ -162,7 +163,7 @@ final class FolioServiceProvider extends ServiceProvider
         }
         $displayLabels = new \Preflow\Folio\Content\DisplayLabels($catalog, $types, $extensions);
         $container->instance(\Preflow\Folio\Content\DisplayLabels::class, $displayLabels);
-        $this->registerLabelKeys($container, $modelsPath, $labelSources);
+        $this->registerLabelKeys($container, $modelsPath, $labelSources, $types);
         // Blocks: component blocks from app/Components, data-only blocks from
         // app/Blocks, plus classes listed in config/folio.php 'blocks'. Cached
         // when debug is off (conflicting keys fail at boot either way).
@@ -623,6 +624,11 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(FrontendResolver::class),
         ));
         $keepRevisions = self::keepRevisions((array) ($folioConfig['publishing'] ?? []));
+        // App code's typed reads of what the public site sees of a model class (its published copies).
+        $container->singleton(\Preflow\Folio\Publishing\PublishedModels::class, static fn (Container $c) => new \Preflow\Folio\Publishing\PublishedModels(
+            $c->get(DataManager::class),
+            $c->get(TypeCatalog::class),
+        ));
         $container->singleton(\Preflow\Folio\Publishing\Publisher::class, fn (Container $c) => new \Preflow\Folio\Publishing\Publisher(
             $c->get(DataManager::class),
             $c->get(TypeCatalog::class),
@@ -1064,7 +1070,7 @@ final class FolioServiceProvider extends ServiceProvider
         return [$extensionTypes, $labelSources];
     }
 
-    private function registerLabelKeys(Container $container, string $modelsPath, array $extensionModels): void
+    private function registerLabelKeys(Container $container, string $modelsPath, array $extensionModels, TypeRegistry $types): void
     {
         if (!class_exists(\Preflow\I18n\DerivedKeys::class)) {
             return;
@@ -1072,22 +1078,32 @@ final class FolioServiceProvider extends ServiceProvider
         if (!$container->bound(\Preflow\I18n\DerivedKeys::class)) {
             $container->instance(\Preflow\I18n\DerivedKeys::class, new \Preflow\I18n\DerivedKeys());
         }
-        $container->get(\Preflow\I18n\DerivedKeys::class)->add('Folio model labels', static function () use ($modelsPath, $extensionModels): array {
+        $container->get(\Preflow\I18n\DerivedKeys::class)->add('Folio model labels', static function () use ($modelsPath, $extensionModels, $types): array {
             $sources = [];
+            $sections = [];
             foreach (glob($modelsPath . '/*.json') ?: [] as $file) {
                 $schema = json_decode((string) file_get_contents($file), true);
-                if (is_array($schema) && is_string($schema['key'] ?? null) && !ModelExtension::isPatch($schema)) {
+                if (!is_array($schema) || !is_string($schema['key'] ?? null) || ModelExtension::isPatch($schema)) {
+                    continue;
+                }
+                if ($types->classFor($schema['key']) === null) {
                     $sources[] = [$schema, 'site'];
+                } else {
+                    // A model class's admin file: its labels come from the class's schema (classTypes() below), its section from here.
+                    $sections[] = [$schema['section'] ?? null, 'site'];
                 }
             }
             foreach ($extensionModels as [, $schema, $group]) {
                 $sources[] = [$schema, $group];
             }
-            $builtin = \Preflow\Folio\Http\AdminNav::sectionOrder([]);
             $keys = [];
             foreach ($sources as [$schema, $group]) {
                 $keys += \Preflow\Data\ModelLabelKeys::derive($schema, $group);
-                $section = $schema['section'] ?? null;
+                $sections[] = [$schema['section'] ?? null, $group];
+            }
+            $keys += \Preflow\Data\ModelLabelKeys::classTypes($types, 'site');
+            $builtin = \Preflow\Folio\Http\AdminNav::sectionOrder([]);
+            foreach ($sections as [$section, $group]) {
                 if (is_string($section) && !in_array($section, $builtin, true)) {
                     $keys += [\Preflow\Data\ModelLabelKeys::section($group, $section) => null];
                 }
