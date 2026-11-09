@@ -49,6 +49,51 @@ php preflow migrate --storage=sqlite   # the storage to migrate (default: sqlite
   `Nothing to migrate: no SQL storage configured.` and exits 0, so a shared deploy step
   can always run it. An explicit `--storage=<key>` that is unknown or not SQL still exits 1.
 
+### `db:seed [--class=<Name>]` — run the seeders
+
+Boots the application (like `migrate`), then runs the classes in `app/Seeds/` in filename order. Each seeder is built by the container, so its constructor can take any service, and gets the container's `DataManager`:
+
+```php
+namespace App\Seeds;
+
+use Preflow\Core\Config\Config;
+use Preflow\Data\DataManager;
+
+final class DemoSeeder
+{
+    public function __construct(private readonly Config $config) {}
+
+    public function run(DataManager $data): void
+    {
+        // A demo seed must never touch production data.
+        if (!$this->config->get('app.debug')) {
+            echo "Demo data skipped: app.debug is off.\n";
+            return;
+        }
+
+        $job = new Job();
+        $job->uuid = md5('demo-job-1');   // fixed id: rerunning updates, never duplicates
+        $job->title = 'Barista';
+        $data->save($job);
+    }
+}
+```
+
+```
+php preflow db:seed
+# Running seeders...
+#   Seeded: DemoSeeder
+# Done.
+php preflow db:seed --class=DemoSeeder      # one seeder; a short name under App\Seeds, or fully qualified
+```
+
+- `.env` is loaded, so a seeder can read `$_ENV` / `getenv()`.
+- `save()` validates: the container's `DataManager` has the validator, so `#[Validate]` rules apply.
+- An unknown `--class` prints `Seeder <Name> not found.` and exits 1; a seeder that throws prints `Seeder <Name> failed: <message>` and exits 1.
+- A project without `app/Seeds/` prints `No seeders directory found (app/Seeds/).` and exits 0.
+
+**Upgrading:** seeders used to run on a hand-built SQLite connection, with no container, no validation and no `.env`. They now run through the booted app, so `#[Validate]` rules apply and seed data that breaks them now fails. Seeders with a constructor that needs arguments now get them from the container instead of failing.
+
 ### `make:component Name` — scaffold a component
 
 Creates `app/Components/Name/Name.php` and `app/Components/Name/Name.twig`.

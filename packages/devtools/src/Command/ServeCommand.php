@@ -34,7 +34,13 @@ final class ServeCommand implements CommandInterface
         echo "Press Ctrl+C to stop.\n\n";
 
         $router = __DIR__ . '/../router.php';
-        passthru("php -S {$host}:{$port} -t {$docRoot} {$router}", $exitCode);
+        passthru($this->buildCommand($host, (int) $port, $docRoot, $router), $exitCode);
         return $exitCode;
+    }
+
+    /** Every dynamic part is quoted: a project path with a space must not split into arguments. */
+    public function buildCommand(string $host, int $port, string $docRoot, string $router): string
+    {
+        return 'php -S ' . escapeshellarg("{$host}:{$port}") . ' -t ' . escapeshellarg($docRoot) . ' ' . escapeshellarg($router);
     }
 }
