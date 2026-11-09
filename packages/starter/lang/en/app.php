@@ -3,4 +3,31 @@
 return [
     'name' => 'Preflow Jobs',
     'footer' => 'Built with Preflow',
+    'nav' => [
+        'jobs' => 'Jobs',
+        'employers' => 'Employers',
+        'api' => 'API',
+    ],
+    'type' => [
+        'full_time' => 'Full time',
+        'part_time' => 'Part time',
+        'contract' => 'Contract',
+        'internship' => 'Internship',
+    ],
+    'remote' => [
+        'no' => 'On site',
+        'hybrid' => 'Hybrid',
+        'full' => 'Remote',
+    ],
+    'salary_from' => 'from',
+    'salary_up_to' => 'up to',
+    'per_year' => 'per year',
+    'posted' => 'Posted',
+    'no_jobs' => 'No jobs yet.',
+    'more_from' => 'More from :company',
+    'open_jobs' => 'Open jobs',
+    'no_open_jobs' => 'No open jobs right now.',
+    'job_not_found' => 'Job not found',
+    'job_not_found_hint' => 'It may have been filled or taken down. See all open jobs:',
+    'company_not_found' => 'Company not found',
 ];

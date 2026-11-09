@@ -58,6 +58,18 @@ final class EmployerCreateCommandTest extends TestCase
         $this->assertNotSame($match[1], $user->passwordHash);
     }
 
+    public function test_the_email_is_lowercased_so_the_duplicate_check_sees_it(): void
+    {
+        [$code] = $this->runCommand(['  Mixed@Acme.test ', '--company=Acme Rockets']);
+        $this->assertSame(0, $code);
+        $user = $this->container()->get(DataManager::class)->query(User::class)->where('email', 'mixed@acme.test')->first();
+        $this->assertNotNull($user);
+
+        [$code, $output] = $this->runCommand(['MIXED@acme.test', '--company=Acme Rockets']);
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('already exists', $output);
+    }
+
     public function test_an_existing_company_is_reused(): void
     {
         [$code] = $this->runCommand(['second@northwind.test', '--company=Northwind Labs']);

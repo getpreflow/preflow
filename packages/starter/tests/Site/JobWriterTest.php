@@ -92,6 +92,17 @@ final class JobWriterTest extends TestCase
         }
     }
 
+    public function test_a_salary_that_is_not_a_whole_number_gets_a_readable_message(): void
+    {
+        try {
+            $this->writer->create($this->input(['salaryFrom' => 'lots', 'salaryTo' => '12.5']), $this->owner);
+            $this->fail('Expected a ValidationException.');
+        } catch (ValidationException $e) {
+            $this->assertSame(['The salary from must be a whole number.'], $e->errors()['salaryFrom']);
+            $this->assertSame(['The salary to must be a whole number.'], $e->errors()['salaryTo']);
+        }
+    }
+
     public function test_publish_sets_published_at_once(): void
     {
         $job = $this->writer->create($this->input(), $this->owner);

@@ -108,7 +108,7 @@ final class JobWriter
                 } else {
                     // Not assignable to an int property: report it the way a rule would.
                     unset($values[$key]);
-                    $errors[$key] = ['The ' . $key . ' must be an integer.'];
+                    $errors[$key] = ['The ' . ($key === 'salaryFrom' ? 'salary from' : 'salary to') . ' must be a whole number.'];
                 }
             } elseif (!is_string($value)) {
                 $values[$key] = null; // the required rule then reports it

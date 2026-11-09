@@ -32,7 +32,7 @@ final class EmployerCreateCommand implements CommandInterface
             if (str_starts_with($arg, '--company=')) {
                 $companyName = trim(substr($arg, strlen('--company=')));
             } elseif (!str_starts_with($arg, '--')) {
-                $email = trim($arg);
+                $email = strtolower(trim($arg));
             }
         }
         if ($email === null || $email === '' || $companyName === null || $companyName === '') {

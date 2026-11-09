@@ -8,6 +8,11 @@
 <body>
     <header class="site-header">
         <a href="/" class="site-brand">{{ t('app.name') }}</a>
+        <nav class="site-nav">
+            <a href="/jobs">{{ t('app.nav.jobs') }}</a>
+            <a href="/employer">{{ t('app.nav.employers') }}</a>
+            <a href="/api/jobs">{{ t('app.nav.api') }}</a>
+        </nav>
     </header>
 
     <main class="site-main">
@@ -26,6 +31,9 @@
     --muted: #616e7c;
     --line: #e4e7eb;
     --accent: #0b6bcb;
+    --card: #f9fafb;
+    --warn-bg: #fff8f0;
+    --warn-line: #f0c040;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -35,6 +43,9 @@
         --muted: #9aa5b1;
         --line: #2d343c;
         --accent: #6cb2f5;
+        --card: #181d23;
+        --warn-bg: #2a2416;
+        --warn-line: #7a6320;
     }
 }
 
@@ -53,7 +64,16 @@ body {
 .site-header {
     padding: 1rem;
     border-bottom: 1px solid var(--line);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1.5rem;
 }
+
+.site-nav { display: flex; gap: 1.25rem; }
+.site-nav a { text-decoration: none; }
+.site-nav a:hover { text-decoration: underline; }
 
 .site-brand {
     color: var(--text);
@@ -78,4 +98,6 @@ body {
 }
 
 a { color: var(--accent); }
+h1 { font-size: 1.75rem; line-height: 1.25; }
+code { font-size: 0.9em; }
 {% endapply %}
