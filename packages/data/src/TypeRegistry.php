@@ -12,10 +12,39 @@ final class TypeRegistry
     /** @var array<string, bool> per type with a model file: whether the file defines it on its own */
     private array $files = [];
 
+    /** @var array<string, array<string, mixed>> the schema array per loaded type */
+    private array $schemas = [];
+
+    /**
+     * @param array<string, class-string> $classes type key => model class marked #[Entity(type: …)] (ModelClasses::all()).
+     *                                             A class is the type; its model file, if any, only adds admin presentation.
+     */
     public function __construct(
         private readonly string $modelsPath,
         private readonly ?Locales $locales = null,
+        private readonly array $classes = [],
     ) {}
+
+    /** The model class that defines a type, or null for a type defined by a JSON file or at runtime. */
+    public function classFor(string $type): ?string
+    {
+        return $this->classes[$type] ?? null;
+    }
+
+    /**
+     * The schema array of a type, in the shape of a model JSON file: for a class-backed type the
+     * class's schema with its admin file laid over it, else the file's (or the runtime definition's).
+     *
+     * @return array<string, mixed>
+     */
+    public function schema(string $type): array
+    {
+        if (!isset($this->schemas[$type])) {
+            $this->schemas[$type] = $this->read($type);
+        }
+
+        return $this->schemas[$type];
+    }
 
     public function get(string $type): TypeDefinition
     {
@@ -32,7 +61,7 @@ final class TypeRegistry
      */
     public function keys(): array
     {
-        $keys = array_keys($this->cache);
+        $keys = [...array_keys($this->cache), ...array_keys($this->classes)];
         foreach (glob($this->modelsPath . '/*.json') ?: [] as $path) {
             $type = basename($path, '.json');
             if ($this->hasFile($type)) {
@@ -47,7 +76,7 @@ final class TypeRegistry
 
     public function has(string $type): bool
     {
-        return isset($this->cache[$type]) || $this->hasFile($type);
+        return isset($this->cache[$type]) || isset($this->classes[$type]) || $this->hasFile($type);
     }
 
     /**
@@ -77,26 +106,59 @@ final class TypeRegistry
         if (!is_string($key) || $key === '') {
             throw new \InvalidArgumentException('A defined type needs a "key"');
         }
+        if (isset($this->classes[$key])) {
+            throw new \RuntimeException("Type \"{$key}\" is defined by {$this->classes[$key]} and cannot be defined at runtime");
+        }
         if ($this->has($key)) {
             throw new \RuntimeException("Type \"{$key}\" already exists (as a model file or an earlier definition)");
         }
+
+        $this->schemas[$key] = $schema;
 
         return $this->cache[$key] = $this->parse($schema);
     }
 
     private function load(string $type): TypeDefinition
     {
+        return $this->parse($this->schema($type));
+    }
+
+    /** @return array<string, mixed> */
+    private function read(string $type): array
+    {
         $path = $this->modelsPath . '/' . $type . '.json';
-        if (!$this->hasFile($type)) {
+        $class = $this->classes[$type] ?? null;
+        if ($class === null && !$this->hasFile($type)) {
             throw new \RuntimeException("Unknown type: {$type}. No schema at {$path}");
         }
 
+        $schema = is_file($path) ? $this->readFile($path) : null;
+        if ($class !== null) {
+            $classSchema = ModelSchema::of($class);
+            // An "extends" file patches an extension's type; it is not this class's admin file.
+            if ($schema === null || ($schema['extends'] ?? false) === true) {
+                return $classSchema;
+            }
+
+            return ModelSchema::overlay($classSchema, $schema, $path, $class);
+        }
+        // A file that holds no schema (a label, a list) is the admin side of a model class that is not there.
+        if (array_intersect_key($schema, array_flip(array_diff(ModelSchema::SCHEMA_TYPE_KEYS, ['key']))) === []) {
+            throw new \RuntimeException("Model file {$path} holds no schema and there is no model class for type \"{$type}\": mark a class with #[Entity(type: '{$type}')] under data.model_paths, or add the schema to the file.");
+        }
+
+        return $schema;
+    }
+
+    /** @return array<string, mixed> */
+    private function readFile(string $path): array
+    {
         $schema = \Preflow\Core\Config\ParsedJsonFiles::read($path);
         if (!is_array($schema)) { // invalid or not an object: decode again for the same error as ever
             $schema = json_decode(file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
         }
 
-        return $this->parse($schema);
+        return $schema;
     }
 
     /**

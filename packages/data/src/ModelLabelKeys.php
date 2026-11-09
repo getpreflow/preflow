@@ -98,6 +98,24 @@ final class ModelLabelKeys
         return $keys;
     }
 
+    /**
+     * The keys of every class-backed type, derived from the schema the registry serves (the
+     * class with its admin file's texts), so they are translatable like a JSON type's.
+     *
+     * @return array<string, string|array<string, string>|null>
+     */
+    public static function classTypes(TypeRegistry $registry, string $group = 'site'): array
+    {
+        $keys = [];
+        foreach ($registry->keys() as $type) {
+            if ($registry->classFor($type) !== null) {
+                $keys += self::derive($registry->schema($type), $group);
+            }
+        }
+
+        return $keys;
+    }
+
     /** @return string|array<string, string>|null */
     private static function text(mixed $value): string|array|null
     {

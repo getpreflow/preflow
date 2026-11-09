@@ -67,6 +67,49 @@ final class ModelSchema
     }
 
     /**
+     * A class-backed type with its admin file's presentation laid over it: the file's type-level
+     * keys (label, list, section, ...) are added, its per-field keys merged into the class's
+     * fields (the file wins for label and help). The file may not define data: one definition
+     * per key, so a schema key in it is an error, never a silent override.
+     *
+     * @param array<string, mixed> $classSchema ModelSchema::of()
+     * @param array<string, mixed> $adminFile   the model JSON file of the same key
+     * @param string               $file        its path, for messages
+     * @param string               $modelClass  the class, for messages
+     * @return array<string, mixed>
+     */
+    public static function overlay(array $classSchema, array $adminFile, string $file, string $modelClass = ''): array
+    {
+        $key = (string) ($classSchema['key'] ?? '');
+        $tail = "{$key} is defined by " . ($modelClass !== '' ? $modelClass : 'its model class') . '; this file may only hold its admin settings';
+        $file = basename($file);
+
+        foreach (array_diff(self::SCHEMA_TYPE_KEYS, ['key', 'fields']) as $schemaKey) {
+            if (array_key_exists($schemaKey, $adminFile)) {
+                throw new \RuntimeException("Model file {$file} sets \"{$schemaKey}\", but {$tail}.");
+            }
+        }
+        $fields = is_array($adminFile['fields'] ?? null) ? $adminFile['fields'] : [];
+        foreach ($fields as $name => $entry) {
+            if (!isset($classSchema['fields'][$name])) {
+                throw new \RuntimeException("Model file {$file} has settings for the field \"{$name}\", which {$key}" . ($modelClass !== '' ? " ({$modelClass})" : '') . " does not have.");
+            }
+            foreach (array_keys(is_array($entry) ? $entry : []) as $fieldKey) {
+                if (in_array($fieldKey, self::SCHEMA_FIELD_KEYS, true)) {
+                    throw new \RuntimeException("Model file {$file} sets \"{$fieldKey}\" on the field \"{$name}\", but {$tail}.");
+                }
+            }
+        }
+
+        $schema = $classSchema + array_diff_key($adminFile, array_flip(self::SCHEMA_TYPE_KEYS));
+        foreach ($fields as $name => $entry) {
+            $schema['fields'][$name] = array_merge($classSchema['fields'][$name], (array) $entry);
+        }
+
+        return $schema;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private static function fieldSchema(

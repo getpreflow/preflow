@@ -710,8 +710,13 @@ final class Application
         $typeRegistry = null;
         $modelsPath = $dataConfig['models_path'] ?? $this->basePath('config/models');
         $locales = $this->container->get(\Preflow\Data\Locales::class);
-        if (is_dir($modelsPath)) {
-            $typeRegistry = new \Preflow\Data\TypeRegistry($modelsPath, $locales);
+        // Model classes marked #[Entity(type: …)] are types too, so the registry is there for them alone.
+        $modelPaths = array_values(array_filter((array) ($dataConfig['model_paths'] ?? [$this->basePath('app/Models')]), 'is_string'));
+        $classes = class_exists(\Preflow\Data\ModelClasses::class)
+            ? (new \Preflow\Data\ModelClasses($modelPaths, $this->manifest))->all()
+            : [];
+        if (is_dir($modelsPath) || $classes !== []) {
+            $typeRegistry = new \Preflow\Data\TypeRegistry($modelsPath, $locales, $classes);
             $this->container->instance(\Preflow\Data\TypeRegistry::class, $typeRegistry);
         }
 
