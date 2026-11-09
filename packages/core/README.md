@@ -1026,9 +1026,13 @@ zero fractions kept, exceptions on failure). Every JSON response, errors include
 `Content-Type: application/json`.
 
 ```php
+use App\Models\Job;   // your model, with public $uuid and $title
 use Preflow\Auth\Http\TokenAuthMiddleware;
 use Preflow\Core\Http\Json;
+use Preflow\Data\DataManager;
 use Preflow\Routing\Attributes\{Get, Middleware, Post, Route};
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
 
 #[Route('/api/jobs')]
 final class JobController
@@ -1038,7 +1042,9 @@ final class JobController
     #[Get('/')]
     public function index(): ResponseInterface
     {
-        $jobs = array_map(fn (Job $j) => ['id' => $j->uuid, 'title' => $j->title], $this->dm->query(Job::class)->get());
+        $jobs = $this->dm->query(Job::class)->get()
+            ->map(fn (Job $j) => ['id' => $j->uuid, 'title' => $j->title])
+            ->items();
 
         return Json::data($jobs, ['page' => 1]);
     }

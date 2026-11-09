@@ -265,6 +265,7 @@ It never reads the session, so a session cookie does not pass a token route. A m
 unknown token answers 401 with `WWW-Authenticate: Bearer` (a JSON body on API paths).
 
 ```php
+// use Preflow\Auth\Authenticatable; use Preflow\Auth\Http\TokenAuthMiddleware;
 #[Post('/')]
 #[Middleware(TokenAuthMiddleware::class)]
 public function create(ServerRequestInterface $request): ResponseInterface
