@@ -8,7 +8,7 @@ return [
     'enabled' => true,
 
     // The safety maximum age (seconds): an older page is still served once while a fresh one
-    // is built. 0 turns it off. Shorter times per page or per dependency belong in templates
+    // is built. At most 72000 (20 h, the tokens in a page last 24 h); 0 means those 20 h. Shorter times per page or per dependency belong in templates
     // ({% expires %}, {% freshness 'timed' every '12h' %}), not here.
     // 'max_age' => 14400,
 
