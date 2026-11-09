@@ -82,6 +82,13 @@ trait StarterApp
 
     private function removeStarter(): void
     {
+        // The next test is a new process as far as sessions go: no open session, no remembered id.
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+        if (session_status() === PHP_SESSION_NONE) {
+            session_id('');
+        }
         $this->snapshots = null;
         $this->starterApp = null;
         $this->asWeb = false;

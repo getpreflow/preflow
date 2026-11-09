@@ -10,7 +10,10 @@ return [
     // signed tokens of their own) is always exempt. Mark controller routes
     // with #[CsrfExempt('why')] instead; this list is for file routes and
     // paths outside the router.
-    // 'exempt' => [],
+    // /api has no ambient authority to forge: its write routes need a bearer token, and
+    // TokenAuthMiddleware never reads the session cookie. Without this, a request with no
+    // token would be answered 403 by the CSRF check instead of 401 by the API.
+    'exempt' => ['/api'],
 
     // Other origins allowed to post here, as https://host[:port], for example
     // a stage host posting to production. A sibling subdomain isn't trusted

@@ -81,6 +81,18 @@ final class JobSearch
         return array_values($query->orderBy('publishedAt', SortDirection::Desc)->limit($limit)->get()->items());
     }
 
+    public function openJobCount(string $companyUuid): int
+    {
+        // total() ignores the limit, so this counts in the database without loading the jobs.
+        return $this->published()->where('company', $companyUuid)->limit(1)->get()->total();
+    }
+
+    /** @return list<Company> */
+    public function companies(): array
+    {
+        return array_values($this->data->query(Company::class)->orderBy('name')->get()->items());
+    }
+
     /**
      * The companies of a list in one query, so a list of jobs does not read one company per row.
      *

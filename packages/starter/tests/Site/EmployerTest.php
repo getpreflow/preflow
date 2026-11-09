@@ -108,7 +108,7 @@ final class EmployerTest extends TestCase
 
     public function test_open_redirect_is_refused(): void
     {
-        foreach (['//evil.example', 'https://evil.example/employer', '/employer@evil.example', '/employerx', '/elsewhere', '/employer/\\evil'] as $next) {
+        foreach (['//evil.example', 'https://evil.example/employer', '/employer@evil.example', '/employerx', '/elsewhere', '/employer/\\evil', "/employer\n"] as $next) {
             $cookies = $this->cookiesOf($this->send('GET', '/employer/login'));
             $token = $this->token('/employer/login', $cookies);
             $response = $this->post('/employer/login', ['email' => 'employer@example.com', 'password' => 'demo-employer', 'next' => $next, '_csrf_token' => $token], ['Cookie' => $this->cookieHeader($cookies)]);

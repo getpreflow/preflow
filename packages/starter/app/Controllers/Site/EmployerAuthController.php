@@ -7,7 +7,6 @@ namespace App\Controllers\Site;
 use App\Models\User;
 use Nyholm\Psr7\Response;
 use Preflow\Auth\AuthManager;
-use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Data\DataManager;
 use Preflow\Routing\Attributes\Get;
 use Preflow\Routing\Attributes\Post;
@@ -64,7 +63,6 @@ final class EmployerAuthController
     public function logout(ServerRequestInterface $request): ResponseInterface
     {
         $this->auth->guard(self::GUARD)->logout($request);
-        $request->getAttribute(SessionInterface::class)?->flash('success', 'Signed out.');
 
         return new Response(302, ['Location' => '/']);
     }
@@ -72,7 +70,7 @@ final class EmployerAuthController
     /** Only a path inside the employer area: never another site, never a protocol-relative URL. */
     private static function safeNext(mixed $next): ?string
     {
-        if (!is_string($next) || preg_match('#^/employer(?:[/?\#][^\\\\\x00-\x1f]*)?$#', $next) !== 1) {
+        if (!is_string($next) || preg_match('#^/employer(?:[/?\#][^\\\\\x00-\x1f]*)?\z#', $next) !== 1) {
             return null;
         }
 
