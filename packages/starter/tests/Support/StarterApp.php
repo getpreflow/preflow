@@ -11,6 +11,7 @@ use Preflow\DevTools\Console;
 use Preflow\Testing\Fast\SetupSnapshots;
 use Preflow\Testing\Fast\TestDataPaths;
 use Preflow\Testing\TestResponse;
+use Preflow\Testing\WebApplication;
 use Psr\Http\Message\ResponseInterface;
 
 /**
@@ -31,6 +32,9 @@ trait StarterApp
     private ?SetupSnapshots $snapshots = null;
 
     private ?Application $starterApp = null;
+
+    /** Boot as the web serves (the page cache serves and stores, and verifies what it stores). */
+    private bool $asWeb = false;
 
     private function bootStarter(bool $apiOnly = false, bool $debug = true): void
     {
@@ -80,6 +84,7 @@ trait StarterApp
     {
         $this->snapshots = null;
         $this->starterApp = null;
+        $this->asWeb = false;
         foreach (['APP_KEY', 'APP_URL', 'APP_DEBUG'] as $name) {
             putenv($name);
             unset($_ENV[$name]);
@@ -94,8 +99,13 @@ trait StarterApp
     /** A freshly booted app (one per request, like production). */
     private function app(): Application
     {
-        if (session_status() !== PHP_SESSION_ACTIVE) {
-            unset($_SESSION);
+        // A request that ended in an error page leaves its session open; a new process has none.
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+        unset($_SESSION);
+        if ($this->asWeb) {
+            return $this->starterApp = WebApplication::boot($this->starterRoot);
         }
         $app = Application::create($this->starterRoot);
         $app->boot();
@@ -191,7 +201,8 @@ trait StarterApp
      */
     private function send(string $method, string $uri, ?array $body = null, array $headers = []): ResponseInterface
     {
-        $request = (new Psr17Factory())->createServerRequest($method, $uri);
+        // The page cache keys a page by its host, so a web request carries the whole address.
+        $request = (new Psr17Factory())->createServerRequest($method, $this->asWeb && str_starts_with($uri, '/') ? 'http://localhost:8080' . $uri : $uri);
         foreach ($headers as $name => $value) {
             $request = $request->withHeader($name, $value);
         }

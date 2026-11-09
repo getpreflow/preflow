@@ -13,7 +13,7 @@
     <form class="job-search__form" method="get" action="/jobs"
         {{ hd.post('search', componentClass, componentId, {}, constant('Preflow\\Htmx\\SwapStrategy::InnerHTML'), {
             'hx-target': '#' ~ componentId ~ '-results',
-            'hx-trigger': 'input changed delay:300ms from:[name=q], change',
+            'hx-trigger': 'input changed delay:300ms from:[name=q], change, submit',
             'hx-sync': 'this:replace',
         }) | raw }}>
         <label class="job-search__label" for="{{ componentId }}-q">{{ t('app.search.label') }}</label>

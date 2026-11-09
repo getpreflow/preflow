@@ -1,0 +1,60 @@
+{% extends "_layout.twig" %}
+
+{% block title %}{{ t('app.employer.your_jobs') ~ ' - ' ~ t('app.name') }}{% endblock %}
+
+{% block content %}
+{% set notice = flash('success') %}
+<section class="employer">
+    <h1>{{ company ? t('app.employer.jobs_of', { company: company.name }) : t('app.employer.your_jobs') }}</h1>
+    {% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
+
+    <p class="employer__actions">
+        <a class="button" href="/employer/jobs/new">{{ t('app.employer.new_job') }}</a>
+        <form method="post" action="/employer/logout">{{ csrf_field() }}<button class="button button--plain" type="submit">{{ t('app.employer.sign_out') }}</button></form>
+    </p>
+
+    {% if jobs %}
+        <ul class="employer__jobs">
+        {% for job in jobs %}
+            <li class="employer__job">
+                <div>
+                    <strong>{{ job.title }}</strong>
+                    <span class="employer__status employer__status--{{ job.status }}">{{ t('app.employer.status.' ~ job.status) }}</span>
+                    <div class="employer__meta">{{ job.place }} &middot; {{ t('app.type.' ~ job.employmentType) }} &middot; {{ t('app.remote.' ~ job.remote) }}</div>
+                </div>
+                <div class="employer__buttons">
+                    <a href="/employer/jobs/{{ job.uuid }}/edit">{{ t('app.employer.edit') }}</a>
+                    {% if job.status == 'published' %}
+                        <a href="/jobs/{{ job.slug }}">{{ t('app.employer.view') }}</a>
+                        <form method="post" action="/employer/jobs/{{ job.uuid }}/unpublish">{{ csrf_field() }}<button class="button button--plain" type="submit">{{ t('app.employer.unpublish') }}</button></form>
+                    {% else %}
+                        <form method="post" action="/employer/jobs/{{ job.uuid }}/publish">{{ csrf_field() }}<button class="button" type="submit">{{ t('app.employer.publish') }}</button></form>
+                    {% endif %}
+                </div>
+            </li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>{{ t('app.employer.no_jobs') }}</p>
+    {% endif %}
+</section>
+
+{% apply css %}
+.employer__actions { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin: 1rem 0; }
+.employer__jobs { list-style: none; display: grid; gap: 0.75rem; }
+.employer__job {
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem 1rem;
+    padding: 0.75rem 1rem; border: 1px solid var(--line); border-radius: 0.5rem; background: var(--card);
+}
+.employer__meta { color: var(--muted); font-size: 0.9rem; }
+.employer__buttons { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.employer__status { margin-left: 0.5rem; font-size: 0.8rem; border: 1px solid var(--line); border-radius: 999px; padding: 0.05rem 0.6rem; }
+.employer__status--published { border-color: var(--accent); color: var(--accent); }
+.button {
+    display: inline-block; font: inherit; padding: 0.35rem 1rem; border: 1px solid var(--accent); border-radius: 0.5rem;
+    background: var(--accent); color: var(--bg); text-decoration: none; cursor: pointer;
+}
+.button--plain { background: transparent; color: var(--accent); }
+.notice { margin-top: 1rem; padding: 0.6rem 0.9rem; border-radius: 0.5rem; border: 1px solid var(--line); background: var(--card); }
+{% endapply %}
+{% endblock %}

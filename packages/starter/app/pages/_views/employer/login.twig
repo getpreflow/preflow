@@ -1,0 +1,25 @@
+{% extends "_layout.twig" %}
+
+{% block title %}{{ t('app.employer.sign_in') ~ ' - ' ~ t('app.name') }}{% endblock %}
+
+{% block content %}
+<section class="employer-login">
+    <h1>{{ t('app.employer.sign_in') }}</h1>
+    {% if failed %}<p class="notice notice--error" role="alert">{{ t('app.employer.failed') }}</p>{% endif %}
+
+    {% set form = form_begin({ action: '/employer/login', csrf_token: csrf_token(), oldInput: { email: email } }) %}
+    {{ form.begin()|raw }}
+        {{ form.field('email', { type: 'email', label: t('app.employer.email'), required: true, attrs: { autocomplete: 'username' } })|raw }}
+        {{ form.field('password', { type: 'password', label: t('app.employer.password'), required: true, attrs: { autocomplete: 'current-password' } })|raw }}
+        {% if next %}{{ form.hidden('next', next)|raw }}{% endif %}
+        {{ form.submit(t('app.employer.sign_in_button'))|raw }}
+    {{ form_end()|raw }}
+</section>
+
+{% apply css %}
+.employer-login { max-width: 24rem; }
+.employer-login form { margin-top: 1rem; display: grid; gap: 0.75rem; }
+.notice { margin-top: 1rem; padding: 0.6rem 0.9rem; border-radius: 0.5rem; border: 1px solid var(--line); background: var(--card); }
+.notice--error { border-color: var(--warn-line); background: var(--warn-bg); }
+{% endapply %}
+{% endblock %}

@@ -133,6 +133,8 @@ final class JobSearchTest extends TestCase
 
         $this->assertMatchesRegularExpression('#<form[^>]*method="get"[^>]*action="/jobs"#', $html);
         $this->assertMatchesRegularExpression('#<form[^>]*hx-sync="this:replace"#', $html);
+        // Enter in the search box submits the form: htmx must take that over, not the browser.
+        $this->assertMatchesRegularExpression('#<form[^>]*hx-trigger="[^"]*\bsubmit\b#', $html);
         $this->assertMatchesRegularExpression('#<form[^>]*hx-swap="innerHTML"#', $html);
         [, $results] = $this->form($html);
         $this->assertStringEndsWith('-results', $results);

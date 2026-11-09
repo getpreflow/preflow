@@ -58,6 +58,8 @@ final class JobSearch extends Component
      */
     public function actionSearch(array $params = []): void
     {
+        // The endpoint resolves the default state (resolveState, from the signed props) before it
+        // runs the action, so a search runs twice here. Cheap at this size; not worth bypassing.
         $this->find(JobFilters::fromArray(['page' => $this->props['page'] ?? 1] + array_diff_key($params, ['page' => true])));
         $this->resultsOnly = true;
         // The address bar follows the search, so a reload or a shared link shows the same list.
