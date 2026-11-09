@@ -21,7 +21,7 @@ final class Console
         $this->register(new Command\MigrateCommand());
         $this->register(new Command\MakeComponentCommand());
         $this->register(new Command\MakeControllerCommand());
-        $this->register(new Command\MakeModelCommand());
+        $this->register(new Command\MakeModelCommand($basePath));
         $this->register(new Command\MakeMigrationCommand());
         $this->register(new Command\RoutesListCommand());
         $this->register(new Command\CacheClearCommand());

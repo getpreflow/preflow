@@ -1,0 +1,223 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\DevTools\Tests;
+
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\TestCase;
+use Preflow\Data\TypeRegistry;
+use Preflow\DevTools\Command\MakeModelCommand;
+
+/**
+ * `preflow make:model <Class> --from-type=<key>`: the class and the admin-only file it leaves
+ * give the registry exactly the type the JSON file gave, so a site moves a type without a data change.
+ */
+final class MakeModelFromTypeTest extends TestCase
+{
+    private string $base;
+    private string $fixtureDir;
+    /** @var resource */
+    private mixed $stderr;
+
+    protected function setUp(): void
+    {
+        $this->fixtureDir = __DIR__ . '/Fixtures/types';
+        $this->base = sys_get_temp_dir() . '/make_model_' . bin2hex(random_bytes(4));
+        mkdir($this->base . '/config/models', 0777, true);
+        $this->stderr = fopen('php://memory', 'w+');
+    }
+
+    protected function tearDown(): void
+    {
+        $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->base, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+        foreach ($it as $f) {
+            $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
+        }
+        @rmdir($this->base);
+    }
+
+    /** @return array<string, array{string, string}> fixture, class name ("Object" is reserved in PHP) */
+    public static function types(): array
+    {
+        return [
+            'holz-objekte object' => [__DIR__ . '/Fixtures/types/object.json', 'WoodObject'],
+            'bggenius game' => [__DIR__ . '/Fixtures/types/game.json', 'Game'],
+            'translatable, matrix, blocks, scoped unique, label map' => [__DIR__ . '/Fixtures/types/article.json', 'Article'],
+        ];
+    }
+
+    #[DataProvider('types')]
+    public function test_the_generated_class_round_trips_to_the_same_type(string $fixture, string $class): void
+    {
+        $original = json_decode(file_get_contents($fixture), true);
+        $key = $original['key'];
+        copy($fixture, $this->base . "/config/models/{$key}.json");
+
+        [$code, $out] = $this->make($class, '--from-type=' . $key);
+
+        $this->assertSame(0, $code, $out . $this->errors());
+        require $this->base . "/app/Models/{$class}.php";
+        $registry = new TypeRegistry($this->base . '/config/models', null, [$key => 'App\\Models\\' . $class]);
+        $this->assertEquals((new TypeRegistry($this->fixtureDir))->get($key), $registry->get($key));
+        $this->assertSame(
+            array_keys((new TypeRegistry($this->fixtureDir))->get($key)->fields),
+            array_keys($registry->get($key)->fields),
+            'fields keep their order (the admin form shows them so)',
+        );
+        $admin = json_decode(file_get_contents($this->base . "/config/models/{$key}.json"), true);
+        $this->assertSame([], array_intersect(array_keys($admin), ['table', 'storage', 'id_field', 'matrixable', 'views']));
+        $this->assertSame($key, $admin['key']);
+    }
+
+    public function test_presentation_stays_in_the_admin_file_and_data_goes_on_the_class(): void
+    {
+        copy($this->fixtureDir . '/object.json', $this->base . '/config/models/object.json');
+
+        [$code, $out] = $this->make('WoodObject', '--from-type=object');
+
+        $this->assertSame(0, $code, $this->errors());
+        $this->assertSame(
+            "Model created: app/Models/WoodObject.php\n"
+            . "Admin settings kept in: config/models/object.json\n"
+            . "Check the class, then run your tests: nothing in the database changes.\n",
+            $out,
+        );
+        $admin = json_decode(file_get_contents($this->base . '/config/models/object.json'), true);
+        $this->assertSame('Objects', $admin['label']);
+        $this->assertSame(['columns' => ['title', 'city', 'state'], 'filters' => ['owner_deleted'], 'sort' => '-created_at'], $admin['list']);
+        $this->assertSame(['readonly' => true], $admin['fields']['owner_deleted']);
+        $this->assertArrayNotHasKey('title', $admin['fields'], 'a field with nothing but data has no admin entry');
+
+        $php = file_get_contents($this->base . '/app/Models/WoodObject.php');
+        $this->assertStringContainsString("namespace App\\Models;", $php);
+        $this->assertStringContainsString("#[Entity(table: 'object', storage: 'default', type: 'object')]", $php);
+        $this->assertStringContainsString("final class WoodObject extends Model", $php);
+        $this->assertStringContainsString("    #[Id]\n    public ?string \$uuid = null;", $php);
+        $this->assertStringContainsString("    #[Field(label: 'Title')]\n    #[Validate('required')]\n    public string \$title = '';", $php);
+        $this->assertStringContainsString("    #[Field(label: 'Category')]\n    #[Relation(to: 'category', labelField: 'title')]\n    public ?string \$category = null;", $php);
+    }
+
+    public function test_an_empty_object_in_the_admin_file_stays_an_object(): void
+    {
+        copy($this->fixtureDir . '/article.json', $this->base . '/config/models/article.json');
+
+        $this->make('Article', '--from-type=article');
+
+        $this->assertStringContainsString('"list": {}', file_get_contents($this->base . '/config/models/article.json'));
+    }
+
+    public function test_a_key_that_decides_the_column_goes_on_the_class(): void
+    {
+        copy($this->fixtureDir . '/article.json', $this->base . '/config/models/article.json');
+
+        $this->make('Article', '--from-type=article');
+
+        $admin = json_decode(file_get_contents($this->base . '/config/models/article.json'), true);
+        $this->assertArrayNotHasKey('tags', $admin['fields'], 'a multiple relation is a text column (FieldKinds)');
+        $this->assertStringContainsString(
+            "    #[Field(type: 'relation', config: ['multiple' => true])]\n    #[Relation(to: 'tag', onDelete: 'detach', labelField: 'name')]\n    public array|string|null \$tags = null;",
+            file_get_contents($this->base . '/app/Models/Article.php'),
+        );
+    }
+
+    public function test_it_refuses_an_existing_class(): void
+    {
+        copy($this->fixtureDir . '/game.json', $this->base . '/config/models/game.json');
+        mkdir($this->base . '/app/Models', 0777, true);
+        file_put_contents($this->base . '/app/Models/Game.php', "<?php // mine\n");
+
+        [$code] = $this->make('Game', '--from-type=game');
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('Model Game already exists', $this->errors());
+        $this->assertSame("<?php // mine\n", file_get_contents($this->base . '/app/Models/Game.php'));
+        $this->assertFileEquals($this->fixtureDir . '/game.json', $this->base . '/config/models/game.json');
+    }
+
+    public function test_it_refuses_a_key_that_is_already_class_backed(): void
+    {
+        copy($this->fixtureDir . '/game.json', $this->base . '/config/models/game.json');
+        $this->make('Game', '--from-type=game');
+        $admin = file_get_contents($this->base . '/config/models/game.json');
+
+        [$code] = $this->make('BoardGame', '--from-type=game');
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('Type "game" is already defined by a model class', $this->errors());
+        $this->assertFileDoesNotExist($this->base . '/app/Models/BoardGame.php');
+        $this->assertSame($admin, file_get_contents($this->base . '/config/models/game.json'));
+    }
+
+    public function test_a_key_a_class_cannot_express_is_an_error_naming_it(): void
+    {
+        $type = json_decode(file_get_contents($this->fixtureDir . '/game.json'), true);
+        $type['matrixable'] = true;
+        file_put_contents($this->base . '/config/models/game.json', json_encode($type));
+
+        [$code] = $this->make('Game', '--from-type=game');
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('"matrixable"', $this->errors());
+        $this->assertFileDoesNotExist($this->base . '/app/Models/Game.php');
+        $this->assertSame(json_encode($type), file_get_contents($this->base . '/config/models/game.json'));
+    }
+
+    public function test_an_id_field_that_is_also_a_field_is_an_error(): void
+    {
+        $type = json_decode(file_get_contents($this->fixtureDir . '/game.json'), true);
+        $type['id_field'] = 'slug';
+        file_put_contents($this->base . '/config/models/game.json', json_encode($type));
+
+        [$code] = $this->make('Game', '--from-type=game');
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('"slug"', $this->errors());
+        $this->assertFileDoesNotExist($this->base . '/app/Models/Game.php');
+    }
+
+    public function test_it_refuses_a_class_name_php_reserves(): void
+    {
+        copy($this->fixtureDir . '/object.json', $this->base . '/config/models/object.json');
+
+        [$code] = $this->make('Object', '--from-type=object');
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('Object is a reserved word in PHP', $this->errors());
+        $this->assertFileDoesNotExist($this->base . '/app/Models/Object.php');
+    }
+
+    public function test_an_unknown_type_is_an_error(): void
+    {
+        [$code] = $this->make('Game', '--from-type=game');
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('No model file config/models/game.json', $this->errors());
+    }
+
+    public function test_a_patch_file_is_not_a_type(): void
+    {
+        file_put_contents($this->base . '/config/models/page.json', json_encode(['key' => 'page', 'extends' => true, 'fields' => ['x' => ['type' => 'string']]]));
+
+        [$code] = $this->make('Page', '--from-type=page');
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('"extends"', $this->errors());
+    }
+
+    /** @return array{int, string} */
+    private function make(string ...$args): array
+    {
+        ob_start();
+        $code = (new MakeModelCommand($this->base, $this->stderr))->execute($args);
+
+        return [$code, (string) ob_get_clean()];
+    }
+
+    private function errors(): string
+    {
+        rewind($this->stderr);
+
+        return (string) stream_get_contents($this->stderr);
+    }
+}

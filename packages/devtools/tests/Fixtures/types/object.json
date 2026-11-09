@@ -1,0 +1,406 @@
+{
+    "key": "object",
+    "table": "object",
+    "storage": "default",
+    "id_field": "uuid",
+    "label": "Objects",
+    "section": "content",
+    "order": 10,
+    "icon": "ui-file",
+    "publishing": true,
+    "list": {
+        "columns": [
+            "title",
+            "city",
+            "state"
+        ],
+        "filters": [
+            "owner_deleted"
+        ],
+        "sort": "-created_at"
+    },
+    "fields": {
+        "title": {
+            "type": "string",
+            "label": "Title",
+            "validate": [
+                "required"
+            ]
+        },
+        "description": {
+            "type": "text",
+            "label": "Description"
+        },
+        "category": {
+            "type": "relation",
+            "label": "Category",
+            "relation": {
+                "to": "category",
+                "onDelete": "restrict",
+                "labelField": "title"
+            }
+        },
+        "owner": {
+            "type": "relation",
+            "label": "Owner",
+            "relation": {
+                "to": "member",
+                "onDelete": "restrict",
+                "onSelfDelete": "detach",
+                "labelField": "email"
+            },
+            "help": "The member account the object belongs to; empty for objects of unresolved duplicate accounts and of deleted accounts."
+        },
+        "owner_deleted": {
+            "type": "boolean",
+            "label": "Company deleted",
+            "readonly": true,
+            "help": "The owner deleted the account: the object went offline (App\\Http\\OwnerDeletion). Delete it here or give it a new owner."
+        },
+        "owner_deleted_at": {
+            "type": "date",
+            "time": true,
+            "label": "Account deleted",
+            "readonly": true
+        },
+        "owner_company": {
+            "type": "string",
+            "label": "Company name (shown on the object)",
+            "readonly": true,
+            "help": "The owner's company name as set when staff gave the object to a company; for an object of a deleted account, the name that account had."
+        },
+        "state": {
+            "type": "select",
+            "label": "State",
+            "options": {
+                "draft": "Draft",
+                "review": "In review",
+                "published": "Published",
+                "rejected": "Rejected",
+                "offline": "Offline"
+            },
+            "default": "draft",
+            "validate": [
+                "App\\Review\\PublishableState"
+            ],
+            "help": "Members' objects: draft (being filled in or a change not submitted yet), review (submitted, waiting for staff), rejected (sent back with the review note). Staff set published and publish."
+        },
+        "zip": {
+            "type": "string",
+            "label": "ZIP"
+        },
+        "city": {
+            "type": "string",
+            "label": "City"
+        },
+        "constructor": {
+            "type": "string",
+            "label": "Client (Bauherr)"
+        },
+        "year_completed": {
+            "type": "number",
+            "label": "Year completed"
+        },
+        "wood_types": {
+            "type": "string",
+            "label": "Wood types"
+        },
+        "wood_source": {
+            "type": "string",
+            "label": "Wood source"
+        },
+        "swiss_wood_products": {
+            "type": "string",
+            "label": "Swiss wood products used"
+        },
+        "weight": {
+            "type": "string",
+            "label": "Weight of wood"
+        },
+        "co2_entered": {
+            "type": "string",
+            "label": "CO₂ entered"
+        },
+        "co2_calculated": {
+            "type": "string",
+            "label": "CO₂ calculated"
+        },
+        "co2_inputs": {
+            "type": "text",
+            "label": "CO₂ calculator inputs",
+            "monospace": true,
+            "readonly": true,
+            "help": "The member's calculator quantities (JSON: wood id → quantity)."
+        },
+        "wood_foundation": {
+            "type": "number",
+            "label": "Wood share, foundation (%)"
+        },
+        "wood_foundation_ch": {
+            "type": "number",
+            "label": "Swiss wood share, foundation (%)"
+        },
+        "wood_outer": {
+            "type": "number",
+            "label": "Wood share, outer walls (%)"
+        },
+        "wood_outer_ch": {
+            "type": "number",
+            "label": "Swiss wood share, outer walls (%)"
+        },
+        "wood_window": {
+            "type": "number",
+            "label": "Wood share, windows (%)"
+        },
+        "wood_window_ch": {
+            "type": "number",
+            "label": "Swiss wood share, windows (%)"
+        },
+        "wood_inner": {
+            "type": "number",
+            "label": "Wood share, interior (%)"
+        },
+        "wood_inner_ch": {
+            "type": "number",
+            "label": "Swiss wood share, interior (%)"
+        },
+        "web": {
+            "type": "string",
+            "label": "Website"
+        },
+        "building_floor_area": {
+            "type": "string",
+            "label": "Building: floor area"
+        },
+        "building_volume": {
+            "type": "string",
+            "label": "Building: volume"
+        },
+        "bridge_spread": {
+            "type": "string",
+            "label": "Bridge: span"
+        },
+        "bridge_length": {
+            "type": "string",
+            "label": "Bridge: length"
+        },
+        "bridge_width": {
+            "type": "string",
+            "label": "Bridge: width"
+        },
+        "tower_height": {
+            "type": "string",
+            "label": "Tower: height"
+        },
+        "tower_length": {
+            "type": "string",
+            "label": "Tower: length"
+        },
+        "tower_ground_area": {
+            "type": "string",
+            "label": "Tower: ground area"
+        },
+        "tower_width": {
+            "type": "string",
+            "label": "Tower: width"
+        },
+        "furniture_width": {
+            "type": "string",
+            "label": "Furniture: width"
+        },
+        "furniture_height": {
+            "type": "string",
+            "label": "Furniture: height"
+        },
+        "furniture_length": {
+            "type": "string",
+            "label": "Furniture: length"
+        },
+        "architect_name": {
+            "type": "string",
+            "label": "Architect: name"
+        },
+        "architect_city": {
+            "type": "string",
+            "label": "Architect: city"
+        },
+        "architect_web": {
+            "type": "string",
+            "label": "Architect: website"
+        },
+        "engineer_name": {
+            "type": "string",
+            "label": "Engineer: name"
+        },
+        "engineer_city": {
+            "type": "string",
+            "label": "Engineer: city"
+        },
+        "engineer_web": {
+            "type": "string",
+            "label": "Engineer: website"
+        },
+        "builder_name": {
+            "type": "string",
+            "label": "Timber builder: name"
+        },
+        "builder_city": {
+            "type": "string",
+            "label": "Timber builder: city"
+        },
+        "builder_web": {
+            "type": "string",
+            "label": "Timber builder: website"
+        },
+        "designer_name": {
+            "type": "string",
+            "label": "Designer: name"
+        },
+        "designer_city": {
+            "type": "string",
+            "label": "Designer: city"
+        },
+        "designer_web": {
+            "type": "string",
+            "label": "Designer: website"
+        },
+        "manufacturer_name": {
+            "type": "string",
+            "label": "Manufacturer: name"
+        },
+        "manufacturer_city": {
+            "type": "string",
+            "label": "Manufacturer: city"
+        },
+        "manufacturer_web": {
+            "type": "string",
+            "label": "Manufacturer: website"
+        },
+        "is_top": {
+            "type": "boolean",
+            "label": "Top object"
+        },
+        "is_certified": {
+            "type": "boolean",
+            "label": "Certified (VGQ)"
+        },
+        "is_swiss_wood": {
+            "type": "boolean",
+            "label": "Swiss wood"
+        },
+        "is_prix_lignum": {
+            "type": "boolean",
+            "label": "Prix Lignum"
+        },
+        "is_hsh": {
+            "type": "boolean",
+            "label": "HSH"
+        },
+        "is_lignum_bulletin": {
+            "type": "boolean",
+            "label": "Lignum bulletin"
+        },
+        "images": {
+            "type": "asset",
+            "label": "Images",
+            "asset": {
+                "multiple": true,
+                "accept": "image/*"
+            },
+            "help": "Up to 6 images, in order; the copyright line is burnt into each."
+        },
+        "originals": {
+            "type": "asset",
+            "label": "Originals",
+            "asset": {
+                "multiple": true,
+                "accept": "image/*",
+                "private": true
+            },
+            "help": "The clean originals of new uploads (private, never on the website)."
+        },
+        "image_sources": {
+            "type": "text",
+            "label": "Image sources",
+            "hidden": true,
+            "help": "Which original each public image was made from (JSON: public asset id → original asset id); the wizard keeps it."
+        },
+        "image_uploads": {
+            "type": "text",
+            "label": "Image uploads",
+            "hidden": true,
+            "help": "The browser's upload ids of the last day (JSON: id → public asset id, time, warning), so a repeated upload whose answer was lost is not stored twice."
+        },
+        "files": {
+            "type": "asset",
+            "label": "Files",
+            "asset": {
+                "multiple": true,
+                "accept": ".pdf",
+                "private": true
+            },
+            "help": "The old site's attached files (never shown there; may be internal): private."
+        },
+        "image_copyright": {
+            "type": "string",
+            "label": "Image copyright"
+        },
+        "image_copyright_applied": {
+            "type": "string",
+            "label": "Image copyright applied",
+            "hidden": true,
+            "help": "The copyright line the member's uploaded images carry (App\\Images\\AppliedCopyright); a staff save rewatermarks them when image_copyright differs."
+        },
+        "likes": {
+            "type": "number",
+            "label": "Likes",
+            "readonly": true
+        },
+        "agb_accepted_at": {
+            "type": "date",
+            "time": true,
+            "label": "Terms accepted",
+            "readonly": true
+        },
+        "submitted_at": {
+            "type": "date",
+            "time": true,
+            "label": "Submitted",
+            "readonly": true,
+            "help": "When the member last submitted the object (or a change) for review."
+        },
+        "review_note": {
+            "type": "text",
+            "label": "Review note",
+            "help": "Why it was sent back; shown to the member when rejected."
+        },
+        "number": {
+            "type": "number",
+            "label": "Number",
+            "help": "public number in URLs (the old id)"
+        },
+        "legacy_id": {
+            "type": "string",
+            "label": "Old id",
+            "readonly": true
+        },
+        "created_at": {
+            "type": "date",
+            "time": true,
+            "label": "Created",
+            "readonly": true
+        },
+        "updated_at": {
+            "type": "date",
+            "time": true,
+            "label": "Updated",
+            "readonly": true
+        },
+        "form_nonce": {
+            "type": "string",
+            "label": "Form nonce",
+            "hidden": true,
+            "help": "The one-time token of the form that created the draft (no duplicates from a double click)."
+        }
+    }
+}

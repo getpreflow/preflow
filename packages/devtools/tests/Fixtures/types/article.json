@@ -1,0 +1,119 @@
+{
+    "key": "article",
+    "table": "articles",
+    "id_field": "id",
+    "matrixable": false,
+    "views": [],
+    "label": {
+        "en": "Articles",
+        "de": "Artikel"
+    },
+    "section": "content",
+    "list": {},
+    "fields": {
+        "title": {
+            "type": "string",
+            "translatable": true,
+            "label": {
+                "en": "Title",
+                "de": "Titel"
+            },
+            "help": {
+                "en": "Shown as the page heading.",
+                "de": "Erscheint als Seitentitel."
+            },
+            "validate": [
+                "required",
+                "max:120"
+            ]
+        },
+        "slug": {
+            "type": "string",
+            "unique": [
+                "section"
+            ],
+            "length": 80,
+            "validate": [
+                "required",
+                "regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/"
+            ],
+            "placeholder": "my-article"
+        },
+        "section": {
+            "type": "select",
+            "index": true,
+            "options": {
+                "news": "News",
+                "guides": "Guides"
+            },
+            "default": null
+        },
+        "body": {
+            "type": "blocks",
+            "translatable": true,
+            "blocks": [
+                "text",
+                "image",
+                "quote"
+            ],
+            "searchable": true
+        },
+        "gallery": {
+            "type": "matrix",
+            "fields": {
+                "image": {
+                    "type": "asset",
+                    "asset": {
+                        "accept": "image/*"
+                    }
+                },
+                "caption": {
+                    "type": "string",
+                    "translatable": true
+                }
+            }
+        },
+        "rating": {
+            "type": "number",
+            "searchable": false,
+            "default": 3,
+            "step": 0.5,
+            "validate": [
+                "required"
+            ]
+        },
+        "featured": {
+            "type": "boolean",
+            "default": false
+        },
+        "author": {
+            "type": "relation",
+            "relation": {
+                "to": "member"
+            },
+            "label": "Author"
+        },
+        "tags": {
+            "type": "relation",
+            "multiple": true,
+            "relation": {
+                "to": "tag",
+                "onDelete": "detach",
+                "labelField": "name"
+            }
+        },
+        "meta": {
+            "type": "text",
+            "transform": "Preflow\\Data\\Transform\\JsonTransformer",
+            "hidden": true
+        },
+        "published_at": {
+            "type": "date",
+            "time": true,
+            "readonly": true
+        },
+        "notes": {
+            "placeholder": "Internal notes"
+        }
+    }
+}
