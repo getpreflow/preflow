@@ -163,7 +163,7 @@ final class FolioServiceProvider extends ServiceProvider
         }
         $displayLabels = new \Preflow\Folio\Content\DisplayLabels($catalog, $types, $extensions);
         $container->instance(\Preflow\Folio\Content\DisplayLabels::class, $displayLabels);
-        $this->registerLabelKeys($container, $modelsPath, $labelSources, $types);
+        $this->registerLabelKeys($container, $modelsPath, $labelSources, $types, $catalog);
         // Blocks: component blocks from app/Components, data-only blocks from
         // app/Blocks, plus classes listed in config/folio.php 'blocks'. Cached
         // when debug is off (conflicting keys fail at boot either way).
@@ -628,6 +628,7 @@ final class FolioServiceProvider extends ServiceProvider
         $container->singleton(\Preflow\Folio\Publishing\PublishedModels::class, static fn (Container $c) => new \Preflow\Folio\Publishing\PublishedModels(
             $c->get(DataManager::class),
             $c->get(TypeCatalog::class),
+            $c->get(\Preflow\Folio\Content\LiveContent::class),
         ));
         $container->singleton(\Preflow\Folio\Publishing\Publisher::class, fn (Container $c) => new \Preflow\Folio\Publishing\Publisher(
             $c->get(DataManager::class),
@@ -1070,7 +1071,7 @@ final class FolioServiceProvider extends ServiceProvider
         return [$extensionTypes, $labelSources];
     }
 
-    private function registerLabelKeys(Container $container, string $modelsPath, array $extensionModels, TypeRegistry $types): void
+    private function registerLabelKeys(Container $container, string $modelsPath, array $extensionModels, TypeRegistry $types, TypeCatalog $catalog): void
     {
         if (!class_exists(\Preflow\I18n\DerivedKeys::class)) {
             return;
@@ -1078,7 +1079,7 @@ final class FolioServiceProvider extends ServiceProvider
         if (!$container->bound(\Preflow\I18n\DerivedKeys::class)) {
             $container->instance(\Preflow\I18n\DerivedKeys::class, new \Preflow\I18n\DerivedKeys());
         }
-        $container->get(\Preflow\I18n\DerivedKeys::class)->add('Folio model labels', static function () use ($modelsPath, $extensionModels, $types): array {
+        $container->get(\Preflow\I18n\DerivedKeys::class)->add('Folio model labels', static function () use ($modelsPath, $extensionModels, $types, $catalog): array {
             $sources = [];
             $sections = [];
             foreach (glob($modelsPath . '/*.json') ?: [] as $file) {
@@ -1101,7 +1102,12 @@ final class FolioServiceProvider extends ServiceProvider
                 $keys += \Preflow\Data\ModelLabelKeys::derive($schema, $group);
                 $sections[] = [$schema['section'] ?? null, $group];
             }
-            $keys += \Preflow\Data\ModelLabelKeys::classTypes($types, 'site');
+            // Only the class-backed types Folio lists (those with an admin file): the others never show a label.
+            $keys += array_filter(
+                \Preflow\Data\ModelLabelKeys::classTypes($types, 'site'),
+                static fn (string $key): bool => $catalog->has(explode('.', $key)[2] ?? ''), // group.kind.type.…
+                ARRAY_FILTER_USE_KEY,
+            );
             $builtin = \Preflow\Folio\Http\AdminNav::sectionOrder([]);
             foreach ($sections as [$section, $group]) {
                 if (is_string($section) && !in_array($section, $builtin, true)) {

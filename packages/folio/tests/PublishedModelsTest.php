@@ -60,6 +60,26 @@ final class PublishedModelsTest extends TestCase
         $dm->save($found);
     }
 
+    public function test_previews_read_the_working_copies_as_live_content_does(): void
+    {
+        $id = $this->job('Carpenter');
+        $this->publish($id);
+        $dm = $this->dm();
+        $draft = $dm->find(Job::class, $id);
+        $draft->title = 'Draft title';
+        $dm->save($draft);
+
+        $app = $this->app();
+        $published = $app->container()->get(PublishedModels::class);
+        $this->assertSame('Carpenter', $published->find(Job::class, $id)?->title, 'outside a preview: the published copy');
+
+        $app->container()->get(\Preflow\Folio\Content\LiveContent::class)->showWorkingCopies();
+        $found = $published->find(Job::class, $id);
+        $this->assertSame('Draft title', $found?->title, 'in a preview: the working copy');
+        $this->assertSame(['Draft title'], array_map(static fn (Job $job): string => $job->title, $published->query(Job::class)->get()->items()));
+        $this->assertTrue($app->container()->get(\Preflow\Data\DataManager::class)->isReadOnly($found), 'still read-only');
+    }
+
     public function test_a_type_without_publishing_is_refused(): void
     {
         $this->expectException(\LogicException::class);

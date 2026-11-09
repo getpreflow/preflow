@@ -43,7 +43,7 @@ final class ClassTypeAdminAppTest extends TestCase
         $job = $this->dm()->find(Job::class, $uuid);
         $this->assertInstanceOf(Job::class, $job);
         $this->assertSame('Senior carpenter', $job->title, 'the app reads what staff saved');
-        $published = $this->flow->container()->get(PublishedModels::class)->find(Job::class, $uuid);
+        $published = $this->published()->find(Job::class, $uuid);
         $this->assertInstanceOf(Job::class, $published);
         $this->assertSame('Senior carpenter', $published->title);
         $this->assertSame('Holz AG', $published->company);
@@ -58,7 +58,7 @@ final class ClassTypeAdminAppTest extends TestCase
         $this->assertSame(302, $this->post("/folio/job/{$uuid}", ['title' => 'Draft title', '_version' => (string) $this->version($uuid)])->getStatusCode());
 
         $this->assertSame('Draft title', $this->dm()->find(Job::class, $uuid)?->title, 'app code reads the working copy, as findType() does');
-        $this->assertSame('Carpenter', $this->flow->container()->get(PublishedModels::class)->find(Job::class, $uuid)?->title);
+        $this->assertSame('Carpenter', $this->published()->find(Job::class, $uuid)?->title);
     }
 
     #[RunInSeparateProcess]
@@ -73,7 +73,7 @@ final class ClassTypeAdminAppTest extends TestCase
         $job->title = 'Joiner';
         $this->dm()->save($job);
 
-        $this->assertSame('Carpenter', $this->flow->container()->get(PublishedModels::class)->find(Job::class, $uuid)?->title, 'the published copy keeps its title');
+        $this->assertSame('Carpenter', $this->published()->find(Job::class, $uuid)?->title, 'the published copy keeps its title');
         $this->assertSame($version, $this->version($uuid), 'the app save leaves _version alone');
         $edit = $this->html("/folio/job/{$uuid}/edit");
         $this->assertStringContainsString('<span class="folio-badge is-changed">Changed</span>', $edit, 'Folio shows unpublished changes');
@@ -88,6 +88,8 @@ final class ClassTypeAdminAppTest extends TestCase
 
         $this->assertSame('Jobs', $keys[\Preflow\Data\ModelLabelKeys::type('site', 'job')]['value'] ?? null, 'the admin file\'s label');
         $this->assertArrayHasKey(\Preflow\Data\ModelLabelKeys::field('site', 'job', 'company'), $keys, 'a field only the class declares');
+        $this->assertArrayNotHasKey(\Preflow\Data\ModelLabelKeys::type('site', 'poster'), $keys, 'a class without an admin file is not in Folio, so neither are its labels');
+        $this->assertArrayNotHasKey(\Preflow\Data\ModelLabelKeys::field('site', 'poster', 'name'), $keys);
     }
 
     /** Signs in and posts the create form; returns the new record's id. */
@@ -102,6 +104,15 @@ final class ClassTypeAdminAppTest extends TestCase
         $this->assertInstanceOf(Job::class, $job);
 
         return (string) $job->uuid;
+    }
+
+    /**
+     * PublishedModels as a visitor's request has it: a fresh app, since the signed-in one's last
+     * admin request switched LiveContent (and so PublishedModels) to working copies.
+     */
+    private function published(): PublishedModels
+    {
+        return $this->app()->container()->get(PublishedModels::class);
     }
 
     private function version(string $uuid): int
