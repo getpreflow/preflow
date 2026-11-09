@@ -428,6 +428,14 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       the typed read of `''` and `'FALSE'` into a bool property.
     - `StaffScaffold` docblock alignment; `addSources` is called before `scanFiles` in `TypeCatalog`.
     - `MigrateCommandTest` writes `Storage driver [json]` noise to STDERR.
+    - A stored value a property can't take is kept on save, but a validated save then reports a `required` field as
+      missing; the message could say the stored value was unreadable.
+    - A legacy multiple relation that still holds one plain id string reads as null on a `?array` property (kept on
+      save); the JSON type reads the string.
+    - A hydrated model saved as a new record under another id leaves out the fields it couldn't read; a stored `''`
+      in an array field reads as null and is written back as NULL.
+    - `TypeRegistry`'s boot check reads only `config/models/{key}.json`; admin files from other sources are checked
+      on first use.
 - ~~**Performance step 3, page cache (0.60):**~~ done in 0.60.0. The owner asked for it on 2026-11-08:
   "why does the save/publish not trigger the cache build already?". Spec:
   `docs/superpowers/specs/2026-11-08-page-cache-design.md`.
