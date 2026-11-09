@@ -106,6 +106,14 @@ final class EmployerTest extends TestCase
         $response->assertRedirect('/employer/jobs/new');
     }
 
+    public function test_the_email_signs_in_in_any_case(): void
+    {
+        // employer:create stores the email in lower case; people type it as they like.
+        $cookies = $this->signInEmployer(' Employer@Example.COM ');
+
+        $this->get('/employer', ['Cookie' => $this->cookieHeader($cookies)])->assertOk()->assertSee('Northwind Labs');
+    }
+
     public function test_open_redirect_is_refused(): void
     {
         foreach (['//evil.example', 'https://evil.example/employer', '/employer@evil.example', '/employerx', '/elsewhere', '/employer/\\evil', "/employer\n"] as $next) {
