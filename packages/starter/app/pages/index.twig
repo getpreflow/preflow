@@ -2,8 +2,10 @@
 
 {% block title %}{{ t('app.name') }}{% endblock %}
 
+{% set description = 'A small job board built with Preflow: browse jobs, post jobs as an employer, or read them from the JSON API.' %}
+
 {% block content %}
-{% do seo({ title: 'Preflow Jobs', description: 'A small job board built with Preflow: browse jobs, post jobs as an employer, or read them from the JSON API.' }) %}
+{% do seo({ title: 'Preflow Jobs', description: description }) %}
 
 <section class="intro">
     <h1>Preflow Jobs</h1>

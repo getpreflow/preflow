@@ -121,6 +121,38 @@ final class PublicPagesTest extends TestCase
         $response->assertSee('<strong>bold</strong>');
     }
 
+    public function test_job_page_has_a_meta_description(): void
+    {
+        $job = $this->jobTitled('Frontend Developer');
+
+        $this->get('/jobs/' . $job->slug)->assertSee('<meta name="description"');
+    }
+
+    public function test_company_website_is_linked_only_when_it_is_http(): void
+    {
+        $company = $this->data()->query(Company::class)->where('name', 'Northwind Labs')->first();
+        $this->get('/companies/northwind-labs')->assertSee('href="https://northwind-labs.example"');
+
+        // The model's url rule refuses this; an import or an older row may not have been checked.
+        $company->website = 'javascript:alert(1)';
+        $this->data()->save($company, validate: false);
+
+        $response = $this->get('/companies/northwind-labs');
+        $response->assertNotSee('href="javascript:');
+        $response->assertSee('javascript:alert(1)'); // still shown, as text
+    }
+
+    public function test_a_salary_of_zero_is_shown(): void
+    {
+        $job = $this->jobTitled('Frontend Developer');
+        $job->salaryFrom = 0;
+        $job->salaryTo = 40000;
+        $this->data()->save($job);
+
+        $this->get('/jobs/' . $job->slug)->assertSee('0 &ndash; 40,000');
+        $this->get('/companies/lumen-harbor')->assertSee('0 &ndash; 40,000'); // the job card
+    }
+
     public function test_pages_are_usable_on_phone_width(): void
     {
         $this->get('/')->assertSee('<meta name="viewport" content="width=device-width, initial-scale=1">');

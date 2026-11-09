@@ -2,9 +2,11 @@
 
 {% block title %}{{ job ? job.title ~ ' - ' ~ t('app.name') : t('app.job_not_found') ~ ' - ' ~ t('app.name') }}{% endblock %}
 
+{% set description = job ? job.title ~ ' at ' ~ company.name ~ ' in ' ~ job.place ~ '. ' ~ t('app.type.' ~ job.employment_type) ~ '.' : null %}
+
 {% block content %}
 {% if job %}
-{% do seo({ title: job.title ~ ' at ' ~ company.name, description: job.title ~ ' at ' ~ company.name ~ ' in ' ~ job.place ~ '. ' ~ t('app.type.' ~ job.employment_type) ~ '.' }) %}
+{% do seo({ title: job.title ~ ' at ' ~ company.name, description: description }) %}
 
 <article class="job">
     <p class="job__back"><a href="/jobs">&larr; {{ t('app.nav.jobs') }}</a></p>
@@ -17,8 +19,8 @@
         <span class="job__tag">{{ t('app.remote.' ~ job.remote) }}</span>
         {% if job.salary %}
             <span class="job__tag">{{ job.salary.currency }}
-                {% if job.salary.from and job.salary.to %}{{ job.salary.from|number_format(0, '.', ',') }} &ndash; {{ job.salary.to|number_format(0, '.', ',') }}
-                {% elseif job.salary.from %}{{ t('app.salary_from') }} {{ job.salary.from|number_format(0, '.', ',') }}
+                {% if job.salary.from is not null and job.salary.to is not null %}{{ job.salary.from|number_format(0, '.', ',') }} &ndash; {{ job.salary.to|number_format(0, '.', ',') }}
+                {% elseif job.salary.from is not null %}{{ t('app.salary_from') }} {{ job.salary.from|number_format(0, '.', ',') }}
                 {% else %}{{ t('app.salary_up_to') }} {{ job.salary.to|number_format(0, '.', ',') }}{% endif %}
                 {{ t('app.per_year') }}</span>
         {% endif %}

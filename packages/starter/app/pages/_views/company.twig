@@ -2,14 +2,19 @@
 
 {% block title %}{{ company ? company.name ~ ' - ' ~ t('app.name') : t('app.company_not_found') ~ ' - ' ~ t('app.name') }}{% endblock %}
 
+{% set description = company ? (company.summary ?: 'Open jobs at ' ~ company.name ~ '.') : null %}
+
 {% block content %}
 {% if company %}
-{% do seo({ title: company.name ~ ' jobs', description: company.summary ?: 'Open jobs at ' ~ company.name ~ '.' }) %}
+{% do seo({ title: company.name ~ ' jobs', description: description }) %}
 
 <article class="company">
     <h1>{{ company.name }}</h1>
     <p class="company__place">
-        {{ company.place }}{% if company.website %}{% if company.place %} &middot; {% endif %}<a href="{{ company.website }}" rel="noopener nofollow">{{ company.website }}</a>{% endif %}
+        {{ company.place }}{% if company.website %}{% if company.place %} &middot; {% endif %}
+        {# Only web addresses become links: a javascript: or data: value stays plain text. #}
+        {% if company.website|lower starts with 'http://' or company.website|lower starts with 'https://' %}<a href="{{ company.website }}" rel="noopener nofollow">{{ company.website }}</a>{% else %}{{ company.website }}{% endif %}
+        {% endif %}
     </p>
     {% if company.summary %}<p class="company__summary">{{ company.summary }}</p>{% endif %}
 

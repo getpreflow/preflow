@@ -1,0 +1,35 @@
+<legend class="filter-chips__legend">{{ legend }}</legend>
+<label class="filter-chips__chip">
+    <input class="filter-chips__input" type="radio" name="{{ name }}" value=""{% if selected is null %} checked{% endif %}>
+    <span class="filter-chips__text">{{ t('app.search.any') }}</span>
+</label>
+{% for option in options %}
+    <label class="filter-chips__chip">
+        <input class="filter-chips__input" type="radio" name="{{ name }}" value="{{ option }}"{% if option == selected %} checked{% endif %}>
+        <span class="filter-chips__text">{{ labels ? t(labels ~ option) : option }}</span>
+    </label>
+{% endfor %}
+
+{% apply css %}
+& {
+    border: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+}
+.filter-chips__legend { float: left; margin-right: 0.5rem; font-size: 0.9rem; color: var(--muted); }
+.filter-chips__chip { position: relative; }
+/* The radio stays in the page for keyboards and screen readers; the chip is what is seen. */
+.filter-chips__input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.filter-chips__text {
+    display: inline-block;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 0.1rem 0.75rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.filter-chips__input:checked + .filter-chips__text { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.filter-chips__input:focus-visible + .filter-chips__text { outline: 2px solid var(--accent); outline-offset: 2px; }
+{% endapply %}

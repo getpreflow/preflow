@@ -21,5 +21,7 @@ final class JobCard extends Component
     {
         $this->job = (array) ($this->props['job'] ?? []);
         $this->view = ($this->props['view'] ?? 'cards') === 'list' ? 'list' : 'cards';
+        // The wrapper's class is fixed, so the list variant is styled through this attribute.
+        $this->setRootAttribute('data-view', $this->view);
     }
 }

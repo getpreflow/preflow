@@ -8,16 +8,18 @@
     <span class="job-card__tag">{{ t('app.type.' ~ job.employment_type) }}</span>
     {% if job.remote != 'no' %}<span class="job-card__tag">{{ t('app.remote.' ~ job.remote) }}</span>{% endif %}
     {% if job.salary %}
+        {# 0 is a salary too, so the checks are "is not null", not truthiness. #}
         <span class="job-card__salary">{{ job.salary.currency }}
-            {% if job.salary.from and job.salary.to %}{{ job.salary.from|number_format(0, '.', ',') }} &ndash; {{ job.salary.to|number_format(0, '.', ',') }}
-            {% elseif job.salary.from %}{{ t('app.salary_from') }} {{ job.salary.from|number_format(0, '.', ',') }}
+            {% if job.salary.from is not null and job.salary.to is not null %}{{ job.salary.from|number_format(0, '.', ',') }} &ndash; {{ job.salary.to|number_format(0, '.', ',') }}
+            {% elseif job.salary.from is not null %}{{ t('app.salary_from') }} {{ job.salary.from|number_format(0, '.', ',') }}
             {% else %}{{ t('app.salary_up_to') }} {{ job.salary.to|number_format(0, '.', ',') }}{% endif %}
         </span>
     {% endif %}
 </p>
 
 {% apply css %}
-.job-card {
+/* The card itself: "&" is the wrapper, the CSS is nested inside its scoped class. */
+& {
     border: 1px solid var(--line);
     border-radius: 0.5rem;
     padding: 1rem;
@@ -36,4 +38,19 @@
     color: var(--muted);
 }
 .job-card__salary { color: var(--muted); }
+
+/* The list variant: one compact row, title and company on the left, the facts on the right. */
+&[data-view="list"] {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.15rem 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-width: 0 0 1px;
+    border-radius: 0;
+    background: none;
+}
+&[data-view="list"] .job-card__title { font-size: 1rem; }
+&[data-view="list"] .job-card__company { margin-top: 0; }
+&[data-view="list"] .job-card__meta { margin: 0 0 0 auto; font-size: 0.8rem; }
 {% endapply %}
