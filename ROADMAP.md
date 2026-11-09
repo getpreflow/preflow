@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.59.0** — 5927 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.60.0** — 6334 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -377,6 +377,75 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - `MediaLibrary::prefetch()` runs COUNT + SELECT through the query builder's `get()`; it should be one query.
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- ~~**Performance step 3, page cache (0.60):**~~ done in 0.60.0. The owner asked for it on 2026-11-08:
+  "why does the save/publish not trigger the cache build already?". Spec:
+  `docs/superpowers/specs/2026-11-08-page-cache-design.md`.
+  - **What it is:**
+    - Anonymous GET/HEAD responses are stored as one file per page under `storage/cache/pages/{release}`, with an
+      index (`index.sqlite`).
+    - Writes through the data layer invalidate exactly the pages that read what changed: records, listings,
+      raw-SQL tables, and Folio addresses. That covers Folio, controllers, imports, cron and the publisher.
+    - Pages that must be fresh are rebuilt after the response. A cron, `preflow pages:work`, takes what is left.
+  - **Personal parts are live:**
+    - Mark them with `{% live with {...} %}`, `@live` or `#[Live]`. They are stored as signed placeholders and rendered
+      per visit.
+    - The nonce, CSRF tokens and registered site values are swapped per request.
+    - Signed-in visitors (the `preflow_auth` marker cookie, remember cookies, `Authorization`) always get live pages.
+  - **Freshness.** It is per dependency and set by the developer:
+    - `{% freshness 'next-visit' %}` and `{% freshness 'timed' every '12h' %}`, or `#[Freshness]`;
+    - `{% expires … %}` for a fixed expiry;
+    - a 4 h safety maximum age (`max_age`). A page past it is served once more while it is rebuilt.
+  - **Never stored:**
+    - responses that set cookies or have a session;
+    - errors, and pages with a failed component or block;
+    - drafts (working-copy renders);
+    - mismatched htmx fragments;
+    - pages that differ per visitor. "Verify" renders a page a second time as another anonymous visitor: the first time
+      a key is stored in a release (`'first'`, the default), or always in tests (`'always'`).
+  - **Folio:**
+    - The Cache screen gets "Refresh a page" and "Refresh everything" (`folio.cache`).
+    - Detail pages depend on their record and their address, not on the whole type.
+  - **Measured on languagecorner, locally:** `/home` 4.8 ms with the cache off, 2.4 ms on a hit. A hit costs 0.28 ms
+    of PHP in `handle()`. Live numbers follow with each site's switch-on.
+  - **Upgrading:**
+    - All `preflow/*` packages must be at 0.60 together; composer enforces it.
+    - The cache is off by default and needs zero config: nothing changes until a site enables it.
+    - With `auth.session.paths` set, a visitor who brings the session cookie now resumes it on every path.
+    - Twig reserves block names starting with `__live_`.
+    - Memos in site code must report their reads (`captureReads`/`replayReads`). Request-scoped modes, such as a
+      preview, register `PageCache::isolate()`.
+    - The skeleton limits sessions to its sign-in, admin and component paths, previews its error demo through
+      `ErrorBoundary::preview()`, and posts `csrf_field()` in its forms.
+  - **New APIs:**
+    - data: `observe`, `reportRead`, `reportWrite`, `captureReads`, `replayReads`, `reportedStorage`;
+      `QueryBuilder::byIds()` and `unreported()`.
+    - core: `PageCache` (`changed`, `depends`, `within`, `expiresAt`, `refuse`, `carry`, `isolate`, `refuseWhen`),
+      `PerRequestValues`, `Application::afterResponse()`, `RequestContext::$request`.
+    - components: `ErrorBoundary::preview()` and `PreviewsFailure`.
+    - auth: the `preflow_auth` cookie.
+    - testing: `WebApplication::boot()`.
+    - commands: `pages:work` and `pages:refresh`.
+  - **Switching a site on:**
+    1. Set `app.url` with its scheme, and a real `app.key`.
+    2. Set `auth.session.paths` to where sessions start (sign-in, account, `/folio`, `/members`, `/--component`).
+    3. Add `config/page_cache.php` with `'enabled' => true`. Use `'explain' => true` while auditing.
+    4. Add a cron that runs `php preflow pages:work` every minute.
+    5. Run `preflow optimize` (or `cache:clear pages`) in every deploy.
+    6. Audit the site:
+       - move personal parts into live parts;
+       - register site tokens as per-request values;
+       - make writes that go around the data layer call `PageCache::changed()`;
+       - make site memos replay their reads.
+    7. Run the suites with `WebApplication`.
+    8. Check with `curl -I`: the second request answers `X-Page-Cache: hit`.
+  - **Follow-ups:**
+    - `max_age` 0 or more than 24 h lets an unwritten page outlive its 24 h component tokens; cap it or document it
+      beside `max_age`.
+    - The verify log's header values have no length cap.
+    - preflow/testing's `WebApplication` runs no after-response work.
+    - A `*` invalidation queues every full page (about 500 pages a minute through the cron).
+    - Address tags keep accents.
+    - LiteSpeed purge tags could sit on top as a server-level layer later.
 - ~~**Performance step 2, structural boot (0.59):**~~ done in 0.59.0 (owner, 2026-11-08: "push through all step by
   step"; spec `docs/superpowers/specs/2026-11-08-perf-structural-boot-design.md`).
   - **What changed:**
