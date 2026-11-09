@@ -2618,22 +2618,31 @@ final class Application
 
     private function ensureComponentRenderer(): void
     {
+        $container = $this->container;
+
+        // Controllers render page templates through this. Not shared: it reads the request
+        // being handled, which changes per request.
+        if ($container->has(\Preflow\View\TemplateEngineInterface::class) && !$container->bound(\Preflow\View\PageResponder::class)) {
+            $container->bind(
+                \Preflow\View\PageResponder::class,
+                static fn (Container $c): \Preflow\View\PageResponder => new \Preflow\View\PageResponder(
+                    $c->get(\Preflow\View\TemplateEngineInterface::class),
+                    $c->get(\Preflow\View\AssetCollector::class),
+                    $c->bound(RequestContext::class) ? $c->get(RequestContext::class) : null,
+                ),
+            );
+        }
+
         if ($this->componentRenderer !== null) {
             return;
         }
 
-        $container = $this->container;
         $this->componentRenderer = function (Route $route, ServerRequestInterface $request) use ($container): ResponseInterface {
             if ($container->has(\Preflow\View\TemplateEngineInterface::class)) {
                 $engine = $container->get(\Preflow\View\TemplateEngineInterface::class);
                 $html = $engine->render($route->handler, [
                     'route' => (object) $route->parameters,
-                    'request' => (object) [
-                        'path' => $request->getUri()->getPath(),
-                        'method' => $request->getMethod(),
-                        'isHtmx' => $request->getHeaderLine('HX-Request') === 'true',
-                        'query' => $request->getQueryParams(),
-                    ],
+                    'request' => \Preflow\View\PageResponder::requestVariable($request),
                 ]);
 
                 // Post-process: inject collected assets into the HTML

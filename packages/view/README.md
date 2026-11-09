@@ -699,6 +699,16 @@ final class GamesWithoutPlayerCount implements SiteCheck
 $container->get(AuditRegistry::class)->addSite(new GamesWithoutPlayerCount($container->get(GameRepository::class)));
 ```
 
+## Pages from controllers
+
+`PageResponder` renders a page template from a controller: `render($template, $context = [],
+$status = 200, $headers = [])` returns an HTML `ResponseInterface`. It gives the template the
+`request` (`path`, `method`, `isHtmx`, `query`) and `route` variables a file page gets, injects
+the CSS/JS collected while rendering (`AssetCollector::injectInto()`), and answers
+`text/html; charset=UTF-8`. Keys in `$context` win over `request` and `route`. Controllers get
+it by constructor injection. Use it instead of a file page for a 404, a POST, or a template
+chosen at run time (see "Pages from controllers" in the core README).
+
 ## QR codes
 
 `qr_svg($data, $options)` returns an inline SVG (safe HTML, no escaping). In Twig it is a function, in Blade the

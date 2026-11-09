@@ -1016,6 +1016,35 @@ A prefix matches whole segments: `/folio` covers `/folio` and `/folio/x`, not `/
 Redirects and the not-found list (`preflow/routing`) never answer or record a 404 under these
 paths. Add the prefix of any area of your own that is not a page (an API, a webhook endpoint).
 
+## Pages from controllers
+
+A file page (`app/pages/*.twig`) answers GET with status 200. Use a controller page when you
+need a 404 with your layout, a POST that shows a page, or a choice of template at run time.
+Inject `Preflow\View\PageResponder` and call `render($template, $context, $status, $headers)`:
+the template gets the same `request` and `route` variables as a file page (your context keys
+win), collected CSS/JS is injected, and the answer is `text/html; charset=UTF-8`.
+
+```php
+#[Route('/jobs')]
+final class JobPageController
+{
+    public function __construct(private readonly PageResponder $pages, private readonly DataManager $dm) {}
+
+    #[Get('/{id}')]
+    public function show(ServerRequestInterface $request): ResponseInterface
+    {
+        $job = $this->dm->find(Job::class, $request->getAttribute('id'));
+
+        return $job === null
+            ? $this->pages->render('_views/not-found.twig', status: 404)
+            : $this->pages->render('_views/job.twig', ['job' => $job]);
+    }
+}
+```
+
+`route` is empty in a controller page; pass `'route' => (object) [...]` if the template needs it.
+Anonymous GET pages from controllers go through the page cache like file pages do.
+
 ## JSON APIs (`config/api.php`)
 
 A controller action that returns an array or a `JsonSerializable` answers JSON; no response
