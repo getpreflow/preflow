@@ -44,7 +44,8 @@
         "symfony/notifier": "^7.3 || ^8.0"
     },
     "scripts": {
-        "test:mysql": "bin/test-mysql"
+        "test:mysql": "bin/test-mysql",
+        "test:starters": "bin/starter test starter && bin/starter test starter-folio"
     },
     "repositories": [
         {

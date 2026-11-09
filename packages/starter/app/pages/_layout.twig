@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{{ t('app.name') }}{% endblock %}</title>
+</head>
+<body>
+    <header class="site-header">
+        <a href="/" class="site-brand">{{ t('app.name') }}</a>
+    </header>
+
+    <main class="site-main">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-footer">{{ t('app.footer') }}</footer>
+</body>
+</html>
+
+{% apply css %}
+:root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --text: #1f2933;
+    --muted: #616e7c;
+    --line: #e4e7eb;
+    --accent: #0b6bcb;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #12161b;
+        --text: #e4e7eb;
+        --muted: #9aa5b1;
+        --line: #2d343c;
+        --accent: #6cb2f5;
+    }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.site-header {
+    padding: 1rem;
+    border-bottom: 1px solid var(--line);
+}
+
+.site-brand {
+    color: var(--text);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.site-main {
+    flex: 1;
+    width: 100%;
+    max-width: 52rem;
+    margin: 0 auto;
+    padding: 1.5rem 1rem;
+}
+
+.site-footer {
+    padding: 1rem;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.875rem;
+    border-top: 1px solid var(--line);
+}
+
+a { color: var(--accent); }
+{% endapply %}

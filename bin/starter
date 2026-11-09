@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# Installs, tests and proves a starter (packages/starter, packages/starter-folio) against the
+# packages of this monorepo, before they are released.
+#
+#   bin/starter install <name>            install into packages/<name> (composer.dev.json, gitignored)
+#   bin/starter test <name> [phpunit...]  install if needed, then run the starter's own suite
+#   bin/starter fresh <name>              copy what Git would ship to a scratch dir, run the
+#                                         create-project steps there and request the app
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Paths a fresh install must answer with 200. Later tasks add the pages and the API here.
+CHECK_PATHS=(/)
+
+usage() {
+    echo "Usage: bin/starter install|test|fresh <name> [args...]" >&2
+    exit 1
+}
+
+[ $# -ge 2 ] || usage
+command="$1"
+name="$2"
+shift 2
+dir="$root/packages/$name"
+
+if [ ! -f "$dir/composer.json" ]; then
+    echo "No such starter: packages/$name" >&2
+    exit 1
+fi
+
+# Writes $1 (a composer.json) to $2 with a path repository to every package of the monorepo.
+# $3 is the repository's url: "../*" for an install inside packages/<name>, an absolute path for
+# a copy elsewhere. Packages in a Git checkout are versioned dev-<branch>, which does not satisfy
+# "^0.63", so each is given <minor>.99, the minor taken from the starter's preflow/core constraint.
+write_dev_composer() {
+    php -r '
+        [, $source, $target, $url, $packages] = $argv;
+        $composer = json_decode(file_get_contents($source), true, 512, JSON_THROW_ON_ERROR);
+        if (!preg_match("/(\d+)\.(\d+)/", $composer["require"]["preflow/core"] ?? "", $m)) {
+            fwrite(STDERR, "No preflow/core constraint in $source\n");
+            exit(1);
+        }
+        $versions = [];
+        foreach (glob($packages . "/*/composer.json") as $file) {
+            $name = json_decode(file_get_contents($file), true)["name"] ?? "";
+            if ($name === "" || in_array($name, ["preflow/starter", "preflow/starter-folio", "preflow/skeleton"], true)) {
+                continue;
+            }
+            $versions[$name] = "$m[1].$m[2].99";
+        }
+        ksort($versions);
+        $composer["repositories"][] = [
+            "type" => "path",
+            "url" => $url,
+            "options" => ["symlink" => true, "versions" => $versions],
+        ];
+        file_put_contents($target, json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+    ' "$@"
+}
+
+# Stops a process and everything it started (php preflow serve runs php -S as a child),
+# found through the parent ids of the PID we started, never by name.
+stop_tree() {
+    local pid="$1" child
+    for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+        stop_tree "$child"
+    done
+    kill "$pid" 2>/dev/null || true
+}
+
+do_install() {
+    cd "$dir"
+    write_dev_composer composer.json composer.dev.json "../*" "$root/packages"
+    COMPOSER=composer.dev.json composer update --no-interaction
+    if [ ! -f .env ]; then
+        cp .env.example .env
+        php preflow key:generate
+        php preflow migrate
+        php preflow db:seed
+    fi
+}
+
+do_test() {
+    if [ ! -d "$dir/vendor" ]; then
+        do_install
+    fi
+    cd "$dir"
+    exec vendor/bin/phpunit "$@"
+}
+
+# Global, not local: the EXIT trap runs after do_fresh has returned.
+scratch=""
+server_pid=""
+
+do_fresh() {
+    local port
+    scratch="$(mktemp -d "${TMPDIR:-/tmp}/starter-fresh.XXXXXX")"
+
+    finish() {
+        local status=$?
+        if [ -n "$server_pid" ]; then
+            stop_tree "$server_pid"
+            wait "$server_pid" 2>/dev/null || true
+        fi
+        if [ "$status" -ne 0 ]; then
+            echo "fresh install FAILED: $name. Kept for inspection: $scratch" >&2
+        else
+            rm -rf "$scratch"
+        fi
+        exit "$status"
+    }
+    trap finish EXIT
+
+    # What Git would ship: tracked files plus new ones that are not ignored.
+    (cd "$dir" && git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf -) | tar -xf - -C "$scratch"
+    write_dev_composer "$scratch/composer.json" "$scratch/composer.json" "$root/packages/*" "$root/packages"
+
+    cd "$scratch"
+    composer install --no-scripts --no-interaction
+    composer run-script post-create-project-cmd --no-interaction
+    composer test --no-interaction
+
+    port="$(php -r '$s = stream_socket_server("tcp://127.0.0.1:0"); echo parse_url(stream_socket_get_name($s, false), PHP_URL_PORT);')"
+    php preflow serve --host=127.0.0.1 --port="$port" >"$scratch/serve.log" 2>&1 &
+    server_pid=$!
+
+    local ready=0 i
+    for i in $(seq 1 50); do
+        if curl -s -o /dev/null "http://127.0.0.1:$port/"; then
+            ready=1
+            break
+        fi
+        sleep 0.2
+    done
+    if [ "$ready" -ne 1 ]; then
+        echo "The server did not answer on port $port:" >&2
+        cat "$scratch/serve.log" >&2
+        exit 1
+    fi
+
+    local path code
+    for path in "${CHECK_PATHS[@]}"; do
+        code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port$path")"
+        if [ "$code" != "200" ]; then
+            echo "GET $path answered $code, expected 200" >&2
+            exit 1
+        fi
+    done
+
+    echo "fresh install OK: $name"
+}
+
+case "$command" in
+    install) do_install ;;
+    test) do_test "$@" ;;
+    fresh) do_fresh ;;
+    *) usage ;;
+esac
