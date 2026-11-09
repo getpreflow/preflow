@@ -7,9 +7,9 @@ namespace Preflow\Routing\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
- * "^0.54 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
- * Composer from pairing routing with a core release that lacks what it calls: core 0.54
- * (InternalRender, honoured by RedirectMiddleware).
+ * "^0.62 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
+ * Composer from pairing routing with a core release that lacks what it calls: core 0.62
+ * (MethodNotAllowedHttpException, thrown by Router).
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -17,7 +17,7 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame('^0.54 || @dev', $composer['require']['preflow/core'] ?? null);
-        $this->assertSame(['preflow/core' => '<0.54'], $composer['conflict'] ?? null);
+        $this->assertSame('^0.62 || @dev', $composer['require']['preflow/core'] ?? null);
+        $this->assertSame(['preflow/core' => '<0.62'], $composer['conflict'] ?? null);
     }
 }

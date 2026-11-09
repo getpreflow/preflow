@@ -186,4 +186,31 @@ final class RouteMatcherTest extends TestCase
 
         $this->assertNotNull($result);
     }
+
+    public function test_allowed_methods_lists_every_method_of_the_path(): void
+    {
+        $collection = new RouteCollection();
+        $collection->add($this->entry('/jobs/{id}', 'GET', paramNames: ['id']));
+        $collection->add($this->entry('/jobs/{id}', 'DELETE', paramNames: ['id']));
+        $collection->add($this->entry('/other', 'POST'));
+
+        $matcher = new RouteMatcher($collection);
+
+        $this->assertSame(['DELETE', 'GET', 'HEAD'], $matcher->allowedMethods('/jobs/7'));
+        $this->assertSame(['DELETE', 'GET', 'HEAD'], $matcher->allowedMethods('/jobs/7/'));
+        $this->assertSame(['POST'], $matcher->allowedMethods('/other'));
+        $this->assertSame([], $matcher->allowedMethods('/nope'));
+    }
+
+    public function test_allowed_methods_ignores_catch_all_routes(): void
+    {
+        $collection = new RouteCollection();
+        $collection->add($this->entry('/docs/{path}', 'GET', paramNames: ['path'], isCatchAll: true));
+        $collection->add($this->entry('/docs/new', 'POST'));
+
+        $matcher = new RouteMatcher($collection);
+
+        $this->assertSame(['POST'], $matcher->allowedMethods('/docs/new'));
+        $this->assertSame([], $matcher->allowedMethods('/docs/other'));
+    }
 }

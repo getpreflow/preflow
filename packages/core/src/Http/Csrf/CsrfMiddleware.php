@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Core\Http\Csrf;
 
 use Preflow\Core\Exceptions\ForbiddenHttpException;
+use Preflow\Core\Exceptions\MethodNotAllowedHttpException;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Core\Routing\Route;
@@ -186,8 +187,8 @@ final class CsrfMiddleware implements MiddlewareInterface
 
         try {
             return $router->match($request);
-        } catch (NotFoundHttpException) {
-            return null; // not exempt; the kernel answers 404 once the check passes
+        } catch (NotFoundHttpException|MethodNotAllowedHttpException) {
+            return null; // not exempt; the kernel answers 404 or 405 once the check passes
         }
     }
 

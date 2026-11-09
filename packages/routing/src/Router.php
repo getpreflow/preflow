@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Routing;
 
 use Psr\Http\Message\ServerRequestInterface;
+use Preflow\Core\Exceptions\MethodNotAllowedHttpException;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Core\Routing\Route;
 use Preflow\Core\Routing\RouterInterface;
@@ -127,6 +128,12 @@ final class Router implements RouterInterface
         $result = $matcher->match($method, $uri);
 
         if ($result === null) {
+            // The path exists for other methods: say which (RFC 9110), instead of a plain 404.
+            $allowed = $matcher->allowedMethods($uri);
+            if ($allowed !== []) {
+                throw new MethodNotAllowedHttpException($allowed);
+            }
+
             throw new NotFoundHttpException("No route matches [{$method} {$uri}]");
         }
 

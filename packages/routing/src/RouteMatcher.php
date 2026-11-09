@@ -65,6 +65,43 @@ final class RouteMatcher
     }
 
     /**
+     * The methods some route answers for this path (match()'s static and dynamic passes), sorted;
+     * HEAD comes with GET. Empty when no route has the path at all.
+     *
+     * Catch-all routes don't count: they answer for every path (Folio's frontend page route
+     * does), so they can't say a path exists, and a wrong method on an unknown path stays a 404.
+     *
+     * @return list<string>
+     */
+    public function allowedMethods(string $uri): array
+    {
+        if ($uri !== '/' && str_ends_with($uri, '/')) {
+            $uri = rtrim($uri, '/');
+        }
+
+        $methods = [];
+        foreach ($this->collection->all() as $entry) {
+            if ($entry->isCatchAll) {
+                continue;
+            }
+            $hit = $entry->paramNames !== []
+                ? $entry->regex !== '' && preg_match($entry->regex, $uri) === 1
+                : $entry->pattern === $uri;
+            if ($hit) {
+                $methods[$entry->method] = true;
+            }
+        }
+        if (isset($methods['GET'])) {
+            $methods['HEAD'] = true;
+        }
+
+        $methods = array_keys($methods);
+        sort($methods);
+
+        return $methods;
+    }
+
+    /**
      * @param string[] $paramNames
      * @param array<string|int, string> $matches
      * @return array<string, string>

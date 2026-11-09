@@ -7,7 +7,13 @@ namespace Preflow\Routing\Tests;
 use PHPUnit\Framework\TestCase;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Psr\Http\Message\ServerRequestInterface;
+use Nyholm\Psr7\Factory\Psr17Factory as Psr17;
+use Preflow\Core\Error\ErrorHandler;
+use Preflow\Core\Error\JsonErrorRenderer;
+use Preflow\Core\Error\ProdErrorRenderer;
+use Preflow\Core\Exceptions\MethodNotAllowedHttpException;
 use Preflow\Core\Exceptions\NotFoundHttpException;
+use Preflow\Core\Http\Api\ApiConfig;
 use Preflow\Core\Routing\RouteMode;
 use Preflow\Routing\Attributes\Route as RouteAttr;
 use Preflow\Routing\Attributes\Get;
@@ -27,6 +33,26 @@ class ItemController
 
     #[Post('/')]
     public function store(): void {}
+}
+
+#[RouteAttr('/jobs')]
+class JobController
+{
+    #[Get('/{id}')]
+    public function show(): void {}
+
+    #[\Preflow\Routing\Attributes\Delete('/{id}')]
+    public function destroy(): void {}
+}
+
+#[RouteAttr('/api/jobs')]
+class ApiJobController
+{
+    #[Get('/{id}')]
+    public function show(): void {}
+
+    #[\Preflow\Routing\Attributes\Delete('/{id}')]
+    public function destroy(): void {}
 }
 
 #[RouteAttr('/hook')]
@@ -202,5 +228,63 @@ final class RouterTest extends TestCase
         // Caches written before the flag existed load as not exempt.
         unset($data[0]['csrfExempt']);
         $this->assertFalse(RouteCollection::fromArray($data)->all()[0]->csrfExempt);
+    }
+
+    private function jobsRouter(): Router
+    {
+        return new Router(pagesDir: $this->pagesDir, controllers: [JobController::class]);
+    }
+
+    public function test_wrong_method_on_an_existing_path_is_405_with_allow(): void
+    {
+        try {
+            $this->jobsRouter()->match($this->createRequest('POST', '/jobs/7'));
+            $this->fail('Expected a 405');
+        } catch (MethodNotAllowedHttpException $e) {
+            $this->assertSame(405, $e->statusCode);
+            $this->assertSame('DELETE, GET, HEAD', $e->headers['Allow']);
+            $this->assertSame(['DELETE', 'GET', 'HEAD'], $e->allowed);
+        }
+    }
+
+    public function test_head_still_matches_the_get_route(): void
+    {
+        $route = $this->jobsRouter()->match($this->createRequest('HEAD', '/jobs/7'));
+
+        $this->assertStringContainsString('@show', $route->handler);
+    }
+
+    public function test_unknown_path_is_still_404_for_any_method(): void
+    {
+        $this->expectException(NotFoundHttpException::class);
+        $this->jobsRouter()->match($this->createRequest('POST', '/nope'));
+    }
+
+    public function test_405_is_answered_as_html_or_json_by_the_error_handler(): void
+    {
+        $bodies = [];
+        $handler = new ErrorHandler(new ProdErrorRenderer(), null, new ApiConfig(), new JsonErrorRenderer(false));
+        $router = new Router(pagesDir: $this->pagesDir, controllers: [JobController::class, ApiJobController::class]);
+        $factory = new Psr17();
+
+        $html = $factory->createServerRequest('POST', '/jobs/7')->withHeader('Accept', 'text/html');
+        $json = $factory->createServerRequest('POST', '/api/jobs/7');
+
+        foreach ([$html, $json] as $request) {
+            try {
+                $router->match($request);
+                $this->fail('Expected a 405');
+            } catch (MethodNotAllowedHttpException $e) {
+                $response = $handler->handleException($e, $request);
+                $this->assertSame(405, $response->getStatusCode());
+                $this->assertSame('DELETE, GET, HEAD', $response->getHeaderLine('Allow'));
+                $bodies[] = [$response->getHeaderLine('Content-Type'), (string) $response->getBody()];
+            }
+        }
+
+        $this->assertStringContainsString('text/html', $bodies[0][0]);
+        $this->assertStringContainsString('<', $bodies[0][1]);
+        $this->assertStringContainsString('application/json', $bodies[1][0]);
+        $this->assertSame('{"message":"Method Not Allowed"}', $bodies[1][1]);
     }
 }
