@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.60.0** — 6334 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.60.1** — 6334 tests, 23 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -439,9 +439,10 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     7. Run the suites with `WebApplication`.
     8. Check with `curl -I`: the second request answers `X-Page-Cache: hit`.
   - **Follow-ups:**
-    - `max_age` 0 or more than 24 h lets an unwritten page outlive its 24 h component tokens; cap it or document it
-      beside `max_age`.
-    - The verify log's header values have no length cap.
+    - ~~`max_age` 0 or more than 24 h lets an unwritten page outlive its 24 h component tokens.~~ 0.60.1: `max_age` is at
+      most 72000 (20 h, 4 h less than the tokens last); 0 means those 20 h, a longer value is refused.
+    - ~~The verify log's header values have no length cap.~~ 0.60.1: a header, like the body, is logged as 120 bytes
+      around its first difference.
     - preflow/testing's `WebApplication` runs no after-response work.
     - A `*` invalidation queues every full page (about 500 pages a minute through the cron).
     - Address tags keep accents.
