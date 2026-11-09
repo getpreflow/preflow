@@ -57,13 +57,14 @@ final class AuthManager
     }
 
     /**
-     * The guard bearer-token routes use: the preferred one (config auth.api_guard), else the first
+     * The guard bearer-token routes use: the preferred one (config auth.api_guard, which must be a TokenGuard), else the first
      * configured TokenGuard. Null when there is none.
      */
     public function tokenGuardName(?string $preferred = null): ?string
     {
         if ($preferred !== null) {
-            return isset($this->guards[$preferred]) ? $preferred : null;
+            // A named guard that is no TokenGuard is refused, not replaced: a session guard must never pass a token route.
+            return ($this->guards[$preferred] ?? null) instanceof TokenGuard ? $preferred : null;
         }
         foreach ($this->guards as $name => $guard) {
             if ($guard instanceof TokenGuard) {
