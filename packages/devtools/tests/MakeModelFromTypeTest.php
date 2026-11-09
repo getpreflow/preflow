@@ -6,6 +6,9 @@ namespace Preflow\DevTools\Tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Preflow\Data\DataManager;
+use Preflow\Data\Driver\SqliteDriver;
+use Preflow\Data\Locales;
 use Preflow\Data\TypeRegistry;
 use Preflow\DevTools\Command\MakeModelCommand;
 
@@ -65,6 +68,11 @@ final class MakeModelFromTypeTest extends TestCase
             array_keys($registry->get($key)->fields),
             'fields keep their order (the admin form shows them so)',
         );
+        $this->assertEquals(
+            self::withDefaults((new TypeRegistry($this->fixtureDir))->schema($key), $key),
+            self::withDefaults($registry->schema($key), $key),
+            'the schema array Folio reads is the same, falsy and null keys too',
+        );
         $admin = json_decode(file_get_contents($this->base . "/config/models/{$key}.json"), true);
         $this->assertSame([], array_intersect(array_keys($admin), ['table', 'storage', 'id_field', 'matrixable', 'views']));
         $this->assertSame($key, $admin['key']);
@@ -94,7 +102,7 @@ final class MakeModelFromTypeTest extends TestCase
         $this->assertStringContainsString("#[Entity(table: 'object', storage: 'default', type: 'object')]", $php);
         $this->assertStringContainsString("final class WoodObject extends Model", $php);
         $this->assertStringContainsString("    #[Id]\n    public ?string \$uuid = null;", $php);
-        $this->assertStringContainsString("    #[Field(label: 'Title')]\n    #[Validate('required')]\n    public string \$title = '';", $php);
+        $this->assertStringContainsString("    #[Field(label: 'Title')]\n    #[Validate('required')]\n    public ?string \$title = null;", $php);
         $this->assertStringContainsString("    #[Field(label: 'Category')]\n    #[Relation(to: 'category', labelField: 'title')]\n    public ?string \$category = null;", $php);
     }
 
@@ -114,11 +122,81 @@ final class MakeModelFromTypeTest extends TestCase
         $this->make('Article', '--from-type=article');
 
         $admin = json_decode(file_get_contents($this->base . '/config/models/article.json'), true);
-        $this->assertArrayNotHasKey('tags', $admin['fields'], 'a multiple relation is a text column (FieldKinds)');
+        $this->assertArrayNotHasKey('tags', $admin['fields'], '"multiple" is schema: a multiple relation is a text column (FieldKinds)');
         $this->assertStringContainsString(
             "    #[Field(type: 'relation', config: ['multiple' => true])]\n    #[Relation(to: 'tag', onDelete: 'detach', labelField: 'name')]\n    public array|string|null \$tags = null;",
             file_get_contents($this->base . '/app/Models/Article.php'),
         );
+    }
+
+    public function test_every_property_is_nullable_and_starts_with_the_fields_default(): void
+    {
+        copy($this->fixtureDir . '/article.json', $this->base . '/config/models/article.json');
+
+        $this->make('Article', '--from-type=article');
+
+        $php = file_get_contents($this->base . '/app/Models/Article.php');
+        $this->assertStringContainsString("    #[Validate('required', 'max:120')]\n    public array|string|null \$title = null;", $php);
+        $this->assertStringContainsString("    #[Validate('required')]\n    public int|float|null \$rating = 3;", $php);
+        $this->assertStringContainsString("    public ?bool \$featured = false;", $php);
+        $this->assertStringContainsString("config: ['options' => ['news' => 'News', 'guides' => 'Guides'], 'default' => null],\n    )]\n    public ?string \$section = null;", $php);
+    }
+
+    public function test_a_stored_null_in_a_required_field_survives_a_typed_find_and_save(): void
+    {
+        file_put_contents($this->base . '/config/models/note.json', json_encode(['key' => 'note', 'table' => 'note', 'fields' => [
+            'title' => ['type' => 'string', 'validate' => ['required']],
+            'count' => ['type' => 'number', 'validate' => ['required']],
+            'done' => ['type' => 'boolean', 'validate' => ['required']],
+            'tags' => ['type' => 'string', 'translatable' => true, 'validate' => ['required']],
+            'body' => ['type' => 'text'],
+        ]]));
+        [$code] = $this->make('NullSafeNote', '--from-type=note');
+        $this->assertSame(0, $code, $this->errors());
+        require $this->base . '/app/Models/NullSafeNote.php';
+
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('CREATE TABLE note (uuid TEXT PRIMARY KEY, title TEXT, count INTEGER, done INTEGER, tags TEXT, body TEXT)');
+        $pdo->exec("INSERT INTO note (uuid) VALUES ('n1')");
+        $types = new TypeRegistry($this->base . '/config/models', new Locales(['en', 'de'], 'en'), ['note' => \App\Models\NullSafeNote::class]);
+        $dm = new DataManager(['default' => new SqliteDriver($pdo)], 'default', $types);
+
+        $note = $dm->find(\App\Models\NullSafeNote::class, 'n1');
+        $note->body = 'Edited';
+        $dm->save($note, validate: false);
+
+        $this->assertSame(
+            ['uuid' => 'n1', 'title' => null, 'count' => null, 'done' => null, 'tags' => null, 'body' => 'Edited'],
+            $pdo->query("SELECT * FROM note WHERE uuid = 'n1'")->fetch(\PDO::FETCH_ASSOC),
+        );
+    }
+
+    public function test_it_refuses_a_key_a_class_under_the_model_paths_already_has(): void
+    {
+        copy($this->fixtureDir . '/game.json', $this->base . '/config/models/game.json');
+        mkdir($this->base . '/src/Domain', 0777, true);
+        file_put_contents($this->base . '/src/Domain/Play.php', "<?php\n#[Entity(table: 'game', type: 'game')]\nfinal class Play {}\n");
+        file_put_contents($this->base . '/config/data.php', "<?php\nreturn ['model_paths' => [__DIR__ . '/../src/Domain', __DIR__ . '/../app/Models']];\n");
+
+        [$code] = $this->make('Game', '--from-type=game');
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('Type "game" is already defined by a model class (', $this->errors());
+        $this->assertStringContainsString('/config/../src/Domain/Play.php)', $this->errors());
+        $this->assertFileEquals($this->fixtureDir . '/game.json', $this->base . '/config/models/game.json');
+    }
+
+    public function test_it_refuses_when_app_models_is_not_a_model_path(): void
+    {
+        copy($this->fixtureDir . '/game.json', $this->base . '/config/models/game.json');
+        file_put_contents($this->base . '/config/data.php', "<?php\nreturn ['model_paths' => [__DIR__ . '/../src/Domain']];\n");
+
+        [$code] = $this->make('Game', '--from-type=game');
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('app/Models is not under data.model_paths', $this->errors());
+        $this->assertFileDoesNotExist($this->base . '/app/Models/Game.php');
     }
 
     public function test_it_refuses_an_existing_class(): void
@@ -203,6 +281,28 @@ final class MakeModelFromTypeTest extends TestCase
 
         $this->assertSame(1, $code);
         $this->assertStringContainsString('"extends"', $this->errors());
+    }
+
+    /**
+     * The defaults the registry applies and a class always states, filled in.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private static function withDefaults(array $schema, string $key): array
+    {
+        $schema += ['key' => $key, 'storage' => 'default', 'id_field' => 'uuid'];
+        if (($schema['matrixable'] ?? null) === false) {
+            unset($schema['matrixable']);
+        }
+        if (($schema['views'] ?? null) === []) {
+            unset($schema['views']);
+        }
+        foreach ($schema['fields'] as $name => $field) {
+            $schema['fields'][$name] = $field + ['type' => 'string'];
+        }
+
+        return $schema;
     }
 
     /** @return array{int, string} */

@@ -19,10 +19,13 @@ final class ModelSchema
     /** Keys that define a type's data; every other type key is presentation. */
     public const array SCHEMA_TYPE_KEYS = ['key', 'table', 'storage', 'id_field', 'fields', 'matrixable', 'views'];
 
-    /** Keys that define a field's data; every other field key is presentation (label, help, readonly, ...). */
+    /**
+     * Keys that define a field's data; every other field key is presentation (label, help, readonly, ...).
+     * "multiple" is data: it decides the column (FieldKinds stores a multiple relation as text).
+     */
     public const array SCHEMA_FIELD_KEYS = [
         'type', 'validate', 'translatable', 'unique', 'index', 'length', 'searchable',
-        'transform', 'default', 'relation', 'options', 'accept', 'time', 'blocks', 'fields',
+        'transform', 'default', 'relation', 'options', 'accept', 'time', 'blocks', 'fields', 'multiple',
     ];
 
     /**

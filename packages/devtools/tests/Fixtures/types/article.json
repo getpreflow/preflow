@@ -39,6 +39,15 @@
             ],
             "placeholder": "my-article"
         },
+        "subtitle": {
+            "type": "string",
+            "translatable": false,
+            "unique": false,
+            "index": false,
+            "searchable": null,
+            "transform": null,
+            "validate": []
+        },
         "section": {
             "type": "select",
             "index": true,

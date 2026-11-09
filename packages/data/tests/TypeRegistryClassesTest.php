@@ -81,6 +81,15 @@ final class TypeRegistryClassesTest extends TestCase
         (new TypeRegistry($dir, null, ['job' => Job::class]))->get('job');
     }
 
+    public function test_a_file_setting_multiple_is_an_error(): void
+    {
+        // "multiple" decides the column (a multiple relation is a text column): it is schema.
+        $dir = $this->dirWith('job.json', ['key' => 'job', 'fields' => ['company' => ['multiple' => true]]]);
+
+        $this->expectExceptionMessage('"multiple"');
+        (new TypeRegistry($dir, null, ['job' => Job::class]))->get('job');
+    }
+
     public function test_a_file_with_a_table_is_an_error(): void
     {
         $dir = $this->dirWith('job.json', ['key' => 'job', 'table' => 'jobs']);

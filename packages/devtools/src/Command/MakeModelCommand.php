@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\DevTools\Command;
 
+use Preflow\Core\Application;
 use Preflow\Data\ModelSchema;
 use Preflow\Data\TypeRegistry;
 
@@ -37,11 +38,12 @@ final class MakeModelCommand implements CommandInterface
     /** Field types stored as a list or a structure: an array, or its JSON text as an SQL driver returns it. */
     private const array STRUCTURED_KINDS = ['asset', 'blocks', 'matrix'];
 
-    /** Schema keys the class carries as #[Field] parameters or #[Validate]; the other schema keys go in `config:`. */
+    /**
+     * Schema keys with a #[Field] parameter or #[Validate]. The parameter is used only where
+     * ModelSchema gives the JSON value back as it is; any other value (false, null, 1, "80")
+     * goes in `config:` as it is, so the type's schema stays the same array.
+     */
     private const array DEDICATED_KEYS = ['type', 'validate', 'translatable', 'unique', 'index', 'length', 'searchable', 'transform', 'default'];
-
-    /** Field keys that are not schema keys but decide how a value is stored (FieldKinds: a multiple relation is a text column): on the class, in `config:`. */
-    private const array STORED_KEYS = ['multiple'];
 
     /**
      * @param string|null   $basePath app root (default: the working directory)
@@ -138,7 +140,7 @@ final class MakeModelCommand implements CommandInterface
             if (!is_array($type) || !$object instanceof \stdClass) {
                 throw new \RuntimeException("{$file} does not hold a JSON object.");
             }
-            $this->assertNotClassBacked($base, $key, $type, $file);
+            $this->assertNotClassBacked($base, $key, $type, $file, $this->modelPaths($base));
             $php = $this->classSource($class, $key, $type, $file);
             $admin = json_encode($this->adminFile($key, $type, $object), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . "\n";
             $this->assertSameType($key, "{$base}/{$file}", $php, $admin);
@@ -162,12 +164,56 @@ final class MakeModelCommand implements CommandInterface
     }
 
     /**
-     * A file without schema is already the admin side of a class; a class under app/Models
-     * marked with the key is one too (one definition per key).
+     * Where the app's model classes are (data.model_paths, default app/Models). The new class
+     * goes to app/Models, so that must be one of them, or the type would lose its schema at boot.
+     *
+     * @return list<string>
+     */
+    private function modelPaths(string $base): array
+    {
+        $paths = ["{$base}/app/Models"];
+        if (is_file("{$base}/config/data.php")) {
+            try {
+                $data = Application::create($base)->configFile('data');
+            } catch (\Throwable $e) {
+                throw new \RuntimeException("config/data.php could not be read ({$e->getMessage()}), so its data.model_paths can't be checked for a class of this type.", 0, $e);
+            }
+            if (is_array($data) && isset($data['model_paths'])) {
+                $paths = array_values(array_filter((array) $data['model_paths'], 'is_string'));
+            }
+        }
+        $target = self::resolved("{$base}/app/Models");
+        foreach ($paths as $path) {
+            $path = self::resolved($path);
+            if ($target === $path || str_starts_with($target, $path . '/')) {
+                return $paths;
+            }
+        }
+
+        throw new \RuntimeException('app/Models is not under data.model_paths (config/data.php), so the class would not be found: add it there first.');
+    }
+
+    /** A path with symlinks resolved, also when it (or its tail) does not exist yet. */
+    private static function resolved(string $path): string
+    {
+        $path = rtrim($path, '/');
+        $tail = '';
+        while ($path !== '' && $path !== '.' && $path !== '/' && realpath($path) === false) {
+            $tail = '/' . basename($path) . $tail;
+            $path = dirname($path);
+        }
+
+        return rtrim((string) realpath($path === '' ? '.' : $path), '/') . $tail;
+    }
+
+    /**
+     * A file without schema is already the admin side of a class; a class under the model paths
+     * marked with the key is one too (one definition per key). Read as text: nothing is loaded.
      *
      * @param array<string, mixed> $type
+     * @param list<string>         $modelPaths
      */
-    private function assertNotClassBacked(string $base, string $key, array $type, string $file): void
+    private function assertNotClassBacked(string $base, string $key, array $type, string $file, array $modelPaths): void
     {
         if (($type['extends'] ?? false) === true) {
             throw new \RuntimeException("{$file} only patches a type an extension defines (\"extends\": true); it is not a type of its own.");
@@ -175,14 +221,15 @@ final class MakeModelCommand implements CommandInterface
         if (array_intersect_key($type, array_flip(array_diff(ModelSchema::SCHEMA_TYPE_KEYS, ['key']))) === []) {
             throw new \RuntimeException("Type \"{$key}\" is already defined by a model class: {$file} holds only its admin settings.");
         }
-        $dir = "{$base}/app/Models";
-        if (!is_dir($dir)) {
-            return;
-        }
         $pattern = '/#\[[^\]]*\bEntity\s*\([^\]]*\btype\s*:\s*[\'"]' . preg_quote($key, '/') . '[\'"]/s';
-        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS)) as $found) {
-            if ($found->isFile() && $found->getExtension() === 'php' && preg_match($pattern, (string) file_get_contents($found->getPathname())) === 1) {
-                throw new \RuntimeException("Type \"{$key}\" is already defined by a model class (" . substr($found->getPathname(), strlen($base) + 1) . ').');
+        foreach ($modelPaths as $dir) {
+            if (!is_dir($dir)) {
+                continue;
+            }
+            foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS)) as $found) {
+                if ($found->isFile() && $found->getExtension() === 'php' && preg_match($pattern, (string) file_get_contents($found->getPathname())) === 1) {
+                    throw new \RuntimeException("Type \"{$key}\" is already defined by a model class ({$found->getPathname()}).");
+                }
             }
         }
     }
@@ -210,7 +257,7 @@ final class MakeModelCommand implements CommandInterface
         if (($type['matrixable'] ?? false) !== false) {
             throw new \RuntimeException("{$file} sets \"matrixable\", which a model class cannot carry yet: keep {$key} a JSON type.");
         }
-        if (array_filter((array) ($type['views'] ?? []), 'is_string') !== []) {
+        if (($type['views'] ?? []) !== []) {
             throw new \RuntimeException("{$file} sets \"views\", which a model class cannot carry yet: keep {$key} a JSON type.");
         }
         $fields = $type['fields'] ?? [];
@@ -290,45 +337,42 @@ final class MakeModelCommand implements CommandInterface
                 $args[$text] = $def[$text];
             }
         }
-        if ($translatable) {
-            $args['translatable'] = true;
-        }
-        // As TypeRegistry reads them: a scope of field names, or yes/no.
-        $unique = $def['unique'] ?? false;
-        $unique = is_array($unique) ? (array_values(array_filter($unique, 'is_string')) ?: true) : (bool) $unique;
-        if ($unique !== false) {
-            $args['unique'] = $unique;
-        }
-        if ((bool) ($def['index'] ?? false)) {
-            $args['index'] = true;
-        }
-        if (isset($def['length'])) {
-            $args['length'] = (int) $def['length'];
-        }
-        if (isset($def['searchable'])) {
-            $args['searchable'] = (bool) $def['searchable'];
-        }
-        if (isset($def['transform'])) {
-            if (!is_string($def['transform'])) {
-                throw new \RuntimeException("{$where}: \"transform\" is not a class name.");
-            }
-            $args['transform'] = $def['transform'];
-        }
-        if (isset($def['default'])) {
-            $args['default'] = $def['default'];
-        }
-        // The other schema keys (options, blocks, fields, a relation #[Relation] can't give back, a null default) and the stored keys as they are.
+        // A parameter only where ModelSchema gives the value back as it is; else the value goes in config.
         $config = [];
+        $exact = [
+            'translatable' => static fn (mixed $v): bool => $v === true,
+            'unique' => static fn (mixed $v): bool => $v === true || (is_array($v) && $v !== [] && array_is_list($v) && array_filter($v, 'is_string') === $v),
+            'index' => static fn (mixed $v): bool => $v === true,
+            'length' => static fn (mixed $v): bool => is_int($v),
+            'searchable' => static fn (mixed $v): bool => is_bool($v),
+            'transform' => static fn (mixed $v): bool => is_string($v),
+            'default' => static fn (mixed $v): bool => $v !== null,
+        ];
+        foreach ($exact as $param => $fits) {
+            if (array_key_exists($param, $def)) {
+                if ($fits($def[$param])) {
+                    $args[$param] = $def[$param];
+                } else {
+                    $config[$param] = $def[$param];
+                }
+            }
+        }
+        if (isset($config['transform'])) {
+            throw new \RuntimeException("{$where}: \"transform\" is not a class name.");
+        }
+        if ($rules === [] && array_key_exists('validate', $def)) {
+            $config['validate'] = [];
+        }
+        // The other schema keys (options, blocks, fields, multiple, a relation #[Relation] can't give back) as they are.
         foreach ($def as $configKey => $value) {
-            $inConfig = in_array($configKey, [...ModelSchema::SCHEMA_FIELD_KEYS, ...self::STORED_KEYS], true)
+            if (in_array($configKey, ModelSchema::SCHEMA_FIELD_KEYS, true)
                 && !in_array($configKey, self::DEDICATED_KEYS, true)
-                && !($configKey === 'relation' && $relation !== null);
-            if ($inConfig || ($configKey === 'default' && $value === null)) {
+                && !($configKey === 'relation' && $relation !== null)) {
                 $config[$configKey] = $value;
             }
         }
         if ($config !== []) {
-            $args['config'] = $config;
+            $args['config'] = array_intersect_key($def, $config); // in the file's order
         }
 
         $lines = [];
@@ -347,7 +391,7 @@ final class MakeModelCommand implements CommandInterface
             $uses[] = 'Preflow\\Validation\\Attributes\\Validate';
             $lines[] = '    #[Validate(' . implode(', ', array_map(static fn (string $r): string => self::export($r), $rules)) . ')]';
         }
-        $lines[] = '    public ' . self::declaration($phpType, $name, in_array('required', $rules, true), $translatable) . ';';
+        $lines[] = '    public ' . self::declaration($phpType, $name, $def['default'] ?? null) . ';';
 
         return implode("\n", $lines);
     }
@@ -382,23 +426,27 @@ final class MakeModelCommand implements CommandInterface
         return $args + array_intersect_key($relation, ['onSelfDelete' => true, 'labelField' => true]);
     }
 
-    /** A property nullable unless the field is required, with its type's empty value as default. */
-    private static function declaration(string $phpType, string $name, bool $required, bool $translatable): string
+    /**
+     * Every property is nullable, required or not ("required" is a rule): a stored NULL reads as
+     * null and a typed save writes it back, never an empty value over it. It starts with the
+     * field's default when that fits its type, else null.
+     */
+    private static function declaration(string $phpType, string $name, mixed $default): string
     {
-        if ($phpType === 'mixed') {
-            return "mixed \${$name} = null";
-        }
-        if (!$required) {
-            return (str_contains($phpType, '|') ? "{$phpType}|null" : "?{$phpType}") . " \${$name} = null";
-        }
-        $empty = match ($phpType) {
-            'bool' => 'false',
-            'int|float' => '0',
-            'array|string' => $translatable ? "''" : '[]',
-            default => "''",
+        $fits = match ($phpType) {
+            'bool' => is_bool($default),
+            'int|float' => is_int($default) || is_float($default),
+            'string' => is_string($default),
+            'array|string' => is_array($default) || is_string($default),
+            default => true,
+        };
+        $type = match (true) {
+            $phpType === 'mixed' => 'mixed',
+            str_contains($phpType, '|') => "{$phpType}|null",
+            default => "?{$phpType}",
         };
 
-        return "{$phpType} \${$name} = {$empty}";
+        return "{$type} \${$name} = " . ($fits ? self::export($default) : 'null');
     }
 
     /**
@@ -423,7 +471,7 @@ final class MakeModelCommand implements CommandInterface
             foreach ($value instanceof \stdClass ? get_object_vars($value) : [] as $field => $def) {
                 $entry = new \stdClass();
                 foreach ($def instanceof \stdClass ? get_object_vars($def) : [] as $fieldKey => $v) {
-                    $onClass = in_array($fieldKey, [...ModelSchema::SCHEMA_FIELD_KEYS, ...self::STORED_KEYS], true)
+                    $onClass = in_array($fieldKey, ModelSchema::SCHEMA_FIELD_KEYS, true)
                         || (in_array($fieldKey, ['label', 'help'], true) && self::textOnClass($type['fields'][$field][$fieldKey]));
                     if (!$onClass) {
                         $entry->{$fieldKey} = $v;
@@ -442,8 +490,12 @@ final class MakeModelCommand implements CommandInterface
     }
 
     /**
-     * Loads the class under a throwaway namespace and compares the type it gives (with its admin
-     * file) with the JSON type: the move must not change the type.
+     * Loads the class under a throwaway namespace and compares what the registry serves for it
+     * (with its admin file) with what it serves for the JSON type: the TypeDefinition, and the
+     * schema array that Folio and others read. The schemas are compared with the defaults the
+     * registry applies filled in (key, storage, id_field, a field's type; matrixable false and
+     * no views left out), since a class always states those; every other key is kept as the
+     * JSON file has it, falsy and null values too.
      */
     private function assertSameType(string $key, string $jsonFile, string $php, string $admin): void
     {
@@ -454,14 +506,20 @@ final class MakeModelCommand implements CommandInterface
             file_put_contents("{$dir}/{$key}.json", $admin);
             file_put_contents("{$dir}/Model.php", str_replace("namespace App\\Models;", "namespace {$namespace};", $php));
             preg_match('/^final class (\w+)/m', $php, $class);
-            $expected = (new TypeRegistry(dirname($jsonFile)))->get($key);
+            $json = new TypeRegistry(dirname($jsonFile));
+            $expected = $json->get($key);
+            $expectedSchema = $json->schema($key);
             try {
                 require "{$dir}/Model.php";
-                $actual = (new TypeRegistry($dir, null, [$key => "{$namespace}\\{$class[1]}"]))->get($key);
+                $moved = new TypeRegistry($dir, null, [$key => "{$namespace}\\{$class[1]}"]);
+                $actual = $moved->get($key);
+                $actualSchema = $moved->schema($key);
             } catch (\Throwable $e) {
                 throw new \RuntimeException("The class make:model wrote for \"{$key}\" does not load as a type ({$e->getMessage()}): please report this.", 0, $e);
             }
-            if (array_keys($expected->fields) !== array_keys($actual->fields) || self::normalized($expected) !== self::normalized($actual)) {
+            if (array_keys($expected->fields) !== array_keys($actual->fields)
+                || self::normalized($expected) !== self::normalized($actual)
+                || self::normalized(self::withDefaults($expectedSchema, $key)) !== self::normalized(self::withDefaults($actualSchema, $key))) {
                 throw new \RuntimeException("The class make:model wrote for \"{$key}\" gives a different type than {$key}.json: please report this.");
             }
         } finally {
@@ -469,6 +527,28 @@ final class MakeModelCommand implements CommandInterface
             @unlink("{$dir}/Model.php");
             @rmdir($dir);
         }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private static function withDefaults(array $schema, string $key): array
+    {
+        $schema += ['key' => $key, 'storage' => 'default', 'id_field' => 'uuid'];
+        if (($schema['matrixable'] ?? null) === false) {
+            unset($schema['matrixable']);
+        }
+        if (($schema['views'] ?? null) === []) {
+            unset($schema['views']);
+        }
+        foreach ((array) ($schema['fields'] ?? []) as $name => $field) {
+            if (is_array($field)) {
+                $schema['fields'][$name] = $field + ['type' => 'string'];
+            }
+        }
+
+        return $schema;
     }
 
     /** A type as nested arrays with sorted keys, so equal types compare identical whatever their key order. */
