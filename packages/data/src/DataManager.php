@@ -812,10 +812,9 @@ final class DataManager
      * A stored value as the property's type: whether to assign it, and the value. A value the
      * type takes is assigned as it is; else it is converted where that is lossless (numeric
      * text to a number, a number to text, '0', 'false' and '' to false, JSON text of an array
-     * to the array). A value that cannot
-     * be converted (text in a number field, 4.5 for an int) leaves the property's default, as
-     * a NULL the property cannot take does: one odd row never breaks a read the type would
-     * make.
+     * to the array). A value that cannot be converted (text in a number field, 4.5 for an int)
+     * leaves the property's default, as a NULL the property cannot take does: one odd row
+     * never breaks a read the type would make.
      *
      * @return array{bool, mixed}
      */
