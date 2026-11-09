@@ -6,8 +6,8 @@ namespace Preflow\Core\Exceptions;
 
 final class SecurityException extends ForbiddenHttpException
 {
-    public function __construct(string $message = 'Security violation', ?\Throwable $previous = null)
+    public function __construct(string $message = 'Security violation', ?\Throwable $previous = null, array $headers = [])
     {
-        parent::__construct($message, $previous);
+        parent::__construct($message, $previous, $headers);
     }
 }

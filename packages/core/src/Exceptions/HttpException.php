@@ -10,6 +10,8 @@ class HttpException extends \RuntimeException
         public readonly int $statusCode,
         string $message = '',
         ?\Throwable $previous = null,
+        /** @var array<string, string> sent with the error response, e.g. WWW-Authenticate or Allow */
+        public readonly array $headers = [],
     ) {
         parent::__construct($message, $statusCode, $previous);
     }

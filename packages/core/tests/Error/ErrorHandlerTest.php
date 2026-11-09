@@ -12,7 +12,11 @@ use Preflow\Core\Error\DevErrorRenderer;
 use Preflow\Core\Error\ProdErrorRenderer;
 use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\Exceptions\NotFoundHttpException;
+use Preflow\Core\Error\JsonErrorRenderer;
+use Preflow\Core\Http\Api\ApiConfig;
 use Preflow\Core\Http\InternalRender;
+use Preflow\Validation\ValidationException;
+use Preflow\Validation\ValidationResult;
 
 final class ErrorHandlerTest extends TestCase
 {
@@ -110,5 +114,72 @@ final class ErrorHandlerTest extends TestCase
         $response = $handler->handleException(new \RuntimeException('shown as usual'), InternalRender::mark($this->createRequest()));
 
         $this->assertStringContainsString('shown as usual', (string) $response->getBody());
+    }
+
+    private function apiHandler(): ErrorHandler
+    {
+        return new ErrorHandler(new ProdErrorRenderer(), null, new ApiConfig(), new JsonErrorRenderer(false));
+    }
+
+    private function htmlRequest(string $path): ServerRequestInterface
+    {
+        return (new Psr17Factory())->createServerRequest('GET', $path)->withHeader('Accept', 'text/html,*/*');
+    }
+
+    public function test_api_request_gets_json_error(): void
+    {
+        $response = $this->apiHandler()->handleException(
+            new NotFoundHttpException('Nope'),
+            (new Psr17Factory())->createServerRequest('GET', '/api/x'),
+        );
+
+        $this->assertSame(404, $response->getStatusCode());
+        $this->assertSame('application/json', $response->getHeaderLine('Content-Type'));
+        $this->assertSame('{"message":"Nope"}', (string) $response->getBody());
+    }
+
+    public function test_html_request_keeps_html_error(): void
+    {
+        $response = $this->apiHandler()->handleException(new NotFoundHttpException(), $this->htmlRequest('/x'));
+
+        $this->assertSame(404, $response->getStatusCode());
+        $this->assertSame('text/html; charset=UTF-8', $response->getHeaderLine('Content-Type'));
+    }
+
+    public function test_validation_exception_is_422(): void
+    {
+        $e = new ValidationException(new ValidationResult(['title' => ['The title is required.']]));
+
+        $api = $this->apiHandler()->handleException($e, (new Psr17Factory())->createServerRequest('POST', '/api/jobs'));
+        $html = $this->apiHandler()->handleException($e, $this->htmlRequest('/jobs'));
+
+        $this->assertSame(422, $api->getStatusCode());
+        $this->assertStringContainsString('"errors":{"title":["The title is required."]}', (string) $api->getBody());
+        $this->assertSame(422, $html->getStatusCode());
+        $this->assertSame('text/html; charset=UTF-8', $html->getHeaderLine('Content-Type'));
+    }
+
+    public function test_http_exception_headers_reach_the_response(): void
+    {
+        $e = new HttpException(401, 'Unauthorized', null, ['WWW-Authenticate' => 'Bearer']);
+
+        $api = $this->apiHandler()->handleException($e, (new Psr17Factory())->createServerRequest('GET', '/api/x'));
+        $html = $this->apiHandler()->handleException($e, $this->htmlRequest('/x'));
+
+        $this->assertSame('Bearer', $api->getHeaderLine('WWW-Authenticate'));
+        $this->assertSame('Bearer', $html->getHeaderLine('WWW-Authenticate'));
+    }
+
+    public function test_internal_render_keeps_internal_renderer(): void
+    {
+        $handler = new ErrorHandler(new DevErrorRenderer(), new ProdErrorRenderer(), new ApiConfig(), new JsonErrorRenderer(true));
+
+        $response = $handler->handleException(
+            new \RuntimeException('debug only detail'),
+            InternalRender::mark((new Psr17Factory())->createServerRequest('GET', '/api/x')),
+        );
+
+        $this->assertSame('text/html; charset=UTF-8', $response->getHeaderLine('Content-Type'));
+        $this->assertStringNotContainsString('debug only detail', (string) $response->getBody());
     }
 }

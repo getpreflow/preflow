@@ -13,6 +13,7 @@ use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Core\Error\DevErrorRenderer;
 use Preflow\Core\Error\ErrorHandler;
+use Preflow\Core\Error\JsonErrorRenderer;
 use Preflow\Core\Error\ProdErrorRenderer;
 use Preflow\Core\Http\Emitter;
 use Preflow\Core\Http\MiddlewarePipeline;
@@ -333,7 +334,15 @@ final class Application
         ));
 
         // Admin, API and endpoint prefixes that are not public pages; packages add theirs in their providers
-        $this->container->instance(\Preflow\Core\Http\NonPublicPaths::class, new \Preflow\Core\Http\NonPublicPaths());
+        $nonPublic = new \Preflow\Core\Http\NonPublicPaths();
+        $this->container->instance(\Preflow\Core\Http\NonPublicPaths::class, $nonPublic);
+
+        // API prefixes (config/api.php): errors there are JSON, and SEO and GEO leave them alone
+        $api = \Preflow\Core\Http\Api\ApiConfig::fromArray($this->configFile('api'));
+        $this->container->instance(\Preflow\Core\Http\Api\ApiConfig::class, $api);
+        foreach ($api->prefixes as $prefix) {
+            $nonPublic->add($prefix);
+        }
 
         // Auto-discover installed packages and wire them up
         $this->bootDataLayer($collector);
@@ -376,7 +385,12 @@ final class Application
             ? new DevErrorRenderer($collector, $this->nonceProvider())
             : new ProdErrorRenderer($this->nonceProvider());
         // Internal renders (the SEO audit) get the visitor's error page, even in debug mode.
-        $errorHandler = new ErrorHandler($renderer, $debug->isDebug() ? new ProdErrorRenderer($this->nonceProvider()) : null);
+        $errorHandler = new ErrorHandler(
+            $renderer,
+            $debug->isDebug() ? new ProdErrorRenderer($this->nonceProvider()) : null,
+            $api,
+            new JsonErrorRenderer($debug->isDebug()),
+        );
         $this->container->instance(ErrorHandler::class, $errorHandler);
 
         // Default dispatchers if not set

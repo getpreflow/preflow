@@ -13,8 +13,8 @@ use Preflow\Core\Exceptions\ForbiddenHttpException;
  */
 final class CsrfSessionExpiredException extends ForbiddenHttpException
 {
-    public function __construct(string $message = 'CSRF token mismatch: session expired.', ?\Throwable $previous = null)
+    public function __construct(string $message = 'CSRF token mismatch: session expired.', ?\Throwable $previous = null, array $headers = [])
     {
-        parent::__construct($message, $previous);
+        parent::__construct($message, $previous, $headers);
     }
 }
