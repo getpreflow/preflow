@@ -135,6 +135,37 @@ final class JobWriterTest extends TestCase
         $this->assertSame('published', $this->writer->state($job));
     }
 
+    public function test_republishing_keeps_the_posted_date_and_the_place_in_the_list(): void
+    {
+        $job = $this->writer->create($this->input(), $this->owner);
+        $this->assertNull($job->postedOn);
+        $this->writer->publish($job, $this->owner);
+        $this->assertSame((new \DateTimeImmutable())->format('Y-m-d'), $this->data->find(Job::class, $job->uuid)->postedOn, 'set on the first publish');
+        $this->assertSame($job->uuid, $this->search->latest(1)[0]->uuid);
+
+        // Dated back (an editor can change "Posted on" in Folio), it sits among the older jobs.
+        $job = $this->data->find(Job::class, $job->uuid);
+        $job->postedOn = '2026-09-03';
+        $this->data->save($job);
+        $this->writer->publish($job, $this->owner);
+        $place = fn (): int|false => array_search($job->uuid, array_map(static fn (Job $j): string => $j->uuid, $this->search->latest(50)), true);
+        $before = $place();
+        $this->assertGreaterThan(0, $before);
+
+        // Unpublish and publish again: neither the date nor the place changes.
+        $this->writer->unpublish($job);
+        $this->writer->publish($job, $this->owner);
+        $this->assertSame('2026-09-03', $this->search->byId($job->uuid)?->postedOn);
+        $this->assertSame($before, $place());
+
+        // Publishing an edit doesn't move it to the top either.
+        $job = $this->writer->update($job, ['title' => 'Senior Platform Wrangler']);
+        $this->writer->publish($job, $this->owner);
+        $this->assertSame('Senior Platform Wrangler', $this->search->byId($job->uuid)?->title);
+        $this->assertSame('2026-09-03', $this->search->byId($job->uuid)?->postedOn);
+        $this->assertSame($before, $place());
+    }
+
     public function test_update_is_partial_and_keeps_the_slug(): void
     {
         $job = $this->writer->create($this->input(), $this->owner);

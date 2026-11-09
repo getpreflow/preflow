@@ -73,6 +73,14 @@ final class Job extends Model
     #[Validate('required', 'min:30')]
     public ?string $description = null;
 
+    /**
+     * The date the list sorts by and the job shows as "Posted". Set on the first publish from the
+     * employer area (JobWriter), and kept after that: publishing an edit, or unpublishing and
+     * publishing again, doesn't move a job to the top. Staff set it in Folio's form.
+     */
+    #[Field(type: 'date', label: 'Posted on')]
+    public ?string $postedOn = null;
+
     #[Field]
     public ?string $createdAt = null;
 
@@ -80,9 +88,10 @@ final class Job extends Model
     public ?string $updatedAt = null;
 
     /**
-     * When Folio published this copy (ISO 8601). Only a published copy read through PublishedModels
-     * has it; it comes from the snapshot's `_published_at` column. Not a field: no column of its own,
-     * nothing Folio's form shows, and a save never writes it.
+     * When Folio last published this copy (ISO 8601): the order among jobs posted on the same day,
+     * and "Posted" for a job staff published without a date. Not a field (no column, not in
+     * Folio's form, never saved): DataManager fills public properties from the snapshot row, and
+     * only a published copy (PublishedModels) has a `_published_at` column.
      */
     public ?string $_published_at = null;
 

@@ -10,6 +10,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\PersonalAccessToken;
 use Preflow\Data\DataManager;
+use Preflow\Folio\Publishing\Publisher;
 use Preflow\Testing\TestResponse;
 use Tests\Support\StarterApp;
 
@@ -148,6 +149,22 @@ final class WriteApiTest extends TestCase
         $this->json('PATCH', '/api/jobs/' . $id, ['employment_type' => 'nope'], $headers)
             ->assertJsonValidationErrors('employment_type');
         $this->assertSame(404, $this->json('PATCH', '/api/jobs/' . str_repeat('0', 32), ['title' => 'x'], $headers)->status());
+    }
+
+    public function test_publishing_a_draft_that_breaks_a_rule_is_422_with_snake_case_fields(): void
+    {
+        $headers = $this->bearer();
+        $id = $this->json('POST', '/api/jobs', $this->body(), $headers)->json('data.id');
+        // Staff can save a draft in Folio that breaks a rule (drafts skip them); publishing checks them.
+        $draft = $this->data()->findType('job', $id);
+        $draft->set('employmentType', 'freelance');
+        $this->container()->get(Publisher::class)->saveDraft($draft, null);
+
+        $response = $this->json('PATCH', '/api/jobs/' . $id, ['status' => 'published'], $headers);
+
+        $response->assertJsonValidationErrors('employment_type');
+        $this->assertArrayNotHasKey('employmentType', $response->json('errors'));
+        $this->assertSame(404, $this->json('GET', '/api/jobs/' . $id)->status());
     }
 
     public function test_patch_other_company_job_is_403(): void

@@ -27,8 +27,8 @@ final class JobSearchTest extends TestCase
     }
 
     /**
-     * The published jobs, newest first, that pass $keep: what the list should show, worked out
-     * without the search code.
+     * The published jobs, newest first (posted on, then published at), that pass $keep: what the
+     * list should show, worked out without the search code.
      *
      * @param callable(Job): bool $keep
      * @return list<string> slugs
@@ -39,7 +39,7 @@ final class JobSearchTest extends TestCase
             $this->container()->get(PublishedModels::class)->query(Job::class)->get()->items(),
             $keep,
         );
-        usort($jobs, static fn (Job $a, Job $b): int => strcmp((string) $b->_published_at, (string) $a->_published_at));
+        usort($jobs, static fn (Job $a, Job $b): int => [(string) $b->postedOn, (string) $b->_published_at] <=> [(string) $a->postedOn, (string) $a->_published_at]);
 
         return array_map(static fn (Job $job): string => (string) $job->slug, $jobs);
     }

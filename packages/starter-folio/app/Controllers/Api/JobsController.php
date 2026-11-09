@@ -77,11 +77,11 @@ final class JobsController
 
         try {
             $job = $this->writer->create($this->resource->toInput($body), $user);
+            if ($status === 'published') {
+                $job = $this->writer->publish($job, $user);
+            }
         } catch (ValidationException $e) {
             throw $this->apiErrors($e);
-        }
-        if ($status === 'published') {
-            $job = $this->writer->publish($job, $user);
         }
 
         return Json::data($this->present($job), status: 201, headers: ['Location' => '/api/jobs/' . $job->uuid]);
@@ -101,13 +101,14 @@ final class JobsController
             if ($input !== []) {
                 $job = $this->writer->update($job, $input);
             }
+            // Publishing checks the rules too: staff may have saved a draft in Folio that breaks one.
+            if ($status === 'published') {
+                $job = $this->writer->publish($job, $user);
+            } elseif ($status === 'draft') {
+                $job = $this->writer->unpublish($job);
+            }
         } catch (ValidationException $e) {
             throw $this->apiErrors($e);
-        }
-        if ($status === 'published') {
-            $job = $this->writer->publish($job, $user);
-        } elseif ($status === 'draft') {
-            $job = $this->writer->unpublish($job);
         }
 
         return Json::data($this->present($job));

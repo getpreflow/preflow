@@ -66,6 +66,11 @@ final class JobWriter
      */
     public function publish(Job $job, User $by): Job
     {
+        if ($job->postedOn === null) {
+            // The first publish dates the job. Later ones keep the date, so the job keeps its place.
+            $job->postedOn = (new \DateTimeImmutable())->format('Y-m-d');
+            $this->data->save($job);
+        }
         $this->publisher->publish($this->data->findType('job', (string) $job->uuid), 'employer:' . $by->email);
 
         return $job;

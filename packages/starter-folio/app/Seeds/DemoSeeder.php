@@ -12,7 +12,6 @@ use App\Models\User;
 use Preflow\Auth\NativePasswordHasher;
 use Preflow\Core\Config\Config;
 use Preflow\Data\DataManager;
-use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Publishing\PublishState;
 use Preflow\Folio\Publishing\Publisher;
 use Preflow\Media\Image\ImageBackends;
@@ -54,8 +53,9 @@ final class DemoSeeder
         $demo = require __DIR__ . '/demo-data.php';
 
         // Without GD or Imagick the media library can't make image sizes, so the demo goes without
-        // logos rather than failing. STARTER_NO_IMAGES=1 does the same on a PHP that has them.
-        $logos = ImageBackends::detect() !== null && getenv('STARTER_NO_IMAGES') !== '1';
+        // logos rather than failing. STARTER_NO_IMAGES=1 (in .env or the environment) does the
+        // same on a PHP that has them.
+        $logos = ImageBackends::detect() !== null && ($_ENV['STARTER_NO_IMAGES'] ?? getenv('STARTER_NO_IMAGES')) !== '1';
         if (!$logos) {
             echo "Logos skipped: no image library.\n";
         }
@@ -91,20 +91,14 @@ final class DemoSeeder
             $job->salaryFrom = $row['salaryFrom'];
             $job->salaryTo = $row['salaryTo'];
             $job->description = $row['description'];
-            // Fixed dates, so the seed gives the same rows every time.
+            // Fixed dates, so the seed gives the same rows, in the same order, every time.
             $job->createdAt = $job->updatedAt = $row['publishedAt'] ?? '2026-10-20 10:00:00';
+            $job->postedOn = $row['publishedAt'] === null ? null : substr($row['publishedAt'], 0, 10);
             $data->save($job);
 
             // A draft stays a working copy: saved, never published.
-            if ($row['status'] !== 'published') {
-                continue;
-            }
-            $snapshot = $this->publish($data, 'job', $job->uuid);
-            if ($snapshot !== null) {
-                // Folio stamps the time of publishing. The demo dates its jobs instead, so the
-                // list has the same order on every install.
-                $snapshot->set('_published_at', (new \DateTimeImmutable($row['publishedAt']))->format(DATE_ATOM));
-                $data->saveType($snapshot, false);
+            if ($row['status'] === 'published') {
+                $this->publish($data, 'job', $job->uuid);
             }
         }
 
@@ -139,15 +133,13 @@ final class DemoSeeder
 
     /**
      * Publishes the working copy through Folio, unless the published copy already matches it:
-     * a rerun then adds no revision. Returns the new published copy, or null when nothing changed.
+     * a rerun then adds no revision.
      */
-    private function publish(DataManager $data, string $type, string $id): ?DynamicRecord
+    private function publish(DataManager $data, string $type, string $id): void
     {
         $record = $data->findType($type, $id);
-        if ($record === null || $this->publisher->state($record) === PublishState::Published) {
-            return null;
+        if ($record !== null && $this->publisher->state($record) !== PublishState::Published) {
+            $this->publisher->publish($record, 'seed');
         }
-
-        return $this->publisher->publish($record, 'seed');
     }
 }

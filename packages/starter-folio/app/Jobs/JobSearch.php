@@ -35,13 +35,13 @@ final class JobSearch
             $query->where('remote', $f->remote);
         }
 
-        return $query->orderBy('_published_at', SortDirection::Desc)->paginate($perPage, $f->page);
+        return $this->newestFirst($query)->paginate($perPage, $f->page);
     }
 
     /** @return list<Job> */
     public function latest(int $n = 6): array
     {
-        return array_values($this->jobs()->orderBy('_published_at', SortDirection::Desc)->limit($n)->get()->items());
+        return array_values($this->newestFirst($this->jobs())->limit($n)->get()->items());
     }
 
     /** @return list<string> */
@@ -87,7 +87,7 @@ final class JobSearch
             $query->where('uuid', '!=', $exceptJob);
         }
 
-        return array_values($query->orderBy('_published_at', SortDirection::Desc)->limit($limit)->get()->items());
+        return array_values($this->newestFirst($query)->limit($limit)->get()->items());
     }
 
     public function openJobCount(string $companyUuid): int
@@ -125,12 +125,18 @@ final class JobSearch
         return $companies;
     }
 
-    /**
-     * The published jobs. `_published_at` is the snapshot's own column (Folio sets it on every
-     * publish), so "newest first" needs no date field on the job.
-     */
+    /** The published jobs. */
     private function jobs(): QueryBuilder
     {
         return $this->published->query(Job::class);
+    }
+
+    /**
+     * By the posted date, which a republish keeps. Jobs of the same day go by the time Folio
+     * published them (`_published_at`, the published copy's own column).
+     */
+    private function newestFirst(QueryBuilder $query): QueryBuilder
+    {
+        return $query->orderBy('postedOn', SortDirection::Desc)->orderBy('_published_at', SortDirection::Desc);
     }
 }

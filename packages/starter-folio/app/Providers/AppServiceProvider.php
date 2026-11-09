@@ -19,21 +19,25 @@ final class AppServiceProvider extends ServiceProvider
     {
         // Bind your own services here.
 
-        // Folio makes the job tables (the folio.tables step of `preflow migrate`), but it gives a
-        // relation column no index, and the job lists filter by company. A migration file can't
-        // add one: on a fresh install it runs before Folio's step has made the tables. This step
-        // runs after it, on every migrate; a rerun finds the indexes and does nothing.
+        // Folio makes the job tables (the folio.tables step of `preflow migrate`), but the framework
+        // doesn't index relation columns yet, and the job lists filter by company. A migration file
+        // can't add the index: on a fresh install it runs before Folio's step has made the tables.
+        // This step runs after it, on every migrate; a rerun finds the indexes and does nothing.
         $container->get(MigrationRegistry::class)->afterMigrate('app.indexes', static function () use ($container): array {
             $driver = $container->get(DataManager::class)->driver('default');
             if (!$driver instanceof PdoDriver) {
                 return [];
             }
             $pdo = $driver->pdo();
+            // The starter runs on SQLite. On MySQL the relation column is TEXT, which takes an index
+            // only with a prefix length: add one there by hand if you move.
+            if ($pdo->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'sqlite') {
+                return [];
+            }
             $added = [];
             // The working copies (employer area) and the published copies (public pages, API).
             foreach (['jobs', 'jobs__published'] as $table) {
                 $name = 'idx_' . $table . '_company';
-                // sqlite_master: Folio's tables are SQLite only for now, and so is this.
                 $exists = $pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = " . $pdo->quote($name))->fetchColumn();
                 if ($exists === false) {
                     $pdo->exec("CREATE INDEX IF NOT EXISTS \"{$name}\" ON \"{$table}\" (\"company\")");

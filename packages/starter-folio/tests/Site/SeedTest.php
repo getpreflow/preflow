@@ -113,8 +113,8 @@ final class SeedTest extends TestCase
         }
         // The planned dates, not the time the seed ran: the list has the same order on every install.
         foreach ($this->container()->get(PublishedModels::class)->query(Job::class)->get()->items() as $job) {
-            $this->assertGreaterThanOrEqual('2026-09-01', $job->_published_at);
-            $this->assertLessThanOrEqual('2026-11-05T23:59:59', $job->_published_at);
+            $this->assertGreaterThanOrEqual('2026-09-01', $job->postedOn);
+            $this->assertLessThanOrEqual('2026-11-05', $job->postedOn);
         }
     }
 

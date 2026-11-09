@@ -9,6 +9,8 @@ use App\Models\Job;
 use App\Models\User;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
+use Preflow\Data\DynamicRecord;
+use Preflow\Folio\Publishing\Publisher;
 use Tests\Support\StarterApp;
 
 /** The employer area: sign-in, posting a draft, editing, publishing. */
@@ -181,6 +183,27 @@ final class EmployerTest extends TestCase
 
         $bad = $this->postAs($cookies, '/employer/jobs', $this->input(['salaryFrom' => 'lots']));
         $this->assertSame(422, $bad->status());
+    }
+
+    public function test_publishing_a_draft_that_breaks_a_rule_shows_the_form_with_errors(): void
+    {
+        // Staff can save a half-finished draft in Folio (drafts skip the rules); publishing checks them.
+        $owner = $this->data()->query(User::class)->where('email', 'employer@example.com')->first();
+        $draft = DynamicRecord::fromArray($this->data()->getTypeRegistry()->get('job'), [
+            'uuid' => md5('employer-test-half-finished'), 'title' => 'Half Finished', 'slug' => 'half-finished',
+            'company' => $owner->company, 'place' => 'Berlin', 'employmentType' => 'full_time', 'remote' => 'no',
+            'description' => 'too short',
+        ]);
+        $this->container()->get(Publisher::class)->saveDraft($draft, null);
+        $cookies = $this->signInEmployer();
+
+        $response = $this->postAs($cookies, '/employer/jobs/' . $draft->getId() . '/publish', [], '/employer');
+
+        $this->assertSame(422, $response->status());
+        $response->assertSee('Please fix the errors below.');
+        $response->assertSee('Must be at least 30 characters.');
+        $response->assertSee('action="/employer/jobs/' . $draft->getId() . '"');
+        $this->assertNull($this->container()->get(Publisher::class)->snapshot('job', (string) $draft->getId()));
     }
 
     public function test_post_without_csrf_is_refused(): void

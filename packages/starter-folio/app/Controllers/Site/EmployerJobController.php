@@ -96,7 +96,14 @@ final class EmployerJobController
     #[Post('/jobs/{id}/publish')]
     public function publish(ServerRequestInterface $request): ResponseInterface
     {
-        $this->writer->publish($this->owned($request), $this->user($request));
+        $job = $this->owned($request);
+        try {
+            $this->writer->publish($job, $this->user($request));
+        } catch (ValidationException $e) {
+            // Staff can save a half-finished draft in Folio; publishing checks the rules, so the
+            // employer gets the form with what to fix.
+            return $this->form($job, '/employer/jobs/' . $job->uuid, [], $e);
+        }
 
         return $this->back($request, 'Published.');
     }

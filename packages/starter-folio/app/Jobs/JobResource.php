@@ -62,10 +62,9 @@ final class JobResource
         if ($status !== null) {
             $data['status'] = $status;
         }
-        // Only a published copy has it (see Job::$_published_at).
-        $data['published_at'] = $job->_published_at === null
-            ? null
-            : (new \DateTimeImmutable($job->_published_at))->format(\DateTimeInterface::ATOM);
+        // The posted date; for a job staff published without one, when Folio published it.
+        $posted = $job->postedOn ?? $job->_published_at;
+        $data['published_at'] = $posted === null ? null : (new \DateTimeImmutable($posted))->format(\DateTimeInterface::ATOM);
         $data['url'] = $this->baseUrl . '/jobs/' . $job->slug;
 
         return $data;

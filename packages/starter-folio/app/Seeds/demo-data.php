@@ -2,8 +2,8 @@
 
 // Fictional companies and jobs for the demo seed. Ids and dates are fixed, so seeding again
 // updates these rows instead of adding new ones.
-// A job's 'status' says whether the seed publishes it through Folio, and 'publishedAt' is the
-// date its published copy shows (Job has neither field: Folio's publishing is the state).
+// A job's 'status' says whether the seed publishes it through Folio (Job has no status field:
+// Folio's publishing is the state); the day of 'publishedAt' becomes its postedOn.
 
 return [
     'companies' => [

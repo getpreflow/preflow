@@ -50,6 +50,8 @@ final class PublishingTest extends TestCase
             'employmentType' => 'full_time',
             'remote' => 'hybrid',
             'description' => 'You test that a job staff publish in Folio shows up on every public page.',
+            // Staff set "Posted on" in Folio's form; the employer area sets it on the first publish.
+            'postedOn' => (new \DateTimeImmutable())->format('Y-m-d'),
         ]);
         $this->publisher()->saveDraft($record, null);
 
