@@ -47,6 +47,7 @@ final class CompanyAdmin
         $text = $drafts === 1 ? '1 job is a draft' : "{$drafts} jobs are drafts";
         $admin = rtrim((string) ($this->app->configFile('folio')['path'] ?? '/folio'), '/');
 
-        return '<p><a href="' . $admin . '/job">' . $text . '</a></p>';
+        // The notice is printed as HTML: the configured path is escaped like any other value.
+        return '<p><a href="' . htmlspecialchars($admin . '/job', ENT_QUOTES, 'UTF-8') . '">' . $text . '</a></p>';
     }
 }

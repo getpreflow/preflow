@@ -114,6 +114,29 @@ final class WriteApiTest extends TestCase
         $this->assertArrayNotHasKey('status', $list->json('data.0'));
     }
 
+    public function test_publishing_needs_the_job_publish_permission(): void
+    {
+        // An account without the employer role (a trial account, say) posts drafts only.
+        $user = $this->data()->query(User::class)->where('email', 'employer@example.com')->first();
+        $user->roles = [];
+        $this->data()->save($user);
+        $headers = $this->bearer();
+        $total = $this->json('GET', '/api/jobs')->json('meta.total');
+
+        $created = $this->json('POST', '/api/jobs', $this->body(['status' => 'published']), $headers);
+        $this->assertSame(403, $created->status());
+        $this->assertArrayHasKey('message', $created->json());
+
+        $id = $this->json('POST', '/api/jobs', $this->body(['title' => 'Draft Only Engineer']), $headers)->json('data.id');
+        $this->assertNotNull($id, 'a draft still goes through');
+        $patched = $this->json('PATCH', '/api/jobs/' . $id, ['title' => 'Renamed Engineer', 'status' => 'published'], $headers);
+        $this->assertSame(403, $patched->status());
+
+        $this->assertSame($total, $this->json('GET', '/api/jobs')->json('meta.total'), 'nothing was published');
+        $this->assertSame(0, $this->data()->query(Job::class)->where('title', 'API Platform Engineer')->get()->total(), 'the refused create saved nothing');
+        $this->assertSame('Draft Only Engineer', $this->data()->find(Job::class, $id)->title, 'the refused update saved nothing');
+    }
+
     public function test_validation_422_lists_snake_case_fields(): void
     {
         $response = $this->json('POST', '/api/jobs', ['title' => '', 'employment_type' => 'bogus', 'remote' => 'hybrid', 'place' => 'Berlin', 'description' => 'x'], $this->bearer());

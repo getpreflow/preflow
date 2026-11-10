@@ -503,7 +503,7 @@ existing videos their preview.
 
 ## Colours
 
-Images (and the previews of documents) get their colours when they are uploaded or replaced:
+Images (and the previews of documents and videos) get their colours when they are uploaded or replaced:
 
 | Field | Meaning |
 |---|---|
@@ -511,7 +511,7 @@ Images (and the previews of documents) get their colours when they are uploaded 
 | `palette` | 1 to 8 colours that occur in the image, most significant first (a flat image has fewer than 5) |
 | `text_color` | `#ffffff` or `#000000`, whichever has the higher WCAG contrast on `color` |
 
-SVG and videos have none. In templates:
+SVGs have none, nor documents and videos without a preview. In templates:
 
 ```twig
 {% set c = media_colors(record.cover) %}   {# {color, rgb: 'r,g,b', palette, palette_rgb, text} or null #}

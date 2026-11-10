@@ -10,7 +10,9 @@ use App\Models\Company;
 use App\Models\Job;
 use App\Models\User;
 use Nyholm\Psr7\Response;
+use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
+use Preflow\Core\Exceptions\ForbiddenHttpException;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Data\DataManager;
@@ -33,6 +35,7 @@ final class EmployerJobController
         private readonly JobWriter $writer,
         private readonly DataManager $data,
         private readonly PageResponder $pages,
+        private readonly Access $access,
     ) {}
 
     #[Get('/')]
@@ -97,6 +100,10 @@ final class EmployerJobController
     public function publish(ServerRequestInterface $request): ResponseInterface
     {
         $job = $this->owned($request);
+        // config/roles.php gives job.publish to the employer role; an account without it posts drafts.
+        if (!$this->access->can('job.publish')) {
+            throw new ForbiddenHttpException('Your account may post drafts; publishing needs a full employer account.');
+        }
         try {
             $this->writer->publish($job, $this->user($request));
         } catch (ValidationException $e) {

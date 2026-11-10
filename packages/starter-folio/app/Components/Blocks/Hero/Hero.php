@@ -30,4 +30,23 @@ final class Hero extends BlockComponent
 
     #[BlockField(type: 'string', label: 'Button link', help: 'A path on this site, such as /jobs, or an https:// address.')]
     public string $cta_url = '';
+
+    /** The button's href: cta_url when it is safe to link (safeLink()), else '' and no button. */
+    public string $cta_href = '';
+
+    public function resolveState(): void
+    {
+        $this->cta_href = self::safeLink($this->cta_url);
+    }
+
+    /**
+     * $url when it is a path on this site or an http(s) address, else ''. Refused: other schemes
+     * (javascript:), //host and /\host (a browser reads them as another site), and any whitespace
+     * or control character (browsers drop tabs and newlines, so "/<tab>/host" becomes "//host").
+     */
+    public static function safeLink(string $url): string
+    {
+        return preg_match('/[\x00-\x20\x7f]/', $url) !== 1
+            && preg_match('{^(/(?![/\\\\])|https?://)}', $url) === 1 ? $url : '';
+    }
 }

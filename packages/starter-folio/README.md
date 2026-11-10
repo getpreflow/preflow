@@ -68,6 +68,8 @@ Employers do not bypass this. `app/Jobs/JobWriter.php` is the one place that cha
 - `unpublish()` and `delete()` go through the `Publisher` too, so no published copy is left behind.
 - `state()` is `draft`, `published`, or `changed` (published, with edits not yet published). The employer's job list and the API's owner view show it.
 
+Publishing needs the permission `job.publish`, which `config/roles.php` gives the `employer` role (`employer:create` and the demo seed give every employer that role). The employer area and the API ask before they publish; an account without the role posts drafts and gets 403 when it tries to publish.
+
 A job that staff publish straight from Folio without a "Posted on" date is listed after the dated ones, until an editor sets the date.
 
 ### Singletons
@@ -217,7 +219,7 @@ Ask an admin when you need more. Admins are the staff with the `admin` role in `
 | Folio config | `config/folio.php` (admin at `/folio`), `config/media.php` (the library, on SQLite), `config/image.php` |
 | Admin files | `config/models/job.json`, `company.json`, `page.json`, `news.json`, and the singletons `jobs_page.json`, `job_page.json`, `company_page.json` |
 | SEO and GEO | `config/geo.php` (`/llms.txt`), and the `types` entry in `config/seo.php` |
-| Guards | `staff` in `config/auth.php`, the default guard, because Folio's admin checks only the default one; `employers` is marked `'population' => 'members'` |
+| Guards | `staff` in `config/auth.php`, the default guard, because Folio's admin checks only the default one; `employers` is marked `'population' => 'members'`, and `config/roles.php` gives their `employer` role `job.publish` |
 | Staff | `app/Models/Staff.php`, the `staff` table (`migrations/2026_11_09_004_create_staff.php`), `config/roles.php` (admin, editor), `app/Console/StaffCreateCommand.php` |
 | Seeds | `app/Seeds/ContentSeeder.php` (required content: home page and page texts); `DemoSeeder` now also adds staff, logos and news |
 | Blocks | `app/Components/Blocks/{Hero,Text,LatestJobsBlock,LatestNews}` |

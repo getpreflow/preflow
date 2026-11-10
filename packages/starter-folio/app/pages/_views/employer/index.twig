@@ -26,7 +26,7 @@
                 </div>
                 <div class="employer__buttons">
                     <a href="/employer/jobs/{{ job.uuid }}/edit">{{ t('app.employer.edit') }}</a>
-                    {% if state != 'published' %}
+                    {% if state != 'published' and can('job.publish') %}
                         <form method="post" action="/employer/jobs/{{ job.uuid }}/publish">{{ csrf_field() }}<button class="button" type="submit">{{ t(state == 'changed' ? 'app.employer.publish_changes' : 'app.employer.publish') }}</button></form>
                     {% endif %}
                     {% if state != 'draft' %}

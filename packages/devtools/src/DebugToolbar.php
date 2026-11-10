@@ -19,8 +19,11 @@ final class DebugToolbar
     {
         $nonceAttr = $nonce !== null && $nonce !== '' ? ' nonce="' . htmlspecialchars($nonce, ENT_QUOTES, 'UTF-8') . '"' : '';
         $styles = str_replace('<style>', '<style' . $nonceAttr . '>', $this->renderStyles());
-        $bar = $this->renderBar($collector);
-        $panel = $this->renderPanel($collector, CspInspector::issues($page, $nonce));
+        // The collector's asset numbers are set after the response left the middleware this runs in:
+        // the page itself says what it carries.
+        $assets = $page !== '' ? self::pageAssets($page) : $collector->getAssets();
+        $bar = $this->renderBar($collector, $assets);
+        $panel = $this->renderPanel($collector, $assets, CspInspector::issues($page, $nonce));
         $script = str_replace('<script>', '<script' . $nonceAttr . '>', $this->renderScript());
 
         return <<<HTML
@@ -119,12 +122,36 @@ final class DebugToolbar
         CSS;
     }
 
-    private function renderBar(DebugCollector $collector): string
+    /**
+     * The CSS and JS blocks in a rendered page: <style> elements and stylesheet links, <script>
+     * elements (inline or with src) except JSON data; bytes are those of the inline ones.
+     *
+     * @return array{css_count: int, js_count: int, css_bytes: int, js_bytes: int}
+     */
+    public static function pageAssets(string $page): array
+    {
+        $assets = ['css_count' => 0, 'js_count' => 0, 'css_bytes' => 0, 'js_bytes' => 0];
+        preg_match_all('{<(script|style)\b([^>]*)>(.*?)</\1\s*>}is', $page, $blocks, PREG_SET_ORDER);
+        foreach ($blocks as [, $tag, $attrs, $body]) {
+            if (strtolower($tag) === 'style') {
+                $assets['css_count']++;
+                $assets['css_bytes'] += strlen($body);
+            } elseif (preg_match('{\btype\s*=\s*["\']?application/(ld\+)?json}i', $attrs) !== 1) {
+                $assets['js_count']++;
+                $assets['js_bytes'] += strlen($body);
+            }
+        }
+        $assets['css_count'] += preg_match_all('{<link\b[^>]*\brel\s*=\s*["\']?stylesheet\b}i', CspInspector::withoutRawText($page));
+
+        return $assets;
+    }
+
+    /** @param array{css_count: int, js_count: int, css_bytes: int, js_bytes: int} $assets */
+    private function renderBar(DebugCollector $collector, array $assets): string
     {
         $queryCount = count($collector->getQueries());
         $queryTime = number_format($collector->getQueryTime(), 1);
         $componentCount = count($collector->getComponents());
-        $assets = $collector->getAssets();
         $totalTime = number_format($collector->getTotalTime(), 1);
 
         $sep = '<span class="pdt-separator">|</span>';
@@ -149,12 +176,15 @@ final class DebugToolbar
         HTML;
     }
 
-    /** @param list<string> $cspIssues */
-    private function renderPanel(DebugCollector $collector, array $cspIssues = []): string
+    /**
+     * @param array{css_count: int, js_count: int, css_bytes: int, js_bytes: int} $assetCounts
+     * @param list<string> $cspIssues
+     */
+    private function renderPanel(DebugCollector $collector, array $assetCounts, array $cspIssues = []): string
     {
         $components = $this->renderComponentsSection($collector);
         $queries = $this->renderQueriesSection($collector);
-        $assets = $this->renderAssetsSection($collector);
+        $assets = $this->renderAssetsSection($assetCounts);
         $route = $this->renderRouteSection($collector);
         $csp = $this->renderCspSection($cspIssues);
         $deprecations = $this->renderDeprecationsSection($collector);
@@ -276,18 +306,18 @@ final class DebugToolbar
         HTML;
     }
 
-    private function renderAssetsSection(DebugCollector $collector): string
+    /** @param array{css_count: int, js_count: int, css_bytes: int, js_bytes: int} $assets */
+    private function renderAssetsSection(array $assets): string
     {
-        $assets = $collector->getAssets();
 
         return <<<HTML
         <div class="pdt-section">
         <div class="pdt-section-title">Assets</div>
         <div class="pdt-row">
-        <span>{$assets['css_count']} CSS files ({$this->formatBytes($assets['css_bytes'])})</span>
+        <span>{$assets['css_count']} CSS blocks ({$this->formatBytes($assets['css_bytes'])} inline)</span>
         </div>
         <div class="pdt-row">
-        <span>{$assets['js_count']} JS files ({$this->formatBytes($assets['js_bytes'])})</span>
+        <span>{$assets['js_count']} JS blocks ({$this->formatBytes($assets['js_bytes'])} inline)</span>
         </div>
         </div>
         HTML;

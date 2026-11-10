@@ -13,7 +13,9 @@
     {% set remotes = {} %}
     {% for key in constant('App\\Jobs\\JobFilters::REMOTE') %}{% set remotes = remotes|merge({ (key): t('app.remote.' ~ key) }) %}{% endfor %}
 
-    {% set form = form_begin({ model: job, action: action, csrf_token: csrf_token(), errorBag: errors, oldInput: old }) %}
+    {# The posted input only when there is some: an empty oldInput would hide the fields a form sent back after an expired session kept. #}
+    {% set options = { model: job, action: action, csrf_token: csrf_token(), errorBag: errors } %}
+    {% set form = form_begin(old ? options|merge({ oldInput: old }) : options) %}
     {{ form.begin()|raw }}
         {{ form.field('title', { type: 'text', label: t('app.employer.label.title') })|raw }}
         {{ form.field('place', { type: 'text', label: t('app.employer.label.place') })|raw }}

@@ -59,6 +59,28 @@ final class DebugToolbarTest extends TestCase
         $this->assertStringContainsString('2 JS', $html);
     }
 
+    public function test_asset_counts_are_the_blocks_in_the_page(): void
+    {
+        // The collector's numbers are set only after the toolbar ran: the page itself is counted.
+        $page = '<html><head><style nonce="n">a{}</style><link rel="stylesheet" href="/x.css"><script src="/htmx.js"></script></head>'
+            . '<body><script nonce="n">one()</script><script type="application/ld+json">{}</script><style nonce="n">b{}</style>'
+            . '<script nonce="n">two()</script></body></html>';
+
+        $html = (new DebugToolbar())->render(new DebugCollector(), 'n', $page);
+
+        $this->assertStringContainsString('3 CSS / 3 JS', $html);
+        $this->assertStringContainsString('3 CSS blocks', $html);
+        $this->assertStringContainsString('3 JS blocks', $html);
+    }
+
+    public function test_csp_ignores_markup_inside_scripts_and_styles(): void
+    {
+        $page = '<html><body><script nonce="n0nce">el.innerHTML = \'<p style="color:red" onclick="x()">\' + "<style>p{}</style>";</script>'
+            . '<style nonce="n0nce">p[style="a"] { content: "<script>"; }</style></body></html>';
+
+        $this->assertStringContainsString('0 issues', (new DebugToolbar())->render(new DebugCollector(), 'n0nce', $page));
+    }
+
     public function test_shows_route_info(): void
     {
         $collector = new DebugCollector();

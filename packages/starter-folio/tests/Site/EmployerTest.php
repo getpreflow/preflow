@@ -75,6 +75,29 @@ final class EmployerTest extends TestCase
         return $job;
     }
 
+    /** @param array<string, string> $old what the controller passes as `old` */
+    private function renderForm(array $old): string
+    {
+        $response = $this->container()->get(\Preflow\View\PageResponder::class)->render('_views/employer/form.twig', [
+            'job' => new Job(),
+            'action' => '/employer/jobs',
+            'old' => $old,
+            'errors' => null,
+        ]);
+
+        return (string) $response->getBody();
+    }
+
+    public function test_the_form_shows_input_kept_after_an_expired_session(): void
+    {
+        // The fields a form sent back after an expired session had (OldInput): the form builder
+        // shows them unless the page passes input of its own.
+        $this->container()->get(\Preflow\Form\FormExtensionProvider::class)->setOldInput(['title' => 'Kept title']);
+
+        $this->assertStringContainsString('value="Kept title"', $this->renderForm([]));
+        $this->assertStringContainsString('value="Own title"', $this->renderForm(['title' => 'Own title']));
+    }
+
     public function test_employer_area_redirects_to_login_with_next(): void
     {
         $response = $this->get('/employer/jobs/new');
@@ -152,6 +175,22 @@ final class EmployerTest extends TestCase
 
         $this->postAs($cookies, '/employer/jobs/' . $job->uuid . '/unpublish', [], '/employer');
         $this->get('/jobs/' . $job->slug)->assertNotFound();
+    }
+
+    public function test_an_account_without_the_employer_role_posts_drafts_only(): void
+    {
+        $user = $this->data()->query(User::class)->where('email', 'employer@example.com')->first();
+        $user->roles = [];
+        $this->data()->save($user);
+        $cookies = $this->signInEmployer();
+        $this->postAs($cookies, '/employer/jobs', $this->input());
+        $job = $this->draftOf('Platform Wrangler');
+
+        $this->get('/employer', ['Cookie' => $this->cookieHeader($cookies)])->assertSee('Platform Wrangler')->assertNotSee('/publish"');
+        $refused = $this->postAs($cookies, '/employer/jobs/' . $job->uuid . '/publish', [], '/employer');
+
+        $this->assertSame(403, $refused->status());
+        $this->assertSame('draft', $this->container()->get(JobWriter::class)->state($job));
     }
 
     public function test_edit_updates_a_job(): void

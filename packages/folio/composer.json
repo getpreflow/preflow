@@ -1,6 +1,6 @@
 {
     "name": "preflow/folio",
-    "description": "Folio — drop-in CMS for Preflow: shipped admin, JSON content types, slug rendering",
+    "description": "Folio — the admin for Preflow sites: edit and publish models and pages, media library, page rendering",
     "type": "library",
     "license": "MIT",
     "require": {

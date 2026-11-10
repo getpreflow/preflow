@@ -16,6 +16,8 @@ Each component is a PHP class co-located with a `.twig` template. The renderer c
 
 Errors are caught by `ErrorBoundary`: in dev mode it renders an inline panel with the exception class, message, component class, props, lifecycle phase, and stack trace; in prod mode it calls the component's `fallback()` or renders a hidden `<div>`. An `HttpException` (a 403, a 404…) is not caught: the page, or the component request, answers with its status (since 0.63.2).
 
+A component's `{% apply css %}` and `{% apply js('head') %}` are printed by the layout's `{{ head() }}`, its body and inline JS by `{{ assets() }}`; what is collected after those calls ran (a component rendered further down) goes in before `</head>` and `</body>`.
+
 A component with `$scopeCss = true` gets its CSS nested under its own class; a child component without it is not scoped by its parent. `@media` and `@supports` stay inside the scope; `@keyframes` and `@font-face` (and other at-rules that can't be nested) are kept outside it, so their names are global: give them names of the component's own (`card-spin`).
 
 A page where a boundary stood in for a component is never stored by the page cache (`refused:component-error`). To show what a boundary renders without failing (an error-boundary demo, a style guide), implement `Preflow\Components\PreviewsFailure`: the renderer prints `ErrorBoundary::preview()` of `previewFailure()` in place of the component, the same output a real failure in `resolveState` gets, and reports no error, so the page is cached. The skeleton's home page does this.
@@ -40,7 +42,7 @@ final class ErrorDemo extends Component implements PreviewsFailure
 | `fallback(\Throwable $e): ?string` | Return fallback HTML on error (prod only). Return `null` to hide. |
 | `setProps(array $props): void` | Set props from outside (called by the renderer/extension). |
 | `getProps(): array` | Read current props. |
-| `getComponentId(): string` | `ShortClassName-{propsHash}` — stable across renders with same props. |
+| `getComponentId(): string` | `ShortClassName-{classHash}` (8 hex characters of the class name's hash), plus `-{key}` when the props have a `key`: the same for every instance of a class, so give a `key` to components that appear more than once on a page. |
 | `getTag(): string` | Wrapper HTML tag (default `div`). Override `$tag` to change. |
 
 Public properties are automatically exposed as Twig template variables alongside `componentId`.

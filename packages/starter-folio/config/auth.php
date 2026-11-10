@@ -13,8 +13,8 @@ return [
             'class' => Preflow\Auth\SessionGuard::class,
             'provider' => 'staff',
         ],
-        // Employers sign in with the form at /employer/login. As members they hold no Folio
-        // permission, whatever roles their account has.
+        // Employers sign in with the form at /employer/login. As members they never reach Folio
+        // (it asks the staff guard); config/roles.php gives their employer role job.publish only.
         'employers' => [
             'class' => Preflow\Auth\SessionGuard::class,
             'provider' => 'users',

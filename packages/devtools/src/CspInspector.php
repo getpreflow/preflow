@@ -15,6 +15,8 @@ final class CspInspector
     public static function issues(string $html, ?string $nonce): array
     {
         $issues = [];
+        // A script's or style's text is not markup: '<p style=…>' in a JS string is no attribute.
+        $html = self::withoutRawText($html);
 
         preg_match_all('/<(script|style)\b([^>]*)>/i', $html, $tags, PREG_SET_ORDER);
         foreach ($tags as [, $tag, $attrs]) {
@@ -40,5 +42,11 @@ final class CspInspector
         }
 
         return $issues;
+    }
+
+    /** The page with the text inside each <script>…</script> and <style>…</style> removed (the tags stay). */
+    public static function withoutRawText(string $html): string
+    {
+        return preg_replace('{<(script|style)\b([^>]*)>.*?</\1\s*>}is', '<$1$2></$1>', $html) ?? $html;
     }
 }

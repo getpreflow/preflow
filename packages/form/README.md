@@ -45,10 +45,19 @@ The form builder reads `#[Validate]` attributes from the model to infer input ty
 | `form.field(name, options)` | Text, email, password, number, date, url, tel, hidden |
 | `form.select(name, options)` | Dropdown with `options` map |
 | `form.checkbox(name, options)` | Single checkbox |
-| `form.radio(name, options)` | Radio group |
+| `form.radio(name, options)` | One radio button (a group is one call per button, see below) |
 | `form.file(name, options)` | File upload input |
 | `form.hidden(name, value)` | Hidden input (no label/wrapper) |
 | `form.submit(label, options)` | Submit button |
+
+A radio button's `value` is the value it sends; it is checked only when you say so. A group
+is one call per button, each with its own `id`:
+
+```twig
+{% for key, label in {draft: 'Draft', published: 'Published'} %}
+    {{ form.radio('status', {value: key, id: 'status-' ~ key, label: label, attrs: {checked: game.status == key}})|raw }}
+{% endfor %}
+```
 
 ## Field Options
 
@@ -56,13 +65,13 @@ The form builder reads `#[Validate]` attributes from the model to infer input ty
 |--------|-------------|
 | `type` | Input type (auto-inferred from model rules if bound) |
 | `label` | Label text (auto-generated from field name if omitted) |
-| `value` | Field value (falls back to old input, then model property) |
+| `value` | Field value; without it: the old input, then the model property |
 | `required` | Required indicator (auto-detected from `required` rule) |
 | `help` | Help text below the field |
 | `errors` | Error messages (auto-populated from ErrorBag) |
 | `attrs` | Raw HTML attributes passed to the input (escape hatch) |
 | `width` | Width hint for use inside groups (`'1/3'`, `'2/3'`) |
-| `options` | Key-value map for select/radio fields |
+| `options` | Key-value map for select fields |
 
 ## Field Groups
 
@@ -90,7 +99,7 @@ Generate fields from model `#[Validate]` attributes:
 {{ form.fields({except: ['password_hash', 'created_at']})|raw }}
 
 {# Override specific fields #}
-{{ form.fields({only: ['name', 'email', 'role'], override: {role: {type: 'select', options: roles}}})|raw }}
+{{ form.fields({only: ['name', 'email', 'role'], overrides: {role: {type: 'select', options: roles}}})|raw }}
 ```
 
 ## Validation Scenarios

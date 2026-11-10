@@ -276,7 +276,7 @@ final class FormBuilder
     /**
      * Merge explicit options with model-derived metadata.
      *
-     * Priority for value: old input > model property > explicit option.
+     * Priority for value: explicit option > old input > model property.
      * Priority for type:  explicit > model-inferred.
      * Priority for attrs: explicit user attrs override driver-injected attrs.
      *

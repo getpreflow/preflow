@@ -95,6 +95,16 @@ final class JobsExtensionTest extends TestCase
         $this->assertSame('<p><a href="/cms/job">1 job is a draft</a></p>', $notice);
     }
 
+    public function test_notice_escapes_the_admin_path(): void
+    {
+        $this->leaveDrafts(1);
+        file_put_contents($this->starterRoot . '/config/folio.php', "<?php\n\nreturn ['path' => '/cms\"><script>x</script>'];\n");
+
+        $notice = $this->app()->container()->get(CompanyAdmin::class)->drafts();
+
+        $this->assertSame('<p><a href="/cms&quot;&gt;&lt;script&gt;x&lt;/script&gt;/job">1 job is a draft</a></p>', $notice);
+    }
+
     public function test_notice_prints_no_stored_text(): void
     {
         $data = $this->container()->get(DataManager::class);

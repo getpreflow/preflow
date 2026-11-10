@@ -23,4 +23,9 @@ return [
             'assets.edit',
         ],
     ],
+    // Employers sign in on their own guards (population members), so these never open Folio.
+    // The API asks for job.publish before it publishes; an account without the role posts drafts.
+    'members' => [
+        'employer' => ['job.publish'],
+    ],
 ];

@@ -10,6 +10,7 @@ use App\Jobs\JobSearch;
 use App\Jobs\JobWriter;
 use App\Models\Job;
 use App\Models\User;
+use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\Http\TokenAuthMiddleware;
 use Preflow\Core\Exceptions\ForbiddenHttpException;
@@ -35,6 +36,7 @@ final class JobsController
         private readonly JobWriter $writer,
         private readonly JobResource $resource,
         private readonly DataManager $data,
+        private readonly Access $access,
     ) {}
 
     #[Get('/')]
@@ -74,6 +76,7 @@ final class JobsController
         $user = $this->user($request);
         $body = $this->body($request);
         $status = $this->status($body);
+        $this->mayPublish($status);
 
         try {
             $job = $this->writer->create($this->resource->toInput($body), $user);
@@ -95,6 +98,7 @@ final class JobsController
         $job = $this->owned($request);
         $body = $this->body($request);
         $status = $this->status($body);
+        $this->mayPublish($status);
 
         try {
             $input = $this->resource->toInput($body);
@@ -169,6 +173,18 @@ final class JobsController
         }
 
         return $body['status'];
+    }
+
+    /**
+     * Publishing asks for job.publish (config/roles.php gives it to the employer role), before
+     * anything is saved: a token acts as its user, so an account that may only post drafts can't
+     * publish through the API either. A draft goes through.
+     */
+    private function mayPublish(?string $status): void
+    {
+        if ($status === 'published' && !$this->access->can('job.publish')) {
+            throw new ForbiddenHttpException('Your account may post drafts; publishing needs a full employer account.');
+        }
     }
 
     private function apiErrors(ValidationException $e): ValidationException

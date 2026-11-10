@@ -40,7 +40,7 @@ return [
     'keys'     => ['claude' => 'ANTHROPIC_API_KEY', 'gemini' => 'GEMINI_API_KEY'],
     'pricing'  => [],                             // 'model' => [input, output] USD per million tokens
     'storage'  => 'storage/ai',
-    'tuning'   => [],                             // instructions for every AI request
+    'tuning'   => [],                             // instructions for the translator (preflow/i18n)
     'translation' => [                            // used by preflow/i18n, see its README
         'languages'   => [],
         'types'       => [],
@@ -60,17 +60,19 @@ GEMINI_API_KEY=...
 
 - `enabled`: the master switch. Default `false`.
 - `provider`: which one is used. `models` has one model per provider, `keys` the name of the
-  environment variable that holds each provider's key.
+  environment variable that holds each provider's key. `models` has no fallback: without an entry
+  for the chosen provider every request goes out without a model and fails (`ai:check` too).
 - Keys come from the environment only. They are never read from `config/ai.php`, never stored,
   logged or rendered. `Ai::status()` and the admin screens say only "key present: yes/no".
 - `storage`: where runtime files go, relative to the app root (or absolute). It holds
   `usage-YYYY-MM.jsonl` (the usage log), `settings.json` (tuning and glossary edits made in the
   admin) and `jobs/{id}.json` (whole-type translation runs). Keep it out of git.
-- `tuning`, `translation`: instructions and the glossary. See `preflow/i18n`.
+- `tuning`, `translation`: instructions and the glossary for the machine translator; other AI
+  requests don't get them. See `preflow/i18n`.
 
 ## Providers and defaults
 
-| Provider | Default model | Key variable |
+| Provider | Model in the example | Key variable |
 |---|---|---|
 | `claude` (the official `anthropic-ai/sdk`) | `claude-sonnet-5-5` | `ANTHROPIC_API_KEY` |
 | `gemini` (REST) | `gemini-2.5-flash` | `GEMINI_API_KEY` |
