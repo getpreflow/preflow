@@ -30,10 +30,29 @@ final class MysqlMigrationsTest extends TestCase
         }
     }
 
-    /** @return list<string> */
+    /**
+     * The migrations of the library packages (a site runs them all, with its own). The app
+     * templates (skeleton, starters: composer type "project") are left out: each is a site of its
+     * own, so their migrations never run together and may share names.
+     *
+     * @return list<string>
+     */
     private function paths(): array
     {
-        return glob(dirname(__DIR__, 3) . '/*/migrations');
+        return array_values(array_filter(glob(dirname(__DIR__, 3) . '/*/migrations') ?: [], static fn (string $dir): bool => !self::isAppTemplate(dirname($dir))));
+    }
+
+    /** @return list<string> the app templates that ship migrations */
+    private static function appTemplates(): array
+    {
+        return array_values(array_filter(array_map(dirname(...), glob(dirname(__DIR__, 3) . '/*/migrations') ?: []), self::isAppTemplate(...)));
+    }
+
+    private static function isAppTemplate(string $package): bool
+    {
+        $composer = json_decode((string) @file_get_contents($package . '/composer.json'), true);
+
+        return is_array($composer) && ($composer['type'] ?? 'library') === 'project';
     }
 
     public function test_every_package_migration_runs_on_mysql_twice(): void
@@ -49,6 +68,23 @@ final class MysqlMigrationsTest extends TestCase
         )->fetchAll(\PDO::FETCH_COLUMN);
         foreach (['preflow_migrations', 'preflow_throttle', 'auth_tokens', 'auth_remember', 'code_redemption'] as $t) {
             $this->assertContains($t, $tables);
+        }
+    }
+
+    public function test_each_app_template_migrates_on_mysql_twice_with_the_packages(): void
+    {
+        $templates = self::appTemplates();
+        $this->assertContains('starter', array_map(basename(...), $templates));
+        $this->assertContains('starter-folio', array_map(basename(...), $templates));
+
+        foreach ($templates as $template) {
+            MysqlTestDatabase::dropAllTables($this->pdo);
+            $paths = [...$this->paths(), $template . '/migrations'];
+            $migrator = new Migrator($this->pdo, $paths);
+            $migrator->migrate();
+
+            $this->assertSame([], $migrator->pending(), basename($template));
+            (new Migrator($this->pdo, $paths))->migrate();
         }
     }
 

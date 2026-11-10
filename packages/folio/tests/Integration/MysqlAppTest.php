@@ -340,8 +340,9 @@ final class MysqlAppTest extends TestCase
     private function assertRevisionsStayApart(string $first, string $second): void
     {
         $this->migrateStep();
-        $a = $this->working('post', $first, ['title' => ['en' => "T {$first}"], 'slug' => ['en' => "s-{$first}"]]);
-        $b = $this->working('post', $second, ['title' => ['en' => "T {$second}"], 'slug' => ['en' => "s-{$second}"]]);
+        // Publishing checks the slug rule (a-z, digits, hyphens): the ids go in as hex.
+        $a = $this->working('post', $first, ['title' => ['en' => "T {$first}"], 'slug' => ['en' => 's-' . bin2hex($first)]]);
+        $b = $this->working('post', $second, ['title' => ['en' => "T {$second}"], 'slug' => ['en' => 's-' . bin2hex($second)]]);
 
         // The twin gets 3 publishes, the first record 22 (past the 20 kept).
         for ($i = 1; $i <= 3; $i++) {
