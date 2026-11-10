@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-09 (v0.62.0; 0.63.0 prepared)
+> Last updated: 2026-11-10 (v0.63.1)
 
 ## Current State
 
-**v0.63.0** — 6537 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.63.1** — 6537 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -381,7 +381,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - `MediaLibrary::prefetch()` runs COUNT + SELECT through the query builder's `get()`; it should be one query.
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **Starters (0.63):** prepared, not released (2026-11-09). Two project templates replace the skeleton, plus the three
+- **Starters (0.63):** released in 0.63.0 (2026-11-10). Two project templates replace the skeleton, plus the three
   general pieces they needed (rule: general features live in the packages). Plan:
   `docs/superpowers/plans/2026-11-09-starters.md`.
   - **What it is:**
@@ -415,6 +415,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     `packages/starter-folio/composer.json` to the new minor (`bin/starter` derives the versions from that pin, so a stale
     one is not caught by anything).
   - **Tests:** 0.63 full monorepo run: 6537 tests, 31382 assertions (185 skipped); starter suite 86 tests, starter-folio suite 117 tests.
+  - **0.63.1** (2026-11-10): starter-folio gets a small Folio extension, the example preflow.dev shows (`app/Folio/Jobs`: an "Open jobs" column on the company list and a dashboard notice for jobs that are drafts; the link follows `config/folio.php` `path`). README section "Make Folio yours". Framework packages unchanged; full monorepo run 6537 tests; starter-folio suite 121 tests.
   - **Follow-ups:**
     - Remove `packages/skeleton` (step 2 of its retirement): the split entry, the root autoload (`App\`, `Tests\`),
       the Skeleton suite in `phpunit.xml`, and the migration copy in `AuthTokenCommandTest`.
