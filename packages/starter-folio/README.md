@@ -111,7 +111,7 @@ dashboard ("2 jobs are drafts", linking to the job list) while jobs wait unpubli
 new permission and no seed. The code is in
 [`app/Folio/Jobs/Types/CompanyAdmin.php`](app/Folio/Jobs/Types/CompanyAdmin.php).
 
-To add your own, you write two files and list the extension:
+To add your own, you write two files and a config entry:
 
 1. `app/Folio/<Name>/Extension.php`: a class extending `Preflow\Folio\Extension\Extension` with
    `#[FolioExtension(name: ..., label: ..., description: ...)]`. Folio finds it there.

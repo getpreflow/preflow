@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Folio\Jobs\Types;
 
 use App\Models\Job;
+use Preflow\Core\Config\Config;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Extension\Attributes\FolioType;
@@ -23,14 +24,15 @@ final class CompanyAdmin
     public function __construct(
         private readonly Publisher $publisher,
         private readonly DataManager $data,
+        private readonly Config $config,
     ) {}
 
     #[ListColumn('Open jobs')]
     public function openJobs(DynamicRecord $record): string
     {
-        $open = $this->publisher->query('job')->where('company', (string) $record->getId());
+        $jobs = $this->publisher->query('job')->where('company', (string) $record->getId());
 
-        return (string) $open->limit(1)->get()->total();
+        return (string) $jobs->limit(1)->get()->total();
     }
 
     #[DashboardNotice]
@@ -43,7 +45,8 @@ final class CompanyAdmin
         }
 
         $text = $drafts === 1 ? '1 job is a draft' : "{$drafts} jobs are drafts";
+        $list = rtrim((string) $this->config->get('folio.path', '/folio'), '/') . '/job';
 
-        return '<p><a href="/folio/job">' . $text . '</a></p>';
+        return '<p><a href="' . $list . '">' . $text . '</a></p>';
     }
 }

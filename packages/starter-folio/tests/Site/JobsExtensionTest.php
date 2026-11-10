@@ -78,13 +78,13 @@ final class JobsExtensionTest extends TestCase
         $this->get('/folio', $this->admin())->assertOk()->assertNotSee('is a draft')->assertNotSee('are drafts');
 
         $this->leaveDrafts(1);
-        $this->get('/folio', $this->admin())->assertSee('1 job is a draft');
+        $this->get('/folio', $this->admin())->assertSee('<a href="/folio/job">1 job is a draft</a>');
 
         $this->leaveDrafts(2);
         $this->get('/folio', $this->admin())->assertSee('2 jobs are drafts');
     }
 
-    public function test_notice_escapes_company_and_job_text(): void
+    public function test_notice_prints_no_stored_text(): void
     {
         $data = $this->container()->get(DataManager::class);
         $job = $data->query(Job::class)->first();
