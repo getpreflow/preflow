@@ -492,6 +492,36 @@ final class MarkdownViewTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_geo_blocks_survive_once_the_page_cache_holds_the_page(): void
+    {
+        file_put_contents($this->dir . '/config/page_cache.php', "<?php\nreturn ['enabled' => true, 'explain' => true, 'verify' => 'off'];\n");
+        file_put_contents($this->dir . '/config/data.php', "<?php\nreturn ['default'=>'json','drivers'=>['json'=>['path'=>'{$this->dir}/storage/data']]];\n");
+        // No locale cookie: a response that sets one isn't stored.
+        file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['default'=>'en','available'=>['en','de'],'fallback'=>'en','url_strategy'=>'prefix','cookie'=>false];\n");
+        ini_set('error_log', $this->dir . '/php.log');
+        $app = Application::create($this->dir);
+        $app->setRunningInConsole(false);
+        $app->boot();
+        GeoTestRoutes::$app = $app;
+        $get = static fn (string $path, array $headers = []): ResponseInterface => $app->handle(
+            (new Psr17Factory())->createServerRequest('GET', 'https://site.test' . $path)->withHeader('Accept', $headers['Accept'] ?? 'text/html'),
+        );
+
+        // A visitor's GET stores the page; its Markdown view still renders it, geo blocks and all.
+        $page = $get('/record');
+        $this->assertSame('miss', $page->getHeaderLine('X-Page-Cache'), $page->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertSame('hit', $get('/record')->getHeaderLine('X-Page-Cache'));
+
+        $this->assertSame(
+            "# Record\n\nSource: https://site.test/record\n\n## Facts\n- Players: 2\n\nPage HTML body\n\n## Card Inner\n",
+            (string) $get('/record.md')->getBody(),
+        );
+        $this->assertStringContainsString("## Facts\n- Players: 2", (string) $get('/record', ['Accept' => 'text/markdown'])->getBody());
+        // The visitor's page is still served from the cache.
+        $this->assertSame('hit', $get('/record')->getHeaderLine('X-Page-Cache'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_render_errors_are_logged_and_give_404(): void
     {
         $app = $this->app();

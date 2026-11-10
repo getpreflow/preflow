@@ -287,6 +287,64 @@ final class AssetCollectorTest extends TestCase
         $this->assertSame(1, substr_count($html, 'window.after=1;'));
     }
 
+    public function test_inline_js_is_printed_on_full_pages_once(): void
+    {
+        $assets = $this->collector();
+        $assets->addJs('window.body=1;');
+        $assets->addJs('window.inline=1;', JsPosition::Inline);
+
+        // A layout's {{ assets() }} prints it with the body JS…
+        $body = $assets->renderAssets();
+        $this->assertStringContainsString('window.inline=1;', $body);
+        $this->assertLessThan(strpos($body, 'window.inline=1;'), strpos($body, 'window.body=1;'));
+
+        // …and injectInto() adds what no template printed, once.
+        $assets->addJs('window.late=1;', JsPosition::Inline);
+        $html = $assets->injectInto('<html><head></head><body>' . $body . '</body></html>');
+        $this->assertSame(1, substr_count($html, 'window.inline=1;'));
+        $this->assertSame(1, substr_count($html, 'window.late=1;'));
+        $this->assertLessThan(strpos($html, '</body>'), strpos($html, 'window.late=1;'));
+    }
+
+    public function test_scoped_css_keeps_keyframes_and_font_faces_outside_the_scope(): void
+    {
+        $assets = $this->collector();
+        $assets->setCssScope('card-1a2b3c');
+        $assets->addCss(<<<'CSS'
+            .spin { animation: spin 1s linear infinite; content: "}"; }
+            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+            @-webkit-keyframes pulse { 50% { opacity: .5; } }
+            /* a { brace } in a comment */
+            @font-face { font-family: "Card"; src: url("/card.woff2") format("woff2"); }
+            @media (min-width: 40em) { .spin { width: 2rem; } }
+            @supports (display: grid) { .grid { display: grid; } }
+            CSS);
+        $assets->setCssScope(null);
+        $css = $assets->renderCss();
+
+        // At-rules that can't be nested stand on their own, before the scoped block…
+        $scopeAt = strpos($css, '.card-1a2b3c {');
+        $this->assertNotFalse($scopeAt);
+        foreach (['@keyframes spin { from', '@-webkit-keyframes pulse', '@font-face { font-family: "Card"'] as $rule) {
+            $at = strpos($css, $rule);
+            $this->assertNotFalse($at, $rule);
+            $this->assertLessThan($scopeAt, $at, $rule);
+        }
+        $this->assertSame(1, substr_count($css, '@keyframes spin'));
+        // …the rest stays scoped, @media and @supports with their inner rules.
+        $scoped = substr($css, $scopeAt);
+        $this->assertStringContainsString('.spin { animation: spin 1s linear infinite; content: "}"; }', $scoped);
+        $this->assertStringContainsString('@media (min-width: 40em) { .spin { width: 2rem; } }', $scoped);
+        $this->assertStringContainsString('@supports (display: grid) { .grid { display: grid; } }', $scoped);
+        $this->assertStringNotContainsString('@keyframes', $scoped);
+        $this->assertStringNotContainsString('@font-face', $scoped);
+
+        // Without a scope nothing moves.
+        $plain = $this->collector();
+        $plain->addCss('@keyframes x { to { opacity: 0; } } .a { animation: x 1s; }');
+        $this->assertStringContainsString('@keyframes x { to { opacity: 0; } } .a { animation: x 1s; }', $plain->renderCss());
+    }
+
     private function cacheDir(): string
     {
         $dir = sys_get_temp_dir() . '/preflow-assets-' . bin2hex(random_bytes(4));

@@ -241,14 +241,40 @@ final class BladeEngine implements TemplateEngineInterface
         throw new LiveRecipeRejected('A live block recipe names neither a view nor a component.');
     }
 
+    /**
+     * $template is a view name ("partials.card", "partials/card"), an absolute path, or a file
+     * path relative to a template folder ("about.blade.php", "blog/[slug].blade.php": what
+     * file-based routing passes for a page in app/pages).
+     */
     public function render(string $template, array $context = []): string
     {
+        try {
+            return $this->renderTemplate($template, $context);
+        } catch (\Preflow\Core\Exceptions\HttpException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            // An HttpException (a 403, a 404…) a component or function threw comes out as itself,
+            // not wrapped in the view's exception: the page answers with its status.
+            for ($cause = $e->getPrevious(); $cause !== null; $cause = $cause->getPrevious()) {
+                if ($cause instanceof \Preflow\Core\Exceptions\HttpException) {
+                    throw $cause;
+                }
+            }
+            throw $e;
+        }
+    }
+
+    /** @param array<string, mixed> $context */
+    private function renderTemplate(string $template, array $context): string
+    {
         $context = array_merge($this->globals, $context);
+        $file = $this->templateFile($template);
 
         // Absolute path -- rendered as that very file (a name lookup would let two
         // same-named files in different folders collide); its directory becomes a
         // location so it can @include siblings by name (deduplicated to avoid finder bloat).
-        if (str_starts_with($template, '/') && file_exists($template)) {
+        if ($file !== null || (str_starts_with($template, '/') && file_exists($template))) {
+            $template = $file ?? $template;
             $dir = dirname($template);
             $finder = $this->viewFactory->getFinder();
             if (!in_array($dir, $finder->getPaths(), true)) {
@@ -262,12 +288,36 @@ final class BladeEngine implements TemplateEngineInterface
 
     public function exists(string $template): bool
     {
+        if ($this->templateFile($template) !== null) {
+            return true;
+        }
         try {
             $this->viewFactory->getFinder()->find($template);
             return true;
         } catch (\InvalidArgumentException) {
             return false;
         }
+    }
+
+    /** The file a template path relative to a template folder names ("about.blade.php"), or null. */
+    private function templateFile(string $template): ?string
+    {
+        if (
+            !str_ends_with($template, '.blade.php')
+            || str_starts_with($template, '/')
+            || str_contains($template, "\0")
+            || in_array('..', explode('/', $template), true)
+        ) {
+            return null;
+        }
+        foreach ($this->templateDirs as $dir) {
+            $file = rtrim($dir, '/') . '/' . $template;
+            if (is_file($file)) {
+                return $file;
+            }
+        }
+
+        return null;
     }
 
     public function addFunction(TemplateFunctionDefinition $function): void

@@ -42,6 +42,19 @@ class BrokenWithFallback extends Component
     }
 }
 
+class ForbiddenComponent extends Component
+{
+    public function resolveState(): void
+    {
+        throw new \Preflow\Core\Exceptions\ForbiddenHttpException('Members only');
+    }
+
+    public function fallback(\Throwable $e): ?string
+    {
+        return '<p>fallback</p>';
+    }
+}
+
 class SectionComponent extends Component
 {
     protected string $tag = 'section';
@@ -63,12 +76,14 @@ class FakeTemplateEngine implements TemplateEngineInterface
     public ?string $lastTemplate = null;
     public ?array $lastContext = null;
     public string $output = '<p>rendered</p>';
+    /** @var (\Closure(string): string)|null what rendering the template does instead of returning $output */
+    public ?\Closure $onRender = null;
 
     public function render(string $template, array $context = []): string
     {
         $this->lastTemplate = $template;
         $this->lastContext = $context;
-        return $this->output;
+        return $this->onRender !== null ? ($this->onRender)($template) : $this->output;
     }
 
     public function exists(string $template): bool
@@ -269,6 +284,77 @@ final class ComponentRendererTest extends TestCase
         $css = $assets->renderCss();
         $this->assertStringContainsString('.' . $cssClass, $css);
         $this->assertStringContainsString('.title { color: red; }', $css);
+    }
+
+    public function test_an_http_exception_is_rethrown_not_caught_by_the_boundary(): void
+    {
+        $errors = [];
+        $renderer = new ComponentRenderer(
+            templateEngine: $this->engine,
+            errorBoundary: new ErrorBoundary(DebugLevel::Off, static function (\Throwable $e) use (&$errors): void {
+                $errors[] = $e;
+            }),
+        );
+
+        // From resolveState(), even with a fallback: a 403/404 is the page's answer.
+        foreach (['render', 'renderFragment'] as $method) {
+            try {
+                $renderer->{$method}(new ForbiddenComponent());
+                $this->fail($method . ' should rethrow');
+            } catch (\Preflow\Core\Exceptions\ForbiddenHttpException $e) {
+                $this->assertSame('Members only', $e->getMessage());
+            }
+        }
+
+        // From the template (after an action too).
+        $this->engine->onRender = static fn (): string => throw new \Preflow\Core\Exceptions\NotFoundHttpException('No such game');
+        foreach (['render', 'renderFragment', 'renderResolved', 'renderResolvedFragment'] as $method) {
+            try {
+                $renderer->{$method}(new RenderableComponent());
+                $this->fail($method . ' should rethrow');
+            } catch (\Preflow\Core\Exceptions\NotFoundHttpException $e) {
+                $this->assertSame(404, $e->statusCode);
+            }
+        }
+        $this->assertSame([], $errors, 'not reported as a component error');
+
+        // Any other failure keeps the boundary.
+        $this->engine->onRender = static fn (): string => throw new \RuntimeException('broken');
+        $this->assertStringContainsString('Component unavailable', (new ComponentRenderer($this->engine, new ErrorBoundary(DebugLevel::Off)))->render(new BrokenWithFallback()));
+        $this->assertIsString($renderer->render(new RenderableComponent()));
+        $this->assertCount(1, $errors);
+    }
+
+    public function test_an_unscoped_child_does_not_take_its_parents_css_scope(): void
+    {
+        $assets = new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator());
+        $renderer = new ComponentRenderer(
+            templateEngine: $this->engine,
+            errorBoundary: new ErrorBoundary(debug: DebugLevel::On),
+            assetCollector: $assets,
+        );
+        $parent = new ScopedComponent();
+        $seen = [];
+        $this->engine->onRender = function () use ($assets, $renderer, &$seen): string {
+            $seen[] = $assets->getCssScope();
+            if (count($seen) === 1) {
+                // The parent's template renders an unscoped child, then a failing one.
+                $renderer->render(new RenderableComponent());
+                $seen[] = $assets->getCssScope();
+            }
+
+            return '<p>x</p>';
+        };
+
+        $renderer->render($parent);
+
+        $this->assertSame([$parent->getCssClass(), null, $parent->getCssClass()], $seen);
+        $this->assertNull($assets->getCssScope());
+
+        // A template that throws puts the scope back too.
+        $this->engine->onRender = static fn (): string => throw new \RuntimeException('broken');
+        $renderer->render(new ScopedComponent());
+        $this->assertNull($assets->getCssScope());
     }
 
     public function test_component_without_css_class_has_no_class_attr(): void

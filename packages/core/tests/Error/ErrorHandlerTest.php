@@ -107,6 +107,21 @@ final class ErrorHandlerTest extends TestCase
         $this->assertStringContainsString('Method Not Allowed', $notAllowed);
     }
 
+    public function test_prod_403_shows_only_the_status_text(): void
+    {
+        // A 403 may carry internal text (a component class, a CSRF reason, a token check).
+        $handler = new ErrorHandler(new ProdErrorRenderer());
+
+        $forbidden = $handler->handleException(
+            new \Preflow\Core\Exceptions\SecurityException('Action [x] is not allowed on [App\\Secret\\Widget].'),
+            $this->createRequest(),
+        );
+
+        $this->assertSame(403, $forbidden->getStatusCode());
+        $this->assertStringNotContainsString('Secret', (string) $forbidden->getBody());
+        $this->assertStringContainsString('Forbidden', (string) $forbidden->getBody());
+    }
+
     public function test_an_internal_render_gets_the_internal_renderers_page(): void
     {
         $handler = new ErrorHandler(new DevErrorRenderer(), new ProdErrorRenderer());

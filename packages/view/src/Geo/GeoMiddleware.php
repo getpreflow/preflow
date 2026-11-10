@@ -9,6 +9,7 @@ use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use Nyholm\Psr7\Stream;
 use Preflow\Core\Exceptions\HttpException;
+use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\Session\SessionMiddleware;
 use Preflow\View\AssetCollector;
 use Preflow\View\Seo\PageMeta;
@@ -307,7 +308,7 @@ final class GeoMiddleware implements MiddlewareInterface
         }
     }
 
-    /** A clean GET for $path: no cookies, credentials, query or attributes, and no session. */
+    /** A clean GET for $path: no cookies, credentials, query or attributes, and no session; marked InternalRender. */
     private function subRequest(ServerRequestInterface $request, string $path): ServerRequestInterface
     {
         $uri = $request->getUri()->withPath($path)->withQuery('')->withFragment('');
@@ -327,8 +328,12 @@ final class GeoMiddleware implements MiddlewareInterface
         );
         $server = ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => $path, 'QUERY_STRING' => ''] + $server;
 
-        return (new ServerRequest('GET', $uri, $headers, null, $request->getProtocolVersion(), $server))
-            ->withAttribute(SessionMiddleware::WITHOUT_SESSION, true);
+        // An internal render: the page cache renders it (a stored page holds no geo blocks), and
+        // it leaves no trace (no redirect hit, no image variant, no debug toolbar).
+        return InternalRender::mark(
+            (new ServerRequest('GET', $uri, $headers, null, $request->getProtocolVersion(), $server))
+                ->withAttribute(SessionMiddleware::WITHOUT_SESSION, true),
+        );
     }
 
     /** Handle $sub inside every render scope. */

@@ -71,7 +71,7 @@ JS position argument: `'body'` (default), `'head'`, or `'inline'`.
 
 ## Layout with head() and assets()
 
-`{{ head() }}` renders JS registered for the `<head>`. `{{ assets() }}` renders all collected CSS plus body JS — place it just before `</body>`.
+`{{ head() }}` renders the collected CSS and the JS registered for the `<head>`. `{{ assets() }}` renders body JS, then inline JS — place it just before `</body>`.
 
 ```twig
 {# templates/_layout.twig #}

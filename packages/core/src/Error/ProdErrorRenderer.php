@@ -34,9 +34,10 @@ final class ProdErrorRenderer implements ErrorRendererInterface
             : '';
         if ($exception instanceof HttpException) {
             $title = self::STATUS_MESSAGES[$statusCode] ?? 'Error';
-            // A 404/405 message names the router's view of the request ("No route matches [GET /x]"):
+            // A 404/405 message names the router's view of the request ("No route matches [GET /x]"),
+            // a 403's the check that refused (a component class, a CSRF reason, a token check):
             // a visitor gets the plain status text; the debug page keeps the message.
-            $message = in_array($statusCode, [404, 405], true) || $exception->getMessage() === ''
+            $message = in_array($statusCode, [403, 404, 405], true) || $exception->getMessage() === ''
                 ? $title
                 : $exception->getMessage();
         } else {

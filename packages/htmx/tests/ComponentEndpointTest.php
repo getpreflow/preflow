@@ -84,6 +84,19 @@ class ThrowingActionComponent extends Component
     }
 }
 
+class MissingRecordComponent extends Component
+{
+    public function resolveState(): void
+    {
+        throw new \Preflow\Core\Exceptions\NotFoundHttpException('No such record');
+    }
+
+    public function fallback(\Throwable $e): ?string
+    {
+        return '<div class="fallback">Something went wrong</div>';
+    }
+}
+
 class EndpointFakeEngine implements TemplateEngineInterface
 {
     public function render(string $template, array $context = []): string
@@ -449,5 +462,13 @@ final class ComponentEndpointTest extends TestCase
 
         $this->expectException(ForbiddenHttpException::class);
         $this->endpoint->handle($this->createRequest('POST', '/--component/action', ['token' => $token]));
+    }
+
+    public function test_an_http_exception_from_a_plain_render_stays_an_http_error(): void
+    {
+        $token = $this->tokenService->encode(MissingRecordComponent::class, [], 'render');
+
+        $this->expectException(\Preflow\Core\Exceptions\NotFoundHttpException::class);
+        $this->endpoint->handle($this->createRequest('GET', '/--component/render', ['token' => $token]));
     }
 }

@@ -101,7 +101,7 @@ final class PreflowExtension extends AbstractExtension
 
     /**
      * Function: {{ assets() }}
-     * Renders assets for end of <body> (CSS + body JS).
+     * Renders assets for end of <body>: body JS, then inline JS.
      */
     public function renderAssets(): string
     {

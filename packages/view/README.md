@@ -88,7 +88,7 @@ $assets->addJs('console.log("inline")', JsPosition::Inline);
 
 // Render (called by engine extensions; also usable directly)
 $assets->renderHead();    // <script nonce="...">head JS</script>
-$assets->renderAssets();  // <style nonce="...">CSS</style><script nonce="...">body JS</script>
+$assets->renderAssets();  // <script nonce="...">body JS</script><script nonce="...">inline JS</script>
 $assets->renderCss();
 $assets->renderJsHead();
 $assets->renderJsBody();

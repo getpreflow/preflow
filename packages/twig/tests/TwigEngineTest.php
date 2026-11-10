@@ -256,4 +256,34 @@ final class TwigEngineTest extends TestCase
         $this->assertSame($plain, $cold);
         $this->assertSame($plain, $warm);
     }
+
+    public function test_an_http_exception_thrown_while_rendering_comes_out_as_itself(): void
+    {
+        // A component (or any function) a template calls refuses: the page answers with that status.
+        $this->engine->addFunction(new TemplateFunctionDefinition(
+            name: 'refuse',
+            callable: static fn (): string => throw new \Preflow\Core\Exceptions\ForbiddenHttpException('Members only'),
+        ));
+        $this->engine->addFunction(new TemplateFunctionDefinition(
+            name: 'boom',
+            callable: static fn (): string => throw new \RuntimeException('boom'),
+        ));
+        $this->createTemplate('layout.twig', '<main>{% block content %}{% endblock %}</main>');
+        $this->createTemplate('page.twig', '{% extends "layout.twig" %}{% block content %}{{ refuse() }}{% endblock %}');
+        $this->createTemplate('outer.twig', '{% include "page.twig" %}');
+
+        foreach (['page.twig', 'outer.twig', $this->templateDir . '/page.twig'] as $template) {
+            try {
+                $this->engine->render($template);
+                $this->fail('expected the HttpException for ' . $template);
+            } catch (\Preflow\Core\Exceptions\ForbiddenHttpException $e) {
+                $this->assertSame('Members only', $e->getMessage());
+            }
+        }
+
+        // Any other failure stays Twig's error.
+        $this->createTemplate('boom.twig', '{{ boom() }}');
+        $this->expectException(\Twig\Error\RuntimeError::class);
+        $this->engine->render('boom.twig');
+    }
 }

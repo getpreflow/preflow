@@ -14,7 +14,9 @@ Requires PHP 8.4+.
 
 Each component is a PHP class co-located with a `.twig` template. The renderer calls `resolveState()` (load data from DB, session, etc.) then renders the template with the component's public properties as variables. The output is wrapped in a tagged element keyed by a stable component ID.
 
-Errors are caught by `ErrorBoundary`: in dev mode it renders an inline panel with the exception class, message, component class, props, lifecycle phase, and stack trace; in prod mode it calls the component's `fallback()` or renders a hidden `<div>`.
+Errors are caught by `ErrorBoundary`: in dev mode it renders an inline panel with the exception class, message, component class, props, lifecycle phase, and stack trace; in prod mode it calls the component's `fallback()` or renders a hidden `<div>`. An `HttpException` (a 403, a 404…) is not caught: the page, or the component request, answers with its status (since 0.63.2).
+
+A component with `$scopeCss = true` gets its CSS nested under its own class; a child component without it is not scoped by its parent. `@media` and `@supports` stay inside the scope; `@keyframes` and `@font-face` (and other at-rules that can't be nested) are kept outside it, so their names are global: give them names of the component's own (`card-spin`).
 
 A page where a boundary stood in for a component is never stored by the page cache (`refused:component-error`). To show what a boundary renders without failing (an error-boundary demo, a style guide), implement `Preflow\Components\PreviewsFailure`: the renderer prints `ErrorBoundary::preview()` of `previewFailure()` in place of the component, the same output a real failure in `resolveState` gets, and reports no error, so the page is cached. The skeleton's home page does this.
 

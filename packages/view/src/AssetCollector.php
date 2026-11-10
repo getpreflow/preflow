@@ -25,7 +25,9 @@ final class AssetCollector
     private ?string $cssScope = null;
 
     /** @var array<string, array<string|int, true>> keys already printed by renderHead()/renderAssets(), per registry */
-    private array $printed = ['css' => [], 'jsHead' => [], 'jsBody' => [], 'headTags' => []];
+    private array $printed = self::NOTHING_PRINTED;
+
+    private const NOTHING_PRINTED = ['css' => [], 'jsHead' => [], 'jsBody' => [], 'jsInline' => [], 'headTags' => []];
 
     public function __construct(
         private readonly NonceGenerator $nonceGenerator,
@@ -63,15 +65,109 @@ final class AssetCollector
         $this->headTags[$key] ??= $tag;
     }
 
+    /**
+     * With a CSS scope set (a component with scoping), $css is wrapped in the scope's class
+     * (native CSS nesting); @media, @supports and the like stay inside and scope their rules.
+     * At-rules that can't be nested (@keyframes, @font-face, @property, @counter-style,
+     * @font-palette-values, @font-feature-values; vendor-prefixed too) are kept before the
+     * scoped block, as written: their names (a keyframes' name, a font family) stay global.
+     */
     public function addCss(string $css, ?string $key = null): void
     {
         // Wrap in scope selector if CSS scoping is active (native CSS nesting)
         if ($this->cssScope !== null) {
-            $css = '.' . $this->cssScope . " {\n" . $css . "\n}";
+            [$global, $scoped] = self::splitUnnestable($css);
+            $css = ($global !== '' ? $global . "\n" : '')
+                . (trim($scoped) !== '' ? '.' . $this->cssScope . " {\n" . $scoped . "\n}" : '');
         }
 
         $key ??= hash('xxh3', $css);
         $this->cssRegistry[$key] ??= $css;
+    }
+
+    /** At-rules a scope's nesting would drop (lowercase, without a vendor prefix). */
+    private const UNNESTABLE_AT_RULES = ['keyframes', 'font-face', 'property', 'counter-style', 'font-palette-values', 'font-feature-values'];
+
+    /**
+     * The top-level at-rules of $css that can't be nested, and the rest.
+     *
+     * @return array{string, string} [those at-rules, one per line; the rest]
+     */
+    private static function splitUnnestable(string $css): array
+    {
+        if (stripos($css, '@') === false) {
+            return ['', $css];
+        }
+        $global = [];
+        $rest = '';
+        $length = strlen($css);
+        $depth = 0;
+        $from = 0;
+        for ($i = 0; $i < $length; $i++) {
+            $char = $css[$i];
+            if ($char === '/' && ($css[$i + 1] ?? '') === '*') {
+                $end = strpos($css, '*/', $i + 2);
+                $i = $end === false ? $length : $end + 1;
+            } elseif ($char === '"' || $char === "'") {
+                $i = self::stringEnd($css, $i);
+            } elseif ($char === '{') {
+                $depth++;
+            } elseif ($char === '}') {
+                $depth = max(0, $depth - 1);
+            } elseif ($char === '@' && $depth === 0
+                && preg_match('/\G@(?:-[a-z]+-)?([a-z-]+)/i', $css, $m, 0, $i) === 1
+                && in_array(strtolower($m[1]), self::UNNESTABLE_AT_RULES, true)
+            ) {
+                $end = self::blockEnd($css, $i);
+                $rest .= substr($css, $from, $i - $from);
+                $global[] = substr($css, $i, $end - $i + 1);
+                $from = $i = $end + 1;
+                $i--;
+            }
+        }
+        $rest .= substr($css, $from);
+
+        return [implode("\n", $global), $rest];
+    }
+
+    /** The offset of the quote that closes the string opening at $start (the end of $css if none). */
+    private static function stringEnd(string $css, int $start): int
+    {
+        $quote = $css[$start];
+        $length = strlen($css);
+        for ($i = $start + 1; $i < $length; $i++) {
+            if ($css[$i] === '\\') {
+                $i++;
+            } elseif ($css[$i] === $quote || $css[$i] === "\n") {
+                return $i;
+            }
+        }
+
+        return $length - 1;
+    }
+
+    /** The offset of the `}` closing the at-rule at $start, or of its `;` when it has no block. */
+    private static function blockEnd(string $css, int $start): int
+    {
+        $length = strlen($css);
+        $depth = 0;
+        for ($i = $start; $i < $length; $i++) {
+            $char = $css[$i];
+            if ($char === '/' && ($css[$i + 1] ?? '') === '*') {
+                $end = strpos($css, '*/', $i + 2);
+                $i = $end === false ? $length : $end + 1;
+            } elseif ($char === '"' || $char === "'") {
+                $i = self::stringEnd($css, $i);
+            } elseif ($char === ';' && $depth === 0) {
+                return $i;
+            } elseif ($char === '{') {
+                $depth++;
+            } elseif ($char === '}' && --$depth <= 0) {
+                return $i;
+            }
+        }
+
+        return $length - 1;
     }
 
     public function addJs(
@@ -128,11 +224,13 @@ final class AssetCollector
     }
 
     /**
-     * Render for end of <body>: body JS only.
+     * Render for end of <body>: body JS, then inline JS (js('inline'); a component action's
+     * response prints it after its fragment).
      */
     public function renderAssets(): string
     {
-        return $this->renderJsBlock($this->pending('jsBody', $this->jsBody));
+        return $this->renderJsBlock($this->pending('jsBody', $this->jsBody))
+            . $this->renderJsBlock($this->pending('jsInline', $this->jsInline));
     }
 
     /**
@@ -315,7 +413,7 @@ final class AssetCollector
         $saved = [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags, $this->cssScope, $this->printed];
         $this->cssRegistry = $this->jsHead = $this->jsBody = $this->jsInline = $this->headTags = [];
         $this->cssScope = null;
-        $this->printed = ['css' => [], 'jsHead' => [], 'jsBody' => [], 'headTags' => []];
+        $this->printed = self::NOTHING_PRINTED;
 
         try {
             return $render();

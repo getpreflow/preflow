@@ -54,6 +54,25 @@ final class BladeEngineTest extends TestCase
         $this->assertSame('Hello, World!', $html);
     }
 
+    public function test_file_page_paths_relative_to_a_template_folder_render(): void
+    {
+        // What file-based routing passes for app/pages/about.blade.php and app/pages/blog/[slug].blade.php.
+        mkdir($this->tmpDir . '/blog');
+        file_put_contents($this->tmpDir . '/_layout.blade.php', '<main>@yield(\'content\')</main>');
+        file_put_contents($this->tmpDir . '/about.blade.php', "@extends('_layout')\n@section('content')About {{ \$name }}@endsection");
+        file_put_contents($this->tmpDir . '/blog/[slug].blade.php', 'Post {{ $route->slug }}');
+        file_put_contents($this->tmpDir . '/v1.2.blade.php', 'Version');
+
+        $this->assertSame('<main>About us</main>', trim($this->engine->render('about.blade.php', ['name' => 'us'])));
+        $this->assertSame('Post first', $this->engine->render('blog/[slug].blade.php', ['route' => (object) ['slug' => 'first']]));
+        $this->assertSame('Version', $this->engine->render('v1.2.blade.php'));
+        $this->assertTrue($this->engine->exists('about.blade.php'));
+        $this->assertTrue($this->engine->exists('blog/[slug].blade.php'));
+        $this->assertFalse($this->engine->exists('missing.blade.php'));
+        // View names keep working.
+        $this->assertSame('<main>About us</main>', trim($this->engine->render('about', ['name' => 'us'])));
+    }
+
     public function test_absolute_paths_render_their_own_file_when_names_collide(): void
     {
         mkdir($this->tmpDir . '/a');
@@ -239,4 +258,24 @@ final class BladeEngineTest extends TestCase
 
         $this->assertSame('<p>Page</p>', trim($this->engine->render('seo-none')));
     }
+
+    public function test_an_http_exception_thrown_while_rendering_comes_out_as_itself(): void
+    {
+        $this->engine->addFunction(new TemplateFunctionDefinition(
+            name: 'refuse',
+            callable: static fn (): string => throw new \Preflow\Core\Exceptions\ForbiddenHttpException('Members only'),
+        ));
+        file_put_contents($this->tmpDir . '/layout.blade.php', '<main>@yield(\'content\')</main>');
+        file_put_contents($this->tmpDir . '/page.blade.php', "@extends('layout')\n@section('content')@refuse()@endsection");
+
+        foreach (['page', 'page.blade.php', $this->tmpDir . '/page.blade.php'] as $template) {
+            try {
+                $this->engine->render($template);
+                $this->fail('expected the HttpException for ' . $template);
+            } catch (\Preflow\Core\Exceptions\ForbiddenHttpException $e) {
+                $this->assertSame('Members only', $e->getMessage());
+            }
+        }
+    }
 }
+

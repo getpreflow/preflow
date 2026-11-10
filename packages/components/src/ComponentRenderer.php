@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Components;
 
+use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\PageCache\LiveParts;
 use Preflow\View\AssetCollector;
 use Preflow\View\Geo\GeoCollector;
@@ -163,6 +164,10 @@ final class ComponentRenderer
     /**
      * Render a component with wrapper HTML and error boundary. A #[Live] component on a page
      * being rendered for the page cache is its placeholder instead (enableLive()).
+     *
+     * The boundary catches every failure except an HttpException (a 403, a 404…): that one is
+     * rethrown in every render method, so the page or the action answers with its status
+     * (since 0.63.2; before, the boundary showed its fallback with a 200).
      */
     public function render(Component $component): string
     {
@@ -202,6 +207,8 @@ final class ComponentRenderer
                 );
             }
             return $this->wrapHtml($component, $innerHtml);
+        } catch (HttpException $e) {
+            throw $e; // a 403/404 the component throws is the page's answer, not a broken component
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
         }
@@ -231,6 +238,8 @@ final class ComponentRenderer
                 );
             }
             return $html;
+        } catch (HttpException $e) {
+            throw $e; // a 403/404 the component throws is the page's answer, not a broken component
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
         }
@@ -256,6 +265,8 @@ final class ComponentRenderer
                 );
             }
             return $html;
+        } catch (HttpException $e) {
+            throw $e; // a 403/404 the component throws is the page's answer, not a broken component
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
         }
@@ -281,6 +292,8 @@ final class ComponentRenderer
                 );
             }
             return $this->wrapHtml($component, $innerHtml);
+        } catch (HttpException $e) {
+            throw $e; // a 403/404 the component throws is the page's answer, not a broken component
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
         }
@@ -318,16 +331,19 @@ final class ComponentRenderer
         $templatePath = $component->getTemplatePath($this->templateEngine->getTemplateExtension());
         $context = $component->getTemplateContext();
 
-        // Set CSS scope if component has scoping enabled
-        if ($this->assetCollector !== null && $component->hasCssScoping()) {
-            $previousScope = $this->assetCollector->getCssScope();
-            $this->assetCollector->setCssScope($component->getCssClass());
-            $html = $this->templateEngine->render($templatePath, $context);
-            $this->assetCollector->setCssScope($previousScope);
-            return $html;
+        if ($this->assetCollector === null) {
+            return $this->templateEngine->render($templatePath, $context);
         }
 
-        return $this->templateEngine->render($templatePath, $context);
+        // The component's own CSS scope, or none: an unscoped child inside a scoped parent
+        // doesn't take the parent's. Put back afterwards, also when the template throws.
+        $previousScope = $this->assetCollector->getCssScope();
+        $this->assetCollector->setCssScope($component->hasCssScoping() ? $component->getCssClass() : null);
+        try {
+            return $this->templateEngine->render($templatePath, $context);
+        } finally {
+            $this->assetCollector->setCssScope($previousScope);
+        }
     }
 
     private function wrapHtml(Component $component, string $innerHtml): string
