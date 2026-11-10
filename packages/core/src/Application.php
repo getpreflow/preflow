@@ -446,12 +446,9 @@ final class Application
             $this->rebuildsScheduled = false;
         }
 
-        // Make request context available to components via DI
-        $this->container->instance(RequestContext::class, new RequestContext(
-            path: $request->getUri()->getPath(),
-            method: $request->getMethod(),
-            request: $request,
-        ));
+        // Make request context available to components via DI. With URL locales it is bound
+        // once more after the locale middleware strips the prefix (bootI18n()).
+        $this->bindRequestContext($request);
 
         // An internal render (the SEO audit) sends no mail: what it queues is not flushed here.
         $flush = !$this->emitting && !$internal;
@@ -1707,7 +1704,30 @@ final class Application
             );
             $this->container->instance(\Preflow\I18n\LocaleMiddleware::class, $localeMiddleware);
             $this->addMiddleware($localeMiddleware);
+            // Right inside it: RequestContext (and so `request.path` on controller pages, in
+            // page cache rebuilds and in audit renders) names the path without the locale prefix,
+            // as file pages, the router and everything after the locale middleware see it.
+            $this->addMiddleware(new class (\Closure::fromCallable([$this, 'bindRequestContext'])) implements \Psr\Http\Server\MiddlewareInterface {
+                public function __construct(private readonly \Closure $bind) {}
+
+                public function process(ServerRequestInterface $request, \Psr\Http\Server\RequestHandlerInterface $handler): ResponseInterface
+                {
+                    ($this->bind)($request);
+
+                    return $handler->handle($request);
+                }
+            });
         }
+    }
+
+    /** Binds RequestContext for the request being handled (handle(), and again once the locale prefix is stripped). */
+    private function bindRequestContext(ServerRequestInterface $request): void
+    {
+        $this->container->instance(RequestContext::class, new RequestContext(
+            path: $request->getUri()->getPath(),
+            method: $request->getMethod(),
+            request: $request,
+        ));
     }
 
     /**

@@ -36,9 +36,12 @@ final class PageResponderTest extends TestCase
         file_put_contents($path, $content);
     }
 
-    private function site(): void
+    private function site(int $debug = 0, bool $locales = false): void
     {
-        $this->write('config/app.php', "<?php\nreturn ['name'=>'t','debug'=>0,'engine'=>'twig','key'=>'page-resp-test-key-0123456789abc','url'=>'https://example.com','locale'=>'en'];\n");
+        if ($locales) {
+            $this->write('config/i18n.php', "<?php\nreturn ['default'=>'en','available'=>['en','de'],'fallback'=>'en','url_strategy'=>'prefix'];\n");
+        }
+        $this->write('config/app.php', "<?php\nreturn ['name'=>'t','debug'=>{$debug},'engine'=>'twig','key'=>'page-resp-test-key-0123456789abc','url'=>'https://example.com','locale'=>'en'];\n");
         $this->write('config/data.php', "<?php\nreturn ['default'=>'json','drivers'=>['json'=>['path'=>'{$this->dir}/storage/data']]];\n");
         $this->write('config/page_cache.php', "<?php return ['enabled' => true, 'explain' => true, 'verify' => 'off'];");
         $this->write('app/pages/_views/layout.twig', '<html><head><title>T</title></head><body>{% block body %}{% endblock %}</body></html>');
@@ -141,5 +144,49 @@ final class PageResponderTest extends TestCase
         $this->assertSame('miss', $first->getHeaderLine('X-Page-Cache'));
         $this->assertSame('hit', $second->getHeaderLine('X-Page-Cache'));
         $this->assertSame((string) $first->getBody(), (string) $second->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_request_path_has_no_locale_prefix_on_a_controller_page_in_debug(): void
+    {
+        $this->site(debug: 1, locales: true);
+        $html = (string) $this->get('/de/ok?q=x')->getBody();
+
+        $this->assertStringContainsString('Hello|/ok|x|GET', $html);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_request_path_has_no_locale_prefix_in_a_page_cache_rebuild(): void
+    {
+        $this->site(locales: true);
+        $app = Application::create($this->dir);
+        $app->setRunningInConsole(true);
+        $app->boot();
+
+        $response = $app->handle(\Preflow\Core\PageCache\Rebuild::request('https://example.com/de/ok'));
+
+        $this->assertStringContainsString('Hello|/ok||GET', (string) $response->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_request_path_has_no_locale_prefix_in_an_audit_render(): void
+    {
+        $this->site(locales: true);
+        $app = Application::create($this->dir);
+        $app->boot();
+
+        $page = $app->container()->get(\Preflow\View\Audit\PageRenderer::class)->render('/de/ok');
+
+        $this->assertSame(200, $page->status);
+        $this->assertStringContainsString('Hello|/ok||GET', $page->body);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_request_path_has_no_locale_prefix_on_a_normal_production_request(): void
+    {
+        $this->site(locales: true);
+        $html = (string) $this->get('/de/ok')->getBody();
+
+        $this->assertStringContainsString('Hello|/ok||GET', $html);
     }
 }

@@ -20,7 +20,7 @@ final class EnvLoaderTest extends TestCase
     protected function tearDown(): void
     {
         // Clean up env vars set during tests
-        foreach (['TEST_NAME', 'TEST_DEBUG', 'TEST_KEY', 'TEST_QUOTED', 'TEST_SINGLE', 'TEST_EMPTY', 'TEST_EQUALS', 'TEST_INLINE', 'TEST_EXISTING', 'TEST_SPACES'] as $key) {
+        foreach (['TEST_NAME', 'TEST_DEBUG', 'TEST_KEY', 'TEST_QUOTED', 'TEST_SINGLE', 'TEST_EMPTY', 'TEST_EQUALS', 'TEST_INLINE', 'TEST_EXISTING', 'TEST_SPACES', 'T_DQ', 'T_SQ', 'T_UQ', 'T_HASH', 'T_ESC', 'T_DQC', 'T_SQC', 'T_PLAIN', 'T_NOSPACE', 'T_URL', 'T_UNTERM'] as $key) {
             putenv($key);
             unset($_ENV[$key]);
         }
@@ -119,5 +119,32 @@ final class EnvLoaderTest extends TestCase
         EnvLoader::load($this->tmpDir . '/.env');
 
         $this->assertSame('hello', getenv('TEST_SPACES'));
+    }
+
+    /** @return iterable<string, array{string, string, string}> */
+    public static function values(): iterable
+    {
+        yield 'double quotes keep spaces' => ['T_DQ', 'T_DQ="x y"', 'x y'];
+        yield 'single quotes' => ['T_SQ', "T_SQ='x'", 'x'];
+        yield 'unquoted with comment' => ['T_UQ', 'T_UQ=x # note', 'x'];
+        yield 'hash inside double quotes' => ['T_HASH', 'T_HASH="x # not a comment"', 'x # not a comment'];
+        yield 'escaped double quote' => ['T_ESC', 'T_ESC="say \"hi\" now"', 'say "hi" now'];
+        yield 'double quotes then comment' => ['T_DQC', 'T_DQC="x y" # note', 'x y'];
+        yield 'single quotes then comment' => ['T_SQC', "T_SQC='x # y' # note", 'x # y'];
+        yield 'plain unquoted' => ['T_PLAIN', 'T_PLAIN=hello', 'hello'];
+        yield 'hash without space stays' => ['T_NOSPACE', 'T_NOSPACE=a#b', 'a#b'];
+        yield 'url unquoted' => ['T_URL', 'T_URL=https://x.test/a?b=c', 'https://x.test/a?b=c'];
+        yield 'unterminated quote kept as written' => ['T_UNTERM', 'T_UNTERM="abc', '"abc'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('values')]
+    public function test_value_forms(string $key, string $line, string $expected): void
+    {
+        file_put_contents($this->tmpDir . '/.env', $line . "\n");
+
+        EnvLoader::load($this->tmpDir . '/.env');
+
+        $this->assertSame($expected, $_ENV[$key]);
+        $this->assertSame($expected, getenv($key));
     }
 }

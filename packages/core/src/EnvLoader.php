@@ -39,22 +39,35 @@ final class EnvLoader
                 continue;
             }
 
-            // Strip quotes
-            if (
-                (str_starts_with($value, '"') && str_ends_with($value, '"'))
-                || (str_starts_with($value, "'") && str_ends_with($value, "'"))
-            ) {
-                $value = substr($value, 1, -1);
-            } else {
-                // Strip inline comments (only for unquoted values)
-                $commentPos = strpos($value, ' #');
-                if ($commentPos !== false) {
-                    $value = trim(substr($value, 0, $commentPos));
-                }
-            }
+            $value = self::value($value);
 
             putenv("{$key}={$value}");
             $_ENV[$key] = $value;
         }
+    }
+
+    /**
+     * The value as written after "=": "double quoted" (\" is a quote, # is text), 'single quoted'
+     * (literal), or unquoted (" #" starts a comment). Text after a closing quote is ignored;
+     * a quote that never closes leaves the value as written.
+     */
+    private static function value(string $raw): string
+    {
+        $quote = $raw[0] ?? '';
+
+        if ($quote === '"') {
+            if (preg_match('/^"((?:[^"\\\\]|\\\\.)*)"/s', $raw, $m) === 1) {
+                return str_replace('\\"', '"', $m[1]);
+            }
+        } elseif ($quote === "'") {
+            $end = strpos($raw, "'", 1);
+            if ($end !== false) {
+                return substr($raw, 1, $end - 1);
+            }
+        }
+
+        $commentPos = strpos($raw, ' #');
+
+        return $commentPos !== false ? trim(substr($raw, 0, $commentPos)) : $raw;
     }
 }

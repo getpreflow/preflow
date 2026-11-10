@@ -24,7 +24,8 @@ class AppTestRouter implements RouterInterface
     {
         return match ($request->getUri()->getPath()) {
             '/' => new Route(RouteMode::Action, handler: 'home'),
-            default => throw new NotFoundHttpException(),
+            '/post-only' => throw new \Preflow\Core\Exceptions\MethodNotAllowedHttpException(['POST'], 'Method GET not allowed for [/post-only]'),
+            default => throw new NotFoundHttpException('No route matches [' . $request->getMethod() . ' ' . $request->getUri()->getPath() . ']'),
         };
     }
 }
@@ -140,6 +141,39 @@ final class ApplicationTest extends TestCase
         $response = $app->handle($request);
 
         $this->assertSame(404, $response->getStatusCode());
+    }
+
+    /** @return array{int, string} status and body of a GET in the given debug mode */
+    private function get(string $path, bool $debug): array
+    {
+        $app = Application::create(['app' => ['debug' => $debug]]);
+        $app->setRouter(new AppTestRouter());
+        $app->setActionDispatcher(fn ($route, $req) => new Response(200));
+        $app->setComponentRenderer(fn ($route, $req) => new Response(200));
+        $app->boot();
+        $response = $app->handle((new Psr17Factory())->createServerRequest('GET', $path)->withHeader('Accept', 'text/html'));
+
+        return [$response->getStatusCode(), (string) $response->getBody()];
+    }
+
+    public function test_production_404_and_405_never_show_the_exception_message(): void
+    {
+        [$status, $body] = $this->get('/nonexistent', false);
+        $this->assertSame(404, $status);
+        $this->assertStringNotContainsString('No route matches', $body);
+        $this->assertStringContainsString('Not Found', $body);
+
+        [$status, $body] = $this->get('/post-only', false);
+        $this->assertSame(405, $status);
+        $this->assertStringNotContainsString('not allowed for', $body);
+        $this->assertStringContainsString('Method Not Allowed', $body);
+    }
+
+    public function test_debug_404_keeps_the_exception_message(): void
+    {
+        [$status, $body] = $this->get('/nonexistent', true);
+        $this->assertSame(404, $status);
+        $this->assertStringContainsString('No route matches [GET /nonexistent]', $body);
     }
 
     public function test_config_is_available_in_container(): void

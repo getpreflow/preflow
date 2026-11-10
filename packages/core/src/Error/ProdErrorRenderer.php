@@ -34,7 +34,11 @@ final class ProdErrorRenderer implements ErrorRendererInterface
             : '';
         if ($exception instanceof HttpException) {
             $title = self::STATUS_MESSAGES[$statusCode] ?? 'Error';
-            $message = $exception->getMessage();
+            // A 404/405 message names the router's view of the request ("No route matches [GET /x]"):
+            // a visitor gets the plain status text; the debug page keeps the message.
+            $message = in_array($statusCode, [404, 405], true) || $exception->getMessage() === ''
+                ? $title
+                : $exception->getMessage();
         } else {
             $title = self::STATUS_MESSAGES[$statusCode] ?? 'Internal Server Error';
             $message = $title;

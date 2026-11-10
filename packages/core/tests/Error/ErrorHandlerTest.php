@@ -84,11 +84,27 @@ final class ErrorHandlerTest extends TestCase
     {
         $handler = new ErrorHandler(new ProdErrorRenderer());
         $response = $handler->handleException(
-            new NotFoundHttpException('The page you requested was not found'),
+            new HttpException(400, 'The request body is not valid JSON.'),
             $this->createRequest(),
         );
         $body = (string) $response->getBody();
-        $this->assertStringContainsString('The page you requested was not found', $body);
+        $this->assertStringContainsString('The request body is not valid JSON.', $body);
+    }
+
+    public function test_prod_404_and_405_show_only_the_status_text(): void
+    {
+        $handler = new ErrorHandler(new ProdErrorRenderer());
+
+        $notFound = (string) $handler->handleException(new NotFoundHttpException('No route matches [GET /x]'), $this->createRequest())->getBody();
+        $notAllowed = (string) $handler->handleException(
+            new \Preflow\Core\Exceptions\MethodNotAllowedHttpException(['POST'], 'GET not allowed on /x'),
+            $this->createRequest(),
+        )->getBody();
+
+        $this->assertStringNotContainsString('No route matches', $notFound);
+        $this->assertStringContainsString('Not Found', $notFound);
+        $this->assertStringNotContainsString('not allowed on', $notAllowed);
+        $this->assertStringContainsString('Method Not Allowed', $notAllowed);
     }
 
     public function test_an_internal_render_gets_the_internal_renderers_page(): void

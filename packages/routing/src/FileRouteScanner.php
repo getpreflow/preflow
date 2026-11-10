@@ -56,6 +56,12 @@ final class FileRouteScanner
                 continue;
             }
 
+            // Underscore-prefixed entries are private at any depth: _layout.twig,
+            // _error.twig and whole folders such as _views/, _errors/, _partials/.
+            if (str_starts_with($item, '_')) {
+                continue;
+            }
+
             $fullPath = $dir . '/' . $item;
 
             if (is_dir($fullPath)) {
@@ -66,11 +72,6 @@ final class FileRouteScanner
 
             // Only process template files
             if (!str_ends_with($item, '.' . $this->extension)) {
-                continue;
-            }
-
-            // Skip underscore-prefixed files (_layout.twig, _error.twig)
-            if (str_starts_with($item, '_')) {
                 continue;
             }
 

@@ -186,4 +186,24 @@ final class FileRouteScannerTest extends TestCase
         $this->assertContains('/blog', $patterns);
         $this->assertContains('/blog/{slug}', $patterns);
     }
+
+    public function test_underscore_directories_are_never_routes_at_any_depth(): void
+    {
+        $this->createFile('index.twig');
+        $this->createFile('_views/job.twig');
+        $this->createFile('_views/employer/index.twig');
+        $this->createFile('_errors/404.twig');
+        $this->createFile('blog/index.twig');
+        $this->createFile('blog/_partials/x.twig');
+        $this->createFile('blog/_partials/deep/y.twig');
+
+        $entries = (new FileRouteScanner($this->pagesDir))->scan();
+        $patterns = array_map(fn ($e) => $e->pattern, $entries);
+        sort($patterns);
+
+        $this->assertSame(['/', '/blog'], $patterns);
+        foreach ($entries as $entry) {
+            $this->assertStringNotContainsString('_', $entry->handler);
+        }
+    }
 }
