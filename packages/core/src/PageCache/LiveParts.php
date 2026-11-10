@@ -18,8 +18,9 @@ namespace Preflow\Core\PageCache;
  *
  * Filling is outside the page: a part's reads are not dependencies of the page, PageCache::refuse()
  * inside it does nothing, and a part that throws is replaced by ERROR (and logged), the rest of
- * the page is served. Before rendering, the placeholders of one kind are handed to that kind's
- * prefetch together (components: one prefetchLive() call per class).
+ * the page is served; an HttpException is rethrown and becomes the page's status. Before
+ * rendering, the placeholders of one kind are handed to that kind's prefetch together
+ * (components: one prefetchLive() call per class).
  *
  * Only declared parts are rendered: a kind's renderer throws LiveRecipeRejected for a signed
  * recipe that names anything else, and such a marker, like one that doesn't verify, stays an
