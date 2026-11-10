@@ -432,6 +432,8 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - The component endpoint resolves the default state before it runs an action (the starter's search runs twice).
     - Optional: a Folio slug generated from the title (starter-folio requires the slug).
     - starter-folio: the Hero block's link check lets URLs with control characters or whitespace through (`/\t/host` is followed as `//host` by browsers) — refuse them as preflow.dev's `safe_link()` does; and `CompanyAdmin::drafts()` should escape the admin path in its href. Next patch release.
+    - components: an unscoped component rendered inside a scoped one inherits the parent's CSS scope (`ComponentRenderer::renderTemplate`), so its `@keyframes` (and `@font-face`) end up nested in the parent's scope and browsers drop them. Hoist at-rules like `@keyframes`/`@font-face` out of the scope (or don't inherit scope for unscoped children). preflow.dev works around it in `app/Components/Animation/Animation.php`.
+    - starter-folio with preflow/rbac: rbac's opt-in staff accounts (`model:staff`) clash with the starter's own `App\Models\Staff` (sign-in config, password hashes), so a site switching the starter to rbac can't assign roles to staff in Folio without manual fix-ups. Provide a documented path (or make the starter's staff the rbac staff type).
 - **REST pieces (0.62):** released in 0.62.0 (owner, 2026-11-09). What a JSON API needs from the framework, as small
   parts with public interfaces; Folio is not involved.
   - **What it is:**
